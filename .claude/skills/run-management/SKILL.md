@@ -6,10 +6,10 @@ description: "Start, continue, keep, pause, copy, watch and stop authorised Anab
 # Run management
 
 A campaign is one command over one log (`tools/d2/harness-builder.ts`): it prepares the exam and
-opens one live Builder conversation, which edits the harness and calls campaign tools for the
-Examiner, practice release, comparison and promotion. The decision table supplies public advice;
-the commands keep their admissions, budget and privacy checks. `--no-builder-led` opens one whose
-every move the host makes as the table names it; the opening keeps the term either way.
+then follows the decision table, opening a bounded Builder session for each `build` move. The
+Builder edits the harness and practises on released tasks; the host starts Examiner sessions,
+comparisons and promotions as the table names them. The commands keep their admissions, budget
+and privacy checks.
 
 Everything that happens to a run on the host is a verb of one CLI, `bun run runs`
 (`tools/runs/cli.ts`), over every run log in the repository's worktrees (`tools/runs/registry.ts`).
@@ -21,7 +21,7 @@ one two worktrees hold.
 | `fresh <pack> [--model opus\|sonnet] [--effort hhmm] [--login N] [--as <suffix>] [--at <c>] [--host <host>] [--yes]` | names a campaign from a blank project, makes its worktree at a published commit and launches it there | `fresh.ts` |
 | `launch <name> [--login N] [--yes] -- <flags>` | starts the campaign command under a new name, in this worktree | `manage.ts` |
 | `continue <name> [--at <c>] [--login N] [--budget N] [--after <event>] [--yes]` | runs a campaign again from its log, on the flags its last run kept | `manage.ts` |
-| `pause <name> --after <event> [--yes]` | stops a campaign once its log gains one more of the event and nothing but its Builder's conversation is open | `manage.ts` |
+| `pause <name> --after <event> [--yes]` | stops a campaign once its log gains one more of the event and nothing but its active Builder session is open | `manage.ts` |
 | `keep <name> [--logins 2,3,4] [--wait-hours 1] [--yes]` | keeps a campaign going: moves it off a long provider wait, and continues it after a death or an `environment` ending | `keep.ts` |
 | `copy <name> --to <worktree> [--yes]` | copies a stopped campaign whole to another worktree, and sets the source aside | `manage.ts` |
 | `stop <name> ... [--yes]` | ends the process that writes each log, and its keeper, and releases what its unfinished solves and sessions held | `stop.ts` |
@@ -97,10 +97,8 @@ again. A flag that names another setting than the record is refused with both
 (`tools/d2/setting.ts`). A campaign runs unattended: it admits a drafted exam's checks, freezes
 an exam whose reading holds no fault and promotes the harness the rule names without waiting.
 `--hitl` makes all three wait for the operator's word, until `--no-hitl`; add it only when the
-operator asks. `--minutes`
-covers the whole conversation; one that ends at its limits or by `finish` is followed by a new one
-on the Builder's notes, after the host makes what the table still owes, and three in a row that
-make no campaign move end the campaign `finished`.
+operator asks. `--minutes` covers one Builder session. One that ends at its limits or by `finish`
+leaves its notes and the host follows the table with a new move.
 
 The receipt holds the flags, the commit and whether the tree was dirty, the load and cores it
 started under, and the Bun (`tools/runs/receipt.ts`). The log holds the host's code by content and
@@ -139,9 +137,9 @@ fresh run.
 
 `pause` waits until the log has gained one more of the event (`harness.promoted`,
 `build.compacted`, `comparison.reported`, `build.finished`) at a point where no comparison,
-Examiner session or draft is open, and then stops the run. The Builder's conversation is open
-throughout a led campaign, and a pause cuts it: the campaign continued opens a new one on its
-notes, and the session the stop fell inside has spent its id. `continue --after <event>` is that
+Examiner session or draft is open, and then stops the run. A pause cuts an active Builder session:
+the campaign continued opens a new one on its notes, and the session the stop fell inside has
+spent its id. `continue --after <event>` is that
 pause and then the continue, which is how a run moves to another login or commit at a clean point.
 
 A word left with `tools/d2/word.ts` acts at the next move boundary and spends no session:

@@ -1,5 +1,7 @@
 /**
- * Start a campaign, go on with one, and pause one at a clean point.
+ * Start a campaign, go on with one, and pause one at a clean point. On 18 October 2026 the
+ * Builder-led mode retired after all 3 promotions followed the table; old receipts can still
+ * name its flags, which a continuation discards before calling the host command.
  *
  *   bun --env-file=<file> run runs launch <name> [--login N] [--yes] -- <the campaign command's flags>
  *   bun --env-file=<file> run runs continue <name> [--at <commit>] [--login N] [--budget N]
@@ -75,12 +77,14 @@ const TOKEN = "CLAUDE_CODE_OAUTH_TOKEN";
 const NUMBERED = new RegExp(`^${TOKEN}\\d+$`);
 /** The flags a run again does not repeat: its name, which the verb names, and its total. */
 const DROPPED = ["--name", "--budget"];
+const RETIRED = new Set(["--builder-led", "--no-builder-led"]);
 const LOOK_MS = 30_000;
 
 /** The flags a campaign runs again on: `flags` less its name and total, and `budget` where named. */
 export function rerun(flags: readonly string[], budget: string | undefined): string[] {
   const kept = flags.filter(
     (flag, at) =>
+      !RETIRED.has(flag) &&
       !DROPPED.includes(flags[at - 1] ?? "") &&
       !DROPPED.some((dropped) => flag === dropped || flag.startsWith(`${dropped}=`)),
   );
@@ -111,8 +115,8 @@ export function loginEnv(env: Readonly<Record<string, string | undefined>>, logi
 }
 
 /** Whether a pause may stop the run whose log is `events`: it holds more than `base` of `kind`, and
- *  no comparison, Examiner session or draft is open. The Builder's conversation is open throughout
- *  a led campaign, and a pause cuts it: the campaign run again opens a new one on its notes. */
+ *  no comparison, Examiner session or draft is open. A pause cuts an active Builder session;
+ *  the campaign run again opens a new one on its notes. */
 export function restsAfter(events: readonly LogEvent[], kind: string, base: number): boolean {
   const examining = unfinished(events).some(({ of }) => of === "exam" || of === "draft");
   return (

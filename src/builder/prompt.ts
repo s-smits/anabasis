@@ -101,7 +101,7 @@ export interface Told {
 const GOAL =
   "Your harness is measured against a reference harness on tasks you are never shown: the same solving model answers each task under each harness, under the same limits.";
 
-/** The texts a Builder reads that differ by who makes its campaign's moves. */
+/** The texts a host-led Builder reads at the end of its session. */
 export interface Said {
   /** The system prompt's sentences on `read_opening` and on having a harness measured. */
   readonly closing: string;
@@ -117,50 +117,22 @@ export interface Said {
   readonly untried: string;
 }
 
-/**
- * Who makes a campaign's moves, and every text of a Builder's that differs by it. Under `host` the
- * campaign command makes each move the table names, and a session ends in a harness the host
- * measures. Under `builder` one live conversation makes them through its campaign tools
- * (`BuildRequest.campaign`; `--builder-led` on the campaign command, `tools/d2/harness-builder.ts`).
- * A session takes its row once (`Bench.said`), and no text asks which it is anywhere else, so the
- * texts of a campaign the host runs are these and no others whatever the other row says. What a
- * session does differently with campaign tools, and not what it says, is asked of the same
- * request where it is done: its turns are metered as they end and its opening is served as the log
- * stands (`session.ts`), and its practice is held to the campaign's total (`practiceLeft`,
- * `tools.ts`). A led Builder is told each fact once, where it is owned: what its tools do in their
- * descriptions, and here what a tool result ends with and what ends the campaign. A promotion ends
- * nothing: the operator's milestone of twelve is no rule (`AGENTS.md`, "Climb"), and `finish` ends
- * the campaign only after three conversations in a row made no campaign move (`harness-builder.ts`).
- */
-export const SAID: Readonly<Record<"host" | "builder", Said>> = {
-  host: {
-    closing:
-      "read_opening returns the opening message again, as it was sent, for when this conversation no longer holds it. When harness/ holds what you want measured, call finish.",
-    frozen: "frozen and measured",
-    opening:
-      "Return this session's opening message again, as it was sent: the public rules and the answer format, the practice tasks with their record at the start, every failed practice solve and each comparison so far, and the session's limits. It changes nothing. Use it when the conversation no longer holds those facts.",
-    finish:
-      "End the session. What harness/ holds now is frozen and measured. Say in one or two sentences what you changed and what you expect it to move. A harness that does not open, or that has changed since your last practice solve while solves are left, is said once and not refused: call finish again to end the session so.",
-    broken: {
-      unpractised: "no harness of this session is measured",
-      practised: "the harness your last practice solve ran is measured in its place",
-    },
-    untried: "and have it measured untried",
+/** The one set of texts the host-led session uses. The Builder's campaign row was retired on
+ * 18 October 2026 after all three recorded promotions followed the table and seven led
+ * conversations crashed at their first practice. */
+export const SAID: Said = {
+  closing:
+    "read_opening returns the opening message again, as it was sent, for when this conversation no longer holds it. When harness/ holds what you want measured, call finish.",
+  frozen: "frozen and measured",
+  opening:
+    "Return this session's opening message again, as it was sent: the public rules and the answer format, the practice tasks with their record at the start, every failed practice solve and each comparison so far, and the session's limits. It changes nothing. Use it when the conversation no longer holds those facts.",
+  finish:
+    "End the session. What harness/ holds now is frozen and measured. Say in one or two sentences what you changed and what you expect it to move. A harness that does not open, or that has changed since your last practice solve while solves are left, is said once and not refused: call finish again to end the session so.",
+  broken: {
+    unpractised: "no harness of this session is measured",
+    practised: "the harness your last practice solve ran is measured in its place",
   },
-  builder: {
-    closing:
-      "read_opening returns the public opening facts when this conversation no longer holds them. You lead the campaign with its tools, and each one's result ends with the campaign's facts and the move the host's table would make, which you may follow or not. A promotion ends nothing: the promoted harness becomes the reference, the next step is measured against it, and the climb goes on for as many steps as you find. The campaign ends at its budget, on its provider, or after as many moves in a row without a gain as its patience. finish ends this conversation and freezes harness/, measuring nothing; another conversation follows on your notes, and the campaign ends once three in a row have made no campaign move.",
-    frozen: "frozen",
-    opening:
-      "Read the current public rules, practice tasks, failed practice solves, comparison tallies and session limits. It changes nothing.",
-    finish:
-      "End this conversation and freeze harness/. Say what changed, what remains unmeasured and what you would try next; the next conversation starts from your notes. A notice from finish can be acknowledged by calling finish again.",
-    broken: {
-      unpractised: "no harness of this session is kept",
-      practised: "the harness your last practice solve ran is kept in its place",
-    },
-    untried: "and leave it untried",
-  },
+  untried: "and have it measured untried",
 };
 
 /** What the next session receives from this one (v1's `HANDOVER`, `src/author/builder-session.ts`

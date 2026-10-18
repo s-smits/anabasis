@@ -1,5 +1,7 @@
 /**
- * The Builder's tools. It is a coding agent on a harness's files, so it has what a solver has: pi's
+ * The Builder's tools. On 18 October 2026 the campaign's Builder-led mode was retired after all
+ * three recorded promotions followed the host table and seven led conversations crashed on their
+ * first practice. The Builder is now a build-only seat: it has what a solver has, pi's
  * own `read`, `bash`, `edit` and `write` on the command wall (`src/solve/coding-tools.ts`), in one
  * working directory, its home. On top of them are the tools that are a Builder's alone. Two ask
  * the host about `harness/` as it stands and run on the same wall: `check_harness` and
@@ -47,7 +49,7 @@ import { type LogEvent, read } from "../kernel/log.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { limitsIn } from "../kernel/condition.ts";
 import type { Contract } from "../kernel/contract.ts";
-import { billedAll, billedFor } from "../kernel/reports.ts";
+import { billedFor } from "../kernel/reports.ts";
 import { ended, passed, practiceRan, solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import {
@@ -66,7 +68,7 @@ import {
 } from "../meta/filesystem.ts";
 import { TOOL_TREE_DIR } from "../meta/bundle-layout.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { asRecord, isFunction, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { pooled } from "../meta/pool.ts";
@@ -80,8 +82,7 @@ import { type Harness, harnessTools, openHarness, pathsUnder, toolTreeStamp } fr
 import { installedPrograms, systemPrompt } from "../solve/prompt.ts";
 import { clockText, solverTools } from "../solve/run.ts";
 import { memoryOverCapNotice } from "./memory.ts";
-import { openingOf } from "./opening.ts";
-import { type Said, shellWalls } from "./prompt.ts";
+import { SAID, shellWalls } from "./prompt.ts";
 import type { BuildRequest, PracticeTask } from "./session.ts";
 
 /** `harness/` frozen: a copy kept under its digest, what a solve would open it as, and the tools
@@ -95,11 +96,9 @@ export interface Snapshot {
 /** What a session's tools share. */
 export interface Bench {
   readonly request: BuildRequest;
-  /** The texts of this session that differ by who makes its campaign's moves (`SAID`). */
-  readonly said: Said;
-  /** Released tasks and the reference, refreshed by campaign tools while the conversation stays open. */
-  tasks: readonly PracticeTask[];
-  reference: string;
+  /** Released practice tasks and the reference harness. */
+  readonly tasks: readonly PracticeTask[];
+  readonly reference: string;
   /** The Builder's home, which holds `harness/` and `practice/`. */
   readonly home: string;
   /** The digest of the harness the session started from. */
@@ -122,21 +121,13 @@ export interface Bench {
   lists: ((harness: Harness) => Promise<string[] | null>) | null;
   /** Aborted when a practice solve could not be run, which ends the session. */
   readonly halt: AbortController;
-  /** Runs a campaign action, whose time is the host's: the session's wall stops while one runs.
-   *  Until 13 October it counted them, and a led Builder had 45 of its 240 minutes to build and
-   *  ended one second after the comparison it bought reported, which it never read. */
-  readonly within: <T>(action: () => Promise<T>) => Promise<T>;
   /** What that practice solve threw; the session throws it again once its record is written. */
   fatal: Error | null;
   /** `finish`'s note; null until it is called. */
   note: string | null;
   /** What `finish` has told the Builder of the harness as it stood, each once (`standing`). */
-  readonly told: Set<"broken" | "untried" | "unread">;
+  readonly told: Set<"broken" | "untried">;
 }
-
-/** What a Builder that leads its campaign is told at `finish` where no comparison has read harness
- *  `digest` against the reference, or null (`BuildRequest.campaign`). */
-type Unmeasured = (digest: string) => Promise<string | null>;
 
 /** What a submitted answer or a closing text shows of itself in a trace's head. */
 const HEAD_CHARS = 4_000;
@@ -387,16 +378,14 @@ async function practise(bench: Bench, task: PracticeTask, kept: Snapshot, kill: 
  * The practice solves a session may still start: what is left of its own count, and no more than
  * its dollar cap holds a reserve for, where it runs under one (`BuildRequest.cap`). The dollars are
  * the log's, as a comparison's are (`billedFor`): the practice solves this session ran and their
- * Referee, and its own live turns. In a live campaign, the current total includes every seat
- * and any budget change the operator left. The Builder is told a count and never a sum.
+ * Referee, and its own live turns. The Builder is told a count and never a sum.
  */
 export function practiceLeft({ request, spent }: Bench, events: readonly LogEvent[]): number {
-  const campaign = request.campaign === undefined ? null : openingOf(events)?.budget;
-  const cap = campaign ?? request.cap;
+  const cap = request.cap;
   const { limits } = request;
   const counted = limits.practiceSolves - spent;
   if (cap === undefined) return counted;
-  const billed = campaign == null ? billedFor(events, request.id) : billedAll(events);
+  const billed = billedFor(events, request.id);
   const afforded = Math.floor((cap.dollars - billed) / cap.reserve);
   return Math.max(0, Math.min(counted, afforded));
 }
@@ -563,32 +552,25 @@ export function traceTool(bench: Bench): AgentTool {
  * versions, which is why `practice` says when the last one is gone. A session that never
  * practised chose so and is told nothing here. A second `finish` ends the session as it is.
  *
- * A Builder that leads its campaign is also told that no comparison has read the harness it would
- * leave: on 13 October buffer-151-haiku's Builder finished while an Examiner session wrote, and the
- * campaign ended `finished` with no comparison.
- * One that would finish on the harness last promoted is told the move the table names next, since on
- * 14 October buffer-149's Builder finished on the harness just promoted and the climb stopped there.
  */
-async function standing(bench: Bench, unmeasured?: Unmeasured): Promise<string | null> {
+async function standing(bench: Bench): Promise<string | null> {
   const { request, told } = bench;
   const again = "or call finish again to end the session as it is";
   const now = await harnessNow(bench);
   if (!isString(now)) {
     if (told.has("broken")) return null;
     told.add("broken");
-    const { unpractised, practised } = bench.said.broken;
+    const { unpractised, practised } = SAID.broken;
     return `${errorMessage(now)}. Left so, ${bench.opened === null ? unpractised : practised}. Mend it and call finish again, ${again}.`;
   }
   const left = practiceLeft(bench, read(request.log));
   const tried = bench.opened === null || now === bench.opened.harness.digest || now === bench.parent;
   const untried = !tried && left > 0 && !told.has("untried");
-  const unread = told.has("unread") ? null : ((await unmeasured?.(now)) ?? null);
   if (untried) told.add("untried");
-  if (unread !== null) told.add("unread");
   if (untried) {
-    return `harness/ has changed since your last practice solve, so no solve has run it as it stands. ${plural(left, "practice solve")} ${left === 1 ? "is" : "are"} left. Practise it, ${again} ${bench.said.untried}.${unread === null ? "" : ` ${unread}`}`;
+    return `harness/ has changed since your last practice solve, so no solve has run it as it stands. ${plural(left, "practice solve")} ${left === 1 ? "is" : "are"} left. Practise it, ${again} ${SAID.untried}.`;
   }
-  return unread === null ? null : `${unread} Call finish again to end the conversation as it is.`;
+  return null;
 }
 
 /** The digest of `harness/` as it stands, or why it does not open: frozen once, the copy removed. */
@@ -608,14 +590,14 @@ export async function harnessNow(bench: Bench): Promise<string | Error> {
  * comparisons in no other place: they are built by the host from the log, and the Builder's own
  * notes are its prose about them. v1 served its round's opening facts the same way.
  */
-export function openingTool(opening: string | (() => string), said: Said): AgentTool {
+export function openingTool(opening: string): AgentTool {
   return tool({
     name: "read_opening",
     label: "Read the opening",
-    description: said.opening,
+    description: SAID.opening,
     parameters: Type.Object({}),
     executionMode: "sequential",
-    execute: async () => text(isFunction(opening) ? opening() : opening),
+    execute: async () => text(opening),
   });
 }
 
@@ -642,11 +624,11 @@ export function endingWith(each: AgentTool, line: (id: string) => string): Agent
   };
 }
 
-export function finishTool(bench: Bench, unmeasured?: Unmeasured): AgentTool {
+export function finishTool(bench: Bench): AgentTool {
   return tool({
     name: "finish",
     label: "Finish",
-    description: bench.said.finish,
+    description: SAID.finish,
     parameters: Type.Object({ note: Type.String({ minLength: 1, maxLength: 700 }) }),
     executionMode: "sequential",
     execute: async (_id, args) => {
@@ -654,7 +636,7 @@ export function finishTool(bench: Bench, unmeasured?: Unmeasured): AgentTool {
       // the call itself carries it, as v1's submit did (`src/gate/submit-tool.ts` at 3f93d06).
       const notes = memoryOverCapNotice(bench.home);
       if (notes !== null) throw new Error(`Not finished. ${notes} Then call finish again.`);
-      const stands = await standing(bench, unmeasured);
+      const stands = await standing(bench);
       if (stands !== null) throw new Error(`Not finished. ${stands}`);
       bench.note = args.note.trim();
       return { ...text("Finished."), terminate: true };

@@ -24,6 +24,10 @@
  * side's test clears the level (`readsStepEitherWay`, `compare.ts`; `tools/wri/read.ts`, "REFERENCE
  * AGAINST ITSELF"), since a step either way between two samples of one harness is a false one. The
  * report's own `p` is one-sided.
+ *
+ * On 18 October 2026 the Builder-led mode retired after seven crashed conversations and three
+ * promotions following the table. `Opening` no longer carries `led`; this page keeps the field
+ * for old logs by reading the raw opening event.
  */
 import { type Decided, decidedLine, type Ending } from "../../../../src/builder/move.ts";
 import { barsOf, regressionOf } from "../../../../src/builder/climb.ts";
@@ -199,11 +203,12 @@ const coreIn = once((log) => {
   const campaign = campaignIn(log);
   const bars = barsIn(log);
   const { sinceStep } = stopIn(log);
+  const led = log.events.findLast(({ kind }) => kind === "campaign.opened")?.data.led === true;
   return {
     prompt: openingIn(log)?.prompt ?? null,
     terms: openingIn(log)?.terms ?? {},
     attended: openingIn(log)?.attended ?? false,
-    led: openingIn(log)?.led ?? false,
+    led,
     bars: barsOf(log.events),
     supply: campaign.supply,
     reference: campaign.reference,

@@ -9,9 +9,9 @@
  * are a session's, and rehearse one Builder session with no comparison after it
  * (`tools/d2/session.ts`): the plan's checkpoint is walked as two of those and then a checkpoint.
  * With `--campaign` the flags are the Harness Builder's (`tools/d2/harness-builder.ts`), and the
- * live Builder is rehearsed: its script follows the public prompt advice, until it ends or
+ * host runs the table, with a scripted Builder that edits and finishes, until it ends or
  * `--moves` are made. Over a stored pack no script sits in the Examiner's seat, so a rehearsal
- * that needs tasks written finishes when its Examiner tool is unavailable; over a drafted exam
+ * that needs tasks written requires a scripted Examiner; over a drafted exam
  * the Examiner is scripted from the seed's source campaign, and proposes the tasks its sessions wrote after the
  * cut, in their order, until none is left; with `--supply N` it then proposes up to N further
  * instances copied from the source's answered tasks, each with a copy mark in its public input so
@@ -33,8 +33,9 @@
  * stored pack's graded passes and controls where `--root --sweep --bundle` name one, and otherwise
  * the drafted exam's controls and every answer the seed's source campaign passed (`draftedGraded`).
  *
- * The Builder's script edits the guide through its walled shell. In a campaign it follows public
- * action advice; in an isolated session it finishes after the edit.
+ * The Builder's script edits the guide through its walled shell and finishes. On 18 October
+ * 2026 the Builder-led mode retired: all 3 promotions followed the table, while task writing
+ * beside the Builder caused 7 crashed conversations. The host now owns every next move.
  * A solve's script ends one of three ways. For `pass` it writes an answer on record that the checks
  * accepted into the answer file, through the harness's own `write` or its `bash`, and submits it.
  * For `fail` it does the same with one a check rejected. For `none` it submits with no answer
@@ -207,33 +208,6 @@ function scripted(calls: readonly (readonly [string, JsonObject] | FauxResponseF
   return { model: faux.getModel(), models: () => models };
 }
 
-/** One scripted Builder follows public campaign advice, or edits and finishes an isolated session. */
-function scriptedBuilder() {
-  let changed = false;
-  const choose: FauxResponseFactory = (context) => {
-    const last = JSON.stringify(context.messages.at(-1));
-    const suggested = /Suggested action: ([a-z_]+)\./u.exec(last ?? "")?.[1];
-    let name = suggested ?? (changed ? "finish" : "build");
-    if (last?.includes("no Examiner") === true || name === "end") name = "finish";
-    if (name === "build") {
-      name = changed ? "compare" : "bash";
-      changed = true;
-    }
-    if (name === "compare") changed = false;
-    const args =
-      name === "bash"
-        ? { command: `printf '\\nA rehearsal added this line.\\n' >> "$HOME/${GUIDE}"` }
-        : name === "finish"
-          ? { note: "The scripted Builder has no further action." }
-          : {};
-    return fauxAssistantMessage(fauxToolCall(name, args), TOOL_USE);
-  };
-  return scripted(
-    Array.from({ length: 300 }, () => choose),
-    0,
-  );
-}
-
 /** The seats of a rehearsal. `strayed` takes each solve that ended otherwise than scripted. */
 export function scriptedSeats(script: Script, graded: readonly Control[], strayed: string[]): Seated {
   return (campaign, { reference }) => {
@@ -258,7 +232,13 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
     const sideOf = async (dir: string) =>
       dir === reference ? "old" : dir === (await least).dir ? "starter" : "new";
     return {
-      builder: scriptedBuilder(),
+      builder: scripted(
+        [
+          ["bash", { command: `printf '\\nA rehearsal added this line.\\n' >> "$HOME/${GUIDE}"` }],
+          ["finish", { note: "The scripted Builder has no further action." }],
+        ],
+        0,
+      ),
       // Every scripted solver is the same model at the same price, so one names the setting of all.
       setting: campaign.setting({ ...campaign.test, ...scripted([], 0) }),
       solve: async (task, harness, kill, comparison) => {

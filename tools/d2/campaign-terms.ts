@@ -1,10 +1,10 @@
 /**
- * What a campaign's command and a live Builder's campaign tools share (`harness-builder.ts`,
- * `campaign-actions.ts`): the command's flags, what a campaign runs by and keeps in its opening,
- * and the flags of each move's command. Nothing here knows who makes a move.
+ * The host campaign command's flags and recorded terms. On 18 October 2026 the Builder-led
+ * mode retired: all 3 promotions followed the table, and its concurrent sessions crashed 7
+ * conversations. Old openings may carry led; it has no bearing on the host's next move.
  */
 import { shortOf } from "#src/builder/decide.ts";
-import { cutShort, type Plan } from "#src/builder/ground.ts";
+import { type Plan } from "#src/builder/ground.ts";
 import type { Decided } from "#src/builder/move.ts";
 import { type Opening, openingOf, planOf, SEATS, SESSIONS, type Seat, TERMS } from "#src/builder/opening.ts";
 import { type Word } from "#src/builder/word.ts";
@@ -101,7 +101,6 @@ const OPTIONS = {
   loaded: { type: "boolean", default: false },
   "dry-run": { type: "boolean", default: false },
   hitl: { type: "boolean" },
-  "builder-led": { type: "boolean" },
   "past-stop": COMPARISON_OPTIONS["past-stop"],
 } as const;
 /** What a campaign runs by where neither a flag nor its record says: the reserve of one solve in
@@ -109,10 +108,6 @@ const OPTIONS = {
 export const DEFAULTS = { reserve: "10", sessions: SESSIONS, effort: "high" } as const;
 const OPENED = "campaign.opened";
 export const MOVED = "campaign.move";
-/** The Builder conversations in a row that make no campaign move before a campaign ends. A Codex
- *  goal stays active across turns until its model calls it met, or blocked once the same blocker
- *  has held for three; a climb is never met, so three conversations without a move are its block. */
-export const IDLE = 3;
 const STARTED = "comparison.started";
 /** A model a backend serves, named where a rehearsal's script sits in the Examiner's seat: the
  *  command wants a name, and the script is what is asked. */
@@ -202,9 +197,6 @@ export function opened(
     patience: values.patience === undefined ? (was?.patience ?? PATIENCE) : Number(values.patience),
     seats: { builder: seat("builder"), examiner: seat("examiner"), reviewer: seat("reviewer") },
     attended: values.hitl ?? was?.attended ?? false,
-    // A campaign that opens now is led by its Builder; one on record runs as its record says, and
-    // a record from before the term says the host makes every move.
-    led: values["builder-led"] ?? was?.led ?? was === null,
     prompt,
     solver: prompt === null ? null : solver,
     // Each term as this command names it, and as the record holds it where it names none. The
@@ -238,7 +230,6 @@ export function opened(
       SEATS.map((each) => [each, named.seats[each] === null ? null : { ...named.seats[each] }]),
     ),
     ...keyIfDefined("attended", named.attended || undefined),
-    ...keyIfDefined("led", named.led || undefined),
     // A campaign over a stored pack records neither, as before a campaign could open from a prompt.
     ...keyIfDefined("prompt", named.prompt ?? undefined),
     ...keyIfDefined("solver", named.solver === null ? undefined : { ...named.solver }),
@@ -270,29 +261,6 @@ export function opened(
 export function examTasks({ events, plan }: Turn): string | undefined {
   const wanting = shortOf(events, plan);
   return wanting > 0 ? String(wanting) : undefined;
-}
-
-/**
- * The Builder conversations in a row, the latest included, that have made no campaign move since
- * the campaign last ended: the trailing run of its moves that are conversations (`build`, `led`).
- * Any other move, the host's own among them, is progress. A run of the command after an ending
- * starts the count afresh, as Codex audits a resumed goal afresh. A conversation the provider
- * crashed or a stop killed chose nothing and is left out, as the table leaves it out of the
- * sessions run (`sessionsRun`): until 15 October finished, crashed, finished counted three. So is
- * a session of any seat that moved nothing (`cutShort`), and one the host refused before it began.
- * Since 16 October an Examiner session opens beside each conversation the table names one for, and
- * one that crashed, or was refused, every time kept two rehearsed campaigns going past 40 moves.
- */
-export function idleOf(events: readonly LogEvent[]): number {
-  const since = events.slice(events.findLastIndex(({ kind }) => kind === "campaign.ended") + 1);
-  const named = since.flatMap(({ data }) => (isString(data.session) ? [data.session] : []));
-  const cut = new Set([
-    ...since.flatMap((event) => (cutShort(event) ? [event.data.session] : [])),
-    // A move whose session nothing else names never started: the host's refusal (`actionTool`).
-    ...named.filter((session) => named.indexOf(session) === named.lastIndexOf(session)),
-  ]);
-  const moves = since.flatMap(({ kind, data }) => (kind === MOVED && !cut.has(data.session) ? [data] : []));
-  return moves.length - 1 - moves.findLastIndex(({ move, code }) => move !== "build" || code !== "led");
 }
 
 /** The next free id under `prefix`, as `b-3` after `b-1` and `b-2`. */

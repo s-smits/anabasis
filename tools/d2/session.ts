@@ -1,4 +1,7 @@
 /**
+ * On 18 October 2026 the Builder-led mode retired: all 3 promotions followed the table,
+ * while concurrent task writing caused 7 crashed conversations. The host owns each next move.
+ *
  * One Builder session over a campaign, with no comparison after it.
  *
  *   bun tools/d2/session.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
@@ -33,10 +36,9 @@
  * Not run here: see `campaign.ts`.
  */
 import { admitSession } from "#src/builder/admission.ts";
-import { sessionOnce, type BuildRequest } from "#src/builder/session.ts";
+import { sessionOnce } from "#src/builder/session.ts";
 import { read } from "#src/kernel/log.ts";
 import { solverLast } from "#src/kernel/solves.ts";
-import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { campaignLog, keptAs, openCampaign, packNamed, PROMOTED, stayAwake } from "./campaign.ts";
 import {
@@ -55,11 +57,7 @@ import { firstRecord, keepSetting, recordedSetting, settingAsked } from "./setti
 /** `bun tools/d2/session.ts`, and under a simulation's `seated` the same session with its seats
  *  scripted. Returns what the session left: the harness it froze, or null where it left the one it
  *  started from. */
-export async function sessionCommand(
-  args: readonly string[],
-  seated: Seated = solved,
-  campaignTools?: BuildRequest["campaign"],
-) {
+export async function sessionCommand(args: readonly string[], seated: Seated = solved) {
   const { values } = parseArgs({ args: [...args], options: SESSION_OPTIONS });
   const { session } = values;
   const pack = packNamed(values, " and --session");
@@ -100,7 +98,7 @@ export async function sessionCommand(
   for (const note of notes) console.log(`· ${note}`);
   keepSetting(campaign.log, setting);
   stayAwake();
-  const { kept, broken } = await sessionOnce({ ...request, cap, ...keyIfDefined("campaign", campaignTools) });
+  const { kept, broken } = await sessionOnce({ ...request, cap });
   console.log(JSON.stringify({ session, harness: kept?.digest ?? null, broken }, null, 2));
   console.log(
     kept === null

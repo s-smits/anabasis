@@ -1,5 +1,6 @@
 // Going on with a campaign: the flags it runs again on, the login it runs as, and the point a pause
-// waits for.
+// waits for. On 18 October 2026 Builder-led mode retired after all 3 promotions followed the
+// table; old receipts must still continue without passing its retired flags to the command.
 import { describe, expect, it } from "bun:test";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
@@ -28,6 +29,17 @@ describe("going on with a campaign", () => {
     ]);
   });
 
+  it("discards retired mode flags from receipts without dropping the next flag", () => {
+    for (const mode of ["--builder-led", "--no-builder-led"]) {
+      expect(rerun([mode, "--project", "p", "--target", "24"], undefined)).toEqual([
+        "--project",
+        "p",
+        "--target",
+        "24",
+      ]);
+    }
+  });
+
   it("runs as the named login alone, and refuses one the environment does not hold", () => {
     const key = "CLAUDE_CODE_OAUTH_TOKEN";
     const env = { PATH: "/bin", [key]: "a", [`${key}3`]: "c", [`${key}4`]: "d" };
@@ -53,8 +65,7 @@ describe("going on with a campaign", () => {
       event("comparison.reported", { session: "g-2", reading: "step" }),
       event("harness.promoted", { harness: "h" }),
     ];
-    // The Builder's conversation is open throughout a led campaign, and a pause cuts it: the
-    // campaign run again opens a new one on its notes.
+    // A pause cuts an active Builder session; the campaign run again opens a new one on its notes.
     expect(restsAfter(promoted, "harness.promoted", 0)).toBe(true);
     expect(restsAfter(promoted, "harness.promoted", 1)).toBe(false);
     // An old ladder's reading left open is no comparison: no move goes on with it.

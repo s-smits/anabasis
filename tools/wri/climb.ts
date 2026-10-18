@@ -7,11 +7,12 @@
  * that ran a program from `/tmp` says nothing of who put it there: on 10 October abl175-new's
  * reference solve ran the phreeqc buffer-a's Builder had installed under `/tmp/phq-inst` four
  * hours before, and only the two logs together show it. `wri.ts climb` prints this, and the
- * lane 31 prompt carries it beside the peers' overviews.
+ * lane 31 prompt carries it beside the peers' overviews. The 18 October 2026 self-analysis found
+ * that all three promotions in four campaigns followed the table, so live moves no longer use the
+ * Builder-led idle count; this file still reads its safeguard from old logs.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
-import { IDLE } from "../d2/campaign-terms.ts";
 import { decidedOn } from "../runs/view.ts";
 import {
   count,
@@ -137,12 +138,14 @@ export function climbTable(campaigns: readonly Campaign[]): string {
 
 /**
  * The safeguards: what went wrong in a live campaign before a mechanism answered it, read from the
- * log alone and printed, never acted on, since `hostOwed`, the holds and the load gate already
+ * log alone and printed, never acted on, since the move table, its holds and the load gate already
  * decide (the review of 14 October, section 5). A safeguard goes by deleting its key in the change
  * that names its replacement, and a number is never reused. 5 went at birth, as `waitOut` waits
  * out any named reset since 15 October; 6 is `HOST LOADED`; 8 waits for a second promotion.
  */
 export function safeguardTriggers({ events }: Index): Trigger[] {
+  // Old led logs used three as the idle count and reported the safeguard after two counts.
+  const HISTORICAL_IDLE = 3;
   const said = (name: Parameters<typeof fired>[0], lines: readonly string[]) =>
     lines.length > 0 ? [fired(name, lines.join("; "))] : [];
   // 1: a run of the command ended `finished` while the table on the log up to there named a move.
@@ -163,7 +166,7 @@ export function safeguardTriggers({ events }: Index): Trigger[] {
     return open.size > 0 ? [`${text(data.session)} during ${[...open].join(", ")}`] : [];
   });
   // 3 and 4: one move asked again with no report or Examiner ending between, and Builder
-  // conversations in a row across the command's endings, which `idleOf` counts from each ending.
+  // conversations in a row across the command's endings in old led logs.
   const runs = { same: new Map<string, number>(), again: new Map<string, number>(), led: 0, most: 0 };
   for (const { kind, data } of events) {
     if (kind === REPORTED || kind === EXAM_END) runs.same.clear();
@@ -195,7 +198,7 @@ export function safeguardTriggers({ events }: Index): Trigger[] {
     ),
     ...said(
       "SAFEGUARD-4 CONVERSATIONS WITHOUT PROGRESS",
-      runs.most >= 2 * IDLE ? [`${String(runs.most)} in a row`] : [],
+      runs.most >= 2 * HISTORICAL_IDLE ? [`${String(runs.most)} in a row`] : [],
     ),
     ...said("SAFEGUARD-7 LIMITS MOVED", moved),
   ];

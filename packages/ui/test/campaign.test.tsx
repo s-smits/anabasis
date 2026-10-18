@@ -1,7 +1,9 @@
 // The Campaign pane, rendered from the readings the server's handlers give of the fixture's
-// campaigns (`fixture-campaign.ts`), and so through the repository's folds.
+// campaigns (`fixture-campaign.ts`), and so through the repository's folds. On 18 October 2026
+// Builder-led mode was retired; an old opening's raw led marker still needs a reader here.
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import { append, LOG_FILE, read } from "../../../src/kernel/log.ts";
 import { mkdtempSync, realpathSync, rmSync } from "../../../src/meta/filesystem.ts";
 import { tmpdir } from "../../../src/meta/os.ts";
 import { join } from "../../../src/meta/path.ts";
@@ -16,6 +18,10 @@ let fixture: Fixture;
 
 beforeAll(() => {
   fixture = writeFixtureCampaign(join(scratch, "main"));
+  const oldLog = join(fixture.root, ".ana", "d2", fixture.early, LOG_FILE);
+  const oldOpening = read(oldLog).findLast(({ kind }) => kind === "campaign.opened")?.data;
+  if (oldOpening === undefined) throw new Error("the old fixture has no opening");
+  append(oldLog, "campaign.opened", { ...oldOpening, led: true });
 });
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
@@ -196,6 +202,10 @@ test("a campaign says who leads it, and reads the table's next move as advice wh
     line: "next · prepare",
   } as const;
   expect(paneOf({ ...hosted, led: true, nextMove: prepare })).not.toContain("Table advises");
+});
+
+test("reads an old opening's led marker from the raw event", () => {
+  expect(readingOf(fixture.early).led).toBe(true);
 });
 
 test("a comparison cut before its report stands at its scored tasks, never at zero, and one still open says so", () => {

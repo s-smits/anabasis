@@ -28,7 +28,7 @@ import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import type { Seats } from "../tools/d2/campaign-terms.ts";
 import { closeCommand } from "../tools/d2/close.ts";
-import { harnessBuilder as command } from "../tools/d2/harness-builder.ts";
+import { harnessBuilder } from "../tools/d2/harness-builder.ts";
 import { HOST } from "../tools/d2/host.ts";
 import { importCommand } from "../tools/d2/import.ts";
 import { packetOf, settleCommand } from "../tools/d2/settle.ts";
@@ -80,11 +80,6 @@ const of = (name: string, kind: string): JsonObject[] =>
   read(join(REPO, ".ana", "d2", name, LOG_FILE)).flatMap((event: LogEvent) =>
     event.kind === kind ? [event.data] : [],
   );
-
-/** The campaign command with the host making every move the table names: a campaign that opens
- *  now is led by its Builder unless its command says otherwise (`test/builder-led.test.ts`). */
-const harnessBuilder = (args: readonly string[], seats?: Seats) =>
-  command([...args, "--no-builder-led"], seats);
 
 describe("a campaign run by its log", () => {
   it("asks the Examiner for what the campaign is short of, before the first session, and tells it the campaign's wall", async () => {
@@ -268,6 +263,15 @@ describe("a campaign run by its log", () => {
     expect(await harnessBuilder([...flags, "--dry-run"], seats)).toMatchObject({ move: "accept" });
     expect(of(name, OPENED)).toEqual([]);
 
+    // An old opening may still carry the retired led marker. The host reads it, drops it from the
+    // new opening and makes the table's moves itself, so no old `asked` or `led` code is written.
+    await harnessBuilder([...flags, "--moves", "0"], seats);
+    const openingLog = join(REPO, ".ana", "d2", name, LOG_FILE);
+    const oldOpening = of(name, OPENED).at(-1);
+    if (oldOpening === undefined) throw new Error("the opening was not recorded");
+    append(openingLog, OPENED, { ...oldOpening, led: true });
+    expect(of(name, OPENED).at(-1)).toHaveProperty("led", true);
+
     const ending = await harnessBuilder([...flags, "--practice", "2"], { ...seats, host });
     // Reading the exam and setting the tasks apart asked the host nothing, and the one session
     // solved nothing, so nothing looked at the load: until 12 October the session waited at its
@@ -293,23 +297,24 @@ describe("a campaign run by its log", () => {
       ["examine", "x-1"],
       ["examine", "x-2"],
     ]);
+    expect(of(name, MOVED).map(({ code }) => code)).not.toContain("asked");
+    expect(of(name, MOVED).map(({ code }) => code)).not.toContain("led");
     expect(of(name, "checker.read")).toHaveLength(1);
     expect(of(name, "build.finished").map(({ changed }) => changed)).toEqual([false]);
     expect(of(name, "solve.started")).toEqual([]);
     // It runs by what it was opened with: no budget under a rehearsal's seats, no limit named, and
     // the patience it was given.
-    expect(of(name, OPENED)).toEqual([
-      {
-        project: PROJECT,
-        budget: null,
-        limit: null,
-        sessions: 2,
-        patience: 2,
-        seats: { builder: null, examiner: null, reviewer: null },
-        // The level is pinned whether or not a command named it: this tree's default.
-        terms: { level: "0.02", practice: "2", target: "5", trigger: "0.25" },
-      },
-    ]);
+    expect(of(name, OPENED).at(-1)).toEqual({
+      project: PROJECT,
+      budget: null,
+      limit: null,
+      sessions: 2,
+      patience: 2,
+      seats: { builder: null, examiner: null, reviewer: null },
+      // The level is pinned whether or not a command named it: this tree's default.
+      terms: { level: "0.02", practice: "2", target: "5", trigger: "0.25" },
+    });
+    expect(of(name, OPENED).at(-1)).not.toHaveProperty("led");
     // The ending is the log's last event, and run again the command says it and adds nothing.
     const log = read(join(REPO, ".ana", "d2", name, LOG_FILE));
     expect(log.at(-1)).toMatchObject({

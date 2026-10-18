@@ -1,4 +1,7 @@
 /**
+ * On 18 October 2026 the Builder-led mode retired: all 3 promotions followed the table,
+ * while concurrent task writing caused 7 crashed conversations. The host owns each next move.
+ *
  * Move 7 of a campaign: the one move that follows from its log.
  *
  * A campaign is a loop of moves over one log (`docs/plan.md`, "The process"): the exam is read,
@@ -130,7 +133,7 @@ export function unpromoted(events: readonly LogEvent[], plan: Plan, harness: str
 }
 
 /** The tasks held out after the log's index `after`. */
-export function heldAfter(events: readonly LogEvent[], after: number): number {
+function heldAfter(events: readonly LogEvent[], after: number): number {
   return events.filter(
     ({ kind, data }, index) => index > after && kind === "task.gate" && heldAtGate(data.outcome),
   ).length;
@@ -407,13 +410,6 @@ function shortBy(ground: Ground): number {
   const held =
     due === null ? supply.held - plan.wanted.target : due.again + due.fresh - sweepOf(plan.wanted.level);
   return Math.max(0, practice - held);
-}
-
-/** The comparison whose repeat is due, and the held tasks its first stage did not score, as a led
- *  Builder's campaign status says them; null where none is. */
-export function repeatDue(events: readonly LogEvent[], plan: Plan): { id: string; fresh: number } | null {
-  const due = dueOf(groundOf(events, plan));
-  return due === null ? null : { id: due.first.id, fresh: due.fresh };
 }
 
 /** The repeat the last reading of a harness against the reference bought, where one is due, the
@@ -702,13 +698,6 @@ function firstPriced({ events, plan }: Ground): { dollars: number; said: string 
     dollars,
     said: `the reference harness's solves of draft tasks billed $${each.toFixed(2)} a solve, so a first comparison of ${plural(scored, "task")} at ${String(aside)} solves a side would bill about $${dollars.toFixed(2)}`,
   };
-}
-
-/** Why the table's budget hold would refuse a comparison the Builder asked for where it named
- *  another move, or null (14 October: the holds were asked of the table's own move alone). */
-export function unaffordedAsked(events: readonly LogEvent[], plan: Plan): string | null {
-  const held = unafforded(groundOf(events, plan), compare("the Builder asked for a comparison"));
-  return held?.move === "end" ? held.why : null;
 }
 
 /** The tasks released for practice since the reference harness was last promoted, and where: the

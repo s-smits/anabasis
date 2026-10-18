@@ -1,4 +1,7 @@
 /**
+ * On 18 October 2026 the Builder-led mode retired: all 3 promotions followed the table,
+ * while concurrent task writing caused 7 crashed conversations. The host owns each next move.
+ *
  * What move 7 reads its rows from: a campaign's plan, and its log read once (`groundOf`).
  *
  * The table (`decide.ts`) asks one question after another of the same reading of the log: the
@@ -87,8 +90,7 @@ export const sessionEnded = ({ kind, data }: LogEvent) =>
 export const heldOut = (data: JsonObject) => Array.isArray(data.held) && data.held.length > 0;
 
 /** A session's ending that moved nothing: the provider crashed it or a stop killed it, and it held
- *  out no task. The table's want of room passes it over (`roomless`), and so does the count of
- *  conversations that made no move (`idleOf`). */
+ *  out no task. The table's want of room passes it over (`roomless`). */
 export const cutShort = (event: LogEvent) =>
   sessionEnded(event) &&
   (event.data.ended === "crashed" || event.data.ended === "killed") &&

@@ -106,9 +106,9 @@ Where the chain stopped on the record of 15 and 16 October:
   refused because the new reference answered them in all three solves: main0_5_1 12 of 12,
   buffer-159-opus 17 of 21, recode-151 33 of 43; before a promotion a third to a half of drafts
   were held out. recode-151's three comparisons after its promotion scored 3, 4 and 6 tasks.
-- **After a promotion, an idle Builder.** main0_5_1's nine conversations after its promotion
-  changed nothing and asked for nothing, and the Examiner session the host then made (`hostOwed`)
-  held 0 of 12 drafts. Since 16 October every Examiner session the table names starts as a conversation opens.
+- **After a promotion, an idle Builder.** main0_5_1's nine Builder sessions after its promotion
+  changed nothing, and the Examiner session the host then made held 0 of 12 drafts. The host now
+  makes every Examiner session the table names as its own move.
 - **A near miss on size.** buffer-159-opus's g-4 read 3-0 with 8 tied and its repeat g-5 2-0 with
   10 tied: 5-0 together, p = 1/32, at a level of 0.02, which takes 6-0.
 
@@ -201,12 +201,12 @@ campaign that has one; this walk is for choosing what to do about it.
 3. **The reference's room.** Reads as: row or ending `no-room`; `valid.old` on every solve or on
    none; the report's room line. Owner: the tasks, through link 1's owners, never the budget, of
    which a campaign has one.
-4. **The session.** Reads as: `build.finished` with nothing changed; conversations that made no
-   campaign move (`idleOf`); every practice solve passed (hold `unshown`); a harness that differs in
-   nothing a solver uses. Owner: what the Builder is told and can do, `src/builder/prompt.ts`
-   (`systemPrompt`, `SAID`, `firstMessage`, `continuation`, `usedLine`), the facts under each
-   campaign tool (`campaignStatus`) and the tools in `tools/d2/campaign-actions.ts`; or the terms
-   `--sessions`, `--minutes`, `--turns`, `--practice`, `--practice-solves`.
+4. **The session.** Reads as: `build.finished` with nothing changed; every practice solve passed
+   (hold `unshown`); a harness that differs in nothing a solver uses. Owner: what the Builder is
+   told and can do, `src/builder/prompt.ts` (`systemPrompt`, `firstMessage`, `continuation`,
+   `usedLine`); the host's handover and move table (`src/builder/handover.ts`,
+   `src/builder/decide.ts`); or the terms `--sessions`, `--minutes`, `--turns`, `--practice`,
+   `--practice-solves`.
 5. **Size.** Reads as: `detectable` above the share of untied tasks the step won; most of the
    scored set tied; a near miss. Owner: `--target` or `--solves`, instrument changes made in the
    next fresh campaign, whose setting holds `--target` once recorded (`settingAsked`). The lasting
@@ -217,10 +217,10 @@ campaign that has one; this walk is for choosing what to do about it.
    refusing the repeat for want of tasks. Owner: supply first. One that cleared the trigger and not
    the level buys no third reading: the next harness is the next attempt.
 8. **The next link.** Reads as: `harness.promoted`, then drafts refused because the new reference
-   answered them in every gate solve, idle conversations, comparisons that score a few tasks.
-   Owner: what the Examiner is told of the change (`heard`), what the Builder is told after a
-   promotion (`campaignStatus`), and what the host makes between conversations (`hostOwed`,
-   `tools/d2/harness-builder.ts`; `ROWS` and `HOLDS`, `src/builder/decide.ts`).
+   answered them in every gate solve, and comparisons that score a few tasks. Owner: what the
+   Examiner is told of the change (`heard`), what the Builder is told after a promotion, and the
+   host's move table (`tools/d2/harness-builder.ts`; `ROWS` and `HOLDS`,
+   `src/builder/decide.ts`).
 
 ## 1. Choose one change, aimed at the next promotion
 
@@ -279,7 +279,7 @@ milestone the change is for, read against its prediction.
 
 ## 3. Put the prediction on record
 
-The campaign command takes no prediction, since its moves are the Builder's to ask for: write a
+The campaign command takes no prediction, since its moves come from the host's table: write a
 ledger in the local notes, outside every campaign's folder, before the campaign's first solve, with
 the campaign, its commit and the milestones each row is about. A comparison made by hand takes it
 on its command line:
@@ -392,9 +392,8 @@ First say what happened to the link:
 
 Then choose one move. The plan's table suggests one, and the view prints it as its last line
 (`decide`, `src/builder/decide.ts`): read the exam, set the tasks apart, have tasks written, build,
-compare, repeat a step, promote, or end. A led campaign's Builder chooses its moves through
-campaign tools and reads the table as advice; code keeps admissions and scoring, and the host makes
-what the table names between conversations. The stop rule ends a campaign at its patience of moves
+compare, repeat a step, promote, or end. The host makes the move the table names; the Builder
+only builds, and code keeps admissions and scoring. The stop rule ends a campaign at its patience of moves
 that could have shown a gain and showed none, counted only since the last promotion, and the budget
 ends it too.
 
@@ -473,8 +472,8 @@ Keep this list short and current. Replace an entry when its lesson has an owner 
   being read as endings. Look at M1 within twenty minutes of every launch.
 - **A promotion that left the Examiner nothing to write.** On 15 and 16 October three promoted
   campaigns had 62 of 76 refused drafts answered by the new reference in every gate solve, and one
-  Builder sat through nine conversations with nothing to work on. Read M6 the hour a campaign
-  promotes, not after its patience.
+  Builder had nine sessions with nothing to work on. Read M6 the hour a campaign promotes, not
+  after its patience.
 - **A step one task short of the level.** buffer-159-opus read 5-0 over two readings where 6-0
   promoted, with 18 ties beside its 5 wins. Read `detectable` before a repeat starts.
 - **Rounds that could read nothing.** Eight truss rounds on 8 October cost over $220 with no

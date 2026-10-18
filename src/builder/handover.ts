@@ -20,10 +20,10 @@
  * $0.00 when it had held out seven tasks and metered $8.23. A step with no end is `cut`
  * where the campaign went past it, and open at the log's end otherwise (`nextBound`); an open one
  * may be running or stopped, which the log cannot tell apart, so the view says when it last wrote.
- * In a campaign its Builder leads, the Examiner's sessions and the comparisons run inside the
- * Builder's conversation, and an Examiner session can outlast it: a session there is gone past
- * only at its own seat's next start or the campaign's end (`soFar`). Until 14 October a Builder
- * read as cut once its first Examiner session began.
+ * Since 18 October 2026 the host owns every move. The self-analysis found all three promotions
+ * in four campaigns followed the table and seven Builder conversations crashed after an
+ * Examiner session held out new tasks. New campaigns therefore use the host boundary; a raw
+ * `led` marker is still read for historical logs whose nested sessions need their old accounting.
  */
 import type { Tally } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
@@ -32,7 +32,6 @@ import { ended, passed, practiceRan, type Ran, solvesIn } from "../kernel/solves
 import { heldAtGate, taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { type Supply, supplyOf } from "./admission.ts";
-import { openingOf } from "./opening.ts";
 import { STARTED } from "./comparison.ts";
 
 /** A failed practice solve, and where it stands now by the task's later solves. */
@@ -183,7 +182,7 @@ export function nextBound(events: readonly LogEvent[], index: number): number {
 
 /** Session `id`, started at event `index` with turns of kind `seat.turn`, as the log holds it, and
  *  the place in the log its window ends: at its end, else at the next bound, else at the log's end.
- *  Where the Builder leads (`led`), the next bound is its own seat's next start or the campaign's end. */
+ *  A raw opening marker keeps the historical nested-session accounting for old logs. */
 function soFar(events: readonly LogEvent[], index: number, id: string, seat: "exam" | "build", led: boolean) {
   const own = ({ kind, data }: LogEvent) => kind.startsWith(`${seat}.`) && data.session === id;
   const closed = events.findIndex(
@@ -310,8 +309,9 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
     ),
   );
   const comparisons = new Set<string>();
-  const led = openingOf(events)?.led === true;
+  let led = false;
   const steps = events.flatMap(({ kind, data }, index): Handover[] => {
+    if (kind === "campaign.opened") led = data.led === true;
     const id = data.session;
     if (!isString(id)) return [];
     if (kind === "exam.started") {

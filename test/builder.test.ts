@@ -12,9 +12,8 @@ import {
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { crashedRun } from "../src/builder/ground.ts";
-import { SAID, systemPrompt } from "../src/builder/prompt.ts";
 import { type BuildRequest, build, type PracticeTask, session } from "../src/builder/session.ts";
-import { type Bench, HOME_TOOL_TREE, practiceLeft, record } from "../src/builder/tools.ts";
+import { type Bench, HOME_TOOL_TREE, record } from "../src/builder/tools.ts";
 import { type Condition, recordCondition } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
@@ -240,196 +239,6 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
     condition,
   };
 }
-
-describe("the Builder running its campaign", () => {
-  it("holds practice to the current campaign total, including other seats and budget changes", async () => {
-    const s = await setup([finish]);
-    const left: number[] = [];
-    await session(
-      {
-        ...s.request,
-        cap: { dollars: 1, reserve: 1 },
-        campaign: (bench) => {
-          append(s.request.log, "exam.finished", { session: "x-1", billed: 10 });
-          append(s.request.log, "campaign.opened", { budget: { dollars: 12, reserve: 1 } });
-          left.push(practiceLeft(bench, read(s.request.log)));
-          append(s.request.log, "campaign.opened", { budget: { dollars: 0, reserve: 1 } });
-          left.push(practiceLeft(bench, read(s.request.log)));
-          append(s.request.log, "campaign.opened", { budget: { dollars: 12, reserve: 1 } });
-          left.push(practiceLeft(bench, read(s.request.log)));
-          return { tools: [], hook: () => "Campaign spending is refreshed." };
-        },
-      },
-      s,
-      s.walled,
-    );
-    // Read after the session returns, so a session that never asks its campaign fails here.
-    expect(left).toEqual([2, 0, 2]);
-  });
-
-  it("keeps its conversation and edits across a nested Examiner call, and refreshes practice", async () => {
-    const late: PracticeTask = {
-      version: "late",
-      task: { taskId: "late-practice", family: "fixture", publicInput: { base: 11 } },
-    };
-    const s = await setup([
-      edit,
-      call("examine", {}),
-      call("read_opening", {}),
-      call("practice", { tasks: [late.task.taskId] }),
-      finish,
-    ]);
-    let opened = 0;
-    let guidance = "Advice: examine";
-    const built = await session(
-      {
-        ...s.request,
-        models: (home) => {
-          opened += 1;
-          return s.request.models(home);
-        },
-        campaign: (bench) => ({
-          hook: () => guidance,
-          tools: [
-            tool({
-              name: "examine",
-              label: "Examine",
-              description: "Run another seat and return its counts.",
-              parameters: Type.Object({}),
-              execute: async () => {
-                expect(readFileSync(join(bench.home, "harness/agent/BUILT_AGENTS.md"), "utf8")).toBe(GUIDE);
-                expect(s.of("build.turn")).toHaveLength(2);
-                append(s.request.log, "task.proposed", { version: late.version, hidden: CHECK });
-                append(s.request.log, "task.gate", { version: late.version, gate: 1, outcome: "passed" });
-                append(s.request.log, "task.state", { version: late.version, state: "released" });
-                bench.tasks = [...bench.tasks, late];
-                guidance = "Advice: compare";
-                return text("Examiner returned; practice was refreshed.");
-              },
-            }),
-          ],
-        }),
-      },
-      s,
-      s.walled,
-    );
-    expect(opened).toBe(1);
-    expect(built.ended).toBe("finished");
-    expect(s.ran).toHaveLength(1);
-    expect(s.sent[2]).toContain("Examiner returned; practice was refreshed.");
-    expect(s.sent[2]).toContain(GUIDE.trim());
-    // The advice ends a campaign tool's result only where that tool appends it (`campaignTools`).
-    expect(s.sent[2]).not.toContain("Advice: compare");
-    expect(s.sent[3]).toContain(late.task.taskId);
-    expect(s.sent.join("\n")).not.toContain(CHECK);
-    expect(s.sent.join("\n")).not.toContain(REASON);
-    expect(s.of("build.turn")).toHaveLength(5);
-  });
-
-  it("checks a host stop before another model turn, even after a file tool", async () => {
-    const s = await setup([edit, finish]);
-    let bench: Bench | undefined;
-    const built = await session(
-      {
-        ...s.request,
-        campaign: (own) => {
-          bench = own;
-          return {
-            tools: [],
-            hook: () => "The host ended the campaign.",
-            halts: () => {
-              if (s.of(BUILD_CALL).length > 0) own.halt.abort();
-            },
-          };
-        },
-      },
-      s,
-      s.walled,
-    );
-    expect(bench?.halt.signal.aborted).toBe(true);
-    expect(s.sent).toHaveLength(1);
-    expect(built.ended).toBe("stopped");
-    expect(s.of(BUILD_FINISHED)[0]?.crash).toBeNull();
-  });
-
-  // Plan item 6.4: each model request rendered the campaign's status twice, about 70 ms each at
-  // 1,486 events, to check for a halt, and discarded both.
-  it("checks for a halt before each model request without rendering the campaign's status", async () => {
-    const s = await setup([edit, edit, finish]);
-    const counted = { hook: 0, halts: 0 };
-    await session(
-      {
-        ...s.request,
-        campaign: () => ({
-          tools: [],
-          hook: () => {
-            counted.hook += 1;
-            return "Campaign facts.";
-          },
-          halts: () => {
-            counted.halts += 1;
-          },
-        }),
-      },
-      s,
-      s.walled,
-    );
-    // The status is rendered once, for the opening message; each of the three requests checks twice.
-    expect(s.sent).toHaveLength(3);
-    expect(counted).toEqual({ hook: 1, halts: 6 });
-  });
-
-  it("counts its wall on the Builder's own time, and cuts an action outside one", async () => {
-    /** One session at a wall of 50 ms whose first call outlasts it: whether the call's signal was
-     *  aborted while it ran, and how the session ended. */
-    const outlasting = async (held: "within" | "outside") => {
-      const s = await setup([call("long_action", {}), finish]);
-      let cut: boolean | undefined;
-      const built = await session(
-        {
-          ...s.request,
-          limits: { ...s.request.limits, wallSeconds: 0.05 },
-          campaign: (bench) => ({
-            // An opening action on the host's time, as a led campaign's first Examiner session is.
-            start: async () => await bench.within(async () => ""),
-            hook: () => "",
-            tools: [
-              tool({
-                name: "long_action",
-                label: "Long action",
-                description: "An action that outlasts the session's wall.",
-                parameters: Type.Object({}),
-                execute: async (_id, _args, signal) => {
-                  const action = async () => {
-                    // Until the wall cuts it, or well past where the wall fell.
-                    await Promise.race([
-                      Bun.sleep(250),
-                      new Promise((resolve) => signal?.addEventListener("abort", resolve, { once: true })),
-                    ]);
-                    cut = signal?.aborted === true;
-                    return text("The action ended.");
-                  };
-                  return held === "within" ? bench.within(action) : action();
-                },
-              }),
-            ],
-          }),
-        },
-        s,
-        s.walled,
-      );
-      return { cut, ended: built.ended, calls: s.of(BUILD_CALL).map(({ tool: name }) => name) };
-    };
-    // A comparison cut at the Builder's wall would lose its solves in flight and read as a failed
-    // host, and the action's time is the host's: the session goes on past it to its `finish`.
-    expect(await outlasting("within")).toEqual({
-      cut: false,
-      ended: "finished",
-      calls: ["long_action", "finish"],
-    });
-    expect(await outlasting("outside")).toMatchObject({ cut: true, ended: "wall" });
-  });
-});
 
 describe("a Builder session", () => {
   it("practises on released tasks only, whatever it is handed", async () => {
@@ -1449,42 +1258,6 @@ describe("what a practice solve used", () => {
 });
 
 describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under the command wall", () => {
-  it("lists tools for practice tasks released after the conversation opens", async () => {
-    let source = "";
-    const s = await setup([
-      () => call(WRITE_FILE, { path: "harness/agent/tools.ts", content: source }),
-      call("release_fixture", {}),
-      call("check_harness", {}),
-      finish,
-    ]);
-    source = readFileSync(join(s.request.parent, "agent", "tools.ts"), "utf8").replace(
-      "  // SAFETY:",
-      '  if (task.taskId !== "t-2") throw new Error("wrong practice task for listing");\n  // SAFETY:',
-    );
-    await build({
-      ...s.request,
-      tasks: [],
-      campaign: (bench) => ({
-        tools: [
-          tool({
-            name: "release_fixture",
-            label: "Release fixture",
-            description: "Release a public practice task.",
-            parameters: Type.Object({}),
-            execute: async () => {
-              bench.tasks = TASKS.slice(1);
-              return text("Practice refreshed.");
-            },
-          }),
-        ],
-        hook: () => "",
-      }),
-    });
-    const checked = s.of(BUILD_CALL).find(({ tool: name }) => name === "check_harness");
-    expect(checked?.text).toContain("Tools of its own: scale_base, read_path.");
-    expect(checked?.text).not.toContain("wrong practice task for listing");
-  });
-
   it("writes its harness through the wall, checks it, and cannot read the repository", async () => {
     // The scratch stands for the repository: the wall closes it, and the log and a canary sit in it.
     let canary = "";
@@ -1582,28 +1355,4 @@ describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under t
       expect(linked).toContain(join("..", name));
     }
   }, 120_000);
-});
-
-describe("the texts a Builder reads, by who makes its campaign's moves", () => {
-  it("tells a Builder that leads its campaign nowhere that finishing has its harness measured", () => {
-    const { host, builder } = SAID;
-    const texts = (said: typeof host) => [
-      said.frozen,
-      said.finish,
-      said.broken.unpractised,
-      said.broken.practised,
-      said.untried,
-    ];
-    // Under the host a session's end is a measurement, and every one of these says so.
-    for (const each of texts(host)) expect(each).toMatch(/\bmeasured\b/);
-    // Led by the Builder, only `compare` measures: finishing freezes, and no text says more.
-    for (const each of texts(builder)) expect(each).not.toMatch(/\bmeasured\b/);
-    expect(systemPrompt(builder)).toContain(builder.closing);
-    expect(systemPrompt(host)).toContain(host.closing);
-    expect(systemPrompt(host)).not.toContain("compare");
-    // The led closing in five sentences at most, its patience counted in moves as the stop rule
-    // counts it: until 14 October it said comparisons, and a session that changed nothing counts.
-    expect(builder.closing.split(/(?<=\.) /).length).toBeLessThanOrEqual(5);
-    expect(builder.closing).toContain("as many moves in a row without a gain as its patience");
-  });
 });

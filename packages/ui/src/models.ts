@@ -341,9 +341,8 @@ export interface CampaignReading extends Answer {
   /** Whether the freeze and a promotion wait for the operator's word (`Opening.attended`,
    *  `--attended`). The table names such a move all the same, and the campaign command waits. */
   readonly attended: boolean;
-  /** Whether the campaign's Builder leads it (`Opening.led`, `--builder-led`): past the exam's
-   *  set-up one Builder conversation makes the moves, and the table's next move is its advice.
-   *  False where the host makes every move the table names. */
+  /** Whether an old opening recorded the retired Builder-led mode (`campaign.opened.data.led`).
+   *  New campaigns make every move through the host; this field remains for old log readings. */
   readonly led: boolean;
   /** The bar a promotion's cost is read against, as the opening sets it or by default
    *  (`barsOf`, `src/builder/climb.ts`): read and printed, gating nothing. */

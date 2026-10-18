@@ -4,10 +4,10 @@
  * The plan's D2 is "one Builder session scored on tasks it never saw". A session is given a copy of
  * the harness it starts from, a walled shell over that copy, practice solves on released tasks,
  * and the Referee's ruling of what fails there. It ends by freezing what the copy holds as a
- * harness version. In the campaign command, the same agent also calls campaign tools without
- * ending its conversation; the host supplies advice from `decide.ts` and checks each move.
- * Whether the new harness is better is the comparison's to say
- * (`src/kernel/compare.ts`), on tasks this session never saw.
+ * harness version. The 18 October 2026 self-analysis found that all three recorded promotions came
+ * from the host's table, while seven led conversations crashed on their first practice. The host
+ * now owns every campaign move; this session only builds, and the comparison says whether its
+ * harness is better (`src/kernel/compare.ts`) on tasks it never saw.
  *
  * What v1's Builder (harness-builder-v4 at 7af7315) did and this one does not: write tasks and
  * checks, set its solver's limits, and submit through gates on a candidate. The Examiner writes
@@ -182,23 +182,6 @@ export interface BuildRequest {
   readonly cap?: Cap | undefined;
   /** Aborts when the run is killed. */
   readonly kill?: AbortSignal;
-  /** Campaign tools and advice, supplied by the host. The Builder remains the only build-side agent. */
-  readonly campaign?: (bench: Bench) => {
-    readonly tools: AgentTool[];
-    readonly hook: () => string;
-    /** Halts the conversation where the campaign has ended, as `hook` does, and renders nothing:
-     *  before each model request, where a status would be discarded (plan item 6.4, 14 October). */
-    readonly halts?: () => void;
-    /** Settles once no action of the campaign's runs: an Examiner session writing beside the
-     *  conversation ends on record before the conversation does, however the conversation ended. */
-    readonly closing?: () => Promise<void>;
-    /** A move the host makes as the conversation opens, and what it said of it, which the opening
-     *  message carries, or nothing: the campaign's first Examiner session (14 October). */
-    readonly start?: () => Promise<string>;
-    /** What `finish` tells the Builder where no comparison has read harness `digest` against the
-     *  reference, or null (`standing`, `tools.ts`). */
-    readonly unmeasured?: (digest: string) => Promise<string | null>;
-  };
 }
 
 export interface Built {
@@ -297,21 +280,9 @@ export async function session(
     limits: { ...limits },
   });
   const wall = new AbortController();
-  // The wall counts the Builder's own time: its clock stops while a campaign action runs, which is
-  // the host's time (`Bench.within`), and `aside` is what the actions took.
-  let aside = 0;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const ownSeconds = () => (performance.now() - began - aside) / 1000;
-  // One timer at a time: until 14 October the opening's `within` armed one that the session's own
-  // arming overwrote, and it cut main0_5_1's Builder four hours on, a comparison in flight.
-  const arm = () => {
-    clearTimeout(timer);
-    if (done.signal.aborted) return;
-    timer = setTimeout(() => wall.abort(), (limits.wallSeconds - ownSeconds()) * 1000);
-  };
+  const ownSeconds = () => (performance.now() - began) / 1000;
   const bench: Bench = {
     request,
-    said: SAID[request.campaign === undefined ? "host" : "builder"],
     tasks: request.tasks,
     reference: request.reference,
     home: dirs.home,
@@ -327,16 +298,6 @@ export async function session(
     halt: new AbortController(),
     fatal: null,
     note: null,
-    within: async (action) => {
-      clearTimeout(timer);
-      const since = performance.now();
-      try {
-        return await action();
-      } finally {
-        aside += performance.now() - since;
-        arm();
-      }
-    },
   };
   const opening = () => {
     const recorded = read(log);
@@ -366,17 +327,14 @@ export async function session(
       },
     );
   };
-  const campaign = request.campaign?.(bench);
   const first = opening();
   const turns: AssistantMessage[] = [];
   // What the session has used of its limits, as every turn's tool results and every continuation
-  // say it. A session under a cap reads what its practice solves billed from the log. A campaign's
-  // session counts a turn as its message ends, before its tools run (below), so while they run its
-  // count holds the turn they belong to: until 14 October a led Builder was told the next turn.
-  const used = (during = false): Used => ({
-    turns: turns.length - (during && campaign !== undefined ? 1 : 0),
+  // say it. A session under a cap reads what its practice solves billed from the log.
+  const used = (): Used => ({
+    turns: turns.length,
     seconds: ownSeconds(),
-    practiceLeft: practiceLeft(bench, request.cap === undefined && campaign === undefined ? [] : read(log)),
+    practiceLeft: practiceLeft(bench, request.cap === undefined ? [] : read(log)),
     practised: bench.opened?.harness.digest ?? null,
   });
   // The line goes under the first result of each turn, once a turn: until 14 October a turn of six
@@ -387,15 +345,14 @@ export async function session(
   const footer = () => {
     if (told) return "";
     told = true;
-    return usedLine(used(true), limits);
+    return usedLine(used(), limits);
   };
   const tools = [
     ...walled(bench),
     practiceTool(bench),
     traceTool(bench),
-    openingTool(campaign === undefined ? first : opening, bench.said),
-    finishTool(bench, campaign?.unmeasured),
-    ...(campaign?.tools ?? []),
+    openingTool(first),
+    finishTool(bench),
   ].map((each) => endingWith(each, footer));
   // Aborted when the loop returns, whatever returned it, so the model's own process is closed.
   const done = new AbortController();
@@ -405,19 +362,20 @@ export async function session(
     bench.halt.signal,
     ...(request.kill ? [request.kill] : []),
   ]);
+  // The wall includes setup time from `began`, so a session cannot spend its full limit preparing
+  // the home before the Builder receives its opening.
+  const timer = setTimeout(() => wall.abort(), (limits.wallSeconds - ownSeconds()) * 1000);
   const summaries: Usage[] = [];
   const user = (content: string): AgentMessage => ({ role: "user", content, timestamp: Date.now() });
-  const system = createInitialSystemMessage(systemPrompt(bench.said), tools.map(toToolDeclaration));
+  const system = createInitialSystemMessage(systemPrompt(SAID), tools.map(toToolDeclaration));
   const models = request.models(join(dirs.host, "model"));
   const stream: StreamFn = (asked, context, options) => models.streamSimple(asked, context, options);
   const compact = loopCompaction(log, "build", request.id, stream, summaries);
   const trace = traceSink(log, "build", request.id, () => turns.length);
   let crash: string | null = null;
-  const started = (await campaign?.start?.()) ?? "";
-  arm();
   try {
     await runAgentLoop(
-      [user([first, started, campaign?.hook() ?? ""].filter((part) => part !== "").join("\n\n"))],
+      [user(first)],
       { messages: system === undefined ? [] : [system], tools },
       {
         model,
@@ -426,7 +384,7 @@ export async function session(
         convertToLlm: (messages) => messages,
         toolExecution: "sequential",
         finishTurn: ({ message }) => {
-          if (campaign === undefined && message.role === "assistant") turns.push(message);
+          if (message.role === "assistant") turns.push(message);
           // `finish` ends the session even beside another call in its turn, where pi would go on.
           return bench.note !== null || turns.length >= limits.turns ? { action: "end" } : undefined;
         },
@@ -436,9 +394,8 @@ export async function session(
             ? [
                 user(
                   [
-                    continuation(used(), limits, await harnessNow(bench), bench.said),
+                    continuation(used(), limits, await harnessNow(bench), SAID),
                     memoryOverCapNotice(dirs.home) ?? "",
-                    campaign?.hook() ?? "",
                   ]
                     .filter((part) => part !== "")
                     .join("\n\n"),
@@ -446,23 +403,13 @@ export async function session(
               ]
             : [],
         prepareRequest: async (context, kill) => {
-          campaign?.halts?.();
-          if (bench.halt.signal.aborted) throw new Error("The campaign has ended.");
           const update = await compact(context, kill);
-          campaign?.halts?.();
-          if (bench.halt.signal.aborted) throw new Error("The campaign has ended.");
           return update ?? undefined;
         },
       },
       (event) => {
         if (event.type === "message_end" && event.message.role === "assistant") told = false;
-        // Meter a campaign's model turn before its tool can spend on another seat.
-        if (campaign !== undefined && event.type === "message_end" && event.message.role === "assistant") {
-          turns.push(event.message);
-          trace({ type: "turn_end", message: event.message, toolResults: [] });
-        } else if (campaign === undefined || event.type !== "turn_end") {
-          trace(event);
-        }
+        trace(event);
       },
       signal,
       stream,
@@ -473,7 +420,6 @@ export async function session(
     clearTimeout(timer);
     done.abort();
   }
-  await campaign?.closing?.();
   const cut = wall.signal.aborted || bench.halt.signal.aborted || request.kill?.aborted === true;
   crash ??= bench.fatal?.message ?? (cut ? null : failedTurn(turns));
   // Whatever ended the session, what `harness/` holds is frozen: a session cut at its wall still

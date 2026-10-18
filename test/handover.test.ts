@@ -276,7 +276,7 @@ describe("a campaign's reading", () => {
     expect(openSteps(campaignOf(c.events()).steps)).toEqual(["b-1"]);
   });
 
-  it("reads a led Builder as live while an Examiner session and a comparison run inside it", () => {
+  it("keeps old led session accounting after a host opening replaces its marker", () => {
     const c = campaign();
     c.setUp();
     c.record("campaign.opened", { led: true });
@@ -289,6 +289,8 @@ describe("a campaign's reading", () => {
     c.record("comparison.started", { session: "g-1" });
     c.solved("s1", HA, "pass", "g-1");
     c.record("build.turn", { session: "b-1", turn: 2, usage: { cost: { total: 0.25 } } });
+    // Reopening on 18 October normalises the term; the old session keeps its own accounting.
+    c.record("campaign.opened", {});
     // Until 14 October b-1 read as cut at x-1's start, its turns and dollars cut there with it.
     const live = { id: "b-1", ended: null, cut: false, turns: 2, practiceSolves: 1, billed: 2 };
     expect(steps(c, "builder")).toMatchObject([live]);

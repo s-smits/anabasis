@@ -232,7 +232,7 @@ numbered otherwise. The design around the copied code is different.
 | A candidate passed a submit gate before it was measured | No gate on a harness. `check_harness` says whether it opens, and the comparison says whether it is better |
 | Difficulty was steered with a band, levels and staged test sizes | One fixed compute budget for both harnesses. No band and no levels |
 | A harness declared its own limits in `agent/config.yaml` | The host sets every limit, and that file is not read |
-| A controller loop chose build, measure, rebuild or stop | The Builder chooses when to call campaign tools; the table supplies advice and code enforces every condition (section 4) |
+| A controller loop chose build, measure, rebuild or stop | The host follows the table's build, measure and stop moves, and code enforces every condition (section 4) |
 | Runs lived in `campaigns/` and `domains/` with opening, terminal and claim files | One log a campaign, under `.ana/d2/<name>/` |
 
 Words v1 used that have no meaning here: battery, band, witness, F2, census, submit gate,
@@ -250,7 +250,7 @@ decision falls.
 
 | Code decides | A model decides |
 | --- | --- |
-| Which move may start, and every refusal | What a harness contains, and when to request a campaign tool |
+| Which move may start, and every refusal | What a harness contains |
 | Every limit of a solve and of a session | How a task is solved |
 | The condition a solve runs under, and its identity | What a new task asks, within the contract |
 | Whether an answer is valid | Whether a rejection was right (a ruling, with its required evidence) |
@@ -303,7 +303,7 @@ Six consequences guide a change:
    declared structure. A classifier in code that decides what a harness or a task should contain
    is a model's decision made badly.
 5. **Do not let a model hold a condition.** A model's reply never sets a score, a limit or an
-   identity. The Builder may request a campaign move; code checks whether it may start. Where a model's output enters a decision (a ruling), code states what
+   identity. The table chooses a campaign move; code checks whether it may start. Where a model's output enters a decision (a ruling), code states what
    evidence the output must carry, and refuses it otherwise.
 6. **Where in doubt, allow, and allow the whole.** A wall keeps three things: the exam side's
    hidden values, the operator's credentials, and one seat's files from another seat's. Whatever
@@ -331,7 +331,7 @@ wall keeps from it.
 | Seat | Job | Reads | Never | Source |
 | --- | --- | --- | --- | --- |
 | **Examiner** (model) | Writes task instances against a fixed contract and check program. For a campaign that opens from a prompt it first drafts that exam: the rules with their sources, the answer format, one check a rule, examples and controls | The contract, the operator's brief, the budget every solve is held to, examples, one outcome for each task of the campaign and whether a valid answer to it is on record, and for a task the reference stood in two comparisons or more of the same outcome of each of its last three, newest first, with how many of the newest closed it in a row (since 13 October), those tasks counted by family, or in a total where a family holds one task (since 11 October), what the last session under the current reference said at its `finish` (since 16 October; until then the last session's of the campaign), and the home the last session left; how many of its gate's solves each held task passed on, and the drafts a gate refused after reading them, with its reason (since 14 October), read on the current reference alone and those read on a reference since replaced as one count (since 16 October); the checks, through `try_answer`, on an instance with an answer of its own. When it drafts: the operator's prompt, what the host's reading found in each draft, and a walled home of its own, empty at its start | A target, a harness's name, the other harness's result on any one task, a count of a task's valid solves beyond every, some or none, but how many of the reference harness's three solves of a draft task were valid (`try_task`, and in later sessions), and nothing else of those solves. It makes no solve of the exam's | `src/examiner/` |
-| **Builder** (model) | Edits `harness/`, chooses campaign tools in the same conversation, and ends with a frozen harness version | The public rules and the objective, practice tasks, practice results with their measures and traces, each comparison's tally, its own notes | A held-out task or its trace, a check, a hidden value, which checks refused an answer | `src/builder/` |
+| **Builder** (model) | Edits `harness/`, practises on released tasks, and ends with a frozen harness version | The public rules and the objective, practice tasks, practice results with their measures and traces, each comparison's tally, its own notes | A held-out task or its trace, a check, a hidden value, which checks refused an answer | `src/builder/` |
 | **Solver** (model) | Answers one task: pi's coding agent with `read`, `bash`, `edit`, `write` and `submit` | The task's public part, the public rules, the harness's guide and programs, its limits and how much it has used | The checks and the hidden values | `src/solve/` |
 | **Verifier** (code) | Runs every applicable check on one answer, each in a fresh cell inside the OS wall | The answer, the task, the check program, the installed engines | n/a | `src/kernel/verify.ts`, `src/verify/` |
 | **Referee** (model) | Rules each rejection `earned`, `check-defect` or `unclear` before it counts | The verifier's side only: the task with hidden values, the rules, the answer, the refusing checks, the check program | The harness, the solver's trace, the Builder | `src/review/referee.ts` |
@@ -351,8 +351,7 @@ The tools of each model seat, as its source names them:
   `draft_exam`, `bash`, `read`, `write`, `finish`, the shell the same kind of walled home
   (`src/examiner/shell.ts`), and nothing in it enters the exam but through `draft_exam`.
 - Builder: `read`, `bash`, `edit`, `write`, `practice`, `read_trace`, `read_opening`,
-  `check_harness`, `preview_harness`, `finish`. In the campaign command it also
-  has `examine`, `release_practice`, `compare`, `promote` and `campaign_status`.
+  `check_harness`, `preview_harness`, `finish`.
 - Solver: `read`, `bash`, `edit`, `write`, `submit`. Its answer is the file `answer.json`;
   `submit` with `malformed` is its word that the task is malformed in place of one.
 - Referee: `probe_check`, `read_check_program`, `record_ruling`.
@@ -383,8 +382,7 @@ authorises work inside its scope and none of these seven.
 Write "a person" only for a duty in the list above. Four more were the operator's until
 9 October and have an owner in code since: the setting and the reference are events a command
 reads (`campaign.setting`, `harness.promoted`), the stop rule refuses the next comparison
-(section 7), and the next step is advised by a table and asked for by the Builder through a
-campaign tool, which code admits or refuses (section 4).
+(section 7), and the next step is chosen by the table and started by the host (section 4).
 
 Two of the seven are given once, for every campaign: the campaign command freezes an exam whose
 reading holds no fault, and promotes the harness the rule names, without waiting. A campaign runs
@@ -418,94 +416,34 @@ it is the first reference harness, and it stays the fixed lower reference after 
 
 ## 4. The Harness Builder
 
-The **Harness Builder** and the **Builder** are the same model agent. It edits the harness and
-chooses when to ask for another task-writing session, release practice tasks, compare its current
-harness, or promote an eligible harness. There is no coordinating model above it.
+The **Harness Builder** is the host loop and the **Builder** is the model session inside its
+`build` move. The Builder edits `harness/`, practises on released tasks, reads practice traces
+and aggregate comparison tallies, and ends with a frozen harness. It does not choose campaign
+moves.
 
-The host opens the exam and prepares the campaign first. Then `tools/d2/harness-builder.ts` keeps
-one Builder conversation and one workspace open while its campaign tools run. An Examiner call
-runs a separate agent with its own view: it returns at once, the session writes beside the
-conversation, any other campaign action waits for it on the host's time, and the campaign's facts
-under each campaign tool's result say what it held out. The conversation's end waits for it where
-the Builder finished or met its wall, and does not stop it; the host's halt, on the run's moves, an
-ending the table names or the operator's stop, and a kill of the run do, and it ends on record as
-killed. A comparison returns the same aggregate tally and reading the Builder already receives. A
-promotion names only the harness the existing rule allows. The model cannot choose a checker,
-held-out task, solve limit or reference.
+`tools/d2/harness-builder.ts` opens the exam, records the terms and repeatedly calls `decide`
+(`src/builder/decide.ts`). The first row that applies, with its holds, names the next move. The
+host runs that move: an Examiner session writes tasks, a Builder session builds, a comparison
+reads the current harness against the reference, and `twice` promotes the harness the rule names.
+An unfinished comparison continues under its recorded terms. A refused move writes no start.
 
-Where the table names more than the action, the tool does what the table names
-(`comparedOf`, `tools/d2/campaign-actions.ts`), and the status and the result say so as a fact:
+Every move and ending is recorded in the log. The Builder receives the closed list in section 1:
+public rules, released practice tasks and results, its notes, and aggregate comparison readings.
+It never receives a held-out task, a comparison trace, a check, a Referee reason or an Examiner's
+free-form reply. `read_opening` returns the session's opening message exactly as it was sent, even
+after compaction. The host keeps the campaign's admissions, budget, stop rule and wall conditions;
+`campaign.move` and `campaign.ended` reasons enter no seat's message.
 
-- A comparison that began and has not reported goes on under its own terms.
-- The repeat of a reading under the trigger is of the harness that reading froze, whatever
-  `harness/` holds since. An edit between the two would otherwise be measured in the repeat's
-  place, and the step would never be read twice.
-- While `harness/` is the reference harness, `compare` makes the table's own comparison: the
-  control of the starter against the reference, or the latest harness on tasks written since.
-  Where the table names none, there is nothing to compare.
-- A harness a comparison has read against the reference, with nothing changed since, is not
-  compared again unless the table names it: a second draw of one pair is a second chance at the
-  trigger (section 1, factor 2).
-- `promote` names the harness the rule names, which is not always the last one frozen (`twice`,
-  `src/builder/decide.ts`).
+A build move opens one bounded Builder session. The session's `finish` freezes the harness it
+leaves, and its notes and public results are available to the next session. A comparison reads
+that frozen harness version; later edits belong to the next build. The campaign's `--dry-run`
+prints the table's next move without starting it, and `--moves` bounds host moves. `--hitl` leaves
+the exam, automatic promotion and other operator decisions to the operator for that campaign;
+without it, the campaign follows the table unattended.
 
-An action the host refuses before it begins, or that makes nothing, is counted as no move and
-writes no `campaign.move`. An Examiner session and a comparison are on record as they begin, as
-every move the host makes is, with the code of the table's row where the Builder made the move the
-table named, and `asked` with what the table named where it made another; one its command then
-refuses keeps that record, as a host's does, and counts against `--moves`. The conversation itself
-is a `build` move with the code `led`.
-
-`decide` (`src/builder/decide.ts`) remains the one table over the log. It supplies advice at the
-opening, under each campaign tool's result and when a turn ends without a call; an edit or a
-practice solve ends with the session's limits alone. The Builder may ignore an
-advised build, comparison or task-writing move. Budget exhaustion, the stop rule, an operator
-stop, a faulty exam and a failed environment still end the run in code. Every tool uses the same
-admissions and commands as a move launched by the operator. The controller's private reasons
-(`campaign.move`, `campaign.ended`) enter no seat's message.
-
-What reaches the Builder remains the closed list of section 1. It never receives a held-out task,
-a comparison trace, a checker, a Referee reason or an Examiner's free-form reply. New released tasks
-and the promoted reference are refreshed in its current workspace. `read_opening` serves the
-current public practice tasks and aggregate tallies, even after compaction.
-
-A comparison of the working copy freezes it and records `build.checkpoint`, without ending the
-conversation. The next edit changes the working copy, not the harness being compared.
-The same model conversation continues after the tool returns. Its session limits cover the whole
-conversation, and its wall counts the Builder's own time: the clock stops while a campaign action
-runs, which is the host's time, bounded by the campaign's total and `--moves` (`Bench.within`,
-`src/builder/tools.ts`). A comparison cut at the wall would lose its solves in flight and read as
-a failed host, and one bought in the conversation is read in it. Both compaction modes still apply, and model usage is recorded before
-a tool can spend more of the campaign's budget. A conversation that ends at its own limits is
-followed, in the same run of the command, by a new one with the existing notes and results as
-its fallback, and so is a process restart.
-
-This changes the earlier two-layer design by the operator's instruction of 12 October, and it is
-a term of the campaign, kept by its opening as `--hitl` is: `--builder-led`, on for a campaign
-that opens now. With `--no-builder-led` the host makes every move the table names, a Builder
-session among them, as before the change, and a campaign on record without the term runs so. The
-two differ in three places and no others: the branch of the campaign command that opens the
-conversation (`converse`, `tools/d2/harness-builder.ts`), the tools and advice the conversation is
-given (`tools/d2/campaign-actions.ts`, through `BuildRequest.campaign`), and one table of the
-texts a Builder reads (`SAID`, `src/builder/prompt.ts`), whose `host` row is what a Builder read
-before. Keeping the conversation and making the advice optional are proved without a model in
-tests (`test/builder-led.test.ts`, beside the host's in `test/harness-builder.test.ts`); whether
-they improve a real campaign is an ablation of the one tree with the term on and off, not a claim.
-
-When you build towards the Harness Builder, take v1's four lessons with it:
-
-1. Code states the fact, and the model chooses the response.
-2. One reading of the log, rendered once for each reader through its own filter. Until
-   21 September v1's Builder received one test set through four readers, and they disagreed: 20
-   of 25 in one paragraph and 0 of 5 in the next.
-3. The standing facts are restated where the agent reads, so a compaction needs no signal. The
-   first tool result of each Builder turn ends with the turn it is in, the session time used and
-   the practice solves left (`usedLine`, `src/builder/prompt.ts`; once a turn since 14 October,
-   when a turn of six calls read it six times); a turn that ends without a call is answered
-   with the goal and the same facts (`continuation`); and `read_opening` serves the opening
-   message again. In the seven Builder sessions on record on 9 October every one of 365 turns
-   ended in a tool call, so a message sent only between turns was never sent.
-4. The wall is a test and no convention: rule 3 of section 8 states it.
+An old opening may contain the retired `led` term. Readers keep that record, but the campaign
+ignores it and follows the host-owned table. A continuation discards the retired mode flags
+from old launch receipts.
 
 ## 5. The log
 
@@ -538,6 +476,9 @@ Four habits follow:
    the log is the one exception, because a log is evidence: `EVENT_KINDS` still lists kinds that
    no command writes, so that an earlier log reads.
 
+The same rule keeps old `campaign.move` codes such as `asked` and `led` readable. Current
+host-led campaigns write the table row's code, and ignore a retired `led` term in an opening.
+
 `.ana/` is ignored by Git and lies inside the repository, which every solve's, every Builder's and
 every Examiner's wall denies, with the repository's other worktrees (`worktreesOf`,
 `tools/d2/campaign.ts`): a campaign runs from a worktree kept for it, and until 10 October a
@@ -565,13 +506,12 @@ flags.
 | 6 | `bun tools/d2/promote.ts --name <name> --harness <digest> --yes` | The operator's word that a kept harness is the reference harness from there on (`harness.promoted`). Without `--yes` it says what the log holds of that harness and records nothing. A harness the rule would not promote takes `--despite "<why>"` |
 | 6 | `bun tools/d2/import.ts --name <name> --harness <dir> [--note "<why>"]` | The operator's word that a harness built elsewhere, another campaign's handover or one written by hand, is one this campaign keeps (`harness.imported`): it is kept under its digest as a session keeps one, and `--parent`, `--reference` and `promote.ts` then name it. It is no session, so `latest` is unmoved |
 | 7 | `bun tools/d2/close.ts ... --to <dir>` | Nothing. It writes what the campaign hands over, outside the repository: the reference harness as a directory that stands by itself, the public rules, and the closing report |
-| all | `bun tools/d2/harness-builder.ts ... --budget <dollars> --builder <model> --examiner <model> --reviewer <model>` | The opening (`campaign.opened`), the Builder's requested moves (`campaign.move`), frozen versions inside its conversation (`build.checkpoint`) and its ending (`campaign.ended`) |
+| all | `bun tools/d2/harness-builder.ts ... --budget <dollars> --builder <model> --examiner <model> --reviewer <model>` | The opening (`campaign.opened`), the host's table moves (`campaign.move`), frozen versions from Builder sessions (`build.checkpoint`) and the ending (`campaign.ended`) |
 
 ### The campaign command
 
-The last row opens the exam and then runs the Builder with campaign tools (section 4). The
-Builder chooses its moves, and `decide` supplies filtered advice. `--moves N` bounds campaign
-actions; `--dry-run` prints the table's advice and makes none. A campaign freezes an exam
+The last row opens the exam and then runs the host loop (section 4). `decide` chooses each move.
+`--moves N` bounds campaign actions; `--dry-run` prints the table's next move and makes none. A campaign freezes an exam
 whose reading holds no fault and promotes the harness the rule names without waiting (section 3).
 Under `--hitl` it runs only once every fault of its checks is admitted, and it reports a step
 read twice without promoting it, waiting there for `promote.ts`.
@@ -607,40 +547,18 @@ or where the last Examiner session and the comparison that read its tasks billed
 of what is left, before another session (`unafforded`, `src/builder/decide.ts`; until 13 October
 that second reading was the no-room row's alone): a comparison the cap cuts tallies nothing.
 
-**It ends in one of eight ways**, and the log's last event says which (`campaign.ended`):
+**It ends in one of seven ways**, and the log's last event says which (`campaign.ended`):
 `budget`, `stop` (the stop rule, section 7), `exam`, `no-room`, `environment`, `operator`,
-`control` (an A/A that read a step, section 7) or `finished` (three Builder conversations in a row
-made no campaign move, the last ended by `finish` or at its limits). A lack of room is advice to
-request other tasks while a conversation lives, and the campaign's ending once that conversation
-has ended at its limits. A Builder's `finish` ends its conversation. Between conversations the host
-makes what the table names that asks no Builder for anything, a campaign move like any other: any
-comparison, the tasks a repeat waits for, and a promotion (`hostOwed`,
-`tools/d2/harness-builder.ts`); any other Examiner session the table names starts as the next
-conversation opens, and writes beside it (`campaignTools`, `tools/d2/campaign-actions.ts`).
-Until 16 October only the campaign's first did, and tasks for want of room waited for three
-conversations in a row that made no move: buffer-159-opus's first promotion waited 5.9 hours for
-its next Examiner session and its second 2.1.
+`control` (an A/A that read a step, section 7). A lack of room asks the Examiner for tasks, and
+the patience in `roomless` ends the campaign where the table can no longer make room. A Builder's
+`finish` ends its session; the host then reads the log and follows the next table move.
 A comparison that began under other code is refused there by its own terms, and the campaign ends
-on its environment, to be run at that code until it reports. Then another
-conversation follows on the Builder's notes, as after one that ended at its limits, until three in
-a row have made no campaign move, a conversation the provider crashed or a stop killed not counted,
-nor an Examiner session beside it that crashed or was killed holding out nothing, or that the host
-refused before it began (`idleOf`, `tools/d2/campaign-terms.ts`), which end the campaign
-`finished` where the table names no ending of its own; the status a Builder reads counts the
-conversations before its own that made none. A Codex goal stays active on the same terms: its own
-model ends it only as met, or as blocked once the same blocker has held for three turns, and a
-climb is never met.
-Until 14 October every `finish` ended the run: five of five led campaigns ended so, with $22 to
-$122 of $300 spent, and the two that promoted finished within seconds of their promotion. Run
-again by its name, a campaign that ended `finished` goes on with a new conversation, as after the
-operator's stop. A
-move that threw after it began ends the campaign on its environment, except one whose session is on
-record as crashed, which the campaign goes on from (`goesOn`, `tools/d2/harness-builder.ts`); so do three Builder or
-Examiner sessions in a row that the provider failed before they held out a task or changed a
-harness (`crashedRun`, `src/builder/ground.ts`): such a session held out nothing because it was
-refused a turn, not because the domain gave it none, so it is not an idle session for the
-patience; one that held a task out and then crashed moved the campaign. Run again by its name, the campaign goes
-on from its log, and the count starts afresh.
+on its environment, to be run at that code until it reports. A move that throws after it begins
+also ends the campaign on its environment, except a Builder or Examiner session recorded as
+crashed, which the campaign continues from (`goesOn`, `tools/d2/harness-builder.ts`). A session
+that crashed before holding out a task or changing a harness counts in `crashedRun`; three such
+failures end the campaign on its environment. A session that held a task out or changed a harness
+before crashing moves the campaign. Run again by its name to continue from the log.
 With `--handover <dir>` it then writes what it hands over (row 7): the harness is copied whole,
 with the programs a kept state names by a link, and has to open there as the harness it was kept
 as. The closing report is a view of the log, names no task and holds no check, and says what was
@@ -1027,9 +945,7 @@ Cite a rule by its number in a pull request or a review.
    Builder or a solver reads byte-identical. For a Builder that test is in the suite
    (`test/builder.test.ts`, "what crosses to the Builder"): two campaigns that differ in every
    such detail, one session over each, and every context and every file of its home compared;
-   and for what its campaign tools tell it (`test/builder-led.test.ts`, "tells the Builder
-   the same whichever held-out task was won"): two campaigns of equal tallies in which different
-   tasks were won. A
+   the host-path test also covers equal tallies in which different held-out tasks were won. A
    change that touches such a message says in its pull request how it checked this. Withholding is a property of everything an agent can read:
    prompts, tool descriptions, tool results and files in its home.
 
@@ -1488,10 +1404,9 @@ tools/c/        the check program: accept, carry, rejections, repaired
 tools/d1b/      examine, draft
 tools/d2/       campaign, setting, prepare, round, session, checkpoint, settle, promote, import; exam,
                 which stages a drafted exam as a pack; close, which writes what a campaign hands
-                over; harness-builder, which opens a campaign and makes its moves to a typed
-                ending, or keeps its Builder's conversation to one; campaign-terms, the flags and
-                what a campaign runs by; campaign-actions, the tools a Builder that leads its
-                campaign asks the host through; and word, which leaves the operator's word for one that runs
+                over; harness-builder, which opens a campaign and has the host make its moves to a
+                typed ending; campaign-terms, the flags and what a campaign runs by; and word,
+                which leaves the operator's word for one that runs
 tools/runs/     the registry of runs, the receipt, launch, continue, pause and copy (manage), fresh, keep,
                 stop, pulse and status, logins, hosts, rehearse, seed, view, replay, zip
 tools/wri/      the whole-run investigation's reader of one log: its folds and the exam side's lanes

@@ -1,7 +1,7 @@
 // The climb, simulated: a campaign run by its log over the fixture pack with a script in each
 // model seat, where a task's difficulty is its base and a harness's strength is a number its guide
 // carries. A solve passes where the base is at most the strength, and gives no answer otherwise;
-// each Builder session, or each edit of a Builder that leads its campaign, raises the strength by two; each Examiner session asked for room reads the
+// each Builder session raises the strength by two; each Examiner session asked for room reads the
 // reference harness's strength from its kept state and writes tasks on either side of it, as an
 // Examiner that hears which tasks were answered would. What this proves is the host's part
 // of the climb and nothing of a model: that a scripted Builder promotes a harness, requests harder tasks
@@ -10,8 +10,7 @@
 //
 //   ANA_CLIMB=1 bun run test -- test/climb.test.ts
 //
-// That is a campaign led by its Builder, as one that opens now is. `ANA_CLIMB=host` runs the same
-// climb with the host making every move the table names (`--no-builder-led`).
+// The host makes every move the table names, including each Builder session.
 //
 // The operator's question of 10 October: does the system climb, epoch after epoch, where an
 // epoch ends with a promotion and the next one's tasks are harder?
@@ -58,17 +57,13 @@ const NAME = `test-climb-${String(runtimeProcess.pid)}`;
 const TASKS = fixtureTasks(7);
 /** The starter's strength: it answers a base of three and under. */
 const STARTER_STRENGTH = 3;
-/** What one Builder session adds, or one edit of a Builder that leads its campaign. */
-const HOSTED = runtimeProcess.env.ANA_CLIMB === "host";
+/** What one Builder session adds. */
 const RAISE = 2;
 /** Tasks an Examiner asked for writes, by how far above the reference's strength each is: one
  *  past it, which the reference answers on some of its solves and not all, so that a task is
  *  informative for it as room asks (`informative`, `roomOf`) and as `try_task` admits a draft;
  *  and harder ones, some past any harness so far. */
 const ABOVE = [1, 1, 2, 2, 3, 4];
-/** A led Builder's finish in a conversation after its first, said twice where finish first gives
- *  a notice. */
-const IDLE: readonly [string, JsonObject] = ["finish", { note: "Nothing further." }];
 /** How many times each harness has solved each task, by task and harness folder: a harness
  *  answers a task one past its strength on every other solve. */
 const tried = new Map<string, number>();
@@ -216,46 +211,22 @@ describe("the climb", () => {
       let written = 0;
       const seats: Seats = {
         seated: (campaign) => ({
-          // Led by its Builder, one scripted Builder keeps its conversation while it edits, compares
-          // and promotes, and the conversations after it make no campaign move.
-          // Run by the host, a Builder session raises the strength of the harness it starts from by two, and
-          // finishes. The seat is made for every command, a comparison's too, so the strength is
-          // read from the log: the sessions that began before this one.
-          builder: HOSTED
-            ? (() => {
-                const before = read(campaign.log).filter(({ kind }) => kind === "build.started").length;
-                const strength = STARTER_STRENGTH + (before + 1) * RAISE;
-                return scriptedModel([
-                  [
-                    "bash",
-                    {
-                      command: `printf '\\nstrength: ${String(strength)}\\n' >> "$HOME/harness/agent/${GUIDE_FILE}"`,
-                    },
-                  ],
-                  ["finish", { note: `Strength ${String(strength)}.` }],
-                ]);
-              })()
-            : read(campaign.log).some(({ kind }) => kind === "build.started")
-              ? scriptedModel([IDLE, IDLE])
-              : scriptedModel([
-                  ...Array.from({ length: 3 }, (_, epoch) => {
-                    const strength = STARTER_STRENGTH + (epoch + 1) * RAISE;
-                    return [
-                      ["examine", {}],
-                      ["release_practice", {}],
-                      [
-                        "bash",
-                        {
-                          command: `printf '\\nstrength: ${String(strength)}\\n' >> "$HOME/harness/agent/${GUIDE_FILE}"`,
-                        },
-                      ],
-                      ["compare", {}],
-                      ["compare", {}],
-                      ["promote", {}],
-                    ] satisfies readonly (readonly [string, JsonObject])[];
-                  }).flat(),
-                  ["finish", { note: "Three scripted improvements in one conversation." }],
-                ]),
+          // The host opens a Builder session for each table row. The seat is made for every
+          // command, a comparison's too, so the strength is read from the log: the sessions that
+          // began before this one.
+          builder: (() => {
+            const before = read(campaign.log).filter(({ kind }) => kind === "build.started").length;
+            const strength = STARTER_STRENGTH + (before + 1) * RAISE;
+            return scriptedModel([
+              [
+                "bash",
+                {
+                  command: `printf '\\nstrength: ${String(strength)}\\n' >> "$HOME/harness/agent/${GUIDE_FILE}"`,
+                },
+              ],
+              ["finish", { note: `Strength ${String(strength)}.` }],
+            ]);
+          })(),
           setting: campaign.setting({ ...campaign.test, ...scriptedModel([]) }),
           // A solve passes where the task's base is at most the harness's strength, and one past it
           // on every other solve: since 12 October a task the reference fails in every solve, or
@@ -303,12 +274,8 @@ describe("the climb", () => {
         },
       };
       // Three epochs take 21 moves with every task scored (climb-10, 10 October: four promotions
-      // in 36 moves and still climbing). A campaign that ends on its moves has not stopped. Led by
-      // its Builder, the three improvements are made by campaign tools inside one conversation.
-      const ending = await harnessBuilder(
-        [...flags, "--moves", "24", ...(HOSTED ? ["--no-builder-led"] : [])],
-        seats,
-      );
+      // in 36 moves and still climbing). A campaign that ends on its moves has not stopped.
+      const ending = await harnessBuilder([...flags, "--moves", "24"], seats);
       const moves = of("campaign.move").map(({ move }) => (isString(move) ? move : "?"));
       const promotions = of("harness.promoted");
       const log = read(join(folder, "log.jsonl"));
@@ -343,10 +310,6 @@ describe("the climb", () => {
       // The highest base held out in an epoch: what the test knows of difficulty.
       const hardest = (epoch: Epoch) =>
         Math.max(0, ...epoch.tasks.map((version) => baseOf.get(version) ?? 0));
-      // Led by its Builder, the first conversation made every improvement, and none after it
-      // changed a harness. Until 14 October a finish ended the campaign there.
-      const later = of("build.finished").slice(1);
-      if (!HOSTED) expect(later.map(({ changed }) => changed)).not.toContain(true);
       // Two promotions at least, each on tasks harder than the last epoch's: the second epoch's
       // tasks reach higher bases, the starter answers fewer of them, and the promoted harness of
       // each epoch is stronger than the one before.

@@ -16,6 +16,22 @@ function isBorrowedMemberName(node: ESTree.Node): boolean {
 }
 
 /**
+ * Return whether an identifier is the written key of an object-literal entry holding a literal:
+ * `{ shape: "object {joints}" }`, `{ shape: 2 }`. Such a key spells a field of a recorded format or
+ * a label in a table of data, and the value beside it says what it holds; the name is not one this
+ * code chose for a value it computed. A key holding anything else still names a value here. The key
+ * of a shorthand entry is passed over too, since its value is the same name and reports once.
+ */
+function isPassedOverKey(node: ESTree.Node): boolean {
+  const { parent } = node;
+  if (parent?.type !== "Property" || parent.key !== node || parent.computed) return false;
+  if (parent.shorthand) return true;
+  if (parent.parent.type !== "ObjectExpression") return false;
+  const { value } = parent;
+  return value.type === "Literal" || (value.type === "TemplateLiteral" && value.expressions.length === 0);
+}
+
+/**
  * The word "shape" in a symbol name — `taskShape`, `ShapeOf`, `SHAPE_KEYS`, `jsonShaped` — read
  * off every identifier, every `#private` name and every JSX name in the file.
  *
@@ -30,6 +46,13 @@ function isBorrowedMemberName(node: ESTree.Node): boolean {
  * A verb built on the word names an operation, not a structure standing in for a role.
  * `WORD_BREAK` is what makes whole-word matching work inside a single identifier, splitting on
  * underscores, digits and case steps so that `jsonShaped` is three words and `reshaped` is one.
+ *
+ * The key of an object-literal entry that holds a literal is exempt, through `isPassedOverKey`.
+ * Of the findings on record by 19 October, the three answered as false were all this: the field
+ * `shape` of an artifact-schema row as the truss pack and v1's prose contract spell it (two ledger
+ * rows of 8 October), and a count's label for drafts refused on their package's shape in
+ * `test/skill-scripts.test.ts`, renamed `package` only to pass. A key holding a computed value,
+ * `{ taskShape: buildTask() }`, still reports: there the key is the only place the name is chosen.
  *
  * A property read off another value is exempt, through `isBorrowedMemberName`. `parsed.shape` is
  * not this file naming anything — the name belongs to whatever declared it, the rename would have
@@ -54,7 +77,7 @@ export const noForbiddenTermInSymbolNamesRule = defineRule({
     const reportForbiddenSymbolName = (node: ESTree.Node & { name: string }) => {
       const words = node.name.split(WORD_BREAK);
       if (!words.some((word) => FORBIDDEN_WORDS.has(word.toLowerCase()))) return;
-      if (isBorrowedMemberName(node)) return;
+      if (isBorrowedMemberName(node) || isPassedOverKey(node)) return;
       context.report({
         node,
         messageId: "forbiddenSymbolName",

@@ -1,6 +1,7 @@
 // One round on stand-ins: the real session on the faux provider with a host write for the walled
 // one, and solves that end as a table says. What is under test is the order of a round, which
 // solves it counts and which it makes, what it leaves out of a comparison, its cap, and its reading.
+// A lone retained loss no longer regresses: buffer-pr197-opus-m1, 18 October 2026.
 import { afterAll, describe, expect, it } from "bun:test";
 import {
   createModels,
@@ -1435,7 +1436,7 @@ describe("a checkpoint with no session", () => {
     expect(marginRead(read(s.log), "g2")).toBeNull();
   });
 
-  it("reads a step on the frontier that loses a retained task as regressed, on sets fixed before its first solve", async () => {
+  it("reads a step on the frontier despite one unsupported retained loss, on sets fixed before its first solve", async () => {
     // The reference answers s1 in every solve and nothing else; the starter breaks s1 and answers
     // the four tasks held out below.
     const s = await setup([], (version, side) => ((version === "s1") === (side === "old") ? PASS : LATE));
@@ -1464,7 +1465,7 @@ describe("a checkpoint with no session", () => {
       retained: { tasks: ["s1"], aside: [], wins: 0, losses: 1, ties: 0, differences: [-4] },
       // The comparison before it of the same two harnesses scored s1 as well.
       overlap: { with: "g2", tasks: ["s1"] },
-      reading: "regressed",
+      reading: "step",
     });
   });
 

@@ -22,8 +22,12 @@
  * The step is read on the frontier (12 October, the revised plan's M1.4): the scored tasks not
  * exhausted, fixed at the comparison's start (`round.ts`, `begin`). The retained tasks, fixed at
  * the same time from the exhausted ones and an earlier epoch's (`poolOf`, `reports.ts`),
- * are where a harness may not lose more pairs than it wins. A step with a net loss there reads
- * `regressed` and promotes nothing (`stepOf`). A retained set with no task tallied is `unmeasured`,
+ * regress where they lose more pairs than they win and the loss, read by the frontier's own test
+ * mirrored, is at or under the trigger: `regressed`, which promotes nothing. Until 18 October any
+ * net loss did, and in buffer-pr197-opus-m1 one flagged solve of four on one retained task, which
+ * the reference passed in all 24 of its solves, vetoed g-5's repeat and g-6 and g-7's
+ * promotion. A repeat reads its retained tasks joined with its first stage's where both name them.
+ * A retained set with no task tallied is `unmeasured`,
  * never no loss: against the provisioned starter nothing is exhausted yet. Until 16 October one
  * whose untied tasks all fell in one family of the two or more its set held read `narrow` and
  * promoted nothing either; in 1,598 recorded readings it never fired, and an old report keeps it.
@@ -154,6 +158,7 @@ interface Stage {
   /** The task each frontier difference is of, where the report names them (since 14 October). */
   readonly named: readonly string[] | null;
   readonly retained: readonly number[] | null;
+  readonly retainedNamed: readonly string[] | null;
 }
 
 /** The trigger a first reading has to clear to buy the repeat, where no flag or opening names one
@@ -274,22 +279,26 @@ function stageOf(report: JsonObject): Stage | null {
   const named = Array.isArray(of) && of.every(isString) && of.length === frontier?.length ? of : null;
   const retained = report.retained === UNMEASURED ? null : differences(report.retained);
   if (frontier === null || (retained === null && report.retained !== UNMEASURED)) return null;
-  return { frontier, named, retained };
+  const kept = asRecord(report.retained)?.of;
+  const retainedNamed =
+    Array.isArray(kept) && kept.every(isString) && kept.length === retained?.length ? kept : null;
+  return { frontier, named, retained, retainedNamed };
 }
 
-/** Whether a stage lost more pairs than it won on its retained tasks. */
-function regressed({ retained }: Stage): boolean {
-  return retained !== null && total(retained) < 0;
+/** Whether retained tasks lost more pairs than they won, by a loss the mirrored test reads at or
+ *  under `trigger`: one task lost alone is p 0.5, two of two 0.25. */
+function regressed(retained: readonly number[] | null, trigger: number): boolean {
+  return retained !== null && total(retained) < 0 && flipP(retained.map((one) => -one)) <= trigger;
 }
 
 /** One comparison's own reading of its report's frontier at `level`: `no-step` short of it, and
- *  `regressed` where a step lost more retained pairs than it won, which promotes nothing. A report
+ *  `regressed` where its retained tasks regressed at `trigger`. A report
  *  with no frontier and retained set holds no reading, and is refused. */
-export function stepOf(report: JsonObject, level: number): "step" | "no-step" | "regressed" {
+export function stepOf(report: JsonObject, level: number, trigger: number): "step" | "no-step" | "regressed" {
   const stage = stageOf(report);
   if (stage === null) throw new Error("a reading needs a frontier and a retained set");
   if (flipP(stage.frontier) > level) return "no-step";
-  return regressed(stage) ? "regressed" : "step";
+  return regressed(stage.retained, trigger) ? "regressed" : "step";
 }
 
 /** A report's untied frontier tasks, by version where it names them: a repeat scores those tasks
@@ -300,20 +309,25 @@ export function untiedOf(report: JsonObject): string[] {
 }
 
 /** Whether one comparison's reading buys the repeat: more frontier pairs won than lost, its test
- *  at or under `trigger`, and no net loss on its retained tasks. It is what the stop rule counts as a
+ *  at or under `trigger`, and no retained regression there. It is what the stop rule counts as a
  *  move that showed a gain (`stopRule`): a 2-0 at level 0.10 reads `no-step` and buys the repeat,
  *  and counted as no gain it ended a campaign of patience 3 before the repeat was bought
  *  (11 October). */
 export function triggered(report: JsonObject, trigger: number): boolean {
   const stage = stageOf(report);
-  return stage !== null && total(stage.frontier) > 0 && flipP(stage.frontier) <= trigger && !regressed(stage);
+  return (
+    stage !== null &&
+    total(stage.frontier) > 0 &&
+    flipP(stage.frontier) <= trigger &&
+    !regressed(stage.retained, trigger)
+  );
 }
 
 /**
  * Whether an attempt among a pair's comparisons promotes (`attemptsOf`): its first bought the repeat
- * (`triggered`), the repeat untied a frontier task, won at least as many frontier pairs as it lost and lost no more
- * retained pairs than it won, the two frontiers read together, a task both scored once with its
- * differences summed (`joined`), clear `level`. Summed
+ * (`triggered`), the repeat untied a frontier task, won at least as many frontier pairs as it lost, and neither
+ * stage nor their joined retained tasks regressed at the trigger. The two frontiers read together,
+ * a task both scored once with its differences summed (`joined`), clear `level`. Summed
  * alone, a 4-0 and a repeat that tied every task would promote on one draw, against AGENTS §7,
  * where a step is one draw and is repeated on fresh solves. Read together at 0.10 a 2-0 and a 2-0
  * are a 4-0 (p 0.0625). A promotion needs the two together to clear the level, so it is no
@@ -331,10 +345,13 @@ export function triggered(report: JsonObject, trigger: number): boolean {
 export function readTwice(reports: readonly JsonObject[], level: number, trigger: number): boolean {
   return attemptsOf(reports, (report) => triggered(report, trigger)).some((attempt) => {
     const [first, second] = attempt.map(stageOf);
-    if (first == null || second == null || regressed(second)) return false;
+    if (first == null || second == null) return false;
     const repeat = second.frontier;
     if (repeat.every((difference) => difference === 0) || total(repeat) < 0) return false;
-    return flipP(joined([first, second])) <= level;
+    const stages = [first, second];
+    const named = stages.every((stage) => stage.retainedNamed !== null);
+    if (regressed(named ? joined(stages, "retained") : second.retained, trigger)) return false;
+    return flipP(joined(stages)) <= level;
   });
 }
 
@@ -351,18 +368,19 @@ export function attemptsOf<T>(reports: readonly T[], bought: (report: T) => bool
 }
 
 /**
- * The stages' frontier differences with a task both scored counted once, its differences summed.
+ * The stages' differences in either set, with a task both scored counted once, its differences summed.
  * Fresh solves do not make a task drawn twice two tasks: buffer-149's repeat g-2 scored g-1's 11
  * tasks, and counted twice its tasks would read as 22 signs where 11 were drawn. Under the
  * fixed-task null (AGENTS.md, section 7) the sum changes nothing; under a task-population null it
  * stops one task counting twice. A report from before 14 October names no task, and its
  * differences stand alone.
  */
-function joined(stages: readonly Stage[]): number[] {
+function joined(stages: readonly Stage[], part: "frontier" | "retained" = "frontier"): number[] {
   const sums = new Map<string, number>();
   const unnamed: number[] = [];
-  for (const { frontier, named } of stages) {
-    for (const [at, difference] of frontier.entries()) {
+  for (const stage of stages) {
+    const named = part === "frontier" ? stage.named : stage.retainedNamed;
+    for (const [at, difference] of (stage[part] ?? []).entries()) {
       const task = named?.[at];
       if (task === undefined) unnamed.push(difference);
       else sums.set(task, (sums.get(task) ?? 0) + difference);

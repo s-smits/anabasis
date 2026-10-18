@@ -42,6 +42,7 @@ const VERBS = {
   source,
   status: runsStatus,
   logins,
+  usage: logins,
   keep,
   copy,
   on,
@@ -50,10 +51,10 @@ const VERBS = {
 const [verb, ...args] = Bun.argv.slice(2);
 const run = Object.entries(VERBS).find(([name]) => name === verb)?.[1];
 if (run === undefined) {
-  throw new Error(
+  console.error(
     `usage: bun run runs ${Object.keys(VERBS).join("|")} ..., each verb's options in its file's head`,
   );
-}
-await run(args);
+  runtimeProcess.exitCode = 1;
+} else await run(args);
 // With the code a verb set: a verb that refused is not a success.
 runtimeProcess.exit();

@@ -156,6 +156,40 @@ describe("pre-push", () => {
     ]);
   });
 
+  it("runs the UI's browser files in a static pass only over a commit that touches the UI", () => {
+    const tree = (rows: string): string => execTextSync("git", ["mktree"], { cwd: work, stdin: rows }).trim();
+    const tests = tree(
+      `100644 blob ${blob("\n")}\tbrowser-page.test.ts\n100644 blob ${blob("\n")}\tpanes.test.tsx\n`,
+    );
+    const ui = tree(`100644 blob ${blob("{}\n")}\tpackage.json\n040000 tree ${tests}\ttest\n`);
+    const packages = tree(`040000 tree ${ui}\tui\n`);
+    const held = git(
+      "commit-tree",
+      tree(`${git("ls-tree", second)}\n040000 tree ${packages}\tpackages\n`),
+      "-p",
+      second,
+      "-m",
+      "the UI",
+    );
+    const away = git("commit-tree", withFile(held, "c.ts"), "-p", held, "-m", "away from the UI");
+    const head = git("commit-tree", withFile(away, "d.ts"), "-p", away, "-m", "head");
+    expect(push([update(head, second)]).status).toBe(0);
+    const ran = (sha: string): string[] =>
+      readFileSync(log, "utf8")
+        .split("\n")
+        .filter((line) => line.startsWith(sha))
+        .map((line) => line.split("\t")[1] ?? "");
+    // The commit that brings the UI, and the head, run all of its gate; the one between, its own
+    // gate without the browser's files.
+    expect(ran(held)[1]).toBe("run ui:gate");
+    expect(ran(head)[1]).toBe("run ui:gate");
+    expect(ran(away).slice(1, 4)).toEqual([
+      "run ui:deps",
+      "run ui:build",
+      "run test -- packages/ui/test/panes.test.tsx",
+    ]);
+  });
+
   it("runs nothing again that passed on these exact bytes", () => {
     push([update(second, docs)]);
     rmSync(log, { force: true });

@@ -571,7 +571,7 @@ describe("a campaign", () => {
         valid,
         objective: null,
         frontier: null,
-        noise: { ...aa, detectable, margin: null },
+        noise: { ...aa, detectable },
         versions: ["v1", "v2", "v3", "v4", "v5", "v6"],
         aside: ["v7"],
         short: [],
@@ -597,34 +597,7 @@ describe("a campaign", () => {
         objective: { direction: "lower", margin: 0.01, decided: 1 },
         noise: null,
       }).at(-1),
-    ).toBe(
-      "the objective (lower is better, margin 0.01, as named) decided 1 task that validity alone would have tied",
-    );
-    // Where no command named it, the line says what set it, and the A/A says the margin it sets next
-    // (the overhaul plan's P2).
-    const read2 = (from: number | null) =>
-      reportLines({
-        valid: { old: [0, 0, 2], fresh: [0, 0, 2], informative: { old: 0, fresh: 0 } },
-        frontier: null,
-        objective: { direction: "lower", margin: 0.04, from, decided: 0 },
-        noise: {
-          wins: 0,
-          losses: 0,
-          ties: 2,
-          p: 1,
-          differences: [0, 0],
-          flips: 0,
-          detectable: null,
-          margin: { margin: 0.05, pairings: 8 },
-        },
-      }).slice(-2);
-    expect(read2(57)).toEqual([
-      "the objective (lower is better, margin 0.04, the 90th percentile of the reference's own spread over 57 A/A pairings) decided 0 tasks that validity alone would have tied",
-      "this comparison's A/A sets the objective's margin at 0.05, over 8 pairings of the reference's valid answers: the next comparison reads by it",
-    ]);
-    expect(read2(null)[0]).toContain(
-      "margin 0.04, the default: no A/A on record had measured two valid answers of one task)",
-    );
+    ).toBe("the objective (lower is better, margin 0.01) decided 1 task that validity alone would have tied");
     const campaign = await openCampaign(ARGS);
     expect(read(campaign.log).some(({ data }) => data.session === "z-8")).toBe(false);
   });

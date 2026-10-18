@@ -738,8 +738,8 @@ bun run runs fresh | launch | continue | keep | pause | copy | stop <name> | sta
 
 Defaults worth knowing: 24 scored tasks (`--target`), 4 solves a side (`--solves`; `SIZE` in
 `src/kernel/size.ts`, 12 and 2 before 12 October), level 0.02 (`--level`, since 12 October; 0.10
-before) with a patience of 6 (`--patience`), trigger 0.25 (`--trigger`), an objective margin the
-last A/A sets from the reference's own spread, 0.01 before one (`--margin` names another), a
+before) with a patience of 6 (`--patience`), trigger 0.25 (`--trigger`), an objective margin of 0.01, the
+gate's and every comparison's (`MARGIN`; from 12 to 18 October the last A/A set it), a
 stop past 3 tasks with a check defect (`--defects`), a reserve of 10 dollars a solve (`--reserve`),
 `--parent latest`, `--reference promoted`, which is the harness last promoted and the starter
 until one is; a Builder session of 24 hours (1,440 minutes) of its own time, 300 turns and 24 practice solves; a solve of
@@ -826,7 +826,7 @@ same task. The harness that wins more pairs wins the task; otherwise the task is
 the test. Where the check program declares an **objective**, a quantity its evaluator computes of a
 valid answer with a direction (`brief.objective`, `objective(request)`, verified after the checks
 pass: `OBJECTIVE`, `src/kernel/verify.ts`), two valid answers in a pair are compared by it, and
-the better by more than the margin (`--margin`, 0.01 of the larger magnitude) wins the pair
+the better by more than the margin (`--margin`, 0.01 of the larger magnitude, the gate's own) wins the pair
 (`ObjectiveRule`, `src/kernel/compare.ts`). Validity is read first, so no refused answer is ever
 the better one. The objective is public, in the contract and the solver's resources, and the
 report says how many tallied tasks it decided (`objective.decided`). The rule is a term of the

@@ -799,8 +799,8 @@ they were no longer scored. A scored set takes one retained task
 for each three frontier tasks it takes, beside the target (`scoredSet`; until 16 October as many
 as the target left room for, which left a frontier that filled the target none and topped a set
 short of frontier up with tasks that can only tie). They are read
-apart from the frontier the step is read on, and a step that loses more retained pairs than it
-wins reads `regressed` and promotes nothing (section 7, The test).
+apart from the frontier the step is read on, and a step that regresses on them reads `regressed`
+and promotes nothing (section 7, The test).
 
 **Fresh solves.** Each scored task is solved under each harness, afresh. A task's solves run
 together, the tasks in an order a hash of each draws, and within a task the harness that goes
@@ -838,15 +838,18 @@ likely won as lost by its margin, and p is the share of the signs that sum to at
 read. It is exact, and where every task is won or lost by as many pairs it is the sign test. The
 step is read on the **frontier**, the scored tasks not exhausted; the **retained** tasks, fixed
 with them at the comparison's start from the exhausted ones and the tasks of an earlier epoch the
-reference never stood in, may not lose more
-pairs than they win, and an empty retained set reads `unmeasured`, never no loss. Each family's
+reference never stood in, regress where they lose more pairs than they win by a loss the same test,
+mirrored, reads at or under the trigger: one task lost alone does not, two of two do. Until
+18 October any net loss did, and one flagged solve of four on one retained task vetoed two of
+buffer-pr197-opus-m1's promotion attempts. An empty retained set reads `unmeasured`, never no loss. Each family's
 tallies stand beside both, from the same rows; they show concentration, and establish no
 independence. The test runs in two stages: a comparison whose frontier is at or under the trigger
 (0.25: 2 to 0, 4 to 1, 5 to 2, 7 to 3 where every task is won by as many pairs) buys the repeat
 and promotes nothing, and the step and its repeat read together clear the level (0.02 by default
 since 12 October: 6 to 0, 8 to 1, 10 to 2, 12 to 3; at 0.10, 4 to 0, 6 to 1, 7 to 2, 9 to 3), the
-repeat having untied a task and won at least as many pairs as it lost, and neither stage losing on
-its retained tasks (`readTwice`), an attempt's two readings and no others. A task both stages scored counts once, its differences summed: the null is
+repeat having untied a task and won at least as many pairs as it lost, and neither stage
+regressing, the repeat's retained tasks read joined with its first stage's as the frontiers are
+(`readTwice`), an attempt's two readings and no others. A task both stages scored counts once, its differences summed: the null is
 the fixed-task one, each drawn task as likely won as lost on fresh solves, and a repeat on the same
 tasks adds solves to them and no task (14 October; buffer-149's g-2 scored g-1's eleven). Every reading prints its untied count, the least share of them it detects
 four times in five (`detectable`), and the chance an attempt at its margins promotes equal
@@ -861,7 +864,7 @@ the plan ("Statistical power and cost") and neither is built.
 | --- | --- |
 | `step` | The test cleared its level |
 | `no-step` | A test was made and did not clear its level |
-| `regressed` | The frontier cleared its level and the retained tasks lost more pairs than they won. It promotes nothing |
+| `regressed` | The frontier cleared its level and the retained tasks regressed. It promotes nothing |
 | `narrow` | Until 16 October: the frontier cleared its level and its untied tasks all fell in one family of the two or more the set held. It promoted nothing, never fired in 1,598 recorded readings, and an old report keeps it |
 | `not-scored` | No task was tallied, or the cap cut the test short. Nothing was tested |
 | `check-defects` | The comparison stopped on its check defects |

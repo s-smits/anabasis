@@ -420,7 +420,8 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
   const aa = mirrored === null ? null : scored(mirrored);
   const valid = validOf(pairs, fixed.solves, poolOf(events).feasible);
   // The step is read off the sets as a report holds them, which is how it is read again (`stepOf`).
-  const reading = pairs.length === 0 ? ("not-scored" as const) : stepOf(asRecord(sets) ?? {}, fixed.level);
+  const reading =
+    pairs.length === 0 ? ("not-scored" as const) : stepOf(asRecord(sets) ?? {}, fixed.level, fixed.trigger);
   return {
     scored: { ...scored(pairs), unsolved: pairs.filter(unsolved).length },
     frontier: {

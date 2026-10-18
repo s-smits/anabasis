@@ -79,7 +79,7 @@ test("the counters say what the attempts under the reference risk, what a promot
   const { risk, runway } = reading.counters;
   const html = paneOf(reading);
   expect(html).toContain(
-    `False promotion under this reference at most <b class="ana-num">${String(Math.round(100 * (risk?.union ?? 0) * 10) / 10)}%</b> over ${String(risk?.attempts)} attempts`,
+    `False promotion under this reference estimated at <b class="ana-num">${String(Math.round(100 * (risk?.union ?? 0) * 10) / 10)}%</b> over ${String(risk?.attempts)} attempts`,
   );
   expect(html.includes("past the table&#x27;s")).toBe(false);
   const affords = Math.floor((runway?.left ?? 0) / (runway?.each ?? 1));
@@ -95,7 +95,7 @@ test("the counters say what the attempts under the reference risk, what a promot
     counters: { ...reading.counters, risk: risk === null ? null : { ...risk, union: 0.4 }, runway: null },
   };
   const held = paneOf(risky);
-  expect(held).toContain(`at most <b class="ana-num">40%</b> over 2 attempts`);
+  expect(held).toContain(`estimated at <b class="ana-num">40%</b> over 2 attempts`);
   expect(held.includes("past the table")).toBe(false);
   expect(held.includes("Comparisons left")).toBe(false);
 });

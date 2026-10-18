@@ -36,6 +36,11 @@
  * scored set's size, 12. Asking for many at once is what v1 found dilutes them, a probe grown to
  * 25 tasks in 10 of 13 cases (`docs/plan.md`).
  *
+ * `--reference-home on` lays a copy of the reference harness the gate solves with in the home,
+ * laid afresh each session (the campaign's term `exam-reference`, off
+ * unless named; 19 October): after a promotion the Examiner wrote drafts the reference's programs
+ * answered every time, 0 of 49 held in esp32-fresh-opus, and never saw those programs.
+ *
  * Not run here: see `campaign.ts`.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
@@ -84,6 +89,8 @@ const EXAMINE_OPTIONS = {
   proposals: { type: "string", default: "36" },
   minutes: { type: "string", default: "240" },
   turns: { type: "string", default: "200" },
+  /** `on` lays a copy of the reference harness the gate solves with in the Examiner's home. */
+  "reference-home": { type: "string", default: "off" },
   /** The campaign's setting, as every command that solves takes it: the solver and the limits the
    *  reference harness's solves of a draft task run under (`try_task`), and the budget fact the
    *  Examiner is told, where no setting is on record yet. `--tasks` is this command's own, so the
@@ -137,6 +144,8 @@ export async function examineCommand(
   const { session: id, examiner } = values;
   if (id === undefined || examiner === undefined) throw new Error("name --session and --examiner");
   if (kill?.aborted === true) throw new Error(`session ${id} was stopped before it began`);
+  const home = values["reference-home"];
+  if (home !== "on" && home !== "off") throw new Error(`--reference-home is on or off, not ${home}`);
   const pack = packNamed(values, ", --session and --examiner");
   // The campaign's setting is its log's, as a comparison reads it: the reference harness's solves
   // of a draft task run under it and record it where none is on record (`setting.ts`). `--tasks`
@@ -207,6 +216,11 @@ export async function examineCommand(
       engines: { checks: campaign.checks, tools: join(campaign.bundle, ".toolchain") },
       // The home the last session left, carried whole into this one, beside the log.
       keep: join(dirname(campaign.log), "examiner-home"),
+      // The reference harness the gate solves with, where the campaign's term lays it in the home.
+      ...keyIfDefined(
+        "reference",
+        home === "on" ? (await keptAs(campaign, "--reference", PROMOTED)).dir : undefined,
+      ),
     },
   );
   const sets = taskSets(read(campaign.log));

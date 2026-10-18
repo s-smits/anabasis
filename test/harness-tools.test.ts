@@ -26,11 +26,13 @@ import { type CommandWall, makeSeatDirs, solveDirs } from "../src/solve/command.
 import { harnessTools, openHarness } from "../src/solve/harness.ts";
 import { mountDiskCap } from "../src/verify/disk-cap.ts";
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
+import { osIsolationSupport } from "../src/verify/os-isolation.ts";
+import { CLOSED_CODE } from "./helpers/wall.ts";
 
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
 const CAP_BYTES = 64 * 1024 * 1024;
 const TASK = { taskId: "t-1", family: "fixture", publicInput: { base: 7 } };
-const darwin = runtimeProcess.platform === "darwin";
+const walled = osIsolationSupport().ok;
 
 /** A mounted solve wall for `body`, torn down after it. */
 async function withWall(body: (wall: CommandWall) => Promise<void>, toolTree: string | null = null) {
@@ -253,7 +255,7 @@ describe("a v1 harness state", () => {
     ).toEqual({ a: 0, b: null });
   });
 
-  it.skipIf(!darwin)(
+  it.skipIf(!walled)(
     "lists its tools and runs each call alone under the wall",
     async () => {
       const harness = await openHarness(FIXTURE);
@@ -293,7 +295,9 @@ describe("a v1 harness state", () => {
           'tool "scale_base" arguments do not match its declared parameter schema (/factor: must be number)',
         );
         const host = join(wall.dirs.host, "config");
-        await expect(read!.execute("c5", { path: host })).rejects.toThrow(`cannot read ${host}: EPERM`);
+        await expect(read!.execute("c5", { path: host })).rejects.toThrow(
+          `cannot read ${host}: ${CLOSED_CODE}`,
+        );
       });
     },
     120_000,

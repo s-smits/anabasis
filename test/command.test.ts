@@ -29,6 +29,8 @@ import { mountDiskCap } from "../src/verify/disk-cap.ts";
 import { toolchainTemp } from "./helpers/toolchain-temp.ts";
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
 import { hostScratch } from "../src/verify/wall-policy.ts";
+import { osIsolationSupport } from "../src/verify/os-isolation.ts";
+import { CLOSED } from "./helpers/wall.ts";
 
 const CAP_BYTES = 16 * 1024 * 1024;
 
@@ -94,6 +96,21 @@ describe("how long a command may run", () => {
   });
 });
 
+/** A shell loop that counts into `$HOME/<name>` twenty times a second, for as long as it runs. */
+const beating = (name: string) =>
+  `sh -c 'i=0; while :; do i=$((i+1)); echo $i > "$HOME/${name}"; sleep 0.05; done'`;
+
+/** Whether the loop `beating` started still runs, read from the host: its count moves. A pid is no
+ *  witness here, since Bubblewrap numbers a command's processes in a namespace of their own, and the
+ *  pid a command prints names another process on the host or none (18 October). */
+async function stillBeats(beat: string): Promise<boolean> {
+  const count = () => (existsSync(beat) ? readFileSync(beat, "utf8") : "");
+  await Bun.sleep(100);
+  const before = count();
+  await Bun.sleep(400);
+  return count() !== before;
+}
+
 describe("a solve's walled commands", () => {
   it.skipIf(runtimeProcess.platform !== "darwin")(
     "still start on a volume a solver has filled, so that it can empty it",
@@ -125,7 +142,7 @@ describe("a solve's walled commands", () => {
     60_000,
   );
 
-  it.skipIf(runtimeProcess.platform !== "darwin")(
+  it.skipIf(!osIsolationSupport().ok)(
     "keep the home, drop each command's folder, and read neither the host folder, the repository nor a reader's home",
     async () => {
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-repo-")));
@@ -163,22 +180,20 @@ describe("a solve's walled commands", () => {
         const repo = await run(wall, `cat ${JSON.stringify(join(repoRoot, "secret"))} 2>&1; true`);
         expect(repo.output).not.toContain("repo-canary");
         const read = await run(wall, `cat ${JSON.stringify(join(reader, "session"))} 2>&1; true`);
-        expect(read.output).toContain("Operation not permitted");
+        expect(read.output).toContain(CLOSED);
 
         // A command that backgrounds work and returns has left nothing running. The shell around the
         // wall leads the command's group, not the shell that reaps it: read by its own pid, the group
         // was empty and a solver's loop ran on for over 20 minutes after its command (2026-10-09).
-        const left = await run(wall, "nohup sleep 30 >/dev/null 2>&1 & echo $!");
+        const left = await run(wall, `nohup ${beating("left")} >/dev/null 2>&1 &`);
         expect(left.exitCode).toBe(0);
-        await Bun.sleep(100);
-        expect(() => runtimeProcess.kill(Number(left.output), 0)).toThrow("ESRCH");
+        expect(await stillBeats(join(dirs.home, "left"))).toBe(false);
         // The leader was spared: the command's exit code reported after the reaping.
         // A job in a process group of its own is out of that trap's reach once the shell that started
         // it has gone, and GNU `timeout` makes one: a solver's three searches under it ran on after
         // their command returned (2026-10-09). It still works on the solve's volume.
-        const apart = await run(wall, "set -m; sleep 30 >/dev/null 2>&1 & echo $!");
-        await Bun.sleep(100);
-        expect(() => runtimeProcess.kill(Number(apart.output), 0)).toThrow("ESRCH");
+        await run(wall, `set -m; ${beating("apart")} >/dev/null 2>&1 &`);
+        expect(await stillBeats(join(dirs.home, "apart"))).toBe(false);
 
         // Every command is held to the condition's shell limits here, whoever launched it: one that
         // names no timeout runs for the default, and one that names too long a timeout for the maximum.
@@ -187,13 +202,8 @@ describe("a solve's walled commands", () => {
         // A command the wall cuts is killed by its group and never runs its trap, so a child in a
         // group of its own outlived that too: five of the nine commands one run's wall cut sat under
         // an inner `timeout` (2026-10-09).
-        await expect(run(wall, 'set -m; sleep 30 & echo $! > "$HOME/cut"; wait')).rejects.toThrow(
-          "timeout:1",
-        );
-        await Bun.sleep(100);
-        expect(() => runtimeProcess.kill(Number(readFileSync(join(dirs.home, "cut"), "utf8")), 0)).toThrow(
-          "ESRCH",
-        );
+        await expect(run(wall, `set -m; ${beating("cut")} & wait`)).rejects.toThrow("timeout:1");
+        expect(await stillBeats(join(dirs.home, "cut"))).toBe(false);
       } finally {
         await release();
         rmSync(dirs.host, { recursive: true, force: true });
@@ -377,7 +387,7 @@ describe("a solve's walled commands", () => {
     60_000,
   );
 
-  it.skipIf(runtimeProcess.platform !== "darwin")(
+  it.skipIf(!osIsolationSupport().ok)(
     "keep what Python and make write as temporary in the seat's own folder, on its volume",
     async () => {
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-temp-")));

@@ -94,7 +94,7 @@ function gh(root: string, args: readonly string[]): Answer {
   };
 }
 
-function ghOrThrow(root: string, args: readonly string[]): string {
+export function ghOrThrow(root: string, args: readonly string[]): string {
   const answer = gh(root, args);
   if (!answer.ok) throw new Error(`gh ${args.join(" ")}: ${answer.err}`);
   return answer.out;

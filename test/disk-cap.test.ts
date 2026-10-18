@@ -8,8 +8,11 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
+  readFileSync,
   realpathSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -121,7 +124,7 @@ describe("the disk cap", () => {
       const parent = mkdtempSync(join(tmpdir(), "ana-disk-cap-"));
       const lsof = join(parent, "lsof");
       writeFileSync(lsof, "#!/bin/sh\nexec /bin/sleep 5\n", { mode: 0o755 });
-      expect(await endHolders(parent, { lsof, ps: "/bin/ps", boundMs: 200 })).toBe(
+      expect(await endHolders(parent, { lsof, ps: "/bin/ps", boundMs: 200, stallMs: 10_000 })).toBe(
         "no listing of what holds it came within 200 ms",
       );
       rmSync(parent, { recursive: true, force: true });
@@ -140,8 +143,9 @@ describe("the disk cap", () => {
       // below `ps`'s 5 s.
       writeFileSync(lsof, "#!/bin/sh\necho 1000000\n", { mode: 0o755 });
       writeFileSync(ps, "#!/bin/sh\nexec /bin/sleep 5\n", { mode: 0o755 });
-      expect(await endHolders(parent, { lsof, ps, boundMs: 2_000 })).toBe(
-        "1 of its holders stayed in uninterruptible wait for 10000 ms after SIGKILL",
+      // One second of stall rather than the hosts' ten: the case still lists, kills and rereads.
+      expect(await endHolders(parent, { lsof, ps, boundMs: 2_000, stallMs: 1_000 })).toBe(
+        "1 of its holders stayed in uninterruptible wait for 1000 ms after SIGKILL",
       );
       rmSync(parent, { recursive: true, force: true });
     },
@@ -156,9 +160,9 @@ describe("the disk cap", () => {
       await mountDiskCap({ root, bytes: CAP_BYTES });
       const lsof = join(parent, "lsof");
       writeFileSync(lsof, "#!/bin/sh\nexec /bin/sleep 5\n", { mode: 0o755 });
-      await expect(releaseDiskCap(root, { lsof, ps: "/bin/ps", boundMs: 200 })).rejects.toThrow(
-        `the volume at ${root} is left attached: no listing`,
-      );
+      await expect(
+        releaseDiskCap(root, { lsof, ps: "/bin/ps", boundMs: 200, stallMs: 10_000 }),
+      ).rejects.toThrow(`the volume at ${root} is left attached: no listing`);
       expect(spawnSync("/sbin/mount", []).stdout).toContain(root);
       expect(existsSync(`${root}.sparseimage`)).toBe(true);
       await releaseDiskCap(root);
@@ -179,6 +183,9 @@ describe("the disk cap", () => {
         /^hdiutil create exited 1: hdiutil: create failed/,
       );
       expect(existsSync(root)).toBe(false);
+      // Nor is a template of that size left, whole or half made, for the next mount to clone.
+      const templates = readdirSync(join(tmpdir(), "ana-disk-cap"));
+      expect(templates.filter((name) => name === "1.sparseimage" || name.startsWith("1-"))).toEqual([]);
       const release = await mountDiskCap({ root, bytes: CAP_BYTES });
       await release();
       expect(existsSync(root)).toBe(false);
@@ -196,10 +203,56 @@ describe("the disk cap", () => {
       await mountDiskCap({ root, bytes: CAP_BYTES });
       const lsof = join(parent, "lsof");
       writeFileSync(lsof, '#!/bin/sh\n/usr/bin/hdiutil detach "$4" >/dev/null 2>&1\n', { mode: 0o755 });
-      await releaseDiskCap(root, { lsof, ps: "/bin/ps", boundMs: 30_000 });
+      await releaseDiskCap(root, { lsof, ps: "/bin/ps", boundMs: 30_000, stallMs: 10_000 });
       expect(spawnSync("/sbin/mount", []).stdout).not.toContain(root);
       expect(existsSync(root)).toBe(false);
       expect(existsSync(`${root}.sparseimage`)).toBe(false);
+      rmSync(parent, { recursive: true, force: true });
+    },
+  );
+
+  // A mount clones the one empty image of its size (`emptyImage`). The size here is this case's
+  // alone, so the template it reads is the one its three first mounts made between them.
+  it.skipIf(runtimeProcess.platform !== "darwin")(
+    "makes one empty image a size, which three caps mounted at once clone, each keeping its own writes",
+    async () => {
+      const parent = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-disk-cap-")));
+      const bytes = CAP_BYTES + 7 * 512;
+      const template = join(tmpdir(), "ana-disk-cap", `${String(bytes / 512)}.sparseimage`);
+      const roots = ["a", "b", "c"].map((name) => join(parent, name));
+      const releases = await Promise.all(roots.map((root) => mountDiskCap({ root, bytes })));
+      try {
+        roots.forEach((root, index) => writeFileSync(join(root, "own"), String(index)));
+        roots.forEach((root, index) => expect(readFileSync(join(root, "own"), "utf8")).toBe(String(index)));
+        expect(readdirSync(dirname(template)).filter((name) => name.startsWith(String(bytes / 512)))).toEqual(
+          [`${String(bytes / 512)}.sparseimage`],
+        );
+      } finally {
+        await Promise.all(releases.map((release) => release()));
+      }
+      // The writes went to the clones: a cap mounted later starts empty, from the same template.
+      const made = statSync(template).mtimeMs;
+      const later = join(parent, "d");
+      const release = await mountDiskCap({ root: later, bytes });
+      try {
+        expect(readdirSync(later).filter((name) => !name.startsWith("."))).toEqual([]);
+        expect(statSync(template).mtimeMs).toBe(made);
+      } finally {
+        await release();
+      }
+      rmSync(parent, { recursive: true, force: true });
+    },
+  );
+
+  it.skipIf(runtimeProcess.platform === "darwin")(
+    "makes the root and no image where nothing caps a disk",
+    async () => {
+      const parent = mkdtempSync(join(tmpdir(), "ana-disk-cap-"));
+      const root = join(parent, "solve");
+      const release = await mountDiskCap({ root, bytes: CAP_BYTES });
+      expect(readdirSync(parent)).toEqual(["solve"]);
+      await release();
+      expect(existsSync(root)).toBe(false);
       rmSync(parent, { recursive: true, force: true });
     },
   );

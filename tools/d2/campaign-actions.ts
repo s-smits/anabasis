@@ -326,6 +326,7 @@ const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
         ...flag("proposals", values["exam-proposals"]),
         ...flag("minutes", values["exam-minutes"]),
         ...flag("turns", values["exam-turns"]),
+        ...flag("reference-home", values["exam-reference"]),
       ],
       (request, wall) => sitting({ ...request, opened: resolve }, wall),
       // The campaign's own seat, so the tries wait on the load and share the reserve (14 October).

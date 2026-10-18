@@ -1060,6 +1060,35 @@ describe("a session that writes tasks", () => {
       `holds what Examiner session ${s.request.id} of this campaign left in it when the provider failed one of its turns, before it finished`,
     );
   });
+
+  it("lays the reference harness in the home where the term is on, and keeps no copy of it", async () => {
+    const s = seat("write", [
+      bash("cat reference-harness/agent/BUILT_AGENTS.md; reference-harness/.toolchain/bin/prog"),
+      finish,
+      finish,
+      bash("ls"),
+      finish,
+      finish,
+    ]);
+    const reference = join(dirname(s.log), "kept-reference");
+    mkdirSync(join(reference, "agent"), { recursive: true });
+    mkdirSync(join(reference, ".toolchain", "bin"), { recursive: true });
+    writeFileSync(join(reference, "agent", "BUILT_AGENTS.md"), "# Guide\n");
+    writeFileSync(join(reference, ".toolchain", "bin", "prog"), "#!/bin/sh\necho ran\n", { mode: 0o755 });
+    const keep = join(dirname(s.log), "examiner-home");
+    await examine(s.request, { ...WALL, keep, reference });
+    expect(s.of(CALLED)[0]?.text).toBe("# Guide\nran");
+    expect(s.of("exam.started")).toMatchObject([{ referenceHome: true }]);
+    expect(s.sent[0]).toContain("A copy of the reference harness is in your home under reference-harness/");
+    expect(s.sent[0]).toContain("a copy of the reference harness laid afresh for this session");
+    expect(existsSync(join(keep, "reference-harness"))).toBe(false);
+    // Off, the next session opens on what the last one wrote and on no reference.
+    await examine({ ...s.request, id: "x-2" }, { ...WALL, keep });
+    expect(s.of(CALLED)[1]?.text).not.toContain("reference-harness");
+    const off = s.sent.at(-1) ?? "";
+    expect(off).toContain("You never see the solver: not its tools, its guide, its answers or its mistakes.");
+    expect(off).not.toContain("reference-harness/");
+  });
 });
 
 describe("what an Examiner hears of the tasks its campaign holds", () => {

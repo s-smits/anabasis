@@ -39,6 +39,7 @@ import type { Ending } from "../kernel/solve.ts";
 import { packageGate, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
 import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
+import { join } from "../meta/path.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
 import { isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -47,6 +48,9 @@ import { hashJsonValue } from "../meta/stable-json.ts";
 import { text, tool } from "../solve/answer.ts";
 import { type CheckRow, firstMessage, systemPrompt } from "./prompt.ts";
 import { gateAnswers, gateBilled, heard, measuredGate, TRIED, UNAFFORDED } from "./record.ts";
+
+/** The home's copy of the reference harness, where the campaign's term lays one there. */
+const REFERENCE_HOME = "reference-harness";
 
 /** What a task-writing session is handed: who sits, as far as this mode reads it, and its campaign. */
 interface Terms {
@@ -462,9 +466,26 @@ function gatedTasks(events: readonly LogEvent[]): Task[] {
   );
 }
 
-/** The mode that writes tasks: the exam's own tools, `try_answer` where the host verifies, and
- *  the home carried from the campaign's last session where the wall keeps one (`keep`). */
-export function writing(request: Terms, pinned: readonly Engine[], keep: string | undefined) {
+/**
+ * The mode that writes tasks: the exam's own tools, `try_answer` where the host verifies, the home
+ * carried from the campaign's last session where the wall keeps one (`keep`), and in it a copy of
+ * the reference harness where the wall names one (`reference`).
+ *
+ * The copy answers the supply after a promotion. Told each refused draft's outcome and the turns
+ * its solves took, esp32-fresh-opus's Examiner held 0 of 49 drafts under its first promoted
+ * reference, 44 of them answered in 3 of 3 solves, and wrote denser instances of what its programs
+ * already answered (18 October): it never saw what the reference brings to a task. Seeing it
+ * reverses the ruling of 12 October that the Examiner never sees the solver's tools, so it is the
+ * operator's term, off unless named, and the supply ablation of 19 October measures it. The copy
+ * is the reference's alone, never a candidate's, laid afresh each session and left out of the
+ * kept home.
+ */
+export function writing(
+  request: Terms,
+  pinned: readonly Engine[],
+  keep: string | undefined,
+  reference: string | undefined,
+) {
   const { limits, verify, wanted } = request;
   const before = read(request.log);
   const desk: Desk = {
@@ -490,7 +511,7 @@ export function writing(request: Terms, pinned: readonly Engine[], keep: string 
   const kept = cut?.ended === "crashed" && cut.running === 0 && isString(cut.session) ? cut.session : null;
   return {
     kind: "exam" as const,
-    system: systemPrompt(attempts),
+    system: systemPrompt(attempts, reference === undefined ? "unseen" : "in-home"),
     opening: firstMessage(request.contract, request.checks, heard(before, request.tasks), limits, {
       brief: openingOf(before)?.prompt ?? null,
       budget: request.budget,
@@ -502,6 +523,7 @@ export function writing(request: Terms, pinned: readonly Engine[], keep: string 
       examples: request.tasks.map(({ taskId }) => taskId),
       engines: pinned.map(({ name, sha256 }) => ({ name, sha256 })),
       ...keyIfDefined("tried", attempts),
+      referenceHome: reference !== undefined,
     },
     tools: [
       proposeTool(desk, gate),
@@ -512,9 +534,11 @@ export function writing(request: Terms, pinned: readonly Engine[], keep: string 
     home:
       keep === undefined
         ? undefined
-        : kept === null
-          ? "holds what the last Examiner session of this campaign left in it, or nothing at the campaign's first"
-          : `holds what Examiner session ${kept} of this campaign left in it when the provider failed one of its turns, before it finished`,
+        : `${
+            kept === null
+              ? "holds what the last Examiner session of this campaign left in it, or nothing at the campaign's first"
+              : `holds what Examiner session ${kept} of this campaign left in it when the provider failed one of its turns, before it finished`
+          }${reference === undefined ? "" : `, and ${REFERENCE_HOME}/, a copy of the reference harness laid afresh for this session`}`,
     checked: undefined,
     nudge: "Propose further tasks",
     finish:
@@ -526,6 +550,10 @@ export function writing(request: Terms, pinned: readonly Engine[], keep: string 
     // The next session's home is seeded with what the campaign keeps of the last one's.
     enter: (home: string) => {
       if (keep !== undefined && existsSync(keep)) cpSync(keep, home, { recursive: true });
+      // A kept state names its programs by a link to the campaign's store, which the wall closes.
+      if (reference !== undefined) {
+        cpSync(reference, join(home, REFERENCE_HOME), { recursive: true, dereference: true });
+      }
     },
     // The campaign's copy of a session's home, made whole when the session ends and replacing the
     // one before: it is the exam side's, under the campaign's folder beside the log, which every
@@ -539,6 +567,8 @@ export function writing(request: Terms, pinned: readonly Engine[], keep: string 
       if (keep === undefined || (ended === "crashed" && running > 0)) return;
       rmSync(keep, { recursive: true, force: true });
       if (existsSync(home)) cpSync(home, keep, { recursive: true });
+      // The copy is the session's own, so a session with the term off never opens on one.
+      rmSync(join(keep, REFERENCE_HOME), { recursive: true, force: true });
     },
   };
 }

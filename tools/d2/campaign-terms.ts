@@ -95,6 +95,9 @@ const OPTIONS = {
   "exam-proposals": { type: "string" },
   "exam-minutes": { type: "string" },
   "exam-turns": { type: "string" },
+  /** `on` lays a copy of the reference harness in each Examiner session's home (`writing`,
+   *  `src/examiner/write.ts`); `off`, the default, keeps the ruling of 12 October. */
+  "exam-reference": { type: "string" },
   cost: { type: "string" },
   moves: { type: "string" },
   handover: { type: "string" },

@@ -23,10 +23,12 @@
  * the root as well.
  */
 import {
+  chmodSync,
   constants,
   copyFileSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   renameSync,
   rmSync,
   statSync,
@@ -213,6 +215,29 @@ export async function releaseDiskCap(root: string, listing: HolderListing = LSOF
     // path could be undone, and every capped solve and session, a test's among them, left one
     // there for a person to empty.
     rmSync(`${root}.sparseimage`, { force: true });
+  }
+  removeWhole(root);
+}
+
+/**
+ * Removes `root` and all it holds. A seat may close a folder to itself, as `chmod 0` does, and a
+ * folder nobody can list cannot be emptied: on Linux, where the root is a folder of the host's disk
+ * and no image, the release threw EACCES on one and took its solve with it (18 October, the solve
+ * test "judges an answer whose home cannot be walked" run on Bubblewrap). Each folder is opened to
+ * its owner again, a link never followed, and the removal tried once more.
+ */
+function removeWhole(root: string): void {
+  try {
+    rmSync(root, { recursive: true, force: true });
+    return;
+  } catch {
+    const open = (dir: string): void => {
+      chmodSync(dir, 0o700);
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (entry.isDirectory()) open(join(dir, entry.name));
+      }
+    };
+    open(root);
   }
   rmSync(root, { recursive: true, force: true });
 }

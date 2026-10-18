@@ -42,6 +42,9 @@ import { runtimeProcess } from "../src/meta/process.ts";
 import type { RefereeFinding } from "../src/review/referee.ts";
 import { publicResource, text, tool } from "../src/solve/answer.ts";
 import { openHarness } from "../src/solve/harness.ts";
+import { osIsolationSupport } from "../src/verify/os-isolation.ts";
+import { CLOSED } from "./helpers/wall.ts";
+import { BUILT_COMMAND_SCRATCH_ROOT } from "../src/verify/wall-policy.ts";
 
 const BUILD_CALL = "build.call";
 const BUILD_FINISHED = "build.finished";
@@ -1448,7 +1451,7 @@ describe("what a practice solve used", () => {
   });
 });
 
-describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under the command wall", () => {
+describe.skipIf(!osIsolationSupport().ok)("a Builder session under the command wall", () => {
   it("lists tools for practice tasks released after the conversation opens", async () => {
     let source = "";
     const s = await setup([
@@ -1491,7 +1494,7 @@ describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under t
     const s = await setup(
       [
         () => call("bash", { command: `cat '${canary}' 2>&1; echo "read:$?"` }),
-        // pi's write, behind the wall: outside the seat's root it is refused, and a folder is no file.
+        // pi's write, behind the wall: outside the seat's root nothing is kept, and a folder is no file.
         call(WRITE_FILE, { path: "../../escape.txt", content: "x" }),
         call(WRITE_FILE, { path: "harness/agent", content: "x" }),
         edit,
@@ -1535,9 +1538,11 @@ describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under t
     const responses = s.sent;
     const built = await build(request);
     const calls = s.of(BUILD_CALL).map(({ text: said }) => JSON.stringify(said));
-    expect(calls[0]).toContain("Operation not permitted");
+    expect(calls[0]).toContain(CLOSED);
     expect(calls[0]).toContain("read:1");
-    expect(calls[1]).not.toContain("Successfully wrote");
+    // Outside the seat's root nothing is kept: Seatbelt refuses the write, and Bubblewrap lets it
+    // land in the command's own /tmp, which goes with the command.
+    expect(existsSync(join(BUILT_COMMAND_SCRATCH_ROOT, "escape.txt"))).toBe(false);
     expect(calls[2]).toContain("irectory");
     expect(calls[4]).toContain("Multiply before you record.");
     expect(calls[4]).toContain("t-1.json");

@@ -340,12 +340,7 @@ function termsOf(events: readonly LogEvent[], id: string): string[] {
     ...flag("level", isNumber(start.level) ? String(start.level) : undefined),
     ...flag("cap", isNumber(cap?.dollars) ? String(cap.dollars) : undefined),
     ...flag("reserve", isNumber(cap?.reserve) ? String(cap.reserve) : undefined),
-    // A margin the A/A set, or the default before one, is read again from the log as it stood at
-    // the start (`marginRead`): only a margin a command named is named again.
-    ...flag(
-      "margin",
-      isNumber(objective?.margin) && !("from" in objective) ? String(objective.margin) : undefined,
-    ),
+    ...flag("margin", isNumber(objective?.margin) ? String(objective.margin) : undefined),
     ...flag("predict", isString(start.prediction) ? start.prediction : undefined),
   ];
 }

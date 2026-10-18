@@ -11,7 +11,6 @@ import {
   falseRate,
   flipP,
   informative,
-  marginOf,
   objectiveRuleIn,
   pairings,
   pairsOf,
@@ -668,38 +667,13 @@ describe("a task's pairings", () => {
     expect(informative(pair([P, P], [100, 110]), "old", nobody)).toBe(true);
   });
 
-  it("sets the objective's margin at the 90th percentile of the reference's own spread in its A/A", () => {
-    // The reference against itself, two solves a half: ten tasks whose valid answers part by 0% to
-    // 9% of the larger measure across the halves, and one invalid answer, which is never measured.
-    const aa = Array.from({ length: 10 }, (_, at) => ({
-      task: `t${String(at)}`,
-      old: [P, P],
-      fresh: [P, at === 0 ? F : P],
-      objective: { ...lowerRule, old: [100, 100], fresh: [100 - at, at === 0 ? null : 100 - at] },
-    }));
-    // 38 pairings of two measured valid answers, two at 0% and four at each of 1% to 9%; the 90th
-    // percentile is the 35th smallest, the first at 9%.
-    const set = marginOf(aa);
-    expect(set?.pairings).toBe(38);
-    expect(set?.margin).toBeCloseTo(0.09, 9);
-    // At that margin the A/A's own pairings are set apart one time in ten at most, and none of
-    // its valid pairs reads a gain the reference's noise alone would not: every task ties or loses.
-    const read = aa.map((pair) => ({ ...pair, objective: { ...pair.objective, margin: set?.margin ?? 0 } }));
-    expect(tally(read).wins).toBe(0);
-    // No measured pair, no margin: the default stands, and the comparison says so.
-    expect(marginOf([{ task: "t", old: [P], fresh: [P] }])).toBeNull();
-    // A start records what set its margin, and the rule read back keeps it.
-    expect(objectiveRuleIn({ objective: { ...lowerRule, from: 38 } })).toEqual({ ...lowerRule, from: 38 });
-    expect(objectiveRuleIn({ objective: { ...lowerRule, from: null } })).toEqual({
-      ...lowerRule,
-      from: null,
-    });
-  });
-
   it("reads an objective rule off a comparison's start, and none off a malformed one", () => {
     expect(objectiveRuleIn({ objective: { direction: "lower", margin: 0.01, decided: 3 } })).toEqual(
       lowerRule,
     );
+    // A start of 12 to 18 October also says what set its margin, the A/A's pairings: the margin
+    // itself is the term, and stands as it was.
+    expect(objectiveRuleIn({ objective: { ...lowerRule, from: 38 } })).toEqual(lowerRule);
     for (const objective of [
       undefined,
       null,

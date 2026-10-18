@@ -125,7 +125,7 @@ async function probing(
 /** `bun tools/d1b/examine.ts`. `session` runs the Examiner's session: `examine`, unless a caller
  *  with no model stands in for it to read what the command would have asked of one. `seated` solves
  *  a draft task under `try_task`; a caller that stands in for the session seats no solver unless it
- *  names one, so a rehearsal's script holds tasks out on their shape and pays for no solve. `kill`
+ *  names one. `kill`
  *  stops the session, and one stopped before it began opens nothing. */
 export async function examineCommand(
   args: readonly string[],

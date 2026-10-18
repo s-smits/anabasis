@@ -28,6 +28,8 @@ import { recordedSetting, SETTING_OPTIONS } from "./setting.ts";
 /** Who sits in a campaign's model seats: a session's and a comparison's, and an Examiner's. */
 export interface Seats {
   readonly seated: Seated;
+  /** An explicitly seated admission solver beside a scripted Examiner. */
+  readonly probe?: Seated;
   /** An Examiner session: `examine`, unless a rehearsal's script stands in for it. */
   readonly examine?: Session<"write"> | undefined;
   /** The session that drafts the exam of a campaign opened from a prompt: `examine`, or a script. */

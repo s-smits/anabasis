@@ -384,7 +384,9 @@ describe("the small charts and the counters", () => {
       "Waiting for a label: tasks 1, rejections set aside in unsettled comparisons 2",
     );
     await expect(counters).toContainText("A/A controls 1, 0 read a step");
-    await expect(counters).toContainText("False promotion under this reference at most 2.0% over 1 attempt");
+    await expect(counters).toContainText(
+      "False promotion under this reference estimated at 2.0% over 1 attempt",
+    );
     await expect(counters).toContainText("Comparisons left at the last one's price 42");
     expectQuiet(opened);
     await opened.context.close();

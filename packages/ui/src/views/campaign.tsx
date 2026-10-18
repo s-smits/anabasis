@@ -216,11 +216,14 @@ function SetUp({ reading }: { reading: CampaignReading }) {
   );
 }
 
-/** What one attempt's false-promotion bound rests on, as `climb.ts` words it for the view. */
-function boundSource(risk: NonNullable<CampaignReading["counters"]["risk"]>): string {
-  return risk.pairs === 0
-    ? `${percent(risk.bound)} an attempt by the rule's design, before two A/A controls, indicative`
-    : `${String(risk.errors)} of ${plural(risk.pairs, "pair")} of A/A controls promoted, at most ${percent(risk.bound)} an attempt${risk.indicative ? ", indicative" : ""}`;
+/** The riskiest attempt's false-promotion rate by design, an estimate, and the A/A controls read
+ *  beside it, as `climb.ts` words them for the view. */
+function rateSource(risk: NonNullable<CampaignReading["counters"]["risk"]>): string {
+  const controls =
+    risk.pairs === 0
+      ? "no two A/A controls on record"
+      : `${String(risk.errors)} of ${plural(risk.pairs, "pair")} of A/A controls promoted`;
+  return `${percent(risk.bound)} for the riskiest attempt by the rule's design; ${controls}`;
 }
 
 function Counters({ reading }: { reading: CampaignReading }) {
@@ -245,9 +248,9 @@ function Counters({ reading }: { reading: CampaignReading }) {
         {controls === 0 ? "" : `, ${String(controlSteps)} read a step`}
       </span>
       {risk === null || risk.attempts === 0 ? null : (
-        <span title={boundSource(risk)}>
-          False promotion under this reference at most <b className="ana-num">{percent(risk.union)}</b> over{" "}
-          {plural(risk.attempts, "attempt")}
+        <span title={rateSource(risk)}>
+          False promotion under this reference estimated at <b className="ana-num">{percent(risk.union)}</b>{" "}
+          over {plural(risk.attempts, "attempt")}
         </span>
       )}
       {promotions.length === 0 ? null : (

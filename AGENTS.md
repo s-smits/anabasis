@@ -119,8 +119,8 @@ The stop rule's patience marks a possible plateau, evidence that progress stalle
 that no step is left. A campaign ended before twelve by its budget, its environment or its
 Builder's `finish` reads "reached N promotions; further improvement unresolved", apart from one
 ended by its patience. Its false-promotion risk is reported across the whole campaign, over every
-comparison that could have promoted: the opening's bound over one patience's attempts restarts
-with each promotion, and so bounds no more than one window.
+comparison that could have promoted: the opening's estimate over one patience's attempts
+restarts with each promotion, and so covers no more than one window.
 
 **2. Honesty: could the measured gains be chance or drift?** A test at level 0.10 is designed to
 crown a winner between two equal harnesses about one time in ten, and the design value is a claim
@@ -135,14 +135,17 @@ The same control gives the tie share, the floor a real comparison has to beat be
 mean anything. A campaign makes many promotion
 attempts under one reference, and the level misstates even one: an attempt is two readings, and
 at 0.10 the rule promotes equal harnesses 5.8% of the time on 24 untied tasks (`falseRate`,
-`src/kernel/compare.ts`). Every reading prints that rate at its own margins, and a campaign's
-opening says the union bound over its patience's attempts and the campaign command refuses one
-past 10% (`openingLines`, `src/kernel/size.ts`): at 24 tasks, 0.10 and a patience of six that is
-34.8%, so such a campaign names a patience of one or a level of 0.02. The climb reads what the attempts risk together as they come, one attempt a reading
+`src/kernel/compare.ts`), by the design's estimate, which is no bound. Every reading prints that
+rate at its own margins, and a campaign's opening says it summed over its patience's attempts and
+the campaign command refuses one past 10% (`openingLines`, `src/kernel/size.ts`): at 24 tasks,
+0.10 and a patience of six that is 34.8%, so such a campaign names a patience of one or a level of 0.02. The climb reads what the attempts risk together as they come, one attempt a reading
 that is no repeat, with the repeat it bought (`attemptsOf`, `src/kernel/compare.ts`; until
-16 October one a candidate, and a candidate's later readings went uncounted): one attempt's rate bounded off pairs of controls read by the promotion
-rule, at 95% one-sided and never none, or by design before two controls the rule's own rate at
-that attempt's margins, summed over the attempts (`falsePromotion`, `src/builder/climb.ts`). Until
+16 October one a candidate, and a candidate's later readings went uncounted): each attempt at the
+rule's own rate at its margins, summed over the attempts into an estimate and no bound, with the
+pairs of controls the promotion rule promoted counted beside it (`falsePromotion`, `src/builder/climb.ts`). Until
+19 October a 95% bound off those pairs replaced the rate once one pair was on record, and no error
+in one pair bounds an attempt at 95%: esp32-fresh-opus's closing report read "at most 100%" where
+its attempt's own rate was 1.8%. Until
 16 October the starter read again on the ladder after each promotion stood as a third control,
 for drift in the solver, the provider or the host.
 

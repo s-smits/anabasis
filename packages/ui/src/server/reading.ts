@@ -180,8 +180,8 @@ const solverIn = once((log) => {
 function riskIn(log: Log): Counters["risk"] {
   const epoch = epochsIn(log).at(-1);
   if (epoch === undefined) return null;
-  const { attempts, union, bound, pairs, errors, indicative } = epoch.falsePromotion;
-  return { attempts, union, bound, pairs, errors, indicative };
+  const { attempts, union, bound, pairs, errors } = epoch.falsePromotion;
+  return { attempts, union, bound, pairs, errors };
 }
 
 /** What is left of the campaign's total, and what the last comparison the cap did not cut billed,

@@ -587,7 +587,7 @@ describe("a campaign run by its log", () => {
     expect(closing).toContain("settled 1 comparison, and 2 comparisons are unsettled");
     // The chance of a false promotion over the whole campaign, not one epoch's alone (the plan's 7.6).
     expect(closing).toContain("## The chance of a false promotion\n\n- Epoch 1:");
-    expect(closing).toContain("Over the campaign, a false promotion in any epoch at most");
+    expect(closing).toContain("Over the campaign, a false promotion in any epoch estimated at");
     // It holds no link: a kept harness names its programs by one, into a tree beside it, and what
     // is handed over is the tree itself.
     const links = readdirSync(join(to, "harness"), { recursive: true }).filter((entry) =>

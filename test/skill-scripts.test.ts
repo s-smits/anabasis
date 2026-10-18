@@ -4,11 +4,13 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { CommandFailure } from "#skills/main/cli.ts";
 import { gitText } from "#src/meta/git.ts";
 import { bundle } from "#skills/oracle-handover/scripts/bundle.ts";
+import { follow, type NativeStack, nativeTop } from "#skills/stack-pr/scripts/follow.ts";
 import { chain, told as stackTold } from "#skills/stack-pr/scripts/stack.ts";
 import type { Pull } from "#tools/runtime/land.ts";
 import {
   existsSync,
   mkdirSync,
+  readFileSync,
   mkdtempSync,
   realpathSync,
   rmSync,
@@ -52,6 +54,81 @@ describe("the stack", () => {
     const landed = [pull(5, "b", "a"), pull(4, "a", "landed"), pull(6, "lone", "main")];
     expect(chain(landed).line.map((each) => each.number)).toStrictEqual([4, 5]);
     expect(stackTold([], null)).toStrictEqual(["no pull request is open"]);
+  });
+});
+
+describe("following the stack's top", () => {
+  const native = (
+    number: number,
+    open: boolean,
+    pulls: readonly [number, string, string][],
+  ): NativeStack => ({
+    number,
+    open,
+    pull_requests: pulls.map(([n, ref, state]) => ({ number: n, state, head: { ref } })),
+  });
+
+  it("takes the last open pull request of the longest open native stack", () => {
+    const stacks = [
+      native(150, false, [
+        [140, "old", "closed"],
+        [141, "older", "closed"],
+        [142, "oldest", "closed"],
+      ]),
+      native(201, true, [
+        [193, "a", "open"],
+        [194, "b", "open"],
+        [199, "c", "open"],
+      ]),
+      native(205, true, [[198, "side", "open"]]),
+    ];
+    expect(nativeTop(stacks)).toStrictEqual({ number: 199, branch: "c", pulls: [193, 194, 199] });
+    expect(nativeTop(stacks.filter((stack) => !stack.open))).toBeUndefined();
+  });
+
+  it("moves a restacked checkout to the new top, keeps its uncommitted change and drops the old branch", () => {
+    const up = join(root, "follow-up");
+    const co = join(root, "follow-co");
+    mkdirSync(up);
+    const git = (repo: string, ...args: string[]) =>
+      runTextSyncOrThrow(["git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@t.dev", ...args]);
+    const commit = (file: string, text: string) => {
+      writeFileSync(join(up, file), text);
+      git(up, "add", file);
+      git(up, "commit", "-q", "-m", `write ${file}`);
+    };
+    git(up, "init", "-q", "-b", "main");
+    commit("mine.txt", "base\n");
+    git(up, "switch", "-q", "-c", "claude/one");
+    commit("one.txt", "first\n");
+    git(up, "clone", "-q", up, co);
+    git(co, "config", "user.name", "t");
+    git(co, "config", "user.email", "t@t.dev");
+    git(co, "switch", "-q", "--track", "-c", "stack-pr1", "origin/claude/one");
+    // The stack is restacked: #1 is rewritten and #2 lands on it.
+    git(up, "switch", "-q", "main");
+    git(up, "branch", "-D", "claude/one");
+    git(up, "switch", "-q", "-c", "claude/one");
+    commit("one.txt", "rewritten\n");
+    git(up, "switch", "-q", "-c", "claude/two");
+    commit("two.txt", "second\n");
+    git(co, "fetch", "-q", "--prune", "origin");
+    writeFileSync(join(co, "mine.txt"), "changed here\n");
+    writeFileSync(join(co, "untracked.txt"), "kept\n");
+
+    const top = { number: 2, branch: "claude/two", pulls: [1, 2] };
+    const said = follow(co, top);
+    expect(said[0]).toStartWith("stack-pr2 at #2 claude/two");
+    expect(said).toContain("deleted stack-pr1");
+    expect(said).toContain("your uncommitted changes are back");
+    expect(gitText(co, "rev-parse", "HEAD")).toBe(gitText(up, "rev-parse", "claude/two"));
+    expect(gitText(co, "rev-parse", "--abbrev-ref", "@{upstream}")).toBe("origin/claude/two");
+    expect(gitText(co, "branch", "--list", "stack-pr*")).toBe("* stack-pr2");
+    expect(readFileSync(join(co, "mine.txt"), "utf8")).toBe("changed here\n");
+    expect(readFileSync(join(co, "one.txt"), "utf8")).toBe("rewritten\n");
+    expect(existsSync(join(co, "untracked.txt"))).toBe(true);
+    expect(gitText(co, "stash", "list")).toBe("");
+    expect(follow(co, top)[0]).toStartWith("stack-pr2 is already at #2");
   });
 });
 

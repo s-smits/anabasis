@@ -76,8 +76,14 @@ const DOCUMENTATION = [
 /** The UI's own gate, in a tree that holds the UI: `packages/ui` keeps its own lock, compiler
  *  settings and tests, which the root's typecheck and suite do not reach, and the lint leaves it
  *  out until its dependencies are installed (`tools/runtime/lint.ts`). A commit from before the UI
- *  came back has no such step to run. */
+ *  came back has no such step to run. A static pass over a commit that leaves `packages/ui` alone
+ *  runs the UI's gate without its browser files (`uiStatic`): of the 35 gate logs in this clone on
+ *  18 October, the UI step's 16 failing cases were all in browser files, in 5 static passes of
+ *  `bun run land` over commits that changed nothing under `packages/ui`. A whole pass, and a static
+ *  pass over a commit that touches the UI, run every UI file. */
 const UI_PACKAGE = "packages/ui/package.json";
+const UI_ROOT = "packages/ui";
+const BROWSER_FILE = /^packages\/ui\/test\/browser-[^/]+\.test\.ts$/u;
 const STEPS = [
   ["install", ["install", "--frozen-lockfile"]],
   ["ui", ["run", "ui:gate"]],
@@ -213,6 +219,24 @@ async function nearbyTests(root: string): Promise<string[]> {
   return [...near].toSorted();
 }
 
+/** The UI's gate for a static pass: the whole of it where HEAD changed `packages/ui`, and else its
+ *  dependencies, its build and every test file but the browser's (`BROWSER_FILE`). */
+function uiStatic(root: string): number {
+  if (!diffFromParentSays(root, "HEAD", ["--quiet"], [UI_ROOT])) return step(root, "ui", ["run", "ui:gate"]);
+  const tests = lines(git(root, ["ls-files", `${UI_ROOT}/test`])).filter(
+    (file) => /\.test\.tsx?$/u.test(file) && !BROWSER_FILE.test(file),
+  );
+  for (const args of [
+    ["run", "ui:deps"],
+    ["run", "ui:build"],
+    ["run", "test", "--", ...tests],
+  ]) {
+    const code = step(root, "ui", args);
+    if (code !== 0) return code;
+  }
+  return 0;
+}
+
 /** One step, its output where the caller's goes; its exit code. */
 function step(root: string, name: string, args: readonly string[]): number {
   const code = Bun.spawnSync(["bun", ...args], { cwd: root, stdout: "inherit", stderr: "inherit" }).exitCode;
@@ -225,7 +249,7 @@ async function gate(argv: readonly string[]): Promise<number> {
   const root = git(runtimeProcess.cwd(), ["rev-parse", "--show-toplevel"]);
   for (const [name, args] of STEPS) {
     if (name === "ui" && !existsSync(join(root, UI_PACKAGE))) continue;
-    const code = step(root, name, args);
+    const code = name === "ui" && values.static ? uiStatic(root) : step(root, name, args);
     if (code !== 0) return code;
   }
   if (!values.static) return step(root, "test", ["run", "test"]);

@@ -6,7 +6,7 @@
  * Only Darwin caps. There `mountDiskCap` attaches a sparse APFS image of `bytes` at the root on
  * the host before anything runs; measured on an M3 Pro under macOS 15.7, creating a 64 MiB image
  * took about 1 s, attaching it about 0.2 s, and a `dd` of 200 MB into it stopped at 61 MB with
- * ENOSPC. On Linux nothing caps a solve, a Builder session or an Examiner session: each runs its
+ * ENOSPC. So the image is made once a size and each mount clones it (`emptyImage`). On Linux nothing caps a solve, a Builder session or an Examiner session: each runs its
  * commands under the command wall (`stageCommandIsolation`), which binds the seat's root from
  * the host's disk read-write and mounts no tmpfs there, since the root has to survive from one
  * command to the next. So on Linux `mountDiskCap` makes the root and `diskBytes` binds nothing
@@ -22,8 +22,17 @@
  * remaining paths a solve's commands can fill. The host process that runs the loop writes outside
  * the root as well.
  */
-import { mkdirSync, rmSync, statSync } from "../meta/filesystem.ts";
-import { dirname, resolve } from "../meta/path.ts";
+import {
+  constants,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+} from "../meta/filesystem.ts";
+import { tmpdir } from "../meta/os.ts";
+import { dirname, join, resolve } from "../meta/path.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 
@@ -33,12 +42,15 @@ interface DiskCap {
   readonly bytes: number;
 }
 
-/** What lists the processes holding a file on a volume and reads a holder's state, and how long
- *  either answer may take. A test names one that never answers. */
+/** What lists the processes holding a file on a volume and reads a holder's state, how long
+ *  either answer may take, and how long a killed holder may stay in uninterruptible wait, as one
+ *  in the middle of a write does, before its volume counts as stalled. A test names one that never
+ *  answers, and a stall it need not wait ten seconds for. */
 interface HolderListing {
   lsof: string;
   ps: string;
   boundMs: number;
+  stallMs: number;
 }
 
 /**
@@ -48,11 +60,7 @@ interface HolderListing {
  * uninterruptible wait, and each controller that ran one, from every command's end, stopped there.
  * So neither is awaited past the bound, and a listing that runs past it reads as a stalled volume.
  */
-const LSOF: HolderListing = { lsof: "/usr/sbin/lsof", ps: "/bin/ps", boundMs: 30_000 };
-
-/** How long a killed holder may stay in uninterruptible wait, as one in the middle of a write does,
- *  before its volume counts as stalled. */
-const STALL_MS = 10_000;
+const LSOF: HolderListing = { lsof: "/usr/sbin/lsof", ps: "/bin/ps", boundMs: 30_000, stallMs: 10_000 };
 
 /** Undo `mountDiskCap`: `releaseDiskCap` on its root. */
 export type ReleaseDiskCap = () => Promise<void>;
@@ -88,6 +96,45 @@ async function patiently(args: readonly string[]): Promise<string | null> {
 }
 
 /**
+ * An empty volume of `bytes` at `image`, or why there is none: a clone of the one empty image of
+ * that size this host keeps under its temporary folder, made there first where it is missing.
+ * Measured on an M3 Pro on 18 October, `hdiutil create` of a 64 MiB image took about 1,030 ms and
+ * an APFS clone of one 9 ms, beside an attach of about 170 ms; and every solve, Builder session,
+ * Examiner shell and walled test case mounts one. Three clones of one image attached at once each
+ * kept its own writes. Where the template and the root sit on two volumes, the copy is a byte copy
+ * of its few megabytes. The template is made under a name of its own and renamed, so one that
+ * exists is whole, whichever of two first mounts made it; the name was the pid and the clock until
+ * three caps mounted in one millisecond took one name and two of them failed (18 October).
+ */
+let making = 0;
+
+async function emptyImage(bytes: number, image: string): Promise<string | null> {
+  const sectors = String(Math.ceil(bytes / SECTOR_BYTES));
+  const templates = join(tmpdir(), "ana-disk-cap");
+  const template = join(templates, `${sectors}.sparseimage`);
+  if (!existsSync(template)) {
+    mkdirSync(templates, { recursive: true });
+    const made = join(
+      templates,
+      `${sectors}-${String(runtimeProcess.pid)}-${String((making += 1))}.sparseimage`,
+    );
+    const volume = ["-type", "SPARSE", "-fs", "APFS", "-volname", "disk-cap"];
+    const failed = await patiently(["create", "-sectors", sectors, ...volume, made]);
+    if (failed !== null) {
+      rmSync(made, { force: true });
+      return failed;
+    }
+    renameSync(made, template);
+  }
+  try {
+    copyFileSync(template, image, constants.COPYFILE_FICLONE);
+    return null;
+  } catch (error) {
+    return `the empty image of ${sectors} sectors was not copied: ${errorMessage(error)}`;
+  }
+}
+
+/**
  * Create the cap's root and, on Darwin, mount a volume of `cap.bytes` there. Returns the release,
  * which the caller runs once the solve or session that holds the root has ended. On Linux the root
  * is only created, and the commands of a solve or a session run uncapped (above).
@@ -100,10 +147,8 @@ export async function mountDiskCap(cap: DiskCap): Promise<ReleaseDiskCap> {
   if (runtimeProcess.platform !== "darwin") return () => releaseDiskCap(root);
   // Beside the root rather than inside it, so the image is not part of what it caps.
   const image = `${root}.sparseimage`;
-  const sectors = String(Math.ceil(cap.bytes / SECTOR_BYTES));
-  const volume = ["-type", "SPARSE", "-fs", "APFS", "-volname", "disk-cap"];
   const failed =
-    (await patiently(["create", "-sectors", sectors, ...volume, image])) ??
+    (await emptyImage(cap.bytes, image)) ??
     (await patiently(["attach", "-nobrowse", "-noautoopen", "-owners", "on", "-mountpoint", root, image]));
   if (failed !== null) {
     // What this call made goes, so the root can be claimed again: until 12 October a failed create
@@ -195,7 +240,7 @@ export async function endHolders(root: string, listing: HolderListing = LSOF): P
   }
   // What survived five passes either forks faster than they ran, which the forced detach takes, or
   // cannot die: a process in uninterruptible wait takes its SIGKILL only when its I/O returns.
-  const until = Date.now() + STALL_MS;
+  const until = Date.now() + listing.stallMs;
   for (;;) {
     const holders = await holdersOf(root, listing);
     if (holders === null) return `no listing of what holds it came within ${String(listing.boundMs)} ms`;
@@ -207,7 +252,7 @@ export async function endHolders(root: string, listing: HolderListing = LSOF): P
     const waiting = states.filter((state) => state === null || state.trim().startsWith("U"));
     if (waiting.length === 0) return null;
     if (Date.now() >= until) {
-      return `${String(waiting.length)} of its holders stayed in uninterruptible wait for ${String(STALL_MS)} ms after SIGKILL`;
+      return `${String(waiting.length)} of its holders stayed in uninterruptible wait for ${String(listing.stallMs)} ms after SIGKILL`;
     }
     await Bun.sleep(500);
   }

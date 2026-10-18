@@ -26,6 +26,7 @@
     "gate": "bun tools/runtime/gate.ts",
     "hooks:install": "git config core.hooksPath .githooks",
     "land": "bun tools/runtime/land.ts",
+    "follow": "bun .claude/skills/stack-pr/scripts/follow.ts",
     "ui:dev": "cd packages/ui && bun run dev",
     "ui:build": "cd packages/ui && bun run build",
     "ui:deps": "bun install --frozen-lockfile --cwd packages/ui",

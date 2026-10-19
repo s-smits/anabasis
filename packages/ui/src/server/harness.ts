@@ -30,10 +30,9 @@
  * the bound cuts is listed with no diff, and an issue names it. A path both harnesses reach as the
  * same file is not read.
  *
- * A program under `.toolchain/bin/` is listed with its own account of itself: the comment lines at
- * its head, after a shebang, as each of esp32-fresh-opus's programs opens with its usage and what
- * it computes. The page shows the solver's toolset by those, since the guide only names them; it
- * reads no function body and runs nothing, and a program with no such comment has none.
+ * A program under `.toolchain/bin/` is listed with its own account of itself, the comment at its
+ * head (`src/solve/programs.ts`): the page shows the solver's toolset by those, since the guide only
+ * names them.
  */
 import { createTwoFilesPatch } from "diff";
 import {
@@ -50,8 +49,9 @@ import { capturedJsonParse, capturedJsonStringify } from "../../../../src/meta/j
 import { isString, type JsonValue } from "../../../../src/meta/json-shape.ts";
 import { containsPath } from "../../../../src/meta/path-containment.ts";
 import { isSafePathSegment } from "../../../../src/meta/path-segment.ts";
-import { dirname, extname, join } from "../../../../src/meta/path.ts";
+import { dirname, extname, join, relative } from "../../../../src/meta/path.ts";
 import { errorMessage } from "../../../../src/meta/runtime-values.ts";
+import { programsOf } from "../../../../src/solve/programs.ts";
 import type { FileContent, HarnessDiff, HarnessFile, HarnessFiles, Issue, Query } from "../models.ts";
 import type { Reading } from "./context.ts";
 import type { Log } from "./folds.ts";
@@ -98,10 +98,6 @@ const SEGMENT = /^[A-Za-z0-9._-]+$/u;
 /** The extensions read as text: a program under `.toolchain/bin` most often has none. */
 const TEXT = new Set([".md", ".txt", ".log", ".yaml", ".yml", ".js", ".mjs", ".cjs", ".py", ".sh", ""]);
 const NUL = 0;
-const PROGRAMS = `${TOOL_TREE_DIR}/bin/`;
-/** The bytes of a program read for its head comment, and one line of that comment. */
-const ABOUT_BYTES = 4096;
-const COMMENT = /^\s*(?:\/\/|#)\s?(.*)$/u;
 
 function contentOf(path: string): FileContent {
   if (path.endsWith(".jsonl")) return "jsonl";
@@ -255,24 +251,17 @@ function rooted(reading: Reading, key: string, digest: string): Rooted {
   return { kept, issues: issue === null ? [...read] : [...read, issue] };
 }
 
-/** A program's own account of itself: the comment lines at its head, after a shebang. */
-function aboutOf({ path, at, bytes }: HarnessPart): string | null {
-  if (!path.startsWith(PROGRAMS)) return null;
-  const head = headOf(at, Math.min(bytes, ABOUT_BYTES));
-  if (head.includes(String.fromCodePoint(NUL))) return null;
-  const lines = head.split("\n").slice(head.startsWith("#!") ? 1 : 0);
-  const end = lines.findIndex((line) => !COMMENT.test(line));
-  const said = lines.slice(0, end === -1 ? lines.length : end).map((line) => COMMENT.exec(line)?.[1] ?? "");
-  const text = said.join("\n").trim();
-  return text === "" ? null : text;
-}
-
 export function harnessAnswer(reading: Reading, query: Query<"harness">): HarnessFiles {
   const { kept, issues } = rooted(reading, query.key, query.digest);
-  const files =
-    kept === null
-      ? []
-      : walk(kept, issues).map((part) => ({ path: part.path, bytes: part.bytes, about: aboutOf(part) }));
+  if (kept === null) return { tier: reading.tier, issues, files: [] };
+  // Each program's account, by the path the panel lists it at.
+  const programs = programsOf(join(kept.root, TOOL_TREE_DIR));
+  const about = new Map(programs.map(({ at, account }) => [relative(kept.root, at), account]));
+  const files = walk(kept, issues).map(({ path, bytes }) => ({
+    path,
+    bytes,
+    about: about.get(path) ?? null,
+  }));
   return { tier: reading.tier, issues, files };
 }
 

@@ -17,7 +17,7 @@ import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../src/solve/coding-tools.ts";
 import { type CommandWall, makeSeatDirs, solveDirs } from "../src/solve/command.ts";
 import { harnessTools, openHarness } from "../src/solve/harness.ts";
-import { installedPrograms } from "../src/solve/prompt.ts";
+import { installedPrograms } from "../src/solve/programs.ts";
 import { EXAMPLE, HARNESS_ACCOUNT, WITHOUT_SHELL, writeHarness, writeStarter } from "../src/solve/starter.ts";
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
 import { osIsolationSupport } from "../src/verify/os-isolation.ts";

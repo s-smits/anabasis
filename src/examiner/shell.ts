@@ -44,7 +44,7 @@ import {
   walledBase,
 } from "../solve/command.ts";
 import { codingTools } from "../solve/coding-tools.ts";
-import { installedPrograms } from "../solve/prompt.ts";
+import { installedPrograms } from "../solve/programs.ts";
 import { claimRoot } from "../verify/seat-root.ts";
 import { shellQuote } from "../verify/solve-command-isolation.ts";
 

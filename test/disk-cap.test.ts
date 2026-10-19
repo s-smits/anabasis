@@ -362,6 +362,41 @@ describe("the disk cap", () => {
     },
   );
 
+  // A disk its root's detach released can stay listed while it ejects, and a detach of its device
+  // is then refused, forced or not: on the macOS runners of 19 October that ended 21 tests. Here the
+  // listing names the image after the root's detach, and every detach of the device is refused.
+  it.skipIf(runtimeProcess.platform !== "darwin")(
+    "leaves a disk its root's detach released to eject by itself",
+    async () => {
+      const parent = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-disk-cap-")));
+      const root = join(parent, "solve");
+      const image = `${root}.sparseimage`;
+      try {
+        await mountDiskCap({ root, bytes: CAP_BYTES });
+        const count = join(parent, "detaches");
+        const ejecting = join(parent, "ejecting");
+        writeFileSync(
+          ejecting,
+          [
+            "#!/bin/sh",
+            `if [ "$1" = info ]; then printf '%s\\n' '================================================' 'image-path      : ${image}' '/dev/disk99\tGUID_partition_scheme'; exit 0; fi`,
+            `echo x >> ${count}; echo "hdiutil: couldn't eject - Resource busy" >&2; exit 16`,
+            "",
+          ].join("\n"),
+          { mode: 0o755 },
+        );
+        const listing = { lsof: "/usr/sbin/lsof", ps: "/bin/ps", boundMs: 30_000, stallMs: 10_000 };
+        await releaseDiskCap(root, { ...listing, hdiutil: ejecting });
+        expect(spawnSync(HDIUTIL, ["info"]).stdout.includes(image)).toBe(false);
+        expect(existsSync(image)).toBe(false);
+        expect(existsSync(root)).toBe(false);
+        expect(existsSync(count)).toBe(false);
+      } finally {
+        rmSync(parent, { recursive: true, force: true });
+      }
+    },
+  );
+
   // A mount clones the one empty image of its size (`emptyImage`). The size here is this case's
   // alone, so the template it reads is the one its three first mounts made between them.
   it.skipIf(runtimeProcess.platform !== "darwin")(

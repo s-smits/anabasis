@@ -23,14 +23,12 @@ import type { ToolDefinition } from "../../vendor/pi-coding-agent/core/extension
 import { buildSystemPrompt } from "../../vendor/pi-coding-agent/core/system-prompt.ts";
 import type { Limits } from "../kernel/condition.ts";
 import { GUIDE_FILE } from "../meta/bundle-layout.ts";
-import { mkdirSync, readdirSync, statSync, writeFileSync } from "../meta/filesystem.ts";
+import { mkdirSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
-import { compareCodeUnits } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import type { NetworkReach } from "./command.ts";
-import { toolTreeSearchDirs } from "../verify/solve-command-isolation.ts";
 import { ANSWER_FILE, ANSWER_FORMAT_FILE, type PublicResource } from "./answer.ts";
 import { reserveSeconds } from "./command.ts";
 
@@ -52,7 +50,7 @@ export interface Told {
   readonly limits: Pick<Limits, "shellDefaultSeconds" | "shellMaxSeconds" | "modelTurns">;
   /** How many public resource files the home was seeded with. */
   readonly resources: number;
-  /** The programs the harness installed, by the names that run them (`installedPrograms`). */
+  /** The programs the harness installed, by the names that run them (`installedPrograms`, `programs.ts`). */
   readonly programs: readonly string[];
   /** Whether a package index was reached from inside the wall (`networkReach`, `command.ts`). */
   readonly network: NetworkReach;
@@ -124,33 +122,6 @@ export function systemPrompt(told: Told): string {
     contextFiles: told.guide === null ? [] : [{ path: GUIDE_FILE, content: told.guide }],
     sections: { environment: environment(told) },
   });
-}
-
-/** Whether a command could run this entry by name: a venv's sourced `activate` siblings are mode
- *  644, and a broken link runs nothing. */
-function canRun(path: string): boolean {
-  try {
-    const entry = statSync(path);
-    return entry.isFile() && (entry.mode & 0o111) !== 0;
-  } catch {
-    return false;
-  }
-}
-
-/** The programs a harness installed, by the names that run them, from the directories a command's
- *  PATH holds, in its order, as v1 listed them. Without the list, every case of one truss run
- *  wrote its own solver in the host's python3 beside the Builder's interpreter. */
-export function installedPrograms(toolTree: string | null): string[] {
-  const dirs = toolTree === null ? [] : toolTreeSearchDirs(toolTree);
-  return [
-    ...new Set(
-      dirs.flatMap((dir) =>
-        readdirSync(dir)
-          .sort(compareCodeUnits)
-          .filter((name) => canRun(join(dir, name))),
-      ),
-    ),
-  ];
 }
 
 /** The task as the solver may see it. A task carries its hidden part beside these fields, and

@@ -767,11 +767,15 @@ describe("what the server cannot read", () => {
       [b, "tree-b", "two"],
     ] as const) {
       mkdirSync(join(states, tree, "bin"), { recursive: true });
+      // A program is a file a command can run by name, so each is executable.
       writeFileSync(
         join(states, tree, "bin", "count"),
         `#!/bin/sh\n# count [task.json]\n# Prints ${said}.\necho ${said}\n`,
+        { mode: 0o755 },
       );
-      writeFileSync(join(states, tree, "bin", "engine"), Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0, 1]));
+      writeFileSync(join(states, tree, "bin", "engine"), Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0, 1]), {
+        mode: 0o755,
+      });
       symlinkSync(`../${tree}`, join(states, digest, ".toolchain"));
     }
     symlinkSync(tmpdir(), join(states, "tree-b", "bin", "host"));

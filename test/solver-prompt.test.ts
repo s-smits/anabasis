@@ -5,21 +5,13 @@
 // opening message and the public files the home is seeded with.
 import { describe, expect, it } from "bun:test";
 import type { Contract } from "../src/kernel/contract.ts";
-import {
-  chmodSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "../src/meta/filesystem.ts";
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { openDesk, publicResource, submitTool } from "../src/solve/answer.ts";
 import { codingTools, fileTools } from "../src/solve/coding-tools.ts";
 import { type CommandWall, solveDirs } from "../src/solve/command.ts";
-import { firstTurn, installedPrograms, seedHome, systemPrompt, type Told } from "../src/solve/prompt.ts";
+import { firstTurn, seedHome, systemPrompt, type Told } from "../src/solve/prompt.ts";
 
 const CONTRACT: Contract = {
   answerFormat: { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] },
@@ -181,28 +173,6 @@ describe("the solver's system prompt", () => {
     expect(systemPrompt({ ...TOLD, programs: many })).toEndWith(
       ", tool-20, and 3 more on PATH.\n</environment>",
     );
-  });
-});
-
-describe("the programs a harness installed", () => {
-  it("are the names a command's PATH runs, in its order, each once", () => {
-    // The sweep's tool tree: the Builder's interpreter in `bin`, a venv beside it whose `activate` is
-    // sourced rather than run and whose `python3` repeats a name `bin` already holds.
-    const tree = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-prompt-tree-")));
-    const program = (path: string, mode: number) => {
-      mkdirSync(join(path, ".."), { recursive: true });
-      writeFileSync(path, "#!/bin/sh\n");
-      chmodSync(path, mode);
-    };
-    try {
-      for (const name of ["pynite-python", "python3"]) program(join(tree, "bin", name), 0o755);
-      for (const name of ["f2py", "numpy-config", "python3"]) program(join(tree, "venv", "bin", name), 0o755);
-      program(join(tree, "venv", "bin", "activate"), 0o644);
-      expect(installedPrograms(tree)).toEqual(["pynite-python", "python3", "f2py", "numpy-config"]);
-      expect(installedPrograms(null)).toEqual([]);
-    } finally {
-      rmSync(tree, { recursive: true, force: true });
-    }
   });
 });
 

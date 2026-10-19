@@ -70,7 +70,8 @@ import {
   walledBase,
 } from "./command.ts";
 import { type Harness, harnessTools, openHarness, pathsUnder } from "./harness.ts";
-import { firstTurn, installedPrograms, NUDGE, type PublicTask, seedHome, systemPrompt } from "./prompt.ts";
+import { installedPrograms } from "./programs.ts";
+import { firstTurn, NUDGE, type PublicTask, seedHome, systemPrompt } from "./prompt.ts";
 
 export interface SolveRequest {
   /** Names the solve in the log; each attempt is `<id>-<attempt>`. */

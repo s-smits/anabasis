@@ -1239,7 +1239,7 @@ What holds in all of them:
 1. **The worktree is the condition.** A run executes the source of the worktree it started in.
    Launch from a clean worktree at a published commit, kept for that run alone. Do not edit
    `src/` there while the run lives, and never move a campaign's folder to another worktree but
-   by `bun run runs copy`.
+   by `bun run runs copy`, or to another machine but by `bun run runs move`.
 2. **Prove the path first, without a model**: a dry run of the campaign command
    (`bun tools/d2/harness-builder.ts --name <name> --dry-run`), a replay for a changed reader
    (`bun run runs replay`), a rehearsal over a seed for a changed round or campaign

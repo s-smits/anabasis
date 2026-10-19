@@ -19,8 +19,8 @@
  * `copy` takes a campaign no process writes or keeps, its folder whole, to another worktree of the
  * repository, and sets the folder it leaves aside under `.ana/moved/`, so that one worktree holds
  * the name; `continue` then goes on with it there. It is the one way a campaign's folder moves
- * (operator, 15 October), since a log is never copied by hand. Another host takes the folder with
- * rsync, and the run goes on there with its pack's paths after `--`.
+ * (operator, 15 October), since a log is never copied by hand. Another machine takes it by
+ * `runs move` (`move.ts`).
  *
  * Without `--yes` a verb says what it would do and does nothing. With it, a start refuses a run a
  * process writes, a worktree with a change no commit names and a commit no remote branch holds;

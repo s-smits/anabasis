@@ -19,7 +19,8 @@
  * `--cap` is the session's dollar cap and is required, as a comparison's is: no practice solve
  * starts that a reserve for it (`--reserve`, $10) would take past the cap. The Builder's own turns
  * are billed while the session is live, before another campaign move can spend more; the final
- * session total records them once. They are held by `--turns` and `--minutes`.
+ * session total records them once. They are held by `--turns`, `--minutes` and the cap: no request
+ * starts once the session has billed it (19 October).
  *
  * Before its first event the session asks whether it may start (`admitSession`,
  * `src/builder/admission.ts`): on a checker nobody has read, or after the plan's stop rule has

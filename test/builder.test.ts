@@ -697,6 +697,59 @@ describe("a Builder session", () => {
     expect(roomy.sent[0]).toContain("This session has 3 practice solves, 10 minutes and 12 turns.");
   });
 
+  it("makes no request of its own once what it billed reaches its cap", async () => {
+    // One practice solve, and the session's own turns billed $30 beside it, past a cap of $25.
+    const s = await setup([call("practice", { tasks: ["t-1"] }), edit, finish]);
+    const built = await session(
+      {
+        ...s.request,
+        cap: { dollars: 25, reserve: 10 },
+        practise: async (task, dir, harness, kill) => {
+          append(s.request.log, "build.turn", { session: "b-1", turn: 1, usage: { cost: { total: 30 } } });
+          return await s.request.practise(task, dir, harness, kill);
+        },
+      },
+      s,
+      s.walled,
+    );
+    expect(s.sent).toHaveLength(1);
+    expect(built).toMatchObject({ changed: false, ended: "stopped" });
+    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "stopped", crash: null, practiceSolves: 1 });
+  });
+
+  it("holds a session to its own spend and not a comparison's under the same id", async () => {
+    // A comparison b-1 billed $30 before a session b-1 opened under a cap of $25: the session's own
+    // part is nothing, so it practises, edits, and finishes once it has been told of the edit.
+    const s = await setup([call("practice", { tasks: ["t-1"] }), edit, finish, finish]);
+    const { log } = s.request;
+    append(log, "solve.started", { solve: "b-1-v9", comparison: "b-1", task: "t" });
+    append(log, "solve.finished", { solve: "b-1-v9", ending: { outcome: "pass" }, billed: 30 });
+    const built = await session({ ...s.request, cap: { dollars: 25, reserve: 10 } }, s, s.walled);
+    expect(s.sent[0]).toContain("This session has 2 practice solves");
+    expect(s.sent).toHaveLength(4);
+    expect(built).toMatchObject({ changed: true, ended: "finished" });
+  });
+
+  it("leaves a led session's dollars to the campaign's bounds, which the operator can raise", async () => {
+    // The same $30 past a cap of $25, in a led session whose campaign has not ended: it goes on.
+    const s = await setup([call("practice", { tasks: ["t-1"] }), edit, finish]);
+    const built = await session(
+      {
+        ...s.request,
+        cap: { dollars: 25, reserve: 10 },
+        campaign: () => ({ tools: [], hook: () => "" }),
+        practise: async (task, dir, harness, kill) => {
+          append(s.request.log, "build.turn", { session: "b-1", turn: 1, usage: { cost: { total: 30 } } });
+          return await s.request.practise(task, dir, harness, kill);
+        },
+      },
+      s,
+      s.walled,
+    );
+    expect(s.sent).toHaveLength(3);
+    expect(built).toMatchObject({ changed: true, ended: "finished" });
+  });
+
   it("refuses a trace of any solve but its practice tasks', and a practice past its budget", async () => {
     const s = await setup([
       call("read_trace", { solve: "s-2" }),

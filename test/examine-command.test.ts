@@ -110,11 +110,13 @@ describe("the Examiner command's admission reviews", () => {
     }
   });
 
-  it("hands the session the reference harness's kept directory where --reference-home is on, and none where it is off", async () => {
+  it("hands the session the reference harness's kept directory where --reference-home is on or unnamed, and none where it is off", async () => {
     const walls: (string | undefined)[] = [];
-    for (const home of ["on", "off"]) {
+    // On unless named since 19 October: a command that names nothing lays the copy.
+    for (const home of ["on", "off", undefined]) {
+      const named = home === undefined ? [] : ["--reference-home", home];
       await examineCommand(
-        [...PACK, "--name", `${STEM}-home`, "--session", `x-${home}`, "--reference-home", home],
+        [...PACK, "--name", `${STEM}-home`, "--session", `x-${home ?? "unnamed"}`, ...named],
         async (_request, wall) => {
           walls.push(wall?.reference);
           return { ended: "finished", puts: 0, held: [], refused: [] };
@@ -123,6 +125,7 @@ describe("the Examiner command's admission reviews", () => {
     }
     expect(walls[0] !== undefined && existsSync(join(walls[0], "agent"))).toBe(true);
     expect(walls[1]).toBeUndefined();
+    expect(walls[2]).toBe(walls[0]);
     await expect(
       examineCommand(
         [...PACK, "--name", `${STEM}-home`, "--session", "x-3", "--reference-home", "yes"],

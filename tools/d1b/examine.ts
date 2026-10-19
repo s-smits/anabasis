@@ -36,10 +36,15 @@
  * scored set's size, 12. Asking for many at once is what v1 found dilutes them, a probe grown to
  * 25 tasks in 10 of 13 cases (`docs/plan.md`).
  *
- * `--reference-home on` lays a copy of the reference harness the gate solves with in the home,
- * laid afresh each session (the campaign's term `exam-reference`, off
- * unless named; 19 October): after a promotion the Examiner wrote drafts the reference's programs
- * answered every time, 0 of 49 held in esp32-fresh-opus, and never saw those programs.
+ * `--reference-home on`, the default, lays a copy of the reference harness the gate solves with in
+ * the home, laid afresh each session; `off` keeps the home blind (the campaign's term
+ * `exam-reference`). After a promotion the Examiner wrote drafts the reference's programs answered
+ * every time, 0 of 49 held in esp32-fresh-opus, and never saw those programs. The term was off
+ * unless named until 19 October, when a supply ablation on the buffer domain after its second
+ * promotion, one Examiner session an arm, held 1 of 8 drafts blind for $9.22 and 4 of 8 with the
+ * copy for $14.41: $9.22 a held draft against $3.60. On esp32, with no room left, both arms held
+ * none (20 drafts blind, 6 with the copy). One session an arm and three gate solves a draft; the
+ * operator turned it on on that word.
  *
  * Not run here: see `campaign.ts`.
  */
@@ -89,8 +94,9 @@ const EXAMINE_OPTIONS = {
   proposals: { type: "string", default: "36" },
   minutes: { type: "string", default: "240" },
   turns: { type: "string", default: "200" },
-  /** `on` lays a copy of the reference harness the gate solves with in the Examiner's home. */
-  "reference-home": { type: "string", default: "off" },
+  /** `on` lays a copy of the reference harness the gate solves with in the Examiner's home; `off`
+   *  keeps it blind. The one owner of the default, which a campaign that names no term reads. */
+  "reference-home": { type: "string", default: "on" },
   /** The campaign's setting, as every command that solves takes it: the solver and the limits the
    *  reference harness's solves of a draft task run under (`try_task`), and the budget fact the
    *  Examiner is told, where no setting is on record yet. `--tasks` is this command's own, so the

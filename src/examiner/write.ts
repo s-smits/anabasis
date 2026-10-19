@@ -494,7 +494,10 @@ function gatedTasks(events: readonly LogEvent[]): Task[] {
  * reference, 44 of them answered in 3 of 3 solves, and wrote denser instances of what its programs
  * already answered (18 October): it never saw what the reference brings to a task. Seeing it
  * reverses the ruling of 12 October that the Examiner never sees the solver's tools, so it is the
- * operator's term, off unless named, and the supply ablation of 19 October measures it. The copy
+ * operator's term. It was off unless named until the supply ablation of 19 October, one session an
+ * arm on the buffer domain after its second promotion: 1 of 8 drafts held blind for $9.22, 4 of 8
+ * with the copy for $14.41, $3.60 a held draft; on esp32, with no room left, none either way. It
+ * is on unless a campaign names it off since, on the operator's word of that day. The copy
  * is the reference's alone, never a candidate's, laid afresh each session and left out of the
  * kept home.
  */

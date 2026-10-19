@@ -11,7 +11,7 @@
  * a word left with `tools/d2/word.ts` ends a campaign at its next move boundary and spends none, and
  * `bun run runs pause` stops one where nothing but its Builder's conversation is open.
  *
- * A stop also releases what the run held on the host: the capped root of each solve and session its
+ * A stop also releases what the run held on the host: the root of each solve and session its
  * log started and never finished (`unfinished`, `src/kernel/reports.ts`), which only the ended
  * process would have let go. A named run that is not running is released the same way, so a run
  * that was killed, or stopped before this was done, is cleaned up by stopping it again. A keeper
@@ -28,7 +28,7 @@ import { parseArgs } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { runTextSyncOrThrow, terminateAndReapProcessGroupId } from "#src/meta/subprocess.ts";
 import { type SolveDirs, solveDirs } from "#src/solve/command.ts";
-import { releaseDiskCap } from "#src/verify/disk-cap.ts";
+import { releaseRoot } from "#src/verify/seat-root.ts";
 import {
   BUILDER,
   DRAFT,
@@ -56,11 +56,11 @@ export function family(table: string, pid: number): number[] {
 
 /**
  * The directories of the solves and sessions a run started and never finished. A run that was
- * stopped or killed leaves the capped root of each mounted: only its own process would have let it
- * go. A seed's log begins as its source's, and what that run has open is the source's to hold.
+ * stopped or killed leaves the root of each, and what still works in it: only its own process
+ * would have let them go. A seed's log begins as its source's, and what that run has open is the source's to hold.
  *
- * An Examiner session has a capped root as a Builder's: left out here, the root of the one a stop
- * cut stayed mounted and had to be released by hand (buffer x-1, 2026-10-10). A session that drafts
+ * An Examiner session has a root as a Builder's: left out here, the root of the one a stop cut
+ * stayed and had to be released by hand (buffer x-1, 2026-10-10). A session that drafts
  * an exam has had one since 11 October.
  */
 export function leftOpen(run: Pick<Run, "path" | "seed">): SolveDirs[] {
@@ -112,30 +112,28 @@ async function end(run: Run, running: readonly Running[], yes: boolean): Promise
   return found.length;
 }
 
-/** Release the capped roots `run` left, where no process writes it any more: a mounted volume, or
- *  the folder and image of one. A stalled volume is left attached by its release, and the stop goes
- *  on to the next root. */
+/** Release the roots `run` left, where no process writes it any more. A root its release could not
+ *  remove is named, and the stop goes on to the next. A root an earlier tree mounted a disk image
+ *  at, before 19 October, is one: `hdiutil detach` it first. */
 async function release(run: Run, yes: boolean): Promise<number> {
   if (writers(run, processes()).length > 0) return 0;
   const left = leftOpen(run).filter(({ root }) => existsSync(root));
   if (left.length === 0) return 0;
   console.log(
-    `${run.name} in ${run.tree}: ${String(left.length)} capped root(s) its solves and sessions left behind`,
+    `${run.name} in ${run.tree}: ${String(left.length)} root(s) its solves and sessions left behind`,
   );
   if (!yes) return left.length;
   let kept = 0;
   for (const { root, host } of left) {
     try {
-      await releaseDiskCap(root);
+      await releaseRoot(root);
       rmSync(host, { recursive: true, force: true });
     } catch (error) {
       kept++;
       console.log(`  ⚠ ${errorMessage(error)}`);
     }
   }
-  console.log(
-    kept === 0 ? "  released" : `  released but ${String(kept)}; a reboot clears what a stalled volume holds`,
-  );
+  console.log(kept === 0 ? "  released" : `  released but ${String(kept)}`);
   return left.length;
 }
 

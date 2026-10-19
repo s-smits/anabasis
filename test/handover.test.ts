@@ -21,7 +21,6 @@ const LIMITS = {
   shellDefaultSeconds: 120,
   shellMaxSeconds: 240,
   concurrency: 4,
-  diskBytes: 1,
 };
 const [STARTER, HA, HB] = ["0".repeat(64), "a".repeat(64), "b".repeat(64)];
 const HELD = ["s1", "s2", "s3", "s4"];

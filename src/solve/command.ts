@@ -2,16 +2,16 @@
  * The one place a solve launches a command: the solver's bash calls and the harness's own tool calls
  * both come through `runWalled`, under the command wall v1's Built shell ran under
  * (`stageCommandIsolation`), on pi's local shell backend, which kills the command's process group on
- * a timeout or an abort. Whatever else the command left working on the solve's volume is ended here.
+ * a timeout or an abort. Whatever else the command left working in the seat's root is ended here.
  *
  * A seat (a solve, a Builder's session, an Examiner's) owns two directories under the shared
  * scratch parent, which the command wall closes to every seat but its own:
- * - `root`, the capped volume (`mountDiskCap`), which its commands write whole: `home`, kept between
+ * - `root`, claimed for the seat (`claimRoot`), which its commands write whole: `home`, kept between
  *   commands and never read back, and `tmp`, their `TMPDIR` for the seat's whole life. The one part
  *   they may not write is `kept`, where the host writes what must not follow a link a command made:
  *   pi's long output, written while the command runs, and what a command brings, staged before it
  *   starts.
- * - `host`, beside it and outside the cap, which no command can read: the staged profile and the
+ * - `host`, beside it, which no command can read: the staged profile and the
  *   model backend's own state, such as Claude Code's configuration and transcripts.
  *
  * A command starts in the home, the one working directory pi's coding tools share: when each
@@ -24,7 +24,7 @@ import type { Limits } from "../kernel/condition.ts";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { join, resolve } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import { endHolders } from "../verify/disk-cap.ts";
+import { endHolders } from "../verify/seat-root.ts";
 import {
   commandIsolationPolicy,
   shellQuote,
@@ -34,14 +34,14 @@ import { BUILT_COMMAND_SCRATCH_ROOT } from "../verify/wall-policy.ts";
 import { type SolveIsolationPolicy, solveIsolationPolicy } from "../verify/solve-sandbox.ts";
 
 export interface SolveDirs {
-  /** The capped volume's mount point, which the seat's commands write but for `kept`. */
+  /** The seat's own folder, which its commands write but for `kept`. */
   readonly root: string;
   readonly home: string;
   /** `TMPDIR`, for the seat's whole life. */
   readonly temp: string;
-  /** On the volume, and written by the host alone; a command reads it. */
+  /** In the root, and written by the host alone; a command reads it. */
   readonly kept: string;
-  /** Host-only: outside the cap, closed to every command. */
+  /** Host-only: beside the root, closed to every command. */
   readonly host: string;
 }
 
@@ -60,8 +60,8 @@ export interface CommandWall {
   readonly clock?: SolveClock | undefined;
 }
 
-/** What a wall denies and caps: the repository the command runs in, its other worktrees, the
- *  stored pack a campaign opened over, and the disk a solve, a session or an Examiner may fill. */
+/** What a wall denies: the repository the command runs in, its other worktrees and the stored
+ *  pack a campaign opened over. */
 export interface Walled {
   readonly repoRoot: string;
   /** The repository's other worktrees (`worktreesOf`, `tools/d2/campaign.ts`); none where the
@@ -73,7 +73,6 @@ export interface Walled {
   /** What the wall opens again for reading inside what it closes: the verifier's tool tree an
    *  Examiner's engines run from (`src/examiner/shell.ts`); none for any other seat. */
   readonly readAllowRoots?: readonly string[] | undefined;
-  readonly diskBytes: number;
 }
 
 /** The probe of each policy this process has started, by its hash: once a process, and the promise
@@ -163,7 +162,7 @@ export function heldSeconds(
     : { asked, seconds, nearEnd: false };
 }
 
-/** The directories of solve `id`, named, not yet made: the runner mounts the cap at `root`. */
+/** The directories of solve `id`, named, not yet made: the runner claims `root` (`claimRoot`). */
 export function solveDirs(id: string): SolveDirs {
   const root = join(BUILT_COMMAND_SCRATCH_ROOT, `solve-${id}`);
   return {
@@ -175,7 +174,7 @@ export function solveDirs(id: string): SolveDirs {
   };
 }
 
-/** Makes the folders of `dirs` below its root, which the cap's mount made. */
+/** Makes the folders of `dirs` below its root, which its claim made. */
 export function makeSeatDirs(dirs: SolveDirs): void {
   for (const dir of [dirs.home, dirs.temp, dirs.kept, dirs.host]) mkdirSync(dir, { recursive: true });
 }
@@ -292,10 +291,10 @@ export function networkReach(wall: CommandWall): Promise<NetworkReach> {
 /**
  * Runs `command` on `wall`, in the seat's home, or beside a copy of what it brings (`stage`).
  *
- * A command that brings nothing makes nothing to start. One solve filled its 2 GiB on 9 October
- * and was then refused `rm -rf ~/w` fourteen times running, each before it started, when every
- * command made a folder of its own first. One that brings files has nowhere to stage them on a
- * full volume, and fails as the full volume it is.
+ * A command that brings nothing makes nothing to start. One solve filled its 2 GiB disk cap on
+ * 9 October and was then refused `rm -rf ~/w` fourteen times running, each before it started, when
+ * every command made a folder of its own first. One that brings files has nowhere to stage them on
+ * a full disk, and fails as the full disk it is.
  */
 export async function runWalled(
   wall: CommandWall,
@@ -315,8 +314,8 @@ export async function runWalled(
     // A command that brings files starts in a folder it makes for itself under its `TMPDIR`, fills
     // with a copy of them, and removes when it ends. The folder has to be one it can write, as a
     // harness's tool may write where it starts and a program it runs may too. And the host writes
-    // nothing a command can write: one that outran its end (`endHolders` ends only what holds the
-    // volume) could swap a folder the host was about to write for a link. So the host stages where
+    // nothing a command can write: one that outran its end (`endHolders` ends only what works in the
+    // root) could swap a folder the host was about to write for a link. So the host stages where
     // no command can write, and the copy is the command's own, under the wall.
     const line =
       into === null
@@ -334,7 +333,7 @@ export async function runWalled(
     });
   } finally {
     // What left the command's group is out of its exit trap's reach, and a command the host killed
-    // never ran that trap. Both still work on the seat's volume, where one command runs at a time.
+    // never ran that trap. Both still work in the seat's root, where one command runs at a time.
     await endHolders(dirs.root);
     if (into !== null) rmSync(into, { recursive: true, force: true });
   }

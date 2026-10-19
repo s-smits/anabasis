@@ -598,8 +598,8 @@ as truth.
 - A **condition** is everything that could change a solve's result, as one content-addressed
   record (`src/kernel/condition.ts`): the contract, the harness, the task version, the model and
   its effort, the price table, the runtime's packages, the compaction mode, the tool trees and the
-  sandbox, which it names by the isolation profile, the platform and the disk cap
-  (`tools/d2/campaign.ts`). Two solves are comparable only when their conditions differ in the one
+  sandbox, which it names by the isolation profile and the platform (`tools/d2/campaign.ts`; until
+  19 October the disk cap too). Two solves are comparable only when their conditions differ in the one
   thing being compared.
 - A solve's trace is in the log (`solve.turn`, `solve.call`), and so are the turns and calls of
   each Builder session and Examiner session.
@@ -1430,12 +1430,13 @@ What holds in all of them:
    prove a path and show no climb.
 
 A solve and a Builder session run on either host, behind Seatbelt on macOS and Bubblewrap on Linux:
-nine Builder sessions and 308 solves finished on a Linux test host on 9 October. The disk cap holds
-on macOS, where a sparse image is mounted at the root of each solve and each Builder session. On
-Linux nothing caps a solve, a Builder session or an Examiner session: each runs its commands under
-the command wall, which binds its root from the host's disk and mounts no tmpfs there, as the head
-comment of `src/verify/disk-cap.ts` says (`docs/simplify.md`, F6). When the required wall is
-unavailable, the result is a typed non-result, never an unconfined run.
+nine Builder sessions and 308 solves finished on a Linux test host on 9 October. Nothing caps the
+disk of a solve, a Builder session or an Examiner session on either host: each runs its commands
+under the command wall in a root of its own on the host's disk, which is removed with whatever
+still works in it when the seat ends (`src/verify/seat-root.ts`). Until 19 October macOS mounted a
+2 GiB disk image at each root; of 28,309 solves the largest home held 1.47 GiB, and no solve lost
+its answer to a full disk. When the required wall is unavailable, the result is a typed
+non-result, never an unconfined run.
 
 Each seat's wall (a solve's, a Builder's or an Examiner's) is probed once per process before its
 first use, by one command launched the way a seat's commands are (`runWalled`). The probe checks
@@ -1702,7 +1703,7 @@ src/examiner/   an Examiner session, its prompt, and the outcomes and counts it 
                 session that drafts an exam from a prompt (draft); the walled home both
                 sessions have (shell)
 src/review/     the Referee, the probe, agreement with hand labels
-src/verify/     the OS wall: Seatbelt, Bubblewrap, the disk cap, what each actor may read
+src/verify/     the OS wall: Seatbelt, Bubblewrap, a seat's root, what each actor may read
 src/backends/   the three model backends as one pi collection, and compaction
 src/meta/       the owners of every runtime surface (`tools/oxlint/HABITS.md`, 12.8)
 tools/c/        the check program: accept, carry, rejections, repaired

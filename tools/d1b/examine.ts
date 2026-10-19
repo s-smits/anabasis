@@ -216,7 +216,6 @@ export async function examineCommand(
       repoRoot: REPO,
       otherTrees: campaign.trees,
       packRoots: campaign.packRoots,
-      diskBytes: campaign.limits.diskBytes,
       // The engines the campaign's checks run, installed in the Examiner's shell from the tree the
       // verifier runs them from (`pinnedEngines`, `src/examiner/shell.ts`).
       engines: { checks: campaign.checks, tools: join(campaign.bundle, ".toolchain") },

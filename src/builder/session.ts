@@ -77,7 +77,7 @@ import { openHarness } from "../solve/harness.ts";
 import { type PublicTask, publicView } from "../solve/prompt.ts";
 import { HARNESS_ACCOUNT } from "../solve/starter.ts";
 import { failedTurn, loopCompaction, type SolveRequest, solve, traceSink } from "../solve/run.ts";
-import { mountDiskCap } from "../verify/disk-cap.ts";
+import { claimRoot } from "../verify/seat-root.ts";
 import { campaignOf } from "./handover.ts";
 import { builderMemoryBlock, keepMemory, lastKept, memoryOverCapNotice, seedMemory } from "./memory.ts";
 import { comparisonsTold, failsTold, startTold } from "./past.ts";
@@ -633,27 +633,22 @@ export async function sessionOnce(
 
 /** The directories of session `id` of the campaign whose log is `log`, named for both. Named for
  *  the id alone, a session stopped on one campaign refused its id to every campaign on the host:
- *  its root stayed mounted, and the claim on a root is how a second session under one id is refused. */
+ *  its root stayed, and the claim on a root is how a second session under one id is refused. */
 export const sessionDirs = (log: string, id: string): SolveDirs =>
   solveDirs(`build-${basename(dirname(log))}-${id}`);
 
-/** One session under the solver's command wall and disk cap: mount, run, tear down. The Builder's
- *  home is the capped root's, as a solve's is, so its edits last between commands and are closed to
+/** One session under the solver's command wall: claim its root, run, tear down. The Builder's
+ *  home is in its root, as a solve's is, so its edits last between commands and are closed to
  *  every other solve. */
 export async function build(request: BuildRequest): Promise<Built> {
   const dirs = sessionDirs(request.log, request.id);
   // Before the try: a claim refused because another round's session holds this id cleans up nothing.
-  const release = await mountDiskCap({ root: dirs.root, bytes: request.limits.diskBytes });
+  const release = claimRoot(dirs.root);
   try {
     const wall: CommandWall = {
       base: await walledBase(
         dirs,
-        {
-          repoRoot: request.repoRoot,
-          otherTrees: request.otherTrees,
-          packRoots: request.packRoots,
-          diskBytes: request.limits.diskBytes,
-        },
+        { repoRoot: request.repoRoot, otherTrees: request.otherTrees, packRoots: request.packRoots },
         "a Builder",
       ),
       dirs,

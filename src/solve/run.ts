@@ -1,5 +1,5 @@
 /**
- * One solve, start to ending: a capped home seeded with the public task, pi's coding tools on the
+ * One solve, start to ending: a home seeded with the public task, pi's coding tools on the
  * command wall with the harness's tools and `submit` beside them, pi's agent loop under the host's
  * wall and turn cap, then the ending typed and logged with the trace and the meter. A non-result from the solve's side is run
  * again, up to three times with backoff; one from the task's own check is returned for the caller to
@@ -54,7 +54,7 @@ import { availableParallelism, loadavg } from "../meta/os.ts";
 import { join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
-import { mountDiskCap, type ReleaseDiskCap } from "../verify/disk-cap.ts";
+import { claimRoot, type ReleaseRoot } from "../verify/seat-root.ts";
 import {
   createToolDefinitionFromAgentTool,
   wrapToolDefinitions,
@@ -226,22 +226,17 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
   const desk = openDesk();
   const before = treeStamp(request.harness);
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let release: ReleaseDiskCap | null = null;
+  let release: ReleaseRoot | null = null;
   let homeBytes: number | null;
   let crash: string | null = null;
   let broken: string | null = null;
   let digest: string | null = null;
   let prompts = 0;
   try {
-    release = await mountDiskCap({ root: dirs.root, bytes: limits.diskBytes });
+    release = claimRoot(dirs.root);
     const base = await walledBase(
       dirs,
-      {
-        repoRoot: request.repoRoot,
-        otherTrees: request.otherTrees,
-        packRoots: request.packRoots,
-        diskBytes: limits.diskBytes,
-      },
+      { repoRoot: request.repoRoot, otherTrees: request.otherTrees, packRoots: request.packRoots },
       "a solve",
     );
     const resources = seedHome(dirs.home, request.task, request.resources, request.contract.answerFormat);
@@ -306,7 +301,7 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
   } finally {
     clearTimeout(timer);
     done.abort();
-    // Read apart from the loop, before the volume goes: a walk that fails voids no solve.
+    // Read apart from the loop, before the root goes: a walk that fails voids no solve.
     homeBytes = bytesUnder(dirs.home);
     await release?.();
     rmSync(dirs.host, { recursive: true, force: true });

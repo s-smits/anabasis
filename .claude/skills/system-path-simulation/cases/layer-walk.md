@@ -11,7 +11,7 @@ runs.
 | prompt | rendered from source beside each seat | the seat's own test |
 | backend | `src/backends/` | `test/backends.test.ts`, `test/claude-backend.test.ts` |
 | tool | the harness's tools, `src/builder/tools.ts`, `src/solve/answer.ts` | `test/harness-tools.test.ts`, `test/shell-tool.test.ts` |
-| wall and cap | `src/solve/command.ts`, `src/verify/disk-cap.ts` | `test/command.test.ts`, `test/disk-cap.test.ts` |
+| wall and root | `src/solve/command.ts`, `src/verify/seat-root.ts` | `test/command.test.ts`, `test/seat-root.test.ts` |
 | a whole solve | `src/solve/run.ts` | `test/solve-run.test.ts`: a real solve on pi's faux provider, under the real wall and cap |
 | a whole session | `src/builder/session.ts` | `test/builder.test.ts` |
 | log event | `src/kernel/log.ts` | the writer's test |

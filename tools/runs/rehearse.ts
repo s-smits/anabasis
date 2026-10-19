@@ -26,7 +26,7 @@
  * too: `pass` refuses every draft, and `none` holds one on its recorded answer, tried through
  * try_answer.
  * Everything under the seats is a paid round's: the campaign's log and sets, the Builder's tools on
- * the command wall and its freeze, each solve's wall and disk cap, the answer file and `submit`,
+ * the command wall and its freeze, each solve's wall and root, the answer file and `submit`,
  * the verifier, the comparison and the report. It is `roundCommand` with other
  * seats, so its flags and defaults are the round's, but that it needs no `--cap`: a script is paid
  * nothing. The three flags that name a model are refused. The answers the script writes are a

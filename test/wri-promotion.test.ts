@@ -61,7 +61,6 @@ function campaign() {
       shellDefaultSeconds: 10,
       shellMaxSeconds: 20,
       concurrency: 4,
-      diskBytes: 1,
     },
     host: "host-1",
     side: "test",

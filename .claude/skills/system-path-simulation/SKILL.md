@@ -72,7 +72,7 @@ and why the next was not needed.
 - the campaign opened over the real pack, its sets read from the log;
 - the Builder session, which forks the Starter Built Harness as the plan's first round does: its
   tools on the command wall, its capped root, its freeze and digest;
-- each solve: its wall and disk cap, the answer file and `submit`, the verifier on
+- each solve: its wall and root, the answer file and `submit`, the verifier on
   the staged check program, its verdict;
 - the comparison: its terms written before its first solve, the reference harness, which is the
   starter unless `--reference` names another, and the new one solved in turn, the sign test, each
@@ -169,7 +169,7 @@ What the product did:
 - **Practice solves and reviewers in a rehearsal.**
 - **A rehearsal in the test suite.** The tests hold the script and the seed. The joins were walked
   on the truss pack by hand, and no fixture pack walks them on every gate.
-- **Linux.** Every rehearsal so far ran on the Darwin wall and its disk images.
+- **Linux.** Every rehearsal so far ran on the Darwin wall, and until 19 October under its disk images.
 
 ## The result
 

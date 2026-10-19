@@ -16,7 +16,7 @@
  *
  * What is stood in for is what `live-solve.ts` stands in: the contract is the check program's brief
  * with the answer format the sweep's record tool took, and the limits are the sweep's `config.yaml`
- * with a disk cap. The test condition's model and effort are the stored cycle's. The cycle's own
+ * without its disk cap. The test condition's model and effort are the stored cycle's. The cycle's own
  * harness is not used: it comes from v1's runs, and a campaign starts from the Starter Built
  * Harness, which is also its first reference harness (`src/solve/starter.ts`, `docs/plan.md`,
  * Phase 0). Until 2026-10-09 the stored harness was both.
@@ -148,8 +148,8 @@ const PROGRAMS_OF = "programs-of:";
 /** What every solve is held to, whoever solves: 20 of the model's own turns, which bind, and a wall
  *  of 30 minutes, which stops a solve whose provider stalls. A command names another wall or number
  *  of turns (`setting.ts`), and another is another campaign. The prompts, `turns`, are every
- *  solve's (v1's cap on nudges); the shell's timeouts, four solves at a time and the disk cap are
- *  the stored sweep's, with a disk cap the sweep did not have. Concurrency is part of a condition, so
+ *  solve's (v1's cap on nudges); the shell's timeouts and four solves at a time are the stored
+ *  sweep's. Concurrency is part of a condition, so
  *  a campaign's solves and a parity solve (`live-solve.ts`) are not under the same one.
  *
  *  Until 19 October a campaign's default was the sweep's 120 minutes with the model's turns
@@ -169,7 +169,6 @@ export const LIMITS = {
   shellDefaultSeconds: 300,
   shellMaxSeconds: 900,
   concurrency: 4,
-  diskBytes: 2 * 1024 ** 3,
 } as const satisfies Limits;
 /** The repository a campaign's folder lies in: the worktree whose source the command runs. */
 export const REPO = resolve(import.meta.dir, "..", "..");
@@ -316,7 +315,6 @@ function recordedUnder({ contract, tools, limits }: Standing) {
     sandbox: hashJsonValue({
       profile: HOST_SOLVE_ISOLATION_PROFILE_ID,
       platform: runtimeProcess.platform,
-      diskBytes: limits.diskBytes,
     }),
     limits,
     host,

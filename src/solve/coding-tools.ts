@@ -17,9 +17,9 @@
  * - `~` in a file tool's path is the solve's home, as the solver's shell has it. pi expands it to
  *   the home of the user it runs as, which here is the host's.
  * - A file is read whole only up to 16 MiB: pi reads any file into its own memory, which here is
- *   the host's, outside the disk cap and every other limit.
- * - Every tool runs one call at a time: a command's end ends whatever still works on the solve's
- *   volume (`command.ts`), so two at once would end each other.
+ *   the host's, outside every limit.
+ * - Every tool runs one call at a time: a command's end ends whatever still works in the solve's
+ *   root (`command.ts`), so two at once would end each other.
  *
  * The file tools are there because a solver with `bash` alone wrote its files through the shell:
  * in the Starter solves of six campaigns the commands that wrote a file by heredoc held most of what

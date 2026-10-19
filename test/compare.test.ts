@@ -755,7 +755,6 @@ describe("the pairs a comparison reads from the log", () => {
       shellDefaultSeconds: 300,
       shellMaxSeconds: 900,
       concurrency: 4,
-      diskBytes: 2 * 1024 ** 3,
     },
     host: "h1",
     side: "test",

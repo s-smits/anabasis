@@ -257,7 +257,6 @@ describe("the read verb's host line", () => {
         shellDefaultSeconds: 1,
         shellMaxSeconds: 1,
         concurrency: 1,
-        diskBytes: 1,
       },
       host,
       side: "test",

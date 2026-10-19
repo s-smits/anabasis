@@ -73,7 +73,7 @@ import { worthLine } from "#src/builder/climb.ts";
 import { predicted, type Report } from "#src/builder/comparison.ts";
 import { refuseTerms, type RoundRequest, round, scoredSet } from "#src/builder/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
-import { MARGIN, type ObjectiveRule, TRIGGER } from "#src/kernel/compare.ts";
+import { type ObjectiveRule, TRIGGER } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
@@ -152,12 +152,6 @@ export const COMPARISON_OPTIONS = {
   // operator, 12 October).
   level: { type: "string", default: "0.02" },
   trigger: { type: "string", default: String(TRIGGER) },
-  // Two valid answers are compared by the objective where the check program declares one
-  // (`src/kernel/compare.ts`, `ObjectiveRule`), and the better by more than this share of the
-  // larger measure wins the pair. It is fixed with the comparison's other terms, and read by no
-  // comparison of a check program that declares none. Where no command names it, it is the gate's
-  // (`MARGIN`); from 12 to 18 October the last A/A on record set it from the reference's own spread.
-  margin: { type: "string" },
   defects: { type: "string", default: "3" },
   cap: { type: "string" },
   reserve: { type: "string", default: "10" },
@@ -369,15 +363,11 @@ export function solvingAs(campaign: Campaign, { limits }: Pick<AskedSetting, "na
 }
 
 /** The objective this campaign's comparisons pair two valid answers by, where its check program
- *  declares one: the brief's direction and the margin `--margin` names, or else the gate's
- *  (`MARGIN`). Undefined otherwise. */
-export function objectiveNamed(
-  campaign: Pick<Campaign, "checks">,
-  margin: string | undefined,
-): ObjectiveRule | undefined {
+ *  declares one: the brief's direction. Undefined otherwise. Until 19 October a margin went with it
+ *  (`--margin`, `SAME` in `src/kernel/compare.ts`). */
+export function objectiveNamed(campaign: Pick<Campaign, "checks">): ObjectiveRule | undefined {
   const declared = readBrief(campaign.checks).objective;
-  if (declared === undefined) return undefined;
-  return { direction: declared.direction, margin: margin === undefined ? MARGIN : Number(margin) };
+  return declared === undefined ? undefined : { direction: declared.direction };
 }
 
 /** What `--predict` names: the operator's expectation of the comparison, in a sentence, or none. */
@@ -469,7 +459,7 @@ export function reportLines({
     ...(objective === null
       ? []
       : [
-          `the objective (${objective.direction} is better, margin ${String(objective.margin)}) decided ${plural(objective.decided, "task")} that validity alone would have tied`,
+          `the objective (${objective.direction} is better) decided ${plural(objective.decided, "task")} that validity alone would have tied`,
         ]),
     ...(both.length === 0
       ? []
@@ -574,7 +564,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
     solves: Number(values.solves),
     level: Number(values.level),
     trigger: Number(values.trigger),
-    objective: objectiveNamed(campaign, values.margin),
+    objective: objectiveNamed(campaign),
     defects: Number(values.defects),
     cap,
     prediction: predictionNamed(values.predict),

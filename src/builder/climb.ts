@@ -427,10 +427,7 @@ export function regressionOf(events: readonly LogEvent[]): Regression | null {
     counts.shared += 1;
     // By the objective too, where both comparisons fixed the same rule; on validity alone otherwise.
     const rule = pair.objective;
-    const same =
-      rule !== undefined &&
-      other.objective?.direction === rule.direction &&
-      other.objective.margin === rule.margin;
+    const same = rule !== undefined && other.objective?.direction === rule.direction;
     const won = pairings({
       task: pair.task,
       old: other.fresh,

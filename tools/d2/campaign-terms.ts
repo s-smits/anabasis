@@ -84,7 +84,6 @@ const OPTIONS = {
   solves: { type: "string" },
   level: { type: "string" },
   trigger: { type: "string" },
-  margin: { type: "string" },
   defects: { type: "string" },
   minutes: { type: "string" },
   turns: { type: "string" },
@@ -336,18 +335,15 @@ function pinned(events: readonly LogEvent[], was: Opening | null, term: "level" 
   return isNumber(began) ? String(began) : COMPARISON_OPTIONS[term].default;
 }
 
-/** The flags of a comparison that began, as its start holds them: it goes on under its own terms.
- *  The objective's margin is one of them: until 11 October it was left off, so a comparison begun
- *  at another margin than 0.01 went on at that default and was refused as begun on other terms. */
+/** The flags of a comparison that began, as its start holds them: it goes on under its own terms. */
 function termsOf(events: readonly LogEvent[], id: string): string[] {
   const start = events.find(({ kind, data }) => kind === STARTED && data.session === id)?.data ?? {};
-  const [cap, objective] = [asRecord(start.cap), asRecord(start.objective)];
+  const cap = asRecord(start.cap);
   return [
     ...flag("solves", isNumber(start.solves) ? String(start.solves) : undefined),
     ...flag("level", isNumber(start.level) ? String(start.level) : undefined),
     ...flag("cap", isNumber(cap?.dollars) ? String(cap.dollars) : undefined),
     ...flag("reserve", isNumber(cap?.reserve) ? String(cap.reserve) : undefined),
-    ...flag("margin", isNumber(objective?.margin) ? String(objective.margin) : undefined),
     ...flag("predict", isString(start.prediction) ? start.prediction : undefined),
   ];
 }
@@ -412,7 +408,6 @@ export function comparisonOf(decided: Extract<Decided, { move: "compare" }>, tur
           // The trigger is the table's and no term of the start: it goes on the command, new or
           // continued, so the admission reads what `decide` read (left off until 11 October).
           ...flag("trigger", values.trigger),
-          ...flag("margin", values.margin),
           ...cap,
         ]
       : [...termsOf(events, decided.id), ...flag("trigger", values.trigger)];

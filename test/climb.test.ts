@@ -438,9 +438,9 @@ describe("the regression reading beside a comparison", () => {
   });
 
   it("reads two valid answers by the objective where both comparisons fixed the same rule, and on validity alone otherwise", () => {
-    const lower = { direction: "lower", margin: 0.01 };
+    const lower = { direction: "lower" };
     // Both candidates answer v1 in both solves; h3's answers are lighter. g-1 and g-2 fixed the
-    // same rule, so the reading sets them apart; g-3 fixed another margin, and reads a tie.
+    // same rule, so the reading sets them apart; g-3 fixed another direction, and reads a tie.
     const log: LogEvent[] = [
       ...heldOut("v1"),
       ...solved("g-1", "v1", "h1", [false, false]),
@@ -462,7 +462,7 @@ describe("the regression reading beside a comparison", () => {
       ...log,
       ...solved("g-3", "v1", "h1", [false, false]),
       ...solved("g-3", "v1", "h4", [true, true], { measures: [6, 6] }),
-      reported("g-3", "h1", "h4", ["v1"], { ...lower, margin: 0.5, decided: 0 }),
+      reported("g-3", "h1", "h4", ["v1"], { direction: "higher", decided: 0 }),
     ];
     expect(regressionOf(other)).toMatchObject({
       newest: "h4",

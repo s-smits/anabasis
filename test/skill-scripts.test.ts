@@ -71,6 +71,19 @@ describe("following the stack's top", () => {
     open,
     pull_requests: pulls.map(([n, ref, state]) => ({ number: n, state, head: { ref } })),
   });
+  const git = (repo: string, ...args: string[]) =>
+    runTextSyncOrThrow(["git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@t.dev", ...args]);
+  const commit = (repo: string, file: string, text: string) => {
+    writeFileSync(join(repo, file), text);
+    git(repo, "add", file);
+    git(repo, "commit", "-q", "-m", `write ${file}`);
+  };
+  const clone = (up: string, co: string) => {
+    git(up, "clone", "-q", up, co);
+    git(co, "config", "user.name", "t");
+    git(co, "config", "user.email", "t@t.dev");
+    git(co, "switch", "-q", "--track", "-c", "stack-pr1", "origin/claude/one");
+  };
 
   it("takes the last open pull request of the longest open native stack", () => {
     const stacks = [
@@ -94,28 +107,18 @@ describe("following the stack's top", () => {
     const up = join(root, "follow-up");
     const co = join(root, "follow-co");
     mkdirSync(up);
-    const git = (repo: string, ...args: string[]) =>
-      runTextSyncOrThrow(["git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@t.dev", ...args]);
-    const commit = (file: string, text: string) => {
-      writeFileSync(join(up, file), text);
-      git(up, "add", file);
-      git(up, "commit", "-q", "-m", `write ${file}`);
-    };
     git(up, "init", "-q", "-b", "main");
-    commit("mine.txt", "base\n");
+    commit(up, "mine.txt", "base\n");
     git(up, "switch", "-q", "-c", "claude/one");
-    commit("one.txt", "first\n");
-    git(up, "clone", "-q", up, co);
-    git(co, "config", "user.name", "t");
-    git(co, "config", "user.email", "t@t.dev");
-    git(co, "switch", "-q", "--track", "-c", "stack-pr1", "origin/claude/one");
+    commit(up, "one.txt", "first\n");
+    clone(up, co);
     // The stack is restacked: #1 is rewritten and #2 lands on it.
     git(up, "switch", "-q", "main");
     git(up, "branch", "-D", "claude/one");
     git(up, "switch", "-q", "-c", "claude/one");
-    commit("one.txt", "rewritten\n");
+    commit(up, "one.txt", "rewritten\n");
     git(up, "switch", "-q", "-c", "claude/two");
-    commit("two.txt", "second\n");
+    commit(up, "two.txt", "second\n");
     git(co, "fetch", "-q", "--prune", "origin");
     writeFileSync(join(co, "mine.txt"), "changed here\n");
     writeFileSync(join(co, "untracked.txt"), "kept\n");
@@ -133,6 +136,48 @@ describe("following the stack's top", () => {
     expect(existsSync(join(co, "untracked.txt"))).toBe(true);
     expect(gitText(co, "stash", "list")).toBe("");
     expect(follow(co, top)[0]).toStartWith("stack-pr2 is already at #2");
+  });
+
+  it("moves a checkout to main once no pull request is open, and keeps its change where git refuses", () => {
+    const up = join(root, "landed-up");
+    const co = join(root, "landed-co");
+    const held = join(root, "landed-held");
+    mkdirSync(up);
+    git(up, "init", "-q", "-b", "main");
+    commit(up, "mine.txt", "base\n");
+    git(up, "switch", "-q", "-c", "claude/one");
+    commit(up, "one.txt", "first\n");
+    clone(up, co);
+    // #1 lands, main takes another change after it, and #1's branch goes.
+    git(up, "switch", "-q", "main");
+    git(up, "merge", "-q", "--no-ff", "-m", "land #1", "claude/one");
+    commit(up, "after.txt", "newer\n");
+    git(up, "branch", "-D", "claude/one");
+    git(co, "fetch", "-q", "--prune", "origin");
+    writeFileSync(join(co, "mine.txt"), "changed here\n");
+
+    // Another worktree has main checked out, so git refuses the switch.
+    git(co, "worktree", "add", "-q", "-b", "main", held, "origin/main");
+    const before = gitText(co, "rev-parse", "HEAD");
+    expect(() => follow(co, undefined)).toThrow();
+    expect(gitText(co, "symbolic-ref", "--short", "HEAD")).toBe("stack-pr1");
+    expect(gitText(co, "rev-parse", "HEAD")).toBe(before);
+    expect(readFileSync(join(co, "mine.txt"), "utf8")).toBe("changed here\n");
+    expect(gitText(co, "stash", "list")).toBe("");
+
+    git(co, "worktree", "remove", held);
+    const said = follow(co, undefined);
+    expect(said[0]).toStartWith(`main at origin/main (${gitText(up, "rev-parse", "main").slice(0, 7)})`);
+    expect(said).toContain("no pull request is open");
+    expect(said).toContain("deleted stack-pr1");
+    expect(said).toContain("your uncommitted changes are back");
+    expect(gitText(co, "rev-parse", "HEAD")).toBe(gitText(up, "rev-parse", "main"));
+    expect(gitText(co, "rev-parse", "--abbrev-ref", "@{upstream}")).toBe("origin/main");
+    expect(gitText(co, "branch", "--list", "stack-pr*")).toBe("");
+    expect(readFileSync(join(co, "mine.txt"), "utf8")).toBe("changed here\n");
+    expect(existsSync(join(co, "after.txt"))).toBe(true);
+    expect(gitText(co, "stash", "list")).toBe("");
+    expect(follow(co, undefined)[0]).toStartWith("main is already at origin/main");
   });
 });
 

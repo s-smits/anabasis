@@ -35,29 +35,41 @@ export interface Host {
 
 export const hostsOf = (): readonly Host[] => parseJsonAs<Host[]>(runtimeProcess.env.ANA_HOSTS ?? "[]");
 
-const quoted = (word: string) => `'${word.replaceAll("'", `'\\''`)}'`;
+export const quoted = (word: string) => `'${word.replaceAll("'", `'\\''`)}'`;
+
+/** The ssh command that runs the shell text `script` on `host`, under a login shell there. */
+export function sshScript(host: Host, script: string): string[] {
+  return ["ssh", "-o", "ConnectTimeout=10", host.ssh, `exec "$SHELL" -lc ${quoted(script)}`];
+}
 
 /** The ssh command that runs the verb `args` on `host`. */
 function sshTo(host: Host, args: readonly string[]): string[] {
   const env = (host.envFiles ?? []).map((file) => ` --env-file=${file}`).join("");
-  const command = `cd ${host.tree} && ANA_HOSTS='[]' ${host.bun}${env} tools/runs/cli.ts ${args.map(quoted).join(" ")}`;
-  return ["ssh", "-o", "ConnectTimeout=10", host.ssh, `exec "$SHELL" -lc ${quoted(command)}`];
+  return sshScript(
+    host,
+    `cd ${host.tree} && ANA_HOSTS='[]' ${host.bun}${env} tools/runs/cli.ts ${args.map(quoted).join(" ")}`,
+  );
 }
 
-function hostNamed(name: string | undefined): Host {
+export function hostNamed(name: string | undefined): Host {
   const known = hostsOf();
   const host = known.find((one) => one.name === name);
   if (host === undefined) {
-    throw new Error(`usage: bun run runs on <${known.map((one) => one.name).join("|")}> <verb> ...`);
+    throw new Error(`no host ${String(name)}: ANA_HOSTS names ${known.map((one) => one.name).join(", ")}`);
   }
   return host;
+}
+
+/** The verb `args` run on `host`, its output this process's, and its exit code. */
+export async function verbOn(host: Host, args: readonly string[]): Promise<number> {
+  const io = { stdin: "inherit", stdout: "inherit", stderr: "inherit" } as const;
+  return await capturedSpawn(sshTo(host, args), io).exited;
 }
 
 /** `bun run runs on`. */
 export async function on(args: readonly string[]): Promise<void> {
   const [name, ...verb] = args;
-  const io = { stdin: "inherit", stdout: "inherit", stderr: "inherit" } as const;
-  runtimeProcess.exitCode = await capturedSpawn(sshTo(hostNamed(name), verb), io).exited;
+  runtimeProcess.exitCode = await verbOn(hostNamed(name), verb);
 }
 
 /** `bun run runs hosts`: `status`, with its `args`, on every host at once, each printed as it answers. */

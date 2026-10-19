@@ -29,6 +29,7 @@ import { mountDiskCap } from "../src/verify/disk-cap.ts";
 import { toolchainTemp } from "./helpers/toolchain-temp.ts";
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
 import { hostScratch } from "../src/verify/wall-policy.ts";
+import { commandSearchPath } from "../src/verify/solve-command-isolation.ts";
 import { osIsolationSupport } from "../src/verify/os-isolation.ts";
 import { CLOSED } from "./helpers/wall.ts";
 
@@ -421,4 +422,92 @@ describe("a solve's walled commands", () => {
     },
     60_000,
   );
+
+  it.skipIf(!osIsolationSupport().ok)(
+    "give the seat's TMPDIR to every Bun a command starts, by script, by -e, from a shell and from another Bun, and let each write there",
+    async () => {
+      const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-bun-temp-")));
+      const dirs = solveDirs(`bun-temp-${String(runtimeProcess.pid)}-${String(Date.now())}`);
+      const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
+      try {
+        makeSeatDirs(dirs);
+        const base = solveIsolationPolicy({ repoRoot });
+        if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
+        const wall = walled(base, dirs);
+        const own = join(basename(dirs.root), "tmp");
+        // A lead from the truss campaign's whole-run reading (12 October): a Bun child of a solver's
+        // command might not see the seat's TMPDIR, fall back to a temporary folder the wall closes,
+        // and end a solve on the environment's fault. Each Bun below says what TMPDIR and
+        // `os.tmpdir()` name and makes a folder there as a tool would. On a macOS runner whose
+        // `/opt/homebrew/bin` held Bun 1.1.34 the command's `bun` was that one until 19 October, and
+        // started in the seat it read no environment: `/tmp`, refused, and no `bun` on its PATH.
+        const probe = String.raw`const os = require("os"); const fs = require("fs"); const path = require("path");
+const made = fs.mkdtempSync(path.join(os.tmpdir(), "p-")); fs.writeFileSync(path.join(made, "f"), "x");
+console.log(JSON.stringify({ probe: process.argv.at(-1), said: process.env.TMPDIR, taken: os.tmpdir(), made }));`;
+        // One JSON value a row, so a path with a space in it reads whole; any other line is an error.
+        const probed = (output: string) =>
+          output
+            .split("\n")
+            .filter((row) => row.startsWith('{"probe":'))
+            .map(
+              (row) =>
+                /* SAFETY: the filter keeps only the rows the probe printed, each one object of four strings. */ JSON.parse(
+                  row,
+                ) as { probe: string; said: string; taken: string; made: string },
+            );
+        const written = await run(
+          wall,
+          [
+            `cat > probe.js <<'EOF'\n${probe}\nEOF`,
+            "bun probe.js script",
+            `bun -e "$(cat probe.js)" eval`,
+            "sh -c 'bun probe.js shell'",
+            `bun -e 'console.log(Bun.spawnSync(["bun", "probe.js", "spawned"]).stdout.toString().trim()); console.log(require("child_process").execFileSync("bun", ["probe.js", "exec"]).toString().trim())'`,
+          ].join("\n"),
+        );
+        const rows = probed(written.output);
+        expect(rows.map((row) => row.probe)).toEqual(["script", "eval", "shell", "spawned", "exec"]);
+        for (const { said, taken, made } of rows) {
+          expect(said).toContain(own);
+          expect(taken).toContain(own);
+          expect(made).toContain(own);
+          expect(readFileSync(join(made, "f"), "utf8")).toBe("x");
+        }
+        // The `bun` a command names is the executable the host runs on.
+        const named = (await run(wall, "command -v bun")).output.trim();
+        expect(realpathSync.native(named)).toBe(realpathSync.native(runtimeProcess.execPath));
+      } finally {
+        await release();
+        rmSync(dirs.host, { recursive: true, force: true });
+        rmSync(repoRoot, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+});
+
+describe("the search path a walled command is given", () => {
+  it("names the executable the host runs on before any other bun the host's fixed list holds", () => {
+    // Until 19 October the runtime's folder came from the read grants, which leave out a prefix
+    // under /usr or /opt, so a host Bun there lost to an older one earlier on the fixed list.
+    const scratch = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-search-")));
+    try {
+      const stub = (folder: string) => {
+        mkdirSync(join(scratch, folder), { recursive: true });
+        writeFileSync(join(scratch, folder, "bun"), "#!/bin/sh\necho stub\n", { mode: 0o755 });
+        return join(scratch, folder, "bun");
+      };
+      const older = dirname(stub("older"));
+      const runtime = stub("runtime");
+      const PATH = commandSearchPath(null, runtime, [older, "/usr/bin", "/bin"]);
+      expect(realpathSync.native(Bun.which("bun", { PATH }) ?? "")).toBe(runtime);
+      // A tool tree's own bun still goes first.
+      const treeBun = stub("tree/bin");
+      expect(Bun.which("bun", { PATH: commandSearchPath(join(scratch, "tree"), runtime, [older]) })).toBe(
+        treeBun,
+      );
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  });
 });

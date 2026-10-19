@@ -59,7 +59,7 @@ import { taskSets } from "#src/kernel/task.ts";
 import { mkdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isString, type JsonObject } from "#src/meta/json-shape.ts";
-import { keyIfDefined } from "#src/meta/optional-key.ts";
+import { keyIfDefined, keysIf } from "#src/meta/optional-key.ts";
 import { join } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { plural } from "#src/meta/text.ts";
@@ -422,13 +422,17 @@ async function comparedOf(
   // The table's budget hold, which its own comparisons meet in `decide` (14 October).
   const unafforded = decided.move === "compare" ? null : unaffordedAsked(events, plan);
   if (unafforded !== null) return { refused: `The host refused the compare action: ${unafforded}.` };
+  // Another comparison than the table's is the Builder's own, on record as `asked` with what the
+  // table named: until 19 October it kept the table's code and reason, and r3's g-3 and g-6 read as
+  // controls of the starter while each measured a changed checkpoint.
+  const table = decided.move === "compare" ? `a comparison of the ${decided.fresh} harness` : toolOf(decided);
   return {
     move: {
       move: "compare",
-      code: decided.move === "compare" ? decided.code : ASKED,
+      code: ASKED,
       fresh: working,
       reference: "promoted",
-      why: "the Builder asked for a comparison",
+      why: `the Builder asked for it, where the table named ${table}`,
     },
     note: "",
     ...keyIfDefined("froze", working === latest ? undefined : working),
@@ -455,7 +459,11 @@ const compareTool = (context: CampaignContext, bench: Bench): AgentTool =>
     // record once the comparison is admitted: until 14 October it was written first, and a
     // comparison the admission refused left a move that never began.
     await checkpointCommand(args, context.held, signal, () =>
-      begin({ session, args: args.slice(packOf(context.values).length) }),
+      begin({
+        session,
+        args: args.slice(packOf(context.values).length),
+        ...keysIf(named.move !== decided, () => ({ code: named.move.code, why: named.move.why })),
+      }),
     );
     const events = read(context.log);
     const step = campaignOf(events).steps.findLast(

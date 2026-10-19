@@ -23,11 +23,13 @@
  * In a campaign its Builder leads, the Examiner's sessions and the comparisons run inside the
  * Builder's conversation, and an Examiner session can outlast it: a session there is gone past
  * only at its own seat's next start or the campaign's end (`soFar`). Until 14 October a Builder
- * read as cut once its first Examiner session began.
+ * read as cut once its first Examiner session began. A session is billed its own dollars alone,
+ * open or ended (`ownedBy`, `src/kernel/reports.ts`): until 19 October an ended led Builder was
+ * billed every move made inside its span, which those moves' own lines billed again.
  */
 import type { Tally } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { billedAll, billedParts, lastReports, latestBuilt, promoted } from "../kernel/reports.ts";
+import { billedAll, billedParts, lastReports, latestBuilt, ownedBy, promoted } from "../kernel/reports.ts";
 import { ended, passed, practiceRan, type Ran, solvesIn } from "../kernel/solves.ts";
 import { heldAtGate, taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
@@ -202,14 +204,8 @@ function soFar(events: readonly LogEvent[], index: number, id: string, seat: "ex
     turns: window.filter((event) => own(event) && event.kind === `${seat}.turn`).length,
     last: window.findLast(own)?.at ?? "",
   };
-  // What an open session billed, where other steps run inside its window: not another session's,
-  // nor a solve a comparison or an Examiner's try started.
-  const others = new Set(
-    led ? solvesIn(events).flatMap((solve) => (isString(solve.start.comparison) ? [solve.id] : [])) : [],
-  );
-  const mine = ({ data }: LogEvent) =>
-    !(isString(data.session) && data.session !== id) && !(isString(data.solve) && others.has(data.solve));
-  return { read, closed, until, window, billed: billedAll(window.filter(mine)) };
+  // What an open session billed, where other steps run inside its window: its own (`ownedBy`).
+  return { read, closed, until, window, billed: billedAll(window.filter(ownedBy(events, id))) };
 }
 
 /** Every failed practice solve on a released task, each with where it stands, and the place in the

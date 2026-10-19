@@ -1094,10 +1094,17 @@ Cite a rule by its number in a pull request or a review.
     gives an operational result and no result about a harness. Do not remeasure a dead provider
     because budget remains.
 
-15. **Explicit credit exhaustion is an ordinary interruption.** When a provider reports that a
-    login is out of credit or at its session limit, keep what was recorded and classify the
-    affected work from its events. A generic 429, a timeout or a crash is not that report:
-    investigate the failure itself.
+15. **Credit and session limits are expected, and are no defect of the system.** Runs here share
+    a few logins, and a login running out of credit or reaching its session limit is part of
+    the development process, as a host restart is (operator, 19 October). Keep what was
+    recorded, classify the affected work from its events, and go on from the log at the run's
+    own commit once the login has room again, or under another login (section 10, item 9). A
+    named reset is waited out in code (`waitOut`, `tools/d2/host.ts`); a crash that names
+    none counts towards the crash rule (`crashedRun`) and ends a campaign on its environment,
+    which is a pause and not a result. Such an ending is no failure of a mechanism: do not
+    patch, triage or report it as one, do not count it against a change, and do not spend a
+    pull request on waiting it out. A generic 429, a timeout or a crash that names no limit is
+    not that report: investigate the failure itself.
 
 ## 9. Status, evidence and claims
 

@@ -33,6 +33,7 @@ import {
   triggered,
 } from "./compare.ts";
 import type { LogEvent } from "./log.ts";
+import { providerFailed, windowEnded } from "./solve.ts";
 import { passed, practiceRan, ranUnder } from "./solves.ts";
 import { taskSets } from "./task.ts";
 
@@ -107,7 +108,7 @@ interface TalliedIn {
   readonly fresh: readonly boolean[];
   /** The side the campaign's reference harness stood on, or null where it was neither. */
   readonly reference: "old" | "fresh" | null;
-  /** Whether a solve of the task in this comparison ended at a limit (`AT_A_LIMIT`). */
+  /** Whether a limit cut a solve of the task in this comparison short (`taskRecords`). */
   readonly cut: boolean;
   /** Whether one of the reference harness's own solves of it did: all its author hears (rule 4). */
   readonly referenceCut: boolean;
@@ -162,8 +163,9 @@ export const PATIENCE = 6;
 const UNSOLVED_RUN = 2;
 /** How many comparisons of a task's history its author hears (`poolOf`, histories). */
 const HISTORY = 3;
-/** The ways a solve ends at a limit of its own: its time, its model turns or its context. Such an
- *  ending says the budget was short, and nothing of whether the task has a valid answer. */
+/** The ways a solve ends at a limit of its own: its time, its model turns or its context. The
+ *  investigation reads every one as a miss at a limit (`tools/wri/time.ts`); the pool reads all but
+ *  one as a cut whose answer is not known (`taskRecords`). */
 export const AT_A_LIMIT: ReadonlySet<unknown> = new Set(["wall-ended", "turns-ended", "context-ended"]);
 const STEP = "step";
 /** How a Builder session ends when it was cut and left half a session's work. */
@@ -438,15 +440,39 @@ function taskRecords(events: readonly LogEvent[]) {
     const tried = kind === "task.gate" ? asRecord(data.reference)?.valid : undefined;
     if (kind === "task.feasible" || (isNumber(tried) && tried > 0)) of(data.version).feasible = true;
   }
-  /** Each comparison's tasks a solve of which ended at a limit, by harness, as `cutIn` names them. */
+  /**
+   * Each comparison's tasks a solve of which a limit cut short, by harness, as `cutIn` names them:
+   * what that solve would have answered is not known (rule 7). The wall is the host's clock, which
+   * a loaded host moves, and a full context is no number the solver is told: neither says anything
+   * of the task. A solve that ends `turns-ended` under the model turns its condition names
+   * (`--solve-model-turns`) is the opposite case. The turns are the budget's unit, told to the
+   * solver on every tool result, and using them all without an answer is the budget's verdict that
+   * the harness did not answer the task within it, as a wrong answer is. Read as a cut until
+   * 19 October, it kept a task no solve answers in the draw for good: in the rehearsals sim-turns
+   * and sim-turns2, 706 of 1,144 scripted solves ended so, and each such task was scored again as a
+   * tie of two fails. `turns-ended` arises only where the condition names a number (`spent`,
+   * `src/solve/run.ts`), so a campaign without one reads as before. One whose last recorded turn
+   * the window ended (`windowEnded`), or the provider failed (`providerFailed`), stays a cut: a log
+   * written before 19 October, or 14 October, holds such solves as `turns-ended`, and they read as
+   * they did.
+   */
   const cut = new Set<string>();
+  /** Each solve's last recorded turn, by the solve's id. */
+  const lastTurn = new Map(
+    events.flatMap(({ kind, data }) =>
+      kind === "solve.turn" && isString(data.solve) ? [[data.solve, data]] : [],
+    ),
+  );
   for (const solve of ranUnder(events)) {
-    const { task } = solve.under;
+    const { task, limits, harness } = solve.under;
     const { comparison } = solve.start;
+    const kind = solve.ending?.kind;
+    const turn = lastTurn.get(solve.id);
+    const last = { stopReason: turn?.stopReason, errorMessage: turn?.error };
+    const interrupted = windowEnded(last) || providerFailed(last);
+    const budgeted = kind === "turns-ended" && isNumber(limits.modelTurns) && !interrupted;
     if (passed(solve) === true) Object.assign(of(task), { answered: true, feasible: true });
-    if (isString(comparison) && AT_A_LIMIT.has(solve.ending?.kind)) {
-      cut.add(cutIn(comparison, task, solve.under.harness));
-    }
+    if (isString(comparison) && AT_A_LIMIT.has(kind) && !budgeted) cut.add(cutIn(comparison, task, harness));
   }
   tallyReports(events, of, cut);
   return { records: [...records.values()], held: heldOut };
@@ -520,9 +546,11 @@ function tallyReports(
  * - A valid answer anywhere on record settles the question for good: under any harness, in any
  *   comparison or outside one, at any limits. Such a task is feasible, stays in the set and ties
  *   where a budget is too short for it, which costs solves and biases nothing.
- * - A comparison in which a solve of the task ended at a limit (`AT_A_LIMIT`) is not counted for
- *   it. That solve was cut, and what it would have answered is not known. A task that is cut at
- *   every comparison so never goes to a person on this rule, and stays a tie the reports show.
+ * - A comparison in which a limit cut a solve of the task short (`taskRecords`: its wall or its
+ *   context) is not counted for it. What that solve would have answered is not known. A task cut
+ *   at every comparison so never goes to a person on this rule, and stays a tie the reports show.
+ *   A solve that used every model turn its condition names was not cut: the budget's unit ended
+ *   it, as a wrong answer ends one, and since 19 October such a comparison counts.
  *
  * What neither covers is an answer rushed under a told budget and rejected: with no valid answer
  * on record such a comparison counts, since nothing in the log tells a rushed answer from a
@@ -720,9 +748,9 @@ function standingOf(record: TaskRecord): [string, Standing][] {
  * The tasks no solve answered are the held-out ones without a valid answer in `UNSOLVED_RUN` or
  * more comparisons, cut at a limit or not. On 10 October one campaign held four to five such tasks
  * of ten while its last three Builder sessions passed every practice task and changed nothing.
- * `poolOf`'s `awaiting` is the question to a person, which leaves out a task cut at a limit; this
- * leaves nothing out, since a task cut twice is as much beyond the harness as one answered wrongly
- * twice. A valid answer anywhere on record settles it either way.
+ * `poolOf`'s `awaiting` is the question to a person, which leaves out a task its wall or its
+ * context cut (`taskRecords`); this leaves nothing out, since a task cut twice is as much beyond
+ * the harness as one answered wrongly twice. A valid answer anywhere on record settles it either way.
  */
 export function releaseOrder(
   events: readonly LogEvent[],

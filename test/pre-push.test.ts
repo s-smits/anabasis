@@ -5,7 +5,15 @@
  * were gated, with which pass, and what each pass's test step ran. Nothing is pushed anywhere: the
  * hook is handed the ref lines Git would hand it.
  */
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  appendFileSync,
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 
@@ -59,11 +67,11 @@ git("update-ref", "refs/remotes/origin/main", base);
 
 afterAll(() => rmSync(fixture, { recursive: true, force: true }));
 
-function push(updates: readonly string[], env: Record<string, string> = {}) {
-  return spawnTextSync("sh", [hook, "origin", "fixture-remote"], {
+function push(updates: readonly string[], env: Record<string, string> = {}, by = hook) {
+  return spawnTextSync("sh", [by, "origin", "fixture-remote"], {
     cwd: work,
     stdin: `${updates.join("\n")}\n`,
-    env: { ...Bun.env, ...fake, ...env },
+    env: { ...Bun.env, ANA_GATE_FRESH: "", ...fake, ...env },
   });
 }
 const update = (local: string, remote: string, branch = "topic"): string =>
@@ -197,6 +205,58 @@ describe("pre-push", () => {
     expect(again.status).toBe(0);
     expect(again.stderr.match(/passed earlier on these exact bytes/gu)).toHaveLength(2);
     expect(gatesRun(log)).toEqual([]);
+  });
+
+  it("runs nothing again over a restack that kept each tree and its parent's, and runs a commit whose parent's tree moved", () => {
+    push([update(second, docs)]);
+    rmSync(log, { force: true });
+    const tree = (at: string): string => git("rev-parse", `${at}^{tree}`);
+    // A restack: new ids and messages over the same bytes.
+    const sourceAgain = git("commit-tree", tree(source), "-p", docs, "-m", "source, restacked");
+    const secondAgain = git("commit-tree", tree(second), "-p", sourceAgain, "-m", "second, restacked");
+    expect(push([update(secondAgain, docs)]).status).toBe(0);
+    expect(gatesRun(log)).toEqual([]);
+    // The same tree over a parent whose tree moved: its static pass reads another diff.
+    const moved = git("commit-tree", withFile(docs, "moved.txt"), "-p", docs, "-m", "moved");
+    const sourceMoved = git("commit-tree", tree(source), "-p", moved, "-m", "source over moved");
+    const secondMoved = git("commit-tree", tree(second), "-p", sourceMoved, "-m", "second over moved");
+    expect(push([update(secondMoved, docs)]).status).toBe(0);
+    expect(gatesRun(log)).toEqual([`${moved} -`, `${sourceMoved} test/owner.test.ts`]);
+  });
+
+  it("runs a tree again under a changed gate, though it passed under the gate before", () => {
+    // A copy of the checker as a caller's checkout holds it: the hook, the gate and what it imports.
+    const checker = join(fixture, "checker");
+    const parts = [
+      ".githooks/pre-push",
+      "tools/runtime",
+      "src/meta",
+      "vendor/pi-coding-agent/core/tools/truncate.ts",
+    ];
+    for (const part of parts) {
+      cpSync(join(import.meta.dir, "..", part), join(checker, part), { recursive: true });
+    }
+    const by = join(checker, ".githooks", "pre-push");
+    expect(push([update(second, docs)], {}, by).status).toBe(0);
+    rmSync(log, { force: true });
+    expect(push([update(second, docs)], {}, by).status).toBe(0);
+    expect(gatesRun(log)).toEqual([]);
+    appendFileSync(join(checker, "tools", "runtime", "gate.ts"), "\n// the gate, changed\n");
+    expect(push([update(second, docs)], {}, by).status).toBe(0);
+    expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`, `${second} suite`]);
+  });
+
+  it("reads no pass recorded by commit id, which names no gate", () => {
+    writeFileSync(join(work, ".git", "ana-gate-passed"), `${source} whole\n${second} whole\n`);
+    expect(push([update(second, docs)]).status).toBe(0);
+    expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`, `${second} suite`]);
+  });
+
+  it("runs every commit again under ANA_GATE_FRESH=1, whatever passed before", () => {
+    push([update(second, docs)]);
+    rmSync(log, { force: true });
+    expect(push([update(second, docs)], { ANA_GATE_FRESH: "1" }).status).toBe(0);
+    expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`, `${second} suite`]);
   });
 
   it("stops at the commit that fails, prints where its fix goes, and ends on the failing step", () => {

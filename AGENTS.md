@@ -1305,8 +1305,11 @@ commit goes unchecked and a push ungated, and nothing says so (`git config core.
 which). The pre-commit runs `bun run commit:check`. The pre-push gates the work a push adds
 (`tools/runtime/pre-push.ts`): each new commit gets the static steps and its nearby tests over a
 checkout of its own, and the pushed head holding the newest of them the whole gate. A push of
-documentation alone gets `git diff --check`. A pass is remembered by commit id, and a failure names
-the commit, the step and the `--fixup` that repairs it; its log is under
+documentation alone gets `git diff --check`. A pass is remembered by content: a whole pass by the
+commit's tree and a static one by its tree and its parent's, each with the gate that ran and the
+Bun version, so a restack that keeps every tree runs nothing again. A line kept by commit id before
+19 October names no gate and is not read, and `ANA_GATE_FRESH=1` reads no remembered pass. A
+failure names the commit, the step and the `--fixup` that repairs it; its log is under
 `git rev-parse --git-path ana-gate`.
 
 Run one suite at a time; two overlapping suites each take about twice as long. While editing, run

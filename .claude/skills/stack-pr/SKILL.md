@@ -169,8 +169,12 @@ gated: 444 of v2's commits came into this repository that way on 11 October, and
 gated every commit new to the remote, could not pass one of them. To push another repository's
 history as a branch of its own, fetch it as a remote first, so that its commits are already held.
 
-A pass is remembered by commit id in the common Git directory, so a push its lease refused goes
-out again without paying twice, and after a failure the commits beneath the fix keep their passes.
+A pass is remembered by content in the common Git directory, a whole pass by the commit's tree and a
+static one by its tree and its parent's, so a push its lease refused or a restack that kept every
+tree goes out again without paying twice, and after a failure the commits beneath the fix keep their
+passes. The key also holds the gate that ran, so a changed gate runs again on the same trees.
+`ANA_GATE_FRESH=1` ignores remembered passes for the commits selected for proof; a rebase's replays
+are still left out before that selection.
 A failure ends on one line naming the commit and the step, with its log. The fix goes into that
 commit, and the push goes again:
 

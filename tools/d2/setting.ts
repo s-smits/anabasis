@@ -7,14 +7,16 @@
  *   --solver-window 200000              the context its Claude Code compacts at, beside --solver
  *                                       too: 300,000 tokens where not named, which a model served
  *                                       a 200K context, such as claude-haiku-5-5, cannot hold
- *   --solve-minutes 120                 the wall of one solve
- *   --solve-model-turns 40              the model's own turns a solve is given, told to the solver; no default
+ *   --solve-minutes 30                  the wall of one solve; 30 where not named
+ *   --solve-model-turns 20              the model's own turns a solve is given, told to the solver; 20 where not
+ *                                       named, and `unlimited` for none, as campaigns recorded before
+ *                                       19 October read back
  *   --tasks a,b,c                       the scored tasks, by id, where the operator chooses them
  *   --target 12                         otherwise: so many of the held-out tasks, by the contract's draw
  *
  * The first command of a campaign that compares records what its flags name, with the defaults for
- * what they leave out: the stored cycle's own solver, the stored sweep's limits (`campaign.ts`,
- * `LIMITS`) and twelve tasks by the draw. From then on a command that names nothing runs under the
+ * what they leave out: the stored cycle's own solver, the one budget every solver is held to
+ * (`campaign.ts`, `LIMITS`) and twelve tasks by the draw. From then on a command that names nothing runs under the
  * record, one that names the same is the same, and one that names another is refused. Until
  * 2026-10-09 the same flags were typed again on every command of a campaign, and a command that
  * differed was told so in a note and went on: a forgotten flag changed the comparison without a
@@ -133,13 +135,16 @@ export const SETTING_OPTIONS = {
   "solve-model-turns": { type: "string" },
 } as const;
 
-/** The setting of a campaign nothing has named: the stored sweep's limits, spelled out so that the
- *  source says them, and a test holds them to `LIMITS`. The solver is the stored cycle's own, the
- *  model's turns are not limited, and the scored set is `SIZE.tasks` tasks by the draw. */
+/** The setting of a campaign nothing has named: `LIMITS`'s wall and model turns, as the flags say
+ *  them. The solver is the stored cycle's own, and the scored set is `SIZE.tasks` tasks by the draw. */
+const { modelTurns: budgeted, ...UNTURNED } = LIMITS;
 const SETTING_DEFAULTS = {
   "solver-effort": "high",
-  "solve-minutes": "120",
+  "solve-minutes": String(LIMITS.wallSeconds / 60),
+  "solve-model-turns": String(budgeted),
 } as const;
+/** The model's turns of a setting that limits none, as a record from before 19 October holds it. */
+const UNLIMITED = "unlimited";
 
 /** The parts of a record, each with how a refusal says it as flags, or null where the record holds
  *  none of it, and the flag it is then missing. */
@@ -195,10 +200,10 @@ export function settingNamed(values: SettingFlags): NamedSetting {
     );
   }
   const named = given["solve-model-turns"];
-  const modelTurns = named === undefined ? undefined : Number(named);
+  const modelTurns = named === UNLIMITED ? undefined : Number(named);
   if (modelTurns !== undefined && (!Number.isInteger(modelTurns) || modelTurns < 1)) {
     throw new Error(
-      `--solve-model-turns ${String(named)}: a solve's model turns are a whole number of at least one`,
+      `--solve-model-turns ${named}: a solve's model turns are a whole number of at least one, or ${UNLIMITED}`,
     );
   }
   const window = given["solver-window"] === undefined ? undefined : Number(given["solver-window"]);
@@ -216,7 +221,7 @@ export function settingNamed(values: SettingFlags): NamedSetting {
         ? undefined
         : { model: given.solver, effort, ...keyIfDefined("window", window) },
     limits: {
-      ...LIMITS,
+      ...UNTURNED,
       wallSeconds,
       ...commandSeconds(wallSeconds),
       ...keyIfDefined("modelTurns", modelTurns),
@@ -245,7 +250,7 @@ function flagsOf({ solver, minutes, modelTurns, tasks, target }: Recorded): Sett
     ...keyIfDefined("solver-effort", solver?.effort),
     ...keyIfDefined("solver-window", solver?.window === undefined ? undefined : String(solver.window)),
     "solve-minutes": String(minutes),
-    ...keyIfDefined("solve-model-turns", modelTurns === null ? undefined : String(modelTurns)),
+    "solve-model-turns": modelTurns === null ? UNLIMITED : String(modelTurns),
     ...keyIfDefined("tasks", tasks?.join(",")),
     target: String(target),
   };

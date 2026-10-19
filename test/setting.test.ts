@@ -21,15 +21,17 @@ import {
 } from "../tools/d2/setting.ts";
 import { modelNamed, sweepOptions } from "../tools/m0/stored-sweep.ts";
 
-/** The setting of a campaign no command has named anything for: 24 tasks to score since
- *  12 October (`SIZE`), 12 before. */
+/** The setting of a campaign no command has named anything for: the one budget every solver is
+ *  held to since 19 October (`LIMITS`), and 24 tasks to score since 12 October (`SIZE`), 12 before. */
 const UNNAMED: Recorded = {
   solver: null,
-  minutes: 120,
-  modelTurns: null,
+  minutes: 30,
+  modelTurns: 20,
   tasks: null,
   target: 24,
 };
+/** The same, as a campaign recorded it before 19 October: 120 minutes, the model's turns unlimited. */
+const UNLIMITED: Recorded = { ...UNNAMED, minutes: 120, modelTurns: null };
 /** One an operator recorded: another solver, an eight-minute wall, forty model turns, three tasks. */
 const SHORT: Recorded = {
   solver: { model: "anthropic/claude-sonnet-5-5", effort: "low" },
@@ -58,9 +60,8 @@ describe("what the flags of a setting name", () => {
     // `--solve-turns` named them, and no command takes the flag since.
     expect(longer).toEqual({ ...LIMITS, wallSeconds: 14_400 });
     expect(SETTING_OPTIONS).not.toHaveProperty("solve-turns");
-    // The model's own turns are limited only where a command names a number: without the flag the
-    // limits hold no such key, and the setting is the one it was before the flag existed.
-    expect(longer).not.toHaveProperty("modelTurns");
+    // The model's own turns are the one budget's where no command names a number, whoever solves.
+    expect(longer.modelTurns).toBe(LIMITS.modelTurns);
     expect(settingNamed({ "solve-model-turns": "40" }).limits).toEqual({ ...LIMITS, modelTurns: 40 });
     expect(settingNamed({ solver: "anthropic/claude-sonnet-5-5", "solver-effort": "low" }).solver).toEqual({
       model: "anthropic/claude-sonnet-5-5",
@@ -149,6 +150,12 @@ describe("a campaign's setting, recorded once", () => {
       tasks: undefined,
       target: 24,
     });
+    // A record from before the one budget runs on under its own limits, the turns unlimited: the
+    // default of 20 is a first record's alone, and would otherwise refuse every such campaign.
+    const old = settingAsked({}, UNLIMITED);
+    expect(old.record).toBeNull();
+    expect(old.named.limits.wallSeconds).toBe(7200);
+    expect(old.named.limits).not.toHaveProperty("modelTurns");
   });
 
   // Until 2026-10-09 the same flags were typed on every command, and one that differed was a note.
@@ -167,10 +174,10 @@ describe("a campaign's setting, recorded once", () => {
     expect(() => settingAsked({ tasks: "t-1,t-2" }, SHORT)).toThrow(
       "--tasks t-1,t-2 names another setting than the campaign's, which was recorded as --tasks t-1,t-2,t-3",
     );
-    expect(() => settingAsked({ target: "8" }, UNNAMED)).toThrow(
+    expect(() => settingAsked({ target: "8" }, UNLIMITED)).toThrow(
       "--target 8 names another setting than the campaign's, which was recorded as --target 24",
     );
-    expect(() => settingAsked({ "solve-model-turns": "40" }, UNNAMED)).toThrow(
+    expect(() => settingAsked({ "solve-model-turns": "40" }, UNLIMITED)).toThrow(
       "--solve-model-turns 40 names another setting than the campaign's, which was recorded with no --solve-model-turns",
     );
   });
@@ -266,7 +273,8 @@ describe("the first record of a campaign that already holds solves", () => {
       firstRecord(named, { ...named.named, solver: { model: "p/other", effort: "high" } }, ran),
     ).toContain("names another than its last test-side solves ran under");
     // A wall with no model turns on record is named without the flag.
-    const unlimited = { ...ran, limits: { ...LIMITS, wallSeconds: 480 } };
+    const { modelTurns: _, ...unturned } = LIMITS;
+    const unlimited = { ...ran, limits: { ...unturned, wallSeconds: 480 } };
     expect(firstRecord(forgot, forgot.named, unlimited)).toContain("--solve-minutes 8. Name that setting");
     // The model's turns alone make another setting.
     const turned = settingAsked({ "solve-minutes": "30", "solve-model-turns": "20" }, null);

@@ -311,6 +311,16 @@ function gateSaid(text: JsonValue | undefined): (string | number | null)[][] {
   });
 }
 
+/** What the gate said of each draft over every tool result of the session, by task id: a
+ *  `try_task` call returns before its gate does (`putAside`, `write.ts`), so its lines come with
+ *  later results, in the order the gate finished them. */
+function gateHeard(called: readonly Record<string, JsonValue>[]): (string | number | null)[][] {
+  return called
+    .flatMap(({ text: said }) => gateSaid(said))
+    .filter(([id]) => id !== "")
+    .toSorted(([one], [other]) => String(one).localeCompare(String(other)));
+}
+
 /** Each of `versions` as `of` holds it: a call's drafts are gated together, and each is logged as
  *  its solves end, so a session's records of them are in no fixed order. */
 function inOrder<T extends JsonValue>(
@@ -826,7 +836,7 @@ describe("a session that writes tasks", () => {
     );
     expect(inOrder(poolOf(read(s.log)).scorable, proposed, String)).toEqual([first, second, third, fourth]);
     // The Examiner hears the count of a held task's valid solves; the rule is the system prompt's.
-    expect(gateSaid(s.of(CALLED)[5]?.text)).toEqual([
+    expect(gateHeard(s.of(CALLED))).toEqual([
       ["x-1-001", "held out", 0],
       ["x-1-002", "held out", 0],
       ["x-1-003", "held out", 0],
@@ -848,7 +858,12 @@ describe("a session that writes tasks", () => {
     const examined = await examine({ ...s.request, limits: { ...s.request.limits, puts: 1 }, probe });
     expect(asked).toBe(0);
     expect(examined.refused).toEqual([s.versionOf("x-1-001", 2)]);
-    expect(s.of(CALLED)[0]?.text).toStartWith(
+    expect(
+      s
+        .of(CALLED)
+        .flatMap(({ text: said }) => (isString(said) ? [said] : []))
+        .join("\n"),
+    ).toContain(
       "x-1-001: refused: the campaign's budget holds no reserve for the reference harness's three solves of it",
     );
   });
@@ -899,7 +914,7 @@ describe("a session that writes tasks", () => {
       versions.filter((_version, nth) => ![0, 1, 4].includes(nth)),
     );
     expect(inOrder(taskSets(read(s.log)).held, versions, String)).toEqual(held);
-    expect(gateSaid(s.of(CALLED)[0]?.text)).toEqual([
+    expect(gateHeard(s.of(CALLED))).toEqual([
       ["x-1-001", "held out", 1],
       ["x-1-002", "held out", 2],
       ["x-1-003", "refused", 0],
@@ -951,7 +966,7 @@ describe("a session that writes tasks", () => {
     const [apart, alike] = [s.versionOf("x-1-001", 2), s.versionOf("x-1-002", 3)];
     expect(examined).toMatchObject({ held: [apart], refused: [alike] });
     expect(s.of(GATE).map(({ outcome }) => outcome)).toEqual(["passed", "refused"]);
-    expect(gateSaid(s.of(CALLED)[0]?.text)).toEqual([
+    expect(gateHeard(s.of(CALLED))).toEqual([
       ["x-1-001", "held out", 3],
       ["x-1-002", "refused", 3],
     ]);
@@ -991,11 +1006,10 @@ describe("a session that writes tasks", () => {
     // The author's measure is on record for the held task alone, where a comparison reads it.
     expect(poolOf(read(s.log)).bests).toEqual(new Map([[better, 9]]));
     // Each draft's line tells the reference's measures and, where it tried one, its own.
-    const said = s.of(CALLED)[2]?.text;
-    const lines = (isString(said) ? said : "").split("\n");
-    expect(lines.find((line) => line.startsWith("x-1-001"))).toContain("10, 10, 10.05");
-    expect(lines.find((line) => line.startsWith("x-1-001"))).toContain("try_answer on it 9");
-    expect(lines.find((line) => line.startsWith("x-1-003"))).not.toContain("try_answer on it");
+    const lines = s.of(CALLED).flatMap(({ text: said }) => (isString(said) ? said.split("\n") : []));
+    expect(lines.find((line) => line.startsWith("x-1-001: "))).toContain("10, 10, 10.05");
+    expect(lines.find((line) => line.startsWith("x-1-001: "))).toContain("try_answer on it 9");
+    expect(lines.find((line) => line.startsWith("x-1-003: "))).not.toContain("try_answer on it");
   });
 
   it("ends at its wall with no solve of the reference harness left running, and starts none after it", async () => {
@@ -1038,6 +1052,37 @@ describe("a session that writes tasks", () => {
     expect(s.of(GATE).filter(measuredGate)).toEqual([]);
   });
 
+  it("returns a try_task call before its gate does, and tells what the gate said with a later tool result", async () => {
+    // The reference's solves end only once the session has made its next call: a call that waited
+    // on its gate, as every one did until 19 October, would wait for ever.
+    let release = () => {};
+    const after = new Promise<void>((settle) => {
+      release = settle;
+    });
+    const s = seat("write", [
+      call("try_task", { tasks: [instance(2)] }),
+      () => {
+        release();
+        return tried(3);
+      },
+      finish,
+      finish,
+    ]);
+    const measured = measuredProbe(s.log, () => undefined);
+    const probe = async (task: TaskPackage, session: string) => {
+      await after;
+      return await measured(task, session);
+    };
+    const examined = await examine({ ...s.request, limits: { ...s.request.limits, puts: 1 }, probe });
+    const [put, ...later] = s.of(CALLED);
+    expect(gateSaid(put?.text).filter(([id]) => id !== "")).toEqual([]);
+    expect(gateHeard(later)).toEqual([["x-1-001", "refused", 3]]);
+    expect(examined.refused).toEqual([s.versionOf("x-1-001", 2)]);
+    // The gate's event is on record before the session's end.
+    const kinds = read(s.log).map(({ kind }) => kind);
+    expect(kinds.indexOf(GATE)).toBeLessThan(kinds.indexOf("exam.finished"));
+  });
+
   it("solves the instances of one call together, and bills each draft its own solves", async () => {
     const s = seat("write", [call("try_task", { tasks: [instance(2), instance(3)] }), finish, finish]);
     // No solve ends until all six have started: gated one instance at a time, the call would wait
@@ -1064,7 +1109,7 @@ describe("a session that writes tasks", () => {
       ["passed", { valid: 1, solves: 3, billed: 1.5 }],
       ["refused", { valid: 3, solves: 3, billed: 3 }],
     ]);
-    expect(s.sent[0]).toContain("every instance of a call at once");
+    expect(s.sent[0]).toContain("returns at once");
   });
 
   it("runs in its shell the engine a check names, from where it lies, and no other program of its tree", async () => {

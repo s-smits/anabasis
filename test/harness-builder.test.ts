@@ -778,8 +778,6 @@ describe("a campaign run by its log", () => {
       "1",
       "--target",
       "6",
-      "--margin",
-      "0.2",
       "--patience",
       "2",
     ];
@@ -809,12 +807,11 @@ describe("a campaign run by its log", () => {
     };
     await expect(harnessBuilder(flags, seats)).rejects.toThrow("the host failed under the solve");
     expect(of(name, "comparison.started")).toMatchObject([
-      { session: "g-1", objective: { direction: "lower", margin: 0.2 } },
+      { session: "g-1", objective: { direction: "lower" } },
     ]);
     expect(of(name, "campaign.ended")).toMatchObject([{ ending: "environment", move: "compare" }]);
-    // Run again, it goes on under the margin it began with, and reads its step.
+    // Run again, it goes on under the terms it began with, and reads its step.
     await harnessBuilder([...flags, "--moves", "1"], seats);
-    expect(of(name, MOVED).at(-1)?.args).toEqual(expect.arrayContaining(["--margin", "0.2"]));
     expect(of(name, "comparison.reported")).toMatchObject([
       { session: "g-1", reading: "step", scored: { wins: 6, losses: 0, ties: 0 } },
     ]);

@@ -38,7 +38,7 @@ interface Outcome {
 
 const [P, F] = [true, false];
 const [LEVEL, TRIGGER] = [0.1, 0.25];
-const lowerRule = { direction: "lower", margin: 0.01 } as const;
+const lowerRule = { direction: "lower" } as const;
 /** A task the new harness wins, loses or ties, on three solves a harness. */
 const pairs = (wins: number, losses: number, ties: number) => [
   ...Array.from({ length: wins }, (_, i) => ({ task: `w${String(i)}`, old: [F, F, P], fresh: [P, P, F] })),
@@ -573,8 +573,8 @@ describe("a task's pairings", () => {
     }
   });
 
-  it("sets two valid answers apart by the objective, by more than the margin, and no invalid one", () => {
-    const lower = { direction: "lower", margin: 0.01 } as const;
+  it("sets two valid answers apart by the objective, measures within a billionth as one, and no invalid one", () => {
+    const lower = { direction: "lower" } as const;
     // Two valid answers a side, the new harness's lighter: it wins every pairing of the four.
     expect(
       won({
@@ -593,14 +593,15 @@ describe("a task's pairings", () => {
         objective: { ...lower, direction: "higher", old: [10, 11], fresh: [8, 9] },
       }),
     ).toEqual({ fresh: 0, old: 4 });
-    // Within the margin of the larger measure two answers are even: 10 against 10.05 at 0.01 is,
-    // and 10 against 10.2 is not. A measure missing on one side decides nothing.
+    // Any difference sets two answers apart, 10 against 10.05 among them (until 19 October a
+    // margin of 0.01 made those two even); within a billionth of the larger they are one measure,
+    // which is floating-point arithmetic. A measure missing on one side decides nothing.
     expect(
       won({
         task: "t",
         old: [P, P],
         fresh: [P, P],
-        objective: { ...lower, old: [10.05, 10.2], fresh: [10, null] },
+        objective: { ...lower, old: [10.05, 10 + 1e-9], fresh: [10, null] },
       }),
     ).toEqual({ fresh: 1, old: 0 });
     // Validity is read first: a refused answer loses to a valid one whatever either measures, and
@@ -642,12 +643,12 @@ describe("a task's pairings", () => {
     ).toBe(1);
   });
 
-  it("calls a task informative for a side valid on some solves and not all, apart past the margin, or on none where a valid answer is on record", () => {
+  it("calls a task informative for a side valid on some solves and not all, bettered by the objective, or on none where a valid answer is on record", () => {
     const pair = (old: boolean[], measured: (number | null)[] = []) => ({
       task: "t",
       old,
       fresh: [F, F],
-      objective: { direction: "lower" as const, margin: 0.05, old: measured, fresh: [null, null] },
+      objective: { direction: "lower" as const, old: measured, fresh: [null, null] },
     });
     const nobody = new Set<string>();
     const known = new Set(["t"]);
@@ -662,45 +663,44 @@ describe("a task's pairings", () => {
     // so a reference that passed every scored solve had room only on tasks it answered some of the time.
     expect(informative(pair([F, F]), "old", known)).toBe(true);
     expect(informative(pair([F, F]), "old", new Set(["u"]))).toBe(false);
-    // Valid in every solve, its own answers apart by the margin or less: no room (#144's hostile case).
-    expect(informative(pair([P, P], [100, 104]), "old", nobody)).toBe(false);
-    // Apart by more than the margin: a better answer is there to find.
-    expect(informative(pair([P, P], [100, 110]), "old", nobody)).toBe(true);
-    // Alike, where an author's answer on record is better than each past the margin: a better
-    // harness can reach it (19 October). One within the margin of the best, or worse, leaves none.
-    expect(informative(pair([P, P], [100, 104]), "old", nobody, new Map([["t", 90]]))).toBe(true);
-    // Better than one of its own past the margin is enough: a harness at the author's answer wins
-    // the pairs against that one (until 19 October it had to beat every one).
-    expect(informative(pair([P, P], [100, 104]), "old", nobody, new Map([["t", 97]]))).toBe(true);
-    expect(informative(pair([P, P], [100, 101]), "old", nobody, new Map([["t", 97]]))).toBe(false);
-    expect(informative(pair([P, P], [100, 104]), "old", nobody, new Map([["t", 120]]))).toBe(false);
-    expect(informative(pair([P, P], [100, 104]), "old", nobody, new Map([["u", 90]]))).toBe(false);
+    // Valid in every solve at one measure, or within a billionth of it: no room (#144's hostile case).
+    expect(informative(pair([P, P], [100, 100]), "old", nobody)).toBe(false);
+    expect(informative(pair([P, P], [100, 100 + 1e-8]), "old", nobody)).toBe(false);
+    // Its own answers apart: its better one is there to find (until 19 October only past a margin
+    // of 0.01, so 100 against 101 had no room).
+    expect(informative(pair([P, P], [100, 101]), "old", nobody)).toBe(true);
+    // Alike, where an author's answer on record is better: a better harness can reach it, and wins
+    // the pairs against them (19 October). One that is the same, or worse, leaves none.
+    expect(informative(pair([P, P], [100, 100]), "old", nobody, new Map([["t", 99]]))).toBe(true);
+    expect(informative(pair([P, P], [100, 100]), "old", nobody, new Map([["t", 100]]))).toBe(false);
+    expect(informative(pair([P, P], [100, 100]), "old", nobody, new Map([["t", 120]]))).toBe(false);
+    expect(informative(pair([P, P], [100, 100]), "old", nobody, new Map([["u", 90]]))).toBe(false);
     // Valid answers with no measure, or a pair with no objective, have nothing to be bettered on.
     expect(informative(pair([P, P], [null, null]), "old", nobody, new Map([["t", 90]]))).toBe(false);
-    const { objective: _none, ...unmeasured } = pair([P, P], [100, 104]);
+    const { objective: _none, ...unmeasured } = pair([P, P], [100, 100]);
     expect(informative(unmeasured, "old", nobody, new Map([["t", 90]]))).toBe(false);
     // One valid answer measured and one not: the measured one is compared, the other with nothing.
     expect(informative(pair([P, P], [100, null]), "old", nobody, new Map([["t", 90]]))).toBe(true);
-    expect(informative(pair([P, P], [100, null]), "old", nobody, new Map([["t", 97]]))).toBe(false);
+    expect(informative(pair([P, P], [100, null]), "old", nobody, new Map([["t", 100]]))).toBe(false);
     // Under a higher objective the author's must be the larger, at zero and below as above.
     const higher = (measured: number[]) => ({
       ...pair([P, P], measured),
-      objective: { direction: "higher" as const, margin: 0.05, old: measured, fresh: [null, null] },
+      objective: { direction: "higher" as const, old: measured, fresh: [null, null] },
     });
-    expect(informative(higher([100, 104]), "old", nobody, new Map([["t", 120]]))).toBe(true);
-    expect(informative(higher([100, 104]), "old", nobody, new Map([["t", 90]]))).toBe(false);
+    expect(informative(higher([100, 100]), "old", nobody, new Map([["t", 120]]))).toBe(true);
+    expect(informative(higher([100, 100]), "old", nobody, new Map([["t", 90]]))).toBe(false);
     expect(informative(higher([-10, -10]), "old", nobody, new Map([["t", 0]]))).toBe(true);
-    // The other side's valid answer better than one of its own past the margin: room. One it beat,
-    // or one within the margin of its own, leaves none (19 October).
+    // The other side's valid answer better than one of its own: room. One it beat, or one the same
+    // as its own, leaves none (19 October).
     const against = (fresh: number[]) => ({
       task: "t",
       old: [P, P],
       fresh: [P, P],
-      objective: { direction: "lower" as const, margin: 0.05, old: [100, 100], fresh },
+      objective: { direction: "lower" as const, old: [100, 100], fresh },
     });
     expect(informative(against([90, 100]), "old", nobody)).toBe(true);
     expect(informative(against([120, 120]), "old", nobody)).toBe(false);
-    expect(informative(against([97, 97]), "old", nobody)).toBe(false);
+    expect(informative(against([100, 100]), "old", nobody)).toBe(false);
   });
 
   it("closes a task to the side whose answers nothing on record bettered, its wins by the objective among them", () => {
@@ -708,7 +708,7 @@ describe("a task's pairings", () => {
       task: "t",
       old: [P, P],
       fresh: [P, P],
-      objective: { direction: "lower" as const, margin: 0.01, old, fresh },
+      objective: { direction: "lower" as const, old, fresh },
     });
     // The shape of buffer-fresh-opus-forkedPR223_v0_5_4-r2 after its promotion: the promoted
     // harness won every pairing on the objective at one value. Until 19 October the pairings told
@@ -716,12 +716,12 @@ describe("a task's pairings", () => {
     expect(closedTo(pair([12, 12], [10, 10]), "fresh")).toBe(true);
     // The side that lost them has a better answer to reach.
     expect(closedTo(pair([12, 12], [10, 10]), "old")).toBe(false);
-    // Its own answers apart past the margin: its better one is there to find every time.
+    // Its own answers apart: its better one is there to find every time.
     expect(closedTo(pair([12, 12], [10, 11]), "fresh")).toBe(false);
     // One better answer of the other side's opens it, as many as there are.
     expect(closedTo(pair([12, 9], [10, 10]), "fresh")).toBe(false);
-    // Within the margin is alike.
-    expect(closedTo(pair([10.05, 10.05], [10, 10]), "fresh")).toBe(true);
+    // Within a billionth is alike.
+    expect(closedTo(pair([10 - 1e-9, 10 - 1e-9], [10, 10]), "fresh")).toBe(true);
     // A failed solve of its own leaves it open whatever the objective says.
     expect(closedTo({ ...pair([12, 12], [10, 10]), fresh: [P, F] }, "fresh")).toBe(false);
   });
@@ -731,12 +731,12 @@ describe("a task's pairings", () => {
       task: "t",
       old: [P, P],
       fresh: [P, P],
-      objective: { direction: "lower" as const, margin: 0.01, old: [10, 10], fresh: [10, 10] },
+      objective: { direction: "lower" as const, old: [10, 10], fresh: [10, 10] },
     };
     expect(closedTo(pair, "old")).toBe(true);
     expect(closedTo(pair, "old", 9)).toBe(false);
-    // Within the margin, or no better, it closes as before (19 October).
-    expect(closedTo(pair, "old", 9.95)).toBe(true);
+    // Within a billionth, or no better, it closes as before (19 October).
+    expect(closedTo(pair, "old", 10 - 1e-9)).toBe(true);
     expect(closedTo(pair, "old", 11)).toBe(true);
   });
 
@@ -744,16 +744,13 @@ describe("a task's pairings", () => {
     expect(objectiveRuleIn({ objective: { direction: "lower", margin: 0.01, decided: 3 } })).toEqual(
       lowerRule,
     );
-    // A start of 12 to 18 October also says what set its margin, the A/A's pairings: the margin
-    // itself is the term, and stands as it was.
-    expect(objectiveRuleIn({ objective: { ...lowerRule, from: 38 } })).toEqual(lowerRule);
-    for (const objective of [
-      undefined,
-      null,
-      { direction: "lower" },
-      { direction: "best", margin: 0.01 },
-      { direction: "higher", margin: -1 },
-    ]) {
+    // A start of before 19 October also holds its margin, and one of 12 to 18 October what set it:
+    // neither is read since, and the direction stands.
+    expect(objectiveRuleIn({ objective: { ...lowerRule, margin: 0.2, from: 38 } })).toEqual(lowerRule);
+    expect(objectiveRuleIn({ objective: { direction: "higher", margin: -1 } })).toEqual({
+      direction: "higher",
+    });
+    for (const objective of [undefined, null, { margin: 0.01 }, { direction: "best", margin: 0.01 }]) {
       expect(objectiveRuleIn({ objective: objective ?? null })).toBeUndefined();
     }
   });

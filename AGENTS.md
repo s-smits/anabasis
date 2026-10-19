@@ -101,8 +101,8 @@ in none of its three admission solves, but whose author's own answer passes on i
 (`task.feasible`), is held out like any other task (`try_task`, `gated` in
 `src/examiner/write.ts`). A task the reference never answers while a valid answer is on record is
 exactly the room a promotion leaves. Since 19 October, the same applies to a draft the reference
-answers in every solve where the author's answer beats each of the reference's answers on the
-objective by more than the margin (`informative`, `src/kernel/compare.ts`).
+answers in every solve where the author's answer beats one of the reference's answers on the
+objective (`informative`, `src/kernel/compare.ts`).
 
 Until 16 October some of these drafts were held back instead for a **ladder**: a fixed set never
 scored for a promotion and read after each one, the starter against the new reference. Until
@@ -865,8 +865,9 @@ Defaults worth knowing:
 - 4 solves per side (`--solves`; `SIZE` in `src/kernel/size.ts`; 12 and 2 before 12 October);
 - level 0.02 (`--level`, since 12 October; 0.10 before), with a patience of 6 (`--patience`);
 - trigger 0.25 (`--trigger`);
-- an objective margin of 0.01, for the gate and every comparison (`MARGIN`; from 12 to 18 October
-  the last A/A set it);
+- no objective margin: two measures are one only within a billionth of the larger, which is
+  floating-point arithmetic (`SAME`; until 19 October a margin of 0.01, `--margin`, and from 12
+  to 18 October the last A/A set it);
 - a stop after more than 3 tasks with a check defect (`--defects`);
 - a reserve of 10 dollars per solve (`--reserve`);
 - `--parent latest` and `--reference promoted`, which is the harness last promoted, and the
@@ -975,9 +976,11 @@ the test.
 
 Where the check program declares an **objective** (a quantity its evaluator computes from a valid
 answer, with a direction: `brief.objective`, `objective(request)`, verified after the checks pass;
-`OBJECTIVE`, `src/kernel/verify.ts`), two valid answers in a pair are compared by it, and the one
-better by more than the margin wins the pair (`--margin`, 0.01 of the larger magnitude, the same
-as the gate's; `ObjectiveRule`, `src/kernel/compare.ts`). Validity is read first, so a refused
+`OBJECTIVE`, `src/kernel/verify.ts`), two valid answers in a pair are compared by it, and the better
+one wins the pair (`ObjectiveRule`, `better`, `src/kernel/compare.ts`). Until 19 October it had to be
+better by more than a margin, 0.01 of the larger magnitude: replayed on the 11 campaigns of 14 to
+19 October, the A/A read no step in 35 controls with or without it, and without it the same solves
+promote 15 harnesses where they promoted 14. Validity is read first, so a refused
 answer can never be the better one. The objective is public, in the contract and in the solver's
 resources, and the report says how many tallied tasks it decided (`objective.decided`). The rule is
 a term of the comparison, fixed at its start; with a check program that declares no objective,
@@ -1078,7 +1081,7 @@ would exceed the cap.
 - **room** where a task was informative for the reference harness (`informative`,
   `src/kernel/compare.ts`, the same definition `try_task` uses to admit a draft):
   - valid on some of its solves and not all;
-  - one of its valid answers bettered by the objective past the margin, by another of its own,
+  - one of its valid answers bettered by the objective, by another of its own,
     by the other harness's or by its author's on record (`bettered`; the last two since
     19 October);
   - valid on none where a valid answer to it is on record, another harness's or its author's

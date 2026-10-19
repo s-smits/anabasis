@@ -56,10 +56,9 @@
  * reference o(n-f), a difference of n(f-o). It is stated over pairs because that is the form the
  * objective joins (`ObjectiveRule`, since 10 October): where the check program declares one, a
  * quantity its evaluator computes from a valid answer (`verify.ts`, `OBJECTIVE`), two valid answers
- * in a pair are compared by it, and the better one by more than the margin wins the pair. Validity
- * is read first and the objective only between two valid answers, so no answer the checks refuse
- * is ever the better one, and the margin is relative to the larger of the two magnitudes, so a
- * quantity's unit does not set it. The rule is a term of the comparison, fixed at its start
+ * in a pair are compared by it, and the better one wins the pair (`better`). Validity is read
+ * first and the objective only between two valid answers, so no answer the checks refuse is ever
+ * the better one. The rule is a term of the comparison, fixed at its start
  * (`comparison.started`, `objective`); a comparison whose start names none pairs on validity alone.
  * The value is the host's: no value the answer reports about itself is read.
  *
@@ -96,11 +95,9 @@ interface Used {
 }
 
 /** How two valid answers on one task are set against each other: by the quantity the check program
- *  computes of each, lower or higher being better, where the two differ by more than `margin` of
- *  the larger magnitude. */
+ *  computes of each, lower or higher being better (`better`). */
 export interface ObjectiveRule {
   readonly direction: "lower" | "higher";
-  readonly margin: number;
 }
 
 /** One task version's counted solves under the reference harness and under the new: true for a
@@ -165,17 +162,21 @@ export const TRIGGER = 0.25;
 const POWER = 0.8;
 /** What a report holds for a retained set no task was tallied in: no reading, never no loss. */
 export const UNMEASURED = "unmeasured" as const;
-/** The objective's margin wherever no command names one (`--margin`), and the gate's, one margin
- *  for both (18 October). From 12 to 18 October a comparison read by the 90th percentile of the
- *  last A/A's own spread while the gate held a draft at this one: in buffer-pr197-opus-m1 the
- *  comparison's margin moved between 0.00005 and 0.44 from one reading to the next, so a task the
- *  gate held on a spread past 0.01 tied where the A/A had set more, and a task changed its sign
- *  between a step and its repeat for no change of harness. Replayed on that campaign's solves at
- *  0.01, its frontier readings sum to 67 tasks won and 0 lost where they read 57 and 0, and its
- *  comparison g-9 promotes where none did. The
- *  margin is fixed before a comparison's first solve, where an untied task is as likely won as
- *  lost under equal harnesses whatever it is, so it moves power and not the level. */
-export const MARGIN = 0.01;
+/**
+ * Two measures within this share of the larger are one measure: what floating-point arithmetic
+ * leaves between two answers of the same value, and nothing a harness did. 22 of 4,852 pairings of
+ * valid answers in the 11 campaigns of 14 to 19 October differed by less.
+ *
+ * Until 19 October a margin stood here, 0.01 of the larger magnitude by default and a term of each
+ * comparison (`--margin`); from 12 to 18 October the last A/A set it from the reference's own
+ * spread. It turned wins into ties and protected no reading. Replayed on the solves of those 11
+ * campaigns, the A/A of 35 comparisons read no step at 0.01, at 0.001 or at 0, and at 0 the reference
+ * against itself won 133 untied tasks and lost 128, where the new harness won 23 of 24 in r2's
+ * comparison g-3, which read 4-0-20 at 0.01; the same solves promote 15 harnesses where they promoted
+ * 14. The sign-flip test already reads how often equal harnesses win a task by the objective, so a
+ * difference the test does not trust is a tie of the test's own, and none is needed of the pair's.
+ */
+const SAME = 1e-9;
 
 /**
  * The chance of each total of `sizes` taken with a plus sign, where each is taken so with chance
@@ -419,19 +420,17 @@ export function falseRate(differences: readonly number[], level: number, trigger
 }
 
 /** The objective rule a comparison's start, or its report, carries, or undefined where it fixed
- *  none: a direction and a margin that is a number from nothing up. */
+ *  none. A log of before 19 October holds a margin beside the direction, which is no longer read. */
 export function objectiveRuleIn(data: JsonObject): ObjectiveRule | undefined {
-  const { direction, margin } = asRecord(data.objective) ?? {};
-  return (direction === "lower" || direction === "higher") && isNumber(margin) && margin >= 0
-    ? { direction, margin }
-    : undefined;
+  const { direction } = asRecord(data.objective) ?? {};
+  return direction === "lower" || direction === "higher" ? { direction } : undefined;
 }
 
 // Two other readings of a tally, the trinomial test and the chance that the new harness is the
 // better one, decide nothing and are not built: their formulas and what they read of the recorded
 // comparisons are in `docs/plan.md`, "Statistical power and cost" (row C3).
 
-/** How far apart two measures are, as a share of the larger magnitude: what a margin is read against. */
+/** How far apart two measures are, as a share of the larger magnitude. */
 function apart(one: number, other: number): number {
   const larger = Math.max(Math.abs(one), Math.abs(other));
   return larger === 0 ? 0 : Math.abs(one - other) / larger;
@@ -462,7 +461,7 @@ export function informative(
 }
 
 /**
- * Whether a measure on record is better by the objective past the margin than one of the side's
+ * Whether a measure on record is better by the objective than one of the side's
  * own valid answers: another of its own, the other side's, or `best`, its author's
  * (`task.feasible`). A harness that reaches it wins the pairs against that answer, so the task has
  * room. False where the pair carries no objective; a valid answer with no measure is compared with
@@ -474,11 +473,11 @@ export function informative(
  * promoted on wins by the objective therefore stood on a frontier of the very tasks it had won, at
  * answers nobody had bettered: in buffer-fresh-opus-forkedPR223_v0_5_4-r2 the comparison after its
  * promotion scored 18 such tasks of 24, both sides valid and alike in every solve of each, and read
- * 4-0-20; its repeat drew 6 more and read 4-0-6, one untied task short of the six a step at 0.02
+ * 4-0-20; its repeat drew 6 more and read 4-0-6, two untied tasks short of the six a step at 0.02
  * needs. Replayed under this rule the frontier before that comparison held 6 tasks where it held 30.
  * The author's answer came in on 19 October too: of the drafts buffer-pr197-opus-m1's gate refused
  * as answered in 3 of 3 solves, 136 carried an author's answer with a measure, and 15 of them were
- * better than the reference's best answer by more than the margin; on esp32-fresh-opus 57 did, and
+ * better than the reference's best answer by more than a hundredth; on esp32-fresh-opus 57 did, and
  * none was better.
  */
 function bettered(pair: Paired, side: "old" | "fresh", best: number | null): boolean {
@@ -493,10 +492,10 @@ function bettered(pair: Paired, side: "old" | "fresh", best: number | null): boo
   return own.some((mine) => known.some((other) => better(rule, other, mine) === 1));
 }
 
-/** Which of two valid answers' measures is the better by more than the rule's margin: 1 for the
- *  first, -1 for the second, 0 where neither is or one is missing. */
+/** Which of two valid answers' measures is the better: 1 for the first, -1 for the second, 0 where
+ *  they are one measure (`SAME`) or one is missing. */
 function better(rule: ObjectiveRule, one: number | null, other: number | null): -1 | 0 | 1 {
-  if (one === null || other === null || apart(one, other) <= rule.margin) return 0;
+  if (one === null || other === null || apart(one, other) <= SAME) return 0;
   const lower = one < other ? 1 : -1;
   return rule.direction === "lower" ? lower : lower === 1 ? -1 : 1;
 }
@@ -505,7 +504,7 @@ function better(rule: ObjectiveRule, one: number | null, other: number | null): 
  *  and how many each side won. A valid answer beats one that is not; two valid answers are even,
  *  unless the pair carries an objective and one is the better by it. Beside each side's wins, what
  *  decided them: `validity`, where one answer was valid; the `objective`, between two valid answers
- *  it told apart by more than the margin; and `valid`, the pairings of two valid answers, which
+ *  it told apart; and `valid`, the pairings of two valid answers, which
  *  the effect bar reads the objective over (`climb.ts`). */
 export function pairings(pair: Paired) {
   const [validity, objective] = [

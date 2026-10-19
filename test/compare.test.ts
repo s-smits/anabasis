@@ -646,8 +646,8 @@ describe("a task's pairings", () => {
     const pair = (old: boolean[], measured: (number | null)[] = []) => ({
       task: "t",
       old,
-      fresh: [P, P],
-      objective: { direction: "lower" as const, margin: 0.05, old: measured, fresh: [1, 1] },
+      fresh: [F, F],
+      objective: { direction: "lower" as const, margin: 0.05, old: measured, fresh: [null, null] },
     });
     const nobody = new Set<string>();
     const known = new Set(["t"]);
@@ -669,23 +669,61 @@ describe("a task's pairings", () => {
     // Alike, where an author's answer on record is better than each past the margin: a better
     // harness can reach it (19 October). One within the margin of the best, or worse, leaves none.
     expect(informative(pair([P, P], [100, 104]), "old", nobody, new Map([["t", 90]]))).toBe(true);
-    expect(informative(pair([P, P], [100, 104]), "old", nobody, new Map([["t", 97]]))).toBe(false);
+    // Better than one of its own past the margin is enough: a harness at the author's answer wins
+    // the pairs against that one (until 19 October it had to beat every one).
+    expect(informative(pair([P, P], [100, 104]), "old", nobody, new Map([["t", 97]]))).toBe(true);
+    expect(informative(pair([P, P], [100, 101]), "old", nobody, new Map([["t", 97]]))).toBe(false);
     expect(informative(pair([P, P], [100, 104]), "old", nobody, new Map([["t", 120]]))).toBe(false);
     expect(informative(pair([P, P], [100, 104]), "old", nobody, new Map([["u", 90]]))).toBe(false);
     // Valid answers with no measure, or a pair with no objective, have nothing to be bettered on.
     expect(informative(pair([P, P], [null, null]), "old", nobody, new Map([["t", 90]]))).toBe(false);
     const { objective: _none, ...unmeasured } = pair([P, P], [100, 104]);
     expect(informative(unmeasured, "old", nobody, new Map([["t", 90]]))).toBe(false);
-    // One valid answer measured and one not: whether the author's beats the second is unknown.
-    expect(informative(pair([P, P], [100, null]), "old", nobody, new Map([["t", 90]]))).toBe(false);
+    // One valid answer measured and one not: the measured one is compared, the other with nothing.
+    expect(informative(pair([P, P], [100, null]), "old", nobody, new Map([["t", 90]]))).toBe(true);
+    expect(informative(pair([P, P], [100, null]), "old", nobody, new Map([["t", 97]]))).toBe(false);
     // Under a higher objective the author's must be the larger, at zero and below as above.
     const higher = (measured: number[]) => ({
       ...pair([P, P], measured),
-      objective: { direction: "higher" as const, margin: 0.05, old: measured, fresh: [1, 1] },
+      objective: { direction: "higher" as const, margin: 0.05, old: measured, fresh: [null, null] },
     });
     expect(informative(higher([100, 104]), "old", nobody, new Map([["t", 120]]))).toBe(true);
     expect(informative(higher([100, 104]), "old", nobody, new Map([["t", 90]]))).toBe(false);
     expect(informative(higher([-10, -10]), "old", nobody, new Map([["t", 0]]))).toBe(true);
+    // The other side's valid answer better than one of its own past the margin: room. One it beat,
+    // or one within the margin of its own, leaves none (19 October).
+    const against = (fresh: number[]) => ({
+      task: "t",
+      old: [P, P],
+      fresh: [P, P],
+      objective: { direction: "lower" as const, margin: 0.05, old: [100, 100], fresh },
+    });
+    expect(informative(against([90, 100]), "old", nobody)).toBe(true);
+    expect(informative(against([120, 120]), "old", nobody)).toBe(false);
+    expect(informative(against([97, 97]), "old", nobody)).toBe(false);
+  });
+
+  it("closes a task to the side whose answers nothing on record bettered, its wins by the objective among them", () => {
+    const pair = (old: number[], fresh: number[]) => ({
+      task: "t",
+      old: [P, P],
+      fresh: [P, P],
+      objective: { direction: "lower" as const, margin: 0.01, old, fresh },
+    });
+    // The shape of buffer-fresh-opus-forkedPR223_v0_5_4-r2 after its promotion: the promoted
+    // harness won every pairing on the objective at one value. Until 19 October the pairings told
+    // apart kept the task open to it, and it stood on its frontier at an answer nobody had bettered.
+    expect(closedTo(pair([12, 12], [10, 10]), "fresh")).toBe(true);
+    // The side that lost them has a better answer to reach.
+    expect(closedTo(pair([12, 12], [10, 10]), "old")).toBe(false);
+    // Its own answers apart past the margin: its better one is there to find every time.
+    expect(closedTo(pair([12, 12], [10, 11]), "fresh")).toBe(false);
+    // One better answer of the other side's opens it, as many as there are.
+    expect(closedTo(pair([12, 9], [10, 10]), "fresh")).toBe(false);
+    // Within the margin is alike.
+    expect(closedTo(pair([10.05, 10.05], [10, 10]), "fresh")).toBe(true);
+    // A failed solve of its own leaves it open whatever the objective says.
+    expect(closedTo({ ...pair([12, 12], [10, 10]), fresh: [P, F] }, "fresh")).toBe(false);
   });
 
   it("leaves a task open that an author's answer on record outdoes, so the room it was held for stays on the frontier", () => {

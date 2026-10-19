@@ -175,7 +175,9 @@ export interface BuildRequest {
     kill: AbortSignal,
   ) => Promise<Practised>;
   /** The Referee, when the caller has a reader for it. `kill` is for its reader. */
-  readonly referee?: (solve: string, task: PracticeTask, kill: AbortSignal) => Promise<RefereeFinding>;
+  readonly referee?:
+    | ((solve: string, task: PracticeTask, kill: AbortSignal) => Promise<RefereeFinding>)
+    | undefined;
   /** The dollar cap the session's spend is held to, where its solves are paid for: a round's own,
    *  or the session's where it runs with no comparison after it. No practice solve starts that a
    *  reserve for it would take past the cap (`practiceTool`), and no request of the Builder's own

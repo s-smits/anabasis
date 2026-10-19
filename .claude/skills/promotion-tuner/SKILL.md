@@ -47,7 +47,9 @@ The promotion rule is feature-detected. Where the tree's `compare.ts` exports `p
 called as `promotes(reports, level)`; otherwise `readTwice(reports, level, trigger)`, with the
 level and trigger each comparison started under (`comparison.started`; 0.02 and 0.25 where it
 names none). A candidate that changes the rule's shape exports `promotes` and is read the same
-way. A candidate whose `attemptsOf` or `triggered` is gone is read one reading an attempt.
+way. A candidate whose `attemptsOf` or `triggered` is gone is read one reading an attempt, and one that
+exports neither `promotes` nor `readTwice` promotes a pair whose latest reading `stepOf` calls a
+step.
 
 ## What it prints
 

@@ -113,7 +113,8 @@ interface TalliedIn {
   /** Whether one of the reference harness's own solves of it did: all its author hears (rule 4). */
   readonly referenceCut: boolean;
   /** Whether the reference harness closed the task in this comparison (`closedTo`): valid in every
-   *  solve, and no two valid answers the objective told apart. False where it stood on neither side. */
+   *  solve, and no valid answer better than one of its own by the objective. False where it stood
+   *  on neither side. */
   readonly closed: boolean;
   /** The side that won the task in this comparison's tally (`tally`), or null for a tie. */
   readonly won: "old" | "fresh" | null;
@@ -575,9 +576,11 @@ function tallyReports(
  * set (`scoredSet`). The fold is read again against whatever harness is the
  * reference at the time, so a promotion re-derives it at once: the comparisons the promoted
  * harness won before its promotion count. Such a task can only tie again at that budget or be
- * lost, unless the comparison carried an objective that told two valid answers of it apart
- * (`closedTo`, `compare.ts`): a task the objective still separates is not closed, since the next harness can
- * win it. Every one in the set is a task a step cannot be read on: on the operator's host (9 and
+ * lost, unless the comparison carried an objective by which a valid answer, its own or the other
+ * side's, was better than one of the reference's (`closedTo`, `compare.ts`): a better answer is
+ * then there for the next harness to reach. Until 19 October any two answers told apart kept it
+ * open, the reference's own wins among them, so a harness promoted on the objective stood on a
+ * frontier of the tasks it had already won. Every one in the set is a task a step cannot be read on: on the operator's host (9 and
  * 10 October) a harness came one win short of a step three times with most of its tasks tied, and
  * one promoted harness and the starter tied 10 of 10 twice. The reference's own answers close a
  * task, since its answers are what the next harness has to match: closed only where both

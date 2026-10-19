@@ -439,24 +439,16 @@ function apart(one: number, other: number): number {
 
 /**
  * Whether a task tells something of the harness on `side` (the overhaul plan's one definition of
- * informative, section 4b, and the one `try_task` admits a draft by): valid on some of its solves
- * and not all; valid on all with two of its own measures apart by more than the objective's
- * margin, so that a better answer is there to find; or valid on none where the task is among
+ * informative, section 4b, the one `try_task` admits a draft by, and the one the exhausted fold
+ * closes a task by, through `closedTo`): valid on some of its solves and not all; valid on all
+ * where a better answer is on record (`bettered`); or valid on none where the task is among
  * `feasible`, the versions a valid answer is on record for (`poolOf`, `reports.ts`): another
  * harness's, a reference solve's at the gate, or its author's. A task it answers alike in every
- * solve leaves it nothing to gain on, and so does one it fails in every solve that nobody has
- * answered. Until 15 October a task the reference failed in every solve was never informative, so
- * once a promoted harness passed every scored solve (buffer-149's 68 of 68 in two comparisons,
- * recode-151's 56 of 56, buffer-159-opus's 38 of 40) its room was only the tasks it answered some
- * of the time, and the gate held out only such drafts.
- *
- * Valid on all and alike, it is informative too where `bests` holds a measure for it that is
- * better by the objective than every one of its own past the margin: an author's valid answer on
- * record (`task.feasible`, `poolOf`), which a better harness can reach and win every pair by. Until
- * 19 October such a task was closed: of the drafts buffer-pr197-opus-m1's gate refused as answered
- * in 3 of 3 solves, 136 carried an author's answer with a measure, and 15 of them were better than
- * the reference's best answer by more than the margin, re-verified from the log; on esp32-fresh-opus
- * 57 did, and none was better.
+ * solve, at the best answer on record, leaves it nothing to gain on, and so does one it fails in
+ * every solve that nobody has answered. Until 15 October a task the reference failed in every
+ * solve was never informative, so once a promoted harness passed every scored solve (buffer-149's
+ * 68 of 68 in two comparisons, recode-151's 56 of 56, buffer-159-opus's 38 of 40) its room was
+ * only the tasks it answered some of the time, and the gate held out only such drafts.
  */
 export function informative(
   pair: Paired,
@@ -466,27 +458,39 @@ export function informative(
 ): boolean {
   const valid = pair[side].filter(Boolean).length;
   if (valid === 0) return feasible.has(pair.task);
-  if (valid < pair[side].length) return true;
-  const own = (pair.objective?.[side] ?? []).filter(isNumber);
-  const margin = pair.objective?.margin ?? Number.POSITIVE_INFINITY;
-  if (own.some((one, at) => own.slice(at + 1).some((other) => apart(one, other) > margin))) return true;
-  return outdone(pair, side, bests.get(pair.task) ?? null);
+  return valid < pair[side].length || bettered(pair, side, bests.get(pair.task) ?? null);
 }
 
-/** Whether `best`, an author's measure on record, is better by the objective past the margin than
- *  every answer of the harness on `side`, each valid and measured: a harness that reaches it wins
- *  every pair. A valid answer with no measure leaves it unknown, and so not outdone. */
-export function outdone(pair: Paired, side: "old" | "fresh", best: number | null): boolean {
+/**
+ * Whether a measure on record is better by the objective past the margin than one of the side's
+ * own valid answers: another of its own, the other side's, or `best`, its author's
+ * (`task.feasible`). A harness that reaches it wins the pairs against that answer, so the task has
+ * room. False where the pair carries no objective; a valid answer with no measure is compared with
+ * nothing.
+ *
+ * One rule since 19 October, where three had stood. The supply's closing rule kept a task open on
+ * any two answers the objective told apart, the side's own wins among them; the room rule read the
+ * side's own answers alone; and the author's answer had to beat every one of the side's. A harness
+ * promoted on wins by the objective therefore stood on a frontier of the very tasks it had won, at
+ * answers nobody had bettered: in buffer-fresh-opus-forkedPR223_v0_5_4-r2 the comparison after its
+ * promotion scored 18 such tasks of 24, both sides valid and alike in every solve of each, and read
+ * 4-0-20; its repeat drew 6 more and read 4-0-6, one untied task short of the six a step at 0.02
+ * needs. Replayed under this rule the frontier before that comparison held 6 tasks where it held 30.
+ * The author's answer came in on 19 October too: of the drafts buffer-pr197-opus-m1's gate refused
+ * as answered in 3 of 3 solves, 136 carried an author's answer with a measure, and 15 of them were
+ * better than the reference's best answer by more than the margin; on esp32-fresh-opus 57 did, and
+ * none was better.
+ */
+function bettered(pair: Paired, side: "old" | "fresh", best: number | null): boolean {
   const rule = pair.objective;
-  const own = rule?.[side] ?? [];
-  return (
-    best !== null &&
-    rule !== undefined &&
-    pair[side].length > 0 &&
-    pair[side].every(Boolean) &&
-    own.length === pair[side].length &&
-    own.every((one) => better(rule, best, one) === 1)
-  );
+  if (rule === undefined) return false;
+  const own = rule[side].filter(isNumber);
+  const known = [
+    ...own,
+    ...rule[side === "old" ? "fresh" : "old"].filter(isNumber),
+    ...(best === null ? [] : [best]),
+  ];
+  return own.some((mine) => known.some((other) => better(rule, other, mine) === 1));
 }
 
 /** Which of two valid answers' measures is the better by more than the rule's margin: 1 for the
@@ -537,28 +541,12 @@ export function decidedByObjective(pairs: readonly Paired[]): number {
   }).length;
 }
 
-/** Whether the harness on `side` closed the task: valid in every counted solve, and no pairing of
- *  two valid answers the objective told apart. A closed task can only tie again at that budget or
- *  be lost; where the objective separates two valid answers, a harness that answers it validly can
- *  still win or lose it. The one rule under the exhausted fold (`poolOf`, `reports.ts`): until
- *  12 October the supply read validity alone and counted a task the objective still separates as
- *  closed, and until 16 October it read this a second time as an untied share. Nor is a task closed
- *  where an author's measure on record (`best`) outdoes every answer of the side (`outdone`): held
- *  for that room since 19 October, it would otherwise leave the frontier on its first reading. */
+/** Whether the harness on `side` closed the task: valid in every counted solve, and not
+ *  `informative` for it, so that it can only tie again at that budget or be lost. The exhausted
+ *  fold reads it (`poolOf`, `reports.ts`). Until 12 October the supply read validity alone; until
+ *  19 October it kept a rule of its own beside `informative` (`bettered`). */
 export function closedTo(pair: Paired, side: "old" | "fresh", best: number | null = null): boolean {
-  return (
-    pair[side].length > 0 &&
-    pair[side].every(Boolean) &&
-    !separatedByObjective(pair) &&
-    !outdone(pair, side, best)
-  );
-}
-
-/** Whether the objective told two valid answers of one task apart: a pairing of two valid answers
- *  that one side won by more than the margin (`closedTo`). False where the pair carries no objective. */
-function separatedByObjective(pair: Paired): boolean {
-  const { objective } = pairings(pair);
-  return objective.fresh + objective.old > 0;
+  return pair[side].length > 0 && pair[side].every(Boolean) && !bettered(pair, side, best);
 }
 
 /** Whether no solve of a pair gave a valid answer. */

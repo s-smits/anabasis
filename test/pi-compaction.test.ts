@@ -1,7 +1,8 @@
 // pi's loop compacts before a model call that would cross the window less pi's reserve: the older
 // span goes to the served model for a summary, which leads the retained tail, and usage reported
 // before that compaction no longer counts. A failed summary leaves the context as it was, and a
-// Claude model is left to Claude Code's own compaction.
+// Claude model is left to Claude Code's own compaction. Every summary request that came back
+// reports its usage, whether the compaction stood or failed (19 October).
 import { describe, expect, it } from "bun:test";
 import type { AgentMessage, PrepareRequestContext } from "@earendil-works/pi-agent-core";
 import {
@@ -100,7 +101,23 @@ describe("pi's loop compaction", () => {
     ]);
     expect(await ask(transcript(30))).toBeUndefined();
     expect(events[0]?.error).toContain("overloaded");
-    expect(events[0]?.usages).toEqual([]);
+    expect(events[0]?.usages).toHaveLength(1);
+  });
+
+  it("reports the history summary's usage when the turn prefix's summary after it fails", async () => {
+    const { faux, events, ask } = setup([
+      fauxAssistantMessage("Ran steps 0 to 4."),
+      fauxAssistantMessage("", { stopReason: "length" }),
+    ]);
+    // A second prompt after step 4 starts the turn the cut then lands inside.
+    const before = transcript(30);
+    before.splice(12, 0, { role: "user", content: "Go on.", timestamp: 0 });
+    expect(await ask(before)).toBeUndefined();
+    expect(faux.state.callCount).toBe(2);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.error).toContain("token cap");
+    expect(events[0]?.usages).toHaveLength(2);
+    expect(events[0]?.usages[0]?.input).toBeGreaterThan(0);
   });
 
   it("leaves a Claude model to Claude Code's own compaction", async () => {

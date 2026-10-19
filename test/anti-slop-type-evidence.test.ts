@@ -196,7 +196,8 @@ function isMoney(value: unknown): value is Money { return value !== null; }
 export const literalToUnknown: unknown = "eur"; // REPORT a literal annotated unknown
 export const objectToUnknown: unknown = { currency: "eur" }; // REPORT an object literal annotated unknown
 export const objectToObjectKeyword: object = { currency: "eur" }; // REPORT the object keyword erases the shape
-export const objectToAnonymous: { currency: string } = { currency: "eur", minor: 1 }; // REPORT an anonymous shape instead of the owner type
+export const objectToAnonymous: { payload: unknown } = { payload: "eur" }; // REPORT an anonymous shape whose member throws the value's type away
+export const anonymousStatesTheMembers: { currency: string } = { currency: "eur" }; // ADMITTED each member states the value's own type
 export const objectToOpenDictionary: Record<string, unknown> = { currency: "eur" }; // REPORT a known object annotated as an open dictionary
 export const arrayToUnknown: unknown = ["eur"]; // REPORT an array literal annotated unknown
 export const arrowToUnknown: unknown = () => "eur"; // REPORT a function expression annotated unknown
@@ -205,7 +206,8 @@ export const templateToUnknown: unknown = \`eur\`; // REPORT a template literal 
 export const negatedToUnknown: unknown = -1; // REPORT a unary expression is still known
 export const viaHop: unknown = literalSource; // REPORT the evidence survives a const hop
 const literalSource = "eur";
-export const viaMapped: { [K in "a"]: string } = { a: "eur" }; // REPORT a mapped target erases the shape
+export const viaMapped: { [K in "a"]: unknown } = { a: "eur" }; // REPORT a mapped target whose value is unknown
+export const viaClosedMapped: { [K in "a"]: string } = { a: "eur" }; // ADMITTED a closed mapped target stating the value's type
 
 export function returnsUnknown(): unknown {
 	return "eur"; // REPORT a known return value annotated unknown
@@ -229,6 +231,10 @@ export const fromCall: unknown = JSON.parse("{}"); // ADMITTED the call result i
 export const emptyAccumulator: Record<string, Money> = {}; // ADMITTED an empty dictionary accumulator
 export const emptyOpenAccumulator: Record<string, unknown> = {}; // ADMITTED the accumulator exemption covers open ones
 export const nullableConcrete: string | null = null; // ADMITTED absence is a real alternative
+
+export function declaresItsReturn(log: string, from: number): { readonly log: string; readonly from: number } {
+	return { log, from }; // ADMITTED a declared return that states each member the literal holds
+}
 
 export function returnsConcrete(): string {
 	return "eur"; // ADMITTED the return contract is concrete
@@ -467,7 +473,7 @@ describe("the type resolution the three rules share", () => {
       "anti-slop",
       "no-known-value-widening",
       [
-        'export const closed: { [K in "a"]: string } = { a: "eur" };',
+        'export const closed: { [K in "a"]: unknown } = { a: "eur" };',
         'export const open: { [K in string]: string } = { a: "eur" };',
       ].join("\n"),
     );

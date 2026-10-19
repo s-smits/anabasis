@@ -25,6 +25,7 @@ import { runtimeProcess } from "../src/meta/process.ts";
 import { codingTools, fileTools, selectedCodingTools, type WallExec } from "../src/solve/coding-tools.ts";
 import { type CommandWall, makeSeatDirs, solveDirs } from "../src/solve/command.ts";
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
+import { osIsolationSupport } from "../src/verify/os-isolation.ts";
 
 const LIMITS = { shellDefaultSeconds: 300, shellMaxSeconds: 900 };
 
@@ -222,7 +223,7 @@ describe("the file tools, through walled commands", () => {
 });
 
 describe("the coding tools on the command wall", () => {
-  it.skipIf(runtimeProcess.platform !== "darwin")(
+  it.skipIf(!osIsolationSupport().ok)(
     "share one working directory, name what the wall allowed on a cut, and keep the cut output",
     async () => {
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-coding-repo-")));

@@ -131,6 +131,34 @@ describe("a campaign run by its log", () => {
     expect(ending).toMatchObject({ move: "end", ending: "exam" });
   });
 
+  it("lays the reference harness in the Examiner's home where the campaign names no term, and none where it names off", async () => {
+    // On unless named since 19 October: the supply ablation of that day held 4 of 8 drafts with the
+    // copy and 1 of 8 blind. A campaign that names `off` keeps the ruling of 12 October.
+    const homes: (string | undefined)[] = [];
+    for (const term of [[], ["--exam-reference", "off"]]) {
+      layOutPack(root, bundle, TASKS, FIXTURE);
+      const name = `${STEM}-home-${term.length === 0 ? "unnamed" : "off"}`;
+      const seats: Seats = {
+        seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
+        examine: (request, wall) => {
+          homes.push(wall?.reference);
+          return examine({
+            ...request,
+            ...scripted([
+              ["finish", { note: NOTHING }],
+              ["finish", { note: NOTHING }],
+            ]),
+          });
+        },
+      };
+      const flags = [...seeded(name), "--patience", "1", "--target", "20", "--practice", "3", ...term];
+      expect(await harnessBuilder(flags, seats)).toMatchObject({ move: "end", ending: "exam" });
+    }
+    expect(homes).toHaveLength(2);
+    expect(homes[0] !== undefined && existsSync(join(homes[0], "agent"))).toBe(true);
+    expect(homes[1]).toBeUndefined();
+  });
+
   it("waits out a provider limit that names its reset, on record, and makes the move again", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-limit`;
@@ -587,7 +615,7 @@ describe("a campaign run by its log", () => {
     expect(closing).toContain("settled 1 comparison, and 2 comparisons are unsettled");
     // The chance of a false promotion over the whole campaign, not one epoch's alone (the plan's 7.6).
     expect(closing).toContain("## The chance of a false promotion\n\n- Epoch 1:");
-    expect(closing).toContain("Over the campaign, a false promotion in any epoch at most");
+    expect(closing).toContain("Over the campaign, a false promotion in any epoch estimated at");
     // It holds no link: a kept harness names its programs by one, into a tree beside it, and what
     // is handed over is the tree itself.
     const links = readdirSync(join(to, "harness"), { recursive: true }).filter((entry) =>

@@ -25,33 +25,29 @@ import type { Called } from "./names.ts";
 import { openingOf } from "./opening.ts";
 
 /**
- * What an epoch's promotion attempts risk together: a false promotion among them, bounded (the
- * revised plan's M2.5, 12 October). The two-stage rule bounds one attempt, and a campaign makes
- * many; this reads them, and the table may refuse the next comparison past a share of it.
+ * What an epoch's promotion attempts risk together: a false promotion among them, estimated (the
+ * revised plan's M2.5, 12 October). The two-stage rule's design gives one attempt a rate, which is
+ * an estimate and no bound (`falseRate`), and a campaign makes many; this reads them.
  */
 interface FalsePromotion {
   /** The candidates read against the epoch's reference on a frontier, each one attempt with the
    *  repeat it bought, unsuccessful ones included. */
   readonly attempts: number;
   /** The A/A controls on record read in pairs as a step and its repeat (`readTwice`), each pair one
-   *  attempt between equal harnesses, and the pairs that promoted. */
+   *  attempt between equal harnesses, and the pairs that promoted: a count beside the estimate,
+   *  which sets none of it. Until 19 October a 95% bound off the pairs replaced the design's rate once one
+   *  pair was on record, and no error in one pair bounds an attempt at 95%: esp32-fresh-opus's
+   *  closing report read "at most 100%" where its attempts' own rates were 1.8%, and no campaign
+   *  reads the 59 pairs that bring that bound down to 5%. */
   readonly errors: number;
   readonly pairs: number;
-  /** The one-sided confidence of `bound`. */
-  readonly confidence: number;
-  /** One attempt's rate at most: the upper bound off the pairs (`upperBound`), never none, or by
-   *  design the rule's own rate an attempt (`falseRate`) where no two controls are on record. */
+  /** The riskiest attempt's rate by the rule's design: the largest of the attempts' own rates at
+   *  their margins (`falseRate`), the level where a report holds none. An estimate, no bound. */
   readonly bound: number;
-  /** The union bound over the attempts, min(1, the sum of their bounds), which assumes nothing of
-   *  their independence. */
+  /** min(1, the sum of the attempts' rates): the union bound's form, which assumes nothing of their
+   *  independence, over estimates, so an estimate and no bound. */
   readonly union: number;
-  /** Whether the bound was read under other tasks, from a control of another epoch, or by design for
-   *  a fixed comparison. */
-  readonly indicative: boolean;
 }
-
-/** The confidence a false-promotion bound is read at. */
-const CONFIDENCE = 0.95;
 
 /** Valid answers and solves of one harness on a set of tasks. */
 export interface Share {
@@ -102,7 +98,7 @@ const PROMOTED = "harness.promoted";
 
 /** The bar a promotion's cost is read against (the plan's W), a term of the opening the operator
  *  may set (`TERMS`): the promotion attempts of an epoch after set-up, comparisons against its
- *  reference, which are what the false-promotion bound counts, so the bar does not move with the
+ *  reference, which are what the false-promotion estimate counts, so the bar does not move with the
  *  solver's price. A session the provider cut finished nothing and is no attempt. Dollars are
  *  reported beside it, and it gates nothing (12 October). The effect and transfer bars it stood
  *  beside until 13 October went: each read a set that changed with every reading. The ladder that
@@ -216,8 +212,8 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
 
 /**
  * An epoch's false-promotion reading (`FalsePromotion`): its attempts, from `reports` within it
- * against `reference`, and one attempt's bound read off the campaign's A/A controls in pairs, in
- * the log's order, each control's reference against itself as a stage of its own.
+ * against `reference`, each at its own rate, and beside them the campaign's A/A controls in pairs,
+ * in the log's order, each control's reference against itself as a stage of its own.
  */
 function falsePromotionOf(
   events: readonly LogEvent[],
@@ -262,19 +258,16 @@ function falsePromotionOf(
   const errors = pairs.filter(([one, two]) =>
     readTwice([stage(one), stage(two)], levelOf(one), trigger),
   ).length;
-  const measured = upperBound(errors, pairs.length, CONFIDENCE);
-  const bounds = attempts.map((attempt) => (pairs.length > 0 ? measured : rateOf(attempt)));
+  const rates = attempts.map(rateOf);
   return {
     attempts: attempts.length,
     errors,
     pairs: pairs.length,
-    confidence: CONFIDENCE,
-    bound: pairs.length > 0 ? measured : Math.max(0, ...bounds),
+    bound: Math.max(0, ...rates),
     union: Math.min(
       1,
-      bounds.reduce((sum, bound) => sum + bound, 0),
+      rates.reduce((sum, rate) => sum + rate, 0),
     ),
-    indicative: pairs.length === 0 || controls.some(({ index }) => !within(index)),
   };
 }
 
@@ -288,26 +281,31 @@ export function epochLine(epoch: Epoch, called: Called = short): string {
   const rung = epoch.nth === 1 ? "as set-up (epoch 0)" : `as rung ${String(epoch.nth - 1)} of the climb`;
   const end = epoch.promoted === null ? "open" : `promoted ${called(epoch.promoted)} ${rung}`;
   const risk = epoch.falsePromotion;
-  return `epoch ${String(epoch.nth)}: reference ${reference}; ${String(epoch.tasks.length)} tasks held out; ${String(epoch.sessions)} sessions (${String(epoch.changed)} changed); comparisons ${readings}; ${share("reference", epoch.reference_share)}${epoch.reference === "starter" ? "" : `, ${share("starter", epoch.starter_share)}`} on them; ${plural(risk.attempts, "promotion attempt")} under this reference, a false promotion among them at most ${percent(risk.union)}: ${sourceOf(risk)}; ${end}`;
+  return `epoch ${String(epoch.nth)}: reference ${reference}; ${String(epoch.tasks.length)} tasks held out; ${String(epoch.sessions)} sessions (${String(epoch.changed)} changed); comparisons ${readings}; ${share("reference", epoch.reference_share)}${epoch.reference === "starter" ? "" : `, ${share("starter", epoch.starter_share)}`} on them; ${plural(risk.attempts, "promotion attempt")} under this reference, a false promotion among them estimated at ${percent(risk.union)}: ${sourceOf(risk)}; ${end}`;
 }
 
-/** A chance in whole percent. */
+/** A chance in whole percent, or to a tenth under ten, where an attempt's rate of 1.8% read as 2%;
+ *  one too small for a tenth is said as under it, never as none. */
 function percent(chance: number): string {
-  return `${String(Math.round(100 * chance))}%`;
+  if (chance === 0) return "0%";
+  if (chance < 0.001) return "under 0.1%";
+  return chance < 0.1 ? `${(100 * chance).toFixed(1)}%` : `${String(Math.round(100 * chance))}%`;
 }
 
-/** What one attempt's false-promotion bound rests on: the rule's design, or pairs of A/A controls. */
+/** The riskiest attempt's rate by design, an estimate, and the A/A controls read beside it. */
 function sourceOf(risk: FalsePromotion): string {
-  return risk.pairs === 0
-    ? `${percent(risk.bound)} an attempt by design, before two A/A controls, indicative`
-    : `${String(risk.errors)} of ${plural(risk.pairs, "pair")} of A/A controls promoted, at most ${percent(risk.bound)} an attempt at ${percent(risk.confidence)}${risk.indicative ? ", indicative" : ""}`;
+  const controls =
+    risk.pairs === 0
+      ? "no two A/A controls on record"
+      : `${String(risk.errors)} of ${plural(risk.pairs, "pair")} of A/A controls promoted`;
+  return `${percent(risk.bound)} for the riskiest attempt by the rule's design; ${controls}`;
 }
 
 /**
  * The campaign's chance of a false promotion, for its closing report (the plan's 7.6): each epoch's
- * union bound with what it rests on, and their sum capped at one. An epoch's bound restarts at its
- * promotion, so the opening's bound over one patience's attempts describes one window, and no
- * epoch's alone the campaign.
+ * summed estimate with what it rests on, and their sum capped at one: estimates all, and no bound.
+ * An epoch's sum restarts at its promotion, so the opening's over one patience's attempts describes
+ * one window, and no epoch's alone the campaign.
  */
 export function riskLines(events: readonly LogEvent[]): string[] {
   const epochs = epochsOf(events);
@@ -318,10 +316,10 @@ export function riskLines(events: readonly LogEvent[]): string[] {
   return [
     ...epochs.map(({ nth, falsePromotion: risk }) => {
       const attempts = plural(risk.attempts, "promotion attempt");
-      return `- Epoch ${String(nth)}: ${attempts}, a false promotion among them at most ${percent(risk.union)}: ${sourceOf(risk)}.`;
+      return `- Epoch ${String(nth)}: ${attempts}, a false promotion among them estimated at ${percent(risk.union)}: ${sourceOf(risk)}.`;
     }),
-    `Over the campaign, a false promotion in any epoch at most ${percent(total)}: the sum of the epochs' bounds, capped at one, which assumes nothing of how the attempts depend on one another.`,
-    "A bound by design assumes each untied task is as likely won as lost between two equal harnesses, which a solver whose solves drift can break. A bound from A/A controls assumes a control's halves behave as two equal harnesses do under this setting, and is indicative where they were read on other tasks or in another epoch. Each counts the attempts on record: a campaign that goes on makes more, and its bound grows with them.",
+    `Over the campaign, a false promotion in any epoch estimated at ${percent(total)}: the sum of the epochs' estimates, capped at one, which assumes nothing of how the attempts depend on one another. It sums estimates, so it is an estimate and no bound.`,
+    "The rule's design assumes each untied task is as likely won as lost between two equal harnesses, which a solver whose solves drift can break. The A/A controls test that assumption: a pair of them that promotes is a false promotion between equal harnesses, and the design's rate then does not hold. No promotion in n pairs bounds an attempt only near 3 in n, so the controls on record count against the design and bound nothing by themselves. Each line counts the attempts on record: a campaign that goes on makes more, and its estimate grows with them.",
   ];
 }
 
@@ -456,31 +454,4 @@ export function regressionOf(events: readonly LogEvent[]): Regression | null {
 /** One line for the view: the reading, and that it is beside the test. */
 export function regressionLine(found: Regression): string {
   return `regression check: harness ${short(found.newest)} (${found.comparisons[0]}) against the candidate before it, ${short(found.previous)} (${found.comparisons[1]}), both read against ${short(found.against)} under one setting, on the ${String(found.shared)} tasks both scored: ${String(found.wins)} won, ${String(found.losses)} lost, ${String(found.ties)} tied. A reading beside the test: it decides nothing`;
-}
-
-/**
- * The one-sided upper bound at `confidence` on a rate of which `errors` came in `trials`: the rate
- * at which so few errors or fewer would come with chance 1 - `confidence` (Clopper and Pearson).
- * No error is never a rate of none: none in n gives 1 - (1 - confidence)^(1/n), about 3/n at 95%.
- * No trial bounds nothing, and reads 1.
- */
-export function upperBound(errors: number, trials: number, confidence: number): number {
-  if (errors >= trials) return 1;
-  /** The chance of `errors` or fewer at `rate`. */
-  const atMost = (rate: number) => {
-    let [ways, sum] = [1, 0];
-    for (let k = 0; k <= errors; k += 1) {
-      sum += ways * rate ** k * (1 - rate) ** (trials - k);
-      ways = (ways * (trials - k)) / (k + 1);
-    }
-    return sum;
-  };
-  let [low, high] = [errors / trials, 1];
-  // The chance falls as the rate rises, so halving the range sixty times finds it to the bit.
-  for (let step = 0; step < 60; step += 1) {
-    const middle = (low + high) / 2;
-    if (atMost(middle) > 1 - confidence) low = middle;
-    else high = middle;
-  }
-  return high;
 }

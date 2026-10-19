@@ -7,6 +7,7 @@ import { calledBy, namesOf } from "../src/builder/names.ts";
 import { comparisonsTold, failsTold, startTold } from "../src/builder/past.ts";
 import { type Condition, recordCondition } from "../src/kernel/condition.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
+import { billedAll, billedFor } from "../src/kernel/reports.ts";
 import { mkdtempSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
@@ -77,6 +78,8 @@ function campaign() {
     record("task.state", { version: "p1", state: "released" });
     record("checker.read", { contract: "c", checks: "k", faults: [] });
   };
+  /** A Builder session's start from the starter, on the practice task. */
+  const began = (id: string) => record("build.started", { session: id, parent: STARTER, tasks: ["p1"] });
   /** A Builder session that practised as `practice` says and left `harness`. */
   const built = (id: string, parent: string, harness: string, practice: readonly ("pass" | "fail")[]) => {
     record("build.started", { session: id, parent, tasks: ["p1"] });
@@ -109,7 +112,7 @@ function campaign() {
     record("referee.finding", { solve: refused, ruling: "earned", billed: 0.5 });
     record("comparison.reported", { session: id, ...sides, starter: STARTER, versions: HELD, ...report });
   };
-  return { log, record, solved, setUp, built, compared, events: () => read(log) };
+  return { log, record, solved, setUp, began, built, compared, events: () => read(log) };
 }
 
 /** A report that tallied its four tasks. */
@@ -256,7 +259,7 @@ describe("a campaign's reading", () => {
     expect(steps(c, "examiner")).toMatchObject([{ ...open, cut: false }]);
     expect(openSteps(campaignOf(c.events()).steps)).toEqual(["x-1"]);
     // The campaign makes one move at a time: a step begun after x-1 means x-1 will write no end.
-    c.record("build.started", { session: "b-1", parent: STARTER, tasks: ["p1"] });
+    c.began("b-1");
     c.record("build.turn", { session: "b-1", turn: 1, usage: { cost: { total: 0.25 } } });
     c.solved("p1", HA, "fail");
     expect(steps(c, "examiner")).toMatchObject([{ ...open, cut: true }]);
@@ -280,7 +283,7 @@ describe("a campaign's reading", () => {
     const c = campaign();
     c.setUp();
     c.record("campaign.opened", { led: true });
-    c.record("build.started", { session: "b-1", parent: STARTER, tasks: ["p1"] });
+    c.began("b-1");
     c.record("build.turn", { session: "b-1", turn: 1, usage: { cost: { total: 0.25 } } });
     c.solved("p1", HA, "fail");
     c.record("exam.started", { session: "x-1" });
@@ -295,6 +298,71 @@ describe("a campaign's reading", () => {
     expect(openSteps(campaignOf(c.events()).steps)).toContain("b-1");
     c.record("campaign.ended", { ending: "environment" });
     expect(steps(c, "builder")).toMatchObject([{ ...live, cut: true }]);
+  });
+
+  // Until 19 October an ended session was billed everything in its span: buffer-fresh-opus's view
+  // put $123.34 on b-4, whose own end billed $1.61, and its steps summed to $362.92 of $199.48.
+  it("bills an ended led Builder its own turns and practice alone, and each dollar of the log to one step", () => {
+    const c = campaign();
+    c.setUp();
+    c.record("campaign.opened", { led: true });
+    c.began("b-1");
+    c.solved("p1", HA, "fail");
+    c.record("exam.started", { session: "x-1" });
+    c.solved("d1", STARTER, "pass", "x-1");
+    c.record("exam.finished", { session: "x-1", ended: "finished", billed: 0.5, held: [] });
+    c.compared("g-1", { old: STARTER, fresh: HA }, tallied("no-step", 0, 4));
+    c.record("build.finished", { session: "b-1", ended: "finished", harness: HA, changed: true, billed: 1 });
+    const events = c.events();
+    // Its own end and its practice solve; the Examiner's $2 and the comparison's $3.50 are theirs.
+    expect(steps(c, "builder")).toMatchObject([{ id: "b-1", ended: "finished", billed: 2.5 }]);
+    expect(steps(c, "examiner")).toMatchObject([{ id: "x-1", billed: 2 }]);
+    expect(steps(c, "comparison")).toMatchObject([{ id: "g-1", billed: 3.5 }]);
+    const summed = campaignOf(events).steps.reduce((sum, step) => sum + step.billed, 0);
+    expect(summed).toBe(billedAll(events));
+    // The session's cap still holds every move it made, the campaign's spend since it opened.
+    expect(billedFor(events, "b-1")).toBe(8);
+  });
+
+  it("keeps a killed Builder's unfinished practice on it once the next run closes it on its turns", () => {
+    const c = campaign();
+    c.setUp();
+    c.began("b-1");
+    c.record("build.turn", { session: "b-1", turn: 1, usage: { cost: { total: 1 } } });
+    c.record("solve.started", { solve: "s-k", condition: "c", task: "p1" });
+    c.record("solve.turn", { solve: "s-k", usage: { cost: { total: 2 } } });
+    expect(steps(c, "builder")).toMatchObject([{ id: "b-1", ended: null, billed: 3 }]);
+    // What `endCut` writes: the session's own turns, and nothing of the solve it was killed in.
+    c.record("build.finished", { session: "b-1", ended: "killed", crash: null, billed: 1 });
+    expect(steps(c, "builder")).toMatchObject([{ id: "b-1", ended: "killed", billed: 3 }]);
+    expect(billedAll(c.events())).toBe(3);
+    expect(billedFor(c.events(), "b-1")).toBe(1);
+  });
+
+  it("bills a led Builder's practice to it alone while an Examiner session runs beside it", () => {
+    const c = campaign();
+    c.setUp();
+    c.record("campaign.opened", { led: true });
+    c.began("b-1");
+    c.record("build.turn", { session: "b-1", turn: 1, usage: { cost: { total: 1 } } });
+    c.record("exam.started", { session: "x-1" });
+    c.record("exam.turn", { session: "x-1", turn: 1, usage: { cost: { total: 0.5 } } });
+    c.solved("p1", HA, "fail");
+    const events = c.events();
+    expect(steps(c, "builder")).toMatchObject([{ id: "b-1", ended: null, billed: 2.5 }]);
+    expect(steps(c, "examiner")).toMatchObject([{ id: "x-1", ended: null, billed: 0.5 }]);
+    expect(campaignOf(events).steps.reduce((sum, step) => sum + step.billed, 0)).toBe(billedAll(events));
+  });
+
+  it("bills a Builder the host ran its whole span, where nothing ran inside it", () => {
+    const c = campaign();
+    c.setUp();
+    c.built("b-1", STARTER, HA, ["fail"]);
+    c.compared("g-1", { old: STARTER, fresh: HA }, tallied("no-step", 0, 4));
+    const events = c.events();
+    expect(steps(c, "builder")).toMatchObject([{ id: "b-1", billed: 5.5 }]);
+    expect(billedFor(events, "b-1")).toBe(5.5);
+    expect(campaignOf(events).steps.reduce((sum, step) => sum + step.billed, 0)).toBe(billedAll(events));
   });
 
   // buffer-main's g-1 had four solves in flight on 11 October, and nothing said how far it was.
@@ -558,7 +626,7 @@ describe("the operator's view", () => {
     expect(lines[2]).toBe(
       `  x-1         Examiner session, open at the log's end, 1 turn so far, last wrote at ${last.slice(11, 19)}Z (3 minutes before this reading): 1 proposed, 1 held out, 0 refused · $0.50`,
     );
-    c.record("build.started", { session: "b-1", parent: STARTER, tasks: ["p1"] });
+    c.began("b-1");
     const later = viewLines("truss", campaignOf(c.events()), Date.parse(last));
     expect(later[2]).toContain(
       "Examiner session, cut before its end: a later step began without it: 1 proposed",

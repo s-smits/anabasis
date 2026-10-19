@@ -1,7 +1,8 @@
 // A seed is a campaign's folder under another name with its log cut where a question starts. A
 // rehearsal's script takes each task's answers from what is on record, writes the one its side was
 // scripted to into the answer file with what the harness selects, and names a solve that ended
-// otherwise.
+// otherwise. On 18 October 2026 admission joins it: five rehearsals seated no reference,
+// although esp32-fresh-opus refused 45 of 50 drafts after promotion.
 import { afterAll, describe, expect, it } from "bun:test";
 import { normalizeContext } from "@earendil-works/pi-ai";
 import { type LogEvent, read } from "../src/kernel/log.ts";
@@ -22,9 +23,18 @@ import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { parseArgs } from "../src/meta/process.ts";
+import { decide } from "../src/builder/decide.ts";
 import { starter } from "../tools/d2/campaign.ts";
 import type { Campaign } from "../tools/d2/round.ts";
-import { answersOf, passedOn, rehearse, scriptedSeats, sidesOf } from "../tools/runs/rehearse.ts";
+import {
+  answersOf,
+  passedOn,
+  rehearse,
+  scriptedExaminer,
+  scriptedSeats,
+  sidesOf,
+} from "../tools/runs/rehearse.ts";
+import { seat, sweep } from "./helpers/examiner-seat.ts";
 import { SEED_FILE } from "../tools/runs/registry.ts";
 import { replayed } from "../tools/runs/replay.ts";
 import { keptLines, seedCampaign } from "../tools/runs/seed.ts";
@@ -41,7 +51,10 @@ const LINES = [
   line("build.started", { session: "b-2" }),
 ];
 
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+afterAll(() => {
+  rmSync(root, { recursive: true, force: true });
+  sweep();
+});
 
 /** A campaign's folder holding `lines` as its log, a staged check and one kept state. */
 function campaignAt(name: string, lines: readonly string[], tail = ""): string {
@@ -215,7 +228,7 @@ describe("a rehearsal's seats", () => {
   const SCRIPT = { held: sidesOf("fail:pass"), starter: "fail" } as const;
 
   /** A campaign over `folder` whose solves end as `ending`, and each solve's first scripted call. */
-  function campaignOver(folder: string, ending: Ending) {
+  function campaignOver(folder: string, ending?: Ending) {
     const log = join(folder, "log.jsonl");
     const calls: unknown[] = [];
     /** The comparison each solve was made for, as the seat handed it on. */
@@ -233,11 +246,93 @@ describe("a rehearsal's seats", () => {
         const context = normalizeContext({ messages: [{ role: "user", content: "Solve.", timestamp: 0 }] });
         const turn = await by.models?.("").streamSimple(by.model, context).result();
         calls.push(turn?.content.find((part) => part.type === "toolCall"));
-        return { solve: `s-${String(calls.length)}`, ending };
+        return {
+          solve: `s-${String(calls.length)}`,
+          ending:
+            ending ??
+            (turn?.content.some((part) => part.type === "toolCall" && part.name === "submit") === true
+              ? { outcome: "fail", kind: "turns-ended" }
+              : { outcome: "pass" }),
+        };
       },
     } as unknown as Campaign;
     return { campaign, calls, named, log };
   }
+
+  it("refuses answered drafts at three of three and holds a proved draft the reference does not answer", async () => {
+    for (const [old, refused] of [
+      ["pass", 2],
+      ["none", 0],
+    ] as const) {
+      const folder = campaignAt(`gate-${old}`, []);
+      writeFileSync(join(folder, SEED_FILE), "{}\n");
+      const { campaign, named } = campaignOver(folder);
+      const strayed: string[] = [];
+      const source = { taskId: "source", family: "fixture", publicInput: { base: 2 }, hidden: null };
+      const controls = [
+        {
+          taskId: source.taskId,
+          answer: { answer: "12", unit: "N" },
+          refusedBy: null,
+        },
+      ];
+      const factory = scriptedSeats({ held: { old, fresh: "none" }, starter: "pass" }, controls, strayed);
+      const reference = { dir: FIXTURE, digest: "promoted" };
+      const solver = factory(campaign, { builder: undefined, reference: reference.dir });
+      const session = seat("write", []);
+      const result = await scriptedExaminer(
+        [],
+        [source],
+        2,
+        controls,
+      )({
+        ...session.request,
+        log: campaign.log,
+        wanted: 2,
+        verify: async () => ({ kind: "pass" }),
+        probe: async (task, id, kill) => (await solver.solve(task, reference, kill, id)).ending,
+      });
+      const gates = read(campaign.log).flatMap(({ kind, data }) => (kind === "task.gate" ? [data] : []));
+      expect(result).toMatchObject({ puts: 2, ended: refused === 0 ? "supplied" : "finished" });
+      expect(result.refused).toHaveLength(refused);
+      expect(result.held).toHaveLength(2 - refused);
+      expect(gates.slice(0, refused)).toMatchObject(
+        Array.from({ length: refused }, () => ({ outcome: "refused", reference: { valid: 3, solves: 3 } })),
+      );
+      expect(gates.slice(refused)).toMatchObject(
+        Array.from({ length: 2 - refused }, () => ({
+          outcome: "passed",
+          reference: { valid: 0, solves: 3 },
+        })),
+      );
+      expect(named).toEqual(Array.from({ length: 6 }, () => "x-1"));
+      expect(strayed).toEqual([]);
+      if (refused === 2) {
+        const events: LogEvent[] = [
+          { at: AT, kind: "checker.read", data: { contract: "c", checks: "k", faults: [] } },
+          { at: AT, kind: "harness.promoted", data: { harness: reference.digest } },
+          ...read(campaign.log),
+        ];
+        expect(
+          decide(events, {
+            sessions: 1,
+            patience: 1,
+            unprepared: false,
+            practice: null,
+            wanted: { target: 2, level: 0.1, trigger: 0.25 },
+            pastStop: null,
+            prompted: false,
+            admits: [],
+            left: null,
+          }),
+        ).toMatchObject({ move: "end", ending: "exam" });
+      }
+      // The comparison keeps --held's ending after the admission sequence changed it.
+      const compared = await solver.solve({ ...held, taskId: "source" }, reference, undefined, "g-1");
+      expect(compared.ending.outcome).toBe(old === "pass" ? "pass" : "fail");
+      expect(strayed).toEqual([]);
+    }
+  });
 
   it("are refused on a campaign that is no seed, whose next round would count their solves", () => {
     const { campaign } = campaignOver(campaignAt("real", []), { outcome: "pass" });

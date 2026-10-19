@@ -105,16 +105,6 @@ export function nodeRuntimeReadRoots(): string[] {
   return [...roots].sort();
 }
 
-/** The executable directories inside the runtime prefixes. A bind does not alter command lookup,
- *  so a child that can read these directories still cannot name what is in them until they arrive
- *  through its explicit PATH as well. */
-export function nodeRuntimeBinDirs(): string[] {
-  return nodeRuntimeReadRoots()
-    .map((root) => join(root, "bin"))
-    .filter(existsSync)
-    .sort();
-}
-
 /** Bubblewrap's own stderr messages for a refused unprivileged user namespace. They are matched
  *  literally because they are what the installed bwrap prints, not text this module owns, so
  *  paraphrasing them here would silently stop matching. */

@@ -36,6 +36,16 @@
  * scored set's size, 12. Asking for many at once is what v1 found dilutes them, a probe grown to
  * 25 tasks in 10 of 13 cases (`docs/plan.md`).
  *
+ * `--reference-home on`, the default, lays a copy of the reference harness the gate solves with in
+ * the home, laid afresh each session; `off` keeps the home blind (the campaign's term
+ * `exam-reference`). After a promotion the Examiner wrote drafts the reference's programs answered
+ * every time, 0 of 49 held in esp32-fresh-opus, and never saw those programs. The term was off
+ * unless named until 19 October, when a supply ablation on the buffer domain after its second
+ * promotion, one Examiner session an arm, held 1 of 8 drafts blind for $9.22 and 4 of 8 with the
+ * copy for $14.41: $9.22 a held draft against $3.60. On esp32, with no room left, both arms held
+ * none (20 drafts blind, 6 with the copy). One session an arm and three gate solves a draft; the
+ * operator turned it on on that word.
+ *
  * Not run here: see `campaign.ts`.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
@@ -84,6 +94,9 @@ const EXAMINE_OPTIONS = {
   proposals: { type: "string", default: "36" },
   minutes: { type: "string", default: "240" },
   turns: { type: "string", default: "200" },
+  /** `on` lays a copy of the reference harness the gate solves with in the Examiner's home; `off`
+   *  keeps it blind. The one owner of the default, which a campaign that names no term reads. */
+  "reference-home": { type: "string", default: "on" },
   /** The campaign's setting, as every command that solves takes it: the solver and the limits the
    *  reference harness's solves of a draft task run under (`try_task`), and the budget fact the
    *  Examiner is told, where no setting is on record yet. `--tasks` is this command's own, so the
@@ -125,7 +138,7 @@ async function probing(
 /** `bun tools/d1b/examine.ts`. `session` runs the Examiner's session: `examine`, unless a caller
  *  with no model stands in for it to read what the command would have asked of one. `seated` solves
  *  a draft task under `try_task`; a caller that stands in for the session seats no solver unless it
- *  names one, so a rehearsal's script holds tasks out on their shape and pays for no solve. `kill`
+ *  names one. `kill`
  *  stops the session, and one stopped before it began opens nothing. */
 export async function examineCommand(
   args: readonly string[],
@@ -137,6 +150,8 @@ export async function examineCommand(
   const { session: id, examiner } = values;
   if (id === undefined || examiner === undefined) throw new Error("name --session and --examiner");
   if (kill?.aborted === true) throw new Error(`session ${id} was stopped before it began`);
+  const home = values["reference-home"];
+  if (home !== "on" && home !== "off") throw new Error(`--reference-home is on or off, not ${home}`);
   const pack = packNamed(values, ", --session and --examiner");
   // The campaign's setting is its log's, as a comparison reads it: the reference harness's solves
   // of a draft task run under it and record it where none is on record (`setting.ts`). `--tasks`
@@ -207,6 +222,11 @@ export async function examineCommand(
       engines: { checks: campaign.checks, tools: join(campaign.bundle, ".toolchain") },
       // The home the last session left, carried whole into this one, beside the log.
       keep: join(dirname(campaign.log), "examiner-home"),
+      // The reference harness the gate solves with, where the campaign's term lays it in the home.
+      ...keyIfDefined(
+        "reference",
+        home === "on" ? (await keptAs(campaign, "--reference", PROMOTED)).dir : undefined,
+      ),
     },
   );
   const sets = taskSets(read(campaign.log));

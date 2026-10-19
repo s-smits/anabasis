@@ -70,7 +70,7 @@
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { admitComparison, type Wanted } from "#src/builder/admission.ts";
 import { worthLine } from "#src/builder/climb.ts";
-import { marginRead, predicted, type Report } from "#src/builder/comparison.ts";
+import { predicted, type Report } from "#src/builder/comparison.ts";
 import { refuseTerms, type RoundRequest, round, scoredSet } from "#src/builder/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
 import { MARGIN, type ObjectiveRule, TRIGGER } from "#src/kernel/compare.ts";
@@ -155,9 +155,8 @@ export const COMPARISON_OPTIONS = {
   // Two valid answers are compared by the objective where the check program declares one
   // (`src/kernel/compare.ts`, `ObjectiveRule`), and the better by more than this share of the
   // larger measure wins the pair. It is fixed with the comparison's other terms, and read by no
-  // comparison of a check program that declares none. Where no command names it, the last A/A on
-  // record sets it from the reference's own spread (`marginRead`), and 0.01 stands before one;
-  // until 12 October 0.01 was its default whatever the domain's noise (the overhaul plan's P2).
+  // comparison of a check program that declares none. Where no command names it, it is the gate's
+  // (`MARGIN`); from 12 to 18 October the last A/A on record set it from the reference's own spread.
   margin: { type: "string" },
   defects: { type: "string", default: "3" },
   cap: { type: "string" },
@@ -213,11 +212,14 @@ type Apart = "versions" | "aside" | "short" | "disputed" | "withdrawn";
 // SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.
 const effortNamed = (flag: string) => flag as ThinkingLevel;
 
-/** A campaign's task by its version, from the pack or a session's proposal. */
+/** A campaign's task by its version, from the pack or a session's proposal. The log is read again
+ *  for a version it did not hold when last read: on 17 October an Examiner held tasks out beside
+ *  the Builder's conversation, the Builder released and practised one, and the conversation of each
+ *  of three campaigns ended crashed on the map read at its start. */
 export function packaged(campaign: Campaign): (version: string) => TaskPackage {
-  const packages = campaign.packages();
+  let packages = campaign.packages();
   return (version) => {
-    const task = packages.get(version);
+    const task = packages.get(version) ?? (packages = campaign.packages()).get(version);
     if (task === undefined) {
       throw new Error(`task ${version} is in the log and in neither the pack nor a proposal`);
     }
@@ -366,19 +368,16 @@ export function solvingAs(campaign: Campaign, { limits }: Pick<AskedSetting, "na
   return { solver: { model: priceKey(model), effort }, limits };
 }
 
-/** The objective comparison `id` of this campaign pairs two valid answers by, where its check
- *  program declares one: the brief's direction and the margin `--margin` names, or else the one the
- *  A/A on record before `id` began set, with what set it (`marginRead`). Undefined otherwise. */
+/** The objective this campaign's comparisons pair two valid answers by, where its check program
+ *  declares one: the brief's direction and the margin `--margin` names, or else the gate's
+ *  (`MARGIN`). Undefined otherwise. */
 export function objectiveNamed(
-  campaign: Pick<Campaign, "checks" | "log">,
+  campaign: Pick<Campaign, "checks">,
   margin: string | undefined,
-  id: string,
 ): ObjectiveRule | undefined {
   const declared = readBrief(campaign.checks).objective;
   if (declared === undefined) return undefined;
-  if (margin !== undefined) return { direction: declared.direction, margin: Number(margin) };
-  const set = marginRead(read(campaign.log), id);
-  return { direction: declared.direction, margin: set?.margin ?? MARGIN, from: set?.pairings ?? null };
+  return { direction: declared.direction, margin: margin === undefined ? MARGIN : Number(margin) };
 }
 
 /** What `--predict` names: the operator's expectation of the comparison, in a sentence, or none. */
@@ -434,8 +433,7 @@ export function capNamed(
  * became of each (`accounted`); and `valid`,
  * each harness by itself, as the tasks by how many of their solves were valid, which is what the
  * plan's first gate reads of the starter, the reference harness of the first round (`docs/plan.md`,
- * G0); the objective's margin and what set it, and the one its A/A sets for the next comparison.
- * None for a report that compared nothing.
+ * G0); the objective's margin. None for a report that compared nothing.
  */
 export function reportLines({
   valid,
@@ -454,13 +452,6 @@ export function reportLines({
   );
   const took = (side: "old" | "fresh") => String(median(both.map((each) => each[side])));
   const share = frontier?.detectable ?? null;
-  const from = objective?.from;
-  const set =
-    from === undefined
-      ? "as named"
-      : from === null
-        ? "the default: no A/A on record had measured two valid answers of one task"
-        : `the 90th percentile of the reference's own spread over ${plural(from, "A/A pairing")}`;
   const untied = frontier === null ? 0 : frontier.wins + frontier.losses;
   return [
     ...(frontier === null
@@ -478,17 +469,12 @@ export function reportLines({
     ...(objective === null
       ? []
       : [
-          `the objective (${objective.direction} is better, margin ${String(objective.margin)}, ${set}) decided ${plural(objective.decided, "task")} that validity alone would have tied`,
+          `the objective (${objective.direction} is better, margin ${String(objective.margin)}) decided ${plural(objective.decided, "task")} that validity alone would have tied`,
         ]),
     ...(both.length === 0
       ? []
       : [
           `the median turns of a valid answer, over the ${plural(both.length, "task")} both answered: reference ${took("old")}, new ${took("fresh")} (reported, in no test)`,
-        ]),
-    ...(noise?.margin == null
-      ? []
-      : [
-          `this comparison's A/A sets the objective's margin at ${String(noise.margin.margin)}, over ${plural(noise.margin.pairings, "pairing")} of the reference's valid answers: the next comparison reads by it`,
         ]),
     ...(worth === null ? [] : [worthLine(worth)]),
   ];
@@ -588,7 +574,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
     solves: Number(values.solves),
     level: Number(values.level),
     trigger: Number(values.trigger),
-    objective: objectiveNamed(campaign, values.margin, session),
+    objective: objectiveNamed(campaign, values.margin),
     defects: Number(values.defects),
     cap,
     prediction: predictionNamed(values.predict),

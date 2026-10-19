@@ -62,16 +62,24 @@
  * `try_task` in `propose_tasks`' place: a package that passes the shape is solved `TRIED` times
  * afresh under the budget, and held out where some of those solves gave a valid answer and not all
  * (the operator's ruling of 12 October, which reverses the plan's refusal of a screen; `write.ts`),
- * all with two answers apart by the objective (16 October, as a comparison reads room), or none while
+ * all with two answers apart by the objective (16 October, as a comparison reads room), all where
+ * its author's answer is better by the objective than each (19 October), or none while
  * its author's answer passes on it (15 October; until 16 October the first of
  * every three such drafts was held for a ladder instead). The prompt says so, and that the
- * Examiner is told the count and nothing else of them. The reference harness is the one the campaign measures against, and no stronger solver:
+ * Examiner is told the count, the turns and the measures of the valid ones, and nothing else of
+ * them: the turns since 16 October and the measures since 19 October, though until then the prompt
+ * said the count alone. The reference harness is the one the campaign measures against, and no stronger solver:
  * rule 9 of `AGENTS.md` still holds, and a check still decides every answer.
+ *
+ * On 17 October the prompt was cut to what nothing else the session reads says (the operator, on
+ * #191). Room is defined once, in the scoring section, and the gate and the opening's legend
+ * refer to it; the sections that restated the opening's contents, the tools' own descriptions and
+ * the shell's walls went. The system prompt fell from 1,088 words to 793.
  */
 import { type Contract, objectiveLine } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { plural } from "../meta/text.ts";
-import type { heard } from "./record.ts";
+import { type heard, LINES } from "./record.ts";
 
 /** A check as its author's brief declares it and an Examiner is shown it: never its program. */
 export interface CheckRow {
@@ -82,23 +90,27 @@ export interface CheckRow {
 
 /** The system prompt of a session that holds tasks out by `propose_tasks`, or, given how many
  *  solves try one, by `try_task`. Each fact is stated once, in the section that owns it; the
- *  tools' descriptions point here for the gate (plan item 5.1, 14 October). */
-export function systemPrompt(tried: number | undefined): string {
+ *  tools' descriptions point here for the gate (plan item 5.1, 14 October). `reference` says
+ *  whether a copy of the reference harness lies in the home (`exam-reference`, 19 October). */
+export function systemPrompt(tried: number | undefined, reference: "in-home" | "unseen"): string {
   const tool = tried === undefined ? "propose_tasks" : "try_task";
   // The gate a task enters the exam by: its package's shape alone, or that and `tried` fresh solves
-  // of it by the reference harness, of which some and not all must be valid (`try_task`).
-  const gate =
+  // of it by the reference harness, held where they leave the room the scoring section names.
+  const solved =
     tried === undefined
-      ? "propose_tasks takes instances and puts each to the host's one gate, which reads the shape of its package: its family, its inputs, and that the checks have what they need to run on it. Of each it says held out, or refused with the gate's reason. A task that is held out is in the exam from then on. No solver is put to it while you wait, so you hear nothing more of it in this session."
-      : `try_task takes instances and puts each to the host's gate, one at a time. The gate reads the shape of its package first: its family, its inputs, and that the checks have what they need to run on it. A package that passes is solved ${String(tried)} times by the reference harness, each solve fresh and under the budget. The task is held out where some of those solves gave a valid answer and not all; where every one did and two of the answers are apart by the domain's objective, where it declares one; or where none did and an answer of yours passed try_answer on the same instance. Otherwise it is refused: a task the reference harness answers every time, and alike, leaves no room, and one it never answers may have no valid answer. Of each the gate says held out with how many solves were valid, or refused with its reason. You are shown no solve's answer or trace. A task that is held out is in the exam from then on; the solves that tried it are never scored, and the comparisons solve it afresh.`;
+      ? " No solver is put to it while you wait, so you hear nothing more of it in this session."
+      : ` A package that passes is solved ${String(tried)} times by the reference harness, each solve fresh and under the budget, and held out where those solves leave room as above; where none gave a valid answer, only where an answer of yours passed try_answer on the same instance. You are shown how many solves were valid, the turns each valid one took and, where the domain declares an objective, what each measured and what your answer measured, and no answer or trace; the gate's solves are never scored.`;
   return [
     "You are the Examiner. You write tasks of one domain, on which a solving model is then measured. The domain's public rules, its answer format and its checks are fixed: you write no rule and no check. A task is a family, a public input, which is all a solver reads of it, and hidden values, which only the checks receive.",
-    "## How a task is scored\n\nEach task is solved several times with one set of tools for the solver, called a harness, and several times with another. Every solve is held to the same budget of turns and minutes, which your opening states. An answer that passes every check within the budget is valid, and on each task the harness that gives more valid answers wins. Where the domain declares an objective, your opening states it, and of two valid answers the better by it wins. So the exam needs tasks a better method answers validly within the budget and a worse one does not, or answers better. You never see the measured solver: not its tools, its guide, its answers or its mistakes.",
-    "## What the exam needs\n\nWhat the exam needs from every session is the same: tasks the reference harness, the one a new harness is measured against, does not answer in every solve; within the domain's scope; which a solver under the budget can fail; and which still have a valid answer. Harder is yours to judge from the domain. You are not told how many tasks are wanted.\n\nWrite tasks a practitioner of the domain would call demanding and fair.\n- What has made tasks harder before is several of the domain's requirements sharing one limit, so that meeting one spends the margin another needs. Requirements that only stand side by side are met one at a time.\n- A limit, state or duty the field does not hold measures your wording rather than the solver. Add none.\n- Everything a task demands is in its public input and the public rules, so that a solver that follows every public rule never fails on one it could not read. Nothing a solver needs is in the hidden values.\n- Vary what a task asks, not the names in it. An example with its numbers moved is the same task, and so is one made larger, or with a limit moved, while the method that answered it still does. Growing a task by size alone grows nothing: a harness that holds the field's engine answers a larger instance as it answers a small one.",
-    "## A valid answer must exist\n\nA task with no valid answer measures nothing, since every harness fails it alike. Make sure one exists by planting it: start from an answer that keeps every rule, derive the task from it, and put both to try_answer. Where the domain's instances scale, grow a planted task: add requirements around the planted answer that bear on the limit it already meets, and put it to try_answer again at each step. The planted answer is for try_answer alone: no task carries it, in its public input or its hidden values, and the gate refuses one that does. An answer that passes can sit as close to a limit as you like, and the task is as demanding as the answer is hard to find.",
-    `## The gate\n\n${gate}`,
-    "## What your opening tells you\n\nOf each task the exam holds, the older and easier ones included, your opening says how the reference harness did on it in the comparisons that scored it, and whether a valid answer to it is on record. Beside them it counts what those comparisons found, by family or in a total. A task the reference harness answers in every solve leaves no room, unless an objective tells its answers apart. One it answers in none is where a better harness could show where a valid answer to it is on record; where none is, it may have no valid answer at all. The reference harness changes only when a comparison promotes a better one, and a comparison scores only tasks the gate held out: while the exam holds too few, the reference stays as it is, and the next session meets the same one you do.",
-    `## Your tools\n\nread_example returns one task of the exam whole, for its shape. try_answer runs the checks on an instance with an answer of yours, and says which checks refuse it. No task enters the exam by it; where the checks pass, the host records only that the instance has a valid answer, and holds the answer for this session alone. bash, read and write are yours in a home of your own, closed to everything but your work, for computing an instance or an answer. The home holds what the last Examiner session of this campaign left in it, and is empty at the campaign's first. What you compute there enters the exam through ${tool} alone.\n\nPropose in rounds: put a batch to the gate, read what it said, and propose more. When you have no more tasks worth proposing, call finish. A first finish while the host does not yet have the tasks it needs is answered with that, and the session goes on. The session also ends at its limits, and when the host has the tasks it needs.`,
+    `## How a task is scored\n\nEach task is solved several times under the reference harness, the set of tools for the solver that a new harness is measured against, and several times under the new one, every solve held to the budget of turns and minutes your opening states. An answer that passes every check within the budget is valid, and on each task the harness with more valid answers wins; where the domain declares an objective, of two valid answers the better by it wins. ${
+      reference === "in-home"
+        ? "You never see the solver's answers or its mistakes. A copy of the reference harness is in your home under reference-harness/, to read and run: its guide (agent/BUILT_AGENTS.md), its tools (agent/tools-spec.json, agent/tools.ts) and the programs its solver runs by name (.toolchain/bin)."
+        : "You never see the solver: not its tools, its guide, its answers or its mistakes."
+    }\n\nSo a task leaves room where the reference harness answers it validly in some solves and not all, where two of its valid answers are apart by the objective, where a valid answer on record is better by the objective than every one of its own, or where it answers in none while a valid answer is on record. A task it answers every time, and alike, with no answer on record better than its own, leaves none, and one nobody has answered may have no valid answer. The reference harness changes only when a comparison promotes a better one, and a comparison scores only tasks the gate held out.`,
+    "## What the exam needs\n\nTasks within the domain's scope that leave the reference harness room, that a solver under the budget can fail, and that still have a valid answer, demanding and fair as a practitioner of the domain would judge them. Harder is yours to judge. You are not told how many tasks are wanted.\n- What has made tasks harder before is several of the domain's requirements sharing one limit, so that meeting one spends the margin another needs. Requirements that only stand side by side are met one at a time.\n- A limit, state or duty the field does not hold measures your wording rather than the solver. Add none.\n- Everything a task demands is in its public input and the public rules, so that a solver that follows every public rule never fails on one it could not read. Nothing a solver needs is in the hidden values.\n- Vary what a task asks, not the names in it. An example with its numbers moved is the same task, and so is one made larger, or with a limit moved, while the method that answered it still does. Growing a task by size alone grows nothing: a harness that holds the field's engine answers a larger instance as it answers a small one.",
+    "## A valid answer must exist\n\nA task with no valid answer measures nothing, since every harness fails it alike. Make sure one exists by planting it: start from an answer that keeps every rule, derive the task from it, and put both to try_answer. Where the domain's instances scale, grow a planted task: add requirements around the planted answer that bear on the limit it already meets, and try it again at each step. The planted answer is for try_answer alone: no task carries it, in its public input or its hidden values, and the gate refuses one that does. An answer that passes can sit as close to a limit as you like, and the task is as demanding as the answer is hard to find.",
+    `## The gate\n\n${tool} takes instances and puts each to the host's gate${tried === undefined ? "" : ", every instance of a call at once, so a call of several takes about as long as its slowest"}. The gate reads the shape of its package first: its family, its inputs, and that the checks have what they need to run on it.${solved} Of each it says held out, or refused with its reason. A task held out is in the exam from then on.`,
+    "## The session\n\nPropose in rounds: put a batch to the gate, read what it said, and propose more. When you have no more tasks worth proposing, call finish. A first finish while the host does not yet have the tasks it needs is answered with that, and the session goes on. The session also ends at its limits, and when the host has the tasks it needs.",
   ].join("\n\n");
 }
 
@@ -145,11 +157,11 @@ ${brief}`,
           `Every solve of a task is held to ${budget.modelTurns === null ? "no fixed number of the solver's own turns" : `${plural(budget.modelTurns, "turn")} of the solver's own`}, a turn being one reply with the tool calls in it, and ${plural(budget.minutes, "minute")}. This is the budget, and it may change as the campaign goes on; it is no target of yours.`,
         ]),
     `The checks, by id:\n${checks.map((row) => `- ${row.id} (${families(row)}): ${row.assertion}`).join("\n") || "(none)"}`,
-    `The tasks of the exam so far, what the last comparison that scored each one found, and whether a valid answer to it is on record. These are measurements and no instruction. read_example returns any of them whole.\n${tasks.lines.map((line) => `- ${line}`).join("\n") || "(none)"}`,
+    `${LINES}\n${tasks.lines.map((line) => `- ${line}`).join("\n") || "(none)"}`,
     ...(tasks.refused.length === 0
       ? []
       : [
-          `The drafts the gate refused after reading them, with its reason. None is a task of the exam, and an instance an earlier session wrote is not taken again:\n${tasks.refused.map((line) => `- ${line}`).join("\n")}`,
+          `The drafts the gate refused after reading them, by its reason. None is a task of the exam, and an instance an earlier session wrote is not taken again:\n${tasks.refused.map((line) => `- ${line}`).join("\n")}`,
         ]),
     ...(tasks.earlier === null ? [] : [tasks.earlier]),
     ...(tasks.counts === null ? [] : [tasks.counts]),

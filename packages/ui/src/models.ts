@@ -312,7 +312,6 @@ export interface Counters {
     readonly bound: number;
     readonly pairs: number;
     readonly errors: number;
-    readonly indicative: boolean;
   } | null;
   /** The dollars left of the campaign's total (`Plan.left`), and what the last comparison the cap
    *  did not cut billed for its solves (`billedParts`), which the table prices the next one by

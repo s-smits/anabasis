@@ -8,8 +8,11 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
+  readFileSync,
   realpathSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -21,6 +24,7 @@ import { commandIsolationPolicy, stageCommandIsolation } from "../src/verify/sol
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
 
 const CAP_BYTES = 16 * 1024 * 1024;
+const HDIUTIL = "/usr/bin/hdiutil";
 
 describe("the disk cap", () => {
   it.skipIf(runtimeProcess.platform !== "darwin")(
@@ -62,7 +66,7 @@ describe("the disk cap", () => {
   // name from the log and nothing else: four killed solves and two stopped Builder sessions stayed
   // mounted on one host until then (2026-10-08).
   it.skipIf(runtimeProcess.platform !== "darwin")(
-    "is released from its root's name alone, mounted or already detached, and the root can be claimed again",
+    "is released from its root's name alone, mounted, attached with no volume or already detached, and the root can be claimed again",
     async () => {
       const parent = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-disk-cap-")));
       const root = join(parent, "solve");
@@ -77,6 +81,16 @@ describe("the disk cap", () => {
       await releaseDiskCap(root);
       expect(existsSync(root)).toBe(false);
       expect(existsSync(`${root}.sparseimage`)).toBe(false);
+      // A solve stopped between its attach and its mount: the image attached, no volume at the root.
+      await mountDiskCap({ root, bytes: CAP_BYTES });
+      expect(spawnSync("/usr/bin/hdiutil", ["detach", root, "-quiet"]).status).toBe(0);
+      const image = `${root}.sparseimage`;
+      expect(spawnSync("/usr/bin/hdiutil", ["attach", "-nomount", "-nobrowse", image]).status).toBe(0);
+      expect(spawnSync("/usr/bin/hdiutil", ["info"]).stdout).toContain(image);
+      await releaseDiskCap(root);
+      expect(spawnSync("/usr/bin/hdiutil", ["info"]).stdout).not.toContain(image);
+      expect(existsSync(root)).toBe(false);
+      expect(existsSync(image)).toBe(false);
       rmSync(parent, { recursive: true, force: true });
     },
   );
@@ -121,9 +135,9 @@ describe("the disk cap", () => {
       const parent = mkdtempSync(join(tmpdir(), "ana-disk-cap-"));
       const lsof = join(parent, "lsof");
       writeFileSync(lsof, "#!/bin/sh\nexec /bin/sleep 5\n", { mode: 0o755 });
-      expect(await endHolders(parent, { lsof, ps: "/bin/ps", boundMs: 200 })).toBe(
-        "no listing of what holds it came within 200 ms",
-      );
+      expect(
+        await endHolders(parent, { lsof, ps: "/bin/ps", hdiutil: HDIUTIL, boundMs: 200, stallMs: 10_000 }),
+      ).toBe("no listing of what holds it came within 200 ms");
       rmSync(parent, { recursive: true, force: true });
     },
   );
@@ -140,8 +154,9 @@ describe("the disk cap", () => {
       // below `ps`'s 5 s.
       writeFileSync(lsof, "#!/bin/sh\necho 1000000\n", { mode: 0o755 });
       writeFileSync(ps, "#!/bin/sh\nexec /bin/sleep 5\n", { mode: 0o755 });
-      expect(await endHolders(parent, { lsof, ps, boundMs: 2_000 })).toBe(
-        "1 of its holders stayed in uninterruptible wait for 10000 ms after SIGKILL",
+      // One second of stall rather than the hosts' ten: the case still lists, kills and rereads.
+      expect(await endHolders(parent, { lsof, ps, hdiutil: HDIUTIL, boundMs: 2_000, stallMs: 1_000 })).toBe(
+        "1 of its holders stayed in uninterruptible wait for 1000 ms after SIGKILL",
       );
       rmSync(parent, { recursive: true, force: true });
     },
@@ -156,9 +171,9 @@ describe("the disk cap", () => {
       await mountDiskCap({ root, bytes: CAP_BYTES });
       const lsof = join(parent, "lsof");
       writeFileSync(lsof, "#!/bin/sh\nexec /bin/sleep 5\n", { mode: 0o755 });
-      await expect(releaseDiskCap(root, { lsof, ps: "/bin/ps", boundMs: 200 })).rejects.toThrow(
-        `the volume at ${root} is left attached: no listing`,
-      );
+      await expect(
+        releaseDiskCap(root, { lsof, ps: "/bin/ps", hdiutil: HDIUTIL, boundMs: 200, stallMs: 10_000 }),
+      ).rejects.toThrow(`the volume at ${root} is left attached: no listing`);
       expect(spawnSync("/sbin/mount", []).stdout).toContain(root);
       expect(existsSync(`${root}.sparseimage`)).toBe(true);
       await releaseDiskCap(root);
@@ -179,6 +194,9 @@ describe("the disk cap", () => {
         /^hdiutil create exited 1: hdiutil: create failed/,
       );
       expect(existsSync(root)).toBe(false);
+      // Nor is a template of that size left, whole or half made, for the next mount to clone.
+      const templates = readdirSync(join(tmpdir(), "ana-disk-cap"));
+      expect(templates.filter((name) => name === "1.sparseimage" || name.startsWith("1-"))).toEqual([]);
       const release = await mountDiskCap({ root, bytes: CAP_BYTES });
       await release();
       expect(existsSync(root)).toBe(false);
@@ -196,10 +214,231 @@ describe("the disk cap", () => {
       await mountDiskCap({ root, bytes: CAP_BYTES });
       const lsof = join(parent, "lsof");
       writeFileSync(lsof, '#!/bin/sh\n/usr/bin/hdiutil detach "$4" >/dev/null 2>&1\n', { mode: 0o755 });
-      await releaseDiskCap(root, { lsof, ps: "/bin/ps", boundMs: 30_000 });
+      await releaseDiskCap(root, { lsof, ps: "/bin/ps", hdiutil: HDIUTIL, boundMs: 30_000, stallMs: 10_000 });
       expect(spawnSync("/sbin/mount", []).stdout).not.toContain(root);
       expect(existsSync(root)).toBe(false);
       expect(existsSync(`${root}.sparseimage`)).toBe(false);
+      rmSync(parent, { recursive: true, force: true });
+    },
+  );
+
+  // A release took a failed `hdiutil info` for an image attached nowhere, and a root unmounted
+  // under it for a detached image: either way it unlinked an image still attached (the review of
+  // 19 October). Here the listing of images fails, and then another actor unmounts the root while
+  // the release lists its holders, so the detach by the root finds no volume and the device stays.
+  it.skipIf(runtimeProcess.platform !== "darwin")(
+    "keeps an image whose attachment it cannot establish, and detaches one unmounted under it",
+    async () => {
+      const parent = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-disk-cap-")));
+      const root = join(parent, "solve");
+      const image = `${root}.sparseimage`;
+      const attached = () => spawnSync(HDIUTIL, ["info"]).stdout.includes(image);
+      await mountDiskCap({ root, bytes: CAP_BYTES });
+      expect(spawnSync(HDIUTIL, ["detach", root, "-quiet"]).status).toBe(0);
+      expect(spawnSync(HDIUTIL, ["attach", "-nomount", "-nobrowse", image]).status).toBe(0);
+      const failing = join(parent, "hdiutil");
+      writeFileSync(failing, "#!/bin/sh\necho no listing >&2\nexit 1\n", { mode: 0o755 });
+      const listing = { lsof: "/usr/sbin/lsof", ps: "/bin/ps", boundMs: 30_000, stallMs: 10_000 };
+      await expect(releaseDiskCap(root, { ...listing, hdiutil: failing })).rejects.toThrow(
+        `${image} is left in place: hdiutil info exited 1: no listing`,
+      );
+      expect(attached()).toBe(true);
+      expect(existsSync(image)).toBe(true);
+      expect(existsSync(root)).toBe(true);
+      // A listing that never answers: `runs stop` releases roots in turn, and would wait here on all.
+      const silent = join(parent, "silent");
+      writeFileSync(silent, "#!/bin/sh\nexec /bin/sleep 30\n", { mode: 0o755 });
+      const started = Date.now();
+      await expect(releaseDiskCap(root, { ...listing, hdiutil: silent, boundMs: 500 })).rejects.toThrow(
+        `${image} is left in place: hdiutil info did not answer within 500 ms`,
+      );
+      expect(Date.now() - started).toBeLessThan(5_000);
+      expect(attached()).toBe(true);
+      expect(existsSync(image)).toBe(true);
+      expect(existsSync(root)).toBe(true);
+      // A listing that names the device, and a detach of it that never answers.
+      const stalled = join(parent, "stalled");
+      writeFileSync(stalled, `#!/bin/sh\n[ "$1" = info ] && exec ${HDIUTIL} info\nexec /bin/sleep 30\n`, {
+        mode: 0o755,
+      });
+      const begun = Date.now();
+      await expect(releaseDiskCap(root, { ...listing, hdiutil: stalled, boundMs: 2_000 })).rejects.toThrow(
+        `${image} is left in place: hdiutil detach did not answer within 2000 ms`,
+      );
+      expect(Date.now() - begun).toBeLessThan(8_000);
+      expect(attached()).toBe(true);
+      expect(existsSync(image)).toBe(true);
+      expect(existsSync(root)).toBe(true);
+      await releaseDiskCap(root);
+      expect(attached()).toBe(false);
+      expect(existsSync(image)).toBe(false);
+      // Mounted at the start, unmounted by another while the release lists what holds it.
+      await mountDiskCap({ root, bytes: CAP_BYTES });
+      const lsof = join(parent, "lsof");
+      writeFileSync(lsof, `#!/bin/sh\n${HDIUTIL} unmount "$4" >/dev/null 2>&1\n`, { mode: 0o755 });
+      await releaseDiskCap(root, { ...listing, lsof, hdiutil: HDIUTIL });
+      expect(attached()).toBe(false);
+      expect(existsSync(image)).toBe(false);
+      expect(existsSync(root)).toBe(false);
+      rmSync(parent, { recursive: true, force: true });
+    },
+  );
+
+  // An interrupted release unlinks the image before it removes the root. hdiutil names an image by
+  // its real path, so with the file gone a root under /var matched nothing under /private/var, and
+  // the root went under a device still attached (the review of 19 October).
+  it.skipIf(runtimeProcess.platform !== "darwin")(
+    "detaches an image whose file is gone and whose root is named through a link",
+    async () => {
+      // Not resolved: the temporary folder is under /var, which hdiutil names /private/var.
+      const parent = mkdtempSync(join(tmpdir(), "ana-disk-cap-"));
+      const root = join(parent, "solve");
+      const real = join(realpathSync.native(parent), "solve.sparseimage");
+      const attached = () => spawnSync(HDIUTIL, ["info"]).stdout.includes(real);
+      try {
+        expect(real).not.toBe(`${root}.sparseimage`);
+        await mountDiskCap({ root, bytes: CAP_BYTES });
+        expect(spawnSync(HDIUTIL, ["detach", root, "-quiet"]).status).toBe(0);
+        expect(spawnSync(HDIUTIL, ["attach", "-nomount", "-nobrowse", real]).status).toBe(0);
+        rmSync(real);
+        expect(attached()).toBe(true);
+        await releaseDiskCap(root);
+        expect(attached()).toBe(false);
+        expect(existsSync(root)).toBe(false);
+      } finally {
+        // What a failed release left attached is this case's own image.
+        const entry = spawnSync(HDIUTIL, ["info"])
+          .stdout.split(/^=+$/m)
+          .find((each) => each.includes(real));
+        const device = entry === undefined ? undefined : /^(\/dev\/disk\d+)\s/m.exec(entry)?.[1];
+        if (device !== undefined) spawnSync(HDIUTIL, ["detach", device, "-force"]);
+        rmSync(parent, { recursive: true, force: true });
+      }
+    },
+  );
+
+  // A volume its root's detach released can stay listed while its disk ejects, and hdiutil refuses
+  // a detach of the device then, forced or not: on the macOS runners of 19 October the release
+  // forced once and threw. Here the first two detaches of the device are refused as busy.
+  it.skipIf(runtimeProcess.platform !== "darwin")(
+    "detaches a device hdiutil calls busy once it is no longer",
+    async () => {
+      const parent = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-disk-cap-")));
+      const root = join(parent, "solve");
+      const image = `${root}.sparseimage`;
+      const attached = () => spawnSync(HDIUTIL, ["info"]).stdout.includes(image);
+      try {
+        await mountDiskCap({ root, bytes: CAP_BYTES });
+        expect(spawnSync(HDIUTIL, ["detach", root, "-quiet"]).status).toBe(0);
+        expect(spawnSync(HDIUTIL, ["attach", "-nomount", "-nobrowse", image]).status).toBe(0);
+        const busy = join(parent, "busy");
+        const count = join(parent, "detaches");
+        writeFileSync(
+          busy,
+          [
+            "#!/bin/sh",
+            `if [ "$1" = detach ]; then echo x >> ${count}`,
+            `  if [ "$(wc -l < ${count})" -le 2 ]; then echo "hdiutil: couldn't eject - Resource busy" >&2; exit 16; fi`,
+            "fi",
+            `exec ${HDIUTIL} "$@"`,
+            "",
+          ].join("\n"),
+          { mode: 0o755 },
+        );
+        const listing = { lsof: "/usr/sbin/lsof", ps: "/bin/ps", boundMs: 30_000, stallMs: 10_000 };
+        await releaseDiskCap(root, { ...listing, hdiutil: busy });
+        expect(attached()).toBe(false);
+        expect(existsSync(image)).toBe(false);
+        expect(existsSync(root)).toBe(false);
+        expect(readFileSync(count, "utf8").trim().split("\n")).toHaveLength(3);
+      } finally {
+        const entry = spawnSync(HDIUTIL, ["info"])
+          .stdout.split(/^=+$/m)
+          .find((each) => each.includes(image));
+        const device = entry === undefined ? undefined : /^(\/dev\/disk\d+)\s/m.exec(entry)?.[1];
+        if (device !== undefined) spawnSync(HDIUTIL, ["detach", device, "-force"]);
+        rmSync(parent, { recursive: true, force: true });
+      }
+    },
+  );
+
+  // A disk its root's detach released can stay listed while it ejects, and a detach of its device
+  // is then refused, forced or not: on the macOS runners of 19 October that ended 21 tests. Here the
+  // listing names the image after the root's detach, and every detach of the device is refused.
+  it.skipIf(runtimeProcess.platform !== "darwin")(
+    "leaves a disk its root's detach released to eject by itself",
+    async () => {
+      const parent = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-disk-cap-")));
+      const root = join(parent, "solve");
+      const image = `${root}.sparseimage`;
+      try {
+        await mountDiskCap({ root, bytes: CAP_BYTES });
+        const count = join(parent, "detaches");
+        const ejecting = join(parent, "ejecting");
+        writeFileSync(
+          ejecting,
+          [
+            "#!/bin/sh",
+            `if [ "$1" = info ]; then printf '%s\\n' '================================================' 'image-path      : ${image}' '/dev/disk99\tGUID_partition_scheme'; exit 0; fi`,
+            `echo x >> ${count}; echo "hdiutil: couldn't eject - Resource busy" >&2; exit 16`,
+            "",
+          ].join("\n"),
+          { mode: 0o755 },
+        );
+        const listing = { lsof: "/usr/sbin/lsof", ps: "/bin/ps", boundMs: 30_000, stallMs: 10_000 };
+        await releaseDiskCap(root, { ...listing, hdiutil: ejecting });
+        expect(spawnSync(HDIUTIL, ["info"]).stdout.includes(image)).toBe(false);
+        expect(existsSync(image)).toBe(false);
+        expect(existsSync(root)).toBe(false);
+        expect(existsSync(count)).toBe(false);
+      } finally {
+        rmSync(parent, { recursive: true, force: true });
+      }
+    },
+  );
+
+  // A mount clones the one empty image of its size (`emptyImage`). The size here is this case's
+  // alone, so the template it reads is the one its three first mounts made between them.
+  it.skipIf(runtimeProcess.platform !== "darwin")(
+    "makes one empty image a size, which three caps mounted at once clone, each keeping its own writes",
+    async () => {
+      const parent = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-disk-cap-")));
+      const bytes = CAP_BYTES + 7 * 512;
+      const template = join(tmpdir(), "ana-disk-cap", `${String(bytes / 512)}.sparseimage`);
+      const roots = ["a", "b", "c"].map((name) => join(parent, name));
+      const releases = await Promise.all(roots.map((root) => mountDiskCap({ root, bytes })));
+      try {
+        roots.forEach((root, index) => writeFileSync(join(root, "own"), String(index)));
+        roots.forEach((root, index) => expect(readFileSync(join(root, "own"), "utf8")).toBe(String(index)));
+        expect(readdirSync(dirname(template)).filter((name) => name.startsWith(String(bytes / 512)))).toEqual(
+          [`${String(bytes / 512)}.sparseimage`],
+        );
+      } finally {
+        await Promise.all(releases.map((release) => release()));
+      }
+      // The writes went to the clones: a cap mounted later starts empty, from the same template.
+      const made = statSync(template).mtimeMs;
+      const later = join(parent, "d");
+      const release = await mountDiskCap({ root: later, bytes });
+      try {
+        expect(readdirSync(later).filter((name) => !name.startsWith("."))).toEqual([]);
+        expect(statSync(template).mtimeMs).toBe(made);
+      } finally {
+        await release();
+      }
+      rmSync(parent, { recursive: true, force: true });
+    },
+  );
+
+  it.skipIf(runtimeProcess.platform === "darwin")(
+    "makes the root and no image where nothing caps a disk",
+    async () => {
+      const parent = mkdtempSync(join(tmpdir(), "ana-disk-cap-"));
+      const root = join(parent, "solve");
+      const release = await mountDiskCap({ root, bytes: CAP_BYTES });
+      expect(readdirSync(parent)).toEqual(["solve"]);
+      await release();
+      expect(existsSync(root)).toBe(false);
       rmSync(parent, { recursive: true, force: true });
     },
   );

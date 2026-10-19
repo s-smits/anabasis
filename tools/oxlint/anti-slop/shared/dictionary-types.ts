@@ -418,17 +418,36 @@ export function classifyUnsafeDictionary(
 // --- is this target broader than the value that flows into it? ------------------
 
 /**
- * An unnamed shape is its own contract only where it is written: `{ currency: string }`
- * in an annotation replaces the owner type, while the same members behind an alias are
- * that alias's contract. So "anonymous object" is produced before the walk follows a
- * name, and never after.
+ * An unnamed shape gives evidence away only through a member that does: `{ payload: unknown }`
+ * over `{ payload: "eur" }` throws the payload's type away, where `{ log: string; from: number }`
+ * over `{ log, from }` states each member's type as the value does and only adds a contract. So
+ * "anonymous object" is reported where a written member, or a mapped value, is itself a widening
+ * target, and it is produced before the walk follows a name and never after: the same members
+ * behind an alias are that alias's contract.
+ *
+ * Until 19 October any unnamed shape with members was reported. Of the findings on record that
+ * were judged, the anonymous-object ones were false at nearly every site: a function's declared
+ * return type stating exactly the literal it returns, answered by deleting the annotation or by a
+ * one-use interface that `no-alias-restating-return` would then ask to remove.
  */
-function typeLiteralWideningTarget(type: ESTree.TSTypeLiteral, named: boolean): WideningTarget | null {
+function memberEscapes(type: ESTree.TSTypeLiteral, environment: TypeEnvironment): boolean {
+  return type.members.some((member) => {
+    if (member.type !== "TSPropertySignature") return false;
+    const annotation = member.typeAnnotation?.typeAnnotation;
+    return annotation !== undefined && classifyWideningTarget(annotation, environment) !== null;
+  });
+}
+
+function typeLiteralWideningTarget(
+  type: ESTree.TSTypeLiteral,
+  environment: TypeEnvironment,
+  named: boolean,
+): WideningTarget | null {
   if (type.members.some((member) => member.type === "TSIndexSignature")) {
     return { kind: OPEN_DICTIONARY };
   }
   if (named) return null;
-  return type.members.length > 0 ? { kind: "anonymous object" } : null;
+  return memberEscapes(type, environment) ? { kind: "anonymous object" } : null;
 }
 
 function mappedWideningTarget(
@@ -440,7 +459,11 @@ function mappedWideningTarget(
   if (isBroadMappedKey(type.constraint, environment, state.substitutions)) {
     return { kind: OPEN_DICTIONARY };
   }
-  return named ? null : { kind: "anonymous object" };
+  if (named) return null;
+  const value = type.typeAnnotation;
+  return value !== null && value !== undefined && classifyWideningTarget(value, environment) !== null
+    ? { kind: "anonymous object" }
+    : null;
 }
 
 /**
@@ -460,7 +483,7 @@ export function classifyWideningTarget(
     const keyword = keywordEscapes.get(unwrapped.type);
     if (keyword !== undefined) return { kind: keyword };
     if (unwrapped.type === "TSTypeLiteral") {
-      return generic(typeLiteralWideningTarget(unwrapped, named), firstAliasGeneric);
+      return generic(typeLiteralWideningTarget(unwrapped, environment, named), firstAliasGeneric);
     }
     if (unwrapped.type === "TSMappedType") {
       return generic(mappedWideningTarget(unwrapped, environment, state, named), firstAliasGeneric);

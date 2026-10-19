@@ -408,7 +408,7 @@ export async function examine(request: ExamRequest, wall?: Wall): Promise<Examin
       case "draft":
         return sit(request, putting(request, drafting(request)), walls);
       case "write":
-        return sit(request, writing(request, pinned, wall?.keep), walls);
+        return sit(request, writing(request, pinned, wall?.keep, wall?.reference), walls);
     }
   };
   if (wall === undefined) return await seated(undefined);

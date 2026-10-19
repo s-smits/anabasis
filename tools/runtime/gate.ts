@@ -20,9 +20,20 @@
  *
  * `proveCommits` runs this gate over a list of commits for `.githooks/pre-push` and `bun run land`:
  * in scratch worktrees made for the run, its output in a log under the Git directory, a pulse while
- * a pass runs, and each pass remembered by commit id in `ana-gate-passed` under the common Git
- * directory, so a commit that passed is not run again from any worktree. A fix rewrites only its
- * own commit and those above it, so after a failure the commits beneath it keep their passes.
+ * a pass runs, and each pass remembered in `ana-gate-passed` under the common Git directory, so a
+ * commit that passed is not run again from any worktree. A pass is remembered by content
+ * (`contentKey`): a whole pass by the commit's tree, a static one by its tree and its parent's, both
+ * with the checker and the Bun version. The checker is this gate and what it imports, read from the
+ * caller's checkout (`checkerDigest`), since it runs from there over every target: a changed gate
+ * runs again on trees it passed before. Until 19 October a pass was remembered by commit id, and a
+ * restack, which rewrites every id, kept nothing: that day a restack of 13 pull requests onto main,
+ * under which only PR #205 had changed a skill script and its test, ran the whole gate again on the
+ * top for about 20 minutes at a load of 11 on 8 cores, and left `bun run land` to prove all 13 from
+ * scratch. A line recorded by commit id is not read: it names no checker, so it would stand for
+ * whatever gate runs now, and each such commit is proved once more instead. The key covers the
+ * target's tree and the caller's gate; it does not see the host: its tools, its environment and its
+ * load. `ANA_GATE_FRESH=1` reads no remembered pass, so every commit selected for proof is run
+ * again, and its passes are remembered as any others.
  */
 import {
   appendFileSync,
@@ -33,6 +44,7 @@ import {
   openSync,
   readFileSync,
 } from "../../src/meta/filesystem.ts";
+import { sha256, sha256OfFile } from "../../src/meta/digest.ts";
 import { isString } from "../../src/meta/json-shape.ts";
 import { tmpdir } from "../../src/meta/os.ts";
 import { basename, dirname, join, relative } from "../../src/meta/path.ts";
@@ -76,8 +88,14 @@ const DOCUMENTATION = [
 /** The UI's own gate, in a tree that holds the UI: `packages/ui` keeps its own lock, compiler
  *  settings and tests, which the root's typecheck and suite do not reach, and the lint leaves it
  *  out until its dependencies are installed (`tools/runtime/lint.ts`). A commit from before the UI
- *  came back has no such step to run. */
+ *  came back has no such step to run. A static pass over a commit that leaves `packages/ui` alone
+ *  runs the UI's gate without its browser files (`uiStatic`): of the 35 gate logs in this clone on
+ *  18 October, the UI step's 16 failing cases were all in browser files, in 5 static passes of
+ *  `bun run land` over commits that changed nothing under `packages/ui`. A whole pass, and a static
+ *  pass over a commit that touches the UI, run every UI file. */
 const UI_PACKAGE = "packages/ui/package.json";
+const UI_ROOT = "packages/ui";
+const BROWSER_FILE = /^packages\/ui\/test\/browser-[^/]+\.test\.ts$/u;
 const STEPS = [
   ["install", ["install", "--frozen-lockfile"]],
   ["ui", ["run", "ui:gate"]],
@@ -87,6 +105,8 @@ const STEPS = [
 ] as const;
 const TEST_FILE = /^test\/[^/]+\.test\.ts$/u;
 const GATE = join(import.meta.dir, "gate.ts");
+/** The one file outside its two folders that the gate imports, through `src/meta/bounded-text.ts`. */
+const TRUNCATE = "vendor/pi-coding-agent/core/tools/truncate.ts";
 const PROVED = {
   static: "its static steps and nearby tests passed on its own checkout",
   whole: "passed the whole gate on its own checkout",
@@ -131,12 +151,39 @@ export function diffFromParentSays(
   flags: readonly string[],
   paths: readonly string[] = [],
 ) {
+  return gitSays(root, ["diff", ...flags, parentOf(root, commit), commit, "--", ...paths]);
+}
+
+/** A commit's first parent, or the empty tree for a root commit. */
+function parentOf(root: string, commit: string): string {
   const parent = runSync(["git", "rev-parse", "-q", "--verify", `${commit}^1`], { cwd: root });
-  const from =
-    parent.exitCode === 0
-      ? new TextDecoder().decode(parent.stdout).trim()
-      : git(root, ["hash-object", "-t", "tree", "/dev/null"]);
-  return gitSays(root, ["diff", ...flags, from, commit, "--", ...paths]);
+  return parent.exitCode === 0
+    ? new TextDecoder().decode(parent.stdout).trim()
+    : git(root, ["hash-object", "-t", "tree", "/dev/null"]);
+}
+
+/** The checker that runs every pass, as one digest: this gate and every file it can import, read
+ *  from the caller's checkout as it stands, since `GATE` runs from there over each target. Its
+ *  steps run `bun run …` in the target's checkout (`step`), so the lint plugins and configs, the
+ *  test wrapper, `package.json` and `bun.lock` they use are the target's, which its tree keys. */
+function checkerDigest(): string {
+  const top = join(import.meta.dir, "..", "..");
+  const files = runTextSyncOrThrow(["find", "tools/runtime", "src/meta", TRUNCATE, "-type", "f"], {
+    cwd: top,
+  });
+  const digests = lines(files)
+    .toSorted()
+    .map((file) => `${file} ${sha256OfFile(join(top, file))}`);
+  return sha256(digests.join("\n")).slice(0, 16);
+}
+
+/** The record's key for a pass, by content: the commit's tree, which holds the lockfile, and for a
+ *  static pass its first parent's tree too, since the diff between them chooses its tests; with
+ *  the checker and the Bun the gate ran under. */
+function contentKey(root: string, commit: string, pass: Pass, checker: string): string {
+  const tree = git(root, ["rev-parse", `${commit}^{tree}`]);
+  const from = pass === "whole" ? "" : `${git(root, ["rev-parse", `${parentOf(root, commit)}^{tree}`])}..`;
+  return `tree ${from}${tree} ${pass} checker-${checker} bun-${Bun.version}`;
 }
 
 export const changesSource = (root: string, commit: string): boolean =>
@@ -213,6 +260,24 @@ async function nearbyTests(root: string): Promise<string[]> {
   return [...near].toSorted();
 }
 
+/** The UI's gate for a static pass: the whole of it where HEAD changed `packages/ui`, and else its
+ *  dependencies, its build and every test file but the browser's (`BROWSER_FILE`). */
+function uiStatic(root: string): number {
+  if (!diffFromParentSays(root, "HEAD", ["--quiet"], [UI_ROOT])) return step(root, "ui", ["run", "ui:gate"]);
+  const tests = lines(git(root, ["ls-files", `${UI_ROOT}/test`])).filter(
+    (file) => /\.test\.tsx?$/u.test(file) && !BROWSER_FILE.test(file),
+  );
+  for (const args of [
+    ["run", "ui:deps"],
+    ["run", "ui:build"],
+    ["run", "test", "--", ...tests],
+  ]) {
+    const code = step(root, "ui", args);
+    if (code !== 0) return code;
+  }
+  return 0;
+}
+
 /** One step, its output where the caller's goes; its exit code. */
 function step(root: string, name: string, args: readonly string[]): number {
   const code = Bun.spawnSync(["bun", ...args], { cwd: root, stdout: "inherit", stderr: "inherit" }).exitCode;
@@ -225,7 +290,7 @@ async function gate(argv: readonly string[]): Promise<number> {
   const root = git(runtimeProcess.cwd(), ["rev-parse", "--show-toplevel"]);
   for (const [name, args] of STEPS) {
     if (name === "ui" && !existsSync(join(root, UI_PACKAGE))) continue;
-    const code = step(root, name, args);
+    const code = name === "ui" && values.static ? uiStatic(root) : step(root, name, args);
     if (code !== 0) return code;
   }
   if (!values.static) return step(root, "test", ["run", "test"]);
@@ -271,12 +336,15 @@ export async function proveCommits(
   const logs = git(root, ["rev-parse", "--path-format=absolute", "--git-path", "ana-gate"]);
   mkdirSync(logs, { recursive: true });
   runSync(["find", logs, "-name", "*.log", "-mtime", `+${String(LOG_DAYS)}`, "-delete"]);
+  const checker = checkerDigest();
   const passed = new Set(
-    lines(
-      await Bun.file(record)
-        .text()
-        .catch(() => ""),
-    ),
+    runtimeProcess.env.ANA_GATE_FRESH === "1"
+      ? []
+      : lines(
+          await Bun.file(record)
+            .text()
+            .catch(() => ""),
+        ),
   );
   const free: string[] = [];
   const made: string[] = [];
@@ -307,7 +375,7 @@ export async function proveCommits(
     closeSync(fd);
     free.push(tree);
     if (code === 0) {
-      appendFileSync(record, `${commit} ${pass}\n`);
+      appendFileSync(record, `${contentKey(root, commit, pass, checker)}\n`);
       mark(commit, "success", PROVED[pass]);
       say(`${at}: passed.`);
       return;
@@ -323,11 +391,8 @@ export async function proveCommits(
   try {
     for (const [index, { commit, pass }] of proofs.entries()) {
       const at = `${String(index + 1)} of ${String(proofs.length)}, ${short(commit)}`;
-      const earlier = passed.has(`${commit} whole`)
-        ? "whole"
-        : pass !== null && passed.has(`${commit} ${pass}`)
-          ? pass
-          : null;
+      const had = (kind: Pass): boolean => passed.has(contentKey(root, commit, kind, checker));
+      const earlier = had("whole") ? "whole" : pass !== null && had(pass) ? pass : null;
       if (pass === null || earlier !== null) {
         say(`${at}: ${earlier === null ? "documentation only" : "passed earlier on these exact bytes"}.`);
         mark(commit, "success", earlier === null ? "documentation only" : PROVED[earlier]);

@@ -346,6 +346,25 @@ describe("the Referee", () => {
       field: SPAN,
       turns: 6,
     });
+    // Each refused ruling is on record before the finding, with what was asked and why it was
+    // refused: the four the reader was told of, in order.
+    const refused = read(s.log).filter(({ kind }) => kind === "referee.refused");
+    expect(refused.map(({ data }) => data.asked)).toEqual([
+      { ruling: "earned", reason: "Over the limit.", probes: [] },
+      { ruling: "earned", rule: "R9", field: SPAN, reason: "Over the limit.", probes: [] },
+      { ruling: "earned", rule: "R1", field: "$.depth", reason: "Over the limit.", probes: [] },
+      { ruling: "earned", rule: "R1", field: "$.members[0].area", reason: "Over the limit.", probes: [] },
+    ]);
+    expect(refused.map(({ data }) => [data.solve, data.task])).toEqual(Array(4).fill(["s-1", "t-1"]));
+    expect(refused[3]?.data.why).toContain("no refusing check that cites R1 reads $.members[0].area");
+    expect(read(s.log).at(-1)?.kind).toBe(FINDING);
+  });
+
+  it("logs no refusal where the first ruling stands", async () => {
+    const s = setup([ruling({ ruling: "unclear", reason: "Not settled.", probes: [] })]);
+    failed(s.record);
+    expect((await referee(s.reader, fail(s))).ruling).toBe("unclear");
+    expect(read(s.log).map(({ kind }) => kind)).toEqual(["verdict", FINDING]);
   });
 
   it("refuses an earned ruling as evidence unless its probe moved a refusing check off its refusal, and leaves the fail unclear", async () => {

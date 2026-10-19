@@ -33,20 +33,24 @@ import { affords, openingOf } from "../builder/opening.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { proposalsOf, writtenTasks } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
-import { billedFor, poolOf } from "../kernel/reports.ts";
+import { poolOf } from "../kernel/reports.ts";
 import { informative, MARGIN, type Paired } from "../kernel/compare.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { packageGate, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
 import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
+import { join } from "../meta/path.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
-import { isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
+import { isNumber, isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { text, tool } from "../solve/answer.ts";
 import { type CheckRow, firstMessage, systemPrompt } from "./prompt.ts";
-import { gateAnswers, heard, measuredGate, TRIED, UNAFFORDED } from "./record.ts";
+import { gateAnswers, gateBilled, heard, measuredGate, TRIED, UNAFFORDED } from "./record.ts";
+
+/** The home's copy of the reference harness, where the campaign's term lays one there. */
+const REFERENCE_HOME = "reference-harness";
 
 /** What a task-writing session is handed: who sits, as far as this mode reads it, and its campaign. */
 interface Terms {
@@ -111,7 +115,7 @@ const GATES = {
   },
   try_task: {
     label: "Try tasks",
-    description: `Put task instances to the host's gate, one at a time: the shape of each package, then ${String(TRIED)} solves of it by the reference harness, as the system prompt's section on the gate says. Each instance is a family, a public input and hidden values, in the shape of the existing tasks.`,
+    description: `Put task instances to the host's gate, every instance of a call at once: the shape of each package, then ${String(TRIED)} solves of it by the reference harness, as the system prompt's section on the gate says. Each instance is a family, a public input and hidden values, in the shape of the existing tasks.`,
   },
 } as const;
 /** What only the checks read of an instance, as each tool that takes one describes it. */
@@ -157,6 +161,22 @@ function instanceOf(
   };
 }
 
+/** What `task.feasible` keeps of the author's valid answer beside its version, where the contract
+ *  declares an objective: the quantity and its direction as the contract states them, and the
+ *  measure the verifier took of the answer (`OBJECTIVE`, `src/kernel/verify.ts`). The event
+ *  stores no answer, which the Examiner's own trace alone keeps (`exam.call`), and until
+ *  19 October it stored no measure either: 74 of 74 `try_answer`
+ *  results of esp32-fresh-opus held none, so whether an author's answer beat the reference
+ *  harness's best by the margin, which leaves a task the reference answers every time room to gain
+ *  on (`informative`, `src/kernel/compare.ts`), could not be read off any record. Nothing reads it
+ *  yet, and no seat is told it. Empty where the contract declares no objective. */
+function measureOf(contract: Contract, verdict: Verdict): JsonObject {
+  const declared = contract.objective;
+  if (declared === undefined || verdict.kind !== "pass" || verdict.objective === undefined) return {};
+  const { quantity, direction } = declared;
+  return { objective: { quantity, direction, measure: verdict.objective } };
+}
+
 /** A verdict as the Examiner reads it. */
 function tried(verdict: Verdict): string {
   if (verdict.kind === "pass") {
@@ -167,6 +187,11 @@ function tried(verdict: Verdict): string {
   }
   if (verdict.kind === "faulty") return `Check ${verdict.check} could not decide: ${verdict.reason}`;
   return `The checks could not run: ${verdict.reason}`;
+}
+
+/** A measure as the Examiner reads it: six significant digits. */
+function shown(measure: number): string {
+  return String(Number(measure.toPrecision(6)));
 }
 
 /** What the gate reads of one package: its shape, and under `try_task` the reference harness's
@@ -183,17 +208,23 @@ function tried(verdict: Verdict): string {
  *  fail, or only fails beside a passing proof (main0_5_1 14, buffer-pr169-opus 5). The
  *  Examiner hears the counts; no answer and no trace of a solve reaches it. The session bounds them: `stop` is the session's own signal, which its wall, its end
  *  and a killed run abort, and it is the kill a comparison's solves take (`probe`), so a wall that
- *  fires mid-try leaves no solve running and the task refused unmeasured. */
-async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal) {
+ *  fires mid-try leaves no solve running and the task refused unmeasured. `ahead` is the drafts of
+ *  the same call measured beside this one (`proposeTool`). */
+async function measured(
+  desk: Desk,
+  task: TaskPackage,
+  stop: AbortSignal,
+  { ahead, proof }: { readonly ahead: number; readonly proof: () => Promise<Verdict | null> },
+) {
   const { contract, log, id, probe } = desk.request;
   if (carries([task.publicInput, task.hidden], desk.planted)) return { reason: PLANTED, said: "" };
   const packaged = packageGate(contract, task);
   if (packaged.outcome === "refused") return { reason: packaged.reason, said: "" };
   if (probe === null) return { reason: null, said: "" };
   // The three solves are held at the campaign's reserve before any starts, beside the solves in
-  // flight (`affords`): until 14 October nothing held them, and two reserves left started three.
-  if (!affords(log, TRIED)) return { reason: UNAFFORDED, said: "" };
-  const before = billedFor(read(log), id);
+  // flight (`affords`) and those of the call's drafts ahead of this one, which start with it and may
+  // not be in flight yet: until 14 October nothing held them, and two reserves left started three.
+  if (!affords(log, TRIED * (ahead + 1))) return { reason: UNAFFORDED, said: "" };
   const from = read(log).length - 1;
   const endings = await Promise.all(Array.from({ length: TRIED }, () => probe(task, id, stop)));
   const readings = endings.filter(({ outcome }) => outcome !== "non-result");
@@ -206,14 +237,25 @@ async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal) {
   // The turns each valid answer took, as the session's later ones are told by family, and the
   // objective of each, by which a task the reference answers every time still leaves room.
   const answers = gateAnswers(read(log), from).get(taskVersion(task)) ?? [];
+  // The author's proof is read only where it decides: every solve valid, or none (`gated`).
+  const checked = valid === solves || valid === 0 ? await proof() : null;
+  const authored =
+    checked?.kind === "pass" && contract.objective !== undefined ? checked.objective : undefined;
   const took = answers.flatMap(({ turns: each }) => (each === null ? [] : [each]));
   const turns = took.length === 0 ? "" : `, taking ${took.join(", ")} of the solver's own turns`;
-  const counted = `the reference harness answered it validly in ${String(valid)} of ${String(TRIED)} solves${turns}${unread}`;
+  // The measures by the objective, theirs and the author's, which decide room where every solve is
+  // valid (`informative`): until 19 October the Examiner was told neither, and 181 of the 338
+  // drafts five campaigns' gates refused as answered 3 of 3 with measures held answers apart by
+  // less than the margin, none of which their author could see.
+  const measures = answers.flatMap(({ measure }) => (measure === null ? [] : [shown(measure)]));
+  const theirs = measures.length === 0 ? "" : `, its valid answers measuring ${measures.join(", ")}`;
+  const yours =
+    authored === undefined ? "" : `, and your answer that passed try_answer on it ${shown(authored)}`;
+  const counted = `the reference harness answered it validly in ${String(valid)} of ${String(TRIED)} solves${turns}${theirs}${yours}${unread}`;
   const unmeasured = `${counted}, so it is not measured`;
-  const apart =
-    contract.objective === undefined ? "" : ", or every time with two answers apart by the objective";
-  const roomless = `${counted}, and a task is held out only where it answers some and not all${apart}, or none where an answer of its author's passes on it`;
   const unsolved = solves > 0 && valid === 0;
+  // The rule itself is the system prompt's, said once there (17 October).
+  const roomless = `${counted}, ${unsolved ? "and no answer of yours passed try_answer on it" : "which leaves no room"}`;
   // Room as a comparison reads it (`informative`), on the reference's side alone; a task it never
   // answers is held on its author's proof (`gated`), so no feasible task is named here.
   const objective = contract.objective && { direction: contract.objective.direction, margin: MARGIN };
@@ -226,11 +268,16 @@ async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal) {
       objective && { ...objective, old: answers.map(({ measure }) => measure), fresh: [] },
     ),
   };
-  const some = valid > 0 && informative(pair, "old", new Set());
+  const bests = new Map(authored === undefined ? [] : [[pair.task, authored]]);
+  const some = valid > 0 && informative(pair, "old", new Set(), bests);
   return {
     reason: some ? null : unsolved || solves === TRIED ? roomless : unmeasured,
     said: `; ${counted}`,
-    reference: { valid, solves, billed: billedFor(read(log), id) - before },
+    reference: {
+      valid,
+      solves,
+      billed: gateBilled(read(log), id, taskVersion(task)),
+    },
     unsolved,
   };
 }
@@ -249,8 +296,10 @@ async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal) {
  *  of 56) was left only the drafts it answered some of the time. Until 16 October the first of
  *  every three still was, and the ladder was retired: its readings after a promotion found the new
  *  reference valid on 14 of 14 tasks and 5 of 6, the set already closed, for $33.06 and 5.9 hours
- *  in one campaign, while a third of these drafts were kept from the exam. */
-async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<string> {
+ *  in one campaign, while a third of these drafts were kept from the exam. Since 19 October one
+ *  it answered validly in every solve is held where the proof is better by the objective than each
+ *  of those answers past the margin, so the proof is read before the solves. */
+async function gated(desk: Desk, instance: Task, stop: AbortSignal, ahead: number): Promise<string> {
   const { request } = desk;
   const { log, id: session, verify } = request;
   const task = request.pack(instance);
@@ -258,17 +307,20 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
   const { taskId, family, publicInput, hidden } = instance;
   append(log, "task.proposed", { version, taskId, session, task: { taskId, family, publicInput, hidden } });
   const answer = desk.answered.get(contentOf(instance));
-  const { reason, said, reference, unsolved } = await measured(desk, task, stop);
-  const proof = async () =>
-    verify === null || answer === undefined
-      ? null
-      : await Promise.try(() => verify(instance, answer)).catch(
-          (error: unknown) => ({ kind: "non-result", reason: errorMessage(error) }) as const,
-        );
-  // A task the reference never answered is held on its proof, so that is read before its gate; one
-  // it answered some of the time is held on the solves, and its proof is read once it is held.
-  const early = unsolved === true ? await proof() : null;
-  const proved = early?.kind === "pass";
+  // The proof is read once: before the gate where the solves leave it to decide, a task the
+  // reference never answered or answered alike in every solve (`measured`), else once it is held.
+  let checked: Promise<Verdict | null> | undefined;
+  const proof = () => {
+    checked ??=
+      verify === null || answer === undefined
+        ? Promise.resolve(null)
+        : Promise.try(() => verify(instance, answer)).catch(
+            (error: unknown) => ({ kind: "non-result", reason: errorMessage(error) }) as const,
+          );
+    return checked;
+  };
+  const { reason, said, reference, unsolved } = await measured(desk, task, stop, { ahead, proof });
+  const proved = unsolved === true && (await proof())?.kind === "pass";
   const outcome = reason === null || proved ? { outcome: "passed" } : { outcome: "refused", reason };
   append(log, GATE, {
     version,
@@ -283,12 +335,12 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
     return `${taskId}: refused: ${reason}`;
   }
   desk.held.push(version);
-  const verdict = early ?? (await proof());
+  const verdict = await proof();
   if (verdict === null) return `${taskId}: held out${said}.`;
   if (verdict.kind !== "pass") {
     return `${taskId}: held out${said}. Author proof was not retained under this task id: ${tried(verdict)}`;
   }
-  append(log, "task.feasible", { version, session });
+  append(log, "task.feasible", { version, session, ...measureOf(request.contract, verdict) });
   return `${taskId}: held out${said}.`;
 }
 
@@ -299,25 +351,20 @@ const supplied = (desk: Desk): boolean => desk.held.length >= desk.request.wante
 function proposeTool(desk: Desk, name: keyof typeof GATES): AgentTool {
   const { id, limits } = desk.request;
   const spent = () => desk.proposed >= limits.puts;
-  /** One instance of a batch: why it was not taken, or the gate's line of it. */
-  const taken = async (instance: Omit<Task, "taskId">, stop: AbortSignal): Promise<string> => {
+  /** One instance of a batch: why it was not taken, or the instance under its task id. */
+  const taken = (instance: Omit<Task, "taskId">, stop: AbortSignal): string | Task => {
     const content = contentOf(instance);
     const before = desk.seen.get(content);
     if (before === "now") return "An instance proposed before was not taken again.";
     if (before === "earlier") return "An instance an earlier session wrote was not taken again.";
     if (spent()) return "An instance was not taken: this session can propose no further task.";
     if (supplied(desk)) return `An instance was not taken. ${SUPPLIED}`;
-    // A batch is gated one instance at a time, so the wall can fire between two of them. Until
-    // 14 October the next was still proposed and its three solves started on the spent signal, to
-    // be killed at once: recode-151's x-1 ended with two batches of three solves killed.
+    // Until 14 October an instance was still proposed after the wall, and its three solves started
+    // on the spent signal to be killed at once: recode-151's x-1 ended with two batches killed so.
     if (stop.aborted) return "An instance was not taken: the session has ended.";
     desk.seen.set(content, "now");
     desk.proposed += 1;
-    return await gated(
-      desk,
-      { ...instance, taskId: `${id}-${String(desk.proposed).padStart(3, "0")}` },
-      stop,
-    );
+    return { ...instance, taskId: `${id}-${String(desk.proposed).padStart(3, "0")}` };
   };
   return tool({
     name,
@@ -337,8 +384,18 @@ function proposeTool(desk: Desk, name: keyof typeof GATES): AgentTool {
     execute: async (_id, args, signal = new AbortController().signal) => {
       if (supplied(desk)) throw new Error(SUPPLIED);
       if (spent()) throw new Error("This session can propose no further task. Call finish.");
-      const lines: string[] = [];
-      for (const given of args.tasks) lines.push(await taken(instanceOf("", given), signal));
+      // A call's instances are taken in order and then gated together. Until 17 October they were
+      // gated one at a time, each waiting on the last one's three solves: the gate was 13.4 of
+      // buffer-159-opus's 63.6 hours and 15.4 of recode-pr169-sonnet's 33.1, its Examiners putting
+      // a mean of 1.0 to 1.6 instances a call. Being supplied is read before the call's gates, so a
+      // call may hold out more than the host asked for.
+      let ahead = 0;
+      const lines = await Promise.all(
+        args.tasks.map(async (given) => {
+          const instance = taken(instanceOf("", given), signal);
+          return isString(instance) ? instance : await gated(desk, instance, signal, ahead++);
+        }),
+      );
       return {
         ...text(`${lines.join("\n")}${supplied(desk) ? `\n\n${SUPPLIED}` : ""}`),
         terminate: supplied(desk),
@@ -384,22 +441,24 @@ function exampleTool(tasks: readonly Task[]): AgentTool {
 function tryTool(desk: Desk, verify: Verifier): AgentTool {
   const { request } = desk;
   const { log, contract } = request;
-  /** Puts on record that a held task has a valid answer, where the log does not say so yet. */
-  const prove = (events: readonly LogEvent[], version: string) => {
+  /** Puts on record that a held task has a valid answer, where the log does not say so yet or the
+   *  answer carries a measure of the objective, which each such pass keeps (`measureOf`). */
+  const prove = (events: readonly LogEvent[], version: string, verdict: Verdict) => {
     const sets = taskSets(events);
     const inExam =
       sets.held.includes(version) ||
       sets.released.includes(version) ||
       sets.states.get(version) === "disputed";
-    if (inExam && !poolOf(events).feasible.has(version)) {
-      append(log, "task.feasible", { version, session: request.id });
+    const measure = measureOf(contract, verdict);
+    if (inExam && (!poolOf(events).feasible.has(version) || "objective" in measure)) {
+      append(log, "task.feasible", { version, session: request.id, ...measure });
     }
   };
   return tool({
     name: "try_answer",
     label: "Try an answer",
     description:
-      "Run the checks on an instance with an answer of yours, and say which checks refuse it, or that none does. Use it to make sure a task has a valid answer, and to see how close to a limit an answer can sit: write the answer first, derive the task, and try it. A try enters no task in the exam, and no answer is recorded; where the checks pass, the host records that the instance has a valid answer and holds the answer for this session alone, so a task proposed with that content, before or after the try, is not later read as possibly infeasible. The gate's reading of the instance's package is given first, where it would refuse it.",
+      "Run the checks on an instance with an answer of yours, and say which checks refuse it, or that none does. A try enters no task in the exam. Where the checks pass, the host records that the instance has a valid answer and holds the answer for this session alone, so a task proposed with that content, before or after the try, has its valid answer on record. The gate's reading of the instance's package comes first, where it would refuse it.",
     parameters: Type.Object({
       family: Type.String({ minLength: 1 }),
       public_input: Type.Unknown({ description: "What the solver would read of the task." }),
@@ -429,9 +488,15 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
       if (verdict.kind === "pass") {
         desk.answered.set(content, answer);
         desk.planted.add(hashJsonValue(answer));
-        prove(events, taskVersion(request.pack(instance)));
+        prove(events, taskVersion(request.pack(instance)), verdict);
       }
-      return text(`${gate}${tried(verdict)}`);
+      // The verifier's measure, which the gate reads against the reference's (`measured`).
+      const { objective } = measureOf(contract, verdict);
+      const measure =
+        isRecord(objective) && isNumber(objective.measure)
+          ? ` By the objective it measures ${shown(objective.measure)}.`
+          : "";
+      return text(`${gate}${tried(verdict)}${measure}`);
     },
   });
 }
@@ -453,9 +518,29 @@ function gatedTasks(events: readonly LogEvent[]): Task[] {
   );
 }
 
-/** The mode that writes tasks: the exam's own tools, `try_answer` where the host verifies, and
- *  the home carried from the campaign's last session where the wall keeps one (`keep`). */
-export function writing(request: Terms, pinned: readonly Engine[], keep: string | undefined) {
+/**
+ * The mode that writes tasks: the exam's own tools, `try_answer` where the host verifies, the home
+ * carried from the campaign's last session where the wall keeps one (`keep`), and in it a copy of
+ * the reference harness where the wall names one (`reference`).
+ *
+ * The copy answers the supply after a promotion. Told each refused draft's outcome and the turns
+ * its solves took, esp32-fresh-opus's Examiner held 0 of 49 drafts under its first promoted
+ * reference, 44 of them answered in 3 of 3 solves, and wrote denser instances of what its programs
+ * already answered (18 October): it never saw what the reference brings to a task. Seeing it
+ * reverses the ruling of 12 October that the Examiner never sees the solver's tools, so it is the
+ * operator's term. It was off unless named until the supply ablation of 19 October, one session an
+ * arm on the buffer domain after its second promotion: 1 of 8 drafts held blind for $9.22, 4 of 8
+ * with the copy for $14.41, $3.60 a held draft; on esp32, with no room left, none either way. It
+ * is on unless a campaign names it off since, on the operator's word of that day. The copy
+ * is the reference's alone, never a candidate's, laid afresh each session and left out of the
+ * kept home.
+ */
+export function writing(
+  request: Terms,
+  pinned: readonly Engine[],
+  keep: string | undefined,
+  reference: string | undefined,
+) {
   const { limits, verify, wanted } = request;
   const before = read(request.log);
   const desk: Desk = {
@@ -481,7 +566,7 @@ export function writing(request: Terms, pinned: readonly Engine[], keep: string 
   const kept = cut?.ended === "crashed" && cut.running === 0 && isString(cut.session) ? cut.session : null;
   return {
     kind: "exam" as const,
-    system: systemPrompt(attempts),
+    system: systemPrompt(attempts, reference === undefined ? "unseen" : "in-home"),
     opening: firstMessage(request.contract, request.checks, heard(before, request.tasks), limits, {
       brief: openingOf(before)?.prompt ?? null,
       budget: request.budget,
@@ -493,6 +578,7 @@ export function writing(request: Terms, pinned: readonly Engine[], keep: string 
       examples: request.tasks.map(({ taskId }) => taskId),
       engines: pinned.map(({ name, sha256 }) => ({ name, sha256 })),
       ...keyIfDefined("tried", attempts),
+      referenceHome: reference !== undefined,
     },
     tools: [
       proposeTool(desk, gate),
@@ -503,9 +589,11 @@ export function writing(request: Terms, pinned: readonly Engine[], keep: string 
     home:
       keep === undefined
         ? undefined
-        : kept === null
-          ? "holds what the last Examiner session of this campaign left in it, or nothing at the campaign's first"
-          : `holds what Examiner session ${kept} of this campaign left in it when the provider failed one of its turns, before it finished`,
+        : `${
+            kept === null
+              ? "holds what the last Examiner session of this campaign left in it, or nothing at the campaign's first"
+              : `holds what Examiner session ${kept} of this campaign left in it when the provider failed one of its turns, before it finished`
+          }${reference === undefined ? "" : `, and ${REFERENCE_HOME}/, a copy of the reference harness laid afresh for this session`}`,
     checked: undefined,
     nudge: "Propose further tasks",
     finish:
@@ -517,6 +605,10 @@ export function writing(request: Terms, pinned: readonly Engine[], keep: string 
     // The next session's home is seeded with what the campaign keeps of the last one's.
     enter: (home: string) => {
       if (keep !== undefined && existsSync(keep)) cpSync(keep, home, { recursive: true });
+      // A kept state names its programs by a link to the campaign's store, which the wall closes.
+      if (reference !== undefined) {
+        cpSync(reference, join(home, REFERENCE_HOME), { recursive: true, dereference: true });
+      }
     },
     // The campaign's copy of a session's home, made whole when the session ends and replacing the
     // one before: it is the exam side's, under the campaign's folder beside the log, which every
@@ -530,6 +622,8 @@ export function writing(request: Terms, pinned: readonly Engine[], keep: string 
       if (keep === undefined || (ended === "crashed" && running > 0)) return;
       rmSync(keep, { recursive: true, force: true });
       if (existsSync(home)) cpSync(home, keep, { recursive: true });
+      // The copy is the session's own, so a session with the term off never opens on one.
+      rmSync(join(keep, REFERENCE_HOME), { recursive: true, force: true });
     },
   };
 }

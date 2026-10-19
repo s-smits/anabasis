@@ -4,7 +4,7 @@
  * commit, and starts the campaign there by `launch` (`manage.ts`), which installs, runs the dry run
  * and refuses what it refuses.
  *
- *   bun run runs fresh <pack> [--model opus|sonnet] [--effort hhmm] [--login N] [--budget 800]
+ *   bun run runs fresh <pack> [--model opus|sonnet|gpt] [--effort hhmm] [--login N] [--budget 800]
  *     [--at <commit>] [--as <suffix>] [--host <host>] [--yes] [-- <more of the campaign command's flags>]
  *
  * The prompt is the operator's, `<pack>-prompt.txt` in the folder `ANA_PROMPTS` names, by default
@@ -18,6 +18,20 @@
  *
  * Until 16 October each fresh launch was typed by hand: a worktree, a prompt file, eight seat
  * flags and a name, and one launch that left out `--login` ended on its environment.
+ *
+ * A solve's limits are the model's as the operator ran them (`LIMITS`), unless the flags after `--`
+ * name one. Until 17 October the verb named none, and every fresh run solved at the campaign's own
+ * 120 minutes with the model's turns unlimited, where the gate held out 6 of 78 buffer drafts and 3
+ * of 24 truss drafts; the three buffer runs at 8 minutes and 16 turns whose gate asked the Referee
+ * held out 74 of 146, and a truss run at that budget 4 of its first 4. The turns bind, not the
+ * minutes: there a valid answer took a median of 10 turns and 170 s, and of the gate's 1,233 solves
+ * 569 were rejected and 12 ran out of turns. It does not make every pack's tasks hard: esp32's held
+ * out 1 of 27 at 8 and 16, its valid answers taking a median of 3 turns.
+ *
+ * `gpt` seats GPT-6.1 Sol through the Codex CLI's login, which `--login` does not choose, at high in
+ * every seat (the operator, 19 October). Its solve takes Sonnet's 30 minutes with Opus's 16 turns,
+ * so that the turns bind and not a slower provider's clock; no campaign has yet run it, and the
+ * flags after `--` name others.
  */
 import { existsSync } from "#src/meta/filesystem.ts";
 import { gitText, worktrees } from "#src/meta/git.ts";
@@ -27,10 +41,29 @@ import { on } from "./hosts.ts";
 import { launch } from "./manage.ts";
 import { runs } from "./registry.ts";
 
-const MODELS = { opus: "claude/claude-opus-5-5", sonnet: "claude/claude-sonnet-5-5" } as const;
+const MODELS = {
+  opus: "claude/claude-opus-5-5",
+  sonnet: "claude/claude-sonnet-5-5",
+  gpt: "openai-codex/gpt-6.1-sol",
+} as const;
 /** Each model's efforts where none is named, as the operator ran them. */
-const EFFORTS = { opus: "hhmm", sonnet: "xxhh" } as const;
+const EFFORTS = { opus: "hhmm", sonnet: "xxhh", gpt: "hhhh" } as const;
 const LEVELS = { l: "low", m: "medium", h: "high", x: "xhigh" } as const;
+/** Each model's solve limits, minutes and the model's own turns, as the operator's campaigns ran them. */
+const LIMITS = { opus: ["8", "16"], sonnet: ["30", "16"], gpt: ["30", "16"] } as const;
+
+/** The solve-limit flags for `model` that `more`, the campaign command's own flags, does not name. */
+export function limits(model: string, more: readonly string[]): string[] {
+  const [minutes, turns] = named(LIMITS, model, `--model takes ${Object.keys(LIMITS).join("|")}`);
+  const unnamed = ([flag]: readonly string[]) =>
+    !more.some((arg) => arg === flag || arg.startsWith(`${flag ?? ""}=`));
+  return [
+    ["--solve-minutes", minutes],
+    ["--solve-model-turns", turns],
+  ]
+    .filter(unnamed)
+    .flat();
+}
 
 const named = <T>(table: Record<string, T>, key: string | undefined, usage: string): T => {
   const value = Object.entries(table).find(([one]) => one === key)?.[1];
@@ -85,7 +118,7 @@ export async function fresh(args: readonly string[]): Promise<void> {
   const [pack, ...more] = positionals;
   if (pack === undefined) {
     throw new Error(
-      "usage: bun run runs fresh <pack> [--model opus|sonnet] [--effort hhmm] [--login N] [--host <host>] [--yes]",
+      "usage: bun run runs fresh <pack> [--model opus|sonnet|gpt] [--effort hhmm] [--login N] [--host <host>] [--yes]",
     );
   }
   const here = runtimeProcess.cwd();
@@ -126,6 +159,7 @@ export async function fresh(args: readonly string[]): Promise<void> {
     "--budget",
     values.budget,
     ...seated,
+    ...limits(values.model, more),
     ...more,
   ];
   if (!values.yes) {

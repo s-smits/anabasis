@@ -52,6 +52,12 @@ size is the question.
   new. The reference harness is the starter unless `--reference` names another. The defaults are
   `none:pass`, which script a step. `--starter` says how a solve ends under the starter where it
   is neither of the two: after a promotion it is solved only when the comparison reads a step.
+- In a campaign the admission gate seats the same scripted solver, under the promoted reference
+  as `old`, with three fresh solves per draft (18 October 2026). Five rehearsals seated none, while
+  esp32-fresh-opus refused 45 of 50 drafts after promotion. The scripted
+  Examiner tries each available recorded valid answer through `try_answer`, so an unanswered draft
+  can be held on that proof. With `--held pass:pass` alone all answered drafts are refused; a seed
+  after promotion can then reach the campaign's `no-room` or `exam` ending at its patience.
 - `--tasks` names the scored tasks by id, as the first round does, in place of `--target`'s draw.
 - A rehearsal needs no `--cap`: a script is paid nothing.
 

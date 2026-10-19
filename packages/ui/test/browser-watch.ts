@@ -1,4 +1,5 @@
-import { type BrowserContext, expect, type Locator, type Page } from "@playwright/test";
+import { type BrowserContext, type Locator, type Page } from "@playwright/test";
+import { expect } from "./browser.ts";
 
 /*
  * What the browser tests of the Tasks and Log panes watch beyond one assertion: the frames a page
@@ -8,6 +9,11 @@ import { type BrowserContext, expect, type Locator, type Page } from "@playwrigh
  * click (14 October); a web-first assertion waits past such a frame and never sees it. So a loop of
  * animation frames, installed before the page's own script, counts each frame in which the region
  * watched is gone, empty, or says it is reading, from the moment a test arms it.
+ *
+ * When the page first said it was reading is read off the document as well as off a frame: on
+ * 19 October, on a host at a load of 13.3 on 8 cores, the browser painted no frame in the second
+ * and a half the Tasks pane was busy, and a test that had just seen `aria-busy` read it as never
+ * said (`busyAfter` -1).
  */
 
 /** What the frame loop counts, kept on the page's window. */
@@ -30,7 +36,8 @@ declare global {
  * Frames watched from the page's first: from `arm` on, each animation frame in which none of
  * `regions` is visible with text, or in which the main region shows a placeholder that says it is
  * reading (`NoSignal`, or a faint line there or in the inspector), is counted bad;
- * and the first frame in which `busy` matched, as milliseconds after arming.
+ * and when `busy` first matched, in a frame or in a change to the document, as milliseconds after
+ * arming.
  */
 export async function watchFrames(
   context: BrowserContext,
@@ -45,7 +52,16 @@ export async function watchFrames(
         const node = document.querySelector<HTMLElement>(selector);
         return node?.checkVisibility() === true && node.innerText.trim() !== "";
       };
+      const markBusy = (now: number) => {
+        if (state.armedAt >= 0 && state.busyAfter < 0 && document.querySelector(marked) !== null) {
+          state.busyAfter = now - state.armedAt;
+        }
+      };
+      new MutationObserver(() => {
+        markBusy(performance.now());
+      }).observe(document, { subtree: true, childList: true, attributes: true });
       const tick = (now: number) => {
+        markBusy(now);
         if (state.armedAt >= 0) {
           state.frames += 1;
           const said = [
@@ -59,9 +75,6 @@ export async function watchFrames(
           if (!watched.some(shown) || placeholder !== null) {
             state.bad += 1;
             if (state.seen.length < 5) state.seen.push(placeholder?.[0] ?? "empty");
-          }
-          if (state.busyAfter < 0 && document.querySelector(marked) !== null) {
-            state.busyAfter = now - state.armedAt;
           }
         }
         requestAnimationFrame(tick);

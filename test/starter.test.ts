@@ -20,6 +20,7 @@ import { harnessTools, openHarness } from "../src/solve/harness.ts";
 import { installedPrograms } from "../src/solve/prompt.ts";
 import { EXAMPLE, HARNESS_ACCOUNT, WITHOUT_SHELL, writeHarness, writeStarter } from "../src/solve/starter.ts";
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
+import { osIsolationSupport } from "../src/verify/os-isolation.ts";
 
 const TASK = {
   taskId: "t-1",
@@ -190,7 +191,7 @@ describe("the account of a harness a Builder is handed", () => {
     }
   });
 
-  it.skipIf(runtimeProcess.platform !== "darwin")(
+  it.skipIf(!osIsolationSupport().ok)(
     "prints a program the solver's shell runs by name, and a tool that runs, under the command wall",
     async () => {
       const dir = scratch();

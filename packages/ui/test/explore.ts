@@ -1,6 +1,6 @@
 /**
- * The page explored as a person would, without a script of what to click: every control it offers
- * clicked once from a fresh page (`sweep`), and long seeded runs of clicks, keys, history steps and
+ * The page explored as a person would, without a script of what to click: every kind of control it
+ * offers clicked once from a fresh page (`sweep`), and long seeded runs of clicks, keys, history steps and
  * window sizes (`walk`), with what must hold after every step (`unsound`).
  *
  * The other browser tests click what their author chose, and on 14 October each fault they found
@@ -16,8 +16,7 @@
  * rule broken, once for each kind of address and width.
  */
 import type { Locator, Page, Request } from "@playwright/test";
-import { expect } from "@playwright/test";
-import { ACTION_MS, accessibilityViolations, DESKTOP, drawn, type Opened, PHONE } from "./browser.ts";
+import { ACTION_MS, accessibilityViolations, DESKTOP, drawn, expect, type Opened, PHONE } from "./browser.ts";
 import { MARKERS } from "./fixture-campaign.ts";
 
 /** What can be acted on: a native control or an element with an interactive role. */
@@ -267,17 +266,34 @@ function stepFor(control: Control, random: () => number): Step {
   return { click: control.described };
 }
 
+/** The first and the last control of each kind, in document order. A kind is a description with
+ *  its numbers and its repeat count taken out, so the hundred rows of the log, `button "1"` to
+ *  `button "100"`, are one; a row is drawn by the code that draws its neighbours, and a list's ends
+ *  are where it meets what is around it. */
+function representatives(described: readonly string[]): [number, string][] {
+  const ends = new Map<string, [number, number]>();
+  for (const [at, name] of described.entries()) {
+    const kind = name.replace(/ #\d+$/u, "").replace(/\d+/gu, "#");
+    ends.set(kind, [ends.get(kind)?.[0] ?? at, at]);
+  }
+  const chosen = new Set([...ends.values()].flat());
+  return [...described.entries()].filter(([at]) => chosen.has(at));
+}
+
 /**
- * Every control the page at `start` offers, acted on once from a fresh load of it, then Escape and
- * one step back, with what must hold checked after each. A control is found again by its
- * description, so a page that draws its controls in another order on a second load still lines up.
+ * Every kind of control the page at `start` offers, acted on once from a fresh load of it, then
+ * Escape and one step back, with what must hold checked after each. The first and last of each
+ * kind are acted on (`representatives`): on 18 October the log pane offered 113 controls of 14
+ * kinds, 100 of them its rows, and a sweep of every control took 51 seconds on a quiet host and two
+ * minutes in a loaded gate, against 10 seconds for the kinds. A control is found again by its description, so
+ * a page that draws its controls in another order on a second load still lines up.
  */
 export async function sweep(opened: Opened, start: string, rules: Rules): Promise<Explored> {
   const { page } = opened;
   const first = await begin(opened, start, rules, "the sweep");
   const described = (await controlsOf(page)).map((control) => control.described);
   const steps: Step[] = [];
-  for (const [at, name] of described.entries()) {
+  for (const [at, name] of representatives(described)) {
     const run = { ...(await begin(opened, start, rules, `the sweep of ${name}`)), checked: first.checked };
     // A part read after the pane, as a harness's files are, draws its controls a moment later.
     let control: Control | undefined;

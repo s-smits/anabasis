@@ -946,6 +946,33 @@ describe("a campaign tool where the table names more than the action", () => {
     expect(of(name, FINISHED).map(({ ended }) => ended)).toEqual(["finished"]);
   });
 
+  it("records the Builder's comparison of a changed harness/ as its own where the table named the control", async () => {
+    layOutPack(root, bundle, MANY, FIXTURE);
+    const name = `${STEM}-asked`;
+    const seats: Seats = {
+      seated: builderScript(passing(), [
+        CHANGE_GUIDE,
+        ["compare", {}],
+        ["examine", {}],
+        CHANGE_AGAIN,
+        ["compare", {}],
+        ["finish", { note: "The change was read." }],
+        ["finish", { note: "The change was read." }],
+      ]),
+      examine: writer,
+    };
+    await harnessBuilder([...seeded(name), ...FLAGS, "--exam-tasks", "6", "--moves", "8"], seats);
+    const [first, second] = of(name, REPORTED);
+    const checkpoints = of(name, "build.checkpoint");
+    // The changed working copy is what was measured, not the starter the table named.
+    expect(second).toMatchObject({ old: first?.fresh, fresh: checkpoints[1]?.harness });
+    const compares = of(name, MOVED).filter(({ move }) => move === "compare");
+    // Each of the Builder's comparisons measured its working copy, and is recorded as asked.
+    expect(compares.map(({ code }) => code)).toEqual(["asked", "asked"]);
+    // r3, 19 October: g-3 and g-6 kept the control's code and reason while measuring a checkpoint.
+    expect(compares[1]?.why).toContain("where the table named a comparison of the starter harness");
+  });
+
   it("makes no second draw of a pair nothing changed in, and records no move for an action it refused", async () => {
     layOutPack(root, bundle, MANY, FIXTURE);
     const name = `${STEM}-unchanged`;

@@ -1360,6 +1360,12 @@ describe("what crosses to the Builder", () => {
             kind: "fail",
             blocking: [kept.check],
           });
+          append(log, "referee.refused", {
+            solve,
+            task: `x-${version}`,
+            asked: { ruling: "check-defect", check: kept.check, reason: kept.reason, probes: [] },
+            why: `a check-defect names one of the refusing checks: ${kept.check}`,
+          });
           append(log, "referee.finding", { solve, ruling: "earned", check: kept.check, reason: kept.reason });
         }
         append(log, "solve.finished", {

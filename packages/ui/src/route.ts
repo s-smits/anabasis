@@ -36,7 +36,7 @@ export interface Route {
   readonly task: string | null;
   /** A harness digest: the card selected in the lineage strip. */
   readonly harness: string | null;
-  /** The inspector shows one of three: a file of `harness`'s `agent/`, the diff of `harness`
+  /** The inspector shows one of three: a file of `harness`, the diff of `harness`
    *  against `diff`, or the raw event at `event`. None set, it is closed. */
   readonly file: string | null;
   readonly diff: string | null;

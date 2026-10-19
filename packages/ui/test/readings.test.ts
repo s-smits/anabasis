@@ -10,6 +10,7 @@ import { billedAll, billedParts, lastReports } from "../../../src/kernel/reports
 import {
   appendFileSync,
   cpSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
@@ -667,10 +668,10 @@ describe("what the server cannot read", () => {
     ]);
   });
 
-  test("says when a harness's folder is missing, refuses a path that leaves agent/, and follows no link out of it", async () => {
+  test("says when a harness's folder is missing, refuses a path into the exam side's copy, and follows no link into it", async () => {
     const { root, dir } = copy();
     const { a, b } = fixture.harnesses;
-    rmSync(join(dir, "states", b, "agent"), { recursive: true });
+    rmSync(join(dir, "states", b), { recursive: true });
     symlinkSync(
       join(dir, "states", a, "correctness-model", "expected.json"),
       join(dir, "states", a, "agent", "expected.json"),
@@ -719,7 +720,7 @@ describe("what the server cannot read", () => {
     ]);
   });
 
-  test("refuses a harness whose agent folder is a link, to the exam side's copy beside it or to its own folder", async () => {
+  test("follows a link in a harness no further than the campaign's kept harnesses, and never into the exam side's copy", async () => {
     for (const target of ["correctness-model", ".."]) {
       const { root, dir } = copy();
       const { a } = fixture.harnesses;
@@ -728,19 +729,10 @@ describe("what the server cannot read", () => {
       symlinkSync(target, agent);
       const key = `${root.split("/").at(-1) ?? ""}/fixture`;
       const listed = await ask("harness", { key, digest: a }, "default", root);
-      expect({
-        target,
-        files: listed.answer.files,
-        levels: listed.answer.issues.map(({ level }) => level),
-      }).toEqual({
-        target,
-        files: [],
-        levels: ["error"],
-      });
       for (const path of [
         "agent/expected.json",
         "agent/correctness-model/expected.json",
-        "agent/agent/BUILT_AGENTS.md",
+        `agent/${a}/correctness-model/expected.json`,
       ]) {
         const file = await ask("harness-file", { key, digest: a, path }, "default", root);
         expect({
@@ -756,8 +748,58 @@ describe("what the server cannot read", () => {
         });
       }
       const diff = await ask("harness-diff", { key, a: fixture.harnesses.starter, b: a }, "default", root);
-      expect({ target, leaked: diff.text.includes(MARKERS.hidden) }).toEqual({ target, leaked: false });
+      expect({
+        target,
+        leaked: [listed.text, diff.text].some((text) => text.includes(MARKERS.hidden)),
+      }).toEqual({
+        target,
+        leaked: false,
+      });
     }
+  });
+
+  test("lists a harness's programs through its .toolchain link, sends a binary with no value, diffs them, and follows no link out of states/", async () => {
+    const { root, dir } = copy();
+    const { a, b } = fixture.harnesses;
+    const states = join(dir, "states");
+    for (const [digest, tree, said] of [
+      [a, "tree-a", "one"],
+      [b, "tree-b", "two"],
+    ] as const) {
+      mkdirSync(join(states, tree, "bin"), { recursive: true });
+      writeFileSync(join(states, tree, "bin", "count"), `#!/bin/sh\necho ${said}\n`);
+      writeFileSync(join(states, tree, "bin", "engine"), Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0, 1]));
+      symlinkSync(`../${tree}`, join(states, digest, ".toolchain"));
+    }
+    symlinkSync(tmpdir(), join(states, "tree-b", "bin", "host"));
+    mkdirSync(join(states, "tree-b", "correctness-model"));
+    writeFileSync(join(states, "tree-b", "correctness-model", "expected.json"), MARKERS.hidden);
+    const key = `${root.split("/").at(-1) ?? ""}/${fixture.name}`;
+    const listed = await ask("harness", { key, digest: b }, "default", root);
+    expect(listed.answer.files.map(({ path }) => path).toSorted()).toEqual([
+      ".toolchain/bin/count",
+      ".toolchain/bin/engine",
+      "agent/BUILT_AGENTS.md",
+      "agent/tools-spec.json",
+    ]);
+    expect(listed.answer.issues.map(({ level, source }) => [level, source])).toEqual([
+      ["warning", ".toolchain/bin/host"],
+    ]);
+    expect(listed.text.includes(MARKERS.hidden)).toBe(false);
+    const fileAt = async (path: string) =>
+      (await ask("harness-file", { key, digest: b, path }, "default", root)).answer;
+    const [program, engine] = [await fileAt(".toolchain/bin/count"), await fileAt(".toolchain/bin/engine")];
+    expect([program.content, program.value, engine.content, engine.value]).toEqual([
+      "text",
+      "#!/bin/sh\necho two\n",
+      "other",
+      null,
+    ]);
+    const diff = (await ask("harness-diff", { key, a, b }, "default", root)).answer;
+    expect(diff.files.map(({ path, change }) => [path, change])).toEqual([
+      [".toolchain/bin/count", "changed"],
+      ["agent/BUILT_AGENTS.md", "changed"],
+    ]);
   });
 
   test("lists each campaign under the project its opening names, and one whose opening names none apart", async () => {

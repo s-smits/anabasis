@@ -14,7 +14,7 @@ import { plural } from "../../../../src/meta/text.ts";
 
 /*
  * What the inspector on the right holds, as the route names it (`route.ts`): a file of a kept
- * harness's `agent/` (`harness` and `file`), the diff of two harnesses (`diff` to `harness`), or one
+ * harness (`harness` and `file`), the diff of two harnesses (`diff` to `harness`), or one
  * raw event (`event`). The Campaign pane opens the first two, the Moves pane a session's harness,
  * and the Log pane the third.
  *
@@ -80,7 +80,7 @@ function diffLines(diff: string): DiffLine[] {
   return lines;
 }
 
-/** A harness's `agent/` files, each a link that opens it in the inspector, and what the server could
+/** A harness's files, each a link that opens it in the inspector, and what the server could
  *  not read of them. Another harness's list stays, closed to the pointer, while this one's is read
  *  (`held.ts`). */
 export function HarnessFiles({

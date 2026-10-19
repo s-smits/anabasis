@@ -55,7 +55,7 @@ function selectedIndex(cards: readonly HarnessCard[], harness: string | null): n
   return latest >= 0 ? latest : cards.length - 1;
 }
 
-/** The kept `agent/` files of the selected harness, each opening the inspector, and what the server
+/** The kept files of the selected harness, each opening the inspector, and what the server
  *  could not read of them. The previous card's files stay, closed to the pointer, while the next
  *  card's are read (`held.ts`). */
 function Files({ of, digest, navigation }: { of: Of; digest: string; navigation: Navigation }) {

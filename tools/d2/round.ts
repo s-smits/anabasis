@@ -295,11 +295,10 @@ export function sessionNamed(
     otherTrees: campaign.trees,
     packRoots: campaign.packRoots,
     practise: (task, dir, digest, kill) => seats.solve(packageOf(task.version), { dir, digest }, kill),
-    ...(reviewers === null
-      ? {}
-      : {
-          referee: (solve, task, kill) => reviewers.referee(solve, packageOf(task.version), kill),
-        }),
+    referee:
+      reviewers === null
+        ? undefined
+        : (solve, task, kill) => reviewers.referee(solve, packageOf(task.version), kill),
   };
 }
 

@@ -63,7 +63,7 @@ const TEST_PATH =
 
 /** Code a project keeps as someone else wrote it or as it was once run: a vendored upstream, a
  *  codemod, a migration. A copy into or between them is frozen on purpose. */
-const FROZEN_PATH =
+export const FROZEN_PATH =
   /(?:^|\/)(?:vendor|vendored|third[-_]party|[\w-]*codemods?|migrations?|examples?|template-[\w.-]+)\//iu;
 
 /** A file its own name marks as a legacy reader, such as `builder-execution-legacy.ts`. The tree

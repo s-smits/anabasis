@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { expectedLines, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
+import { expectedLines, reportedLines, reportedMessages } from "./helpers/oxlint-rule-fixture.ts";
 
 /**
  * The eleven `anti-slop` rules no other fixture makes report.
@@ -203,5 +203,18 @@ describe("anti-slop/no-shape-in-symbol-names reads whole words", () => {
     expect(
       await reportedLines("anti-slop", "no-shape-in-symbol-names", FORBIDDEN_TERM_DATA_KEYS),
     ).toStrictEqual(expected);
+  });
+});
+
+describe("anti-slop/no-conditional-empty-object-spread names its owner", () => {
+  it("sends the reader to the optional-key helpers, which ana/prefer-key-if-defined also asks for", async () => {
+    const messages = await reportedMessages(
+      "anti-slop",
+      "no-conditional-empty-object-spread",
+      EMPTY_OBJECT_SPREAD,
+    );
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain("keyIfDefined");
+    expect(messages[0]).toContain("src/meta/optional-key.ts");
   });
 });

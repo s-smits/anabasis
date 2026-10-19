@@ -1,6 +1,6 @@
 ---
 name: run-management
-description: "Start, continue, keep, pause, copy, watch and stop authorised Anabasis v2 campaigns through `bun run runs`: launch a campaign under a name, go on with one from its log on another login or commit, keep one going across logins until it ends on its own terms, pause one at a clean point, copy a stopped one to another worktree, read each run's status and each login's room, reach the other hosts, and stop one and release what it held. Use when the operator asks to start, launch, resume, continue, move, keep, pause, copy or stop a campaign or a run, which logins have room, how the runs stand on any host, whether a campaign is ready for its next move, or why a move was refused. Owns the run's life on the host; run-improvement-campaign reads the table, and whole-run-investigation reads what a run did."
+description: "Start, continue, keep, pause, copy, watch and stop authorised Anabasis v2 campaigns through `bun run runs`: launch a campaign under a name, go on with one from its log on another login or commit, keep one going across logins until it ends on its own terms, pause one at a clean point, copy a stopped one to another worktree, move one to another host, read each run's status and each login's room, reach the other hosts, and stop one and release what it held. Use when the operator asks to start, launch, resume, continue, move, keep, pause, copy or stop a campaign or a run, which logins have room, how the runs stand on any host, whether a campaign is ready for its next move, or why a move was refused. Owns the run's life on the host; run-improvement-campaign reads the table, and whole-run-investigation reads what a run did."
 ---
 
 # Run management
@@ -24,6 +24,7 @@ one two worktrees hold.
 | `pause <name> --after <event> [--yes]` | stops a campaign once its log gains one more of the event and nothing but its Builder's conversation is open | `manage.ts` |
 | `keep <name> [--logins 2,3,4] [--wait-hours 1] [--yes]` | keeps a campaign going: moves it off a long provider wait, and continues it after a death or an `environment` ending | `keep.ts` |
 | `copy <name> --to <worktree> [--yes]` | copies a stopped campaign whole to another worktree, and sets the source aside | `manage.ts` |
+| `move <name> --to <host\|here> [--from <host\|here>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]` | pauses a campaign at a clean point, takes its folder whole to a new worktree on the other machine at the same commit, sets the source aside and continues it there on its kept flags | `move.ts` |
 | `stop <name> ... [--yes]` | ends the process that writes each log, and its keeper, and releases what its unfinished solves and sessions held | `stop.ts` |
 | `status [--all]` | one row a run: the live ones and those whose log moved in a day, with tree, commit, login, open comparison, comparisons reported, promotions and ending; then each host `ANA_HOSTS` lists, all asked at once and each printed as it answers, within 30 s | `pulse.ts` |
 | `logins [N ...] [--json]` | each login's five-hour and weekly use, and when the pool runs out | `logins.ts` |
@@ -180,6 +181,22 @@ folder whole, links as links, checks that the log arrived at its size, and renam
 `.ana/moved/<name>-<stamp>` in its own worktree, so one worktree holds the name. Continue it there
 with `continue --at` only where no comparison is open, since the target worktree's commit is the
 code it then runs.
+
+## Move a campaign to another machine
+
+```sh
+bun --env-file=.env.runs run runs move <name> --to <host> [--login N] --yes
+bun --env-file=.env.runs run runs move <name> --from <host> --to here [--login N] --yes
+```
+
+One end is this machine and the other a host `ANA_HOSTS` lists. The verb checks first that the
+destination has no worktree `anabasis-<name>`, then pauses the run at its next `--after` event
+(`finished` by default), makes that worktree beside the destination's repository at the commit the
+source stands at, takes the folder over with rsync, checks the log's size, sets the source aside
+under `.ana/moved/` and runs `continue` there on the kept flags, a path under the folder of the
+source's worktrees named under the destination's. `--hold` stops before the continue and prints
+it. Without `--yes` it reads both ends and moves nothing. Stop a `runs keep` of the campaign first.
+A change of login on one machine needs no move: `continue --after <event> --login N`.
 
 ## Logins and other hosts
 

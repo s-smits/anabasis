@@ -9,8 +9,9 @@
  * over, and the moves that may start next (`view.ts`), and `source` the commit each of its runs ran
  * and where that is published (`receipt.ts`). `status` gives one row a run (`pulse.ts`), `logins`
  * how much of each login is used (`logins.ts`), `keep` keeps a run going across logins (`keep.ts`),
- * `copy` takes a stopped campaign whole to another worktree (`manage.ts`), and `on` and `hosts` run
- * a verb on another machine (`hosts.ts`).
+ * `copy` takes a stopped campaign whole to another worktree (`manage.ts`), `move` takes one to another
+ * machine and goes on with it there (`move.ts`), and `on` and `hosts` run a verb on another machine
+ * (`hosts.ts`).
  */
 import { runtimeProcess } from "#src/meta/process.ts";
 import { fresh } from "./fresh.ts";
@@ -18,6 +19,7 @@ import { hosts, on } from "./hosts.ts";
 import { keep } from "./keep.ts";
 import { logins } from "./logins.ts";
 import { continueRun, copy, launch, pause } from "./manage.ts";
+import { move } from "./move.ts";
 import { runsStatus, watch } from "./pulse.ts";
 import { source } from "./receipt.ts";
 import { rehearse } from "./rehearse.ts";
@@ -45,6 +47,7 @@ const VERBS = {
   usage: logins,
   keep,
   copy,
+  move,
   on,
   hosts,
 };

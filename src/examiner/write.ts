@@ -41,7 +41,7 @@ import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
-import { isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
+import { isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
@@ -159,6 +159,22 @@ function instanceOf(
     // SAFETY: as above.
     hidden: decodedJsonText((given.hidden ?? null) as JsonValue),
   };
+}
+
+/** What `task.feasible` keeps of the author's valid answer beside its version, where the contract
+ *  declares an objective: the quantity and its direction as the contract states them, and the
+ *  measure the verifier took of the answer (`OBJECTIVE`, `src/kernel/verify.ts`). The event
+ *  stores no answer, which the Examiner's own trace alone keeps (`exam.call`), and until
+ *  19 October it stored no measure either: 74 of 74 `try_answer`
+ *  results of esp32-fresh-opus held none, so whether an author's answer beat the reference
+ *  harness's best by the margin, which leaves a task the reference answers every time room to gain
+ *  on (`informative`, `src/kernel/compare.ts`), could not be read off any record. Nothing reads it
+ *  yet, and no seat is told it. Empty where the contract declares no objective. */
+function measureOf(contract: Contract, verdict: Verdict): JsonObject {
+  const declared = contract.objective;
+  if (declared === undefined || verdict.kind !== "pass" || verdict.objective === undefined) return {};
+  const { quantity, direction } = declared;
+  return { objective: { quantity, direction, measure: verdict.objective } };
 }
 
 /** A verdict as the Examiner reads it. */
@@ -296,7 +312,7 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal, ahead: numbe
   if (verdict.kind !== "pass") {
     return `${taskId}: held out${said}. Author proof was not retained under this task id: ${tried(verdict)}`;
   }
-  append(log, "task.feasible", { version, session });
+  append(log, "task.feasible", { version, session, ...measureOf(request.contract, verdict) });
   return `${taskId}: held out${said}.`;
 }
 
@@ -397,15 +413,17 @@ function exampleTool(tasks: readonly Task[]): AgentTool {
 function tryTool(desk: Desk, verify: Verifier): AgentTool {
   const { request } = desk;
   const { log, contract } = request;
-  /** Puts on record that a held task has a valid answer, where the log does not say so yet. */
-  const prove = (events: readonly LogEvent[], version: string) => {
+  /** Puts on record that a held task has a valid answer, where the log does not say so yet or the
+   *  answer carries a measure of the objective, which each such pass keeps (`measureOf`). */
+  const prove = (events: readonly LogEvent[], version: string, verdict: Verdict) => {
     const sets = taskSets(events);
     const inExam =
       sets.held.includes(version) ||
       sets.released.includes(version) ||
       sets.states.get(version) === "disputed";
-    if (inExam && !poolOf(events).feasible.has(version)) {
-      append(log, "task.feasible", { version, session: request.id });
+    const measure = measureOf(contract, verdict);
+    if (inExam && (!poolOf(events).feasible.has(version) || "objective" in measure)) {
+      append(log, "task.feasible", { version, session: request.id, ...measure });
     }
   };
   return tool({
@@ -442,7 +460,7 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
       if (verdict.kind === "pass") {
         desk.answered.set(content, answer);
         desk.planted.add(hashJsonValue(answer));
-        prove(events, taskVersion(request.pack(instance)));
+        prove(events, taskVersion(request.pack(instance)), verdict);
       }
       return text(`${gate}${tried(verdict)}`);
     },

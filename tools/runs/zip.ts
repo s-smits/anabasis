@@ -3,6 +3,7 @@
  * level holds each chosen run's whole log, and a level adds what the log names by digest only.
  *
  *   bun run runs zip [<name> ...] --light|--medium|--verbose [--out FILE] [--max-mb N] [--note FILE]
+ *                    [--from HOST]
  *
  *   light    the log and each launch's receipt and output, each harness a session kept
  *            (`states/<digest>/`) and the brief
@@ -22,6 +23,13 @@
  * runs.
  *
  * Never held: installed packages, caches and built bundles, a link, a file named like a secret.
+ *
+ * A log is held to its last whole line, since a live run's may end in the append it is writing. An
+ * exam a campaign drafted is its brief and its checker as `checks/` is a stored pack's: until
+ * 19 October the groups named `checks/` alone, and a drafted exam's `exams/<digest>/` went to
+ * verbose's rest. `--from` makes the zip on a host `ANA_HOSTS` names, by that host's reading of its
+ * own runs, and brings the zip back to `--out`: on 19 October three live campaigns on two other
+ * hosts were wanted here for an investigation, and the files a level holds are chosen in one place.
  */
 import { cpSync, lstatSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
@@ -34,7 +42,8 @@ import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import { receipts } from "./receipt.ts";
-import { logEvents, type Run, runs, standing } from "./registry.ts";
+import { hostNamed, quoted, sshScript, verbOn } from "./hosts.ts";
+import { logEvents, type Run, runs, standing, wholeLines } from "./registry.ts";
 
 const LEVELS = ["light", "medium", "verbose"] as const;
 const CAMPAIGN_ENDED = "campaign.ended";
@@ -50,7 +59,7 @@ const GROUPS: readonly (readonly [name: string, holds: string, level: Level, pat
     "light",
     /^([^/]+\.jsonl|launch-[^/]+)$/,
   ],
-  ["brief", "the brief the tasks answer", "light", /^checks\/brief\.json$/],
+  ["brief", "the brief the tasks answer", "light", /^(exams\/[^/]+\/)?checks\/brief\.json$/],
   [
     "harness",
     "each harness a session kept: guide, tools, tool spec, memory",
@@ -59,9 +68,9 @@ const GROUPS: readonly (readonly [name: string, holds: string, level: Level, pat
   ],
   [
     "checker",
-    "the checks, their tests and their reference, and a harness's own copy of them",
+    "the checks, their tests and their reference, an exam the campaign drafted, and a harness's own copy of them",
     "medium",
-    /^(checks|states\/[0-9a-f]{64}\/correctness-model)\//,
+    /^(checks|exams\/[^/]+|states\/[0-9a-f]{64}\/correctness-model)\//,
   ],
   ["toolchain", "what a harness installed, less the packages", "medium", /^states\/tree-[^/]+\//],
   ["memory", "the notes and helper files each Builder session left the next", "light", /^memory\//],
@@ -176,7 +185,14 @@ function gather(chosen: readonly Run[], level: Level, stage: string) {
   const keep = (from: string, under: string, found: ReturnType<typeof fit>) => {
     for (const { path, bytes, group } of found.held.filter((file) => holds(level, file.group))) {
       cpSync(join(from, path), join(stage, under, path));
-      files.push({ path: join(under, path), bytes, group });
+      // A live run's log may end in the line it is writing, which every reader would refuse.
+      const whole = path.endsWith(".jsonl") ? wholeLines(join(from, path)) : null;
+      if (whole !== null) writeFileSync(join(stage, under, path), whole);
+      files.push({
+        path: join(under, path),
+        bytes: whole === null ? bytes : Buffer.byteLength(whole),
+        group,
+      });
     }
     left.push(...found.left.map(({ path, why }) => ({ path: join(under, path), why })));
   };
@@ -249,7 +265,7 @@ export function zip(
 }
 
 /** `bun run runs zip`. */
-export function zipRuns(args: readonly string[]): void {
+export async function zipRuns(args: readonly string[]): Promise<void> {
   const { values, positionals: names } = parseArgs({
     args: [...args],
     allowPositionals: true,
@@ -260,21 +276,45 @@ export function zipRuns(args: readonly string[]): void {
       out: { type: "string" },
       "max-mb": { type: "string" },
       note: { type: "string" },
+      from: { type: "string" },
     },
   });
   const levels = LEVELS.filter((level) => values[level]);
   const [level] = levels;
   if (level === undefined || levels.length > 1) {
     throw new Error(
-      "usage: bun run runs zip [<name> ...] --light|--medium|--verbose [--out FILE] [--max-mb N] [--note FILE]",
+      "usage: bun run runs zip [<name> ...] --light|--medium|--verbose [--out FILE] [--max-mb N] [--note FILE] [--from HOST]",
     );
   }
   const megabytes = values["max-mb"];
+  const out = values.out ?? `${names.join("-") || "runs"}-${level}.zip`;
+  if (values.from !== undefined) {
+    if (values.note !== undefined) {
+      throw new Error("--note is added where the zip is made: zip here, or leave it out");
+    }
+    // The host makes the zip by its own reading of its runs, and only the zip comes back.
+    const host = hostNamed(values.from);
+    // The zip's folder inside is named for its file, so the host's copy takes `--out`'s name.
+    const scratch = `/tmp/ana-runs-zip-${String(Date.now())}`;
+    const there = `${scratch}/${basename(out)}`;
+    const mb = megabytes === undefined ? [] : ["--max-mb", megabytes];
+    runTextSyncOrThrow(sshScript(host, `mkdir ${scratch}`));
+    try {
+      if ((await verbOn(host, ["zip", ...names, `--${level}`, "--out", there, ...mb])) !== 0) {
+        throw new Error(`the zip was not made on ${host.name}`);
+      }
+      runTextSyncOrThrow(["rsync", "-a", `${host.ssh}:${quoted(there)}`, out]);
+    } finally {
+      runTextSyncOrThrow(sshScript(host, `rm -rf ${scratch}`));
+    }
+    console.log(`${out}  from ${host.name}`);
+    return;
+  }
   const made = zip(
     runs().filter((run) => names.length === 0 || names.some((name) => run.name.includes(name))),
     level,
     {
-      out: values.out ?? `${names.join("-") || "runs"}-${level}.zip`,
+      out,
       maxBytes: megabytes === undefined ? null : Number(megabytes) * 1024 * 1024,
       note: values.note ?? null,
     },

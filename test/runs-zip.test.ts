@@ -15,7 +15,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
 import type { Run } from "../tools/runs/registry.ts";
-import { fit, type Level, zip } from "../tools/runs/zip.ts";
+import { fit, type Level, zip, zipRuns } from "../tools/runs/zip.ts";
 
 const DIGEST = "ab".repeat(32);
 const LOG = [
@@ -44,10 +44,13 @@ function round(root: string): Run {
     mkdirSync(dirname(join(folder, path)), { recursive: true });
     writeFileSync(join(folder, path), content);
   };
-  file("log.jsonl", `${LOG.map((event) => JSON.stringify(event)).join("\n")}\n`);
+  // The log of a live run: its last line is the append in flight.
+  file("log.jsonl", `${LOG.map((event) => JSON.stringify(event)).join("\n")}\n{"at":`);
   file("launch-b-1.json", JSON.stringify(RECEIPT));
   file("checks/brief.json", "{}");
   file("checks/evaluator.ts", "export const check = 1;\n");
+  file(`exams/${DIGEST}/checks/brief.json`, "{}");
+  file(`exams/${DIGEST}/checks/evaluator.ts`, "export const check = 1;\n");
   file(`states/${DIGEST}/agent/tools-spec.json`, "{}");
   file(`states/${DIGEST}/correctness-model/controls.json`, "[]");
   file(`states/${DIGEST}/node_modules/dep/index.js`, "module.exports = 1;\n");
@@ -94,6 +97,7 @@ describe("the runs zip", () => {
       };
       const light = [
         "brief tree/r1/checks/brief.json",
+        `brief tree/r1/exams/${DIGEST}/checks/brief.json`,
         "log tree/r1/launch-b-1.json",
         "log tree/r1/log.jsonl",
         `harness tree/r1/states/${DIGEST}/agent/tools-spec.json`,
@@ -101,6 +105,7 @@ describe("the runs zip", () => {
       const medium = [
         ...light,
         "checker tree/r1/checks/evaluator.ts",
+        `checker tree/r1/exams/${DIGEST}/checks/evaluator.ts`,
         `checker tree/r1/states/${DIGEST}/correctness-model/controls.json`,
         "toolchain tree/r1/states/tree-abc/bin/solver",
       ];
@@ -165,11 +170,12 @@ describe("the runs zip", () => {
       ]);
       const read = (name: string) => runTextSyncOrThrow(["unzip", "-p", out, `handover/${name}`]);
       expect(read("NOTES.md")).toBe("# What the sender saw\n");
+      expect(read("tree/r1/log.jsonl")).toBe(`${LOG.map((event) => JSON.stringify(event)).join("\n")}\n`);
       expect(read("README.md")).toContain(
         `| tree/r1/log.jsonl | ${RAN_AT.slice(0, 9)} | ${told.commit.slice(0, 9)}, with uncommitted changes | 3 | no-step | stop |`,
       );
       expect(read("README.md")).toContain("| tree/live/s1.jsonl | no receipt |");
-      expect(read("README.md")).toContain("| brief | the brief the tasks answer | light | 1 file, 0 KB |");
+      expect(read("README.md")).toContain("| brief | the brief the tasks answer | light | 2 files, 0 KB |");
       expect(read("README.md")).toContain("| checker |");
       expect(read("README.md")).toContain("| medium | not at this level |");
       expect(read("GUIDE.md")).toContain("## How to read this bundle");
@@ -178,5 +184,12 @@ describe("the runs zip", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it("refuses a host it does not know, and a note, before it asks a host for anything", async () => {
+    await expect(zipRuns(["r1", "--medium", "--from", "nowhere"])).rejects.toThrow("no host nowhere");
+    await expect(zipRuns(["r1", "--medium", "--from", "nowhere", "--note", "n.md"])).rejects.toThrow(
+      "--note",
+    );
   });
 });

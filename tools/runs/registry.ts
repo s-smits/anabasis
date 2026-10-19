@@ -115,11 +115,15 @@ export function runNamed(name: string, among: readonly Run[] = runs()): Run {
   return only;
 }
 
-/** The whole lines of a log an append may be writing to: a torn last line is an append in flight. */
-export function logEvents(path: string): LogEvent[] {
+/** A log's text up to its last whole line: a torn last line is an append in flight. */
+export function wholeLines(path: string): string {
   const text = readFileSync(path, "utf8");
-  return text
-    .slice(0, text.lastIndexOf("\n") + 1)
+  return text.slice(0, text.lastIndexOf("\n") + 1);
+}
+
+/** The whole lines of a log an append may be writing to. */
+export function logEvents(path: string): LogEvent[] {
+  return wholeLines(path)
     .split("\n")
     .slice(0, -1)
     .map((line) => parseJsonAs<LogEvent>(line));

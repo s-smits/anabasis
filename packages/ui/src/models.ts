@@ -456,7 +456,7 @@ interface ComparisonTerms {
   /** The model's turns its solves were told (`Compared.modelTurns`). */
   readonly modelTurns: number | null;
   /** The objective rule, where the check program declares one. */
-  readonly objective: { readonly direction: "lower" | "higher"; readonly margin: number } | null;
+  readonly objective: { readonly direction: "lower" | "higher" } | null;
   readonly prediction: string | null;
 }
 

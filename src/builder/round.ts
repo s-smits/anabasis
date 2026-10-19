@@ -157,7 +157,7 @@ interface Terms {
   readonly level: number;
   readonly trigger: number;
   /** The objective two valid answers are compared by, where the check program declares one: the
-   *  brief's direction and the caller's margin. */
+   *  brief's direction. */
   readonly objective?: ObjectiveRule | undefined;
   /** Tasks with a check defect past which the comparison stops. */
   readonly defects: number;
@@ -394,9 +394,6 @@ function refuseUnreadable(terms: Terms): void {
     );
   }
   if (!(terms.level > 0 && terms.level < 1)) throw new Error("a sign test's level lies between 0 and 1");
-  if (terms.objective !== undefined && !(terms.objective.margin >= 0)) {
-    throw new Error("an objective's margin is a share of the larger measure, from nothing up");
-  }
   if (terms.cap !== undefined && !capHolds(terms.cap)) {
     throw new Error("a cap and its reserve are dollars, and both are more than nothing");
   }

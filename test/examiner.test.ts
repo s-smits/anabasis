@@ -926,12 +926,12 @@ describe("a session that writes tasks", () => {
   });
 
   it("holds out a task the reference harness answers every time where two of its answers are apart by the objective, and not one where they are alike", async () => {
-    // Base 2's answers measure 10, 10 and 12, apart past the margin; base 3's 10, 10 and 10.05,
-    // within it. Until 16 October the gate read no objective and refused both, while a comparison
+    // Base 2's answers measure 10, 10 and 12, apart; base 3's 10, 10 and 10 and a billionth,
+    // one measure. Until 16 October the gate read no objective and refused both, while a comparison
     // reads the first as room (`informative`, `src/kernel/compare.ts`).
     const measures = new Map([
       [2, [10, 10, 12]],
-      [3, [10, 10, 10.05]],
+      [3, [10, 10, 10 + 1e-9]],
     ]);
     const s = seat("write", [call("try_task", { tasks: [instance(2), instance(3)] }), finish, finish]);
     const probe = measuredProbe(
@@ -957,17 +957,17 @@ describe("a session that writes tasks", () => {
     ]);
   });
 
-  it("holds out a task the reference harness answers alike every time where its author's answer is better by the objective past the margin, and not one within it or without one", async () => {
-    // The reference's answers measure 10, 10 and 10.05 on every draft, alike within the margin.
-    // Base 2's author answer measures 9, better than each by 10%; base 3's 9.95, within the margin
-    // of the best; base 4 has none. Until 19 October the gate refused all three.
+  it("holds out a task the reference harness answers alike every time where its author's answer is better by the objective, and not one the same or without one", async () => {
+    // The reference's answers measure 10 on every draft, the third within a billionth of it.
+    // Base 2's author answer measures 9, better than each by 10%; base 3's is the same within a
+    // billionth; base 4 has none. Until 19 October the gate refused all three.
     const authored = new Map([
       [2, 9],
-      [3, 9.95],
+      [3, 10 - 1e-9],
     ]);
     const steps = [tried(2), tried(3), call("try_task", { tasks: [instance(2), instance(3), instance(4)] })];
     const s = seat("write", [...steps, finish, finish]);
-    const probe = measuredProbe(s.log, (_task, nth) => [10, 10, 10.05][nth % 3]);
+    const probe = measuredProbe(s.log, (_task, nth) => [10, 10, 10 + 1e-9][nth % 3]);
     const examined = await examine({
       ...s.request,
       contract: { ...s.request.contract, objective: { quantity: "the mass", direction: "lower" } },
@@ -993,7 +993,7 @@ describe("a session that writes tasks", () => {
     // Each draft's line tells the reference's measures and, where it tried one, its own.
     const said = s.of(CALLED)[2]?.text;
     const lines = (isString(said) ? said : "").split("\n");
-    expect(lines.find((line) => line.startsWith("x-1-001"))).toContain("10, 10, 10.05");
+    expect(lines.find((line) => line.startsWith("x-1-001"))).toContain("10, 10, 10");
     expect(lines.find((line) => line.startsWith("x-1-001"))).toContain("try_answer on it 9");
     expect(lines.find((line) => line.startsWith("x-1-003"))).not.toContain("try_answer on it");
   });

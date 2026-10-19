@@ -994,7 +994,7 @@ describe("the tasks the reference harness exhausted", () => {
 
   it("spares a task the objective told two valid answers apart on: the next harness can still win it", () => {
     // The same two comparisons, under an objective: on `e1` the new harness's answers are the
-    // better by more than the margin, on `e2` the two sides are even. Until 11 October both
+    // better, on `e2` the two sides are even. Until 11 October both
     // closed alike, and the Examiner was told `e1` could only tie again.
     const measured = (log: readonly LogEvent[], session: string, fresh: string) => {
       const sides = [
@@ -1022,7 +1022,7 @@ describe("the tasks the reference harness exhausted", () => {
     expect(poolOf(log).outcomes.get("e1")).toBe("reference-every");
     expect(poolOf(measured(log, "b-3", "h4")).exhausted).toEqual(["e2"]);
     // An author's answer on record that outdoes every answer on `e2` keeps it open: the room it was
-    // held for stays on the frontier (19 October). One within the margin closes it as before.
+    // held for stays on the frontier (19 October). One within a billionth closes it as before.
     const authored = (measure: number) =>
       poolOf([
         ...log,
@@ -1033,7 +1033,7 @@ describe("the tasks the reference harness exhausted", () => {
         }),
       ]);
     expect(authored(5)).toMatchObject({ exhausted: [], frontier: ["e1", "e2"] });
-    expect(authored(9.95)).toMatchObject({ exhausted: ["e2"], frontier: ["e1"] });
+    expect(authored(10 - 1e-9)).toMatchObject({ exhausted: ["e2"], frontier: ["e1"] });
   });
 
   it("hold each held-out task in exactly one place: scorable or waiting for a person, with the exhausted among the retained and the retained among the scorable", () => {

@@ -110,7 +110,8 @@ export interface Report {
    *  disagree (`flips`), the least share of its untied tasks one half has to win for a reading of it
    *  two-sided at the level to detect it four times in five (`detectable`), which says how much its
    *  reading no step can show. A report of 12 to 18 October also holds the objective's margin its
-   *  own spread set, which the next comparison read by until one margin stood for all (`MARGIN`). */
+   *  own spread set, which the next comparison read by until one margin stood for all, and none
+   *  since 19 October (`SAME`, `compare.ts`). */
   readonly noise:
     | (Tested & {
         readonly flips: number | null;

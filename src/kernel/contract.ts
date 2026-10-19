@@ -41,7 +41,7 @@ export interface Contract {
 
 /** The objective in a sentence, for the prompts and the public resource that state it. */
 export function objectiveLine({ quantity, direction }: Objective): string {
-  return `Of two valid answers to one task, the one with the ${direction} ${quantity} is the better, by more than a small margin; a valid answer beats any invalid one, whatever its ${quantity}.`;
+  return `Of two valid answers to one task, the one with the ${direction} ${quantity} is the better; a valid answer beats any invalid one, whatever its ${quantity}.`;
 }
 
 /** The contract's identity: the hash of its canonical JSON. A rule id named twice would let a

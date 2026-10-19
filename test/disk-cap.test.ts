@@ -317,6 +317,51 @@ describe("the disk cap", () => {
     },
   );
 
+  // A volume its root's detach released can stay listed while its disk ejects, and hdiutil refuses
+  // a detach of the device then, forced or not: on the macOS runners of 19 October the release
+  // forced once and threw. Here the first two detaches of the device are refused as busy.
+  it.skipIf(runtimeProcess.platform !== "darwin")(
+    "detaches a device hdiutil calls busy once it is no longer",
+    async () => {
+      const parent = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-disk-cap-")));
+      const root = join(parent, "solve");
+      const image = `${root}.sparseimage`;
+      const attached = () => spawnSync(HDIUTIL, ["info"]).stdout.includes(image);
+      try {
+        await mountDiskCap({ root, bytes: CAP_BYTES });
+        expect(spawnSync(HDIUTIL, ["detach", root, "-quiet"]).status).toBe(0);
+        expect(spawnSync(HDIUTIL, ["attach", "-nomount", "-nobrowse", image]).status).toBe(0);
+        const busy = join(parent, "busy");
+        const count = join(parent, "detaches");
+        writeFileSync(
+          busy,
+          [
+            "#!/bin/sh",
+            `if [ "$1" = detach ]; then echo x >> ${count}`,
+            `  if [ "$(wc -l < ${count})" -le 2 ]; then echo "hdiutil: couldn't eject - Resource busy" >&2; exit 16; fi`,
+            "fi",
+            `exec ${HDIUTIL} "$@"`,
+            "",
+          ].join("\n"),
+          { mode: 0o755 },
+        );
+        const listing = { lsof: "/usr/sbin/lsof", ps: "/bin/ps", boundMs: 30_000, stallMs: 10_000 };
+        await releaseDiskCap(root, { ...listing, hdiutil: busy });
+        expect(attached()).toBe(false);
+        expect(existsSync(image)).toBe(false);
+        expect(existsSync(root)).toBe(false);
+        expect(readFileSync(count, "utf8").trim().split("\n")).toHaveLength(3);
+      } finally {
+        const entry = spawnSync(HDIUTIL, ["info"])
+          .stdout.split(/^=+$/m)
+          .find((each) => each.includes(image));
+        const device = entry === undefined ? undefined : /^(\/dev\/disk\d+)\s/m.exec(entry)?.[1];
+        if (device !== undefined) spawnSync(HDIUTIL, ["detach", device, "-force"]);
+        rmSync(parent, { recursive: true, force: true });
+      }
+    },
+  );
+
   // A mount clones the one empty image of its size (`emptyImage`). The size here is this case's
   // alone, so the template it reads is the one its three first mounts made between them.
   it.skipIf(runtimeProcess.platform !== "darwin")(

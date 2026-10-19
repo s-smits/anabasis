@@ -253,13 +253,14 @@ export async function mountDiskCap(cap: DiskCap): Promise<ReleaseDiskCap> {
  * the volume went is removed with it.
  *
  * Whatever the mount said, `hdiutil info` then decides whether the image is attached
- * (`attachedAs`). The image and the root are removed on one of three answers: the listing names the
- * image nowhere; it names a device and a plain detach of that device succeeds; or the forced detach
- * that follows a failed one is followed by a listing that names the image nowhere. An image
+ * (`attachedAs`). The image and the root are removed once the listing names the image nowhere: at
+ * once, or after a detach of its device, plain on the first three tries and forced on the fourth,
+ * each refusal waited out longer than the last. An image
  * attached with no volume, as a stop between attach and mount leaves it, or left attached by a
- * detach by the root that failed after its volume went, is so detached by its device. Where the
- * listing fails or still names the image, or the listing or a detach of the device does not answer
- * within its bound (`bounded`), the image and the root are kept and the release throws.
+ * detach by the root that failed after its volume went, is so detached by its device, again while
+ * hdiutil says it is busy. Where the listing fails or still names the image after the last try, or
+ * the listing or a detach of the device does not answer within its bound (`bounded`), the image and
+ * the root are kept and the release throws.
  *
  * A volume whose I/O has stopped is left attached, and the release throws. Its readers sit in
  * uninterruptible wait, which SIGKILL does not end, and a detach of it waits on that I/O inside
@@ -287,14 +288,20 @@ export async function releaseDiskCap(root: string, listing: HolderListing = LSOF
       }
     }
     const image = `${root}.sparseimage`;
-    const device = await attachedAs(image, listing);
-    if (device !== null && (await bounded(image, listing, ["detach", device]))[0] !== 0) {
-      const [code, , stderr] = await bounded(image, listing, ["detach", device, "-force"]);
-      if ((await attachedAs(image, listing)) !== null) {
-        throw new Error(
-          `${image} stayed attached: hdiutil detach -force exited ${String(code)}: ${stderr.trim()}`,
-        );
-      }
+    // A volume its root's detach released can stay listed while its disk ejects, and a detach of
+    // the device then is refused as busy, forced or not: on the macOS runners of 19 October that
+    // ended 14 campaign and solve tests of #221 and #223 on "Resource busy", which an idle Mac
+    // never showed. So the listing is read again before each detach, a busy one waits as
+    // `patiently` does, and only the last is forced.
+    let refused = "";
+    for (let tried = 1, ms = BUSY_MS; ; tried += 1, ms *= 2) {
+      const device = await attachedAs(image, listing);
+      if (device === null) break;
+      if (tried > BUSY_TRIES) throw new Error(`${image} stayed attached: ${refused}`);
+      const detach = tried === BUSY_TRIES ? ["detach", device, "-force"] : ["detach", device];
+      const [code, , stderr] = await bounded(image, listing, detach);
+      refused = `hdiutil ${detach.join(" ")} exited ${String(code)}: ${stderr.trim()}`;
+      if (code !== 0) await Bun.sleep(ms);
     }
     // Unlinked. Until 14 October it went to the Trash, so that a release run against the wrong
     // path could be undone, and every capped solve and session, a test's among them, left one

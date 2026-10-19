@@ -21,7 +21,7 @@ import {
   stopRule as stopOf,
 } from "../src/kernel/reports.ts";
 import { taskSets } from "../src/kernel/task.ts";
-import type { JsonObject } from "../src/meta/json-shape.ts";
+import { asRecord, type JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { tallied } from "./helpers/tally.ts";
@@ -720,6 +720,8 @@ describe("the tasks that go to a person as possibly infeasible", () => {
   });
 
   it("do not count a comparison that cut a solve of the task at a limit", () => {
+    // `turns-ended` under a condition that names no number of model turns, which no solve writes
+    // (`spent`, src/solve/run.ts), reads as a cut, so a campaign without a bound reads as before.
     for (const kind of ["wall-ended", "turns-ended", "context-ended"]) {
       const cut = compared(compared(start, "b-1", "h2", kind), "b-2", "h3", kind);
       expect(awaiting(cut)).toEqual([]);
@@ -734,6 +736,68 @@ describe("the tasks that go to a person as possibly infeasible", () => {
     expect(awaiting(compared(compared(start, "b-1", "h2", "no-answer"), "b-2", "h3", "no-answer"))).toEqual([
       "hard",
     ]);
+  });
+
+  it("count a comparison whose solves used every model turn the condition names, and no wall it cut", () => {
+    // Under `--solve-model-turns` the turns are the budget, told on every tool result: a solve that
+    // used them all without an answer is the budget's verdict, and until 19 October such a task
+    // stayed in the draw for good (sim-turns, sim-turns2: 706 of 1,144 solves).
+    const told = (task: string, harness: string): Condition => {
+      const plain = condition(task, harness);
+      return { ...plain, limits: { ...plain.limits, modelTurns: 16 } };
+    };
+    const setting = settingId(told("any", "any"));
+    const bounded = (log: readonly LogEvent[], session: string, fresh: string, hard: boolean | string) => [
+      ...log,
+      ...solvedUnder(session, told("hard", "h1"), [hard, hard]),
+      ...solvedUnder(session, told("hard", fresh), [hard, F]),
+      ...solvedUnder(session, told("easy", "h1"), [P, P]),
+      ...solvedUnder(session, told("easy", fresh), [P, P]),
+      reported(session, "no-step", fresh, { ...terms, setting, fresh, versions: ["hard", "easy"] }),
+    ];
+    const spent = bounded(bounded(start, "b-1", "h2", "turns-ended"), "b-2", "h3", "turns-ended");
+    expect(awaiting(spent)).toEqual(["hard"]);
+    expect(poolOf(spent).scorable).toEqual(["easy"]);
+    // The nearest hostile cases: the same task under the same bound, its solves ended by the wall
+    // or a full context, stays; and a valid answer on record keeps it, whatever ended the solves.
+    for (const kind of ["wall-ended", "context-ended"]) {
+      const cut = bounded(bounded(start, "b-1", "h2", kind), "b-2", "h3", kind);
+      expect(awaiting(cut)).toEqual([]);
+      expect(poolOf(cut).scorable).toEqual(["hard", "easy"]);
+    }
+    expect(awaiting([...spent, event("task.feasible", { version: "hard", session: "x-1" })])).toEqual([]);
+    expect(awaiting([...spent, ...solved(undefined, "hard", "h9", [P])])).toEqual([]);
+    // The reference's history reads each comparison as none valid, and names no solve cut.
+    expect(poolOf(spent).histories.get("hard")?.reads).toEqual([
+      { valid: "none", cut: false },
+      { valid: "none", cut: false },
+    ]);
+    // A log written before 19 October: `judge` read spent turns first, so a solve whose last allowed
+    // reply was cut at its length, or whose context overflowed then, ended `turns-ended`. Its last
+    // `solve.turn` says so, and it stays a cut, as it read when it was written. So does a log of
+    // before 14 October, when a provider failure on the last allowed turn ended `turns-ended` too.
+    const lastTurned = (log: readonly LogEvent[], turn: JsonObject) =>
+      log.flatMap((each) =>
+        each.kind === "solve.finished" && asRecord(each.data.ending)?.kind === "turns-ended"
+          ? [event("solve.turn", { solve: each.data.solve ?? "", turn: 16, ...turn }), each]
+          : [each],
+      );
+    for (const turn of [
+      { stopReason: "length", error: null },
+      { stopReason: "error", error: "prompt is too long: 213462 tokens > 200000 maximum" },
+      { stopReason: "error", error: "API Error: 529 overloaded" },
+    ]) {
+      const old = lastTurned(spent, turn);
+      expect(awaiting(old)).toEqual([]);
+      expect(poolOf(old).scorable).toEqual(["hard", "easy"]);
+      expect(
+        poolOf(old)
+          .histories.get("hard")
+          ?.reads.map(({ cut }) => cut),
+      ).toEqual([true, true]);
+    }
+    // A last turn that ended as any other did is the budget's, recorded or not.
+    expect(awaiting(lastTurned(spent, { stopReason: "toolUse", error: null }))).toEqual(["hard"]);
   });
 
   it("wait until a person keeps the task, which counts its comparisons anew", () => {

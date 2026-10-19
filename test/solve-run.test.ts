@@ -212,8 +212,9 @@ describe("an attempt's ending", () => {
   it("without an answer: the wall, the model's turns, the context, a provider failure, else no answer", async () => {
     const overflow = stop("", "prompt is too long: 213462 tokens > 200000 maximum");
     expect(await ending({ wallEnded: true, turns: [overflow] }).ending).toMatchObject({ kind: "wall-ended" });
-    // A solve given a number of model turns that used them all ended there, whatever its last turn
-    // was; one that submitted in its last turn is judged on the answer.
+    // A solve given a number of model turns that used them all ended there, unless the provider
+    // or the window ended its last turn (below); one that submitted in its last turn is judged on
+    // the answer.
     expect(await ending({ turnsEnded: true, turns: [stop("I am done.")] }).ending).toEqual({
       outcome: "fail",
       kind: "turns-ended",
@@ -233,6 +234,15 @@ describe("an attempt's ending", () => {
     expect(await ending({ turns: [overflow] }).ending).toEqual({ outcome: "fail", kind: "context-ended" });
     const length = fauxAssistantMessage("", { stopReason: "length" });
     expect(await ending({ turns: [length] }).ending).toMatchObject({ kind: "context-ended" });
+    // A window filled, or a reply cut, on the last allowed turn is the window's and no spent budget:
+    // the pool reads `turns-ended` as the budget's verdict and `context-ended` as a cut.
+    expect(await ending({ turnsEnded: true, turns: [overflow] }).ending).toEqual({
+      outcome: "fail",
+      kind: "context-ended",
+    });
+    expect(await ending({ turnsEnded: true, turns: [length] }).ending).toMatchObject({
+      kind: "context-ended",
+    });
     expect(await ending({ turns: [stop("", "overloaded_error")] }).ending).toEqual({
       outcome: "non-result",
       kind: "provider",

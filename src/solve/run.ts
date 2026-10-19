@@ -31,7 +31,6 @@ import {
   type Api,
   type AssistantMessage,
   createInitialSystemMessage,
-  isContextOverflow,
   type Model,
   type Models,
   type ThinkingLevel,
@@ -45,7 +44,7 @@ import type { Limits } from "../kernel/condition.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { append } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
-import type { Ending } from "../kernel/solve.ts";
+import { type Ending, providerFailed, windowEnded } from "../kernel/solve.ts";
 import type { Task, Verifier } from "../kernel/verify.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { lstatSync, rmSync } from "../meta/filesystem.ts";
@@ -504,17 +503,16 @@ export async function judge(request: SolveRequest, id: string, played: Played): 
   // A last turn the provider failed is the provider's, though it was the last the solve was
   // allowed: until 14 October it was read as the solver's loss at its turns (`turns-ended`). A
   // context the solver filled is its own, and comes as an error too.
-  if (last?.stopReason === "error" && !isContextOverflow(last)) {
+  if (last !== undefined && providerFailed(last)) {
     return {
       outcome: "non-result",
       kind: "provider",
       reason: last.errorMessage ?? "the provider failed the turn",
     };
   }
+  // A full context or a cut reply is the window's, the last allowed turn included (`windowEnded`).
+  if (last !== undefined && windowEnded(last)) return { outcome: "fail", kind: "context-ended" };
   if (played.turnsEnded) return { outcome: "fail", kind: "turns-ended" };
-  if (last !== undefined && (last.stopReason === "length" || isContextOverflow(last))) {
-    return { outcome: "fail", kind: "context-ended" };
-  }
   return { outcome: "fail", kind: "no-answer" };
 }
 

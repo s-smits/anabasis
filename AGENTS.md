@@ -937,10 +937,16 @@ The next comparison or session is then refused, unless the operator gives a reas
 infeasible, unless a valid answer for it stands anywhere on record, a solve's, the one the
 host saw its author's answer pass on the task under its own id, before or after the proposal, or
 a stored pack's answer that passes today's checks at `prepare` (`task.feasible`, which stores
-no answer; an Examiner's answer stays in its trace, on the exam side), or a limit cut its solves (`poolOf`). Promotion is the operator's
-`promote.ts --yes`, which writes `harness.promoted`. A comparison that names no `--reference` is
-made against the harness last promoted, and one that names a digest is made against that harness
-and promotes nothing.
+no answer; an Examiner's answer stays in its trace, on the exam side), or its wall or its context
+cut its solves short (`poolOf`). A solve
+that used every model turn `--solve-model-turns` names is no cut, unless the window or the
+provider ended its last turn (`windowEnded`, `providerFailed`; a log of before 19 October, or
+of before 14 October for the provider, records such a solve `turns-ended`): the
+turns are the budget, and since 19 October such a comparison counts, as one with a wrong answer
+does; until then a task no solve answers within them stayed in the draw as a tie of two fails.
+Promotion is the operator's `promote.ts --yes`, which writes `harness.promoted`. A comparison
+that names no `--reference` is made against the harness last promoted, and one that names a
+digest is made against that harness and promotes nothing.
 
 **What follows a reading** is move 7's to say (`decide`, `src/builder/decide.ts`), and the view
 prints it as its last line. The table is ten rows, asked in order (`ROWS`); the first that names

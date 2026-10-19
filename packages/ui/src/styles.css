@@ -9,7 +9,8 @@
  * rule actually means:
  *
  *   display   — page titles. Electrolize: an instrument face, wide and even, at large sizes only.
- *   editorial — eyebrows and asides. Newsreader, italic, the one serif voice on the page.
+ *   editorial — eyebrows and asides. Newsreader, the one serif voice on the page: upright in the
+ *               eyebrow, a project's name, and italic in an aside.
  *   body      — everything a person reads in sentences. Manrope.
  *   technical — figures: metric values, counts, tallies. Space Grotesk with tabular figures, so
  *               columns of numbers line up. It is a sans, not a monospace, and is never used for
@@ -595,7 +596,6 @@ button.ana-hash.is-revealed {
   color: var(--ana-dim);
   font-family: var(--font-editorial);
   font-size: 17px;
-  font-style: italic;
   margin: 0;
 }
 

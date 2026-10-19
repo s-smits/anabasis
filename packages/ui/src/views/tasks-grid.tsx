@@ -12,8 +12,11 @@ import type { Share } from "../../../../src/builder/climb.ts";
  * of the Campaign pane's bars, and a cell what the comparison came to on the task with each side's
  * valid answers over its solves. A cell is tinted with its outcome's colour from `outcome.ts` and
  * says its outcome in a word, so that the grid reads without colour; one the comparison fixed and
- * left out of its tally says why, untinted, as no outcome; one it did not fix says it was not
- * scored. The first column and the head stay in place while the grid scrolls inside its card, so a
+ * left out of its tally says why, untinted, as no outcome; one it did not fix says why from the
+ * task's state: a practice task is never scored, a refused draft never entered the exam, and a held
+ * task the comparison did not draw was not scored. Until 19 October all three read "not scored", and
+ * esp32-fresh-opus's grid showed 153 of its 177 rows so, every one a refused draft or a practice
+ * task, while each of its 24 held tasks had been scored. The first column and the head stay in place while the grid scrolls inside its card, so a
  * campaign of twenty comparisons and sixty tasks stays readable.
  */
 
@@ -31,6 +34,11 @@ const EXHAUSTED_WORDS = new Map([
   ["no", "Not exhausted"],
 ]);
 const STATE_WORDS = new Map([["all", "Every state"]]);
+/** Why a task has no cell in a comparison, where its state says more than that it was not scored. */
+const UNSCORED_WORDS = new Map([
+  ["released", "practice"],
+  ["refused", "not in the exam"],
+]);
 /** A cell's word: the brief's won, lost, tied or set aside; the tint tells the three ties apart. */
 const CELL_WORDS = {
   won: "won",
@@ -73,11 +81,11 @@ function taskNote(row: TaskRow): string {
   ].join(" · ");
 }
 
-function Cell({ cell }: { cell: TaskCell | TaskLeftOut | null }) {
+function Cell({ cell, state }: { cell: TaskCell | TaskLeftOut | null; state: TaskRow["state"] }) {
   if (cell === null) {
     return (
       <td className="ana-grid-cell is-none" data-outcome="none">
-        <span>not scored</span>
+        <span>{UNSCORED_WORDS.get(state) ?? "not scored"}</span>
       </td>
     );
   }
@@ -211,7 +219,7 @@ export function TaskGridView({ grid, onOpen }: { grid: TaskGrid; onOpen: (versio
                     <small>{taskNote(row)}</small>
                   </th>
                   {row.cells.map((cell, at) => (
-                    <Cell key={grid.columns[at]?.id ?? String(at)} cell={cell} />
+                    <Cell key={grid.columns[at]?.id ?? String(at)} cell={cell} state={row.state} />
                   ))}
                 </tr>
               ))}

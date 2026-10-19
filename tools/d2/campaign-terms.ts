@@ -95,8 +95,9 @@ const OPTIONS = {
   "exam-proposals": { type: "string" },
   "exam-minutes": { type: "string" },
   "exam-turns": { type: "string" },
-  /** `on` lays a copy of the reference harness in each Examiner session's home (`writing`,
-   *  `src/examiner/write.ts`); `off`, the default, keeps the ruling of 12 October. */
+  /** `on`, the default since 19 October (`--reference-home`, `tools/d1b/examine.ts`), lays a copy
+   *  of the reference harness in each Examiner session's home (`writing`, `src/examiner/write.ts`);
+   *  `off` keeps the ruling of 12 October. Unnamed, nothing is passed and the default holds. */
   "exam-reference": { type: "string" },
   cost: { type: "string" },
   moves: { type: "string" },

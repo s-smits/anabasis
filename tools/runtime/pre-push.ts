@@ -15,8 +15,8 @@
  * with nothing else gets `git diff --check` over each of its commits and stops. Every other commit
  * gets the static steps and its nearby tests over its own checkout, and the lowest pushed head
  * holding the newest of them gets the whole gate instead, since that is the pull request the work is
- * in. A pass is remembered by commit id, so a push its lease refused goes out again without paying
- * twice. The whole gate runs over a checkout too, so the working tree may hold anything.
+ * in. A pass is remembered by its tree (`proveCommits`, `gate.ts`), so a push its lease refused or a
+ * restack that kept every tree goes out again without paying twice. The whole gate runs over a checkout too, so the working tree may hold anything.
  */
 import { runtimeProcess } from "../../src/meta/process.ts";
 import { decodeOutput, runSync } from "../../src/meta/subprocess.ts";

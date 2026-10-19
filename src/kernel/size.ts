@@ -42,8 +42,8 @@ interface Asked {
 
 /** A comparison's size where nothing names another: the scored tasks and the solves a side. */
 export const SIZE = { tasks: 24, solves: 4 } as const;
-/** The chance of a false promotion over a campaign's attempts under one reference, by the union
- *  bound, past which its opening is refused (`opening`; 12 October). */
+/** The chance of a false promotion over a campaign's attempts under one reference, the rule's rate
+ *  summed over them, past which its opening is refused (`opening`; 12 October). */
 const FALSE_CAP = 0.1;
 /** How many of the smallest clearing results a line names. */
 const NAMED = 3;
@@ -66,7 +66,9 @@ function clearing(tasks: number, level: number): Result[] {
 }
 
 /** The chance of a false promotion over the patience's attempts on `tasks` tasks under one
- *  reference, by the union bound, which assumes nothing of their independence. */
+ *  reference: the rule's rate summed over them, the union bound's form, which assumes nothing of
+ *  their independence. The rate is the design's estimate (`falseRate`), so the sum is an estimate
+ *  and no bound. */
 function risked(tasks: number, { level, trigger, patience }: Asked): number {
   return Math.min(1, patience * falseRate(units(tasks, 0), level, trigger));
 }
@@ -75,7 +77,7 @@ function risked(tasks: number, { level, trigger, patience }: Asked): number {
  * What a comparison of `tasks` scored tasks can show and risks, in lines for a launch's notes and
  * `prepare.ts`'s output: the smallest results that buy the repeat and that promote, the least
  * share of the tasks won that one reading detects four times in five, were none to tie, the
- * rule's rate an attempt, and last its bound over the patience (`risked`). A campaign whose
+ * rule's rate an attempt, and last its sum over the patience (`risked`). A campaign whose
  * comparisons buy repeats makes more attempts than its patience, which the climb reads as they
  * come (`climb.ts`, `falsePromotion`).
  */
@@ -83,11 +85,11 @@ export function sizeLines(tasks: number, asked: Asked): string[] {
   const { level, trigger, patience } = asked;
   const first = clearing(tasks, trigger);
   const scored = `${tasks === 0 ? "no held-out task" : plural(tasks, "held-out task")} can be scored`;
-  const bound = `over the patience's ${plural(patience, "attempt")} under one reference a false promotion comes at most ${percent(risked(tasks, asked))} of the time`;
+  const summed = `over the patience's ${plural(patience, "attempt")} under one reference a false promotion comes about ${percent(risked(tasks, asked))} of the time by the rule's design`;
   if (first.length === 0) {
     return [
       `${scored}, and at --trigger ${String(trigger)} a first reading takes ${String(sweepOf(trigger))}, all won: this comparison cannot buy a repeat`,
-      bound,
+      summed,
     ];
   }
   const said = (results: readonly Result[]) =>
@@ -106,13 +108,13 @@ export function sizeLines(tasks: number, asked: Asked): string[] {
       ? `were no task to tie, one reading at --level ${String(level)} would detect no share of ${plural(tasks, "task")}: it takes ${String(sweepOf(level))}, all won`
       : `were no task to tie, one reading at --level ${String(level)} would detect four times in five a harness that wins ${String(Math.round(100 * share))}% of the tasks, and fewer untied tasks need a larger share`,
     `an attempt, a step and its repeat on as many tasks, promotes between equal harnesses ${percent(rate)} of the time where no task ties: the level is one reading's, and this the rule's`,
-    bound,
+    summed,
   ];
 }
 
 /**
  * What a campaign that scores `target` tasks says at its opening: what a comparison of so many
- * says (`sizeLines`). An opening whose bound passes `FALSE_CAP` is refused, with the patience and
+ * says (`sizeLines`). An opening whose sum passes `FALSE_CAP` is refused, with the patience and
  * the level that hold it; the campaign command only calls this.
  */
 export function openingLines(wanted: Asked & { readonly target: number }): string[] {

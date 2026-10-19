@@ -1,10 +1,11 @@
-// The three scripts the operator's skills share: the stack as its edges, the source a campaign's
-// launches ran, and the closing of an Oracle bundle.
+// The scripts the operator's skills share: the stack as its edges and the move to its top, the
+// source a campaign's launches ran, the closing of an Oracle bundle, and the reading of a live seat.
 import { afterAll, describe, expect, it } from "bun:test";
 import { CommandFailure } from "#skills/main/cli.ts";
 import { gitText } from "#src/meta/git.ts";
 import { bundle } from "#skills/oracle-handover/scripts/bundle.ts";
 import { follow, type NativeStack, nativeTop } from "#skills/stack-pr/scripts/follow.ts";
+import { readingOf, told as seatTold } from "#skills/system-path-simulation/scripts/live-seat.ts";
 import { chain, told as stackTold } from "#skills/stack-pr/scripts/stack.ts";
 import type { Pull } from "#tools/runtime/land.ts";
 import {
@@ -18,7 +19,10 @@ import {
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
+import { decodeOutput, runSync, runTextSyncOrThrow } from "../src/meta/subprocess.ts";
+import { read } from "../src/kernel/log.ts";
+import type { JsonObject } from "../src/meta/json-shape.ts";
+import { capturedExecPath } from "../src/meta/process.ts";
 import { receipts, sources } from "../tools/runs/receipt.ts";
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-skill-scripts-")));
@@ -212,5 +216,89 @@ describe("an Oracle bundle", () => {
     const big = made("oracle-d", { "REVIEW.md": "# Review\n" });
     expect(() => bundle(big, 10)).toThrow("over its");
     expect(existsSync(`${big}.zip`)).toBe(false);
+  });
+});
+
+describe("a live seat's reading", () => {
+  const log = join(root, "seat", "log.jsonl");
+  const at = (minute: number) => `2026-10-19T00:${String(minute).padStart(2, "0")}:00.000Z`;
+  const line = (minute: number, kind: string, data: JsonObject) =>
+    JSON.stringify({ at: at(minute), kind, data });
+  const gate = (outcome: string, reference: JsonObject | null, extra: JsonObject = {}) =>
+    line(5, "task.gate", {
+      version: "v",
+      gate: 1,
+      outcome,
+      reason: "r",
+      ...(reference && { reference }),
+      ...extra,
+    });
+  mkdirSync(join(root, "seat"), { recursive: true });
+  writeFileSync(
+    log,
+    `${[
+      line(0, "exam.started", { session: "x-1" }),
+      line(1, "task.gate", {
+        version: "v0",
+        gate: 1,
+        outcome: "refused",
+        reason: "r",
+        reference: { valid: 3, solves: 3 },
+      }),
+      line(2, "exam.finished", { session: "x-1", ended: "finished", billed: 5 }),
+      line(3, "exam.started", { session: "x-2" }),
+      line(4, "task.proposed", { session: "x-2" }),
+      line(4, "task.proposed", { session: "x-2" }),
+      gate("refused", { valid: 3, solves: 3 }),
+      gate("refused", { valid: 1, solves: 3 }),
+      gate("passed", { valid: 2, solves: 3 }),
+      gate("passed", { valid: 0, solves: 3 }, { proved: true }),
+      gate("refused", null),
+      gate("refused", { valid: 0, solves: 1 }),
+      line(6, "exam.call", {
+        session: "x-2",
+        tool: "bash",
+        args: { command: "cat reference-harness/agent/BUILT_AGENTS.md" },
+      }),
+      line(6, "exam.call", { session: "x-2", tool: "try_task", args: { task: {} } }),
+      line(9, "exam.finished", { session: "x-2", ended: "finished", billed: 2.5 }),
+    ].join("\n")}\n`,
+  );
+
+  it("reads only the stretch from where the seat began, each gate by what the reference's solves did", () => {
+    const reading = readingOf(read(log), 3, ["reference-harness"]);
+    expect(reading.billed).toBeCloseTo(2.5, 6);
+    expect(reading.minutes).toBe(6);
+    expect(reading.sessions).toStrictEqual(["x-2"]);
+    expect(reading.ended).toStrictEqual(["finished"]);
+    expect(reading.proposed).toBe(2);
+    expect(reading.gates).toStrictEqual({ every: 1, some: 2, "none, proved": 1, package: 1, unread: 1 });
+    expect(reading.held).toBe(2);
+    expect(reading.calls).toStrictEqual({ bash: 1, try_task: 1 });
+    expect(reading.mentions).toStrictEqual({ "reference-harness": 1 });
+    expect(reading.turns).toBeNull();
+    expect(seatTold(reading)[2]).toContain("held 2");
+  });
+
+  it("starts no seat on a campaign that is no seed", () => {
+    const folder = join(root, "tree", ".ana", "d2", "sim-plain");
+    mkdirSync(folder, { recursive: true });
+    const script = join(import.meta.dir, "..", ".claude/skills/system-path-simulation/scripts/live-seat.ts");
+    const flags = [
+      "--tree",
+      join(root, "tree"),
+      "--out",
+      join(root, "seat-out"),
+      "--cap",
+      "1",
+      "--minutes",
+      "1",
+    ];
+    for (const name of ["sim-plain", "buffer"]) {
+      const result = runSync([capturedExecPath, script, "start", ...flags, "--name", name, "--", "x.ts"]);
+      expect(result.exitCode).not.toBe(0);
+      expect(decodeOutput(result.stderr)).toContain("is no seed");
+    }
+    expect(existsSync(join(root, "seat-out.json"))).toBe(false);
   });
 });

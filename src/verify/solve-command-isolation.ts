@@ -15,7 +15,8 @@
 import { existsSync, readdirSync, realpathSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { tmpdir } from "../meta/os.ts";
 import { containsPath } from "../meta/path-containment.ts";
-import { basename, join, resolve } from "../meta/path.ts";
+import { basename, dirname, join, resolve } from "../meta/path.ts";
+import { capturedExecPath } from "../meta/process.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import {
@@ -26,7 +27,6 @@ import {
   bwrapReadonlyRemounts,
   bwrapTmpfsDenies,
   bwrapWriteBinds,
-  nodeRuntimeBinDirs,
   nodeRuntimeReadRoots,
 } from "./linux-bwrap.ts";
 import type { EnvValues } from "../backends/scrub-env.ts";
@@ -43,7 +43,6 @@ import {
   hostRoots,
   userTempRules,
 } from "./wall-policy.ts";
-import { runtimeProcess } from "../meta/process.ts";
 
 /**
  * The whole environment a command receives, built from fixed settings, scratch paths and the host
@@ -163,11 +162,21 @@ export function toolTreeSearchDirs(toolTree: string): string[] {
  * same path because a script whose shebang is `#!/usr/bin/env python3` resolves its interpreter at
  * run time rather than at install time: wheels installed under the shell's `python3` fail
  * wholesale in a cell that inherited the launcher's PATH and found a different version first.
+ *
+ * Next comes the folder that holds the executable the host runs on, its real path, so that a
+ * command's `bun` is that executable wherever it is installed. Until 19 October only Linux put a
+ * runtime folder there, taken from the read grants, which leave out a prefix under `/usr` or `/opt`;
+ * on a macOS runner whose `/opt/homebrew/bin` held Bun 1.1.34 a command's `bun` was that one, and
+ * started in the seat it read no environment: no `TMPDIR`, `/tmp` refused, and no `bun` on its
+ * PATH. `executable` and `fallback` are the host's own but where a test names others.
  */
-function commandSearchPath(toolTree: string | null): string {
-  const runtime = runtimeProcess.platform === "linux" ? nodeRuntimeBinDirs() : [];
+export function commandSearchPath(
+  toolTree: string | null,
+  executable: string = capturedExecPath,
+  fallback: readonly string[] = toolchainPathDirs(),
+): string {
   const own = toolTree === null ? [] : toolTreeSearchDirs(toolTree);
-  return [...new Set([...own, ...runtime, ...toolchainPathDirs()])].join(":");
+  return [...new Set([...own, dirname(realpathSync.native(executable)), ...fallback])].join(":");
 }
 
 function commandIsolationEnvironment(dirs: CommandDirectories): CommandIsolationEnvironment {

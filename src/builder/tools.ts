@@ -47,7 +47,7 @@ import { type LogEvent, read } from "../kernel/log.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { limitsIn } from "../kernel/condition.ts";
 import type { Contract } from "../kernel/contract.ts";
-import { billedAll, billedFor } from "../kernel/reports.ts";
+import { billedAll, billedParts } from "../kernel/reports.ts";
 import { ended, passed, practiceRan, solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import {
@@ -386,8 +386,8 @@ async function practise(bench: Bench, task: PracticeTask, kept: Snapshot, kill: 
 /**
  * The practice solves a session may still start: what is left of its own count, and no more than
  * its dollar cap holds a reserve for, where it runs under one (`BuildRequest.cap`). The dollars are
- * the log's, as a comparison's are (`billedFor`): the practice solves this session ran and their
- * Referee, and its own live turns. In a live campaign, the current total includes every seat
+ * the log's, the session's own part (`billedParts`): the practice solves this session ran and their
+ * Referee, and its own live turns, and not what a comparison under the same id billed. In a live campaign, the current total includes every seat
  * and any budget change the operator left. The Builder is told a count and never a sum.
  */
 export function practiceLeft({ request, spent }: Bench, events: readonly LogEvent[]): number {
@@ -396,7 +396,7 @@ export function practiceLeft({ request, spent }: Bench, events: readonly LogEven
   const { limits } = request;
   const counted = limits.practiceSolves - spent;
   if (cap === undefined) return counted;
-  const billed = campaign == null ? billedFor(events, request.id) : billedAll(events);
+  const billed = campaign == null ? billedParts(events, request.id).session : billedAll(events);
   const afforded = Math.floor((cap.dollars - billed) / cap.reserve);
   return Math.max(0, Math.min(counted, afforded));
 }

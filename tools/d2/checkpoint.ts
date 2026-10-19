@@ -130,7 +130,7 @@ export async function checkpointCommand(
     solves: Number(values.solves),
     level: Number(values.level),
     trigger: Number(values.trigger),
-    objective: objectiveNamed(campaign, values.margin, id),
+    objective: objectiveNamed(campaign, values.margin),
     defects: Number(values.defects),
     cap,
     prediction: predictionNamed(values.predict),

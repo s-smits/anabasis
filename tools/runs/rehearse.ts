@@ -20,6 +20,11 @@
  * wrote tasks for one epoch, and a rehearsal with `--held none:pass --starter pass --supply 30`
  * goes round the table again, from the promoted harness through other tasks, the control, a
  * session and a step read twice, until the supply is spent (11 October).
+ * Since 18 October 2026 the same scripted solver stands at the admission gate: esp32-fresh-opus
+ * refused 45 of 50 drafts after promotion, while five rehearsals saw no reference solve there.
+ * A gate's three solves of a draft end as the reference's do (`--held`'s old), after a promotion
+ * too: `pass` refuses every draft, and `none` holds one on its recorded answer, tried through
+ * try_answer.
  * Everything under the seats is a paid round's: the campaign's log and sets, the Builder's tools on
  * the command wall and its freeze, each solve's wall and disk cap, the answer file and `submit`,
  * the verifier, the comparison and the report. It is `roundCommand` with other
@@ -37,8 +42,7 @@
  * held-out task ends under the two harnesses of the comparison, the reference harness and the new
  * one, as `old:new`. The reference harness is the starter unless `--reference` names another. For
  * a round the defaults, `none:pass`, script a step. `--starter` says how a solve ends under the
- * starter where it is neither of the two: after a promotion it is solved only when the comparison
- * reads a step, to hold the step to it.
+ * starter where it is neither of the two.
  *
  * No reviewer reads a rehearsal, so a scripted `fail` is a rejection nobody ruled on: it sets its
  * task aside, as a paid comparison's would with no reviewer, the report's `counted` holds the
@@ -259,7 +263,12 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
       setting: campaign.setting({ ...campaign.test, ...scripted([], 0) }),
       solve: async (task, harness, kill, comparison) => {
         const side = await sideOf(harness.dir);
-        const wanted = { old: script.held.old, new: script.held.fresh, starter: script.starter }[side];
+        const admission = read(campaign.log).some(
+          ({ kind, data }) => kind === "exam.started" && data.session === comparison,
+        );
+        const wanted = admission
+          ? script.held.old
+          : { old: script.held.old, new: script.held.fresh, starter: script.starter }[side];
         // A solve scripted to give no answer submits with none written, and needs none on record.
         // One scripted to answer a task with no answer on record gives none and is named at the
         // end as strayed: until 10 October it ended the campaign, and a rehearsal of the control
@@ -363,7 +372,13 @@ function draftedSource(name: string): DraftedSource {
  * none left proposes copies of the source's answered tasks while `--supply` lasts, and then
  * finishes with none, which the campaign reads as a session that held out no task.
  */
-function scriptedExaminer(later: Task[], answered: readonly Task[], supply: number): Session<"write"> {
+export function scriptedExaminer(
+  later: Task[],
+  answered: readonly Task[],
+  supply: number,
+  graded: readonly Control[],
+): Session<"write"> {
+  const answers = answersOf(graded, []);
   let copies = 0;
   return (request) => {
     const own = later.splice(0, request.wanted);
@@ -383,7 +398,18 @@ function scriptedExaminer(later: Task[], answered: readonly Task[], supply: numb
       hidden: hidden ?? null,
     }));
     const calls: (readonly [string, JsonObject])[] = [
-      ...(batch.length === 0 ? [] : [["propose_tasks", { tasks: batch }] as const]),
+      ...[...own, ...copied].flatMap((task, index): (readonly [string, JsonObject])[] => {
+        const source = asRecord(asRecord(task.publicInput)?.[COPY])?.of;
+        const answer =
+          answers.get(contentOf(task))?.pass ?? (isString(source) ? answers.get(source)?.pass : undefined);
+        const instance = batch[index];
+        return instance === undefined || answer === undefined
+          ? []
+          : [["try_answer", { ...instance, answer }]];
+      }),
+      ...(batch.length === 0
+        ? []
+        : [[request.probe === null ? "propose_tasks" : "try_task", { tasks: batch }] as const]),
       // Twice: a first finish while the host has not the tasks it needs is declined once.
       ...Array.from(
         { length: 2 },
@@ -456,13 +482,14 @@ export async function rehearse(args: readonly string[]): Promise<void> {
     if (values.campaign === true) {
       await harnessBuilder(flags, {
         seated: seats,
+        probe: seats,
         // The opening a seed copied names its source's reviewer, a live model.
         unreviewed: true,
         ...keyIfDefined(
           "examine",
           drafted === null
             ? undefined
-            : scriptedExaminer(drafted.later, drafted.answered, Number(values.supply)),
+            : scriptedExaminer(drafted.later, drafted.answered, Number(values.supply), graded),
         ),
       });
     } else if (isString(values.id)) await checkpointCommand(flags, seats);

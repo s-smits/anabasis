@@ -1,6 +1,7 @@
 // One round on stand-ins: the real session on the faux provider with a host write for the walled
 // one, and solves that end as a table says. What is under test is the order of a round, which
 // solves it counts and which it makes, what it leaves out of a comparison, its cap, and its reading.
+// A lone retained loss no longer regresses: buffer-pr197-opus-m1, 18 October 2026.
 import { afterAll, describe, expect, it } from "bun:test";
 import {
   createModels,
@@ -10,7 +11,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { marginRead, passesIn, predicted, swapped, toLabel } from "../src/builder/comparison.ts";
+import { passesIn, predicted, swapped, toLabel } from "../src/builder/comparison.ts";
 import {
   type CheckpointRequest,
   checkpoint,
@@ -1415,7 +1416,7 @@ describe("a checkpoint with no session", () => {
     expect((await checkpoint(s.compare("g3"))).noise).toBeNull();
   });
 
-  it("reads no step on either tier where the reference meets itself, and sets the next comparison's margin from its own spread", async () => {
+  it("reads no step on either tier where the reference meets itself, and sets no margin for the next comparison", async () => {
     // The A/A rehearsal of the overhaul plan's P2: every solve of the reference is valid, and its
     // objective 10 or 10.4 by turns, which halves mirrored in time hold one of each on every task.
     const s = await setup([], (_version, side, nth) =>
@@ -1426,16 +1427,12 @@ describe("a checkpoint with no session", () => {
     // The objective tells its answers apart past the margin, pairing by pairing, and decides no
     // task: on validity and on the objective alike, the reference ties itself.
     expect(report.noise).toMatchObject({ wins: 0, losses: 0, ties: 4, p: 1, flips: 0 });
-    // The 90th percentile of its own sixteen spreads, half of them none and half 0.4 in 10.4.
-    const own = { margin: 0.4 / 10.4, pairings: 16 };
-    expect(report.noise?.margin?.pairings).toBe(own.pairings);
-    expect(report.noise?.margin?.margin).toBeCloseTo(own.margin, 12);
-    // The next comparison reads by it from the log; this one, begun before its A/A reported, by none.
-    expect(marginRead(read(s.log), "g3")).toEqual(report.noise?.margin ?? null);
-    expect(marginRead(read(s.log), "g2")).toBeNull();
+    // Until 18 October the A/A set the next comparison's margin from this spread, 0.4 in 10.4;
+    // the margin is now the gate's for every comparison, and the report carries none.
+    expect(report.noise).not.toHaveProperty("margin");
   });
 
-  it("reads a step on the frontier that loses a retained task as regressed, on sets fixed before its first solve", async () => {
+  it("reads a step on the frontier despite one unsupported retained loss, on sets fixed before its first solve", async () => {
     // The reference answers s1 in every solve and nothing else; the starter breaks s1 and answers
     // the four tasks held out below.
     const s = await setup([], (version, side) => ((version === "s1") === (side === "old") ? PASS : LATE));
@@ -1464,7 +1461,7 @@ describe("a checkpoint with no session", () => {
       retained: { tasks: ["s1"], aside: [], wins: 0, losses: 1, ties: 0, differences: [-4] },
       // The comparison before it of the same two harnesses scored s1 as well.
       overlap: { with: "g2", tasks: ["s1"] },
-      reading: "regressed",
+      reading: "step",
     });
   });
 

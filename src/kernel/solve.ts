@@ -31,6 +31,9 @@
  * solver chose it. Added on 12 October (the overhaul plan's M3, research 06): offered such an
  * outcome, solvers that cheated on impossible tasks in 54% of them did so in 9% (ImpossibleBench).
  */
+import { type AssistantMessage, isContextOverflow } from "@earendil-works/pi-ai";
+import { isString, type JsonValue } from "../meta/json-shape.ts";
+
 export type Ending =
   | { readonly outcome: "pass" }
   | {
@@ -44,3 +47,38 @@ export type Ending =
       readonly kind: "provider" | "sandbox-crash" | "killed" | "moved-files" | "check" | "verifier";
       readonly reason: string;
     };
+
+/** A solve's last turn, as the agent holds it or as its `solve.turn` event records it. */
+interface LastTurn {
+  readonly stopReason?: JsonValue | undefined;
+  readonly errorMessage?: JsonValue | undefined;
+}
+
+/**
+ * Whether the model's window ended a solve's last turn: a reply cut at its length, or a context
+ * that outgrew the model, which the provider reports as an error. The one reading of it: `judge`
+ * (`src/solve/run.ts`) asks it of the last turn it holds, and the pool (`taskRecords`,
+ * `src/kernel/reports.ts`) of the last `solve.turn` the log records, its `stopReason` and its
+ * `error`. A solve the window ended is cut, whatever its turns: the solver is told its turns and
+ * never its window. Until 19 October `judge` read spent turns first and wrote `turns-ended` for a
+ * window filled on the last allowed turn, so a log of before holds such solves, and the pool reads
+ * them by their last turn as it reads the ones written since.
+ */
+export function windowEnded(last: LastTurn): boolean {
+  const { stopReason, errorMessage } = last;
+  if (stopReason === "length") return true;
+  if (stopReason !== "error" || !isString(errorMessage)) return false;
+  // SAFETY: without a context window pi reads a message's stop reason, its error and its provider
+  // alone (`isContextOverflow`, pi-ai's utils/overflow.ts); a missing provider matches no pattern.
+  return isContextOverflow({ stopReason, errorMessage } as AssistantMessage);
+}
+
+/**
+ * Whether the provider failed a solve's last turn: an error that is not the window's. `judge` ends
+ * such a solve a non-result (`provider`), and the pool reads one a log holds as `turns-ended` as a
+ * cut: until 14 October `judge` wrote `turns-ended` for a provider failure on the last allowed
+ * turn (`src/solve/run.ts`), and a log of before must read as it did.
+ */
+export function providerFailed(last: LastTurn): boolean {
+  return last.stopReason === "error" && !windowEnded(last);
+}

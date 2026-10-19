@@ -29,6 +29,9 @@ import { mountDiskCap } from "../src/verify/disk-cap.ts";
 import { toolchainTemp } from "./helpers/toolchain-temp.ts";
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
 import { hostScratch } from "../src/verify/wall-policy.ts";
+import { commandSearchPath } from "../src/verify/solve-command-isolation.ts";
+import { osIsolationSupport } from "../src/verify/os-isolation.ts";
+import { CLOSED } from "./helpers/wall.ts";
 
 const CAP_BYTES = 16 * 1024 * 1024;
 
@@ -94,6 +97,21 @@ describe("how long a command may run", () => {
   });
 });
 
+/** A shell loop that counts into `$HOME/<name>` twenty times a second, for as long as it runs. */
+const beating = (name: string) =>
+  `sh -c 'i=0; while :; do i=$((i+1)); echo $i > "$HOME/${name}"; sleep 0.05; done'`;
+
+/** Whether the loop `beating` started still runs, read from the host: its count moves. A pid is no
+ *  witness here, since Bubblewrap numbers a command's processes in a namespace of their own, and the
+ *  pid a command prints names another process on the host or none (18 October). */
+async function stillBeats(beat: string): Promise<boolean> {
+  const count = () => (existsSync(beat) ? readFileSync(beat, "utf8") : "");
+  await Bun.sleep(100);
+  const before = count();
+  await Bun.sleep(400);
+  return count() !== before;
+}
+
 describe("a solve's walled commands", () => {
   it.skipIf(runtimeProcess.platform !== "darwin")(
     "still start on a volume a solver has filled, so that it can empty it",
@@ -125,7 +143,7 @@ describe("a solve's walled commands", () => {
     60_000,
   );
 
-  it.skipIf(runtimeProcess.platform !== "darwin")(
+  it.skipIf(!osIsolationSupport().ok)(
     "keep the home, drop each command's folder, and read neither the host folder, the repository nor a reader's home",
     async () => {
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-repo-")));
@@ -163,22 +181,20 @@ describe("a solve's walled commands", () => {
         const repo = await run(wall, `cat ${JSON.stringify(join(repoRoot, "secret"))} 2>&1; true`);
         expect(repo.output).not.toContain("repo-canary");
         const read = await run(wall, `cat ${JSON.stringify(join(reader, "session"))} 2>&1; true`);
-        expect(read.output).toContain("Operation not permitted");
+        expect(read.output).toContain(CLOSED);
 
         // A command that backgrounds work and returns has left nothing running. The shell around the
         // wall leads the command's group, not the shell that reaps it: read by its own pid, the group
         // was empty and a solver's loop ran on for over 20 minutes after its command (2026-10-09).
-        const left = await run(wall, "nohup sleep 30 >/dev/null 2>&1 & echo $!");
+        const left = await run(wall, `nohup ${beating("left")} >/dev/null 2>&1 &`);
         expect(left.exitCode).toBe(0);
-        await Bun.sleep(100);
-        expect(() => runtimeProcess.kill(Number(left.output), 0)).toThrow("ESRCH");
+        expect(await stillBeats(join(dirs.home, "left"))).toBe(false);
         // The leader was spared: the command's exit code reported after the reaping.
         // A job in a process group of its own is out of that trap's reach once the shell that started
         // it has gone, and GNU `timeout` makes one: a solver's three searches under it ran on after
         // their command returned (2026-10-09). It still works on the solve's volume.
-        const apart = await run(wall, "set -m; sleep 30 >/dev/null 2>&1 & echo $!");
-        await Bun.sleep(100);
-        expect(() => runtimeProcess.kill(Number(apart.output), 0)).toThrow("ESRCH");
+        await run(wall, `set -m; ${beating("apart")} >/dev/null 2>&1 &`);
+        expect(await stillBeats(join(dirs.home, "apart"))).toBe(false);
 
         // Every command is held to the condition's shell limits here, whoever launched it: one that
         // names no timeout runs for the default, and one that names too long a timeout for the maximum.
@@ -187,13 +203,8 @@ describe("a solve's walled commands", () => {
         // A command the wall cuts is killed by its group and never runs its trap, so a child in a
         // group of its own outlived that too: five of the nine commands one run's wall cut sat under
         // an inner `timeout` (2026-10-09).
-        await expect(run(wall, 'set -m; sleep 30 & echo $! > "$HOME/cut"; wait')).rejects.toThrow(
-          "timeout:1",
-        );
-        await Bun.sleep(100);
-        expect(() => runtimeProcess.kill(Number(readFileSync(join(dirs.home, "cut"), "utf8")), 0)).toThrow(
-          "ESRCH",
-        );
+        await expect(run(wall, `set -m; ${beating("cut")} & wait`)).rejects.toThrow("timeout:1");
+        expect(await stillBeats(join(dirs.home, "cut"))).toBe(false);
       } finally {
         await release();
         rmSync(dirs.host, { recursive: true, force: true });
@@ -377,7 +388,7 @@ describe("a solve's walled commands", () => {
     60_000,
   );
 
-  it.skipIf(runtimeProcess.platform !== "darwin")(
+  it.skipIf(!osIsolationSupport().ok)(
     "keep what Python and make write as temporary in the seat's own folder, on its volume",
     async () => {
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-temp-")));
@@ -411,4 +422,92 @@ describe("a solve's walled commands", () => {
     },
     60_000,
   );
+
+  it.skipIf(!osIsolationSupport().ok)(
+    "give the seat's TMPDIR to every Bun a command starts, by script, by -e, from a shell and from another Bun, and let each write there",
+    async () => {
+      const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-bun-temp-")));
+      const dirs = solveDirs(`bun-temp-${String(runtimeProcess.pid)}-${String(Date.now())}`);
+      const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
+      try {
+        makeSeatDirs(dirs);
+        const base = solveIsolationPolicy({ repoRoot });
+        if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
+        const wall = walled(base, dirs);
+        const own = join(basename(dirs.root), "tmp");
+        // A lead from the truss campaign's whole-run reading (12 October): a Bun child of a solver's
+        // command might not see the seat's TMPDIR, fall back to a temporary folder the wall closes,
+        // and end a solve on the environment's fault. Each Bun below says what TMPDIR and
+        // `os.tmpdir()` name and makes a folder there as a tool would. On a macOS runner whose
+        // `/opt/homebrew/bin` held Bun 1.1.34 the command's `bun` was that one until 19 October, and
+        // started in the seat it read no environment: `/tmp`, refused, and no `bun` on its PATH.
+        const probe = String.raw`const os = require("os"); const fs = require("fs"); const path = require("path");
+const made = fs.mkdtempSync(path.join(os.tmpdir(), "p-")); fs.writeFileSync(path.join(made, "f"), "x");
+console.log(JSON.stringify({ probe: process.argv.at(-1), said: process.env.TMPDIR, taken: os.tmpdir(), made }));`;
+        // One JSON value a row, so a path with a space in it reads whole; any other line is an error.
+        const probed = (output: string) =>
+          output
+            .split("\n")
+            .filter((row) => row.startsWith('{"probe":'))
+            .map(
+              (row) =>
+                /* SAFETY: the filter keeps only the rows the probe printed, each one object of four strings. */ JSON.parse(
+                  row,
+                ) as { probe: string; said: string; taken: string; made: string },
+            );
+        const written = await run(
+          wall,
+          [
+            `cat > probe.js <<'EOF'\n${probe}\nEOF`,
+            "bun probe.js script",
+            `bun -e "$(cat probe.js)" eval`,
+            "sh -c 'bun probe.js shell'",
+            `bun -e 'console.log(Bun.spawnSync(["bun", "probe.js", "spawned"]).stdout.toString().trim()); console.log(require("child_process").execFileSync("bun", ["probe.js", "exec"]).toString().trim())'`,
+          ].join("\n"),
+        );
+        const rows = probed(written.output);
+        expect(rows.map((row) => row.probe)).toEqual(["script", "eval", "shell", "spawned", "exec"]);
+        for (const { said, taken, made } of rows) {
+          expect(said).toContain(own);
+          expect(taken).toContain(own);
+          expect(made).toContain(own);
+          expect(readFileSync(join(made, "f"), "utf8")).toBe("x");
+        }
+        // The `bun` a command names is the executable the host runs on.
+        const named = (await run(wall, "command -v bun")).output.trim();
+        expect(realpathSync.native(named)).toBe(realpathSync.native(runtimeProcess.execPath));
+      } finally {
+        await release();
+        rmSync(dirs.host, { recursive: true, force: true });
+        rmSync(repoRoot, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+});
+
+describe("the search path a walled command is given", () => {
+  it("names the executable the host runs on before any other bun the host's fixed list holds", () => {
+    // Until 19 October the runtime's folder came from the read grants, which leave out a prefix
+    // under /usr or /opt, so a host Bun there lost to an older one earlier on the fixed list.
+    const scratch = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-search-")));
+    try {
+      const stub = (folder: string) => {
+        mkdirSync(join(scratch, folder), { recursive: true });
+        writeFileSync(join(scratch, folder, "bun"), "#!/bin/sh\necho stub\n", { mode: 0o755 });
+        return join(scratch, folder, "bun");
+      };
+      const older = dirname(stub("older"));
+      const runtime = stub("runtime");
+      const PATH = commandSearchPath(null, runtime, [older, "/usr/bin", "/bin"]);
+      expect(realpathSync.native(Bun.which("bun", { PATH }) ?? "")).toBe(runtime);
+      // A tool tree's own bun still goes first.
+      const treeBun = stub("tree/bin");
+      expect(Bun.which("bun", { PATH: commandSearchPath(join(scratch, "tree"), runtime, [older]) })).toBe(
+        treeBun,
+      );
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  });
 });

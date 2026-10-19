@@ -230,7 +230,15 @@ describe("bun run land", () => {
     expect(result.status).toBe(1);
     expect(gatesRun(gateLog).toSorted()).toEqual([`${lower} -`, `${lowerMore} -`].toSorted());
     expect(result.stderr).toContain(`git commit --fixup=${short(lowerMore)}`);
-    expect(readFileSync(join(work, ".git", "ana-gate-passed"), "utf8")).toBe(`${lower} static\n`);
+    const tree = (at: string): string => git("rev-parse", `${at}^{tree}`);
+    const [recorded, ...more] = readFileSync(join(work, ".git", "ana-gate-passed"), "utf8").split("\n");
+    expect(more).toEqual([""]);
+    expect(recorded?.split(" ").toSpliced(3, 1)).toEqual([
+      "tree",
+      `${tree(`${lower}^`)}..${tree(lower)}`,
+      "static",
+      `bun-${Bun.version}`,
+    ]);
   });
 
   it("refuses a head that does not contain the pull request beneath it", () => {

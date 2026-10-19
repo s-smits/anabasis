@@ -59,6 +59,9 @@ export interface Wall extends Walled {
    *  session's home was copied to whole, and the next one's is seeded from. Absent, nothing is
    *  carried, as a test may want. */
   readonly keep?: string | undefined;
+  /** The reference harness's kept directory, laid in a task-writing session's home as
+   *  `reference-harness/` where the campaign's term `exam-reference` is on (`writing`). */
+  readonly reference?: string | undefined;
 }
 
 /** A mounted wall as its session is handed it: the shell, the engines installed in it, and when

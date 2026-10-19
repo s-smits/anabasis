@@ -28,6 +28,8 @@ import { recordedSetting, SETTING_OPTIONS } from "./setting.ts";
 /** Who sits in a campaign's model seats: a session's and a comparison's, and an Examiner's. */
 export interface Seats {
   readonly seated: Seated;
+  /** An explicitly seated admission solver beside a scripted Examiner. */
+  readonly probe?: Seated;
   /** An Examiner session: `examine`, unless a rehearsal's script stands in for it. */
   readonly examine?: Session<"write"> | undefined;
   /** The session that drafts the exam of a campaign opened from a prompt: `examine`, or a script. */
@@ -93,6 +95,10 @@ const OPTIONS = {
   "exam-proposals": { type: "string" },
   "exam-minutes": { type: "string" },
   "exam-turns": { type: "string" },
+  /** `on`, the default since 19 October (`--reference-home`, `tools/d1b/examine.ts`), lays a copy
+   *  of the reference harness in each Examiner session's home (`writing`, `src/examiner/write.ts`);
+   *  `off` keeps the ruling of 12 October. Unnamed, nothing is passed and the default holds. */
+  "exam-reference": { type: "string" },
   cost: { type: "string" },
   moves: { type: "string" },
   handover: { type: "string" },
@@ -338,12 +344,7 @@ function termsOf(events: readonly LogEvent[], id: string): string[] {
     ...flag("level", isNumber(start.level) ? String(start.level) : undefined),
     ...flag("cap", isNumber(cap?.dollars) ? String(cap.dollars) : undefined),
     ...flag("reserve", isNumber(cap?.reserve) ? String(cap.reserve) : undefined),
-    // A margin the A/A set, or the default before one, is read again from the log as it stood at
-    // the start (`marginRead`): only a margin a command named is named again.
-    ...flag(
-      "margin",
-      isNumber(objective?.margin) && !("from" in objective) ? String(objective.margin) : undefined,
-    ),
+    ...flag("margin", isNumber(objective?.margin) ? String(objective.margin) : undefined),
     ...flag("predict", isString(start.prediction) ? start.prediction : undefined),
   ];
 }

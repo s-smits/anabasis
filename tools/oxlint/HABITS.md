@@ -238,7 +238,9 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
 - `no-chained-type-assertions`: no `x as unknown as T`.
 - `no-conditional-empty-object-spread`: no `...(ok ? { k } : {})`. Use `keyIfDefined` or `keysIf`.
 - `no-known-value-widening`: no annotation wider than the value states. Keep the inference, or use
-  `satisfies`.
+  `satisfies`. An anonymous object type, a declared return type among them, is wide only through a
+  member typed `any`, `unknown`, `object` or an open dictionary; one that states each member's type
+  is a contract and passes.
 - `no-module-mocking`: inject through a real interface.
 - `no-object-parameters`: no parameter typed `object`.
 - `no-reduce-accumulator-copy`: no copy of the accumulator at every step. Mutate a local and
@@ -246,7 +248,9 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
 - `no-reflect-apply`, `no-reflect-get`: typed calls and typed access.
 - `no-runtime-typeof`: the predicates of `src/meta/json-shape.ts`. `typeof x === "undefined"` is
   allowed.
-- `no-shape-in-symbol-names`: no name with the word "shape", "shapes" or "shaped" in it.
+- `no-shape-in-symbol-names`: no name with the word "shape", "shapes" or "shaped" in it. An
+  object-literal key that holds a literal (`{ shape: "object {joints}" }`, a count's label) spells
+  data and is exempt; a key holding a computed value is not.
 - `no-unknown-returns`, `no-unknown-type-aliases`: no `unknown` going out, as a return type or
   behind an alias.
 - `no-unsafe-dictionary-type`: no `Record<string, unknown>` or `Record<string, any>`.

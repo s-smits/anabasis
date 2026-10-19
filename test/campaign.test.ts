@@ -31,7 +31,7 @@ import { openHarness } from "../src/solve/harness.ts";
 import { codeOf, starter, keptAs, LIMITS, openCampaign, packNamed } from "../tools/d2/campaign.ts";
 import { importCommand } from "../tools/d2/import.ts";
 import { settingNamed } from "../tools/d2/setting.ts";
-import { capNamed, ROUND_OPTIONS, roundCommand, reportLines } from "../tools/d2/round.ts";
+import { capNamed, packaged, ROUND_OPTIONS, roundCommand, reportLines } from "../tools/d2/round.ts";
 import { sessionCommand } from "../tools/d2/session.ts";
 
 const REPO = resolve(import.meta.dir, "..");
@@ -190,6 +190,8 @@ describe("a campaign", () => {
     // checkout's manifest (`commandReadAllows`, `test/solve-sandbox.test.ts`).
     expect(readFileSync(join(dirname(campaign.log), "package.json"), "utf8")).toBe("{}\n");
 
+    // A session's lookup, read before the Examiner beside it writes (`packaged`).
+    const packageOf = packaged(campaign);
     // One task as an Examiner session leaves it: its instance whole in its proposal, its gate passed.
     const written = { taskId: "x-1-001", family: "fixture", publicInput: { base: 40 }, hidden: { seed: 1 } };
     const extra = taskVersion(campaign.pack(written));
@@ -219,6 +221,9 @@ describe("a campaign", () => {
     const packages = campaign.packages();
     expect(packages.get(extra)).toMatchObject({ taskId: "x-1-001", hidden: { seed: 1 }, ruleIds: ["R1"] });
     expect(versions.every((version) => packages.has(version))).toBe(true);
+    // Until 18 October the lookup held the map of its start, and a practice solve of this task ended
+    // the Builder's conversation crashed in three campaigns on 17 October.
+    expect(packageOf(extra)).toMatchObject({ taskId: "x-1-001" });
     // A second run proposes and releases nothing.
     const events = read(campaign.log).length;
     expect(prepare()).toBe(summary);
@@ -566,7 +571,7 @@ describe("a campaign", () => {
         valid,
         objective: null,
         frontier: null,
-        noise: { ...aa, detectable, margin: null },
+        noise: { ...aa, detectable },
         versions: ["v1", "v2", "v3", "v4", "v5", "v6"],
         aside: ["v7"],
         short: [],
@@ -592,34 +597,7 @@ describe("a campaign", () => {
         objective: { direction: "lower", margin: 0.01, decided: 1 },
         noise: null,
       }).at(-1),
-    ).toBe(
-      "the objective (lower is better, margin 0.01, as named) decided 1 task that validity alone would have tied",
-    );
-    // Where no command named it, the line says what set it, and the A/A says the margin it sets next
-    // (the overhaul plan's P2).
-    const read2 = (from: number | null) =>
-      reportLines({
-        valid: { old: [0, 0, 2], fresh: [0, 0, 2], informative: { old: 0, fresh: 0 } },
-        frontier: null,
-        objective: { direction: "lower", margin: 0.04, from, decided: 0 },
-        noise: {
-          wins: 0,
-          losses: 0,
-          ties: 2,
-          p: 1,
-          differences: [0, 0],
-          flips: 0,
-          detectable: null,
-          margin: { margin: 0.05, pairings: 8 },
-        },
-      }).slice(-2);
-    expect(read2(57)).toEqual([
-      "the objective (lower is better, margin 0.04, the 90th percentile of the reference's own spread over 57 A/A pairings) decided 0 tasks that validity alone would have tied",
-      "this comparison's A/A sets the objective's margin at 0.05, over 8 pairings of the reference's valid answers: the next comparison reads by it",
-    ]);
-    expect(read2(null)[0]).toContain(
-      "margin 0.04, the default: no A/A on record had measured two valid answers of one task)",
-    );
+    ).toBe("the objective (lower is better, margin 0.01) decided 1 task that validity alone would have tied");
     const campaign = await openCampaign(ARGS);
     expect(read(campaign.log).some(({ data }) => data.session === "z-8")).toBe(false);
   });

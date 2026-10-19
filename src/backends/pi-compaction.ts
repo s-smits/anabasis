@@ -6,9 +6,16 @@
  * retained tail; a failed summary leaves the context as it was. The summary runs at the loop's
  * own thinking level, as pi's session does. Claude Code compacts in its own CLI
  * (`claude.ts`), so a Claude model is left alone here.
+ *
+ * The usage of a compaction is read off each summary request's own response, as the host's stream
+ * returns it, and not off the vendored `compact`'s result. Until 19 October it was read off that
+ * result, which a failed compaction never returns: where the turn's prefix was summarised after
+ * the history, a failure of the second request lost the first's billed usage, and a summary cut at
+ * its token cap lost its own, so neither a session's dollar cap nor the campaign's total counted
+ * them. Every response that came back now reaches the log, whether the compaction stood or not.
  */
 import type { AgentMessage, PrepareRequest, StreamFn } from "@earendil-works/pi-agent-core";
-import type { Api, Model, Usage } from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Model, Usage } from "@earendil-works/pi-ai";
 import {
   compact,
   compactionSummaryMessage,
@@ -61,10 +68,20 @@ export function compactBeforeRequest(
     const preparation = prepareCompaction(body, DEFAULT_COMPACTION_SETTINGS, tokens, previous);
     if (preparation === undefined) return undefined;
     const started = performance.now();
-    const seconds = () => (performance.now() - started) / 1000;
+    // Each summary request's response; `result()` is one promise a stream, which `compact` awaits.
+    const responses: Promise<AssistantMessage>[] = [];
+    const metered: StreamFn = async (...request) => {
+      const response = await stream(...request);
+      responses.push(response.result());
+      return response;
+    };
+    const record = async (error: string | null) => {
+      const usages = (await Promise.all(responses)).map((response) => response.usage);
+      compacted({ tokensBefore: tokens, seconds: (performance.now() - started) / 1000, usages, error });
+    };
     try {
-      const result = await compact(preparation, model, { streamFn: stream, signal, thinkingLevel });
-      compacted({ tokensBefore: tokens, seconds: seconds(), usages: result.usages, error: null });
+      const result = await compact(preparation, model, { streamFn: metered, signal, thinkingLevel });
+      await record(null);
       previous = result.summary;
       summary = compactionSummaryMessage(result.summary);
       const kept = [
@@ -75,7 +92,7 @@ export function compactBeforeRequest(
       fresh = kept.length;
       return { context: { ...context, messages: kept } };
     } catch (error) {
-      compacted({ tokensBefore: tokens, seconds: seconds(), usages: [], error: errorMessage(error) });
+      await record(errorMessage(error));
       return undefined;
     }
   };

@@ -5,8 +5,9 @@
  * is painted during a switch is `browser-shell-switch.test.ts`'s.
  */
 import { afterAll, beforeAll, describe, test } from "bun:test";
-import { type Browser, expect, type Page } from "@playwright/test";
+import { type Browser, type Page } from "@playwright/test";
 import {
+  expect,
   expectQuiet,
   launchBrowser,
   type Opened,

@@ -1,7 +1,7 @@
 // The command's admission probes, with a scripted solve and review. No paid model runs here.
 import { afterAll, describe, expect, it } from "bun:test";
 import type { Ending } from "../src/kernel/solve.ts";
-import { mkdtempSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
+import { existsSync, mkdtempSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
@@ -21,12 +21,24 @@ const ENDINGS: readonly Ending[] = [
   { outcome: "flagged", reason: "malformed" },
   { outcome: "non-result", kind: "provider", reason: "offline" },
 ];
+const PACK = [
+  "--root",
+  ROOT,
+  "--sweep",
+  "s",
+  "--cycle",
+  "c01",
+  "--bundle",
+  BUNDLE,
+  "--examiner",
+  "claude/claude-opus-5-5",
+];
 layOutPack(ROOT, BUNDLE, fixtureTasks(1), join(REPO, "test", "fixtures", "harness-min"));
 
 afterAll(() => {
   rmSync(ROOT, { recursive: true, force: true });
-  for (const ruling of RULINGS) {
-    rmSync(join(REPO, ".ana", "d2", `${STEM}-${String(ruling)}`), { recursive: true, force: true });
+  for (const name of [...RULINGS.map(String), "home"]) {
+    rmSync(join(REPO, ".ana", "d2", `${STEM}-${name}`), { recursive: true, force: true });
   }
 });
 
@@ -96,5 +108,31 @@ describe("the Examiner command's admission reviews", () => {
           : { outcome: "non-result", kind: "check" },
       );
     }
+  });
+
+  it("hands the session the reference harness's kept directory where --reference-home is on or unnamed, and none where it is off", async () => {
+    const walls: (string | undefined)[] = [];
+    // On unless named since 19 October: a command that names nothing lays the copy.
+    for (const home of ["on", "off", undefined]) {
+      const named = home === undefined ? [] : ["--reference-home", home];
+      await examineCommand(
+        [...PACK, "--name", `${STEM}-home`, "--session", `x-${home ?? "unnamed"}`, ...named],
+        async (_request, wall) => {
+          walls.push(wall?.reference);
+          return { ended: "finished", puts: 0, held: [], refused: [] };
+        },
+      );
+    }
+    expect(walls[0] !== undefined && existsSync(join(walls[0], "agent"))).toBe(true);
+    expect(walls[1]).toBeUndefined();
+    expect(walls[2]).toBe(walls[0]);
+    await expect(
+      examineCommand(
+        [...PACK, "--name", `${STEM}-home`, "--session", "x-3", "--reference-home", "yes"],
+        async () => {
+          throw new Error("no session opens on a word that is neither on nor off");
+        },
+      ),
+    ).rejects.toThrow("--reference-home is on or off, not yes");
   });
 });

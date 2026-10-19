@@ -42,6 +42,9 @@ import { runtimeProcess } from "../src/meta/process.ts";
 import type { RefereeFinding } from "../src/review/referee.ts";
 import { publicResource, text, tool } from "../src/solve/answer.ts";
 import { openHarness } from "../src/solve/harness.ts";
+import { osIsolationSupport } from "../src/verify/os-isolation.ts";
+import { CLOSED } from "./helpers/wall.ts";
+import { BUILT_COMMAND_SCRATCH_ROOT } from "../src/verify/wall-policy.ts";
 
 const BUILD_CALL = "build.call";
 const BUILD_FINISHED = "build.finished";
@@ -694,6 +697,59 @@ describe("a Builder session", () => {
     expect(roomy.sent[0]).toContain("This session has 3 practice solves, 10 minutes and 12 turns.");
   });
 
+  it("makes no request of its own once what it billed reaches its cap", async () => {
+    // One practice solve, and the session's own turns billed $30 beside it, past a cap of $25.
+    const s = await setup([call("practice", { tasks: ["t-1"] }), edit, finish]);
+    const built = await session(
+      {
+        ...s.request,
+        cap: { dollars: 25, reserve: 10 },
+        practise: async (task, dir, harness, kill) => {
+          append(s.request.log, "build.turn", { session: "b-1", turn: 1, usage: { cost: { total: 30 } } });
+          return await s.request.practise(task, dir, harness, kill);
+        },
+      },
+      s,
+      s.walled,
+    );
+    expect(s.sent).toHaveLength(1);
+    expect(built).toMatchObject({ changed: false, ended: "stopped" });
+    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "stopped", crash: null, practiceSolves: 1 });
+  });
+
+  it("holds a session to its own spend and not a comparison's under the same id", async () => {
+    // A comparison b-1 billed $30 before a session b-1 opened under a cap of $25: the session's own
+    // part is nothing, so it practises, edits, and finishes once it has been told of the edit.
+    const s = await setup([call("practice", { tasks: ["t-1"] }), edit, finish, finish]);
+    const { log } = s.request;
+    append(log, "solve.started", { solve: "b-1-v9", comparison: "b-1", task: "t" });
+    append(log, "solve.finished", { solve: "b-1-v9", ending: { outcome: "pass" }, billed: 30 });
+    const built = await session({ ...s.request, cap: { dollars: 25, reserve: 10 } }, s, s.walled);
+    expect(s.sent[0]).toContain("This session has 2 practice solves");
+    expect(s.sent).toHaveLength(4);
+    expect(built).toMatchObject({ changed: true, ended: "finished" });
+  });
+
+  it("leaves a led session's dollars to the campaign's bounds, which the operator can raise", async () => {
+    // The same $30 past a cap of $25, in a led session whose campaign has not ended: it goes on.
+    const s = await setup([call("practice", { tasks: ["t-1"] }), edit, finish]);
+    const built = await session(
+      {
+        ...s.request,
+        cap: { dollars: 25, reserve: 10 },
+        campaign: () => ({ tools: [], hook: () => "" }),
+        practise: async (task, dir, harness, kill) => {
+          append(s.request.log, "build.turn", { session: "b-1", turn: 1, usage: { cost: { total: 30 } } });
+          return await s.request.practise(task, dir, harness, kill);
+        },
+      },
+      s,
+      s.walled,
+    );
+    expect(s.sent).toHaveLength(3);
+    expect(built).toMatchObject({ changed: true, ended: "finished" });
+  });
+
   it("refuses a trace of any solve but its practice tasks', and a practice past its budget", async () => {
     const s = await setup([
       call("read_trace", { solve: "s-2" }),
@@ -1304,6 +1360,12 @@ describe("what crosses to the Builder", () => {
             kind: "fail",
             blocking: [kept.check],
           });
+          append(log, "referee.refused", {
+            solve,
+            task: `x-${version}`,
+            asked: { ruling: "check-defect", check: kept.check, reason: kept.reason, probes: [] },
+            why: `a check-defect names one of the refusing checks: ${kept.check}`,
+          });
           append(log, "referee.finding", { solve, ruling: "earned", check: kept.check, reason: kept.reason });
         }
         append(log, "solve.finished", {
@@ -1448,7 +1510,7 @@ describe("what a practice solve used", () => {
   });
 });
 
-describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under the command wall", () => {
+describe.skipIf(!osIsolationSupport().ok)("a Builder session under the command wall", () => {
   it("lists tools for practice tasks released after the conversation opens", async () => {
     let source = "";
     const s = await setup([
@@ -1491,7 +1553,7 @@ describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under t
     const s = await setup(
       [
         () => call("bash", { command: `cat '${canary}' 2>&1; echo "read:$?"` }),
-        // pi's write, behind the wall: outside the seat's root it is refused, and a folder is no file.
+        // pi's write, behind the wall: outside the seat's root nothing is kept, and a folder is no file.
         call(WRITE_FILE, { path: "../../escape.txt", content: "x" }),
         call(WRITE_FILE, { path: "harness/agent", content: "x" }),
         edit,
@@ -1535,9 +1597,11 @@ describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under t
     const responses = s.sent;
     const built = await build(request);
     const calls = s.of(BUILD_CALL).map(({ text: said }) => JSON.stringify(said));
-    expect(calls[0]).toContain("Operation not permitted");
+    expect(calls[0]).toContain(CLOSED);
     expect(calls[0]).toContain("read:1");
-    expect(calls[1]).not.toContain("Successfully wrote");
+    // Outside the seat's root nothing is kept: Seatbelt refuses the write, and Bubblewrap lets it
+    // land in the command's own /tmp, which goes with the command.
+    expect(existsSync(join(BUILT_COMMAND_SCRATCH_ROOT, "escape.txt"))).toBe(false);
     expect(calls[2]).toContain("irectory");
     expect(calls[4]).toContain("Multiply before you record.");
     expect(calls[4]).toContain("t-1.json");

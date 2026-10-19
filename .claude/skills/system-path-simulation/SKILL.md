@@ -24,7 +24,7 @@ It is v1's skill rebuilt for that fact. What v1 needed and v2 does not is at the
 | Layer walk | whether one value survives every layer a change touches | minutes, no model | [layer-walk](cases/layer-walk.md) |
 | Log replay | whether this tree still reads what real runs wrote | seconds for every log | [log-replay](cases/log-replay.md) |
 | Rehearsal | whether a round's commands join, and what a position of this size can read | about 25 s a round, no model | [rehearsal](cases/rehearsal.md) |
-| Live seat | what a real model does from a recorded position | a session's or a solve's dollars | [live-seat](cases/live-seat.md) |
+| Live seat | what a real model does from a recorded position | a session's or a solve's dollars | [live-seat](cases/live-seat.md), `scripts/live-seat.ts` |
 | The real run | everything a script cannot say | hours, tens of dollars | run-management, then `bun run runs pulse` |
 
 A cheaper case that answers the question cancels every dearer one. Say which case you stopped at,

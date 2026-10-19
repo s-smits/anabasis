@@ -33,21 +33,26 @@ import {
   triggered,
 } from "./compare.ts";
 import type { LogEvent } from "./log.ts";
-import { passed, practiceRan, ranUnder, solvesIn } from "./solves.ts";
+import { providerFailed, windowEnded } from "./solve.ts";
+import { passed, practiceRan, ranUnder } from "./solves.ts";
 import { taskSets } from "./task.ts";
 
 /** A session or a solve that began and has no end on record: what kind of start and its id, the
- *  comparison its start names (a solve's), the dollars its turns and compactions metered, its turns,
- *  and when it began and wrote its last event (`unfinished`). */
+ *  dollars its turns and compactions metered, its turns, and when it began and wrote its last
+ *  event (`unfinished`). Whose a solve is, is `ownersOf`'s to say. */
 interface Unfinished {
   readonly of: (typeof METERED)[number]["of"];
   readonly id: JsonValue | undefined;
-  readonly comparison: JsonValue | undefined;
-  readonly session: JsonValue | undefined;
   dollars: number;
   turns: number;
   readonly began: string;
   last: string;
+}
+
+/** Whose a solve is (`ownersOf`): the session or comparison, and whether its start names it. */
+interface Owner {
+  readonly by: string | undefined;
+  readonly asked: boolean;
 }
 
 /** A comparison's last report, with where the comparison stands in the log: at its first report. */
@@ -103,7 +108,7 @@ interface TalliedIn {
   readonly fresh: readonly boolean[];
   /** The side the campaign's reference harness stood on, or null where it was neither. */
   readonly reference: "old" | "fresh" | null;
-  /** Whether a solve of the task in this comparison ended at a limit (`AT_A_LIMIT`). */
+  /** Whether a limit cut a solve of the task in this comparison short (`taskRecords`). */
   readonly cut: boolean;
   /** Whether one of the reference harness's own solves of it did: all its author hears (rule 4). */
   readonly referenceCut: boolean;
@@ -130,6 +135,9 @@ interface TaskRecord {
   /** `answered`, or `task.feasible` records a passing author answer, or its gate says a reference
    *  solve under `try_task` gave a valid answer, which answers nothing. */
   feasible: boolean;
+  /** The best measure by the objective of an author's answer on record (`task.feasible`), or null
+   *  where none carries one (`informative`, `compare.ts`; 19 October). */
+  best: number | null;
   /** Each comparison whose last report tallied it, in the order the comparisons reported. */
   readonly tallied: TalliedIn[];
   /** The last report that set it aside on a rejection, or -1, and its place among every pair
@@ -139,7 +147,7 @@ interface TaskRecord {
 }
 
 /** A dollar cap: the billed dollars a comparison, or a Builder session by itself, may hold
- *  (`billedFor`), and what each solve is held at before it starts. */
+ *  (`billedFor`, a session's whole span), and what each solve is held at before it starts. */
 export interface Cap {
   readonly dollars: number;
   readonly reserve: number;
@@ -158,8 +166,9 @@ export const PATIENCE = 6;
 const UNSOLVED_RUN = 2;
 /** How many comparisons of a task's history its author hears (`poolOf`, histories). */
 const HISTORY = 3;
-/** The ways a solve ends at a limit of its own: its time, its model turns or its context. Such an
- *  ending says the budget was short, and nothing of whether the task has a valid answer. */
+/** The ways a solve ends at a limit of its own: its time, its model turns or its context. The
+ *  investigation reads every one as a miss at a limit (`tools/wri/time.ts`); the pool reads all but
+ *  one as a cut whose answer is not known (`taskRecords`). */
 export const AT_A_LIMIT: ReadonlySet<unknown> = new Set(["wall-ended", "turns-ended", "context-ended"]);
 const STEP = "step";
 /** How a Builder session ends when it was cut and left half a session's work. */
@@ -180,7 +189,7 @@ const METERED = [
 ] as const;
 /** The events that carry what their own model turns were billed, in a `billed` field: the end of
  *  each of those, and a reviewer's reading. */
-const BILLED: ReadonlySet<string> = new Set([
+export const BILLED: ReadonlySet<string> = new Set([
   ...METERED.map(({ of }) => `${of}.finished`),
   "referee.finding",
   "diagnosis.recorded",
@@ -421,6 +430,7 @@ function taskRecords(events: readonly LogEvent[]) {
       keptAt: -1,
       answered: false,
       feasible: false,
+      best: null,
       tallied: [],
       asideAt: -1,
       asideOrder: Number.POSITIVE_INFINITY,
@@ -433,16 +443,46 @@ function taskRecords(events: readonly LogEvent[]) {
     if (kind === "task.state" && data.state === "held") of(data.version).keptAt = index;
     const tried = kind === "task.gate" ? asRecord(data.reference)?.valid : undefined;
     if (kind === "task.feasible" || (isNumber(tried) && tried > 0)) of(data.version).feasible = true;
+    const { measure, direction } = asRecord(data.objective) ?? {};
+    if (kind !== "task.feasible" || !isNumber(measure)) continue;
+    const record = of(data.version);
+    const beaten =
+      direction === "lower" ? measure < (record.best ?? Infinity) : measure > (record.best ?? -Infinity);
+    if (beaten) record.best = measure;
   }
-  /** Each comparison's tasks a solve of which ended at a limit, by harness, as `cutIn` names them. */
+  /**
+   * Each comparison's tasks a solve of which a limit cut short, by harness, as `cutIn` names them:
+   * what that solve would have answered is not known (rule 7). The wall is the host's clock, which
+   * a loaded host moves, and a full context is no number the solver is told: neither says anything
+   * of the task. A solve that ends `turns-ended` under the model turns its condition names
+   * (`--solve-model-turns`) is the opposite case. The turns are the budget's unit, told to the
+   * solver on every tool result, and using them all without an answer is the budget's verdict that
+   * the harness did not answer the task within it, as a wrong answer is. Read as a cut until
+   * 19 October, it kept a task no solve answers in the draw for good: in the rehearsals sim-turns
+   * and sim-turns2, 706 of 1,144 scripted solves ended so, and each such task was scored again as a
+   * tie of two fails. `turns-ended` arises only where the condition names a number (`spent`,
+   * `src/solve/run.ts`), so a campaign without one reads as before. One whose last recorded turn
+   * the window ended (`windowEnded`), or the provider failed (`providerFailed`), stays a cut: a log
+   * written before 19 October, or 14 October, holds such solves as `turns-ended`, and they read as
+   * they did.
+   */
   const cut = new Set<string>();
+  /** Each solve's last recorded turn, by the solve's id. */
+  const lastTurn = new Map(
+    events.flatMap(({ kind, data }) =>
+      kind === "solve.turn" && isString(data.solve) ? [[data.solve, data]] : [],
+    ),
+  );
   for (const solve of ranUnder(events)) {
-    const { task } = solve.under;
+    const { task, limits, harness } = solve.under;
     const { comparison } = solve.start;
+    const kind = solve.ending?.kind;
+    const turn = lastTurn.get(solve.id);
+    const last = { stopReason: turn?.stopReason, errorMessage: turn?.error };
+    const interrupted = windowEnded(last) || providerFailed(last);
+    const budgeted = kind === "turns-ended" && isNumber(limits.modelTurns) && !interrupted;
     if (passed(solve) === true) Object.assign(of(task), { answered: true, feasible: true });
-    if (isString(comparison) && AT_A_LIMIT.has(solve.ending?.kind)) {
-      cut.add(cutIn(comparison, task, solve.under.harness));
-    }
+    if (isString(comparison) && AT_A_LIMIT.has(kind) && !budgeted) cut.add(cutIn(comparison, task, harness));
   }
   tallyReports(events, of, cut);
   return { records: [...records.values()], held: heldOut };
@@ -481,7 +521,7 @@ function tallyReports(
         reference: side,
         cut: cutOn(data.old) || cutOn(data.fresh),
         referenceCut: side !== null && cutOn(data[side]),
-        closed: side !== null && closedTo(pair, side),
+        closed: side !== null && closedTo(pair, side, of(task).best),
         won: wins > 0 ? "fresh" : losses > 0 ? "old" : null,
       });
     }
@@ -516,9 +556,11 @@ function tallyReports(
  * - A valid answer anywhere on record settles the question for good: under any harness, in any
  *   comparison or outside one, at any limits. Such a task is feasible, stays in the set and ties
  *   where a budget is too short for it, which costs solves and biases nothing.
- * - A comparison in which a solve of the task ended at a limit (`AT_A_LIMIT`) is not counted for
- *   it. That solve was cut, and what it would have answered is not known. A task that is cut at
- *   every comparison so never goes to a person on this rule, and stays a tie the reports show.
+ * - A comparison in which a limit cut a solve of the task short (`taskRecords`: its wall or its
+ *   context) is not counted for it. What that solve would have answered is not known. A task cut
+ *   at every comparison so never goes to a person on this rule, and stays a tie the reports show.
+ *   A solve that used every model turn its condition names was not cut: the budget's unit ended
+ *   it, as a wrong answer ends one, and since 19 October such a comparison counts.
  *
  * What neither covers is an answer rushed under a told budget and rejected: with no valid answer
  * on record such a comparison counts, since nothing in the log tells a rushed answer from a
@@ -566,7 +608,10 @@ function tallyReports(
  * and at any limits, an author's answer the host saw pass on the task under its own id
  * (`task.feasible`), or a reference solve's under `try_task`, which its gate counts. It is the one
  * fact an author may hear beside a task's outcome that names no side: a task the reference
- * answers in no solve is then told apart from one nobody has answered.
+ * answers in no solve is then told apart from one nobody has answered. **Bests** are the best
+ * measure by the objective an author's answer on record took of each, where its `task.feasible`
+ * carries one: a task the reference answers alike in every solve still leaves room where one is
+ * better than all of its answers (`informative`, `compare.ts`; 19 October).
  *
  * **Outcomes** hold each task some comparison scored or set aside, by task version, from the last
  * comparison that did: how the reference harness did on it, valid in every one of its counted
@@ -639,6 +684,7 @@ export function poolOf(events: readonly LogEvent[]) {
     exhausted: spent,
     retained,
     feasible: new Set(records.flatMap(({ version, feasible }) => (feasible ? [version] : []))),
+    bests: new Map(records.flatMap(({ version, best }) => (best === null ? [] : [[version, best] as const]))),
     outcomes: new Map(records.toSorted((one, other) => first(one) - first(other)).flatMap(outcomeOf)),
     standings: new Map(records.flatMap(standingOf)),
     histories: new Map(records.flatMap(historyOf)),
@@ -716,9 +762,9 @@ function standingOf(record: TaskRecord): [string, Standing][] {
  * The tasks no solve answered are the held-out ones without a valid answer in `UNSOLVED_RUN` or
  * more comparisons, cut at a limit or not. On 10 October one campaign held four to five such tasks
  * of ten while its last three Builder sessions passed every practice task and changed nothing.
- * `poolOf`'s `awaiting` is the question to a person, which leaves out a task cut at a limit; this
- * leaves nothing out, since a task cut twice is as much beyond the harness as one answered wrongly
- * twice. A valid answer anywhere on record settles it either way.
+ * `poolOf`'s `awaiting` is the question to a person, which leaves out a task its wall or its
+ * context cut (`taskRecords`); this leaves nothing out, since a task cut twice is as much beyond
+ * the harness as one answered wrongly twice. A valid answer anywhere on record settles it either way.
  */
 export function releaseOrder(
   events: readonly LogEvent[],
@@ -773,8 +819,10 @@ function lastRead({ tallied, asideAt }: TaskRecord): TalliedIn | "aside" | null 
 /**
  * The billed dollars a log holds for comparison `id`: every attempt of a solve whose start names
  * it, every reviewer's reading of such a solve, and, where a Builder session ran under the same id
- * (a round), everything billed from that session's start to its end, which is the session's own
- * turns, its practice solves and their reviewers. What another comparison or session billed since
+ * (a round), everything billed from that session's start to its end. In a round that is the
+ * session's own turns, its practice solves and their reviewers; in a campaign its Builder leads it
+ * is also every move the session made. The session's own cap reads its own part (`billedParts`,
+ * `halted` in `src/builder/session.ts`). What another comparison or session billed since
  * is not this one's, so a comparison gone on from its log after others ran is held to its own
  * spend. A solve of the comparison with no end on record, killed or still running, is counted by
  * what its turns and compactions have metered so far (`unfinished`); a solve still running is held
@@ -782,8 +830,8 @@ function lastRead({ tallied, asideAt }: TaskRecord): TalliedIn | "aside" | null 
  * Builder's turns are counted as they are metered, then replaced by its final sum.
  */
 export function billedFor(events: readonly LogEvent[], id: string): number {
-  const { session, comparison } = billedParts(events, id);
-  return session + comparison;
+  const { span, comparison } = billedSplit(events, id);
+  return span + comparison;
 }
 
 /** Every billed dollar a log holds, whoever billed it: what a campaign's total budget is held
@@ -833,8 +881,6 @@ export function unfinished(events: readonly LogEvent[]): Unfinished[] {
         open.set(data[id], {
           of,
           id: data[id],
-          comparison: data.comparison,
-          session: of === "build" ? data.session : undefined,
           dollars: 0,
           turns: 0,
           began: at,
@@ -867,24 +913,85 @@ export function cutSessions(events: readonly LogEvent[]) {
   );
 }
 
-/** The same sum in its two parts: what the Builder session under `id` billed, and what the
- *  comparison under it did. A reader of a round tells them apart (`src/builder/handover.ts`). A
- *  solve with no end on record whose start names the comparison is in the second part
- *  (`unfinished`). */
+/**
+ * Whose each solve of a log is, by the solve's id: the comparison or Examiner session its start
+ * names (`asked`), or else the Builder session open where it started, since a practice solve names
+ * nothing and only a Builder makes one. In a campaign its Builder leads, an Examiner session runs
+ * beside the Builder's practice, and until 19 October an open one was billed that practice too.
+ */
+function ownersOf(events: readonly LogEvent[]): Map<string, Owner> {
+  const owners = new Map<string, Owner>();
+  let open: string | undefined;
+  for (const { kind, data } of events) {
+    if (kind === "build.started" && isString(data.session)) open = data.session;
+    else if (kind === BUILD_FINISHED && data.session === open) open = undefined;
+    else if (kind === "solve.started" && isString(data.solve)) {
+      const asked = isString(data.comparison);
+      owners.set(data.solve, { by: isString(data.comparison) ? data.comparison : open, asked });
+    }
+  }
+  return owners;
+}
+
+/**
+ * Whether an event is session `id`'s own: not another session's, nor one of a solve that is
+ * another's (`ownersOf`). A Builder session's own are its turns, its practice solves and their
+ * reviewers; an Examiner session's include the solves it asked for to try a draft task, which name
+ * it. In a campaign its Builder leads, the comparisons and the Examiner's sessions run inside the
+ * Builder's span, and are theirs.
+ */
+export function ownedBy(events: readonly LogEvent[], id: string, owners = ownersOf(events)) {
+  return ({ data }: LogEvent) => {
+    const solve = isString(data.solve) ? owners.get(data.solve) : undefined;
+    return !(isString(data.session) && data.session !== id) && (solve === undefined || solve.by === id);
+  };
+}
+
+/**
+ * The same sum in its two parts: what the Builder session under `id` billed of its own
+ * (`ownedBy`), and what the comparison under it did. A reader of a round tells them apart
+ * (`src/builder/handover.ts`). A solve with no end on record whose start names the comparison is in
+ * the second part (`unfinished`). Until 19 October the first part was everything billed in the
+ * session's span, which in a campaign its Builder leads is every move it made, counted again on the
+ * moves' own lines: on 19 October buffer-fresh-opus's view put $123.34 on b-4, whose own turns and
+ * practice billed $2.65, and its steps summed to $362.92 where the log had billed $199.48.
+ */
 export function billedParts(events: readonly LogEvent[], id: string) {
-  const own = new Set(solvesIn(events).flatMap((solve) => (solve.start.comparison === id ? [solve.id] : [])));
+  const { session, comparison } = billedSplit(events, id);
+  return { session, comparison };
+}
+
+/** `billedParts`, with `span`: everything billed from the session's start to its end, whoever
+ *  billed it, which a round's comparison holds to its cap (`billedFor`). */
+function billedSplit(events: readonly LogEvent[], id: string) {
+  const owners = ownersOf(events);
+  const mine = ownedBy(events, id, owners);
+  const asked = (solve: JsonValue | undefined) => {
+    const owner = isString(solve) ? owners.get(solve) : undefined;
+    return owner?.asked === true && owner.by === id;
+  };
   const at = (kind: string) => events.findIndex((event) => event.kind === kind && event.data.session === id);
   const [opened, closed] = [at("build.started"), at(BUILD_FINISHED)];
-  const billed = { session: 0, comparison: 0 };
-  for (const [index, { kind, data }] of events.entries()) {
+  const billed = { session: 0, span: 0, comparison: 0 };
+  for (const [index, event] of events.entries()) {
+    const { kind, data } = event;
     if (!BILLED.has(kind) || !isNumber(data.billed)) continue;
     const inSession = opened !== -1 && index >= opened && (closed === -1 || index <= closed);
-    if (inSession) billed.session += data.billed;
-    else if (isString(data.solve) && own.has(data.solve)) billed.comparison += data.billed;
+    if (inSession) {
+      billed.span += data.billed;
+      if (mine(event)) billed.session += data.billed;
+    } else if (asked(data.solve)) billed.comparison += data.billed;
   }
-  for (const { comparison, session, dollars } of unfinished(events)) {
-    if (session === id) billed.session += dollars;
-    else if (comparison === id) billed.comparison += dollars;
+  // A start with no end: the session's own turns are in its span; a solve of the comparison is in
+  // the comparison's part, and a practice solve of the session in the session's alone, so a killed
+  // Builder closed on its turns (`endCut`, `tools/d2/harness-builder.ts`) keeps the practice it was
+  // killed in, and its cap reads what it read before.
+  for (const { of, id: which, dollars } of unfinished(events)) {
+    if (of === "build" && which === id) {
+      billed.span += dollars;
+      billed.session += dollars;
+    } else if (asked(which)) billed.comparison += dollars;
+    else if (of === "solve" && isString(which) && owners.get(which)?.by === id) billed.session += dollars;
   }
   return billed;
 }

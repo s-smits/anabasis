@@ -55,8 +55,9 @@
  * that cannot start a solve while others are in flight steps aside, since what they bill may be
  * under their reserve; when none is in flight and the next solve still cannot start, the cap is
  * reached. A comparison the cap cuts short of its test reads `not-scored` and is finished: its
- * tally would be of the tasks that happened to come first. A session is stopped by its own limits
- * and not by the cap, which holds its practice solves alone (`practiceLeft`, `tools.ts`).
+ * tally would be of the tasks that happened to come first. The round's session is held to the same
+ * cap by its own part of the sum, its practice solves before each starts (`practiceLeft`,
+ * `tools.ts`) and its own turns before each request (`halted`, `session.ts`).
  *
  * Rejections. A rejected answer counts as not valid only once the rejection is ruled a true fail
  * (`earned`), by the Referee where the caller seats one. One ruled a check defect or unclear, and

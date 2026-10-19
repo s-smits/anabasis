@@ -554,8 +554,8 @@ describe("a campaign run by its live Builder", () => {
         ["finish", { note: "Two harnesses are promoted and measured." }],
         ["finish", { note: "Two harnesses are promoted and measured." }],
       ]),
-      // The Builder's session writes tasks for the second step; the second, the host's beside the
-      // conversation after the second promotion, holds none.
+      // The Builder's session writes tasks for the second step; the second, which the host starts as
+      // the second promotion returns (19 October), holds none.
       examine: async (request) => {
         const earlier = of(name, EXAMINED).length;
         if (earlier > 0) return unwritten(request);
@@ -598,9 +598,10 @@ describe("a campaign run by its live Builder", () => {
       ],
       seats,
     );
-    // The conversation after the second promotion opens on the Examiner session the table names
-    // (16 October; until then three conversations made no move first), and that session holds
-    // none, which ends the campaign at its patience of one.
+    // The second promotion is followed by the Examiner session the table names for the new
+    // reference, started by the host in the same conversation (19 October; from 16 October the
+    // next conversation opened on it), and that session holds none, which ends the campaign at its
+    // patience of one.
     expect(ending).toMatchObject({ move: "end", ending: "no-room" });
     expect(of(name, MOVED).map(({ move }) => move)).toEqual([
       "accept",
@@ -611,7 +612,6 @@ describe("a campaign run by its live Builder", () => {
       "examine",
       "compare",
       "promote",
-      "build",
       "examine",
     ]);
     const [first, second] = of(name, REPORTED);
@@ -630,8 +630,8 @@ describe("a campaign run by its live Builder", () => {
     expect(second?.fresh).not.toBe(first?.fresh);
     expect(of(name, REPORTED)).toHaveLength(2);
     expect(of(name, "harness.promoted")).toHaveLength(2);
-    expect(of(name, "build.started")).toHaveLength(2);
-    expect(of(name, FINISHED)).toHaveLength(2);
+    expect(of(name, "build.started")).toHaveLength(1);
+    expect(of(name, FINISHED)).toHaveLength(1);
     expect(of(name, "campaign.ended")).toMatchObject([{ ending: "no-room", latest: second?.fresh }]);
     expect(strayed).toEqual([]);
     const campaignCalls = of(name, CALLED).filter(({ tool }) =>

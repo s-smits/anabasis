@@ -703,6 +703,20 @@ export function campaignTools(
 ): NonNullable<BuildRequest["campaign"]> {
   return (bench) => {
     const examining = examineTool(context, bench);
+    // An action that promoted is followed by the Examiner session the table then names, started by
+    // the host as at a conversation's opening: on 19 October r1's Builder compared six minutes after
+    // its promotion where the table named one, on 1 task of 25 informative for its new reference.
+    const promoting = (made: AgentTool): AgentTool => ({
+      ...made,
+      execute: async (id, args, signal) => {
+        const before = lastPromoted(read(context.log));
+        const result = await made.execute(id, args, signal);
+        if (lastPromoted(read(context.log)) === before || context.examining != null) return result;
+        if (toolOf(actionTurn(context).decided) !== "examine") return result;
+        const started = await examining.execute(id, {}, signal);
+        return { ...result, content: [...result.content, ...started.content] };
+      },
+    });
     return {
       start: async () =>
         opens
@@ -711,9 +725,10 @@ export function campaignTools(
               .join("\n")
           : "",
       tools: [
-        ...[examining, ...[releaseTool, compareTool, promoteTool].map((made) => made(context, bench))].map(
-          (made) => endingWith(made, () => campaignStatus(context, bench)),
-        ),
+        ...[
+          examining,
+          ...[releaseTool, compareTool, promoteTool].map((made) => promoting(made(context, bench))),
+        ].map((made) => endingWith(made, () => campaignStatus(context, bench))),
         tool({
           name: "campaign_status",
           label: "Campaign Status",

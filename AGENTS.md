@@ -502,11 +502,12 @@ The host opens the exam and prepares the campaign first. Then `tools/d2/harness-
 one Builder conversation and one workspace open while its campaign tools run.
 
 An Examiner call runs a separate agent with its own view. The call returns at once and the session
-writes alongside the conversation. Any other campaign action waits for it on the host's time, and
-the campaign facts under each campaign tool's result say what it held out. When the Builder
-finishes or hits its wall, the end of the conversation waits for the Examiner session without
-stopping it. What does stop it: the host's halt (on the run's moves, an ending the table names, or
-the operator's stop) and a kill of the run. It then ends on record as killed.
+writes alongside the conversation. A comparison or a promotion waits for it on the host's time, a
+release of practice tasks does not, and the campaign facts under each campaign tool's result say
+what it held out. When the Builder finishes or hits its wall, the end of the conversation waits for
+the Examiner session without stopping it. What does stop it: the host's halt (on the run's moves, an
+ending the table names, or the operator's stop) and a kill of the run. It then ends on record as
+killed.
 
 A comparison returns the same aggregate tally and reading the Builder already receives. A
 promotion can only name the harness the existing rule allows. The model cannot choose a checker, a

@@ -218,12 +218,15 @@ function actionTool(
         return halt("The campaign move limit has been reached; the host will stop this conversation.");
       }
       if (signal?.aborted === true) return text("The campaign has been stopped by the host.");
-      // An Examiner session writes beside the conversation, and any other action waits for it, on
-      // the host's time: two actions never spend from the total at once.
+      // An Examiner session writes beside the conversation, and a comparison or a promotion waits
+      // for it, on the host's time: two actions never spend from the total at once. A release
+      // spends nothing and goes on beside it: until 19 October it waited too, and in each of three
+      // replicates of 19 October the Builder's first release waited 1.6 to 2.6 hours, with no
+      // practice task released meanwhile.
       const writing = context.examining;
       if (writing != null) {
         if (move === "examine") return text(`Examiner session ${writing.session} is still writing.`);
-        await bench.within(() => writing.done);
+        if (move !== RELEASE) await bench.within(() => writing.done);
       }
       if (context.failed !== null) return text("The campaign has been stopped by the host.");
       const { turn, decided } = actionTurn(context);
@@ -350,7 +353,7 @@ const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
       });
     context.examining = { session, done };
     return {
-      said: `Examiner session ${session} is writing ${tasks === undefined ? "tasks" : plural(Number(tasks), "task")} beside this conversation: edit and practise meanwhile. Any other campaign action waits for it to end, and campaign_status says how many it has held out.`,
+      said: `Examiner session ${session} is writing ${tasks === undefined ? "tasks" : plural(Number(tasks), "task")} beside this conversation: edit, release practice and practise meanwhile. A comparison or a promotion waits for it to end, and campaign_status says how many it has held out.`,
     };
   });
 
@@ -549,7 +552,7 @@ function examinedLines(events: readonly LogEvent[], writing: string | undefined)
     const held = plural(started === -1 ? 0 : heldAfter(events, started), "task");
     return [
       begun === writing
-        ? `Examiner session ${begun} is writing beside this conversation, ${minutesFrom(events[started]?.at)}, and has held out ${held} so far; any other campaign action waits for it.`
+        ? `Examiner session ${begun} is writing beside this conversation, ${minutesFrom(events[started]?.at)}, and has held out ${held} so far; a comparison or a promotion waits for it.`
         : `Examiner session ${begun} stopped with the run of the campaign that began it, and held out ${held}.`,
     ];
   }

@@ -749,8 +749,9 @@ gate's and every comparison's (`MARGIN`; from 12 to 18 October the last A/A set 
 stop past 3 tasks with a check defect (`--defects`), a reserve of 10 dollars a solve (`--reserve`),
 `--parent latest`, `--reference promoted`, which is the harness last promoted and the starter
 until one is; a Builder session of 24 hours (1,440 minutes) of its own time, 300 turns and 24 practice solves; a solve of
-120 minutes and 24 prompts, with the model's own turns unlimited until `--solve-model-turns`
-names a number. An Examiner session ends when the Examiner calls `finish` a second time, or a
+20 of the model's own turns and 30 minutes, whoever solves (`LIMITS`, `tools/d2/campaign.ts`; until
+19 October 120 minutes with the turns unlimited, and `runs fresh` named its own by model), and 24
+prompts. An Examiner session ends when the Examiner calls `finish` a second time, or a
 first time once the host has the tasks it asked for: what the campaign is short of a comparison's
 target and of its practice, or where a repeat is due what a sweep at the level takes beyond the
 first stage's untied tasks and the tasks it did not score (`shortOf`, `src/builder/decide.ts`), or `--exam-tasks` where

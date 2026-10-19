@@ -145,19 +145,32 @@ export const PROMOTED = "promoted";
 /** What names the control of a kept harness: `programs-of:latest`, `programs-of:<digest>`. */
 const PROGRAMS_OF = "programs-of:";
 
-/** The sweep's `config.yaml` and its solves' `maxTurns`, with a disk cap the sweep did not have, as
- *  `live-solve.ts` has them, but four solves at a time where a parity solve runs alone. Concurrency
- *  is part of a condition, so a campaign's solves and a parity solve are not under the same one.
- *  These are a campaign's limits until a command names another wall or the model's turns
- *  (`setting.ts`); the prompts, `turns`, are every solve's (v1's cap on nudges). */
-export const LIMITS: Limits = {
-  wallSeconds: 7200,
+/** What every solve is held to, whoever solves: 20 of the model's own turns, which bind, and a wall
+ *  of 30 minutes, which stops a solve whose provider stalls. A command names another wall or number
+ *  of turns (`setting.ts`), and another is another campaign. The prompts, `turns`, are every
+ *  solve's (v1's cap on nudges); the shell's timeouts, four solves at a time and the disk cap are
+ *  the stored sweep's, with a disk cap the sweep did not have. Concurrency is part of a condition, so
+ *  a campaign's solves and a parity solve (`live-solve.ts`) are not under the same one.
+ *
+ *  Until 19 October a campaign's default was the sweep's 120 minutes with the model's turns
+ *  unlimited, while `bun run runs fresh` named 8 or 30 minutes and 16 turns by model. Of the 1,145
+ *  solves of three Opus fresh runs that day at 8 minutes, none ended on its wall; the turns bound.
+ *  So one budget stands for every solver, with the turns at 20 (the operator, 19 October).
+ *
+ *  The turns are what leaves a task room. Until 17 October fresh runs solved at 120 minutes with the
+ *  turns unlimited, and the gate held out 6 of 78 buffer drafts and 3 of 24 truss drafts; the three
+ *  buffer runs at 16 turns held out 74 of 146, and a truss run 4 of its first 4. A harness's programs
+ *  and guide show as an answer reached within the budget, which an unlimited solver reaches anyway.
+ *  A turn is also the same on a loaded host, where a second is not. */
+export const LIMITS = {
+  wallSeconds: 1800,
+  modelTurns: 20,
   turns: 24,
   shellDefaultSeconds: 300,
   shellMaxSeconds: 900,
   concurrency: 4,
   diskBytes: 2 * 1024 ** 3,
-};
+} as const satisfies Limits;
 /** The repository a campaign's folder lies in: the worktree whose source the command runs. */
 export const REPO = resolve(import.meta.dir, "..", "..");
 /** The flags that name a stored pack together. */

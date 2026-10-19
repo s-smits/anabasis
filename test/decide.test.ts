@@ -515,7 +515,7 @@ describe("a row of the table", () => {
       why: "harness h1 read a step, and was not promoted: what later sessions left is read against it once it is the reference",
     });
     // Promoted, the comparison made against it by name is the campaign's, and the table reads it.
-    expect(move([...stepped, ...later, promotion("h1")])).toEqual({
+    expect(move([...stepped, ...later, promotion("h1"), ...examined("x-2")])).toEqual({
       move: "build",
       why: "comparison b-2 read no step with room to gain: harness h2 did not help",
     });
@@ -560,7 +560,14 @@ describe("a row of the table", () => {
       code: "no-room",
       why: "harness h1 is the reference, and comparison g-2 found no task informative for it: the tasks have to change, to ones it fails on some solves",
     });
-    expect(move(promotedOn(HALF))).toMatchObject({ move: "build" });
+    // A promoted reference is written for once whatever room its promotion read (19 October), and
+    // then built against on the same tasks where it is valid on half.
+    expect(decide(promotedOn(HALF), PLAN)).toEqual({
+      move: "examine",
+      code: "no-room",
+      why: "harness h1 was promoted, and no Examiner session has written tasks for it since: tasks are written for each new reference",
+    });
+    expect(move([...promotedOn(HALF), ...examined("x-1")])).toMatchObject({ move: "build" });
     // A comparison made against it by name before the promotion has read the tasks.
     const stepped = [
       ...FIRST,
@@ -629,6 +636,7 @@ describe("a row of the table", () => {
       ...compared("g-1", "h1", "step"),
       ...compared("g-2", "h1", "step"),
       promotion("h1", { from: "start" }),
+      ...examined("x-1"),
     ];
     expect(move([...after, built("b-2", "h2")], three)).toEqual({
       move: "build",
@@ -689,9 +697,10 @@ describe("a row of the table", () => {
     expect(move(control("step", [8, 2, 2], [6, 0, 6]))).toMatchObject({ move: "build" });
     expect(move(control("no-step", ALL, [0, 0, 12]))).toMatchObject({ move: "examine" });
 
-    // A promotion owes no reading of its own: until 16 October the starter was read against each
-    // later epoch's reference once, a reading no row went on to read.
-    expect(move(PROMOTED)).toMatchObject({ move: "build" });
+    // A promotion owes no reading of its own, only tasks written for it: until 16 October the
+    // starter was read against each later epoch's reference once, a reading no row went on to read.
+    expect(move(PROMOTED)).toMatchObject({ move: "examine" });
+    expect(move([...PROMOTED, ...examined("x-9")])).toMatchObject({ move: "build" });
     const second = [
       ...PROMOTED,
       built("b-2", "h2"),
@@ -853,7 +862,14 @@ describe("a hold on the move a row named", () => {
     // and nine held leave room for one more beside the three, past a sweep.
     const plan = { ...PLAN, practice: 3 };
     const control = compared("g-3", "start", "no-step", { old: "h1", tally: [2, 2, 8] });
-    const read = [READ, ...eight, ...RELEASED, promotion("h1"), built("b-1", "h2"), ...heldOut("v13")];
+    const read = [
+      READ,
+      ...eight,
+      ...RELEASED,
+      promotion("h1"),
+      built("b-1", "h2"),
+      ...examined("x-1", ["v13"]),
+    ];
     expect(move([...read, ...control], plan)).toMatchObject({ move: "prepare", practice: 4 });
   });
 

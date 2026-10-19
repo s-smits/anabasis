@@ -454,14 +454,33 @@ function stepped(ground: Ground): Move | null {
  * budget, and a task nobody answers at it is one for the Examiner to replace: on 9 October five
  * Examiner sessions wrote tasks for a budget of one turn, in which no solver can write an answer
  * and submit it. Tasks written since that the gate admits are compared on first (`unread`).
+ *
+ * A promoted reference is also written for once, room or none, before anything else is: the tasks
+ * it was promoted on are the ones its Builder beat the last reference on. On 19 October r3's
+ * Examiner sessions after its first two promotions held out 24 tasks informative for the new
+ * reference, against r1's 3 and r2's 4, and its next two promotions were read on them; r1's
+ * Builder compared six minutes after its promotion on 1 informative task of 25. Since the
+ * objective has no margin (#242) the comparison a harness was promoted on reads room on it in
+ * r1, r2 and r3's first (21, 24 and 6 tasks, against 0), so room alone would write nothing.
  */
 function noRoom(ground: Ground): Move | null {
-  const { reports, reference } = ground;
+  const { reports, reference, events } = ground;
   const last = reports.findLast(({ old, fresh }) => old === reference || fresh === reference);
-  if (last === undefined) return null;
+  if (last === undefined || writtenSince(ground, last)) return null;
   const side = last.old === reference ? "old" : "fresh";
   const room = roomOf(last.report, side);
-  if (room === "room" || writtenSince(ground, last)) return null;
+  if (room === "room") {
+    const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
+    const written = events
+      .slice(promotedAt)
+      .some(({ kind }) => kind === "exam.started" || kind === "exam.finished");
+    return promotedAt === -1 || written
+      ? null
+      : {
+          move: "examine",
+          why: `harness ${short(reference ?? "")} was promoted, and no Examiner session has written tasks for it since: tasks are written for each new reference`,
+        };
+  }
   const why =
     room === "too-hard"
       ? `comparison ${last.id} read no step, and neither harness gave a valid answer: other tasks are written`

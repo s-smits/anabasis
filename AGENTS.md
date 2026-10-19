@@ -538,7 +538,8 @@ The conversation itself is a `build` move with the code `led`.
 `decide` (`src/builder/decide.ts`) is still the one table over the log. It gives advice at the
 opening, under each campaign tool's result, and when a turn ends without a call; an edit or a
 practice solve ends only at the session's limits. The Builder may ignore an advised build,
-comparison or task-writing move. Running out of budget, the stop rule, an operator stop, a faulty
+comparison or task-writing move, apart from the Examiner session that follows a promotion, which
+the host starts beside it (section 7, row `no-room`). Running out of budget, the stop rule, an operator stop, a faulty
 exam and a failed environment still end the run in code. Every tool goes through the same
 admissions and commands as a move the operator launches. The controller's private reasons
 (`campaign.move`, `campaign.ended`) never reach a seat's message.
@@ -1162,8 +1163,12 @@ a move chooses it, and the decision carries that row's code:
 7. `no-room`: the last comparison the reference was in left it nothing to gain, whichever side it
    took: no task informative for it, or none either harness answered. The Examiner writes tasks it
    fails; there is no shorter budget to fall back to. After a promotion that reading is the
-   comparison the harness was promoted on. The row is the same at every epoch, and no row of the
-   table belongs to promotions alone (until 16 October the ladder's reading did, row `ladder`).
+   comparison the harness was promoted on, and the row names one Examiner session for the new
+   reference whatever room that reading left, which the host starts beside the conversation once
+   the action that promoted returns (19 October: since the objective has no margin, the
+   comparison a harness is promoted on reads room on it, and r3's sessions after a promotion held
+   out 24 informative tasks against r1's 3 and r2's 4). Until 16 October the ladder's reading was
+   a promotion's own row, `ladder`.
 8. `short`: the gate would refuse the next comparison for lack of tasks (`refusals`,
    `src/builder/admission.ts`), or the pair's last comparison tallied none. The Examiner writes
    tasks first, since a changed harness can only tie again on tasks the reference closed.

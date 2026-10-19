@@ -273,7 +273,7 @@ describe("a campaign run by its live Builder", () => {
     ]);
   });
 
-  it("lets the Builder practise while the Examiner writes, refuses a second session, and ends the Examiner's first", async () => {
+  it("lets the Builder release practice and practise while the Examiner writes, refuses a second session, and ends the Examiner's first", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-beside`;
     const log = join(REPO, ".ana", "d2", name, LOG_FILE);
@@ -284,6 +284,7 @@ describe("a campaign run by its live Builder", () => {
       seated: builderScript(base, [
         ["examine", {}],
         ["examine", {}],
+        ["release_practice", {}],
         { wait: async () => ["practice", { tasks: [taskSets(read(log)).released[0] ?? ""] }] },
         {
           wait: async () => {
@@ -317,6 +318,13 @@ describe("a campaign run by its live Builder", () => {
       kind === CALLED && isString(data.tool) ? `${kind}:${data.tool}` : kind,
     );
     const at = (kind: string) => kinds.indexOf(kind);
+    // A release spends nothing and goes on beside the session: until 19 October it waited for it,
+    // and each of three replicates' Builders waited 1.6 to 2.6 hours with no practice task.
+    const released = read(log).findIndex(
+      ({ kind, data }, index) => kind === MOVED && data.move === "prepare" && index > at("exam.started"),
+    );
+    expect(released).toBeGreaterThan(at("exam.started"));
+    expect(released).toBeLessThan(at(EXAMINED));
     expect(at("exam.started")).toBeLessThan(at(`${CALLED}:practice`));
     expect(at(`${CALLED}:practice`)).toBeLessThan(at(EXAMINED));
     expect(at(EXAMINED)).toBeLessThan(at(FINISHED));
@@ -755,8 +763,8 @@ describe("a campaign run by its live Builder", () => {
       seated: builderScript(
         scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
         [
-          // A release waits for the session writing beside the conversation.
-          ["release_practice", {}],
+          // A promotion waits for the session writing beside the conversation, and refuses.
+          ["promote", {}],
           ["examine", {}],
           ["examine", {}],
           ["finish", { note: "The Examiner was asked again after the limit." }],
@@ -1219,18 +1227,18 @@ describe("a campaign's endings", () => {
   it("ends on the environment, on record, where three Examiner sessions crash while the Builder lives", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-halted`;
-    // A release waits for the Examiner writing beside it, so each examine starts a session.
-    const release: Step = ["release_practice", {}];
+    // A promotion waits for the Examiner writing beside it, so each examine starts a session.
+    const waits: Step = ["promote", {}];
     const seats: Seats = {
       seated: builderScript(
         scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
         [
           ["examine", {}],
-          release,
+          waits,
           ["examine", {}],
-          release,
+          waits,
           ["examine", {}],
-          release,
+          waits,
           ["finish", { note: "Not reached: the host halts this conversation." }],
         ],
       ),

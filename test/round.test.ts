@@ -519,13 +519,13 @@ describe("a round", () => {
 
   it("sets two valid answers apart by the objective the comparison fixed, and says how many it decided", async () => {
     // Every solve but s1's is valid under both harnesses. The new harness's answers are lighter on
-    // s2 and s3, heavier on s4 by less than the margin, and s1 nobody answers.
+    // s2 and s3, the same on s4 within a billionth, and s1 nobody answers.
     const mass = (version: string, side: Side): number =>
-      (side === "fresh" ? { s2: 8, s3: 9, s4: 10.05 }[version] : 10) ?? 10;
+      (side === "fresh" ? { s2: 8, s3: 9, s4: 10 + 1e-10 }[version] : 10) ?? 10;
     const s = await setup([edit, finish], (version, side) =>
       version === "s1" ? LATE : { ending: PASS, objective: mass(version, side) },
     );
-    const objective = { direction: "lower", margin: 0.01 } as const;
+    const objective = { direction: "lower" } as const;
     expect(await round({ ...s.request, objective })).toMatchObject({
       scored: { wins: 2, losses: 0, ties: 2, p: 0.25, unsolved: 1 },
       objective: { ...objective, decided: 2 },
@@ -625,7 +625,7 @@ describe("a round", () => {
       );
       await expect(round({ ...s.request, level: 0.05 })).rejects.toThrow("other terms (level)");
       // It began with no objective, and its pairs were read on validity alone.
-      await expect(round({ ...s.request, objective: { direction: "lower", margin: 0.01 } })).rejects.toThrow(
+      await expect(round({ ...s.request, objective: { direction: "lower" } })).rejects.toThrow(
         "other terms (objective)",
       );
       // A term the start recorded and a continuation drops has moved too.
@@ -635,7 +635,7 @@ describe("a round", () => {
         if (left === 0) throw new Error(STOPS);
         return step(version, side, nth, digest);
       });
-      const objective = { direction: "lower", margin: 0.01 } as const;
+      const objective = { direction: "lower" } as const;
       await expect(round({ ...t.request, objective, prediction: "a step" })).rejects.toThrow(STOPS);
       await expect(round(t.request)).rejects.toThrow("other terms (objective, prediction)");
       // It began with no prediction, and takes none now that some of its solves can be seen.
@@ -1185,7 +1185,7 @@ describe("a round", () => {
   it("stops on more check defects than it allows, and says so in place of a reading", async () => {
     const s = await setup([edit, finish], () => REJECTED);
     const ruled = { s1: "check-defect", s2: "check-defect", s3: "check-defect" } as const;
-    const objective = { direction: "lower", margin: 0.01 } as const;
+    const objective = { direction: "lower" } as const;
     const report = await round({ ...s.request, referee: referee(s.log, ruled), defects: 1, objective });
     // A comparison that stopped keeps the rule it fixed, and decided nothing by it.
     expect(report).toMatchObject({
@@ -1415,19 +1415,19 @@ describe("a checkpoint with no session", () => {
     expect((await checkpoint(s.compare("g3"))).noise).toBeNull();
   });
 
-  it("reads no step on either tier where the reference meets itself, and sets no margin for the next comparison", async () => {
+  it("reads no step on either tier where the reference meets itself, and carries no margin", async () => {
     // The A/A rehearsal of the overhaul plan's P2: every solve of the reference is valid, and its
     // objective 10 or 10.4 by turns, which halves mirrored in time hold one of each on every task.
     const s = await setup([], (_version, side, nth) =>
       side === "starter" ? LATE : { ending: PASS, objective: nth % 2 === 0 ? 10 : 10.4 },
     );
-    const objective = { direction: "lower", margin: 0.01 } as const;
+    const objective = { direction: "lower" } as const;
     const report = await checkpoint({ ...s.compare("g2", { solves: 4 }), objective });
-    // The objective tells its answers apart past the margin, pairing by pairing, and decides no
+    // The objective tells its answers apart, pairing by pairing, and decides no
     // task: on validity and on the objective alike, the reference ties itself.
     expect(report.noise).toMatchObject({ wins: 0, losses: 0, ties: 4, p: 1, flips: 0 });
     // Until 18 October the A/A set the next comparison's margin from this spread, 0.4 in 10.4;
-    // the margin is now the gate's for every comparison, and the report carries none.
+    // there has been no margin since 19 October, and the report carries none.
     expect(report.noise).not.toHaveProperty("margin");
   });
 

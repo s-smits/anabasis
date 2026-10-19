@@ -594,10 +594,10 @@ describe("a campaign", () => {
       reportLines({
         valid: { old: [0, 0, 2], fresh: [0, 0, 2], informative: { old: 0, fresh: 0 } },
         frontier: null,
-        objective: { direction: "lower", margin: 0.01, decided: 1 },
+        objective: { direction: "lower", decided: 1 },
         noise: null,
       }).at(-1),
-    ).toBe("the objective (lower is better, margin 0.01) decided 1 task that validity alone would have tied");
+    ).toBe("the objective (lower is better) decided 1 task that validity alone would have tied");
     const campaign = await openCampaign(ARGS);
     expect(read(campaign.log).some(({ data }) => data.session === "z-8")).toBe(false);
   });

@@ -34,7 +34,7 @@ import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { proposalsOf, writtenTasks } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { poolOf } from "../kernel/reports.ts";
-import { informative, MARGIN, type Paired } from "../kernel/compare.ts";
+import { informative, type Paired } from "../kernel/compare.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { packageGate, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
 import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
@@ -167,7 +167,7 @@ function instanceOf(
  *  stores no answer, which the Examiner's own trace alone keeps (`exam.call`), and until
  *  19 October it stored no measure either: 74 of 74 `try_answer`
  *  results of esp32-fresh-opus held none, so whether an author's answer beat the reference
- *  harness's best by the margin, which leaves a task the reference answers every time room to gain
+ *  harness's best, which leaves a task the reference answers every time room to gain
  *  on (`informative`, `src/kernel/compare.ts`), could not be read off any record. Nothing reads it
  *  yet, and no seat is told it. Empty where the contract declares no objective. */
 function measureOf(contract: Contract, verdict: Verdict): JsonObject {
@@ -197,8 +197,7 @@ function shown(measure: number): string {
 /** What the gate reads of one package: its shape, and under `try_task` the reference harness's
  *  solves of a package whose shape passed, `TRIED` of them at once, with what they billed. The task
  *  is held out where the solves that gave a reading leave the reference room as a comparison reads
- *  it (`informative`): a valid answer and a fail, or valid answers apart by the objective past
- *  `MARGIN`; or no valid answer where its author's answer passes on it (`gated`). Until 16 October
+ *  it (`informative`): a valid answer and a fail, or valid answers apart by the objective; or no valid answer where its author's answer passes on it (`gated`). Until 16 October
  *  the gate read no objective, and of the drafts five fresh campaigns' gates refused as answered
  *  every time, 6 held valid answers more than 1% apart. A solve that ended in no reading, or in
  *  a rejection the Referee did not rule earned (`probing`, `tools/d1b/examine.ts`), is no reading,
@@ -246,7 +245,7 @@ async function measured(
   // The measures by the objective, theirs and the author's, which decide room where every solve is
   // valid (`informative`): until 19 October the Examiner was told neither, and 181 of the 338
   // drafts five campaigns' gates refused as answered 3 of 3 with measures held answers apart by
-  // less than the margin, none of which their author could see.
+  // less than the margin then in force, 0.01, none of which their author could see.
   const measures = answers.flatMap(({ measure }) => (measure === null ? [] : [shown(measure)]));
   const theirs = measures.length === 0 ? "" : `, its valid answers measuring ${measures.join(", ")}`;
   const yours =
@@ -258,7 +257,7 @@ async function measured(
   const roomless = `${counted}, ${unsolved ? "and no answer of yours passed try_answer on it" : "which leaves no room"}`;
   // Room as a comparison reads it (`informative`), on the reference's side alone; a task it never
   // answers is held on its author's proof (`gated`), so no feasible task is named here.
-  const objective = contract.objective && { direction: contract.objective.direction, margin: MARGIN };
+  const objective = contract.objective && { direction: contract.objective.direction };
   const pair: Paired = {
     task: taskVersion(task),
     old: readings.map(({ outcome }) => outcome === "pass"),
@@ -298,7 +297,7 @@ async function measured(
  *  reference valid on 14 of 14 tasks and 5 of 6, the set already closed, for $33.06 and 5.9 hours
  *  in one campaign, while a third of these drafts were kept from the exam. Since 19 October one
  *  it answered validly in every solve is held where the proof is better by the objective than each
- *  of those answers past the margin, so the proof is read before the solves. */
+ *  of those answers, so the proof is read before the solves. */
 async function gated(desk: Desk, instance: Task, stop: AbortSignal, ahead: number): Promise<string> {
   const { request } = desk;
   const { log, id: session, verify } = request;

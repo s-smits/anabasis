@@ -191,12 +191,7 @@ function Readings({ detail, reading }: { detail: ComparisonDetail; reading: Camp
     ["Solves a side", String(terms.solves)],
     ["Dollar cap", money(terms.cap)],
     ["Model turns", terms.modelTurns === null ? "unlimited" : String(terms.modelTurns)],
-    [
-      "Objective",
-      terms.objective === null
-        ? "none"
-        : `${terms.objective.direction} is better, margin ${String(terms.objective.margin)}`,
-    ],
+    ["Objective", terms.objective === null ? "none" : `${terms.objective.direction} is better`],
     ["Starter", harnessLabel(reading, terms.starter)],
     ["Host load", bar.load === null ? "not recorded" : bar.load.toFixed(1)],
     ["Table row", bar.named === null ? "not recorded" : `${bar.named.code} · ${bar.named.why}`],

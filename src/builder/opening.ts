@@ -79,7 +79,6 @@ export const TERMS = [
   "solves",
   "level",
   "trigger",
-  "margin",
   "defects",
   "minutes",
   "turns",

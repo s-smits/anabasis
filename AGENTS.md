@@ -28,9 +28,13 @@ result ready.
 
 ## 1. What Anabasis v2 does
 
-One query names one technical domain. A campaign builds one **harness** for it: the guide and the
-programs with which a solving model answers that domain's tasks. Every mechanism in the repository
-serves one question:
+One query names one technical domain. A campaign builds one **Built Harness** for it, a harness for
+short: the guide and the programs with which a solving model answers that domain's tasks. The
+**solver** is that model, and it never answers outside a harness: a solve is the solver inside
+one harness, one system. The solver is fixed by the campaign's setting, and the harness is the
+part that is built, compared and promoted, so two such systems in a comparison differ in their
+harness alone, and what one wins its harness won. Every mechanism in the repository serves one
+question:
 
 > Is the new harness better than the reference harness, for this solver, on tasks neither was
 > built on?
@@ -49,7 +53,7 @@ sign-flip test over the tasks reads a **step** or none.
    Contract                 │                        tasks, ends with a frozen harness version
      public rules, format   │                              │
    Check program + engines  │                              ▼
-     hidden from every      │                      Solver (model: pi's coding agent)
+     hidden from every      │                      Solver (model) inside the harness, one system
      solving model          │                        reads the task, the rules, the guide;
         │                   │                        writes answer.json and submits
         ▼                   ▼                              │
@@ -337,7 +341,7 @@ wall keeps from it.
 | --- | --- | --- | --- | --- |
 | **Examiner** (model) | Writes task instances against a fixed contract and check program. For a campaign that opens from a prompt it first drafts that exam: the rules with their sources, the answer format, one check a rule, examples and controls | The contract, the operator's brief, the budget every solve is held to, examples, one outcome for each task of the campaign and whether a valid answer to it is on record, and for a task the reference stood in two comparisons or more of the same outcome of each of its last three, newest first, with how many of the newest closed it in a row (since 13 October), those tasks counted by family, or in a total where a family holds one task (since 11 October), what the last session under the current reference said at its `finish` (since 16 October; until then the last session's of the campaign), and the home the last session left, with a copy of the reference harness in it unless the campaign's term `exam-reference` is `off` (on unless named, since 19 October; until then off unless named); how many of its gate's solves each held task passed on, and the drafts a gate refused after reading them, with its reason (since 14 October), read on the current reference alone and those read on a reference since replaced as one count (since 16 October); the checks, through `try_answer`, on an instance with an answer of its own. When it drafts: the operator's prompt, what the host's reading found in each draft, and a walled home of its own, empty at its start | A target, a harness's name, the other harness's result on any one task, a count of a task's valid solves beyond every, some or none, but how many of the reference harness's three solves of a draft task were valid (`try_task`, and in later sessions), the turns each valid one took (since 16 October) and, where the contract declares an objective, its measure and its own answer's (since 19 October), and nothing else of those solves. It makes no solve of the exam's | `src/examiner/` |
 | **Builder** (model) | Edits `harness/`, chooses campaign tools in the same conversation, and ends with a frozen harness version | The public rules and the objective, practice tasks, practice results with their measures and traces, each comparison's tally, its own notes | A held-out task or its trace, a check, a hidden value, which checks refused an answer | `src/builder/` |
-| **Solver** (model) | Answers one task: pi's coding agent with `read`, `bash`, `edit`, `write` and `submit` | The task's public part, the public rules, the harness's guide and programs, its limits and how much it has used | The checks and the hidden values | `src/solve/` |
+| **Solver** (model) | Answers one task from inside a harness, one system with it: pi's coding agent with `read`, `bash`, `edit`, `write` and `submit`, and whatever the harness adds | The task's public part, the public rules, the harness's guide and programs, its limits and how much it has used | The checks and the hidden values | `src/solve/` |
 | **Verifier** (code) | Runs every applicable check on one answer, each in a fresh cell inside the OS wall | The answer, the task, the check program, the installed engines | n/a | `src/kernel/verify.ts`, `src/verify/` |
 | **Referee** (model) | Rules each rejection `earned`, `check-defect` or `unclear` before it counts | The verifier's side only: the task with hidden values, the rules, the answer, the refusing checks, the check program | The harness, the solver's trace, the Builder | `src/review/referee.ts` |
 | **Host** (code) | Everything in the first column of section 2 | The log | n/a | `src/kernel/`, `tools/` |
@@ -421,6 +425,14 @@ A harness is named by its digest, so a change to any part is another harness, an
 the old one counts for the new. The **Starter Built Harness** is pi's coding agent as pi releases
 it, with no guide and no domain program (`src/solve/starter.ts`). Every campaign starts from it,
 it is the first reference harness, and it stays the fixed lower reference after a promotion.
+
+The solver and the Built Harness it runs in are one system, and no solve is made outside one: "the
+starter's solves" are the solver's inside the starter. The solver is the same on both sides of a
+comparison, fixed by the setting, so the harness is the one thing a comparison reads, the one the
+Builder edits and the one a promotion makes the reference. A harness shows as an answer its
+solver reaches within the solve's budget and the reference's does not: given turns without end,
+the solver inside the starter works out most of what a harness's programs hand it, and the two
+systems tie (section 7, "The budget").
 
 ## 4. The Harness Builder
 
@@ -1484,6 +1496,8 @@ the operator.
 | Valid answer | An answer that passes every check, submitted within the limits |
 | Rejection | An answer at least one check rejects: a true fail when the answer is wrong, a check defect when it was right |
 | Hand label | A person's verdict on one rejection: `earned`, `check-defect` or `unclear`; or on one answer that passed: `sound`, `wrong` or `unclear` |
+| Built Harness | The directory the Builder edits (section 3), a harness for short: the part of a solving system that is built, compared and promoted. The Starter Built Harness is the first, and every reference after it is one the Builder built |
+| Solver | The model that answers a task, fixed by the setting. It runs only inside a harness, and the two are one system |
 | Reference harness | The harness a new one is compared with: the starter until a step is promoted |
 | Comparison | Both harnesses solve the same held-out tasks; each task is a win, a loss or a tie |
 | Round | One Builder session followed by one comparison. A session may also run by itself, with no comparison after it |

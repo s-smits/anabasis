@@ -96,7 +96,9 @@ promotions a campaign (`src/builder/climb.ts`). Of the drafts the reference answ
 their three admission solves, where their author's own answer passes on them (`task.feasible`),
 every one is held out as any task is (`try_task`, `gated` in `src/examiner/write.ts`), since a
 task the reference never answers while a valid answer to it is on record is the room a promotion
-leaves. Until 16 October some of them were held instead for a **ladder**, a fixed set never
+leaves. So, since 19 October, is a draft it answers in every solve where its author's answer is
+better by the objective than each of its answers past the margin (`informative`,
+`src/kernel/compare.ts`). Until 16 October some of them were held instead for a **ladder**, a fixed set never
 scored for a promotion and read after each one, the starter against the new reference: until
 15 October every such draft, 31 of 120 in the five campaigns of 14 October, and then the first of
 every three. It was retired on 16 October. Its readings said little the promotion had not: the
@@ -333,7 +335,7 @@ wall keeps from it.
 
 | Seat | Job | Reads | Never | Source |
 | --- | --- | --- | --- | --- |
-| **Examiner** (model) | Writes task instances against a fixed contract and check program. For a campaign that opens from a prompt it first drafts that exam: the rules with their sources, the answer format, one check a rule, examples and controls | The contract, the operator's brief, the budget every solve is held to, examples, one outcome for each task of the campaign and whether a valid answer to it is on record, and for a task the reference stood in two comparisons or more of the same outcome of each of its last three, newest first, with how many of the newest closed it in a row (since 13 October), those tasks counted by family, or in a total where a family holds one task (since 11 October), what the last session under the current reference said at its `finish` (since 16 October; until then the last session's of the campaign), and the home the last session left, with a copy of the reference harness in it unless the campaign's term `exam-reference` is `off` (on unless named, since 19 October; until then off unless named); how many of its gate's solves each held task passed on, and the drafts a gate refused after reading them, with its reason (since 14 October), read on the current reference alone and those read on a reference since replaced as one count (since 16 October); the checks, through `try_answer`, on an instance with an answer of its own. When it drafts: the operator's prompt, what the host's reading found in each draft, and a walled home of its own, empty at its start | A target, a harness's name, the other harness's result on any one task, a count of a task's valid solves beyond every, some or none, but how many of the reference harness's three solves of a draft task were valid (`try_task`, and in later sessions), and nothing else of those solves. It makes no solve of the exam's | `src/examiner/` |
+| **Examiner** (model) | Writes task instances against a fixed contract and check program. For a campaign that opens from a prompt it first drafts that exam: the rules with their sources, the answer format, one check a rule, examples and controls | The contract, the operator's brief, the budget every solve is held to, examples, one outcome for each task of the campaign and whether a valid answer to it is on record, and for a task the reference stood in two comparisons or more of the same outcome of each of its last three, newest first, with how many of the newest closed it in a row (since 13 October), those tasks counted by family, or in a total where a family holds one task (since 11 October), what the last session under the current reference said at its `finish` (since 16 October; until then the last session's of the campaign), and the home the last session left, with a copy of the reference harness in it unless the campaign's term `exam-reference` is `off` (on unless named, since 19 October; until then off unless named); how many of its gate's solves each held task passed on, and the drafts a gate refused after reading them, with its reason (since 14 October), read on the current reference alone and those read on a reference since replaced as one count (since 16 October); the checks, through `try_answer`, on an instance with an answer of its own. When it drafts: the operator's prompt, what the host's reading found in each draft, and a walled home of its own, empty at its start | A target, a harness's name, the other harness's result on any one task, a count of a task's valid solves beyond every, some or none, but how many of the reference harness's three solves of a draft task were valid (`try_task`, and in later sessions), the turns each valid one took (since 16 October) and, where the contract declares an objective, its measure and its own answer's (since 19 October), and nothing else of those solves. It makes no solve of the exam's | `src/examiner/` |
 | **Builder** (model) | Edits `harness/`, chooses campaign tools in the same conversation, and ends with a frozen harness version | The public rules and the objective, practice tasks, practice results with their measures and traces, each comparison's tally, its own notes | A held-out task or its trace, a check, a hidden value, which checks refused an answer | `src/builder/` |
 | **Solver** (model) | Answers one task: pi's coding agent with `read`, `bash`, `edit`, `write` and `submit` | The task's public part, the public rules, the harness's guide and programs, its limits and how much it has used | The checks and the hidden values | `src/solve/` |
 | **Verifier** (code) | Runs every applicable check on one answer, each in a fresh cell inside the OS wall | The answer, the task, the check program, the installed engines | n/a | `src/kernel/verify.ts`, `src/verify/` |
@@ -793,7 +795,8 @@ off the frontier one the reference harness answered in every solve of the last c
 stood in of it, on whichever side, which can only tie again or be lost: it is **exhausted**
 (`poolOf`; two closed comparisons in any order until 15 October, when a promoted harness had stood
 once in nearly every task it was promoted on); a task the objective told two valid answers apart
-on is not closed, since the next harness can still win it. An exhausted task stays in the draw as
+on is not closed, since the next harness can still win it, nor is one an author's answer on record
+outdoes by it (`outdone`, 19 October). An exhausted task stays in the draw as
 retained, so that a harness that breaks what the reference answers still shows its losses: a loss
 can only come from a task the reference answers, so with those out of the draw a harness that
 answers new tasks and loses old ones would read better than it is over the tasks written, the
@@ -914,9 +917,10 @@ in flight would pass the cap.
 **Room.** A comparison's report says what room a harness has to gain in (`roomOf`,
 `src/kernel/reports.ts`): room where a task was informative for the reference harness, valid on
 some of its solves and not all, two of its valid answers apart by the objective past the margin, or
-valid on none where a valid answer to it is on record, another harness's or its author's
-(`informative`, `src/kernel/compare.ts`, the one definition `try_task` admits a draft by too; the
-last since 15 October); too hard where neither harness gave a valid answer and none is on record;
+valid on none where a valid answer to it is on record, another harness's or its author's, or
+valid on all where its author's answer on record is better by the objective than each past the
+margin (`informative`, `src/kernel/compare.ts`, the one definition `try_task` admits a draft by
+too; the third since 15 October, the last since 19 October); too hard where neither harness gave a valid answer and none is on record;
 and none otherwise, a task the reference fails in every solve that nobody has answered among them
 (since 12 October; shares of valid solves before). The two ways to room are the tasks and the
 objective.

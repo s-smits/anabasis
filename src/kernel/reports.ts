@@ -135,6 +135,9 @@ interface TaskRecord {
   /** `answered`, or `task.feasible` records a passing author answer, or its gate says a reference
    *  solve under `try_task` gave a valid answer, which answers nothing. */
   feasible: boolean;
+  /** The best measure by the objective of an author's answer on record (`task.feasible`), or null
+   *  where none carries one (`informative`, `compare.ts`; 19 October). */
+  best: number | null;
   /** Each comparison whose last report tallied it, in the order the comparisons reported. */
   readonly tallied: TalliedIn[];
   /** The last report that set it aside on a rejection, or -1, and its place among every pair
@@ -427,6 +430,7 @@ function taskRecords(events: readonly LogEvent[]) {
       keptAt: -1,
       answered: false,
       feasible: false,
+      best: null,
       tallied: [],
       asideAt: -1,
       asideOrder: Number.POSITIVE_INFINITY,
@@ -439,6 +443,12 @@ function taskRecords(events: readonly LogEvent[]) {
     if (kind === "task.state" && data.state === "held") of(data.version).keptAt = index;
     const tried = kind === "task.gate" ? asRecord(data.reference)?.valid : undefined;
     if (kind === "task.feasible" || (isNumber(tried) && tried > 0)) of(data.version).feasible = true;
+    const { measure, direction } = asRecord(data.objective) ?? {};
+    if (kind !== "task.feasible" || !isNumber(measure)) continue;
+    const record = of(data.version);
+    const beaten =
+      direction === "lower" ? measure < (record.best ?? Infinity) : measure > (record.best ?? -Infinity);
+    if (beaten) record.best = measure;
   }
   /**
    * Each comparison's tasks a solve of which a limit cut short, by harness, as `cutIn` names them:
@@ -511,7 +521,7 @@ function tallyReports(
         reference: side,
         cut: cutOn(data.old) || cutOn(data.fresh),
         referenceCut: side !== null && cutOn(data[side]),
-        closed: side !== null && closedTo(pair, side),
+        closed: side !== null && closedTo(pair, side, of(task).best),
         won: wins > 0 ? "fresh" : losses > 0 ? "old" : null,
       });
     }
@@ -598,7 +608,10 @@ function tallyReports(
  * and at any limits, an author's answer the host saw pass on the task under its own id
  * (`task.feasible`), or a reference solve's under `try_task`, which its gate counts. It is the one
  * fact an author may hear beside a task's outcome that names no side: a task the reference
- * answers in no solve is then told apart from one nobody has answered.
+ * answers in no solve is then told apart from one nobody has answered. **Bests** are the best
+ * measure by the objective an author's answer on record took of each, where its `task.feasible`
+ * carries one: a task the reference answers alike in every solve still leaves room where one is
+ * better than all of its answers (`informative`, `compare.ts`; 19 October).
  *
  * **Outcomes** hold each task some comparison scored or set aside, by task version, from the last
  * comparison that did: how the reference harness did on it, valid in every one of its counted
@@ -671,6 +684,7 @@ export function poolOf(events: readonly LogEvent[]) {
     exhausted: spent,
     retained,
     feasible: new Set(records.flatMap(({ version, feasible }) => (feasible ? [version] : []))),
+    bests: new Map(records.flatMap(({ version, best }) => (best === null ? [] : [[version, best] as const]))),
     outcomes: new Map(records.toSorted((one, other) => first(one) - first(other)).flatMap(outcomeOf)),
     standings: new Map(records.flatMap(standingOf)),
     histories: new Map(records.flatMap(historyOf)),

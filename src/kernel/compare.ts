@@ -449,14 +449,44 @@ function apart(one: number, other: number): number {
  * once a promoted harness passed every scored solve (buffer-149's 68 of 68 in two comparisons,
  * recode-151's 56 of 56, buffer-159-opus's 38 of 40) its room was only the tasks it answered some
  * of the time, and the gate held out only such drafts.
+ *
+ * Valid on all and alike, it is informative too where `bests` holds a measure for it that is
+ * better by the objective than every one of its own past the margin: an author's valid answer on
+ * record (`task.feasible`, `poolOf`), which a better harness can reach and win every pair by. Until
+ * 19 October such a task was closed: of the drafts buffer-pr197-opus-m1's gate refused as answered
+ * in 3 of 3 solves, 136 carried an author's answer with a measure, and 15 of them were better than
+ * the reference's best answer by more than the margin, re-verified from the log; on esp32-fresh-opus
+ * 57 did, and none was better.
  */
-export function informative(pair: Paired, side: "old" | "fresh", feasible: ReadonlySet<string>): boolean {
+export function informative(
+  pair: Paired,
+  side: "old" | "fresh",
+  feasible: ReadonlySet<string>,
+  bests: ReadonlyMap<string, number> = new Map(),
+): boolean {
   const valid = pair[side].filter(Boolean).length;
   if (valid === 0) return feasible.has(pair.task);
   if (valid < pair[side].length) return true;
   const own = (pair.objective?.[side] ?? []).filter(isNumber);
   const margin = pair.objective?.margin ?? Number.POSITIVE_INFINITY;
-  return own.some((one, at) => own.slice(at + 1).some((other) => apart(one, other) > margin));
+  if (own.some((one, at) => own.slice(at + 1).some((other) => apart(one, other) > margin))) return true;
+  return outdone(pair, side, bests.get(pair.task) ?? null);
+}
+
+/** Whether `best`, an author's measure on record, is better by the objective past the margin than
+ *  every answer of the harness on `side`, each valid and measured: a harness that reaches it wins
+ *  every pair. A valid answer with no measure leaves it unknown, and so not outdone. */
+export function outdone(pair: Paired, side: "old" | "fresh", best: number | null): boolean {
+  const rule = pair.objective;
+  const own = rule?.[side] ?? [];
+  return (
+    best !== null &&
+    rule !== undefined &&
+    pair[side].length > 0 &&
+    pair[side].every(Boolean) &&
+    own.length === pair[side].length &&
+    own.every((one) => better(rule, best, one) === 1)
+  );
 }
 
 /** Which of two valid answers' measures is the better by more than the rule's margin: 1 for the
@@ -512,9 +542,16 @@ export function decidedByObjective(pairs: readonly Paired[]): number {
  *  be lost; where the objective separates two valid answers, a harness that answers it validly can
  *  still win or lose it. The one rule under the exhausted fold (`poolOf`, `reports.ts`): until
  *  12 October the supply read validity alone and counted a task the objective still separates as
- *  closed, and until 16 October it read this a second time as an untied share. */
-export function closedTo(pair: Paired, side: "old" | "fresh"): boolean {
-  return pair[side].length > 0 && pair[side].every(Boolean) && !separatedByObjective(pair);
+ *  closed, and until 16 October it read this a second time as an untied share. Nor is a task closed
+ *  where an author's measure on record (`best`) outdoes every answer of the side (`outdone`): held
+ *  for that room since 19 October, it would otherwise leave the frontier on its first reading. */
+export function closedTo(pair: Paired, side: "old" | "fresh", best: number | null = null): boolean {
+  return (
+    pair[side].length > 0 &&
+    pair[side].every(Boolean) &&
+    !separatedByObjective(pair) &&
+    !outdone(pair, side, best)
+  );
 }
 
 /** Whether the objective told two valid answers of one task apart: a pairing of two valid answers

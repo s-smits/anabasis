@@ -41,7 +41,7 @@ import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
-import { isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
+import { isNumber, isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
@@ -189,6 +189,11 @@ function tried(verdict: Verdict): string {
   return `The checks could not run: ${verdict.reason}`;
 }
 
+/** A measure as the Examiner reads it: six significant digits. */
+function shown(measure: number): string {
+  return String(Number(measure.toPrecision(6)));
+}
+
 /** What the gate reads of one package: its shape, and under `try_task` the reference harness's
  *  solves of a package whose shape passed, `TRIED` of them at once, with what they billed. The task
  *  is held out where the solves that gave a reading leave the reference room as a comparison reads
@@ -205,7 +210,12 @@ function tried(verdict: Verdict): string {
  *  and a killed run abort, and it is the kill a comparison's solves take (`probe`), so a wall that
  *  fires mid-try leaves no solve running and the task refused unmeasured. `ahead` is the drafts of
  *  the same call measured beside this one (`proposeTool`). */
-async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal, ahead: number) {
+async function measured(
+  desk: Desk,
+  task: TaskPackage,
+  stop: AbortSignal,
+  { ahead, proof }: { readonly ahead: number; readonly proof: () => Promise<Verdict | null> },
+) {
   const { contract, log, id, probe } = desk.request;
   if (carries([task.publicInput, task.hidden], desk.planted)) return { reason: PLANTED, said: "" };
   const packaged = packageGate(contract, task);
@@ -227,9 +237,21 @@ async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal, ahead:
   // The turns each valid answer took, as the session's later ones are told by family, and the
   // objective of each, by which a task the reference answers every time still leaves room.
   const answers = gateAnswers(read(log), from).get(taskVersion(task)) ?? [];
+  // The author's proof is read only where it decides: every solve valid, or none (`gated`).
+  const checked = valid === solves || valid === 0 ? await proof() : null;
+  const authored =
+    checked?.kind === "pass" && contract.objective !== undefined ? checked.objective : undefined;
   const took = answers.flatMap(({ turns: each }) => (each === null ? [] : [each]));
   const turns = took.length === 0 ? "" : `, taking ${took.join(", ")} of the solver's own turns`;
-  const counted = `the reference harness answered it validly in ${String(valid)} of ${String(TRIED)} solves${turns}${unread}`;
+  // The measures by the objective, theirs and the author's, which decide room where every solve is
+  // valid (`informative`): until 19 October the Examiner was told neither, and 181 of the 338
+  // drafts five campaigns' gates refused as answered 3 of 3 with measures held answers apart by
+  // less than the margin, none of which their author could see.
+  const measures = answers.flatMap(({ measure }) => (measure === null ? [] : [shown(measure)]));
+  const theirs = measures.length === 0 ? "" : `, its valid answers measuring ${measures.join(", ")}`;
+  const yours =
+    authored === undefined ? "" : `, and your answer that passed try_answer on it ${shown(authored)}`;
+  const counted = `the reference harness answered it validly in ${String(valid)} of ${String(TRIED)} solves${turns}${theirs}${yours}${unread}`;
   const unmeasured = `${counted}, so it is not measured`;
   const unsolved = solves > 0 && valid === 0;
   // The rule itself is the system prompt's, said once there (17 October).
@@ -246,7 +268,8 @@ async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal, ahead:
       objective && { ...objective, old: answers.map(({ measure }) => measure), fresh: [] },
     ),
   };
-  const some = valid > 0 && informative(pair, "old", new Set());
+  const bests = new Map(authored === undefined ? [] : [[pair.task, authored]]);
+  const some = valid > 0 && informative(pair, "old", new Set(), bests);
   return {
     reason: some ? null : unsolved || solves === TRIED ? roomless : unmeasured,
     said: `; ${counted}`,
@@ -273,7 +296,9 @@ async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal, ahead:
  *  of 56) was left only the drafts it answered some of the time. Until 16 October the first of
  *  every three still was, and the ladder was retired: its readings after a promotion found the new
  *  reference valid on 14 of 14 tasks and 5 of 6, the set already closed, for $33.06 and 5.9 hours
- *  in one campaign, while a third of these drafts were kept from the exam. */
+ *  in one campaign, while a third of these drafts were kept from the exam. Since 19 October one
+ *  it answered validly in every solve is held where the proof is better by the objective than each
+ *  of those answers past the margin, so the proof is read before the solves. */
 async function gated(desk: Desk, instance: Task, stop: AbortSignal, ahead: number): Promise<string> {
   const { request } = desk;
   const { log, id: session, verify } = request;
@@ -282,17 +307,20 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal, ahead: numbe
   const { taskId, family, publicInput, hidden } = instance;
   append(log, "task.proposed", { version, taskId, session, task: { taskId, family, publicInput, hidden } });
   const answer = desk.answered.get(contentOf(instance));
-  const { reason, said, reference, unsolved } = await measured(desk, task, stop, ahead);
-  const proof = async () =>
-    verify === null || answer === undefined
-      ? null
-      : await Promise.try(() => verify(instance, answer)).catch(
-          (error: unknown) => ({ kind: "non-result", reason: errorMessage(error) }) as const,
-        );
-  // A task the reference never answered is held on its proof, so that is read before its gate; one
-  // it answered some of the time is held on the solves, and its proof is read once it is held.
-  const early = unsolved === true ? await proof() : null;
-  const proved = early?.kind === "pass";
+  // The proof is read once: before the gate where the solves leave it to decide, a task the
+  // reference never answered or answered alike in every solve (`measured`), else once it is held.
+  let checked: Promise<Verdict | null> | undefined;
+  const proof = () => {
+    checked ??=
+      verify === null || answer === undefined
+        ? Promise.resolve(null)
+        : Promise.try(() => verify(instance, answer)).catch(
+            (error: unknown) => ({ kind: "non-result", reason: errorMessage(error) }) as const,
+          );
+    return checked;
+  };
+  const { reason, said, reference, unsolved } = await measured(desk, task, stop, { ahead, proof });
+  const proved = unsolved === true && (await proof())?.kind === "pass";
   const outcome = reason === null || proved ? { outcome: "passed" } : { outcome: "refused", reason };
   append(log, GATE, {
     version,
@@ -307,7 +335,7 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal, ahead: numbe
     return `${taskId}: refused: ${reason}`;
   }
   desk.held.push(version);
-  const verdict = early ?? (await proof());
+  const verdict = await proof();
   if (verdict === null) return `${taskId}: held out${said}.`;
   if (verdict.kind !== "pass") {
     return `${taskId}: held out${said}. Author proof was not retained under this task id: ${tried(verdict)}`;
@@ -462,7 +490,13 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
         desk.planted.add(hashJsonValue(answer));
         prove(events, taskVersion(request.pack(instance)), verdict);
       }
-      return text(`${gate}${tried(verdict)}`);
+      // The verifier's measure, which the gate reads against the reference's (`measured`).
+      const { objective } = measureOf(contract, verdict);
+      const measure =
+        isRecord(objective) && isNumber(objective.measure)
+          ? ` By the objective it measures ${shown(objective.measure)}.`
+          : "";
+      return text(`${gate}${tried(verdict)}${measure}`);
     },
   });
 }

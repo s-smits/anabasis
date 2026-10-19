@@ -49,7 +49,7 @@ const COLUMNS = [
 
 /**
  * Every row of the grid: the id, the note under it, and each comparison's cell as its outcome, its
- * word and the valid answers over solves of each side ("." not scored).
+ * word and the valid answers over solves of each side ("." no cell, worded by the task's state).
  */
 const GRID: readonly (readonly [string, string, ...string[]])[] = [
   ["word-p1", "released", ".", ".", ".", ".", ".", ".", ".", "."],
@@ -199,11 +199,15 @@ function gridRows(on: Page): Promise<string[][]> {
 
 /** `GRID` as `gridRows` reads it. */
 function expectedRows(): string[][] {
+  const unscored = new Map([
+    ["released", ". practice"],
+    ["refused", ". not in the exam"],
+  ]);
   return GRID.map(([id, note, ...cells]) => [
     id,
     note,
     ...cells.map((cell) => {
-      if (cell === ".") return ". not scored";
+      if (cell === ".") return unscored.get(note) ?? ". not scored";
       const outcome = cell.split(" ")[0] ?? "";
       return `${cell} ${WORDS.get(outcome) ?? ""}`;
     }),

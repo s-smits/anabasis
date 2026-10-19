@@ -170,11 +170,11 @@ export const UNMEASURED = "unmeasured" as const;
  *
  * Until 19 October a margin stood here, 0.01 of the larger magnitude by default and a term of each
  * comparison (`--margin`); from 12 to 18 October the last A/A set it from the reference's own
- * spread. It turned wins into ties and protected no reading. Replayed on the solves of those 11
- * campaigns, the A/A of 35 comparisons read no step at 0.01, at 0.001 or at 0, and at 0 the reference
- * against itself won 133 untied tasks and lost 128, where the new harness won 23 of 24 in r2's
- * comparison g-3, which read 4-0-20 at 0.01; the same solves promote 15 harnesses where they promoted
- * 14. The sign-flip test already reads how often equal harnesses win a task by the objective, so a
+ * spread. It turned wins into ties and protected no reading. Replayed on the solves of those 18
+ * campaigns, the A/A of 38 comparisons read no step at 0.01 or at 0, and at 0 the reference
+ * against itself won 140 untied tasks and lost 139, where the new harness won 23 of 24 in r2's
+ * comparison g-3, which read 4-0-20 at 0.01; the same solves promote 14 pairs where they promoted
+ * 12. The sign-flip test already reads how often equal harnesses win a task by the objective, so a
  * difference the test does not trust is a tie of the test's own, and none is needed of the pair's.
  */
 const SAME = 1e-9;

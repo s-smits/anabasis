@@ -1,10 +1,11 @@
-// The runs zip holds what its level names of a run's folder and never an installed package, a link
-// or a file named like a secret; it opens with a README, the guide and a MANIFEST, and refuses to go
-// over its size.
+// The runs zip holds what its level names of a run's folder, a link inside the folder as the link,
+// and never an installed package, a link out of the folder or a file named like a secret; it opens
+// with a README, the guide and a MANIFEST, and refuses to go over its size.
 import { describe, expect, it } from "bun:test";
 import {
   mkdirSync,
   mkdtempSync,
+  readlinkSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -58,7 +59,9 @@ function round(root: string): Run {
   file("states/tree-abc/bin/solver", "#!/bin/sh\n");
   file("states/tree-abc/pylibs/numpy-2.0.dist-info/METADATA", "Name: numpy\n");
   file("notes.txt", "kept by hand\n");
-  symlinkSync(join(folder, "states", "tree-abc"), join(folder, "states", DIGEST, ".toolchain"));
+  symlinkSync("../tree-abc", join(folder, "states", DIGEST, ".toolchain"));
+  symlinkSync(join(folder, "states", "tree-abc"), join(folder, "states", DIGEST, "absolute"));
+  symlinkSync("../../../outside", join(folder, "states", DIGEST, "outside"));
   for (const path of ["src/prompt.ts", "tools/run.ts", "docs/plan.md", "package.json", "test/a.test.ts"]) {
     mkdirSync(dirname(join(tree, path)), { recursive: true });
     writeFileSync(join(tree, path), `${path}\n`);
@@ -74,14 +77,15 @@ function round(root: string): Run {
 }
 
 describe("the runs zip", () => {
-  it("holds what each level names, and never a package, a link or a file named like a secret", () => {
+  it("holds what each level names, a link inside the folder as the link, and never a package, a link out of it or a secret", () => {
     const root = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-runs-zip-test-")));
     try {
       const run = round(root);
       expect(fit(dirname(run.path)).left).toEqual([
-        { path: `states/${DIGEST}/.toolchain`, why: "a link" },
+        { path: `states/${DIGEST}/absolute`, why: "a link out of its folder" },
         { path: `states/${DIGEST}/auth.json`, why: "a secret's name" },
         { path: `states/${DIGEST}/node_modules`, why: "installed, cached or built" },
+        { path: `states/${DIGEST}/outside`, why: "a link out of its folder" },
         { path: "states/tree-abc/pylibs", why: "installed, cached or built" },
       ]);
       const listed = (level: Level) => {
@@ -108,9 +112,14 @@ describe("the runs zip", () => {
         `checker tree/r1/exams/${DIGEST}/checks/evaluator.ts`,
         `checker tree/r1/states/${DIGEST}/correctness-model/controls.json`,
         "toolchain tree/r1/states/tree-abc/bin/solver",
+        `toolchain tree/r1/states/${DIGEST}/.toolchain`,
       ];
       expect(listed("light").sort()).toEqual(light.sort());
       expect(listed("medium").sort()).toEqual(medium.sort());
+      runTextSyncOrThrow(["unzip", "-q", join(root, "medium.zip"), "-d", join(root, "opened")]);
+      expect(readlinkSync(join(root, "opened", "medium", "tree", "r1", "states", DIGEST, ".toolchain"))).toBe(
+        "../tree-abc",
+      );
       expect(listed("verbose").sort()).toEqual(
         [
           ...medium,

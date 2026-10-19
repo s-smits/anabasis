@@ -33,8 +33,9 @@ export interface Tree {
   readonly path: string;
   /** The tree's short commit, and whether its `src` holds changes no commit has. */
   readonly commit: string;
-  /** Which export decides a promotion: `promotes(reports, level)`, or `readTwice` with the trigger. */
-  readonly rule: "promotes" | "readTwice";
+  /** Which export decides a promotion: `promotes(reports, level)`, `readTwice` with the trigger, or,
+   *  where a tree exports neither, the latest reading being a `stepOf` step. */
+  readonly rule: "promotes" | "readTwice" | "step";
   read(path: string): LogEvent[];
   lastReports(events: readonly LogEvent[]): Reported[];
   pairsReported(events: readonly LogEvent[], report: Reported): Paired[];
@@ -71,12 +72,13 @@ export async function loadTree(path: string): Promise<Tree> {
     kernel("compare.ts"),
   ]);
   const own = isFunction(compare.promotes);
+  const twice = isFunction(compare.readTwice);
   const grouped = isFunction(compare.attemptsOf);
   const changed = gitText(path, "status", "--porcelain", "--", "src") !== "";
   return {
     path,
     commit: `${gitText(path, "rev-parse", "--short", "HEAD")}${changed ? " with uncommitted changes under src" : ""}`,
-    rule: own ? "promotes" : "readTwice",
+    rule: own ? "promotes" : twice ? "readTwice" : "step",
     read: (file) => log.read(file),
     lastReports: (events) => reports.lastReports(events),
     pairsReported: (events, report) => reports.pairsReported(events, report),
@@ -84,9 +86,13 @@ export async function loadTree(path: string): Promise<Tree> {
     pairings: (pair) => compare.pairings(pair),
     flipP: (differences) => compare.flipP(differences),
     stepOf: (report, level, trigger) => compare.stepOf(report, level, trigger),
-    triggered: (report, trigger) => compare.triggered(report, trigger),
-    promotes: (list, level, trigger) =>
-      own ? compare.promotes(list, level) : compare.readTwice(list, level, trigger),
+    triggered: (report, trigger) => isFunction(compare.triggered) && compare.triggered(report, trigger),
+    promotes: (list, level, trigger) => {
+      if (own) return compare.promotes(list, level);
+      if (twice) return compare.readTwice(list, level, trigger);
+      const latest = list.at(-1);
+      return latest !== undefined && compare.stepOf(latest, level) === "step";
+    },
     attempts: (list, trigger) =>
       grouped
         ? compare.attemptsOf(list, (one: JsonObject) => compare.triggered(one, trigger))

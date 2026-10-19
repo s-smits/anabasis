@@ -199,6 +199,7 @@ describe("the harness strip", () => {
       "agent/BUILT_AGENTS.md",
       "agent/tools-spec.json",
     ]);
+    await expect(detail(page).locator(".ana-harness-part > small")).toHaveText(["Guide", "Tools"]);
     expectQuiet(opened);
     await opened.context.close();
   });

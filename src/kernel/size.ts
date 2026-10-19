@@ -19,11 +19,14 @@
  *
  * Until 12 October this file also held a model of tasks alike, each a win, a loss or a tie by fixed
  * chances (`chanceOfStep`, `taskChances`, `chanceOfPromotion`), which printed a worked case at a
- * launch; the measured tie share replaces the modelled one, and the two-stage rule's chances are
- * enumerated in its tests (`test/compare.test.ts`).
+ * launch; the measured tie share replaces the modelled one.
+ *
+ * One reading promotes since 19 October, so an attempt is one reading at the level and its rate
+ * is the test's own (`power` at a share of a half). Until then a step was read again on fresh
+ * solves past a trigger, and this file named the smallest results of both stages.
  */
 import { plural } from "../meta/text.ts";
-import { detectable, falseRate, flipP, sweepOf } from "./compare.ts";
+import { detectable, flipP, power, sweepOf } from "./compare.ts";
 
 /** A scored set's result: so many tasks won beside so many lost. */
 interface Result {
@@ -31,12 +34,10 @@ interface Result {
   readonly losses: number;
 }
 
-/** What a comparison is read by: the level the step and its repeat clear together, the trigger a
- *  first reading clears to buy the repeat (`src/builder/move.ts`), and the patience, the moves with
- *  no gain a campaign ends after. */
+/** What a comparison is read by: the level a step clears, and the patience, the moves with no gain
+ *  a campaign ends after. */
 interface Asked {
   readonly level: number;
-  readonly trigger: number;
   readonly patience: number;
 }
 
@@ -54,7 +55,7 @@ function units(wins: number, losses: number): number[] {
 }
 
 /** The smallest results that clear `level` on at most `tasks` scored tasks, each won or lost by as
- *  many pairs: at 0.25, 2-0, 4-1, 5-2 and 7-3 as far as they fit; at 0.10, 4-0, 6-1, 7-2 and 9-3. */
+ *  many pairs: at 0.02, 6-0, 8-1, 10-2 and 12-3 as far as they fit; at 0.10, 4-0, 6-1, 7-2 and 9-3. */
 function clearing(tasks: number, level: number): Result[] {
   const results: Result[] = [];
   let wins = 0;
@@ -65,49 +66,47 @@ function clearing(tasks: number, level: number): Result[] {
   return results;
 }
 
+/** The chance a reading on `tasks` untied tasks reads a step between equal harnesses: the test's
+ *  own rate at its margins, never over the level. */
+function rateOf(tasks: number, level: number): number {
+  return power(units(tasks, 0), 0.5, level);
+}
+
 /** The chance of a false promotion over the patience's attempts on `tasks` tasks under one
- *  reference: the rule's rate summed over them, the union bound's form, which assumes nothing of
- *  their independence. The rate is the design's estimate (`falseRate`), so the sum is an estimate
- *  and no bound. */
-function risked(tasks: number, { level, trigger, patience }: Asked): number {
-  return Math.min(1, patience * falseRate(units(tasks, 0), level, trigger));
+ *  reference: one reading's rate summed over them, the union bound's form, which assumes nothing
+ *  of their independence. */
+function risked(tasks: number, { level, patience }: Asked): number {
+  return Math.min(1, patience * rateOf(tasks, level));
 }
 
 /**
  * What a comparison of `tasks` scored tasks can show and risks, in lines for a launch's notes and
- * `prepare.ts`'s output: the smallest results that buy the repeat and that promote, the least
- * share of the tasks won that one reading detects four times in five, were none to tie, the
- * rule's rate an attempt, and last its sum over the patience (`risked`). A campaign whose
- * comparisons buy repeats makes more attempts than its patience, which the climb reads as they
- * come (`climb.ts`, `falsePromotion`).
+ * `prepare.ts`'s output: the smallest results that read a step, the least share of the tasks won
+ * that one reading detects four times in five, were none to tie, one reading's rate, and last its
+ * sum over the patience (`risked`).
  */
 export function sizeLines(tasks: number, asked: Asked): string[] {
-  const { level, trigger, patience } = asked;
-  const first = clearing(tasks, trigger);
+  const { level, patience } = asked;
+  const results = clearing(tasks, level);
   const scored = `${tasks === 0 ? "no held-out task" : plural(tasks, "held-out task")} can be scored`;
   const summed = `over the patience's ${plural(patience, "attempt")} under one reference a false promotion comes about ${percent(risked(tasks, asked))} of the time by the rule's design`;
-  if (first.length === 0) {
+  if (results.length === 0) {
     return [
-      `${scored}, and at --trigger ${String(trigger)} a first reading takes ${String(sweepOf(trigger))}, all won: this comparison cannot buy a repeat`,
+      `${scored}, and at --level ${String(level)} a step takes ${String(sweepOf(level))}, all won: this comparison cannot read a step`,
       summed,
     ];
   }
-  const said = (results: readonly Result[]) =>
-    results
-      .slice(0, NAMED)
-      .map(({ wins, losses }) => `${String(wins)}-${String(losses)}`)
-      .join(", ");
+  const said = results
+    .slice(0, NAMED)
+    .map(({ wins, losses }) => `${String(wins)}-${String(losses)}`)
+    .join(", ");
   const share = detectable(units(tasks, 0), level);
-  const rate = falseRate(units(tasks, 0), level, trigger);
-  // Until 14 October a pair that no result clears read "clear at , each task".
-  const both = clearing(2 * tasks, level);
-  const clear = both.length === 0 ? "cannot clear it, all won" : `clear at ${said(both)}`;
   return [
-    `${scored}; at --trigger ${String(trigger)} the smallest results that buy the repeat are ${said(first)}, and at --level ${String(level)} the step and its repeat together ${clear}, each task won or lost by as many pairs`,
+    `${scored}; at --level ${String(level)} the smallest results that read a step are ${said}, each task won or lost by as many pairs`,
     share === null
       ? `were no task to tie, one reading at --level ${String(level)} would detect no share of ${plural(tasks, "task")}: it takes ${String(sweepOf(level))}, all won`
       : `were no task to tie, one reading at --level ${String(level)} would detect four times in five a harness that wins ${String(Math.round(100 * share))}% of the tasks, and fewer untied tasks need a larger share`,
-    `an attempt, a step and its repeat on as many tasks, promotes between equal harnesses ${percent(rate)} of the time where no task ties: the level is one reading's, and this the rule's`,
+    `one reading at these margins reads a step between equal harnesses ${percent(rateOf(tasks, level))} of the time where no task ties`,
     summed,
   ];
 }

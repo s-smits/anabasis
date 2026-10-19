@@ -382,7 +382,6 @@ describe("the whole-run investigation's reader", () => {
       "CUT BY ITS CAP",
       "VALID BY HARNESS",
       "EXAMINER NEVER FINISHED",
-      "STEP NOT REPEATED",
       "SETTLED BY HAND",
     ] as const) {
       expect(names).not.toContain(absent);
@@ -465,21 +464,6 @@ describe("the whole-run investigation's reader", () => {
     };
     expect(fragile("g-8", [16, 16, 16, 16, 16, 16, 16, 1])).toBe(false);
     expect(fragile("g-9", [1, 1, 1, 1, 1, 1, 1, 1])).toBe(true);
-  });
-
-  it("names a step no second comparison of the same two harnesses has repeated", () => {
-    const stepped = {
-      scored: { ...TESTED, wins: 4, p: 0.0625, unsolved: 0 },
-      versions: HELD,
-      reading: "step",
-    };
-    record(REPORTED, { ...REPORT, ...started("g-6", "hp", "he"), ...stepped });
-    expect(later()("STEP NOT REPEATED")).toBe(
-      "1 step no second comparison of the same two harnesses has repeated",
-    );
-    // The same two harnesses compared once more, on fresh solves: the step is repeated.
-    record(REPORTED, { ...REPORT, ...started("g-7", "hp", "he"), ...stepped });
-    expect(later()("STEP NOT REPEATED")).toBeUndefined();
   });
 
   it("says what a person's labels settled, beside what the comparison's own report read", () => {

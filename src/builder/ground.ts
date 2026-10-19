@@ -27,7 +27,7 @@ export interface Plan {
    *  where the caller holds no count, and nothing is released for one. */
   readonly practice: number | null;
   /** The size a comparison is asked for at, as its admission reads it. */
-  readonly wanted: Pick<Wanted, "target" | "level" | "trigger">;
+  readonly wanted: Pick<Wanted, "target" | "level">;
   /** The operator's reason to go on past the stop rule, or null. */
   readonly pastStop: string | null;
   /** Whether the campaign opened from a prompt: its exam is then drafted, and no pack holds it. */

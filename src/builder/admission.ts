@@ -9,7 +9,8 @@
  * hold no such rule of their own (`decide.ts`), since their answer to one is a move and no flag.
  *
  * - `no-held`: a log with no held-out task to score;
- * - `held-short`: fewer to score than a first reading takes at the trigger asked for (`sweepOf`);
+ * - `held-short`: fewer to score than a step takes at the level asked for (`sweepOf`; until
+ *   19 October a first reading at the trigger, which bought a repeat);
  *   The frontier already leaves out every task the reference closed in its last comparison, so
  *   the share of the last comparison's tasks left untied, read since 8 October and mended six
  *   times, read 1 at 69 of 72 recorded starts by 16 October and refused none (`untied-short`):
@@ -71,10 +72,8 @@ export interface Wanted {
   /** The tasks to score: `--target`, or as many as `--tasks` names. */
   readonly target: number;
   readonly solves: number;
-  /** The level the step and its repeat together clear, and the one a first reading clears to buy
-   *  the repeat (`readTwice`, `triggered`, `src/kernel/compare.ts`). */
+  /** The level a step clears (`stepOf`, `src/kernel/compare.ts`). */
   readonly level: number;
-  readonly trigger: number;
   /** The campaign's patience, which a comparison's risk is said over (`sizeLines`). */
   readonly patience: number;
   /** Whether a Builder session runs before the comparison. */
@@ -88,7 +87,7 @@ export interface Wanted {
 }
 
 /** What the supply's own refusals are read at: a comparison's size, and a reason to go on. */
-type Sized = Pick<Wanted, "target" | "level" | "trigger" | "patience" | "pastStop">;
+type Sized = Pick<Wanted, "target" | "level" | "patience" | "pastStop">;
 
 /** What a Builder session with no comparison after it asks for: its cap, and the practice solves
  *  its limits allow. */
@@ -149,13 +148,12 @@ export function supplyOf(events: readonly LogEvent[]): Supply {
 }
 
 /** The numbers a comparison's size is read from on a supply: the tasks it would score, and the
- *  fewest a step takes at its trigger. */
-function sized(supply: Supply, wanted: Pick<Wanted, "target" | "trigger">) {
+ *  fewest a step takes at its level. */
+function sized(supply: Supply, wanted: Pick<Wanted, "target" | "level">) {
   const scored = Math.min(wanted.target, supply.held);
   // What a comparison's test can say at this size is arithmetic, and is known before a round pays
-  // for it. A first reading that clears the trigger buys the repeat, so the fewest it takes is the
-  // trigger's sweep.
-  const least = sweepOf(wanted.trigger);
+  // for it.
+  const least = sweepOf(wanted.level);
   return { scored, least };
 }
 

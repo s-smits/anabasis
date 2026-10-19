@@ -68,8 +68,8 @@
  * false promotion over its patience may pass 10% is refused (`openingLines`, `src/kernel/size.ts`).
  *
  * **A campaign runs unattended** (row F29; the operator, 12 and 16 October): it admits every check
- * its author's own computation decides, a drafted exam's objective among them, freezes an exam whose reading holds no fault and promotes a step read twice and
- * not lost at the full limit. Under `--hitl`, the operator in the loop, kept by the opening until
+ * its author's own computation decides, a drafted exam's objective among them, freezes an exam whose reading holds no fault and promotes a harness a comparison
+ * against the reference read as a step (until 19 October, a step read twice). Under `--hitl`, the operator in the loop, kept by the opening until
  * `--no-hitl`, all three wait for the operator's word and a promotion stops the command. Going on past the stop rule takes `--past-stop "<why>"` either way.
  *
  * **A word the operator leaves** (`word.ts`, row F50) is read at each move's boundary: a stop
@@ -164,10 +164,11 @@ const AGAIN: ReadonlySet<unknown> = new Set(["wall", "turns", "crashed"]);
 
 /**
  * Whether the table names a move that measures what a conversation left and asks no Builder for
- * anything: any comparison, the tasks a repeat waits for, a promotion. Until 14 October a
- * Builder's `finish` ended the campaign whatever was owed: buffer-159-opus's Builder finished a
- * minute after a 9-0-1 step bought a repeat, and the campaign ended as its Examiner session
- * settled two and a half hours later, the repeat never run. Until 15 October an ordinary
+ * anything: any comparison, or a promotion. Until 14 October a Builder's `finish` ended the
+ * campaign whatever was owed: buffer-159-opus's Builder finished a minute after a 9-0-1 step
+ * bought a repeat, and the campaign ended as its Examiner session settled two and a half hours
+ * later, the repeat never run; until 19 October the tasks a repeat waited for were owed too.
+ * Until 15 October an ordinary
  * comparison was the Builder's alone, so three conversations that each changed the harness and
  * finished ended the campaign with the table naming its comparison (truss-151-m1 b-1,
  * buffer-151-haiku b-1 and buffer-pr169-opus b-1 finished on a harness no comparison read). The
@@ -183,8 +184,7 @@ const AGAIN: ReadonlySet<unknown> = new Set(["wall", "turns", "crashed"]);
  * (`roomless`).
  */
 function hostOwed(decided: Decided): boolean {
-  if (decided.move === "promote" || decided.move === "compare") return true;
-  return decided.move === "examine" && decided.repeats !== undefined;
+  return decided.move === "promote" || decided.move === "compare";
 }
 
 /**
@@ -234,7 +234,6 @@ async function make(
       ...flag("practice", practice),
       ...flag("solves", values.solves),
       ...flag("level", values.level),
-      ...flag("trigger", values.trigger),
     ]);
     return;
   }
@@ -470,8 +469,7 @@ async function converse(context: CampaignContext, named: Decided): Promise<Decid
   // and the two that promoted finished within seconds of the promotion.
   const idle = how === "finished" || how === "wall" || how === "turns" ? idleOf(after) : 0;
   const table = decide(after, turnOf(context).plan);
-  // A measurement the conversations bought, and the tasks its repeat waits for, are the host's to
-  // make first (`hostOwed`), which moves the campaign, and an ending the table names stands.
+  // A measurement the conversations bought, and a promotion, are the host's to make first (`hostOwed`), which moves the campaign, and an ending the table names stands.
   if (idle < IDLE || hostOwed(table)) {
     return how === "finished" || (AGAIN.has(how) && context.used < context.maxMoves) ? null : table;
   }

@@ -63,7 +63,7 @@ cd <the worktree kept for the run>
 bun --env-file=<file> run runs launch <name> [--login N] --yes -- \
   --project <project> <the pack's four flags, or --prompt-file <file> --solver <model>> \
   --budget <dollars> --builder <model> --examiner <model> --reviewer <model> \
-  [--solve-model-turns N] [--minutes N] [--turns N] [--level 0.1 --trigger 0.25]
+  [--solve-model-turns N] [--minutes N] [--turns N] [--level 0.02]
 ```
 
 The flags after `--` are the command's own, listed at the head of `tools/d2/harness-builder.ts`,
@@ -224,7 +224,7 @@ other hosts' `status` alone. None of these reads `.ana/` content beyond events a
 Every refusal of a move is its own command's, asked before its first event, so a command started
 by hand is refused where the campaign command would be. A comparison (`checkpoint.ts`,
 `round.ts`) is refused by `admitComparison` (`src/builder/admission.ts`) on no held-out task, a
-checker nobody has read, too few tasks to read a step at the trigger, no dollar cap, and a
+checker nobody has read, too few tasks to read a step at the level, no dollar cap, and a
 campaign the stop rule has stopped (`--past-stop "<why>"`, logged as `stop.overridden`). A
 comparison that began goes on from its log under its terms; one that reported says what it said.
 A Builder session (`session.ts`) is refused on no cap, an unread checker, the stop rule, and a
@@ -248,7 +248,7 @@ record what it should read, before its first solve.
 
 ```sh
 bun run runs pulse [<name>]
-bun run runs view <name> [--level N] [--trigger N] [--target N] [--practice N] [--past-stop "<why>"]
+bun run runs view <name> [--level N] [--target N] [--practice N] [--past-stop "<why>"]
 ```
 
 The pulse says what each run gained since the last look; the first sign of model work is a

@@ -18,8 +18,8 @@
  * Without `--yes` it records nothing. With it the event is written, with the comparisons it rests
  * on, so that a reader of the log sees what the operator saw.
  *
- * The plan promotes a step once it was read again on fresh solves and did not lose at the full
- * limit (`docs/plan.md`, row F28). That rule is move 7's (`unpromoted`, `src/builder/decide.ts`),
+ * The plan promotes a harness a comparison against the reference read as a step (`docs/plan.md`,
+ * row F28; until 19 October once that step was read again on fresh solves). That rule is move 7's (`unpromoted`, `src/builder/decide.ts`),
  * and it is asked here: a harness it would not promote now is refused, with the reason. The
  * choice stays the operator's: `--despite "<why>"` promotes all the same, and the event keeps the
  * reason. Returning the campaign to the starter is asked nothing. Until 2026-10-09 nothing held a
@@ -73,12 +73,11 @@ export async function promoteCommand(args: readonly string[]): Promise<number> {
   for (const { comparison, against, reading } of rests) {
     console.log(`  ${comparison}: against ${said(against)}, read ${reading}`);
   }
-  // The level and the trigger are the opening's where it names them, and the defaults otherwise.
+  // The level is the opening's where it names one, and the default otherwise.
   const terms = openingOf(events)?.terms;
   const plan = planOf(events, {
     unprepared: false,
     level: Number(terms?.level ?? COMPARISON_OPTIONS.level.default),
-    trigger: Number(terms?.trigger ?? COMPARISON_OPTIONS.trigger.default),
   });
   const why = kept.digest === least.digest ? null : unpromoted(events, plan, kept.digest);
   if (why !== null) console.log(`the plan would not promote it now: ${why}`);
@@ -89,7 +88,7 @@ export async function promoteCommand(args: readonly string[]): Promise<number> {
   const despite = values.despite?.trim() ?? "";
   if (why !== null && despite === "") {
     console.log(
-      'not promoted: a step is promoted once it was read again and did not lose at the full limit. It is yours to promote all the same: say why with --despite "<why>"',
+      'not promoted: a harness is promoted where a comparison against the reference read a step. It is yours to promote all the same: say why with --despite "<why>"',
     );
     return 1;
   }

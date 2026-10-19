@@ -308,7 +308,7 @@ export interface Counters {
     readonly attempts: number;
     readonly union: number;
     readonly bound: number;
-    readonly pairs: number;
+    readonly controls: number;
     readonly errors: number;
   } | null;
   /** The dollars left of the campaign's total (`Plan.left`), and what the last comparison the cap

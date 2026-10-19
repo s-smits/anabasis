@@ -932,9 +932,11 @@ hash. The draw does two more things:
   comparison it stood in for that task, on whichever side. Such a task can only tie again or be
   lost: it is **exhausted** (`poolOf`; until 15 October it took two closed comparisons in any
   order, but by then a promoted harness had stood only once in nearly every task it was promoted
-  on). A task on which the objective told two valid answers apart is not closed, since the next
-  harness can still win it, and neither is one where an author's answer on record beats the
-  reference's (`outdone`, 19 October).
+  on). A task is not closed where a valid answer, the reference's own or the other side's, is
+  better by the objective than one of the reference's, since the next harness can still win it,
+  and neither is one where an author's answer on record beats the reference's (`bettered`,
+  `outdone`, 19 October; until then any two answers told apart kept a task open, and a harness
+  promoted on the objective stood on a frontier of the tasks it had won).
 
 An exhausted task stays in the draw as **retained**, so that a harness that breaks what the
 reference answers still shows its losses. A loss can only come from a task the reference answers.
@@ -1076,10 +1078,11 @@ would exceed the cap.
 - **room** where a task was informative for the reference harness (`informative`,
   `src/kernel/compare.ts`, the same definition `try_task` uses to admit a draft):
   - valid on some of its solves and not all;
-  - two of its valid answers apart by the objective past the margin;
-  - valid on none where a valid answer to it is on record, another harness's or its author's;
-  - valid on all where its author's answer on record is better by the objective than each of them
-    past the margin (the third since 15 October, the last since 19 October);
+  - one of its valid answers bettered by the objective past the margin, by another of its own,
+    by the other harness's or by its author's on record (`bettered`; the last two since
+    19 October);
+  - valid on none where a valid answer to it is on record, another harness's or its author's
+    (since 15 October);
 - **too hard** where neither harness gave a valid answer and none is on record;
 - **none** otherwise: a task the reference fails in every solve that nobody has answered among them
   (since 12 October; shares of valid solves before that).

@@ -646,7 +646,8 @@ export type FileContent = "json" | "jsonl" | "text" | "typescript" | "other";
 
 /** The files of `states/<digest>/`, the harness whole, but for the exam side's copy (`server/harness.ts`). */
 export interface HarnessFiles extends Answer {
-  readonly files: readonly { readonly path: string; readonly bytes: number }[];
+  /** Each file, and a program's own account of itself under `.toolchain/bin/`: its head comment. */
+  readonly files: readonly { readonly path: string; readonly bytes: number; readonly about: string | null }[];
 }
 
 /** One file of a harness, cut to a readable size; a binary has no value. */

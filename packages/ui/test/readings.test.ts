@@ -767,7 +767,10 @@ describe("what the server cannot read", () => {
       [b, "tree-b", "two"],
     ] as const) {
       mkdirSync(join(states, tree, "bin"), { recursive: true });
-      writeFileSync(join(states, tree, "bin", "count"), `#!/bin/sh\necho ${said}\n`);
+      writeFileSync(
+        join(states, tree, "bin", "count"),
+        `#!/bin/sh\n# count [task.json]\n# Prints ${said}.\necho ${said}\n`,
+      );
       writeFileSync(join(states, tree, "bin", "engine"), Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0, 1]));
       symlinkSync(`../${tree}`, join(states, digest, ".toolchain"));
     }
@@ -786,12 +789,20 @@ describe("what the server cannot read", () => {
       ["warning", ".toolchain/bin/host"],
     ]);
     expect(listed.text.includes(MARKERS.hidden)).toBe(false);
+    // A program carries its head comment, past the shebang; a binary and the agent's files none.
+    expect(Object.fromEntries(listed.answer.files.map(({ path, about }) => [path, about]))).toEqual({
+      ".toolchain/bin/count": "count [task.json]\nPrints two.",
+      ".toolchain/bin/engine": null,
+      "agent/BUILT_AGENTS.md": null,
+      "agent/tools-spec.json": null,
+    });
+    expect(listed.text.includes(states)).toBe(false);
     const fileAt = async (path: string) =>
       (await ask("harness-file", { key, digest: b, path }, "default", root)).answer;
     const [program, engine] = [await fileAt(".toolchain/bin/count"), await fileAt(".toolchain/bin/engine")];
     expect([program.content, program.value, engine.content, engine.value]).toEqual([
       "text",
-      "#!/bin/sh\necho two\n",
+      "#!/bin/sh\n# count [task.json]\n# Prints two.\necho two\n",
       "other",
       null,
     ]);

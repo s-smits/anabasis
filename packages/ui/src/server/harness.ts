@@ -29,6 +29,11 @@
  * seconds in one call, well inside `FILE_BYTES` (the stack review of 12 October, finding 4). A file
  * the bound cuts is listed with no diff, and an issue names it. A path both harnesses reach as the
  * same file is not read.
+ *
+ * A program under `.toolchain/bin/` is listed with its own account of itself: the comment lines at
+ * its head, after a shebang, as each of esp32-fresh-opus's programs opens with its usage and what
+ * it computes. The page shows the solver's toolset by those, since the guide only names them; it
+ * reads no function body and runs nothing, and a program with no such comment has none.
  */
 import { createTwoFilesPatch } from "diff";
 import {
@@ -39,6 +44,7 @@ import {
   realpathSync,
   statSync,
 } from "../../../../src/meta/filesystem.ts";
+import { TOOL_TREE_DIR } from "../../../../src/meta/bundle-layout.ts";
 import { sha256 } from "../../../../src/meta/digest.ts";
 import { capturedJsonParse, capturedJsonStringify } from "../../../../src/meta/json-runtime.ts";
 import { isString, type JsonValue } from "../../../../src/meta/json-shape.ts";
@@ -92,6 +98,10 @@ const SEGMENT = /^[A-Za-z0-9._-]+$/u;
 /** The extensions read as text: a program under `.toolchain/bin` most often has none. */
 const TEXT = new Set([".md", ".txt", ".log", ".yaml", ".yml", ".js", ".mjs", ".cjs", ".py", ".sh", ""]);
 const NUL = 0;
+const PROGRAMS = `${TOOL_TREE_DIR}/bin/`;
+/** The bytes of a program read for its head comment, and one line of that comment. */
+const ABOUT_BYTES = 4096;
+const COMMENT = /^\s*(?:\/\/|#)\s?(.*)$/u;
 
 function contentOf(path: string): FileContent {
   if (path.endsWith(".jsonl")) return "jsonl";
@@ -245,9 +255,24 @@ function rooted(reading: Reading, key: string, digest: string): Rooted {
   return { kept, issues: issue === null ? [...read] : [...read, issue] };
 }
 
+/** A program's own account of itself: the comment lines at its head, after a shebang. */
+function aboutOf({ path, at, bytes }: HarnessPart): string | null {
+  if (!path.startsWith(PROGRAMS)) return null;
+  const head = headOf(at, Math.min(bytes, ABOUT_BYTES));
+  if (head.includes(String.fromCodePoint(NUL))) return null;
+  const lines = head.split("\n").slice(head.startsWith("#!") ? 1 : 0);
+  const end = lines.findIndex((line) => !COMMENT.test(line));
+  const said = lines.slice(0, end === -1 ? lines.length : end).map((line) => COMMENT.exec(line)?.[1] ?? "");
+  const text = said.join("\n").trim();
+  return text === "" ? null : text;
+}
+
 export function harnessAnswer(reading: Reading, query: Query<"harness">): HarnessFiles {
   const { kept, issues } = rooted(reading, query.key, query.digest);
-  const files = kept === null ? [] : walk(kept, issues).map(({ path, bytes }) => ({ path, bytes }));
+  const files =
+    kept === null
+      ? []
+      : walk(kept, issues).map((part) => ({ path: part.path, bytes: part.bytes, about: aboutOf(part) }));
   return { tier: reading.tier, issues, files };
 }
 

@@ -284,6 +284,23 @@ describe("a session that drafts an exam", () => {
   });
 });
 
+/** A reference solve launcher for `try_task` whose every solve passes, measuring what `measure`
+ *  says of the task and the solve's place among all it ran. */
+function measuredProbe(log: string, measure: (task: TaskPackage, nth: number) => number | undefined) {
+  let solves = 0;
+  return async (task: TaskPackage, session: string) => {
+    const objective = measure(task, solves);
+    solves += 1;
+    const solve = `s-${String(solves)}`;
+    const ran = condition(taskVersion(task), "h-reference");
+    append(log, "condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
+    append(log, "solve.started", { solve, condition: conditionId(ran), comparison: session });
+    append(log, "verdict", { solve, answer: GOOD, kind: "pass", objective: objective ?? null });
+    append(log, "solve.finished", { solve, ending: PASS, billed: 0 });
+    return PASS;
+  };
+}
+
 /** What a gate told of each draft: its id, held out or refused, and how many of the reference
  *  harness's solves were valid where it read any. The facts, without the sentence around them. */
 function gateSaid(text: JsonValue | undefined): (string | number | null)[][] {
@@ -589,9 +606,10 @@ describe("a session that writes tasks", () => {
     // The verifier measured, but the contract declares no objective: the record is the version.
     const undeclared = await run(false);
     expect(undeclared.of("task.feasible")).toEqual([{ version, session: "x-1" }]);
-    // The Examiner is told the same of every call whether or not a measure was kept.
-    const told = (s: typeof declared) => s.of(CALLED).map(({ text }) => text);
-    expect(told(declared)).toEqual(told(undeclared));
+    // The Examiner is told each measure the record keeps, and none where none is kept (19 October).
+    const told = (s: typeof declared) => s.of(CALLED).flatMap(({ text }) => (isString(text) ? [text] : []));
+    expect(told(declared).filter((line) => line.includes("By the objective it measures"))).toHaveLength(2);
+    expect(told(undeclared).join("\n")).not.toContain("By the objective");
   });
 
   /** One order of tries and proposals, the verifier's answers by the id it is asked under, and
@@ -916,19 +934,10 @@ describe("a session that writes tasks", () => {
       [3, [10, 10, 10.05]],
     ]);
     const s = seat("write", [call("try_task", { tasks: [instance(2), instance(3)] }), finish, finish]);
-    let solves = 0;
-    const probe = async (task: TaskPackage, session: string) => {
-      const base = Number(asRecord(task.publicInput)?.base);
-      const objective = measures.get(base)?.[solves % 3];
-      solves += 1;
-      const solve = `s-${String(solves)}`;
-      const ran = condition(taskVersion(task), "h-reference");
-      append(s.log, "condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
-      append(s.log, "solve.started", { solve, condition: conditionId(ran), comparison: session });
-      append(s.log, "verdict", { solve, answer: GOOD, kind: "pass", objective: objective ?? null });
-      append(s.log, "solve.finished", { solve, ending: PASS, billed: 0 });
-      return PASS;
-    };
+    const probe = measuredProbe(
+      s.log,
+      (task, nth) => measures.get(Number(asRecord(task.publicInput)?.base))?.[nth % 3],
+    );
     const contract = {
       ...s.request.contract,
       objective: { quantity: "the mass", direction: "lower" },
@@ -946,6 +955,47 @@ describe("a session that writes tasks", () => {
       ["x-1-001", "held out", 3],
       ["x-1-002", "refused", 3],
     ]);
+  });
+
+  it("holds out a task the reference harness answers alike every time where its author's answer is better by the objective past the margin, and not one within it or without one", async () => {
+    // The reference's answers measure 10, 10 and 10.05 on every draft, alike within the margin.
+    // Base 2's author answer measures 9, better than each by 10%; base 3's 9.95, within the margin
+    // of the best; base 4 has none. Until 19 October the gate refused all three.
+    const authored = new Map([
+      [2, 9],
+      [3, 9.95],
+    ]);
+    const steps = [tried(2), tried(3), call("try_task", { tasks: [instance(2), instance(3), instance(4)] })];
+    const s = seat("write", [...steps, finish, finish]);
+    const probe = measuredProbe(s.log, (_task, nth) => [10, 10, 10.05][nth % 3]);
+    const examined = await examine({
+      ...s.request,
+      contract: { ...s.request.contract, objective: { quantity: "the mass", direction: "lower" } },
+      limits: { ...s.request.limits, puts: 3 },
+      probe,
+      verify: async (task, answer) => {
+        const verdict = await verify(task, answer);
+        const measure = authored.get(Number(asRecord(task.publicInput)?.base));
+        return verdict.kind === "pass" && measure !== undefined
+          ? { kind: "pass", objective: measure }
+          : verdict;
+      },
+    });
+    const [better, within, unproved] = [
+      s.versionOf("x-1-001", 2),
+      s.versionOf("x-1-002", 3),
+      s.versionOf("x-1-003", 4),
+    ];
+    expect(examined).toMatchObject({ held: [better] });
+    expect(new Set(examined.refused)).toEqual(new Set([within, unproved]));
+    // The author's measure is on record for the held task alone, where a comparison reads it.
+    expect(poolOf(read(s.log)).bests).toEqual(new Map([[better, 9]]));
+    // Each draft's line tells the reference's measures and, where it tried one, its own.
+    const said = s.of(CALLED)[2]?.text;
+    const lines = (isString(said) ? said : "").split("\n");
+    expect(lines.find((line) => line.startsWith("x-1-001"))).toContain("10, 10, 10.05");
+    expect(lines.find((line) => line.startsWith("x-1-001"))).toContain("try_answer on it 9");
+    expect(lines.find((line) => line.startsWith("x-1-003"))).not.toContain("try_answer on it");
   });
 
   it("ends at its wall with no solve of the reference harness left running, and starts none after it", async () => {

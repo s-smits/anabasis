@@ -5,6 +5,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   attemptsOf,
+  closedTo,
   decidedByObjective,
   detectable,
   draw,
@@ -665,6 +666,40 @@ describe("a task's pairings", () => {
     expect(informative(pair([P, P], [100, 104]), "old", nobody)).toBe(false);
     // Apart by more than the margin: a better answer is there to find.
     expect(informative(pair([P, P], [100, 110]), "old", nobody)).toBe(true);
+    // Alike, where an author's answer on record is better than each past the margin: a better
+    // harness can reach it (19 October). One within the margin of the best, or worse, leaves none.
+    expect(informative(pair([P, P], [100, 104]), "old", nobody, new Map([["t", 90]]))).toBe(true);
+    expect(informative(pair([P, P], [100, 104]), "old", nobody, new Map([["t", 97]]))).toBe(false);
+    expect(informative(pair([P, P], [100, 104]), "old", nobody, new Map([["t", 120]]))).toBe(false);
+    expect(informative(pair([P, P], [100, 104]), "old", nobody, new Map([["u", 90]]))).toBe(false);
+    // Valid answers with no measure, or a pair with no objective, have nothing to be bettered on.
+    expect(informative(pair([P, P], [null, null]), "old", nobody, new Map([["t", 90]]))).toBe(false);
+    const { objective: _none, ...unmeasured } = pair([P, P], [100, 104]);
+    expect(informative(unmeasured, "old", nobody, new Map([["t", 90]]))).toBe(false);
+    // One valid answer measured and one not: whether the author's beats the second is unknown.
+    expect(informative(pair([P, P], [100, null]), "old", nobody, new Map([["t", 90]]))).toBe(false);
+    // Under a higher objective the author's must be the larger, at zero and below as above.
+    const higher = (measured: number[]) => ({
+      ...pair([P, P], measured),
+      objective: { direction: "higher" as const, margin: 0.05, old: measured, fresh: [1, 1] },
+    });
+    expect(informative(higher([100, 104]), "old", nobody, new Map([["t", 120]]))).toBe(true);
+    expect(informative(higher([100, 104]), "old", nobody, new Map([["t", 90]]))).toBe(false);
+    expect(informative(higher([-10, -10]), "old", nobody, new Map([["t", 0]]))).toBe(true);
+  });
+
+  it("leaves a task open that an author's answer on record outdoes, so the room it was held for stays on the frontier", () => {
+    const pair = {
+      task: "t",
+      old: [P, P],
+      fresh: [P, P],
+      objective: { direction: "lower" as const, margin: 0.01, old: [10, 10], fresh: [10, 10] },
+    };
+    expect(closedTo(pair, "old")).toBe(true);
+    expect(closedTo(pair, "old", 9)).toBe(false);
+    // Within the margin, or no better, it closes as before (19 October).
+    expect(closedTo(pair, "old", 9.95)).toBe(true);
+    expect(closedTo(pair, "old", 11)).toBe(true);
   });
 
   it("reads an objective rule off a comparison's start, and none off a malformed one", () => {

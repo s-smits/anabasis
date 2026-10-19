@@ -350,7 +350,14 @@ wall keeps from it.
 The tools of each model seat, as its source names them:
 
 - Examiner: `propose_tasks`, or `try_task` where the host can have the reference harness solve a
-  draft task, `read_example`, `try_answer`, `bash`, `read`, `write`, `finish`. `try_answer` runs
+  draft task, `read_example`, `try_answer`, `bash`, `read`, `write`, `finish`. `try_task` returns
+  at once with the ids it put to the gate: the gate's word on each instance comes with the
+  session's next tool result, or with the reminder after a turn that made no call, and `finish`
+  and the session's end wait for every instance still at the gate (`putAside`,
+  `src/examiner/write.ts`). Until 19 October a call waited for its slowest instance's three
+  solves, and the first Examiner sessions of four campaigns that day spent 56 to 80 of their 112
+  to 218 minutes on the gate's replies. `propose_tasks`, which runs no solve, answers in its own
+  result. `try_answer` runs
   the checks on an instance with an answer of the Examiner's own. `task.feasible` stores no
   answer, and the Examiner's trace keeps it, on the exam side, as the call's arguments
   (`exam.call`): where the checks pass, the session holds it in memory until the task's final id,
@@ -749,7 +756,7 @@ The other verbs over a campaign's log:
 bun run runs rehearse [--no-comparison] <the flags of tools/d2/round.ts that name no model>
 bun run runs rehearse --campaign <the flags of tools/d2/harness-builder.ts that name no model>
 bun run runs view <name> [--level N] [--trigger N] [--target N] [--practice N] [--past-stop "<why>"]
-bun run runs fresh | launch | continue | keep | pause | copy | stop <name> | status | logins | pulse | replay | seed | zip
+bun run runs fresh | launch | continue | keep | pause | copy | stop <name> | source <name> | status | logins | pulse | replay | seed | zip
 ```
 
 ### Defaults, and a first flag line
@@ -764,10 +771,12 @@ until one is; a Builder session of 24 hours (1,440 minutes) of its own time, 300
 20 of the model's own turns and 30 minutes, whoever solves (`LIMITS`, `tools/d2/campaign.ts`; until
 19 October 120 minutes with the turns unlimited, and `runs fresh` named its own by model), and 24
 prompts. An Examiner session ends when the Examiner calls `finish` a second time, or a
-first time once the host has the tasks it asked for: what the campaign is short of a comparison's
-target and of its practice, or where a repeat is due what a sweep at the level takes beyond the
-first stage's untied tasks and the tasks it did not score (`shortOf`, `src/builder/decide.ts`), or `--exam-tasks` where
-the operator names a count. A first `finish` short of them is declined once, with the need and
+first time once the host has the tasks it asked for, or at the end of a turn once it has them:
+what the campaign is short of a comparison's target and of its practice, or where a repeat is
+due what a sweep at the level takes beyond the first stage's untied tasks and the tasks it did not score (`shortOf`, `src/builder/decide.ts`), or `--exam-tasks` where
+the operator names a count. `finish` and the session's end first wait for every instance still at
+the gate, so each reads the whole count, and a session can hold out more than it asked for
+(19 October). A first `finish` short of them is declined once, with the need and
 no count, since every live session of 9 and 10 October proposed one batch of one to three tasks
 in three turns and finished. The session's home is carried whole into the next session's, and
 what it said at its `finish` opens the next (11 October).
@@ -1306,10 +1315,11 @@ npm or npx. `src/meta` wraps the few Node surfaces Bun lacks (`tools/oxlint/HABI
 | `bun run hooks:install` | Points this clone's `core.hooksPath` at `.githooks`, once; every worktree shares it |
 | `bun run commit:check` | What the pre-commit hook runs, and by hand: author email, format and lint of staged files, the slop report, the secret scan |
 | `bun run secrets` | The secret scan |
-| `bun run runs <verb>` | `fresh`, `launch`, `continue`, `keep`, `pause`, `copy`, `stop`, `status`, `logins`, `on`, `hosts`, `pulse`, `rehearse`, `seed`, `replay`, `zip`, `view` |
+| `bun run runs <verb>` | `fresh`, `launch`, `continue`, `keep`, `pause`, `copy`, `stop`, `source`, `status`, `logins` (or `usage`), `on`, `hosts`, `pulse`, `rehearse`, `seed`, `replay`, `zip`, `view` |
 | `bun run ui:dev` | The page that shows a campaign as its log reads, on the loopback with a token (`packages/ui/README.md`). `-- --exam-side` adds the exam side's content: start that where no Builder or solver runs |
 | `bun run ui:gate` | The UI's own gate: its dependencies, its typecheck and build, and its tests under `packages/ui/test` |
 | `bun .claude/skills/stack-pr/scripts/stack.ts` | The open stack: every edge, and the top |
+| `bun run follow` | Moves this checkout to the top of the open stack, on `stack-pr<N>`, carrying its uncommitted changes (`.claude/skills/stack-pr/scripts/follow.ts`) |
 | `bun run land -- <pull request>` | Proves every commit a landing would publish where it sits; `--sanitize` posts each verdict, `--merge` also merges ("The stack and pull requests") |
 | `bun tools/loc/source-policy.ts` | The size and unused-export policy. No package script, CI job or hook runs it (`tools/oxlint/HABITS.md`, 12.10) |
 

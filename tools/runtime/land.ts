@@ -16,9 +16,9 @@
  * Without a flag nothing is written to GitHub. `--sanitize` posts each commit's verdict as the
  * status `ana/commit` and stops: that is how a stack shows it is ready. `--merge` posts the same, and
  * also wants `ci.yml` passed on the top's head, since only it proves the Linux isolation on a clean
- * runner. Every pull request push starts that run; when none exists and `ci.yml` takes
- * `workflow_dispatch`, `--merge` dispatches one before gating, so it runs meanwhile, and waits for it
- * after. A failed run is not dispatched again, since nothing about its head changed. Then, on heads
+ * runner. No pull request push starts that run (since 19 October, `ci.yml`); when none exists and
+ * `ci.yml` takes `workflow_dispatch`, `--merge` dispatches one before gating, so it runs meanwhile,
+ * and waits for it after. No pull request merges before that run has passed. A failed run is not dispatched again, since nothing about its head changed. Then, on heads
  * read again, it posts `ana/stack-gate` on every head and merges the pull requests bottom-up through
  * GitHub, each pinned to its gated head, so each ends Merged; a local merge pushed to main left 98
  * pull requests open on 21 September 2026. The repository does not delete a merged branch, so

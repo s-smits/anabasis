@@ -1320,10 +1320,13 @@ Run one suite at a time; two overlapping suites each take about twice as long. W
 the owning test files only: `bun run test -- test/compare.test.ts`. The wrapper refuses a named
 path that does not exist, because Bun would treat it as a filter and silently run its neighbours.
 
-CI (`.github/workflows/ci.yml`) has three jobs. `darwin` on macOS 15 runs typecheck, lint, the
-format check and the suite; `darwin-ui`, on a macOS 15 runner of its own, runs the UI's own gate;
-`linux` on an Ubuntu VM installs Bubblewrap and runs the suite. Each step after the install runs
-whatever failed before it, so one run names every failure. In a
+CI (`.github/workflows/ci.yml`) runs on `main` and on the top of a landing, where
+`bun run land -- <top> --merge` dispatches it; no pull request push starts a run, since only the
+top's run is read (19 October). It has three jobs. `darwin` on macOS 15 runs typecheck, lint, the
+format check and the suite; `darwin-ui`, on a macOS 15 runner of its own, runs the UI's own gate,
+its three steps apart; `linux` on an Ubuntu VM installs Bubblewrap and runs the suite. Each step
+after the install runs whatever failed before it, and no step stops at its first failure, so one
+run names every failure. In a
 container without user namespaces the tests that need the wall fail. Name those in the pull
 request as failures that are there without the change, and do not call the suite green.
 

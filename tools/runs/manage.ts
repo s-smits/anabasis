@@ -304,9 +304,19 @@ export function copy(args: readonly string[]): void {
   if (statSync(copied).size !== statSync(run.path).size) {
     throw new Error(`the copy of ${run.path} is not whole: ${from} is left as it was`);
   }
-  // One copy a name, which `runNamed` asks: the folder left here is no run any registry reads.
-  const aside = join(run.tree, ".ana", "moved", `${name}-${new Date().toISOString().replace(/[:.]/g, "")}`);
-  mkdirSync(dirname(aside), { recursive: true });
-  renameSync(from, aside);
+  const aside = asideOf(run.tree, name);
+  setAside(from, aside);
   console.log(`${name} is in ${to} now, and its folder was set aside as ${aside}; go on with runs continue`);
+}
+
+/** Where a run's folder is set aside in `tree` once a copy of it went elsewhere: one copy a name,
+ *  which `runNamed` asks, so the folder left is no run any registry reads (`runs copy`, `runs move`). */
+export function asideOf(tree: string, name: string): string {
+  return join(tree, ".ana", "moved", `${name}-${new Date().toISOString().replace(/[:.]/g, "")}`);
+}
+
+/** Moves `folder` to `aside`, making `.ana/moved/` where the tree has none yet. */
+export function setAside(folder: string, aside: string): void {
+  mkdirSync(dirname(aside), { recursive: true });
+  renameSync(folder, aside);
 }

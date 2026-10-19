@@ -101,9 +101,9 @@
  * what it writes.
  */
 import { resetOf } from "../backends/claude.ts";
-import { attemptsOf, draw, type ObjectiveRule, triggered, untiedOf } from "../kernel/compare.ts";
+import { draw, type ObjectiveRule } from "../kernel/compare.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
-import { billedFor, type Cap, capHolds, lastReports, poolOf } from "../kernel/reports.ts";
+import { billedFor, type Cap, capHolds, poolOf } from "../kernel/reports.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { ranUnder, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
@@ -152,10 +152,8 @@ interface Terms {
   readonly retained: readonly string[];
   /** Counted solves of each task under each harness. */
   readonly solves: number;
-  /** The level the step and its repeat clear together, and the one a first reading clears to buy
-   *  the repeat (`readTwice`, `compare.ts`). */
+  /** The level a reading's step clears (`stepOf`, `compare.ts`). */
   readonly level: number;
-  readonly trigger: number;
   /** The objective two valid answers are compared by, where the check program declares one: the
    *  brief's direction. */
   readonly objective?: ObjectiveRule | undefined;
@@ -227,14 +225,6 @@ const DISPUTABLE: ReadonlySet<string> = new Set(["held", "released"]);
 /** What a start holds that is no term a continuation may move: its id, and the sets it goes on with. */
 const UNCOMPARED: ReadonlySet<string> = new Set(["session", "tasks", "retained"]);
 
-/** The comparison a draw is made for, where it may be a repeat: its id, harnesses and trigger. */
-interface Repeat {
-  readonly id: string;
-  readonly old: string;
-  readonly fresh: string;
-  readonly trigger: number;
-}
-
 /**
  * The tasks a comparison scores, and the retained ones among them: `target` of the scorable tasks
  * a log holds (`poolOf`, `reports.ts`), or all of them where it holds fewer, taken from the newest
@@ -258,64 +248,28 @@ interface Repeat {
  * a draw by the hash alone took a task written after a comparison that left no room no earlier
  * than one it had scored, and one campaign's next comparison scored 4 of the 7 written for it.
  *
- * A `repeat` scores its first stage's untied frontier tasks again first, on fresh solves, then
- * draws as any comparison does to the target, which the tasks scored again count in whatever epoch
- * they are of, that stage's other tasks last (`firstStage`); a task both score counts once
- * (`joined`, `compare.ts`). Until 16 October the newest epoch's draw counted only its own tasks
- * scored again (a repeat of eight over two older and eight new tasks scored ten), and before that
- * it waited for a target of fresh tasks: buffer-159-opus read 5-0 over two stages where 6-0 promotes.
+ * Until 19 October a repeat, the comparison that read a step again before it promoted, scored its
+ * first stage's untied tasks again first and that stage's other tasks last; one reading promotes
+ * since, and every comparison draws alike.
  */
-export function scoredSet(events: readonly LogEvent[], target: number, contract: string, repeat?: Repeat) {
+export function scoredSet(events: readonly LogEvent[], target: number, contract: string) {
   const pool = poolOf(events);
   const kept = pool.retained.filter((task) => pool.scorable.includes(task));
   const held = new Set(pool.frontier);
   const count = Math.min(target, held.size);
   const picked = draw(kept, Math.min(kept.length, Math.ceil(count / 3)), `${contract}:retained`);
-  const epochs = tasksByEpoch(events)
-    .toReversed()
-    .map((epoch) => epoch.filter((version) => held.has(version)));
-  const [again = [], ...last] = repeat === undefined ? [] : firstStage(events, repeat);
-  const tasks = again.filter((version) => held.has(version)).slice(0, count);
-  const taken = new Set([...tasks, ...last.flat()]);
   const began = events.findLastIndex(({ kind }) => kind === STARTED);
   const since = new Set(tasksByEpoch(events.slice(began + 1)).flat());
-  /** `wanted` of an epoch's tasks, tier by tier and each by the hash: of the ones not taken last,
-   *  those held out since the last comparison began and then the others; then each group of `last`. */
-  const drawn = (epoch: readonly string[], wanted: number) =>
-    [
-      epoch.filter((version) => !taken.has(version) && since.has(version)),
-      epoch.filter((version) => !taken.has(version) && !since.has(version)),
-      ...last.map((group) => epoch.filter((version) => group.includes(version))),
-    ].reduce<string[]>(
-      (got, tier) => [...got, ...draw(tier, Math.min(wanted - got.length, tier.length), contract)],
-      [],
-    );
-  const free = (epoch: readonly string[]) => epoch.filter((version) => !tasks.includes(version)).length;
-  for (const epoch of epochs) tasks.push(...drawn(epoch, Math.min(count - tasks.length, free(epoch))));
+  // The newest epoch first, and of each the tasks held out since the last comparison began first.
+  const tiers = tasksByEpoch(events)
+    .toReversed()
+    .flatMap((epoch) => {
+      const own = epoch.filter((version) => held.has(version));
+      return [own.filter((version) => since.has(version)), own.filter((version) => !since.has(version))];
+    });
+  const tasks: string[] = [];
+  for (const tier of tiers) tasks.push(...draw(tier, Math.min(count - tasks.length, tier.length), contract));
   return { tasks: [...tasks, ...picked], retained: picked };
-}
-
-/**
- * The tasks a repeat scores again first, then the groups it takes last (`scoredSet`): where the
- * comparison of `fresh` with `old` follows a reading of the same two that cleared its trigger
- * (`triggered`) and is no repeat itself (`attemptsOf`), that reading's untied frontier tasks; then
- * the rest of its set. Until 16 October it was the one such reading of the pair, so a second
- * attempt's repeat scored none of its first stage's tasks first. None for any other comparison:
- * an attempt buys one repeat, as the row that buys it says (`dueOf`, `decide.ts`). A repeat gone
- * on from its log keeps its start's (`begin`).
- */
-function firstStage(events: readonly LogEvent[], repeat: Repeat): string[][] {
-  const { id, old, fresh, trigger } = repeat;
-  const pair = lastReports(events).flatMap(({ session, data }) =>
-    session !== id && data.fresh === fresh && data.old === old ? [data] : [],
-  );
-  const [first, ...repeated] = attemptsOf(pair, (data) => triggered(data, trigger)).at(-1) ?? [];
-  if (first === undefined || repeated.length > 0 || !triggered(first, trigger) || !isString(first.session)) {
-    return [];
-  }
-  const own = fixedIn(events, first.session)?.tasks ?? [];
-  const again = untiedOf(first);
-  return [again, own.filter((version) => !again.includes(version))];
 }
 
 /**
@@ -603,7 +557,6 @@ function begin(request: CheckpointRequest): Fixed {
     setting: request.setting,
     solves: request.solves,
     level: request.level,
-    trigger: request.trigger,
     cap: request.cap === undefined ? null : { ...request.cap },
     ...keyIfDefined("prediction", request.prediction),
     ...keyIfDefined("objective", request.objective === undefined ? undefined : { ...request.objective }),

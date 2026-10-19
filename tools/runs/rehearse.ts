@@ -19,7 +19,7 @@
  * how a climb of more than one epoch is rehearsed: the Examiner of a source that climbed once
  * wrote tasks for one epoch, and a rehearsal with `--held none:pass --starter pass --supply 30`
  * goes round the table again, from the promoted harness through other tasks, the control, a
- * session and a step read twice, until the supply is spent (11 October).
+ * session and a step, until the supply is spent (11 October).
  * Since 18 October 2026 the same scripted solver stands at the admission gate: esp32-fresh-opus
  * refused 45 of 50 drafts after promotion, while five rehearsals saw no reference solve there.
  * A gate's three solves of a draft end as the reference's do (`--held`'s old), after a promotion

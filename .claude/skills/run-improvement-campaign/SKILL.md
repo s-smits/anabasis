@@ -7,8 +7,8 @@ description: "Run the Anabasis v2 improvement loop, the Super Loop, towards more
 
 The loop is **score → walk → choose → prove → predict → launch → watch → read → decide**, and it
 serves one number: promotions in one campaign that climbed by itself. A promotion is one step of
-the climb, a harness that beat the reference on held-out tasks twice, on fresh solves (`AGENTS.md`,
-factor 1). The operator's aim is six or more in one run, and the plan's milestone is twelve. Each
+the climb, a harness that beat the reference on held-out tasks by more than the level allows, on
+fresh solves (`AGENTS.md`, factor 1; until 19 October twice). The operator's aim is six or more in one run, and the plan's milestone is twelve. Each
 pass asks what stands between a campaign and its next promotion, fixes the owner of that link, and
 measures the fix with a new campaign opened fresh at the fixing commit. One pass answers one
 question, from the log and nothing else.
@@ -79,7 +79,7 @@ folder outside the repository.
 Supply is listed third because the operator ranks the climb and its honesty first, and it still
 binds first where it fails. Verdicts move only when the operator labels; economy gates nothing.
 
-A change of instrument is not a climb. Another level, target, trigger or number of solves a side
+A change of instrument is not a climb. Another level, target or number of solves a side
 changes what a reading can show, not what a harness can do: name it as an instrument change, and
 never count the promotion it allows as a gain of the harness. The level and everything a solver is
 given are the operator's.
@@ -92,8 +92,7 @@ Know where a promotion comes from before choosing what to change. Each arrow has
 prompt ─► Examiner drafts the exam ─► the host's reading: no fault ─► frozen (contract.frozen)
 Examiner drafts tasks ─► gate, three reference solves (try_task): some valid, or none and the author's answer passes ─► held out
                                                                    all valid ─► refused
-Builder practises and edits ─► compare: frontier at or under the trigger ─► repeat owed (unfinished)
-repeat on fresh solves, on tasks the first did not score ─► both together clear the level (twice)
+Builder practises and edits ─► compare: frontier at or under the level, retained not regressed (step)
 ─► the host promotes ─► a new epoch: each draft is gated on the new reference
 ```
 
@@ -110,7 +109,8 @@ Where the chain stopped on the record of 15 and 16 October:
   changed nothing and asked for nothing, and the Examiner session the host then made (`hostOwed`)
   held 0 of 12 drafts. Since 16 October every Examiner session the table names starts as a conversation opens.
 - **A near miss on size.** buffer-159-opus's g-4 read 3-0 with 8 tied and its repeat g-5 2-0 with
-  10 tied: 5-0 together, p = 1/32, at a level of 0.02, which takes 6-0.
+  10 tied: 5-0 together, p = 1/32, at a level of 0.02, which takes 6-0. Since 19 October one
+  reading promotes, and a 5-0 reads no step and buys nothing.
 
 None of those campaigns was fresh by the rule above: their counts locate links, and measure none.
 
@@ -126,8 +126,8 @@ last column says so. Quiet between milestones is work (section 5).
 | M1 exam | `exam.drafted`, `checker.read`, then `contract.frozen` | the reading's faults by kind and count, `doNothing`, `admitted`; within twenty minutes of M0 | frozen before the first `build.started` | none; an `exam` ending is a host defect or the operator's, read from the faults' kinds |
 | M2 supply | the first Examiner sessions' `task.gate` | held out, refused all valid, refused none valid; the dry run's set-up line | held out of drafted, a range | none |
 | M3 first reading | the first `comparison.reported` | room (`valid.old`), untied and tied, `detectable`, the A/A, the load (`wri.ts read`) | the reading's word and its untied count | only if a trigger of `read` fires |
-| M4 step | a reading at or under the trigger, the repeat owed | `detectable` of the repeat before it starts; tasks it can draw that the first did not score | the repeat's untied count, and that its A/A reads no step | none |
-| M5 promotion | `harness.promoted` | its two readings with their untied tasks, the A/A beside each, the false-promotion risk at that point (close.ts); `wri.ts climb --log <log> --with <peers>` | written for M6 now | at the first promotion, once M6 has read its first Examiner session |
+| M4 step | a reading at or under the level against the reference | its untied and tied counts, the retained tasks, the A/A beside it | the step's untied count, and that its A/A reads no step | none |
+| M5 promotion | `harness.promoted` | the reading it rests on with its untied tasks, the A/A beside it, the false-promotion risk at that point (close.ts); `wri.ts climb --log <log> --with <peers>` | written for M6 now | at the first promotion, once M6 has read its first Examiner session |
 | M6 next epoch | the first Examiner session and the first comparison after M5 | drafts refused because the new reference answered them all, the frontier and retained sizes | held out after M5 against before it | lane 31 with the standing lanes, when it was owed at M5 |
 | M7 ending | `campaign.ended` | the ending's kind; close.ts whole; every ledger row resolved; "reached N promotions; further improvement unresolved" unless patience ended it | every open row | a full one where the campaign promoted or ended before its budget, sized to the question |
 
@@ -158,8 +158,7 @@ budget. The hourly audit reports it with its milestone and leaves it running. To
 ## The walk: which link holds the next promotion
 
 Read first the campaign's milestone. M1 points at link 2; M2 and a first reading with no room at
-links 1 and 3; a reading under the trigger at 7; a step and repeat that missed the level by a task
-at 5; a promotion at 8. Then walk the links in order from the first and stop at the first that
+links 1 and 3; a `regressed` reading at 7; a reading that missed the level by a task at 5; a promotion at 8. Then walk the links in order from the first and stop at the first that
 fails. Links 1, 2 and 6 cap the reading: while one of them fails, a change below it is spent on
 nothing.
 
@@ -171,7 +170,7 @@ nothing.
 | 4 | the session | 1 | the Builder practised, and left a harness that differs in something a solver uses | `build.*`, `harness.version`, practice `verdict`s |
 | 5 | size | 2 | the tally has enough untied tasks to clear its level | `scored`, `unsolved`, the reading's `detectable` |
 | 6 | the host | 2 | solves started under a load below the cores, and the loads of the comparisons read together are alike | the reader's `HOST LOADED` and `LOAD MOVED` |
-| 7 | the repeat | 2 | the same two harnesses on fresh solves read the step again, and the reference against itself reads none | the `unfinished` row, `STEP NOT REPEATED` |
+| 7 | the promotion | 2 | a comparison against the reference reads a step, its retained tasks do not regress, and the reference against itself reads none | the `step` row, `harness.promoted`, the report's `noise` |
 | 8 | the next link | 1 | the promoted reference still leaves room (link 3 again), and the Examiner writes what it fails | `harness.promoted`, then `task.gate` in the next sessions |
 
 Link 3 is the one v1 never had and the one that most often decides. On 9 October the Starter
@@ -213,9 +212,10 @@ campaign that has one; this walk is for choosing what to do about it.
    cure for ties is link 1. The level is the operator's.
 6. **The host.** Reads as: `HOST LOADED`, `LOAD MOVED`, long `campaign.waited`, wall-ended solves
    rising. Owner: fewer campaigns on that host; no flag of a run fixes a crowded host.
-7. **The repeat.** Reads as: row `unfinished` with a repeat owed; `STEP NOT REPEATED`; `compare`
-   refusing the repeat for want of tasks. Owner: supply first. One that cleared the trigger and not
-   the level buys no third reading: the next harness is the next attempt.
+7. **The promotion.** Reads as: a `no-step` near the level, a `regressed` reading, an A/A that
+   reads a step. Owner: supply first, and size (link 5). Since 19 October one reading at the level
+   promotes, and a near miss buys nothing: the next harness is the next attempt. Until then a
+   reading under a trigger bought a repeat on fresh solves, and the two read together promoted.
 8. **The next link.** Reads as: `harness.promoted`, then drafts refused because the new reference
    answered them in every gate solve, idle conversations, comparisons that score a few tasks.
    Owner: what the Examiner is told of the change (`heard`), what the Builder is told after a
@@ -289,7 +289,7 @@ bun tools/d2/checkpoint.ts <flags> --predict "<one sentence a count can settle>"
 ```
 
 Write each row so that a recorded count settles it: "`contract.frozen` before the first
-`build.started`", "x-1 holds at least 3 of its drafts", "the repeat unties at least 6 tasks", "the
+`build.started`", "x-1 holds at least 3 of its drafts", "the first comparison unties at least 6 tasks", "the
 A/A reads no step". "Improves" is not a prediction. Each row names the link it observes and its
 falsifier, and is resolved after as held, falsified or withdrawn with the log line that settled it.
 At least one row observes the link itself and one the honesty of the reading: a tally can move for
@@ -375,8 +375,9 @@ Before any sentence claims that something improved, take it through
 may be believed at all, or what a fail was, that is a
 [whole-run-investigation](../whole-run-investigation/SKILL.md), at the milestone the table names.
 
-**A step is not read until it is repeated.** Name each promotion with its two readings, their
-untied tasks, the A/A beside each and the campaign's false-promotion risk at that point. Record a
+**A step is one draw.** Name each promotion with the reading it rests on, its untied tasks, the
+A/A beside it and the campaign's false-promotion risk at that point; until 19 October a step was
+repeated on fresh solves before it promoted. Record a
 near miss as one, with the task that was short: it is the cheapest evidence of what size the next
 comparison needs.
 
@@ -392,7 +393,7 @@ First say what happened to the link:
 
 Then choose one move. The plan's table suggests one, and the view prints it as its last line
 (`decide`, `src/builder/decide.ts`): read the exam, set the tasks apart, have tasks written, build,
-compare, repeat a step, promote, or end. A led campaign's Builder chooses its moves through
+compare, promote, or end. A led campaign's Builder chooses its moves through
 campaign tools and reads the table as advice; code keeps admissions and scoring, and the host makes
 what the table names between conversations. The stop rule ends a campaign at its patience of moves
 that could have shown a gain and showed none, counted only since the last promotion, and the budget
@@ -476,7 +477,7 @@ Keep this list short and current. Replace an entry when its lesson has an owner 
   Builder sat through nine conversations with nothing to work on. Read M6 the hour a campaign
   promotes, not after its patience.
 - **A step one task short of the level.** buffer-159-opus read 5-0 over two readings where 6-0
-  promoted, with 18 ties beside its 5 wins. Read `detectable` before a repeat starts.
+  promoted, with 18 ties beside its 5 wins. Read `detectable` before a comparison starts.
 - **Rounds that could read nothing.** Eight truss rounds on 8 October cost over $220 with no
   held-out task. The comparison's own admission refuses that now; the dry run is still the first
   command of every pass.

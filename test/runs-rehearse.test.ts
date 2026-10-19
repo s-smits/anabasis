@@ -319,7 +319,7 @@ describe("a rehearsal's seats", () => {
             patience: 1,
             unprepared: false,
             practice: null,
-            wanted: { target: 2, level: 0.1, trigger: 0.25 },
+            wanted: { target: 2, level: 0.1 },
             pastStop: null,
             prompted: false,
             admits: [],

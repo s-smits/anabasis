@@ -13,8 +13,7 @@
  *
  * `--reference` and `--new` each name a harness the campaign keeps (`campaign.ts`, `keptAs`):
  * `starter`, `latest`, or the whole digest of one a session froze. So the same command compares a
- * harness with a promoted reference, repeats a step on fresh solves before anything is promoted,
- * and reads a harness against the starter where a settling, a stop or the cap left a step unread
+ * harness with a promoted reference, and reads a harness against the starter where a settling, a stop or the cap left a step unread
  * against it (`--reference starter --new <digest>`).
  *
  * `programs-of:` before a name is that harness's control: the starter with the harness's installed
@@ -29,10 +28,9 @@
  *
  * The scored set and the solver's setting are the campaign's, read from its log as a round reads
  * them (`setting.ts`): `--tasks` or `--target`, and the solver's flags, name them only where the
- * campaign has recorded none. A repeat, the comparison that follows one of the same two harnesses
- * whose reading cleared `--trigger`, scores that one's untied tasks again, then draws the held-out
- * tasks it did not score, and its other tasks only where the campaign holds too few (`scoredSet`).
- * The solves a side, the level, the Referee and the cap are a round's, with a round's defaults
+ * campaign has recorded none. Until 19 October a repeat, the comparison that followed one of the
+ * same two harnesses whose reading cleared `--trigger`, scored that one's untied tasks again; one
+ * reading promotes since. The solves a side, the level, the Referee and the cap are a round's, with a round's defaults
  * (`round.ts`), and `--cap` is required as it is there. With no `--reviewer`, every rejection
  * waits for a person and sets its task aside until `tools/d2/settle.ts` has its labels.
  *
@@ -121,15 +119,9 @@ export async function checkpointCommand(
     old,
     fresh,
     starter: await starter(campaign),
-    ...scoredNamed(campaign, setting.tasks, setting.target, {
-      id,
-      old: old.digest,
-      fresh: fresh.digest,
-      trigger: Number(values.trigger),
-    }),
+    ...scoredNamed(campaign, setting.tasks, setting.target),
     solves: Number(values.solves),
     level: Number(values.level),
-    trigger: Number(values.trigger),
     objective: objectiveNamed(campaign),
     defects: Number(values.defects),
     cap,

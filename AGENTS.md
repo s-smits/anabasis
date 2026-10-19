@@ -95,7 +95,8 @@ undefined without it.
 
 **1. Climb: how much ability has accumulated?** The one quantity the system exists to move is the
 reference harness. A promotion is one step of descent: a harness that beats the reference on
-held-out tasks by more than chance allows, twice, on fresh solves. A climb is several of them,
+held-out tasks by more than chance allows, in one comparison on fresh solves; until 19 October it
+had to do so twice. A climb is several of them,
 read as promotions per campaign (`src/builder/climb.ts`). Every draft that the reference answered
 in none of its three admission solves, but whose author's own answer passes on it
 (`task.feasible`), is held out like any other task (`try_task`, `gated` in
@@ -146,21 +147,22 @@ is the flip rate. Bar: no step in the ten controls after the six on record. Ten 
 bound the rate loosely. The same control gives the tie share, the floor a real comparison has to
 beat before its wins mean anything.
 
-A campaign makes many promotion attempts under one reference, and the level understates the risk
-of even one: an attempt is two readings, and at 0.10 the rule promotes equal harnesses 5.8% of
-the time on 24 untied tasks (`falseRate`, `src/kernel/compare.ts`). That is the design's estimate,
-and no bound. Every reading prints that rate at its own margins. A campaign's opening prints it
-summed over its patience's attempts, and the campaign command refuses a campaign above 10%
-(`openingLines`, `src/kernel/size.ts`). At 24 tasks, level 0.10 and a patience of six the sum is
-34.8%, so such a campaign names a patience of one or a level of 0.02. The climb adds up what the
-attempts risk together as they come: one attempt per reading that is no repeat, together with the
-repeat it bought (`attemptsOf`, `src/kernel/compare.ts`; until 16 October one per candidate, and a
-candidate's later readings went uncounted). Each attempt counts at the rule's own rate at its
-margins, and the sum is an estimate and no bound. The pairs of controls the promotion rule
-promoted are counted beside it (`falsePromotion`, `src/builder/climb.ts`). Until 19 October a 95%
-bound from those pairs replaced the rate once one pair was on record. Since no error in one pair
-bounds an attempt at 95%, esp32-fresh-opus's closing report read "at most 100%" where its
-attempt's own rate was 1.8%. Until 16 October, the starter read again on the ladder after each
+A campaign makes many promotion attempts under one reference. An attempt is one reading, and the
+exact test reads a step between equal harnesses at most as often as its level: at 0.02, 1.1% of
+the time on 24 untied tasks, and at 0.10, 7.6% (`falseRate`, the test's `power` at one half,
+`src/builder/comparison.ts`). Every reading prints that rate at its own margins. A campaign's
+opening prints it summed over its patience's attempts, and the campaign command refuses a campaign
+above 10% (`openingLines`, `src/kernel/size.ts`). At 24 tasks and a patience of six the sum is
+6.8% at 0.02 and 45.5% at 0.10, so a campaign at 0.10 names a patience of one. Until 19 October
+an attempt was a first reading at or under a trigger of 0.25 and the repeat it bought, read
+together (5.8% at 0.10 on 24 tasks, and 34.8% over six attempts). The climb adds up what the
+attempts risk together as they come: each reading of a harness against the reference is one
+attempt, at its own rate, and the sum is an estimate and no bound. The A/A controls that read a
+step, one-sided at the level, are counted beside it (`falsePromotion`, `src/builder/climb.ts`;
+until 19 October they were read in pairs as a step and its repeat). Until 19 October a 95% bound
+from those pairs replaced the rate once one pair was on record. Since no error in one pair bounds
+an attempt at 95%, esp32-fresh-opus's closing report read "at most 100%" where its attempt's own
+rate was 1.8%. Until 16 October, the starter read again on the ladder after each
 promotion served as a third control, for drift in the solver, the provider or the host.
 
 **3. Verdicts: are the labels correct?** Validity is decided by a check program nobody has audited
@@ -508,16 +510,15 @@ Where the table names more than the action itself, the tool does what the table 
 (`comparedOf`, `tools/d2/campaign-actions.ts`), and the status and the result state it as a fact:
 
 - A comparison that has begun and not yet reported goes on under its own terms.
-- The repeat of a reading under the trigger is of the harness that reading froze, whatever
-  `harness/` holds now. Otherwise an edit made between the two would be measured in the repeat's
-  place, and the step would never be read twice.
+- A comparison reads the harness it froze, and a step promotes that harness, whatever `harness/`
+  holds now. Until 19 October a step bought a repeat of the harness it froze before it promoted.
 - While `harness/` is the reference harness, `compare` runs the table's own comparison: the
   control of the starter against the reference, or the latest harness on tasks written since then.
   Where the table names neither, there is nothing to compare.
 - A harness that a comparison has already read against the reference, unchanged since, is only
-  compared again when the table names it: a second draw of the same pair is a second chance at the
-  trigger (section 1, factor 2).
-- `promote` names the harness the rule names, which is not always the last one frozen (`twice`,
+  compared again when the table names it: a second draw of the same pair is a second chance at a
+  step (section 1, factor 2).
+- `promote` names the harness the rule names, which is not always the last one frozen (`step`,
   `src/builder/decide.ts`).
 
 An action the host refuses before it begins, or one that produces nothing, counts as no move and
@@ -650,8 +651,8 @@ The last row opens the exam and then runs the Builder with campaign tools (secti
 chooses its moves, and `decide` supplies filtered advice. `--moves N` bounds the campaign actions;
 `--dry-run` prints the table's advice without making a move. A campaign freezes an exam whose reading
 shows no fault, and promotes the harness the rule names without waiting (section 3). Under
-`--hitl` it only runs once every fault of its checks is admitted, and it reports a step read twice
-without promoting it, waiting there for `promote.ts`.
+`--hitl` it only runs once every fault of its checks is admitted, and it reports a step without
+promoting it, waiting there for `promote.ts`.
 
 `bun run runs launch` starts it (the skill `run-management`): niced, in its own process group,
 with its output in two files and the key in Bun's own `--env-file`. `continue` runs a campaign
@@ -707,8 +708,8 @@ nothing.
 Lack of room is advice to request other tasks while a conversation is alive, and becomes the
 campaign's ending once that conversation has ended at its limits. A Builder's `finish` ends its
 conversation. Between conversations the host makes whatever move the table names that needs
-nothing from a Builder, as a campaign move like any other: any comparison, the tasks a repeat is
-waiting for, and a promotion (`hostOwed`, `tools/d2/harness-builder.ts`). Any other Examiner
+nothing from a Builder, as a campaign move like any other: any comparison, and a promotion
+(`hostOwed`, `tools/d2/harness-builder.ts`). Any other Examiner
 session the table names starts as the next conversation opens, and writes alongside it
 (`campaignTools`, `tools/d2/campaign-actions.ts`). Until 16 October only the campaign's first
 session did, and tasks wanted for lack of room waited for three idle conversations in a row:
@@ -822,8 +823,8 @@ The tasks that leave the reference room are what a Builder has to work on; until
 draw also took closed ones. A task that a comparison scored before its release keeps that
 comparison's solves on the exam side: a Builder is shown only its practice solves (`practiceRan`,
 `src/kernel/solves.ts`). Before a comparison the campaign holds as many scorable tasks as the
-comparison scores (`--target`), and before a repeat as many as a sweep at the level needs,
-counting the first stage's untied tasks it scores again. Otherwise the Examiner writes more first.
+comparison scores (`--target`), or the Examiner writes more first. Until 19 October a repeat
+also waited for as many as a sweep at the level needs.
 
 ### What refuses a move
 
@@ -832,8 +833,8 @@ a round or a checkpoint asks it before writing its first event, whether the camp
 it or someone started it by hand. Among other things it refuses:
 
 - a log with no held-out task;
-- a comparison that would leave fewer untied tasks than a first reading needs at its trigger
-  (`sweepOf`);
+- a comparison that would leave fewer untied tasks than a step needs at the level (`sweepOf`;
+  until 19 October at the trigger);
 - a comparison with no `--cap`;
 - a checker that nobody has read;
 - a campaign the stop rule has stopped, unless `--past-stop "<why>"` gives the operator's reason,
@@ -853,7 +854,7 @@ The other verbs over a campaign's log:
 ```text
 bun run runs rehearse [--no-comparison] <the flags of tools/d2/round.ts that name no model>
 bun run runs rehearse --campaign <the flags of tools/d2/harness-builder.ts that name no model>
-bun run runs view <name> [--level N] [--trigger N] [--target N] [--practice N] [--past-stop "<why>"]
+bun run runs view <name> [--level N] [--target N] [--practice N] [--past-stop "<why>"]
 bun run runs fresh | launch | continue | keep | pause | copy | stop <name> | status | logins | pulse | replay | seed | zip
 ```
 
@@ -863,8 +864,9 @@ Defaults worth knowing:
 
 - 24 scored tasks (`--target`);
 - 4 solves per side (`--solves`; `SIZE` in `src/kernel/size.ts`; 12 and 2 before 12 October);
-- level 0.02 (`--level`, since 12 October; 0.10 before), with a patience of 6 (`--patience`);
-- trigger 0.25 (`--trigger`);
+- level 0.02 (`--level`, since 12 October; 0.10 before), with a patience of 6 (`--patience`): one
+  comparison that reads a step at the level promotes (until 19 October a first reading at or under
+  a trigger of 0.25, `--trigger`, bought a repeat, and the two read together had to clear it);
 - no objective margin: two measures are one only within a billionth of the larger, which is
   floating-point arithmetic (`SAME`; until 19 October a margin of 0.01, `--margin`, and from 12
   to 18 October the last A/A set it);
@@ -879,9 +881,8 @@ Defaults worth knowing:
 
 An Examiner session ends when the Examiner calls `finish` a second time, or a first time once the
 host has the tasks it asked for. Those are what the campaign is short of for a comparison's target
-and its practice, or, where a repeat is due, what a sweep at the level needs beyond the first
-stage's untied tasks and the tasks it did not score (`shortOf`, `src/builder/decide.ts`), or
-`--exam-tasks` where the operator names a count. A first `finish` that falls short is declined
+and its practice (`shortOf`, `src/builder/decide.ts`; until 19 October, where a repeat was due,
+what a sweep at the level needed beyond the tasks it would score again), or `--exam-tasks` where the operator names a count. A first `finish` that falls short is declined
 once, with the need and without a count, because every live session of 9 and 10 October proposed
 one batch of one to three tasks in three turns and then finished. The session's home is carried
 whole into the next session's, and what it said at its `finish` opens the next session
@@ -995,30 +996,26 @@ the sign test.
 The step is read on the **frontier**, the scored tasks that are not exhausted. The **retained**
 tasks are fixed alongside them at the comparison's start, from the exhausted tasks and the tasks of
 an earlier epoch the reference never stood in. They regress when they lose more pairs than they win
-by a loss that the same test, mirrored, reads at or below the trigger: one task lost alone does
-not, two of two do. Until 18 October any net loss counted, and one flagged solve out of four on one
+by a loss that the same test, mirrored, reads at or below 0.25 (`REGRESSION`, the trigger's value
+until 19 October): one task lost alone does not, two of two do. Until 18 October any net loss counted, and one flagged solve out of four on one
 retained task vetoed two of buffer-pr197-opus-m1's promotion attempts. An empty retained set reads
 `unmeasured`, never "no loss". Each family's tallies stand beside both, from the same rows; they
 show concentration, and prove no independence.
 
-The test runs in two stages:
-
-1. A comparison whose frontier reads at or below the trigger (0.25: 2 to 0, 4 to 1, 5 to 2, 7 to 3
-   where every task is won by as many pairs) buys the repeat and promotes nothing.
-2. The step and its repeat, read together, must clear the level (0.02 by default since 12 October:
-   6 to 0, 8 to 1, 10 to 2, 12 to 3; at 0.10: 4 to 0, 6 to 1, 7 to 2, 9 to 3). The repeat must
-   also have untied a task and won at least as many pairs as it lost, and neither stage may
-   regress. The repeat's retained tasks are read joined with its first stage's, as the frontiers
-   are (`readTwice`): an attempt's two readings, and no others.
-
-A task both stages scored counts once, with its differences summed. The null hypothesis is the
-fixed-task one, in which each drawn task is as likely won as lost on fresh solves, and a repeat on
-the same tasks adds solves to them without adding tasks (14 October; buffer-149's g-2 scored g-1's
-eleven). Every reading prints its untied count, the smallest share of those tasks it detects four
-times in five (`detectable`), and the chance that an attempt at its margins promotes between equal
-harnesses (`falseRate`). A reading below the trigger counts for the stop rule as a move that showed
-a gain. Both terms are recorded in the campaign's opening, so a campaign is read by its own rule
-whatever the tree's default is. Two other ways to read a tally are in the plan ("Statistical power
+One reading decides (`stepOf`): a frontier at or under the level (0.02 by default since
+12 October: 6 to 0, 8 to 1, 10 to 2, 12 to 3; at 0.10: 4 to 0, 6 to 1, 7 to 2, 9 to 3), with the
+retained tasks not regressed, reads `step` and promotes. Until 19 October the test ran in two
+stages: a first reading at or under a trigger of 0.25 bought a repeat on fresh solves, and the two,
+joined, had to clear the level (`readTwice`). It went because of 24 readings in 56 campaigns that
+cleared the level by themselves, 11 were followed by a reading of the same pair and 11 of 11 won at
+least as many tasks as they lost, while the repeat took 1 to 2.5 hours of a promotion's 6 to 7. The
+null hypothesis is the fixed-task one, in which each drawn task is as likely won as lost on fresh
+solves. Every reading prints its untied count, the smallest share of those tasks it detects four
+times in five (`detectable`), and the chance that one reading at its margins reads a step between
+equal harnesses (`falseRate`), never more than the level. A reading of `step` counts for the stop
+rule as a move that showed a gain. The level is recorded in the campaign's opening, so a campaign
+is read by its own rule whatever the tree's default is; an opening of before 19 October that holds
+a trigger is read past it. Two other ways to read a tally are in the plan ("Statistical power
 and cost"); neither is built.
 
 **The reading** is one of these words (`Reading`, `src/builder/comparison.ts`):
@@ -1105,9 +1102,10 @@ before its tasks were measured). A move that counts is one of two kinds:
 - a whole session that left its harness unchanged where a practice solve of it failed (a session
   whose every practice solve passed had nothing to work on).
 
-A repeat, a control, and a comparison that scored nothing or left no room do not count. A pair
-whose last two readings the promotion rule passes has shown a gain, and only the moves since the
-last promotion count (14 October), so patience never ends a campaign that has earned one. The next
+A control, and a comparison that scored nothing or left no room do not count. A pair that read a
+step has shown a gain (until 19 October: whose last two readings the promotion rule passed, and a
+reading under the trigger counted as a gain too), and only the moves since the last promotion count
+(14 October), so patience never ends a campaign that has earned one. The next
 comparison or session is then refused, unless the operator gives a reason to go on
 (`--past-stop`).
 
@@ -1146,23 +1144,12 @@ a move chooses it, and the decision carries that row's code:
    first comparison up to a comparison's target plus the practice the release still draws from
    them. Until 13 October this row also held a repeat's tasks, and two campaigns examined towards
    48 tasks for 16 hours and never compared.
-5. `unfinished`: a comparison that began and has not reported continues, and a reading that
-   cleared the trigger, which is one draw, is repeated on fresh solves, once. A repeat that clears
-   the trigger but not the level together with its first stage buys no third reading (15 October),
-   and a later reading of the candidate on other tasks is an attempt of its own, with its own
-   repeat; a repeat is never the first stage of another (`attemptsOf`; until 16 October the pair's
-   last two readings were read, and buffer-159-opus promoted on its third and fourth). The reading
-   is the reference's last of any harness, and its repeat is of the harness it froze: until
-   15 October a later checkpoint hid it, and recode-pr169-sonnet's g-1 lost its repeat. The repeat
-   scores the first stage's untied frontier tasks again on fresh solves, then the held-out tasks
-   that stage did not score (`scoredSet`, `src/builder/round.ts`); a task both score counts once,
-   with its differences summed (`joined`). Only where those are fewer than a sweep at the level
-   needs does the Examiner write more first and `compare` refuse the repeat. Until 16 October it
-   waited for a full target of fresh tasks, about 300 gate solves after a promotion, and
-   buffer-159-opus read 5-0 over a step and its repeat where 6-0 promotes. An Examiner session
-   that holds out no task counts towards the patience.
-6. `twice`: a step and its repeat, read together, name the harness to promote (`unpromoted` says
-   why another is not).
+5. `unfinished`: a comparison that began and has not reported continues. Until 19 October a
+   reading that cleared the trigger was also repeated on fresh solves here, once, before anything
+   was promoted. An Examiner session that holds out no task counts towards the patience.
+6. `step`: a comparison against the reference that read `step` names the harness to promote, the
+   newest such where several wait (`unpromoted` says why another is not; until 19 October the row
+   was `twice`, a step and its repeat read together).
 7. `no-room`: the last comparison the reference was in left it nothing to gain, whichever side it
    took: no task informative for it, or none either harness answered. The Examiner writes tasks it
    fails; there is no shorter budget to fall back to. After a promotion that reading is the
@@ -1363,7 +1350,7 @@ same turn.
 
 | Claim | Requires |
 | --- | --- |
-| A step | A comparison that read `step`, named with its condition: the setting, the tasks, the solves per side, the level, the budget and the starter it was read on. One comparison is one draw, so a step is repeated on fresh solves, with the reference read against itself beside it, before the word is used without qualification or anything is promoted |
+| A step | A comparison that read `step`, named with its condition: the setting, the tasks, the solves per side, the level, the budget and the starter it was read on. One comparison is one draw: a step promotes on its own reading, with the reference read against itself beside it, and the word is used without qualification only once a later reading of the same pair on fresh solves holds it (until 19 October a step was repeated before anything was promoted) |
 | No step | The same naming, plus the size of the test. `no-step` says that a test of this size found no gain. It says nothing about equality |
 | A mechanism | The event it writes, in a live run's log, where its trigger occurred |
 | A refusal | The refusal's text. It establishes its own condition and nothing about the answers |

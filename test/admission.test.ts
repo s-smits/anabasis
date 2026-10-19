@@ -37,7 +37,6 @@ const WANTED: Wanted = {
   target: 12,
   solves: 2,
   level: 0.1,
-  trigger: 0.25,
   patience: 3,
   builds: true,
   cap: { dollars: 600, reserve: 10 },
@@ -163,8 +162,8 @@ describe("what a log holds for the next comparison", () => {
   it("counts the tasks that may still be scored, once the reference's closed ones retire", () => {
     // The stack review (12 October): two comparisons in which the reference answered a to d in
     // every solve and e and f in one of two close a to d, which stay as retained tasks: two are
-    // left on the frontier, which a first reading at the trigger needs. Until 16 October two of the
-    // four left the draw by the contract's hash.
+    // left on the frontier, where a step at 0.10 takes four, and at 0.25 two. Until 16 October two
+    // of the four left the draw by the contract's hash.
     const twice = { a: "PP PP", b: "PP PP", c: "PP PP", d: "PP PP", e: "PF PP", f: "PF PP" };
     const log = [
       event("checker.read", { contract: "c", checks: "k", faults: [] }),
@@ -174,7 +173,8 @@ describe("what a log holds for the next comparison", () => {
     ];
     const supply = supplyOf(log);
     expect(supply).toMatchObject({ held: 2, exhausted: 4 });
-    expect(codes(supply, { target: 4 })).toEqual([]);
+    expect(codes(supply, { target: 4 })).toEqual(["held-short"]);
+    expect(codes(supply, { target: 4, level: 0.25 })).toEqual([]);
   });
 });
 
@@ -190,22 +190,20 @@ describe("what the gate refuses, by its code", () => {
   });
 
   // As exam-1 stood on 2026-10-08, with one task to score. It was a note then, and eight rounds ran.
-  it("held-short: fewer tasks than a first reading takes, which could not buy a repeat", () => {
-    // Since 10 October a first reading at or under the trigger buys the repeat, and 2-0 clears
-    // 0.25: one task cannot, where three could not read a step at 0.10 before.
-    expect(refusals({ ...SETS, held: 1 }, WANTED)).toEqual([
+  it("held-short: fewer tasks than a step takes at the level", () => {
+    // Since 19 October one reading promotes, so a comparison needs as many untied tasks as a step
+    // at the level takes: four at 0.10, six at 0.02. Until then two bought a repeat at 0.25.
+    expect(refusals({ ...SETS, held: 3 }, WANTED)).toEqual([
       {
         code: "held-short",
-        why: "1 held-out task can be scored, and at --trigger 0.25 a first reading takes 2, all won: this comparison cannot buy a repeat. Run an Examiner session (tools/d1b/examine.ts) for more held-out tasks",
+        why: "3 held-out tasks can be scored, and at --level 0.1 a step takes 4, all won: this comparison cannot read a step. Run an Examiner session (tools/d1b/examine.ts) for more held-out tasks",
       },
     ]);
     expect(whys(SETS, { target: 1 })).toEqual([
-      expect.stringContaining("and ask for a --target of 2 or more"),
+      expect.stringContaining("and ask for a --target of 4 or more"),
     ]);
-    expect(whys({ ...SETS, held: 3 }, { trigger: 0.1 })).toEqual([
-      expect.stringContaining("a first reading takes 4"),
-    ]);
-    expect(codes({ ...SETS, held: 2 })).toEqual([]);
+    expect(whys({ ...SETS, held: 5 }, { level: 0.02 })).toEqual([expect.stringContaining("a step takes 6")]);
+    expect(codes({ ...SETS, held: 4 })).toEqual([]);
   });
 
   it("unread: a checker nobody has read, for a comparison and for a session with practice to judge", () => {
@@ -276,8 +274,10 @@ describe("what a start's reader is told", () => {
     const told = (more: readonly LogEvent[], wanted: Partial<Wanted> = {}) =>
       admitComparison(four(more), { ...ASKED, wanted: { ...WANTED, ...wanted } });
     expect(told([READ], { builds: false }).join("\n")).not.toContain("practise");
-    // A target caps the scored set as few held-out tasks do.
-    expect(told([READ], { target: 3 })[0]).toBe("4 held out · 0 released for practice · 3 to score");
+    // A target caps the scored set as few held-out tasks do, at a level three tasks can clear.
+    expect(told([READ], { target: 3, level: 0.25 })[0]).toBe(
+      "4 held out · 0 released for practice · 3 to score",
+    );
     // Four tasks, two harnesses, two solves: sixteen solves, and a cap of $120 reserves twelve.
     expect(told([READ], { cap: { dollars: 120, reserve: 10 } }).at(-1)).toBe(
       "the cap of $120 holds a reserve of $10 for 12 solves, and the comparison's test alone makes 16, after a session whose spend the same cap holds: it is cut short and reads not-scored unless its solves bill well under their reserve",
@@ -298,7 +298,9 @@ describe("what a start's reader is told", () => {
       ...roundLogged("g-1", ["h0", "h1"], twice),
       ...roundLogged("g-2", ["h0", "h2"], twice),
     ]);
-    expect(admitComparison(retired, { ...ASKED, id: "g-3", wanted: { ...WANTED, target: 4 } })).toContain(
+    expect(
+      admitComparison(retired, { ...ASKED, id: "g-3", wanted: { ...WANTED, target: 4, level: 0.25 } }),
+    ).toContain(
       "4 held-out task(s) were answered by the reference harness in every solve of their last comparison, with no objective telling two valid answers apart, and are scored only as retained tasks: they can only tie again or be lost",
     );
     // A session with no comparison after it scores nothing, and is told what it may practise on.

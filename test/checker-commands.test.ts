@@ -606,9 +606,9 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     expect(of("build.started")).toHaveLength(2);
 
     // The campaign's view prints each step's handover. Fix row F7: of the moves, it names the
-    // table's alone. It takes the campaign command's four flags and no other: a launch's, which it
+    // table's alone. It takes the campaign command's flags and no other: a launch's, which it
     // parsed until 11 October, went with the launcher (`docs/simplify.md`, D2).
-    const viewed = cli("view", SEED, "--level", "0.02", "--trigger", "0.25").said;
+    const viewed = cli("view", SEED, "--level", "0.02").said;
     expect(
       viewed.split("\n").filter((line) => line.includes("Builder session, finished: from")),
     ).toHaveLength(2);
@@ -622,11 +622,8 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     // campaign's own command, rehearsed and asked what it would do next, names the same.
     const tabled = viewed.slice(viewed.indexOf("the table's move\n") + "the table's move\n".length).trim();
     expect(tabled).toContain(": ");
-    // The seed's comparisons began under the rule of one reading at a time, so the campaign's
-    // command is refused the two-stage rule's defaults until the operator names both terms once.
-    expect(rehearse("--campaign", "--dry-run").said).toContain("name --level and --trigger once for it");
     // At 0.02 the default patience holds the bound an opening may risk (`openingLines`).
-    const terms = ["--project", "fixture", "--level", "0.02", "--trigger", "0.25"];
+    const terms = ["--project", "fixture", "--level", "0.02"];
     expect(rehearse("--campaign", ...terms, "--dry-run").said).toContain(`next · ${tabled}`);
   });
 });

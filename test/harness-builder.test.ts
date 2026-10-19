@@ -45,8 +45,8 @@ const PROJECT = "fixture-products";
 const MOVED = "campaign.move";
 /** What a scripted Examiner says as it finishes having written nothing. */
 const NOTHING = "Nothing to add.";
-// Fourteen held once two are released: a comparison's seven and its repeat's, which a campaign holds
-// before its first comparison (12 October). At the default level, 0.02 since 12 October, a step
+// Fourteen held once two are released: two comparisons' seven, which a campaign holds before its
+// first comparison (12 October). At the default level, 0.02 since 12 October, a step
 // takes six tasks all won (`sweepOf`), and seven still read one after a pass labelled wrong.
 const TASKS = fixtureTasks(16);
 const scripted = scriptedModel;
@@ -257,9 +257,10 @@ describe("a campaign run by its log", () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-idle`;
     // A patience of two, so that the ending is reached in two idle Examiner sessions; a target of
-    // five, which the pack's held-out tasks hold twice, so that the first move builds: a campaign
-    // short of its target and a repeat's has tasks written before the first session (11 and 12 October).
-    const flags = [...seeded(name), "--patience", "2", "--target", "5"];
+    // six, the fewest a step at the default level reads, which the pack's held-out tasks hold, so
+    // that the first move builds: a campaign short of its target has tasks written before the first
+    // session (11 and 12 October).
+    const flags = [...seeded(name), "--patience", "2", "--target", "6"];
     const strayed: string[] = [];
     const solves = scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, strayed);
     // A Builder that finishes with the harness as it was, having practised on nothing: it had
@@ -335,7 +336,7 @@ describe("a campaign run by its log", () => {
         patience: 2,
         seats: { builder: null, examiner: null, reviewer: null },
         // The level is pinned whether or not a command named it: this tree's default.
-        terms: { level: "0.02", practice: "2", target: "5", trigger: "0.25" },
+        terms: { level: "0.02", practice: "2", target: "6" },
       },
     ]);
     // The ending is the log's last event, and run again the command says it and adds nothing.
@@ -369,36 +370,22 @@ describe("a campaign run by its log", () => {
     const seats: Seats = {
       seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
     };
-    // Its comparisons began under the rule of one reading at a time, so the two-stage rule's
-    // trigger is not defaulted for it: the operator names both terms once.
-    await expect(harnessBuilder([...flags, "--moves", "0"], seats)).rejects.toThrow(
-      "name --level and --trigger once for it (the plan's are --level 0.02 --trigger 0.25)",
-    );
-    // Naming the trigger alone would pin the level to the start's, under the summed rule.
-    await expect(harnessBuilder([...flags, "--trigger", "0.25", "--moves", "0"], seats)).rejects.toThrow(
-      "name --level and --trigger once",
-    );
-    expect(of(name, OPENED)).toHaveLength(1);
-    await harnessBuilder([...flags, "--level", "0.1", "--trigger", "0.25", "--moves", "0"], seats);
-    expect(of(name, OPENED).at(-1)).toMatchObject({
-      terms: { level: "0.1", practice: "2", trigger: "0.25" },
-    });
+    // Its comparison began at 0.1, and the opening is held to it. Until 19 October a trigger was
+    // pinned beside it, and a campaign whose comparisons began before 10 October was refused both.
+    await harnessBuilder([...flags, "--moves", "0"], seats);
+    expect(of(name, OPENED).at(-1)).toMatchObject({ terms: { level: "0.1", practice: "2" } });
     // A later command on the same tree writes no new record, and one that names the level does.
     await harnessBuilder([...flags, "--moves", "0"], seats);
     expect(of(name, OPENED)).toHaveLength(2);
-    await harnessBuilder([...flags, "--level", "0.2", "--moves", "0"], seats);
-    expect(of(name, OPENED).at(-1)).toMatchObject({
-      terms: { level: "0.2", practice: "2", trigger: "0.25" },
-    });
+    await harnessBuilder([...flags, "--level", "0.05", "--moves", "0"], seats);
+    expect(of(name, OPENED).at(-1)).toMatchObject({ terms: { level: "0.05", practice: "2" } });
   });
 
-  it("compares a step again, waits under --hitl to promote it, still waits when reopened without the flag, promotes it given the word back, and then has tasks written", async () => {
+  it("waits under --hitl to promote a step, still waits when reopened without the flag, promotes it given the word back, and then has tasks written", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-climb`;
     // The seed holds fourteen tasks to score once two are released, and a comparison scores seven:
     // the row that writes tasks up to the target is tested in `test/decide.test.ts`.
-    // At a trigger of its own, so that the comparisons are seen to run under the campaign's and
-    // not the command's default (found by review, 11 October: the flag was not passed on).
     const flags = [
       ...seeded(name),
       "--practice",
@@ -409,8 +396,6 @@ describe("a campaign run by its log", () => {
       "1",
       "--target",
       "7",
-      "--trigger",
-      "0.5",
       // The patience the opening's bound holds at these terms (`openingLines`).
       "--patience",
       "1",
@@ -420,15 +405,15 @@ describe("a campaign run by its log", () => {
     const seats: Seats = {
       seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, strayed),
       examine: (request) => {
-        const tasks = [41, 42, 43].map((base) => ({
+        const tasks = [41, 42, 43, 44, 45, 46].map((base) => ({
           family: "fixture",
           public_input: { base },
           hidden: null,
         }));
         const script = scripted([
           ["propose_tasks", { tasks }],
-          ["finish", { note: "Three more." }],
-          ["finish", { note: "Three more." }],
+          ["finish", { note: "Six more." }],
+          ["finish", { note: "Six more." }],
         ]);
         return examine({ ...request, ...script });
       },
@@ -446,8 +431,7 @@ describe("a campaign run by its log", () => {
       waitMs: 1,
       sleep: Bun.sleep,
     };
-    // Set-up, one session, the comparison and its repeat: under `--hitl` the promotion is then
-    // the operator's.
+    // Set-up, one session and the comparison: under `--hitl` the promotion is then the operator's.
     const waits = await harnessBuilder([...flags, "--hitl"], { ...seats, host });
     expect(waits).toMatchObject({ move: "promote" });
     // The wait is on record, with the load it read, before the solve that waited began; the solves
@@ -461,39 +445,24 @@ describe("a campaign run by its log", () => {
     const began = kept.findIndex(({ kind, data }) => kind === "solve.started" && data.task === held);
     expect(waited).toBeLessThan(began);
     expect(of(name, MOVED).filter(({ load }) => load !== undefined)).toEqual([]);
-    // Each comparison was made under the campaign's trigger, and the move records the command.
+    // The comparison was made at the campaign's level, and the move records the command.
     for (const made of of(name, MOVED).filter(({ move }) => move === "compare")) {
-      expect(made.args).toEqual(expect.arrayContaining(["--trigger", "0.5", "--level", "0.02"]));
+      expect(made.args).toEqual(expect.arrayContaining(["--level", "0.02"]));
     }
     expect(of(name, MOVED).map(({ move, session }) => [move, session ?? null])).toEqual([
       ["accept", null],
       ["prepare", null],
       ["build", "b-1"],
       ["compare", "g-1"],
-      ["compare", "g-2"],
     ]);
     // Each report carries `unsettled` until a person answers its packet, and the promotion below
     // does not wait for it (the operator, 12 October).
-    const [first, repeat] = of(name, "comparison.reported");
+    const [first] = of(name, "comparison.reported");
     expect(first).toMatchObject({
       reading: "step",
       scored: { wins: 7, losses: 0, ties: 0 },
       settled: "unsettled",
     });
-    expect(repeat).toMatchObject({
-      reading: "step",
-      old: first?.old,
-      fresh: first?.fresh,
-      settled: "unsettled",
-    });
-    // The repeat scored again the seven tasks its first stage untied, on fresh solves, though seven
-    // others were held: until 16 October it scored the ones its first stage did not, and waited
-    // for them where too few were held.
-    const [once = [], again = []] = of(name, "comparison.started").map(({ tasks }) =>
-      Array.isArray(tasks) ? tasks : [],
-    );
-    expect([once.length, again.length]).toEqual([7, 7]);
-    expect(new Set(again)).toEqual(new Set(once));
     expect(of(name, "harness.promoted")).toEqual([]);
     // Reopened by its name alone, it still waits: the opening keeps the word. Until 12 October it
     // was the running command's flag, and a reopen that left it off promoted without the operator.
@@ -506,41 +475,41 @@ describe("a campaign run by its log", () => {
     const next = await harnessBuilder([...flags, "--no-hitl", "--moves", "2"], seats);
     expect(of(name, OPENED).at(-1)).not.toHaveProperty("attended");
     expect(of(name, "harness.promoted")).toMatchObject([{ harness: first?.fresh }]);
-    expect(of(name, "comparison.reported").map(({ settled }) => settled)).toEqual(["unsettled", "unsettled"]);
-    expect(of(name, MOVED).slice(5)).toMatchObject([
+    expect(of(name, "comparison.reported").map(({ settled }) => settled)).toEqual(["unsettled"]);
+    expect(of(name, MOVED).slice(4)).toMatchObject([
       { move: "promote", harness: first?.fresh },
       { move: "examine", session: "x-1" },
     ]);
-    // The promoted harness answered every task of g-1 and g-2, and one comparison closes a task
-    // (15 October). The seven held tasks neither scored leave the campaign short of none, so the
-    // Examiner writes until it finishes: until 16 October g-2 scored those seven, and it was asked
-    // for two.
-    expect(of(name, "exam.finished")).toMatchObject([{ session: "x-1", proposed: 3, ended: "finished" }]);
+    // The promoted harness answered every task of g-1, and one comparison closes a task
+    // (15 October). The seven held tasks g-1 did not score are retained, and a step at the level
+    // takes six frontier tasks, which the Examiner writes.
+    expect(of(name, "exam.finished")).toMatchObject([{ session: "x-1", proposed: 6, ended: "finished" }]);
     // The tasks written are read by a control before a Builder session is paid for: the starter
     // against the promoted harness. Until 10 October the Builder built here, three times, on
     // practice the promoted harness passed (t-4, t-9, t-10).
     expect(next).toMatchObject({ move: "compare", fresh: "starter", reference: "promoted" });
     const after = await harnessBuilder([...flags, "--moves", "1"], seats);
     expect(of(name, "comparison.started").at(-1)).toMatchObject({
-      session: "g-3",
+      session: "g-2",
       fresh: first?.starter,
       old: first?.fresh,
     });
     // The script answers nothing under the reference nor the starter, so the control reads the
-    // three new tasks as beyond both; a valid answer to the pack task retained beside them is on
+    // six new tasks as beyond both; a valid answer to each pack task retained beside them is on
     // record, so the reference failing it now is room (`informative`, 15 October; until then no
     // task it failed in every solve was). The seven held before the promotion that the promoted
-    // harness never stood in are retained since 16 October, one for each three frontier tasks;
-    // until then four of them were drawn as frontier. The three frontier tasks are fewer than a
-    // sweep at the level takes, so no release may take one (`practiceRoom`), and the Builder
-    // builds; until 16 October the table released the tasks the reference failed here.
+    // harness never stood in are retained since 16 October, one for each three frontier tasks.
+    // The two the control drew it has now stood in and failed, so they are frontier again: eight
+    // frontier tasks, two more than a sweep at the level takes, and the control read room, so the
+    // table releases up to two before the Builder builds (`practiceRoom`). Until 19 October a
+    // repeat came between, and the Builder built here.
     expect(of(name, "comparison.reported").at(-1)).toMatchObject({
-      session: "g-3",
+      session: "g-2",
       reading: "no-step",
-      valid: { old: [4, 0], fresh: [4, 0], informative: { old: 1, fresh: 1 } },
+      valid: { old: [8, 0], fresh: [8, 0], informative: { old: 2, fresh: 2 } },
     });
-    expect(after).toMatchObject({ move: "build", code: "build" });
-    expect(after.why).toContain("comparison g-3 read the starter against harness");
+    expect(after).toMatchObject({ move: "prepare", code: "practice" });
+    expect(after.why).toContain("comparison g-2 read room in the tasks held out since the last release");
     expect(strayed).toEqual([]);
 
     // A person answers g-1's packet, drawn by the comparison's id, so asked again it is the same:
@@ -612,7 +581,7 @@ describe("a campaign run by its log", () => {
     expect(closing).toContain(
       "a person read 3 in 1 comparison, drawn uniformly by each comparison's id: 2 sound, 1 wrong, 0 unclear",
     );
-    expect(closing).toContain("settled 1 comparison, and 2 comparisons are unsettled");
+    expect(closing).toContain("settled 1 comparison, and 1 comparison is unsettled");
     // The chance of a false promotion over the whole campaign, not one epoch's alone (the plan's 7.6).
     expect(closing).toContain("## The chance of a false promotion\n\n- Epoch 1:");
     expect(closing).toContain("Over the campaign, a false promotion in any epoch estimated at");
@@ -632,7 +601,7 @@ describe("a campaign run by its log", () => {
     const letter = /harness ([A-Z]+) \(([0-9a-f]{8})\), set-up \(epoch 0\)/u.exec(report);
     expect(letter?.[2]).toBe(handed.harness.slice(0, 8));
     expect(report).toContain(
-      `harness ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}), set-up (epoch 0), read by g-1 and g-2. In g-2 it won 7, lost 0 and tied 0`,
+      `harness ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}), set-up (epoch 0), read by g-1. In g-1 it won 7, lost 0 and tied 0`,
     );
     expect(report).toContain(`| g-1 | ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}) | A (`);
     // Its cost beside it, read against the bar and gating nothing (the plan's W).
@@ -644,7 +613,7 @@ describe("a campaign run by its log", () => {
     // began bought a report.
     expect(report).toMatch(/- The climb: \$\d+\.\d\d and \d+\.\d hours a promotion \(1\)\./);
     expect(report).toMatch(
-      /- Comparisons: \$\d+\.\d\d a task scored \(\d+\); 3 of the 3 comparisons that began reported\./,
+      /- Comparisons: \$\d+\.\d\d a task scored \(\d+\); 2 of the 2 comparisons that began reported\./,
     );
     expect(report).toContain("| g-1 |");
     expect(report).not.toContain("Diagnos");
@@ -719,9 +688,13 @@ describe("a campaign run by its log", () => {
     expect(log.at(-1)).toMatchObject({ kind: "campaign.ended", data: { ending: "operator", answers: [at] } });
     expect(of(name, MOVED).map(({ move }) => move)).toEqual(["accept", "prepare", "build", "compare"]);
 
-    // Run again, the campaign goes on: the word was heard once. A word for other tasks and one
-    // for another total are each acted on at the next move, and named by what acted on them.
-    expect(await harnessBuilder([...flags, "--moves", "0"], seats)).toMatchObject({ move: "compare" });
+    // Run again, the campaign goes on to promote the step: the word was heard once. A word for
+    // other tasks and one for another total are each acted on at the next move, and named by what
+    // acted on them.
+    expect(await harnessBuilder([...flags, "--moves", "0"], seats)).toMatchObject({
+      move: "promote",
+      code: "step",
+    });
     wordCommand(["--name", name, "--budget", "50"]);
     wordCommand(["--name", name, "--tasks", "the step was too easy"]);
     expect(await harnessBuilder([...flags, "--moves", "0"], seats)).toMatchObject({
@@ -831,7 +804,7 @@ describe("a campaign run by its log", () => {
       "--sessions",
       "1",
       "--target",
-      "5",
+      "6",
       "--patience",
       "2",
       "--solve-model-turns",
@@ -862,7 +835,7 @@ describe("a campaign run by its log", () => {
       ["examine", "x-2"],
     ]);
     const [first] = of(name, "comparison.reported");
-    expect(first).toMatchObject({ reading: "no-step", valid: { old: [0, 5] } });
+    expect(first).toMatchObject({ reading: "no-step", valid: { old: [0, 6] } });
     expect(first).not.toHaveProperty("budgets");
     expect(of(name, "campaign.setting").map(({ modelTurns }) => modelTurns)).toEqual([8]);
     expect(next).toMatchObject({ move: "end", ending: "no-room" });
@@ -1011,7 +984,7 @@ describe("a campaign run by its log", () => {
     expect(of(name, "comparison.reported")).toMatchObject([
       { reading: "step", scored: { wins: 6, losses: 0, ties: 0 } },
     ]);
-    expect(next).toMatchObject({ move: "compare" });
+    expect(next).toMatchObject({ move: "promote", code: "step" });
     expect(strayed).toEqual([]);
 
     // A term named again is recorded again, and a flag that names another setting than the

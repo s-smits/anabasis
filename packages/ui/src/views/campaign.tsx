@@ -220,9 +220,9 @@ function SetUp({ reading }: { reading: CampaignReading }) {
  *  beside it, as `climb.ts` words them for the view. */
 function rateSource(risk: NonNullable<CampaignReading["counters"]["risk"]>): string {
   const controls =
-    risk.pairs === 0
-      ? "no two A/A controls on record"
-      : `${String(risk.errors)} of ${plural(risk.pairs, "pair")} of A/A controls promoted`;
+    risk.controls === 0
+      ? "no A/A control on record"
+      : `${String(risk.errors)} of ${plural(risk.controls, "A/A control")} read a step`;
   return `${percent(risk.bound)} for the riskiest attempt by the rule's design; ${controls}`;
 }
 

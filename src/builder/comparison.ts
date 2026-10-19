@@ -15,7 +15,7 @@
 import {
   decidedByObjective,
   detectable,
-  falseRate,
+  power,
   type ObjectiveRule,
   objectiveRuleIn,
   type Paired,
@@ -93,8 +93,9 @@ export interface Report {
   readonly billed: { readonly old: number | null; readonly fresh: number | null } | null;
   /** The step's own set: the scored tasks not exhausted, where the step is read; the least share
    *  of its untied tasks one reading detects four times in five (`detectable`); and the chance that
-   *  an attempt at its margins promotes between equal harnesses, the rule's rate beside the level
-   *  (`falseRate`). Null when nothing was compared. */
+   *  a reading at its margins reads a step between equal harnesses, which is never over the level
+   *  (`falseRate`, the test's `power` at one half; until 19 October the two-stage rule's rate of a
+   *  step and its repeat). Null when nothing was compared. */
   readonly frontier: (Entered & { readonly detectable: number | null; readonly falseRate: number }) | null;
   /** The exhausted tasks the draw keeps, where a step may not lose more pairs than it wins;
    *  `unmeasured` where none was tallied, never no loss (`compare.ts`). */
@@ -102,8 +103,7 @@ export interface Report {
   /** Each family's tallies on the two sets, from the same rows, so they sum to the whole. They show
    *  concentration; a family name can hide correlated tasks, and they establish no independence. */
   readonly families: Readonly<Record<string, { readonly frontier: Tally; readonly retained: Tally }>> | null;
-  /** The comparison of the same two harnesses before this one, and the task versions both scored:
-   *  for a repeat, its overlap with its first stage. */
+  /** The comparison of the same two harnesses before this one, and the task versions both scored. */
   readonly overlap: { readonly with: string; readonly tasks: readonly string[] } | null;
   /** The reference harness against itself on halves of its own solves mirrored in time, the A/A,
    *  where it holds four or more of a task: how often two of its solves of a task
@@ -184,8 +184,6 @@ export interface Fixed {
   readonly setting: string;
   readonly solves: number;
   readonly level: number;
-  /** The level a first reading clears to buy the repeat (`triggered`, `compare.ts`). */
-  readonly trigger: number;
   readonly tasks: readonly string[];
   /** The scored tasks fixed at the start as retained, from the exhausted ones and an earlier
    *  epoch's (`scoredSet`, `round.ts`); the others are the frontier. */
@@ -358,8 +356,7 @@ function setsOf(
   const tallied = { frontier: part(false), retained: part(true) };
   const setOf = (set: keyof typeof tallied): Entered => {
     const within = (task: string) => kept.has(task) === (set === "retained");
-    // `of` names the task of each difference, so that a repeat on the same tasks counts each once
-    // (`readTwice`, 14 October).
+    // `of` names the task of each difference, as the report holds it.
     const of = tallied[set].map(({ task }) => task);
     return { tasks: fixed.tasks.filter(within), aside: aside.filter(within), ...scored(tallied[set]), of };
   };
@@ -424,14 +421,13 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
   const aa = mirrored === null ? null : scored(mirrored);
   const valid = validOf(pairs, fixed.solves, poolOf(events));
   // The step is read off the sets as a report holds them, which is how it is read again (`stepOf`).
-  const reading =
-    pairs.length === 0 ? ("not-scored" as const) : stepOf(asRecord(sets) ?? {}, fixed.level, fixed.trigger);
+  const reading = pairs.length === 0 ? ("not-scored" as const) : stepOf(asRecord(sets) ?? {}, fixed.level);
   return {
     scored: { ...scored(pairs), unsolved: pairs.filter(unsolved).length },
     frontier: {
       ...frontier,
       detectable: detectable(frontier.differences, fixed.level),
-      falseRate: falseRate(frontier.differences, fixed.level, fixed.trigger),
+      falseRate: power(frontier.differences, 0.5, fixed.level),
     },
     retained: sets.retained,
     families: sets.families,
@@ -456,7 +452,7 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     reading,
     turns: turnsOf(events, pairs),
     // The cost bar, read where a step is (the plan's W): printed, and gating nothing.
-    worth: reading === "step" ? worthOf(events, { id: fixed.id, fresh: fixed.fresh }) : null,
+    worth: reading === "step" ? worthOf(events, fixed.id) : null,
     objective:
       fixed.objective === undefined ? null : { ...fixed.objective, decided: decidedByObjective(pairs) },
   };
@@ -568,14 +564,14 @@ export function startOf(events: readonly LogEvent[], id: string): JsonObject | u
 /** What comparison `id` fixed at its start, read back from the log; null where it never began. */
 export function fixedIn(events: readonly LogEvent[], id: string): Fixed | null {
   const start = startOf(events, id) ?? {};
-  const { old, fresh, starter, setting, solves, level, trigger, tasks, retained } = start;
+  // A start of 10 to 18 October also holds the trigger of the two-stage rule, which is read past.
+  const { old, fresh, starter, setting, solves, level, tasks, retained } = start;
   return isString(old) &&
     isString(fresh) &&
     isString(starter) &&
     isString(setting) &&
     isNumber(solves) &&
-    isNumber(level) &&
-    isNumber(trigger)
+    isNumber(level)
     ? {
         id,
         old,
@@ -584,7 +580,6 @@ export function fixedIn(events: readonly LogEvent[], id: string): Fixed | null {
         setting,
         solves,
         level,
-        trigger,
         tasks: Array.isArray(tasks) ? tasks.filter(isString) : [],
         retained: Array.isArray(retained) ? retained.filter(isString) : [],
         objective: objectiveRuleIn(start),

@@ -275,7 +275,6 @@ async function setup(responses: FauxResponseStep[], table: Table) {
     },
     solves: 2,
     level: 0.1,
-    trigger: 0.25,
     defects: 3,
     concurrency: 1,
     solve: (version, harness, comparison) => solve(version, harness.digest, comparison),
@@ -378,7 +377,7 @@ describe("a round", () => {
           differences: [4, 4, 4, 4],
           of: HELD,
           detectable: 0.95,
-          falseRate: 5 / 256,
+          falseRate: 1 / 16,
         },
         retained: "unmeasured",
         // Each family's tallies, from the same rows, sum to the whole.
@@ -435,7 +434,6 @@ describe("a round", () => {
         setting: s.request.setting,
         solves: 2,
         level: 0.1,
-        trigger: 0.25,
         cap: null,
         tasks: HELD,
         retained: [],
@@ -876,9 +874,8 @@ describe("a round", () => {
       );
       expect(() => settleReading(defect.s.log, "b-1", new Map())).toThrow("is settled already");
       expect(defect.s.of(COMPARISON_REPORTED)).toHaveLength(2);
-      // The settled 3-0 reads no step at 0.10 and buys the repeat, which the stop rule counts as
-      // a gain (11 October).
-      expect(stopRule(read(defect.s.log))).toMatchObject({ checkpoints: 1, sinceStep: 0 });
+      // The settled 3-0 reads no step at 0.10 (p 0.125), and left room: a move that showed no gain.
+      expect(stopRule(read(defect.s.log))).toMatchObject({ checkpoints: 1, sinceStep: 1 });
 
       // Labelled earned, the rejections stand on a person's word and the task is restored: the same
       // whether the labels come at once or after a later round has solved the same tasks.
@@ -1347,8 +1344,8 @@ describe("a checkpoint with no session", () => {
     expect(s.asked).toHaveLength(16);
     expect(s.asked.every(({ side }) => side !== "old")).toBe(true);
     // The first round is a checkpoint of the stop rule: its harness is one a session built, and
-    // its 3-0, which buys the repeat, counts as a gain (11 October).
-    expect(stopRule(read(s.log))).toEqual({ checkpoints: 1, sinceStep: 0, stop: false });
+    // its 3-0 (p 0.125) left room and showed no gain.
+    expect(stopRule(read(s.log))).toEqual({ checkpoints: 1, sinceStep: 1, stop: false });
     // One harness on both sides is no comparison.
     await expect(checkpoint(s.compare("aa", { fresh: { dir: s.parent, digest: s.old } }))).rejects.toThrow(
       "a comparison sets two harnesses against each other, and both sides are",
@@ -1648,10 +1645,9 @@ describe("the scored set", () => {
       { at, kind: "task.gate", data: gatePassed(version) } as const,
     ]);
   const held = ["v1", "v2", "v3", "v4", "v5", "v6"];
-  type Repeat = Parameters<typeof scoredSet>[3];
   /** The tasks a draw of `target` scores, under one contract. */
-  const drawn = (events: readonly LogEvent[], target: number, repeat?: Repeat) =>
-    scoredSet(events, target, "contract-a", repeat).tasks;
+  const drawn = (events: readonly LogEvent[], target: number) =>
+    scoredSet(events, target, "contract-a").tasks;
 
   it("is drawn from the held-out tasks by the contract alone, so no result chooses it, and is all of them where the campaign holds fewer than were asked for", () => {
     const first = drawn(heldOut(held), 4);
@@ -1778,171 +1774,6 @@ describe("the scored set", () => {
     expect(drawn([...events, { ...started, data: { session: "g-2", tasks: next } }], 9)).toEqual(
       drawn(heldOut([...held, ...written]), 9),
     );
-  });
-
-  describe("of a repeat", () => {
-    const pair = { old: "h0", fresh: "h1" };
-    /** The comparison a draw is made for: `id`, of the pair, bought at a trigger of 0.25. */
-    const repeat = (id: string, of = pair) => ({ id, ...of, trigger: 0.25 });
-    /** Comparison `id` of h1 with h0 on `tasks`, begun and reported at `wins` to `losses`, its
-     *  frontier tallied by family as `families` says: wins, losses and ties; where `named`, its
-     *  report names the task of each difference, `tasks` in order. */
-    const compared = (
-      id: string,
-      tasks: readonly string[],
-      [wins, losses]: readonly [number, number],
-      families: Readonly<Record<string, readonly [number, number, number]>> = {},
-      named = false,
-    ): LogEvent[] => [
-      {
-        at,
-        kind: "comparison.started",
-        data: {
-          session: id,
-          old: "h0",
-          fresh: "h1",
-          starter: "h0",
-          setting: "s",
-          solves: 2,
-          level: 0.1,
-          trigger: 0.25,
-          tasks: [...tasks],
-        },
-      },
-      {
-        at,
-        kind: "comparison.reported",
-        data: {
-          session: id,
-          old: "h0",
-          fresh: "h1",
-          versions: [...tasks],
-          ...tallied(wins, losses, tasks.length - wins - losses),
-          frontier: {
-            ...tallied(wins, losses, tasks.length - wins - losses).frontier,
-            ...keyIfDefined("of", named ? [...tasks] : undefined),
-          },
-          families: Object.fromEntries(
-            Object.entries(families).map(([name, [won, lost, ties]]) => [
-              name,
-              { frontier: { wins: won, losses: lost, ties }, retained: { wins: 0, losses: 0, ties: 0 } },
-            ]),
-          ),
-        },
-      },
-    ];
-    const eight = ["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"];
-    const others = (first: readonly string[], of = eight) => of.filter((version) => !first.includes(version));
-
-    it("draws the tasks its first stage did not score first, by the hash alone, and that stage's own only where too few others are held", () => {
-      // A repeat that solves its first stage's tasks again guards against the noise of a solve and
-      // not against a lucky draw of tasks.
-      const first = drawn(heldOut(eight), 4);
-      const events = [...heldOut(eight), ...compared("g-1", first, [2, 0])];
-      const second = drawn(events, 4, repeat("g-2"));
-      expect(second).toEqual(drawn(heldOut(others(first)), 4));
-      // A repeat is no first stage of itself: asked second once it has reported, it names the same tasks.
-      expect(drawn([...events, ...compared("g-2", second, [1, 0])], 4, repeat("g-2"))).toEqual(second);
-      // Six held: the two others first, then two of the first stage's by the same hash. Exactly
-      // the target held: the set the first stage drew.
-      const six = eight.slice(0, 6);
-      const stage = drawn(heldOut(six), 4);
-      const filled = drawn([...heldOut(six), ...compared("g-1", stage, [2, 0])], 4, repeat("g-2"));
-      expect(filled.slice(0, 2).toSorted()).toEqual(others(stage, six));
-      expect(filled.slice(2)).toEqual(drawn(heldOut(stage), 2));
-      const four = eight.slice(0, 4);
-      const whole = drawn(heldOut(four), 4);
-      expect(drawn([...heldOut(four), ...compared("g-1", whole, [2, 0])], 4, repeat("g-2"))).toEqual(whole);
-      // Four tasks of f1 and four of f2. Whether the first stage untied tasks of one family or of
-      // both, the others are drawn by the hash alone: until 16 October a stage untied in f1 alone
-      // read `narrow`, and its repeat drew f1's others last.
-      const proposed = [...heldOut(eight.slice(0, 4), "f1"), ...heldOut(eight.slice(4), "f2")];
-      const scored = ["v1", "v2", "v5", "v6"];
-      const narrow = compared("g-1", scored, [2, 0], { f1: [2, 0, 0], f2: [0, 0, 2] });
-      const both = compared("g-1", scored, [2, 0], { f1: [1, 0, 1], f2: [1, 0, 1] });
-      for (const untied of [narrow, both]) {
-        for (const target of [2, 4]) {
-          expect(drawn([...proposed, ...untied], target, repeat("g-2"))).toEqual(
-            drawn(heldOut(others(scored)), target),
-          );
-        }
-      }
-    });
-
-    it("scores the untied tasks of the pair's last attempt again first, where an earlier attempt was repeated", () => {
-      // g-1 bought a repeat and g-2 tied it; g-3 is the candidate's second attempt, and its repeat
-      // scores g-3's untied tasks first. Until 16 October the pair had to hold one such reading,
-      // and a second attempt's repeat scored none of its first stage's tasks first.
-      const first = drawn(heldOut(eight), 4);
-      const later = others(first);
-      const events = [
-        ...heldOut(eight),
-        ...compared("g-1", first, [2, 0], {}, true),
-        ...compared("g-2", first, [0, 0], {}, true),
-        ...compared("g-3", later, [2, 0], {}, true),
-      ];
-      expect(drawn(events, 4, repeat("g-4")).slice(0, 2)).toEqual(later.slice(0, 2));
-    });
-
-    it("scores the first stage's untied tasks again first, on fresh solves, then draws as any comparison does", () => {
-      // buffer-159-opus, 16 October: a repeat that waited for 12 fresh tasks cost about 300 gate
-      // solves after a promotion, and its step and repeat read 5-0 where 6-0 promotes.
-      const first = drawn(heldOut(eight), 4);
-      const events = [...heldOut(eight), ...compared("g-1", first, [2, 0], {}, true)];
-      const second = drawn(events, 4, repeat("g-2"));
-      expect(second.slice(0, 2)).toEqual(first.slice(0, 2));
-      expect(second.slice(2)).toEqual(drawn(heldOut(others(first)), 2));
-      // Where the campaign holds no other, the tasks the first stage tied come after its untied ones.
-      const four = eight.slice(0, 4);
-      const whole = drawn(heldOut(four), 4);
-      const rescored = drawn(
-        [...heldOut(four), ...compared("g-1", whole, [1, 1], {}, true)],
-        4,
-        repeat("g-2"),
-      );
-      expect(rescored.slice(0, 2)).toEqual(whole.slice(0, 2));
-      expect(rescored.toSorted()).toEqual(whole.toSorted());
-      // A task no longer held is not scored again.
-      const [dropped = ""] = first;
-      const gone = { at, kind: TASK_STATE, data: { version: dropped, state: "released" } } as const;
-      expect(drawn([...events, gone], 4, repeat("g-2"))).not.toContain(dropped);
-      // A task scored again counts in its own epoch's share, so the set still fills: counted in the
-      // newest epoch's, a rehearsal from buffer-159-opus scored 7 of its 8 (16 October).
-      const older = eight.slice(0, 3);
-      // The reference stood in them there, so they are frontier still (`poolOf`).
-      const promoted = { at, kind: "harness.promoted", data: { harness: "h0" } } as const;
-      const epochs = [...heldOut(older), ...compared("g-1", older, [2, 0], {}, true), promoted];
-      const filled = drawn([...epochs, ...heldOut(eight.slice(3))], 8, repeat("g-2"));
-      expect(filled).toHaveLength(8);
-      expect(filled.slice(0, 2)).toEqual(older.slice(0, 2));
-      // Eight new tasks as well: the two scored again count in the target, so the set is eight
-      // tasks and not ten (16 October).
-      const fresh = eight.map((version) => `n${version}`);
-      const full = drawn([...epochs, ...heldOut(fresh)], 8, repeat("g-2"));
-      expect(full).toHaveLength(8);
-      expect(new Set(full).size).toBe(8);
-      expect(full.slice(0, 2)).toEqual(older.slice(0, 2));
-    });
-
-    it("draws as any comparison does where no first stage bought it: none before, one over the trigger, another pair's, or a repeat already read", () => {
-      const events = heldOut(eight);
-      const first = drawn(events, 4);
-      expect(drawn(events, 4, repeat("g-1"))).toEqual(first);
-      // The hostile case: after a 2-0 of the pair, the next comparison of it is a repeat.
-      const bought = [...events, ...compared("g-1", first, [2, 0])];
-      expect(drawn(bought, 4)).toEqual(first);
-      expect(drawn(bought, 4, repeat("g-2"))).not.toEqual(first);
-      // 2 to 1 reads p 0.5, over the trigger: the next comparison is no repeat.
-      expect(drawn([...events, ...compared("g-1", first, [2, 1])], 4, repeat("g-2"))).toEqual(first);
-      // Another pair's comparison buys this pair no repeat.
-      expect(drawn(bought, 4, repeat("g-2", { old: "h0", fresh: "h2" }))).toEqual(first);
-      // A repeat that reported is the pair's last reading: the comparison after it is no repeat of it.
-      const twice = [...bought, ...compared("g-2", first, [0, 0])];
-      expect(drawn(twice, 4, repeat("g-3"))).toEqual(first);
-      // A repeat that cleared the trigger again bought nothing: a candidate buys one repeat.
-      const thrice = [...bought, ...compared("g-2", first, [2, 0], {}, true)];
-      expect(drawn(thrice, 4, repeat("g-3"))).toEqual(first);
-    });
   });
 
   it("keeps a task whose solves were cut at their limits, and leaves out one with no valid answer after two comparisons and the tasks the reference closed twice, until a person keeps the first", async () => {

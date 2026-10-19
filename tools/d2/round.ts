@@ -73,7 +73,7 @@ import { worthLine } from "#src/builder/climb.ts";
 import { predicted, type Report } from "#src/builder/comparison.ts";
 import { refuseTerms, type RoundRequest, round, scoredSet } from "#src/builder/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
-import { type ObjectiveRule, TRIGGER } from "#src/kernel/compare.ts";
+import type { ObjectiveRule } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
@@ -145,13 +145,11 @@ export const COMPARISON_OPTIONS = {
   "reviewer-effort": { type: "string", default: "high" },
   target: { type: "string" },
   solves: { type: "string", default: String(SIZE.solves) },
-  // The step and its repeat read together clear `level`; a first reading at or under `trigger`
-  // buys the repeat (`src/kernel/compare.ts`, `readTwice`). 0.20 on each reading alone was the default from
-  // #175 until 10 October's two-stage rule, then 0.10, which risks 34.8% over a patience of six; at
-  // 0.02 it is 7.6%, under the opening's cap, with 90% power at three in four untied tasks won (the
-  // operator, 12 October).
+  // One reading at or under `level` is a step (`stepOf`, `src/kernel/compare.ts`). 0.20 was the
+  // default from #175 until 10 October, then 0.10 under the two-stage rule, and 0.02 since
+  // 12 October (the operator). Since 19 October one reading promotes, which at 0.02 on 24 untied
+  // tasks risks 6.8% over a patience of six, under the opening's cap; at 0.10 it would be 45.5%.
   level: { type: "string", default: "0.02" },
-  trigger: { type: "string", default: String(TRIGGER) },
   defects: { type: "string", default: "3" },
   cap: { type: "string" },
   reserve: { type: "string", default: "10" },
@@ -299,18 +297,16 @@ export function sessionNamed(
 /**
  * The scored set a command's flags name, by task version, and the retained tasks in it: the
  * tasks `--tasks` lists by id, each a task of the pack or of a session, or `--target` of the
- * held-out tasks by the contract's draw (`scoredSet`), which takes a `repeat`'s first stage's
- * untied tasks first and its other tasks and their kin last: a checkpoint names the comparison it may repeat and a round, never a
- * repeat, does not. Whether each is a held-out task is the comparison's to refuse.
+ * held-out tasks by the contract's draw (`scoredSet`). Whether each is a held-out task is the
+ * comparison's to refuse.
  */
 export function scoredNamed(
   campaign: Campaign,
   tasks: string | undefined,
   target: number,
-  repeat?: Parameters<typeof scoredSet>[3],
 ): ReturnType<typeof scoredSet> {
   const events = read(campaign.log);
-  if (tasks === undefined) return scoredSet(events, target, contractHash(campaign.contract), repeat);
+  if (tasks === undefined) return scoredSet(events, target, contractHash(campaign.contract));
   const packages = [...campaign.packages()];
   const named = tasks.split(",").map((taskId) => {
     const found = packages.find(([, task]) => task.taskId === taskId);
@@ -331,7 +327,6 @@ export function wantedNamed(
   values: {
     readonly solves: string;
     readonly level: string;
-    readonly trigger: string;
     readonly "past-stop"?: string | undefined;
   },
   given: { readonly setting: AskedSetting; readonly cap: Cap | undefined; readonly builds: boolean },
@@ -345,7 +340,6 @@ export function wantedNamed(
     target: tasks === undefined ? target : tasks.split(",").length,
     solves: Number(values.solves),
     level: Number(values.level),
-    trigger: Number(values.trigger),
     patience: patienceOf(read(campaign.log)),
     builds: given.builds,
     cap: given.cap ?? null,
@@ -416,8 +410,8 @@ export function capNamed(
 
 /**
  * A report in lines, printed with every reading: the frontier it was read on, with its untied tasks,
- * the least share of them one reading detects four times in five (`detectable`) and the rule's
- * false rate an attempt beside the level (`falseRate`), and its p with what the test weighs; the
+ * the least share of them one reading detects four times in five (`detectable`) and the chance
+ * it reads a step between equal harnesses (`falseRate`), and its p with what the test weighs; the
  * reference against itself where the comparison carries it (`aaLines`); the tasks it drew, by what
  * became of each (`accounted`); and `valid`,
  * each harness by itself, as the tasks by how many of their solves were valid, which is what the
@@ -447,7 +441,7 @@ export function reportLines({
       ? []
       : [
           `the step is read on ${plural(frontier.tasks.length, "frontier task")}, ${String(untied)} of them untied: one reading at the comparison's level detects four times in five ${share === null ? "no share of them" : `a harness that wins ${String(Math.round(100 * share))}% of them`}`,
-          `an attempt at these margins, this reading and a repeat alike, promotes between equal harnesses ${String(Math.round(1000 * frontier.falseRate) / 10)}% of the time: the level is one reading's, and this the rule's`,
+          `one reading at these margins reads a step between equal harnesses ${String(Math.round(1000 * frontier.falseRate) / 10)}% of the time, never more than the level`,
           // The test weighs margins, but a sweep's p is its count's alone (the plan's 7.5).
           `its p is ${rounded(frontier.p)}: the test weighs each untied task by its margin in pair wins${frontier.losses === 0 && untied > 0 ? `, and where every untied task is won p is one half to the power of their count whatever the margins: ${String(untied)} won read ${rounded(0.5 ** untied)}` : ""}`,
         ]),
@@ -562,7 +556,6 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
     ...scoredNamed(campaign, setting.tasks, setting.target),
     solves: Number(values.solves),
     level: Number(values.level),
-    trigger: Number(values.trigger),
     objective: objectiveNamed(campaign),
     defects: Number(values.defects),
     cap,

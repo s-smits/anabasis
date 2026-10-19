@@ -9,6 +9,7 @@ import type { CampaignReading, ComparisonBar } from "../src/models.ts";
 import { type Navigation, type RouteChange, routeOf } from "../src/route.ts";
 import { CampaignPane } from "../src/views/campaign.tsx";
 import { comparisonSlots, countTicks } from "../src/views/campaign-data.ts";
+import { percent } from "../src/views/format.ts";
 import { answersOver, type Fixture, writeFixtureCampaign } from "./fixture-campaign.ts";
 
 const scratch = realpathSync(mkdtempSync(join(tmpdir(), "ana-ui-campaign-")));
@@ -79,7 +80,7 @@ test("the counters say what the attempts under the reference risk, what a promot
   const { risk, runway } = reading.counters;
   const html = paneOf(reading);
   expect(html).toContain(
-    `False promotion under this reference estimated at <b class="ana-num">${String(Math.round(100 * (risk?.union ?? 0) * 10) / 10)}%</b> over ${String(risk?.attempts)} attempts`,
+    `False promotion under this reference estimated at <b class="ana-num">${percent(risk?.union ?? 0)}</b> over ${String(risk?.attempts)} attempts`,
   );
   expect(html.includes("past the table&#x27;s")).toBe(false);
   const affords = Math.floor((runway?.left ?? 0) / (runway?.each ?? 1));

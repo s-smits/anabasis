@@ -83,7 +83,6 @@ const OPTIONS = {
   target: COMPARISON_OPTIONS.target,
   solves: { type: "string" },
   level: { type: "string" },
-  trigger: { type: "string" },
   defects: { type: "string" },
   minutes: { type: "string" },
   turns: { type: "string" },
@@ -220,8 +219,7 @@ export function opened(
     // counted no-steps of two levels in one row. A campaign whose comparisons already ran at a
     // level is held to that one, as the setting is held to its first solves (`firstRecord`).
     terms: {
-      level: values.level ?? pinned(events, was, "level"),
-      trigger: values.trigger ?? pinned(events, was, "trigger"),
+      level: values.level ?? pinned(events, was),
       ...was?.terms,
       ...Object.fromEntries(
         TERMS.flatMap((term) => (values[term] === undefined ? [] : [[term, values[term]]])),
@@ -312,27 +310,16 @@ export function nextId(events: readonly LogEvent[], prefix: string): string {
 }
 
 /**
- * The level, or the trigger, a campaign reads its comparisons by where no command names one: the
- * record's, else the one its comparisons on record began under (the level only), else this tree's
- * default, as a string, since a term is a flag's value. A campaign whose comparisons began before
- * the two-stage rule, with no trigger on record, is refused the default: until 10 October each
- * reading cleared the level by itself, and read on under this tree's rule its pinned level would
- * be the summed one (0.20 summed is a false promotion of equal harnesses 6.4% an attempt, where
- * 0.10 is 3.4%). The operator names both terms once, and the campaign keeps them.
+ * The level a campaign reads its comparisons by where no command names one: the record's, else
+ * the one its comparisons on record began under, else this tree's default, as a string, since a
+ * term is a flag's value. Until 19 October a trigger was pinned beside it, and a campaign whose
+ * comparisons began before 10 October's two-stage rule was refused the default.
  */
-function pinned(events: readonly LogEvent[], was: Opening | null, term: "level" | "trigger"): string {
-  const recorded = was?.terms[term];
+function pinned(events: readonly LogEvent[], was: Opening | null): string {
+  const recorded = was?.terms.level;
   if (isString(recorded)) return recorded;
   const began = events.findLast(({ kind, data }) => kind === STARTED && isNumber(data.level))?.data.level;
-  // Either term pinned from a start under the one-reading rule, with no trigger on record, would
-  // read the campaign on under this tree's rule at the old level (found by review, 11 October:
-  // `--trigger` named alone pinned the level to the start's 0.20).
-  if (isNumber(began) && !isString(was?.terms.trigger)) {
-    throw new Error(
-      `the campaign's comparisons began at --level ${String(began)} under the rule of one reading at a time, and the step and its repeat are read together since 10 October: name --level and --trigger once for it (the plan's are --level ${COMPARISON_OPTIONS.level.default} --trigger ${COMPARISON_OPTIONS.trigger.default}), and the opening keeps them`,
-    );
-  }
-  return isNumber(began) ? String(began) : COMPARISON_OPTIONS[term].default;
+  return isNumber(began) ? String(began) : COMPARISON_OPTIONS.level.default;
 }
 
 /** The flags of a comparison that began, as its start holds them: it goes on under its own terms. */
@@ -402,15 +389,8 @@ export function comparisonOf(decided: Extract<Decided, { move: "compare" }>, tur
   const session = decided.id ?? nextId(events, "g");
   const terms =
     decided.id === undefined
-      ? [
-          ...flag("solves", values.solves),
-          ...flag("level", values.level),
-          // The trigger is the table's and no term of the start: it goes on the command, new or
-          // continued, so the admission reads what `decide` read (left off until 11 October).
-          ...flag("trigger", values.trigger),
-          ...cap,
-        ]
-      : [...termsOf(events, decided.id), ...flag("trigger", values.trigger)];
+      ? [...flag("solves", values.solves), ...flag("level", values.level), ...cap]
+      : termsOf(events, decided.id);
   return {
     session,
     args: [
@@ -454,7 +434,6 @@ export function turnOf(source: {
       {
         unprepared: campaign?.tasks.some((task) => !states.has(taskVersion(campaign.pack(task)))) ?? false,
         level: Number(values.level ?? COMPARISON_OPTIONS.level.default),
-        trigger: Number(values.trigger ?? COMPARISON_OPTIONS.trigger.default),
         target: values.target === undefined ? undefined : Number(values.target),
         pastStop: values["past-stop"],
         // The checks `--admit` names, which is the operator's word for each.

@@ -53,8 +53,7 @@ export function ProjectSidebar({
         options: campaigns.map((row) => ({
           value: row.key,
           label: row.name,
-          // A seeded copy of another campaign, made to rehearse on (`bun run runs seed`).
-          detail: row.seed ? `${row.tree}, rehearsal copy` : row.tree,
+          detail: row.tree,
         })),
       },
     ],

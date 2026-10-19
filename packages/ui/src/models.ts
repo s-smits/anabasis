@@ -105,8 +105,6 @@ export interface CampaignRow {
   /** Dollars billed over the whole log (`billedAll`), and the opening's total, null where none. */
   readonly billed: number;
   readonly budget: number | null;
-  /** A copy of another campaign made to rehearse on (`Run.seed`, `tools/runs/registry.ts`). */
-  readonly seed: boolean;
 }
 
 export interface CampaignList extends Answer {

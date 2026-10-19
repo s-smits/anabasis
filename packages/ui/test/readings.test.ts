@@ -22,6 +22,7 @@ import { asRecord, isString, type JsonObject } from "../../../src/meta/json-shap
 import { tmpdir } from "../../../src/meta/os.ts";
 import { join } from "../../../src/meta/path.ts";
 import { overview } from "../../../tools/wri/read.ts";
+import { SEED_FILE } from "../../../tools/runs/registry.ts";
 import { spawnTextSync } from "../../../test/helpers/bun-spawn-sync.ts";
 import {
   type AnswerOf,
@@ -777,6 +778,19 @@ describe("what the server cannot read", () => {
     const listed = (await ask("campaigns", {}, "default", root)).answer.campaigns;
     expect(listed.find(({ name }) => name === fixture.units)?.project).toBe(NO_PROJECT);
     expect(listed.find(({ name }) => name === fixture.name)?.project).toBe(fixture.projects.vowels);
+  });
+
+  test("lists no seed and opens none, and lists the campaigns beside it as before", async () => {
+    const { root, dir } = copy();
+    const events = read(fixture.log).length;
+    writeFileSync(
+      join(dir, SEED_FILE),
+      capturedJsonStringify({ from: fixture.log, events, of: events, before: null }),
+    );
+    const listed = (await ask("campaigns", {}, "default", root)).answer.campaigns;
+    expect(listed.map(({ name }) => name).toSorted()).toEqual([fixture.early, fixture.units].toSorted());
+    const key = `${root.split("/").at(-1) ?? ""}/${fixture.name}`;
+    expect((await ask("campaign", { key }, "default", root)).status).toBe(404);
   });
 
   test("reads a log again only once its size or its time moved, and keeps it otherwise", () => {

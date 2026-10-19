@@ -140,7 +140,6 @@ export function campaignRow(
         ? null
         : { ending: ending.ending, ...keyIfDefined("why", said ? ending.why : undefined) },
     ...facts,
-    seed: found.seed === true,
   };
 }
 

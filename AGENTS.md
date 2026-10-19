@@ -1387,6 +1387,7 @@ launch request authorises one command, and no second run beside it. The skills o
 | Wording a claim afterwards | `attribution-and-proof` |
 | Doubting a reading, or asking what a fail was | `whole-run-investigation` |
 | Reading the harnesses a campaign keeps, before a promotion or a handover | `harness-audit` |
+| Reading the promotions on record, and tuning the promotion rule | `promotion-tuner` |
 | Handing runs, or a question, to someone outside | `zip-run`, `oracle-handover` |
 
 `/goal` (`.claude/commands/goal.md`, kept from v1) carries one of the operator's objectives across a

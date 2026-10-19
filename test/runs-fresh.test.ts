@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { freeName, limits, seats } from "../tools/runs/fresh.ts";
+import { freeName, seats } from "../tools/runs/fresh.ts";
 
 describe("bun run runs fresh", () => {
   it("seats one model at an effort a seat: the Builder, the Examiner, the Referee, the solver", () => {
@@ -42,13 +42,6 @@ describe("bun run runs fresh", () => {
     expect(() => seats("haiku", "hhmm")).toThrow("--model takes opus|sonnet|gpt");
     expect(() => seats("opus", "hhm")).toThrow("--effort takes four of lmhx");
     expect(() => seats("opus", "hhmq")).toThrow("--effort takes four of lmhx");
-  });
-
-  it("solves at the model's limits unless the campaign's own flags name one", () => {
-    expect(limits("opus", [])).toEqual(["--solve-minutes", "8", "--solve-model-turns", "16"]);
-    expect(limits("sonnet", ["--solve-minutes", "12"])).toEqual(["--solve-model-turns", "16"]);
-    expect(limits("gpt", [])).toEqual(["--solve-minutes", "30", "--solve-model-turns", "16"]);
-    expect(limits("opus", ["--solve-model-turns=24", "--solve-minutes", "8"])).toEqual([]);
   });
 
   it("names a run once: a taken name goes on as -r2, -r3", () => {

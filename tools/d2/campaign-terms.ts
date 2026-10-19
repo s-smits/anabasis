@@ -164,8 +164,11 @@ export function opened(
     );
   }
   const turns = values["solve-model-turns"];
-  const limit =
-    turns === undefined ? (was?.limit ?? recordedSetting(events)?.modelTurns ?? null) : Number(turns);
+  // An opening's null is a limit nobody named, and it stands. Read past it to the setting, a
+  // campaign run on by its name would write another opening once its first session recorded the
+  // default limit (19 October).
+  const unnamed = was === null ? (recordedSetting(events)?.modelTurns ?? null) : was.limit;
+  const limit = turns === undefined ? unnamed : Number(turns);
   /** A seat as this command names it, and as the record holds it where it names none. */
   const seat = (name: (typeof SEATS)[number]): Seat | null => {
     const [model, effort] = [values[name], values[`${name}-effort`]];

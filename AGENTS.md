@@ -345,10 +345,11 @@ The tools of each model seat, as its source names them:
 
 - Examiner: `propose_tasks`, or `try_task` where the host can have the reference harness solve a
   draft task, `read_example`, `try_answer`, `bash`, `read`, `write`, `finish`. `try_answer` runs
-  the checks on an instance with an answer of the Examiner's own. The log keeps no answer: where
-  the checks pass, the session holds it in memory until the task's final id, so that a task
-  proposed with that content is checked against it again under its own id once its gate passes,
-  and a pass is logged as `task.feasible`, by version and session.
+  the checks on an instance with an answer of the Examiner's own. `task.feasible` stores no
+  answer, and the Examiner's trace keeps it, on the exam side, as the call's arguments
+  (`exam.call`): where the checks pass, the session holds it in memory until the task's final id,
+  so that a task proposed with that content is checked against it again under its own id once its
+  gate passes, and a pass is logged as `task.feasible`, by version and session.
   The shell is a walled home of its own, empty at the session's start, and nothing in it enters
   the exam but through that one gate. In the session that drafts an exam:
   `draft_exam`, `bash`, `read`, `write`, `finish`, the shell the same kind of walled home
@@ -935,8 +936,8 @@ The next comparison or session is then refused, unless the operator gives a reas
 (`--past-stop`). A task with no valid answer in two comparisons goes to a person as possibly
 infeasible, unless a valid answer for it stands anywhere on record, a solve's, the one the
 host saw its author's answer pass on the task under its own id, before or after the proposal, or
-a stored pack's answer that passes today's checks at `prepare` (`task.feasible`; the answer
-itself is kept nowhere), or a limit cut its solves (`poolOf`). Promotion is the operator's
+a stored pack's answer that passes today's checks at `prepare` (`task.feasible`, which stores
+no answer; an Examiner's answer stays in its trace, on the exam side), or a limit cut its solves (`poolOf`). Promotion is the operator's
 `promote.ts --yes`, which writes `harness.promoted`. A comparison that names no `--reference` is
 made against the harness last promoted, and one that names a digest is made against that harness
 and promotes nothing.

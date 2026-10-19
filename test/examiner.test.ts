@@ -556,6 +556,44 @@ describe("a session that writes tasks", () => {
     );
   });
 
+  it("keeps the objective's measure of its author's valid answer where the contract declares one, and none where it declares none", async () => {
+    // A try, its task, then two tries of the held task: the measure each pass took is kept.
+    const steps = [tried(7), propose(7), tried(7), tried(7, { answer: "1", unit: "N" }), finish, finish];
+    // The provisional try, the recheck under the task's final id, the later try.
+    const measures = [3.5, 3.25, 2.25];
+    const run = async (declared: boolean) => {
+      const s = seat("write", steps);
+      const taken = [...measures];
+      await examine({
+        ...s.request,
+        contract: declared
+          ? { ...s.request.contract, objective: { quantity: "mass", direction: "lower" } }
+          : s.request.contract,
+        verify: async (task, answer) => {
+          const verdict = await verify(task, answer);
+          return verdict.kind === "pass" ? { kind: "pass", objective: taken.shift() ?? 0 } : verdict;
+        },
+      });
+      return s;
+    };
+    const declared = await run(true);
+    const version = declared.versionOf("x-1-001", 7);
+    const kept = (measure: number) => ({
+      version,
+      session: "x-1",
+      objective: { quantity: "mass", direction: "lower", measure },
+    });
+    expect(declared.of("task.feasible")).toEqual([kept(3.25), kept(2.25)]);
+    // A measure is a fact of the answer's; the event holds no answer.
+    expect(JSON.stringify(declared.of("task.feasible"))).not.toContain('"answer":"42"');
+    // The verifier measured, but the contract declares no objective: the record is the version.
+    const undeclared = await run(false);
+    expect(undeclared.of("task.feasible")).toEqual([{ version, session: "x-1" }]);
+    // The Examiner is told the same of every call whether or not a measure was kept.
+    const told = (s: typeof declared) => s.of(CALLED).map(({ text }) => text);
+    expect(told(declared)).toEqual(told(undeclared));
+  });
+
   /** One order of tries and proposals, the verifier's answers by the id it is asked under, and
    *  what the log then holds as proved. `e-1` names the pack's task, held out before the session
    *  where `state` is given; `x-1-001` the session's first. */

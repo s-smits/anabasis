@@ -70,7 +70,11 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  comparisons, retired on 13 October; they stay so that a log of before still reads, as
  *  `pass.labelled` does, a person's label of a pass, which the settled report holds since 12 October.
  *  `task.feasible` is a task an author's answer passed the checks on, under its own id once its gate
- *  passed or in a `try_answer` after that, by version and never the answer. `referee.refused` is a
+ *  passed or in a `try_answer` after that, by version and never the answer, or one a stored pack's
+ *  accepted answer passes today's checks on (`tools/d2/prepare.ts`), by version and sweep. An
+ *  optional `objective` holds the contract's quantity, its direction and the answer's measure: the
+ *  Examiner's two paths write it where the contract declares an objective (since 19 October,
+ *  `measureOf`, `src/examiner/write.ts`), and `prepare.ts` never does. `referee.refused` is a
  *  ruling the host refused the Referee for want of its evidence, with why (`src/review/referee.ts`),
  *  written since 19 October. */
 const EVENT_KINDS = [

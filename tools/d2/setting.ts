@@ -16,7 +16,7 @@
  *
  * The first command of a campaign that compares records what its flags name, with the defaults for
  * what they leave out: the stored cycle's own solver, the one budget every solver is held to
- * (`campaign.ts`, `LIMITS`) and twelve tasks by the draw. From then on a command that names nothing runs under the
+ * (`campaign.ts`, `LIMITS`) and `SIZE.tasks`, 24, by the draw. From then on a command that names nothing runs under the
  * record, one that names the same is the same, and one that names another is refused. Until
  * 2026-10-09 the same flags were typed again on every command of a campaign, and a command that
  * differed was told so in a note and went on: a forgotten flag changed the comparison without a

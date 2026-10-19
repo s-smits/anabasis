@@ -79,6 +79,7 @@ import { HARNESS_ACCOUNT } from "../solve/starter.ts";
 import { failedTurn, loopCompaction, type SolveRequest, solve, traceSink } from "../solve/run.ts";
 import { mountDiskCap } from "../verify/disk-cap.ts";
 import { campaignOf } from "./handover.ts";
+import { seedKept } from "./kept.ts";
 import { builderMemoryBlock, keepMemory, lastKept, memoryOverCapNotice, seedMemory } from "./memory.ts";
 import { comparisonsTold, failsTold, startTold } from "./past.ts";
 import {
@@ -283,6 +284,13 @@ export async function session(
     kind === BUILD_STARTED && isString(data.session) ? [data.session] : [],
   );
   seedMemory(dirs.home, request.memory, lastKept(request.memory, earlier));
+  seedKept({
+    home: dirs.home,
+    states: request.states,
+    events: before,
+    parent: parent.digest,
+    diskBytes: limits.diskBytes,
+  });
   for (const { task } of request.tasks) {
     writeFileSync(
       join(dirs.home, "practice", `${task.taskId.replace(/[^A-Za-z0-9._-]+/g, "-")}.json`),

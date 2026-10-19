@@ -63,7 +63,6 @@ const condition = (task: string, harness: string): Condition => ({
     shellDefaultSeconds: 10,
     shellMaxSeconds: 20,
     concurrency: 1,
-    diskBytes: 1,
   },
   host: "host-1",
   side: "test",

@@ -49,7 +49,6 @@ const LIMITS = {
   shellDefaultSeconds: 300,
   shellMaxSeconds: 900,
   concurrency: 4,
-  diskBytes: 1024,
 };
 const event = (kind: EventKind, data: JsonObject): LogEvent => ({ at: AT, kind, data });
 const heldOut = (version: string): LogEvent[] => [

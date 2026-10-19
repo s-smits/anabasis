@@ -49,7 +49,7 @@ export interface Told {
   /** The harness's guide as written, or null. */
   readonly guide: string | null;
   readonly wallSeconds: number;
-  readonly limits: Pick<Limits, "shellDefaultSeconds" | "shellMaxSeconds" | "diskBytes" | "modelTurns">;
+  readonly limits: Pick<Limits, "shellDefaultSeconds" | "shellMaxSeconds" | "modelTurns">;
   /** How many public resource files the home was seeded with. */
   readonly resources: number;
   /** The programs the harness installed, by the names that run them (`installedPrograms`). */
@@ -63,8 +63,6 @@ export const NUDGE = "Finish the task with the available tools, then submit your
 
 /** Installed program names the prompt lists before it elides the rest, as v1 had it. */
 const LISTED_PROGRAMS = 20;
-const GIB = 1024 ** 3;
-const MIB = 1024 ** 2;
 
 /** What the solver must deliver and under what wall, with where the requirements are. */
 function duty({ wallSeconds, limits, resources, guide }: Told): string {
@@ -94,10 +92,6 @@ function duty({ wallSeconds, limits, resources, guide }: Told): string {
 /** What the command wall is, as facts: each one something a solver would otherwise find out by
  *  running into it. */
 function environment({ limits, programs, wallSeconds, network }: Told): string {
-  const volume =
-    limits.diskBytes >= GIB
-      ? `${String(Math.round((limits.diskBytes / GIB) * 10) / 10)} GiB`
-      : `${String(Math.round(limits.diskBytes / MIB))} MiB`;
   const rest = programs.length - LISTED_PROGRAMS;
   const listed =
     programs.slice(0, LISTED_PROGRAMS).join(", ") + (rest > 0 ? `, and ${String(rest)} more on PATH` : "");
@@ -107,7 +101,6 @@ function environment({ limits, programs, wallSeconds, network }: Told): string {
     network === "reached"
       ? "Commands have network access: a package index was reached from inside the command wall when this process started, so a toolchain or package can be installed into the home directory. sh, bun, node, python3 and the system C and C++ compilers run, with versions and libraries that differ by host."
       : "Commands have no network access: a package index could not be reached from inside the command wall when this process started, so nothing can be installed, and what the host and this harness hold is all there is. sh, bun, node, python3 and the system C and C++ compilers run, with versions and libraries that differ by host.",
-    `The home directory and $TMPDIR share one volume of ${volume}.`,
     `A command runs for at most ${String(limits.shellDefaultSeconds)} seconds unless it names a longer timeout, and ${String(limits.shellMaxSeconds)} seconds is the longest it may name. One that would run into the last ${String(reserveSeconds(wallSeconds))} seconds of the solve time is cut there, so that its result still reaches you.`,
     "Nothing a command starts runs on after it returns: a background job ends with the command that started it.",
     ...(programs.length === 0 ? [] : [`Programs this harness installed run by name: ${listed}.`]),

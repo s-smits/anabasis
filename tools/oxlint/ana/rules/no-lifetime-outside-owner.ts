@@ -33,7 +33,7 @@ import { isOneOf, isTestFile } from "../shared/file-role.ts";
  *
  * A signal sent through the process object is not that shape. `process.kill(pid, signal)` ends
  * an identity the file was handed, which is what `src/meta/subprocess.ts` itself does, what
- * `src/verify/disk-cap.ts` does to the pids `lsof` lists on a mount, and what the test runner
+ * `src/verify/seat-root.ts` does to the pids `lsof` lists in a seat's root, and what the test runner
  * does to the descendants a group kill could not reach — they left their session, so the runner
  * finds them in `ps` and signals each one. A second launch owner is a file that kills the child
  * it holds, and that is written `child.kill()`.

@@ -44,8 +44,8 @@
  * turns are the budget told to the solver and enforced, which seconds cannot be on a loaded host.
  *
  * What does not follow the setting is the campaign's own: a task's state and the harnesses it
- * keeps. The concurrency and the disk cap stay the sweep's: neither is what a harder task runs out
- * of first, and each is one more thing two comparisons could differ in. A rehearsal seats a script
+ * keeps. The concurrency stays the sweep's: it is not what a harder task runs out of first, and it
+ * is one more thing two comparisons could differ in. A rehearsal seats a script
  * where the solver sits and refuses `--solver`; its limits and its scored set are these.
  *
  * The shell's two timeouts are the sweep's as far as the wall leaves room for them

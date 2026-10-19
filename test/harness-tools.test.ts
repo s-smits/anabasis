@@ -24,21 +24,20 @@ import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { type CommandWall, makeSeatDirs, solveDirs } from "../src/solve/command.ts";
 import { harnessTools, openHarness } from "../src/solve/harness.ts";
-import { mountDiskCap } from "../src/verify/disk-cap.ts";
+import { claimRoot } from "../src/verify/seat-root.ts";
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
 import { osIsolationSupport } from "../src/verify/os-isolation.ts";
 import { CLOSED_CODE } from "./helpers/wall.ts";
 
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
-const CAP_BYTES = 64 * 1024 * 1024;
 const TASK = { taskId: "t-1", family: "fixture", publicInput: { base: 7 } };
 const walled = osIsolationSupport().ok;
 
-/** A mounted solve wall for `body`, torn down after it. */
+/** A solve wall in a claimed root for `body`, torn down after it. */
 async function withWall(body: (wall: CommandWall) => Promise<void>, toolTree: string | null = null) {
   const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-harness-repo-")));
   const dirs = solveDirs(`harness-${String(runtimeProcess.pid)}-${String(Date.now())}`);
-  const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
+  const release = claimRoot(dirs.root);
   try {
     makeSeatDirs(dirs);
     const base = solveIsolationPolicy({ repoRoot });

@@ -55,7 +55,7 @@ interface Sitting {
   readonly model: Model<Api>;
   readonly effort: ThinkingLevel;
   readonly limits: {
-    /** Counted from when the seat began to be set up, so a wall's mount is inside it. */
+    /** Counted from when the seat began to be set up, so a wall's claim is inside it. */
     readonly wallSeconds: number;
     /** The model's turns, each reply one, with or without a tool call. */
     readonly turns: number;
@@ -298,7 +298,7 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
       ? `Turn ${String(turns.length + 1)} of ${String(limits.turns)}; ${String(Math.floor((performance.now() - began) / 60_000))} of ${plural(Math.round(limits.wallSeconds / 60), "minute")} used.`
       : "";
   const tools = [...[...mode.tools, ...shell].map((each) => endingWith(each, used)), finish];
-  // The wall runs from the seat's start (`began`), so the mount, the wall's own probe and the
+  // The wall runs from the seat's start (`began`), so the claim, the wall's own probe and the
   // shell's network probe, awaited above, are inside the session's limit.
   const wall = new AbortController();
   const timer = setTimeout(
@@ -396,9 +396,9 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
 
 /**
  * One Examiner session in the mode its request names. With a `wall` it has a shell under the
- * solver's command wall and disk cap (`shell.ts`), with the engines its campaign's checks run where
- * the wall names them, and its time is counted from before the mount; without one it has no shell
- * and computes nothing. A run killed before the session began mounts nothing and starts nothing.
+ * solver's command wall (`shell.ts`), with the engines its campaign's checks run where the wall
+ * names them, and its time is counted from before its root is claimed; without one it has no shell
+ * and computes nothing. A run killed before the session began claims nothing and starts nothing.
  */
 export async function examine(request: ExamRequest, wall?: Wall): Promise<Examined> {
   if (request.kill?.aborted === true) throw new Error(`session ${request.id} was stopped before it began`);

@@ -28,7 +28,6 @@ const CONTRACT: Contract = {
   scope: "Fixture.",
 };
 const HOME = "/scratch/solve-s1/home";
-const GIB = 1024 * 1024 * 1024;
 
 const PI = `You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
 
@@ -64,7 +63,6 @@ const ENVIRONMENT = [
   "- The working directory is your home directory, $HOME, kept for the whole task. Of what it holds, only answer.json is read as your answer, and only when you submit.",
   "- Commands and the file tools can write the home directory and $TMPDIR, which is kept for the whole task as the home is; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. They can read the host's toolchains and public runtime roots, but no repository or private data.",
   "- Commands have network access: a package index was reached from inside the command wall when this process started, so a toolchain or package can be installed into the home directory. sh, bun, node, python3 and the system C and C++ compilers run, with versions and libraries that differ by host.",
-  "- The home directory and $TMPDIR share one volume of 2 GiB.",
   "- A command runs for at most 300 seconds unless it names a longer timeout, and 900 seconds is the longest it may name. One that would run into the last 60 seconds of the solve time is cut there, so that its result still reaches you.",
   "- Nothing a command starts runs on after it returns: a background job ends with the command that started it.",
 ];
@@ -92,7 +90,7 @@ const TOLD: Told = {
   home: HOME,
   guide: null,
   wallSeconds: 7200,
-  limits: { shellDefaultSeconds: 300, shellMaxSeconds: 900, diskBytes: 2 * GIB },
+  limits: { shellDefaultSeconds: 300, shellMaxSeconds: 900 },
   resources: 4,
   programs: [],
   network: "reached",
@@ -164,13 +162,12 @@ describe("the solver's system prompt", () => {
     );
   });
 
-  it("states the volume, the command limits and the installed programs as the host has them", () => {
+  it("states the command limits and the installed programs as the host has them", () => {
     const prompt = systemPrompt({
       ...TOLD,
-      limits: { shellDefaultSeconds: 30, shellMaxSeconds: 60, diskBytes: 64 * 1024 * 1024 },
+      limits: { shellDefaultSeconds: 30, shellMaxSeconds: 60 },
       programs: ["pynite-python", "python3", "f2py"],
     });
-    expect(prompt).toContain("- The home directory and $TMPDIR share one volume of 64 MiB.");
     expect(prompt).toContain(
       "- A command runs for at most 30 seconds unless it names a longer timeout, and 60 seconds is the longest it may name. One that would run into the last 60 seconds of the solve time is cut there,",
     );
@@ -183,9 +180,6 @@ describe("the solver's system prompt", () => {
     const many = Array.from({ length: 23 }, (_, index) => `tool-${String(index + 1).padStart(2, "0")}`);
     expect(systemPrompt({ ...TOLD, programs: many })).toEndWith(
       ", tool-20, and 3 more on PATH.\n</environment>",
-    );
-    expect(systemPrompt({ ...TOLD, limits: { ...TOLD.limits, diskBytes: 1.5 * GIB } })).toContain(
-      "one volume of 1.5 GiB.",
     );
   });
 });

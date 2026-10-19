@@ -2,7 +2,7 @@
  * The Examiner's shell: `bash`, `read` and `write` in a walled home of its own, the same for a
  * session of any mode (`examine`, `session.ts`).
  *
- * The home is a capped root as a Builder's is, under the solver's command wall (`walledBase`,
+ * The home is in a root of its own as a Builder's is, under the solver's command wall (`walledBase`,
  * `src/solve/command.ts`): the repository, its other worktrees and a stored pack are closed to it,
  * and the wall is probed before its first command. Nothing in the home enters the exam: a session
  * puts a task or a draft through its own tool, and the host reads that alone.
@@ -10,9 +10,9 @@
  * A task-writing session has one because, without it, its notes said that a task's feasibility
  * rested on hand estimates. A drafting session has one so that it can look up the source it names
  * for each rule, and run its own check program on its own controls before it puts a draft
- * (`docs/plan.md`, row F57). One mount and one sentence serve every mode, so that their walls
+ * (`docs/plan.md`, row F57). One wall and one sentence serve every mode, so that their walls
  * cannot drift apart, and the wall says when the seat began to be set up: a session's time is
- * counted from then, so the mount and the wall's probe are inside its limit in every mode.
+ * counted from then, so the claim of its root and the wall's probe are inside its limit in every mode.
  *
  * A session with a campaign's exam before it also has the field's engines: the programs the
  * campaign's check program names (`requiredToolsOf`), each as the verifier's tool tree resolves it,
@@ -45,10 +45,10 @@ import {
 } from "../solve/command.ts";
 import { codingTools } from "../solve/coding-tools.ts";
 import { installedPrograms } from "../solve/prompt.ts";
-import { mountDiskCap } from "../verify/disk-cap.ts";
+import { claimRoot } from "../verify/seat-root.ts";
 import { shellQuote } from "../verify/solve-command-isolation.ts";
 
-/** Where an Examiner session's shell is mounted: what the wall denies and caps, and what only a
+/** Where an Examiner session's shell runs: what the wall denies, and what only a
  *  session with a campaign's exam before it is given. Without a wall a session has no shell. */
 export interface Wall extends Walled {
   /** The campaign's check program and the verifier's tool tree it runs under: the engines the
@@ -64,7 +64,7 @@ export interface Wall extends Walled {
   readonly reference?: string | undefined;
 }
 
-/** A mounted wall as its session is handed it: the shell, the engines installed in it, and when
+/** A wall as its session is handed it: the shell, the engines installed in it, and when
  *  the seat began to be set up (`performance.now()`), which the session's time is counted from. */
 export interface Walls {
   readonly shell: CommandWall;
@@ -72,7 +72,7 @@ export interface Walls {
   readonly began: number;
 }
 
-/** Where an Examiner session's shell runs: a capped root of its own, as a Builder's. A drafting
+/** Where an Examiner session's shell runs: a root of its own, as a Builder's. A drafting
  *  session's id (`d-N`) and a task-writing one's (`x-N`) never meet. */
 export const examinerDirs = (log: string, id: string): SolveDirs =>
   solveDirs(`exam-${basename(dirname(log))}-${id}`);
@@ -100,8 +100,8 @@ export async function examinerShell(
   );
 }
 
-/** `run` with an Examiner's shell under the solver's command wall and disk cap, and the engines
- *  installed in it: mount, install the engines the wall names, run, tear down.
+/** `run` with an Examiner's shell under the solver's command wall, and the engines installed in
+ *  it: claim its root, install the engines the wall names, run, tear down.
  *
  *  Each engine runs from the verifier's tree where it lies, which a pack or the repository closes:
  *  the wall opens that tree again for reading, and the shell's tool tree, first on its PATH, holds
@@ -119,7 +119,7 @@ export async function inExaminerWall<T>(
   const pinned = engines === undefined ? [] : pinnedEngines(engines);
   const reopened = engines === undefined || pinned.length === 0 ? [] : [engines.tools];
   const tree = join(dirs.kept, "engines");
-  const release = await mountDiskCap({ root: dirs.root, bytes: wall.diskBytes });
+  const release = claimRoot(dirs.root);
   try {
     const base = await walledBase(dirs, { ...wall, readAllowRoots: reopened }, "an Examiner");
     for (const { name, path } of pinned) {

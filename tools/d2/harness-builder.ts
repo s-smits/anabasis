@@ -34,14 +34,16 @@
  * The prompt and who solves are then part of what it runs by, its first move is the Examiner's
  * draft of the exam, and from there every command opens the campaign by its name alone, over the
  * exam its log holds. Every check of a drafted exam is its author's own computation, and the
- * launch is the operator's word for each (16 October): the exam is read with the draft's checks
- * admitted, and frozen where nothing else is at fault. Under `--hitl` they wait for `--admit`.
+ * launch is the operator's word for each (16 October): the exam is read with every check its author
+ * decides admitted, the objective among them, in a drafted exam or a stored pack
+ * (`--admit-authored`), and frozen where nothing else is at fault. Under `--hitl` they wait for
+ * `--admit`.
  *
  * What it runs each move as:
  *
  *   draft the exam      tools/d1b/draft.ts, under `d-N`, for a campaign that opened from a prompt
- *   read the exam       tools/c/accept.ts, with the checks admitted (`planOf`, `opening.ts`), and
- *                       with `--freeze` unless `--hitl`
+ *   read the exam       tools/c/accept.ts, with `--freeze --admit-authored` unless `--hitl`, and
+ *                       the checks a reading under `--hitl` left unadmitted (`planOf`, `opening.ts`)
  *   set the tasks apart tools/d2/prepare.ts
  *   an Examiner session tools/d1b/examine.ts, under the next free id `x-N`
  *   a Builder session   tools/d2/session.ts, under `b-N`

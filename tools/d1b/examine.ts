@@ -7,8 +7,10 @@
  *
  * The Examiner writes task instances against the pack's contract and check program. Each is put to
  * the one gate, the shape of its package, and since 12 October to the reference harness's solves:
- * `TRIED` fresh solves of it under the campaign's setting, and it is a held-out task where some of
- * them gave a valid answer and not all (`try_task`, `src/examiner/write.ts`). The session is shown every task the campaign holds, the pack's own
+ * `TRIED` fresh solves of it under the campaign's setting, and it is a held-out task where those that
+ * gave a reading leave the reference room as a comparison reads it (`informative`), or where none
+ * was valid and its author's own answer passes on it (`try_task`, `src/examiner/write.ts`). The
+ * session is shown every task the campaign holds, the pack's own
  * and the ones earlier sessions wrote, and the opening message says one outcome of each: how the
  * reference harness did on it in the last comparison that scored it, disputed, or no longer
  * scored, and whether a valid answer to it is on record, with those tasks counted by family beside
@@ -20,7 +22,9 @@
  * setting it records where the log holds none (`--solver`, `--solve-minutes` and the rest, as every
  * command that solves takes them). Each solve's start names the session, so no comparison counts
  * it and no Builder is shown it, and the gate's event carries what the task's solves billed. The
- * Examiner hears how many of them were valid and nothing else of them.
+ * Examiner hears how many of them were valid, how many gave no reading, the turns each valid one
+ * took and, where the contract declares an objective, their measures and its own answer's, and
+ * nothing else of them.
  * Since 14 October a submitted rejection is ruled by the campaign's Referee before the gate counts
  * it. An unclear, defective or unruled rejection leaves the draft unmeasured; other endings keep
  * their meaning. Neither the answer nor the ruling reaches the Examiner.
@@ -32,8 +36,8 @@
  * its minutes and turns, or when the Examiner calls `finish`, which it may at any count: on
  * 10 October every session held out two to four tasks and finished of its own accord. `--tasks` is
  * the host's and is never told to the Examiner. The campaign command names it from what the
- * campaign is short of (`examTasks`, `tools/d2/campaign-terms.ts`); run by hand it defaults to a
- * scored set's size, 12. Asking for many at once is what v1 found dilutes them, a probe grown to
+ * campaign is short of (`examTasks`, `tools/d2/campaign-terms.ts`); run by hand it defaults to 12,
+ * a scored set's size until 12 October (`SIZE.tasks` is 24 since). Asking for many at once is what v1 found dilutes them, a probe grown to
  * 25 tasks in 10 of 13 cases (`docs/plan.md`).
  *
  * `--reference-home on`, the default, lays a copy of the reference harness the gate solves with in

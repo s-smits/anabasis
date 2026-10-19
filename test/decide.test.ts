@@ -506,6 +506,12 @@ describe("a row of the table", () => {
       repeats: "g-1",
     });
     expect(move([...two, ...examined("x-2", ["m1", "m2"])])).toEqual(again);
+    // A repeat releases no practice, so it waits for none: until 19 October a campaign short of
+    // its practice sent the Examiner for that first.
+    expect(move([...two, ...examined("x-2", ["m1", "m2"])], { ...PLAN, practice: 6 })).toEqual(again);
+    expect(decide(two, { ...PLAN, practice: 6 })).toMatchObject({
+      why: expect.stringContaining("2 held-out tasks short"),
+    });
     // Until 16 October the repeat waited for a target of fresh tasks, about 300 gate solves after
     // a promotion: the eight tasks the step untied are scored again, and nothing waits.
     const named = { frontier: { ...tallied(8, 0, 4).frontier, of: HELD } };

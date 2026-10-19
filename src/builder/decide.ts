@@ -393,8 +393,11 @@ function tasks(ground: Ground): Move | null {
 /**
  * How many held-out tasks the campaign is short of: a comparison's target and what the next
  * release still draws for practice, which leaves the held ones, less what it holds; for a repeat,
- * a sweep at the level (`sweepOf`) less the tasks it may score (`dueOf`). The table's examine
- * before a comparison and the session's ask (`examTasks`, `campaign-terms.ts`) are this count.
+ * a sweep at the level (`sweepOf`) less the tasks it may score (`dueOf`), and nothing for practice,
+ * since a repeat releases none. The table's examine before a comparison and the session's ask
+ * (`examTasks`, `campaign-terms.ts`) are this count. Until 19 October a repeat waited for the
+ * practice stock too: buffer-fresh-gpt-forkedPR223_v0_5_4-r2's g-2 held the six tasks its repeat
+ * scores from x-3's end, and the table sent for five practice tasks in their place for six hours.
  */
 export function shortOf(events: readonly LogEvent[], plan: Plan): number {
   return shortBy(groundOf(events, plan));
@@ -402,11 +405,10 @@ export function shortOf(events: readonly LogEvent[], plan: Plan): number {
 
 function shortBy(ground: Ground): number {
   const { plan, supply } = ground;
-  const practice = Math.max(0, (plan.practice ?? 0) - supply.released);
   const due = dueOf(ground);
-  const held =
-    due === null ? supply.held - plan.wanted.target : due.again + due.fresh - sweepOf(plan.wanted.level);
-  return Math.max(0, practice - held);
+  if (due !== null) return Math.max(0, sweepOf(plan.wanted.level) - due.again - due.fresh);
+  const practice = Math.max(0, (plan.practice ?? 0) - supply.released);
+  return Math.max(0, practice + plan.wanted.target - supply.held);
 }
 
 /** The comparison whose repeat is due, and the held tasks its first stage did not score, as a led

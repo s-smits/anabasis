@@ -32,8 +32,8 @@
  * Builder that went wrong is a reader of that record, and the model's own transcript is deleted
  * with the session's scratch.
  *
- * The session ends at `finish`, at its wall, at its turns, or when a practice solve could not be run
- * at all. A solve's turn cap counts prompts, as v1's did; here it counts the model's turns, since a
+ * The session ends at `finish`, at its wall, at its turns, at its dollar cap, or when a practice solve
+ * could not be run at all. A solve's turn cap counts prompts, as v1's did; here it counts the model's turns, since a
  * Builder that never stops calling tools would otherwise have no cap but its wall. The wall, the
  * kill and the halt reach a practice solve in flight, so the session ends when they fall and not a
  * solve's whole wall later. A practice solve that throws is the verifier failing to decide, which
@@ -61,7 +61,7 @@ import type { Contract } from "../kernel/contract.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import type { Ending } from "../kernel/solve.ts";
-import type { Cap } from "../kernel/reports.ts";
+import { billedParts, type Cap } from "../kernel/reports.ts";
 import { ended as endedSolves, solvesIn } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import { CORRECTNESS_MODEL_DIR } from "../meta/bundle-layout.ts";
@@ -178,7 +178,8 @@ export interface BuildRequest {
   readonly referee?: (solve: string, task: PracticeTask, kill: AbortSignal) => Promise<RefereeFinding>;
   /** The dollar cap the session's spend is held to, where its solves are paid for: a round's own,
    *  or the session's where it runs with no comparison after it. No practice solve starts that a
-   *  reserve for it would take past the cap (`practiceTool`). */
+   *  reserve for it would take past the cap (`practiceTool`), and no request of the Builder's own
+   *  once what the session billed has reached it (`prepareRequest`). */
   readonly cap?: Cap | undefined;
   /** Aborts when the run is killed. */
   readonly kill?: AbortSignal;
@@ -412,6 +413,17 @@ export async function session(
   const stream: StreamFn = (asked, context, options) => models.streamSimple(asked, context, options);
   const compact = loopCompaction(log, "build", request.id, stream, summaries);
   const trace = traceSink(log, "build", request.id, () => turns.length);
+  const halted = () => {
+    campaign?.halts?.();
+    if (
+      campaign === undefined &&
+      request.cap !== undefined &&
+      billedParts(read(log), request.id).session >= request.cap.dollars
+    ) {
+      bench.halt.abort();
+    }
+    if (bench.halt.signal.aborted) throw new Error("The session has ended at a bound.");
+  };
   let crash: string | null = null;
   const started = (await campaign?.start?.()) ?? "";
   arm();
@@ -445,12 +457,18 @@ export async function session(
                 ),
               ]
             : [],
+        // A led session's bounds are the campaign's, asked of the table (`halts`), and a session the
+        // host ran is held to its dollar cap, before a request and again after a compaction, which
+        // bills too. Until 19 October the cap held practice alone: a session the host ran opened on
+        // what was left of a campaign's total and could bill turns past it until its finish, its
+        // turns or its wall, as two reviews of the host-led loop found (#202, closed). A led
+        // session's cap is what was left when it opened, and the operator's word can raise the
+        // total after: the table's reading of the budget is the one that holds it, as `practiceLeft`
+        // already has it.
         prepareRequest: async (context, kill) => {
-          campaign?.halts?.();
-          if (bench.halt.signal.aborted) throw new Error("The campaign has ended.");
+          halted();
           const update = await compact(context, kill);
-          campaign?.halts?.();
-          if (bench.halt.signal.aborted) throw new Error("The campaign has ended.");
+          halted();
           return update ?? undefined;
         },
       },

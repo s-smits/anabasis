@@ -29,14 +29,16 @@ import {
   existsSync,
   mkdirSync,
   readdirSync,
+  realpathSync,
   renameSync,
   rmSync,
   statSync,
 } from "../meta/filesystem.ts";
 import { tmpdir } from "../meta/os.ts";
-import { dirname, join, resolve } from "../meta/path.ts";
+import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
+import { killProcessGroup } from "../meta/subprocess.ts";
 
 interface DiskCap {
   /** The one directory the solve's writable roots (work, home, temp) all sit inside. */
@@ -44,13 +46,15 @@ interface DiskCap {
   readonly bytes: number;
 }
 
-/** What lists the processes holding a file on a volume and reads a holder's state, how long
- *  either answer may take, and how long a killed holder may stay in uninterruptible wait, as one
- *  in the middle of a write does, before its volume counts as stalled. A test names one that never
- *  answers, and a stall it need not wait ten seconds for. */
+/** What lists the processes holding a file on a volume and reads a holder's state, what lists the
+ *  images attached (its `info`), how long either answer may take, and how long a killed holder may
+ *  stay in uninterruptible wait, as one in the middle of a write does, before its volume counts as
+ *  stalled. A test names one that never answers, a stall it need not wait ten seconds for, and a
+ *  listing of images that fails. */
 interface HolderListing {
   lsof: string;
   ps: string;
+  hdiutil: string;
   boundMs: number;
   stallMs: number;
 }
@@ -62,7 +66,13 @@ interface HolderListing {
  * uninterruptible wait, and each controller that ran one, from every command's end, stopped there.
  * So neither is awaited past the bound, and a listing that runs past it reads as a stalled volume.
  */
-const LSOF: HolderListing = { lsof: "/usr/sbin/lsof", ps: "/bin/ps", boundMs: 30_000, stallMs: 10_000 };
+const LSOF: HolderListing = {
+  lsof: "/usr/sbin/lsof",
+  ps: "/bin/ps",
+  hdiutil: "/usr/bin/hdiutil",
+  boundMs: 30_000,
+  stallMs: 10_000,
+};
 
 /** Undo `mountDiskCap`: `releaseDiskCap` on its root. */
 export type ReleaseDiskCap = () => Promise<void>;
@@ -86,6 +96,60 @@ async function hdiutil(args: readonly string[]): Promise<string | null> {
   });
   const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
   return code === 0 ? null : `hdiutil ${args[0]} exited ${code}: ${stderr.trim()}`;
+}
+
+/**
+ * The device `image` is attached as, or null where hdiutil lists it nowhere. A listing that fails
+ * says nothing of the image, so it throws. A stop that falls between an image's attach and its
+ * mount leaves it attached with no volume at its root, which a release that asks only for the
+ * mount passed over: on 19 October a rehearsal stopped while 56 of its solves were attaching left
+ * 53 attached after `runs stop` released all 56. The first device of the image's entry is the
+ * whole disk, and detaching it takes its partitions and container with it.
+ */
+async function attachedAs(image: string, listing: HolderListing): Promise<string | null> {
+  const [code, info, stderr] = await bounded(image, listing, ["info"]);
+  if (code !== 0) {
+    throw new Error(`${image} is left in place: hdiutil info exited ${String(code)}: ${stderr.trim()}`);
+  }
+  // hdiutil names an image by its real path, and a root under /var is /private/var to it. The
+  // folder is resolved rather than the image, which an interrupted release may have unlinked while
+  // its device stayed attached.
+  const folder = dirname(image);
+  const real = existsSync(folder) ? join(realpathSync.native(folder), basename(image)) : image;
+  const named = new Set([image, real]);
+  const entry = info
+    .split(/^=+$/m)
+    .find((each) => named.has(/^image-path\s*:\s*(.*)$/m.exec(each)?.[1]?.trim() ?? ""));
+  return entry === undefined ? null : (/^(\/dev\/disk\d+)\s/m.exec(entry)?.[1] ?? null);
+}
+
+/**
+ * The listing's `hdiutil` with `args`, as its exit code, output and error. It is bounded as `lsof`
+ * and `ps` are: `runs stop` releases one root after another, so a listing or a detach of the
+ * image's device that never answered would hold every root after it. One past the bound is killed,
+ * and it throws with `image` left in place; one stuck in the kernel takes no signal and is left
+ * behind, as `answered`'s is.
+ */
+async function bounded(
+  image: string,
+  listing: HolderListing,
+  args: readonly string[],
+): Promise<[number, string, string]> {
+  const child = Bun.spawn([listing.hdiutil, ...args], { stdin: "ignore", stdout: "pipe", stderr: "pipe" });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<null>((done) => {
+    timer = setTimeout(() => done(null), listing.boundMs);
+  });
+  const answer = await Promise.race([
+    Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]),
+    late,
+  ]);
+  clearTimeout(timer);
+  if (answer !== null) return answer;
+  killProcessGroup(child, "SIGKILL");
+  throw new Error(
+    `${image} is left in place: hdiutil ${String(args[0])} did not answer within ${String(listing.boundMs)} ms`,
+  );
 }
 
 /** `hdiutil` with `args`, made again while the host says it is busy, and its last answer. */
@@ -173,9 +237,11 @@ export async function mountDiskCap(cap: DiskCap): Promise<ReleaseDiskCap> {
  * Builder's with a third of a gigabyte each.
  *
  * A root with no volume at it is released too. A solve stopped inside its mount or inside its own
- * release leaves the folder and the image and nothing attached, and a detach of that exits 1 with
- * "No such file or directory". Three of four solves stopped two seconds after they started were
- * left so, and the stop gave up at the first (2026-10-08).
+ * release can leave the folder and the image with no volume at the root, and a detach by the root
+ * of that exits 1 with "No such file or directory". Three of four solves stopped two seconds after
+ * they started were left so, and the stop gave up at the first (2026-10-08). Such an image may
+ * still be attached with no volume, or attached with its file already unlinked; both are found
+ * below by the image's device.
  *
  * A process the solve left behind is ended here, where the root it works in goes. Each command's
  * end already ends what it left on the volume (`runWalled`), so this is for a solve stopped or
@@ -185,6 +251,15 @@ export async function mountDiskCap(cap: DiskCap): Promise<ReleaseDiskCap> {
  * three other solves with it; the process ran on at 80 forks a second (2026-10-09). So whatever
  * holds a file on the volume is killed first, and what a process wrote into the mountpoint after
  * the volume went is removed with it.
+ *
+ * Whatever the mount said, `hdiutil info` then decides whether the image is attached
+ * (`attachedAs`). The image and the root are removed on one of three answers: the listing names the
+ * image nowhere; it names a device and a plain detach of that device succeeds; or the forced detach
+ * that follows a failed one is followed by a listing that names the image nowhere. An image
+ * attached with no volume, as a stop between attach and mount leaves it, or left attached by a
+ * detach by the root that failed after its volume went, is so detached by its device. Where the
+ * listing fails or still names the image, or the listing or a detach of the device does not answer
+ * within its bound (`bounded`), the image and the root are kept and the release throws.
  *
  * A volume whose I/O has stopped is left attached, and the release throws. Its readers sit in
  * uninterruptible wait, which SIGKILL does not end, and a detach of it waits on that I/O inside
@@ -211,10 +286,20 @@ export async function releaseDiskCap(root: string, listing: HolderListing = LSOF
         if (forced !== null && mounted()) throw new Error(forced);
       }
     }
+    const image = `${root}.sparseimage`;
+    const device = await attachedAs(image, listing);
+    if (device !== null && (await bounded(image, listing, ["detach", device]))[0] !== 0) {
+      const [code, , stderr] = await bounded(image, listing, ["detach", device, "-force"]);
+      if ((await attachedAs(image, listing)) !== null) {
+        throw new Error(
+          `${image} stayed attached: hdiutil detach -force exited ${String(code)}: ${stderr.trim()}`,
+        );
+      }
+    }
     // Unlinked. Until 14 October it went to the Trash, so that a release run against the wrong
     // path could be undone, and every capped solve and session, a test's among them, left one
     // there for a person to empty.
-    rmSync(`${root}.sparseimage`, { force: true });
+    rmSync(image, { force: true });
   }
   removeWhole(root);
 }

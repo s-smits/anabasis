@@ -11,6 +11,7 @@ import {
   accessibilityViolations,
   expect,
   expectQuiet,
+  keepAnswers,
   launchBrowser,
   type Opened,
   openPage,
@@ -175,13 +176,7 @@ describe("a solve in the default tier", () => {
   test("no hidden value, answer or check name reaches the page or any answer it read", async () => {
     const opened = await openPage(browser, "about:blank");
     const { page } = opened;
-    // Every answer read through the route, so that its body is kept before a navigation drops it.
-    const read: string[] = [];
-    await page.route("**/api/**", async (route) => {
-      const response = await route.fetch();
-      read.push(await response.text());
-      await route.fulfill({ response });
-    });
+    const read = await keepAnswers(page);
     const texts: string[] = [];
     const solves = [
       [indexOf("b-1", "builder"), served.fixture.practiceSolve],

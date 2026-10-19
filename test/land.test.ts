@@ -20,7 +20,7 @@ import {
   rmSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { tmpdir } from "../src/meta/os.ts";
+import { availableParallelism, tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
 
@@ -207,7 +207,7 @@ describe("bun run land", () => {
     expect(statuses("ana/stack-gate")).toEqual([]);
   });
 
-  it("gates commits side by side with --jobs, and the top alone once every one beneath it passed", () => {
+  it("gates commits side by side with --jobs, each on its share of the cores, and the top alone once every one beneath it passed", () => {
     const result = runLand(["12", "--jobs", "2"], { ANA_FAKE_TOGETHER: "2", ANA_FAKE_LATE: lower });
     expect(result.status).toBe(0);
     // Two gates side by side reach the log in whichever order the host runs them. The lower one ends
@@ -220,6 +220,11 @@ describe("bun run land", () => {
     expect(order.slice(0, 2).toSorted()).toEqual([`start ${lower}`, `start ${lowerMore}`].toSorted());
     expect(order.slice(2, 4).toSorted()).toEqual([`end ${lower}`, `end ${lowerMore}`].toSorted());
     expect(order.slice(4)).toEqual([`start ${upper}`, `end ${upper}`]);
+    const share = String(Math.max(2, Math.floor((availableParallelism() - 2) / 2)));
+    expect(logLines(gateLog).filter((row) => row.startsWith("workers\t"))).toEqual([
+      `workers\t${lowerMore}\t${Bun.env.ANA_TEST_WORKERS ?? share}`,
+      `workers\t${upper}\t${Bun.env.ANA_TEST_WORKERS ?? ""}`,
+    ]);
   });
 
   it("names the lowest commit that failed side by side, and starts nothing after it", () => {

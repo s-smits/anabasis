@@ -46,7 +46,7 @@ import {
 } from "../../src/meta/filesystem.ts";
 import { sha256, sha256OfFile } from "../../src/meta/digest.ts";
 import { isString } from "../../src/meta/json-shape.ts";
-import { tmpdir } from "../../src/meta/os.ts";
+import { availableParallelism, tmpdir } from "../../src/meta/os.ts";
 import { basename, dirname, join, relative } from "../../src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "../../src/meta/process.ts";
 import { runSync, runTextSyncOrThrow } from "../../src/meta/subprocess.ts";
@@ -321,7 +321,9 @@ function pulse(log: string, started: number): string {
 /**
  * Runs each commit's pass over a checkout of it, up to `jobs` at once, and returns the lowest
  * failure. The whole gate waits until every commit beneath it has passed. Nothing new starts after a
- * failure, since every commit above a fix changes id with it.
+ * failure, since every commit above a fix changes id with it. Passes side by side share the cores:
+ * each suite left to itself takes two fewer workers than the host has, and on 20 October three at
+ * once took a host of 12 cores to a load of 42, where their browser files timed out by the dozen.
  */
 export async function proveCommits(
   root: string,
@@ -349,6 +351,7 @@ export async function proveCommits(
   const free: string[] = [];
   const made: string[] = [];
   const failures: (Failure & { index: number })[] = [];
+  const share = String(Math.max(2, Math.floor((availableParallelism() - 2) / prover.jobs)));
   const run = async (at: string, index: number, commit: string, pass: Pass): Promise<void> => {
     let tree = free.pop();
     if (tree === undefined) {
@@ -366,6 +369,10 @@ export async function proveCommits(
     const pulsing = setInterval(() => say(`${short(commit)} ${pulse(log, started)}`), PULSE_MS);
     const child = Bun.spawn(["bun", GATE, ...(pass === "static" ? ["--static"] : [])], {
       cwd: tree,
+      env:
+        pass === "whole" || runtimeProcess.env.ANA_TEST_WORKERS !== undefined
+          ? runtimeProcess.env
+          : { ...runtimeProcess.env, ANA_TEST_WORKERS: share },
       stdin: "ignore",
       stdout: fd,
       stderr: fd,

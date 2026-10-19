@@ -7,7 +7,8 @@
  * `--max-concurrency=4` inside a file, and the files ordered slowest-first from the recorded
  * timings so the long files start at t=0 and the short ones fill the gaps. The wrapper always
  * writes the timings back (`--update-timings`): the file is ignored by Git, so each checkout
- * learns its own order from its first run. `ANA_TEST_WORKERS` overrides the worker count. Two
+ * learns its own order from its first run. A request that names the UI's browser files takes four
+ * workers at most. `ANA_TEST_WORKERS` overrides the worker count. Two
  * fewer than the cores because most heavy tests spawn confined children -- Seatbelt or Bubblewrap
  * cells, generated-tool workers, git -- so a worker running four concurrent tests already loads
  * more than one core.
@@ -278,10 +279,14 @@ function testCommand(requested: readonly string[], workers: string | undefined):
   // isolates every file by default, and a worker isolating file after file is where Bun's
   // spawnSync loses a child's exit and spins for good (oven-sh/bun#34069), so the workers share
   // one global per process and no test may lean on a fresh one.
+  // A browser file starts its own server and Chrome, so four of them fill a host. On 20 October, on
+  // 12 cores, the UI's files took 185.6 s at four workers and 235 s at ten, where a test that walks
+  // every move hit its 60 s limit; it took 7.9 s at four.
+  const browsers = workers === undefined && requested.some((path) => path.includes("packages/ui/test"));
   const command = [
     runtimeProcess.execPath,
     "test",
-    `--parallel=${String(workerCount(workers))}`,
+    `--parallel=${String(browsers ? Math.min(4, workerCount(workers)) : workerCount(workers))}`,
     "--no-isolate",
     ...COMMON_FLAGS,
   ];

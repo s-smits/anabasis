@@ -5,6 +5,7 @@ import {
   DESKTOP,
   expect,
   expectQuiet,
+  keepAnswers,
   launchBrowser,
   nextPolls,
   type Opened,
@@ -343,14 +344,7 @@ describe("the Log pane", () => {
   test("in the default tier shows and receives no exam-side value", async () => {
     const opened = await openPage(browser, "about:blank");
     const { page } = opened;
-    // Every answer read through the route, so that its body is kept: a read the page cancels for a
-    // newer one keeps none to ask for once it has ended, which failed this test on CI on 14 October.
-    const answers: string[] = [];
-    await page.route("**/api/**", async (route) => {
-      const response = await route.fetch();
-      answers.push(await response.text());
-      await route.fulfill({ response });
-    });
+    const answers = await keepAnswers(page);
     await page.goto(logAt(served));
     await expect(counter(page)).toHaveText("1–100 of 1495 events");
     await reader(page).click();

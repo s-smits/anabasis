@@ -291,6 +291,22 @@ export function expectQuiet(opened: Opened, allowed: readonly string[] = []): vo
   expect(unexpected).toEqual([]);
 }
 
+/** Every answer the page reads from the API, its body kept as it passes: a read the page cancels
+ *  for a newer one keeps none to ask for once it has ended, which failed a test on CI on 14 October.
+ *  A read still in flight when its page closes ends there and is no answer: on 20 October, under a
+ *  load of 42 on 12 cores, a test that timed out left one, whose `socket hang up` was printed
+ *  outside any test and failed `bun run land` on a commit that changed no test. */
+export async function keepAnswers(page: Page): Promise<string[]> {
+  const answers: string[] = [];
+  await page.route("**/api/**", async (route) => {
+    const response = await route.fetch().catch(() => null);
+    if (response === null) return;
+    answers.push(await response.text());
+    await route.fulfill({ response }).catch(() => undefined);
+  });
+  return answers;
+}
+
 /** The search parameters of the page's address now, the token left out. */
 export function routeParameters(page: Page): Record<string, string> {
   const query = new URL(page.url()).searchParams;

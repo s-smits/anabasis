@@ -11,6 +11,7 @@ import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { climbTable, crossings, safeguardTriggers } from "../tools/wri/climb.ts";
 import { indexOf, type TRIGGERS } from "../tools/wri/folds.ts";
 import { overview } from "../tools/wri/read.ts";
+import { conditionOf, roundSolves } from "./helpers/logged-round.ts";
 
 const START = Date.parse("2026-10-10T20:00:00Z");
 const HELD = ["v1", "v2", "v3", "v4"];
@@ -139,6 +140,60 @@ const triggered = (log: readonly LogEvent[]) => {
   return (name: keyof typeof TRIGGERS) =>
     triggers.filter((trigger) => trigger.name === name).map(({ detail }) => detail);
 };
+
+/**
+ * A promotion read twice on `author` tasks the gate held on their author's answer alone, every
+ * reference solve valid at one measure and the author's better, and `spread` held on reference
+ * answers apart by the objective. Every frontier task is won by 16 pairs in each reading; on
+ * validity alone they tie, unless the reference `fails` each of its solves.
+ */
+function leaning({ author, spread, fails }: { author: number; spread: number; fails: boolean }) {
+  const events: LogEvent[] = [];
+  const put = (kind: EventKind, data: JsonObject) => {
+    events.push({ at: new Date(START + events.length * 1_000).toISOString(), kind, data });
+  };
+  const tasks = Array.from({ length: author + spread }, (_, at) => `t${String(at)}`);
+  put("campaign.opened", { budget: 300, terms: {} });
+  put("exam.started", { session: "x-1" });
+  for (const [at, version] of tasks.entries()) {
+    put("task.proposed", { version, taskId: version });
+    const condition = conditionOf(version, "hbase");
+    put("condition.recorded", { id: conditionId(condition), condition: requireJsonValue(condition) });
+    for (const [solve, measure] of [1, at < author ? 1 : 1.5, 1].entries()) {
+      const id = `${version}-gate-${String(solve)}`;
+      put("solve.started", { solve: id, condition: conditionId(condition), comparison: "x-1" });
+      put("verdict", { solve: id, kind: "pass", objective: measure });
+      put("solve.finished", { solve: id, ending: { outcome: "pass" }, turns: 3 });
+    }
+    put("task.gate", { version, gate: 1, outcome: "passed", reference: { valid: 3, solves: 3 } });
+    put("task.feasible", { version, session: "x-1", objective: { direction: "lower", measure: 0.5 } });
+  }
+  for (const session of ["g-1", "g-2"]) {
+    const outcomes = Object.fromEntries(tasks.map((task) => [task, fails ? "FF PP" : "PP PP"]));
+    const { events: solves, terms } = roundSolves(session, ["hbase", "hn"], outcomes);
+    put("comparison.started", { session, old: "hbase", fresh: "hn", ...terms });
+    for (const each of solves) put(each.kind, each.data);
+    const differences = tasks.map(() => 16);
+    put("comparison.reported", {
+      ...REPORT,
+      ...terms,
+      session,
+      old: "hbase",
+      fresh: "hn",
+      level: 0.02,
+      scored: { wins: tasks.length, losses: 0, ties: 0, p: 0.5 ** tasks.length, differences },
+      frontier: { of: tasks, differences },
+      retained: "unmeasured",
+      reading: "step",
+    });
+  }
+  put("harness.promoted", {
+    harness: "hn",
+    from: "hbase",
+    rests: ["g-1", "g-2"].map((comparison) => ({ comparison, against: "hbase", reading: "step" })),
+  });
+  return events;
+}
 
 describe("lane 31: a promotion and the climb after it", () => {
   it("reads what a promotion rested on, by whose word and under which rule", () => {
@@ -305,34 +360,23 @@ describe("lane 31 across campaigns", () => {
     ]);
   });
 
-  it("prints each safeguard where a live campaign went wrong before a mechanism answered it", () => {
-    const run = campaign();
-    run.put("campaign.opened", { budget: 300, terms: {} });
-    run.put("build.started", { session: "b-1", limits: { wallSeconds: 14_400 } });
-    run.put("comparison.started", { session: "g-1" });
-    run.put("build.finished", { session: "b-1", ended: "wall" });
-    for (const _ of [1, 2, 3]) {
-      run.put("campaign.move", { move: "compare", code: "unfinished", session: "g-1" });
-    }
-    run.put("comparison.reported", { session: "g-1" });
-    for (const session of ["b-2", "b-3", "b-4", "b-5", "b-6", "b-7"]) {
-      run.put("campaign.move", { move: "build", code: "led", session });
-      run.put("campaign.ended", { ending: "environment" });
-    }
-    run.put("campaign.move", { move: "build", code: "led", session: "b-8" });
-    run.put("build.started", { session: "b-8", limits: { wallSeconds: 86_400 } });
-    run.put("campaign.ended", { ending: "finished" });
-    const said = safeguardTriggers(indexOf(run.log)).map(({ name, detail }) => `${name}: ${detail}`);
-    expect(said[0]).toStartWith("SAFEGUARD-1 ENDED WITH A MOVE NAMED: 20:00Z: ");
-    expect(said[0]).not.toEndWith(": end");
-    expect(said.slice(1)).toEqual([
-      "SAFEGUARD-2 WALL DURING A HOST ACTION: b-1 during g-1",
-      "SAFEGUARD-3 SAME MOVE ASKED AGAIN: compare unfinished g-1 3 times",
-      "SAFEGUARD-4 CONVERSATIONS WITHOUT PROGRESS: 7 in a row",
-      "SAFEGUARD-7 LIMITS MOVED: b-8: wallSeconds 14400 to 86400",
+  it("names a promotion that cleared its level only on tasks held on their author's answer, and by the objective", () => {
+    // r3's third promotion on 19 October: 8-0 joined, 3-0 (p 0.125) without the tasks its gate held
+    // on their author's answer alone, and 1-0 on validity alone.
+    const said = safeguardTriggers(indexOf(leaning({ author: 4, spread: 2, fails: false })));
+    expect(said.map(({ name, detail }) => `${name}: ${detail}`)).toEqual([
+      "SAFEGUARD-8 PROMOTION ON AUTHOR ROOM: hn 6-0 p 0.016 joined at level 0.02, 2-0 p 0.250 without the tasks held on their author's answer alone",
+      "SAFEGUARD-9 PROMOTION BY THE OBJECTIVE ALONE: hn 6-0 p 0.016 joined at level 0.02, 0-0 p 1.000 on validity alone",
     ]);
   });
 
+  it("names neither where the promotion stands without those tasks and on validity alone", () => {
+    expect(safeguardTriggers(indexOf(leaning({ author: 1, spread: 6, fails: true })))).toEqual([]);
+  });
+
+  it("names neither for a promotion its own joined frontier does not carry", () => {
+    expect(safeguardTriggers(indexOf(leaning({ author: 4, spread: 1, fails: false })))).toEqual([]);
+  });
   it("counts a scratch name two campaigns' solves chose as no leak", () => {
     const [promoting] = peers();
     if (promoting === undefined) throw new Error("a campaign");

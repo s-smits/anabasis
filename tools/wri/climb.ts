@@ -9,24 +9,24 @@
  * hours before, and only the two logs together show it. `wri.ts climb` prints this, and the
  * lane 31 prompt carries it beside the peers' overviews.
  */
+import { gateAnswers } from "#src/examiner/record.ts";
+import { flipP, informative, type Paired, pairings } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { asRecord, isString } from "#src/meta/json-shape.ts";
-import { IDLE } from "../d2/campaign-terms.ts";
-import { decidedOn } from "../runs/view.ts";
+import { pairsReported } from "#src/kernel/reports.ts";
+import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import {
+  type Compared,
   count,
-  EXAM_END,
-  EXAM_START,
   fired,
   type Index,
   indexOf,
   items,
-  REPORTED,
   short,
+  strings,
   type Trigger,
   text,
 } from "./folds.ts";
-import { epochsOf, SHARED_PATH, spentTo, testSaid, validOf } from "./promotion.ts";
+import { epochsOf, joinedFrontier, pSaid, SHARED_PATH, spentTo, testSaid, validOf } from "./promotion.ts";
 
 /** One campaign as the climb table names it: its name and its log's events. */
 export interface Campaign {
@@ -136,69 +136,124 @@ export function climbTable(campaigns: readonly Campaign[]): string {
 }
 
 /**
- * The safeguards: what went wrong in a live campaign before a mechanism answered it, read from the
- * log alone and printed, never acted on, since `hostOwed`, the holds and the load gate already
- * decide (the review of 14 October, section 5). A safeguard goes by deleting its key in the change
- * that names its replacement, and a number is never reused. 5 went at birth, as `waitOut` waits
- * out any named reset since 15 October; 6 is `HOST LOADED`; 8 waits for a second promotion.
+ * The safeguards: what a promotion leaned on that its reading does not say, read from the log
+ * alone and printed, never acted on. A safeguard goes by deleting its key in the change that names
+ * its replacement, and a number is never reused.
+ *
+ * 1 to 4 and 7 were the failures of 14 October (`3e43e04c`): a run that ended `finished` while the
+ * table named a move, a Builder's wall during a host action, one move asked three times, Builder
+ * conversations in a row without progress, and a session's limits moved. Over the 638 campaign
+ * logs on the operator's host on 19 October they fired in 14 logs of campaigns opened from 9 to
+ * 14 October and in none of the 12 opened since, which `hostOwed` and `idleOf` (1, 4), the Builder's
+ * own-time wall (`Bench.within`, 2), `attemptsOf` (3) and the opening's terms (7) answer; they went
+ * on 19 October. 5 went at birth, as `waitOut` waits out a named reset, and 6 is HOST LOADED.
+ *
+ * 8 and 9 are what buffer-fresh-opus-forkedPR223_v0_5_4-r3 leaned on, the first campaign from a
+ * prompt to promote three times (19 October). 8: the joined frontier clears the level only with
+ * the tasks the gate held out on their author's answer alone, every reference solve of them valid
+ * and alike and the author's better than each (`authorRoom`). Its second promotion
+ * read 8-0 joined and 5-0 (p 0.031) without them, its third 8-0 and 3-0 (p 0.125): such a task's
+ * room is the author's answer measured by the author's objective, and the promotion is as sound as
+ * both. 9: the joined frontier on validity alone does not clear the level, so the objective decided
+ * it, as it did all three of r3's (1-0, 0-0 and 1-0 on validity); a drafted exam's objective is its
+ * author's own computation, which nothing outside it has checked.
  */
-export function safeguardTriggers({ events }: Index): Trigger[] {
-  const said = (name: Parameters<typeof fired>[0], lines: readonly string[]) =>
-    lines.length > 0 ? [fired(name, lines.join("; "))] : [];
-  // 1: a run of the command ended `finished` while the table on the log up to there named a move.
-  const named = events.flatMap(({ kind, at, data }, index) => {
-    if (kind !== "campaign.ended" || data.ending !== "finished") return [];
-    const { move } = decidedOn(events.slice(0, index));
-    return move === "end" ? [] : [`${clock(at)}: ${move}`];
+export function safeguardTriggers(log: Index): Trigger[] {
+  const authored = authorRoom(log.events);
+  const reported = new Map(log.compared.map((compared) => [compared.session, compared] as const));
+  const said = (differences: readonly number[]) =>
+    `${String(differences.filter((one) => one > 0).length)}-${String(differences.filter((one) => one < 0).length)} p ${pSaid(flipP(differences))}`;
+  const promotions = epochsOf(log.events).flatMap(({ data }) => {
+    const rests = items(data.rests).flatMap((rest) => reported.get(text(asRecord(rest)?.comparison)) ?? []);
+    const level = count(rests[0]?.last.level);
+    const reports = rests.map(({ last }) => last);
+    const joined = joinedFrontier(reports);
+    if (rests.length === 0 || flipP(joined) > level) return [];
+    const harness = `${short(text(data.harness))} ${said(joined)} joined at level ${String(level)}`;
+    return [
+      { level, harness, without: joinedFrontier(reports, authored), valid: validityOf(log.events, rests) },
+    ];
   });
-  // 2: a Builder session ended at its wall while a host action it asked for had begun and not ended.
-  const walled = events.flatMap(({ kind, data }, index) => {
-    if (kind !== "build.finished" || data.ended !== "wall") return [];
-    const from = events.findLastIndex((each, at) => at < index && each.kind === "build.started");
-    const open = new Set<string>();
-    for (const each of events.slice(from, index)) {
-      if (["comparison.started", EXAM_START].includes(each.kind)) open.add(text(each.data.session));
-      if ([REPORTED, EXAM_END].includes(each.kind)) open.delete(text(each.data.session));
-    }
-    return open.size > 0 ? [`${text(data.session)} during ${[...open].join(", ")}`] : [];
-  });
-  // 3 and 4: one move asked again with no report or Examiner ending between, and Builder
-  // conversations in a row across the command's endings, which `idleOf` counts from each ending.
-  const runs = { same: new Map<string, number>(), again: new Map<string, number>(), led: 0, most: 0 };
-  for (const { kind, data } of events) {
-    if (kind === REPORTED || kind === EXAM_END) runs.same.clear();
-    if (kind !== "campaign.move") continue;
-    const key = [data.move, data.code, data.session].map(text).join(" ");
-    const times = (runs.same.get(key) ?? 0) + 1;
-    runs.same.set(key, times);
-    if (times >= 3) runs.again.set(key, times);
-    runs.led = data.code === "led" ? runs.led + 1 : 0;
-    runs.most = Math.max(runs.most, runs.led);
-  }
-  // 7: a session's limits moved between two sessions, which no term of the opening names.
-  const limits = events.flatMap(({ kind, data }) =>
-    kind === "build.started" ? [{ session: text(data.session), limits: asRecord(data.limits) ?? {} }] : [],
-  );
-  const moved = limits.slice(1).flatMap(({ session, limits: now }, index) => {
-    const before = limits[index]?.limits ?? {};
-    return Object.keys(now).flatMap((key) => {
-      const [was, is] = [before[key], now[key]].map((value) => JSON.stringify(value));
-      return was === is ? [] : [`${session}: ${key} ${String(was)} to ${String(is)}`];
-    });
-  });
+  const author = promotions.filter(({ without, level }) => flipP(without) > level);
+  const objective = promotions.filter(({ valid, level }) => flipP(valid) > level);
   return [
-    ...said("SAFEGUARD-1 ENDED WITH A MOVE NAMED", named),
-    ...said("SAFEGUARD-2 WALL DURING A HOST ACTION", walled),
-    ...said(
-      "SAFEGUARD-3 SAME MOVE ASKED AGAIN",
-      [...runs.again].map(([key, times]) => `${key} ${String(times)} times`),
-    ),
-    ...said(
-      "SAFEGUARD-4 CONVERSATIONS WITHOUT PROGRESS",
-      runs.most >= 2 * IDLE ? [`${String(runs.most)} in a row`] : [],
-    ),
-    ...said("SAFEGUARD-7 LIMITS MOVED", moved),
+    ...(author.length > 0
+      ? [
+          fired(
+            "SAFEGUARD-8 PROMOTION ON AUTHOR ROOM",
+            author
+              .map(
+                ({ harness, without }) =>
+                  `${harness}, ${said(without)} without the tasks held on their author's answer alone`,
+              )
+              .join("; "),
+          ),
+        ]
+      : []),
+    ...(objective.length > 0
+      ? [
+          fired(
+            "SAFEGUARD-9 PROMOTION BY THE OBJECTIVE ALONE",
+            objective.map(({ harness, valid }) => `${harness}, ${said(valid)} on validity alone`).join("; "),
+          ),
+        ]
+      : []),
   ];
+}
+
+/** Each frontier task's difference in pairs won on validity alone, summed over a promotion's two
+ *  readings as `joined` sums them. */
+function validityOf(events: readonly LogEvent[], rests: readonly Compared[]): number[] {
+  const validity = new Map<string, number>();
+  for (const { session, at, last } of rests) {
+    const frontier = new Set(strings(asRecord(last.frontier)?.of));
+    const pairs = pairsReported(events, { session, index: at, data: last }).filter(({ task }) =>
+      frontier.has(task),
+    );
+    for (const pair of pairs) {
+      const { fresh, old } = pairings(pair).validity;
+      validity.set(pair.task, (validity.get(pair.task) ?? 0) + fresh - old);
+    }
+  }
+  return [...validity.values()];
+}
+
+/** The task versions the gate held out on their author's answer alone: every reference solve
+ *  valid, their measures alike, and the author's on record better than each, the
+ *  room `informative` reads only with the author's measure (since 19 October). */
+function authorRoom(events: readonly LogEvent[]): Set<string> {
+  const answers = gateAnswers(events, -1);
+  const bests = new Map<string, number>();
+  let direction: "lower" | "higher" | null = null;
+  for (const { kind, data } of events) {
+    const objective = asRecord(data.objective);
+    if (kind !== "task.feasible" || !isNumber(objective?.measure)) continue;
+    direction = objective.direction === "higher" ? "higher" : "lower";
+    const was = bests.get(text(data.version));
+    const pick = direction === "lower" ? Math.min : Math.max;
+    bests.set(text(data.version), was === undefined ? objective.measure : pick(was, objective.measure));
+  }
+  if (direction === null) return new Set();
+  const rule = direction;
+  return new Set(
+    events.flatMap(({ kind, data }) => {
+      const reference = asRecord(data.reference);
+      const all = count(reference?.solves);
+      if (kind !== "task.gate" || data.outcome !== "passed" || all === 0 || count(reference?.valid) !== all) {
+        return [];
+      }
+      const measures = (answers.get(text(data.version)) ?? []).map(({ measure }) => measure);
+      const pair: Paired = {
+        task: text(data.version),
+        old: measures.map(() => true),
+        fresh: [],
+        objective: { direction: rule, old: measures, fresh: [] },
+      };
+      return !informative(pair, "old", new Set()) && informative(pair, "old", new Set(), bests)
+        ? [pair.task]
+        : [];
+    }),
+  );
 }
 
 /** Each path under `/tmp` a campaign's calls named, first naming first. */

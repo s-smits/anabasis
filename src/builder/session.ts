@@ -64,11 +64,10 @@ import type { Ending } from "../kernel/solve.ts";
 import { billedParts, type Cap } from "../kernel/reports.ts";
 import { ended as endedSolves, solvesIn } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
-import { CORRECTNESS_MODEL_DIR } from "../meta/bundle-layout.ts";
-import { cpSync, mkdirSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
+import { mkdirSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { isString } from "../meta/json-shape.ts";
-import { basename, dirname, join, resolve } from "../meta/path.ts";
+import { basename, dirname, join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import type { RefereeFinding } from "../review/referee.ts";
 import { type CommandWall, networkReach, type SolveDirs, solveDirs, walledBase } from "../solve/command.ts";
@@ -79,6 +78,7 @@ import { HARNESS_ACCOUNT } from "../solve/starter.ts";
 import { failedTurn, loopCompaction, type SolveRequest, solve, traceSink } from "../solve/run.ts";
 import { claimRoot } from "../verify/seat-root.ts";
 import { campaignOf } from "./handover.ts";
+import { copyHarness, seedKept } from "./kept.ts";
 import { builderMemoryBlock, keepMemory, lastKept, memoryOverCapNotice, seedMemory } from "./memory.ts";
 import { comparisonsTold, failsTold, startTold } from "./past.ts";
 import {
@@ -97,7 +97,6 @@ import {
   harnessNow,
   HOME_TOOL_TREE,
   openingTool,
-  parentToolTree,
   practiceLeft,
   practiceTool,
   record,
@@ -263,19 +262,7 @@ export async function session(
       `task ${exam.task.taskId} is ${states.get(exam.version) ?? "not proposed"}, and a Builder practises on released tasks only`,
     );
   }
-  // A kept state's tool tree is a link to the copy kept of it, so the tree is copied from where it is.
-  // A v1 state carries its correctness model, whose battery holds every task's hidden values, at its
-  // root and again in each `.bundle-snapshots` entry; no harness reads it, and the checks are the
-  // host's, so the Builder is given no copy of it at any depth.
-  const toolTree = parentToolTree(request.parent);
-  const copy = { recursive: true, verbatimSymlinks: true } as const;
-  const ownTree = resolve(request.parent, ".toolchain");
-  const battery = basename(CORRECTNESS_MODEL_DIR);
-  cpSync(request.parent, join(dirs.home, "harness"), {
-    ...copy,
-    filter: (source) => resolve(source) !== ownTree && basename(source) !== battery,
-  });
-  if (toolTree !== null) cpSync(toolTree, join(dirs.home, HOME_TOOL_TREE), copy);
+  copyHarness(request.parent, join(dirs.home, "harness"));
   mkdirSync(join(dirs.home, "practice"), { recursive: true });
   writeFileSync(join(dirs.home, "resources.json"), `${capturedJsonStringify(request.resources, null, 2)}\n`);
   // The account of a harness's files is this host's, whichever harness the session forks.
@@ -285,6 +272,7 @@ export async function session(
     kind === BUILD_STARTED && isString(data.session) ? [data.session] : [],
   );
   seedMemory(dirs.home, request.memory, lastKept(request.memory, earlier));
+  seedKept(dirs.home, request.states, before, parent.digest);
   for (const { task } of request.tasks) {
     writeFileSync(
       join(dirs.home, "practice", `${task.taskId.replace(/[^A-Za-z0-9._-]+/g, "-")}.json`),

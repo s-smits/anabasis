@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 /**
- * Move this checkout to the top of the open stack, on a branch named after it.
+ * Move this checkout to the top of the open stack, on a branch named after it, or to `main` where
+ * no pull request is open.
  *
  *   bun run follow
  *
@@ -10,9 +11,15 @@
  * 18 October the main checkout sat on `stack-pr197` after the stack was restacked onto a newer
  * main and grew to #199, four commits ahead and six behind, where a fast-forward no longer reaches.
  *
+ * Where no pull request is open the checkout lands on `main`, tracking `origin/main`, which holds
+ * whatever landed, and the `stack-pr<N>` it left is deleted. Until 19 October it refused there
+ * with "no pull request is open" and moved nothing, so a checkout on the last stack's branch stayed
+ * behind `main` once that stack merged; on 19 October none was open.
+ *
  * The branch is reset to the top: what matters is on GitHub, so a commit made on it is not kept.
  * Changes to tracked files are stashed and popped back on the new top, by the stash's own commit,
- * so that a stash another worktree pushed meanwhile is never the one popped.
+ * so that a stash another worktree pushed meanwhile is never the one popped. A switch git refuses,
+ * as it refuses `main` while another worktree has it checked out, pops them back where they were.
  */
 import { CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { gitMaybe, gitText } from "#src/meta/git.ts";
@@ -55,20 +62,22 @@ export function nativeTop(stacks: readonly NativeStack[]): Top | undefined {
   return { number: top.number, branch: top.head.ref, pulls: longest.open.map((pull) => pull.number) };
 }
 
-function topNow(root: string): Top {
+function topNow(root: string): Top | undefined {
   const stacks = parseJsonAs<NativeStack[]>(ghOrThrow(root, ["api", "repos/{owner}/{repo}/stacks"]));
   const native = nativeTop(stacks);
   if (native !== undefined) return native;
   const { line } = chain(openPulls(root));
   const top = line.at(-1);
-  if (top === undefined) throw new CommandFailure("no pull request is open");
+  if (top === undefined) return undefined;
   return { number: top.number, branch: top.headRefName, pulls: line.map((pull) => pull.number) };
 }
 
-/** Move the checkout at `root` to `top`, fetched already, and say what moved. */
-export function follow(root: string, top: Top): string[] {
-  const name = `stack-pr${String(top.number)}`;
-  const upstream = `origin/${top.branch}`;
+/** Move the checkout at `root` to `top`, or to `main` where no pull request is open, fetched
+ *  already, and say what moved. */
+export function follow(root: string, top: Top | undefined): string[] {
+  const name = top === undefined ? "main" : `stack-pr${String(top.number)}`;
+  const upstream = `origin/${top?.branch ?? "main"}`;
+  const target = top === undefined ? upstream : `#${String(top.number)} ${top.branch}`;
   const was = gitMaybe(root, "symbolic-ref", "--short", "-q", "HEAD");
   const from = gitText(root, "rev-parse", "HEAD");
   const to = gitText(root, "rev-parse", upstream);
@@ -77,21 +86,26 @@ export function follow(root: string, top: Top): string[] {
   gitText(root, "stash", "push", "-q", "-m", `follow: ${was ?? from.slice(0, 7)} to ${name}`);
   const saved = stashes()[0] ?? "";
   const stashed = saved !== "" && !before.includes(saved);
-  gitText(root, "switch", "-q", "--track", "-C", name, upstream);
+  const at = (): string => `stash@{${String(stashes().indexOf(saved))}}`;
+  try {
+    gitText(root, "switch", "-q", "--track", "-C", name, upstream);
+  } catch (error) {
+    if (stashed) gitText(root, "stash", "pop", "-q", at());
+    throw error;
+  }
   const said = [
     from === to && was === name
-      ? `${name} is already at #${String(top.number)} ${top.branch} (${to.slice(0, 7)})`
-      : `${name} at #${String(top.number)} ${top.branch} (${to.slice(0, 7)}), was ${was ?? "detached"} at ${from.slice(0, 7)}`,
-    `holds #${top.pulls.join(", #")}`,
+      ? `${name} is already at ${target} (${to.slice(0, 7)})`
+      : `${name} at ${target} (${to.slice(0, 7)}), was ${was ?? "detached"} at ${from.slice(0, 7)}`,
+    top === undefined ? "no pull request is open" : `holds #${top.pulls.join(", #")}`,
   ];
   if (was !== null && was !== name && STACK_BRANCH.test(was)) {
     gitText(root, "branch", "-D", was);
     said.push(`deleted ${was}`);
   }
   if (stashed) {
-    const at = `stash@{${String(stashes().indexOf(saved))}}`;
-    if (gitMaybe(root, "stash", "pop", "-q", at) === null) {
-      throw new CommandFailure(`your changes conflict with ${name}: resolve them, then drop ${at}`);
+    if (gitMaybe(root, "stash", "pop", "-q", at()) === null) {
+      throw new CommandFailure(`your changes conflict with ${name}: resolve them, then drop ${at()}`);
     }
     said.push("your uncommitted changes are back");
   }

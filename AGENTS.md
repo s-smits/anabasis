@@ -1020,9 +1020,9 @@ Where the check program declares an **objective** (a quantity its evaluator comp
 answer, with a direction: `brief.objective`, `objective(request)`, verified after the checks pass;
 `OBJECTIVE`, `src/kernel/verify.ts`), two valid answers in a pair are compared by it, and the better
 one wins the pair (`ObjectiveRule`, `better`, `src/kernel/compare.ts`). Until 19 October it had to be
-better by more than a margin, 0.01 of the larger magnitude: replayed on the 11 campaigns of 14 to
-19 October, the A/A read no step in 35 controls with or without it, and without it the same solves
-promote 15 harnesses where they promoted 14. Validity is read first, so a refused
+better by more than a margin, 0.01 of the larger magnitude: replayed on the 18 campaigns of 14 to
+19 October, the A/A read no step in 38 controls with or without it, and without it the same solves
+promote 14 pairs where they promoted 12. Validity is read first, so a refused
 answer can never be the better one. The objective is public, in the contract and in the solver's
 resources, and the report says how many tallied tasks it decided (`objective.decided`). The rule is
 a term of the comparison, fixed at its start; with a check program that declares no objective,

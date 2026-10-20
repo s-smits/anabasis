@@ -115,22 +115,18 @@ smaller than the build, read the groups in this order, because each rests on the
 own overview. An isolated lane is refused without its trigger. The tool permits named isolated
 lanes in one selection, so the primary must build and launch each alone.
 
-### Report checks and current gaps
+### Report checks
 
 `reportOf` accepts `finding`, `no finding` and `could not read`. It checks the lane heading,
 equal counts of lines beginning `Observation:`, `Cause:`, `Owner:`, `Reverses if:` and `Decision:`,
 a written finding for a `finding` verdict, no finding fields for a `no finding` verdict, and an
 owner from the catalogue. It does not check the cited evidence or enforce exactly one owner.
 
-The investigations of 20 October found two gaps whose fixes are in open PRs, outside this tree:
-
-- `reporting` has no section for the checks behind a `no finding` verdict. For now, ask for those
-  checks as ordinary prose under `## Findings`, without the five finding-field prefixes. Read
-  them before accepting the verdict; the collector cannot establish that the lane was checked.
-- `WINS` is registered to lane 19 and therefore makes `selected` mark it as waiting even without
-  a shortcut suspicion. Treat that as a selection defect. Open lane 19 only for
-  `ANSWER FROM A PROGRAM`, or a small-wall win supported by a suspicion from lane 11, 15 or 18.
-  `WINS` supplies the solve ids once the lane opens. The tool does not enforce this judgement.
+- `reporting` gives a `no finding` verdict its own `## Checked` section, which says what the lane
+  checked and found sound, with `## Findings` left empty. The collector does not read that section,
+  so read it before accepting the verdict: an empty one leaves the lane unsubstantiated.
+- `WINS` lists lane 19's solve ids and starts nothing by itself (`selected`). Lane 19 runs alone:
+  it opens only where it is named and `WIN AT A SMALL WALL SHARE` or `ANSWER FROM A PROGRAM` fired.
 
 ## Hard rules
 

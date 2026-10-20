@@ -1461,19 +1461,9 @@ A commit subject is one imperative sentence that states the finished change: "Re
 on a checker nobody has read". The body says what was wrong and what happens now, with the counts
 that show it. It never narrates a revert.
 
-A pull request body follows the stack's existing bodies:
-
-```text
-Stacked on #<n>.
-Why                    what was wrong, in plain words, with the recorded number that made the case
-What changes           one line per finished change
-Relation               each of the last ~50 pull requests it turns back, fixes, retires or builds
-                       on, one line each ("#185: turns back X to Y"), confirmed against the diffs
-On the recorded logs   where a reader changed: what it now says about campaigns already run
-Not done               what was left out on purpose
-Checked                each step of each CI job, where it ran, the head's short commit, the counts;
-                       a failure that occurs without the change is named as such
-```
+A pull request follows the writing principles in section 13 and the body guidance in
+`.claude/skills/stack-pr/SKILL.md`, section 7. The skill owns the structure and examples; headings
+serve the explanation and are not a form to fill in.
 
 Name what misbehaves: the campaign command, a round, a reader, the Builder. The file that holds it
 goes in the evidence underneath. A change with no defect behind it says so in one line. Rewrite the
@@ -1523,7 +1513,9 @@ code can skip it. Whatever you write:
 ## 13. Writing
 
 Plain, understated European English, in commits, pull requests, comments, prompts and messages to
-the operator. Write the way a careful colleague talks.
+the operator. Use simple academic prose: a clear question, a concrete mechanism, evidence and its
+limits, explained in ordinary words. Write for a careful colleague who has not
+read the conversation.
 
 - Lead with the change and a plain verb: "This PR fixes…", "Adds…", "Removes…", "Replaces…". Pick
   the verb a person would say (hide, skip, drop, leave out, refuse) instead of folding a negation
@@ -1535,9 +1527,20 @@ the operator. Write the way a careful colleague talks.
 - Say what a thing is. Write "X instead of Y" or "X rather than Y", and "one owner instead of five"
   rather than a sentence built on a negation and its correction ("not five owners, but one").
 - State a limit early, and name the owner of a decision.
+- A title names the changed behaviour in a short imperative sentence. Explain the implementation
+  in the body instead of putting its full sequence or every exception in the title.
+- Explain why a mechanism matters before naming its files. Use ML concepts where they clarify the
+  change: practice as training exposure, held-out comparisons as evaluation, repeated outcomes as
+  solver variation, and billing as economy. Infrastructure work says what it enables; it does not
+  imply better learning or a measured performance gain. Keep ordinary tooling descriptions plain.
 - No em dashes. Put identifiers, paths and commands in inline code. Use British spelling.
-- Separate what you verified from what you inferred, and say when a check was skipped. Every pull
-  request says what was left undone and where each check ran.
+- Distinguish tests, recorded observations, retrospective estimates and remaining uncertainty.
+  A scripted test can prove delivery of a prompt; observing the model's response needs a live
+  model. One simulation is one observation, and an estimated saving is not a measured reduction.
+  Preserve counts, baselines, conditions and limitations when rewriting. Attribute earlier checks
+  to their recorded commit and runner, and say when they were not rerun or their location is unknown.
+- Scale the structure to the change. Use connected paragraphs, bullets for parallel changes and
+  tables for comparisons. Do not add authorship labels or stock closing claims.
 - Use the fixed terms of section 14, each with one meaning. Suffix an ambiguous name with what it
   belongs to: "the Builder session b-2", "comparison g2", "the buffer campaign".
 - A head comment explains why the code is as it is: the defect it answers, the record that showed

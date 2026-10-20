@@ -197,16 +197,51 @@ GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <sha>~1
 gh pr create --base <parent branch> --head <branch> --title "<title>" --body-file <file>
 ```
 
-The operator's title is used word for word. Without one, the title is an imperative sentence
-saying what the pull request changes. The body, as the stack's bodies read:
+The operator's title is used word for word. Otherwise, name the changed behaviour in a short
+imperative sentence, such as "Let the host wait for Examiner admission results" or "Reuse gate
+results when unrelated tooling changes". Leave the full implementation sequence to the body.
 
-1. `Stacked on #<n>.`
-2. **Why**: what was wrong in plain words, with the recorded number that made the case.
-3. **What changes**: one line per finished change.
-4. **On the recorded logs**, where a reader changed: what it now says of campaigns already run.
-5. **Not done**, where something was left out on purpose.
-6. **Checked**: each step of each job, where it ran, the head's short commit, and the passing,
-   skipped and failing counts. A failure that is there without the change is named as such.
+Write in the simple academic style of `AGENTS.md` section 13. Start with `Stacked on #<n>.` where
+applicable, then a paragraph stating the change, its mechanism and why it matters. Put a material
+limit there too. A reader should understand the change before encountering paths or function names.
+
+Use as much structure as the change needs, usually **Problem and method** followed by
+**Validation and limits**. Separate **Observed problem**, **Method** or **Recorded evidence** when
+that makes a larger change easier to read. These are useful headings, not mandatory sections.
+Cover the following without repeating the opening:
+
+- The observed problem, with counts and their population where the log supplies them, then how
+  the change addresses it. Name the owner before its file or function.
+- Its relation to earlier work: among the last roughly 50 pull requests, name those it builds on,
+  fixes, retires or turns back, and confirm the relationship against the diffs. Include this in the
+  explanation or a Relation section where useful.
+- Where a reader changed, what replay now reports on existing logs. Distinguish a corrected report
+  from a change in the underlying campaign's performance.
+- Validation at the recorded commit: the commands, runner platform, passed, skipped and failed
+  counts, and any failure also present without the change. Separate test results, live observations
+  and retrospective estimates; name their baseline and any changed conditions. A check inherited
+  from an earlier description is labelled "previously reported" instead of attributed to the
+  rewriting session.
+- What remains untested or deliberately unchanged. Say when Linux, live behaviour or billing has
+  not been checked, rather than letting a passing local test imply it has.
+
+Use ML framing when it makes the mechanism clearer: training exposure, evaluation conditions,
+solver variation or compute cost. Explain tooling changes directly when that framing adds nothing.
+A single simulation does not establish general accuracy, and repricing recorded turns estimates
+a saving without measuring it in a new campaign. Use tables for like-for-like comparisons and label
+estimated values in their column heading. Do not add authorship labels.
+
+Examples of opening paragraphs:
+
+> This PR lets the Examiner wait for an admission result by ending its turn. The host resumes the
+> conversation when a result arrives, instead of immediately asking for more work and leaving the
+> model to wait through shell sleeps. The runtime behaviour is tested; the model's use of it still
+> needs live observation.
+
+> This PR uses a five-minute prompt cache for Solver and Referee sessions, and retains a one-hour
+> cache for Builder and Examiner sessions. The choice follows the gaps between recorded model turns:
+> shorter caches reduce write costs, while longer caches preserve context across slow tools and
+> evaluations. The cost estimates have not yet been confirmed in a live campaign.
 
 A choice of your own, such as a threshold, is said to be yours. Paste no run log and no long
 file list. After every push that changes the pull request, rewrite the body: a body that quotes

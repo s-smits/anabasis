@@ -30,6 +30,10 @@
  * next session there builds its own again. A `runs keep` that keeps the campaign at its source is
  * not stopped by the move: stop it first.
  *
+ * Every rsync between machines here compresses what it sends (`-z`). A campaign's folder is
+ * mostly logs and traces: on 20 October rsync took one log of 4.6 MB to another host in 18.6 s, and
+ * 2.5 s with `-z`, and the 330 MB folder of one campaign packs to 132 MB with `gzip -1`.
+ *
  *   bun --env-file=.env.runs run runs fetch <name> [--from <host>]
  *
  * `fetch` takes a copy of a campaign another machine holds, to read here: its folder whole, into
@@ -151,7 +155,7 @@ export async function move(args: readonly string[]): Promise<void> {
     to,
     `git -C ${quoted(to.repo)} fetch -q origin && git -C ${quoted(to.repo)} worktree add -q --detach ${quoted(tree)} ${commit} && mkdir -p ${quoted(folder(tree))}`,
   );
-  runTextSyncOrThrow(["rsync", "-a", `${side(from, folder(source))}/`, `${side(to, folder(tree))}/`]);
+  runTextSyncOrThrow(["rsync", "-az", `${side(from, folder(source))}/`, `${side(to, folder(tree))}/`]);
   const size = (end: End, root: string) => at(end, `wc -c < ${quoted(join(folder(root), "log.jsonl"))}`);
   if (size(from, source) !== size(to, tree)) {
     throw new Error(`the log did not arrive whole in ${folder(tree)}: ${folder(source)} is left as it was`);
@@ -200,7 +204,7 @@ export async function fetch(args: readonly string[]): Promise<void> {
   mkdirSync(into, { recursive: true });
   runTextSyncOrThrow([
     "rsync",
-    "-a",
+    "-az",
     "--delete",
     `${side(from, join(treeOf(from, name), ".ana", "d2", name))}/`,
     `${into}/`,

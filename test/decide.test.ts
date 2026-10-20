@@ -6,7 +6,9 @@ import { describe, expect, it } from "bun:test";
 import { decide, epochReleased, practiceRoom, unpromoted } from "../src/builder/decide.ts";
 import type { Plan } from "../src/builder/ground.ts";
 import { pendingWords } from "../src/builder/word.ts";
+import { sweepOf } from "../src/kernel/compare.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
+import { releaseOrder } from "../src/kernel/reports.ts";
 import { taskSets } from "../src/kernel/task.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tallied } from "./helpers/tally.ts";
@@ -766,6 +768,15 @@ describe("a hold on the move a row named", () => {
       why: expect.stringContaining("the reference harness's solves of draft tasks billed $0.30 a solve"),
     });
     expect(move(gated, left(1000))).toMatchObject({ move: "compare" });
+    // Since 20 October a gate stops at the first solve that leaves room, and bills that one alone.
+    const early = FIRST.map((each) =>
+      each.kind === "task.gate"
+        ? { ...each, data: { ...each.data, reference: { billed: 0.3, solves: 1, ran: 1 } } }
+        : each,
+    );
+    expect(decide(early, left(0.5))).toMatchObject({
+      why: expect.stringContaining("the reference harness's solves of draft tasks billed $0.30 a solve"),
+    });
     // The Examiner session a row names is held too: where the last one and the comparison that read
     // its tasks billed more than half of what is left, the campaign ends on its budget before another
     // round.
@@ -833,8 +844,25 @@ describe("a hold on the move a row named", () => {
     expect(epochReleased(after).epoch).toBe(1);
   });
 
+  it("practice: a top-up before the first promotion leaves a sweep of frontier tasks held", () => {
+    const floor = sweepOf(0.02);
+    for (const held of [2, floor, floor + 2]) {
+      const tasks = HELD.slice(0, held);
+      const log = [...RELEASED, ...tasks.flatMap(heldOut)];
+      const room = practiceRoom(log, 0.02);
+      expect(room).toBe(Math.max(0, held - floor));
+      const released = releaseOrder(log, tasks, Math.min(held, room), "seed");
+      expect(released).toHaveLength(Math.max(0, held - floor));
+    }
+    // The first release still bootstraps practice, even below a sweep's supply.
+    const tasks = HELD.slice(0, 2);
+    const log = tasks.flatMap(heldOut);
+    expect(practiceRoom(log, 0.02)).toBe(Infinity);
+    expect(releaseOrder(log, tasks, Math.min(1, practiceRoom(log, 0.02)), "seed")).toHaveLength(1);
+  });
+
   it("practice: a release after a promotion leaves a sweep of frontier tasks held", () => {
-    // Each release is one task fewer to compare. Before a promotion the opening's release governs.
+    // Each release is one task fewer to compare. The first release still bootstraps practice.
     const eight = HELD.slice(0, 8).flatMap(heldOut);
     expect(practiceRoom(eight, 0.1)).toBe(Infinity);
     // Eight held after a promotion: four may go, past the four a sweep at 0.1 takes. One

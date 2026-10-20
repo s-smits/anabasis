@@ -118,7 +118,9 @@ function practiceTriggers(
     );
   const answered = failed.filter((fail) => laterPass(fail, false)).length;
   const flipped = failed.filter((fail) => laterPass(fail, true)).length;
-  const exposed = [...round.scoredSet].filter((version) => build.practice.has(version)).length;
+  const exposed = [...round.scoredSet].filter((version) =>
+    round.practice.some((solve) => solve.version === version),
+  ).length;
   const shell = calls.filter(({ tool }) => tool === "bash").length;
   // A task lost in one comparison is no loss of another's: recode's b-1 was measured twice.
   const lost = (solve: Solve) => `${String(solve.comparison)} ${solve.version}`;
@@ -402,7 +404,7 @@ function comparisonTriggers(log: Index): Trigger[] {
     const seen = new Map<string, Set<string>>();
     for (const solve of scoring.filter(measured)) {
       const key = `${solve.version} ${solve.harness}`;
-      seen.set(key, (seen.get(key) ?? new Set()).add(text(solve.outcome)));
+      seen.set(key, (seen.get(key) ?? new Set()).add(String(solve.outcome === "pass")));
     }
     const flips = [...seen.values()].filter((outcomes) => outcomes.size > 1).length;
     const noise = asRecord(last.noise);

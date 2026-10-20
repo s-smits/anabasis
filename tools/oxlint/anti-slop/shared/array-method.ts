@@ -76,12 +76,8 @@ function isArrayAnnotation(type: ESTree.TSType): boolean {
 /**
  * Whether this expression is certainly an array, decided from the file alone.
  *
- * Two rules ask before they report, `no-array-filter-map` and `no-reduce-accumulator-copy`, and
- * both are about the cost of materialising an array that did not need to exist — so a receiver
- * whose kind cannot be established has to come out false. A lazy iterator pipeline is the case
- * that matters: `.values().filter(...).map(...)` reads like the shape `no-array-filter-map`
- * catches and does one pass with no intermediate array, so answering "not known to be an array"
- * is what keeps that rule off it.
+ * `no-reduce-accumulator-copy` asks before it reports, and it is about the cost of copying an
+ * array at every step, so a receiver whose kind cannot be established has to come out false.
  *
  * What counts as certain is an array literal, a call of one of the eight array-producing methods
  * on something already certain, or a binding the file can settle: annotated as an array, a tuple,

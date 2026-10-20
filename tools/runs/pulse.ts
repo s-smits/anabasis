@@ -15,6 +15,7 @@ import { billedAll } from "#src/kernel/reports.ts";
 import { type Solve, solvesIn } from "#src/kernel/solves.ts";
 import {
   existsSync,
+  mkdirSync,
   readFileSync,
   renameSync,
   statfsSync,
@@ -24,7 +25,7 @@ import {
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
-import { basename, join } from "#src/meta/path.ts";
+import { basename, dirname, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
@@ -240,6 +241,8 @@ function look(state: string, names: readonly string[]): void {
     for (const line of seen.said) console.log(`  ${line}`);
     logs[run.path] = seen.seen;
   }
+  // A checkout no campaign ran in has no `.ana/`, as the Linux runner's had none on 20 October.
+  mkdirSync(dirname(state), { recursive: true });
   writeFileSync(`${state}.tmp`, capturedJsonStringify({ freeGiB: free, logs } satisfies Memory));
   renameSync(`${state}.tmp`, state);
 }

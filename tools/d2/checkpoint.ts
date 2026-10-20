@@ -63,6 +63,7 @@ import {
   predictionLines,
   predictionNamed,
   capNamed,
+  refereeNamed,
   COMPARISON_OPTIONS,
   objectiveNamed,
   packaged,
@@ -105,6 +106,7 @@ export async function checkpointCommand(
   if (kill?.aborted === true) throw new Error(`comparison ${id} was stopped before it began`);
   // Read before the campaign is opened: a paid comparison with no cap starts nothing.
   const cap = capNamed(values, seated === solved ? "paid" : "scripted");
+  refereeNamed(values, seated === solved ? "paid" : "scripted");
   // The campaign's setting is its log's, as a round reads it (`setting.ts`).
   const setting = settingAsked(values, recordedSetting(read(campaignLog(name))));
   const campaign = await openCampaign({ ...pack, ...setting.named });
@@ -149,7 +151,7 @@ export async function checkpointCommand(
   const notes = admitComparison(campaign.log, {
     id,
     wanted: wantedNamed(campaign, values, { setting, cap, builds: false }),
-    seats: seated === solved ? "paid" : "scripted",
+    seats: seats.paid ? "paid" : "scripted",
     own,
   });
   for (const note of notes) console.log(`· ${note}`);

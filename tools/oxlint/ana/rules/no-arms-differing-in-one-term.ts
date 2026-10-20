@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 import { blockBody, onlyStatement } from "../shared/statements.ts";
 
 /**
@@ -107,6 +108,18 @@ export const noArmsDifferingInOneTermRule = defineRule({
     type: "suggestion",
     docs: {
       description: "Two branches differing in one token are one branch with a conditional at that token.",
+      examples: [
+        {
+          before:
+            'function wallFor(platform: string, command: string[]) {\n  if (platform === "linux") return spawnUnder(bwrapProfile, command);\n  return spawnUnder(seatbeltProfile, command);\n}',
+          after:
+            'function wallFor(platform: string, command: string[]) {\n  return spawnUnder(platform === "linux" ? bwrapProfile : seatbeltProfile, command);\n}',
+        },
+        {
+          before: "const reserve = promoted ? priceOf(setting, newReference) : priceOf(setting, reference);",
+          after: "const reserve = priceOf(setting, promoted ? newReference : reference);",
+        },
+      ] satisfies RuleExample[],
     },
     messages: {
       oneTerm:

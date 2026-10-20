@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 import { inlineFunctionArgument } from "../shared/statements.ts";
 
 /**
@@ -42,7 +43,21 @@ import { inlineFunctionArgument } from "../shared/statements.ts";
 export const noHandRolledSleepRule = defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: "A fixed pause is a guess; wait on the condition or use Bun.sleep." },
+    docs: {
+      description: "A fixed pause is a guess; wait on the condition or use Bun.sleep.",
+      examples: [
+        {
+          before: "await new Promise((resolve) => setTimeout(resolve, resetAt - Date.now()));",
+          after: "await Bun.sleep(resetAt - Date.now());",
+        },
+        {
+          before:
+            "worker.start();\nawait new Promise((resolve) => setTimeout(resolve, 50));\nexpect(worker.ready).toBe(true);",
+          after:
+            "const ready = Promise.withResolvers<void>();\nworker.start(() => ready.resolve());\nawait ready.promise;",
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       fixedPause:
         "`new Promise((resolve) => setTimeout(resolve, …))` waits a guessed number of milliseconds. Wait on the condition — `Promise.withResolvers()` at the producer, or a poll with a deadline — or say it is a real clock with `Bun.sleep`.",

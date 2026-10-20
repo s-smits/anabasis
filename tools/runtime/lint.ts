@@ -41,6 +41,7 @@ import {
   TREE_RULE_PREFIX,
   unanswerable,
 } from "../oxlint/not-slop-ledger.ts";
+import { renderedExamples, ruleExamples } from "../oxlint/rule-examples.ts";
 import { TREE_REGISTER_KINDS, treeSites } from "../oxlint/tree-findings.ts";
 
 const ROOTS = ["src", "tools", "vendor", "test", "packages", ".claude"];
@@ -193,6 +194,23 @@ function rendered(diagnostic: Diagnostic, site: LintSite | null): string {
   return `${at}: ${what} ${diagnostic.message}${help}${site === null ? "" : ` [not-slop ${site.id}]`}`;
 }
 
+/**
+ * Each rule that reported among `diagnostics`, once, in the order its first finding printed, with
+ * the before-and-after pairs it keeps (`tools/oxlint/rule-examples.ts`). A rule with none, which
+ * is every core rule, prints nothing here.
+ */
+export function examplesFor(diagnostics: readonly Diagnostic[]): string[] {
+  const examples = ruleExamples();
+  const rules = [...new Set(diagnostics.map(ruleOf))];
+  const blocks = rules.flatMap((rule) => {
+    const pairs = examples.get(rule) ?? [];
+    return pairs.length === 0 ? [] : [renderedExamples(rule, pairs)];
+  });
+  return blocks.length === 0
+    ? []
+    : ["What each rule above reports, and a shape that passes it:", ...blocks.flat()];
+}
+
 /** True when the clone at `cwd` sets `ana.lintStrict`, git's own boolean spellings included. */
 export function strictByConfig(cwd: string): boolean {
   const run = runSync(["git", "config", "--type=bool", "--get", "ana.lintStrict"], { cwd });
@@ -306,6 +324,7 @@ async function main(): Promise<number> {
   const lines = [
     ...shown.map(({ diagnostic, site }) => rendered(diagnostic, site)),
     ...problems,
+    ...examplesFor(shown.map(({ diagnostic }) => diagnostic)),
     ...(shown.length === 0 ? [] : [`Found ${shown.length - errors} warnings and ${errors} errors.`]),
     ...(found.length === unanswered.length
       ? []

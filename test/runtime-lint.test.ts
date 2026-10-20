@@ -87,9 +87,9 @@ export function complete(value: "ok" | "failed"): void {
 
 describe("optional lint findings", () => {
   const source = [
-    "// oxlint-disable-next-line anti-slop/no-reflect-get -- why a/b",
+    "// oxlint-disable-next-line anti-slop/no-chained-type-assertions -- why a/b",
     "/* oxlint-disable ana/no-deep-nesting, typescript/no-explicit-any */",
-    "// eslint-disable-next-line anti-slop/no-reflect-get, eslint/no-console",
+    "// eslint-disable-next-line anti-slop/no-chained-type-assertions, eslint/no-console",
     "// oxlint-disable-next-line",
     "// oxlint-disable-next-line banana/no-peel",
   ].join("\n");
@@ -112,13 +112,16 @@ describe("optional lint findings", () => {
   });
 
   it("takes the two repository plugins' findings and unused comments that name only their rules", () => {
-    expect(optionalFinding(coded("anti-slop(no-reflect-get)"), bytes)).toBe(true);
+    expect(optionalFinding(coded("anti-slop(no-chained-type-assertions)"), bytes)).toBe(true);
     expect(optionalFinding(coded("ana(no-deep-nesting)"), bytes)).toBe(true);
     expect(
-      optionalFinding(unused("// oxlint-disable-next-line anti-slop/no-reflect-get -- why a/b"), bytes),
+      optionalFinding(
+        unused("// oxlint-disable-next-line anti-slop/no-chained-type-assertions -- why a/b"),
+        bytes,
+      ),
     ).toBe(true);
     const line = source.indexOf("// eslint-disable");
-    expect(optionalFinding(unused("anti-slop/no-reflect-get", line), bytes)).toBe(true);
+    expect(optionalFinding(unused("anti-slop/no-chained-type-assertions", line), bytes)).toBe(true);
   });
 
   it("keeps oxlint's own rules, and comments that also name one or name none, gating", () => {

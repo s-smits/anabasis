@@ -17,7 +17,8 @@
  * for the kept ones.
  *
  * `copy` takes a campaign no process writes or keeps, its folder whole, to another worktree of the
- * repository, and sets the folder it leaves aside under `.ana/moved/`, so that one worktree holds
+ * repository, from a worktree or from this machine's archive (`runs retire`), and sets the folder it
+ * leaves aside under `.ana/moved/` of the tree it was in, so that one worktree holds
  * the name; `continue` then goes on with it there. It is the one way a campaign's folder moves
  * (operator, 15 October), since a log is never copied by hand. Another machine takes it by
  * `runs move` (`move.ts`).
@@ -52,13 +53,18 @@ import { decodeOutput, processGroupExists, runSync, runTextSyncOrThrow } from "#
 import { nextRun, receipts } from "./receipt.ts";
 import {
   BUILDER,
+  CAMPAIGNS,
+  campaignOf,
+  everyRun,
+  HERE,
+  isCampaign,
   keepers,
   logEvents,
   openComparisons,
   processes,
   type Run,
+  readNamed,
   runNamed,
-  runs,
   standing,
   writers,
 } from "./registry.ts";
@@ -221,12 +227,11 @@ export async function launch(args: readonly string[]): Promise<void> {
       "usage: bun run runs launch <name> [--login N] [--yes] -- <the campaign command's flags but --name>",
     );
   }
-  const held = runs().find((run) => run.name === name && run.end === "comparison.reported");
+  const held = everyRun().find((run) => run.name === name && isCampaign(run));
   if (held !== undefined) {
-    throw new Error(`${name} names a campaign in ${held.tree}: go on with it by runs continue`);
+    throw new Error(`${name} names a campaign in ${dirname(held.path)}: go on with it by runs continue`);
   }
-  const tree = runtimeProcess.cwd();
-  const run: Run = { name, tree, path: join(tree, ".ana", "d2", name, LOG_FILE), end: "comparison.reported" };
+  const run = campaignOf(runtimeProcess.cwd(), name);
   if (!values.yes) return said(run, `would start ${BUILDER} ${flags.join(" ")}`);
   await start(run, flags, values.login, undefined);
 }
@@ -291,12 +296,17 @@ export function copy(args: readonly string[]): void {
   if (name === undefined || to === undefined) {
     throw new Error(`usage: bun run runs copy <name> --to <a worktree: ${trees.join(", ")}> [--yes]`);
   }
-  const run = runNamed(name);
+  const run = readNamed(name);
+  if (run.archived !== undefined && run.archived !== HERE) {
+    throw new Error(
+      `${name} is a copy of a campaign ${run.archived} holds: runs move takes one to another machine`,
+    );
+  }
   if (writers(run, processes()).length > 0 || keepers(name).length > 0) {
     throw new Error(`${name} is being written or kept in ${run.tree}: pause it first`);
   }
   const from = dirname(run.path);
-  const into = join(to, ".ana", "d2", name);
+  const into = join(to, CAMPAIGNS, name);
   if (existsSync(into)) throw new Error(`${into} is there already`);
   if (!values.yes) return said(run, `would be copied whole to ${into}, and its folder here set aside`);
   cpSync(from, into, { recursive: true, verbatimSymlinks: true });

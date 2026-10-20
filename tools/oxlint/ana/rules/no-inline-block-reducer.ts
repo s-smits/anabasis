@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 
 /**
  * A fold written with its reducer inline and a block body is a loop with the accumulator hidden
@@ -44,7 +45,22 @@ function reduceCall(node: ESTree.CallExpression): boolean {
 export const noInlineBlockReducerRule = defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: "A reduce whose reducer is written inline with a block body is a loop." },
+    docs: {
+      description: "A reduce whose reducer is written inline with a block body is a loop.",
+      examples: [
+        {
+          before:
+            "const best = rows.reduce<Row | undefined>((best, row) => {\n  if (best === undefined) return row;\n  return row.score > best.score ? row : best;\n}, undefined);",
+          after:
+            "let best: Row | undefined;\nfor (const row of rows) if (best === undefined || row.score > best.score) best = row;",
+        },
+        {
+          before:
+            "const billed = solves.reduce((total, solve) => {\n  const dollars = solve.billed ?? 0;\n  return total + dollars;\n}, 0);",
+          after: "let billed = 0;\nfor (const solve of solves) billed += solve.billed ?? 0;",
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       hiddenLoop:
         "This `reduce` carries its whole step inline as a block, which is a loop with the accumulator hidden in the callback signature. Write the `for…of` and let the accumulator be an ordinary local, or lift the step out under a name.",

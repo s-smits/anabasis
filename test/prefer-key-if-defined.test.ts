@@ -46,10 +46,17 @@ export function run(): Spawn {
 export function parse(): Spawn {
   const parsed: Spawn = {}; // REPORT the const between is read by its guard alone, and null picks keyIfNotNull
   const code = url.searchParams.get("code");
-  if (code !== null) parsed.code = code;
+  if (code != null) parsed.code = code;
   const state = url.searchParams.get("state");
-  if (state !== null) parsed.state = state;
+  if (state != null) parsed.state = state;
   return parsed;
+}
+
+export function strict(): Spawn {
+  const found: Spawn = {}; // REPORT a strict null guard may have set undefined, so it is not fixed
+  const code = url.searchParams.get("code");
+  if (code !== null) found.code = code;
+  return found;
 }
 
 export function cast(): Spawn {
@@ -111,7 +118,7 @@ export function apart(): Spawn {
 describe("ana/prefer-key-if-defined", () => {
   it("reads a run of guards below a literal and refuses its seven neighbours", async () => {
     const expected = expectedLines(GUARDS);
-    expect(expected).toHaveLength(3);
+    expect(expected).toHaveLength(4);
     expect(await reportedLines("ana", RULE, GUARDS)).toStrictEqual(expected);
   });
 
@@ -129,9 +136,11 @@ describe("ana/prefer-key-if-defined", () => {
     expect(fixed).toMatch(
       /^import \{ keyIfDefined, keyIfNotNull \} from "[./]+src\/meta\/optional-key\.ts";\nimport \{ existing \}/u,
     );
+    expect(fixed).toContain("const found: Spawn = {}; // REPORT");
+    expect(fixed).toContain("if (code !== null) found.code = code;");
     // Every folded line is gone, and every admitted one is still there.
     expect(fixed.split("if (options.cwd !== undefined) spawn.cwd = options.cwd;")).toHaveLength(3);
-    expect(fixed.split('const code = url.searchParams.get("code");\n  if (code !== null)')).toHaveLength(2);
+    expect(fixed.split('const code = url.searchParams.get("code");\n  if (code != null)')).toHaveLength(1);
     expect(fixed).toContain('later = code ?? "";');
   });
 });

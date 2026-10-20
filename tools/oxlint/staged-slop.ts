@@ -15,7 +15,13 @@
 import { boundText } from "../../src/meta/bounded-text.ts";
 import { resolve } from "../../src/meta/path.ts";
 import { runTextSyncOrThrow } from "../../src/meta/subprocess.ts";
-import { TREE_FINDING_ARGUMENTS, type TreeSite, treeFindings } from "./tree-findings.ts";
+import { renderedExamples } from "./rule-examples.ts";
+import {
+  TREE_FINDING_ARGUMENTS,
+  TREE_FINDING_EXAMPLES,
+  type TreeSite,
+  treeFindings,
+} from "./tree-findings.ts";
 
 /** Sites printed to the terminal before the rest are left to the report. */
 const PRINTED = 8;
@@ -86,6 +92,14 @@ function report(touched: readonly TreeSite[], elsewhere: readonly TreeSite[]): s
   ].join("\n");
 }
 
+/** Each scan among `sites`, once, with the pair it keeps; a register keeps none. */
+function examplesOf(sites: readonly TreeSite[]): string[] {
+  const kinds = [...new Set(sites.map((site) => site.kind))];
+  return kinds.flatMap((kind) =>
+    kind === "filesystem-import-budget" ? [] : renderedExamples(kind, TREE_FINDING_EXAMPLES[kind]),
+  );
+}
+
 /** What the agent or person committing reads: the sites, where the rest is, and the two answers. */
 function message(first: TreeSite, touched: readonly TreeSite[], log: string): string {
   const shown = touched.slice(0, PRINTED).map((site, index) => {
@@ -96,6 +110,7 @@ function message(first: TreeSite, touched: readonly TreeSite[], log: string): st
     `slop: ${touched.length} ${touched.length === 1 ? "site touches" : "sites touch"} lines this commit changes. Advisory: the commit is not stopped.`,
     ...shown,
     ...more,
+    ...examplesOf(touched.slice(0, PRINTED)),
     `Full report, with why each shape counts as slop: ${log}`,
     "Judge each site: these are heuristics, and the best measured is wrong about three times in ten.",
     "Real: fix it before this commit, or amend it after (git commit --amend).",

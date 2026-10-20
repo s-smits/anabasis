@@ -22,6 +22,7 @@ import type { LogEvent } from "#src/kernel/log.ts";
 import { unsolved as noneAnswered } from "#src/kernel/compare.ts";
 import { billedAll, lastReports, poolOf, pairsReported } from "#src/kernel/reports.ts";
 import { heldAtGate, taskSets } from "#src/kernel/task.ts";
+import { OBJECTIVE } from "#src/kernel/verify.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
@@ -77,7 +78,6 @@ export interface Build {
   readonly from: number;
   until: number;
   readonly parent: string;
-  readonly practice: ReadonlySet<string>;
   finished: JsonObject | null;
   readonly calls: Call[];
 }
@@ -209,8 +209,9 @@ export const items = (value: JsonValue | undefined): readonly JsonValue[] =>
   Array.isArray(value) ? value : [];
 export const strings = (value: JsonValue | undefined): string[] => items(value).filter(isString);
 export const short = (digest: string): string => digest.slice(0, 8);
-/** Whether a solve measured its harness: a non-result is in no pair, and a rerun replaced it. */
-export const measured = (solve: Solve): boolean => solve.outcome === "pass" || solve.outcome === "fail";
+/** Whether a solve measured its harness: a non-result is in no pair, and a rerun replaced it. A
+ *  solver's flag is its side's own fail, as the comparison counts it. */
+export const measured = (solve: Solve): boolean => ["pass", "fail", "flagged"].includes(solve.outcome ?? "");
 export const share = (part: number, whole: number): string => `${String(part)} of ${String(whole)}`;
 export const percent = (part: number): string => `${(part * 100).toFixed(1)}%`;
 export const fired = (name: keyof typeof TRIGGERS, detail: string): Trigger => ({
@@ -289,7 +290,6 @@ function buildsOf(events: readonly LogEvent[]): Build[] {
         from: index,
         until: events.length,
         parent: text(data.parent),
-        practice: new Set(strings(data.tasks)),
         finished: null,
         calls: [],
       });
@@ -428,15 +428,20 @@ function refusals(log: Index): Solve[] {
   });
 }
 
-/** A Builder session's practice solves: the test-side solves of its practice tasks made in its own
- *  window of the log. */
+/** A Builder session's practice solves: the test-side solves of released tasks made in its own window
+ *  of the log that name no comparison, as the kernel reads practice (`practiceRan`). Until 20 October
+ *  they were the solves of the tasks its start named, and a led conversation goes on while its
+ *  campaign releases more: r3's b-1 opened on 1 task and practised 24 solves, of which that set
+ *  counted 5. */
 export function practiceOf(log: Index, build: Build): Solve[] {
+  const released = new Set(log.released);
   return log.solves.filter(
     (solve) =>
       solve.index > build.from &&
       solve.index < build.until &&
       solve.side === TEST &&
-      build.practice.has(solve.version),
+      solve.comparison === null &&
+      released.has(solve.version),
   );
 }
 
@@ -452,7 +457,10 @@ export function instrumentTriggers(log: Index): Trigger[] {
   const trees = new Set([...log.conditions.values()].map((condition) => condition.verifierTools)).size;
   const faults = strings(reading?.faults);
   const lost = faults.filter((fault) => fault.includes("not on the verifier's tool path")).length;
-  const uncaught = rows.filter((row) => count(row.named) === 0 || count(row.caught) < count(row.named));
+  // The objective measures valid answers and refuses none, so the two counts of refusals leave it
+  // out: buffer-r3's lane 3 on 20 October read its row of zeros as a check that missed its controls.
+  const checks = rows.filter((row) => row.id !== OBJECTIVE.id);
+  const uncaught = checks.filter((row) => count(row.named) === 0 || count(row.caught) < count(row.named));
   const refused = refusals(log);
   const rulingOf = (solve: Solve) => text(log.rulings.get(solve.id)?.ruling) || "unread";
   const ruled = countBy(refused, rulingOf);
@@ -473,7 +481,7 @@ export function instrumentTriggers(log: Index): Trigger[] {
   // A reading's row counts the check's controls, not the campaign's answers, so a check that caught
   // its controls and refused no answer reads well there and is where a pass may show only the shape
   // it checked: 3 of buffer's 7 checks and 5 of recode's 11 on 10 October.
-  const neverRefused = rows.map((row) => text(row.id)).filter((id) => byCheck[id] === undefined);
+  const neverRefused = checks.map((row) => text(row.id)).filter((id) => byCheck[id] === undefined);
   return [
     ...(authored > 0
       ? [
@@ -492,7 +500,7 @@ export function instrumentTriggers(log: Index): Trigger[] {
       ? [
           fired(
             "REFUSALS BY CHECK",
-            `${share(neverRefused.length, rows.length)} checks refused none of ${plural(log.verdicts.size, "answer")}: ${neverRefused.join(", ")}; the rest: ${tally(byCheck)}`,
+            `${share(neverRefused.length, checks.length)} checks refused none of ${plural(log.verdicts.size, "answer")}: ${neverRefused.join(", ")}; the rest: ${tally(byCheck)}`,
           ),
         ]
       : []),
@@ -504,7 +512,7 @@ export function instrumentTriggers(log: Index): Trigger[] {
       ? [
           fired(
             "CONTROL COVERAGE",
-            `${share(uncaught.length, rows.length)} checks let through a reject control naming them, or were named by none: ${uncaught.map((row) => `${text(row.id)} refused ${String(count(row.caught))} of ${String(count(row.named))}`).join(", ")}`,
+            `${share(uncaught.length, checks.length)} checks let through a reject control naming them, or were named by none: ${uncaught.map((row) => `${text(row.id)} refused ${String(count(row.caught))} of ${String(count(row.named))}`).join(", ")}`,
           ),
         ]
       : []),

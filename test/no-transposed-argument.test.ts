@@ -8,9 +8,9 @@
  * view, and an argument that is not a plain identifier carries no name to compare.
  *
  * It reports zero sites on this tree, out of 530 argument pairs it examines — the callee in view,
- * both parameters declaring one type, both arguments bare identifiers. That is the same standing
- * as `ana/no-property-read-on-function`: the rule is registered for the shape it refuses to let
- * in, and this file is the only thing that proves it still reports at all.
+ * both parameters declaring one type, both arguments bare identifiers. The rule is registered for
+ * the shape it refuses to let in, and this file is the only thing that proves it still reports at
+ * all.
  */
 import { describe, expect, it } from "bun:test";
 import { expectedLines, reportedLines } from "./helpers/oxlint-rule-fixture.ts";

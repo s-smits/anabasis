@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 
 /**
  * A call that passes two arguments the wrong way round, where the compiler cannot say so.
@@ -29,7 +30,23 @@ import { defineRule, type ESTree } from "@oxlint/plugins";
 export const noTransposedArgumentRule = defineRule({
   meta: {
     type: "problem",
-    docs: { description: "Disallow a call that passes two same-typed arguments in swapped order." },
+    docs: {
+      description: "Disallow a call that passes two same-typed arguments in swapped order.",
+      examples: [
+        {
+          before:
+            'export function roundDir(campaign: string, round: string) {\n  return join(".ana/d2", campaign, "rounds", round);\n}\nexport function logOf(campaign: string, round: string) {\n  return join(roundDir(round, campaign), "trail.jsonl");\n}',
+          after:
+            'export function roundDir(campaign: string, round: string) {\n  return join(".ana/d2", campaign, "rounds", round);\n}\nexport function logOf(campaign: string, round: string) {\n  return join(roundDir(campaign, round), "trail.jsonl");\n}',
+        },
+        {
+          before:
+            "export const marginOf = (wins: number, losses: number) => wins - losses;\nexport const report = (wins: number, losses: number) => `margin ${String(marginOf(losses, wins))}`;",
+          after:
+            "export const marginOf = (wins: number, losses: number) => wins - losses;\nexport const report = (wins: number, losses: number) => `margin ${String(marginOf(wins, losses))}`;",
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       transposed:
         "`{{fn}}({{first}}, …, {{second}})` passes `{{first}}` where `{{fn}}` declares `{{second}}` and `{{second}}` where it declares `{{first}}`. Both are `{{type}}`, so the compiler accepts the swap.",

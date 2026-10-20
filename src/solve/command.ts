@@ -121,8 +121,7 @@ interface WalledOptions {
 
 const SHELL = createLocalBashOperations({ shellPath: "/bin/sh" });
 
-/** How long before a solve's end its commands are cut, so that a result still reaches the solver:
- *  a minute, and an eighth of a solve shorter than eight. */
+/** The solve's reserve for command results: a minute, and an eighth of a solve shorter than eight. */
 export function reserveSeconds(wallSeconds: number): number {
   return Math.min(60, Math.floor(wallSeconds / 8));
 }
@@ -134,8 +133,8 @@ export function usedSeconds(clock: SolveClock | undefined, now = performance.now
 }
 
 /**
- * How long a command that starts now may run: the condition's limits, and no longer than the solve
- * has left before its reserve. `nearEnd` says the solve's end set it. Under the limits, `asked` is
+ * How long a command that starts now may run: the condition's limits, shortened to the whole seconds
+ * left before its reserve only when positive. `nearEnd` says that shortened it. `asked` is
  * what was named, floored and at least 1 s, and a named value only raises the default, up to the
  * maximum, as v1's Built shell held it.
  *

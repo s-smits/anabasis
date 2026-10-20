@@ -1,7 +1,7 @@
 # Which rules fix, and which only report
 
-Fifty-six rules are registered: thirty-nine `ana` and seventeen `anti-slop`, every one of them
-`error`. **Fourteen carry a fixer. Forty-two report and leave the repair to the author.**
+Fifty rules are registered: thirty-six `ana` and fourteen `anti-slop`, every one of them
+`error`. **Fourteen carry a fixer. Thirty-six report and leave the repair to the author.**
 
 That split is not an accident of effort, and it is not a backlog. This file says what a fixer has
 to be true of before it ships, which rules pass that test, which ones sit right on the edge and are
@@ -23,9 +23,9 @@ All four, not three.
 2. **A wrong fix fails loudly, at the line the fix wrote.** `require-captured-json-runtime` and
    `require-meta-runtime-import` both write an import that might be missing a member. That is
    admissible because the miss is a compile error naming the member and the module, on the line
-   the fixer just wrote. `no-alias-restating-return` would delete an annotation and let the return
-   infer, and an inferred type that is quietly wider than the annotated one compiles. Silence is
-   the disqualifier, not risk.
+   the fixer just wrote. A fix that deleted an annotation and let the return infer would not be:
+   an inferred type that is quietly wider than the annotated one compiles. Silence is the
+   disqualifier, not risk.
 
 3. **The fixed form is the form the repository already writes.** Measured against the tree, not
    against taste. A fixer is the fastest way to push a house style the house does not have: run it
@@ -65,7 +65,7 @@ source file, where the constant belongs is the whole question, and a fixer would
 local one every time. So the fixer runs in tests and nowhere else — the same rule, two scopes, one
 of them a fact and one a decision.
 
-## On the bridge: nine where the edit is available and refused
+## On the bridge: five where the edit is available and refused
 
 These are the ones worth naming, because in every case a fixer is mechanically within reach and the
 refusal is a judgement. A future author who writes one of these is not solving an open problem;
@@ -76,16 +76,13 @@ they are reversing a decision, and should say so.
 | `no-inline-schema-literal` | hoist the literal to module scope | the rename and the sentence are the value, and the hoist is the only occasion for them; condition 4 |
 | `no-single-caller-helper` | substitute the arguments into the one-`return` body | **written and thrown away.** Mechanically fine — the ranges come from scope analysis — but the result is a longer expression where the author wanted a statement, at three hundred sites. It would have produced exactly the shape the rule exists to remove |
 | `require-safety-comment-for-type-assertion` | insert a `SAFETY:` comment | the comment's content is the entire requirement; a generated one satisfies the rule and proves nothing, which is worse than the missing comment |
-| `no-property-read-on-function` | delete the read | the read evaluates to `undefined`, so it is evidence a rename went wrong; deleting it deletes the evidence |
-| `no-reflect-get`, `no-reflect-apply` | rewrite to `obj[key]` / `fn(...args)` | that keeps the dynamic dispatch and loses the finding. The repair is typed access or a parse, which is the question the reflection dodged |
 | `no-conditional-empty-object-spread` | emit the field as `null` | absent or present-and-null is the contract, and the spread is where that decision was avoided |
-| `no-alias-restating-return` | delete the alias and the annotation | condition 2: an inferred return is not the annotated one, and a plugin that cannot see types cannot tell the two apart. The pass that measured this rule watched a dropped annotation widen a narrowed `severity` back to `string` |
-| `no-array-filter-map` | rewrite to `flatMap` | condition 1 in the ordinary case and condition 3 at the edges: a callback reading its index, or one whose order matters, does not survive the rewrite, and the rule reads the callbacks well enough to ask the question and not well enough to answer it |
+| `no-alias-restating-return` | write the alias's body as the annotation and delete the alias | not written yet rather than refused. Until 20 October the message asked for `ReturnType<typeof f>`, whose only edit deleted the annotation, which condition 2 refuses: the pass that measured this rule watched a dropped annotation widen a narrowed `severity` back to `string`. The inline edit keeps the type, and no site in the tree has asked for it |
 
 `no-repeated-string-literal`'s source half belongs on this list too; it is above because the rule as
 a whole ships a fixer.
 
-## The rest: thirty-two where the rule does not hold the repair
+## The rest: thirty-one where the rule does not hold the repair
 
 Not borderline. In each of these the missing piece is information the rule has no access to, and
 every one of them says so in its own doc comment — `test/oxlint-rule-contract.test.ts` refuses a
@@ -93,10 +90,9 @@ rule that neither declares `fixable` nor writes the words. The groups below were
 those sentences on 2026-09-20 and three rules moved, because a group label had been standing in
 for a reason the rule states more precisely itself.
 
-- **The repair is a type** (10): `unproven-unknown-parameter`, `no-unknown-union`,
-  `no-unknown-returns`, `no-unknown-type-aliases`, `no-unsafe-dictionary-type`,
-  `no-known-value-widening`, `no-widen-then-assert`, `no-chained-type-assertions`,
-  `require-type-for-null-default`, `no-runtime-typeof`. The `unknown` or the widening is exactly
+- **The repair is a type** (8): `unproven-unknown-parameter`, `no-unknown-returns`,
+  `no-unknown-type-aliases`, `no-unsafe-dictionary-type`, `no-known-value-widening`, `no-widen-then-assert`, `no-chained-type-assertions`,
+  `no-runtime-typeof`. The `unknown` or the widening is exactly
   the work someone avoided; writing it is the finding. A plugin rule does not read the checker.
 - **The repair is a name** (4): `no-thrice-spelled-object`, `no-shape-in-symbol-names`,
   `no-positional-boolean-parameter`, `prefer-entries-over-keys-lookup`. Which two words name the
@@ -345,7 +341,7 @@ enforceable, because a clean lint no longer means what it says. **Fourteen is th
 under the four conditions, not a target that was missed.**
 
 A report with no fixer is a working outcome and the majority outcome: the author is told exactly
-what is wrong and makes the call. That is what these forty-two are for.
+what is wrong and makes the call. That is what these thirty-six are for.
 
 ## A fixer's finding has no answer
 

@@ -2,7 +2,7 @@
 import { describe, expect, it } from "bun:test";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
-import { turnOf } from "../tools/runs/keep.ts";
+import { nextLogin, seatModels, type Turn, turnOf } from "../tools/runs/keep.ts";
 import { allowedLogins, type Reading, room } from "../tools/runs/logins.ts";
 
 const NOW = Date.parse("2026-10-15T12:00:00.000Z");
@@ -74,5 +74,42 @@ describe("the login a run moves to", () => {
     expect(allowedLogins(env)).toEqual(["2", "3", "10"]);
     expect(allowedLogins({ ...env, ANA_LOGINS: " 3, 4 ," })).toEqual(["3", "4"]);
     expect(allowedLogins({ ...env, ANA_LOGINS: "" })).toEqual(["2", "3", "10"]);
+  });
+});
+
+describe("the login a run goes on with", () => {
+  const claude = ["--builder", "claude/claude-opus-5-5", "--solver", "claude/claude-opus-5-5"];
+  const codex = ["--builder", "openai-codex/gpt-6.1-sol", "--solver", "openai-codex/gpt-6.1-sol"];
+  const goOn = (
+    turn: Turn,
+    current: string | undefined,
+    models: readonly string[],
+    { spent = [], roomy = [] }: { spent?: readonly string[]; roomy?: readonly string[] } = {},
+  ) => nextLogin(turn, { current, spent: new Set(spent), models }, async () => roomy, ["3", "1", "2"]);
+
+  it("goes on with a dead run on its own login, and a Claude run waits once its own is spent and none has room", async () => {
+    expect(await goOn("continue", "2", claude)).toBe("2");
+    expect(await goOn("continue", "2", claude, { spent: ["2"] })).toBeNull();
+    expect(await goOn("move", "2", claude, { spent: ["2"], roomy: ["1"] })).toBe("1");
+  });
+
+  it("goes on with a run no Claude seat runs in whatever room the logins have", async () => {
+    expect(await goOn("continue", undefined, codex)).toBe("3");
+    expect(await goOn("continue", "2", codex, { spent: ["2"] })).toBe("2");
+    expect(await goOn("continue", undefined, claude)).toBeNull();
+  });
+
+  it("reads a Claude seat from a flag joined by its sign, and from the opening the flags leave it to", async () => {
+    const codexOpening = event("campaign.opened", {
+      seats: { builder: { model: "openai-codex/gpt-6.1-sol", effort: "high" } },
+    });
+    const claudeOpening = event("campaign.opened", {
+      seats: { builder: { model: "claude/claude-opus-5-5", effort: "high" } },
+    });
+    expect(
+      await goOn("continue", undefined, seatModels([codexOpening], ["--builder=claude/claude-opus-5-5"])),
+    ).toBeNull();
+    expect(await goOn("continue", undefined, seatModels([claudeOpening], ["--budget", "800"]))).toBeNull();
+    expect(await goOn("continue", undefined, seatModels([codexOpening], ["--budget", "800"]))).toBe("3");
   });
 });

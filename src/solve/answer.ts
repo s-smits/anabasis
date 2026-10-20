@@ -86,7 +86,7 @@ function answerIn(bytes: Buffer, contract: Contract): { answer: JsonValue } | { 
   } catch (error) {
     return { fault: `is not JSON: ${errorMessage(error)}` };
   }
-  const fault = answerFormatFault(contract, answer);
+  const fault = answerFormatFault(contract.answerFormat, answer);
   return fault === null ? { answer } : { fault: `does not follow the answer format: ${fault}` };
 }
 

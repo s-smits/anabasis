@@ -285,13 +285,13 @@ describe("a session that drafts an exam", () => {
 });
 
 /** A reference solve launcher for `try_task` whose every solve passes, measuring what `measure`
- *  says of the task and the solve's place among all it ran. */
+ *  says of the task and the solve's place among the task's own. */
 function measuredProbe(log: string, measure: (task: TaskPackage, nth: number) => number | undefined) {
-  let solves = 0;
+  const solved: string[] = [];
   return async (task: TaskPackage, session: string) => {
-    const objective = measure(task, solves);
-    solves += 1;
-    const solve = `s-${String(solves)}`;
+    const objective = measure(task, solved.filter((each) => each === taskVersion(task)).length);
+    solved.push(taskVersion(task));
+    const solve = `s-${String(solved.length)}`;
     const ran = condition(taskVersion(task), "h-reference");
     append(log, "condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
     append(log, "solve.started", { solve, condition: conditionId(ran), comparison: session });
@@ -575,9 +575,9 @@ describe("a session that writes tasks", () => {
       "Refused by check-product.",
     ]);
     const proved = [s.versionOf("x-1-001", 7), s.versionOf("x-1-003", 9), s.versionOf("x-1-004", 10)];
-    expect(s.of("task.feasible")).toEqual(proved.map((version) => ({ version, session: "x-1" })));
-    // No answer enters the log but in the session's own trace.
-    expect(JSON.stringify(s.of("task.feasible"))).not.toContain('"answer":"42"');
+    expect(s.of("task.feasible")).toEqual(
+      proved.map((version) => ({ version, session: "x-1", answer: GOOD })),
+    );
     expect(heard(read(s.log), writtenTasks(read(s.log))).lines[0]).toBe(
       "x-1-001 (fixture): not yet compared; an answer on record",
     );
@@ -608,14 +608,13 @@ describe("a session that writes tasks", () => {
     const kept = (measure: number) => ({
       version,
       session: "x-1",
+      answer: GOOD,
       objective: { quantity: "mass", direction: "lower", measure },
     });
     expect(declared.of("task.feasible")).toEqual([kept(3.25), kept(2.25)]);
-    // A measure is a fact of the answer's; the event holds no answer.
-    expect(JSON.stringify(declared.of("task.feasible"))).not.toContain('"answer":"42"');
     // The verifier measured, but the contract declares no objective: the record is the version.
     const undeclared = await run(false);
-    expect(undeclared.of("task.feasible")).toEqual([{ version, session: "x-1" }]);
+    expect(undeclared.of("task.feasible")).toEqual([{ version, session: "x-1", answer: GOOD }]);
     // The Examiner is told each measure the record keeps, and none where none is kept (19 October).
     const told = (s: typeof declared) => s.of(CALLED).flatMap(({ text }) => (isString(text) ? [text] : []));
     expect(told(declared).filter((line) => line.includes("By the objective it measures"))).toHaveLength(2);
@@ -738,7 +737,11 @@ describe("a session that writes tasks", () => {
       expect(examined.ended).toBe("finished");
       expect(checked).toEqual([...order.checked]);
       const versions = { "e-1": packed, "x-1-001": s.versionOf("x-1-001", 7) };
-      const proved = order.proved.map((id) => ({ version: versions[id], session: "x-1" }));
+      const proved = order.proved.map((id) => ({
+        version: versions[id],
+        session: "x-1",
+        answer: id === "e-1" ? { answer: "12", unit: "N" } : GOOD,
+      }));
       expect(s.of("task.feasible")).toEqual(proved);
       expect(poolOf(read(s.log)).feasible).toEqual(new Set(proved.map(({ version }) => version)));
       const texts = s.of(CALLED).map(({ text }) => text);
@@ -832,7 +835,7 @@ describe("a session that writes tasks", () => {
     expect(gates.map(({ reference }) => asRecord(reference)?.valid)).toEqual([0, 0, 0, 0, 3, 0]);
     // Each proved one is on record as feasible, by the author's answer checked under its own id.
     expect(inOrder(s.of("task.feasible"), proposed)).toEqual(
-      [first, second, third, fourth].map((version) => ({ version, session: "x-1" })),
+      [first, second, third, fourth].map((version) => ({ version, session: "x-1", answer: GOOD })),
     );
     expect(inOrder(poolOf(read(s.log)).scorable, proposed, String)).toEqual([first, second, third, fourth]);
     // The Examiner hears the count of a held task's valid solves; the rule is the system prompt's.
@@ -844,6 +847,43 @@ describe("a session that writes tasks", () => {
       ["x-1-005", "refused", 3],
       ["x-1-006", "held out", 0],
     ]);
+  });
+
+  it("solves a draft one solve at a time, and stops at the first that leaves the reference room", async () => {
+    // Base 4 fails beside its author's passing answer: room at the first solve. Base 2 fails, then
+    // passes: room at the second. Base 5 passes every time and has no objective: three, refused.
+    // Until 20 October all three solves ran at once: in five recorded campaigns, 285 of the gates'
+    // 912 solves came after the reading that decided their draft.
+    const seeded = new Map<number, readonly Ending[]>([
+      [4, [REJECTED, REJECTED, REJECTED]],
+      [2, [REJECTED, PASS, PASS]],
+      [5, [PASS, PASS, PASS]],
+    ]);
+    const s = seat("write", [tried(4), call("try_task", { tasks: [4, 2, 5].map(instance) }), finish, finish]);
+    const asked: number[] = [];
+    const probe = async (task: TaskPackage) => {
+      const base = Number(asRecord(task.publicInput)?.base);
+      const ending = seeded.get(base)?.[asked.filter((each) => each === base).length] ?? PASS;
+      asked.push(base);
+      return ending;
+    };
+    const examined = await examine({ ...s.request, verify, limits: { ...s.request.limits, puts: 3 }, probe });
+    const versions = [4, 2, 5].map((base, nth) => s.versionOf(`x-1-00${String(nth + 1)}`, base));
+    expect(inOrder(examined.held, versions, String)).toEqual(versions.slice(0, 2));
+    expect([4, 2, 5].map((base) => asked.filter((each) => each === base).length)).toEqual([1, 2, 3]);
+    expect(inOrder(s.of(GATE), versions).map(({ reference }) => reference)).toMatchObject([
+      { valid: 0, solves: 1, ran: 1 },
+      { valid: 1, solves: 2, ran: 2 },
+      { valid: 3, solves: 3, ran: 3 },
+    ]);
+    // Each is told of the solves that ran, and no more.
+    expect(
+      s
+        .of(CALLED)
+        .flatMap(({ text: said }) => (isString(said) ? said.split("\n") : []))
+        .filter((line) => / validly in /.test(line))
+        .map((line) => / validly in (\d+ of \d+) solves/.exec(line)?.[1]),
+    ).toEqual(expect.arrayContaining(["0 of 1", "1 of 2", "3 of 3"]));
   });
 
   it("starts no solve of a draft where the campaign's budget holds no reserve for all three", async () => {
@@ -924,11 +964,17 @@ describe("a session that writes tasks", () => {
     ]);
     // Its cost a task, on the gate's event; the solves are the session's, named by it, and no
     // comparison's: a comparison counts the solves whose start names it (`pairsOf`).
-    expect(inOrder(s.of(GATE), versions).map(({ reference }) => reference)).toEqual(
-      [1, 2, 0, 3, 1, 2].map((valid, nth) => ({ valid, solves: nth >= 4 ? 2 : 3, billed: 1.5 })),
-    );
-    expect(solvesIn(read(s.log)).map(({ start }) => start.comparison)).toEqual(Array(18).fill("x-1"));
-    expect(billedParts(read(s.log), "x-1")).toEqual({ session: 0, comparison: 9 });
+    // A pass and a fail leave room at the second solve, and the gate stops there.
+    expect(inOrder(s.of(GATE), versions).map(({ reference }) => reference)).toEqual([
+      { valid: 1, solves: 2, ran: 2, billed: 1 },
+      { valid: 2, solves: 3, ran: 3, billed: 1.5 },
+      { valid: 0, solves: 3, ran: 3, billed: 1.5 },
+      { valid: 3, solves: 3, ran: 3, billed: 1.5 },
+      { valid: 1, solves: 2, ran: 2, billed: 1 },
+      { valid: 2, solves: 2, ran: 3, billed: 1.5 },
+    ]);
+    expect(solvesIn(read(s.log)).map(({ start }) => start.comparison)).toEqual(Array(16).fill("x-1"));
+    expect(billedParts(read(s.log), "x-1")).toEqual({ session: 0, comparison: 8 });
     // None is part of a task's answers or a tally; a valid one is a witness, so its task is
     // feasible and nothing more.
     expect(ranUnder(read(s.log))).toEqual([]);
@@ -951,7 +997,7 @@ describe("a session that writes tasks", () => {
     const s = seat("write", [call("try_task", { tasks: [instance(2), instance(3)] }), finish, finish]);
     const probe = measuredProbe(
       s.log,
-      (task, nth) => measures.get(Number(asRecord(task.publicInput)?.base))?.[nth % 3],
+      (task, nth) => measures.get(Number(asRecord(task.publicInput)?.base))?.[nth],
     );
     const contract = {
       ...s.request.contract,
@@ -982,7 +1028,7 @@ describe("a session that writes tasks", () => {
     ]);
     const steps = [tried(2), tried(3), call("try_task", { tasks: [instance(2), instance(3), instance(4)] })];
     const s = seat("write", [...steps, finish, finish]);
-    const probe = measuredProbe(s.log, (_task, nth) => [10, 10, 10 + 1e-9][nth % 3]);
+    const probe = measuredProbe(s.log, (_task, nth) => [10, 10, 10 + 1e-9][nth]);
     const examined = await examine({
       ...s.request,
       contract: { ...s.request.contract, objective: { quantity: "the mass", direction: "lower" } },
@@ -1005,15 +1051,18 @@ describe("a session that writes tasks", () => {
     expect(new Set(examined.refused)).toEqual(new Set([within, unproved]));
     // The author's measure is on record for the held task alone, where a comparison reads it.
     expect(poolOf(read(s.log)).bests).toEqual(new Map([[better, 9]]));
-    // Each draft's line tells the reference's measures and, where it tried one, its own.
+    // Each draft's line tells the reference's measures and, where it tried one, its own: the
+    // better one at the first solve, after which the gate stops.
     const lines = s.of(CALLED).flatMap(({ text: said }) => (isString(said) ? said.split("\n") : []));
-    expect(lines.find((line) => line.startsWith("x-1-001: "))).toContain("10, 10, 10");
-    expect(lines.find((line) => line.startsWith("x-1-001: "))).toContain("try_answer on it 9");
+    expect(lines.find((line) => line.startsWith("x-1-001: "))).toContain(
+      "1 of 1 solves, its valid answers measuring 10, and your answer that passed try_answer on it 9",
+    );
+    expect(lines.find((line) => line.startsWith("x-1-002: "))).toContain("measuring 10, 10, 10");
     expect(lines.find((line) => line.startsWith("x-1-003: "))).not.toContain("try_answer on it");
   });
 
   it("ends at its wall with no solve of the reference harness left running, and starts none after it", async () => {
-    // Both instances of the call are gated together, so the wall finds six solves running.
+    // Both instances of the call are gated together, a solve at a time, so the wall finds two running.
     const s = seat("write", [call("try_task", { tasks: [instance(2), instance(3)] }), finish, finish]);
     const running = new Set<string>();
     // Each solve would pass long after the wall, unless the kill a comparison's solves take
@@ -1042,7 +1091,7 @@ describe("a session that writes tasks", () => {
     expect(performance.now() - started).toBeLessThan(4_000);
     expect(running.size).toBe(0);
     expect(s.of("solve.finished").map(({ ending }) => asRecord(ending)?.kind)).toEqual(
-      Array(6).fill("killed"),
+      Array(2).fill("killed"),
     );
     expect(s.of(GATE)).toMatchObject(
       Array(2).fill({ outcome: "refused", reference: { valid: 0, solves: 0 } }),
@@ -1085,29 +1134,31 @@ describe("a session that writes tasks", () => {
 
   it("solves the instances of one call together, and bills each draft its own solves", async () => {
     const s = seat("write", [call("try_task", { tasks: [instance(2), instance(3)] }), finish, finish]);
-    // No solve ends until all six have started: gated one instance at a time, the call would wait
-    // on the first instance's solves for ever.
+    // No solve ends until both instances' first have started: gated one instance at a time, the
+    // call would wait on the first instance's solve for ever.
     let release = () => {};
     const together = new Promise<void>((settle) => {
       release = settle;
     });
+    const ended: number[] = [];
     const probe = async (task: TaskPackage, session: string) => {
       const base = Number(asRecord(task.publicInput)?.base);
       const solve = `t-${String(s.of("solve.started").length + 1)}`;
       const ran = condition(taskVersion(task), "h-reference");
       append(s.log, "condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
       append(s.log, "solve.started", { solve, condition: conditionId(ran), comparison: session });
-      if (s.of("solve.started").length === 6) release();
+      if (s.of("solve.started").length === 2) release();
       await together;
-      const ending = base === 2 && solve !== "t-1" ? WALLED : PASS;
+      const ending = base === 2 && ended.includes(base) ? WALLED : PASS;
+      ended.push(base);
       append(s.log, "verdict", { solve, answer: { answer: SOLVER, unit: "N" } });
       append(s.log, "solve.finished", { solve, ending, billed: base === 2 ? 0.5 : 1 });
       return ending;
     };
     await examine({ ...s.request, limits: { ...s.request.limits, puts: 2 }, probe });
     expect(s.of(GATE).map(({ outcome, reference }) => [outcome, reference])).toEqual([
-      ["passed", { valid: 1, solves: 3, billed: 1.5 }],
-      ["refused", { valid: 3, solves: 3, billed: 3 }],
+      ["passed", { valid: 1, solves: 2, ran: 2, billed: 1 }],
+      ["refused", { valid: 3, solves: 3, ran: 3, billed: 3 }],
     ]);
     expect(s.sent[0]).toContain("returns at once");
   });
@@ -1375,13 +1426,16 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       reference: { valid: 2, solves: 2, billed: 0 },
     });
     gated("short", { outcome: "passed", reference: { valid: 1, solves: 2, billed: 0 } });
-    const told = heard(log.events, ["once", "twice", "short"].map(fixture));
+    // Since 20 October a gate stops at the first solve that leaves room, and says how many ran.
+    gated("early", { outcome: "passed", reference: { valid: 1, solves: 2, ran: 2, billed: 0 } });
+    const told = heard(log.events, ["once", "twice", "short", "early"].map(fixture));
     // Until 14 October a later session was told neither.
     // A valid solve at the gate shows an answer on record, which is then not said again.
     expect(told.lines).toEqual([
       line("once", "not yet compared; gate 1 of 3 valid"),
       line("twice", "not yet compared; gate 2 of 3 valid"),
       line("short", "not yet compared; gate 1 of 3 valid, 1 giving no reading"),
+      line("early", "not yet compared; gate 1 of 2 valid"),
     ]);
     // A draft the reference's solves refused is told by their count, the rule being the system
     // prompt's, and drafts refused alike share one line.

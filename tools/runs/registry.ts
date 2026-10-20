@@ -11,12 +11,19 @@
  * names its own way: `stop` by every tree's campaign of the name, `view` by this worktree's, and
  * `zip` and the pulse by what a name holds, which is a reader's convenience and no way to choose a
  * run to stop.
+ *
+ * A campaign that has left its worktree is in the archive, `data/runs/` of the main worktree
+ * (`ARCHIVE`): this machine's own under `here/`, put there by `runs retire`, and a copy of one a
+ * host holds under that host's name, put there by `runs fetch` and by `runs retire`. No verb acts
+ * on an archived campaign, which no process writes, and the readers read it (`readable`,
+ * `readNamed`): until 20 October a retired campaign went to the main worktree's `.ana/d2`, where
+ * every verb took it for a run, and was deleted 14 days after it closed.
  */
 import { EXAMINE } from "#src/builder/admission.ts";
 import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
 import { lastReports } from "#src/kernel/reports.ts";
 import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
-import { gitText, worktrees } from "#src/meta/git.ts";
+import { gitText, mainTree, worktrees } from "#src/meta/git.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { basename, join } from "#src/meta/path.ts";
@@ -31,6 +38,8 @@ export interface Run {
   readonly end: "comparison.reported" | "solve.finished";
   /** A copy of another campaign, made to rehearse on (`seed.ts`). */
   readonly seed?: boolean;
+  /** The machine an archived campaign came from: `here`, or a host `ANA_HOSTS` lists. */
+  readonly archived?: string;
 }
 
 /** A process that may write a log: its id, the worktree it runs in and its arguments. */
@@ -53,12 +62,42 @@ export const SEED_FILE = "seed.json";
  *  checkpoint and a Builder session alone. */
 const BY_HAND = ["tools/d2/round.ts", EXAMINE, "tools/d2/checkpoint.ts", "tools/d2/session.ts", DRAFT];
 /** This CLI, whose verbs start, read and stop runs; `rehearse` alone writes a log. */
-const CLI = "tools/runs/cli.ts";
+export const CLI = "tools/runs/cli.ts";
 const LIVE = "tools/m0/live-solve.ts";
 /** The flag a keeper runs under once it has left the verb that started it (`keep.ts`). */
 export const KEEPING = "--here";
 const CAMPAIGN_END = "comparison.reported";
+/** Where a worktree keeps its campaigns, one folder each. */
+export const CAMPAIGNS = join(".ana", "d2");
+/** The archive, under the main worktree, which git ignores. */
+export const ARCHIVE = join("data", "runs");
+/** The archive's folder of this machine's own campaigns, and the word `runs move` names it by. */
+export const HERE = "here";
 
+/** A path in the archive of the repository `repo` lies in. */
+export const archiveOf = (repo: string, ...parts: readonly string[]) =>
+  join(mainTree(repo), ARCHIVE, ...parts);
+
+/** A folder's names in one order on every host: Linux's file systems list them unsorted, and on 20
+ *  October the archive's campaigns read in another order there than on macOS. */
+const listed = (dir: string) => (existsSync(dir) ? readdirSync(dir).toSorted() : []);
+/** The campaign `name` whose folder lies in `dir`, read as `tree`'s. */
+const campaignIn = (dir: string, name: string, tree: string): Run => ({
+  name,
+  tree,
+  path: join(dir, name, LOG_FILE),
+  end: CAMPAIGN_END,
+  seed: existsSync(join(dir, name, SEED_FILE)),
+});
+/** The campaign `name` of the worktree `tree`, whether or not its log is there yet. */
+export const campaignOf = (tree: string, name: string) => campaignIn(join(tree, CAMPAIGNS), name, tree);
+/** The campaigns whose folders in `dir` hold a log, read as `tree`'s. */
+export const campaignsIn = (dir: string, tree: string): Run[] =>
+  listed(dir)
+    .filter((name) => existsSync(join(dir, name, LOG_FILE)))
+    .map((name) => campaignIn(dir, name, tree));
+/** Whether `run` is a campaign, as against a live solve. */
+export const isCampaign = (run: Run) => run.end === CAMPAIGN_END;
 const runsAs = (args: readonly string[], tools: readonly string[]) =>
   args.some((arg) => tools.some((tool) => arg.endsWith(tool)));
 
@@ -81,17 +120,11 @@ function writesCampaign(args: readonly string[]): boolean {
   return runsAs(args, [BUILDER, ...BY_HAND]);
 }
 
-/** Every run log in the repository's worktrees. */
-export function runs(): Run[] {
-  const trees = worktrees(runtimeProcess.cwd());
-  const listed = (dir: string) => (existsSync(dir) ? readdirSync(dir) : []);
+/** Every run log in the worktrees of the repository `repo` lies in. */
+export function runs(repo = runtimeProcess.cwd()): Run[] {
+  const trees = worktrees(repo);
   return trees.flatMap((tree) => [
-    ...listed(join(tree, ".ana", "d2")).flatMap((name) => {
-      const path = join(tree, ".ana", "d2", name, LOG_FILE);
-      if (!existsSync(path)) return [];
-      const seed = existsSync(join(tree, ".ana", "d2", name, SEED_FILE));
-      return [{ name, tree, path, end: CAMPAIGN_END, seed } satisfies Run];
-    }),
+    ...campaignsIn(join(tree, CAMPAIGNS), tree),
     ...listed(join(tree, ".ana", "live"))
       .filter((file) => file.endsWith(".jsonl"))
       .map((file) => ({
@@ -103,12 +136,59 @@ export function runs(): Run[] {
   ]);
 }
 
+/** Every campaign the archive holds, under the main worktree of the repository `repo` lies in. */
+export function archived(repo = runtimeProcess.cwd()): Run[] {
+  const main = mainTree(repo);
+  const root = archiveOf(main);
+  // `here` and a folder for each host; a dot file beside them (`.DS_Store`) holds no campaign.
+  return listed(root)
+    .filter((from) => !from.startsWith("."))
+    .flatMap((from) => campaignsIn(join(root, from), main).map((run) => ({ ...run, archived: from })));
+}
+
+/** Every run a name can be taken by: the worktrees' and the archive's. */
+export const everyRun = (repo = runtimeProcess.cwd()): Run[] => [...runs(repo), ...archived(repo)];
+
+/** The runs a reader reads: every worktree's, and one archived copy of each campaign whose name none
+ *  of those has, this machine's before a host's, so a page keys it and a zip stages it once. */
+export function readable(repo = runtimeProcess.cwd()): Run[] {
+  const held = runs(repo);
+  const names = new Set(held.map(({ name }) => name));
+  const copies = new Map<string, Run>();
+  for (const run of archived(repo)) {
+    if (!names.has(run.name) && (!copies.has(run.name) || run.archived === HERE)) copies.set(run.name, run);
+  }
+  return [...held, ...copies.values()];
+}
+
+/** The campaign `name` a reader reads: the one a worktree holds, else this machine's archived one,
+ *  else a host's copy, refused where two hosts' copies are all there is. */
+export function readNamed(name: string, repo = runtimeProcess.cwd()): Run {
+  const held = runs(repo);
+  if (held.some((run) => run.name === name && isCampaign(run))) return runNamed(name, held);
+  const copies = archived(repo).filter((run) => run.name === name);
+  const own = copies.find((run) => run.archived === HERE);
+  if (own !== undefined) return own;
+  const [only, other] = copies;
+  if (only === undefined) return runNamed(name, held);
+  if (other !== undefined) {
+    throw new Error(`${name} names copies from ${copies.map((run) => run.archived).join(" and from ")}`);
+  }
+  return only;
+}
+
 /** The one campaign named `name`, whole, among `among`: refused where none is and where two
- *  worktrees hold one. */
+ *  worktrees hold one. An archived campaign is none: no process writes it until `runs copy` brings
+ *  it back to a worktree. */
 export function runNamed(name: string, among: readonly Run[] = runs()): Run {
-  const found = among.filter((run) => run.name === name && run.end === CAMPAIGN_END);
+  const found = among.filter((run) => run.name === name && isCampaign(run));
   const [only, other] = found;
-  if (only === undefined) throw new Error(`no campaign log is named ${name} in this repository's worktrees`);
+  if (only === undefined) {
+    const back = archived().some((run) => run.name === name && run.archived === HERE)
+      ? `: it is archived, and runs copy ${name} --to <worktree> brings it back`
+      : "";
+    throw new Error(`no campaign log is named ${name} in this repository's worktrees${back}`);
+  }
   if (other !== undefined) {
     throw new Error(`${name} names a campaign in ${found.map(({ tree }) => tree).join(" and in ")}`);
   }

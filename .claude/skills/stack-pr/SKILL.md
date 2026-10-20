@@ -5,11 +5,10 @@ description: "Put a change on the one open stack of Anabasis v2 pull requests: f
 
 # Stack a pull request
 
-Until 11 October v2's work was one linear stack of open pull requests, each based on the branch
-below it; PRs #219 and #221 merged the whole of it into `main` that day. A new subject is now a
-pull request on `main`, and a stack forms again only where one pull request depends on another
-that has not merged: there "the top" below is that pull request's branch, and elsewhere it is
-`origin/main`. Several sessions write at once. This skill is the order of operations that keeps a
+Every open pull request sits on one chain based on `main` (`AGENTS.md`, section 11), and "the
+top" below is the end of that chain, or `origin/main` when nothing is open. Only a change of
+documentation alone that describes no open pull request goes on `main` beside it. Several sessions
+write at once. This skill is the order of operations that keeps a
 change on the stack without losing local work, without touching another session's branch, and
 with every commit able to stand alone.
 
@@ -41,8 +40,8 @@ reading from the start of the task is a lead, not a fact.
 - **A pull request with children takes new commits only.** Rewriting it moves every branch
   above it. Fold a fix into its own commit only while `stack.ts --branch` says nothing is
   stacked on the branch.
-- **Documentation and skills go on the stack too**, with the row of `docs/transfer.md` that
-  the change moves, in the same pull request.
+- **Skills go on the stack too**, and so does documentation that describes an open pull request,
+  with the row of `docs/transfer.md` that the change moves, in the same pull request.
 - **Work that names anything private never becomes a pull request**: which provider account a
   run used, a credential's path, a private address.
 
@@ -101,8 +100,9 @@ A subject line is an imperative sentence that states the finished change, as the
 why. It never narrates a revert.
 
 Keep the hooks enabled: `bun run hooks:install`, once per clone, and every worktree shares it.
-The pre-commit hook runs `bun run commit:check`, which refuses a placeholder author and a
-credential-shaped line and runs the formatter and the linter over the staged files; where the
+The pre-commit hook runs `bun run commit:check`, which refuses a reserved placeholder author email
+and scans staged additions for secrets. For staged JavaScript and TypeScript paths it checks
+format and lint against the working-tree bytes and prints an advisory slop report; where the
 hooks are not installed, run it by hand before each commit. Run `/simplify` over a source diff
 first: the repository's `.claude/skills/simplify`, with `bun run simplify` for the whole-tree
 scans. A whole-suite run rewrites
@@ -116,23 +116,26 @@ measure.
 
 `.github/workflows/ci.yml` runs on two platforms, because the isolation has two mechanisms and a
 suite passing on one platform says nothing of the other. The UI's gate has a macOS runner of its
-own, since with its browser tests and the suite one job passed its 45 minutes. Each step after the
-install runs whatever failed before it.
+own. CI runs on pushes to `main` and by `workflow_dispatch`; a pull request push starts no run.
+`bun run land -- <top> --merge` dispatches the top's run when none exists. After the root install,
+checks run despite earlier check failures; the UI build and tests both require its dependency
+install to pass.
 
 | job | steps |
 | --- | --- |
 | Darwin (macOS 15) | `bun install --frozen-lockfile`, `bun run ui:deps`, `bun run typecheck`, `bun run lint -- --strict`, `bun run format:check`, `bun run test` |
-| Darwin UI (macOS 15) | `bun install --frozen-lockfile`, `bun run ui:gate` |
-| Linux (Ubuntu 24.04 VM) | install `bubblewrap`, `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`, `bun install --frozen-lockfile`, `bun run test` |
+| Darwin UI (macOS 15) | `bun install --frozen-lockfile`, then separate steps for `bun run ui:deps`, `bun run ui:build` and `bun run test -- packages/ui/test` |
+| Linux (Ubuntu 24.04 VM) | install `bubblewrap`, `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`, `bun install --frozen-lockfile`, `bun run test`, `ANA_CLIMB=1 bun run test -- test/climb.test.ts` |
 
 `bun run gate` runs the two Darwin jobs' steps in one command, cheapest first; `-- --static` runs the
-tests one import from what HEAD changed in place of the suite. Judge every step by its exit code,
-never by its last lines.
+tests one import from what `HEAD` changed in place of the suite, and leaves out the UI's browser
+test files unless `HEAD` changed `packages/ui`. Unlike CI, the local gate stops at the first failed
+step. Judge every step by its exit code, never by its last lines.
 
 Where the runners do not run, each job is run by hand at the pushed head, and the body says
 where and with what counts. What that has cost so far:
 
-- **The suite needs a Git repository.** A copy made with a tarball fails four tests; `git init`
+- **The suite needs a Git repository.** Use `git init`
   and one commit in the copy, or a clone.
 - **The Linux job needs a VM, not a container**: bubblewrap makes user and mount namespaces.
   It also needs `zip`. In a VM with little memory the linter's allocator aborts under strict
@@ -147,21 +150,28 @@ and a flaky test is fixed at its cause in a pull request of its own.
 
 ## 7. Publish
 
-Push your own branch from its clean worktree. A new branch is a plain push. A rewrite of a
-branch that is already published takes a lease on the head you last saw:
+Push your own branch from its clean worktree, naming the explicit commit you intend to publish.
+A new branch needs no lease; a rewrite takes a lease on the remote head you last saw:
 
 ```sh
-git push --force-with-lease=refs/heads/<branch>:<old-sha> origin HEAD:refs/heads/<branch>
+git push origin <sha>:refs/heads/<branch>
+git push --force-with-lease=refs/heads/<branch>:<old-sha> origin <sha>:refs/heads/<branch>
 ```
 
-When a push is refused, do not try another spelling: hand the operator the one ready line.
-Never pass `--no-verify`, and never push to `main`.
+Over HTTPS, `git push origin HEAD:refs/heads/<branch>` lets the remote helper resolve `HEAD` again
+after the pre-push hook read it. A commit made in that tree while the gate ran can then go out
+unproved. An explicit commit keeps the published head equal to the one the hook read (20 October).
+When committing and pushing in one shell command, chain them with `&&`. With `;`, a failed commit
+still pushes the previous head (20 October).
+
+Read a refusal and correct its cause within your authority. Never pass `--no-verify`, and never
+push to `main`.
 
 The pre-push hook gates what the push adds, over a scratch checkout of each commit, so the
 working tree may hold anything. What it adds is the commits along each pushed head's first
 parents that no remote-tracking ref of the clone holds. Of those, a commit whose patch the
 replaced branch held is a replay a rebase carried, and `bun run land` proves it where it sits; a
-commit changing only `AGENTS.md`, `CLAUDE.md`, `README.md`, `docs/` or a `.md` under `.claude/` is
+commit changing only `AGENTS.md`, `README.md`, `docs/` or a `.md` under `.claude/` is
 documentation; every other gets the static steps and its nearby tests, and the lowest pushed head
 holding the newest of them the whole gate. A push of documentation alone gets `git diff --check`.
 A history brought in through a merge's other parent is counted and left alone, and the merge is
@@ -172,7 +182,7 @@ history as a branch of its own, fetch it as a remote first, so that its commits 
 A pass is remembered by content in the common Git directory, a whole pass by the commit's tree and a
 static one by its tree and its parent's, so a push its lease refused or a restack that kept every
 tree goes out again without paying twice, and after a failure the commits beneath the fix keep their
-passes. The key also holds the gate that ran, so a changed gate runs again on the same trees.
+passes. The key also holds the gate that ran and the Bun version, so either changing runs it again.
 `ANA_GATE_FRESH=1` ignores remembered passes for the commits selected for proof; a rebase's replays
 are still left out before that selection.
 A failure ends on one line naming the commit and the step, with its log. The fix goes into that
@@ -213,7 +223,8 @@ git rebase --onto <new parent head> <old parent head> <child branch>
 git merge-base --is-ancestor <new parent head> <child branch>    # must succeed
 ```
 
-Push every moved head in one `git push --atomic`, each with its own lease. Then check each
+Push every moved head in one `git push --atomic`, each with its own lease and explicit commit
+refspec (`<sha>:refs/heads/<branch>`). Then check each
 pull request lists only its own commits. A child that is another session's is that session's to
 replay: send its owner the exact `git rebase --onto` line and wait.
 
@@ -247,8 +258,11 @@ fix keep their passes.
 `--merge` dispatches `ci.yml` on the top's head before the proof when no run is there, and waits
 for it after; a failed run is not dispatched again. It then reads every head again, posts
 `ana/stack-gate` on each, and merges bottom-up, each pull request based on `main` just before its
-merge and pinned to its gated head. A merge GitHub refuses stops the landing, says which merged,
-and sets `ana/stack-gate` back to pending on every head left open. Test `land` against a fake `gh`
+merge and pinned to its gated head. A native GitHub stack merges whole through its asynchronous
+stack merge; the returned merge commit must have the top's tree. A refused merge stops the
+landing, says which merged, and sets `ana/stack-gate` back to pending on every head left open.
+An uncertain native merge leaves the statuses in place and asks for the trunk to be read before
+another landing. Test `land` against a fake `gh`
 only (`test/land.test.ts`); never against this repository.
 
 ## Report

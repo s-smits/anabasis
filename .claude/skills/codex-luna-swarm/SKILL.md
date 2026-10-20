@@ -1,6 +1,6 @@
 ---
 name: codex-luna-swarm
-description: "Launch and collect independent Codex sessions (gpt-6-luna at high, xhigh or max; gpt-6.1-sol at low to xhigh) for bounded parallel work, from Claude Code or from Codex: one manifest, one detached launcher, one report a session, a drain while it runs, and a retry of the sessions that ended without a report. Owns the Codex transport when another skill sets the questions, as whole-run-investigation does for its lanes. Use when the operator asks for Luna or Sol sessions, a swarm, many sessions, a reasoning effort, a Codex subagent from Claude Code, or a later collection of reports. Tell a request to launch from one to wait and collect."
+description: "Launch and collect independent Codex sessions (gpt-6-luna at high, xhigh or max; gpt-6.1-sol at low to xhigh) for bounded parallel work, from Claude Code or Codex: one manifest, one detached launcher, one report a session, a drain while it runs, and a retry of incomplete sessions. Owns the Codex transport when another skill sets the questions, as whole-run-investigation does for its lanes. Use when the operator asks for Luna or Sol sessions, a swarm, many sessions, a reasoning effort, a Codex subagent from Claude Code, or a later collection of reports. Distinguish a request to launch from one to wait and collect."
 ---
 
 # Codex Luna swarm
@@ -41,8 +41,19 @@ An explicit choice for this batch replaces the table. Keep an effort exactly as 
 raise it; Luna named without an effort runs at `max`. One launch runs one model at one effort, so
 mixed efforts are one launch a group. Do not split two useful questions into six to reach a Luna
 batch, and do not wait for earlier reports before starting the rest of a batch: the count follows
-the questions the evidence has not settled. From Claude Code at most two Claude subagents run at
-once (the operator, 4 September); Codex sessions do not count against that.
+the questions the evidence has not settled.
+
+The table is the batch policy, not a count-based choice in the launcher. Pass its flags explicitly.
+`MODELS` in `luna-sessions.ts` accepts these values:
+
+| model | accepted efforts | default effort |
+| --- | --- | --- |
+| `gpt-6-luna` | `high`, `xhigh`, `max` | `max` |
+| `gpt-6.1-sol` | `low`, `medium`, `high`, `xhigh` | `medium` |
+
+With neither flag the launcher uses `gpt-6-luna` at `max`, even for a small batch. Every launch
+uses the `priority` service tier (`DEFAULT_MODEL`, `SERVICE_TIER`). From Claude Code at most two
+Claude subagents run at once (the operator, 4 September); Codex sessions do not count against that.
 
 ## Where to stop
 
@@ -72,14 +83,14 @@ or "review this" is too weak; the same generic question numbered six times is on
 - **Read-only by default.** A write session owns named paths and is told others may be editing.
   Where fixes are asked for and nobody owns the paths, sessions propose and the launching session
   checks and makes the confirmed fixes. No coordinator, and no session starts another.
-- **Nothing the walls keep apart leaves in a report** that a Builder, an Examiner or the Referee
-  could read (`AGENTS.md`, section 4), and no prompt names an account or a credential path.
+- **Keep reports within the seat's permitted view** (`AGENTS.md`, sections 1 and 3), and keep
+  private details out of prompts and published text (section 10).
 
-Reports are research. Check every finding you act on against the source (`AGENTS.md`, section 11).
+Reports are research. Check every finding you act on as `AGENTS.md`, section 11, says.
 
 ## The manifest
 
-Write it with the Write tool, never a heredoc:
+Write it as a file, using a file-writing tool rather than shell interpolation:
 
 ```json
 {
@@ -116,12 +127,13 @@ Put the output directory somewhere the host does not clean, in the session's scr
 the evidence it serves, never under a campaign's folder. The first line of the log is
 `luna_sessions.started`; only then report the directory, the count, the model, the effort, the
 service tier, the active count and the pace as launched. The launcher finds Codex by `--codex-bin`,
-then the ChatGPT app's copy, then Homebrew's, then `codex` on the PATH. It needs Codex's own state,
-so a sandboxed shell asks once for the launcher command; each read-only session stays read-only.
+then the ChatGPT app's copy, then Homebrew's, then `codex` on the `PATH`. It needs Codex's own state;
+request shell access only if the sandbox refuses the authorised launch. Each read-only session
+stays read-only.
 
 ## Watch, drain, retry
 
-Follow the log with the Monitor tool: one `luna_session.finished` line a session, then
+Read the launcher's log: one `luna_session.finished` line a session, then
 `luna_sessions.completed`. Drain while it runs, not only at the end: `--drain <output dir>` prints
 what `reports.md` gained since the last drain, and sixty lanes of one v1 batch sat unread on
 29 September because nothing drained them. `reports.md` gains each report as its session settles,
@@ -129,14 +141,15 @@ so it holds every settled report even if the launcher dies.
 
 After `luna_sessions.completed`, drain once more and read `summary.json`: one result for each
 session asked for. A session that did not complete is missing work, and its result says why
-(`failureKind`: `spawn` or `rate-limit`). A transport warning in a session's stderr is not a
+(`failureKind`: `spawn`, `rate-limit`, or `null` when unclassified). A transport warning in stderr is not a
 failure: a fall-back from WebSocket to HTTPS may still complete. The start line proves the
 configuration asked for, not the model a remote session bound; where identity carries a claim,
 read the session's own event log before making it.
 
-Codex retries a request inside a session. A session that still ends without a report gets one more
-attempt from the launcher (`--retries`, at most 5): `codex exec resume` of its thread where Codex
-named one, a fresh start otherwise. After rate-limited sessions, let the launch settle, then run
+Codex retries a request inside a session. A session completes only when its last attempt exits 0
+and writes a report (`settle`, `luna-receipts.ts`). An incomplete session gets one further attempt
+by default (`--retries`, 0 to 5): `codex exec resume` of its thread where Codex named one, a fresh
+start otherwise. After rate-limited sessions, let the launch settle, then run
 again only what is missing, under the recorded model, effort and prompts:
 
 ```sh
@@ -153,11 +166,3 @@ A retry leaves `launch.json` and every completed result as they were, appends th
 checkout the investigation reads. Launch it as it stands. A lane that runs alone (5 and 19) is
 built, and launched, on its own after the reports it waits on. Then `wri.ts collect` reads the
 reports as from any seat.
-
-## Not carried from v1
-
-The native `luna_worker` agent and its configuration snippets (v2 configures no Codex agent and
-links no `.agents/skills`), the stop hook that held a parent Codex task open, the bare task list
-beside the manifest, the temporary output directory by default, the Markdown task-file parser,
-which no session used in the week to 11 October, and the Codex companion plugin's command, whose
-path is a user's own install.

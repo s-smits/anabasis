@@ -1,5 +1,6 @@
 import { defineRule } from "@oxlint/plugins";
 import type { ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { isNode, type KeyedNode as AnyNode, nodeFields } from "../../anti-slop/shared/ast-node.ts";
 import { containsUnknownType } from "../shared/unknown-type.ts";
@@ -200,6 +201,19 @@ export const unprovenUnknownParameterRule = defineRule({
     docs: {
       description:
         "Disallow `unknown` parameters except where the function proves the value: a type predicate, a narrowing guard, or a value handed to another prover.",
+      examples: [
+        {
+          before:
+            "function writeCompleted(path: string, value: unknown): void {\n  writeFileSync(path, capturedJsonStringify(value));\n}",
+          after:
+            "function writeCompleted(path: string, value: JsonValue): void {\n  writeFileSync(path, capturedJsonStringify(value));\n}",
+        },
+        {
+          before: "function taskIdOf(value: unknown): string {\n  return (value as Task).id;\n}",
+          after:
+            "function taskIdOf(value: unknown): string | null {\n  return isRecord(value) && isString(value.id) ? value.id : null;\n}",
+        },
+      ] satisfies RuleExample[],
     },
     messages: {
       unproven:

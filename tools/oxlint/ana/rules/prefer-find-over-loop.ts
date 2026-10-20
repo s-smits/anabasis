@@ -1,4 +1,6 @@
 import { defineRule, type ESTree, type Fix, type Fixer } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
+import { annotatedKind } from "../shared/annotated-kind.ts";
 import { holdsProse } from "../shared/masked.ts";
 import { asSubject, onlyStatement, statementBelow } from "../shared/statements.ts";
 
@@ -29,7 +31,9 @@ import { asSubject, onlyStatement, statementBelow } from "../shared/statements.t
  * which is not shorter and is not what the message promised. And a `Set` or a `Map` has no
  * `find` at all, even where the module walks one and asks it `.has(…)` two lines later. The rule
  * reads both from the file — a name declared `new Set(…)` or `new Map(…)`,
- * or asked `.has(…)` anywhere in the same module, is not an array — so that the admission test
+ * or asked `.has(…)` anywhere in the same module, or annotated as a `string`, a `Set`, a `Map`,
+ * an `Iterable` or an `IterableIterator` (20 October, when a `ReadonlySet` parameter was fixed
+ * into a `find` that did not compile), is not an array — so that the admission test
  * holds at every site it reports: the method is legal where the loop was, it is shorter, and no
  * other rule in this tree asks for a loop.
  *
@@ -66,6 +70,17 @@ interface Search {
 /** Node types whose body falling through to its end yields `undefined`, as `find` does. */
 const FUNCTION_BODIES = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression"]);
 
+/** What a binding may be annotated as and still be walked by `for…of` with no `find` to call. */
+const UNSEARCHABLE = new Set([
+  "string",
+  "Set",
+  "ReadonlySet",
+  "Map",
+  "ReadonlyMap",
+  "Iterable",
+  "IterableIterator",
+]);
+
 /** Whether the statement the loop falls through to already says what the method returns there. */
 function agrees(method: string, next: ESTree.Statement): boolean {
   if (next.type !== "ReturnStatement") return false;
@@ -82,7 +97,23 @@ export const preferFindOverLoopRule = defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
-    docs: { description: "A loop whose whole body is one conditional return is find, some or every." },
+    docs: {
+      description: "A loop whose whole body is one conditional return is find, some or every.",
+      examples: [
+        {
+          before:
+            "function runOf(rows: readonly Row[], runId: string): Row | undefined {\n  for (const row of rows) if (row.runId === runId) return row;\n}",
+          after:
+            "function runOf(rows: readonly Row[], runId: string): Row | undefined {\n  return rows.find((row) => row.runId === runId);\n}",
+        },
+        {
+          before:
+            "function allSettled(rows: readonly Row[]): boolean {\n  for (const row of rows) if (!row.settled) return false;\n  return true;\n}",
+          after:
+            "function allSettled(rows: readonly Row[]): boolean {\n  return rows.every((row) => row.settled);\n}",
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       writtenOut:
         "This loop is `{{subject}}.{{method}}(…)` written out. The platform owns the search; the loop only spells the predicate over three lines instead of one.",
@@ -159,6 +190,11 @@ export const preferFindOverLoopRule = defineRule({
         const declarator = node.parent;
         if (declarator.type !== "VariableDeclarator" || declarator.id.type !== "Identifier") return;
         keyed.add(declarator.id.name);
+      },
+
+      Identifier(node) {
+        const kind = annotatedKind(node);
+        if (kind !== null && UNSEARCHABLE.has(kind)) keyed.add(node.name);
       },
 
       MemberExpression(node) {

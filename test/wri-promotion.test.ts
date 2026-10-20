@@ -7,6 +7,7 @@ import { describe, expect, it } from "bun:test";
 import { type Condition, conditionId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
+import { keyIfNotNull } from "../src/meta/optional-key.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { climbTable, crossings, safeguardTriggers } from "../tools/wri/climb.ts";
 import { indexOf, type TRIGGERS } from "../tools/wri/folds.ts";
@@ -66,12 +67,12 @@ function campaign() {
     host: "host-1",
     side: "test",
   });
-  /** One solve of `task` under `harness` in `comparison`, its commands as given. */
+  /** One solve of `task` under `harness` in `comparison`, or in practice for null, its commands as given. */
   const solve = (
     id: string,
     task: string,
     harness: string,
-    comparison: string,
+    comparison: string | null,
     commands: readonly string[],
   ) => {
     const ran = condition(task, harness);
@@ -80,7 +81,7 @@ function campaign() {
       solve: id,
       condition: conditionId(ran),
       limits: { wallSeconds: 480 },
-      comparison,
+      ...keyIfNotNull("comparison", comparison),
     });
     for (const [turn, command] of commands.entries()) {
       put("solve.call", { solve: id, turn, tool: "bash", args: { command }, isError: false });
@@ -107,7 +108,12 @@ function promoted(byTable: boolean, after = false) {
   }
   put("task.state", { version: "t1", state: "released" });
   put("build.started", { session: "b-1", parent: "hbase", tasks: ["t1"] });
-  put("build.call", { session: "b-1", tool: "bash", args: { command: "make -C /tmp/pbuild install" } });
+  put("build.call", {
+    session: "b-1",
+    tool: "bash",
+    args: { command: "make -C /tmp/pbuild install" },
+    isError: false,
+  });
   put("build.finished", { session: "b-1", ended: "finished", harness: "hn", changed: true });
   const first = compare("g-1", "hbase", "hn", STEP);
   solve("r1", "v1", "hbase", "g-1", ["/tmp/phq-inst/bin/phreeqc in.pqi"]);
@@ -267,6 +273,7 @@ describe("lane 31: a promotion and the climb after it", () => {
     // 10 October, which a reader that folded the stretch alone refused as never proposed.
     put("task.state", { version: "v5", state: "released" });
     put("build.started", { session: "b-2", parent: "hn", tasks: ["t1", "v5"] });
+    for (const version of ["t1", "v5"]) run.solve(`q-${version}`, version, "hn", null, []);
     put("build.finished", { session: "b-2", ended: "finished", harness: "hm", changed: true });
     compare("g-4", "hn", "hm", STEP);
     expect(triggered(run.log)("AFTER THE PROMOTION")).toEqual([
@@ -289,6 +296,61 @@ describe("lane 31: a promotion and the climb after it", () => {
     expect(triggered(log)("SHARED TEMPORARY FOLDER")).toEqual([
       "2 solves by side: g-1 new hn 2; programs under it: /private/var/tmp/run/bin/phreeqc by p1; named by more than one solve or session: /var/tmp/run/notes.txt by 2",
     ]);
+  });
+
+  it.each(["/tmp", "/private/tmp", "/var/tmp", "/private/var/tmp"])(
+    "excludes every seat's private root under %s",
+    (temporary) => {
+      const { log, put } = campaign();
+      for (const [seat, by] of [
+        ["solve", { solve: "solver" }],
+        ["build", { session: "builder" }],
+        ["exam", { session: "examiner" }],
+      ] as const) {
+        put(`${seat}.call`, {
+          ...by,
+          tool: "bash",
+          args: { command: `cat ${temporary}/ana-built-bash/solve-${seat}/tmp/private` },
+          isError: false,
+        });
+      }
+      expect(triggered(log)("SHARED TEMPORARY FOLDER")).toEqual([]);
+    },
+  );
+
+  it("excludes denied calls from every seat", () => {
+    const { log, put } = campaign();
+    for (const [seat, by] of [
+      ["solve", { solve: "solver" }],
+      ["build", { session: "builder" }],
+      ["exam", { session: "examiner" }],
+    ] as const) {
+      put(`${seat}.call`, {
+        ...by,
+        tool: "bash",
+        args: { command: "cat /tmp/denied/bin/program" },
+        isError: true,
+        text: "Operation not permitted",
+      });
+    }
+    expect(triggered(log)("SHARED TEMPORARY FOLDER")).toEqual([]);
+  });
+
+  it("keeps a shared sibling path while excluding private paths in the same successful calls", () => {
+    const { log, put } = campaign();
+    const shared = "/tmp/ana-built-bash-tools/bin/program";
+    for (const seat of ["build", "exam"] as const) {
+      put(`${seat}.call`, {
+        session: seat,
+        tool: "bash",
+        args: { command: `cat /tmp/ana-built-bash/solve-${seat}/home/bin/private; ${shared}` },
+        isError: false,
+      });
+    }
+    const details = triggered(log)("SHARED TEMPORARY FOLDER");
+    expect(details).toHaveLength(1);
+    expect(details[0]).toContain(shared);
+    expect(details[0]).not.toContain("/ana-built-bash/");
   });
 
   it("fires none of its triggers on a campaign that promoted nothing and named no /tmp", () => {

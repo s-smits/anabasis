@@ -1,6 +1,7 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 
 import { subpathAlias } from "../shared/subpath-alias.ts";
+import type { RuleExample } from "../../rule-examples.ts";
 
 /**
  * An import that climbs three or more directories is spelled through its package's subpath alias:
@@ -29,7 +30,21 @@ export const preferSubpathImportRule = defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
-    docs: { description: "Spell an import that climbs three or more directories through its subpath alias." },
+    docs: {
+      description: "Spell an import that climbs three or more directories through its subpath alias.",
+      examples: [
+        {
+          before: 'import { join } from "../../../../src/meta/path.ts";',
+          after: 'import { join } from "#src/meta/path.ts";',
+          path: ".claude/skills/zip-run/scripts/pack.ts",
+        },
+        {
+          before: 'const { receipts } = await import("../../../../tools/runs/receipt.ts");',
+          after: 'const { receipts } = await import("#tools/runs/receipt.ts");',
+          path: ".claude/skills/zip-run/scripts/pack.ts",
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       climbing:
         'Import "{{alias}}" rather than "{{specifier}}": package.json maps it to the same file, and the alias reads the same from every depth.',

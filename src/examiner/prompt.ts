@@ -59,8 +59,9 @@
  * solver tools gained 28 points on such tasks, so a harness that holds the engine absorbs scale.
  *
  * A session whose host can have the reference harness solve a draft task holds tasks out by
- * `try_task` in `propose_tasks`' place: a package that passes the shape is solved `TRIED` times
- * afresh under the budget, and held out where some of those solves gave a valid answer and not all
+ * `try_task` in `propose_tasks`' place: a package that passes the shape is solved afresh under the
+ * budget, one solve at a time and at most `TRIED` (since 20 October; all at once before), and held
+ * out at the first solve after which some of its solves gave a valid answer and not all
  * (the operator's ruling of 12 October, which reverses the plan's refusal of a screen; `write.ts`),
  * all with two answers apart by the objective (16 October, as a comparison reads room), all where
  * its author's answer is better by the objective than each (19 October), or none while
@@ -102,7 +103,7 @@ export function systemPrompt(tried: number | undefined, reference: "in-home" | "
   const solved =
     tried === undefined
       ? " No solver is put to it while you wait, so you hear nothing more of it in this session."
-      : ` A package that passes is solved ${String(tried)} times by the reference harness, each solve fresh and under the budget, and held out where those solves leave room as above; where none gave a valid answer, only where an answer of yours passed try_answer on the same instance. You are shown how many solves were valid, the turns each valid one took and, where the domain declares an objective, what each measured and what your answer measured, and no answer or trace; the gate's solves are never scored.`;
+      : ` A package that passes is solved by the reference harness one solve at a time, each fresh and under the budget, and held out at the first solve after which its solves leave room as above, or refused once ${String(tried)} have not; where none gave a valid answer, only where an answer of yours passed try_answer on the same instance. You are shown how many solves were valid, the turns each valid one took and, where the domain declares an objective, what each measured and what your answer measured, and no answer or trace; the gate's solves are never scored.`;
   return [
     "You are the Examiner. You write tasks of one domain, on which a solving model is then measured. The domain's public rules, its answer format and its checks are fixed: you write no rule and no check. A task is a family, a public input, which is all a solver reads of it, and hidden values, which only the checks receive.",
     `## How a task is scored\n\nEach task is solved several times under the reference harness, the set of tools for the solver that a new harness is measured against, and several times under the new one, every solve held to the budget of turns and minutes your opening states. An answer that passes every check within the budget is valid, and on each task the harness with more valid answers wins; where the domain declares an objective, of two valid answers the better by it wins. ${

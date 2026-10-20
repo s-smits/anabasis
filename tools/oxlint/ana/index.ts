@@ -1,7 +1,6 @@
 import { eslintCompatPlugin } from "@oxlint/plugins";
 
 import { unprovenUnknownParameterRule } from "./rules/unproven-unknown-parameter.ts";
-import { noUnknownUnionRule } from "./rules/no-unknown-union.ts";
 import { requireCapturedJsonRuntimeRule } from "./rules/require-captured-json-runtime.ts";
 import { noHandReadArgvRule } from "./rules/no-hand-read-argv.ts";
 import { noHandSpelledGitRule } from "./rules/no-hand-spelled-git.ts";
@@ -12,7 +11,6 @@ import { noPositionalBooleanParameterRule } from "./rules/no-positional-boolean-
 import { preferIncludesOverSomeEqualsRule } from "./rules/prefer-includes-over-some-equals.ts";
 import { preferKeyIfDefinedRule } from "./rules/prefer-key-if-defined.ts";
 import { noHandRolledErrorRenderRule } from "./rules/no-hand-rolled-error-render.ts";
-import { requireTypeForNullDefaultRule } from "./rules/require-type-for-null-default.ts";
 import { preferSomeOverFilterLengthRule } from "./rules/prefer-some-over-filter-length.ts";
 import { noInlineSlopAnswerRule } from "./rules/no-inline-slop-answer.ts";
 
@@ -26,7 +24,6 @@ import { noInlineSchemaLiteralRule } from "./rules/no-inline-schema-literal.ts";
 import { noReactEffectRule } from "./rules/no-react-effect.ts";
 import { noLifetimeOutsideOwnerRule } from "./rules/no-lifetime-outside-owner.ts";
 import { noPassThroughWrapperRule } from "./rules/no-pass-through-wrapper.ts";
-import { noPropertyReadOnFunctionRule } from "./rules/no-property-read-on-function.ts";
 import { noRenamingTemporaryRule } from "./rules/no-renaming-temporary.ts";
 import { noRepeatedStringLiteralRule } from "./rules/no-repeated-string-literal.ts";
 import { noSideEffectInPredicateRule } from "./rules/no-side-effect-in-predicate.ts";
@@ -77,7 +74,6 @@ const anaPlugin = eslintCompatPlugin({
   meta: { name: "ana" },
   rules: {
     "unproven-unknown-parameter": unprovenUnknownParameterRule,
-    "no-unknown-union": noUnknownUnionRule,
     "require-captured-json-runtime": requireCapturedJsonRuntimeRule,
     "no-hand-read-argv": noHandReadArgvRule,
     "no-hand-spelled-git": noHandSpelledGitRule,
@@ -87,8 +83,6 @@ const anaPlugin = eslintCompatPlugin({
     "prefer-includes-over-some-equals": preferIncludesOverSomeEqualsRule,
     "prefer-key-if-defined": preferKeyIfDefinedRule,
     "no-hand-rolled-error-render": noHandRolledErrorRenderRule,
-    "require-type-for-null-default": requireTypeForNullDefaultRule,
-    "no-property-read-on-function": noPropertyReadOnFunctionRule,
     "prefer-some-over-filter-length": preferSomeOverFilterLengthRule,
     "no-alias-restating-return": noAliasRestatingReturnRule,
     "no-inline-block-reducer": noInlineBlockReducerRule,

@@ -7,12 +7,14 @@
  *     [--logs <dir>] [--since <date>] [--name <campaign>]... [--margin <n>] [--level <n>] [--totals]
  *
  * For each pair of harnesses a campaign compared, the tree's `pairings` reads each recorded
- * comparison's pairs again (`pairsReported`), at the recorded objective margin or at `--margin`,
- * and the tree's promotion rule (`promotes`, or `readTwice` where it exports none) is asked of the
+ * comparison's pairs again (`pairsReported`), under the tree's objective rule (`--margin` only
+ * changes pairs from trees that still carry one). The tree's promotion rule (`stepOf` now,
+ * `promotes` or `readTwice` on older or candidate trees) is asked of the
  * pair's readings in order, at the recorded level or at `--level`. Beside each promotion it prints
  * the readings it rests on, the A/A of those comparisons (the reference against itself on halves
  * of its own solves mirrored in time, read two-sided at half the level), any later reading of the
- * pair that lost more tasks than it won, and how many untied tasks it won in every pairing. For each
+ * pair that lost more tasks than it won, and how many untied tasks it won in every pairing. Since
+ * 19 October one step promotes; the trigger and joined attempts remain for older trees. For each
  * epoch that ended in a promotion it prints the hours and dollars, split into the Examiner's
  * sessions, the comparisons and the Builder's own time.
  *
@@ -201,17 +203,20 @@ function aaOf(tree: Tree, events: readonly LogEvent[], report: Reported, margin:
   }
   const rule = asRecord(objective);
   const direction = rule?.direction;
-  const recorded = isString(direction) && isNumber(rule?.margin) ? rule.margin : null;
+  const replayObjective =
+    direction === "lower" || direction === "higher"
+      ? ({
+          direction,
+          ...keyIfDefined("margin", isNumber(rule?.margin) ? (margin ?? rule.margin) : undefined),
+        } as const)
+      : undefined;
   const sides = {
     old,
     fresh: old,
     setting,
     comparison: report.session,
     halves: "mirrored" as const,
-    ...keyIfDefined(
-      "objective",
-      recorded === null || !isString(direction) ? undefined : { direction, margin: margin ?? recorded },
-    ),
+    ...keyIfDefined("objective", replayObjective),
   };
   const tasks = Array.isArray(versions) ? versions.filter(isString) : [];
   return tree.pairsOf(events.slice(0, report.index + 1), tasks, sides, solves / 2).map((pair) => {
@@ -230,15 +235,15 @@ function readingsOf(tree: Tree, events: readonly LogEvent[], asked: Asked, total
     if (!Array.isArray(frontier?.differences) || !isString(old) || !isString(fresh)) return [];
     const recorded = tree.pairsReported(events, report);
     if (asked.margin !== null && recorded.some((pair) => pair.objective !== undefined)) {
-      totals.marginless += recorded.some((pair) => isNumber(pair.objective?.margin)) ? 0 : 1;
+      totals.marginless += recorded.some((pair) => isNumber(asRecord(pair.objective)?.margin)) ? 0 : 1;
     }
-    // The margin asked, where a pair carries an objective to read it by.
+    // Old trees carry a margin; the current Paired type and pairing do not.
     const pairs = new Map(
       recorded.map((pair): [string, Paired] => [
         pair.task,
-        asked.margin === null || pair.objective === undefined
+        asked.margin === null || !isNumber(asRecord(pair.objective)?.margin) || pair.objective === undefined
           ? pair
-          : { ...pair, objective: { ...pair.objective, margin: asked.margin } },
+          : { ...pair, objective: { ...pair.objective, ...keyIfDefined("margin", asked.margin) } },
       ]),
     );
     const data = {
@@ -304,6 +309,11 @@ function shortfall(tree: Tree, attempt: readonly Reading[], place: "last" | "ear
   return (p: number): string => {
     const [first] = attempt;
     if (first === undefined) return "no reading";
+    if (tree.rule === "step") {
+      return tree.stepOf(first.data, first.level, first.trigger) === "regressed"
+        ? "retained tasks regressed"
+        : `short of ${String(first.level)}`;
+    }
     if (attempt.length === 1) {
       if (!tree.triggered(first.data, first.trigger)) return `bought no repeat at ${String(first.trigger)}`;
       return place === "last" ? "its repeat is owed and not read" : "its repeat was not taken";
@@ -464,7 +474,9 @@ function campaignLines(tree: Tree, found: Found, asked: Asked, totals: Totals): 
   }
   const [first] = readings;
   const terms =
-    first === undefined ? "no reading" : `level ${String(first.level)}, trigger ${String(first.trigger)}`;
+    first === undefined
+      ? "no reading"
+      : `level ${String(first.level)}${tree.rule === "step" ? "" : `, trigger ${String(first.trigger)}`}`;
   const time = epochLines(
     tree,
     events,
@@ -486,7 +498,7 @@ function totalLines(tree: Tree, asked: Asked, totals: Totals): string[] {
       : `median ${(median(values) ?? 0).toFixed(1)}${unit}, from ${Math.min(...values).toFixed(1)} to ${Math.max(...values).toFixed(1)}`;
   const margin =
     asked.margin === null
-      ? "the recorded margin"
+      ? "the tree's objective rule"
       : `margin ${String(asked.margin)}${totals.marginless > 0 ? ` (ignored in ${String(totals.marginless)} readings whose pairs carry no margin)` : ""}`;
   return [
     `totals, tree ${tree.path} at ${tree.commit}, rule ${tree.rule}, ${margin}, ${asked.level === null ? "the recorded level" : `level ${String(asked.level)}`}`,

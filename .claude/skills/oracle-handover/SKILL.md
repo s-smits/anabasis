@@ -29,21 +29,19 @@ turns on, and say in the document why each is there.
   measured v1 run and v1's own investigations carry it. Do not ship v1's run folders by the
   dozen: `docs/v1.md` and the plan's table are on GitHub.
 
-On 9 October eight of twelve recorded campaigns went into the bundle, and the four left out
-were named.
-
 ## Resolve what GitHub can serve
 
-`git fetch origin` first. A cited commit the Oracle cannot open sends it to rebuild the tree
-from prose, and it will guess. For a run, one command says each launch's commit, whether its tree
-was clean and which remote branches hold it:
+`git fetch origin` first. Check that each cited commit is available to the Oracle. For a run,
+one command says each launch's commit, whether its tree was clean and which remote branches or
+tags hold it:
 
 ```sh
 bun run runs source <name>
 ```
 
-For any other commit the document cites, `git branch -r --contains <sha>`. When a run's commit
-is on no remote branch, find a published commit with the same source,
+For any other commit the document cites, check remote branches and published tags. Fetch tags
+if needed and verify a tag is still advertised by `origin`; a local tag alone proves no publication.
+When a run's commit is unpublished, find a published commit with the same source,
 `git diff --stat <run's> <published> -- src tools vendor`, cite both and name the difference;
 when none matches, the patches carry it. A launch "with uncommitted changes" ran source its
 commit does not fully state: say so.
@@ -60,7 +58,8 @@ repository owns.
 | `notes/` | predictions with how each resolved, a briefing, tables you made | copied from the local notes |
 | `patches/` | every cited commit the Oracle cannot fetch | `git format-patch -o patches/<name> <range>` |
 
-**Light is the default**, since every level holds each run's whole log. Take `--medium` when
+**Choose light unless the question needs more**, since every level holds each run's whole log.
+The command requires an explicit level. Take `--medium` when
 the question is about the checker and `--verbose` only when the Oracle must read what a model
 was told. zip-run says what each level holds.
 
@@ -69,10 +68,9 @@ was told. zip-run says what each level holds.
 read the zip's `README.md` and `MANIFEST.json`: the runs listed must be the ones chosen, each
 with its worktree and commit. Tell the Oracle to tell campaigns apart by worktree.
 
-**Zip last.** Take the zip after the last event the document cites. On 9 October a bundle was
-taken at 13:57Z, and the two reports that decided its main doubt landed within the hour. A run
-with no ending in its log was still going: wait for `comparison.reported`, or say in the
-document, per campaign, where its log ends.
+**Zip last.** Take the zip after the last event the document cites. A run with no ending in its
+log may be live or stopped: wait for the relevant `comparison.reported`, or say in the document,
+per campaign, where its log ends.
 
 **Close it with one command.** Put the task document at the root as `REVIEW.md`, then:
 
@@ -82,9 +80,11 @@ bun .claude/skills/oracle-handover/scripts/bundle.ts <dir> [--max-mb 20]
 
 It puts every file that is not itself a zip to the repository's secret rules and refuses the
 bundle on a hit, zips the folder beside itself, tests the zip and prints its size and file
-count. Over 20 MB it refuses: the level was chosen wrong. A launch receipt inside a runs zip
-holds the path of the env file its run was given, never its contents; the path may name
-something private, so read the receipts before sending. Never copy an env file. Keep a copy of
+count. Its default cap is 20 MiB, overridden by `--max-mb`. If it refuses the size, reduce the
+evidence to what the question needs or use a larger authorised cap. Receipts from before
+11 October 2026 may hold the env file's path; current receipts set `envFile` to `null`
+(`keepReceipt`, `tools/d2/harness-builder.ts`). Read older receipts for private paths before
+sending. Never copy an env file. Keep a copy of
 the document in the local notes, so the next handover can see what was asked.
 
 ## Write the document as the task
@@ -126,7 +126,7 @@ The Oracle is an analyst on the operator's side. It may be sent logs, which hold
 verdicts and hidden values, because nothing it writes enters a run.
 
 The exposure runs the other way. An answer may quote a failing check or a task's value, so no
-Oracle answer reaches a Builder, an Examiner, a Referee or a Diagnoser, whole or paraphrased:
+Oracle answer reaches a Builder, an Examiner, a solver or a Referee, whole or paraphrased:
 not a prompt, the Starter, a harness, a task, a note a session leaves the next, or a lane packet
 of an investigation's isolated lanes.
 
@@ -142,5 +142,5 @@ of `REVIEW.md`, and one paragraph for the operator: attach the zip, paste the do
 message, and which commits to open first. Say what the bundle does not hold yet.
 
 When the answer comes back, keep it in the local notes. Check every claim that would change a
-decision against the log and the source before acting on it, and keep its disagreements and its
+decision as `AGENTS.md`, section 11, says before acting on it, and keep its disagreements and its
 omissions. An answer is neither a verdict nor a launch authority.

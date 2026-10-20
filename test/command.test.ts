@@ -88,8 +88,10 @@ describe("how long a command may run", () => {
     // Three seconds before the reserve the command is cut there, as the solver is told.
     expect(heldSeconds(undefined, ...at(480, 417))).toEqual({ asked: 300, seconds: 3, nearEnd: true });
     expect(heldSeconds(undefined, ...at(3, 0))).toEqual({ asked: 300, seconds: 3, nearEnd: true });
-    // Inside the reserve the limits stand: the wall cuts.
+    // With less than a whole second before the reserve, or inside it, the limits stand: the wall cuts.
+    expect(heldSeconds(undefined, ...at(480, 419.5))).toEqual({ asked: 300, seconds: 300, nearEnd: false });
     expect(heldSeconds(undefined, ...at(480, 420))).toEqual({ asked: 300, seconds: 300, nearEnd: false });
+    expect(heldSeconds(900, ...at(480, 421))).toEqual({ asked: 900, seconds: 900, nearEnd: false });
     expect(heldSeconds(undefined, ...at(480, 470))).toEqual({ asked: 300, seconds: 300, nearEnd: false });
   });
 });

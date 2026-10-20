@@ -322,6 +322,45 @@ describe("the whole-run investigation's reader", () => {
     expect(detail("NEVER CHECKED")).toBe("b-1: no check_harness call");
   });
 
+  it("counts as a session's practice a task released while it ran, and a solver's flag beside a pass as a flip", () => {
+    // Buffer-r3 on 20 October: b-1 opened on 1 task and practised 24 solves, of which the set of its
+    // opening counted 5; a flagged solve beside a passing one in g-3 was left out of the flips.
+    const ended = (
+      id: string,
+      task: string,
+      harness: string,
+      outcome: string,
+      made: JsonObject,
+    ): LogEvent[] => {
+      const ran = condition(task, harness);
+      return (
+        [
+          [CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) }],
+          [SOLVE_STARTED, { solve: id, condition: conditionId(ran), limits: { wallSeconds: 100 }, ...made }],
+          [SOLVE_FINISHED, { solve: id, ending: { outcome }, seconds: 2, responseModels: ["m-1"] }],
+        ] as const
+      ).map(([kind, data]) => ({ at: new Date(START).toISOString(), kind, data }));
+    };
+    const at = events.findIndex(({ kind }) => kind === REPORTED);
+    const { triggers } = overview([
+      ...events.slice(0, at),
+      ...ended("f3", "v3", "hc", "flagged", { comparison: "b-1" }),
+      ...events.slice(at),
+      ...(
+        [
+          [PROPOSED, { version: "t9" }],
+          [GATE, { version: "t9", gate: 1, outcome: "passed" }],
+          ["task.state", { version: "t9", state: "released" }],
+        ] as const
+      ).map(([kind, data]) => ({ at: new Date(START).toISOString(), kind, data })),
+      ...ended("p9", "t9", "hc", "pass", {}),
+    ]);
+    expect(triggers.map(({ name }) => name)).not.toContain("FINAL BYTES NEVER PRACTISED");
+    expect(triggers.find(({ name }) => name === "FLIPS")?.detail).toBe(
+      "b-1: 1 of 8 task and harness pairs both passed and failed",
+    );
+  });
+
   it("says an erred call is a non-zero exit, which a test reporting what is unmet gives by design", () => {
     // Buffer on 12 October: all 44 erred calls under the child were its own test's documented exit 1.
     const ran = condition("v1", "hc");
@@ -343,7 +382,7 @@ describe("the whole-run investigation's reader", () => {
     ]);
   });
 
-  it("names each check that let a reject control naming it through, by how many it refused", () => {
+  it("names each check that let a reject control naming it through, by how many it refused, and never the objective", () => {
     // Truss on 12 October: one check refused 9 of the 10 reject controls naming it, which read as none.
     const coverage = overview([
       ...events,
@@ -357,6 +396,8 @@ describe("the whole-run investigation's reader", () => {
           rows: [
             { id: "check-a", instrument: "external", passed: 3, refused: 1, caught: 10, named: 10 },
             { id: "check-b", instrument: "external", passed: 3, refused: 1, caught: 9, named: 10 },
+            // The objective's row, which measures and refuses nothing (buffer-r3, 20 October).
+            { id: "objective", instrument: "author", passed: 3, refused: 0, caught: 0, named: 0 },
           ],
         },
       },
@@ -912,6 +953,26 @@ describe("the reader of misses at a limit, by comparison and side", () => {
   };
   const refused = { outcome: "fail", kind: "rejected" };
 
+  it("keeps misses in an unreported comparison out of the outside count, and counts practice and admission misses in it", () => {
+    // buffer-171-opus: an admission solve names its Examiner session, and while only a null
+    // comparison was read as outside one the lane printed 2 of 3 misses at a limit for 20 of 77.
+    const log: LogEvent[] = [];
+    const put = appendTo(log);
+    put(COMPARISON_STARTED, { session: "g-1", old: "hp", fresh: "hc", tasks: [] });
+    const named = { reference: "g-1", new: "g-1", practice: undefined, admission: "x-1" };
+    for (const [id, under] of Object.entries(named)) {
+      put(SOLVE_STARTED, { solve: id, limits: { wallSeconds: 100 }, ...keyIfDefined("comparison", under) });
+      put(SOLVE_FINISHED, { solve: id, ending: refused, seconds: 97 });
+      if (under === "g-1") {
+        expect(overview(log).triggers.filter((trigger) => trigger.name === "MISSES AT A LIMIT")).toEqual([]);
+      }
+    }
+    const misses = overview(log).triggers.filter((trigger) => trigger.name === "MISSES AT A LIMIT");
+    expect(misses).toHaveLength(1);
+    expect(misses[0]?.detail.match(/\d+/g)).toEqual(["2", "2", "2"]);
+    expect(misses[0]?.detail).not.toContain("g-1");
+  });
+
   it("counts a miss on its turns, on its context or near its wall as at a limit, by side, with the bound told", () => {
     // recode on 10 October: 41 of 58 scored misses ended on turns, and a read of the wall saw none.
     expect(
@@ -1225,6 +1286,7 @@ describe("the reader of a harness that answered for its solver", () => {
       put("task.proposed", { version });
       put(GATE, { version, gate: 1, outcome: "passed" });
     }
+    put("task.state", { version: "t1", state: "released" });
     put("build.started", { session: "p-1", parent: "href", tasks: ["t1"] });
     for (const calls of practice) made("t1", "hy", calls, null);
     put("build.finished", { session: "p-1", ended: "finished", harness: "hy", changed: true });

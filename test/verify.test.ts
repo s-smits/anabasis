@@ -14,8 +14,11 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { join, relative } from "../src/meta/path.ts";
+import { killProcessGroupId } from "../src/meta/subprocess.ts";
 import { osIsolationSupport } from "../src/verify/os-isolation.ts";
 import { hostScratch } from "../src/verify/wall-policy.ts";
+
+const DETACHED_MARKER = `ana-verifier-deadline-child-${crypto.randomUUID()}`;
 
 const EVALUATOR = `import { readFileSync } from "node:fs";
 import { same } from "./reference/model.ts";
@@ -45,6 +48,23 @@ export const checks = {
     return true;
   },
   ran: async (req) => (await req.runtime.tools.run({ toolId: req.publicTask.publicInput.tool })).exitCode === 0,
+  deadline: async () => {
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        "-e",
+        "setTimeout(() => process.exit(75), 10000); setInterval(() => undefined, 1000); await new Promise(() => {})",
+        "${DETACHED_MARKER}",
+      ],
+      {
+        detached: true,
+        stdout: "ignore",
+        stderr: "inherit",
+      },
+    );
+    await child.exited;
+    return true;
+  },
 };
 `;
 
@@ -107,6 +127,7 @@ const BRIEF = {
         ["killed", "unlaunched", "unstarted", "refuses", "compiles"],
       ),
     },
+    { id: "deadline", execution: execution(["deadline"], [], []) },
   ],
 };
 
@@ -127,6 +148,36 @@ function tool(name: string, script: string): void {
   const path = join(root, "tools", "bin", name);
   writeFileSync(path, `#!/bin/sh\n${script}\n`);
   chmodSync(path, 0o755);
+}
+
+function markedProcesses(): string[] {
+  const result = Bun.spawnSync({
+    cmd: ["ps", "-axo", "pid=,command="],
+    stdout: "pipe",
+    stderr: "ignore",
+  });
+  if (result.exitCode !== 0) throw new Error(`ps failed with exit ${String(result.exitCode)}`);
+  return result.stdout
+    .toString()
+    .split("\n")
+    .filter((line) => line.includes(DETACHED_MARKER));
+}
+
+async function waitForMarkedProcess(present: boolean): Promise<void> {
+  const deadline = performance.now() + 2_000;
+  while (performance.now() < deadline) {
+    const found = markedProcesses().length > 0;
+    if (found === present) return;
+    await Bun.sleep(10);
+  }
+  throw new Error(`the detached verifier child was ${present ? "not started" : "not reaped"}`);
+}
+
+function killMarkedProcesses(): void {
+  for (const line of markedProcesses()) {
+    const pid = Number(line.trim().split(/\s+/, 1)[0]);
+    if (Number.isSafeInteger(pid)) killProcessGroupId(pid, "SIGKILL");
+  }
 }
 
 // The tree is written at load, because the suite below opens its verifier when it is collected.
@@ -240,6 +291,38 @@ describe.skipIf(!osIsolationSupport().ok)("the verifier", () => {
       kind: "non-result",
       reason: "host: sh is not on the verifier's tool path",
     });
+  });
+
+  it("cancels a check and its detached descendant before returning", async () => {
+    const controller = new AbortController();
+    const pending = verify(task("deadline"), {}, controller.signal);
+    try {
+      await waitForMarkedProcess(true);
+      controller.abort();
+      const outcome = await Promise.race([pending, Bun.sleep(3_000).then(() => null)]);
+      if (outcome === null) {
+        // Bound the old implementation, which ignored the signal and awaited the descendant's pipe.
+        killMarkedProcesses();
+        await waitForMarkedProcess(false);
+        await pending;
+        throw new Error("the verifier did not return after cancellation");
+      } else {
+        expect(outcome).toMatchObject({ kind: "non-result" });
+        expect(markedProcesses()).toEqual([]);
+      }
+    } finally {
+      controller.abort();
+      killMarkedProcesses();
+      await waitForMarkedProcess(false);
+    }
+    expect(await verify(task("plain", { target: 21 }), { value: 21 })).toEqual({ kind: "pass" });
+
+    const preAborted = new AbortController();
+    preAborted.abort();
+    await expect(verify(task("deadline"), {}, preAborted.signal)).resolves.toMatchObject({
+      kind: "non-result",
+    });
+    expect(markedProcesses()).toEqual([]);
   });
 
   it("refuses a check program with a symlink in it when it opens", () => {

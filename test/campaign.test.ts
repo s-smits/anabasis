@@ -31,7 +31,14 @@ import { openHarness } from "../src/solve/harness.ts";
 import { codeOf, starter, keptAs, LIMITS, openCampaign, packNamed } from "../tools/d2/campaign.ts";
 import { importCommand } from "../tools/d2/import.ts";
 import { settingNamed } from "../tools/d2/setting.ts";
-import { capNamed, packaged, ROUND_OPTIONS, roundCommand, reportLines } from "../tools/d2/round.ts";
+import {
+  capNamed,
+  packaged,
+  refereeNamed,
+  ROUND_OPTIONS,
+  roundCommand,
+  reportLines,
+} from "../tools/d2/round.ts";
 import { sessionCommand } from "../tools/d2/session.ts";
 
 const REPO = resolve(import.meta.dir, "..");
@@ -461,7 +468,7 @@ describe("a campaign", () => {
     mkdirSync(join(campaign.states, digest), { recursive: true });
     // The round as the operator runs it. It is refused before a seat is taken or a session starts.
     const round = (parent: string) => {
-      const given = { ...ARGS, session: "b-9", builder: "faux/none", cap: "100", parent };
+      const given = { ...ARGS, session: "b-9", builder: "faux/none", cap: "100", reviewer: SERVED, parent };
       const flags = Object.entries(given).flatMap(([flag, value]) => [`--${flag}`, value]);
       const ran = Bun.spawnSync({ cmd: [capturedExecPath, "tools/d2/round.ts", ...flags], cwd: REPO });
       return `${ran.stdout.toString()}${ran.stderr.toString()}`;
@@ -506,6 +513,18 @@ describe("a campaign", () => {
     // A simulation's seats are scripts, which are paid nothing, and may name none.
     expect(capNamed({ reserve: "10" }, "scripted")).toBeUndefined();
     expect(capNamed({ cap: "40", reserve: "5" }, "scripted")).toEqual({ dollars: 40, reserve: 5 });
+    // Nor does a paid comparison start without a Referee, whose ruling a rejection waits for; a
+    // simulation may name none.
+    await expect(
+      roundCommand([...flags, "--session", "z-8", "--builder", "faux/none", "--cap", "40"]),
+    ).rejects.toThrow("name --reviewer, the Referee that rules each rejection");
+    const unrefereed = Bun.spawnSync({
+      cmd: [capturedExecPath, "tools/d2/checkpoint.ts", "--id", "z-8", "--cap", "40", ...flags],
+      cwd: REPO,
+    });
+    expect(unrefereed.stderr.toString()).toContain("name --reviewer");
+    expect(() => refereeNamed({ reviewer: SERVED }, "paid")).not.toThrow();
+    expect(() => refereeNamed({}, "scripted")).not.toThrow();
     // What a report says of each harness by itself is printed in words: the tasks by how many of
     // their solves were valid. For the first round the reference harness is the starter, and
     // these lines are what its gate reads. Until 2026-10-11 the same solves were also read at
@@ -608,6 +627,8 @@ describe("a campaign", () => {
       // From the starter: an earlier case left the latest kept state one that no longer opens.
       "--cap",
       "100",
+      "--reviewer",
+      SERVED,
       "--parent",
       "starter",
     ];
@@ -651,12 +672,17 @@ describe("a campaign", () => {
     await expect(sessionCommand([...flags, "--builder", "faux/none"])).rejects.toThrow(
       "name --cap, the billed dollars",
     );
-    // A comparison's flags are none of a session's: it scores nothing and is read against nothing.
-    await expect(sessionCommand([...flags, "--cap", "100", "--solves", "2"])).rejects.toThrow("--solves");
-    // On a checker nobody has read its practice solves would be judged by checks nobody has seen.
-    await expect(sessionCommand([...flags, "--cap", "100", "--builder", SERVED])).rejects.toThrow(
-      "the campaign's checker has never been read: run tools/c/accept.ts",
+    await expect(sessionCommand([...flags, "--builder", "faux/none", "--cap", "100"])).rejects.toThrow(
+      "name --reviewer",
     );
+    // A comparison's flags are none of a session's: it scores nothing and is read against nothing.
+    await expect(
+      sessionCommand([...flags, "--cap", "100", "--reviewer", SERVED, "--solves", "2"]),
+    ).rejects.toThrow("--solves");
+    // On a checker nobody has read its practice solves would be judged by checks nobody has seen.
+    await expect(
+      sessionCommand([...flags, "--cap", "100", "--reviewer", SERVED, "--builder", SERVED]),
+    ).rejects.toThrow("the campaign's checker has never been read: run tools/c/accept.ts");
     // A rehearsal's seats are scripts: it is exempt, and is seated against the campaign's
     // reference harness, which is the starter until a promotion.
     const against: string[] = [];
@@ -689,7 +715,16 @@ describe("a campaign", () => {
     );
     // The command hands its --target to the one owner, which refuses every value that is no count
     // (`targetNamed`, `test/setting.test.ts`): zero would draw no task.
-    const ran = run("tools/d2/checkpoint.ts", "--id", "z-6", "--cap", "40", "--target=0");
+    const ran = run(
+      "tools/d2/checkpoint.ts",
+      "--id",
+      "z-6",
+      "--cap",
+      "40",
+      "--reviewer",
+      SERVED,
+      "--target=0",
+    );
     expect(ran.stderr.toString()).toContain(
       "--target 0: the tasks to score are a whole number of at least one",
     );
@@ -750,6 +785,8 @@ describe("a campaign", () => {
       ...Object.entries(ARGS).flatMap(([flag, value]) => [`--${flag}`, value]),
       "--cap",
       "100",
+      "--reviewer",
+      SERVED,
       "--parent",
       "starter",
       "--session",
@@ -790,6 +827,8 @@ describe("a campaign", () => {
       ...Object.entries(ARGS).flatMap(([flag, value]) => [`--${flag}`, value]),
       "--cap",
       "100",
+      "--reviewer",
+      SERVED,
       "--parent",
       "starter",
       "--session",
@@ -899,6 +938,8 @@ describe("a campaign", () => {
       ...Object.entries({ ...ARGS, name: EARLIER }).flatMap(([flag, value]) => [`--${flag}`, value]),
       "--cap",
       "100",
+      "--reviewer",
+      SERVED,
       "--parent",
       "starter",
       "--builder",

@@ -7,6 +7,7 @@ import {
   resolvedTypeMatches,
   type TypeAliasEnvironment,
 } from "../shared/type-alias-resolution.ts";
+import type { RuleExample } from "../../rule-examples.ts";
 
 /**
  * A `type` declaration that resolves to `unknown`, directly or through other aliases.
@@ -38,6 +39,16 @@ export const noUnknownTypeAliasesRule = defineRule({
     docs: {
       description:
         "Disallow type aliases whose resolved type is unknown; unknown must remain visible at an allowed boundary.",
+      examples: [
+        {
+          before: "type Payload = unknown;",
+          after: "type Payload = SolveStarted | SolveFinished;",
+        },
+        {
+          before: "type Answer = AnswerFile | unknown;",
+          after: "type Answer = AnswerFile | null;",
+        },
+      ] satisfies RuleExample[],
     },
     messages: {
       unknownAlias:

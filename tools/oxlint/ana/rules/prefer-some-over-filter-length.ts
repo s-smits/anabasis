@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 import { holdsProse } from "../shared/masked.ts";
 import { calls, writes } from "../shared/predicate-effect.ts";
 import { asSubject, methodCall } from "../shared/statements.ts";
@@ -33,7 +34,19 @@ export const preferSomeOverFilterLengthRule = defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
-    docs: { description: "A filtered length compared with zero is .some() or !.some()." },
+    docs: {
+      description: "A filtered length compared with zero is .some() or !.some().",
+      examples: [
+        {
+          before: 'const anyFailed = rows.filter((row) => row.outcome === "fail").length > 0;',
+          after: 'const anyFailed = rows.some((row) => row.outcome === "fail");',
+        },
+        {
+          before: "const unbilled = solves.filter((solve) => solve.billed > 0).length === 0;",
+          after: "const unbilled = !solves.some((solve) => solve.billed > 0);",
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       countedForNothing:
         "`.filter(…).length {{operator}} 0` builds an array to answer `{{answer}}`. `{{replacement}}` asks it directly and stops at the first match.",

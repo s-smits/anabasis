@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 
 /**
  * Rung 3 of the simplify skill's ladder, at the type level: the function already owns this
@@ -59,7 +60,22 @@ const INLINE_WIDTH = 60;
 export const noAliasRestatingReturnRule = defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: "A type alias used only as one function's return type belongs in that annotation." },
+    docs: {
+      description: "A type alias used only as one function's return type belongs in that annotation.",
+      examples: [
+        {
+          before:
+            "type Usage = Map<string, number>;\nfunction usageOf(rows: Row[]): Usage {\n  return new Map(rows.map((row) => [row.model, row.billed]));\n}",
+          after:
+            "function usageOf(rows: Row[]): Map<string, number> {\n  return new Map(rows.map((row) => [row.model, row.billed]));\n}",
+        },
+        {
+          before:
+            'type TurnSummary = Omit<Turn, "trace">;\nfunction summaryOf({ trace, ...rest }: Turn): TurnSummary {\n  return rest;\n}',
+          after: 'function summaryOf({ trace, ...rest }: Turn): Omit<Turn, "trace"> {\n  return rest;\n}',
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       restated:
         "`{{alias}}` is named once, as `{{owner}}`'s return type. Write its body as `{{owner}}`'s return annotation and delete the alias, so the shape is stated where it is decided; two spellings of one shape can disagree, and the compiler will blame the wrong one.",

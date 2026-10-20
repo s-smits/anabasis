@@ -1,5 +1,6 @@
 import { defineRule } from "@oxlint/plugins";
 import type { ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 
 type TypeAssertionExpression = ESTree.TSAsExpression | ESTree.TSTypeAssertion;
 
@@ -77,6 +78,16 @@ export const noChainedTypeAssertionsRule = defineRule({
     docs: {
       description:
         "Disallow chained TypeScript as and angle-bracket assertions, including parenthesized chains.",
+      examples: [
+        {
+          before: "const event = capturedJsonParse(line) as unknown as LogEvent;",
+          after: "const event = parseEvent(capturedJsonParse(line));",
+        },
+        {
+          before: "function taskOf(entry: Entry): Task {\n  return entry.payload as unknown as Task;\n}",
+          after: "function taskOf(entry: Entry): Task {\n  return parseTask(entry.payload);\n}",
+        },
+      ] satisfies RuleExample[],
     },
     messages: {
       chained:

@@ -7,6 +7,7 @@ import {
   resolveArrayBinding,
   unwrapArrayExpression,
 } from "../shared/array-method.ts";
+import type { RuleExample } from "../../rule-examples.ts";
 
 function enclosingReducer(node: ESTree.Node) {
   let { parent } = node;
@@ -104,6 +105,17 @@ export const noReduceAccumulatorCopyRule = defineRule({
     docs: {
       description:
         "Disallow copying growing reducer accumulators with Object.assign, Array.from, or array copy methods.",
+      examples: [
+        {
+          before:
+            "const byTask = pairs.reduce((acc, pair) => Object.assign({}, acc, { [pair.task]: pair }), {});",
+          after: "const byTask = new Map(pairs.map((pair) => [pair.task, pair]));",
+        },
+        {
+          before: "const ids = tasks.reduce((acc, task) => acc.concat(task.id), []);",
+          after: "const ids = tasks.map((task) => task.id);",
+        },
+      ] satisfies RuleExample[],
     },
     messages: {
       accumulatorCopy:

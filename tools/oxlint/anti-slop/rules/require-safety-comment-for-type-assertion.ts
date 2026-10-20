@@ -2,6 +2,7 @@ import { defineRule } from "@oxlint/plugins";
 
 import type { ESTree, SourceCode } from "@oxlint/plugins";
 import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
+import type { RuleExample } from "../../rule-examples.ts";
 
 type TypeAssertion = ESTree.TSAsExpression | ESTree.TSTypeAssertion;
 
@@ -127,6 +128,19 @@ export const requireSafetyCommentForTypeAssertionRule = defineRule({
     docs: {
       description:
         "Require a nearby SAFETY comment for every TypeScript type assertion except const assertions.",
+      examples: [
+        {
+          before: "const task = held.get(id) as Task;",
+          after:
+            "// SAFETY: `id` was drawn from `held`'s own keys above, so the lookup finds it.\nconst task = held.get(id) as Task;",
+        },
+        {
+          before:
+            "function keyed<K extends string, V>(key: K, value: V) {\n  return { [key]: value } as Key<K, V>;\n}",
+          after:
+            "function keyed<K extends string, V>(key: K, value: V) {\n  // SAFETY: built from `key` and `value` alone, so it holds exactly one key `K`.\n  return { [key]: value } as Key<K, V>;\n}",
+        },
+      ] satisfies RuleExample[],
     },
     messages: {
       missingSafetyComment:

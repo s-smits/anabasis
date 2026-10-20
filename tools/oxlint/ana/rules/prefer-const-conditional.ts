@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 import { holdsProse, withoutProse } from "../shared/masked.ts";
 import { everyStatementList, onlyStatement } from "../shared/statements.ts";
 
@@ -82,7 +83,22 @@ export const preferConstConditionalRule = defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
-    docs: { description: "A let the next if decides is a const and a conditional." },
+    docs: {
+      description: "A let the next if decides is a const and a conditional.",
+      examples: [
+        {
+          before:
+            "let width = DEFAULT_WIDTH;\nif (options.width !== undefined) width = options.width;\ndraw(width, options.height);",
+          after: "const width = options.width ?? DEFAULT_WIDTH;\ndraw(width, options.height);",
+        },
+        {
+          before:
+            'let profile: string;\nif (support.platform === "linux") profile = LINUX_PROFILE;\nelse profile = seatbeltProfile(reads, writes);\nlaunch(profile, command);',
+          after:
+            'const profile: string = support.platform === "linux" ? LINUX_PROFILE : seatbeltProfile(reads, writes);\nlaunch(profile, command);',
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       twoStatements:
         "`{{name}}` is declared with a default and decided on the next line, so it stays mutable for the rest of the scope. One `const` with the condition in the expression makes the decision once and says the name will not move again.",

@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 
 import { isOneOf, isUnder } from "../shared/file-role.ts";
 import { importTracker } from "../shared/import-fix.ts";
@@ -40,7 +41,20 @@ export const noHandRolledErrorRenderRule = defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
-    docs: { description: "Render a caught value through errorMessage or asError, which own that decision." },
+    docs: {
+      description: "Render a caught value through errorMessage or asError, which own that decision.",
+      examples: [
+        {
+          before: "const reason = cause instanceof Error ? cause.message : String(cause);",
+          after:
+            'import { errorMessage } from "#src/meta/runtime-values.ts";\n\nconst reason = errorMessage(cause);',
+        },
+        {
+          before: "throw cause instanceof Error ? cause : new Error(String(cause));",
+          after: 'import { asError } from "#src/meta/runtime-values.ts";\n\nthrow asError(cause);',
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       handRolled:
         "`{{subject}} instanceof Error ? …` is `{{owner}}({{subject}})`. `src/meta/runtime-values.ts` owns what a caught value reads as, so that decision is made once rather than in every catch.",

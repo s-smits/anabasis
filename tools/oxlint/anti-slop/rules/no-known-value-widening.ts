@@ -16,6 +16,7 @@ import {
 import { resolveVariable } from "../shared/scope.ts";
 
 import type { ESTree, SourceCode, Variable } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 
 type FunctionExpression = ESTree.ArrowFunctionExpression | ESTree.Function;
 
@@ -259,6 +260,16 @@ export const noKnownValueWideningRule = defineRule({
     docs: {
       description:
         "Disallow syntactically established values from flowing into explicitly broad or anonymous target types that discard useful evidence.",
+      examples: [
+        {
+          before: "const opening: Record<string, unknown> = { name, budget: 300 };",
+          after: "const opening = { name, budget: 300 } satisfies Opening;",
+        },
+        {
+          before: "function defaultLimits(): object {\n  return { minutes: 30, turns: 20 };\n}",
+          after: "function defaultLimits(): SolveLimits {\n  return { minutes: 30, turns: 20 };\n}",
+        },
+      ] satisfies RuleExample[],
     },
     messages: {
       widening:

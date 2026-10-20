@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 import { isTestFile } from "../shared/file-role.ts";
 
 /**
@@ -149,7 +150,23 @@ function writesThrough(member: ESTree.Node): boolean {
 export const noInlineSchemaLiteralRule = defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: "A constant table built inside a function body belongs at module scope." },
+    docs: {
+      description: "A constant table built inside a function body belongs at module scope.",
+      examples: [
+        {
+          before:
+            'function missingKeys(row: RecordedRow): string[] {\n  const required = ["at", "sessionId", "harness"];\n  return required.filter((key) => !Object.hasOwn(row, key));\n}',
+          after:
+            '/** The keys every recorded row carries. */\nconst REQUIRED_KEYS = ["at", "sessionId", "harness"];\nfunction missingKeys(row: RecordedRow): string[] {\n  return REQUIRED_KEYS.filter((key) => !Object.hasOwn(row, key));\n}',
+        },
+        {
+          before:
+            "function dollarsOf(usage: Usage): number {\n  const perMillion = { input: 3, output: 15, cacheRead: 0.3 };\n  const tokens = usage.input * perMillion.input + usage.output * perMillion.output;\n  return (tokens + usage.cacheRead * perMillion.cacheRead) / 1e6;\n}",
+          after:
+            "/** Dollars per million tokens of each kind. */\nconst PER_MILLION = { input: 3, output: 15, cacheRead: 0.3 };\nfunction dollarsOf(usage: Usage): number {\n  const tokens = usage.input * PER_MILLION.input + usage.output * PER_MILLION.output;\n  return (tokens + usage.cacheRead * PER_MILLION.cacheRead) / 1e6;\n}",
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       inline:
         "`{{name}}` is {{count}} constant entries rebuilt on every call, declared where the work is rather than where the shapes are. It closes over nothing and this file only reads it, so move it to module scope.",

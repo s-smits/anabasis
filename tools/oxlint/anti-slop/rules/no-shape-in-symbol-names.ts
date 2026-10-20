@@ -1,5 +1,6 @@
 import { defineRule } from "@oxlint/plugins";
 import type { ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 
 /** The word as a noun or its participle, which is how a name says "structure" in place of a role. */
 const FORBIDDEN_WORDS = new Set(["shape", "shapes", "shaped"]);
@@ -67,6 +68,16 @@ export const noForbiddenTermInSymbolNamesRule = defineRule({
     type: "problem",
     docs: {
       description: 'Disallow the word "shape" in JavaScript, TypeScript, private, and JSX symbol names.',
+      examples: [
+        {
+          before: "const taskShape = parseTask(line);",
+          after: "const heldTask = parseTask(line);",
+        },
+        {
+          before: "interface ReportShape {\n  readonly tally: Tally;\n}",
+          after: "interface ComparisonReport {\n  readonly tally: Tally;\n}",
+        },
+      ] satisfies RuleExample[],
     },
     messages: {
       forbiddenSymbolName:

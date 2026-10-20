@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 import { methodCall } from "../shared/statements.ts";
 
 /**
@@ -37,7 +38,19 @@ import { methodCall } from "../shared/statements.ts";
 export const preferEntriesOverKeysLookupRule = defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: "A keys loop that indexes the object back is an entries loop." },
+    docs: {
+      description: "A keys loop that indexes the object back is an entries loop.",
+      examples: [
+        {
+          before: "for (const id of Object.keys(rows)) {\n  if (rows[id].verified) settle(id);\n}",
+          after: "for (const [id, row] of Object.entries(rows)) {\n  if (row.verified) settle(id);\n}",
+        },
+        {
+          before: "for (const name of Object.keys(limits)) print(`${name}: ${limits[name]}`);",
+          after: "for (const [name, limit] of Object.entries(limits)) print(`${name}: ${limit}`);",
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       lookedBackUp:
         "This loop walks `{{object}}`'s keys and then reads `{{object}}[{{key}}]` back out. `Object.entries({{object}})` hands the value over with the key, which saves the lookup and the `| undefined` that comes with it.",

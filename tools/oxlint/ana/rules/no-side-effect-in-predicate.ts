@@ -1,4 +1,5 @@
 import { defineRule } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 import { mutatingCall } from "../shared/predicate-effect.ts";
 import { inlineFunctionArgument } from "../shared/statements.ts";
 
@@ -35,7 +36,20 @@ const PREDICATE_METHODS = new Set(["filter", "find", "findLast", "findIndex", "s
 export const noSideEffectInPredicateRule = defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: "A predicate that mutates a collection is a loop wearing an array method's name." },
+    docs: {
+      description: "A predicate that mutates a collection is a loop wearing an array method's name.",
+      examples: [
+        {
+          before: "const unique = tasks.filter((task) => !seen.has(task.id) && seen.add(task.id));",
+          after: "const unique = [...new Map(tasks.map((task) => [task.id, task])).values()];",
+        },
+        {
+          before:
+            'const passed = solves.filter((solve) => {\n  if (solve.ending !== "pass") failed.push(solve);\n  return solve.ending === "pass";\n});',
+          after: "const { pass = [], fail = [] } = Object.groupBy(solves, (solve) => solve.ending);",
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       mutates:
         "This `.{{method}}()` predicate calls `.{{mutation}}()`, so the walk builds state while it answers. Deduplication is `new Map(xs.map((x) => [key, x]))`; a walk that really does two things is a loop.",

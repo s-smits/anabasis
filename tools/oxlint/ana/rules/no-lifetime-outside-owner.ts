@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 import { isOneOf, isTestFile } from "../shared/file-role.ts";
 
 /**
@@ -67,7 +68,23 @@ function zeroSignal(node: ESTree.CallExpression): boolean {
 export const noLifetimeOutsideOwnerRule = defineRule({
   meta: {
     type: "problem",
-    docs: { description: "Process lifetime belongs to its launch owner, not to each caller." },
+    docs: {
+      description: "Process lifetime belongs to its launch owner, not to each caller.",
+      examples: [
+        {
+          before:
+            'const child = Bun.spawn(["bun", "tools/demo/worker.ts"]);\nsetTimeout(() => child.kill(), 60_000);',
+          after:
+            'import { killProcessGroup } from "#src/meta/subprocess.ts";\n\nconst child = Bun.spawn(["bun", "tools/demo/worker.ts"], { detached: true });\nsetTimeout(() => killProcessGroup(child, "SIGTERM"), 60_000);',
+        },
+        {
+          before:
+            'const child = Bun.spawn(["bun", "tools/demo/worker.ts"], { detached: true });\nif (await stopAsked()) child.kill("SIGKILL");',
+          after:
+            'import { terminateAndReapProcessGroupId } from "#src/meta/subprocess.ts";\n\nconst child = Bun.spawn(["bun", "tools/demo/worker.ts"], { detached: true });\nif (await stopAsked()) await terminateAndReapProcessGroupId(child.pid);',
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       secondOwner:
         "This file spawns a child and kills it, which makes it a second owner of process lifetime beside `stageCommandIsolation` (src/verify/solve-command-isolation.ts). Settle the teardown there, or signal the group through `killProcessGroup` or `terminateAndReapProcessGroupId` (src/meta/subprocess.ts): a kill here races the owner's own, signals one process rather than its group, and reads as proof the child is gone.",

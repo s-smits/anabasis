@@ -1,4 +1,5 @@
 import { defineRule, type ESTree, type Fix, type Fixer } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 import { isTestFile } from "../shared/file-role.ts";
 import { ownedElsewhere } from "../shared/literal-owner.ts";
 
@@ -135,7 +136,23 @@ export const noRepeatedStringLiteralRule = defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
-    docs: { description: "A string no type checks, spelled four times in one file, is four copies." },
+    docs: {
+      description: "A string no type checks, spelled four times in one file, is four copies.",
+      examples: [
+        {
+          before:
+            'const opened = existsSync(join(dir, "opening.json"));\nconst text = readFileSync(join(dir, "opening.json"), "utf8");\nwriteFileSync(join(dir, "opening.json"), next);\nrmSync(join(dir, "opening.json"));',
+          after:
+            'const openingPath = join(dir, OPENING_FILE);\nconst opened = existsSync(openingPath);\nconst text = readFileSync(openingPath, "utf8");\nwriteFileSync(openingPath, next);\nrmSync(openingPath);',
+        },
+        {
+          before:
+            'if (log === null) throw new Error("campaign has no opening");\nif (log.length === 0) throw new Error("campaign has no opening");\nif (opening === undefined) throw new Error("campaign has no opening");\nif (opening.project === "") throw new Error("campaign has no opening");',
+          after:
+            'const NO_OPENING = "campaign has no opening";\nif (log === null) throw new Error(NO_OPENING);\nif (log.length === 0) throw new Error(NO_OPENING);\nif (opening === undefined) throw new Error(NO_OPENING);\nif (opening.project === "") throw new Error(NO_OPENING);',
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       repeated:
         '"{{value}}" is spelled {{count}} times in this file, on lines {{lines}}. Nothing checks these against each other, so each copy can be edited or mistyped alone. Name it once, where the thing it refers to is owned.',

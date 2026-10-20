@@ -273,6 +273,11 @@ function darwinCommandProfile(
     // A seat's command may reach the network, so it can install what its task needs; a check may
     // not (`src/kernel/verify.ts`).
     base.network ? "(allow network*)" : "(deny network*)",
+    // A command signals its own processes and nothing else. `(allow default)` let one `kill` the
+    // host's processes outside its wall, the campaign that runs it among them (probe, 20 October);
+    // Linux gives each command a pid namespace of its own.
+    "(deny signal)",
+    "(allow signal (target same-sandbox))",
     ...sbRule("deny file-write*", "subpath", writeDenies),
     // The host's shared temporary folders, closed whole: what another process left there is
     // neither read nor run, and a command leaves nothing there for the next. Their listings are

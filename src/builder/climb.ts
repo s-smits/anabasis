@@ -227,9 +227,9 @@ function falsePromotionOf(
       asRecord(data.frontier) !== null,
   );
   /** The test's own chance a reading at its margins reads a step between equal harnesses
-   *  (`falseRate`), the level where its report holds none. */
+   *  (`falseRate`, the frontier's before 20 October), the level where its report holds none. */
   const rateOf = (attempt: Reported) => {
-    const rate = asRecord(attempt.data.frontier)?.falseRate;
+    const rate = asRecord(attempt.data.scored)?.falseRate ?? asRecord(attempt.data.frontier)?.falseRate;
     return isNumber(rate) ? rate : levelOf(attempt);
   };
   const read = reports.flatMap((each) => {

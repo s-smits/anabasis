@@ -869,9 +869,8 @@ reference answers still shows its losses. A loss can only come from a task the r
 With those tasks out of the draw, a harness that answers new tasks and loses old ones would look
 better than it is over the tasks written, all the more so as the newest tasks are drawn first.
 A scored set takes one retained task for every three frontier tasks, on top of the target
-(`scoredSet`). Retained tasks
-are read separately from the frontier the step is read on, and a step that regresses on them reads
-`regressed` and promotes nothing (see "The test" below).
+(`scoredSet`). The step's one test reads the retained tasks with the frontier, and the report
+gives their tally apart (see "The test" below).
 
 **Fresh solves.** Each scored task is solved under each harness, afresh. A task's solves run
 together, the tasks run in an order drawn by a hash of each, and within a task the harness that
@@ -912,17 +911,15 @@ likely won as lost by its margin, and p is the share of sign assignments that su
 was observed. It is exact, and where every task is won or lost by the same number of pairs it is
 the sign test.
 
-The step is read on the **frontier**, the scored tasks that are not exhausted. The **retained**
-tasks are fixed alongside them at the comparison's start, from the exhausted tasks and the tasks of
-an earlier epoch the reference never stood in. They regress when they lose more pairs than they win
-by a loss that the same test, mirrored, reads at or below 0.25 (`REGRESSION`): one task lost
-alone does not, two of two do. An empty retained set reads
-`unmeasured`, never "no loss". Each family's tallies stand beside both, from the same rows; they
-show concentration, and prove no independence.
+The step is read on every tallied task in one test: the **frontier**, the scored tasks that are
+not exhausted, and the **retained** tasks, fixed alongside them at the comparison's start from the
+exhausted tasks and the tasks of an earlier epoch the reference never stood in. So a gain on new
+tasks can offset a loss on old ones. The report gives the two sets' tallies apart, so a loss on the
+retained tasks shows; an empty retained set reads `unmeasured`, never "no loss". Each family's
+tallies stand beside both, from the same rows; they show concentration, and prove no independence.
 
-One reading decides (`stepOf`): a frontier at or under the level (0.02 by default: 6 to 0, 8 to
-1, 10 to 2, 12 to 3; at 0.10: 4 to 0, 6 to 1, 7 to 2, 9 to 3), with the retained tasks not
-regressed, reads `step` and promotes. The
+One reading decides (`stepOf`): a test at or under the level (0.02 by default: 6 to 0, 8 to 1,
+10 to 2, 12 to 3; at 0.10: 4 to 0, 6 to 1, 7 to 2, 9 to 3) reads `step` and promotes. The
 null hypothesis is the fixed-task one, in which each drawn task is as likely won as lost on fresh
 solves. Every reading prints its untied count, the smallest share of those tasks it detects four
 times in five (`detectable`), and the chance that one reading at its margins reads a step between
@@ -938,14 +935,13 @@ and cost"); neither is built.
 | --- | --- |
 | `step` | The test cleared its level |
 | `no-step` | A test was made and did not clear its level |
-| `regressed` | The frontier cleared its level and the retained tasks regressed. It promotes nothing |
 | `not-scored` | No task was tallied, or the cap cut the test short. Nothing was tested |
 | `check-defects` | The comparison stopped on its check defects |
 | `no-change` | The session left nothing new to compare |
 
 `not-scored` and `no-step` are different results: one tested nothing, the other tested and found
-no gain. Older reports may hold `narrow`, `below-starter` or `starter-unread`, which no comparison
-writes now.
+no gain. Older reports may hold `regressed`, `narrow`, `below-starter` or `starter-unread`, which
+no comparison writes now and none of which promotes.
 
 **Rejections.** A rejected answer counts as not valid only once the Referee has ruled it `earned`,
 which it can only do on a probe that moved a refusing check off its refusal

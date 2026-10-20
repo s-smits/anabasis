@@ -586,9 +586,10 @@ function tallyReports(
  * the harness it replaced, and it was promoted on their like. Drawn as frontier they padded each
  * epoch's first comparisons with ties: in buffer-159-opus 0665c78b answered 9 such tasks 4 of 4,
  * 8ee38f97 59 of 60 solve-sets on the epoch before its own, and 18 of 18 in g-4 to g-7 tied with
- * both sides valid in every solve. Read apart they guard against a regression, which is what the
+ * both sides valid in every solve. Reported apart they show a regression, which is what the
  * epochs before the newest were kept in the draw for. **Frontier** is the rest of the scorable
- * tasks, what a step is read on and what the supply counts (`supplyOf`, `admission.ts`).
+ * tasks, which the step reads with the retained ones, and what the supply counts (`supplyOf`,
+ * `admission.ts`).
  *
  * **Feasible** are the task versions a valid answer is on record for: a solve's, under any harness
  * and at any limits, an author's answer the host saw pass on the task under its own id

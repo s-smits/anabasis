@@ -47,9 +47,8 @@ const units = (wins: number, losses: number, by = 1, ties = 0): number[] => [
   ...Array.from({ length: losses }, () => -by),
   ...Array.from({ length: ties }, () => 0),
 ];
-/** A comparison's report as the log holds what a stage reads: each frontier task's difference, where
- *  the step is read; the retained tasks', or `unmeasured` where none was tallied; and each family's
- *  tallies on the two. */
+/** A comparison's report as the log holds what its step reads: each frontier task's difference; the
+ *  retained tasks', or `unmeasured` where none was tallied; and each family's tallies on the two. */
 const report = (
   frontier: readonly number[],
   retained: readonly number[] | null = null,
@@ -290,21 +289,20 @@ describe("one reading", () => {
     expect(sweepOf(STRICT)).toBe(6);
   });
 
-  it("reads the step on the frontier and tests the retained losses by the same mirrored test at 0.25, an empty retained set being unmeasured and never no loss", () => {
+  it("reads the frontier and the retained tasks in one test, an empty retained set being unmeasured and never no loss", () => {
     const fixes = [16, 16, 16, 16];
-    const broke = [-16, -16, -16];
-    // One comparison reads its retained loss at 0.25: three tasks lost is p 0.125 and regresses,
-    // two lost is p 0.25 and does too, and one task lost alone is p 0.5 and does not.
-    expect(stepOf(report(fixes, broke), LEVEL)).toBe("regressed");
-    expect(stepOf(report(fixes, [-4, -4]), LEVEL)).toBe("regressed");
-    expect(stepOf(report(fixes, [0, -4, 0]), LEVEL)).toBe("step");
-    expect(stepOf(report(fixes, [-4, -4, -4, -4]), LEVEL)).toBe("regressed");
-    expect(stepOf(report(fixes, [0, 4]), LEVEL)).toBe("step");
-    expect(stepOf(report(units(6, 0, 4), [-4, -4]), STRICT)).toBe("regressed");
-    expect(stepOf(report(units(6, 0, 4), [-4]), STRICT)).toBe("step");
-    // A frontier short of the level reads `no-step` whatever the retained tasks lost: `regressed`
-    // is said of a step alone, so a recorded comparison settled again reads as it did.
-    expect(stepOf(report(fixes.slice(1), broke), LEVEL)).toBe("no-step");
+    // Since 20 October the retained tasks enter the frontier's test. Four won and three lost by as
+    // many pairs is p 0.5 and no step; until then it read `regressed`, the same in what it promoted.
+    expect(stepOf(report(fixes, [-16, -16, -16]), LEVEL)).toBe("no-step");
+    expect(stepOf(report(units(6, 0, 4), [-4, -4]), STRICT)).toBe("no-step");
+    // One retained task lost by a small margin leaves a wide frontier's step standing (p 0.0625),
+    // and at 0.02 sinks a 6-0 one (p 0.0625), which the second test let through.
+    expect(stepOf(report(fixes, [-4]), LEVEL)).toBe("step");
+    expect(stepOf(report(units(6, 0, 4), [-4]), STRICT)).toBe("no-step");
+    // What it gives up: a retained win counts as a frontier one, so it lifts a 5-0 frontier to a
+    // step at 0.02 (p 1/64), which the frontier alone does not clear (p 1/32).
+    expect(stepOf(report(units(5, 0, 4), [4]), STRICT)).toBe("step");
+    expect(stepOf(report(units(5, 0, 4)), STRICT)).toBe("no-step");
     expect(stepOf(report(units(0, 0, 1, 4), [-4]), LEVEL)).toBe("no-step");
     // Against the provisioned starter nothing is exhausted yet: the first promotion's reading
     // holds no retained task, and promotes on the frontier alone.

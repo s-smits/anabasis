@@ -231,7 +231,7 @@ const UNCOMPARED: ReadonlySet<string> = new Set(["session", "tasks", "retained"]
  * epoch down and within an epoch drawn by the contract's hash and nothing else (`draw`). The tasks
  * written since the last promotion are the exam the reference harness has not answered, so they
  * come first; what room is left is filled from the epoch before, by the same hash, and so on down.
- * The regression check is the retained set, which since 16 October holds every task of the epochs
+ * The retained set, read in the step's one test and reported apart, since 16 October holds every task of the epochs
  * before that the reference has stood in no comparison of (`poolOf`): until then one task in four
  * of the set was kept for those epochs as frontier, and after each promotion they tied (the plan's
  * climb section, C2; `regressionOf` reads the same gap after the fact). The epoch chooses the set and no result does: the hash is fixed before any task

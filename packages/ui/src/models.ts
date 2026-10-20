@@ -477,7 +477,8 @@ export interface ScoredTask {
 
 /** What a comparison's report says beside its test of what the test could see (`reported`). */
 export interface Sensitivity {
-  /** The step's own set: its untied tasks, the least share of them the new harness has to win for
+  /** The set the step was read on, every tallied task (the frontier alone in a report written
+   *  before 20 October): its untied tasks, the least share of them the new harness has to win for
    *  one reading to detect a step four times in five, null where none would; and the chance that an
    *  attempt at its margins promotes between equal harnesses (`falseRate`). Null in a report
    *  written before the sets were read apart. */

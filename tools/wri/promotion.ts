@@ -72,23 +72,36 @@ export function testSaid(tested: JsonValue | undefined): string {
 /** A test's p as a reading prints it. */
 export const pSaid = (p: number) => (p < 0.001 ? p.toExponential(1) : p.toFixed(3));
 
-/** The frontier differences of a promotion's readings joined, a task more than one scored counted
- *  once with its differences summed, less the tasks in `without`. Until 19 October a promotion read
- *  a step and its repeat so (`readTwice`), and a campaign of then is read by that rule. A report
- *  from before 14 October names no task, and its differences stand alone. */
-export function joinedFrontier(
+/** The differences a report's step was read on, each with its task where named: the frontier's and
+ *  the retained tasks' since 20 October, when `scored` holds the test's `falseRate`, else the
+ *  frontier's alone. */
+export function testedOf(report: JsonObject): { differences: number[]; of: (string | undefined)[] } {
+  const pooled = asRecord(report.scored)?.falseRate !== undefined;
+  const tested: { differences: number[]; of: (string | undefined)[] } = { differences: [], of: [] };
+  for (const set of (pooled ? [report.frontier, report.retained] : [report.frontier]).map(asRecord)) {
+    const differences = Array.isArray(set?.differences) ? set.differences.filter(isNumber) : [];
+    const of = set?.of;
+    const named = Array.isArray(of) && of.every(isString) && of.length === differences.length ? of : [];
+    tested.differences.push(...differences);
+    tested.of.push(...differences.map((_, at) => named[at]));
+  }
+  return tested;
+}
+
+/** The differences a promotion's readings tested (`testedOf`) joined, a task more than one scored
+ *  counted once with its differences summed, less the tasks in `without`. Until 19 October a
+ *  promotion read a step and its repeat so (`readTwice`), and a campaign of then is read by that
+ *  rule. */
+export function joinedTest(
   reports: readonly JsonObject[],
   without: ReadonlySet<string> = new Set(),
 ): number[] {
   const sums = new Map<string, number>();
   const unnamed: number[] = [];
   for (const report of reports) {
-    const frontier = asRecord(report.frontier);
-    const differences = Array.isArray(frontier?.differences) ? frontier.differences.filter(isNumber) : [];
-    const of = frontier?.of;
-    const named = Array.isArray(of) && of.every(isString) && of.length === differences.length ? of : null;
+    const { differences, of } = testedOf(report);
     for (const [at, difference] of differences.entries()) {
-      const task = named?.[at];
+      const task = of[at];
       if (task === undefined) unnamed.push(difference);
       else if (!without.has(task)) sums.set(task, (sums.get(task) ?? 0) + difference);
     }
@@ -202,7 +215,7 @@ function restTriggers(log: Index, { at, until, data }: Epoch): Trigger[] {
   const said = rests.map((compared) => restSaid(log, compared));
   // The rule tests the two frontiers joined, a task both scored once (`readTwice`): r3's third
   // promotion read 5-1 p 0.047 and 9-1 p 0.004 alone, and 8-0 p 0.004 joined (19 October).
-  const joined = joinedFrontier(rests.map(({ last }) => last));
+  const joined = joinedTest(rests.map(({ last }) => last));
   const [wins, losses] = [joined.filter((one) => one > 0).length, joined.filter((one) => one < 0).length];
   const together =
     rests.length < 2 || joined.length === 0

@@ -62,7 +62,7 @@ step 8 squashes them before anything is pushed, since every published commit pas
    served only the old shape. Find every reader of each export and each member: a branch whose
    producer is gone is dead code to remove. Then look for the simpler algorithm, the one that
    computes an answer once instead of twice, or drops a case no recorded log reaches
-   (`bun run runs replay` reads logs whose last event is `comparison.reported`). A negative claim
+   (`bun run runs replay` reads every campaign log, live and interrupted ones among them). A negative claim
    needs the named symbol, its call sites and a check in the same turn (`AGENTS.md`, section 9).
 5. **`R: <production paths>`.** `git rm` the production files the rewrite replaces, and commit with
    the subject `R: src/x.ts src/y.ts`.

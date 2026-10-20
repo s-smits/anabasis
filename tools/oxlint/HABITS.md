@@ -27,7 +27,7 @@ first line, and the round trip through the linter mostly disappears.
 `--deny-warnings` and `--report-unused-disable-directives`, type-aware. `packages/ui` is linted
 once its own dependencies are installed (`bun run ui:deps`), under its own `tsconfig.json` and
 with no rule turned off for it; a whole-tree run without them leaves it out and says so. Two repository plugins ride along: `ana`
-(36 rules) and `anti-slop` (15 rules). Every enabled rule in `.oxlintrc.json` is an error.
+(36 rules) and `anti-slop` (14 rules). Every enabled rule in `.oxlintrc.json` is an error.
 
 - **Plugin findings fail the run only in strict mode**: `bun run lint -- --strict`,
   `ANA_LINT_STRICT=1`, or a clone with `git config ana.lintStrict true`. A plain run holds you to
@@ -94,7 +94,6 @@ import { readFileSync } from "node:fs"       →  the same name from src/meta/fi
 new Promise((r) => setTimeout(r, ms))        →  Bun.sleep(ms), or wait on the condition
 
 // Arrays
-xs.filter(p).map(f)            →  xs.flatMap((x) => (p(x) ? [f(x)] : []))
 xs.map(f).filter(Boolean)      →  xs.flatMap((x) => f(x) ?? [])
 xs.filter(p).length > 0        →  xs.some(p)
 xs.some((x) => x === "lit")    →  xs.includes("lit")
@@ -230,7 +229,6 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
 
 ## 12.5 The `anti-slop` rules
 
-- `no-array-filter-map`: one `flatMap` in place of `filter().map()`.
 - `no-chained-type-assertions`: no `x as unknown as T`.
 - `no-conditional-empty-object-spread`: no `...(ok ? { k } : {})`. Use `keyIfDefined` or `keysIf`.
 - `no-known-value-widening`: no annotation wider than the value states. Keep the inference, or use
@@ -294,7 +292,6 @@ Each pair has one spelling that satisfies both.
 | Single-caller helper against thrice-spelled object or lookup chain | By count: at two uses inline, at three extract |
 | Boolean parameter, `object` parameter and `max-params` | A string-literal union, or a named interface |
 | Key-if-defined, empty-object spread and `exactOptionalPropertyTypes` | `keyIfDefined`, `keyIfNotNull` or `keysIf` |
-| Filter-map against map-filter | `flatMap` returning `[]` |
 | Strict-boolean against nullish-coalescing | `(n ?? 0) > 0`, with a `!== undefined` guard where later lines need the narrowing |
 | Renaming temporary against a narrowing | A `const` read in a closure below a guard is exempt. Keep it |
 | Deep nesting against function length | A guard is free for depth. When guards run out, split the function |

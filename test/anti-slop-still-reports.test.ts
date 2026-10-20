@@ -24,12 +24,6 @@ import { expectedLines, reportedLines, reportedMessages } from "./helpers/oxlint
  * beside two.
  */
 
-const FILTER_MAP = `
-declare const widen: (value: number) => number;
-export const eager = [1, 2, 3].filter((value) => value > 1).map(widen); // REPORT two passes
-export const lazy = [1, 2, 3].values().filter((value) => value > 1).map(widen).toArray();
-`;
-
 const ACCUMULATOR_COPY = `
 declare const rows: { id: string }[];
 export const copied = rows.reduce((total, row) => Object.assign({}, total, row), {}); // REPORT copies
@@ -85,7 +79,6 @@ export function parsed(): { id: string } {
 `;
 
 const FIXTURES: [string, string][] = [
-  ["no-array-filter-map", FILTER_MAP],
   ["no-reduce-accumulator-copy", ACCUMULATOR_COPY],
   ["no-module-mocking", MODULE_MOCKING],
   ["no-runtime-typeof", RUNTIME_TYPEOF],

@@ -23,9 +23,9 @@ All four, not three.
 2. **A wrong fix fails loudly, at the line the fix wrote.** `require-captured-json-runtime` and
    `require-meta-runtime-import` both write an import that might be missing a member. That is
    admissible because the miss is a compile error naming the member and the module, on the line
-   the fixer just wrote. `no-alias-restating-return` would delete an annotation and let the return
-   infer, and an inferred type that is quietly wider than the annotated one compiles. Silence is
-   the disqualifier, not risk.
+   the fixer just wrote. A fix that deleted an annotation and let the return infer would not be:
+   an inferred type that is quietly wider than the annotated one compiles. Silence is the
+   disqualifier, not risk.
 
 3. **The fixed form is the form the repository already writes.** Measured against the tree, not
    against taste. A fixer is the fastest way to push a house style the house does not have: run it
@@ -77,7 +77,7 @@ they are reversing a decision, and should say so.
 | `no-single-caller-helper` | substitute the arguments into the one-`return` body | **written and thrown away.** Mechanically fine — the ranges come from scope analysis — but the result is a longer expression where the author wanted a statement, at three hundred sites. It would have produced exactly the shape the rule exists to remove |
 | `require-safety-comment-for-type-assertion` | insert a `SAFETY:` comment | the comment's content is the entire requirement; a generated one satisfies the rule and proves nothing, which is worse than the missing comment |
 | `no-conditional-empty-object-spread` | emit the field as `null` | absent or present-and-null is the contract, and the spread is where that decision was avoided |
-| `no-alias-restating-return` | delete the alias and the annotation | condition 2: an inferred return is not the annotated one, and a plugin that cannot see types cannot tell the two apart. The pass that measured this rule watched a dropped annotation widen a narrowed `severity` back to `string` |
+| `no-alias-restating-return` | write the alias's body as the annotation and delete the alias | not written yet rather than refused. Until 20 October the message asked for `ReturnType<typeof f>`, whose only edit deleted the annotation, which condition 2 refuses: the pass that measured this rule watched a dropped annotation widen a narrowed `severity` back to `string`. The inline edit keeps the type, and no site in the tree has asked for it |
 
 `no-repeated-string-literal`'s source half belongs on this list too; it is above because the rule as
 a whole ships a fixer.

@@ -1385,24 +1385,32 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       .filter((row) => row.startsWith("| ") && !row.startsWith("| family |") && !row.startsWith("| ---"));
 
   it("says, where the objective alone decided a task, how far apart the sides were and the room its answers leave", () => {
-    const log = logged();
-    log.hold("close");
-    log.solved("b-1", "close", "h1", [true, true]);
-    log.solved("b-1", "close", "h2", [true, true]);
-    log.reported("b-1", ["h1", "h2"], 2, ["close"]);
-    // The reference's answers measure 100 and the other harness's 90, under a rule with a floor.
-    const measures = [100, 100, 90, 90];
-    for (const { kind, data } of log.events) {
-      if (kind === "verdict") data.objective = measures.shift() ?? null;
-      if (kind === "comparison.reported") data.objective = { direction: "lower", room: 0.01 };
-    }
-    const [said] = heard(log.events, [fixture("close")]).lines;
+    // The reference's answers and the other harness's, measured under a rule with a floor.
+    const lines = (measures: number[], results?: boolean) => {
+      const log = logged();
+      log.hold("close");
+      log.solved("b-1", "close", "h1", [true, true]);
+      log.solved("b-1", "close", "h2", [true, true]);
+      log.reported("b-1", ["h1", "h2"], 2, ["close"]);
+      for (const { kind, data } of log.events) {
+        if (kind === "verdict") data.objective = measures.shift() ?? null;
+        if (kind === "comparison.reported") data.objective = { direction: "lower", room: 0.01 };
+      }
+      return heard(log.events, [fixture("close")], results).lines;
+    };
+    const [said] = lines([100, 100, 90, 90]);
     expect(said).toContain("won there by the other harness, by the objective alone, 10% apart");
-    expect(said).toContain("an answer on record 10% better than one of its own");
-    // With exam-results off, who won is not said, and the room on record still is.
-    const [blind] = heard(log.events, [fixture("close")], false).lines;
+    // The room told is against the reference's own answers and its author's: the other harness's
+    // answers are its result on the task.
+    expect(said).not.toContain("better than one of its own");
+    expect(lines([100, 95, 90, 90])[0]).toContain("an answer on record 5% better than one of its own");
+    // With exam-results off, who won is not said, and nothing of the other harness's answers is:
+    // the lines read the same whatever it measured.
+    const [blind] = lines([100, 95, 90, 90], false);
     expect(blind).not.toContain("won there");
-    expect(blind).toContain("an answer on record 10% better than one of its own");
+    expect(blind).toContain("an answer on record 5% better than one of its own");
+    expect(lines([100, 95, 100, 100], false)).toEqual(lines([100, 95, 90, 90], false));
+    expect(lines([100, 100, 80, 100], false)).toEqual(lines([100, 100, 100, 100], false));
   });
 
   it("is one outcome a task on the reference's side, with whether a valid answer is on record, and the counts beside them", async () => {

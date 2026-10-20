@@ -346,9 +346,11 @@ What the **Examiner** reads:
   is the operator's word of 20 October, a term of the campaign (`exam-results`, on by default):
   the Examiner learns which tasks the newest harness wins, and so what to write against it. With the
   term `off` it is told none of it;
-- those tasks counted by family, with the solves per side they rest on, the tasks won by the
-  objective alone by less than the room floor, and by family the turns each valid answer of the
-  reference took (`src/examiner/record.ts`). With `exam-results` off, where any family holds one
+- for such a task, how much better a measure on record is than one of the reference's answers,
+  where another of its own or its author's is (`roomLeft`). The other harness's answers are left
+  out of it, so it reads the same with `exam-results` off whatever that harness measured;
+- those tasks counted by family, with the solves per side they rest on, and by family the turns
+  each valid answer of the reference took (`src/examiner/record.ts`). With `exam-results` off, where any family holds one
   task, the counts are a total only, and a total of one is withheld. Whether the counts help is
   untested (`docs/plan.md`, row F60);
 - what the last session under the current reference said at its `finish`;
@@ -832,8 +834,9 @@ bun run runs fresh | launch | continue | keep | pause | copy | fetch | retire | 
 - a room floor of 1% (`--room`; `ROOM`), the least improvement by the objective worth counting, as
   a share of the larger measure. Two valid answers closer than it tie in a pair, and an answer on
   record better than one of the reference's by less leaves that task no room, at the gate, on the
-  frontier and in `roomOf`. A comparison that began before 21 October recorded no floor, and its
-  pairs read at floating-point equality (`SAME`), as they were read;
+  frontier and in `roomOf`. The frontier is read at the floor the campaign's opening names now,
+  as the gate is. A comparison keeps the floor it began with, and one that began before 21 October
+  recorded none: its pairs read at floating-point equality (`SAME`), as they were read;
 - a stop after more than 3 tasks with a check defect (`--defects`);
 - a reserve of 10 dollars per solve (`--reserve`);
 - `--parent latest` and `--reference promoted`, which is the harness last promoted, and the

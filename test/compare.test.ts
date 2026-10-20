@@ -508,9 +508,9 @@ describe("a task's pairings", () => {
     // At the floor the same answers tie, while the room the author's answer leaves stays told.
     const floored = precision(0.01);
     expect(tally(floored)).toEqual({ wins: 0, losses: 0, ties: 6 });
-    expect(roomLeft(one(1, 0.01), "old", 70)).toBeCloseTo(0.3);
+    expect(roomLeft(one(1, 0.01), "old", [70])).toBeCloseTo(0.3);
     expect(informative(one(1, 0.01), "old", new Set(), new Map([["t1", 70]]))).toBe(true);
-    expect(roomLeft({ task: "t", old: [F], fresh: [P] }, "old", 70)).toBeNull();
+    expect(roomLeft({ task: "t", old: [F], fresh: [P] }, "old", [70])).toBeNull();
   });
 
   it("calls a task informative for a side valid on some solves and not all, bettered by the objective, or on none where a valid answer is on record", () => {
@@ -593,6 +593,9 @@ describe("a task's pairings", () => {
     expect(closedTo(pair([12, 12], [10, 11]), "fresh")).toBe(false);
     // Apart by less than the room floor is closed: the next harness can only win it by rounding.
     expect(closedTo(pair([12, 12], [10, 10.05]), "fresh")).toBe(true);
+    // The floor is the campaign's of now: at none, the same half per cent leaves it open.
+    expect(closedTo(pair([12, 12], [10, 10.05]), "fresh", null, 0)).toBe(false);
+    expect(closedTo({ ...pair([12, 12], [10, 10.05]), objective: { direction: "lower", room: 0, old: [12, 12], fresh: [10, 10.05] } }, "fresh")).toBe(true);
     // One better answer of the other side's opens it, as many as there are.
     expect(closedTo(pair([12, 9], [10, 10]), "fresh")).toBe(false);
     // Within a billionth is alike.

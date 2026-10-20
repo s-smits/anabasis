@@ -249,7 +249,7 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
 }
 
 describe("the Builder running its campaign", () => {
-  it("holds practice to the current campaign total, including other seats and budget changes", async () => {
+  it("holds practice to the current campaign total alone, including other seats and budget changes", async () => {
     const s = await setup([finish]);
     const left: number[] = [];
     await session(
@@ -262,7 +262,7 @@ describe("the Builder running its campaign", () => {
           left.push(practiceLeft(bench, read(s.request.log)));
           append(s.request.log, "campaign.opened", { budget: { dollars: 0, reserve: 1 } });
           left.push(practiceLeft(bench, read(s.request.log)));
-          append(s.request.log, "campaign.opened", { budget: { dollars: 12, reserve: 1 } });
+          append(s.request.log, "campaign.opened", { budget: { dollars: 30, reserve: 1 } });
           left.push(practiceLeft(bench, read(s.request.log)));
           return { tools: [], hook: () => "Campaign spending is refreshed." };
         },
@@ -270,8 +270,9 @@ describe("the Builder running its campaign", () => {
       s,
       s.walled,
     );
-    // Read after the session returns, so a session that never asks its campaign fails here.
-    expect(left).toEqual([2, 0, 2]);
+    // Read after the session returns, so a session that never asks its campaign fails here. The
+    // session's own count is 3 and its own cap $1: neither bounds a Builder that leads its campaign.
+    expect(left).toEqual([2, 0, 20]);
   });
 
   it("keeps its conversation and edits across a nested Examiner call, and refreshes practice", async () => {

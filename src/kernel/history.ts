@@ -1,15 +1,17 @@
 /**
- * A log's proposals: each task as the event that named it holds it, in the log's order.
+ * A log's proposals and accepted answers, in the log's order.
  *
  * `task.ts` folds a task's proposal, its gates and its moves into a version's state, and refuses a
  * history that could not have happened. Its readers ask one thing more of a proposal than a state:
  * which tasks the log holds whole, since no pack holds an Examiner's or a carried one. Here it is
  * read once, for every reader.
+ * The review of 20 October found an author's proof absent from Referee packets. Its answer and
+ * passing solves have one reader here, by proposed version; feasibility remains `poolOf`'s fact.
  *
  * Nothing here judges a history. An event the fold would refuse is handed over like any other; a
  * caller that needs the log to be sound asks the fold first (`taskSets`).
  */
-import { asRecord, isString } from "../meta/json-shape.ts";
+import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import type { LogEvent } from "./log.ts";
 import type { Task } from "./verify.ts";
 
@@ -56,6 +58,19 @@ export function proposalsOf(events: readonly LogEvent[]): Proposal[] {
       },
     ];
   });
+}
+
+/** Accepted answers for one proposed version. They remain on the exam side. */
+export function acceptedAnswers(events: readonly LogEvent[], version: string | undefined): JsonValue[] {
+  if (version === undefined) return [];
+  const taskId = proposalsOf(events).findLast((proposal) => proposal.version === version)?.taskId ?? null;
+  return events.flatMap(({ kind, data }) =>
+    data.answer !== undefined &&
+    ((kind === "task.feasible" && data.version === version) ||
+      (kind === "verdict" && taskId !== null && data.task === taskId && data.kind === "pass"))
+      ? [data.answer]
+      : [],
+  );
 }
 
 /** The tasks a log holds whole in a proposal: an Examiner's instances and the ones carried from

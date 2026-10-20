@@ -32,9 +32,9 @@
  * the report is written once more, as the comparison's last, with the labels. A task whose
  * rejections then all stand as earned is restored to the tally; one labelled a check defect
  * disputes its task, which leaves this comparison and every later one; one labelled unclear, or set
- * aside on a rejection the packet did not draw, stays out of this comparison. A pass's label
- * changes no tally and no reading: a wrong pass is a check's fault, for the check program's owner,
- * and the closing report names it. Once settled it prints, over every settled packet of the
+ * aside on a rejection the packet did not draw, stays out of this comparison. A pass labelled wrong
+ * is its side's fail, as an earned rejection is, and its check's fault for the check program's
+ * owner; the closing report names it. Sound and unclear change nothing. Once settled it prints, over every settled packet of the
  * campaign, the Referee's agreement with the labels, of each kind and over all three as PABAK
  * beside kappa, a line where a person labelled more than one in four `unclear` rulings earned
  * (`unclearReport`), and each settled comparison's decision read again with its labels in place of the

@@ -212,6 +212,9 @@ export interface ClaudeOptions {
   /** Whether the CLI's WebSearch stands beside the session's tools. Left out, it does, as it did for
    *  the sweep's solver. */
   readonly webSearch?: boolean;
+  /** How long Claude Code keeps its prompt cache. Left out, it keeps it for an hour on a login and
+   *  five minutes on an API key, as the CLI chooses. */
+  readonly cacheTtl?: "5m" | "1h";
 }
 
 /**
@@ -421,7 +424,7 @@ function claudeEffort(model: Model<Api>, level: ThinkingLevel | undefined): Effo
  * `claude-api`, each under the variable Claude Code reads it from and never both.
  */
 function claudeEnv(
-  { compaction, home }: ClaudeOptions,
+  { cacheTtl, compaction, home }: ClaudeOptions,
   credential: { readonly provider: string; readonly token: string | undefined },
 ): Record<string, string> {
   const account = ACCOUNTS.get(credential.provider);
@@ -451,6 +454,7 @@ function claudeEnv(
     ...(compaction === "off"
       ? { DISABLE_AUTO_COMPACT: "1" }
       : { CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(compaction.window) }),
+    ...keyIfDefined("CLAUDE_CODE_PROMPT_CACHE_TTL", cacheTtl),
   };
 }
 

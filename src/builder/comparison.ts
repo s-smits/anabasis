@@ -204,7 +204,7 @@ export const REPORTED = "comparison.reported";
 /** What a comparison's report says of its packet until a person has answered it. */
 export const UNSETTLED = "unsettled";
 /** A person's words on an answer that passed: a valid answer by the rules; not one, and the checks
- *  passed it; unclear. A label changes no tally and no reading: a wrong pass is a check's fault. */
+ *  passed it; unclear. A settled pass labelled wrong is its side's fail (`wrongAsFailed`). */
 export const PASS_LABELS = ["sound", "wrong", "unclear"] as const;
 export type PassLabel = (typeof PASS_LABELS)[number];
 const NOTHING_TO_LABEL: ToLabel = { aside: [], others: [] };
@@ -514,6 +514,28 @@ function overlapOf(events: readonly LogEvent[], fixed: Fixed) {
 }
 
 /**
+ * `events` and `labels` with each answer that passed and a person labelled wrong read as a
+ * rejection ruled earned: that side's fail, as an earned rejection is. A pass labelled sound or
+ * unclear is read as it was.
+ */
+export function wrongAsFailed(
+  events: readonly LogEvent[],
+  labels: ReadonlyMap<string, Ruling>,
+  passes: Readonly<Record<string, PassLabel>>,
+): { events: LogEvent[]; labels: Map<string, Ruling> } {
+  const wrong = new Set(Object.keys(passes).filter((solve) => passes[solve] === "wrong"));
+  const ending = { outcome: "fail", kind: "rejected", reason: "a person labelled the pass wrong" };
+  return {
+    events: events.map((event) =>
+      event.kind === "solve.finished" && isString(event.data.solve) && wrong.has(event.data.solve)
+        ? { ...event, data: { ...event.data, ending } }
+        : event,
+    ),
+    labels: new Map<string, Ruling>([...labels, ...[...wrong].map((solve) => [solve, EARNED] as const)]),
+  };
+}
+
+/**
  * Comparison `id`'s reading with its packet's labels in place of the verdicts they overturn, beside
  * the reading it was decided on: a rejected answer labelled a check defect read as a valid answer,
  * an answer that passed labelled wrong as a true fail, a rejection labelled earned as a true fail
@@ -538,27 +560,14 @@ export function swapped(
   ) {
     return null;
   }
-  const wrong = Object.keys(settled.passes).filter((solve) => settled.passes[solve] === "wrong");
-  const endings = new Map<string, JsonObject>([
-    ...Object.keys(settled.labels).flatMap((solve) =>
-      settled.labels[solve] === DEFECT ? [[solve, { outcome: "pass" }] as const] : [],
-    ),
-    ...wrong.map(
-      (solve) =>
-        [solve, { outcome: "fail", kind: "rejected", reason: "a person labelled the pass wrong" }] as const,
-    ),
-  ]);
-  const swappedIn = own.map((event) => {
-    const ending =
-      event.kind === "solve.finished" && isString(event.data.solve)
-        ? endings.get(event.data.solve)
-        : undefined;
-    return ending === undefined ? event : { ...event, data: { ...event.data, ending } };
-  });
-  const labels = new Map<string, Ruling>([
-    ...Object.entries(settled.labels),
-    ...wrong.map((solve) => [solve, EARNED] as const),
-  ]);
+  const defects = new Set(Object.keys(settled.labels).filter((solve) => settled.labels[solve] === DEFECT));
+  const failed = wrongAsFailed(own, new Map(Object.entries(settled.labels)), settled.passes);
+  const swappedIn = failed.events.map((event) =>
+    event.kind === "solve.finished" && isString(event.data.solve) && defects.has(event.data.solve)
+      ? { ...event, data: { ...event.data, ending: { outcome: "pass" } } }
+      : event,
+  );
+  const { labels } = failed;
   const found = compared(swappedIn, fixed, labels);
   return { decided, swapped: found.reading, scored: found.scored };
 }

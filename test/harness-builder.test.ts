@@ -47,7 +47,8 @@ const MOVED = "campaign.move";
 const NOTHING = "Nothing to add.";
 // Fourteen held once two are released: two comparisons' seven, which a campaign holds before its
 // first comparison (12 October). At the default level, 0.02 since 12 October, a step
-// takes six tasks all won (`sweepOf`), and seven still read one after a pass labelled wrong.
+// takes six tasks all won (`sweepOf`), and seven still read one after a pass labelled wrong turns
+// one win into a tie.
 const TASKS = fixtureTasks(16);
 const scripted = scriptedModel;
 const GRADED = gradedOf(TASKS);
@@ -557,10 +558,12 @@ describe("a campaign run by its log", () => {
       /^g-1: decided step, and step at 6-0-1 .*: it holds$/,
     );
     await settleCommand([...pack, "--session", "g-1"]);
-    // A pass's label moves no tally: g-1 reads as it did.
+    // The pass labelled wrong is the new harness's fail in the settled reading, as an earned
+    // rejection is: one task fewer won, 6-0-1, and still a step.
+    expect(first?.scored).toMatchObject({ wins: 7, losses: 0 });
     expect(lastOf()).toMatchObject({
       reading: "step",
-      scored: first?.scored,
+      scored: { wins: 6, losses: 0, ties: 1 },
       settled: { labelled: 0, passes: { [a]: "sound", [b]: "wrong", [c]: "sound" } },
     });
     expect(of(name, "comparison.reported").filter(({ session }) => session === "g-1")).toHaveLength(2);
@@ -603,12 +606,12 @@ describe("a campaign run by its log", () => {
     const letter = /harness ([A-Z]+) \(([0-9a-f]{8})\), set-up \(epoch 0\)/u.exec(report);
     expect(letter?.[2]).toBe(handed.harness.slice(0, 8));
     expect(report).toContain(
-      `harness ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}), set-up (epoch 0), read by g-1. In g-1 it won 7, lost 0 and tied 0`,
+      `harness ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}), set-up (epoch 0), read by g-1. In g-1 it won 6, lost 0 and tied 1`,
     );
     expect(report).toContain(`| g-1 | ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}) | A (`);
     // Its cost beside it, read against the bar and gating nothing (the plan's W).
     expect(report).toMatch(
-      /tied 0\. Its cost, gating nothing: 1 promotion attempt this epoch \(bar 3 after set-up\): met/,
+      /tied 1\. Its cost, gating nothing: 1 promotion attempt this epoch \(bar 3 after set-up\): met/,
     );
     expect(report).not.toContain("ladder");
     // What each measured thing cost, the climb's velocity first, and how many comparisons that

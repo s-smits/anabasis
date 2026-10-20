@@ -198,7 +198,7 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
       `- A person's labels settled ${plural(settled.length, "comparison")}, and ${plural(unsettled, "comparison")} ${unsettled === 1 ? "is" : "are"} unsettled: ${unsettled === 1 ? "its packet waits" : "their packets wait"} for a person (settle.ts), and no promotion waited for one. ${plural(supply.awaiting, "held-out task")} ${supply.awaiting === 1 ? "waits" : "wait"} for a person to say whether a valid answer exists.`,
       passes.comparisons === 0
         ? "- No answer that passed was read by anyone: a pass is the checks' word alone."
-        : `- Answers that passed: a person read ${String(passes.read)} in ${plural(passes.comparisons, "comparison")}, drawn uniformly by each comparison's id: ${String(passes.sound)} sound, ${String(passes.wrong)} wrong, ${String(passes.unclear)} unclear. A wrong pass is a check's fault, and changes no tally.`,
+        : `- Answers that passed: a person read ${String(passes.read)} in ${plural(passes.comparisons, "comparison")}, drawn uniformly by each comparison's id: ${String(passes.sound)} sound, ${String(passes.wrong)} wrong, ${String(passes.unclear)} unclear. A wrong pass is a check's fault, and its side's fail once settled.`,
     ].join("\n"),
     "## Work and spend",
     `${plural(sessions, "Builder session")}, ${plural(steps.filter((step) => step.step === "examiner").length, "Examiner session")} and ${plural(comparisons.length, "comparison")}. Billed $${billedAll(events).toFixed(2)}${budget === null ? "" : ` of a total of $${String(budget.dollars)}`}.`,

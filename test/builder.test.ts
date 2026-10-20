@@ -18,6 +18,7 @@ import { type Bench, HOME_TOOL_TREE, practiceLeft, record } from "../src/builder
 import { type Condition, recordCondition } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
+import { latestBuilt } from "../src/kernel/reports.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import {
   chmodSync,
@@ -45,10 +46,13 @@ import { openHarness } from "../src/solve/harness.ts";
 import { osIsolationSupport } from "../src/verify/os-isolation.ts";
 import { CLOSED } from "./helpers/wall.ts";
 import { BUILT_COMMAND_SCRATCH_ROOT } from "../src/verify/wall-policy.ts";
+import { keptAs } from "../tools/d2/campaign.ts";
+import { endCut } from "../tools/d2/harness-builder.ts";
 
 const BUILD_CALL = "build.call";
 const BUILD_FINISHED = "build.finished";
 const WRITE_FILE = "write";
+const GUIDE_PATH = "harness/agent/BUILT_AGENTS.md";
 
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
 /** A check's id and a Referee's reason: verifier-side text no Builder may be shown. */
@@ -78,7 +82,7 @@ const GUIDE = "Multiply before you record.\n";
 const scratches: string[] = [];
 const toolUse = { stopReason: "toolUse" } as const;
 const call = (name: string, args: JsonObject) => fauxAssistantMessage(fauxToolCall(name, args), toolUse);
-const edit = call(WRITE_FILE, { path: "harness/agent/BUILT_AGENTS.md", content: GUIDE });
+const edit = call(WRITE_FILE, { path: GUIDE_PATH, content: GUIDE });
 const finish = call("finish", { note: "A shorter guide." });
 
 afterAll(() => {
@@ -299,7 +303,7 @@ describe("the Builder running its campaign", () => {
               description: "Run another seat and return its counts.",
               parameters: Type.Object({}),
               execute: async () => {
-                expect(readFileSync(join(bench.home, "harness/agent/BUILT_AGENTS.md"), "utf8")).toBe(GUIDE);
+                expect(readFileSync(join(bench.home, GUIDE_PATH), "utf8")).toBe(GUIDE);
                 expect(s.of("build.turn")).toHaveLength(2);
                 append(s.request.log, "task.proposed", { version: late.version, hidden: CHECK });
                 append(s.request.log, "task.gate", { version: late.version, gate: 1, outcome: "passed" });
@@ -853,7 +857,7 @@ describe("a Builder session", () => {
 
   it("is told once, at finish, of a harness changed since its last practice solve", async () => {
     const later = call(WRITE_FILE, {
-      path: "harness/agent/BUILT_AGENTS.md",
+      path: GUIDE_PATH,
       content: `${GUIDE}Check the product.\n`,
     });
     const s = await setup([edit, call("practice", { tasks: ["t-1"] }), later, finish, finish]);
@@ -874,7 +878,7 @@ describe("a Builder session", () => {
     await session(tried.request, tried, tried.walled);
     expect(tried.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "finished", turns: 3 });
     // With its last solve spent the Builder is told so there, where it can still plan around it.
-    const later = call(WRITE_FILE, { path: "harness/agent/BUILT_AGENTS.md", content: `${GUIDE}More.\n` });
+    const later = call(WRITE_FILE, { path: GUIDE_PATH, content: `${GUIDE}More.\n` });
     const spent = await setup([edit, call("practice", { tasks: ["t-1", "t-2", "t-1"] }), later, finish]);
     await session(spent.request, spent, spent.walled);
     expect(spent.sent[2]).toContain(
@@ -1058,7 +1062,7 @@ describe("a Builder session", () => {
     expect(crashedRun(read(tried.request.log)).count).toBe(0);
     // A crash after an edit no solve ran keeps the state the practice solve ran, not the edit,
     // which may be half done.
-    const later = call(WRITE_FILE, { path: "harness/agent/BUILT_AGENTS.md", content: `${GUIDE}More.\n` });
+    const later = call(WRITE_FILE, { path: GUIDE_PATH, content: `${GUIDE}More.\n` });
     const edited = await setup([edit, call("practice", { tasks: ["t-1"] }), later, failed]);
     const ran = await session(edited.request, edited, edited.walled);
     expect(ran).toMatchObject({ changed: true, ended: "crashed" });
@@ -1075,11 +1079,84 @@ describe("a Builder session", () => {
     expect(crashedRun(read(unpractised.request.log)).count).toBe(1);
   });
 
+  it.each(["practised", "unpractised", "missing", "mismatched", "checkpointed"])(
+    "recovers a cut session from its last practised state only where it opens: %s",
+    async (state) => {
+      const failed = fauxAssistantMessage("", { stopReason: "error", errorMessage: "overloaded" });
+      const later = call(WRITE_FILE, { path: GUIDE_PATH, content: `${GUIDE}More.\n` });
+      const practice = state === "unpractised" ? [] : [call("practice", { tasks: ["t-1"] })];
+      const s = await setup([edit, ...practice, later, failed]);
+      await session(s.request, s, s.walled);
+      // A stopped process never reached the finaliser. Reproduce that prefix as a fixture log.
+      const cut = join(s.scratch, "cut.jsonl");
+      for (const event of read(s.request.log)) {
+        if (event.kind === "harness.version") break;
+        append(cut, event.kind, event.data);
+      }
+      const digest = s.ran.at(-1)?.digest ?? null;
+      if (digest !== null) {
+        const saved = join(s.request.states, digest);
+        if (state === "missing") renameSync(saved, `${saved}-missing`);
+        if (state === "mismatched") writeFileSync(join(saved, "agent/BUILT_AGENTS.md"), "Other bytes.\n");
+        if (state === "checkpointed") append(cut, "build.checkpoint", { session: "b-1", harness: digest });
+      }
+      await endCut(cut);
+      const checkpoints = () => read(cut).filter(({ kind }) => kind === "build.checkpoint");
+      const recoverable = state === "practised" || state === "checkpointed";
+      expect(checkpoints().map(({ data }) => data)).toEqual(
+        recoverable ? [{ session: "b-1", harness: digest }] : [],
+      );
+      expect(read(cut).at(-1)).toMatchObject({
+        kind: BUILD_FINISHED,
+        data: { session: "b-1", ended: "killed" },
+      });
+      const ended = read(cut).length;
+      await endCut(cut);
+      expect(read(cut)).toHaveLength(ended);
+      if (!recoverable) return;
+      expect(latestBuilt(read(cut))).toBe(digest);
+      const parent = await keptAs({ log: cut, states: s.request.states }, "--parent", "latest");
+      const resumed = await setup([finish]);
+      await session(
+        { ...resumed.request, id: "b-2", log: cut, parent: parent.dir, states: s.request.states },
+        resumed,
+        resumed.walled,
+      );
+      expect(read(cut).findLast(({ kind }) => kind === "build.started")?.data.parent).toBe(digest);
+      expect(readFileSync(join(resumed.home, GUIDE_PATH), "utf8")).toBe(GUIDE);
+      expect(checkpoints()).toHaveLength(1);
+    },
+  );
+
+  it.each(["practised", "unpractised"])(
+    "keeps only practised bytes when a live session is killed: %s",
+    async (state) => {
+      const practice = state === "practised";
+      const kill = new AbortController();
+      const later = call(WRITE_FILE, { path: GUIDE_PATH, content: `${GUIDE}More.\n` });
+      const s = await setup([
+        edit,
+        ...(practice ? [call("practice", { tasks: ["t-1"] })] : []),
+        later,
+        () => {
+          kill.abort();
+          return fauxAssistantMessage("");
+        },
+      ]);
+      expect(await session({ ...s.request, kill: kill.signal }, s, s.walled)).toMatchObject({
+        ended: "killed",
+      });
+      expect(s.of("build.checkpoint")).toEqual(
+        practice ? [{ session: "b-1", harness: s.ran.at(-1)?.digest ?? null }] : [],
+      );
+    },
+  );
+
   it("ends at finish though another call shares its turn", async () => {
     const both = fauxAssistantMessage(
       [
         fauxToolCall("finish", { note: "Done." }),
-        fauxToolCall(WRITE_FILE, { path: "harness/agent/BUILT_AGENTS.md", content: GUIDE }),
+        fauxToolCall(WRITE_FILE, { path: GUIDE_PATH, content: GUIDE }),
       ],
       toolUse,
     );
@@ -1172,7 +1249,7 @@ describe("a Builder session", () => {
   it("reads what it has used of its limits once a turn, under its first tool result, and its goal again when a turn ends without a call", async () => {
     const stop = fauxAssistantMessage("I think that is enough.");
     // The same guide written twice in one turn, which changes nothing that was practised.
-    const guide = fauxToolCall(WRITE_FILE, { path: "harness/agent/BUILT_AGENTS.md", content: GUIDE });
+    const guide = fauxToolCall(WRITE_FILE, { path: GUIDE_PATH, content: GUIDE });
     const twice = fauxAssistantMessage([guide, { ...guide, id: `${guide.id}-again` }], toolUse);
     const s = await setup([edit, call("practice", { tasks: ["t-1"] }), twice, stop, finish]);
     await session(s.request, s, s.walled);
@@ -1574,10 +1651,10 @@ describe.skipIf(!osIsolationSupport().ok)("a Builder session under the command w
         call("bash", { command: "pwd -P; head -1 HARNESS.md" }),
         // pi's read and edit on the harness's files, by the path the shell would use.
         call("edit", {
-          path: "harness/agent/BUILT_AGENTS.md",
+          path: GUIDE_PATH,
           edits: [{ oldText: "Multiply", newText: "Always multiply" }],
         }),
-        call("read", { path: "harness/agent/BUILT_AGENTS.md" }),
+        call("read", { path: GUIDE_PATH }),
         call("preview_harness", {}),
         call("bash", { command: "cat harness/agent/BUILT_AGENTS.md; ls harness/.toolchain/bin" }),
         edit,

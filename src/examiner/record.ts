@@ -3,7 +3,9 @@
  * or in a total.
  *
  * An Examiner session starts a new conversation, and its gate tells it no more of a draft than how
- * many of the reference harness's solves of it were valid. What tells it more is the comparisons. The author sees every task of the
+ * many of the reference harness's solves of it were valid, the turns each valid one took (since
+ * 16 October) and, where the contract declares an objective, their measures and its own answer's
+ * (since 19 October). What tells it more is the comparisons. The author sees every task of the
  * campaign, the pack's and the ones earlier sessions wrote, the older and easier ones included, each
  * with its outcome so far: how the reference harness did on it in the last comparison that scored
  * it, valid in every solve, in some or in none, or disputed (`docs/plan.md`, Phase 2;

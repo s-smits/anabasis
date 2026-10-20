@@ -33,7 +33,7 @@ import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { on } from "./hosts.ts";
 import { launch } from "./manage.ts";
-import { runs } from "./registry.ts";
+import { archived, runs } from "./registry.ts";
 
 const MODELS = {
   opus: "claude/claude-opus-5-5",
@@ -120,7 +120,7 @@ export async function fresh(args: readonly string[]): Promise<void> {
   );
   if (!existsSync(prompt)) throw new Error(`no ${prompt}: a pack's prompt is the operator's to write there`);
   const seated = seats(values.model, values.effort);
-  const held = new Set(runs().map((run) => run.name));
+  const held = new Set([...runs(), ...archived()].map((run) => run.name));
   const base = [pack, "fresh", values.model, ...(values.as === undefined ? [] : [values.as])].join("-");
   const name = freeName(base, (one) => held.has(one) || existsSync(join(beside, `anabasis-${one}`)));
   const tree = join(beside, `anabasis-${name}`);

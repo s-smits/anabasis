@@ -42,6 +42,7 @@ import { parseArgs } from "#src/meta/process.ts";
 import { campaignLog, keptAs, openCampaign, packNamed, PROMOTED, stayAwake } from "./campaign.ts";
 import {
   capNamed,
+  refereeNamed,
   parentNamed,
   predictionNamed,
   reviewersNamed,
@@ -68,6 +69,7 @@ export async function sessionCommand(
   if (session === undefined) throw new Error("name --session, the id the session takes in the log");
   // Read before the campaign is opened: a paid session with no cap starts nothing.
   const cap = capNamed(values, seated === solved ? "paid" : "scripted");
+  refereeNamed(values, seated === solved ? "paid" : "scripted");
   const setting = settingAsked(values, recordedSetting(read(campaignLog(name))));
   const campaign = await openCampaign({ ...pack, ...setting.named });
   const parent = await parentNamed(campaign, { ...values, session });

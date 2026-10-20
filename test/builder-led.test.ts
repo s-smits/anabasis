@@ -1081,6 +1081,21 @@ describe("a campaign tool where the table names more than the action", () => {
 });
 
 describe("who makes a campaign's moves, as its opening keeps it", () => {
+  it("requires a Referee for a paid opening, keeps its recorded seat, and permits scripted openings without one", () => {
+    const log = join(root, "terms", "reviewer", LOG_FILE);
+    const flags = (...more: string[]) =>
+      flagsOf(["--root", root, "--name", "terms", "--project", PROJECT, "--budget", "100", ...more]);
+    expect(() => opened(log, flags(), "paid")).toThrow("--reviewer");
+    expect(read(log)).toEqual([]);
+    expect(opened(log, flags(), "scripted").seats.reviewer).toBeNull();
+    expect(() => opened(log, flags(), "paid")).toThrow("--reviewer");
+    expect(read(log)).toHaveLength(1);
+    const model = "claude/claude-opus-5-5";
+    expect(opened(log, flags("--reviewer", model), "paid").seats.reviewer?.model).toBe(model);
+    expect(opened(log, flags(), "paid").seats.reviewer?.model).toBe(model);
+    expect(read(log)).toHaveLength(2);
+  });
+
   it("opens a campaign led by its Builder, records nothing of the term for one the host runs, and keeps either when run again", () => {
     const logOf = (name: string) => join(root, "terms", name, LOG_FILE);
     const flags = (...more: string[]) =>

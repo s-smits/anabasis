@@ -28,6 +28,7 @@
  * Since 14 October a submitted rejection is ruled by the campaign's Referee before the gate counts
  * it. An unclear, defective or unruled rejection leaves the draft unmeasured; other endings keep
  * their meaning. Neither the answer nor the ruling reaches the Examiner.
+ * A model session that probes is refused without `--reviewer` before it opens (`refereeNamed`).
  * From 9 to 12 October no solve ran here, and a task was held out on its shape; until 9 October each
  * instance was put to a stronger solver and to the measured one, and the second live session spent $48.45 that way,
  * $2.01 of it on the Examiner.
@@ -67,6 +68,7 @@ import { campaignLog, keptAs, openCampaign, packNamed, PROMOTED, REPO, stayAwake
 import {
   type Campaign,
   COMPARISON_OPTIONS,
+  refereeNamed,
   reviewersNamed,
   type Seated,
   solved,
@@ -154,6 +156,7 @@ export async function examineCommand(
   const { session: id, examiner } = values;
   if (id === undefined || examiner === undefined) throw new Error("name --session and --examiner");
   if (kill?.aborted === true) throw new Error(`session ${id} was stopped before it began`);
+  refereeNamed(values, session === examine && seated !== null ? "paid" : "scripted");
   const home = values["reference-home"];
   if (home !== "on" && home !== "off") throw new Error(`--reference-home is on or off, not ${home}`);
   const pack = packNamed(values, ", --session and --examiner");

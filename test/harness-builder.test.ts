@@ -582,6 +582,10 @@ describe("a campaign run by its log", () => {
       "a person read 3 in 1 comparison, drawn uniformly by each comparison's id: 2 sound, 1 wrong, 0 unclear",
     );
     expect(closing).toContain("settled 1 comparison, and 1 comparison is unsettled");
+    // What decides a pass, from the checker's last reading.
+    expect(closing).toContain(
+      "1 check of the checker's last reading is decided by its author's own computation and no installed instrument; the operator admitted 1.",
+    );
     // The chance of a false promotion over the whole campaign, not one epoch's alone (the plan's 7.6).
     expect(closing).toContain("## The chance of a false promotion\n\n- Epoch 1:");
     expect(closing).toContain("Over the campaign, a false promotion in any epoch estimated at");

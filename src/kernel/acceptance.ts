@@ -367,14 +367,15 @@ export function authoredFaults(checks: readonly CheckReading[], admitted: Readon
   );
 }
 
-/** The checks the log's last reading found no engine behind and the operator had not admitted, by
- *  id: what an exam that stands on the operator's word waits for. */
-export function unadmitted(events: readonly LogEvent[]): string[] {
+/** The checks the log's last reading found no engine behind and `admitted` does not name, by id:
+ *  what an exam that stands on the operator's word waits for. `admitted` is the operator's word on
+ *  record unless given, so `[]` names every check its author decides (the closing report). */
+export function unadmitted(events: readonly LogEvent[], admitted?: readonly unknown[]): string[] {
   const reading = events.findLast(({ kind }) => kind === "checker.read")?.data;
-  const admitted = Array.isArray(reading?.admitted) ? reading.admitted : [];
+  const kept = admitted ?? (Array.isArray(reading?.admitted) ? reading.admitted : []);
   return (Array.isArray(reading?.rows) ? reading.rows : []).flatMap((row) => {
     const { id, instrument } = asRecord(row) ?? {};
-    return isString(id) && instrument === AUTHOR && !admitted.includes(id) ? [id] : [];
+    return isString(id) && instrument === AUTHOR && !kept.includes(id) ? [id] : [];
   });
 }
 

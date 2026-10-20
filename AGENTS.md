@@ -146,10 +146,10 @@ beat before its wins mean anything.
 A campaign makes many promotion attempts under one reference. An attempt is one reading, and the
 exact test reads a step between equal harnesses at most as often as its level: at 0.02, 1.1% of
 the time on 24 untied tasks, and at 0.10, 7.6% (`falseRate`, the test's `power` at one half,
-`src/builder/comparison.ts`). Every reading prints that rate at its own margins. A campaign's
-opening prints it summed over its patience's attempts, and the campaign command refuses a campaign
-above 10% (`openingLines`, `src/kernel/size.ts`). At 24 tasks and a patience of six the sum is
-6.8% at 0.02 and 45.5% at 0.10, so a campaign at 0.10 names a patience of one. The climb adds up
+`src/builder/comparison.ts`). Every reading prints that rate at its own margins, and a campaign's
+opening prints it at its target (`sizeLines`, `src/kernel/size.ts`). The level is a per-comparison
+level: nothing holds a campaign's attempts together to it, and no opening is refused on their
+sum. The climb adds up
 what the attempts risk together as they come: each reading of a harness against the reference is
 one attempt, at its own rate, and the sum is an estimate and no bound. The A/A controls that read a
 step, one-sided at the level, are counted beside it (`falsePromotion`, `src/builder/climb.ts`). A

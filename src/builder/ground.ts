@@ -145,7 +145,7 @@ export function crashedRun(events: readonly LogEvent[]) {
  */
 export function groundOf(events: readonly LogEvent[], plan: Plan) {
   const supply = supplyOf(events);
-  const asked = { ...plan.wanted, patience: plan.patience, pastStop: plan.pastStop ?? undefined };
+  const asked = { ...plan.wanted, pastStop: plan.pastStop ?? undefined };
   const all = comparisonsOf(events);
   const reports = all.filter((each): each is Reported => each.report !== null && each.reported !== null);
   const reference = referenceOf(events);

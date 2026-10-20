@@ -532,7 +532,7 @@ const promoteTool = (context: CampaignContext, bench: Bench): AgentTool =>
  *  until 13 October the Builder was not told, and a led Builder bought one of six scored tasks,
  *  which reads a step at 6-0 at the least. */
 function sizeLine({ events, plan }: Turn, scored = Math.min(plan.wanted.target, supplyOf(events).held)) {
-  return `Comparison size: ${sizeLines(scored, { ...plan.wanted, patience: plan.patience })[0] ?? ""}.`;
+  return `Comparison size: ${sizeLines(scored, plan.wanted)[0] ?? ""}.`;
 }
 
 /** The campaign's last Examiner session: writing, stopped with the run that began it, or how it

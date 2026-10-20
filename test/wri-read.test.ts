@@ -953,6 +953,27 @@ describe("the reader of misses at a limit, by comparison and side", () => {
   };
   const refused = { outcome: "fail", kind: "rejected" };
 
+  it("keeps misses in an unreported comparison out of the outside count beside a practice miss", () => {
+    const log: LogEvent[] = [];
+    const put = appendTo(log);
+    put(COMPARISON_STARTED, { session: "g-1", old: "hp", fresh: "hc", tasks: [] });
+    for (const id of ["reference", "new", "practice"]) {
+      put(SOLVE_STARTED, {
+        solve: id,
+        limits: { wallSeconds: 100 },
+        ...keyIfDefined("comparison", id === "practice" ? undefined : "g-1"),
+      });
+      put(SOLVE_FINISHED, { solve: id, ending: refused, seconds: 97 });
+      if (id !== "practice") {
+        expect(overview(log).triggers.filter((trigger) => trigger.name === "MISSES AT A LIMIT")).toEqual([]);
+      }
+    }
+    const misses = overview(log).triggers.filter((trigger) => trigger.name === "MISSES AT A LIMIT");
+    expect(misses).toHaveLength(1);
+    expect(misses[0]?.detail.match(/\d+/g)).toEqual(["1", "1", "1"]);
+    expect(misses[0]?.detail).not.toContain("g-1");
+  });
+
   it("counts a miss on its turns, on its context or near its wall as at a limit, by side, with the bound told", () => {
     // recode on 10 October: 41 of 58 scored misses ended on turns, and a read of the wall saw none.
     expect(

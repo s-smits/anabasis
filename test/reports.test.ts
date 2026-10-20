@@ -565,11 +565,11 @@ describe("the outcome an Examiner hears of a task", () => {
       standing: poolOf(log_).standings.get("kept") ?? null,
       failed: failedOf(log_, ["kept"]),
     });
-    const won = { cell: "other-won", solves: 2 } as const;
+    const won = { cell: "other-won", solves: 2, margin: null, room: null } as const;
     expect(read(before)).toEqual({ outcome: "reference-none", standing: won, failed: ["kept"] });
     expect(read(after)).toEqual({
       outcome: "reference-every",
-      standing: { cell: "reference-won", solves: 2 },
+      standing: { cell: "reference-won", solves: 2, margin: null, room: null },
       failed: [],
     });
     expect(read(beside)).toEqual({ outcome: "earlier-reference", standing: null, failed: [] });
@@ -620,8 +620,8 @@ describe("where a task stands in the counts an Examiner hears", () => {
     // Read from the record the outcome is read from: the same tasks, and the solves a side.
     const { standings, outcomes } = poolOf(log);
     expect(sorted(standings.keys())).toEqual(sorted(outcomes.keys()));
-    expect(standings.get("every")).toEqual({ cell: "tied-every", solves: 2 });
-    expect(standings.get("aside")).toEqual({ cell: "aside", solves: null });
+    expect(standings.get("every")).toEqual({ cell: "tied-every", solves: 2, margin: null, room: null });
+    expect(standings.get("aside")).toEqual({ cell: "aside", solves: null, margin: null, room: null });
   });
 
   it("counts a task the objective told apart between two valid answers as told apart, and the same answers without one as a tie", () => {
@@ -720,10 +720,25 @@ describe("the tasks that go to a person as possibly infeasible", () => {
     // answered is counted apart where a valid answer is known.
     expect(poolOf(twice).feasible).toEqual(new Set(["easy"]));
     expect(poolOf(proved).feasible).toEqual(new Set(["hard", "easy"]));
-    expect(poolOf(twice).standings.get("hard")).toEqual({ cell: "tied-none", solves: 2 });
-    expect(poolOf(proved).standings.get("hard")).toEqual({ cell: "tied-none-known", solves: 2 });
+    expect(poolOf(twice).standings.get("hard")).toEqual({
+      cell: "tied-none",
+      solves: 2,
+      margin: null,
+      room: null,
+    });
+    expect(poolOf(proved).standings.get("hard")).toEqual({
+      cell: "tied-none-known",
+      solves: 2,
+      margin: null,
+      room: null,
+    });
     const elsewhere = [...twice, ...solved(undefined, "hard", "h9", [P])];
-    expect(poolOf(elsewhere).standings.get("hard")).toEqual({ cell: "tied-none-known", solves: 2 });
+    expect(poolOf(elsewhere).standings.get("hard")).toEqual({
+      cell: "tied-none-known",
+      solves: 2,
+      margin: null,
+      room: null,
+    });
   });
 
   it("do not count a comparison that cut a solve of the task at a limit", () => {

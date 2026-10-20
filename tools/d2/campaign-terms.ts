@@ -100,6 +100,8 @@ const OPTIONS = {
    *  of the reference harness in each Examiner session's home (`writing`, `src/examiner/write.ts`);
    *  `off` keeps the ruling of 12 October. Unnamed, nothing is passed and the default holds. */
   "exam-reference": { type: "string" },
+  "exam-results": { type: "string" },
+  room: { type: "string" },
   cost: { type: "string" },
   moves: { type: "string" },
   handover: { type: "string" },
@@ -112,6 +114,64 @@ const OPTIONS = {
 /** What a campaign runs by where neither a flag nor its record says: the reserve of one solve in
  *  dollars, the Builder sessions before a comparison, and a seat's effort. */
 export const DEFAULTS = { reserve: "10", sessions: SESSIONS, effort: "high" } as const;
+/**
+ * Every flag of the campaign command with what it does: the one list of them, printed by
+ * `--help` (`flagsHelp`). Typed by `OPTIONS`, so no flag is added without its line. A term the
+ * opening keeps (`TERMS`, `src/builder/opening.ts`) holds for the campaign once named, and a later
+ * run that names nothing runs by the record.
+ */
+const EXPLAINED: Readonly<Record<keyof typeof OPTIONS, string>> = {
+  root: "a stored pack's root; with --sweep, --cycle and --bundle names the pack the campaign opens over",
+  sweep: "a stored pack's sweep (see --root)",
+  cycle: "a stored pack's cycle (see --root)",
+  bundle: "a stored pack's directory (see --root)",
+  name: "the campaign, and its folder .ana/d2/<name>; required",
+  project: "the project the campaign is filed under; required at its opening, kept after",
+  prompt: "the operator's prompt, for a campaign whose Examiner drafts its exam",
+  "prompt-file": "the operator's prompt, read from a file (see --prompt)",
+  budget: "the campaign's total in dollars; each move's cap is what is left of it",
+  reserve: `what one solve is held at, in dollars; the campaign ends when less is left (${DEFAULTS.reserve})`,
+  sessions: `Builder sessions the table counts before it advises a comparison (${String(SESSIONS)})`,
+  patience: `moves without a gain before the stop rule, and readings without room before no-room (${String(PATIENCE)})`,
+  builder: "the Builder's model",
+  "builder-effort": "the Builder's effort",
+  examiner: "the Examiner's model",
+  "examiner-effort": "the Examiner's effort",
+  reviewer: "the Referee's model; a paid campaign needs one",
+  "reviewer-effort": "the Referee's effort",
+  solver: "the solver's model: part of the setting, fixed once recorded",
+  "solver-effort": "the solver's effort (setting)",
+  "solver-window": "the context at which the solver compacts, in tokens (setting)",
+  "solve-minutes": "a solve's wall in minutes (setting)",
+  "solve-model-turns": "a solve's budget in the solver's own turns (setting)",
+  target: "frontier tasks a comparison scores (setting; 24)",
+  solves: "solves a side of each scored task (4)",
+  level: "the step test's level: one reading at or under it promotes (0.02)",
+  room: "how much better by the objective, as a share of the larger measure, an answer on record must be before a task leaves room: the gate, the frontier and room read it, the tally does not (0.01)",
+  defects: "tasks with a check defect before a comparison stops (3)",
+  minutes: "a Builder conversation's wall in minutes of its own time (1440)",
+  turns: "a Builder conversation's turns (300)",
+  "practice-solves": "practice solves a Builder session may make (24)",
+  practice: "practice tasks released an epoch, at most half of what is held",
+  admit: "checks admitted by name, under --hitl",
+  "exam-tasks": "tasks an Examiner session is asked for; unnamed, what the campaign is short of",
+  "exam-proposals": "instances an Examiner session may put to its gate (36)",
+  "exam-minutes": "an Examiner session's wall in minutes (240)",
+  "exam-turns": "an Examiner session's turns (200)",
+  "exam-reference": "on or off: a copy of the reference harness in the Examiner's home (on)",
+  "exam-results":
+    "on or off: tell the Examiner who won each task in its last comparison, and by how much where the objective alone decided it; off tells it by family alone (on)",
+  cost: "promotion attempts an epoch after set-up the economy bar reads; printed, gates nothing (3)",
+  moves: "the most campaign moves this run makes",
+  handover: "a directory, outside the repository, to write what the campaign hands over at its end",
+  loaded: "start solves without waiting for the host's load",
+  "dry-run": "print the table's advice and make no move",
+  hitl: "the operator in the loop: freezing, admitting and promoting wait for the operator's word; kept until --no-hitl",
+  "builder-led":
+    "one Builder conversation leads the campaign through its tools (on for a campaign that opens now)",
+  "past-stop": "the operator's reason to go on past the stop rule, logged",
+};
+
 const OPENED = "campaign.opened";
 export const MOVED = "campaign.move";
 /** The Builder conversations in a row that make no campaign move before a campaign ends. A Codex
@@ -128,6 +188,14 @@ export const flag = (name: string, value: string | undefined): string[] =>
 
 export function flagsOf(args: readonly string[]) {
   return parseArgs({ args: [...args], options: OPTIONS, allowNegative: true }).values;
+}
+
+/** The flags of the campaign command, a line each, as `--help` prints them. */
+export function flagsHelp(): string {
+  const wide = Math.max(...Object.keys(EXPLAINED).map((named) => named.length));
+  return Object.entries(EXPLAINED)
+    .map(([named, said]) => `  --${named.padEnd(wide)}  ${said}`)
+    .join("\n");
 }
 
 /** Whether a command names a stored pack, by any of the four flags that name one together. */
@@ -332,9 +400,11 @@ function pinned(events: readonly LogEvent[], was: Opening | null): string {
 function termsOf(events: readonly LogEvent[], id: string): string[] {
   const start = events.find(({ kind, data }) => kind === STARTED && data.session === id)?.data ?? {};
   const cap = asRecord(start.cap);
+  const room = asRecord(start.objective)?.room;
   return [
     ...flag("solves", isNumber(start.solves) ? String(start.solves) : undefined),
     ...flag("level", isNumber(start.level) ? String(start.level) : undefined),
+    ...flag("room", isNumber(room) ? String(room) : undefined),
     ...flag("cap", isNumber(cap?.dollars) ? String(cap.dollars) : undefined),
     ...flag("reserve", isNumber(cap?.reserve) ? String(cap.reserve) : undefined),
     ...flag("predict", isString(start.prediction) ? start.prediction : undefined),
@@ -395,7 +465,12 @@ export function comparisonOf(decided: Extract<Decided, { move: "compare" }>, tur
   const session = decided.id ?? nextId(events, "g");
   const terms =
     decided.id === undefined
-      ? [...flag("solves", values.solves), ...flag("level", values.level), ...cap]
+      ? [
+          ...flag("solves", values.solves),
+          ...flag("level", values.level),
+          ...flag("room", values.room),
+          ...cap,
+        ]
       : termsOf(events, decided.id);
   return {
     session,

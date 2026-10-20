@@ -605,13 +605,15 @@ export async function harnessNow(bench: Bench): Promise<string | Error> {
  * The opening message again, as it was sent. A session whose conversation was compacted, or lost
  * with its process, has the public rules, the practice tasks, the failed practice solves and the
  * comparisons in no other place: they are built by the host from the log, and the Builder's own
- * notes are its prose about them. v1 served its round's opening facts the same way.
+ * notes are its prose about them. v1 served its round's opening facts the same way. An Examiner's
+ * opening holds the record of every task, and since 21 October it is served the same way: 65
+ * Examiner sessions on record compacted, and the summary kept what the model chose of that record.
  */
-export function openingTool(opening: string | (() => string), said: Said): AgentTool {
+export function openingTool(opening: string | (() => string), description: string): AgentTool {
   return tool({
     name: "read_opening",
     label: "Read the opening",
-    description: said.opening,
+    description,
     parameters: Type.Object({}),
     executionMode: "sequential",
     execute: async () => text(isFunction(opening) ? opening() : opening),

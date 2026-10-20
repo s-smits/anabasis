@@ -13,8 +13,8 @@ import { defineRule, type ESTree } from "@oxlint/plugins";
  * inside a loop inside a branch is often one `.flatMap()` or one `Map` lookup that the shape
  * is spelling out by hand.
  *
- * This is deliberately not the complexity gate. `tools/loc/complexity-policy.ts` counts decision
- * points and refuses at 22, which a long flat `switch` reaches while staying readable and which
+ * This is deliberately not a complexity gate. v1's `tools/loc/complexity-policy.ts`, which v2 did
+ * not copy, counted decision points and refused at 22, which a long flat `switch` reaches while staying readable and which
  * a four-deep pyramid can sit well under. Depth and branch count measure different costs, and a
  * function can pass one while failing the other.
  *

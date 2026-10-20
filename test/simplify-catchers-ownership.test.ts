@@ -68,6 +68,18 @@ export function run() {
 }
 `.trimStart();
 
+/** `capturedSpawn` is `Bun.spawn` taken at import, and spawns the same child. */
+const CAPTURED = `
+declare const argv: string[];
+declare const capturedSpawn: typeof Bun.spawn;
+
+export function run() {
+  const child = capturedSpawn({ cmd: argv }); // REPORT the captured spawn is still a spawn
+  child.kill();
+  return child.exitCode;
+}
+`.trimStart();
+
 /** A pid read out of `ps` and then signalled: the file ends something it never launched. */
 const REAPER = `
 declare const process: { kill: (pid: number, signal: string) => void };
@@ -346,6 +358,7 @@ describe("the simplify ownership catchers", () => {
 
   it("reads a file that spawns a child and kills it, and names the owner and its reader that are in the tree", async () => {
     await pins("no-lifetime-outside-owner", LIFETIME, 1);
+    await pins("no-lifetime-outside-owner", CAPTURED, 1);
     const [message] = await reportedMessages(
       "ana",
       "no-lifetime-outside-owner",

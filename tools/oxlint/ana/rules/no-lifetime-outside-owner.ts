@@ -29,7 +29,9 @@ import { isOneOf, isTestFile } from "../shared/file-role.ts";
  * The rule reads the file, not the call: a spawn and a `.kill(` in one module. That is the
  * shape, because the cost is the second owner existing, not any one line of it. The owner and
  * its reader are exempt by path. Tests are exempt: a test that starts a process has to be able to
- * stop it.
+ * stop it. `capturedSpawn` (`src/meta/process.ts`) is `Bun.spawn` taken at import, and the
+ * launch paths that start a confined child call it; until 20 October the rule did not read it as
+ * a spawn.
  *
  * A signal sent through the process object is not that shape. `process.kill(pid, signal)` ends
  * an identity the file was handed, which is what `src/meta/subprocess.ts` itself does, what
@@ -87,7 +89,7 @@ export const noLifetimeOutsideOwnerRule = defineRule({
 
       CallExpression(node) {
         const text = context.sourceCode.getText(node.callee);
-        if (/\b(?:Bun\.spawn|Bun\.spawnSync|spawnSync|execFile|execFileSync)\b/u.test(text)) {
+        if (/\b(?:Bun\.spawn|Bun\.spawnSync|capturedSpawn|spawnSync|execFile|execFileSync)\b/u.test(text)) {
           spawn ??= node;
         }
         // `kill(pid, 0)` sends no signal: it asks whether the process still exists, which is a

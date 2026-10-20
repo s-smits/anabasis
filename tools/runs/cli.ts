@@ -11,7 +11,8 @@
  * how much of each login is used (`logins.ts`), `keep` keeps a run going across logins (`keep.ts`),
  * `copy` takes a stopped campaign whole to another worktree (`manage.ts`), `move` takes one to another
  * machine and goes on with it there (`move.ts`), and `on` and `hosts` run a verb on another machine
- * (`hosts.ts`), and `fetch` takes a copy of a run another machine holds, to read here (`move.ts`). A verb that names a run no worktree here holds runs on the host that holds it
+ * (`hosts.ts`), `fetch` takes a copy of a run another machine holds into the archive, to read here (`move.ts`), and `retire` moves
+ * each idle campaign into the archive and deletes the worktrees nothing uses, here and on every host (`retire.ts`). A verb that names a run no worktree here holds runs on the host that holds it
  * (`routed`), and `holds` is what that host is asked.
  */
 import { runtimeProcess } from "#src/meta/process.ts";
@@ -24,6 +25,7 @@ import { fetch, move } from "./move.ts";
 import { runsStatus, watch } from "./pulse.ts";
 import { source } from "./receipt.ts";
 import { rehearse } from "./rehearse.ts";
+import { retire } from "./retire.ts";
 import { replay } from "./replay.ts";
 import { seed } from "./seed.ts";
 import { stop } from "./stop.ts";
@@ -50,6 +52,7 @@ const VERBS = {
   copy,
   move,
   fetch,
+  retire,
   on,
   hosts,
   holds,

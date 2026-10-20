@@ -58,7 +58,7 @@ import { plural } from "#src/meta/text.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { codeOf } from "../d2/campaign.ts";
 import { receipts } from "../runs/receipt.ts";
-import { runNamed } from "../runs/registry.ts";
+import { readNamed } from "../runs/registry.ts";
 import { stagedExamOf } from "../d2/exam.ts";
 import { readPack } from "../m0/stored-sweep.ts";
 import { catalogueText, lanesOf, ownersOf, REFERENCES } from "./catalogue.ts";
@@ -101,7 +101,7 @@ const { values, positionals } = parseArgs({
 });
 
 /** A log by its path, or a campaign's by the campaign's whole name. */
-const logOf = (named: string) => (existsSync(named) ? named : runNamed(named).path);
+const logOf = (named: string) => (existsSync(named) ? named : readNamed(named).path);
 
 function needed(name: "log" | "out" | "bundle" | "task" | "answer"): string {
   const value = values[name];

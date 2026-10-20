@@ -9,7 +9,7 @@
  * default): resumed with `codex exec resume` where Codex named its thread, started again from its
  * prompt where it did not. `--retry <outputDir>` does the same later for the sessions an earlier
  * launch left incomplete, from that launch's own record. What each session leaves behind, and how
- * it is read back, is `luna-receipts.ts`'s.
+ * it is read back, is `gpt-receipts.ts`'s.
  *
  * v1's launcher also held a parent Codex task open through a stop hook, and took a bare task list
  * beside a manifest. v2 registers no Codex hook and a manifest holds a task list whole, so both
@@ -49,7 +49,7 @@ import {
   threadIdOf,
   writeSummary,
   writeWhole,
-} from "./luna-receipts.ts";
+} from "./gpt-receipts.ts";
 
 /** One checked session, ready to launch. */
 export interface Session {
@@ -80,9 +80,9 @@ interface Execution {
   environment: SessionEnvironment;
 }
 
-const USAGE = `Usage: luna-sessions.ts --manifest <absolute json> --output-dir <absolute new dir> [launch options]
-       luna-sessions.ts --retry <absolute output dir> [--codex-bin …] [--max-active …] [--start-interval-ms …] [--retries …]
-       luna-sessions.ts --drain <absolute output dir>
+const USAGE = `Usage: gpt-sessions.ts --manifest <absolute json> --output-dir <absolute new dir> [launch options]
+       gpt-sessions.ts --retry <absolute output dir> [--codex-bin …] [--max-active …] [--start-interval-ms …] [--retries …]
+       gpt-sessions.ts --drain <absolute output dir>
 
 Launch options:
   --codex-bin <absolute executable>
@@ -289,14 +289,14 @@ function sessionEnvironment(outputDir: string): SessionEnvironment {
   const bunDirectory = dirname(bunExecutable);
   const shellDirectory = join(outputDir, "shell-env");
   mkdirSync(shellDirectory, { recursive: true, mode: 0o700 });
-  writeWhole(join(shellDirectory, ".zshenv"), 'export PATH="$CODEX_LUNA_BUN_DIR:$PATH"\n');
+  writeWhole(join(shellDirectory, ".zshenv"), 'export PATH="$CODEX_GPT_BUN_DIR:$PATH"\n');
   return {
     env: {
       ...Bun.env,
       PATH: [bunDirectory, Bun.env.PATH].filter(Boolean).join(delimiter),
       ZDOTDIR: shellDirectory,
-      CODEX_LUNA_BUN_DIR: bunDirectory,
-      CODEX_LUNA_SESSION: "1",
+      CODEX_GPT_BUN_DIR: bunDirectory,
+      CODEX_GPT_SESSION: "1",
     },
     runtime: { bunVersion: Bun.version, bunExecutable },
   };
@@ -413,7 +413,7 @@ async function execute(run: Execution): Promise<number> {
   const sessionCount = run.sessions.length;
   console.log(
     capturedJsonStringify({
-      type: "luna_sessions.started",
+      type: "gpt_sessions.started",
       outputDir,
       sessionCount,
       model,
@@ -431,7 +431,7 @@ async function execute(run: Execution): Promise<number> {
     const remainingCount = sessionCount - settled;
     console.log(
       capturedJsonStringify({
-        type: "luna_session.finished",
+        type: "gpt_session.finished",
         name,
         status,
         failureKind,
@@ -535,4 +535,4 @@ async function main(args: CommandArgs): Promise<number> {
   return mode === "retry" ? retry(target, args) : launchSessions(target, args);
 }
 
-if (import.meta.main) await runCommand({ name: "luna-sessions", usage: USAGE, options: OPTIONS }, main);
+if (import.meta.main) await runCommand({ name: "gpt-sessions", usage: USAGE, options: OPTIONS }, main);

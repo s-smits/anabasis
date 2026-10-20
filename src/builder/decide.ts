@@ -633,9 +633,10 @@ function unafforded(ground: Ground, named: Move): Move | null {
 /** What a first comparison would bill, priced by the reference harness's solves of draft tasks
  *  (`try_task`): two harnesses, the tasks it would score, the solves a side. Until 14 October a
  *  campaign with no report was held to nothing, and buffer-149's gate billed about $0.43 a solve.
- *  A gate's `billed` is its `TRIED` solves', the non-results among them included, while its
- *  `solves` counts the readings, so the price is a solve started and not a reading: over readings
- *  alone a gate with a non-result priced the comparison high. Null where no draft was solved. */
+ *  A gate's `billed` is the solves it ran (`ran`; `TRIED` before 20 October), the non-results among
+ *  them included, while its `solves` counts the readings, so the price is a solve started and not a
+ *  reading: over readings alone a gate with a non-result priced the comparison high. Null where no
+ *  draft was solved. */
 function firstPriced({ events, plan }: Ground): { dollars: number; said: string } | null {
   const tried = events.flatMap(({ kind, data }) => {
     const reference = asRecord(data.reference);
@@ -643,10 +644,10 @@ function firstPriced({ events, plan }: Ground): { dollars: number; said: string 
       isNumber(reference?.billed) &&
       isNumber(reference.solves) &&
       reference.solves > 0
-      ? [{ billed: reference.billed }]
+      ? [{ billed: reference.billed, ran: isNumber(reference.ran) ? reference.ran : TRIED }]
       : [];
   });
-  const solves = tried.length * TRIED;
+  const solves = tried.reduce((sum, { ran }) => sum + ran, 0);
   if (solves === 0) return null;
   const each = tried.reduce((sum, { billed }) => sum + billed, 0) / solves;
   const scored = Math.min(plan.wanted.target, taskSets(events).held.length);

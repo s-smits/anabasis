@@ -7,8 +7,8 @@
  *
  * The Examiner writes task instances against the pack's contract and check program. Each is put to
  * the one gate, the shape of its package, and since 12 October to the reference harness's solves:
- * `TRIED` fresh solves of it under the campaign's setting, and it is a held-out task where those that
- * gave a reading leave the reference room as a comparison reads it (`informative`), or where none
+ * fresh solves of it under the campaign's setting, one at a time and at most `TRIED`, and it is a
+ * held-out task at the first after which those that gave a reading leave the reference room as a comparison reads it (`informative`), or where none
  * was valid and its author's own answer passes on it (`try_task`, `src/examiner/write.ts`). The
  * session is shown every task the campaign holds, the pack's own
  * and the ones earlier sessions wrote, and the opening message says one outcome of each: how the

@@ -106,7 +106,7 @@ reference harness. A promotion is one step of descent: a harness that beats the 
 held-out tasks by more than chance allows, in one comparison on fresh solves; until 19 October it
 had to do so twice. A climb is several of them,
 read as promotions per campaign (`src/builder/climb.ts`). Every draft that the reference answered
-in none of its three admission solves, but whose author's own answer passes on it
+in none of its admission solves, but whose author's own answer passes on it
 (`task.feasible`), is held out like any other task (`try_task`, `gated` in
 `src/examiner/write.ts`). A task the reference never answers while a valid answer is on record is
 exactly the room a promotion leaves. Since 19 October, the same applies to a draft the reference
@@ -266,7 +266,7 @@ differently. The design around the copied code is different.
 | --- | --- |
 | The Builder wrote the harness, the tasks and the checks | The Examiner writes tasks, the check program is fixed, and the Builder writes only the harness |
 | A harness was scored on its own Builder's test set, as a pass rate | Two harnesses are compared on held-out tasks, as wins against losses |
-| Every task carried an answer its author had found | There are no reference answers. A task is held out on the shape of its package and, where the host can have the reference harness solve it, only when those of three fresh solves that gave a reading leave the reference room as a comparison reads it (`try_task`, `informative`; section 7, "Room"), or when none is valid and its author's own answer passes on it; those solves are never scored |
+| Every task carried an answer its author had found | There are no reference answers. A task is held out on the shape of its package and, where the host can have the reference harness solve it, only when those of up to three fresh solves that gave a reading leave the reference room as a comparison reads it (`try_task`, `informative`; section 7, "Room"), or when none is valid and its author's own answer passes on it, the solves running one at a time until they do; those solves are never scored |
 | A candidate passed a submit gate before it was measured | There is no gate on a harness. `check_harness` says whether it opens, and the comparison says whether it is better |
 | Difficulty was steered with a band, levels and staged test sizes | Both harnesses get one fixed compute budget, with no band and no levels |
 | A harness declared its own limits in `agent/config.yaml` | The host sets every limit, and that file is ignored |
@@ -404,8 +404,8 @@ What the **Examiner** reads:
 
 What the **Examiner** never reads: a target, a harness's name, the other harness's result on any
 one task, or a count of a task's valid solves beyond every, some or none. The one exception is how
-many of the reference harness's three solves of a draft task were valid (`try_task`, and in later
-sessions), how many of them gave no reading (since 15 October), with the turns each valid one took (since 16 October) and, where the contract declares
+many of the reference harness's solves of a draft task were valid (`try_task`, and in later
+sessions; up to three, one at a time until they leave room), how many of them gave no reading (since 15 October), with the turns each valid one took (since 16 October) and, where the contract declares
 an objective, their measure and its own answer's (since 19 October). Nothing else of those solves
 reaches it. The Examiner makes none of the exam's solves itself.
 

@@ -34,7 +34,7 @@ import { basename, dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
-import { type Host, hostsOf, quoted, sshScript, verbOn } from "./hosts.ts";
+import { type Host, hostsOf, quoted, rsync, sshScript, verbOn, worktreesIn } from "./hosts.ts";
 import { ARCHIVE, archiveOf, HERE, keepers, processes, type Run, runs, writers } from "./registry.ts";
 
 /** What one sweep is asked: the main worktree, how long idle is, the time, and whether to act. */
@@ -144,7 +144,8 @@ function bringHome(sweep: Sweep, host: Host): void {
   const found = runTextSyncOrThrow(
     sshScript(
       host,
-      `d="$(git -C ${host.tree} worktree list --porcelain | sed -n '1s/^worktree //p')/${ARCHIVE}/${HERE}"; test -d "$d" && echo "$d"; true`,
+      // The tree unquoted, as `ANA_HOSTS` writes it, so that `~` names the home there.
+      `d="$(${worktreesIn(host.tree)} | head -1)/${ARCHIVE}/${HERE}"; test -d "$d" && echo "$d"; true`,
     ),
   ).trim();
   const into = archiveOf(sweep.main, host.name);
@@ -152,7 +153,7 @@ function bringHome(sweep: Sweep, host: Host): void {
   say(sweep, `${host.name}:${found} -> ${into}`);
   if (!sweep.yes) return;
   mkdirSync(into, { recursive: true });
-  runTextSyncOrThrow(["rsync", "-az", `${host.ssh}:${quoted(found)}/`, `${into}/`]);
+  rsync(`${host.ssh}:${quoted(found)}/`, `${into}/`);
 }
 
 /** `bun run runs retire`. */

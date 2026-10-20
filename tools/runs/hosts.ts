@@ -24,6 +24,7 @@
  */
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
+import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { runs } from "./registry.ts";
 
 /** How long `hosts` waits for one host's rows, and a verb for each host's `holds`. */
@@ -52,6 +53,18 @@ interface Routes {
 }
 
 export const hostsOf = (): readonly Host[] => parseJsonAs<Host[]>(runtimeProcess.env.ANA_HOSTS ?? "[]");
+
+/**
+ * `from` copied into `to` with rsync, either of them `<ssh>:<path>` on a host. It compresses what it
+ * sends: a campaign's folder is mostly logs and traces, and on 20 October one log of 4.6 MB took
+ * 18.6 s to reach the Linux host over Wi-Fi, and 2.5 s with `-z`.
+ */
+export const rsync = (from: string, to: string, ...flags: readonly string[]) =>
+  runTextSyncOrThrow(["rsync", "-az", ...flags, from, to]);
+
+/** The shell text that lists the worktrees of the repository `repo`, a shell word, the main first. */
+export const worktreesIn = (repo: string) =>
+  `git -C ${repo} worktree list --porcelain | sed -n 's/^worktree //p'`;
 
 export const quoted = (word: string) => `'${word.replaceAll("'", `'\\''`)}'`;
 

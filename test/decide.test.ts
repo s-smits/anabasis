@@ -478,7 +478,7 @@ describe("a row of the table", () => {
     expect(move([...FIRST, ...compared("g-1", "h1", "step", { tally: [8, 0, 4], extra: aa })])).toEqual(
       move(stepped),
     );
-    // A step whose retained tasks regress reads `regressed`, and promotes nothing.
+    // A report written from 12 to 20 October may hold `regressed`, which promotes nothing.
     expect(move([...FIRST, ...compared("g-1", "h1", "regressed", { tally: [8, 0, 4] })])).not.toMatchObject({
       move: "promote",
     });

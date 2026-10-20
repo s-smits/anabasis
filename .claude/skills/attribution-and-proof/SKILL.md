@@ -20,7 +20,7 @@ A v2 claim rests on a comparison: two harnesses, the same held-out tasks, solves
 interleaved, a one-sided paired sign-flip test over each task's difference in pair wins (`flipP`,
 `src/kernel/compare.ts`). Validity decides first; a declared objective compares two valid answers.
 The null treats each untied task's sign as equally likely and independent, at its fixed pair margin.
-`step` means the frontier cleared its level and the retained tasks did not regress (`stepOf`).
+`step` means one test over the frontier and the retained tasks together cleared its level (`stepOf`).
 It does not say:
 
 - **that the harness is better under another condition.** Another wall, budget, solver, effort
@@ -74,11 +74,13 @@ Answer these from the log before using the word step in a sentence of your own:
   harness's solves were not interchangeable, so say so beside the step it stands with.
 - **How thin?** At `--level 0.02`, six untied tasks all won is the least that reads a step
   (p = 0.015625), and 5-0 (p = 0.03125) reads none. With equal pair margins, 8-1, 10-2 and
-  12-3 also clear 0.02; unequal margins need `flipP`, rather than the tally alone. Retained net
-  pair loss regresses at `REGRESSION = 0.25` by the mirrored test: one loss alone does not, two
-  of two do. An empty retained set is `unmeasured`, not evidence of no loss.
-- **How much power and risk?** Give `frontier.detectable`, the least winning share detected four
-  times in five at these margins, and `frontier.falseRate`, `power(differences, 0.5, level)`.
+  12-3 also clear 0.02; unequal margins need `flipP`, rather than the tally alone. The retained
+  tasks are in the same test, so a gain on new tasks can offset a loss on old ones: give the
+  retained tally apart. An empty retained set is `unmeasured`, not evidence of no loss. A report
+  written from 12 to 20 October read the frontier alone and may hold `regressed`.
+- **How much power and risk?** Give `scored.detectable`, the least winning share detected four
+  times in five at these margins, and `scored.falseRate`, `power(differences, 0.5, level)` (on
+  `frontier` in a report written before 20 October).
   The latter is at most the level under the test's null. `sizeLines` assumes no ties and equal
   margins before a run (`src/kernel/size.ts`); the level is a per-comparison level.
   Give the campaign estimate from `riskLines` in `src/builder/climb.ts`: it sums attempt rates,

@@ -11,6 +11,7 @@ import { keyIfNotNull } from "../src/meta/optional-key.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { climbTable, crossings, safeguardTriggers } from "../tools/wri/climb.ts";
 import { indexOf, type TRIGGERS } from "../tools/wri/folds.ts";
+import { joinedTest, testedOf } from "../tools/wri/promotion.ts";
 import { overview } from "../tools/wri/read.ts";
 import { conditionOf, roundSolves } from "./helpers/logged-round.ts";
 
@@ -202,6 +203,17 @@ function leaning({ author, spread, fails }: { author: number; spread: number; fa
 }
 
 describe("lane 31: a promotion and the climb after it", () => {
+  it("reads a promotion on the differences its step tested: the frontier and the retained tasks since 20 October, the frontier alone before", () => {
+    const frontier = { differences: [4, 4], of: ["a", "b"] };
+    const retained = { differences: [-4], of: ["c"] };
+    const before = { scored: { differences: [4, 4, -4] }, frontier, retained };
+    const since = { ...before, scored: { differences: [4, 4, -4], falseRate: 0.25 } };
+    expect(testedOf(before)).toEqual({ differences: [4, 4], of: ["a", "b"] });
+    expect(testedOf(since)).toEqual({ differences: [4, 4, -4], of: ["a", "b", "c"] });
+    expect(testedOf({ ...since, retained: "unmeasured" }).differences).toEqual([4, 4]);
+    // A task two readings tested counts once, its differences summed; one in `without` drops out.
+    expect(joinedTest([since, since], new Set(["a"])).toSorted((x, y) => x - y)).toEqual([-8, 8]);
+  });
   it("reads what a promotion rested on, by whose word and under which rule", () => {
     const read = triggered(promoted(true).log);
     expect(read("PROMOTED")).toEqual([

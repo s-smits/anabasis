@@ -19,19 +19,15 @@
  * than one half is the power (`power`), and every reading says the least share of its untied tasks
  * it detects four times in five (`detectable`).
  *
- * The step is read on the frontier (12 October, the revised plan's M1.4): the scored tasks not
- * exhausted, fixed at the comparison's start (`round.ts`, `begin`). The retained tasks, fixed at
- * the same time from the exhausted ones and an earlier epoch's (`poolOf`, `reports.ts`),
- * regress where they lose more pairs than they win and the loss, read by the frontier's own test
- * mirrored, is at or under `REGRESSION`: `regressed`, which promotes nothing. Until 18 October any
- * net loss did, and in buffer-pr197-opus-m1 one flagged solve of four on one retained task, which
- * the reference passed in all 24 of its solves, vetoed g-5's repeat and g-6 and g-7's
- * promotion. A retained set with no task tallied is `unmeasured`,
- * never no loss: against the provisioned starter nothing is exhausted yet. Until 16 October one
- * whose untied tasks all fell in one family of the two or more its set held read `narrow` and
- * promoted nothing either; in 1,598 recorded readings it never fired, and an old report keeps it.
+ * The step is one test over the frontier, the scored tasks not exhausted, and the retained tasks,
+ * both fixed at the comparison's start (`round.ts`, `begin`; `poolOf`, `reports.ts`). From 12 to
+ * 20 October the retained tasks were a second test, read `regressed`; in 58 real readings it fired
+ * once, on r3's g-12, the starter, which the one test reads `no-step` (p 0.147). Gains on new tasks
+ * may now offset losses on old ones, and the report keeps the two sets' tallies apart. A retained
+ * set with no task tallied is `unmeasured`, never no loss. Until 16 October a step whose untied
+ * tasks all fell in one family read `narrow`; in 1,598 recorded readings it never fired.
  *
- * One comparison's reading, `step`, is its frontier's test at or under the level, 0.02 by default,
+ * One comparison's reading, `step`, is that test at or under the level, 0.02 by default,
  * and a step against the reference promotes (`stepOf`; `decide.ts`). The level is the caller's and
  * recorded with the campaign's opening, so a campaign reads by its own rule whatever the tree's
  * default (`docs/plan.md`, Statistical power and cost). From 10 to 19 October the step was read in
@@ -145,20 +141,6 @@ interface Sides {
   readonly objective?: ObjectiveRule | undefined;
 }
 
-/**
- * What a reading reads of one comparison: each frontier task's difference in pair wins, where the
- * step is read; and the retained tasks', or null where none was tallied, which is unmeasured and
- * never no loss (`comparison.ts`, `compared`).
- */
-interface Stage {
-  readonly frontier: readonly number[];
-  readonly retained: readonly number[] | null;
-}
-
-/** The p at or under which the retained tasks' net loss, read by the frontier's test mirrored,
- *  regresses: one task lost alone reads 0.5 and does not, two of two read 0.25 and do. It was the
- *  trigger's value until 19 October, when the trigger went. */
-const REGRESSION = 0.25;
 /** The chance at which a share of untied tasks won is detected (`detectable`): four times in five. */
 const POWER = 0.8;
 /** What a report holds for a retained set no task was tallied in: no reading, never no loss. */
@@ -271,30 +253,21 @@ export function sweepOf(level: number): number {
   return sweep;
 }
 
-/** A report's stage, where it holds a frontier and a retained reading. A report written before
- *  12 October holds a pooled tally alone, which reads as none. */
-function stageOf(report: JsonObject): Stage | null {
+/** One comparison's reading of its report at `level`: `step` where the one test over its frontier
+ *  and retained tasks' differences in pair wins together clears it, and `no-step` otherwise. A
+ *  step against the reference promotes (`decide.ts`). A report written before 12 October holds a
+ *  pooled tally alone, with no frontier and retained set, and is refused. */
+export function stepOf(report: JsonObject, level: number): "step" | "no-step" {
   const differences = (held: unknown) => {
     const found = asRecord(held)?.differences;
     return Array.isArray(found) && found.every(isNumber) ? found : null;
   };
   const frontier = differences(report.frontier);
-  const retained = report.retained === UNMEASURED ? null : differences(report.retained);
-  if (frontier === null || (retained === null && report.retained !== UNMEASURED)) return null;
-  return { frontier, retained };
-}
-
-/** One comparison's reading of its report's frontier at `level`: `no-step` short of it, and
- *  `regressed` where its retained tasks lost more pairs than they won, by a loss the mirrored test
- *  reads at or under `REGRESSION`. A step against the reference promotes (`decide.ts`). A report
- *  with no frontier and retained set holds no reading, and is refused. */
-export function stepOf(report: JsonObject, level: number): "step" | "no-step" | "regressed" {
-  const stage = stageOf(report);
-  if (stage === null) throw new Error("a reading needs a frontier and a retained set");
-  if (flipP(stage.frontier) > level) return "no-step";
-  const { retained } = stage;
-  const lost = retained !== null && total(retained) < 0 && flipP(retained.map((one) => -one)) <= REGRESSION;
-  return lost ? "regressed" : "step";
+  const retained = report.retained === UNMEASURED ? [] : differences(report.retained);
+  if (frontier === null || retained === null) {
+    throw new Error("a reading needs a frontier and a retained set");
+  }
+  return flipP([...frontier, ...retained]) <= level ? "step" : "no-step";
 }
 
 /** The objective rule a comparison's start, or its report, carries, or undefined where it fixed

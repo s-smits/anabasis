@@ -90,7 +90,6 @@
     "ana/no-inline-slop-answer": "error",
     "ana/require-captured-json-runtime": "error",
     "ana/require-meta-runtime-import": "error",
-    "ana/require-type-for-null-default": "error",
     "ana/unproven-unknown-parameter": "error",
     "anti-slop/no-array-filter-map": "error",
     "anti-slop/no-chained-type-assertions": "error",

@@ -66,8 +66,8 @@
  *
  * **The budget is one total** (`docs/plan.md`, row F49). Each move's cap is what is left of it:
  * the total less every billed dollar the log holds, and where less is left than one solve is held
- * at, the campaign ends on its budget. **What it risks** is said as it opens, and an opening whose
- * false promotion over its patience may pass 10% is refused (`openingLines`, `src/kernel/size.ts`).
+ * at, the campaign ends on its budget. **What it risks** is said as it opens: what one reading of
+ * its target can show and its per-comparison rate (`sizeLines`, `src/kernel/size.ts`).
  *
  * **A campaign runs unattended** (row F29; the operator, 12 and 16 October): it admits every check
  * its author's own computation decides, a drafted exam's objective among them, freezes an exam whose reading holds no fault and promotes a harness a comparison
@@ -113,7 +113,7 @@ import { draftOf } from "#src/examiner/draft.ts";
 import { unadmitted } from "#src/kernel/acceptance.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { cutSessions, latestBuilt, promoted } from "#src/kernel/reports.ts";
-import { openingLines } from "#src/kernel/size.ts";
+import { sizeLines } from "#src/kernel/size.ts";
 import { existsSync, mkdirSync } from "#src/meta/filesystem.ts";
 import { isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
@@ -579,7 +579,7 @@ export async function harnessBuilder(
     const turn = turnOf({ log, values, opening, seats, held, campaign });
     const { plan } = turn;
     if (made === 0) {
-      for (const line of openingLines({ ...plan.wanted, patience: opening.patience })) console.log(line);
+      for (const line of sizeLines(plan.wanted.target, plan.wanted)) console.log(line);
     }
     const decided = decide(events, plan);
     // Led by its Builder, every move but set-up and what the host owes (`hostOwed`) is the

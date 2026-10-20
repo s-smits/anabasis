@@ -1,7 +1,7 @@
 /**
  * The size of a comparison: how many tasks and how many solves a side it buys where nothing names
  * another (`SIZE`), and what one of so many tasks can show and risks, said before it runs
- * (`sizeLines`), which a campaign's opening holds to a cap (`openingLines`).
+ * (`sizeLines`).
  *
  * The plan fixes the sample size before each round and never changes it once results are visible
  * (`docs/plan.md`, principle 7), so the size is a choice made on arithmetic, and the arithmetic is
@@ -24,6 +24,14 @@
  * One reading promotes since 19 October, so an attempt is one reading at the level and its rate
  * is the test's own (`power` at a share of a half). Until then a step was read again on fresh
  * solves past a trigger, and this file named the smallest results of both stages.
+ *
+ * The level is a per-comparison level. Until 20 October an opening was refused where one reading's
+ * rate at `target` untied tasks, summed over the patience, passed 10% (`openingLines`). That sum
+ * described no campaign: readings run on fewer untied tasks than the target (at 12 of 24 the same
+ * sum is 11.6%), tied tasks raised the target and passed the gate without strengthening the test,
+ * and the patience restarts at a promotion while every repeat is another attempt. What a campaign's
+ * attempts risk together is the climb's running sum over the readings made (`falsePromotion`,
+ * `climb.ts`).
  */
 import { plural } from "../meta/text.ts";
 import { detectable, flipP, power, sweepOf } from "./compare.ts";
@@ -34,18 +42,13 @@ interface Result {
   readonly losses: number;
 }
 
-/** What a comparison is read by: the level a step clears, and the patience, the moves with no gain
- *  a campaign ends after. */
+/** What a comparison is read by: the level a step clears. */
 interface Asked {
   readonly level: number;
-  readonly patience: number;
 }
 
 /** A comparison's size where nothing names another: the scored tasks and the solves a side. */
 export const SIZE = { tasks: 24, solves: 4 } as const;
-/** The chance of a false promotion over a campaign's attempts under one reference, the rule's rate
- *  summed over them, past which its opening is refused (`opening`; 12 October). */
-const FALSE_CAP = 0.1;
 /** How many of the smallest clearing results a line names. */
 const NAMED = 3;
 
@@ -66,34 +69,17 @@ function clearing(tasks: number, level: number): Result[] {
   return results;
 }
 
-/** The chance a reading on `tasks` untied tasks reads a step between equal harnesses: the test's
- *  own rate at its margins, never over the level. */
-function rateOf(tasks: number, level: number): number {
-  return power(units(tasks, 0), 0.5, level);
-}
-
-/** The chance of a false promotion over the patience's attempts on `tasks` tasks under one
- *  reference: one reading's rate summed over them, the union bound's form, which assumes nothing
- *  of their independence. */
-function risked(tasks: number, { level, patience }: Asked): number {
-  return Math.min(1, patience * rateOf(tasks, level));
-}
-
 /**
  * What a comparison of `tasks` scored tasks can show and risks, in lines for a launch's notes and
  * `prepare.ts`'s output: the smallest results that read a step, the least share of the tasks won
- * that one reading detects four times in five, were none to tie, one reading's rate, and last its
- * sum over the patience (`risked`).
+ * that one reading detects four times in five, were none to tie, and one reading's rate.
  */
-export function sizeLines(tasks: number, asked: Asked): string[] {
-  const { level, patience } = asked;
+export function sizeLines(tasks: number, { level }: Asked): string[] {
   const results = clearing(tasks, level);
   const scored = `${tasks === 0 ? "no held-out task" : plural(tasks, "held-out task")} can be scored`;
-  const summed = `over the patience's ${plural(patience, "attempt")} under one reference a false promotion comes about ${percent(risked(tasks, asked))} of the time by the rule's design`;
   if (results.length === 0) {
     return [
       `${scored}, and at --level ${String(level)} a step takes ${String(sweepOf(level))}, all won: this comparison cannot read a step`,
-      summed,
     ];
   }
   const said = results
@@ -101,37 +87,15 @@ export function sizeLines(tasks: number, asked: Asked): string[] {
     .map(({ wins, losses }) => `${String(wins)}-${String(losses)}`)
     .join(", ");
   const share = detectable(units(tasks, 0), level);
+  // The test's own rate at these margins, never over the level, to a tenth of a percent, and one
+  // under that said as under it, never as none.
+  const rate = power(units(tasks, 0), 0.5, level);
+  const rated = rate > 0 && rate < 0.0005 ? "under 0.1%" : `${String(Math.round(1000 * rate) / 10)}%`;
   return [
     `${scored}; at --level ${String(level)} the smallest results that read a step are ${said}, each task won or lost by as many pairs`,
     share === null
       ? `were no task to tie, one reading at --level ${String(level)} would detect no share of ${plural(tasks, "task")}: it takes ${String(sweepOf(level))}, all won`
       : `were no task to tie, one reading at --level ${String(level)} would detect four times in five a harness that wins ${String(Math.round(100 * share))}% of the tasks, and fewer untied tasks need a larger share`,
-    `one reading at these margins reads a step between equal harnesses ${percent(rateOf(tasks, level))} of the time where no task ties`,
-    summed,
+    `one reading at these margins reads a step between equal harnesses ${rated} of the time where no task ties: the level is a per-comparison level`,
   ];
-}
-
-/**
- * What a campaign that scores `target` tasks says at its opening: what a comparison of so many
- * says (`sizeLines`). An opening whose sum passes `FALSE_CAP` is refused, with the patience and
- * the level that hold it; the campaign command only calls this.
- */
-export function openingLines(wanted: Asked & { readonly target: number }): string[] {
-  const { target, level, patience } = wanted;
-  const lines = sizeLines(target, wanted);
-  const union = risked(target, wanted);
-  if (union <= FALSE_CAP) return lines;
-  // The most attempts the cap holds at this level, and the highest level in hundredths at this patience.
-  const most = Math.floor((FALSE_CAP * patience) / union);
-  const lower = Array.from({ length: Math.round(100 * level) }, (_, at) => (at + 1) / 100).findLast(
-    (at) => risked(target, { ...wanted, level: at }) <= FALSE_CAP,
-  );
-  throw new Error(
-    `${lines.at(-1) ?? ""}, past the ${percent(FALSE_CAP)} a campaign may open on: ${most < 1 ? "no patience holds it at this --level" : `--patience ${String(most)} or less holds it`}, and ${lower === undefined ? "no --level in hundredths does at this patience" : `so does --level ${String(lower)} or lower`}`,
-  );
-}
-
-/** A chance in percent, to a tenth, and one under that said as under it, never as none. */
-function percent(chance: number): string {
-  return chance > 0 && chance < 0.0005 ? "under 0.1%" : `${String(Math.round(1000 * chance) / 10)}%`;
 }

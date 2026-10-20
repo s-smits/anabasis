@@ -37,7 +37,6 @@ const WANTED: Wanted = {
   target: 12,
   solves: 2,
   level: 0.1,
-  patience: 3,
   builds: true,
   cap: { dollars: 600, reserve: 10 },
 };

@@ -69,7 +69,7 @@ const IDLE: readonly Step[] = [FINISH_IDLE, FINISH_IDLE];
 
 // Five held-out tasks all won read a step at 0.05 and none at the tree's default, 0.02, which takes
 // six: this suite is of who makes the moves, so it names the level its five tasks can read at, and
-// a patience of three, the most the opening's bound holds at five tasks (`openingLines`).
+// a patience of three.
 const LEVEL = ["--level", "0.05", "--patience", "3"];
 const FLAGS = ["--practice", "2", "--solves", "1", "--sessions", "1", "--target", "5", ...LEVEL];
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-hb-")));
@@ -1205,8 +1205,8 @@ describe("a campaign's endings", () => {
       examine: unwritten,
     };
     // Three sessions that fail their practice and change nothing are three moves towards the
-    // patience, so it is four here, at six tasks, which the opening's bound allows at the level;
-    // one practice task leaves the seed's seven six to score.
+    // patience, so it is four here, at six tasks; one practice task leaves the seed's seven six to
+    // score.
     const longer = ["--turns", "3", "--practice", "1", "--target", "6", "--patience", "4"];
     expect(await harnessBuilder([...seeded(editing), ...FLAGS, ...longer], edits)).toMatchObject({
       move: "end",
@@ -1365,9 +1365,9 @@ describe("a campaign's endings", () => {
     const flags = seeded(name).slice(0, -2);
     const seats: Seats = { seated: passing() };
     const printed = spyOn(console, "log");
-    // One attempt: at 24 tasks a longer patience passes the bound an opening may risk (`openingLines`),
-    // and the opening keeps it for the command it prints. Only an attended campaign waits for the
-    // word: since 16 October an unattended launch admits every check its author decides (#186).
+    // A patience of one, which the opening keeps for the command it prints. Only an attended
+    // campaign waits for the word: since 16 October an unattended launch admits every check its
+    // author decides (#186).
     const ending = await harnessBuilder([...flags, "--patience", "1", "--hitl"], seats);
     const lines = printed.mock.calls.map(([line]) => (isString(line) ? line : ""));
     printed.mockRestore();

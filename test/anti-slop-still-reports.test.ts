@@ -40,6 +40,15 @@ vi.mock("./service.ts"); // REPORT module mock
 export const stub = vi.fn();
 `;
 
+/** This repository's own spelling: `mock.module` from `bun:test`, and a `module` on anything else. */
+const BUN_MODULE_MOCKING = `
+import { mock } from "bun:test";
+declare const other: { module: (path: string) => void };
+mock.module("./service.ts", () => ({})); // REPORT the bun:test spelling
+other.module("./service.ts"); // ADMITTED someone else's method
+export const spy = mock(() => 1);
+`;
+
 const RUNTIME_TYPEOF = `
 declare const value: unknown;
 export const narrowed = typeof value === "string"; // REPORT narrows a representation
@@ -129,6 +138,14 @@ describe("anti-slop rules that no other fixture exercises", () => {
       expect(await reportedLines("anti-slop", rule, fixture)).toStrictEqual(expected);
     });
   }
+});
+
+describe("anti-slop/no-module-mocking reads bun:test", () => {
+  it("reports mock.module from bun:test and no module method on another object", async () => {
+    expect(await reportedLines("anti-slop", "no-module-mocking", BUN_MODULE_MOCKING)).toStrictEqual(
+      expectedLines(BUN_MODULE_MOCKING),
+    );
+  });
 });
 
 describe("anti-slop/no-shape-in-symbol-names reads whole words", () => {

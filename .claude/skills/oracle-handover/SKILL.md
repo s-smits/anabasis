@@ -142,5 +142,5 @@ of `REVIEW.md`, and one paragraph for the operator: attach the zip, paste the do
 message, and which commits to open first. Say what the bundle does not hold yet.
 
 When the answer comes back, keep it in the local notes. Check every claim that would change a
-decision against the log and the source before acting on it, and keep its disagreements and its
+decision as `AGENTS.md`, section 11, says before acting on it, and keep its disagreements and its
 omissions. An answer is neither a verdict nor a launch authority.

@@ -18,7 +18,9 @@ this way to read it; `bun run runs move` is for going on with a campaign elsewhe
 log is cut at its last whole line.
 
 A name matches campaigns (`.ana/d2/<name>/`) or live solves (`.ana/live/<name>.jsonl`) in any
-worktree of the repository, by substring as `bun run runs pulse` does. With no names it takes
+worktree of the repository, and the campaigns of the archive (`data/runs/<here or host>/<name>/`,
+where `runs retire` and `runs fetch` put them) whose names no worktree holds, by substring as
+`bun run runs pulse` does. With no names it takes
 every run. The zip lands at `--out`, by default `./<names>-<level>.zip`, or
 `./runs-<level>.zip` with no names. Put it in the session scratchpad and deliver its path.
 

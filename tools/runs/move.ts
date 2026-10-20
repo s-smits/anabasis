@@ -32,11 +32,12 @@
  *
  *   bun --env-file=.env.runs run runs fetch <name> [--from <host>]
  *
- * `fetch` takes a copy of a campaign another machine holds, to read here: its folder whole, under
- * `.ana/fetched/<host>/<name>/` of the main worktree, which no registry reads as a run, so the name
- * stays one run. It asks every host which holds the name unless `--from` names one, prints the
- * copy's log, and run again brings the copy level with its source. The run is left as it is. On
- * 20 October a whole-run investigation of three runs on another host read copies made by hand.
+ * `fetch` takes a copy of a campaign another machine holds, to read here: its folder whole, into
+ * the archive as `data/runs/<host>/<name>/` of the main worktree (`ARCHIVE`), where the readers read
+ * it and no verb acts on it, so the name stays one run. It asks every host which holds the name
+ * unless `--from` names one, prints the copy's log, and run again brings the copy level with its
+ * source. The run is left as it is. On 20 October a whole-run investigation of three runs on another
+ * host read copies made by hand; until then a copy went to `.ana/fetched/`, which no reader read.
  */
 import { mkdirSync } from "#src/meta/filesystem.ts";
 import { worktrees } from "#src/meta/git.ts";
@@ -44,6 +45,7 @@ import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { type Host, holders, hostNamed, quoted, sshScript, verbOn } from "./hosts.ts";
+import { ARCHIVE, HERE } from "./registry.ts";
 import { asideOf, continueRun, lastRun, pause, setAside } from "./manage.ts";
 
 /** One end of a move: this machine or a host, with the folder its worktrees sit in. */
@@ -54,7 +56,6 @@ interface End {
   readonly repo: string;
 }
 
-const HERE = "here";
 const USAGE =
   "usage: bun run runs move <name> --to <host|here> [--from <host|here>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]";
 
@@ -195,7 +196,7 @@ export async function fetch(args: readonly string[]): Promise<void> {
   if (host === undefined) throw new Error(`no host ANA_HOSTS lists holds a campaign ${name}`);
   const from = endOf(host.name);
   const [main = "."] = worktrees(runtimeProcess.cwd());
-  const into = join(main, ".ana", "fetched", host.name, name);
+  const into = join(main, ARCHIVE, host.name, name);
   mkdirSync(into, { recursive: true });
   runTextSyncOrThrow([
     "rsync",

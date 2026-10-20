@@ -33,7 +33,7 @@ import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src
 import { plural } from "#src/meta/text.ts";
 import { PRACTICE } from "../d2/prepare.ts";
 import { COMPARISON_OPTIONS } from "../d2/round.ts";
-import { CLI, logEvents, runNamed } from "./registry.ts";
+import { CLI, logEvents, readNamed } from "./registry.ts";
 
 /** The flags the table is asked with: the campaign command's, with the same names. */
 const VIEW_OPTIONS = {
@@ -188,7 +188,7 @@ export async function view(args: readonly string[]): Promise<void> {
       'usage: bun run runs view <name> [--level N] [--target N] [--practice N] [--past-stop "<why>"]',
     );
   }
-  const run = runNamed(name);
+  const run = readNamed(name);
   if (run.tree !== runtimeProcess.cwd()) {
     const io = { cwd: run.tree, stdin: "inherit", stdout: "inherit", stderr: "inherit" } as const;
     runtimeProcess.exitCode = await capturedSpawn([capturedExecPath, CLI, "view", ...args], io).exited;

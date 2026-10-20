@@ -15,7 +15,11 @@ Use the verbs of one CLI for a run's life on the host, `bun run runs`
 (`tools/runs/cli.ts`), over every run log in the repository's worktrees (`tools/runs/registry.ts`).
 `continue`, `pause`, `keep`, `copy`, `move`, `stop` and `source` take a campaign's whole name,
 and refuse one no worktree holds and one two worktrees hold. `view` reads the named campaign in
-the current worktree; `pulse` and `zip` match parts of names across worktrees.
+the current worktree, or the archive's where no worktree holds it; `pulse` matches parts of names
+across worktrees, and `zip` and `replay` also across the archive. The archive is `data/runs/` of
+the main worktree, which git ignores: `here/<name>/` for this machine's campaigns that `retire`
+moved out of their worktrees, and `<host>/<name>/` for copies of a host's. No verb acts on an
+archived campaign; `copy <name> --to <worktree>` brings this machine's back to go on with.
 
 | verb | what it does | file |
 | --- | --- | --- |
@@ -24,12 +28,13 @@ the current worktree; `pulse` and `zip` match parts of names across worktrees.
 | `continue <name> [--at <c>] [--login N] [--budget N] [--after <event>] [--yes] [-- <flags>]` | runs a campaign again from its log, on its kept flags or their replacement after `--` | `manage.ts` |
 | `pause <name> --after <event> [--yes]` | stops a campaign once its log gains one more of the event and nothing but its Builder's conversation is open | `manage.ts` |
 | `keep <name> [--logins 2,3,4] [--wait-hours 1] [--yes]` | keeps a campaign going: moves it off a long provider wait, and continues it after a death or an `environment` ending | `keep.ts` |
-| `copy <name> --to <worktree> [--yes]` | copies a stopped campaign whole to another worktree, and sets the source aside | `manage.ts` |
+| `copy <name> --to <worktree> [--yes]` | copies a stopped campaign whole to another worktree, from a worktree or the archive, and sets the source aside | `manage.ts` |
 | `move <name> --to <host\|here> [--from <host\|here>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]` | pauses a campaign at a clean point, takes its folder whole to a new worktree on the other machine at the same commit, sets the source aside and continues it there on its kept flags | `move.ts` |
 | `stop <name> ... [--yes]` | ends the process that writes each log, and its keeper, and releases what its unfinished solves and sessions held | `stop.ts` |
 | `status [--all]` | one row a run: the live ones and those whose log moved in a day, with tree, commit, login, open comparison, comparisons reported, promotions and ending; then each host `ANA_HOSTS` lists, all asked at once and each printed as it answers, within 30 s | `pulse.ts` |
 | `logins [N ...] [--json]` (also `usage`) | each login's five-hour and weekly use; without numbers or `--json`, also the pool forecast | `logins.ts` |
-| `fetch <name> [--from <host>]` | a copy of a campaign another machine holds, to read here, under `.ana/fetched/` | `move.ts` |
+| `fetch <name> [--from <host>]` | a copy of a campaign another machine holds, to read here, into the archive as `data/runs/<host>/<name>/` | `move.ts` |
+| `retire [--days 1] [--yes]` | moves each campaign no process writes or keeps, idle for `--days`, into the archive whole, and deletes each worktree nothing uses (a week for one with uncommitted work); then the same on every host, whose archive comes here. A daily job runs it with `--yes`; nothing in an archive is deleted | `retire.ts` |
 | `on <host> <verb ...>`, `hosts [--all]` | any verb on another host over ssh; `status` on each other host alone. A verb that names a run goes to its host by itself | `hosts.ts` |
 | `pulse [<part of a name> ...] [--once] [--every 290] [--state <file>]` | what each run gained since the last look; state defaults to `.ana/runs-pulse.json` | `pulse.ts` |
 | `view <name>` | one campaign as its log reads, and the move the table names next | `view.ts` |

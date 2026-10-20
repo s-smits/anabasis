@@ -263,6 +263,29 @@ describe("the Claude backend", () => {
     );
   });
 
+  it("keeps the prompt cache as long as a seat's options say, and leaves the CLI its own choice otherwise", async () => {
+    const context = normalizeContext({
+      systemPrompt: "You are the Examiner.",
+      messages: [opening],
+      tools: [read],
+    });
+    const ttl = async (cacheTtl?: "5m" | "1h") => {
+      replay(TEXT);
+      const provider = claudeProvider({
+        executable,
+        compaction: "off",
+        home,
+        ...keyIfDefined("cacheTtl", cacheTtl),
+      });
+      const options = { ...solveOptions(), sessionId: `ttl-${String(solves)}-${String(cacheTtl)}` };
+      await provider.streamSimple(recorded, context, options).result();
+      return launched().env.CLAUDE_CODE_PROMPT_CACHE_TTL;
+    };
+    expect(await ttl("5m")).toBe("5m");
+    expect(await ttl("1h")).toBe("1h");
+    expect(await ttl()).toBeUndefined();
+  });
+
   it("switches Claude Code's compaction off when the condition says off, and refuses a window it would drop", async () => {
     replay(TEXT);
     await turn([opening], undefined, "off");

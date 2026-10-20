@@ -236,9 +236,12 @@ export function storedAnswer(row: Row): JsonValue | undefined {
 }
 
 /** The backends set as the sweep ran its Claude solves, for a model process keeping its state in
- *  `home`; a campaign's `--solver-window` names another window (`tools/d2/setting.ts`). */
+ *  `home`; a campaign's `--solver-window` names another window (`tools/d2/setting.ts`). A solve's
+ *  cache lives five minutes: over 110,009 recorded solver turns, 0.9% came more than five minutes
+ *  after the one before, and the hour-long writes a login gets by default billed 13% more than
+ *  five-minute writes would have (20 October). */
 export function sweepOptions(home = homedir(), window = SWEEP_COMPACT_WINDOW): BackendOptions {
-  return { claude: { executable: claudeExecutable(), compaction: { window }, home } };
+  return { claude: { executable: claudeExecutable(), compaction: { window }, home, cacheTtl: "5m" } };
 }
 
 /** The model a row ran, from the backends this system runs on. */

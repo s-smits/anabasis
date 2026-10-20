@@ -449,9 +449,9 @@ export async function openCampaign(args: CampaignArgs) {
     reader: (model: Model<Api>, effort: ThinkingLevel): Reader => ({
       model,
       effort,
-      models: hostSession({ webSearch: false }),
+      models: hostSession({ webSearch: false, cacheTtl: "5m" }),
     }),
-    builder: hostSession({ webSearch: true }),
+    builder: hostSession({ webSearch: true, cacheTtl: "1h" }),
     examiner: examinerSession,
   };
 }
@@ -577,14 +577,19 @@ export function awaitingLines(campaign: {
  * and a reviewer work from what they are shown, and a search of theirs would be read by nobody,
  * since the trace holds the host's tools alone. A solver's backends are the sweep's as they stand
  * (`solveOnce`), with the search.
+ *
+ * A Builder's and an Examiner's cache lives an hour, since they wait on practice solves and on the
+ * gate: over the recorded turns of 20 October, 8.4% of a Builder's and 5.0% of an Examiner's came
+ * more than five minutes after the one before, and five-minute writes would have billed 48% and 28%
+ * more. A reviewer's ruling takes minutes, so its cache lives five.
  */
-function hostSession(search: { readonly webSearch: boolean }) {
-  return (home: string) => backends({ claude: { ...sweepOptions(home).claude, ...search } });
+function hostSession(seat: { readonly webSearch: boolean; readonly cacheTtl: "5m" | "1h" }) {
+  return (home: string) => backends({ claude: { ...sweepOptions(home).claude, ...seat } });
 }
 
 /** An Examiner's backends, for the session that drafts an exam before there is a campaign to
  *  open (`tools/d1b/draft.ts`). */
-export const examinerSession = hostSession({ webSearch: false });
+export const examinerSession = hostSession({ webSearch: false, cacheTtl: "1h" });
 
 /** The plan runs every solve under `caffeinate -s`, so the Mac cannot sleep inside a wall; it exits
  *  with this process, and unreferenced it does not hold this one open. */

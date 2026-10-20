@@ -419,15 +419,14 @@ The tools of each model seat, as its source names them:
   `src/examiner/write.ts`). Until 19 October a call waited for its slowest instance's three solves,
   and the first Examiner sessions of four campaigns that day spent 56 to 80 of their 112 to 218
   minutes on the gate's replies. `propose_tasks` runs no solve and answers in its own result.
-  `try_answer` runs the checks on an instance with an answer of the Examiner's own.
-  `task.feasible` stores no answer; the Examiner's trace keeps it on the exam side, as the call's
-  arguments (`exam.call`). Where the checks pass, the session holds the answer in memory until the
-  task has its final id. A task proposed with that content is then checked against it again under
-  its own id: inside the gate where the reference's solves were valid in every one or in none, so
-  that the answer decides, and otherwise once the gate holds the task. A pass on a held task is
-  logged as `task.feasible`, by version and session, with the objective's measure of the answer
-  where the contract declares one (`measureOf`, 19 October). The shell is a walled home of its
-  own. It is seeded with the home the last session left and, unless the campaign's term
+  `try_answer` runs the checks on an instance with an answer of the Examiner's own. Where the checks
+  pass, the session holds the answer in memory until the task has its final id. A task proposed with
+  that content is then checked against it again under its own id: inside the gate where the
+  reference's solves were valid in every one or in none, so that the answer decides, and otherwise
+  once the gate holds the task. A pass on a held task is logged as `task.feasible`, by version and
+  session, with the answer, kept on the exam side for the Referee, and the objective's measure of
+  the answer where the contract declares one (`measureOf`, 19 October). The shell is a walled
+  home of its own. It is seeded with the home the last session left and, unless the campaign's term
   `exam-reference` is `off`, a copy of the reference harness as `reference-harness/`, laid afresh
   each session and kept out of the home carried on. The only way from it into the exam is that one
   gate. In the session that drafts an exam the tools are `draft_exam`, `bash`, `read`, `write` and
@@ -1156,8 +1155,8 @@ of these holds:
 
 - a valid answer for it stands anywhere on record: a solve's; the one whose pass the host saw for
   its author's answer on the task under its own id, before or after the proposal; or a stored
-  pack's answer that passes today's checks at `prepare` (`task.feasible`, which stores no answer;
-  an Examiner's answer stays in its trace, on the exam side);
+  pack's answer that passes today's checks at `prepare` (`task.feasible`; an Examiner's accepted
+  answer stays with its proof, on the exam side);
 - its wall or its context cut its solves short (`poolOf`).
 
 A solve that used every model turn `--solve-model-turns` names is not a cut, unless the window or

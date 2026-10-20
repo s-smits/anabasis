@@ -178,8 +178,10 @@ describe("the probe", () => {
 });
 
 describe("the Referee", () => {
-  const failed = (record: ReturnType<typeof setup>["record"]) =>
+  const failed = (record: ReturnType<typeof setup>["record"]) => {
+    record("task.proposed", { taskId: TASK.taskId, version: "v-1" });
     record("verdict", { solve: "s-1", task: "t-1", answer: ANSWER, kind: "fail", blocking: ["span"] });
+  };
   const fail = (s: ReturnType<typeof setup>) => ({
     solve: "s-1",
     task: TASK,
@@ -377,7 +379,7 @@ describe("the Referee", () => {
     const s = setup([ruling({ ruling: "unclear", reason: "Not settled.", probes: [] })]);
     failed(s.record);
     expect((await referee(s.reader, fail(s))).ruling).toBe("unclear");
-    expect(read(s.log).map(({ kind }) => kind)).toEqual(["verdict", FINDING]);
+    expect(read(s.log).map(({ kind }) => kind)).toEqual(["task.proposed", "verdict", FINDING]);
   });
 
   it("refuses an earned ruling as evidence unless its probe moved a refusing check off its refusal, and leaves the fail unclear", async () => {
@@ -404,6 +406,35 @@ describe("the Referee", () => {
       expect.objectContaining({ id: 1, moved: [] }),
       expect.objectContaining({ id: 2, moved: [] }),
     ]);
+  });
+
+  it("gives the Referee the whole public contract", async () => {
+    const s = setup([ruling({ ruling: "unclear", reason: "The contract leaves this open.", probes: [] })]);
+    failed(s.record);
+    const contract = {
+      ...CONTRACT,
+      answerFormat: { type: "object", required: ["span"] },
+      objective: { quantity: "material", direction: "lower" } as const,
+    };
+    await referee(s.reader, { ...fail(s), contract });
+    expect(s.sent[0]).toContain(JSON.stringify(JSON.stringify(contract)).slice(1, -1));
+  });
+
+  it("reads an author's accepted answer by task version, and skips proofs without an answer", async () => {
+    const unclear = ruling({ ruling: "unclear", reason: "The evidence leaves this open.", probes: [] });
+    const s = setup([unclear, unclear]);
+    failed(s.record);
+    s.record("task.proposed", { taskId: "t-2", version: "v-2" });
+    s.record("task.feasible", { version: "v-1", answer: { span: 9, members: [] } });
+    s.record("task.feasible", { version: "v-2", answer: { span: 1, members: [] } });
+    s.record("task.feasible", { version: "v-1" });
+    await referee(s.reader, fail(s));
+    expect(s.sent[0]).toContain(
+      String.raw`An answer the checks accepted for this task: {\"span\":9,\"members\":[]}`,
+    );
+    s.record("verdict", { solve: "s-0", task: TASK.taskId, kind: "pass", answer: null });
+    await referee(s.reader, fail(s));
+    expect(s.sent[1]).toContain("An answer the checks accepted for this task: null");
   });
 
   it("sets an answer the checks accepted for the task beside the one under review", async () => {

@@ -249,9 +249,19 @@ function endedBy(by: Record<(typeof ENDINGS)[number], boolean>): Built["ended"] 
 export async function keepPractised(log: string, id: string, states: string): Promise<void> {
   const events = read(log);
   const mine = events.filter(ownedBy(events, id));
-  const harness = practiceRan(mine).at(-1)?.under.harness;
-  const parent = mine.find(({ kind }) => kind === BUILD_STARTED)?.data.parent;
-  if (harness === undefined || harness === parent) return;
+  // A practice under the parent or the reference is a control (`under`, `tools.ts`): every session's
+  // parent and every harness promoted stand before this session's own. One that ran before the
+  // session's last checkpoint ran a harness that checkpoint already keeps or supersedes.
+  const controls = new Set(
+    events.flatMap(({ kind, data }) =>
+      kind === BUILD_STARTED ? [data.parent] : kind === "harness.promoted" ? [data.harness] : [],
+    ),
+  );
+  const since = mine.findLastIndex(({ kind }) => kind === "build.checkpoint");
+  const harness = practiceRan(mine).findLast(
+    ({ started, under }) => started > since && !controls.has(under.harness),
+  )?.under.harness;
+  if (harness === undefined) return;
   if (mine.some(({ kind, data }) => kind === "build.checkpoint" && data.harness === harness)) return;
   try {
     if ((await openHarness(join(states, harness))).digest !== harness) return;

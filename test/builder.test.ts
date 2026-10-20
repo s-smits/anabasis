@@ -1079,12 +1079,14 @@ describe("a Builder session", () => {
     expect(crashedRun(read(unpractised.request.log)).count).toBe(1);
   });
 
-  it.each(["practised", "unpractised", "missing", "mismatched", "checkpointed"])(
+  it.each(["practised", "controlled", "unpractised", "missing", "mismatched", "checkpointed"])(
     "recovers a cut session from its last practised state only where it opens: %s",
     async (state) => {
       const failed = fauxAssistantMessage("", { stopReason: "error", errorMessage: "overloaded" });
       const later = call(WRITE_FILE, { path: GUIDE_PATH, content: `${GUIDE}More.\n` });
-      const practice = state === "unpractised" ? [] : [call("practice", { tasks: ["t-1"] })];
+      // A control under the parent after the practice is not the state the session left.
+      const control = state === "controlled" ? [call("practice", { tasks: ["t-1"], under: "parent" })] : [];
+      const practice = state === "unpractised" ? [] : [call("practice", { tasks: ["t-1"] }), ...control];
       const s = await setup([edit, ...practice, later, failed]);
       await session(s.request, s, s.walled);
       // A stopped process never reached the finaliser. Reproduce that prefix as a fixture log.
@@ -1093,7 +1095,7 @@ describe("a Builder session", () => {
         if (event.kind === "harness.version") break;
         append(cut, event.kind, event.data);
       }
-      const digest = s.ran.at(-1)?.digest ?? null;
+      const digest = s.ran.findLast((ran) => ran.digest !== s.digest)?.digest ?? null;
       if (digest !== null) {
         const saved = join(s.request.states, digest);
         if (state === "missing") renameSync(saved, `${saved}-missing`);
@@ -1102,7 +1104,7 @@ describe("a Builder session", () => {
       }
       await endCut(cut);
       const checkpoints = () => read(cut).filter(({ kind }) => kind === "build.checkpoint");
-      const recoverable = state === "practised" || state === "checkpointed";
+      const recoverable = ["practised", "controlled", "checkpointed"].includes(state);
       expect(checkpoints().map(({ data }) => data)).toEqual(
         recoverable ? [{ session: "b-1", harness: digest }] : [],
       );

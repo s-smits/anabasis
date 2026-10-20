@@ -142,7 +142,8 @@ edited copy keeps them unless the primary deletes them on purpose.
 - **Never write under the campaign's folder, and never append to a log.**
 - **Start no solve, session, round or check run.** `wri.ts grade` is the one exception, where a lane
   names it.
-- **Write the report early, and append.**
+- **Open the report early and append findings as they hold**; write a verdict only once its evidence
+  is read.
 - **Stay independent.** No lane opens another's prompt or report.
 - **Read source in the checkout the campaign's row names**, and say when it is not the tree that ran.
 

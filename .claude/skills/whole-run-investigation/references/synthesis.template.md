@@ -1,7 +1,7 @@
 <!--
 The synthesis session's prompt. `wri.ts synthesis --out <dir>` renders it into
 <dir>/synthesis-prompt.md, filling the five slots in braces; comments like this one are dropped.
-Change what the note owes here and in the skill's "What the synthesis owes" together.
+This template owns what the note owes; the skill's "Adjudicating" section links here.
 -->
 # Whole-run investigation synthesis
 
@@ -22,7 +22,10 @@ report: write nothing else, commit nothing and edit no source.
 
 ## The reports
 
-Read each report marked `ok`. A report marked `missing` or `invalid` is a gap: name it in your note
+Read each report marked `ok`, including the checks behind each `no finding` verdict. The collector
+checks shape only, and the generated skeleton has no checks section at this commit; the fix
+remains in an open PR from 20 October. A report without those checks leaves its lane unsubstantiated.
+A report marked `missing` or `invalid` is a gap: name it in your note
 and never fill it from memory. A finding you carry is one you checked against the log yourself, by
 the event kinds, solve ids and counts the report cites: a report is a lead and no receipt.
 
@@ -34,7 +37,7 @@ the event kinds, solve ids and counts the report cites: a report is a lead and n
    `holds`, `does not hold` or `undeterminable`, with the event kind and the count it rests on:
    (a) the exam measured: the checker was frozen and read, and the refusals that entered the tally
    read sound (lanes 1 to 6); (b) the tasks bracketed: the scored set was held out, fixed before
-   the comparison's first solve and chosen by no result (lanes 7 to 12 and 21); (c) the pair differed in the
+   the comparison's first solve and chosen by no result of that comparison (lanes 7 to 12 and 21); (c) the pair differed in the
    harness alone, and the harness could not know the exam (lanes 13, 18 and 20); (d) the reading
    follows from the pairs at their number (lanes 22 to 24). Then one sentence a row: believed as
    written, believed with a named limit, or not believed.

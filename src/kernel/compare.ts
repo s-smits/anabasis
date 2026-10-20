@@ -98,6 +98,9 @@ interface Used {
  *  computes of each, lower or higher being better (`better`). */
 export interface ObjectiveRule {
   readonly direction: "lower" | "higher";
+  /** The least share of the larger measure by which an answer on record leaves room (`bettered`),
+   *  where a comparison's terms fixed one (`--room`); `ROOM` otherwise. */
+  readonly room?: number;
 }
 
 /** One task version's counted solves under the reference harness and under the new: true for a
@@ -167,6 +170,22 @@ export const UNMEASURED = "unmeasured" as const;
  * difference the test does not trust is a tie of the test's own, and none is needed of the pair's.
  */
 const SAME = 1e-9;
+/**
+ * The least improvement by the objective worth counting, as a share of the larger magnitude: the
+ * room floor, a term of each comparison (`--room`, recorded with the rule's direction). One
+ * judgement in every place it is asked: two valid answers closer than it tie in a pair (`better`),
+ * and an answer on record better than one of a harness's own by less leaves that harness no room on
+ * the task (`bettered`), which decides the gate, the frontier and `roomOf`.
+ *
+ * In buffer-fresh-opus-r6 every solve of both sides was valid on all 24 tasks of comparison g-2,
+ * which read 23-0-1 and promoted on gains of 0.01% to 0.65%: at this floor the same solves read
+ * 3-3-18, and its gate held 10 of the 29 drafts it held at `SAME`. The sign-flip test says whether
+ * a difference is believable, and the floor whether it is worth counting: six tasks with room won by
+ * 0.01% read p = 0.016 and promoted. It declines smaller gains even where they are consistent. A
+ * comparison that began before 21 October recorded no floor, and its pairs read at `SAME` as they
+ * were read, while what room its tasks leave now is read at this one.
+ */
+export const ROOM = 0.01;
 
 /**
  * The chance of each total of `sizes` taken with a plus sign, where each is taken so with chance
@@ -280,19 +299,14 @@ export function stepOf(report: JsonObject, level: number): "step" | "no-step" {
 /** The objective rule a comparison's start, or its report, carries, or undefined where it fixed
  *  none. A log of before 19 October holds a margin beside the direction, which is no longer read. */
 export function objectiveRuleIn(data: JsonObject): ObjectiveRule | undefined {
-  const { direction } = asRecord(data.objective) ?? {};
-  return direction === "lower" || direction === "higher" ? { direction } : undefined;
+  const { direction, room } = asRecord(data.objective) ?? {};
+  if (direction !== "lower" && direction !== "higher") return undefined;
+  return { direction, ...keyIfDefined("room", isNumber(room) ? room : undefined) };
 }
 
 // Two other readings of a tally, the trinomial test and the chance that the new harness is the
 // better one, decide nothing and are not built: their formulas and what they read of the recorded
 // comparisons are in `7f0add79:docs/plan.md`, "Statistical power and cost" (row C3).
-
-/** How far apart two measures are, as a share of the larger magnitude. */
-function apart(one: number, other: number): number {
-  const larger = Math.max(Math.abs(one), Math.abs(other));
-  return larger === 0 ? 0 : Math.abs(one - other) / larger;
-}
 
 /**
  * Whether a task tells something of the harness on `side` (the overhaul plan's one definition of
@@ -319,43 +333,58 @@ export function informative(
 }
 
 /**
- * Whether a measure on record is better by the objective than one of the side's
- * own valid answers: another of its own, the other side's, or `best`, its author's
+ * Whether a measure on record is better by the objective, by at least `ROOM`, than one of the
+ * side's own valid answers: another of its own, the other side's, or `best`, its author's
  * (`task.feasible`). A harness that reaches it wins the pairs against that answer, so the task has
  * room. False where the pair carries no objective; a valid answer with no measure is compared with
  * nothing.
  *
- * One rule since 19 October, where three had stood. The supply's closing rule kept a task open on
- * any two answers the objective told apart, the side's own wins among them; the room rule read the
- * side's own answers alone; and the author's answer had to beat every one of the side's. A harness
- * promoted on wins by the objective therefore stood on a frontier of the very tasks it had won, at
- * answers nobody had bettered: in buffer-fresh-opus-forkedPR223_v0_5_4-r2 the comparison after its
- * promotion scored 18 such tasks of 24, both sides valid and alike in every solve of each, and read
- * 4-0-20; its repeat drew 6 more and read 4-0-6, two untied tasks short of the six a step at 0.02
- * needs. Replayed under this rule the frontier before that comparison held 6 tasks where it held 30.
- * The author's answer came in on 19 October too: of the drafts buffer-pr197-opus-m1's gate refused
- * as answered in 3 of 3 solves, 136 carried an author's answer with a measure, and 15 of them were
- * better than the reference's best answer by more than a hundredth; on esp32-fresh-opus 57 did, and
- * none was better.
+ * One rule since 19 October, where three had stood: in buffer-fresh-opus-forkedPR223_v0_5_4-r2 a
+ * harness promoted on wins by the objective stood on a frontier of the very tasks it had won, and
+ * the comparison after its promotion read 4-0-20.
  */
 function bettered(pair: Paired, side: "old" | "fresh", best: number | null): boolean {
   const rule = pair.objective;
   if (rule === undefined) return false;
-  const own = rule[side].filter(isNumber);
+  const left = roomLeft(pair, side, best) ?? 0;
+  return left > 0 && left >= (rule.room ?? ROOM);
+}
+
+/** The most that a measure on record is better by than one of the side's own valid answers, as a
+ *  share of the larger magnitude: the room the task leaves that harness, which `bettered` holds to
+ *  the floor and its author is told. Null where the pair carries no objective or the side no
+ *  measure. */
+export function roomLeft(pair: Paired, side: "old" | "fresh", best: number | null): number | null {
+  const rule = pair.objective;
+  const own = rule?.[side].filter(isNumber) ?? [];
+  if (rule === undefined || own.length === 0) return null;
   const known = [
     ...own,
     ...rule[side === "old" ? "fresh" : "old"].filter(isNumber),
     ...(best === null ? [] : [best]),
   ];
-  return own.some((mine) => known.some((other) => better(rule, other, mine) === 1));
+  return Math.max(...own.flatMap((mine) => known.map((other) => gainOver(rule, other, mine) ?? 0)));
 }
 
-/** Which of two valid answers' measures is the better: 1 for the first, -1 for the second, 0 where
- *  they are one measure (`SAME`) or one is missing. */
+/** How much better `one` is than `other` by the objective, as a share of the larger magnitude:
+ *  negative where it is worse, 0 where they are one measure (`SAME`), null where one is missing.
+ *  The floor plays no part: this is the fact a floor is held to. */
+export function gainOver(rule: ObjectiveRule, one: number | null, other: number | null): number | null {
+  if (one === null || other === null) return null;
+  // How far apart they are, as a share of the larger magnitude.
+  const larger = Math.max(Math.abs(one), Math.abs(other));
+  const gap = larger === 0 ? 0 : Math.abs(one - other) / larger;
+  if (gap <= SAME) return 0;
+  return (rule.direction === "lower") === one < other ? gap : -gap;
+}
+
+/** Which of two valid answers' measures is the better in a pair: 1 for the first, -1 for the second,
+ *  0 where they are closer than the comparison's floor (`ROOM`; none where its start recorded
+ *  none), one measure (`SAME`), or one is missing. */
 function better(rule: ObjectiveRule, one: number | null, other: number | null): -1 | 0 | 1 {
-  if (one === null || other === null || apart(one, other) <= SAME) return 0;
-  const lower = one < other ? 1 : -1;
-  return rule.direction === "lower" ? lower : lower === 1 ? -1 : 1;
+  const gain = gainOver(rule, one, other) ?? 0;
+  if (gain === 0 || Math.abs(gain) < (rule.room ?? 0)) return 0;
+  return gain > 0 ? 1 : -1;
 }
 
 /** One task's pairings: every solve of the new harness against every solve of the reference one,
@@ -398,6 +427,17 @@ export function decidedByObjective(pairs: readonly Paired[]): number {
   }).length;
 }
 
+/** How far apart the two sides' median valid measures were where the objective alone decided a
+ *  task, as a share of the larger magnitude; null where validity decided it, or it tied. */
+export function objectiveMargin(pair: Paired): number | null {
+  const { fresh, old, validity } = pairings(pair);
+  const rule = pair.objective;
+  if (rule === undefined || fresh === old) return null;
+  if (Math.sign(fresh - old) === Math.sign(validity.fresh - validity.old)) return null;
+  const gain = gainOver(rule, median(rule.fresh.filter(isNumber)), median(rule.old.filter(isNumber)));
+  return gain === null ? null : Math.abs(gain);
+}
+
 /**
  * The median relative gain by the objective over the tasks of `pairs` the new harness won: each
  * task's median valid measure against the reference's, as a share of the larger magnitude
@@ -412,7 +452,8 @@ export function objectiveGain(pairs: readonly Paired[]): Gain | null {
     const rule = pair.objective;
     if (rule === undefined || fresh <= old) return [];
     const [mine, theirs] = [median(rule.fresh.filter(isNumber)), median(rule.old.filter(isNumber))];
-    return mine === null || theirs === null ? [] : [better(rule, mine, theirs) * apart(mine, theirs)];
+    const gain = gainOver(rule, mine, theirs);
+    return gain === null ? [] : [gain];
   });
   const middle = median(gains);
   return middle === null ? null : { median: middle, tasks: gains.length };

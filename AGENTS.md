@@ -645,12 +645,9 @@ continues when the command is run again with `--admit <checks>`.
 
 **Its budget is one total.** Each move's cap is what is left of `--budget` after every billed
 dollar in the log is subtracted. The campaign ends on its budget when what is left is less than
-one solve is held at (`--reserve`), or less than the next comparison would bill judging by the
-last one. Before any comparison has reported, the first is priced by what the reference harness's
-gate solves of draft tasks billed (`firstPriced`). The campaign also ends when the last Examiner
-session and the comparison that read its tasks billed more than half of what is left, before
-another session (`unafforded`, `src/builder/decide.ts`). A comparison cut by the cap tallies
-nothing.
+one solve is held at (`--reserve`). No forecast of what the next move will bill holds it: a
+comparison begun near the end of the budget runs under what is left, and one the cap cuts tallies
+nothing and reads `not-scored`.
 
 **It ends in one of eight ways**, and the log's last event says which (`campaign.ended`):
 
@@ -1073,11 +1070,9 @@ a move chooses it, and the decision carries that row's code:
    starter compared with the reference on them, which shows whether they leave it room.
 10. `build`: otherwise the Builder builds.
 
-Three holds are then applied to the move a row named (`HOLDS`), and a decision a hold changed
+Two holds are then applied to the move a row named (`HOLDS`), and a decision a hold changed
 carries the hold's code:
 
-- `afford` ends the campaign when what is left would not see a comparison reported, or an Examiner
-  session together with the comparison that would read its tasks; such a move is not begun;
 - `practice` releases practice before a Builder session;
 - `unshown` sends for tasks where the last session changed nothing and was shown no failed practice
   solve.

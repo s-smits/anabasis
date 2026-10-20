@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 import { importTracker } from "../shared/import-fix.ts";
 import { withoutProse } from "../shared/masked.ts";
 import { everyStatementList, onlyStatement, singleConst } from "../shared/statements.ts";
@@ -97,7 +98,23 @@ export const preferKeyIfDefinedRule = defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
-    docs: { description: "A guard assigning one key after an object literal is keyIfDefined inside it." },
+    docs: {
+      description: "A guard assigning one key after an object literal is keyIfDefined inside it.",
+      examples: [
+        {
+          before:
+            'const spawnOptions: SpawnOptions = { stdout: "pipe", stderr: "pipe" };\nif (options.cwd !== undefined) spawnOptions.cwd = options.cwd;\nspawn(command, spawnOptions);',
+          after:
+            'import { keyIfDefined } from "./meta/optional-key.ts";\nconst spawnOptions: SpawnOptions = { stdout: "pipe", stderr: "pipe", ...keyIfDefined("cwd", options.cwd) };\nspawn(command, spawnOptions);',
+        },
+        {
+          before:
+            "const row: Row = { task: task.id };\nif (solve.billed != null) row.billed = solve.billed;\nrows.push(row);",
+          after:
+            'import { keyIfNotNull } from "./meta/optional-key.ts";\nconst row: Row = { task: task.id, ...keyIfNotNull("billed", solve.billed) };\nrows.push(row);',
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       guardedAfterLiteral:
         '`{{name}}` is built and then given {{count}} key{{plural}} under a guard, so its shape is decided over several statements. `...keyIfDefined("k", value)` in the literal makes the same decision where the object is built; `src/meta/optional-key.ts` owns it.',

@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 import { isTestFile } from "../shared/file-role.ts";
 
 /** The fewest properties a repeated literal must carry before naming it is worth a function. */
@@ -91,6 +92,20 @@ export const noThriceSpelledObjectRule = defineRule({
     type: "suggestion",
     docs: {
       description: "One object literal spelled three times in a file is one function with three callers.",
+      examples: [
+        {
+          before:
+            'export const started = () => emit({ kind: "comparison.started", level: 0.02, solves: 4 });\nexport const resumed = () => emit({ kind: "comparison.started", level: 0.02, solves: 4 });\nexport const repeated = () => emit({ kind: "comparison.started", level: 0.02, solves: 4 });',
+          after:
+            'const terms = () => ({ kind: "comparison.started", level: 0.02, solves: 4 });\nexport const started = () => emit(terms());\nexport const resumed = () => emit(terms());\nexport const repeated = () => emit(terms());',
+        },
+        {
+          before:
+            'run(["bun", "install"], { cwd: root, stdout: "pipe", stderr: "pipe" });\nrun(["bun", "test"], { cwd: root, stdout: "pipe", stderr: "pipe" });\nrun(["bun", "run", "lint"], { cwd: root, stdout: "pipe", stderr: "pipe" });',
+          after:
+            'const piped = (cwd: string) => ({ cwd, stdout: "pipe", stderr: "pipe" });\nrun(["bun", "install"], piped(root));\nrun(["bun", "test"], piped(root));\nrun(["bun", "run", "lint"], piped(root));',
+        },
+      ] satisfies RuleExample[],
     },
     messages: {
       thrice:

@@ -39,6 +39,11 @@ with no rule turned off for it; a whole-tree run without them leaves it out and 
   strict run is clean.
 - Extra arguments go to Oxlint. Fourteen rules carry a fixer, marked [fix] below, which Oxlint's
   `--fix` applies; `tools/oxlint/FIXER-DECISIONS.md` says why the others report only.
+- After its findings, a run prints each plugin rule that fired once, with one or two pairs: a
+  shape the rule reports and one that passes it and every other rule. A rule keeps its pairs in
+  its own `meta.docs.examples`, and a tree scan in `TREE_FINDING_EXAMPLES`
+  (`tools/oxlint/tree-findings.ts`), which the commit's slop report prints the same way. A new
+  rule or scan brings its pairs, and `test/rule-examples.test.ts` lints every one.
 - **Never turn a rule off**: no new `"off"` in `.oxlintrc.json`, for the tree, a glob or a file,
   and no `oxlint-disable` comment for a plugin rule (`ana/no-inline-slop-answer` refuses it).
 - **When a finding is wrong about a site**, the answer depends on the rule

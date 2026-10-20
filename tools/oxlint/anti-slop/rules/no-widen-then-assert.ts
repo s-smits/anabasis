@@ -10,6 +10,7 @@ import {
 import { resolveVariable } from "../shared/scope.ts";
 
 import type { ESTree, SourceCode, Variable } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 
 const functionBoundaryTypes = new Set([
   "ArrowFunctionExpression",
@@ -204,6 +205,16 @@ export const noWidenThenAssertRule = defineRule({
     docs: {
       description:
         "Disallow local const flows that explicitly widen a known value before asserting the widened binding to a narrower type.",
+      examples: [
+        {
+          before: "const raw: unknown = { task, solves: 4 };\nconst start = raw as ComparisonStart;",
+          after: "const start: ComparisonStart = { task, solves: 4 };",
+        },
+        {
+          before: "const row: any = { id, outcome };\nappend(row as SolveRow);",
+          after: "const row = { id, outcome } satisfies SolveRow;\nappend(row);",
+        },
+      ] satisfies RuleExample[],
     },
     messages: {
       widenThenAssert:

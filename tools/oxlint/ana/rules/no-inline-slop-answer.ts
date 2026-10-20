@@ -1,4 +1,5 @@
 import { defineRule } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 
 /**
  * `// oxlint-disable-next-line anti-slop/no-runtime-typeof` answers a slop finding in the one
@@ -41,6 +42,18 @@ export const noInlineSlopAnswerRule = defineRule({
     docs: {
       description:
         "Answer an ana or anti-slop finding in tools/oxlint/not-slop.tsv, not in a disable comment.",
+      examples: [
+        {
+          before:
+            '// oxlint-disable-next-line anti-slop/no-runtime-typeof\nconst named = isString(value) ? value : "unnamed";',
+          after: 'const named = isString(value) ? value : "unnamed";',
+        },
+        {
+          before: "// oxlint-disable-next-line\nfor (const solve of solves) await settle(solve);",
+          after:
+            "// oxlint-disable-next-line no-await-in-loop -- each solve settles before the next starts\nfor (const solve of solves) await settle(solve);",
+        },
+      ] satisfies RuleExample[],
     },
     messages: {
       inlineAnswer:

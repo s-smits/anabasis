@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 import { blockBody } from "../shared/statements.ts";
 
 /**
@@ -72,7 +73,22 @@ export const preferConditionOverBooleanReturnsRule = defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
-    docs: { description: "Returning true then false spells out the condition; return it." },
+    docs: {
+      description: "Returning true then false spells out the condition; return it.",
+      examples: [
+        {
+          before:
+            "export function settled(row: Row): boolean {\n  if (row.verified && row.pass !== null) return true;\n  return false;\n}",
+          after:
+            "export function settled(row: Row): boolean {\n  return row.verified && row.pass !== null;\n}",
+        },
+        {
+          before:
+            'export function scorable(task: Task): boolean {\n  if (task.state === "released") return false;\n  return true;\n}',
+          after: 'export function scorable(task: Task): boolean {\n  return task.state !== "released";\n}',
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       spelledOut:
         "This branch returns `{{first}}` and then `{{second}}`, which is `{{form}}` written over two statements. Returning the condition keeps the test and the answer in one place, where they cannot be negated apart.",

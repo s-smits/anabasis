@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 import { isTestFile } from "../shared/file-role.ts";
 
 /** `name()`, alone or as the one statement returned, run or held in a block. */
@@ -61,7 +62,23 @@ function guardsCallOf(read: ESTree.Node, name: string): boolean {
 export const noPositionalBooleanParameterRule = defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: "Name the two states with a string-literal union instead of a boolean parameter." },
+    docs: {
+      description: "Name the two states with a string-literal union instead of a boolean parameter.",
+      examples: [
+        {
+          before:
+            'export function closeLifetime(lifetime: Lifetime, failed: boolean) {\n  lifetime.close(failed ? "failed" : "clean");\n}',
+          after:
+            'export function closeLifetime(lifetime: Lifetime, outcome: "failed" | "clean") {\n  lifetime.close(outcome);\n}',
+        },
+        {
+          before:
+            "export function writeReport(report: Report, verbose: boolean) {\n  if (verbose) print(report.lines);\n  save(report);\n}",
+          after:
+            'export function writeReport(report: Report, detail: "verbose" | "quiet") {\n  if (detail === "verbose") print(report.lines);\n  save(report);\n}',
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       opaqueAtCallSite:
         "`{{fn}}({{name}}: boolean)` reads as `{{fn}}(…, true)` at the call site, which names neither the parameter nor the state. Take a union of two string literals that say what the two states are.",

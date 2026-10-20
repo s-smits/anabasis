@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 
 /**
  * Four levels of nesting inside one function means the reader has to hold four conditions at
@@ -84,7 +85,23 @@ function counts(node: ESTree.IfStatement): boolean {
 export const noDeepNestingRule = defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: "A statement nested four deep asks the reader to hold four conditions." },
+    docs: {
+      description: "A statement nested four deep asks the reader to hold four conditions.",
+      examples: [
+        {
+          before:
+            "function saveDirty(rows: Row[]) {\n  for (const row of rows)\n    if (row.open)\n      for (const cell of row.cells)\n        if (cell.dirty) save(cell);\n}",
+          after:
+            "function saveDirty(rows: Row[]) {\n  const cells = rows.filter((row) => row.open).flatMap((row) => row.cells);\n  for (const cell of cells) if (cell.dirty) save(cell);\n}",
+        },
+        {
+          before:
+            "function settle(run: Run) {\n  if (run.ended)\n    if (run.report !== null)\n      for (const row of run.report.rows)\n        if (row.failed) retry(row);\n}",
+          after:
+            "function settle(run: Run) {\n  if (!run.ended || run.report === null) return;\n  for (const row of run.report.rows) if (row.failed) retry(row);\n}",
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       tooDeep:
         "This statement sits {{depth}} levels inside its function, so reaching it means holding {{depth}} conditions at once. A guard that returns or continues removes one level for a line; a body doing two things is two functions; a loop inside a loop is often one `.flatMap()`.",

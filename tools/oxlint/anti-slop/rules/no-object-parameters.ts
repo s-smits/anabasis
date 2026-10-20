@@ -11,6 +11,7 @@ import {
   resolvedTypeMatches,
   type TypeAliasEnvironment,
 } from "../shared/type-alias-resolution.ts";
+import type { RuleExample } from "../../rule-examples.ts";
 type ParameterOwner =
   | ESTree.ArrowFunctionExpression
   | ESTree.Function
@@ -64,6 +65,16 @@ export const noObjectParametersRule = defineRule({
     docs: {
       description:
         "Disallow object function parameters; inputs must use an owner-provided type and be parsed at their boundary.",
+      examples: [
+        {
+          before: "export function tally(pairs: object[]): number {\n  return pairs.length;\n}",
+          after: "export function tally(pairs: readonly Pair[]): number {\n  return pairs.length;\n}",
+        },
+        {
+          before: "type Reader = (event: object) => void;",
+          after: "type Reader = (event: LogEvent) => void;",
+        },
+      ] satisfies RuleExample[],
     },
     messages: {
       objectParameter:

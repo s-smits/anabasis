@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 import { annotatedKind } from "../shared/annotated-kind.ts";
 import { holdsProse } from "../shared/masked.ts";
 
@@ -57,6 +58,16 @@ export const preferIncludesOverSomeEqualsRule = defineRule({
     docs: {
       description:
         "Ask an array whether it includes a literal instead of wrapping the comparison in a closure.",
+      examples: [
+        {
+          before: 'const blank = segments.some((segment) => segment === "");',
+          after: 'const blank = segments.includes("");',
+        },
+        {
+          before: 'if (argv.some((argument) => argument === "--dry-run")) printPlan(argv);',
+          after: 'if (argv.includes("--dry-run")) printPlan(argv);',
+        },
+      ] satisfies RuleExample[],
     },
     messages: {
       closureAroundEquals:

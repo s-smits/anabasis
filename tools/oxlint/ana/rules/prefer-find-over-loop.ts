@@ -1,4 +1,5 @@
 import { defineRule, type ESTree, type Fix, type Fixer } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 import { annotatedKind } from "../shared/annotated-kind.ts";
 import { holdsProse } from "../shared/masked.ts";
 import { asSubject, onlyStatement, statementBelow } from "../shared/statements.ts";
@@ -96,7 +97,23 @@ export const preferFindOverLoopRule = defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
-    docs: { description: "A loop whose whole body is one conditional return is find, some or every." },
+    docs: {
+      description: "A loop whose whole body is one conditional return is find, some or every.",
+      examples: [
+        {
+          before:
+            "function runOf(rows: readonly Row[], runId: string): Row | undefined {\n  for (const row of rows) if (row.runId === runId) return row;\n}",
+          after:
+            "function runOf(rows: readonly Row[], runId: string): Row | undefined {\n  return rows.find((row) => row.runId === runId);\n}",
+        },
+        {
+          before:
+            "function allSettled(rows: readonly Row[]): boolean {\n  for (const row of rows) if (!row.settled) return false;\n  return true;\n}",
+          after:
+            "function allSettled(rows: readonly Row[]): boolean {\n  return rows.every((row) => row.settled);\n}",
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       writtenOut:
         "This loop is `{{subject}}.{{method}}(…)` written out. The platform owns the search; the loop only spells the predicate over three lines instead of one.",

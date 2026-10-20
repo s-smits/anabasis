@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 import { isComponentFile, isTestFile } from "../shared/file-role.ts";
 
 /** A body this short says nothing a reader could not have read at the call site. */
@@ -151,7 +152,23 @@ const CHAIN_PEERS = 3;
 export const noSingleCallerHelperRule = defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: "Inline a short module-scope helper that has a single caller." },
+    docs: {
+      description: "Inline a short module-scope helper that has a single caller.",
+      examples: [
+        {
+          before:
+            'function logOf(dir: string) {\n  return join(dir, "ledger.jsonl");\n}\nexport function readLog(dir: string) {\n  return readFileSync(logOf(dir), "utf8");\n}',
+          after:
+            'export function readLog(dir: string) {\n  return readFileSync(join(dir, "ledger.jsonl"), "utf8");\n}',
+        },
+        {
+          before:
+            'function heldOut(tasks: Task[]) {\n  return tasks.filter((task) => task.state === "held");\n}\nexport const scored = (tasks: Task[]) => heldOut(tasks).slice(0, 24);',
+          after:
+            'export const scored = (tasks: Task[]) => tasks.filter((task) => task.state === "held").slice(0, 24);',
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       singleCaller:
         "`{{name}}` is {{statements}} statement(s) long, is not exported, and is called once. Put those lines at the call site: a name standing in front of them costs one reader a jump and buys nothing.",

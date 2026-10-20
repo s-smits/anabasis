@@ -8,8 +8,8 @@
  * (since 19 October). What tells it more is the comparisons. The author sees every task of the
  * campaign, the pack's and the ones earlier sessions wrote, the older and easier ones included, each
  * with its outcome so far: how the reference harness did on it in the last comparison that scored
- * it, valid in every solve, in some or in none, or disputed (`docs/plan.md`, Phase 2;
- * `docs/simplify.md` F3, where "one harness won" and "no valid answer yet" told the author nothing
+ * it, valid in every solve, in some or in none, or disputed (`7f0add79:docs/plan.md`, Phase 2;
+ * `7f0add79:docs/simplify.md` F3, where "one harness won" and "no valid answer yet" told the author nothing
  * of where the room was). Beside the outcome, one fact that names no side: whether a valid answer to
  * the task is on record at all, a solve's, the author's own `try_answer` pass, or a reference
  * solve's under `try_task` (`poolOf`), which tells a task the reference answers in no solve
@@ -57,7 +57,7 @@
  * among what it will not tell. So nothing here names a harness, a check or a budget, and the
  * counts carry no band, share or number to reach. Whether counts told as facts move an author as a
  * target did is not measured: the operator's decision of 11 October takes that risk, and
- * `docs/plan.md` (row F60) says what would count against it.
+ * `7f0add79:docs/plan.md` (row F60) says what would count against it.
  *
  * On 17 October the telling was shortened with nothing it tells left out (the operator, on #191):
  * the legend is said once above the lines (`LINES`), a line says whether a valid answer is on

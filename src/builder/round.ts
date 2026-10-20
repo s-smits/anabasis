@@ -24,7 +24,7 @@
  * comparison and ran under one of its harnesses and its setting. No other solve is counted, made
  * before it or beside it by another comparison: a condition names the host's code, which changes
  * between comparisons, and one frozen draw of the reference harness's solves would bias every
- * later comparison read against it (`docs/plan.md`, What we will not do).
+ * later comparison read against it (`7f0add79:docs/plan.md`, What we will not do).
  *
  * The Starter Built Harness is the reference harness until a step is promoted
  * (`src/solve/starter.ts`). Once the operator has promoted another reference, the starter is the
@@ -34,7 +34,7 @@
  * How each harness did by itself is in the report beside the test (`valid`): on how many tasks it
  * gave a valid answer in every solve, in some and in none. For the starter this is what the
  * plan's first gate reads: where it is valid on nearly every solve, the tasks leave a harness
- * nothing to add (`docs/plan.md`, G0).
+ * nothing to add (`7f0add79:docs/plan.md`, G0).
  *
  * The reference is read against itself as the test is (the plan's A/A): its solves of a task
  * split into two halves mirrored in time, read as two harnesses are, with how often two of them
@@ -178,7 +178,7 @@ interface Terms {
   /** The dollar cap, where the solves are paid for. */
   readonly cap?: Cap | undefined;
   /** What the operator expects the comparison to read, in their own words, written with its terms
-   *  before the first solve (`docs/plan.md`, Phase 4). It decides nothing. A comparison gone on
+   *  before the first solve (`7f0add79:docs/plan.md`, Phase 4). It decides nothing. A comparison gone on
    *  from its log keeps the one it began with: begun on another, or on none, it is refused with
    *  one, as it is on any other term that moved. */
   readonly prediction?: string | undefined;
@@ -239,7 +239,7 @@ const UNCOMPARED: ReadonlySet<string> = new Set(["session", "tasks", "retained"]
  * exists, and which epoch a task is in is where it passed its gate (`tasksByEpoch`). A draw over
  * every epoch at once, in a simulated climb after two promotions, drew for a target of 8 over 19
  * held tasks two or three the reference failed, so three comparisons read one win short and the
- * campaign stopped (`docs/plan.md`, B14). A task that waits for a person's label is left out, and
+ * campaign stopped (`7f0add79:docs/plan.md`, B14). A task that waits for a person's label is left out, and
  * an exhausted one, which can only tie again, is retained (`poolOf`). Of the retained, one for
  * each three frontier tasks is scored beside the target, where a step may not lose more pairs than
  * it wins (`compare.ts`). Until 16 October it was what the frontier left of the target: 16 of 94

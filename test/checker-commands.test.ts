@@ -545,7 +545,7 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     ]);
   });
 
-  // The plan's checkpoint as its commands walk it (`docs/plan.md`, Phase 5): two Builder sessions,
+  // The plan's checkpoint as its commands walk it (`7f0add79:docs/plan.md`, Phase 5): two Builder sessions,
   // each with no comparison after it, and then one comparison of what the second left. A script
   // sits in every seat. Until 2026-10-09 a session ran only inside a round.
   it("rehearses two sessions and then one checkpoint over a seed", () => {
@@ -607,7 +607,7 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
 
     // The campaign's view prints each step's handover. Fix row F7: of the moves, it names the
     // table's alone. It takes the campaign command's flags and no other: a launch's, which it
-    // parsed until 11 October, went with the launcher (`docs/simplify.md`, D2).
+    // parsed until 11 October, went with the launcher (`7f0add79:docs/simplify.md`, D2).
     const viewed = cli("view", SEED, "--level", "0.02").said;
     expect(
       viewed.split("\n").filter((line) => line.includes("Builder session, finished: from")),

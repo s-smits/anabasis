@@ -7,7 +7,7 @@
  *
  * Until 2026-10-09 a campaign handed nothing over: a kept harness stayed a folder among the
  * campaign's states, with its programs behind a link into a tree beside it, and what the campaign
- * had read stood in its log alone (`docs/plan.md`, row F51). This writes, under `--to`:
+ * had read stood in its log alone (`7f0add79:docs/plan.md`, row F51). This writes, under `--to`:
  *
  *   harness/     the reference harness as it then stands, the starter where no step was promoted,
  *                copied whole with its programs. It is opened there before the command returns,

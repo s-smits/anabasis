@@ -3,7 +3,7 @@
  * on a task it may practise on, and each comparison's tally.
  *
  * A session opens a new conversation. The plan keeps one conversation for a campaign
- * (`docs/plan.md`, Phase 5) and names what stands in for it when the conversation is lost: the
+ * (`7f0add79:docs/plan.md`, Phase 5) and names what stands in for it when the conversation is lost: the
  * Builder's notes (`memory.ts`), the list of failed practice solves, and each comparison's result
  * in aggregate.
  *

@@ -69,7 +69,7 @@ type Entered = Tested & {
  * counted solves gave a valid answer, so with two solves a side the three entries are the tasks
  * valid in none, in one and in both. No test is read off it. It says where a budget leaves a
  * harness: valid nearly everywhere, the tasks cannot tell two harnesses apart; valid on about half
- * its solves, the fewest tasks tie by chance (`docs/plan.md`, Phase 0 and Statistical power).
+ * its solves, the fewest tasks tie by chance (`7f0add79:docs/plan.md`, Phase 0 and Statistical power).
  */
 interface Valid {
   readonly old: readonly number[];

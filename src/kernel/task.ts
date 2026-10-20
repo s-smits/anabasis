@@ -16,7 +16,7 @@
  * after a promotion: its gate's outcome and its state are `ladder`. The ladder was retired on
  * 16 October (`gated`, `src/examiner/write.ts`), and such a task is read as held out.
  *
- * The shape is the only gate (`docs/plan.md`, Phase 2, and `docs/v1.md` for what v1 measured):
+ * The shape is the only gate (`7f0add79:docs/plan.md`, Phase 2, and `docs/v1.md` for what v1 measured):
  *
  * - No stronger solver proves a task possible. v1's solver matched whatever its author's side
  *   found, and the first live sessions here lost 14 of 25 tasks at a gate of one stronger solve.

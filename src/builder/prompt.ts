@@ -18,7 +18,7 @@
  * in a prompt (`AGENTS.md`, section 2), under which no harness of ten campaigns declared a tool.
  *
  * Until 20 October the ceiling was one rule: no harness tool returns a finished answer for a task
- * (`docs/plan.md`, principle 6). v1's sentence had two routes, a verdict on a candidate and the answer to a case the
+ * (`7f0add79:docs/plan.md`, principle 6). v1's sentence had two routes, a verdict on a candidate and the answer to a case the
  * solver names, and forbade both as "a check's work", with the reason that the Builder's own
  * battery would then measure a search. That Builder had written the checks. The operator lifted
  * the first on 9 October, with the same rule in every session: a tool may tell the solver whether

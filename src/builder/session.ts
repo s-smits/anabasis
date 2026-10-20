@@ -629,7 +629,7 @@ async function left(events: readonly LogEvent[], request: BuildRequest, parent: 
  * again: it is read from the log, whether it ran now or in an earlier run of the command, and one
  * that did not end whole is refused (`spent`). It is the session of a round, which then compares
  * what it left, and the whole of a session run with no comparison after it: the plan's checkpoint
- * is several sessions and then one comparison (`docs/plan.md`, Phase 5).
+ * is several sessions and then one comparison (`7f0add79:docs/plan.md`, Phase 5).
  */
 export async function sessionOnce(
   request: BuildRequest,

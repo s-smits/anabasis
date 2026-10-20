@@ -77,6 +77,21 @@ function push(updates: readonly string[], env: Record<string, string> = {}, by =
 const update = (local: string, remote: string, branch = "topic"): string =>
   `refs/heads/${branch} ${local} refs/heads/${branch} ${remote}`;
 const forgetPasses = (): void => rmSync(join(work, ".git", "ana-gate-passed"), { force: true });
+/**
+ * Another push under way, which publishes `head` as `below` once this push's hook has begun to wait
+ * for it: the hook writes its own lock file, and reads the held one at once. Until 20 October it
+ * published after a fixed two seconds, and a hook slower than that to start found it gone.
+ * Detached, so that the host reaps it as it would a finished `git push`, and no zombie of it stays.
+ */
+const otherPush = (head: string): string =>
+  execTextSync(
+    "sh",
+    [
+      "-c",
+      `(i=0; until ls .git/ana-pre-push.lock.* || [ $i -ge 400 ]; do i=$((i+1)); sleep 0.05; done; sleep 0.3; git update-ref refs/remotes/origin/below ${head}) >/dev/null 2>&1 & echo $!`,
+    ],
+    { cwd: work },
+  ).trim();
 
 /** The same patches as `source` and `second`, on a trunk that has since changed: what a rebase replaced. */
 function oldCopies() {
@@ -292,12 +307,7 @@ describe("pre-push", () => {
   // The other push is a process that publishes `source` as it ends, as `git push` updates its refs.
   it("waits for a push under way, then gates only what that push did not publish", () => {
     const lock = join(work, ".git", "ana-pre-push.lock");
-    // Detached, so that the host reaps it as it would a finished `git push`, and no zombie of it stays.
-    const other = execTextSync(
-      "sh",
-      ["-c", `(sleep 2; git update-ref refs/remotes/origin/below ${source}) >/dev/null 2>&1 & echo $!`],
-      { cwd: work },
-    ).trim();
+    const other = otherPush(source);
     const started = execTextSync("ps", ["-o", "lstart=", "-p", other]).trim();
     writeFileSync(lock, `${other}\n${started}`);
     const result = push([update(second, absent, "above")]);
@@ -310,11 +320,7 @@ describe("pre-push", () => {
   // The other push replaces `below`'s head `source` with a rewritten copy, as a fixup and force-push do.
   it("refuses a push stacked on a head the push before it replaced, with the line that restacks it", () => {
     const rewritten = git("commit-tree", withFile(source, "fixup.txt"), "-p", docs, "-m", "source, amended");
-    const other = execTextSync(
-      "sh",
-      ["-c", `(sleep 2; git update-ref refs/remotes/origin/below ${rewritten}) >/dev/null 2>&1 & echo $!`],
-      { cwd: work },
-    ).trim();
+    const other = otherPush(rewritten);
     const started = execTextSync("ps", ["-o", "lstart=", "-p", other]).trim();
     writeFileSync(
       join(work, ".git", "ana-pre-push.lock"),

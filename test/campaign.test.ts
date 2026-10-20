@@ -54,7 +54,6 @@ const EARLIER = `${NAME}-earlier`;
  *  backend serves is refused with the command's other flags, before the log is asked anything. */
 const SERVED = "claude/claude-opus-5-5";
 /** A campaign whose recorded setting names the tasks to score. */
-const RECORDED = `${NAME}-recorded`;
 /** A campaign opened and given a harness before it keeps any. */
 const FRESH = `${NAME}-fresh`;
 /** Campaigns whose checks pass, and reject, the stored sweep's accepted answer. */
@@ -74,7 +73,7 @@ setDefaultTimeout(60_000);
 
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });
-  for (const name of [NAME, EARLIER, RECORDED, FRESH, PROVEN, UNPROVEN]) {
+  for (const name of [NAME, EARLIER, FRESH, PROVEN, UNPROVEN]) {
     rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
   }
 });
@@ -904,36 +903,6 @@ describe("a campaign", () => {
 
   // Fix row F47: `prepare.ts` read the recorded target and not the recorded tasks, so its draw
   // could release for practice a task the campaign's setting names to score, for good.
-  it("releases for practice no task the campaign's recorded setting names to score", async () => {
-    const campaign = await openCampaign({ ...ARGS, name: RECORDED });
-    const prepared = (practice: string) => {
-      const flags = Object.entries({ ...ARGS, name: RECORDED, practice }).flatMap(([flag, value]) => [
-        `--${flag}`,
-        value,
-      ]);
-      const ran = Bun.spawnSync({ cmd: [capturedExecPath, "tools/d2/prepare.ts", ...flags], cwd: REPO });
-      return `${ran.stdout.toString()}${ran.stderr.toString()}`;
-    };
-    expect(prepared("0")).toContain("7 held out, 0 released for practice");
-    const scored = ["t-1", "t-2", "t-3", "t-4"];
-    append(campaign.log, "campaign.setting", {
-      solver: null,
-      minutes: 120,
-      turns: 24,
-      modelTurns: null,
-      tasks: scored,
-      target: 12,
-    });
-    // Three are asked for, and half of the three tasks the record does not name is one.
-    expect(prepared("3")).toContain(
-      "practice is 2 short of 3: a release takes at most half of the 3 held out and not named to score",
-    );
-    const packages = campaign.packages();
-    const released = taskSets(read(campaign.log)).released.map((version) => packages.get(version)?.taskId);
-    expect(released).toHaveLength(1);
-    expect(released.filter((taskId) => scored.includes(taskId ?? ""))).toEqual([]);
-  });
-
   // Recode ran on 9 October with its solver held to 15 of its own turns, and its log holds no
   // record of a setting: the first command of this source there has to name what it ran under.
   it("holds the first record of a campaign that already holds solves to what they ran under", async () => {

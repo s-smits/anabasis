@@ -440,8 +440,10 @@ describe("a campaign run by its log", () => {
     expect(of(name, "campaign.waited")).toEqual([
       expect.objectContaining({ comparison: "g-1", load: 99, cores: 4, ms: expect.any(Number) }),
     ]);
+    // A task's solves start together, so one beside it that read a quiet host may begin before the
+    // wait is written (the Linux job, 20 October): the task's last solve to begin is the one that waited.
     const held = kept[waited]?.data.task;
-    const began = kept.findIndex(({ kind, data }) => kind === "solve.started" && data.task === held);
+    const began = kept.findLastIndex(({ kind, data }) => kind === "solve.started" && data.task === held);
     expect(waited).toBeLessThan(began);
     expect(of(name, MOVED).filter(({ load }) => load !== undefined)).toEqual([]);
     // The comparison was made at the campaign's level, and the move records the command.

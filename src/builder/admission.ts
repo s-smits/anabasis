@@ -69,7 +69,7 @@ export interface Supply {
 
 /** What a comparison asks for. */
 export interface Wanted {
-  /** The tasks to score: `--target`, or as many as `--tasks` names. */
+  /** The tasks to draw: `--target`. */
   readonly target: number;
   readonly solves: number;
   /** The level a step clears (`stepOf`, `src/kernel/compare.ts`). */

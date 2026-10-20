@@ -580,15 +580,12 @@ function toPractise({ events, plan, supply, read }: Ground, named: Move): Move |
   const released = events.findLastIndex(
     ({ kind, data }) => kind === "task.state" && data.state === "released",
   );
-  // The tasks the setting names to score are no practice, and a release takes half of the rest.
-  const scored = events.findLast(({ kind }) => kind === "campaign.setting")?.data.tasks;
-  const pool = supply.held - (Array.isArray(scored) ? scored.length : 0);
   const { promotedAt, epoch } = epochReleased(events);
   const room = practiceRoom(events, plan.wanted.level);
   if (
     named.move !== "build" ||
     practice === null ||
-    pool < 2 ||
+    supply.held < 2 ||
     heldAfter(events, Math.max(released, promotedAt)) === 0
   ) {
     return null;

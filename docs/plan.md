@@ -35,7 +35,6 @@ factors"). The values below are read from the fresh campaigns' logs on the opera
 | F30 | The checker's identity in every task version | Planned | |
 | F32 | No field engine behind buffer's or recode's checks; every drafted exam stands on `--admit-authored` | Planned | A domain whose exam names an installed engine |
 | F60 | Whether the Examiner's family counts help | Present in source, proved without a model | An ablation, or a read of drafts refused before and after |
-| B5 | `prepare.ts --tasks` confirms a stored answer, never a pack's tasks | Planned | |
 | B6 | The investigation's reader still reads its own copy of the campaign | Planned | |
 | H1 | The Seatbelt half of the per-seat `TMPDIR` | Proved without a model (Linux half) | A wall test on macOS |
 | C6, C8 | A side reading of the newest candidate against the previous one; restart from the reference | Planned | C6 first, on a real log with a regression |

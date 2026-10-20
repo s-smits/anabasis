@@ -517,7 +517,7 @@ function closed(log: string, from: number): boolean {
 
 /**
  * Refuses a flag that names another setting than the campaign's, with both, as every command
- * refuses it; the scored tasks are the record's where it names them. Until 11 October the record's
+ * refuses it. Until 11 October the record's
  * model turns stood in for the flag (`7f0add79:docs/simplify.md`, A1), so another number ran at the record's.
  */
 function settingHeld(log: string, given: Values): void {
@@ -530,8 +530,7 @@ function settingHeld(log: string, given: Values): void {
       "solver-window": given["solver-window"],
       "solve-minutes": given["solve-minutes"],
       "solve-model-turns": given["solve-model-turns"],
-      tasks: recorded.tasks?.join(","),
-      target: recorded.tasks === null ? given.target : String(recorded.target),
+      target: given.target,
     },
     recorded,
   );

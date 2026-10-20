@@ -1,5 +1,5 @@
 /**
- * A campaign's setting: who solves, what a solve is held to, and which tasks a comparison scores.
+ * A campaign's setting: who solves, what a solve is held to, and how many tasks a comparison draws.
  * It is recorded once in the campaign's log, and every command that solves runs under the record.
  *
  *   --solver claude/claude-sonnet-5-5   the model that solves in the stored cycle's place
@@ -11,8 +11,7 @@
  *   --solve-model-turns 20              the model's own turns a solve is given, told to the solver; 20 where not
  *                                       named, and `unlimited` for none, as campaigns recorded before
  *                                       19 October read back
- *   --tasks a,b,c                       the scored tasks, by id, where the operator chooses them
- *   --target 12                         otherwise: so many of the held-out tasks, by the contract's draw
+ *   --target 12                         so many of the held-out tasks, by the contract's draw
  *
  * The first command of a campaign that compares records what its flags name, with the defaults for
  * what they leave out: the stored cycle's own solver, the one budget every solver is held to
@@ -85,9 +84,6 @@ export interface Recorded {
   readonly minutes: number;
   /** The model's own turns a solve is given; null where they are not limited. */
   readonly modelTurns: number | null;
-  /** The scored tasks by id, where the operator named them; null for `target` of the held-out
-   *  tasks by the contract's draw. */
-  readonly tasks: readonly string[] | null;
   readonly target: number;
 }
 
@@ -98,15 +94,13 @@ interface SettingFlags {
   readonly "solver-window"?: string | undefined;
   readonly "solve-minutes"?: string | undefined;
   readonly "solve-model-turns"?: string | undefined;
-  readonly tasks?: string | undefined;
   readonly target?: string | undefined;
 }
 
-/** What a command runs under: the solver and the limits, the scored set as its two flags name it,
+/** What a command runs under: the solver and the limits, the size of the scored draw,
  *  and the record to keep where the campaign has none yet or takes another; null where it stands. */
 export interface AskedSetting {
   readonly named: NamedSetting;
-  readonly tasks: string | undefined;
   readonly target: number;
   readonly record: Recorded | null;
   /** Whether the record would be the campaign's first, with no word from the operator that the
@@ -126,7 +120,7 @@ const KIND = "campaign.setting";
 
 /** The flags of a setting, as every command of a campaign takes them. None has a default here: a
  *  flag that is not given is the campaign's record, and the defaults stand behind that
- *  (`SETTING_DEFAULTS`). `--tasks` and `--target` are a comparison's own options (`round.ts`). */
+ *  (`SETTING_DEFAULTS`). `--target` is a comparison's own option (`round.ts`). */
 export const SETTING_OPTIONS = {
   solver: { type: "string" },
   "solver-effort": { type: "string" },
@@ -166,11 +160,6 @@ const PARTS: readonly {
     of: "modelTurns",
     flag: "--solve-model-turns",
     said: ({ modelTurns }) => (modelTurns === null ? null : `--solve-model-turns ${String(modelTurns)}`),
-  },
-  {
-    of: "tasks",
-    flag: "--tasks",
-    said: ({ tasks }) => (tasks === null ? null : `--tasks ${tasks.join(",")}`),
   },
   { of: "target", flag: "--target", said: ({ target }) => `--target ${String(target)}` },
 ];
@@ -238,20 +227,18 @@ function defined(values: SettingFlags): SettingFlags {
     ...keyIfDefined("solver-window", values["solver-window"]),
     ...keyIfDefined("solve-minutes", values["solve-minutes"]),
     ...keyIfDefined("solve-model-turns", values["solve-model-turns"]),
-    ...keyIfDefined("tasks", values.tasks),
     ...keyIfDefined("target", values.target),
   };
 }
 
 /** A record as the flags that name it. */
-function flagsOf({ solver, minutes, modelTurns, tasks, target }: Recorded): SettingFlags {
+function flagsOf({ solver, minutes, modelTurns, target }: Recorded): SettingFlags {
   return {
     ...keyIfDefined("solver", solver?.model),
     ...keyIfDefined("solver-effort", solver?.effort),
     ...keyIfDefined("solver-window", solver?.window === undefined ? undefined : String(solver.window)),
     "solve-minutes": String(minutes),
     "solve-model-turns": modelTurns === null ? UNLIMITED : String(modelTurns),
-    ...keyIfDefined("tasks", tasks?.join(",")),
     target: String(target),
   };
 }
@@ -263,14 +250,13 @@ function recordOf(values: SettingFlags): Recorded {
     solver: solver === undefined ? null : { ...solver },
     minutes: limits.wallSeconds / 60,
     modelTurns: limits.modelTurns ?? null,
-    tasks: values.tasks === undefined ? null : values.tasks.split(","),
     target: targetNamed(values.target ?? String(SIZE.tasks)),
   };
 }
 
 /** The setting a log records for its campaign: the last one kept, or null where none reads whole. */
 export function recordedSetting(events: readonly LogEvent[]): Recorded | null {
-  const { solver, minutes, turns, modelTurns, tasks, target } =
+  const { solver, minutes, turns, modelTurns, target } =
     events.findLast(({ kind }) => kind === KIND)?.data ?? {};
   const by = asRecord(solver);
   // A record written before 2026-10-11 holds the prompts a solve was given, which every solve is
@@ -284,7 +270,6 @@ export function recordedSetting(events: readonly LogEvent[]): Recorded | null {
     isNumber(minutes) &&
     isNumber(target) &&
     (modelTurns === null || isNumber(modelTurns)) &&
-    (tasks === null || (Array.isArray(tasks) && tasks.every(isString))) &&
     (solver === null ||
       (isString(by?.model) && isString(by.effort) && (by.window === undefined || isNumber(by.window))));
   if (!whole) return null;
@@ -299,7 +284,6 @@ export function recordedSetting(events: readonly LogEvent[]): Recorded | null {
         : null,
     minutes,
     modelTurns,
-    tasks: Array.isArray(tasks) ? tasks.filter(isString) : null,
     target,
   };
 }
@@ -312,10 +296,7 @@ export function recordedSetting(events: readonly LogEvent[]): Recorded | null {
 export function settingAsked(values: SettingFlags, recorded: Recorded | null): AskedSetting {
   const flags = recorded === null ? defined(values) : { ...flagsOf(recorded), ...defined(values) };
   const asked = recordOf(flags);
-  // The scored tasks are a set: the order they are named in names nothing.
-  const set = (record: Recorded) => ({ ...record, tasks: record.tasks?.toSorted() ?? null });
-  const moved =
-    recorded === null ? [] : PARTS.filter(({ of }) => !sameJsonValue(set(asked)[of], set(recorded)[of]));
+  const moved = recorded === null ? [] : PARTS.filter(({ of }) => !sameJsonValue(asked[of], recorded[of]));
   if (recorded !== null && moved.length > 0) {
     const was = moved.flatMap(({ said }) => said(recorded) ?? []);
     const without = moved.flatMap(({ flag, said }) => (said(recorded) === null ? [flag] : []));
@@ -329,7 +310,6 @@ export function settingAsked(values: SettingFlags, recorded: Recorded | null): A
   }
   return {
     named: settingNamed(flags),
-    tasks: flags.tasks,
     target: asked.target,
     record: recorded === null ? asked : null,
     first: recorded === null,
@@ -340,11 +320,10 @@ export function settingAsked(values: SettingFlags, recorded: Recorded | null): A
  *  calls this as it begins, past every refusal, so that a refused command leaves the record alone. */
 export function keepSetting(log: string, { record }: Pick<AskedSetting, "record">): void {
   if (record === null) return;
-  const { solver, tasks, ...rest } = record;
+  const { solver, ...rest } = record;
   append(log, KIND, {
     ...rest,
     solver: solver === null ? null : { ...solver },
-    tasks: tasks === null ? null : [...tasks],
   });
 }
 

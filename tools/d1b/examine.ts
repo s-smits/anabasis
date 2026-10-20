@@ -161,12 +161,8 @@ export async function examineCommand(
   if (home !== "on" && home !== "off") throw new Error(`--reference-home is on or off, not ${home}`);
   const pack = packNamed(values, ", --session and --examiner");
   // The campaign's setting is its log's, as a comparison reads it: the reference harness's solves
-  // of a draft task run under it and record it where none is on record (`setting.ts`). `--tasks`
-  // is the held-out tasks this session is to stop at, and names no scored set.
-  const setting = settingAsked(
-    { ...values, tasks: undefined },
-    recordedSetting(read(campaignLog(pack.name))),
-  );
+  // of a draft task run under it and record it where none is on record (`setting.ts`).
+  const setting = settingAsked(values, recordedSetting(read(campaignLog(pack.name))));
   const campaign = await openCampaign({ ...pack, ...setting.named });
   // The brief's rows in the verifier's reading and in the pack's are the same rows in the same order.
   const declared = readBrief(campaign.checks).truthChecks;

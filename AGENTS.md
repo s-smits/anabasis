@@ -843,7 +843,7 @@ that window and needs one it can hold.
 so a campaign that opens on a few tasks releases fewer than `--practice` names. Before a Builder
 session the table releases more where tasks have been held out since the last release, and after a
 control that read room (section 7) it releases as many again. `--practice` is a per-epoch count,
-and after a promotion a release never leaves fewer frontier tasks than a sweep at the level needs
+and once practice exists a release never leaves fewer frontier tasks than a sweep at the level needs
 (`practiceRoom`, `src/builder/decide.ts`; until 16 October also at most one in four of the tasks
 the epoch may score and has released, a bound that alone decided none of 35 releases). Each
 release is one task fewer to compare.

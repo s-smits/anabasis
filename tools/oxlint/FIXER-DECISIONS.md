@@ -1,7 +1,7 @@
 # Which rules fix, and which only report
 
-Fifty-five rules are registered: thirty-eight `ana` and seventeen `anti-slop`, every one of them
-`error`. **Fourteen carry a fixer. Forty-one report and leave the repair to the author.**
+Fifty-four rules are registered: thirty-seven `ana` and seventeen `anti-slop`, every one of them
+`error`. **Fourteen carry a fixer. Forty report and leave the repair to the author.**
 
 That split is not an accident of effort, and it is not a backlog. This file says what a fixer has
 to be true of before it ships, which rules pass that test, which ones sit right on the edge and are
@@ -85,7 +85,7 @@ they are reversing a decision, and should say so.
 `no-repeated-string-literal`'s source half belongs on this list too; it is above because the rule as
 a whole ships a fixer.
 
-## The rest: thirty-two where the rule does not hold the repair
+## The rest: thirty-one where the rule does not hold the repair
 
 Not borderline. In each of these the missing piece is information the rule has no access to, and
 every one of them says so in its own doc comment — `test/oxlint-rule-contract.test.ts` refuses a
@@ -93,9 +93,9 @@ rule that neither declares `fixable` nor writes the words. The groups below were
 those sentences on 2026-09-20 and three rules moved, because a group label had been standing in
 for a reason the rule states more precisely itself.
 
-- **The repair is a type** (9): `unproven-unknown-parameter`, `no-unknown-returns`, `no-unknown-type-aliases`, `no-unsafe-dictionary-type`,
-  `no-known-value-widening`, `no-widen-then-assert`, `no-chained-type-assertions`,
-  `require-type-for-null-default`, `no-runtime-typeof`. The `unknown` or the widening is exactly
+- **The repair is a type** (8): `unproven-unknown-parameter`, `no-unknown-returns`,
+  `no-unknown-type-aliases`, `no-unsafe-dictionary-type`, `no-known-value-widening`, `no-widen-then-assert`, `no-chained-type-assertions`,
+  `no-runtime-typeof`. The `unknown` or the widening is exactly
   the work someone avoided; writing it is the finding. A plugin rule does not read the checker.
 - **The repair is a name** (4): `no-thrice-spelled-object`, `no-shape-in-symbol-names`,
   `no-positional-boolean-parameter`, `prefer-entries-over-keys-lookup`. Which two words name the
@@ -344,7 +344,7 @@ enforceable, because a clean lint no longer means what it says. **Fourteen is th
 under the four conditions, not a target that was missed.**
 
 A report with no fixer is a working outcome and the majority outcome: the author is told exactly
-what is wrong and makes the call. That is what these forty-one are for.
+what is wrong and makes the call. That is what these forty are for.
 
 ## A fixer's finding has no answer
 

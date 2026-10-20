@@ -11,7 +11,6 @@ import { noPositionalBooleanParameterRule } from "./rules/no-positional-boolean-
 import { preferIncludesOverSomeEqualsRule } from "./rules/prefer-includes-over-some-equals.ts";
 import { preferKeyIfDefinedRule } from "./rules/prefer-key-if-defined.ts";
 import { noHandRolledErrorRenderRule } from "./rules/no-hand-rolled-error-render.ts";
-import { requireTypeForNullDefaultRule } from "./rules/require-type-for-null-default.ts";
 import { preferSomeOverFilterLengthRule } from "./rules/prefer-some-over-filter-length.ts";
 import { noInlineSlopAnswerRule } from "./rules/no-inline-slop-answer.ts";
 
@@ -85,7 +84,6 @@ const anaPlugin = eslintCompatPlugin({
     "prefer-includes-over-some-equals": preferIncludesOverSomeEqualsRule,
     "prefer-key-if-defined": preferKeyIfDefinedRule,
     "no-hand-rolled-error-render": noHandRolledErrorRenderRule,
-    "require-type-for-null-default": requireTypeForNullDefaultRule,
     "no-property-read-on-function": noPropertyReadOnFunctionRule,
     "prefer-some-over-filter-length": preferSomeOverFilterLengthRule,
     "no-alias-restating-return": noAliasRestatingReturnRule,

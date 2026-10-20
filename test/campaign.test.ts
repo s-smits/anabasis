@@ -37,6 +37,7 @@ import {
   refereeNamed,
   ROUND_OPTIONS,
   roundCommand,
+  gainSaid,
   reportLines,
 } from "../tools/d2/round.ts";
 import { sessionCommand } from "../tools/d2/session.ts";
@@ -628,6 +629,20 @@ describe("a campaign", () => {
         noise: null,
       }).at(-1),
     ).toBe("the objective (lower is better) decided 1 task that validity alone would have tied");
+    // Beside it, where the report carries one, the median relative gain on the won frontier tasks
+    // with a measure on both sides; nothing where none had (`gainSaid`, which the closing report
+    // prints beside a promotion's tally too).
+    expect(
+      reportLines({
+        valid: { old: [0, 0, 2], fresh: [0, 0, 2], informative: { old: 0, fresh: 0 } },
+        frontier: null,
+        objective: { direction: "lower", decided: 3, gain: { median: 0.000_007_6, tasks: 18 } },
+        noise: null,
+      }).at(-1),
+    ).toBe(
+      "the objective (lower is better) decided 3 tasks that validity alone would have tied; on the 18 won frontier tasks with a valid measure on both sides its median relative gain is 0.00076%",
+    );
+    expect(gainSaid(null)).toBe("");
     const campaign = await openCampaign(ARGS);
     expect(read(campaign.log).some(({ data }) => data.session === "z-8")).toBe(false);
   });

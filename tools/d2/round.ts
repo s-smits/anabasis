@@ -73,7 +73,7 @@ import { worthLine } from "#src/builder/climb.ts";
 import { predicted, type Report } from "#src/builder/comparison.ts";
 import { refuseTerms, type RoundRequest, round, scoredSet } from "#src/builder/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
-import type { ObjectiveRule } from "#src/kernel/compare.ts";
+import type { Gain, ObjectiveRule } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
@@ -475,7 +475,7 @@ export function reportLines({
     ...(objective === null
       ? []
       : [
-          `the objective (${objective.direction} is better) decided ${plural(objective.decided, "task")} that validity alone would have tied`,
+          `the objective (${objective.direction} is better) decided ${plural(objective.decided, "task")} that validity alone would have tied${gainSaid(objective.gain)}`,
         ]),
     ...(both.length === 0
       ? []
@@ -484,6 +484,14 @@ export function reportLines({
         ]),
     ...(worth === null ? [] : [worthLine(worth)]),
   ];
+}
+
+/** The median relative gain by the objective on the won frontier tasks, as a report prints it
+ *  beside the tally (`objectiveGain`); nothing where no won task has a measure on both sides. */
+export function gainSaid(gain: Gain | null | undefined): string {
+  return gain == null
+    ? ""
+    : `; on the ${plural(gain.tasks, "won frontier task")} with a valid measure on both sides its median relative gain is ${String(Number((100 * gain.median).toPrecision(2)))}%`;
 }
 
 /** A share, to three places. */

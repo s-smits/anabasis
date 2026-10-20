@@ -20,17 +20,14 @@
 import { unadmitted } from "../kernel/acceptance.ts";
 import { readsStepEitherWay, sweepOf } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { billedParts, poolOf, roomOf } from "../kernel/reports.ts";
-import { SIZE } from "../kernel/size.ts";
+import { poolOf, roomOf } from "../kernel/reports.ts";
 import { practiceRan } from "../kernel/solves.ts";
 import { heldAtGate, taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { draftOf } from "../examiner/draft.ts";
-import { TRIED } from "../examiner/record.ts";
 import { plural } from "../meta/text.ts";
 import { crashedRun, cutShort, groundOf, heldOut, type Plan } from "./ground.ts";
-import { openingOf } from "./opening.ts";
 import { type Decided, type Ending, short } from "./move.ts";
 import { pendingWords } from "./word.ts";
 
@@ -72,7 +69,6 @@ const HOLDS: readonly {
   readonly code: string;
   readonly hold: (ground: Ground, named: Move) => Move | null;
 }[] = [
-  { code: "afford", hold: unafforded },
   { code: "practice", hold: toPractise },
   { code: "unshown", hold: unshown },
 ];
@@ -583,87 +579,6 @@ function buildsOn(ground: Ground): string {
   if (waiting === null) return "no session has left a harness that is not the reference harness";
   const { run, needed } = sessionsRun(ground);
   return `${String(run)} of ${plural(needed, "Builder session")} before the next comparison have run`;
-}
-
-/**
- * The campaign's ending on its budget where what is left of its total would not hold the move a
- * row named. A comparison the cap cuts before its last solve tallies nothing, and what it billed
- * bought no reading: on 9 October a campaign with $1.45 left began a comparison after one that had
- * billed $1.00, and was cut after $1.06. What a comparison will bill is read from the last one that
- * reported. An Examiner session is a round with the comparison that reads its tasks: where the
- * last session and that comparison billed more than half of what is left, another round could not
- * be read. Where no comparison has
- * reported, the first is priced by the reference harness's solves of draft tasks (`firstPriced`),
- * and with none of those the move is made; one that began goes on under whatever is left.
- */
-function unafforded(ground: Ground, named: Move): Move | null {
-  const { events, plan, reports } = ground;
-  const last = reports.findLast(({ report }) => report.capped !== true);
-  if (plan.left === null) return null;
-  const left = plan.left.dollars;
-  if (named.move === "compare" && named.id === undefined) {
-    const billed = last === undefined ? 0 : billedParts(events, last.id).comparison;
-    const was =
-      last === undefined
-        ? firstPriced(ground)
-        : { dollars: billed, said: `comparison ${last.id} billed $${billed.toFixed(2)}` };
-    return was === null || left >= was.dollars
-      ? null
-      : end(
-          "budget",
-          `$${left.toFixed(2)} of the campaign's budget are left, and ${was.said}: the next would bill about as much, so it would be cut before it reports`,
-        );
-  }
-  if (last === undefined) return null;
-  const was = billedParts(events, last.id).comparison;
-  const session = events.findLast(({ kind }, at) => kind === "exam.finished" && at < last.reported)?.data;
-  if (named.move !== "examine" || session === undefined) return null;
-  const round =
-    was +
-    (isNumber(session.billed) ? session.billed : 0) +
-    billedParts(events, isString(session.session) ? session.session : "").comparison;
-  return round > left / 2
-    ? end(
-        "budget",
-        `the last Examiner session and comparison ${last.id}, which read its tasks, billed $${round.toFixed(2)}, more than half of the $${left.toFixed(2)} left: another round could not be read`,
-      )
-    : null;
-}
-
-/** What a first comparison would bill, priced by the reference harness's solves of draft tasks
- *  (`try_task`): two harnesses, the tasks it would score, the solves a side. Until 14 October a
- *  campaign with no report was held to nothing, and buffer-149's gate billed about $0.43 a solve.
- *  A gate's `billed` is the solves it ran (`ran`; `TRIED` before 20 October), the non-results among
- *  them included, while its `solves` counts the readings, so the price is a solve started and not a
- *  reading: over readings alone a gate with a non-result priced the comparison high. Null where no
- *  draft was solved. */
-function firstPriced({ events, plan }: Ground): { dollars: number; said: string } | null {
-  const tried = events.flatMap(({ kind, data }) => {
-    const reference = asRecord(data.reference);
-    return kind === "task.gate" &&
-      isNumber(reference?.billed) &&
-      isNumber(reference.solves) &&
-      reference.solves > 0
-      ? [{ billed: reference.billed, ran: isNumber(reference.ran) ? reference.ran : TRIED }]
-      : [];
-  });
-  const solves = tried.reduce((sum, { ran }) => sum + ran, 0);
-  if (solves === 0) return null;
-  const each = tried.reduce((sum, { billed }) => sum + billed, 0) / solves;
-  const scored = Math.min(plan.wanted.target, taskSets(events).held.length);
-  const aside = Number(openingOf(events)?.terms.solves ?? SIZE.solves);
-  const dollars = each * 2 * scored * aside;
-  return {
-    dollars,
-    said: `the reference harness's solves of draft tasks billed $${each.toFixed(2)} a solve, so a first comparison of ${plural(scored, "task")} at ${String(aside)} solves a side would bill about $${dollars.toFixed(2)}`,
-  };
-}
-
-/** Why the table's budget hold would refuse a comparison the Builder asked for where it named
- *  another move, or null (14 October: the holds were asked of the table's own move alone). */
-export function unaffordedAsked(events: readonly LogEvent[], plan: Plan): string | null {
-  const held = unafforded(groundOf(events, plan), compare("the Builder asked for a comparison"));
-  return held?.move === "end" ? held.why : null;
 }
 
 /** The tasks released for practice since the reference harness was last promoted, and where: the

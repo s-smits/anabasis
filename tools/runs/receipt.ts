@@ -24,7 +24,7 @@ import { gitMaybe } from "#src/meta/git.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { runNamed } from "./registry.ts";
+import { readNamed } from "./registry.ts";
 
 export interface Receipt {
   readonly at: string;
@@ -111,6 +111,6 @@ export function source(args: readonly string[]): void {
   });
   const [name] = positionals;
   if (name === undefined) throw new Error("usage: bun run runs source <name> [--holds <commit>]...");
-  const run = runNamed(name);
+  const run = readNamed(name);
   console.log(sources(run.path, run.tree, values.holds).join("\n"));
 }

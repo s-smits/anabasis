@@ -64,8 +64,11 @@ describe("a run's writers", () => {
         cwd: "/wt",
         args: ["nice", "-n", "19", "bun", "tools/d2/harness-builder.ts", "--name", "r1"],
       },
+      // Started by hand with the name joined to its flag, as `parseArgs` takes it.
+      { pid: 16, cwd: "/wt", args: ["bun", "tools/d2/harness-builder.ts", "--name=r1"] },
+      { pid: 17, cwd: "/wt", args: ["bun", "tools/d2/harness-builder.ts", "--name=r10"] },
     ];
-    expect(writers(round, running).map(({ pid }) => pid)).toEqual([1, 2, 6, 12, 14, 15]);
+    expect(writers(round, running).map(({ pid }) => pid)).toEqual([1, 2, 6, 12, 14, 15, 16]);
     const solve: Run = { ...round, name: "r1-c01-opus-1234", end: "solve.finished" };
     expect(writers(solve, running).map(({ pid }) => pid)).toEqual([5]);
   });

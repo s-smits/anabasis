@@ -380,20 +380,20 @@ async function practise(bench: Bench, task: PracticeTask, kept: Snapshot, kill: 
 }
 
 /**
- * The practice solves a session may still start: what is left of its own count, and no more than
- * its dollar cap holds a reserve for, where it runs under one (`BuildRequest.cap`). The dollars are
- * the log's, the session's own part (`billedParts`): the practice solves this session ran and their
- * Referee, and its own live turns, and not what a comparison under the same id billed. In a live campaign, the current total includes every seat
- * and any budget change the operator left. The Builder is told a count and never a sum.
+ * The practice solves a session may still start. A Builder that leads its campaign has as many as
+ * what is left of the campaign's total holds a reserve for, and no count of its own: r3's b-1 ran
+ * out of its 24 at turn 161 with $560 left (deep dive, 20 October). A session the host runs keeps
+ * its count, and no more than its own part of the log leaves its cap a reserve for (`billedParts`).
+ * The Builder is told a count and never a sum.
  */
 export function practiceLeft({ request, spent }: Bench, events: readonly LogEvent[]): number {
-  const campaign = request.campaign === undefined ? null : openingOf(events)?.budget;
-  const cap = campaign ?? request.cap;
-  const { limits } = request;
-  const counted = limits.practiceSolves - spent;
-  if (cap === undefined) return counted;
-  const billed = campaign == null ? billedParts(events, request.id).session : billedAll(events);
-  const afforded = Math.floor((cap.dollars - billed) / cap.reserve);
+  const budget = request.campaign === undefined ? null : openingOf(events)?.budget;
+  if (budget != null) return Math.max(0, Math.floor((budget.dollars - billedAll(events)) / budget.reserve));
+  const counted = request.limits.practiceSolves - spent;
+  if (request.cap === undefined) return counted;
+  const afforded = Math.floor(
+    (request.cap.dollars - billedParts(events, request.id).session) / request.cap.reserve,
+  );
   return Math.max(0, Math.min(counted, afforded));
 }
 

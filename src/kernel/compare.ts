@@ -242,9 +242,8 @@ export function flipP(differences: readonly number[]): number {
 /** Whether a reading of one harness against itself reads a step either way at `level`: the
  *  smaller of its two one-sided tests at or under it, as a comparison would read a step whichever
  *  sample it took for the new harness. Its two sides are interchangeable by construction, so such
- *  a step says the comparison moved, not a harness. The whole-run reader and the UI count it so;
- *  the decision table holds its control to the level two-sided, and asks it at half the level
- *  (`controlled`, `decide.ts`). */
+ *  a step says the comparison moved, not a harness. The whole-run reader and the UI count it so,
+ *  and no move waits on it: until 20 October the table ended a campaign on its epoch's first. */
 export function readsStepEitherWay(differences: readonly number[], level: number): boolean {
   return Math.min(flipP(differences), flipP(differences.map((one) => -one))) <= level;
 }

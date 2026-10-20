@@ -34,10 +34,26 @@ function isTestFrameworkObject(
   });
 }
 
+/** Whether `expression` is `mock` imported from `bun:test`, whose `module` replaces a module. */
+function isBunMock(sourceCode: SourceCode, expression: ESTree.Expression): boolean {
+  if (expression.type !== "Identifier") return false;
+  const variable = resolveVariable(sourceCode, expression);
+  return (variable?.defs ?? []).some(
+    (definition) =>
+      definition.type === "ImportBinding" &&
+      definition.parent?.type === "ImportDeclaration" &&
+      definition.parent.source.value === "bun:test" &&
+      importedName(definition.node) === "mock",
+  );
+}
+
 function moduleMockCall(sourceCode: SourceCode, callee: ESTree.Expression): boolean {
   if (!("property" in callee) || !("object" in callee) || !("computed" in callee)) return false;
-  if (!isTestFrameworkObject(sourceCode, callee.object)) return false;
   const { property } = callee;
+  if (!callee.computed && property.type === "Identifier" && property.name === "module") {
+    return isBunMock(sourceCode, callee.object);
+  }
+  if (!isTestFrameworkObject(sourceCode, callee.object)) return false;
   // A plain member names the method with an identifier, `vi.doMock`, and a computed one with a
   // string literal, `vi["doMock"]`. Both are the same name, so the set above decides both; the
   // computed branch used to spell the three names a second time. A non-string literal renders to
@@ -50,7 +66,9 @@ function moduleMockCall(sourceCode: SourceCode, callee: ESTree.Expression): bool
 
 /**
  * `vi.mock`, `vi.doMock`, `jest.mock` and `unstable_mockModule`: replacing a module at the
- * loader rather than substituting a dependency the code under test accepts.
+ * loader rather than substituting a dependency the code under test accepts. This repository
+ * tests with `bun:test`, whose spelling is `mock.module(…)`, and the upstream rule did not read
+ * it; this copy reads a `mock` imported from `bun:test` too (20 October).
  *
  * A mocked module is a test that passes against a description of the dependency instead of the
  * dependency. The description is written once and then drifts, so the module can change its

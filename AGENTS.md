@@ -154,7 +154,8 @@ what the attempts risk together as they come: each reading of a harness against 
 one attempt, at its own rate, and the sum is an estimate and no bound. The A/A controls that read a
 step, one-sided at the level, are counted beside it (`falsePromotion`, `src/builder/climb.ts`). A
 control with too few untied tasks to reach the level cannot read a step, so it tests nothing about
-that rate: count only the controls that could have.
+that rate: the climb counts only the controls that could have, and reports the others apart as too
+small to read one (`incapable`).
 
 **3. Verdicts: are the labels correct?** Validity is decided by a check program nobody has audited
 against the field, and a check that rejects a right answer is label noise: in v1, 36 of 47

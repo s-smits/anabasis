@@ -20,8 +20,10 @@
  *
  * The checks are replayed on the logged answer before any reading. A replay that gives another
  * verdict than the log holds is a check that does not repeat, and the host rules it a check-defect
- * itself; one that reaches no verdict leaves the fail unclear. Nothing else runs a check twice on
- * one answer, so a rejected answer is where a check that does not repeat first shows.
+ * itself; one that reaches no verdict leaves the fail unruled for the caller to retry. Nothing else
+ * runs a check twice on one answer, so a rejected answer is where a check that does not repeat first
+ * shows. On 20 October source triage found that calling a replay non-result `unclear` made rule 7's
+ * retryable non-result a permanent set-aside: `src/builder/round.ts:410-418` retries only null rulings.
  *
  * The packet sets an answer the checks accepted for the task beside the one under review, where the
  * log holds one: any solve of the task that passed left one, and the difference between the two is
@@ -29,10 +31,11 @@
  *
  * What a ruling does to the task, and how an `unclear` fail counts, is the caller's: this module
  * rules and logs, one `referee.finding` per fail. A reader whose session the provider or a kill
- * ended before it ruled gave no answer, and its finding holds no ruling, so that it is asked again:
- * logged `unclear`, a ruling no caller puts again, one Referee call that met the provider's session
- * limit set aside for good a task a step needed (12 October). One that read to its own wall, or
- * stopped without a ruling, leaves the fail unclear.
+ * ended before it ruled gives no answer, and its finding holds no ruling, so that it is asked again.
+ * A replay that reaches no verdict follows the same path. On 12 October, one Referee call that met
+ * the provider's session limit was logged `unclear`; because no caller retried it, a task needed for
+ * a step was set aside for good. One that reads to its own wall, or stops without a ruling, leaves
+ * the fail unclear.
  *
  * A ruling the host refuses for want of its evidence is logged too, one `referee.refused` a refusal,
  * as it happens: the ruling asked for, as the reader sent it, and why the host refused it. Until
@@ -151,7 +154,7 @@ function loggedVerdict(events: readonly LogEvent[], solve: string): LoggedVerdic
  *  answer: where it moves a check's verdict, that check does not repeat, and where it reaches none
  *  there is nothing to read against. */
 function hostRuling(verdict: LoggedVerdict, replay: Verdict | null): RefereeFinding | null {
-  const ruled = (ruling: Ruling, check: string | null, reason: string): RefereeFinding => ({
+  const ruled = (ruling: Ruling | null, check: string | null, reason: string): RefereeFinding => ({
     ruling,
     check,
     rule: null,
@@ -164,7 +167,7 @@ function hostRuling(verdict: LoggedVerdict, replay: Verdict | null): RefereeFind
   }
   if (replay === null) return null;
   if (replay.kind === "faulty" || replay.kind === "non-result") {
-    return ruled("unclear", null, `the replay reached no verdict: ${replay.reason}`);
+    return ruled(null, null, `the replay reached no verdict: ${replay.reason}`);
   }
   const [moved] = [
     ...new Set(verdict.blocking).symmetricDifference(new Set(replay.kind === "fail" ? replay.blocking : [])),

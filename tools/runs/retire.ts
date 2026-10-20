@@ -29,13 +29,13 @@
  * and reached no other host.
  */
 import { existsSync, lstatSync, mkdirSync, readdirSync, rmSync } from "#src/meta/filesystem.ts";
-import { gitMaybe, gitText, worktrees } from "#src/meta/git.ts";
+import { gitMaybe, gitText, mainTree, worktrees } from "#src/meta/git.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { type Host, hostsOf, quoted, sshScript, verbOn } from "./hosts.ts";
-import { ARCHIVE, HERE, keepers, processes, type Run, runs, writers } from "./registry.ts";
+import { ARCHIVE, archiveOf, HERE, keepers, processes, type Run, runs, writers } from "./registry.ts";
 
 /** What one sweep is asked: the main worktree, how long idle is, the time, and whether to act. */
 export interface Sweep {
@@ -53,9 +53,9 @@ const USAGE = "usage: bun run runs retire [--days 1] [--yes]";
 
 const say = (sweep: Sweep, line: string) => console.log(`${sweep.yes ? "" : "would: "}${line}`);
 
-/** Where `run` goes in the archive: its name, or its name after its tree's where that is taken. */
-function archivedAs(sweep: Sweep, run: Run): string | undefined {
-  const own = join(sweep.main, ARCHIVE, HERE);
+/** Where `run` goes in the archive's folder `own`: its name, or its name after its tree's where
+ *  that is taken. */
+function archivedAs(own: string, run: Run): string | undefined {
   if (run.end === "solve.finished") return join(own, ".live", basename(run.path));
   return [run.name, `${run.name}.${basename(run.tree)}`]
     .map((name) => join(own, name))
@@ -66,12 +66,13 @@ function archivedAs(sweep: Sweep, run: Run): string | undefined {
  *  Returns the logs it moved, or would move. */
 export function archiveIdle(sweep: Sweep): Set<string> {
   const moved = new Set<string>();
+  const own = archiveOf(sweep.main, HERE);
   for (const run of runs(sweep.main)) {
     if (sweep.now - lstatSync(run.path).mtimeMs < sweep.days * DAY_MS) continue;
     // Read again for each run: one launched while the sweep ran is live.
     if (writers(run, processes()).length > 0 || keepers(run.name).length > 0) continue;
     const from = run.end === "solve.finished" ? run.path : dirname(run.path);
-    const to = archivedAs(sweep, run);
+    const to = archivedAs(own, run);
     if (to === undefined) {
       console.error(`${from}: the archive holds ${run.name} under both its names, so it stays`);
       continue;
@@ -146,7 +147,7 @@ function bringHome(sweep: Sweep, host: Host): void {
       `d="$(git -C ${host.tree} worktree list --porcelain | sed -n '1s/^worktree //p')/${ARCHIVE}/${HERE}"; test -d "$d" && echo "$d"; true`,
     ),
   ).trim();
-  const into = join(sweep.main, ARCHIVE, host.name);
+  const into = archiveOf(sweep.main, host.name);
   if (found === "") return console.log(`${host.name}: no archive yet`);
   say(sweep, `${host.name}:${found} -> ${into}`);
   if (!sweep.yes) return;
@@ -161,9 +162,8 @@ export async function retire(args: readonly string[]): Promise<void> {
     options: { days: { type: "string", default: "1" }, yes: { type: "boolean", default: false } },
   });
   const days = Number(values.days);
-  const [main] = worktrees(runtimeProcess.cwd());
-  if (!Number.isFinite(days) || days < 0 || main === undefined) throw new Error(USAGE);
-  const sweep: Sweep = { main, days, now: Date.now(), yes: values.yes };
+  if (!Number.isFinite(days) || days < 0) throw new Error(USAGE);
+  const sweep: Sweep = { main: mainTree(runtimeProcess.cwd()), days, now: Date.now(), yes: values.yes };
   console.log(
     `retire at ${new Date(sweep.now).toISOString()}${sweep.yes ? "" : ": nothing is done without --yes"}`,
   );

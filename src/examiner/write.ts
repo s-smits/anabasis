@@ -685,8 +685,11 @@ export function writing(
         last && desk.pending.size > 0 ? `${plural(desk.pending.size, "instance")} still at the gate.` : "";
       return [...desk.arrived.splice(0), waiting].filter((line) => line !== "").join("\n");
     },
-    settle: async () => {
-      while (desk.pending.size > 0) await Promise.all(desk.pending);
+    // All of the gate, or after a turn with no call its next word; the wall ends both, as the solves run
+    // on the session's signal. Until 20 October that turn was answered at once: 57 sleeps in a shell.
+    settle: async (all: boolean) => {
+      const waiting = () => desk.pending.size > 0 && (all || desk.arrived.length === 0);
+      while (waiting()) await Promise.race(desk.pending);
     },
     counted: () => ({ proposed: desk.proposed, held: desk.held, refused: desk.refused }),
     result: () => ({ puts: desk.proposed, held: desk.held, refused: desk.refused }),

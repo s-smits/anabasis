@@ -66,6 +66,7 @@ function campaign() {
       seconds: 222.4,
       billed: 1.5,
     });
+    if (outcome === "fail") record("referee.finding", { solve, ruling: "earned" });
     return solve;
   };
   /** The set-up: one practice task, four held out, a checker read with no fault. */
@@ -125,6 +126,17 @@ const steps = (c: ReturnType<typeof campaign>, step: Handover["step"]) =>
   campaignOf(c.events()).steps.filter((each) => each.step === step);
 
 describe("a campaign's reading", () => {
+  it("leaves unestablished practice rejections out of failures and repair histories", () => {
+    const c = campaign();
+    c.setUp();
+    const [earned] = c.built("b-1", STARTER, HA, ["fail"]);
+    for (const ruling of ["unclear", "check-defect", null] as const) {
+      const solve = c.solved("p1", HB, "fail");
+      c.record("referee.finding", { solve, ruling });
+    }
+    expect(campaignOf(c.events()).fails).toMatchObject([{ solve: earned, standing: "open" }]);
+    expect(campaignOf(c.events()).fails).toHaveLength(1);
+  });
   it("holds each step's handover once, in the order the steps started", () => {
     const c = campaign();
     c.setUp();

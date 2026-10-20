@@ -37,7 +37,7 @@
  * exists at drafting, and the wall closes the repository, where the log lies.
  */
 import { type Static, Type } from "typebox";
-import { answerFormatFault, type Contract, type Objective } from "../kernel/contract.ts";
+import { answerFormatFault, type Objective } from "../kernel/contract.ts";
 import { append, type LogEvent } from "../kernel/log.ts";
 import { capturedJsonStringify, decodedJsonText, parseJsonAs } from "../meta/json-runtime.ts";
 import { asRecord, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
@@ -185,8 +185,6 @@ const twice = (ids: readonly string[]): string | undefined =>
 
 /** What a draft's controls are short of or get wrong, one sentence each. */
 function controlFaults(draft: Draft): string[] {
-  // Only the format is read of it here: whether an answer follows it.
-  const contract: Contract = { answerFormat: draft.answerFormat, conventions: "", rules: [], scope: "" };
   const controls = [
     ...draft.accept.map((each) => ({ ...each, named: "an accept control" })),
     ...draft.reject.map((each) => ({ ...each, named: `a reject control for ${each.check}` })),
@@ -197,7 +195,7 @@ function controlFaults(draft: Draft): string[] {
         `${named} names example ${String(task)}, and the examples are 0 to ${String(draft.tasks.length - 1)}`,
       ];
     }
-    const unformed = answerFormatFault(contract, answer);
+    const unformed = answerFormatFault(draft.answerFormat, answer);
     return unformed === null
       ? []
       : [

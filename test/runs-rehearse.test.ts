@@ -304,10 +304,11 @@ describe("a rehearsal's seats", () => {
       expect(gates.slice(refused)).toMatchObject(
         Array.from({ length: 2 - refused }, () => ({
           outcome: "passed",
-          reference: { valid: 0, solves: 3 },
+          reference: { valid: 0, solves: 1, ran: 1 },
         })),
       );
-      expect(named).toEqual(Array.from({ length: 6 }, () => "x-1"));
+      // A proved draft is held at its first failed solve, and the gate stops there (20 October).
+      expect(named).toEqual(Array.from({ length: refused === 2 ? 6 : 2 }, () => "x-1"));
       expect(strayed).toEqual([]);
       if (refused === 2) {
         const events: LogEvent[] = [

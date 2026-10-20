@@ -3,8 +3,8 @@
 Prompts handed whole to another session: a reviewer, a subagent, an outside model. Each names
 its authority, the tree and commit, the question and the required output, as section 11 of
 `AGENTS.md` asks of a subagent's brief. A session that uses one fills the placeholders in angle
-brackets, hands the text and nothing else, and checks every finding that comes back against the
-source before acting on it (section 9: a report is a lead).
+brackets, hands the text and nothing else, and checks every finding that comes back as section 11
+says before acting on it.
 
 A prompt is kept here once it has been used and its findings read. It is the operator's to add to;
 a session adds one with the pull request that used it.

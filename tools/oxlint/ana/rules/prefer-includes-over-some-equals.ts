@@ -1,4 +1,6 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
+import { annotatedKind } from "../shared/annotated-kind.ts";
 import { holdsProse } from "../shared/masked.ts";
 
 /**
@@ -24,7 +26,31 @@ import { holdsProse } from "../shared/masked.ts";
  * and an array compared against it already has that type among its elements. So every site this
  * reports it also fixes, and the ones it cannot prove it leaves alone. It found three; it now
  * holds the line at zero.
+ *
+ * An iterator has `some` and no `includes`, so `map.values().some((v) => v === "x")` was fixed
+ * into a call that did not compile (20 October). The rule leaves a receiver whose chain holds a
+ * `.values()`, `.keys()` or `.entries()` call or an `Iterator.from(…)`, and a name annotated as
+ * one of the iterator types.
  */
+/** Annotations whose values have `some` and no `includes`. */
+const ITERATORS = new Set(["IteratorObject", "Generator", "MapIterator", "SetIterator", "ArrayIterator"]);
+
+/** Calls that turn a collection into an iterator: `.values()` with no argument, or `Iterator.from`. */
+const ITERATOR_CALLS = new Set(["values", "keys", "entries"]);
+
+/** Whether a receiver is an iterator by its own chain: some call along it makes one. */
+function iterated(receiver: ESTree.Node, iterators: ReadonlySet<string>): boolean {
+  if (receiver.type === "Identifier") return iterators.has(receiver.name);
+  if (receiver.type === "MemberExpression") return iterated(receiver.object, iterators);
+  if (receiver.type !== "CallExpression" || receiver.callee.type !== "MemberExpression") return false;
+  const { object, property } = receiver.callee;
+  const name = property.type === "Identifier" ? property.name : "";
+  const makes =
+    (ITERATOR_CALLS.has(name) && receiver.arguments.length === 0) ||
+    (name === "from" && object.type === "Identifier" && object.name === "Iterator");
+  return makes || iterated(object, iterators);
+}
+
 export const preferIncludesOverSomeEqualsRule = defineRule({
   meta: {
     type: "suggestion",
@@ -32,6 +58,16 @@ export const preferIncludesOverSomeEqualsRule = defineRule({
     docs: {
       description:
         "Ask an array whether it includes a literal instead of wrapping the comparison in a closure.",
+      examples: [
+        {
+          before: 'const blank = segments.some((segment) => segment === "");',
+          after: 'const blank = segments.includes("");',
+        },
+        {
+          before: 'if (argv.some((argument) => argument === "--dry-run")) printPlan(argv);',
+          after: 'if (argv.includes("--dry-run")) printPlan(argv);',
+        },
+      ] satisfies RuleExample[],
     },
     messages: {
       closureAroundEquals:
@@ -39,6 +75,9 @@ export const preferIncludesOverSomeEqualsRule = defineRule({
     },
   },
   createOnce(context) {
+    /** Names this file annotates as an iterator. */
+    let iterators = new Set<string>();
+
     /**
      * The parameter and the literal of an `xs.some((p) => p === "value")` closure, or null when
      * the call is not that shape or the literal is not one the rule can settle. A string or a
@@ -67,10 +106,21 @@ export const preferIncludesOverSomeEqualsRule = defineRule({
     }
 
     return {
+      before: () => {
+        iterators = new Set<string>();
+        return true;
+      },
+
+      Identifier(node) {
+        const kind = annotatedKind(node);
+        if (kind !== null && ITERATORS.has(kind)) iterators.add(node.name);
+      },
+
       CallExpression(node) {
         const { callee } = node;
         if (callee.type !== "MemberExpression" || callee.computed) return;
         if (callee.property.type !== "Identifier" || callee.property.name !== "some") return;
+        if (iterated(callee.object, iterators)) return;
         const [predicate] = node.arguments;
         const found = comparison(node);
         if (found === null || predicate === undefined) return;

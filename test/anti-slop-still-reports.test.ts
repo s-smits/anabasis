@@ -24,12 +24,6 @@ import { expectedLines, reportedLines, reportedMessages } from "./helpers/oxlint
  * beside two.
  */
 
-const FILTER_MAP = `
-declare const widen: (value: number) => number;
-export const eager = [1, 2, 3].filter((value) => value > 1).map(widen); // REPORT two passes
-export const lazy = [1, 2, 3].values().filter((value) => value > 1).map(widen).toArray();
-`;
-
 const ACCUMULATOR_COPY = `
 declare const rows: { id: string }[];
 export const copied = rows.reduce((total, row) => Object.assign({}, total, row), {}); // REPORT copies
@@ -39,23 +33,20 @@ export const mutated = rows.reduce((total: Record<string, string>, row) => {
 }, {});
 `;
 
-const REFLECT_APPLY = `
-declare const handler: (value: number) => number;
-export const reflected = Reflect.apply(handler, null, [1]); // REPORT untyped dispatch
-export const called = handler(1);
-`;
-
-const REFLECT_GET = `
-declare const source: { value: number };
-export const reflected = Reflect.get(source, "value"); // REPORT untyped read
-export const read = source.value;
-`;
-
 // `vi` is left undeclared on purpose: the rule reads it as a global reference, and declaring it
 // here would give the binding a definition that is not an import and silence the rule.
 const MODULE_MOCKING = `
 vi.mock("./service.ts"); // REPORT module mock
 export const stub = vi.fn();
+`;
+
+/** This repository's own spelling: `mock.module` from `bun:test`, and a `module` on anything else. */
+const BUN_MODULE_MOCKING = `
+import { mock } from "bun:test";
+declare const other: { module: (path: string) => void };
+mock.module("./service.ts", () => ({})); // REPORT the bun:test spelling
+other.module("./service.ts"); // ADMITTED someone else's method
+export const spy = mock(() => 1);
 `;
 
 const RUNTIME_TYPEOF = `
@@ -97,10 +88,7 @@ export function parsed(): { id: string } {
 `;
 
 const FIXTURES: [string, string][] = [
-  ["no-array-filter-map", FILTER_MAP],
   ["no-reduce-accumulator-copy", ACCUMULATOR_COPY],
-  ["no-reflect-apply", REFLECT_APPLY],
-  ["no-reflect-get", REFLECT_GET],
   ["no-module-mocking", MODULE_MOCKING],
   ["no-runtime-typeof", RUNTIME_TYPEOF],
   ["no-unknown-type-aliases", UNKNOWN_ALIAS],
@@ -109,34 +97,6 @@ const FIXTURES: [string, string][] = [
   ["no-shape-in-symbol-names", FORBIDDEN_TERM_IN_NAME],
   ["no-unknown-returns", UNKNOWN_RETURN],
 ];
-
-/**
- * `no-reflect-get` admits one shape: a Proxy `get` trap handing on its own three parameters, which
- * it must do so that getters see the proxy as `this`. A receiver passed anywhere else, or a trap
- * passing something other than its own receiver, is the untyped read the rule exists to report.
- */
-const REFLECT_GET_TRAP = `
-declare const source: { value: number };
-export const traced = new Proxy(source, {
-  get(target, property, receiver) {
-    return Reflect.get(target, property, receiver); // ADMITTED the trap forwards its receiver
-  },
-});
-export const arrow = new Proxy(source, {
-  get: (target, property, receiver) => Reflect.get(target, property, receiver), // ADMITTED the same trap as an arrow
-});
-export const outside = Reflect.get(source, "value", source); // REPORT a receiver outside any trap
-export const swapped = new Proxy(source, {
-  get(target, property, receiver) {
-    return Reflect.get(target, property, target); // REPORT the trap passes its target as the receiver
-  },
-});
-export const other = new Proxy(source, {
-  has(target, property) {
-    return Reflect.get(target, property, target) !== undefined; // REPORT not a get trap
-  },
-});
-`;
 
 /**
  * `no-shape-in-symbol-names` reads the word, not the letters. A name whose words include
@@ -180,11 +140,11 @@ describe("anti-slop rules that no other fixture exercises", () => {
   }
 });
 
-describe("anti-slop/no-reflect-get and a Proxy get trap", () => {
-  it("admits a get trap forwarding its own parameters, and reports every other receiver", async () => {
-    const expected = expectedLines(REFLECT_GET_TRAP);
-    expect(expected).toHaveLength(3);
-    expect(await reportedLines("anti-slop", "no-reflect-get", REFLECT_GET_TRAP)).toStrictEqual(expected);
+describe("anti-slop/no-module-mocking reads bun:test", () => {
+  it("reports mock.module from bun:test and no module method on another object", async () => {
+    expect(await reportedLines("anti-slop", "no-module-mocking", BUN_MODULE_MOCKING)).toStrictEqual(
+      expectedLines(BUN_MODULE_MOCKING),
+    );
   });
 });
 

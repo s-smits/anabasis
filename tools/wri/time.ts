@@ -14,6 +14,10 @@
  *   it, where it was read at twenty minutes and only the first was given, by its time; buffer's
  *   longest gap was 19.5 minutes and read nothing;
  * - the hours are read by role beside the billed dollars, where only the dollars were.
+ *
+ * The six-campaign whole-run investigations on 20 October 2026 found unfinished comparisons'
+ * solves labelled outside a comparison. Membership comes from `solve.started`, even before a
+ * report can supply a scoring set.
  */
 import { AT_A_LIMIT } from "#src/kernel/reports.ts";
 import { asRecord, isNumber, type JsonValue } from "#src/meta/json-shape.ts";
@@ -122,8 +126,9 @@ function limitTriggers(log: Index): Trigger[] {
           ),
         ];
   });
-  const scored = new Set(log.compared.flatMap(({ scoring }) => scoring.map((solve) => solve.id)));
-  const outside = misses(log.solves.filter((solve) => !scored.has(solve.id)));
+  // An Examiner's admission solve names its session where a comparison's names the comparison.
+  const started = new Set(log.of("comparison.started").map((start) => text(start.session)));
+  const outside = misses(log.solves.filter((solve) => !started.has(solve.comparison ?? "")));
   const { at, of } = detail(outside);
   return [
     ...compared,

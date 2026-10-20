@@ -10,9 +10,9 @@ runs.
 | --- | --- | --- |
 | prompt | rendered from source beside each seat | the seat's own test |
 | backend | `src/backends/` | `test/backends.test.ts`, `test/claude-backend.test.ts` |
-| tool | the harness's tools, `src/builder/tools.ts`, `src/solve/answer.ts` | `test/harness-tools.test.ts`, `test/shell-tool.test.ts` |
+| tool | the harness's tools, `src/builder/tools.ts`, `src/solve/answer.ts` | `test/harness-tools.test.ts`, `test/command.test.ts` |
 | wall and root | `src/solve/command.ts`, `src/verify/seat-root.ts` | `test/command.test.ts`, `test/seat-root.test.ts` |
-| a whole solve | `src/solve/run.ts` | `test/solve-run.test.ts`: a real solve on pi's faux provider, under the real wall and cap |
+| a whole solve | `src/solve/run.ts` | `test/solve-run.test.ts`: a solve on pi's faux provider, under the real wall and solve limits |
 | a whole session | `src/builder/session.ts` | `test/builder.test.ts` |
 | log event | `src/kernel/log.ts` | the writer's test |
 | fold | `src/kernel/task.ts`, `src/kernel/condition.ts`, `src/kernel/compare.ts` | `test/campaign.test.ts`, `test/round.test.ts` |
@@ -33,9 +33,10 @@ runs.
   priced at zero, since a free model would be read as a free solve. pi's faux provider is priced at
   zero. No test met the two together, so the first rehearsal died at its first turn with
   `faux/script has no list price to freeze`.
-- **The walled shell and the home.** A command behind the wall does not start in the solve's home.
-  A script that wrote to `harness/agent/BUILT_AGENTS.md` wrote nowhere, the harness froze to its
-  parent's digest, and the round read `no-change`. The path is `"$HOME/harness/agent/..."`.
+- **The walled shell and the home.** On 8 October 2026 a relative guide path missed the Builder's
+  home, the harness kept its parent's digest, and the round read `no-change`. Shell commands with
+  no staged files now start in the seat's home (`runWalled`, `src/solve/command.ts`). The script names the guide
+  through `"$HOME/harness/agent/BUILT_AGENTS.md"` (`scriptedBuilder`).
 
 Both were the script's to mend. Both are also what a model meets, which is why they were worth
 walking.

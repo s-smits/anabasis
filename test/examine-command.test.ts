@@ -1,5 +1,6 @@
 // The command's admission probes, with a scripted solve and review. No paid model runs here.
 import { afterAll, describe, expect, it } from "bun:test";
+import { examine } from "../src/examiner/session.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import { existsSync, mkdtempSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -37,12 +38,22 @@ layOutPack(ROOT, BUNDLE, fixtureTasks(1), join(REPO, "test", "fixtures", "harnes
 
 afterAll(() => {
   rmSync(ROOT, { recursive: true, force: true });
-  for (const name of [...RULINGS.map(String), "home"]) {
+  for (const name of [...RULINGS.map(String), "home", "missing-reviewer"]) {
     rmSync(join(REPO, ".ana", "d2", `${STEM}-${name}`), { recursive: true, force: true });
   }
 });
 
 describe("the Examiner command's admission reviews", () => {
+  it("refuses a model admission session without a Referee before opening the campaign", async () => {
+    const name = `${STEM}-missing-reviewer`;
+    await expect(
+      examineCommand([...PACK, "--name", name, "--session", "x-1"], examine, () => {
+        throw new Error("an unreviewed solver must not be seated");
+      }),
+    ).rejects.toThrow("--reviewer");
+    expect(existsSync(join(REPO, ".ana", "d2", name))).toBe(false);
+  });
+
   it("counts only an earned rejection, reviews no other ending, and leaves an unruled rejection unmeasured", async () => {
     for (const ruling of RULINGS) {
       const reviewed: string[] = [];

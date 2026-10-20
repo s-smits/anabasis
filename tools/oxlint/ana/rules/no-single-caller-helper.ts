@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 import { isComponentFile, isTestFile } from "../shared/file-role.ts";
 
 /** A body this short says nothing a reader could not have read at the call site. */
@@ -29,7 +30,7 @@ type Site = "tail" | "statement" | "term";
  *  lines since 2026-09-20; the comment there says why the number moved from 80. */
 const CALLER_LINES = 115;
 
-/** `tools/loc/complexity-policy.ts` refuses a function at or above this cyclomatic complexity. */
+/** The cyclomatic complexity at which a caller has no room for a helper's branches (v1's gate). */
 const CALLER_COMPLEXITY = 22;
 
 /** Operands a boolean chain needs before a call in it reads as one term among peers. Two is
@@ -75,11 +76,13 @@ const CHAIN_PEERS = 3;
  * not two lines of code with a name on it: the name is where the narrowing is declared, and
  * inlining the body gives the caller a boolean and no narrowed value.
  *
- * And a caller with no room keeps it. Two other gates in this tree measure the function the
- * inlined lines would land in — 115 nonblank lines in `tools/loc/source-policy.ts`, cyclomatic
- * complexity 22 in `tools/loc/complexity-policy.ts` — and a caller already at either has no legal
- * spelling that also absorbs a helper. Reporting there asks for a change the gate then refuses,
- * which is the admission test failing at one site. It happened six times in one pass over
+ * And a caller with no room keeps it. Two limits measure the function the inlined lines would
+ * land in: 115 nonblank lines, which `tools/loc/source-policy.ts` holds, and cyclomatic
+ * complexity 22, which v1's `tools/loc/complexity-policy.ts` refused and which no v2 gate holds;
+ * v2 never copied that file. A caller already at either has no spelling that also absorbs a
+ * helper without growing past it. The complexity limit stays as this rule's own: on 20 October,
+ * without it, the rule reported two helpers in `tools/wri/folds.ts`, `records` and `refusals`,
+ * each a named computation whose caller already measures 22 or more. It happened six times in one pass over
  * `src/backends`, `src/correctness-bundle`, `src/author` and `src/solve` before the rule was taught to check,
  * every time after the push gate had already run; the arithmetic is cheap and the reader of the
  * report should not have to do it.
@@ -149,7 +152,23 @@ const CHAIN_PEERS = 3;
 export const noSingleCallerHelperRule = defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: "Inline a short module-scope helper that has a single caller." },
+    docs: {
+      description: "Inline a short module-scope helper that has a single caller.",
+      examples: [
+        {
+          before:
+            'function logOf(dir: string) {\n  return join(dir, "ledger.jsonl");\n}\nexport function readLog(dir: string) {\n  return readFileSync(logOf(dir), "utf8");\n}',
+          after:
+            'export function readLog(dir: string) {\n  return readFileSync(join(dir, "ledger.jsonl"), "utf8");\n}',
+        },
+        {
+          before:
+            'function heldOut(tasks: Task[]) {\n  return tasks.filter((task) => task.state === "held");\n}\nexport const scored = (tasks: Task[]) => heldOut(tasks).slice(0, 24);',
+          after:
+            'export const scored = (tasks: Task[]) => tasks.filter((task) => task.state === "held").slice(0, 24);',
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       singleCaller:
         "`{{name}}` is {{statements}} statement(s) long, is not exported, and is called once. Put those lines at the call site: a name standing in front of them costs one reader a jump and buys nothing.",
@@ -435,11 +454,10 @@ export const noSingleCallerHelperRule = defineRule({
       LogicalExpression: countBranch,
       MemberExpression: countOptional,
       CallExpression: countOptional,
-      // A default value is a branch to `eslint(complexity)`, which is the counter
-      // `tools/loc/complexity-policy.ts` reads and therefore the only one whose number decides
-      // anything. `settle` in `src/builder/verifier-workshop.ts` measures 21 there and 19 here
-      // without its two default parameters, and those two were the difference between a helper
-      // this rule could ask for and one the gate then refused.
+      // A default value is a branch to `eslint(complexity)`, the counter v1's
+      // `tools/loc/complexity-policy.ts` read and this rule's limit is measured in. In v1,
+      // `settle` measured 21 there and 19 here without its two default parameters, and those two
+      // were the difference between a helper this rule could ask for and one the gate refused.
       AssignmentPattern: countBranch,
       AssignmentExpression: (node) => {
         if (node.operator === "&&=" || node.operator === "||=" || node.operator === "??=") countBranch(node);

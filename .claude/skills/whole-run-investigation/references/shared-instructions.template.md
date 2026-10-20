@@ -44,6 +44,9 @@ to none.
 - Start no solve, no Builder or Examiner session, no round and no check run. `wri.ts grade` is the
   one exception, where your lane names it, and it writes nothing.
 - Write your report early, as soon as you have its first two lines, and append as you go.
+- For `no finding`, leave `## Findings` empty and say what you checked and found sound under
+  `## Checked`, in sentences without `Observation:`, `Cause:`, `Owner:`, `Reverses if:` or
+  `Decision:` lines.
 - You are independent: open no other lane's prompt or report and no synthesis of this investigation.
 - Run the repository's commands (`bun tools/...`, `bun .claude/...`) from the checkout the campaign
   row names, which has its dependencies installed, and name a log or a tree by its path: a

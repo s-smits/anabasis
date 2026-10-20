@@ -9,6 +9,7 @@
 // the output a census a person reads rather than a gate, which is what it is used as —
 // `tools/oxlint/simplify-census.ts` prints it beside the oxlint catchers.
 
+import type { RuleExample } from "./rule-examples.ts";
 import { existsSync, readFileSync } from "../../src/meta/filesystem.ts";
 import {
   AUTHORED_ROOTS,
@@ -143,6 +144,106 @@ export const TREE_FINDING_ARGUMENTS: Readonly<Record<TreeFindingKind, string>> =
     "A re-export — `export { a } from \"./owner.ts\"`, or `export { a }` of a name the module imported — that no file imports from the forwarding module. Every caller already reads the owner, so the forward is a second door nobody uses, kept in step with the owner for no reader. Delete the forward, and the import it re-exported when nothing else in the module uses it. PR #120 removed 16 of these on 2026-10-01, and no other scan saw one: the forwarder spells the name, so it counts as the owner's reader, and the forward itself declares nothing. A forward is read when a file spells the name and names the forwarder's module in a quoted string, which covers named, namespace and dynamic imports; a package's `index` module and a forward of a `node:` module are left out.",
   "filesystem-import-budget":
     "Names imported from src/meta/filesystem.ts, against the operator's budget of 2026-09-15: a file keeps its count, a change adds at most one, and needing more means a redesign. measure.py checks the delta on a diff; this lists the standing counts, so a file already carrying a large one is visible before a change is proposed against it.",
+};
+
+/**
+ * One pair for each scan, shown once per kind after its sites (`rule-examples.ts` says why). A
+ * scan reads the whole tree, so a pair names the files it spans in a comment. A register is a
+ * standing count with nothing to repair, and keeps none.
+ */
+export const TREE_FINDING_EXAMPLES: Readonly<
+  Record<Exclude<TreeFindingKind, "filesystem-import-budget">, readonly RuleExample[]>
+> = {
+  "single-reader-export": [
+    {
+      before:
+        "// slots.ts: its one export, read only by plan.ts beside it\nexport function slotOf(row: Row): Slot {\n  return row.slot ?? DEFAULT_SLOT;\n}",
+      after:
+        "// plan.ts holds it, and slots.ts is deleted\nfunction slotOf(row: Row): Slot {\n  return row.slot ?? DEFAULT_SLOT;\n}",
+    },
+  ],
+  "test-only-export": [
+    {
+      before:
+        "// read by test/plan.test.ts alone; plan.ts never calls it\nexport function rankOf(row: Row): number {\n  return row.rank;\n}",
+      after:
+        "// deleted with its test, or called where the product needs it\nexport function ranked(rows: readonly Row[]): number[] {\n  return rows.map((row) => row.rank);\n}",
+    },
+  ],
+  "copied-block": [
+    {
+      before:
+        '// the same three statements in a.ts and in b.ts\nconst text = await Bun.file(path).text();\nconst rows = text.split("\\n").filter(Boolean);\nreturn rows.map((row) => parseRow(row));',
+      after:
+        '// one owner both files call\nexport async function rowsAt(path: string): Promise<Row[]> {\n  const text = await Bun.file(path).text();\n  return text.split("\\n").filter(Boolean).map(parseRow);\n}',
+    },
+  ],
+  "unread-field": [
+    {
+      before:
+        "interface Slot {\n  readonly id: string;\n  readonly rankHint: number; // named nowhere else in the tree\n}",
+      after: "interface Slot {\n  readonly id: string;\n}",
+    },
+  ],
+  "rule-without-fixture": [
+    {
+      before:
+        '// no file under test/ names the rule this registers\nexport const rules = { "no-hand-rolled-sleep": noHandRolledSleepRule };',
+      after:
+        '// test/no-hand-rolled-sleep.test.ts\nconst found = await reportedLines("ana", "no-hand-rolled-sleep", SLEEPS);\nexpect(found).toStrictEqual(expectedLines(SLEEPS));',
+    },
+  ],
+  "identity-without-owner": [
+    {
+      before:
+        '// tools/runs/view.ts, and the same literal in tools/runs/zip.ts\nconst verdicts = join(folder, "verdicts.jsonl");',
+      after:
+        '// both import the owner\nimport { VERDICTS_FILE } from "../../src/kernel/log.ts";\nconst verdicts = join(folder, VERDICTS_FILE);',
+    },
+  ],
+  "superseded-schema-tag": [
+    {
+      before:
+        '// another file writes trace-row/v2\nconst current = row.schema === "trace-row/v1" || row.schema === TRACE_ROW;',
+      after: "// nothing writes v1 any more, so nothing reads it\nconst current = row.schema === TRACE_ROW;",
+    },
+  ],
+  "compatibility-path": [
+    {
+      // `\u006c` spells the l of legacy, so the scan does not report this file for its own example.
+      before:
+        "const \u006cegacyRows = rows.filter((row) => row.version === 1);\nexport const read = [...\u006cegacyRows.map(upgrade), ...rows];",
+      after: "// one version is written, so one is read\nexport const read = rows.map(parseRow);",
+    },
+  ],
+  "unproduced-set-member": [
+    {
+      before: '// no production line spells "rehearsal"\ntype Stage = "kickoff" | "build" | "rehearsal";',
+      after: 'type Stage = "kickoff" | "build";',
+    },
+  ],
+  "orphan-module": [
+    {
+      before:
+        "// tools/old/replay.ts: no import, script, hook or SKILL.md line names it\nexport async function replay(): Promise<void> {\n  await run(REPLAY);\n}",
+      after: '// deleted, or named where it runs, in package.json\n// "replay": "bun tools/old/replay.ts"',
+    },
+  ],
+  "test-only-module": [
+    {
+      before:
+        "// src/solve/degeneracy.ts: two tests import it, and no solve path does\nexport function degenerate(schema: Schema): boolean {\n  return schema.fields.length === 0;\n}",
+      after:
+        '// deleted with its tests, or imported where a solve reads it\nimport { degenerate } from "./degeneracy.ts";\nif (degenerate(schema)) throw new Error("the schema names no field");',
+    },
+  ],
+  "unread-forward": [
+    {
+      before:
+        '// reports.ts forwards a name every caller imports from room.ts itself\nexport { roomOf } from "./room.ts";',
+      after: '// the forward is deleted; callers keep their own import\nimport { roomOf } from "./room.ts";',
+    },
+  ],
 };
 
 /**

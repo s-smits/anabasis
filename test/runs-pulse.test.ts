@@ -3,8 +3,11 @@
 // process gone before its run was done. A first look says the status alone.
 import { describe, expect, it } from "bun:test";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
+import { existsSync, mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
-import { pulse } from "../tools/runs/pulse.ts";
+import { tmpdir } from "../src/meta/os.ts";
+import { join } from "../src/meta/path.ts";
+import { pulse, watch } from "../tools/runs/pulse.ts";
 import type { Run } from "../tools/runs/registry.ts";
 
 const round: Run = { name: "r1", tree: "/wt", path: "/wt/.ana/d2/r1/log.jsonl", end: "comparison.reported" };
@@ -179,5 +182,16 @@ describe("the runs pulse", () => {
     const look = pulse(round, twice, "open", { lines: 5, open: true, quiet: false }, START + 6 * 60_000);
     expect(look.said).toEqual(["· wind-01 started on claude/claude-opus-5 (×2)"]);
     expect(look.status).toContain("2 running");
+  });
+
+  it("remembers its look in a checkout no campaign ran in, which has no .ana folder", async () => {
+    const home = mkdtempSync(join(tmpdir(), "ana-pulse-"));
+    const state = join(home, ".ana", "runs-pulse.json");
+    try {
+      await watch(["--once", "--state", state, "no run is named this"]);
+      expect(existsSync(state)).toBe(true);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });

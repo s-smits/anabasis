@@ -27,7 +27,7 @@ first line, and the round trip through the linter mostly disappears.
 `--deny-warnings` and `--report-unused-disable-directives`, type-aware. `packages/ui` is linted
 once its own dependencies are installed (`bun run ui:deps`), under its own `tsconfig.json` and
 with no rule turned off for it; a whole-tree run without them leaves it out and says so. Two repository plugins ride along: `ana`
-(39 rules) and `anti-slop` (17 rules). Every enabled rule in `.oxlintrc.json` is an error.
+(36 rules) and `anti-slop` (14 rules). Every enabled rule in `.oxlintrc.json` is an error.
 
 - **Plugin findings fail the run only in strict mode**: `bun run lint -- --strict`,
   `ANA_LINT_STRICT=1`, or a clone with `git config ana.lintStrict true`. A plain run holds you to
@@ -37,8 +37,13 @@ with no rule turned off for it; a whole-tree run without them leaves it out and 
   more (two assertions in `test/wri-read.test.ts`, `.toolchain` spelled five times in
   `src/builder/tools.ts`), fixed on 11 October. Add none, and say in your pull request that the
   strict run is clean.
-- Extra arguments go to Oxlint. Fifteen rules carry a fixer, marked [fix] below, which Oxlint's
+- Extra arguments go to Oxlint. Fourteen rules carry a fixer, marked [fix] below, which Oxlint's
   `--fix` applies; `tools/oxlint/FIXER-DECISIONS.md` says why the others report only.
+- After its findings, a run prints each plugin rule that fired once, with one or two pairs: a
+  shape the rule reports and one that passes it and every other rule. A rule keeps its pairs in
+  its own `meta.docs.examples`, and a tree scan in `TREE_FINDING_EXAMPLES`
+  (`tools/oxlint/tree-findings.ts`), which the commit's slop report prints the same way. A new
+  rule or scan brings its pairs, and `test/rule-examples.test.ts` lints every one.
 - **Never turn a rule off**: no new `"off"` in `.oxlintrc.json`, for the tree, a glob or a file,
   and no `oxlint-disable` comment for a plugin rule (`ana/no-inline-slop-answer` refuses it).
 - **When a finding is wrong about a site**, the answer depends on the rule
@@ -94,7 +99,6 @@ import { readFileSync } from "node:fs"       →  the same name from src/meta/fi
 new Promise((r) => setTimeout(r, ms))        →  Bun.sleep(ms), or wait on the condition
 
 // Arrays
-xs.filter(p).map(f)            →  xs.flatMap((x) => (p(x) ? [f(x)] : []))
 xs.map(f).filter(Boolean)      →  xs.flatMap((x) => f(x) ?? [])
 xs.filter(p).length > 0        →  xs.some(p)
 xs.some((x) => x === "lit")    →  xs.includes("lit")
@@ -159,8 +163,8 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
 - `no-renaming-temporary` [fix]: `const rows = bundle.rows;` read once below is `bundle.rows`. A
   binding read inside a closure, after the function has tested that path, is exempt: it keeps
   the narrowing.
-- `no-alias-restating-return`: a type alias used only as one function's return type is
-  `ReturnType<typeof f>`, or nothing.
+- `no-alias-restating-return`: a type alias used only as one function's return type is that
+  function's annotation: write the alias's body there and delete the alias.
 
 **Branches**
 
@@ -190,8 +194,6 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
   the part inside `f`.
 - `no-transposed-argument`: two same-typed arguments passed in the other order than the
   parameters are named. Fix whichever side is wrong.
-- `no-property-read-on-function`: a property read off a local function is `undefined`, and
-  usually a missed rename.
 
 **Repetition**
 
@@ -201,11 +203,9 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
 
 **Types**
 
-- `no-unknown-union`: `Row | unknown` is `unknown`. Write the real type.
 - `unproven-unknown-parameter`: an `unknown` parameter is proved in the body, by a predicate, a
   narrowing guard or a hand-off to a prover (`is…`, `as…`, `assert…`, `parse…`, `errorMessage`).
   Passing it straight on proves nothing.
-- `require-type-for-null-default`: JavaScript files only.
 
 **Owners**
 
@@ -234,7 +234,6 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
 
 ## 12.5 The `anti-slop` rules
 
-- `no-array-filter-map`: one `flatMap` in place of `filter().map()`.
 - `no-chained-type-assertions`: no `x as unknown as T`.
 - `no-conditional-empty-object-spread`: no `...(ok ? { k } : {})`. Use `keyIfDefined` or `keysIf`.
 - `no-known-value-widening`: no annotation wider than the value states. Keep the inference, or use
@@ -245,7 +244,6 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
 - `no-object-parameters`: no parameter typed `object`.
 - `no-reduce-accumulator-copy`: no copy of the accumulator at every step. Mutate a local and
   return it.
-- `no-reflect-apply`, `no-reflect-get`: typed calls and typed access.
 - `no-runtime-typeof`: the predicates of `src/meta/json-shape.ts`. `typeof x === "undefined"` is
   allowed.
 - `no-shape-in-symbol-names`: no name with the word "shape", "shapes" or "shaped" in it. An
@@ -299,7 +297,6 @@ Each pair has one spelling that satisfies both.
 | Single-caller helper against thrice-spelled object or lookup chain | By count: at two uses inline, at three extract |
 | Boolean parameter, `object` parameter and `max-params` | A string-literal union, or a named interface |
 | Key-if-defined, empty-object spread and `exactOptionalPropertyTypes` | `keyIfDefined`, `keyIfNotNull` or `keysIf` |
-| Filter-map against map-filter | `flatMap` returning `[]` |
 | Strict-boolean against nullish-coalescing | `(n ?? 0) > 0`, with a `!== undefined` guard where later lines need the narrowing |
 | Renaming temporary against a narrowing | A `const` read in a closure below a guard is exempt. Keep it |
 | Deep nesting against function length | A guard is free for depth. When guards run out, split the function |

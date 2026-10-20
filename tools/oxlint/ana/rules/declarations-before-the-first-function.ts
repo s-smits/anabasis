@@ -1,4 +1,5 @@
 import { defineRule, type ESTree, type Scope, type SourceCode } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 
 /**
  * Every type, interface and module constant at the front of the file, then the code.
@@ -357,6 +358,20 @@ export const declarationsBeforeTheFirstFunctionRule = defineRule({
     fixable: "code",
     docs: {
       description: "Declare every type, interface and module constant before the first function.",
+      examples: [
+        {
+          before:
+            "function overBudget(billed: number): boolean {\n  return billed > BUDGET_DOLLARS;\n}\nconst BUDGET_DOLLARS = 300;",
+          after:
+            "const BUDGET_DOLLARS = 300;\nfunction overBudget(billed: number): boolean {\n  return billed > BUDGET_DOLLARS;\n}",
+        },
+        {
+          before:
+            'function verdictOf(solve: Solve): Verdict {\n  return solve.passed ? "pass" : "fail";\n}\ntype Verdict = "pass" | "fail";',
+          after:
+            'type Verdict = "pass" | "fail";\nfunction verdictOf(solve: Solve): Verdict {\n  return solve.passed ? "pass" : "fail";\n}',
+        },
+      ] satisfies RuleExample[],
     },
     messages: {
       erasedAfterCode:

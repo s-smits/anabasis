@@ -1,28 +1,20 @@
 /**
- * The Referee's one executing tool: run the task's checks over the answer under review and over a
- * copy with one field changed, and say which checks moved. Taken from harness-builder-v4 at
- * 7af7315, `src/review/review-probe.ts`: the budget, the value cap, the one-grammar path and its
- * refusals, the symmetric move and the conclusive rule are v1's, as is most of the tool's text.
- *
- * A change is a whole replacement value, or an edit of one passage inside a text field (v1's
- * `editedPassage`, github.com/s-smits/anabasis at 3f93d06b, `src/review/review-probe.ts:264-282`).
- * When an answer is a source file, the field two readings of a rule disagree about is that whole
- * file, and the thing in dispute is one line of it: most of v1's firmware fails were valid code a
- * stand-in refused, which no whole-field replacement of bounded size can test.
- *
- * Departures:
- * - v1 probed an accept control the candidate published. A v2 Referee reviews one failing answer,
- *   so the probe starts from that answer and runs the run's own verifier, not a control census.
- * - Conclusive needs both sides to reach a verdict, pass or fail. v1 also needed the original to
- *   pass, which the answer under review never does.
- * - A refusal is a thrown error, pi's error result, where v1 returned "refused:" text.
+ * The Referee's counterfactual: compare the rejected answer with a copy after one list of changes.
+ * Each replaces an existing field or parent, including a scalar root, or edits one text passage.
+ * Coupled changes are one probe, with both complete answers checked once: the review of 20 October
+ * found three unclear rulings that could not clear a check by changing one failing part alone
+ * (buffer-fresh-opus:2829,4268; recode-pr169-sonnet:291). Parent replacement alone is insufficient
+ * when coupled source fields together exceed the value cap. The eight-probe budget and 4000-character
+ * cap per value or passage remain; a side without a verdict still supplies no evidence. The same
+ * review found that whole-answer swaps could manufacture defect evidence: object and array roots
+ * stay fixed, and a coupled probe has at most three paths that one refusing check reads together.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import type { Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { jsonPathTokens, resolveJsonPath } from "../meta/json-evidence.ts";
 import { capturedJsonParse, capturedStructuredClone } from "../meta/json-runtime.ts";
-import { isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
+import { isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import { text, tool } from "../solve/answer.ts";
@@ -30,18 +22,8 @@ import { text, tool } from "../solve/answer.ts";
 /** review-probe.ts:57: each probe runs every applicable check, so eight keep a review from becoming
  *  a second battery. */
 const PROBE_BUDGET = 8;
-/** review-probe.ts:87-90 at 3f93d06b: a replacement value is one field, not a redesigned answer, and
- *  each half of an edit is one passage. */
+/** Bound each replacement value and each half of a text edit, including within a coupled probe. */
 const VALUE_MAX_CHARS = 4_000;
-
-/** One change to an answer, as a tool is sent it: a field replaced whole by `value`, JSON text, or
- *  one passage of a text field rewritten by `find` and `replace`. */
-interface Change {
-  readonly path: string;
-  readonly value?: string | undefined;
-  readonly find?: string | undefined;
-  readonly replace?: string | undefined;
-}
 
 /** The one passage of a text field that `find` names, rewritten to `replace`. */
 type ProbeEdit = {
@@ -53,14 +35,14 @@ type ProbeEdit = {
 export type ProbeRow = {
   /** 1-based, and what a ruling cites. */
   readonly id: number;
-  readonly path: string;
-  /** The JSON text of the substituted value, as the Referee wrote it; null for an edit. */
-  readonly value: string | null;
-  /** The passage edited inside the text field at `path`; null for a whole replacement. */
-  readonly edit: ProbeEdit | null;
+  readonly changes: readonly {
+    readonly path: string;
+    readonly value: string | null;
+    readonly edit: ProbeEdit | null;
+  }[];
   readonly original: Verdict;
   readonly changed: Verdict;
-  /** Checks whose verdict the one changed field moved. */
+  /** Checks whose verdict the changes moved. */
   readonly moved: readonly string[];
 };
 
@@ -73,6 +55,21 @@ export function conclusive(row: ProbeRow): boolean {
 
 const blockingOf = (verdict: Verdict) => (verdict.kind === "fail" ? verdict.blocking : []);
 
+/** A check receives declared paths alone. A change reaches one when it names the field, a child
+ *  or its parent; malformed paths authorise nothing. */
+export function reaches(path: string, declared: readonly string[]): boolean {
+  const probed = jsonPathTokens(path);
+  return (
+    probed !== null &&
+    declared.some((field) => {
+      const tokens = jsonPathTokens(field);
+      return (
+        tokens !== null && probed.slice(0, tokens.length).every((token, index) => token === tokens[index])
+      );
+    })
+  );
+}
+
 /** review-probe.ts:197-203, symmetric: a check that stops refusing moved as much as one that starts. */
 function movedChecks(original: Verdict, changed: Verdict): string[] {
   const before = new Set(blockingOf(original));
@@ -80,15 +77,19 @@ function movedChecks(original: Verdict, changed: Verdict): string[] {
   return [...before.symmetricDifference(after)].sort();
 }
 
-/** review-probe.ts:159-185: a deep copy of `answer` with one existing leaf replaced, the path spelled
- *  as the checks spell theirs (`$.members[0].area`). Null when the path does not resolve, since a
- *  probe that adds a field answers "no check reads it" about a field the answer never carried. */
-function withReplacedField(answer: JsonValue, path: string, value: JsonValue): JsonValue | null {
+/** A copy with an existing field or parent replaced; `$` replaces a scalar answer alone. */
+function withReplacedField(answer: JsonValue, path: string, value: JsonValue): JsonValue {
   const keys = jsonPathTokens(path)?.map((token) =>
     token.startsWith("[") ? token.slice(1, -1) : token.slice(1),
   );
-  const leaf = keys?.pop();
-  if (keys === undefined || leaf === undefined || !resolveJsonPath(answer, path).found) return null;
+  if (keys === undefined || !resolveJsonPath(answer, path).found) {
+    throw new Error(`${path} is not an existing field of the answer`);
+  }
+  const leaf = keys.pop();
+  if (leaf === undefined) {
+    if (isRecord(answer) || Array.isArray(answer)) throw new Error("only a scalar root can be replaced");
+    return capturedStructuredClone(value);
+  }
   const copy: JsonValue = capturedStructuredClone(answer);
   // SAFETY: the path resolves in `answer`, so each step of its clone is an array or a record holding
   // the next key, and an array takes its position as a string key too.
@@ -125,15 +126,16 @@ function sideText(label: string, verdict: Verdict): string {
 /** review-probe.ts:224-238. */
 function rowText(row: ProbeRow): string {
   return [
-    // An edit is named by its size: the Referee wrote both halves, and the field around them can
-    // run to thousands of characters (review-probe.ts:398-399).
-    row.edit === null
-      ? `probe ${String(row.id)}: ${row.path} replaced with ${String(row.value)}`
-      : `probe ${String(row.id)}: ${row.path} edited, its one passage of ${String(row.edit.find.length)} characters rewritten as ${String(row.edit.replace.length)}`,
+    `probe ${String(row.id)}:`,
+    ...row.changes.map(({ path, value, edit }) =>
+      edit === null
+        ? `  ${path} replaced with ${String(value)}`
+        : `  ${path} edited, its one passage of ${String(edit.find.length)} characters rewritten as ${String(edit.replace.length)}`,
+    ),
     sideText("original", row.original),
     sideText("changed", row.changed),
     row.moved.length === 0
-      ? `  no check changed its verdict for this replacement. That alone does not show ${row.path} is unread: a check that reads it may simply decide the new value the same way`
+      ? "  no check changed its verdict. That alone does not show the changed fields are unread: a check may decide the new values the same way"
       : `  ${plural(row.moved.length, "check")} moved: ${row.moved.join(", ")}`,
     ...(conclusive(row) ? [] : ["  inconclusive: a side reached no verdict, so this probe is not evidence"]),
   ].join("\n");
@@ -152,18 +154,14 @@ function budgetLine(used: number): string {
 /**
  * The answer with the one change made. Throws, in words for the model that sent it, a change that
  * is not one: both forms or neither, a value that is not JSON, a path the answer does not hold, a
- * passage that is not there exactly once, or a change that changes nothing. A probe and a reject
- * control are both an answer with one fact moved, and this is what holds each to one.
+ * passage that is not there exactly once, or a change that changes nothing.
  */
-function changedAnswer(answer: JsonValue, change: Change): JsonValue {
-  const edit =
-    change.find === undefined || change.replace === undefined
-      ? null
-      : { find: change.find, replace: change.replace };
-  if ((change.value === undefined) === (edit === null)) {
+function changedAnswer(answer: JsonValue, change: ProbeRow["changes"][number]): JsonValue {
+  const { edit } = change;
+  if ((change.value === null) === (edit === null)) {
     throw new Error("send either `value`, or `find` with `replace`");
   }
-  if ([change.value, change.find, change.replace].some((part) => (part?.length ?? 0) > VALUE_MAX_CHARS)) {
+  if ([change.value, edit?.find, edit?.replace].some((part) => (part?.length ?? 0) > VALUE_MAX_CHARS)) {
     throw new Error(
       `a value and each half of an edit are at most ${String(VALUE_MAX_CHARS)} characters: one field or one passage changes`,
     );
@@ -183,59 +181,84 @@ function changedAnswer(answer: JsonValue, change: Change): JsonValue {
     value = edited;
   }
   const changed = withReplacedField(answer, change.path, value);
-  if (changed === null) throw new Error(`${change.path} is not an existing field of the answer`);
   if (hashJsonValue(changed) === hashJsonValue(answer)) {
     throw new Error(`the answer already carries that value at ${change.path}`);
   }
   return changed;
 }
 
+/** Rebuild the exact counterfactual for verification and for the ruling's evidence test. */
+export function probeAnswer(answer: JsonValue, changes: ProbeRow["changes"]): JsonValue {
+  if (changes.length > 3) throw new Error("a probe changes at most 3 paths");
+  const changed = changes.reduce(changedAnswer, answer);
+  if (hashJsonValue(changed) === hashJsonValue(answer)) {
+    throw new Error("the changes leave the answer unchanged");
+  }
+  return changed;
+}
+
 /** The probe tool over one answer; `rows` collects every probe that ran, in order. Probes run one at
  *  a time, as v1's did, so ids and the budget stay exact. */
-export function probeTool(verify: Verifier, task: Task, answer: JsonValue, rows: ProbeRow[]): AgentTool {
+export function probeTool(
+  verify: Verifier,
+  task: Task,
+  answer: JsonValue,
+  rows: ProbeRow[],
+  readTogether: readonly (readonly string[])[] = [],
+): AgentTool {
   let original: Promise<Verdict> | null = null;
   return tool({
     name: "probe_check",
     label: "Probe the checks",
-    description: `Run the task's checks over the answer under review and over a copy of it with a single field changed, and return which checks moved their verdict. Use it instead of arguing a check's behaviour from source: choose a change that the public rules decide one way, so a check reading that field would have to decide it that way too, and read what the checks actually did. Send \`value\` to replace the field whole, or \`find\` and \`replace\` to rewrite one passage inside a text field, which is how one line of a source file is changed. No check moving is not by itself proof that nothing reads the field, since a check that reads it can decide the new value the same way. The path must already exist in the answer and the change must change it. A review runs at most ${String(PROBE_BUDGET)} probes, and each result says how many are left, so make first the ones that would decide the ruling. Cite the probe numbers you relied on when you record your ruling.`,
+    description: `Run the task's checks over the answer under review and a copy with at most three changes applied together. Choose changes the public rules decide, and read which checks moved. Each change replaces an existing field or its parent with \`value\`, or rewrites one text passage with \`find\` and \`replace\`. Coupled changes must all reach fields one refusing check reads together. Only a scalar root can be replaced. No check moving does not prove the fields are unread. Every path must exist, each change must change it, and the complete answer must change. A review runs at most ${String(PROBE_BUDGET)} probes; each result says how many are left. Cite the probe numbers when recording the ruling.`,
     parameters: Type.Object({
-      path: Type.String({
-        description:
-          "A rooted path to an existing leaf of the answer, spelled as the checks spell theirs: `$.items[0].value`. Array positions are bracketed; a key holding a dot or a slash is quoted: `$.files['src/main.cpp']`.",
-      }),
-      value: Type.Optional(
-        Type.String({
-          description:
-            'The replacement value as JSON text, e.g. `0.0001`, `"high"` or `null`. One field only. Omit it when you send `find` and `replace`.',
+      changes: Type.Array(
+        Type.Object({
+          path: Type.String({
+            description:
+              "An existing field or its parent; `$` only where the answer is a scalar. Array positions are bracketed; a key holding a dot or slash is quoted: `$.files['src/main.cpp']`.",
+          }),
+          value: Type.Optional(
+            Type.String({
+              description:
+                'The replacement value as JSON text, e.g. `0.0001`, `"high"` or `null`. One field only. Omit it when you send `find` and `replace`.',
+            }),
+          ),
+          find: Type.Optional(
+            Type.String({
+              description:
+                "Exact text inside the string field at `path`, occurring there exactly once; include enough of its surroundings to make it unique. Sent with `replace`, in place of `value`.",
+            }),
+          ),
+          replace: Type.Optional(
+            Type.String({ description: "The text that takes the place of `find`; empty deletes it." }),
+          ),
         }),
-      ),
-      find: Type.Optional(
-        Type.String({
-          description:
-            "Exact text inside the string field at `path`, occurring there exactly once; include enough of its surroundings to make it unique. Sent with `replace`, in place of `value`.",
-        }),
-      ),
-      replace: Type.Optional(
-        Type.String({ description: "The text that takes the place of `find`; empty deletes it." }),
+        { minItems: 1, maxItems: 3 },
       ),
     }),
     executionMode: "sequential",
-    execute: async (_id, args) => {
+    execute: async (_id, args, signal) => {
       if (rows.length >= PROBE_BUDGET) {
         throw new Error(`a review runs at most ${String(PROBE_BUDGET)} probes`);
       }
-      const edit =
-        args.find === undefined || args.replace === undefined
-          ? null
-          : { find: args.find, replace: args.replace };
-      const changed = changedAnswer(answer, args);
-      original ??= verify(task, answer);
-      const [before, after] = [await original, await verify(task, changed)];
+      const changes = args.changes.map(({ path, value, find, replace }) => ({
+        path,
+        value: value ?? null,
+        edit: find === undefined || replace === undefined ? null : { find, replace },
+      }));
+      const changed = probeAnswer(answer, changes);
+      if (
+        changes.length > 1 &&
+        !readTogether.some((fields) => changes.every(({ path }) => reaches(path, fields)))
+      ) {
+        throw new Error("coupled changes name paths one refusing check reads together, or their parents");
+      }
+      original ??= verify(task, answer, signal);
+      const [before, after] = [await original, await verify(task, changed, signal)];
       const row = {
         id: rows.length + 1,
-        path: args.path,
-        value: args.value ?? null,
-        edit,
+        changes,
         original: before,
         changed: after,
         moved: movedChecks(before, after),

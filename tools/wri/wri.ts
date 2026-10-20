@@ -28,6 +28,14 @@
  * - `synthesis` renders the synthesis session's prompt over the reports as they stand.
  * - `grade` puts one answer to the campaign's own checker and prints the verdict in one line. It
  *   writes nothing and logs nothing. It needs the pack and its tool tree, and the Mac's verifier wall.
+ *   An answer outside a drafted exam's answer format is refused first, as `judge` refuses a
+ *   solver's, and no check reads it (`src/solve/run.ts`). The format is the draft's, which the
+ *   campaign's contract holds (`packOpened`, `tools/d2/campaign.ts`). Until 20 October grade put
+ *   every answer to the checks alone, and a lane of buffer-fresh-opus-forkedPR223_v0_5_4-r3's
+ *   investigation, probing through it, read the evaluator's leniency on keys the format refuses as
+ *   a gap of the exam, where the host refuses such an answer before any check: none of the
+ *   campaign's 2,480 verdicts held a format fault. A stored pack's format is read from its sweep,
+ *   which grade is not given, so its answers are put to the checks alone, and grade says so.
  *   A campaign over a stored pack names it with `--bundle`, and its checks stand beside the log; a
  *   campaign that drafted its exam names none, and its exam is read where the campaign staged it
  *   (`exams/<digest>/`, `tools/d2/exam.ts`). On 10 October t-10's lane 1 was given `<campaign>/checks`
@@ -37,6 +45,8 @@
  * repository's worktrees (`runNamed`), as `--with` names peers. No verb starts a solve, a session
  * or a round, and none appends to a log.
  */
+import { draftOf } from "#src/examiner/draft.ts";
+import { answerFormatFault } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
 import { openVerifier, spelled } from "#src/kernel/verify.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
@@ -48,7 +58,7 @@ import { plural } from "#src/meta/text.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { codeOf } from "../d2/campaign.ts";
 import { receipts } from "../runs/receipt.ts";
-import { runNamed } from "../runs/registry.ts";
+import { readNamed } from "../runs/registry.ts";
 import { stagedExamOf } from "../d2/exam.ts";
 import { readPack } from "../m0/stored-sweep.ts";
 import { catalogueText, lanesOf, ownersOf, REFERENCES } from "./catalogue.ts";
@@ -91,7 +101,7 @@ const { values, positionals } = parseArgs({
 });
 
 /** A log by its path, or a campaign's by the campaign's whole name. */
-const logOf = (named: string) => (existsSync(named) ? named : runNamed(named).path);
+const logOf = (named: string) => (existsSync(named) ? named : readNamed(named).path);
 
 function needed(name: "log" | "out" | "bundle" | "task" | "answer"): string {
   const value = values[name];
@@ -312,11 +322,25 @@ async function grade(): Promise<number> {
   }
   const { bundle, checks } = staged ?? { bundle: needed("bundle"), checks: join(dirname(log), "checks") };
   // The tasks an Examiner wrote are in the log and in no pack.
-  const tasks = [...writtenTasks(read(log)), ...readPack(bundle).tasks];
+  const events = read(log);
+  const tasks = [...writtenTasks(events), ...readPack(bundle).tasks];
   const task = tasks.find((each) => each.taskId === taskId);
   if (task === undefined) throw new Error(`neither the log nor the pack holds task ${taskId}`);
+  const answer = capturedJsonParse(readFileSync(needed("answer"), "utf8"));
+  // The format first, as the host holds a solver's answer to it before any check reads it (`judge`).
+  const answerFormat = draftOf(events)?.answerFormat;
+  const fault = answerFormat === undefined ? null : answerFormatFault(answerFormat, answer);
+  if (fault !== null) {
+    console.log(`fail format: ${fault}`);
+    return 0;
+  }
+  if (answerFormat === undefined) {
+    console.error(
+      "the answer format of a stored pack is read from its sweep, which grade is not given: not held to it",
+    );
+  }
   const verify = openVerifier({ checks, tools: join(bundle, ".toolchain"), packRoots: [bundle] });
-  console.log(spelled(await verify(task, capturedJsonParse(readFileSync(needed("answer"), "utf8")))));
+  console.log(spelled(await verify(task, answer)));
   return 0;
 }
 

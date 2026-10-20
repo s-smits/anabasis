@@ -28,12 +28,12 @@
  * every seat (the operator, 19 October).
  */
 import { existsSync } from "#src/meta/filesystem.ts";
-import { gitText, worktrees } from "#src/meta/git.ts";
+import { gitText, mainTree } from "#src/meta/git.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { on } from "./hosts.ts";
 import { launch } from "./manage.ts";
-import { runs } from "./registry.ts";
+import { everyRun } from "./registry.ts";
 
 const MODELS = {
   opus: "claude/claude-opus-5-5",
@@ -113,14 +113,14 @@ export async function fresh(args: readonly string[]): Promise<void> {
     const suffix = values.as === undefined ? ["--as", values.host] : [];
     return on([values.host, "fresh", "--at", at, ...suffix, ...kept]);
   }
-  const beside = dirname(worktrees(here)[0] ?? here);
+  const beside = dirname(mainTree(here));
   const prompt = join(
     runtimeProcess.env.ANA_PROMPTS ?? join(beside, "anabasis-prompts"),
     `${pack}-prompt.txt`,
   );
   if (!existsSync(prompt)) throw new Error(`no ${prompt}: a pack's prompt is the operator's to write there`);
   const seated = seats(values.model, values.effort);
-  const held = new Set(runs().map((run) => run.name));
+  const held = new Set(everyRun().map((run) => run.name));
   const base = [pack, "fresh", values.model, ...(values.as === undefined ? [] : [values.as])].join("-");
   const name = freeName(base, (one) => held.has(one) || existsSync(join(beside, `anabasis-${one}`)));
   const tree = join(beside, `anabasis-${name}`);

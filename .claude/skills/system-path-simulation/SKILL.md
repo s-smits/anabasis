@@ -1,6 +1,6 @@
 ---
 name: system-path-simulation
-description: "Test an uncertain Anabasis v2 path at the smallest real layer that can decide it, before a paid round is asked to: one fact from a log or a dry run, a walk of one value across the layers a change touches, a replay of every recorded log through this tree's readers, a whole round rehearsed on a seeded copy of a campaign with a script in each model seat (`bun run runs seed`, `bun run runs rehearse`), or one live seat from a seed. Use when the operator asks whether a change will work in the real system, to simulate or rehearse a round, to stand again in a position a past run stood in, what a campaign of a given size can read, or what a kill or a stop leaves behind. Not for reading a finished run (whole-run-investigation) or starting a paid one (run-management)."
+description: "Test an uncertain Anabasis v2 path at the smallest real layer that can decide it: one fact from a log or a dry run, a walk of one value across the layers, a replay through this tree's readers, a round or campaign rehearsed on a seed with scripted seats and no Referee, or one live seat from a seed. Use to test a join, revisit a recorded position, size a comparison, or check what a kill or stop leaves. Not for reading a finished run (whole-run-investigation) or starting a paid one (run-management)."
 ---
 
 # System path simulation
@@ -10,11 +10,10 @@ change crosses a join between two commands, a round is about to be sized, or a b
 and unproven. Take the smallest real slice that can decide the question, and stop there.
 
 v2 makes this cheap for one reason. A campaign is its folder, `.ana/d2/<name>`, and its log is its
-whole position: a round reads nothing that is not in the log, the check program staged beside it or
-the harness states it kept. So a position is a log cut at a line, and any position a real run stood
-in can be stood in again by a copy.
-
-It is v1's skill rebuilt for that fact. What v1 needed and v2 does not is at the end.
+record. A seed copies that log at a cut, the staged checks or drafted exam, the kept harnesses and
+the Builder notes the cut still names (`seedCampaign`, `tools/runs/seed.ts`). A stored pack still
+needs its pack and sweep on disk. Keep the source campaign available too: a drafted-exam rehearsal
+reads its later tasks and answers from there (`draftedSource`, `tools/runs/rehearse.ts`).
 
 ## Pick the smallest case
 
@@ -23,7 +22,7 @@ It is v1's skill rebuilt for that fact. What v1 needed and v2 does not is at the
 | One fact | what a log, a campaign or the host says now | seconds | [one-fact](cases/one-fact.md) |
 | Layer walk | whether one value survives every layer a change touches | minutes, no model | [layer-walk](cases/layer-walk.md) |
 | Log replay | whether this tree still reads what real runs wrote | seconds for every log | [log-replay](cases/log-replay.md) |
-| Rehearsal | whether a round's commands join, and what a position of this size can read | about 25 s a round, no model | [rehearsal](cases/rehearsal.md) |
+| Rehearsal | whether commands join, and what a position of this size can read | no model; time depends on the solves and limits | [rehearsal](cases/rehearsal.md) |
 | Live seat | what a real model does from a recorded position | a session's or a solve's dollars | [live-seat](cases/live-seat.md), `scripts/live-seat.ts` |
 | The real run | everything a script cannot say | hours, tens of dollars | run-management, then `bun run runs pulse` |
 
@@ -34,10 +33,8 @@ and why the next was not needed.
 
 1. **Write the prediction first.** Before a simulation runs, write what it will read and why, in a
    file. Resolve each line after. A miss is the finding: the product does something you did not
-   know, or your picture of it is stale. Six predictions were written for five rehearsals on
-   2026-10-08. Four held. One missed because a round that scores nothing reads `not-scored`, a word
-   the stack had gained under the note being worked from. One missed because the seed was cut
-   before the session that made the campaign's only held task.
+   know, or your picture of it is stale. On 8 October 2026 one prediction missed because a round
+   that scores nothing reads `not-scored`; another seed was cut before its only held task existed.
 2. **Seed late, and from a real run.** A log a run wrote beats a position you would author. Cut
    right before the thing in question, and say in one line how the seed differs from the nearest
    real position: "exam-1 cut before its second Examiner session, then prepared with two practice
@@ -45,8 +42,8 @@ and why the next was not needed.
 3. **Build a position with the campaign's own commands.** Every event has one writer. Never append
    a line by hand, edit one, or put a harness state into `states/`. For a position no run stood in,
    cut earlier and run the real command with other flags.
-4. **Write only to a seed.** `rehearse` refuses a campaign with no `seed.json`. No other command
-   knows the difference, so the name is the guard: seeds are `sim-<what>`, and nothing but a seed is.
+4. **Write only to a seed.** `rehearse` and `scripts/live-seat.ts start` require `seed.json`.
+   Production move commands have no such guard: use `sim-<what>` only for seeds.
 5. **One variable.** Two rehearsals compare when one flag moved between them.
 6. **Change the position, never the prompt.** A live seat is seated by the production command with
    the production prompt, and nothing tells the model what the simulation hopes for. If a prompt is
@@ -66,28 +63,33 @@ and why the next was not needed.
 
 ## What a rehearsal walks, and what it cannot say
 
-`bun run runs rehearse` is `tools/d2/round.ts` with a script in its two model seats
-(`roundCommand(args, seated)`). Under the seats everything is a paid round's:
+`bun run runs rehearse` dispatches to `roundCommand`, `sessionCommand` with `--no-comparison`,
+`checkpointCommand` with `--id`, or `harnessBuilder` with `--campaign`. It supplies scripted seats.
+Over a drafted exam the campaign's Examiner is scripted too; over a stored pack it has none and
+ends when it needs one. Under the seats it walks:
 
-- the campaign opened over the real pack, its sets read from the log;
-- the Builder session, which forks the Starter Built Harness as the plan's first round does: its
-  tools on the command wall, its capped root, its freeze and digest;
+- the campaign opened over its stored pack or staged drafted exam, its sets read from the log;
+- the Builder session from `--parent latest`, the starter until a session has left a harness:
+  its tools on the command wall, its ordinary root, its freeze and digest;
 - each solve: its wall and root, the answer file and `submit`, the verifier on
   the staged check program, its verdict;
 - the comparison: its terms written before its first solve, the reference harness, which is the
-  starter unless `--reference` names another, and the new one solved in turn, the sign test, each
-  harness by itself at every budget (`valid`), the report and the stop rule;
+  last promoted harness or the starter until one is promoted, and the new one solved afresh, the
+  paired sign-flip test, each harness at its one solve budget (`valid`), the report and the stop rule;
 - going on from the log after a kill or a `bun run runs stop`, which finds a rehearsal as it finds
   a round and releases what its solves held.
 
-Skipped, and so unproven by any rehearsal:
+Skipped, and so unproven by a rehearsal:
 
 - every model, and the backends that reach one (the Claude Agent SDK, Codex, pi's own providers);
 - practice solves, since the Builder's script calls none;
-- the Referee and the Diagnoser. A flag that names a model is refused, `--reviewer` among them. So
+- the Referee. `--builder`, `--solver` and `--reviewer` are refused. So
   a scripted `fail`, an answer a check rejects, is ruled by nobody and sets its task aside, as a
   paid comparison's would with no reviewer; `tools/d2/settle.ts` on the seed walks the rest;
-- time and money. A scripted solve takes 3 to 4 seconds and reaches no wall.
+- paid model usage and realistic pressure on time or turns. A `none` script gives no answer and
+  can reach its turn limit;
+- supply, checker-read, cap and stop-rule admission (`admitComparison`, `admitSession`). The
+  comparison's own terms still hold, including held-out status and exclusion of practice tasks.
 
 A rehearsal is told from a paid round by three marks: `seed.json` beside its log, `(a seed)` in the
 pulse, and `faux/script` as its Builder and solver wherever a reader names a model.
@@ -95,81 +97,67 @@ pulse, and `faux/script` as its Builder and solver wherever a reader names a mod
 ## What scripts read as
 
 `--held old:new` says how a solve of a held-out task ends under the two harnesses of the
-comparison: the reference harness, which is the starter unless `--reference` names another, and
+comparison: the reference harness, last promoted or the starter until one is promoted, and
 the new one. Each is `pass`, a valid answer; `fail`, an answer a check rejects; or `none`, a solve
 that submits with no answer, as one that reached its limits has none. `--starter` says how a solve
-ends under the starter where it is neither of the two, which is after a promotion only. The table
-is what `src/builder/round.ts` reads, as its tests hold it on stand-ins (`test/round.test.ts`), at
-four scored tasks. It has not been rehearsed on the truss pack since the comparison was rewritten
-on 2026-10-09: the first rehearsal on a seed should write these as its predictions.
+ends under the starter where it is neither side, for example in the control after a promotion.
+It adds no third arm to a comparison.
+
+The table uses four frontier tasks, two solves per side, `--level 0.10`, no retained tasks and
+answers with no objective difference. These are the stand-in conditions in `test/round.test.ts`,
+not the command defaults. `valid` lists task counts at zero, one and two valid solves, in that
+order (`Valid`, `src/builder/comparison.ts`). At the default level of 0.02 four wins read
+`no-step`; six untied tasks, all won, are needed (`sweepOf`, `src/kernel/compare.ts`).
 
 | script | reading | why |
 | --- | --- | --- |
-| `--held none:pass` (the default) | `step`, `valid` 4/0/0 and 0/0/4 | four wins are p 0.0625; the starter is a side of the test, so nothing more is solved |
+| `--held none:pass` (the default script) | `step`, `valid.old` 4/0/0 and `valid.fresh` 0/0/4 | four wins give p 0.0625, below the explicit level of 0.10 |
 | `--held pass:pass` | `no-step`, `valid` 0/0/4 twice | four ties between valid answers: the tasks leave a harness nothing to add |
-| `--held none:none` | `no-step`, `unsolved` 4 | no harness answers; twice in a row and each task waits for a person's label |
+| `--held none:none` | `no-step`, `unsolved` 4 | no harness answers; after two comparisons each task waits for a person's label unless feasibility is on record or its solves were cut by wall or context (`poolOf`) |
 | `--held fail:pass` | `not-scored`, `aside` 4, `counted` 4-0 | no reviewer is seated, so each rejection sets its task aside until it is labelled |
 | the same, then `settle.ts` with every label `earned` | `step` | the labels restore the tasks, and a settling makes no solve |
-| `--reference <a built digest> --held none:pass` | `step`, sixteen solves | after a promotion the starter is solved on no task: until 11 October a step was held to it, a third arm (`docs/simplify.md`, B2) |
-| fewer than six tasks held out | refused by the comparison's admission; `no-step` at best if run | at a level of 0.02 a step takes six untied tasks, all won |
+| `--reference <a kept digest> --held none:pass` | `step`, sixteen solves | only the two compared harnesses are solved; the starter adds no third arm |
+| fewer than six frontier tasks, at `--level 0.02` | `no-step` at best in a rehearsal; a paid start is refused | rehearsals bypass supply admission, but the test still needs six wins |
 | a Builder whose edit does not land | `no-change` | the harness froze to its parent's digest |
-| `--campaign --held none:pass --starter pass --supply 40` over a seed of a campaign that drafted its exam | a step and a promotion at each epoch, three in 21 moves on t-10's seed (11 October) | the scripted Examiner proposes copies of the source's answered tasks once the source's own are spent; every epoch goes through the same rows: the reference's room, other tasks, the control, a session, a step |
+| `--campaign --held none:pass --starter pass --supply 40` over a drafted-exam seed | repeated promotions where each comparison has enough frontier wins | the Examiner proposes the source's later tasks, then copies of its answered tasks; a single `step` promotes outside `--hitl` (`stepOf`, `decide`) |
 
 `check-defects` is out of a rehearsal's reach but for a check that cannot run: it takes a Referee's
 ruling of a check defect to count one.
 
 ## What the first rehearsals settled
 
-About seventeen rounds run to their report, one kill and five stops on 2026-10-08, with no model
-call. They ran under the design before the plan after the v1 review, which screened candidates
-and read an anchor; what they found about that design went with it. What they found about a
-round's size still holds in the new arithmetic:
+The rehearsals of 8 October 2026 found several joins that still matter:
 
 - **A step takes four untied tasks, all won, at level 0.1.** A campaign that holds fewer cannot
   read one, and the comparison's admission now refuses it.
-- **A step does not move the reference harness.** The next comparison is against the harness the
-  campaign started with until the operator names another with `--reference`; the Builder goes on
-  from the latest harness a session left.
+- **A round reports; promotion is a separate move.** A hand-run round writes no `harness.promoted`.
+  The campaign command promotes a single `step` outside `--hitl` (AGENTS.md, sections 3 and 7).
 - **A prediction made from a count taken while a session ran was wrong.** Seed from a log at rest.
 
 What the product did:
 
 - **A hard kill is survived.** `kill -9` 13 seconds into a round left 8 solves started and 4
   finished. Run again with the same `--session`, it went on from its log and reported as scripted.
-- **A kill or a stop left disk images attached.** The four solves in flight at the kill stayed
-  mounted, as did the Builder roots of two sessions stopped hours earlier with `bun run runs stop`,
-  a third of a gigabyte each. A Builder's root was named for its session id alone, so another
-  campaign on the host that asked for that id was refused with a bare `EEXIST`. Both are mended:
-  `bun run runs stop <name> --yes` releases what a run's unfinished solves and sessions left,
-  whenever it was stopped or killed, and a Builder's root is named for its campaign too.
-- **The mend failed its first rehearsal.** A stop two seconds into four solves gave up at its first
-  root: three had a folder and an image and no volume, and a detach of that exits 1. A release now
-  passes over a root with nothing mounted. Four more stops, from a third of a second in to after the
-  solves ended, left nothing, and a stopped round went on under its session and read `step`.
-- **Claude Code went on after its solve closed.** The host folders the day's solves left behind
-  each held a log Claude Code wrote after its solve's teardown, and 14 of 35 held a call made after
-  the one that ended the solve. A live seat on the small model showed why for cents: closed on a
-  parked `submit`, Claude Code lived two to three seconds more and called `submit` twice again,
-  each a model request no meter read. An abort closes its stdin and gives it two seconds, which it
-  spends on its turn. The close now interrupts the turn first, and the same probe then called
-  nothing and was gone inside a second. One whole solve on that model, its logs copied out five
-  times a second, then ended on its `submit` with no call after it, Claude Code gone within 0.56 s
-  and no folder left. A leftover nobody asked about was the lead.
+- **A kill left roots behind, and session ids collided across campaigns.**
+  `bun run runs stop <name> --yes` releases roots left by unfinished solves and sessions (`leftOpen`, `releaseRoot`),
+  and `sessionDirs` names a Builder's root by its campaign too. Until 19 October roots on macOS
+  held disk images; they are ordinary folders now (`src/verify/seat-root.ts`).
+- **Claude Code went on after its solve closed.** On 8 October 2026, 14 of 35 solve records held
+  a call after the one that ended the solve. A live probe traced this to an abort closing stdin
+  while a turn was parked on `submit`. `close` now interrupts before aborting
+  (`src/backends/claude.ts`); `test/claude-backend.test.ts` checks that join.
 - **The pulse read a seed as a paid run**, with its source's dollars and its source's solves in
   flight. It now says `(a seed)`.
 - **A reader caught a planted contradiction.** Two rehearsed rounds made one harness pass a task
   as the new side and fail it as the old, and `bun tools/wri/wri.ts read` said so unasked. Planting
   a condition and checking that its reader names it is a use of a rehearsal in its own right.
 
-## Not here yet
+## Coverage
 
-- **A scripted Examiner.** `exam.call` holds each call whole, so a session can be replayed from a
-  log. Nothing does it, and an Examiner session is rehearsed only live.
-- **A live Builder over scripted solves**, which would prove the Builder's seat for a dollar or two.
-- **Practice solves and reviewers in a rehearsal.**
-- **A rehearsal in the test suite.** The tests hold the script and the seed. The joins were walked
-  on the truss pack by hand, and no fixture pack walks them on every gate.
-- **Linux.** Every rehearsal so far ran on the Darwin wall, and until 19 October under its disk images.
+`test/runs-rehearse.test.ts` holds the seed and scripts. `test/checker-commands.test.ts` rehearses
+two sessions and a checkpoint over a fixture pack when a command wall is available. A pass on one
+platform proves only that platform's wall (AGENTS.md, section 9). The CLI has no mixed mode with a
+live Builder and scripted solves; its Builder script runs no practice solve and seats no Referee.
 
 ## The result
 
@@ -182,14 +170,3 @@ End with these, in this order.
 5. Each condition as `blocking`, `cleared` or `accepted-risk`. A blocking one names its owner and
    the smallest fix. An accepted one names who accepted it.
 6. The seeds moved to the Trash, or which are kept and why.
-
-## From v1
-
-Kept: the smallest real layer, the ladder of cases, seed late and from a past run, the one line of
-difference, predictions written first, script faults apart from product faults, a cleared condition
-in its owning test, the three-word result.
-
-Gone with what they served: stewards and their accounts, position packets, the Judge and Epoch
-Reviewer replays, the tool-tree relocation and the fifteen-turn rule. v1 hand-built a position
-because its state was spread over a controller and many files. v2's is one log, so a position is
-cut and never built.

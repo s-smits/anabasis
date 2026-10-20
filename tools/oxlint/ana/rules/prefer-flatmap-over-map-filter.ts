@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 
 /**
  * `xs.map(toRow).filter(Boolean)` walks the array twice and then lies about the type. The
@@ -24,7 +25,19 @@ import { defineRule, type ESTree } from "@oxlint/plugins";
 export const preferFlatmapOverMapFilterRule = defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: "map followed by filter(Boolean) walks twice and keeps the wrong type." },
+    docs: {
+      description: "map followed by filter(Boolean) walks twice and keeps the wrong type.",
+      examples: [
+        {
+          before: "const rows = cases.map(toRow).filter(Boolean);",
+          after: "const rows = cases.flatMap((entry) => toRow(entry) ?? []);",
+        },
+        {
+          before: "const owners = tasks.map((task) => task.owner).filter(Boolean);",
+          after: "const owners = tasks.flatMap((task) => task.owner ?? []);",
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       twoWalks:
         "`.map(…).filter(Boolean)` walks twice and still types the result as possibly-empty, since `filter(Boolean)` does not narrow. `.flatMap((x) => f(x) ?? [])` drops the blanks where they are made and narrows on its own.",

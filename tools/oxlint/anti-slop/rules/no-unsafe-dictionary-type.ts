@@ -10,6 +10,7 @@ import { isRepresentationOwner } from "../shared/representation-owner.ts";
 import { typeReferenceName, visibleTypeAlias } from "../shared/type-alias-resolution.ts";
 
 import type { ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 
 const typeNodeKinds: ReadonlySet<string> = new Set([
   "JSDocNonNullableType",
@@ -150,6 +151,16 @@ export const noUnsafeDictionaryTypeRule = defineRule({
     docs: {
       description:
         "Disallow object-dictionary contracts whose direct value type is unknown, any, object, {}, or a union/alias containing one of those escape hatches.",
+      examples: [
+        {
+          before: "type Terms = Record<string, unknown>;",
+          after: "type Terms = Record<string, string | number>;",
+        },
+        {
+          before: "interface Opening {\n  readonly limits: { [limit: string]: any };\n}",
+          after: "interface Opening {\n  readonly limits: Readonly<Record<string, number>>;\n}",
+        },
+      ] satisfies RuleExample[],
     },
     messages: {
       unsafeDictionary:

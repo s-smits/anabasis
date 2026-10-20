@@ -633,9 +633,10 @@ function unafforded(ground: Ground, named: Move): Move | null {
 /** What a first comparison would bill, priced by the reference harness's solves of draft tasks
  *  (`try_task`): two harnesses, the tasks it would score, the solves a side. Until 14 October a
  *  campaign with no report was held to nothing, and buffer-149's gate billed about $0.43 a solve.
- *  A gate's `billed` is its `TRIED` solves', the non-results among them included, while its
- *  `solves` counts the readings, so the price is a solve started and not a reading: over readings
- *  alone a gate with a non-result priced the comparison high. Null where no draft was solved. */
+ *  A gate's `billed` is the solves it ran (`ran`; `TRIED` before 20 October), the non-results among
+ *  them included, while its `solves` counts the readings, so the price is a solve started and not a
+ *  reading: over readings alone a gate with a non-result priced the comparison high. Null where no
+ *  draft was solved. */
 function firstPriced({ events, plan }: Ground): { dollars: number; said: string } | null {
   const tried = events.flatMap(({ kind, data }) => {
     const reference = asRecord(data.reference);
@@ -643,10 +644,10 @@ function firstPriced({ events, plan }: Ground): { dollars: number; said: string 
       isNumber(reference?.billed) &&
       isNumber(reference.solves) &&
       reference.solves > 0
-      ? [{ billed: reference.billed }]
+      ? [{ billed: reference.billed, ran: isNumber(reference.ran) ? reference.ran : TRIED }]
       : [];
   });
-  const solves = tried.length * TRIED;
+  const solves = tried.reduce((sum, { ran }) => sum + ran, 0);
   if (solves === 0) return null;
   const each = tried.reduce((sum, { billed }) => sum + billed, 0) / solves;
   const scored = Math.min(plan.wanted.target, taskSets(events).held.length);
@@ -676,13 +677,15 @@ export function epochReleased(events: readonly LogEvent[]) {
   return { promotedAt, epoch };
 }
 
-/** How many more tasks a release may take for practice, each one fewer to compare: after a
- *  promotion, never leaving fewer frontier tasks than a sweep at `level` takes, since it takes
- *  failed ones first (`releaseOrder`). Until 16 October it was also at most one in four of the
+/** How many more tasks a release may take for practice, each one fewer to compare: once practice
+ *  exists or a promotion is on record, leave a sweep at `level` of frontier tasks held.
+ *  Top-ups before a promotion consumed esp32-r2's frontier (20 October 2026, whole-run
+ *  investigations of six campaigns). Until 16 October it was also at most one in four of the
  *  epoch's scorable and released tasks, which bound alone in none of 35 releases on record. */
 export function practiceRoom(events: readonly LogEvent[], level: number): number {
   const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
-  return promotedAt === -1 ? Infinity : Math.max(0, poolOf(events).frontier.length - sweepOf(level));
+  if (promotedAt === -1 && taskSets(events).released.length === 0) return Infinity;
+  return Math.max(0, poolOf(events).frontier.length - sweepOf(level));
 }
 
 /** A release for practice before a Builder session, where the epoch holds fewer than the campaign

@@ -19,7 +19,7 @@ import { taskSets } from "#src/kernel/task.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { overview } from "../wri/read.ts";
-import { runs } from "./registry.ts";
+import { isCampaign, readable } from "./registry.ts";
 
 /** What this tree's readers make of the log at `path`, in a line. */
 export function replayed(path: string): string {
@@ -37,10 +37,8 @@ export function replayed(path: string): string {
 
 /** `bun run runs replay`. */
 export function replay(names: readonly string[]): void {
-  const logs = runs().filter(
-    (run) =>
-      run.end === "comparison.reported" &&
-      (names.length === 0 || names.some((name) => run.name.includes(name))),
+  const logs = readable().filter(
+    (run) => isCampaign(run) && (names.length === 0 || names.some((name) => run.name.includes(name))),
   );
   let refused = 0;
   for (const run of logs) {

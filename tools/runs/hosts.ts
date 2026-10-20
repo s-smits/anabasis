@@ -16,12 +16,24 @@
  * once and prints each one's rows as they come, under a time limit a host, so a host that is slow or
  * does not answer holds up no other (15 October: asked one after another, a loaded runner held the
  * rows of every host after it).
+ *
+ * A verb that acts on a run it names goes wherever the run is (`routesOf`): a name no worktree here
+ * holds is asked of every host at once (`holds`), and the verb runs on the host that answers it. On
+ * 20 October a stop of eight runs on two machines took two commands, each naming its host, and a
+ * keeper, a continue and a view each took the host's name by hand.
  */
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
+import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
+import { runs } from "./registry.ts";
 
-/** How long `hosts` waits for one host's rows. */
+/** How long `hosts` waits for one host's rows, and a verb for each host's `holds`. */
 const HOST_MS = 30_000;
+/** The verbs that act on the runs they name: every name `stop` is given, and the first word of the rest. */
+const NAMING = new Set(["stop", "continue", "pause", "keep", "view", "source", "copy"]);
+/** The options of the verbs in `NAMING` that take no value. Any other option not joined to its value
+ *  by `=` takes the next argument as its value. */
+const SWITCHES = new Set(["--yes", "--all", "--once", "--json", "--hold", "--here"]);
 
 export interface Host {
   readonly name: string;
@@ -33,7 +45,26 @@ export interface Host {
   readonly envFiles?: readonly string[];
 }
 
+/** Where a verb runs: here with `here` (none where every name it was given is elsewhere), and on
+ *  each host with the words it is sent. */
+interface Routes {
+  readonly here: readonly string[] | null;
+  readonly away: readonly (readonly [Host, readonly string[]])[];
+}
+
 export const hostsOf = (): readonly Host[] => parseJsonAs<Host[]>(runtimeProcess.env.ANA_HOSTS ?? "[]");
+
+/**
+ * `from` copied into `to` with rsync, either of them `<ssh>:<path>` on a host. It compresses what it
+ * sends: a campaign's folder is mostly logs and traces, and on 20 October one log of 4.6 MB took
+ * 18.6 s to reach the Linux host over Wi-Fi, and 2.5 s with `-z`.
+ */
+export const rsync = (from: string, to: string, ...flags: readonly string[]) =>
+  runTextSyncOrThrow(["rsync", "-az", ...flags, from, to]);
+
+/** The shell text that lists the worktrees of the repository `repo`, a shell word, the main first. */
+export const worktreesIn = (repo: string) =>
+  `git -C ${repo} worktree list --porcelain | sed -n 's/^worktree //p'`;
 
 export const quoted = (word: string) => `'${word.replaceAll("'", `'\\''`)}'`;
 
@@ -92,4 +123,66 @@ export async function hosts(args: readonly string[]): Promise<void> {
       console.log(`── ${host.name}\n${rows}${errors}${code === 0 ? "" : `  ${host.name} ${late}`}`.trimEnd());
     }),
   );
+}
+
+/** Where in `args` the runs `verb` acts on are named: every word a stop is given, the first word of
+ *  another verb that acts on a run, and none for the rest. A word is an argument that is neither an
+ *  option nor an option's value, before any `--`: `view --level 0.02 r3` names `r3`, and
+ *  `continue finished --after finished` names its first `finished` and keeps the second. */
+function namedAt(verb: string, args: readonly string[]): number[] {
+  const words: number[] = [];
+  for (let at = 0; at < args.length && args[at] !== "--"; at += 1) {
+    const arg = args[at] ?? "";
+    if (!arg.startsWith("-")) words.push(at);
+    else if (!arg.includes("=") && !SWITCHES.has(arg)) at += 1;
+  }
+  return verb === "stop" ? words : words.slice(0, NAMING.has(verb) ? 1 : 0);
+}
+
+/** The routes of `verb args`, given the hosts that claim names among those no worktree here holds.
+ *  A name nobody claims stays here, where the verb refuses it in its own words. */
+export function routesOf(verb: string, args: readonly string[], held: ReadonlyMap<string, Host>): Routes {
+  const at = namedAt(verb, args);
+  const names = at.map((index) => args[index] ?? "");
+  const rest = args.filter((_, index) => !at.includes(index));
+  const away = [...new Set(names.flatMap((name) => held.get(name) ?? []))].map(
+    (host) => [host, [verb, ...names.filter((name) => held.get(name) === host), ...rest]] as const,
+  );
+  const here = names.filter((name) => !held.has(name));
+  return { here: names.length === 0 || here.length > 0 ? [...here, ...rest] : null, away };
+}
+
+/** `bun run runs holds <name ...>`: the names among these a worktree here holds, one a line. */
+export function holds(names: readonly string[]): void {
+  const here = new Set(runs().map(({ name }) => name));
+  for (const name of names.filter((one) => here.has(one))) console.log(name);
+}
+
+/** The host that holds each of `names`, every host `ANA_HOSTS` lists asked at once. */
+export async function holders(names: readonly string[]): Promise<Map<string, Host>> {
+  const held = new Map<string, Host>();
+  if (names.length === 0) return held;
+  await Promise.all(
+    hostsOf().map(async (host) => {
+      const io = { stdin: "ignore", stdout: "pipe", stderr: "ignore", timeout: HOST_MS } as const;
+      const child = capturedSpawn(sshTo(host, ["holds", ...names]), io);
+      const [said, code] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+      if (code !== 0) console.error(`${host.name} did not say which runs it holds (exit ${String(code)})`);
+      for (const name of said.split("\n").filter((one) => names.includes(one))) {
+        const other = held.get(name);
+        if (other !== undefined) {
+          throw new Error(`${name} names a campaign on ${other.name} and on ${host.name}`);
+        }
+        held.set(name, host);
+      }
+    }),
+  );
+  return held;
+}
+
+/** The routes of `verb args` on this machine and the hosts that hold the names no worktree here holds. */
+export async function routed(verb: string, args: readonly string[]): Promise<Routes> {
+  const here = new Set(runs().map(({ name }) => name));
+  const names = namedAt(verb, args).map((at) => args[at] ?? "");
+  return routesOf(verb, args, await holders(names.filter((name) => !here.has(name))));
 }

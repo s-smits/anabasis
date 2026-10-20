@@ -14,7 +14,7 @@ import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
 import type { Task, Verdict } from "../src/kernel/verify.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
-import { asRecord, isNumber, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { agreement, clears, unclearReport } from "../src/review/agreement.ts";
@@ -34,6 +34,7 @@ const ANSWER = { span: 12, members: [{ area: 3 }] };
 /** The field of the answer the fixture's one check reads. */
 const SPAN = "$.span";
 const FINDING: EventKind = "referee.finding";
+const PROBE = "probe_check";
 const scratches: string[] = [];
 /** A check that refuses spans over 10, where the rule allows 12. */
 const verify = async (_task: Task, answer: JsonValue | undefined): Promise<Verdict> => {
@@ -48,7 +49,7 @@ afterAll(() => {
 
 /** A scratch with a check program and a log, and a reader scripted with `responses`, keeping what
  *  each model call was sent. */
-function setup(responses: ReturnType<typeof fauxAssistantMessage>[]) {
+function setup(responses: ReturnType<typeof fauxAssistantMessage>[], fields: readonly string[] = [SPAN]) {
   const scratch = mkdtempSync(join(tmpdir(), "ana-review-"));
   scratches.push(scratch);
   const checks = join(scratch, "checks");
@@ -63,7 +64,7 @@ function setup(responses: ReturnType<typeof fauxAssistantMessage>[]) {
           citedDecisionIds: ["R1"],
           execution: {
             families: "all",
-            artifactPaths: [SPAN],
+            artifactPaths: fields,
             publicInputPaths: [],
             hidden: "none",
             evidence: { kind: "authored" },
@@ -102,6 +103,69 @@ function setup(responses: ReturnType<typeof fauxAssistantMessage>[]) {
 }
 
 describe("the probe", () => {
+  it("refuses object and array root replacements before running a check", async () => {
+    let calls = 0;
+    for (const answer of [ANSWER, [1, 2]]) {
+      const rows: ProbeRow[] = [];
+      const tool = probeTool(
+        async () => {
+          calls += 1;
+          return { kind: "pass" };
+        },
+        TASK,
+        answer,
+        rows,
+      );
+      await expect(tool.execute("id", { changes: [{ path: "$", value: "null" }] })).rejects.toThrow(
+        "scalar root",
+      );
+      expect(rows).toHaveLength(0);
+    }
+    expect(calls).toBe(0);
+  });
+
+  it("caps coupled changes at three paths read together by one refusing check", async () => {
+    const rows: ProbeRow[] = [];
+    const tool = probeTool(verify, TASK, ANSWER, rows, [[SPAN], ["$.members[0].area"]]);
+    await expect(
+      tool.execute("id", {
+        changes: ["9", "8", "7", "6"].map((value) => ({ path: SPAN, value })),
+      }),
+    ).rejects.toThrow("at most 3 paths");
+    await expect(
+      tool.execute("id", {
+        changes: [
+          { path: SPAN, value: "9" },
+          { path: "$.members[0].area", value: "4" },
+        ],
+      }),
+    ).rejects.toThrow("one refusing check reads together");
+    expect(rows).toHaveLength(0);
+  });
+
+  it("replaces a scalar root, including null, with another JSON value", async () => {
+    for (const [before, after] of [
+      [1, null],
+      [null, "text"],
+      ["text", 2],
+    ] as const) {
+      const handed: (JsonValue | undefined)[] = [];
+      const rows: ProbeRow[] = [];
+      const tool = probeTool(
+        async (_task, answer) => {
+          handed.push(answer);
+          return { kind: "pass" };
+        },
+        TASK,
+        before,
+        rows,
+      );
+      await tool.execute("id", { changes: [{ path: "$", value: JSON.stringify(after) }] });
+      expect(handed).toEqual([before, after]);
+      expect(rows).toHaveLength(1);
+    }
+  });
+
   it("replaces one existing leaf of a copy, and refuses a path the answer lacks", async () => {
     const handed: JsonValue[] = [];
     const seen = async (task: Task, answer: JsonValue | undefined): Promise<Verdict> => {
@@ -109,19 +173,21 @@ describe("the probe", () => {
       return verify(task, answer);
     };
     const tool = probeTool(seen, TASK, ANSWER, []);
-    const probe = (path: string) => tool.execute("id", { path, value: "4" });
+    const probe = (path: string) => tool.execute("id", { changes: [{ path, value: "4" }] });
     await probe("$.members[0].area");
     expect(handed).toEqual([ANSWER, { span: 12, members: [{ area: 4 }] }]);
+    await tool.execute("id", { changes: [{ path: "$.members", value: '[{"area":5}]' }] });
+    expect(handed.at(-1)).toEqual({ span: 12, members: [{ area: 5 }] });
     expect(ANSWER.members[0]?.area).toBe(3);
     for (const path of ["$.members[1].area", "$.depth", "span"]) {
       await expect(probe(path)).rejects.toThrow(`${path} is not an existing field of the answer`);
     }
   });
 
-  it("says which checks moved, and refuses what is not a one-field change", async () => {
+  it("says which checks moved, and refuses invalid or unchanged edits", async () => {
     const rows: ProbeRow[] = [];
     const tool = probeTool(verify, TASK, ANSWER, rows);
-    const probe = (path: string, value: string) => tool.execute("id", { path, value });
+    const probe = (path: string, value: string) => tool.execute("id", { changes: [{ path, value }] });
     const moved = await probe(SPAN, "10");
     expect(moved.content).toEqual([
       expect.objectContaining({ text: expect.stringContaining("1 check moved: span") }),
@@ -135,6 +201,24 @@ describe("the probe", () => {
     await expect(probe("$.depth", "1")).rejects.toThrow("$.depth is not an existing field");
     await expect(probe(SPAN, "12")).rejects.toThrow("already carries that value");
     await expect(probe(SPAN, JSON.stringify("x".repeat(4_000)))).rejects.toThrow("at most 4000 characters");
+    await expect(tool.execute("id", { changes: [] })).rejects.toThrow("leave the answer unchanged");
+    await expect(
+      tool.execute("id", {
+        changes: [
+          { path: SPAN, value: "10" },
+          { path: SPAN, value: "12" },
+        ],
+      }),
+    ).rejects.toThrow("leave the answer unchanged");
+    await expect(
+      tool.execute("id", {
+        changes: [
+          { path: SPAN, value: "10" },
+          { path: "$.depth", value: "1" },
+        ],
+      }),
+    ).rejects.toThrow("$.depth is not an existing field");
+    expect(rows).toHaveLength(2);
     while (rows.length < 7) await probe(SPAN, String(rows.length));
     const last = await probe(SPAN, "99");
     expect(JSON.stringify(last.content)).toContain("none left, so record your ruling");
@@ -153,33 +237,40 @@ describe("the probe", () => {
     const rows: ProbeRow[] = [];
     const tool = probeTool(standIn, TASK, source, rows);
     const path = "$.files['main.cpp']";
-    const edited = await tool.execute("id", { path, find: "min(x, 3)", replace: "(x < 3 ? x : 3)" });
+    const edited = await tool.execute("id", {
+      changes: [{ path, find: "min(x, 3)", replace: "(x < 3 ? x : 3)" }],
+    });
     expect(edited.content).toEqual([
       expect.objectContaining({
         text: expect.stringContaining("edited, its one passage of 9 characters rewritten as 15"),
       }),
     ]);
-    expect(rows[0]).toMatchObject({ value: null, edit: { find: "min(x, 3)" }, moved: ["compiles"] });
+    expect(rows[0]).toMatchObject({
+      changes: [{ value: null, edit: { find: "min(x, 3)" } }],
+      moved: ["compiles"],
+    });
     expect(handed.at(-1)).toContain("int a = (x < 3 ? x : 3);");
     // A dollar sign in `replace` is text, and `(x, 3)` names two passages, so editing either would
     // be a guess.
-    await tool.execute("id", { path, find: "max", replace: "$&$1" });
+    await tool.execute("id", { changes: [{ path, find: "max", replace: "$&$1" }] });
     expect(handed.at(-1)).toContain("int b = $&$1(x, 3);");
-    await expect(tool.execute("id", { path, find: "(x, 3)", replace: "" })).rejects.toThrow(
+    await expect(tool.execute("id", { changes: [{ path, find: "(x, 3)", replace: "" }] })).rejects.toThrow(
       "is not a text field holding `find` exactly once",
     );
-    await expect(tool.execute("id", { path, value: '""', find: "min", replace: "" })).rejects.toThrow(
-      "send either `value`, or `find` with `replace`",
-    );
-    await expect(tool.execute("id", { path })).rejects.toThrow(
+    await expect(
+      tool.execute("id", { changes: [{ path, value: '""', find: "min", replace: "" }] }),
+    ).rejects.toThrow("send either `value`, or `find` with `replace`");
+    await expect(tool.execute("id", { changes: [{ path }] })).rejects.toThrow(
       "send either `value`, or `find` with `replace`",
     );
   });
 });
 
 describe("the Referee", () => {
-  const failed = (record: ReturnType<typeof setup>["record"]) =>
+  const failed = (record: ReturnType<typeof setup>["record"]) => {
+    record("task.proposed", { taskId: TASK.taskId, version: "v-1" });
     record("verdict", { solve: "s-1", task: "t-1", answer: ANSWER, kind: "fail", blocking: ["span"] });
+  };
   const fail = (s: ReturnType<typeof setup>) => ({
     solve: "s-1",
     task: TASK,
@@ -190,11 +281,99 @@ describe("the Referee", () => {
   });
   const ruling = (args: JsonObject) => fauxAssistantMessage(fauxToolCall("record_ruling", args), toolUse);
 
+  it("accepts coupled edits only when their cited probe clears the deciding check", async () => {
+    const answer = { left: `${"x".repeat(4_001)}bad`, right: `${"x".repeat(4_001)}bad` };
+    const change = (path: string) => ({ path, find: "bad", replace: "good" });
+    const s = setup(
+      [
+        fauxAssistantMessage(fauxToolCall(PROBE, { changes: [change("$.left")] }), toolUse),
+        ruling({
+          ruling: "earned",
+          rule: "R1",
+          field: "$",
+          reason: "Both texts must end alike.",
+          probes: [1],
+        }),
+        fauxAssistantMessage(
+          fauxToolCall(PROBE, { changes: [change("$.left"), change("$.right")] }),
+          toolUse,
+        ),
+        ruling({
+          ruling: "earned",
+          rule: "R1",
+          field: "$",
+          reason: "Both texts must end alike.",
+          probes: [2],
+        }),
+      ],
+      ["$.left", "$.right"],
+    );
+    s.record("verdict", { solve: "s-1", task: TASK.taskId, answer, kind: "fail", blocking: ["span"] });
+    const finding = await referee(s.reader, {
+      ...fail(s),
+      verify: async (_task, given) => {
+        const texts = asRecord(given);
+        return [texts?.left, texts?.right].every((value) => isString(value) && value.endsWith("good"))
+          ? { kind: "pass" }
+          : { kind: "fail", blocking: ["span"] };
+      },
+    });
+    expect(finding).toMatchObject({ ruling: "earned", field: "$", probes: [2] });
+    expect(read(s.log).filter(({ kind }) => kind === "referee.refused")).toHaveLength(1);
+    expect(read(s.log).at(-1)?.data.probeRows).toMatchObject([
+      { id: 1, moved: [] },
+      {
+        id: 2,
+        moved: ["span"],
+        changes: [
+          { path: "$.left", edit: { find: "bad", replace: "good" } },
+          { path: "$.right", edit: { find: "bad", replace: "good" } },
+        ],
+      },
+    ]);
+    expect(answer.left).toEndWith("bad");
+  });
+
+  it("rules a defect on a check with no answer fields only after a conclusive probe", async () => {
+    const defect = (probes: number[]) =>
+      ruling({
+        ruling: "check-defect",
+        check: "span",
+        reason: "It refuses independently of the answer.",
+        probes,
+      });
+    const s = setup(
+      [
+        defect([]),
+        fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: SPAN, value: "11" }] }), toolUse),
+        defect([1]),
+        fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: SPAN, value: "10" }] }), toolUse),
+        defect([2]),
+      ],
+      [],
+    );
+    failed(s.record);
+    let calls = 0;
+    const finding = await referee(s.reader, {
+      ...fail(s),
+      verify: async () =>
+        ++calls === 2
+          ? { kind: "faulty", check: "span", reason: "No verdict." }
+          : { kind: "fail", blocking: ["span"] },
+    });
+    expect(finding).toMatchObject({ ruling: "check-defect", check: "span", probes: [2] });
+    expect(read(s.log).filter(({ kind }) => kind === "referee.refused")).toHaveLength(2);
+    expect(read(s.log).at(-1)?.data.probeRows).toMatchObject([
+      { id: 1, changed: { kind: "faulty" } },
+      { id: 2, moved: [] },
+    ]);
+  });
+
   it("rules a check-defect only on a probe that decided both sides", async () => {
     const s = setup([
       ruling({ ruling: "check-defect", check: "span", reason: "R1 allows 12.", probes: [] }),
       fauxAssistantMessage(fauxToolCall("read_check_program", { path: "evaluator.ts" }), toolUse),
-      fauxAssistantMessage(fauxToolCall("probe_check", { path: SPAN, value: "10" }), toolUse),
+      fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: SPAN, value: "10" }] }), toolUse),
       ruling({
         ruling: "check-defect",
         check: "span",
@@ -224,7 +403,10 @@ describe("the Referee", () => {
 
   it("refuses a check-defect on a probe the named check never receives", async () => {
     const s = setup([
-      fauxAssistantMessage(fauxToolCall("probe_check", { path: "$.members[0].area", value: "5" }), toolUse),
+      fauxAssistantMessage(
+        fauxToolCall(PROBE, { changes: [{ path: "$.members[0].area", value: "5" }] }),
+        toolUse,
+      ),
       ruling({ ruling: "check-defect", check: "span", reason: "The check is too strict.", probes: [1] }),
       ruling({ ruling: "unclear", reason: "No probe on the span yet.", probes: [1] }),
     ]);
@@ -239,7 +421,7 @@ describe("the Referee", () => {
     const threw = async (task: Task, answer: JsonValue | undefined): Promise<Verdict> =>
       asRecord(answer)?.span === 11 ? { kind: "non-result", reason: "span: threw" } : verify(task, answer);
     const s = setup([
-      fauxAssistantMessage(fauxToolCall("probe_check", { path: SPAN, value: "11" }), toolUse),
+      fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: SPAN, value: "11" }] }), toolUse),
       ruling({ ruling: "check-defect", check: "span", reason: "The check moved.", probes: [1] }),
       ruling({ ruling: "earned", rule: "R1", field: SPAN, reason: "12 m is over 10.", probes: [1] }),
       ruling({ ruling: "check-defect", check: "depth", reason: "The depth check is wrong.", probes: [1] }),
@@ -256,7 +438,7 @@ describe("the Referee", () => {
 
   it("replays the checks once, and the first probe reuses that run", async () => {
     const s = setup([
-      fauxAssistantMessage(fauxToolCall("probe_check", { path: SPAN, value: "10" }), toolUse),
+      fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: SPAN, value: "10" }] }), toolUse),
       ruling({
         ruling: "earned",
         rule: "R1",
@@ -277,7 +459,7 @@ describe("the Referee", () => {
     expect(answers).toEqual([ANSWER, { ...ANSWER, span: 10 }]);
   });
 
-  it("rules a check that does not repeat a check-defect, and an undecided replay unclear, unread", async () => {
+  it("rules a check that does not repeat a check-defect", async () => {
     const s = setup([]);
     failed(s.record);
     expect(await referee(s.reader, { ...fail(s), verify: async () => ({ kind: "pass" }) })).toMatchObject({
@@ -286,12 +468,25 @@ describe("the Referee", () => {
       probes: [],
     });
     expect(read(s.log).at(-1)?.data).toMatchObject({ ruling: "check-defect", replay: { kind: "pass" } });
-    const undecided = async (): Promise<Verdict> => ({ kind: "non-result", reason: "the cell timed out" });
-    expect(await referee(s.reader, { ...fail(s), verify: undecided })).toMatchObject({
-      ruling: "unclear",
-      reason: "the replay reached no verdict: the cell timed out",
-    });
     expect(s.calls()).toBe(0);
+  });
+
+  it("leaves a replay that reaches no verdict unruled, without a model read", async () => {
+    const replays = [
+      { kind: "non-result", reason: "the cell timed out" },
+      { kind: "faulty", check: "span", reason: "the check threw" },
+    ] as const satisfies readonly Verdict[];
+    for (const replay of replays) {
+      const s = setup([]);
+      failed(s.record);
+      const finding = await referee(s.reader, { ...fail(s), verify: async () => replay });
+      expect(finding).toMatchObject({
+        ruling: null,
+        reason: `the replay reached no verdict: ${replay.reason}`,
+      });
+      expect(s.calls()).toBe(0);
+      expect(read(s.log).at(-1)?.data).toMatchObject({ ruling: null, replay });
+    }
   });
 
   it("refuses a solve with no answer on record, writing nothing, and rules an answer outside the format earned unread", async () => {
@@ -326,7 +521,7 @@ describe("the Referee", () => {
       earned({ rule: "R9", field: SPAN }),
       earned({ rule: "R1", field: "$.depth" }),
       earned({ rule: "R1", field: "$.members[0].area" }),
-      fauxAssistantMessage(fauxToolCall("probe_check", { path: SPAN, value: "9" }), toolUse),
+      fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: SPAN, value: "9" }] }), toolUse),
       earned({ rule: "R1", field: SPAN, probes: [1] }),
     ]);
     failed(s.record);
@@ -364,7 +559,7 @@ describe("the Referee", () => {
     const s = setup([ruling({ ruling: "unclear", reason: "Not settled.", probes: [] })]);
     failed(s.record);
     expect((await referee(s.reader, fail(s))).ruling).toBe("unclear");
-    expect(read(s.log).map(({ kind }) => kind)).toEqual(["verdict", FINDING]);
+    expect(read(s.log).map(({ kind }) => kind)).toEqual(["task.proposed", "verdict", FINDING]);
   });
 
   it("refuses an earned ruling as evidence unless its probe moved a refusing check off its refusal, and leaves the fail unclear", async () => {
@@ -375,9 +570,12 @@ describe("the Referee", () => {
       ruling({ ruling: "earned", rule: "R1", field: SPAN, reason: "Over the limit.", probes });
     const s = setup([
       earned([]),
-      fauxAssistantMessage(fauxToolCall("probe_check", { path: SPAN, value: "11" }), toolUse),
+      fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: SPAN, value: "11" }] }), toolUse),
       earned([1]),
-      fauxAssistantMessage(fauxToolCall("probe_check", { path: "$.members[0].area", value: "1" }), toolUse),
+      fauxAssistantMessage(
+        fauxToolCall(PROBE, { changes: [{ path: "$.members[0].area", value: "1" }] }),
+        toolUse,
+      ),
       earned([2]),
       ruling({ ruling: "unclear", reason: "No probe moved the check.", probes: [1, 2] }),
     ]);
@@ -391,6 +589,35 @@ describe("the Referee", () => {
       expect.objectContaining({ id: 1, moved: [] }),
       expect.objectContaining({ id: 2, moved: [] }),
     ]);
+  });
+
+  it("gives the Referee the whole public contract", async () => {
+    const s = setup([ruling({ ruling: "unclear", reason: "The contract leaves this open.", probes: [] })]);
+    failed(s.record);
+    const contract = {
+      ...CONTRACT,
+      answerFormat: { type: "object", required: ["span"] },
+      objective: { quantity: "material", direction: "lower" } as const,
+    };
+    await referee(s.reader, { ...fail(s), contract });
+    expect(s.sent[0]).toContain(JSON.stringify(JSON.stringify(contract)).slice(1, -1));
+  });
+
+  it("reads an author's accepted answer by task version, and skips proofs without an answer", async () => {
+    const unclear = ruling({ ruling: "unclear", reason: "The evidence leaves this open.", probes: [] });
+    const s = setup([unclear, unclear]);
+    failed(s.record);
+    s.record("task.proposed", { taskId: "t-2", version: "v-2" });
+    s.record("task.feasible", { version: "v-1", answer: { span: 9, members: [] } });
+    s.record("task.feasible", { version: "v-2", answer: { span: 1, members: [] } });
+    s.record("task.feasible", { version: "v-1" });
+    await referee(s.reader, fail(s));
+    expect(s.sent[0]).toContain(
+      String.raw`An answer the checks accepted for this task: {\"span\":9,\"members\":[]}`,
+    );
+    s.record("verdict", { solve: "s-0", task: TASK.taskId, kind: "pass", answer: null });
+    await referee(s.reader, fail(s));
+    expect(s.sent[1]).toContain("An answer the checks accepted for this task: null");
   });
 
   it("sets an answer the checks accepted for the task beside the one under review", async () => {
@@ -407,22 +634,68 @@ describe("the Referee", () => {
     );
   });
 
+  it("refuses a whole-answer swap and an accepted projection as defect evidence, but admits a disputed-field probe", async () => {
+    const accepted = { span: 9, members: [] };
+    const defect = (probes: number[]) =>
+      ruling({ ruling: "check-defect", check: "span", reason: "The public rule permits this span.", probes });
+    const s = setup([
+      fauxAssistantMessage(
+        fauxToolCall(PROBE, { changes: [{ path: "$", value: JSON.stringify(accepted) }] }),
+        toolUse,
+      ),
+      defect([1]),
+      fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: SPAN, value: "9" }] }), toolUse),
+      defect([1]),
+      fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: SPAN, value: "10" }] }), toolUse),
+      defect([2]),
+    ]);
+    failed(s.record);
+    s.record("task.feasible", { version: "v-1", answer: accepted });
+    s.record("verdict", { solve: "s-0", task: TASK.taskId, kind: "pass", answer: { span: 8, members: [] } });
+    expect(await referee(s.reader, fail(s))).toMatchObject({ ruling: "check-defect", probes: [2] });
+    const refused = read(s.log).filter(({ kind }) => kind === "referee.refused");
+    expect(refused).toHaveLength(2);
+    expect(refused[1]?.data.why).toContain("accepted answer");
+    expect(read(s.log).at(-1)?.data.probeRows).toMatchObject([
+      { id: 1, changes: [{ path: SPAN, value: "9" }] },
+      { id: 2, changes: [{ path: SPAN, value: "10" }] },
+    ]);
+  });
+
   it("ends a reading at its wall, and says so in the finding", async () => {
     // The replay is the host's and runs before the reading; the probe's second run outlasts the wall.
     const s = setup([
-      fauxAssistantMessage(fauxToolCall("probe_check", { path: SPAN, value: "10" }), toolUse),
+      fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: SPAN, value: "10" }] }), toolUse),
       ruling({ ruling: "earned", rule: "R1", field: SPAN, reason: "Too late.", probes: [1] }),
     ]);
     failed(s.record);
     let runs = 0;
-    const slow = async (task: Task, answer: JsonValue | undefined): Promise<Verdict> => {
+    const signals: (AbortSignal | undefined)[] = [];
+    const slow = async (
+      task: Task,
+      answer: JsonValue | undefined,
+      signal?: AbortSignal,
+    ): Promise<Verdict> => {
       runs += 1;
-      if (runs > 1) await Bun.sleep(400);
+      signals.push(signal);
+      if (runs > 1) {
+        if (signal === undefined) return { kind: "non-result", reason: "the verifier was not cancellable" };
+        const stopped = Promise.withResolvers<Verdict>();
+        const stop = () => stopped.resolve({ kind: "non-result", reason: "the verifier was cancelled" });
+        signal.addEventListener("abort", stop, { once: true });
+        if (signal.aborted) stop();
+        try {
+          return await stopped.promise;
+        } finally {
+          signal.removeEventListener("abort", stop);
+        }
+      }
       return verify(task, answer);
     };
     const finding = await referee({ ...s.reader, wallSeconds: 0.05 }, { ...fail(s), verify: slow });
     expect(finding.ruling).toBe("unclear");
     expect(read(s.log).at(-1)?.data).toMatchObject({ walled: true, ruling: "unclear" });
+    expect(signals.at(-1)?.aborted).toBe(true);
   });
 
   it("leaves the fail unclear when the reader never rules", async () => {

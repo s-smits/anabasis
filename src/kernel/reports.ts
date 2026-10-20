@@ -17,6 +17,8 @@
  *
  * The stop rule is the plan's: as many moves in a row that could have shown a gain and showed none
  * as the campaign's patience (`stopRule`, `patienceOf`).
+ * The Referee triage of 20 October found unresolved practice rejections counted as failures;
+ * those are set aside here too, rather than evidence that a Builder declined an established fail.
  *
  * Nothing here decides a comparison or makes a solve.
  */
@@ -24,7 +26,7 @@ import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from ".
 import { closedTo, draw, objectiveRuleIn, type Paired, pairsOf, tally } from "./compare.ts";
 import type { LogEvent } from "./log.ts";
 import { providerFailed, windowEnded } from "./solve.ts";
-import { passed, practiceRan, ranUnder } from "./solves.ts";
+import { passed, practiceRan, ranUnder, rejectionAside } from "./solves.ts";
 import { taskSets } from "./task.ts";
 
 /** A session or a solve that began and has no end on record: what kind of start and its id, the
@@ -329,7 +331,11 @@ export function stopRule(events: readonly LogEvent[]) {
     if (data.changed !== false || CUT.has(data.ended)) continue;
     const from = began.get(data.session) ?? -1;
     const shown = practised.some(
-      ({ started, ending }) => started > from && started < index && ending?.outcome === "fail",
+      (solve) =>
+        solve.started > from &&
+        solve.started < index &&
+        solve.ending?.outcome === "fail" &&
+        !rejectionAside(events, solve),
     );
     if (shown) idle.push({ index, step: false });
   }

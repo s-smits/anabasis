@@ -75,6 +75,7 @@ function solvedUnder(comparison: string | undefined, ran: Condition, valid: read
               : { outcome: "fail", kind: each === false ? "rejected" : each },
           billed: 2,
         }),
+        ...(each === false ? [event("referee.finding", { solve, ruling: "earned" })] : []),
       ];
     }),
   ];
@@ -198,6 +199,16 @@ describe("the stop rule", () => {
     session(id, "h2", { changed: false, ...more }),
   ];
   const two = [...sessions, flat("b-1", "h2"), flat("b-2", "h3")];
+
+  it("counts no idle move on an unresolved practice rejection", () => {
+    for (const ruling of ["unclear", "check-defect", null] as const) {
+      const log = idle("b-1", [false]);
+      const solve = log.find(({ kind }) => kind === "solve.started")?.data.solve;
+      expect(stopRule([...log, event("referee.finding", { solve: solve ?? "", ruling })])).toEqual(
+        counted(0, 0),
+      );
+    }
+  });
 
   it("counts a cut Builder's harness only where it was frozen at a checkpoint before the cut, and a checkpoint whatever the session leaves later", () => {
     for (const ended of ["killed", "crashed"]) {

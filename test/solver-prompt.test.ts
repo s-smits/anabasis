@@ -10,7 +10,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { openDesk, publicResource, submitTool } from "../src/solve/answer.ts";
 import { codingTools, fileTools } from "../src/solve/coding-tools.ts";
-import { type CommandWall, solveDirs } from "../src/solve/command.ts";
+import { type CommandWall, heldSeconds, solveDirs } from "../src/solve/command.ts";
 import { firstTurn, seedHome, systemPrompt, type Told } from "../src/solve/prompt.ts";
 
 const CONTRACT: Contract = {
@@ -55,7 +55,7 @@ const ENVIRONMENT = [
   "- The working directory is your home directory, $HOME, kept for the whole task. Of what it holds, only answer.json is read as your answer, and only when you submit.",
   "- Commands and the file tools can write the home directory and $TMPDIR, which is kept for the whole task as the home is; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. They can read the host's toolchains and public runtime roots, but no repository or private data.",
   "- Commands have network access: a package index was reached from inside the command wall when this process started, so a toolchain or package can be installed into the home directory. sh, bun, node, python3 and the system C and C++ compilers run, with versions and libraries that differ by host.",
-  "- A command runs for at most 300 seconds unless it names a longer timeout, and 900 seconds is the longest it may name. One that would run into the last 60 seconds of the solve time is cut there, so that its result still reaches you.",
+  "- A command runs for at most 300 seconds unless it names a longer timeout, and 900 seconds is the longest it may name. One that would run into the last 60 seconds of the solve time is cut there, so that its result still reaches you; one started within those last 60 seconds keeps its own limit, and the end of the solve stops it.",
   "- Nothing a command starts runs on after it returns: a background job ends with the command that started it.",
 ];
 
@@ -87,6 +87,17 @@ const TOLD: Told = {
   programs: [],
   network: "reached",
 };
+
+/** The command rule's numeric facts, independent of the prose around them. */
+function commandLimits(prompt: string): number[] {
+  return (
+    prompt
+      .split("\n")
+      .find((line) => line.startsWith("- A command "))
+      ?.match(/\d+/g)
+      ?.map(Number) ?? []
+  );
+}
 
 describe("the solver's system prompt", () => {
   it("says that nothing can be installed where the wall's commands reached no package index", () => {
@@ -160,12 +171,8 @@ describe("the solver's system prompt", () => {
       limits: { shellDefaultSeconds: 30, shellMaxSeconds: 60 },
       programs: ["pynite-python", "python3", "f2py"],
     });
-    expect(prompt).toContain(
-      "- A command runs for at most 30 seconds unless it names a longer timeout, and 60 seconds is the longest it may name. One that would run into the last 60 seconds of the solve time is cut there,",
-    );
-    expect(systemPrompt({ ...TOLD, wallSeconds: 300 })).toContain(
-      "into the last 37 seconds of the solve time",
-    );
+    expect(commandLimits(prompt)).toEqual([30, 60, 60, 60]);
+    expect(commandLimits(systemPrompt({ ...TOLD, wallSeconds: 300 }))).toEqual([300, 900, 37, 37]);
     expect(prompt).toEndWith(
       "- Programs this harness installed run by name: pynite-python, python3, f2py.\n</environment>",
     );
@@ -173,6 +180,21 @@ describe("the solver's system prompt", () => {
     expect(systemPrompt({ ...TOLD, programs: many })).toEndWith(
       ", tool-20, and 3 more on PATH.\n</environment>",
     );
+  });
+
+  it("states the command limit the runner applies before, at and inside the reserve", () => {
+    // Until 20 October the prompt left out a command started inside the reserve, which keeps its
+    // own limit: four whole-run investigations read the sentence as a promise the runner breaks.
+    const [ordinary = NaN, , reserve = NaN] = commandLimits(systemPrompt({ ...TOLD, wallSeconds: 480 }));
+    const held = (used: number) =>
+      heldSeconds(
+        undefined,
+        { limits: TOLD.limits, clock: { started: 1_000_000 - used * 1000, seconds: 480 } },
+        1_000_000,
+      ).seconds;
+    expect(held(400)).toBe(480 - reserve - 400);
+    expect(held(480 - reserve)).toBe(ordinary);
+    expect(held(470)).toBe(ordinary);
   });
 });
 

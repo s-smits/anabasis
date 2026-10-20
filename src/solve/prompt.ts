@@ -88,7 +88,8 @@ function duty({ wallSeconds, limits, resources, guide }: Told): string {
 }
 
 /** What the command wall is, as facts: each one something a solver would otherwise find out by
- *  running into it. */
+ *  running into it. The reserve claim omitted commands begun inside it, found by the whole-run
+ *  investigations of six campaigns on 20 October 2026; heldSeconds' rule is stated here alone. */
 function environment({ limits, programs, wallSeconds, network }: Told): string {
   const rest = programs.length - LISTED_PROGRAMS;
   const listed =
@@ -99,7 +100,7 @@ function environment({ limits, programs, wallSeconds, network }: Told): string {
     network === "reached"
       ? "Commands have network access: a package index was reached from inside the command wall when this process started, so a toolchain or package can be installed into the home directory. sh, bun, node, python3 and the system C and C++ compilers run, with versions and libraries that differ by host."
       : "Commands have no network access: a package index could not be reached from inside the command wall when this process started, so nothing can be installed, and what the host and this harness hold is all there is. sh, bun, node, python3 and the system C and C++ compilers run, with versions and libraries that differ by host.",
-    `A command runs for at most ${String(limits.shellDefaultSeconds)} seconds unless it names a longer timeout, and ${String(limits.shellMaxSeconds)} seconds is the longest it may name. One that would run into the last ${String(reserveSeconds(wallSeconds))} seconds of the solve time is cut there, so that its result still reaches you.`,
+    `A command runs for at most ${String(limits.shellDefaultSeconds)} seconds unless it names a longer timeout, and ${String(limits.shellMaxSeconds)} seconds is the longest it may name. One that would run into the last ${String(reserveSeconds(wallSeconds))} seconds of the solve time is cut there, so that its result still reaches you; one started within those last ${String(reserveSeconds(wallSeconds))} seconds keeps its own limit, and the end of the solve stops it.`,
     "Nothing a command starts runs on after it returns: a background job ends with the command that started it.",
     ...(programs.length === 0 ? [] : [`Programs this harness installed run by name: ${listed}.`]),
   ]

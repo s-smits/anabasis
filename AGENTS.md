@@ -963,7 +963,11 @@ reading at a shorter budget would describe a solver that was told the longer one
 - how each harness did on its own (`valid`: on how many tasks every solve, some or none were
   valid);
 - which tasks entered each of its two sets;
-- its overlap with the previous comparison of the same two harnesses.
+- its overlap with the previous comparison of the same two harnesses;
+- where the contract declares an objective, the median relative gain by it on the frontier tasks
+  the new harness won, over those with a valid measure on both sides (`objectiveGain`): a pair
+  keeps only the sign of a difference, so this gives a step's size. The closing report prints it
+  beside each promotion's tally, and nothing decides on it.
 
 Beside every comparison of four solves per side stands the reference read against itself, on
 halves of its own solves mirrored in time. It should read no step; its tie share is the noise every

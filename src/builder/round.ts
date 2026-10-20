@@ -132,6 +132,7 @@ import {
   startOf,
   toLabel,
   UNSETTLED,
+  wrongAsFailed,
 } from "./comparison.ts";
 import { type BuildRequest, type Built, type Practised, sessionOnce } from "./session.ts";
 
@@ -687,7 +688,8 @@ export async function round(request: RoundRequest): Promise<Report> {
  * of the same rejection. A task whose rejections then all stand as earned is restored to the tally.
  * One labelled a check defect disputes its task, which leaves every comparison from then on. One
  * labelled unclear, and one set aside on a rejection the packet did not draw, stays out of this
- * comparison. `passes` holds a person's word a drawn answer that passed, which changes no tally.
+ * comparison. `passes` holds a person's word on a drawn answer that passed: one labelled wrong
+ * counts as its side's fail, as an earned rejection does, and sound or unclear change nothing.
  * The tests are read again from the same solves and logged as the comparison's last report, with
  * what was settled and the labels themselves. Run again with the same labels it returns that
  * report. A comparison is settled once: other labels for one already settled are refused.
@@ -751,7 +753,8 @@ export function settleReading(
     const version = versionOf.get(solve) ?? "";
     return dispute(log, id, version, { solve, reason }) ? [version] : [];
   });
-  const found = compared(read(log), fixed, labels);
+  const failed = wrongAsFailed(read(log), labels, Object.fromEntries(passes));
+  const found = compared(failed.events, fixed, failed.labels);
   const settled: Report = {
     old: report.old,
     fresh: report.fresh,

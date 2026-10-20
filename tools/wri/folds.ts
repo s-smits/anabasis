@@ -78,7 +78,6 @@ export interface Build {
   readonly from: number;
   until: number;
   readonly parent: string;
-  readonly practice: ReadonlySet<string>;
   finished: JsonObject | null;
   readonly calls: Call[];
 }
@@ -210,8 +209,9 @@ export const items = (value: JsonValue | undefined): readonly JsonValue[] =>
   Array.isArray(value) ? value : [];
 export const strings = (value: JsonValue | undefined): string[] => items(value).filter(isString);
 export const short = (digest: string): string => digest.slice(0, 8);
-/** Whether a solve measured its harness: a non-result is in no pair, and a rerun replaced it. */
-export const measured = (solve: Solve): boolean => solve.outcome === "pass" || solve.outcome === "fail";
+/** Whether a solve measured its harness: a non-result is in no pair, and a rerun replaced it. A
+ *  solver's flag is its side's own fail, as the comparison counts it. */
+export const measured = (solve: Solve): boolean => ["pass", "fail", "flagged"].includes(solve.outcome ?? "");
 export const share = (part: number, whole: number): string => `${String(part)} of ${String(whole)}`;
 export const percent = (part: number): string => `${(part * 100).toFixed(1)}%`;
 export const fired = (name: keyof typeof TRIGGERS, detail: string): Trigger => ({
@@ -290,7 +290,6 @@ function buildsOf(events: readonly LogEvent[]): Build[] {
         from: index,
         until: events.length,
         parent: text(data.parent),
-        practice: new Set(strings(data.tasks)),
         finished: null,
         calls: [],
       });
@@ -429,15 +428,20 @@ function refusals(log: Index): Solve[] {
   });
 }
 
-/** A Builder session's practice solves: the test-side solves of its practice tasks made in its own
- *  window of the log. */
+/** A Builder session's practice solves: the test-side solves of released tasks made in its own window
+ *  of the log that name no comparison, as the kernel reads practice (`practiceRan`). Until 20 October
+ *  they were the solves of the tasks its start named, and a led conversation goes on while its
+ *  campaign releases more: r3's b-1 opened on 1 task and practised 24 solves, of which that set
+ *  counted 5. */
 export function practiceOf(log: Index, build: Build): Solve[] {
+  const released = new Set(log.released);
   return log.solves.filter(
     (solve) =>
       solve.index > build.from &&
       solve.index < build.until &&
       solve.side === TEST &&
-      build.practice.has(solve.version),
+      solve.comparison === null &&
+      released.has(solve.version),
   );
 }
 

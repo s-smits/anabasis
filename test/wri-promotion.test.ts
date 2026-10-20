@@ -7,6 +7,7 @@ import { describe, expect, it } from "bun:test";
 import { type Condition, conditionId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
+import { keyIfNotNull } from "../src/meta/optional-key.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { climbTable, crossings, safeguardTriggers } from "../tools/wri/climb.ts";
 import { indexOf, type TRIGGERS } from "../tools/wri/folds.ts";
@@ -66,12 +67,12 @@ function campaign() {
     host: "host-1",
     side: "test",
   });
-  /** One solve of `task` under `harness` in `comparison`, its commands as given. */
+  /** One solve of `task` under `harness` in `comparison`, or in practice for null, its commands as given. */
   const solve = (
     id: string,
     task: string,
     harness: string,
-    comparison: string,
+    comparison: string | null,
     commands: readonly string[],
   ) => {
     const ran = condition(task, harness);
@@ -80,7 +81,7 @@ function campaign() {
       solve: id,
       condition: conditionId(ran),
       limits: { wallSeconds: 480 },
-      comparison,
+      ...keyIfNotNull("comparison", comparison),
     });
     for (const [turn, command] of commands.entries()) {
       put("solve.call", { solve: id, turn, tool: "bash", args: { command }, isError: false });
@@ -267,6 +268,7 @@ describe("lane 31: a promotion and the climb after it", () => {
     // 10 October, which a reader that folded the stretch alone refused as never proposed.
     put("task.state", { version: "v5", state: "released" });
     put("build.started", { session: "b-2", parent: "hn", tasks: ["t1", "v5"] });
+    for (const version of ["t1", "v5"]) run.solve(`q-${version}`, version, "hn", null, []);
     put("build.finished", { session: "b-2", ended: "finished", harness: "hm", changed: true });
     compare("g-4", "hn", "hm", STEP);
     expect(triggered(run.log)("AFTER THE PROMOTION")).toEqual([

@@ -26,6 +26,7 @@ import {
   type Index,
   items,
   measured,
+  practiceOf,
   share,
   short,
   spendOf,
@@ -258,8 +259,9 @@ function afterTrigger(log: Index, { at, until, data }: Epoch, starter: string): 
   const builds = log.builds
     .filter((build) => within(build.from))
     .map((build) => {
-      const fresh = [...build.practice].filter((version) => proposed.has(version)).length;
-      return `${build.session} from ${build.parent === promoted ? "the promoted harness" : short(build.parent)}, practising ${String(build.practice.size)} (${String(fresh)} written since the promotion)`;
+      const practised = new Set(practiceOf(log, build).map((solve) => solve.version));
+      const fresh = [...practised].filter((version) => proposed.has(version)).length;
+      return `${build.session} from ${build.parent === promoted ? "the promoted harness" : short(build.parent)}, practising ${String(practised.size)} (${String(fresh)} written since the promotion)`;
     });
   // After a promotion the table reads the budget rule again on the promoted harness's own solves
   // (`noRoom`, `src/builder/decide.ts`): a setting here is that rule's move.

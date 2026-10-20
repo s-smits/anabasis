@@ -368,11 +368,15 @@ const releaseTool = (context: CampaignContext, bench: Bench): AgentTool =>
       ...(["solves", "level"] as const).flatMap((name) => flag(name, values[name])),
     ]);
     if (result !== 0) throw new Error("the practice release was refused");
-    begin({});
     await refreshCampaign(context, bench);
-    return {
-      said: `Practice release completed: ${String(taskSets(read(context.log)).released.length)} tasks available.`,
-    };
+    const released = taskSets(read(context.log)).released.length;
+    // A release that took nothing is no move (AGENTS.md, section 4): until 20 October it was
+    // recorded and counted, and a conversation of such calls never read as idle.
+    if (released === taskSets(events).released.length) {
+      return { refused: `No practice task can be released now: ${String(released)} tasks available.` };
+    }
+    begin({});
+    return { said: `Practice release completed: ${String(released)} tasks available.` };
   });
 
 /**

@@ -320,9 +320,8 @@ describe("a campaign run by its live Builder", () => {
     const at = (kind: string) => kinds.indexOf(kind);
     // A release spends nothing and goes on beside the session: until 19 October it waited for it,
     // and each of three replicates' Builders waited 1.6 to 2.6 hours with no practice task.
-    const released = read(log).findIndex(
-      ({ kind, data }, index) => kind === MOVED && data.move === "prepare" && index > at("exam.started"),
-    );
+    // Read by its call: a release that takes nothing is answered too, and writes no move.
+    const released = at(`${CALLED}:release_practice`);
     expect(released).toBeGreaterThan(at("exam.started"));
     expect(released).toBeLessThan(at(EXAMINED));
     expect(at("exam.started")).toBeLessThan(at(`${CALLED}:practice`));
@@ -508,9 +507,10 @@ describe("a campaign run by its live Builder", () => {
                 'mkdir -p "$HOME/fixtures/links"; printf LINK-CANARY > "$HOME/fixtures/links/kept.json"; first=$(ls "$HOME/practice" | head -1); ln -sf "$HOME/fixtures/links/kept.json" "$HOME/practice/$first"',
             },
           ],
-          ["examine", {}],
-          ["bash", { command: 'cat "$HOME/fixtures/links/kept.json"' }],
+          // A release that takes nothing is no move, and it lays the practice out again all the same.
           ["release_practice", {}],
+          ["bash", { command: 'cat "$HOME/fixtures/links/kept.json"' }],
+          ["examine", {}],
           ["finish", { note: "The host's move limit should stop before this call." }],
         ],
       ),
@@ -524,13 +524,14 @@ describe("a campaign run by its live Builder", () => {
         }),
     };
     await harnessBuilder(
-      [...seeded(name), "--target", "5", "--practice", "2", ...LEVEL, "--moves", "4"],
+      [...seeded(name), "--target", "5", "--practice", "2", ...LEVEL, "--moves", "3"],
       seats,
     );
     const shells = of(name, CALLED).filter(({ tool }) => tool === "bash");
     expect(shells).toHaveLength(2);
     expect(shells[1]?.text).toContain("LINK-CANARY");
-    expect(of(name, MOVED)).toHaveLength(5);
+    // The examine is the last permitted move; the conversation is a move that `--moves` does not count.
+    expect(of(name, MOVED)).toHaveLength(4);
     expect(of(name, CALLED).some(({ tool }) => tool === "finish")).toBe(false);
   });
 

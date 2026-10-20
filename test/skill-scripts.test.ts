@@ -5,7 +5,7 @@ import { CommandFailure } from "#skills/main/cli.ts";
 import { gitText } from "#src/meta/git.ts";
 import { bundle } from "#skills/oracle-handover/scripts/bundle.ts";
 import { follow, type NativeStack, nativeTop } from "#skills/stack-pr/scripts/follow.ts";
-import { readingOf, told as seatTold } from "#skills/system-path-simulation/scripts/live-seat.ts";
+import { newsOf, readingOf, told as seatTold } from "#skills/system-path-simulation/scripts/live-seat.ts";
 import { chain, told as stackTold } from "#skills/stack-pr/scripts/stack.ts";
 import type { Pull } from "#tools/runtime/land.ts";
 import {
@@ -319,6 +319,7 @@ describe("a live seat's reading", () => {
     expect(reading.proposed).toBe(2);
     expect(reading.gates).toStrictEqual({ every: 1, some: 2, "none, proved": 1, package: 1, unread: 1 });
     expect(reading.held).toBe(2);
+    expect(reading.ran).toStrictEqual([3, 3, 3, 3, 1]);
     expect(reading.calls).toStrictEqual({ bash: 1, try_task: 1 });
     expect(reading.mentions).toStrictEqual({ "reference-harness": 1 });
     expect(reading.turns).toBeNull();
@@ -345,5 +346,48 @@ describe("a live seat's reading", () => {
       expect(decodeOutput(result.stderr)).toContain("is no seed");
     }
     expect(existsSync(join(root, "seat-out.json"))).toBe(false);
+  });
+
+  it("tells each gate, ruling and session end once, and a hook only while something is unread", () => {
+    expect(newsOf(read(log), 3)).toStrictEqual([
+      "gate refused, every",
+      "gate refused, some",
+      "gate passed, some",
+      "gate passed, none, proved",
+      "gate refused, package",
+      "gate refused, unread",
+      "x-2 ended finished",
+    ]);
+    const folder = join(root, "due", ".ana", "d2", "sim-due");
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, "log.jsonl"), readFileSync(log, "utf8"));
+    const seat = join(root, "due-seat");
+    writeFileSync(
+      `${seat}.json`,
+      JSON.stringify({ tree: join(root, "due"), name: "sim-due", from: 3, pid: null }),
+    );
+    const script = join(import.meta.dir, "..", ".claude/skills/system-path-simulation/scripts/live-seat.ts");
+    const first = runSync([capturedExecPath, script, "due", seat, "--hook"]);
+    expect(first.exitCode).toBe(2);
+    expect(decodeOutput(first.stderr)).toContain("due-seat: x-2 ended finished");
+    const again = runSync([capturedExecPath, script, "due", seat, "--hook"]);
+    expect(again.exitCode).toBe(0);
+    expect(decodeOutput(again.stderr)).toBe("");
+  });
+
+  it("seats the Referee only on a seed, before it opens any campaign", () => {
+    const script = join(
+      import.meta.dir,
+      "..",
+      ".claude/skills/system-path-simulation/scripts/referee-seat.ts",
+    );
+    const flags = ["--solve", "s-1", "--reviewer", "claude/claude-opus-5-5"];
+    mkdirSync(join(root, "tree"), { recursive: true });
+    const result = runSync([capturedExecPath, script, "--name", "buffer", ...flags], {
+      cwd: join(root, "tree"),
+    });
+    expect(result.exitCode).not.toBe(0);
+    expect(decodeOutput(result.stderr)).toContain("is no seed");
+    expect(existsSync(join(root, "tree", ".ana", "d2", "buffer"))).toBe(false);
   });
 });

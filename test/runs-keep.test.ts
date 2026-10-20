@@ -2,7 +2,7 @@
 import { describe, expect, it } from "bun:test";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
-import { nextLogin, type Turn, turnOf } from "../tools/runs/keep.ts";
+import { nextLogin, seatModels, type Turn, turnOf } from "../tools/runs/keep.ts";
 import { allowedLogins, type Reading, room } from "../tools/runs/logins.ts";
 
 const NOW = Date.parse("2026-10-15T12:00:00.000Z");
@@ -83,9 +83,9 @@ describe("the login a run goes on with", () => {
   const goOn = (
     turn: Turn,
     current: string | undefined,
-    flags: readonly string[],
+    models: readonly string[],
     { spent = [], roomy = [] }: { spent?: readonly string[]; roomy?: readonly string[] } = {},
-  ) => nextLogin(turn, { current, spent: new Set(spent), flags }, async () => roomy, ["3", "1", "2"]);
+  ) => nextLogin(turn, { current, spent: new Set(spent), models }, async () => roomy, ["3", "1", "2"]);
 
   it("goes on with a dead run on its own login, and a Claude run waits once its own is spent and none has room", async () => {
     expect(await goOn("continue", "2", claude)).toBe("2");
@@ -97,5 +97,19 @@ describe("the login a run goes on with", () => {
     expect(await goOn("continue", undefined, codex)).toBe("3");
     expect(await goOn("continue", "2", codex, { spent: ["2"] })).toBe("2");
     expect(await goOn("continue", undefined, claude)).toBeNull();
+  });
+
+  it("reads a Claude seat from a flag joined by its sign, and from the opening the flags leave it to", async () => {
+    const codexOpening = event("campaign.opened", {
+      seats: { builder: { model: "openai-codex/gpt-6.1-sol", effort: "high" } },
+    });
+    const claudeOpening = event("campaign.opened", {
+      seats: { builder: { model: "claude/claude-opus-5-5", effort: "high" } },
+    });
+    expect(
+      await goOn("continue", undefined, seatModels([codexOpening], ["--builder=claude/claude-opus-5-5"])),
+    ).toBeNull();
+    expect(await goOn("continue", undefined, seatModels([claudeOpening], ["--budget", "800"]))).toBeNull();
+    expect(await goOn("continue", undefined, seatModels([codexOpening], ["--budget", "800"]))).toBe("3");
   });
 });

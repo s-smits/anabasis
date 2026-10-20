@@ -71,7 +71,7 @@ describe("the runs pulse", () => {
     expect(gone.said).toEqual(["⚠ the process is gone before comparison.reported"]);
     const reported = [...built, event(5, "comparison.reported", { reading: "held" })];
     const done = pulse(round, reported, "closed", { lines: 5, open: true, quiet: false }, START + 6 * 60_000);
-    expect(done.status).toStartWith("r1  reported held");
+    expect(done.status).toStartWith("r1  closed, reported held");
     expect(done.said).toEqual(["◆ reported held"]);
     // An Examiner session writes no report: its own end is the run's, and a round's report before it
     // is not.
@@ -137,6 +137,9 @@ describe("the runs pulse", () => {
     // Gone with that solve unfinished and no report of its own, it is said to be gone.
     const gone = pulse(round, solving, "closed", seen, START + 9 * 60_000);
     expect(gone.status).toStartWith("r1  closed");
+    // A solve its dead process never finished is unfinished, and running only while a writer lives.
+    expect(gone.status).toContain("1 unfinished");
+    expect(gone.status).not.toContain("running");
     expect(gone.said).toEqual(["⚠ the process is gone before comparison.reported"]);
     // Its own report ends it.
     const ended = [
@@ -145,7 +148,7 @@ describe("the runs pulse", () => {
       event(9, "comparison.reported", { session: "g0", reading: "not-scored", capped: true }),
     ];
     const done = pulse(round, ended, "closed", { ...seen, lines: 10 }, START + 10 * 60_000);
-    expect(done.status).toStartWith("r1  reported not-scored");
+    expect(done.status).toStartWith("r1  closed, reported not-scored");
     expect(done.said).toEqual([]);
   });
 
@@ -169,7 +172,7 @@ describe("the runs pulse", () => {
       event(5, "comparison.reported", { session: "g0", reading: "step" }),
     ];
     expect(pulse(round, ended, "closed", { ...seen, lines: 6 }, START + 6 * 60_000).status).toStartWith(
-      "r1  reported step",
+      "r1  closed, reported step",
     );
   });
 

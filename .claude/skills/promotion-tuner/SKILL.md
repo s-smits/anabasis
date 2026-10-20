@@ -54,8 +54,9 @@ For each pair of harnesses, old digest first, the script prints:
   reading that lost more tasks than it won; `in doubt` with those reasons; or `added by this
   rule` for a pair the campaign did not promote. Inspect the A/A and later readings beside an
   added pair too.
-- Each unsuccessful attempt and its shortfall. The current rule reports a frontier short of
-  its level or retained tasks that regressed. Older two-stage trees report whether a repeat
+- Each unsuccessful attempt and its shortfall. The current rule reports a scored set, frontier
+  and retained tasks read in one test, short of its level; a tree of 12 to 20 October may also
+  report retained tasks that regressed. Older two-stage trees report whether a repeat
   was bought, whether it was taken, and whether the joined reading cleared the level.
   `NOT PROMOTED by this rule` marks a recorded promotion the selected rule rejects.
 - The untied frontier tasks won in every pairing, won in some, and lost. This count changes

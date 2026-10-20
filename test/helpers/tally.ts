@@ -1,5 +1,5 @@
 // A report's tallies as a comparison writes them since 12 October, for tests that write reports by
-// hand: the step is read on the frontier's differences in pair wins (`compare.ts`, `stageOf`).
+// hand: the step is read on the frontier and retained differences in pair wins together (`compare.ts`, `stepOf`).
 
 /**
  * The tallies of a report whose scored set is all frontier, each task won or lost by one pair:

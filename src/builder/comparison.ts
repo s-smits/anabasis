@@ -44,7 +44,8 @@ import { type Worth, worthOf } from "./climb.ts";
  * one clearing its level. A comparison that tallied no task is named apart: it tested nothing,
  * and `no-step` would say a test was made and found no gain. Eight rounds of 8 October scored no
  * task and read `no-step` eight times. `check-defects` is the comparison stopped on its check
- * defects, and `no-change` a session that left nothing new to compare.
+ * defects, and `no-change` a session that left nothing new to compare. `regressed` is a report's
+ * of 12 to 20 October, when the retained tasks were a second test (`stepOf`, `compare.ts`).
  *
  * A report written before 11 October may hold `below-starter` or `starter-unread` and an
  * `against`: readings of a third arm that solved the starter on a step. The starter is now the
@@ -84,21 +85,24 @@ export interface Report {
   /** The new harness against the reference one, over `versions`: the tally and its test. `unsolved`
    *  counts the tied tasks no counted solve of either harness answered validly. The other ties are
    *  between valid answers, which is the share the plan's Phase 3 turns on. Null when nothing was
-   *  compared. */
-  readonly scored: (Tested & { readonly unsolved: number }) | null;
+   *  compared. The step is read on it (`stepOf`), with its `detectable` and `falseRate`, the test's
+   *  `power` at one half and never over the level. Before 20 October those two were the frontier's. */
+  readonly scored:
+    | (Tested & {
+        readonly unsolved: number;
+        readonly detectable?: number | null;
+        readonly falseRate?: number;
+      })
+    | null;
   /** Each harness by itself, over `versions`. Null when nothing was compared, and in a report
    *  written before 9 October. */
   readonly valid: Valid | null;
   /** The mean billed dollars of a counted solve under each harness; null where the log holds none. */
   readonly billed: { readonly old: number | null; readonly fresh: number | null } | null;
-  /** The step's own set: the scored tasks not exhausted, where the step is read; the least share
-   *  of its untied tasks one reading detects four times in five (`detectable`); and the chance that
-   *  a reading at its margins reads a step between equal harnesses, which is never over the level
-   *  (`falseRate`, the test's `power` at one half; until 19 October the two-stage rule's rate of a
-   *  step and its repeat). Null when nothing was compared. */
-  readonly frontier: (Entered & { readonly detectable: number | null; readonly falseRate: number }) | null;
-  /** The exhausted tasks the draw keeps, where a step may not lose more pairs than it wins;
-   *  `unmeasured` where none was tallied, never no loss (`compare.ts`). */
+  /** The scored tasks not exhausted. Null when nothing was compared. */
+  readonly frontier: (Entered & { readonly detectable?: number | null; readonly falseRate?: number }) | null;
+  /** The exhausted tasks the draw keeps, read in the one test with the frontier and reported apart,
+   *  so a loss on them shows; `unmeasured` where none was tallied, never no loss (`compare.ts`). */
   readonly retained: Entered | typeof UNMEASURED | null;
   /** Each family's tallies on the two sets, from the same rows, so they sum to the whole. They show
    *  concentration; a family name can hide correlated tasks, and they establish no independence. */
@@ -336,8 +340,8 @@ export function rejections(events: readonly LogEvent[], fixed: Fixed, labels: Re
 }
 
 /**
- * The two sets a comparison's start fixed, as its tallied `pairs` fill them: the frontier, where
- * the step is read, and the retained tasks, each with the tasks that entered it and those of
+ * The two sets a comparison's start fixed, as its tallied `pairs` fill them, which the step reads
+ * as one: the frontier and the retained tasks, each with the tasks that entered it and those of
  * `aside` in it, and each family's tallies on both, from the same rows. A retained set no task
  * was tallied in is unmeasured, never no loss.
  */
@@ -405,7 +409,6 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
   const pairs = kept(first.pairs);
   const aside = live.filter((task) => open.has(task));
   const sets = setsOf(all, fixed, pairs, aside);
-  const { frontier } = sets;
   /** The reference against itself on halves of the test's own solves (`Sides`, `halves`), over
    *  the tallied tasks and no other: until 14 October it read every live task, so a task short on
    *  the new side alone stood in the A/A and not in the tally, and its printed count was neither. */
@@ -422,13 +425,15 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
   const valid = validOf(pairs, fixed.solves, poolOf(events));
   // The step is read off the sets as a report holds them, which is how it is read again (`stepOf`).
   const reading = pairs.length === 0 ? ("not-scored" as const) : stepOf(asRecord(sets) ?? {}, fixed.level);
+  const tested = scored(pairs);
   return {
-    scored: { ...scored(pairs), unsolved: pairs.filter(unsolved).length },
-    frontier: {
-      ...frontier,
-      detectable: detectable(frontier.differences, fixed.level),
-      falseRate: power(frontier.differences, 0.5, fixed.level),
+    scored: {
+      ...tested,
+      unsolved: pairs.filter(unsolved).length,
+      detectable: detectable(tested.differences, fixed.level),
+      falseRate: power(tested.differences, 0.5, fixed.level),
     },
+    frontier: sets.frontier,
     retained: sets.retained,
     families: sets.families,
     overlap: overlapOf(all, fixed),

@@ -277,6 +277,28 @@ describe("what a comparison came to", () => {
     }
   });
 
+  test("reads the test's power off the frontier in a report written before 20 October, which holds none on its scored set", async () => {
+    const { root, dir } = copy();
+    const path = join(dir, "log.jsonl");
+    // b-1's report as one of before: `detectable` and `falseRate` on its frontier alone.
+    const older = (line: string) => {
+      const event = parseJsonAs<{ kind: string; data: JsonObject }>(line);
+      const { scored, frontier } = event.data;
+      if (event.kind !== "comparison.reported" || event.data.session !== "b-1") return line;
+      const { detectable, falseRate, ...rest } = asRecord(scored) ?? {};
+      const moved = { ...asRecord(frontier), detectable: 0.9, falseRate: 0.03 };
+      expect([detectable, falseRate].every((value) => value !== undefined)).toBe(true);
+      return capturedJsonStringify({ ...event, data: { ...event.data, scored: rest, frontier: moved } });
+    };
+    const lines = readFileSync(path, "utf8").split("\n");
+    writeFileSync(path, lines.map((line) => (line === "" ? line : older(line))).join("\n"));
+    const key = `${root.split("/").at(-1) ?? ""}/${fixture.name}`;
+    const detail = (await ask("move", { key, move: await placeOf("comparison", "b-1") }, "default", root))
+      .answer;
+    if (detail.kind !== "comparison") throw new Error("b-1 is a comparison");
+    expect(detail.sensitivity?.frontier).toMatchObject({ detectable: 0.9, falseRate: 0.03 });
+  });
+
   test("keeps every exhausted task among the retained, and both held out", async () => {
     const { answer } = await ask("tasks", { key: KEY }, "default");
     for (const row of answer.rows) {

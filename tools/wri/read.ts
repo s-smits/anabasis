@@ -55,7 +55,7 @@ import {
   type Trigger,
 } from "./folds.ts";
 import { safeguardTriggers } from "./climb.ts";
-import { promotionTriggers } from "./promotion.ts";
+import { promotionTriggers, testedOf } from "./promotion.ts";
 import { costTriggers, hoursLine, wallTriggers } from "./time.ts";
 
 export interface Row {
@@ -333,14 +333,13 @@ function testTriggers(session: string, last: JsonObject): Trigger[] {
   const level = count(last.level);
   // The least clean sweep that clears the report's level, by the report's own test.
   const sweep = level > 0 ? sweepOf(level) : undefined;
-  // The reading with its least win lost does not clear: it rests on a sweep. Read on the frontier's
-  // own margins where the report holds them; on a margin of one pair a task until 14 October, which
-  // said no result with a loss clears on eight tasks where buffer-149's margins let 7-1 clear 0.02.
-  const held = asRecord(last.frontier)?.differences;
+  // The reading with its least win lost does not clear: it rests on a sweep. Read on the margins
+  // its step tested where the report holds them (`testedOf`); on a margin of one pair a task until
+  // 14 October, which said no result with a loss clears on eight tasks where buffer-149's margins
+  // let 7-1 clear 0.02.
+  const held = testedOf(last).differences;
   const margins =
-    Array.isArray(held) && held.every(isNumber) && held.length > 0
-      ? held.filter((each) => each !== 0)
-      : Array.from({ length: informative }, () => 1);
+    held.length > 0 ? held.filter((each) => each !== 0) : Array.from({ length: informative }, () => 1);
   const least = margins.reduce(
     (low, each) => (each > 0 && each < low ? each : low),
     Number.POSITIVE_INFINITY,

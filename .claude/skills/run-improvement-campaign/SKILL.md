@@ -91,8 +91,8 @@ it predicts. Quiet between milestones is read against the limits of the work in 
 | M0 opened | receipt and `campaign.opened` | `runs source`: one commit, clean; fresh opening under section 10, item 9 | ledger written before the first solve | none |
 | M1 exam | `exam.drafted`, `checker.read`, `contract.frozen` | faults by kind, `doNothing`, `admitted`; within twenty minutes of M0 | frozen before `build.started` | none; assign an `exam` ending from its faults |
 | M2 supply | first Examiner sessions' `task.gate` | held and refused by reason, objective room, missing readings, dry run | held out of drafted, a range | none |
-| M3 first reading | first `comparison.reported` | `valid.informative.old`, frontier untied and tied, `frontier.detectable`, A/A, load | reading and untied count | only if a `read` trigger fires |
-| M4 step | `comparison.reported` with `reading: step` against the reference | frontier margins, retained tasks, A/A | untied count and A/A result | none |
+| M3 first reading | first `comparison.reported` | `valid.informative.old`, tested untied and tied, `scored.detectable`, A/A, load | reading and untied count | only if a `read` trigger fires |
+| M4 step | `comparison.reported` with `reading: step` against the reference | tested margins, the retained tally apart, A/A | untied count and A/A result | none |
 | M5 promotion | `harness.promoted` | supporting reading, untied tasks, A/A and campaign risk; `wri.ts climb --log <log> --with <peers>` | write M6 prediction now | first promotion, once M6's first Examiner session has ended |
 | M6 next epoch | first Examiner session and first comparison after M5 | drafts held and refused by reason, frontier and retained sizes, objective room | held out after M5 against before it | lane 31 with standing lanes, when owed at M5 |
 | M7 ending | `campaign.ended` | ending kind, closing report, resolve every prediction | every open row | full investigation where the campaign promoted or an early ending raises an unresolved question |
@@ -119,7 +119,7 @@ limits follow `AGENTS.md`, rule 15, and are no defect to fix. To act on a proved
 
 ## The walk: which link holds the next promotion
 
-Start from the milestone: M1 points to link 2; M2 and no room to links 1 and 3; `regressed` to 7;
+Start from the milestone: M1 points to link 2; M2 and no room to links 1 and 3; a retained loss to 7;
 a near miss to 5; promotion to 8. Walk from the first link and stop at the first failure.
 Links 1, 2 and 6 limit what the reading can establish.
 
@@ -129,7 +129,7 @@ Links 1, 2 and 6 limit what the reading can establish.
 | 2 | instrument | 4 | exam stands and rejections have rulings or labels | `checker.read`, `contract.frozen`, `referee.finding`, tasks set aside |
 | 3 | reference's room | 1 | the report finds informative tasks for the reference | `valid.informative.old`, `roomOf` |
 | 4 | session | 1 | Builder practised and changed something the solver uses | `build.*`, `harness.version`, practice verdicts |
-| 5 | size | 2 | frontier has enough untied tasks and power at its margins | `frontier`, `scored.unsolved`, `frontier.detectable` |
+| 5 | size | 2 | the tested set has enough untied tasks and power at its margins | `scored`, `scored.unsolved`, `scored.detectable` |
 | 6 | host | 2 | solve-start loads are read, including changes within a comparison | `HOST LOADED`, `LOAD MOVED`, `campaign.waited` |
 | 7 | promotion | 2 | comparison against reference reads `step` | `step` row, `harness.promoted`, `noise` |
 | 8 | next epoch | 1 | Examiner writes for the new reference and the tasks leave room | `harness.promoted`, subsequent `task.gate` and comparisons |
@@ -153,16 +153,17 @@ this walk chooses what to do about it.
    or a change the solver never uses. Owners: `systemPrompt`, `SAID`, `firstMessage`,
    `continuation` and `usedLine` in `src/builder/prompt.ts`; `campaignStatus` and campaign tools in
    `tools/d2/campaign-actions.ts`; `idleOf` in `tools/d2/campaign-terms.ts`; session and practice terms.
-5. **Size:** many frontier ties, a near miss, or a high `frontier.detectable`. `detectable` is the
+5. **Size:** many ties, a near miss, or a high `scored.detectable`. `detectable` is the
    least winning share detected four times in five at these margins, in hundredths. It is power,
    not another threshold for the observed tally. Owners: `--target` and `--solves` in the next fresh
    campaign; `settingAsked` fixes the recorded target. The lasting cure for ties is link 1.
 6. **Host:** `HOST LOADED`, `LOAD MOVED`, long waits or rising wall-ended solves. Read load before
    blaming the harness. Owner: the number of campaigns on that host; use the launch load rule.
-7. **Promotion:** `no-step` near the level, `regressed`, or an A/A step. Owners: supply and size
-   first. One `step` promotes (`stepOf`); until 19 October a first reading could buy a repeat.
-   The retained test uses `REGRESSION = 0.25` on net pair loss, mirrored: one lost task alone reads
-   0.5, two of two read 0.25. No retained task tallied is `unmeasured`.
+7. **Promotion:** `no-step` near the level, a retained loss, or an A/A step. Owners: supply and
+   size first. One `step` promotes (`stepOf`), its one test over the frontier and the retained
+   tasks together; until 19 October a first reading could buy a repeat, and until 20 October the
+   retained tasks were a second test that could read `regressed`. No retained task tallied is
+   `unmeasured`.
 8. **Next epoch:** refused drafts, idle conversations or few frontier tasks after promotion.
    Owners: `heard`, `campaignStatus`, `hostOwed` in `tools/d2/harness-builder.ts`, and `ROWS` and
    `HOLDS` in `src/builder/decide.ts`.
@@ -273,8 +274,8 @@ Resolve predictions with counts. Before claiming improvement, use
 [attribution-and-proof](../attribution-and-proof/SKILL.md). Use
 [whole-run-investigation](../whole-run-investigation/SKILL.md) for a doubtful reading or failure owner.
 
-**A step is one draw.** Give the supporting reading, frontier untied tasks and margins, retained
-reading, A/A and campaign risk. A near miss buys no repeat. Use `frontier.detectable` and the
+**A step is one draw.** Give the supporting reading, its untied tasks and margins, the retained
+tally apart, A/A and campaign risk. A near miss buys no repeat. Use `scored.detectable` and the
 margins to size the next comparison; a tally alone does not fix its power.
 
 **Two runs side by side** compare the system at two commits, never two harnesses: each run

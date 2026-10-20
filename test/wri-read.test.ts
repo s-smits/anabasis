@@ -343,7 +343,7 @@ describe("the whole-run investigation's reader", () => {
     ]);
   });
 
-  it("names each check that let a reject control naming it through, by how many it refused", () => {
+  it("names each check that let a reject control naming it through, by how many it refused, and never the objective", () => {
     // Truss on 12 October: one check refused 9 of the 10 reject controls naming it, which read as none.
     const coverage = overview([
       ...events,
@@ -357,6 +357,8 @@ describe("the whole-run investigation's reader", () => {
           rows: [
             { id: "check-a", instrument: "external", passed: 3, refused: 1, caught: 10, named: 10 },
             { id: "check-b", instrument: "external", passed: 3, refused: 1, caught: 9, named: 10 },
+            // The objective's row, which measures and refuses nothing (buffer-r3, 20 October).
+            { id: "objective", instrument: "author", passed: 3, refused: 0, caught: 0, named: 0 },
           ],
         },
       },

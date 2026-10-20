@@ -1387,8 +1387,7 @@ events in a campaign's log  >  a fold over the log  >  source and tests  >  a co
   two mechanisms, Seatbelt and Bubblewrap, and each is exercised only on its own platform.
 - A Referee's ruling is a model's output. Keep it apart from the verifier's verdict and from facts
   about the environment.
-- A session report or a subagent's report is a lead. Check a finding against the source before
-  acting on it or repeating it.
+- A session report or a subagent's report is a lead until it is checked as section 11 says.
 
 A negative claim about capability, such as "nothing checks X" or "the admission does not refuse
 Y", is the most expensive kind to get wrong, because every later reader compensates for a defect
@@ -1656,8 +1655,16 @@ body after every push that changes the pull request.
 Launch parallel subagents from the current session in one message, one bounded task each, with no
 coordinator. Each prompt names its authority, the exact paths and commit, the observed facts, the
 question and the required output, and says read-only unless the operator asked for changes. Give a
-reviewer the code, and keep your conclusion to yourself. Check every finding you act on against
-the source.
+reviewer the code, and keep your conclusion to yourself.
+
+A review reads the code first and the runs second, and so does the check of any finding before it is
+acted on or repeated, whoever reported it. Read the owner, its callers, its test and its head
+comment until each claim is a sentence a recorded log can settle. Then put each claim to the newest
+runs it touches before reporting it: a reader through `bun run runs replay`, a campaign through
+`tools/wri/wri.ts` or `bun run runs view`, an event kind by counting it in the logs that hold it.
+Write what the log should show before you look. Report each finding as confirmed, with the campaign
+and event that show it; plausible, from the source alone, with the run that would settle it; or
+refuted. Name the runs read and those left unread.
 
 ## 12. Code that passes the first time
 

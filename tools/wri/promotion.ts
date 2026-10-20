@@ -10,6 +10,10 @@
  * solve of that campaign's repeat found and ran a phreeqc another campaign's Builder had compiled
  * under the Mac's shared `/tmp` (plan defect H1), which no trigger read.
  *
+ * The six-campaign whole-run investigations on 20 October 2026 found private seat paths and
+ * denied calls counted as possible shared use. Only successful calls outside the seats' parent
+ * (`BUILT_COMMAND_SCRATCH_ROOT`, `src/verify/wall-policy.ts`) count here.
+ *
  * Split from `read.ts`, which stands near the size policy's ceiling, as `time.ts` and `folds.ts`
  * were. Nothing here reads a file beside the log.
  */
@@ -50,11 +54,10 @@ const BARE = 0.5;
 /** A path under one of the host's temporary folders, `/tmp` or `/var/tmp`, in either spelling, as a
  *  shell command or a tool's argument names it: the two the wall closes (`darwinCommandProfile`).
  *  Until 12 October `/var/tmp` was not read here, where it held a v1 solve of a held task that every
- *  seat could read on buffer. A solve's own temporary folder is under its root (`/var/folders/…` on
- *  the Mac), never here. */
-const SHARED_TMP = /(^|[\s"'=:;(|&>])\/(private\/)?(var\/)?tmp(\/|[\s"';)|&]|$)/;
-/** A path under those folders, to the first character a shell or JSON ends a word on. */
-export const SHARED_PATH = /(?:^|[\s"'=:;(|&>])(\/(?:private\/)?(?:var\/)?tmp\/[^\s"'\\;)|&<>*]+)/g;
+ *  seat could read on buffer. The seats' `ana-built-bash` parent is private even under `/tmp`.
+ *  A path ends at the first character a shell or JSON ends a word on. */
+export const SHARED_PATH =
+  /(?:^|[\s"'=:;(|&>])(\/(?:private\/)?(?:var\/)?tmp\/(?!ana-built-bash\/)[^\s"'\\;)|&<>*]+)/g;
 /** The paths a reader is shown, of those more than one solve or session named: a path one solve
  *  writes and another runs is the leak, and a solve's own scratch file is named by it alone. */
 const MOST_PATHS = 6;
@@ -281,12 +284,16 @@ function afterTrigger(log: Index, { at, until, data }: Epoch, starter: string): 
   );
 }
 
-/** `SHARED TEMPORARY FOLDER`: calls that name a path under the host's `/tmp`, by role, solves by
- *  side and practice apart, with the paths more than one of them named. */
+/** `SHARED TEMPORARY FOLDER`: successful calls naming a path outside the seats' roots under the
+ *  host's temporary folders, by role, solves by side and practice apart, with paths named by more
+ *  than one seat. */
 function sharedTmpTrigger(log: Index): Trigger[] {
   const named = (kind: string) =>
     log.events.filter(
-      ({ kind: each, data }) => each === kind && SHARED_TMP.test(JSON.stringify(data.args ?? "")),
+      ({ kind: each, data }) =>
+        each === kind &&
+        data.isError === false &&
+        JSON.stringify(data.args ?? "").match(SHARED_PATH) !== null,
     );
   const solves = new Map(log.solves.map((solve) => [solve.id, solve]));
   // Read from each start, so a comparison still running has its sides too.

@@ -575,9 +575,9 @@ describe("a session that writes tasks", () => {
       "Refused by check-product.",
     ]);
     const proved = [s.versionOf("x-1-001", 7), s.versionOf("x-1-003", 9), s.versionOf("x-1-004", 10)];
-    expect(s.of("task.feasible")).toEqual(proved.map((version) => ({ version, session: "x-1" })));
-    // No answer enters the log but in the session's own trace.
-    expect(JSON.stringify(s.of("task.feasible"))).not.toContain('"answer":"42"');
+    expect(s.of("task.feasible")).toEqual(
+      proved.map((version) => ({ version, session: "x-1", answer: GOOD })),
+    );
     expect(heard(read(s.log), writtenTasks(read(s.log))).lines[0]).toBe(
       "x-1-001 (fixture): not yet compared; an answer on record",
     );
@@ -608,14 +608,13 @@ describe("a session that writes tasks", () => {
     const kept = (measure: number) => ({
       version,
       session: "x-1",
+      answer: GOOD,
       objective: { quantity: "mass", direction: "lower", measure },
     });
     expect(declared.of("task.feasible")).toEqual([kept(3.25), kept(2.25)]);
-    // A measure is a fact of the answer's; the event holds no answer.
-    expect(JSON.stringify(declared.of("task.feasible"))).not.toContain('"answer":"42"');
     // The verifier measured, but the contract declares no objective: the record is the version.
     const undeclared = await run(false);
-    expect(undeclared.of("task.feasible")).toEqual([{ version, session: "x-1" }]);
+    expect(undeclared.of("task.feasible")).toEqual([{ version, session: "x-1", answer: GOOD }]);
     // The Examiner is told each measure the record keeps, and none where none is kept (19 October).
     const told = (s: typeof declared) => s.of(CALLED).flatMap(({ text }) => (isString(text) ? [text] : []));
     expect(told(declared).filter((line) => line.includes("By the objective it measures"))).toHaveLength(2);
@@ -738,7 +737,11 @@ describe("a session that writes tasks", () => {
       expect(examined.ended).toBe("finished");
       expect(checked).toEqual([...order.checked]);
       const versions = { "e-1": packed, "x-1-001": s.versionOf("x-1-001", 7) };
-      const proved = order.proved.map((id) => ({ version: versions[id], session: "x-1" }));
+      const proved = order.proved.map((id) => ({
+        version: versions[id],
+        session: "x-1",
+        answer: id === "e-1" ? { answer: "12", unit: "N" } : GOOD,
+      }));
       expect(s.of("task.feasible")).toEqual(proved);
       expect(poolOf(read(s.log)).feasible).toEqual(new Set(proved.map(({ version }) => version)));
       const texts = s.of(CALLED).map(({ text }) => text);
@@ -832,7 +835,7 @@ describe("a session that writes tasks", () => {
     expect(gates.map(({ reference }) => asRecord(reference)?.valid)).toEqual([0, 0, 0, 0, 3, 0]);
     // Each proved one is on record as feasible, by the author's answer checked under its own id.
     expect(inOrder(s.of("task.feasible"), proposed)).toEqual(
-      [first, second, third, fourth].map((version) => ({ version, session: "x-1" })),
+      [first, second, third, fourth].map((version) => ({ version, session: "x-1", answer: GOOD })),
     );
     expect(inOrder(poolOf(read(s.log)).scorable, proposed, String)).toEqual([first, second, third, fourth]);
     // The Examiner hears the count of a held task's valid solves; the rule is the system prompt's.

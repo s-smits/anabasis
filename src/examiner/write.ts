@@ -27,14 +27,16 @@
  * The session ends at `finish`, at its wall or its turns, or when the host has the tasks it was
  * asked for. An instance is logged whole with its proposal, hidden values too, so a later solve of
  * it needs the log and nothing beside it; no tool here returns a line of the log.
+ * An author's accepted answer is kept with its proof for the Referee (20 October): the review
+ * found that the packet read passing solves alone, although task.feasible promised a valid answer.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import { affords, openingOf } from "../builder/opening.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
-import { proposalsOf, writtenTasks } from "../kernel/history.ts";
-import { append, type LogEvent, read } from "../kernel/log.ts";
+import { acceptedAnswers, proposalsOf, writtenTasks } from "../kernel/history.ts";
 import { poolOf } from "../kernel/reports.ts";
+import { append, type LogEvent, read } from "../kernel/log.ts";
 import { informative, type Paired } from "../kernel/compare.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { packageGate, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
@@ -173,12 +175,12 @@ function instanceOf(
 /** What `task.feasible` keeps of the author's valid answer beside its version, where the contract
  *  declares an objective: the quantity and its direction as the contract states them, and the
  *  measure the verifier took of the answer (`OBJECTIVE`, `src/kernel/verify.ts`). The event
- *  stores no answer, which the Examiner's own trace alone keeps (`exam.call`), and until
+ *  keeps the answer on the exam side for the Referee, and until
  *  19 October it stored no measure either: 74 of 74 `try_answer`
  *  results of esp32-fresh-opus held none, so whether an author's answer beat the reference
  *  harness's best, which leaves a task the reference answers every time room to gain
- *  on (`informative`, `src/kernel/compare.ts`), could not be read off any record. Nothing reads it
- *  yet, and no seat is told it. Empty where the contract declares no objective. */
+ *  on (`informative`, `src/kernel/compare.ts`), could not be read off any record.
+ *  Empty where the contract declares no objective. */
 function measureOf(contract: Contract, verdict: Verdict): JsonObject {
   const declared = contract.objective;
   if (declared === undefined || verdict.kind !== "pass" || verdict.objective === undefined) return {};
@@ -369,11 +371,11 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal, ahead: numbe
   }
   desk.held.push(version);
   const verdict = await proof();
-  if (verdict === null) return `${taskId}: held out${said}.`;
+  if (verdict === null || answer === undefined) return `${taskId}: held out${said}.`;
   if (verdict.kind !== "pass") {
     return `${taskId}: held out${said}. Author proof was not retained under this task id: ${tried(verdict)}`;
   }
-  append(log, "task.feasible", { version, session, ...measureOf(request.contract, verdict) });
+  append(log, "task.feasible", { version, session, answer, ...measureOf(request.contract, verdict) });
   return `${taskId}: held out${said}.`;
 }
 
@@ -500,8 +502,8 @@ function exampleTool(tasks: readonly Task[]): AgentTool {
  *  does. Without it the Examiner wrote tasks it could not know to be feasible: on 10 October the
  *  notes of nine sessions said in eight that feasibility rested on hand estimates, and two of
  *  seven tasks of one session asked for more than their input allowed. Nothing of a try is kept
- *  but its trace and, where the checks pass, that the instance has a valid answer: no task, no
- *  answer. An instance the campaign already holds is checked under that task's own id, and a pass
+ *  but its trace and, where the checks pass on a task in the exam, the answer with its proof.
+ *  An instance the campaign already holds is checked under that task's own id, and a pass
  *  proves the task where it is held out, in practice or disputed.
  *
  *  An answer is held to the format first, as a solver's is (`answerFormatFault`): one the checks
@@ -512,22 +514,27 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
   const { log, contract } = request;
   /** Puts on record that a held task has a valid answer, where the log does not say so yet or the
    *  answer carries a measure of the objective, which each such pass keeps (`measureOf`). */
-  const prove = (events: readonly LogEvent[], version: string, verdict: Verdict) => {
+  const prove = (events: readonly LogEvent[], version: string, verdict: Verdict, answer: JsonValue) => {
     const sets = taskSets(events);
     const inExam =
       sets.held.includes(version) ||
       sets.released.includes(version) ||
       sets.states.get(version) === "disputed";
     const measure = measureOf(contract, verdict);
-    if (inExam && (!poolOf(events).feasible.has(version) || "objective" in measure)) {
-      append(log, "task.feasible", { version, session: request.id, ...measure });
+    if (
+      inExam &&
+      (!poolOf(events).feasible.has(version) ||
+        acceptedAnswers(events, version).length === 0 ||
+        "objective" in measure)
+    ) {
+      append(log, "task.feasible", { version, session: request.id, answer, ...measure });
     }
   };
   return tool({
     name: "try_answer",
     label: "Try an answer",
     description:
-      "Run the checks on an instance with an answer of yours, and say which checks refuse it, or that none does. A try enters no task in the exam. Where the checks pass, the host records that the instance has a valid answer and holds the answer for this session alone, so a task proposed with that content, before or after the try, has its valid answer on record. The gate's reading of the instance's package comes first, where it would refuse it.",
+      "Run the checks on an instance with an answer of yours, and say which checks refuse it, or that none does. A try enters no task in the exam. Where the checks pass, the host holds the answer for a task proposed with that content, before or after the try, and keeps it with the task's proof on the exam side for the Referee. The gate's reading of the instance's package comes first, where it would refuse it.",
     parameters: Type.Object({
       family: Type.String({ minLength: 1 }),
       public_input: Type.Unknown({ description: "What the solver would read of the task." }),
@@ -557,7 +564,7 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
       if (verdict.kind === "pass") {
         desk.answered.set(content, answer);
         desk.planted.add(hashJsonValue(answer));
-        prove(events, taskVersion(request.pack(instance)), verdict);
+        prove(events, taskVersion(request.pack(instance)), verdict, answer);
       }
       // The verifier's measure, which the gate reads against the reference's (`measured`).
       const { objective } = measureOf(contract, verdict);

@@ -1447,6 +1447,7 @@ describe("what crosses to the Builder", () => {
       };
       append(log, "task.proposed", { version, taskId: task.taskId, session: "x-1", task });
       append(log, "task.gate", { version, gate: 1, outcome: "passed" });
+      append(log, "task.feasible", { version, session: "x-1", answer: kept.hidden });
     }
     for (const version of ["h1", "h2"]) {
       for (const side of [s.digest, FRESH]) {

@@ -25,9 +25,9 @@
  * shows. On 20 October source triage found that calling a replay non-result `unclear` made rule 7's
  * retryable non-result a permanent set-aside: `src/builder/round.ts:410-418` retries only null rulings.
  *
- * The packet sets an answer the checks accepted for the task beside the one under review, where the
- * log holds one: any solve of the task that passed left one, and the difference between the two is
- * the shortest way to what a check objects to. A task no solve has answered validly has none.
+ * The packet carries the whole public contract and an accepted answer, from a solve or the author's
+ * proof. The review of 20 October found scope, answer format and objective missing, and 36 recent
+ * readings had a passing solve available while an author's proof alone supplied no answer here.
  *
  * What a ruling does to the task, and how an `unclear` fail counts, is the caller's: this module
  * rules and logs, one `referee.finding` per fail. A reader whose session the provider or a kill
@@ -50,6 +50,7 @@
  */
 import { type Static, Type } from "typebox";
 import type { Contract } from "../kernel/contract.ts";
+import { acceptedAnswers, proposalsOf } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import {
   applicableTruthChecks,
@@ -207,8 +208,7 @@ function packet(fail: RefereeCase, verdict: LoggedVerdict, accepted: JsonValue |
     );
   const { hidden, ...task } = fail.task;
   return [
-    `Public rules:\n${fail.contract.rules.map((rule) => `- ${rule.id}: ${rule.statement}`).join("\n")}`,
-    ...(fail.contract.conventions === "" ? [] : [`Conventions: ${fail.contract.conventions}`]),
+    `Public contract: ${capturedJsonStringify(fail.contract)}`,
     `Public task: ${capturedJsonStringify(task)}`,
     `Hidden values the checks may receive: ${capturedJsonStringify(hidden)}`,
     `Answer under review: ${capturedJsonStringify(verdict.answer)}`,
@@ -355,9 +355,8 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
   const host = hostRuling(verdict, replay);
   const rows: ProbeRow[] = [];
   const found: RefereeFinding[] = [];
-  const accepted = events.findLast(
-    ({ kind, data }) => kind === "verdict" && data.task === fail.task.taskId && data.kind === "pass",
-  )?.data.answer;
+  const version = proposalsOf(events).findLast(({ taskId }) => taskId === fail.task.taskId)?.version;
+  const accepted = acceptedAnswers(events, version).at(-1);
   const meter =
     host === null
       ? await readOnce(reader, SYSTEM_PROMPT, packet(fail, verdict, accepted), [

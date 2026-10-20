@@ -22,9 +22,9 @@ report: write nothing else, commit nothing and edit no source.
 
 ## The reports
 
-Read each report marked `ok`, including the checks behind each `no finding` verdict. The collector
-checks shape only, and the generated skeleton has no checks section at this commit; the fix
-remains in an open PR from 20 October. A report without those checks leaves its lane unsubstantiated.
+Read each report marked `ok`, including the `## Checked` section behind each `no finding` verdict.
+The collector checks shape only and does not read that section. A report whose `## Checked` is empty
+leaves its lane unsubstantiated.
 A report marked `missing` or `invalid` is a gap: name it in your note
 and never fill it from memory. A finding you carry is one you checked against the log yourself, by
 the event kinds, solve ids and counts the report cites: a report is a lead and no receipt.

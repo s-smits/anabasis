@@ -128,8 +128,8 @@ does not have.
 ## When the change is a producer, replay it
 
 Code that writes events, rows, reports or prompts is measured on recorded input. `bun run runs
-replay` reads logs in the repository's worktrees whose last event is `comparison.reported`;
-it leaves out live or interrupted logs and reports selected folds, rather than every output.
+replay` reads every campaign log in the repository's worktrees, live and interrupted ones among
+them, and leaves out a live solve's log; it reports selected folds, rather than every output.
 Count the changed output before and after with its owning reader. Say which logs were read,
 and label estimated counts as estimates.
 

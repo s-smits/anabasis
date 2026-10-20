@@ -24,7 +24,6 @@ import { noInlineSchemaLiteralRule } from "./rules/no-inline-schema-literal.ts";
 import { noReactEffectRule } from "./rules/no-react-effect.ts";
 import { noLifetimeOutsideOwnerRule } from "./rules/no-lifetime-outside-owner.ts";
 import { noPassThroughWrapperRule } from "./rules/no-pass-through-wrapper.ts";
-import { noPropertyReadOnFunctionRule } from "./rules/no-property-read-on-function.ts";
 import { noRenamingTemporaryRule } from "./rules/no-renaming-temporary.ts";
 import { noRepeatedStringLiteralRule } from "./rules/no-repeated-string-literal.ts";
 import { noSideEffectInPredicateRule } from "./rules/no-side-effect-in-predicate.ts";
@@ -84,7 +83,6 @@ const anaPlugin = eslintCompatPlugin({
     "prefer-includes-over-some-equals": preferIncludesOverSomeEqualsRule,
     "prefer-key-if-defined": preferKeyIfDefinedRule,
     "no-hand-rolled-error-render": noHandRolledErrorRenderRule,
-    "no-property-read-on-function": noPropertyReadOnFunctionRule,
     "prefer-some-over-filter-length": preferSomeOverFilterLengthRule,
     "no-alias-restating-return": noAliasRestatingReturnRule,
     "no-inline-block-reducer": noInlineBlockReducerRule,

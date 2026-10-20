@@ -159,6 +159,7 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
   };
   // Solves on record before the session: v1 failed once, and v3 is a held-out task's.
   solved("v1", digest, { outcome: "fail", kind: "rejected" });
+  record_("referee.finding", { solve: "s-1", ruling: "earned" });
   const exam = solved("v3", digest, { outcome: "fail", kind: "rejected" });
   const sent: string[] = [];
   const faux = fauxProvider({
@@ -471,7 +472,10 @@ describe("a Builder session", () => {
     const built = await session(
       {
         ...s.request,
-        referee: async () => earned,
+        referee: async (solve) => {
+          append(s.request.log, "referee.finding", { solve, ...earned });
+          return earned;
+        },
       },
       s,
       s.walled,
@@ -655,12 +659,47 @@ describe("a Builder session", () => {
       s,
       s.walled,
     );
-    expect(s.sent[1]).toContain("The Referee ruled this fail a check defect: it does not count");
+    expect(s.sent[1]).toContain("rejection set aside");
     expect(s.sent[2]).toContain("t-2 is no longer a practice task");
     expect(s.sent.join("\n")).not.toContain(CHECK);
     expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ practiceSolves: 1, disputed: ["v2"], changed: false });
     expect(built).toMatchObject({ changed: false, dir: null, harness: s.digest });
     expect(s.of("harness.version")).toEqual([]);
+  });
+
+  it("sets aside unestablished practice rejections in results, traces and later records", async () => {
+    for (const ruling of ["unclear", "check-defect", null, "absent", "crashed"] as const) {
+      const s = await setup(
+        [
+          call("practice", { tasks: ["t-2"] }),
+          call("read_trace", { solve: "s-3" }),
+          call("read_opening", {}),
+          finish,
+        ],
+        [{ outcome: "fail", kind: "rejected" }],
+      );
+      const referee = async (solve: string): Promise<RefereeFinding> => {
+        if (ruling === "crashed") throw new Error(REASON);
+        const finding: RefereeFinding = {
+          ruling: ruling === "absent" ? null : ruling,
+          check: CHECK,
+          rule: null,
+          field: null,
+          reason: REASON,
+          probes: [],
+        };
+        append(s.request.log, "referee.finding", { solve, ...finding });
+        return finding;
+      };
+      await session(ruling === "absent" ? s.request : { ...s.request, referee }, s, s.walled);
+      const calls = s.of(BUILD_CALL);
+      expect(calls[0]?.text).toContain("t-2: rejection set aside. Solve s-3.");
+      expect(calls[1]?.text).toContain("ending: rejection set aside");
+      expect(calls[2]?.text).not.toContain("- s-3,");
+      expect(record(s.events(), "v2", s.digest)).toEqual({ solves: [], passed: 0 });
+      expect(s.sent.join("\n")).not.toContain(CHECK);
+      expect(s.sent.join("\n")).not.toContain(REASON);
+    }
   });
 
   it("asks the Referee of a rejected practice answer only, never of a solve its limits ended", async () => {
@@ -684,7 +723,7 @@ describe("a Builder session", () => {
       s.walled,
     );
     expect(asked).toEqual([]);
-    expect(s.of("referee.finding")).toEqual([]);
+    expect(s.of("referee.finding")).toEqual([{ solve: "s-1", ruling: "earned" }]);
   });
 
   it("opens with the practice solves its dollar cap holds a reserve for, where those are fewer", async () => {

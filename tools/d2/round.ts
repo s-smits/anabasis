@@ -78,7 +78,7 @@ import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { priceKey } from "#src/kernel/meter.ts";
-import { type Cap, capHolds, patienceOf, poolOf, stopRule } from "#src/kernel/reports.ts";
+import { type Cap, capHolds, poolOf, stopRule } from "#src/kernel/reports.ts";
 import { solverLast } from "#src/kernel/solves.ts";
 import { readBrief } from "#src/kernel/verify.ts";
 import { type TaskPackage, taskSets } from "#src/kernel/task.ts";
@@ -153,8 +153,8 @@ export const COMPARISON_OPTIONS = {
   solves: { type: "string", default: String(SIZE.solves) },
   // One reading at or under `level` is a step (`stepOf`, `src/kernel/compare.ts`). 0.20 was the
   // default from #175 until 10 October, then 0.10 under the two-stage rule, and 0.02 since
-  // 12 October (the operator). Since 19 October one reading promotes, which at 0.02 on 24 untied
-  // tasks risks 6.8% over a patience of six, under the opening's cap; at 0.10 it would be 45.5%.
+  // 12 October (the operator). Since 19 October one reading promotes. It is a per-comparison level:
+  // one reading on 24 untied tasks reads a step between equal harnesses 1.1% of the time at 0.02.
   level: { type: "string", default: "0.02" },
   defects: { type: "string", default: "3" },
   cap: { type: "string" },
@@ -346,7 +346,6 @@ export function wantedNamed(
     target: tasks === undefined ? target : tasks.split(",").length,
     solves: Number(values.solves),
     level: Number(values.level),
-    patience: patienceOf(read(campaign.log)),
     builds: given.builds,
     cap: given.cap ?? null,
     pastStop: predictionNamed(values["past-stop"]),

@@ -74,8 +74,6 @@ export interface Wanted {
   readonly solves: number;
   /** The level a step clears (`stepOf`, `src/kernel/compare.ts`). */
   readonly level: number;
-  /** The campaign's patience, which a comparison's risk is said over (`sizeLines`). */
-  readonly patience: number;
   /** Whether a Builder session runs before the comparison. */
   readonly builds: boolean;
   readonly cap: Cap | null;
@@ -87,7 +85,7 @@ export interface Wanted {
 }
 
 /** What the supply's own refusals are read at: a comparison's size, and a reason to go on. */
-type Sized = Pick<Wanted, "target" | "level" | "patience" | "pastStop">;
+type Sized = Pick<Wanted, "target" | "level" | "pastStop">;
 
 /** What a Builder session with no comparison after it asks for: its cap, and the practice solves
  *  its limits allow. */

@@ -287,8 +287,7 @@ function sourceOf(risk: FalsePromotion): string {
 /**
  * The campaign's chance of a false promotion, for its closing report (the plan's 7.6): each epoch's
  * summed estimate with what it rests on, and their sum capped at one: estimates all, and no bound.
- * An epoch's sum restarts at its promotion, so the opening's over one patience's attempts describes
- * one window, and no epoch's alone the campaign.
+ * An epoch's sum restarts at its promotion, so no epoch's alone describes the campaign.
  */
 export function riskLines(events: readonly LogEvent[]): string[] {
   const epochs = epochsOf(events);

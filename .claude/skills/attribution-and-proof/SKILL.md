@@ -80,10 +80,10 @@ Answer these from the log before using the word step in a sentence of your own:
 - **How much power and risk?** Give `frontier.detectable`, the least winning share detected four
   times in five at these margins, and `frontier.falseRate`, `power(differences, 0.5, level)`.
   The latter is at most the level under the test's null. `sizeLines` assumes no ties and equal
-  margins before a run; `openingLines` refuses a sum over patience above 10% (`src/kernel/size.ts`).
+  margins before a run (`src/kernel/size.ts`); the level is a per-comparison level.
   Give the campaign estimate from `riskLines` in `src/builder/climb.ts`: it sums attempt rates,
   capped at one, across epochs. It is an estimate, not a measured bound. Its A/A error count is
-  one-sided at the comparison's level, distinct from the two-sided campaign control.
+  one-sided at the comparison's level, and counts only the controls that could read a step.
 - **Objective?** Give `objective.decided` beside the untied count, and check pair margins to state how many untied tasks the objective decided.
 - **Under what load?** A wall counts the clock. The reader's `HOST LOADED` and `LOAD MOVED` say
   when solve-start loads were high or moved between halves within or across comparisons. Compare

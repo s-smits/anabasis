@@ -31,6 +31,7 @@
  */
 import { boundText } from "../../src/meta/bounded-text.ts";
 import { sha256 } from "../../src/meta/digest.ts";
+import { compareCodeUnits } from "../../src/meta/stable-json.ts";
 import anaPlugin from "./ana/index.ts";
 import antiSlopPlugin from "./anti-slop/index.ts";
 
@@ -87,10 +88,11 @@ export interface Ledger {
 
 const collapsed = (text: string): string => text.replace(/\s+/gu, " ").trim();
 
-/** The places in one order whatever order a scan found them in. */
+/** The places in one order whatever order a scan found them in, and whatever the host's locale:
+ *  an id hashed in a locale's collation could differ between two hosts. */
 const ordered = (places: readonly Place[]): Place[] =>
   places.toSorted(
-    (left, right) => left.path.localeCompare(right.path) || left.text.localeCompare(right.text),
+    (left, right) => compareCodeUnits(left.path, right.path) || compareCodeUnits(left.text, right.text),
   );
 
 /**

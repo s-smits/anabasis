@@ -68,10 +68,10 @@
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { admitComparison, type Wanted } from "#src/builder/admission.ts";
 import { worthLine } from "#src/builder/climb.ts";
-import { predicted, type Report } from "#src/builder/comparison.ts";
+import { predicted, type Report, startOf } from "#src/builder/comparison.ts";
 import { refuseTerms, type RoundRequest, round, scoredSet } from "#src/builder/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
-import { type Gain, type ObjectiveRule, ROOM } from "#src/kernel/compare.ts";
+import { type Gain, type ObjectiveRule, objectiveRuleIn, ROOM } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
@@ -334,13 +334,18 @@ export function solvingAs(campaign: Campaign, { limits }: Pick<AskedSetting, "na
   return { solver: { model: priceKey(model), effort }, limits };
 }
 
-/** The objective this campaign's comparisons pair two valid answers by, where its check program
- *  declares one: the brief's direction. Undefined otherwise. Until 19 October a margin went with it
- *  (`--margin`, `SAME` in `src/kernel/compare.ts`). */
+/** The objective comparison `id` pairs two valid answers by, where its check program declares one:
+ *  the brief's direction and the room floor. Undefined otherwise. A comparison that began goes on by
+ *  the objective it recorded unless `--room` names another, since one begun before 21 October
+ *  recorded no floor, and asking it for one refused it as begun on other terms. Until 19 October a
+ *  margin went with it (`--margin`, `SAME` in `src/kernel/compare.ts`). */
 export function objectiveNamed(
-  campaign: Pick<Campaign, "checks">,
+  campaign: Pick<Campaign, "checks" | "log">,
   room: string | undefined,
+  id: string,
 ): ObjectiveRule | undefined {
+  const began = startOf(read(campaign.log), id);
+  if (began !== undefined && room === undefined) return objectiveRuleIn(began);
   const declared = readBrief(campaign.checks).objective;
   return declared === undefined ? undefined : { direction: declared.direction, room: roomNamed(room) };
 }
@@ -574,7 +579,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
     ...scoredSet(read(campaign.log), setting.target, contractHash(campaign.contract)),
     solves: Number(values.solves),
     level: Number(values.level),
-    objective: objectiveNamed(campaign, values.room),
+    objective: objectiveNamed(campaign, values.room, session),
     defects: Number(values.defects),
     cap,
     prediction: predictionNamed(values.predict),

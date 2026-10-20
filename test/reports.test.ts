@@ -1076,8 +1076,9 @@ describe("the tasks the reference harness exhausted", () => {
     expect(poolOf(measured(log, "b-3", "h4")).exhausted).toEqual(["e2"]);
     // An author's answer on record that outdoes every answer on `e2` keeps it open: the room it was
     // held for stays on the frontier (19 October). One within a billionth closes it as before.
-    const authored = (measure: number) =>
+    const authored = (measure: number, opening: readonly LogEvent[] = []) =>
       poolOf([
+        ...opening,
         ...log,
         event("task.feasible", {
           version: "e2",
@@ -1087,6 +1088,12 @@ describe("the tasks the reference harness exhausted", () => {
       ]);
     expect(authored(5)).toMatchObject({ exhausted: [], frontier: ["e1", "e2"] });
     expect(authored(10 - 1e-9)).toMatchObject({ exhausted: ["e2"], frontier: ["e1"] });
+    // Half a per cent better is under the room floor and closes it, unless the campaign's opening
+    // names a lower floor: the frontier is read at the campaign's floor, as its gate is.
+    expect(authored(9.95)).toMatchObject({ exhausted: ["e2"], frontier: ["e1"] });
+    const opened = (room: string) => [event("campaign.opened", { terms: { room } })];
+    expect(authored(9.95, opened("0"))).toMatchObject({ exhausted: [], frontier: ["e1", "e2"] });
+    expect(authored(9.95, opened("0.01"))).toMatchObject({ exhausted: ["e2"], frontier: ["e1"] });
   });
 
   it("hold each held-out task in exactly one place: scorable or waiting for a person, with the exhausted among the retained and the retained among the scorable", () => {

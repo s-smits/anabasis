@@ -71,7 +71,7 @@ import { worthLine } from "#src/builder/climb.ts";
 import { predicted, type Report } from "#src/builder/comparison.ts";
 import { refuseTerms, type RoundRequest, round, scoredSet } from "#src/builder/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
-import type { Gain, ObjectiveRule } from "#src/kernel/compare.ts";
+import { type Gain, type ObjectiveRule, ROOM } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
@@ -153,6 +153,8 @@ export const COMPARISON_OPTIONS = {
   // 12 October (the operator). Since 19 October one reading promotes. It is a per-comparison level:
   // one reading on 24 untied tasks reads a step between equal harnesses 1.1% of the time at 0.02.
   level: { type: "string", default: "0.02" },
+  // The objective's room floor, a term of the comparison (`roomNamed`); unnamed, `ROOM`.
+  room: { type: "string" },
   defects: { type: "string", default: "3" },
   cap: { type: "string" },
   reserve: { type: "string", default: "10" },
@@ -335,9 +337,20 @@ export function solvingAs(campaign: Campaign, { limits }: Pick<AskedSetting, "na
 /** The objective this campaign's comparisons pair two valid answers by, where its check program
  *  declares one: the brief's direction. Undefined otherwise. Until 19 October a margin went with it
  *  (`--margin`, `SAME` in `src/kernel/compare.ts`). */
-export function objectiveNamed(campaign: Pick<Campaign, "checks">): ObjectiveRule | undefined {
+export function objectiveNamed(
+  campaign: Pick<Campaign, "checks">,
+  room: string | undefined,
+): ObjectiveRule | undefined {
   const declared = readBrief(campaign.checks).objective;
-  return declared === undefined ? undefined : { direction: declared.direction };
+  return declared === undefined ? undefined : { direction: declared.direction, room: roomNamed(room) };
+}
+
+/** What `--room` names: the least share of the larger measure an answer on record must be better
+ *  by before a task leaves room (`ROOM`, `src/kernel/compare.ts`), from 0 up to 1. */
+export function roomNamed(flag: string | undefined): number {
+  const room = flag === undefined ? ROOM : Number(flag);
+  if (!(room >= 0 && room < 1)) throw new Error(`--room is a share from 0 up to 1, not ${String(flag)}`);
+  return room;
 }
 
 /** What `--predict` names: the operator's expectation of the comparison, in a sentence, or none. */
@@ -561,7 +574,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
     ...scoredSet(read(campaign.log), setting.target, contractHash(campaign.contract)),
     solves: Number(values.solves),
     level: Number(values.level),
-    objective: objectiveNamed(campaign),
+    objective: objectiveNamed(campaign, values.room),
     defects: Number(values.defects),
     cap,
     prediction: predictionNamed(values.predict),

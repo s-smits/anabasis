@@ -142,7 +142,9 @@ const lastWork = (log: readonly LogEvent[]) =>
 function stage(log: readonly LogEvent[], running: number, open: boolean): string {
   const from = Math.max(lastStart(log), 0);
   const report = log.slice(Math.max(lastWork(log), 0)).findLast(({ kind }) => kind === REPORTED);
-  if (report !== undefined) return `reported ${word(report.data.reading)}`;
+  // Closed is said first: until 20 October a run whose process died after a report read as that
+  // report for hours, with its unfinished solves called running.
+  if (report !== undefined) return `${open ? "" : "closed, "}reported ${word(report.data.reading)}`;
   if (!open) return "closed";
   const since = log.slice(from);
   const session = (["build", "exam"] as const).find(
@@ -159,7 +161,7 @@ function status(run: Run, log: readonly LogEvent[], solves: readonly Solve[], op
     return n === 0 ? [] : [`${String(n)} ${outcome}`];
   });
   const running = solves.filter(({ finished }) => finished === null).length;
-  if (running > 0) said.push(`${String(running)} running`);
+  if (running > 0) said.push(`${String(running)} ${open ? "running" : "unfinished"}`);
   const last = log.at(-1);
   return [
     // A seed's counts and dollars are its source's up to the cut, and a script's or a run's after it.

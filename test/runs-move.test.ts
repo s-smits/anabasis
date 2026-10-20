@@ -1,7 +1,12 @@
 // Moving a campaign to another machine: the kept flags that name a path where the source's worktrees
 // sit name the destination's, and a move between two hosts, or to where it already is, is refused
-// before anything is asked of either.
+// before anything is asked of either. The folder left behind is set aside, in a tree that never set
+// one aside as in one that did.
 import { describe, expect, it } from "bun:test";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { tmpdir } from "../src/meta/os.ts";
+import { join } from "../src/meta/path.ts";
+import { asideOf, setAside } from "../tools/runs/manage.ts";
 import { move, rehomed } from "../tools/runs/move.ts";
 
 describe("moving a campaign to another machine", () => {
@@ -39,5 +44,17 @@ describe("moving a campaign to another machine", () => {
     );
     await expect(move(["c", "--to", "here"])).rejects.toThrow("usage: bun run runs move");
     await expect(move(["c"])).rejects.toThrow("usage: bun run runs move");
+  });
+
+  it("sets the folder left behind aside in a tree that never set one aside, and in one that did", () => {
+    const tree = mkdtempSync(join(tmpdir(), "ana-aside-"));
+    for (const name of ["first", "second"]) {
+      const folder = join(tree, ".ana", "d2", name);
+      mkdirSync(folder, { recursive: true });
+      writeFileSync(join(folder, "log.jsonl"), "");
+      const aside = asideOf(tree, name);
+      setAside(folder, aside);
+      expect([existsSync(folder), existsSync(join(aside, "log.jsonl"))]).toEqual([false, true]);
+    }
   });
 });

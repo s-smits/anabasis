@@ -18,14 +18,7 @@
  * log is read, at the one budget it names (`docs/simplify.md`, package A).
  */
 import { unadmitted } from "../kernel/acceptance.ts";
-import {
-  attemptsOf,
-  readsStepEitherWay,
-  readTwice,
-  sweepOf,
-  triggered,
-  untiedOf,
-} from "../kernel/compare.ts";
+import { readsStepEitherWay, sweepOf } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { billedParts, poolOf, roomOf } from "../kernel/reports.ts";
 import { SIZE } from "../kernel/size.ts";
@@ -59,11 +52,10 @@ const ROWS: readonly { readonly code: string; readonly move: (ground: Ground) =>
   // The tasks are not set up: taken in, released, written on the operator's word, or written up
   // to a comparison's and its practice's before the first session is paid for.
   { code: "tasks", move: tasks },
-  // A comparison that began goes on, and one draw that cleared the trigger is drawn again, on its
-  // untied tasks and tasks it did not score.
+  // A comparison that began goes on.
   { code: "unfinished", move: unfinished },
-  // A step and its repeat, read together, promote.
-  { code: "twice", move: twice },
+  // A step against the reference promotes.
+  { code: "step", move: stepped },
   // The reference's last reading left it nothing to gain: the tasks change.
   { code: "no-room", move: noRoom },
   // The gate would refuse the next comparison for want of tasks: they are written first, since a
@@ -96,12 +88,11 @@ const SHORT = ["no-held", "held-short"] as const;
 
 const end = (ending: Ending, why: string): Move => ({ move: "end", ending, why });
 /** A comparison of the latest harness, or of the starter as a control, with the reference one. */
-const compare = (why: string, fresh = "latest", repeats?: string): Move => ({
+const compare = (why: string, fresh = "latest"): Move => ({
   move: "compare",
   fresh,
   reference: "promoted",
   why,
-  ...keyIfDefined("repeats", repeats),
 });
 
 /** The move that follows from the log, with the code of the row or the hold that chose it. */
@@ -119,14 +110,14 @@ export function decide(events: readonly LogEvent[], plan: Plan): Decided {
 }
 
 /**
- * Why the plan would not promote `harness` on this log now, or null where it would: a step is
- * promoted once it and its repeat, read together, clear the level (`readTwice`). It is the rule
- * move 7 promotes by (`twice`), asked for a harness the operator names (`tools/d2/promote.ts`).
+ * Why the plan would not promote `harness` on this log now, or null where it would: a harness is
+ * promoted on a comparison that read a step against the reference (`steps`). It is the rule move 7
+ * promotes by (`stepped`), asked for a harness the operator names (`tools/d2/promote.ts`).
  */
 export function unpromoted(events: readonly LogEvent[], plan: Plan, harness: string): string | null {
-  return steppedTwice(groundOf(events, plan), harness)
+  return steps(groundOf(events, plan), harness)
     ? null
-    : `harness ${short(harness)} has no comparison and repeat that, read together, clear the level against the reference harness`;
+    : `harness ${short(harness)} has no comparison that read a step against the reference harness`;
 }
 
 /** The tasks held out after the log's index `after`. */
@@ -146,8 +137,8 @@ function writtenSince({ events, refused }: Ground, reading: Reading): boolean {
  * The trailing run of readings that left nothing to gain. A reading is a comparison that reported
  * against the reference and left it no room, or an Examiner session that ended whole and held out
  * no task. A comparison that left it room ends the run, and so does one made against another
- * harness, as every one from before a promotion: the step and its repeat a harness was promoted
- * on are no answer to a want of room, though the tasks change on what they read (`noRoom`). So
+ * harness, as every one from before a promotion: the step a harness was promoted
+ * on is no answer to a want of room, though the tasks change on what they read (`noRoom`). So
  * does a session whose tasks no comparison has read yet, however few it wrote: on 9 October a
  * campaign ended on three sessions that had written four tasks between them. A session whose
  * tasks a comparison has read is passed over, and so is one the provider failed or a stopped run
@@ -375,8 +366,7 @@ function tasks(ground: Ground): Move | null {
   // practice tasks cleared them in three to five harness versions, and then waited on an Examiner
   // session. It is a wish and no refusal of the gate's, which admits a comparison by hand on fewer.
   // Until 13 October it held a repeat's tasks as well, twice the target, and the two host-run
-  // campaigns of 12 October examined for 16 hours, held 41 and 31 of 48, and never compared. A
-  // repeat's tasks are written where one is due (`unfinished`).
+  // campaigns of 12 October examined for 16 hours, held 41 and 31 of 48, and never compared.
   const missing = all.length > 0 ? 0 : shortBy(ground);
   if (missing === 0) return null;
   const before =
@@ -392,121 +382,66 @@ function tasks(ground: Ground): Move | null {
 
 /**
  * How many held-out tasks the campaign is short of: a comparison's target and what the next
- * release still draws for practice, which leaves the held ones, less what it holds; for a repeat,
- * a sweep at the level (`sweepOf`) less the tasks it may score (`dueOf`). The table's examine
- * before a comparison and the session's ask (`examTasks`, `campaign-terms.ts`) are this count.
+ * release still draws for practice, which leaves the held ones, less what it holds. The table's
+ * examine before a comparison and the session's ask (`examTasks`, `campaign-terms.ts`) are this
+ * count. Until 19 October a repeat that was due was short of a sweep at the level instead.
  */
 export function shortOf(events: readonly LogEvent[], plan: Plan): number {
   return shortBy(groundOf(events, plan));
 }
 
-function shortBy(ground: Ground): number {
-  const { plan, supply } = ground;
+function shortBy({ plan, supply }: Ground): number {
   const practice = Math.max(0, (plan.practice ?? 0) - supply.released);
-  const due = dueOf(ground);
-  const held =
-    due === null ? supply.held - plan.wanted.target : due.again + due.fresh - sweepOf(plan.wanted.level);
-  return Math.max(0, practice - held);
+  return Math.max(0, practice - (supply.held - plan.wanted.target));
 }
 
-/** The comparison whose repeat is due, and the held tasks its first stage did not score, as a led
- *  Builder's campaign status says them; null where none is. */
-export function repeatDue(events: readonly LogEvent[], plan: Plan): { id: string; fresh: number } | null {
-  const due = dueOf(groundOf(events, plan));
-  return due === null ? null : { id: due.first.id, fresh: due.fresh };
-}
-
-/** The repeat the last reading of a harness against the reference bought, where one is due, the
- *  held tasks its first stage did not score, and its untied ones it scores again; null where none
- *  is: a control is never repeated, since the starter winning on new tasks is room by another name.
- *  A reading that is no repeat itself buys one: a step and its repeat are one attempt
- *  (`attemptsOf`, `compare.ts`; `falsePromotion`, `climb.ts`). From 15 October a candidate bought
- *  one, and its later readings on other tasks could promote only with its repeat. The reading is the last of any harness: until 15 October a later checkpoint hid
- *  it, and recode-pr169-sonnet's g-1 step lost its repeat. */
-function dueOf(ground: Ground) {
-  const { events, plan, reports, reference, starter } = ground;
-  const { trigger } = plan.wanted;
-  const read = reports.findLast(({ fresh, old }) => old === reference && fresh !== starter);
-  const pair = reports.filter(({ fresh, old }) => fresh === read?.fresh && old === read.old);
-  const open = attemptsOf(pair, ({ report }) => triggered(report, trigger)).at(-1);
-  if (
-    read === undefined ||
-    open?.length !== 1 ||
-    !triggered(read.report, trigger) ||
-    twice(ground) !== null
-  ) {
-    return null;
-  }
-  const scored = new Set(Array.isArray(read.report.versions) ? read.report.versions : []);
-  const { frontier } = poolOf(events);
-  const again = untiedOf(read.report).filter((task) => frontier.includes(task));
-  return { first: read, again: again.length, fresh: frontier.filter((task) => !scored.has(task)).length };
-}
-
-function unfinished(ground: Ground): Move | null {
-  const { all } = ground;
+function unfinished({ all }: Ground): Move | null {
   const open = all.find(({ report }) => report === null);
-  if (open !== undefined) {
-    return {
-      move: "compare",
-      id: open.id,
-      fresh: open.fresh,
-      reference: open.old,
-      why: `comparison ${open.id} began and has not reported: it goes on from its log`,
-    };
-  }
-  // A reading that clears the trigger buys the repeat, read with it by the next row (`readTwice`).
-  // The Examiner writes first only where the repeat could not read a step (`shortBy`): until
-  // 16 October it wrote to a target of fresh tasks, about 300 gate solves after a promotion. A
-  // session that holds out nothing counts towards the patience (`roomless`).
-  const first = dueOf(ground)?.first;
-  if (first === undefined) return null;
-  const missing = shortBy(ground);
-  if (missing > 0) {
-    const asked = examine(
-      ground,
-      "tasks",
-      `comparison ${first.id} cleared the trigger, and the campaign is ${plural(missing, "held-out task")} short of a repeat that could read a step: the Examiner writes more first`,
-    );
-    return asked.move === "examine" ? { ...asked, repeats: first.id } : asked;
-  }
-  return compare(
-    `comparison ${first.id} cleared the trigger, which is one draw: the same two harnesses are compared again on fresh solves, and the two are read together`,
-    first.fresh,
-    first.id,
-  );
+  return open === undefined
+    ? null
+    : {
+        move: "compare",
+        id: open.id,
+        fresh: open.fresh,
+        reference: open.old,
+        why: `comparison ${open.id} began and has not reported: it goes on from its log`,
+      };
 }
 
-/** Whether `harness` read a step and its repeat against the reference: the two read together
- *  clear the level (`readTwice`). */
-function steppedTwice({ plan, reports, reference }: Ground, harness: string): boolean {
-  const pair = reports.flatMap(({ fresh, old, report }) =>
-    fresh === harness && old === reference ? [report] : [],
+/** Whether `harness` read a step against the reference: its comparison's own reading, at the level
+ *  its start fixed (`stepOf`, `compare.ts`). A control is no candidate: the starter winning on new
+ *  tasks is room by another name. Until 19 October a step bought a repeat on fresh solves, and the
+ *  two read together had to clear the level. */
+function steps({ reports, reference, starter }: Ground, harness: string): boolean {
+  return (
+    harness !== reference &&
+    harness !== starter &&
+    reports.some(
+      ({ fresh, old, report }) => fresh === harness && old === reference && report.reading === "step",
+    )
   );
-  return harness !== reference && readTwice(pair, plan.wanted.level, plan.wanted.trigger);
 }
 
 /**
  * The promotion of the waiting harness, or of an earlier one the campaign owes: a harness that
- * read a step twice against the reference while later sessions left another. The table follows
- * the latest harness, and would pass such a step by: on 9 October one campaign read a step twice,
+ * read a step against the reference while later sessions left another. The table follows the
+ * latest harness, and would pass such a step by: on 9 October one campaign read a step twice,
  * promoted nothing, and the table named a Builder session. The newest such harness is named, and
  * what later sessions left is read against it once it is the reference.
  */
-function twice(ground: Ground): Move | null {
+function stepped(ground: Ground): Move | null {
   const { reports, reference, waiting } = ground;
-  const read = `read a step and its repeat`;
-  if (waiting !== null && steppedTwice(ground, waiting)) {
-    return { move: "promote", harness: waiting, why: `harness ${short(waiting)} ${read}` };
+  if (waiting !== null && steps(ground, waiting)) {
+    return { move: "promote", harness: waiting, why: `harness ${short(waiting)} read a step` };
   }
   const earlier = reports.toReversed().flatMap(({ old, fresh }) => (old === reference ? [fresh] : []));
-  const owed = earlier.find((harness) => harness !== waiting && steppedTwice(ground, harness));
+  const owed = earlier.find((harness) => harness !== waiting && steps(ground, harness));
   return owed === undefined
     ? null
     : {
         move: "promote",
         harness: owed,
-        why: `harness ${short(owed)} ${read}, and was not promoted: what later sessions left is read against it once it is the reference`,
+        why: `harness ${short(owed)} read a step, and was not promoted: what later sessions left is read against it once it is the reference`,
       };
 }
 
@@ -519,14 +454,33 @@ function twice(ground: Ground): Move | null {
  * budget, and a task nobody answers at it is one for the Examiner to replace: on 9 October five
  * Examiner sessions wrote tasks for a budget of one turn, in which no solver can write an answer
  * and submit it. Tasks written since that the gate admits are compared on first (`unread`).
+ *
+ * A promoted reference is also written for once, room or none, before anything else is: the tasks
+ * it was promoted on are the ones its Builder beat the last reference on. On 19 October r3's
+ * Examiner sessions after its first two promotions held out 24 tasks informative for the new
+ * reference, against r1's 3 and r2's 4, and its next two promotions were read on them; r1's
+ * Builder compared six minutes after its promotion on 1 informative task of 25. Since the
+ * objective has no margin (#242) the comparison a harness was promoted on reads room on it in
+ * r1, r2 and r3's first (21, 24 and 6 tasks, against 0), so room alone would write nothing.
  */
 function noRoom(ground: Ground): Move | null {
-  const { reports, reference } = ground;
+  const { reports, reference, events } = ground;
   const last = reports.findLast(({ old, fresh }) => old === reference || fresh === reference);
-  if (last === undefined) return null;
+  if (last === undefined || writtenSince(ground, last)) return null;
   const side = last.old === reference ? "old" : "fresh";
   const room = roomOf(last.report, side);
-  if (room === "room" || writtenSince(ground, last)) return null;
+  if (room === "room") {
+    const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
+    const written = events
+      .slice(promotedAt)
+      .some(({ kind }) => kind === "exam.started" || kind === "exam.finished");
+    return promotedAt === -1 || written
+      ? null
+      : {
+          move: "examine",
+          why: `harness ${short(reference ?? "")} was promoted, and no Examiner session has written tasks for it since: tasks are written for each new reference`,
+        };
+  }
   const why =
     room === "too-hard"
       ? `comparison ${last.id} read no step, and neither harness gave a valid answer: other tasks are written`
@@ -636,9 +590,9 @@ function buildsOn(ground: Ground): string {
  * row named. A comparison the cap cuts before its last solve tallies nothing, and what it billed
  * bought no reading: on 9 October a campaign with $1.45 left began a comparison after one that had
  * billed $1.00, and was cut after $1.06. What a comparison will bill is read from the last one that
- * reported. An Examiner session is a round with the comparison that reads its tasks, and a step
- * read on them is bought again by its repeat: where the last session and that comparison billed
- * more than half of what is left, another round could not be read. Where no comparison has
+ * reported. An Examiner session is a round with the comparison that reads its tasks: where the
+ * last session and that comparison billed more than half of what is left, another round could not
+ * be read. Where no comparison has
  * reported, the first is priced by the reference harness's solves of draft tasks (`firstPriced`),
  * and with none of those the move is made; one that began goes on under whatever is left.
  */

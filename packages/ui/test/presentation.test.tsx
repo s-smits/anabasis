@@ -46,18 +46,6 @@ function navigationAt(search: string, moves: RouteChange[] = []): Navigation {
   };
 }
 
-/** The shell over the server's answers of the fixture, at `search`, in `tier`. */
-function shellAt(search: string, tier: "default" | "exam" = "default"): string {
-  const answers = answersOver(fixture.root, tier);
-  const campaigns = answers.campaigns();
-  const navigation = navigationAt(search);
-  const { campaign } = selectionOf(campaigns, navigation.route);
-  const reading = answers.campaign(campaign ?? "");
-  return renderToStaticMarkup(
-    <Shell navigation={navigation} campaigns={arrived(campaigns)} reading={arrived(reading)} />,
-  );
-}
-
 test("the selection falls back to the newest campaign of the route's project, and the route's campaign names its project", () => {
   const campaigns = answersOver(fixture.root, "default").campaigns();
   const newest = selectionOf(campaigns, routeOf(""));
@@ -229,23 +217,4 @@ test("collection labels use the call number and tool name, else the first scalar
   );
   for (const title of ["Id: a", "Enabled: false", "Item 3", "Item 4"]) expect(items).toContain(title);
   expect(items).not.toContain("hidden model");
-});
-
-test("the campaign picker says when a campaign is a rehearsal's copy", () => {
-  const answers = answersOver(fixture.root, "default");
-  const list = answers.campaigns();
-  const seeded = {
-    ...list,
-    campaigns: list.campaigns.map((row) => ({ ...row, seed: row.key === fixture.key })),
-  };
-  const navigation = navigationAt("");
-  const html = renderToStaticMarkup(
-    <Shell
-      navigation={navigation}
-      campaigns={arrived(seeded)}
-      reading={arrived(answers.campaign(fixture.key))}
-    />,
-  );
-  expect(html).toContain(`${fixture.name}<small> main, rehearsal copy</small>`);
-  expect(shellAt("").includes("rehearsal copy")).toBe(false);
 });

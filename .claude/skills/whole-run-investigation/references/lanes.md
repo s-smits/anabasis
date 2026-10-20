@@ -273,7 +273,8 @@ repair adopted against its reading, and `pack/evaluator` for a defect left stand
 
 **7. Supply and the gate.**
 
-Starts from `SUPPLY THIN (lane 7)` and `GATE REFUSED (lane 7)`.
+Starts from `SUPPLY THIN (lane 7)`, `GATE REFUSED (lane 7)` and
+`SAFEGUARD-8 PROMOTION ON AUTHOR ROOM (lane 7)`.
 
 The question is where tasks are lost between a proposal and the scored set, and whether the gate
 that refused was right to. v1's gate audit asked of every refusal whether it was 98% sure to
@@ -288,7 +289,12 @@ many the campaign holds against that. Do not propose loosening the gate from the
 decision it changes is whether another Examiner session is bought before the next comparison; it
 routes to `examiner-prompt` (`src/examiner/prompt.ts`) where the Examiner was not told what the
 gate needs, and `host` (`src/kernel/task.ts`) where the gate refuses on something that is not a
-defect.
+defect. `SAFEGUARD-8` names a promotion whose joined frontier clears its level only with the tasks
+the gate held on their author's answer alone: every reference solve valid and alike, and the
+author's answer better than each by the objective. The room on such a task is the author's
+answer as the author's objective measures it, so read those answers and the objective before the
+promotion is reported: r3's second and third promotions (19 October) read 5-0 and 3-0 without
+them, where a step at 0.02 takes 6-0.
 
 **8. Tasks no harness answers.**
 
@@ -313,7 +319,8 @@ fault, and `examiner/task` for an instance whose own limits exclude every answer
 
 **9. Whether validity separates.**
 
-Starts from `TIES BETWEEN VALID ANSWERS (lane 9)`.
+Starts from `TIES BETWEEN VALID ANSWERS (lane 9)` and
+`SAFEGUARD-9 PROMOTION BY THE OBJECTIVE ALONE (lane 9)`.
 
 The question is whether a valid answer within the budget tells two harnesses apart.
 `TIES BETWEEN VALID ANSWERS` fires on a
@@ -324,8 +331,12 @@ same solves (`objective.decided` in a report of a check program that declares on
 written before 11 October also holds `spread`, how far the use of turns, CPU seconds and seconds
 moved between repeated solves of one harness on one task, which decided the budget's unit; the
 unit is the model's turns, and no trigger reads it since. Seconds move with the host's load,
-which each `solve.started` and `solve.finished` records. The decision it changes is whether
-Phase 3 is built; it routes to `operator`.
+which each `solve.started` and `solve.finished` records. `SAFEGUARD-9` names a promotion whose
+joined frontier on validity alone does not clear its level: the objective decided it, as it did
+all three of r3's. In a drafted exam the objective is its author's own computation
+(`INSTRUMENT AUTHORED`, lane 1), so the claim is "better by the objective", and the objective's
+arithmetic is what a person checks first. The decision it changes is whether
+Phase 3 is built, and how a promotion is worded; it routes to `operator`.
 
 **10. Ties and the budget.**
 
@@ -550,7 +561,7 @@ or `host`, by where the value came from.
 
 **20. Pair identity and source reach.**
 
-Starts from `HOST CODE MOVED (lane 20)` and `SAFEGUARD-7 LIMITS MOVED (lane 20)`.
+Starts from `HOST CODE MOVED (lane 20)`.
 
 The question is whether the two sides of each comparison differ in the harness and in nothing
 else. A condition is a content address: the contract, the harness, the task version, the model
@@ -609,9 +620,10 @@ comparison that tallied no task tested nothing and reads `not-scored`; before th
 to say so it read `no-step`, as the eight truss rounds of 8 October did. `CUT BY ITS CAP` names
 one its dollar cap ended: it is finished, reads `not-scored`, and its solves are in no tally. A
 `no-step` at four untied tasks is no evidence of no gain, and a `step` at five rests on five
-tasks: say both plainly. One comparison of equal harnesses reads a step up to one time in ten,
-and three in a row at least once about 14% of the time, which is why a step is repeated before
-anything is promoted. Read the tasks the report left out, `short`, `aside` and `disputed`, and
+tasks: say both plainly. One comparison of equal harnesses reads a step at most as often as its
+level allows, 2% at the default, and since 19 October one step against the reference promotes,
+so a campaign's patience of attempts sums that risk (until then a step was repeated before
+anything was promoted). Read the tasks the report left out, `short`, `aside` and `disputed`, and
 whether leaving them out could have moved the tally. The decision it changes is whether the
 operator repeats the comparison, enlarges the set or reads the result as it stands; it routes
 to `operator`, and to `host` (`src/kernel/compare.ts`) only for an arithmetic fault.
@@ -663,29 +675,24 @@ in hours of high load.
 
 **25. The chain of comparisons.**
 
-Starts from `CHAIN (lane 25)`, `STEP NOT REPEATED (lane 25)`, `NO TASK HELD OUT (lane 25)`,
-`SAFEGUARD-1 ENDED WITH A MOVE NAMED (lane 25)`, `SAFEGUARD-3 SAME MOVE ASKED AGAIN (lane 25)` and
-`SAFEGUARD-4 CONVERSATIONS WITHOUT PROGRESS (lane 25)`.
+Starts from `CHAIN (lane 25)` and `NO TASK HELD OUT (lane 25)`.
 
-The question is whether the campaign is climbing: whether a step was found, repeated, and built
+The question is whether the campaign is climbing: whether a step was found, promoted, and built
 on. Read the chain: each comparison's reference harness, the harness compared with it, and its
 reading. The reference harness is the one the campaign started with until the operator promotes
 another by naming it; a Builder session starts from the latest harness a session left, step or
 none, and the operator may send it back to an earlier one. So a chain of sessions each starting
-from the last, all compared with the same reference, is the plan's design and no fault. A step
-is repeated once on fresh solves before anything is promoted: `STEP NOT REPEATED` names a step
-no second comparison of the same two harnesses has followed. A second step of another child
-against the same reference is another harness, not a repeat. Row F's `campaign` line gives the
+from the last, all compared with the same reference, is the plan's design and no fault. Since
+19 October one comparison that reads a step against the reference promotes its harness; until
+then a step was repeated once on fresh solves first, and a log of before may hold a step no
+second comparison of the same two harnesses followed, which promoted nothing. Row F's `campaign` line gives the
 moves the command made, how it ended and its billed dollars against its budget; the stop rule is
 that three moves in a row that could have shown a gain, with none, stop the
 campaign. A changed harness counts once against one reference, by the last comparison of the two
-under the campaign's setting, where it left room; a repeat does not count again. A campaign with no held-out task measures nothing at all: eight rounds on the
+under the campaign's setting, where it left room or read a step. A campaign with no held-out task measures nothing at all: eight rounds on the
 truss pack ran so on 8 October, for over $220, and each could only read that no task was
-scored. The safeguards are each a failure of 14 October no reader stated, printed and never
-acted on: a run of the command that ended `finished` while the table named a move (1), one
-move asked three times with no report between (3), and Builder conversations in a row past twice
-the idle count, which each ending starts afresh (4). The decision it changes is what runs next:
-a repeat, a promotion, another checkpoint, an Examiner session, or a stop; it routes to `operator`.
+scored. The decision it changes is what runs next:
+a promotion, another checkpoint, an Examiner session, or a stop; it routes to `operator`.
 
 ### The solve, its failure and its cost
 
@@ -732,8 +739,7 @@ cannot hold, and `operator` for the wall itself.
 **27. Failure mechanism and non-result honesty.**
 
 Starts from `NON-RESULTS (lane 27)`, `SOLVE NEVER FINISHED (lane 27)`,
-`EXAMINER NEVER FINISHED (lane 27)`, `MISSES WITHOUT A VERDICT (lane 27)`,
-`SESSION CRASHED (lane 27)` and `SAFEGUARD-2 WALL DURING A HOST ACTION (lane 27)`.
+`EXAMINER NEVER FINISHED (lane 27)`, `MISSES WITHOUT A VERDICT (lane 27)` and `SESSION CRASHED (lane 27)`.
 
 The question is, for every ending that is not a pass or a refused answer, which link broke first
 and whether its kind is honest. A non-result is never counted and a solve-side one is run again,
@@ -846,7 +852,7 @@ Starts from `PROMOTED (lane 31)`, `STARTER BARE (lane 31)`, `AFTER THE PROMOTION
 `start --with`, each as the reader prints it, and reviews none of them.
 
 The question is whether a promotion measured what the campaign exists to measure, and whether the
-campaign climbed from it. Lane 25 reads the chain and whether a step was repeated; lane 23 reads
+campaign climbed from it. Lane 25 reads the chain and whether a step was promoted; lane 23 reads
 the starter; this lane reads the promotion as one event with its cause and its consequence, and
 it is the lane a person reads before saying a campaign has improved a harness. Read it in five
 parts, and keep them apart in the report: a promotion can follow the rule exactly and still
@@ -855,11 +861,12 @@ measure little.
 First the rule. `PROMOTED` gives the harness and its parent, whether the table promoted it (a
 `campaign.move` of `promote` follows) or the operator did (`tools/d2/promote.ts`, which records
 any faults it was promoted `despite`), and the comparisons it rests on, each with its tally, its
-p, its level and the reference against itself. Say which rule the campaign ran under: a level and
-a trigger pinned in its opening terms, or none, so the tree's default, which differs between trees
-(abl175-new, on #175's tree, was read at 0.2; from #183 a step is read in two stages). A first
-reading at or under the trigger buys a repeat on fresh solves, the step and the repeat read
-together must clear the level, and the harness must not lose at the full limit. Set the tally beside its own A/A noise: a step whose
+p, its level and the reference against itself. Say which rule the campaign ran under: a level
+pinned in its opening terms, or none, so the tree's default, which differs between trees
+(abl175-new, on #175's tree, was read at 0.2). From #183 until 19 October a step was read in two
+stages: a first reading at or under a trigger bought a repeat on fresh solves, and the two read
+together had to clear the level. Since then one reading at the level promotes, where the
+retained tasks did not regress. Set the tally beside its own A/A noise: a step whose
 untied share is inside what the reference does to itself is not a step at any p.
 
 Then what the step measured. `STARTER BARE` names a rest comparison where the reference answered

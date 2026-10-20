@@ -34,7 +34,7 @@ export const NOTE = "Stacked two requirements.";
 export const REPO = resolve(import.meta.dir, "..", "..");
 /** The line an Examiner session ends each turn's last tool result with (`sit`, `session.ts`). */
 export const USED = /\s*\nTurn \d+ of \d+; \d+ of \d+ minutes? used\.$/;
-export const WALL: Wall = { repoRoot: REPO, packRoots: [], diskBytes: 64 * 1024 ** 2 };
+export const WALL: Wall = { repoRoot: REPO, packRoots: [] };
 export const CONTRACT: Contract = {
   answerFormat: {
     type: "object",
@@ -131,7 +131,6 @@ export const condition = (task: string, harness: string): Condition => ({
     shellDefaultSeconds: 30,
     shellMaxSeconds: 60,
     concurrency: 1,
-    diskBytes: 1024,
   },
   host: "h",
   side: "test",

@@ -3,6 +3,7 @@
  * level holds each chosen run's whole log, and a level adds what the log names by digest only.
  *
  *   bun run runs zip [<name> ...] --light|--medium|--verbose [--out FILE] [--max-mb N] [--note FILE]
+ *                    [--from HOST]
  *
  *   light    the log and each launch's receipt and output, each harness a session kept
  *            (`states/<digest>/`) and the brief
@@ -21,20 +22,39 @@
  * 2 MB a run, any level over `--max-mb`. Unnamed, the zip is `<names>-<level>.zip` where the command
  * runs.
  *
- * Never held: installed packages, caches and built bundles, a link, a file named like a secret.
+ * Never held: installed packages, caches and built bundles, a link out of the run's folder, a file
+ * named like a secret. A relative link inside it is held as a link, in the group of what it names:
+ * a kept state's `.toolchain` names its `../tree-*`, and on 19 October a medium zip of r3 lost all
+ * eight, so two investigation lanes matched each harness to its programs by digest by hand.
+ *
+ * A log is held to its last whole line, since a live run's may end in the append it is writing. An
+ * exam a campaign drafted is its brief and its checker as `checks/` is a stored pack's: until
+ * 19 October the groups named `checks/` alone, and a drafted exam's `exams/<digest>/` went to
+ * verbose's rest. `--from` makes the zip on a host `ANA_HOSTS` names, by that host's reading of its
+ * own runs, and brings the zip back to `--out`: on 19 October three live campaigns on two other
+ * hosts were wanted here for an investigation, and the files a level holds are chosen in one place.
  */
-import { cpSync, lstatSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
+import {
+  cpSync,
+  lstatSync,
+  mkdtempSync,
+  readdirSync,
+  readlinkSync,
+  rmSync,
+  writeFileSync,
+} from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
-import { basename, dirname, join, resolve } from "#src/meta/path.ts";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "#src/meta/path.ts";
 import { gitText } from "#src/meta/git.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import { receipts } from "./receipt.ts";
-import { logEvents, type Run, runs, standing } from "./registry.ts";
+import { hostNamed, quoted, sshScript, verbOn } from "./hosts.ts";
+import { logEvents, type Run, runs, standing, wholeLines } from "./registry.ts";
 
 const LEVELS = ["light", "medium", "verbose"] as const;
 const CAMPAIGN_ENDED = "campaign.ended";
@@ -50,7 +70,7 @@ const GROUPS: readonly (readonly [name: string, holds: string, level: Level, pat
     "light",
     /^([^/]+\.jsonl|launch-[^/]+)$/,
   ],
-  ["brief", "the brief the tasks answer", "light", /^checks\/brief\.json$/],
+  ["brief", "the brief the tasks answer", "light", /^(exams\/[^/]+\/)?checks\/brief\.json$/],
   [
     "harness",
     "each harness a session kept: guide, tools, tool spec, memory",
@@ -59,9 +79,9 @@ const GROUPS: readonly (readonly [name: string, holds: string, level: Level, pat
   ],
   [
     "checker",
-    "the checks, their tests and their reference, and a harness's own copy of them",
+    "the checks, their tests and their reference, an exam the campaign drafted, and a harness's own copy of them",
     "medium",
-    /^(checks|states\/[0-9a-f]{64}\/correctness-model)\//,
+    /^(checks|exams\/[^/]+|states\/[0-9a-f]{64}\/correctness-model)\//,
   ],
   ["toolchain", "what a harness installed, less the packages", "medium", /^states\/tree-[^/]+\//],
   ["memory", "the notes and helper files each Builder session left the next", "light", /^memory\//],
@@ -97,10 +117,17 @@ interface Left {
   readonly why: string;
 }
 
-/** Why a zip never holds `path`, or null when it may. */
-function unfit(path: string): string | null {
+/** The path from `root` that the link at `path` names, where it is relative and stays in `root`. */
+function linkedIn(root: string, path: string): string | null {
+  const target = readlinkSync(path);
+  const named = relative(root, resolve(dirname(path), target));
+  return isAbsolute(target) || named.startsWith("..") ? null : named;
+}
+
+/** Why a zip never holds `path` in `root`, or null when it may. */
+function unfit(root: string, path: string): string | null {
   const stat = lstatSync(path);
-  if (stat.isSymbolicLink()) return "a link";
+  if (stat.isSymbolicLink()) return linkedIn(root, path) === null ? "a link out of its folder" : null;
   if (SECRET.test(basename(path))) return "a secret's name";
   const installed =
     stat.isDirectory() &&
@@ -115,13 +142,15 @@ export function fit(root: string, names: readonly string[] = readdirSync(root).s
   const left: Left[] = [];
   const visit = (path: string): void => {
     const full = join(root, path);
-    const why = unfit(full);
+    const why = unfit(root, full);
     if (why !== null) {
       left.push({ path, why });
     } else if (lstatSync(full).isDirectory()) {
       for (const name of readdirSync(full).sort()) visit(join(path, name));
     } else {
-      const group = GROUPS.find(([, , , paths]) => paths.test(path))?.[0] ?? "rest";
+      // A link is grouped with what it names, as a folder: a `.toolchain` with its `tree-*`.
+      const named = lstatSync(full).isSymbolicLink() ? `${linkedIn(root, full) ?? path}/` : path;
+      const group = GROUPS.find(([, , , paths]) => paths.test(named))?.[0] ?? "rest";
       held.push({ path, bytes: lstatSync(full).size, group });
     }
   };
@@ -175,8 +204,15 @@ function gather(chosen: readonly Run[], level: Level, stage: string) {
   const left: Left[] = [];
   const keep = (from: string, under: string, found: ReturnType<typeof fit>) => {
     for (const { path, bytes, group } of found.held.filter((file) => holds(level, file.group))) {
-      cpSync(join(from, path), join(stage, under, path));
-      files.push({ path: join(under, path), bytes, group });
+      cpSync(join(from, path), join(stage, under, path), { verbatimSymlinks: true });
+      // A live run's log may end in the line it is writing, which every reader would refuse.
+      const whole = path.endsWith(".jsonl") ? wholeLines(join(from, path)) : null;
+      if (whole !== null) writeFileSync(join(stage, under, path), whole);
+      files.push({
+        path: join(under, path),
+        bytes: whole === null ? bytes : Buffer.byteLength(whole),
+        group,
+      });
     }
     left.push(...found.left.map(({ path, why }) => ({ path: join(under, path), why })));
   };
@@ -233,7 +269,8 @@ export function zip(
     writeFileSync(join(stage, name, "MANIFEST.json"), `${capturedJsonStringify(manifest, null, 2)}\n`);
     // `zip` adds to an archive that is already there.
     rmSync(to.out, { force: true });
-    runTextSyncOrThrow(["zip", "-qr", "-X", resolve(to.out), name], { cwd: stage });
+    // `-y` stores a link as the link, which `fit` holds only where it stays in the run's folder.
+    runTextSyncOrThrow(["zip", "-qry", "-X", resolve(to.out), name], { cwd: stage });
     const bytes = lstatSync(to.out).size;
     const max = to.maxBytes ?? (level === "light" ? LIGHT_MAX * chosen.length : null);
     if (max !== null && bytes > max) {
@@ -249,7 +286,7 @@ export function zip(
 }
 
 /** `bun run runs zip`. */
-export function zipRuns(args: readonly string[]): void {
+export async function zipRuns(args: readonly string[]): Promise<void> {
   const { values, positionals: names } = parseArgs({
     args: [...args],
     allowPositionals: true,
@@ -260,21 +297,45 @@ export function zipRuns(args: readonly string[]): void {
       out: { type: "string" },
       "max-mb": { type: "string" },
       note: { type: "string" },
+      from: { type: "string" },
     },
   });
   const levels = LEVELS.filter((level) => values[level]);
   const [level] = levels;
   if (level === undefined || levels.length > 1) {
     throw new Error(
-      "usage: bun run runs zip [<name> ...] --light|--medium|--verbose [--out FILE] [--max-mb N] [--note FILE]",
+      "usage: bun run runs zip [<name> ...] --light|--medium|--verbose [--out FILE] [--max-mb N] [--note FILE] [--from HOST]",
     );
   }
   const megabytes = values["max-mb"];
+  const out = values.out ?? `${names.join("-") || "runs"}-${level}.zip`;
+  if (values.from !== undefined) {
+    if (values.note !== undefined) {
+      throw new Error("--note is added where the zip is made: zip here, or leave it out");
+    }
+    // The host makes the zip by its own reading of its runs, and only the zip comes back.
+    const host = hostNamed(values.from);
+    // The zip's folder inside is named for its file, so the host's copy takes `--out`'s name.
+    const scratch = `/tmp/ana-runs-zip-${String(Date.now())}`;
+    const there = `${scratch}/${basename(out)}`;
+    const mb = megabytes === undefined ? [] : ["--max-mb", megabytes];
+    runTextSyncOrThrow(sshScript(host, `mkdir ${scratch}`));
+    try {
+      if ((await verbOn(host, ["zip", ...names, `--${level}`, "--out", there, ...mb])) !== 0) {
+        throw new Error(`the zip was not made on ${host.name}`);
+      }
+      runTextSyncOrThrow(["rsync", "-a", `${host.ssh}:${quoted(there)}`, out]);
+    } finally {
+      runTextSyncOrThrow(sshScript(host, `rm -rf ${scratch}`));
+    }
+    console.log(`${out}  from ${host.name}`);
+    return;
+  }
   const made = zip(
     runs().filter((run) => names.length === 0 || names.some((name) => run.name.includes(name))),
     level,
     {
-      out: values.out ?? `${names.join("-") || "runs"}-${level}.zip`,
+      out,
       maxBytes: megabytes === undefined ? null : Number(megabytes) * 1024 * 1024,
       note: values.note ?? null,
     },

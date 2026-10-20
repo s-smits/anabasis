@@ -31,7 +31,6 @@ import {
   admittedCost,
   type Build,
   BUILD_END,
-  type Compared,
   count,
   EXAM_END,
   EXAM_START,
@@ -449,27 +448,12 @@ function comparisonTriggers(log: Index): Trigger[] {
     // A report written before 2026-10-09 names no reference harness: it compared with its parent.
     return `${session} ${short(text(own.old) || (build?.parent ?? ""))}>${fresh} ${text(last.reading)}`;
   });
-  // A step is repeated once on fresh solves before anything is promoted: a second comparison of
-  // the same two harnesses.
-  const sidesOf = ({ own, last }: Compared) => `${text(own.old)} ${text(last.fresh)}`;
-  const steps = log.compared.filter(({ last }) => last.reading === "step");
-  const unrepeated = steps.filter(
-    (step) => !log.compared.some((other) => other !== step && sidesOf(other) === sidesOf(step)),
-  ).length;
   return [
     ...(hosts > 1
       ? [fired("HOST CODE MOVED", `${String(hosts)} versions of the host's code in one log`)]
       : []),
     ...perComparison,
     ...(chain.length > 0 ? [fired("CHAIN", chain.join("; "))] : []),
-    ...(unrepeated > 0
-      ? [
-          fired(
-            "STEP NOT REPEATED",
-            `${plural(unrepeated, "step")} no second comparison of the same two harnesses has repeated`,
-          ),
-        ]
-      : []),
     ...(log.states.size > 0 && log.held.length === 0
       ? [fired("NO TASK HELD OUT", "no task is held out, so a comparison has nothing to score")]
       : []),

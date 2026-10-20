@@ -11,7 +11,7 @@
  * had promoted once each and none twice, and no view said at which epoch a campaign stood or what
  * its tasks had done since the promotion. `runs view` prints the rows.
  */
-import { attemptsOf, pairings, readTwice, TRIGGER, triggered, UNMEASURED } from "../kernel/compare.ts";
+import { flipP, pairings } from "../kernel/compare.ts";
 import { conditionsOf } from "../kernel/condition.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { billedBetween, lastReports, pairsReported, type Reported } from "../kernel/reports.ts";
@@ -26,21 +26,21 @@ import { openingOf } from "./opening.ts";
 
 /**
  * What an epoch's promotion attempts risk together: a false promotion among them, estimated (the
- * revised plan's M2.5, 12 October). The two-stage rule's design gives one attempt a rate, which is
- * an estimate and no bound (`falseRate`), and a campaign makes many; this reads them.
+ * revised plan's M2.5, 12 October). The test gives one reading a rate at its margins, which is an
+ * estimate and no bound (`falseRate`, `comparison.ts`), and a campaign makes many; this reads them.
  */
 interface FalsePromotion {
-  /** The candidates read against the epoch's reference on a frontier, each one attempt with the
-   *  repeat it bought, unsuccessful ones included. */
+  /** The readings of a candidate against the epoch's reference on a frontier, each one attempt,
+   *  unsuccessful ones included. Until 19 October a step and the repeat it bought were one. */
   readonly attempts: number;
-  /** The A/A controls on record read in pairs as a step and its repeat (`readTwice`), each pair one
-   *  attempt between equal harnesses, and the pairs that promoted: a count beside the estimate,
-   *  which sets none of it. Until 19 October a 95% bound off the pairs replaced the design's rate once one
-   *  pair was on record, and no error in one pair bounds an attempt at 95%: esp32-fresh-opus's
-   *  closing report read "at most 100%" where its attempts' own rates were 1.8%, and no campaign
-   *  reads the 59 pairs that bring that bound down to 5%. */
+  /** The A/A controls on record, each read as an attempt between equal harnesses is, one-sided at
+   *  its comparison's level, and those that read a step: a count beside the estimate, which sets
+   *  none of it. Until 19 October the controls were read in pairs as a step and its repeat, and
+   *  until then too a 95% bound off the pairs replaced the design's rate once one pair was on
+   *  record: esp32-fresh-opus's closing report read "at most 100%" where its attempts' own rates
+   *  were 1.8%. */
   readonly errors: number;
-  readonly pairs: number;
+  readonly controls: number;
   /** The riskiest attempt's rate by the rule's design: the largest of the attempts' own rates at
    *  their margins (`falseRate`), the level where a report holds none. An estimate, no bound. */
   readonly bound: number;
@@ -105,12 +105,6 @@ const PROMOTED = "harness.promoted";
  *  took their place, a fixed set read after every promotion, went on 16 October: the first
  *  promotion's reference answered it whole. The climb is read as promotions. */
 const BARS = { cost: 3 } as const;
-
-/** What `worthOf` reads of a comparison as `compared` builds its report: its id and candidate. */
-interface Read {
-  readonly id: string;
-  readonly fresh: string;
-}
 
 /** A step's worth against the bar (`worthOf`, `promotionsWorth`). */
 export interface Worth {
@@ -202,7 +196,7 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
       comparisons,
       reference_share: shareOf(under(referenceDigest)),
       starter_share: reference === "starter" ? null : shareOf(under(starterDigest)),
-      falsePromotion: falsePromotionOf(events, reports, within, {
+      falsePromotion: falsePromotionOf(reports, within, {
         reference: referenceDigest,
         starter: starterDigest,
       }),
@@ -212,57 +206,38 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
 
 /**
  * An epoch's false-promotion reading (`FalsePromotion`): its attempts, from `reports` within it
- * against `reference`, each at its own rate, and beside them the campaign's A/A controls in pairs,
- * in the log's order, each control's reference against itself as a stage of its own.
+ * against `reference`, each at its own rate, and beside them the campaign's A/A controls, each the
+ * reference against itself read as a comparison is.
  */
 function falsePromotionOf(
-  events: readonly LogEvent[],
   reports: readonly Reported[],
   within: (at: number) => boolean,
   harnesses: { readonly reference: string | null; readonly starter: string | null },
 ): FalsePromotion {
   const levelOf = ({ data }: Reported) => (isNumber(data.level) ? data.level : 0);
-  const against = reports.filter(
+  const attempts = reports.filter(
     ({ index, data }) =>
       within(index) &&
       data.old === harnesses.reference &&
       data.fresh !== harnesses.starter &&
       asRecord(data.frontier) !== null,
   );
-  // A step and the repeat it bought are one attempt (the Oracle's answer, 12 October), and a later
-  // reading of the same candidate that is no repeat is another (`attemptsOf`; until 16 October one
-  // a candidate, and buffer-159-opus's third and fourth readings of 0665c78b went uncounted).
-  const trigger = Number(openingOf(events)?.terms.trigger ?? TRIGGER);
-  const attempts = [...new Set(against.map(({ data }) => data.fresh))].flatMap((fresh) =>
-    attemptsOf(
-      against.filter(({ data }) => data.fresh === fresh),
-      ({ data }) => triggered(data, trigger),
-    ).flatMap(([first]) => (first === undefined ? [] : [first])),
-  );
-  /** The rule's own chance an attempt promotes equal harnesses at its margins (`falseRate`), the
-   *  level where its report holds none: the level is one reading's, and this the rule's. */
+  /** The test's own chance a reading at its margins reads a step between equal harnesses
+   *  (`falseRate`), the level where its report holds none. */
   const rateOf = (attempt: Reported) => {
     const rate = asRecord(attempt.data.frontier)?.falseRate;
     return isNumber(rate) ? rate : levelOf(attempt);
   };
-  const controls = reports.filter(({ data }) => asRecord(data.noise) !== null);
-  const stage = ({ data }: Reported) => ({
-    frontier: data.noise ?? null,
-    retained: UNMEASURED,
-    families: {},
+  const controls = reports.flatMap((each) => {
+    const apart = asRecord(each.data.noise)?.differences;
+    return Array.isArray(apart) ? [{ each, apart: apart.filter(isNumber) }] : [];
   });
-  const pairs = Array.from({ length: Math.floor(controls.length / 2) }, (_, at) => [
-    controls[2 * at],
-    controls[2 * at + 1],
-  ]).flatMap(([one, two]) => (one === undefined || two === undefined ? [] : [[one, two] as const]));
-  const errors = pairs.filter(([one, two]) =>
-    readTwice([stage(one), stage(two)], levelOf(one), trigger),
-  ).length;
+  const errors = controls.filter(({ each, apart }) => flipP(apart) <= levelOf(each)).length;
   const rates = attempts.map(rateOf);
   return {
     attempts: attempts.length,
     errors,
-    pairs: pairs.length,
+    controls: controls.length,
     bound: Math.max(0, ...rates),
     union: Math.min(
       1,
@@ -295,9 +270,9 @@ function percent(chance: number): string {
 /** The riskiest attempt's rate by design, an estimate, and the A/A controls read beside it. */
 function sourceOf(risk: FalsePromotion): string {
   const controls =
-    risk.pairs === 0
-      ? "no two A/A controls on record"
-      : `${String(risk.errors)} of ${plural(risk.pairs, "pair")} of A/A controls promoted`;
+    risk.controls === 0
+      ? "no A/A control on record"
+      : `${String(risk.errors)} of ${plural(risk.controls, "A/A control")} read a step`;
   return `${percent(risk.bound)} for the riskiest attempt by the rule's design; ${controls}`;
 }
 
@@ -319,7 +294,7 @@ export function riskLines(events: readonly LogEvent[]): string[] {
       return `- Epoch ${String(nth)}: ${attempts}, a false promotion among them estimated at ${percent(risk.union)}: ${sourceOf(risk)}.`;
     }),
     `Over the campaign, a false promotion in any epoch estimated at ${percent(total)}: the sum of the epochs' estimates, capped at one, which assumes nothing of how the attempts depend on one another. It sums estimates, so it is an estimate and no bound.`,
-    "The rule's design assumes each untied task is as likely won as lost between two equal harnesses, which a solver whose solves drift can break. The A/A controls test that assumption: a pair of them that promotes is a false promotion between equal harnesses, and the design's rate then does not hold. No promotion in n pairs bounds an attempt only near 3 in n, so the controls on record count against the design and bound nothing by themselves. Each line counts the attempts on record: a campaign that goes on makes more, and its estimate grows with them.",
+    "The rule's design assumes each untied task is as likely won as lost between two equal harnesses, which a solver whose solves drift can break. The A/A controls test that assumption: one that reads a step is a false promotion between equal harnesses, and the design's rate then does not hold. No step in n controls bounds an attempt only near 3 in n, so the controls on record count against the design and bound nothing by themselves. Each line counts the attempts on record: a campaign that goes on makes more, and its estimate grows with them.",
   ];
 }
 
@@ -347,30 +322,13 @@ function costOf(
   return { attempts, sessions: epoch.sessions, dollars, met: epoch.nth === 1 || attempts <= bar };
 }
 
-/** Comparison `read.id`'s worth where it reads a step (the plan's W): the cost of the log's last
- *  epoch with it as an attempt unless it is the repeat of one (`attemptsOf`), a repeat being its
- *  first stage's. It is read as the log stood before its report, so a report read again says what it said. */
-export function worthOf(events: readonly LogEvent[], read: Read): Worth {
-  const before = events.filter(
-    ({ kind, data }) => kind !== "comparison.reported" || data.session !== read.id,
-  );
+/** Comparison `id`'s worth where it reads a step (the plan's W): the cost of the log's last
+ *  epoch with it as one attempt more. It is read as the log stood before its report, so a report
+ *  read again says what it said. Until 19 October a repeat was its first stage's attempt. */
+export function worthOf(events: readonly LogEvent[], id: string): Worth {
+  const before = events.filter(({ kind, data }) => kind !== "comparison.reported" || data.session !== id);
   const bars = barsOf(before);
-  const epochs = epochsOf(before);
-  const epoch = epochs.at(-1);
-  const trigger = Number(openingOf(before)?.terms.trigger ?? TRIGGER);
-  const prior = lastReports(before).flatMap(({ index, data }) =>
-    epoch !== undefined &&
-    index >= epoch.from &&
-    data.fresh === read.fresh &&
-    asRecord(data.frontier) !== null
-      ? [data]
-      : [],
-  );
-  // Until 16 October any earlier reading of the candidate made this one its repeat, and the g-6
-  // prefix of buffer-159-opus read one attempt where the epoch reader counts two (`attemptsOf`).
-  const open = attemptsOf(prior, (data) => triggered(data, trigger)).at(-1);
-  const again = open?.length === 1 && open[0] !== undefined && triggered(open[0], trigger);
-  return { bars, cost: costOf(before, epoch, bars.cost, again ? 0 : 1) };
+  return { bars, cost: costOf(before, epochsOf(before).at(-1), bars.cost, 1) };
 }
 
 /** Each promoted harness's worth (the plan's W): the cost of the epoch it ended. */
@@ -427,10 +385,7 @@ export function regressionOf(events: readonly LogEvent[]): Regression | null {
     counts.shared += 1;
     // By the objective too, where both comparisons fixed the same rule; on validity alone otherwise.
     const rule = pair.objective;
-    const same =
-      rule !== undefined &&
-      other.objective?.direction === rule.direction &&
-      other.objective.margin === rule.margin;
+    const same = rule !== undefined && other.objective?.direction === rule.direction;
     const won = pairings({
       task: pair.task,
       old: other.fresh,

@@ -17,7 +17,12 @@
  * whole record. A simplify commit itself took 42 of 147 visits (0.29). The same reading of
  * `migrat` (8 of 9), `compat` (2 of 4), `old` (4 of 4, an edit tool's `old_string`) and
  * `previous` (15 of 17, three of 43 visits) was too small or too mixed to name a path.
+ *
+ * A vendored upstream is read as its author wrote it, as the copied-block scan reads it
+ * (`FROZEN_PATH`): until 19 October the scan reported two of pi's files under `vendor/`, kept
+ * whole so that upstream changes apply with sed, and both stood answered in the ledger.
  */
+import { FROZEN_PATH } from "./tree-copied-block.ts";
 import type { TreeFinding } from "./tree-findings.ts";
 
 /** A test, wherever it sits: a fixture holding an old row proves a refusal, it keeps no path. */
@@ -35,7 +40,7 @@ const NAME = /[A-Za-z_][\w-]*[A-Za-z0-9]/gu;
 export function compatibilityPaths(corpusFiles: ReadonlyMap<string, string>): TreeFinding[] {
   const rows: TreeFinding[] = [];
   for (const [path, text] of corpusFiles) {
-    if (!CODE.test(path) || TEST_PATH.test(path)) continue;
+    if (!CODE.test(path) || TEST_PATH.test(path) || FROZEN_PATH.test(path)) continue;
     const names = new Set<string>();
     let first = 0;
     for (const [index, line] of text.split("\n").entries()) {

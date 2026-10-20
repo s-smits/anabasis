@@ -36,13 +36,6 @@ export type Limits = {
   readonly shellMaxSeconds: number;
   /** Solves the host runs at once, which moves wall time through the load they put on one another. */
   readonly concurrency: number;
-  /**
-   * The most bytes one solve's writable roots may hold together, enforced as the size of the volume
-   * they sit on (`src/verify/disk-cap.ts`). Neither v1 nor the sweep this plan targets capped disk,
-   * so one solve could fill the host's disk under every other. The condition's `sandbox` names the
-   * same number, so a change here moves `sandbox` too.
-   */
-  readonly diskBytes: number;
 };
 
 export interface Condition {
@@ -66,7 +59,7 @@ export interface Condition {
   readonly solverTools: string;
   readonly verifierTools: string;
   /** The digest of the sandbox a solve ran under, as the campaign names it: the isolation
-   *  profile's id, the platform and the disk cap (`tools/d2/campaign.ts`). What the profile lets a
+   *  profile's id and the platform (`tools/d2/campaign.ts`); until 19 October the disk cap too. What the profile lets a
    *  command read and reach, the network among it, is the profile's and is not recorded apart. */
   readonly sandbox: string;
   readonly limits: Limits;
@@ -92,21 +85,19 @@ export type Setting = Omit<Condition, "task" | "harness" | "solverTools">;
 export function limitsIn(value: JsonValue | undefined): Limits | null {
   const held = asRecord(value);
   if (held === null) return null;
-  const { wallSeconds, turns, shellDefaultSeconds, shellMaxSeconds, concurrency, diskBytes } = held;
+  const { wallSeconds, turns, shellDefaultSeconds, shellMaxSeconds, concurrency } = held;
   const { modelTurns } = held;
   return isNumber(wallSeconds) &&
     isNumber(turns) &&
     isNumber(shellDefaultSeconds) &&
     isNumber(shellMaxSeconds) &&
-    isNumber(concurrency) &&
-    isNumber(diskBytes)
+    isNumber(concurrency)
     ? {
         wallSeconds,
         turns,
         shellDefaultSeconds,
         shellMaxSeconds,
         concurrency,
-        diskBytes,
         ...keyIfDefined("modelTurns", isNumber(modelTurns) ? modelTurns : undefined),
       }
     : null;

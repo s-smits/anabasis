@@ -82,9 +82,9 @@ moves. v1's words for its sequence have no meaning here.
 
 Near-black zinc canvas `#09090b`, neutral white text, cyan `#4cc2ff` for interaction
 and the measured series. Green, amber and red describe evidence; no coloured side
-rules on cards. Electrolize for titles, Newsreader italic for the one editorial
-accent, Manrope for prose, Space Grotesk for tabular figures, true monospace for
-identities. Bundle every font. The altimeter rule beneath the hero is the signature.
+rules on cards. Electrolize for titles, Newsreader for the one editorial voice,
+upright in the eyebrow and italic in an aside, Manrope for prose, Space Grotesk for
+tabular figures, true monospace for identities. Bundle every font. The altimeter rule beneath the hero is the signature.
 
 Use the shared primitives and token layer. The chart retains the original shadcn
 ChartContainer/Recharts composition, adapted to the Bun app's shared stylesheet.

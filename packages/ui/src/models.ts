@@ -10,7 +10,7 @@
  *
  * Two tiers (the brief of 11 October, section 8). The default tier, a token alone, serves counts,
  * tallies, readings, digests, costs, task ids and states, a Builder session's own turns and calls, a
- * practice solve's trace and a kept harness's `agent/` files. The exam tier, a server started with
+ * practice solve's trace and a kept harness's files. The exam tier, a server started with
  * `--exam-side`, adds task text, hidden values, answers, verdicts, rulings and their reasons, an
  * Examiner session's turns and calls, a held-out solve's trace and a raw event. Every field the
  * exam tier alone carries is optional and says so; an endpoint the exam tier alone answers is in
@@ -105,8 +105,6 @@ export interface CampaignRow {
   /** Dollars billed over the whole log (`billedAll`), and the opening's total, null where none. */
   readonly billed: number;
   readonly budget: number | null;
-  /** A copy of another campaign made to rehearse on (`Run.seed`, `tools/runs/registry.ts`). */
-  readonly seed: boolean;
 }
 
 export interface CampaignList extends Answer {
@@ -310,7 +308,7 @@ export interface Counters {
     readonly attempts: number;
     readonly union: number;
     readonly bound: number;
-    readonly pairs: number;
+    readonly controls: number;
     readonly errors: number;
   } | null;
   /** The dollars left of the campaign's total (`Plan.left`), and what the last comparison the cap
@@ -458,7 +456,7 @@ interface ComparisonTerms {
   /** The model's turns its solves were told (`Compared.modelTurns`). */
   readonly modelTurns: number | null;
   /** The objective rule, where the check program declares one. */
-  readonly objective: { readonly direction: "lower" | "higher"; readonly margin: number } | null;
+  readonly objective: { readonly direction: "lower" | "higher" } | null;
   readonly prediction: string | null;
 }
 
@@ -646,12 +644,13 @@ export interface LogEventDetail extends Answer {
 /** How the inspector renders a file. */
 export type FileContent = "json" | "jsonl" | "text" | "typescript" | "other";
 
-/** The files of `states/<digest>/agent`, and nothing of the harness beside it. */
+/** The files of `states/<digest>/`, the harness whole, but for the exam side's copy (`server/harness.ts`). */
 export interface HarnessFiles extends Answer {
-  readonly files: readonly { readonly path: string; readonly bytes: number }[];
+  /** Each file, and a program's own account of itself under `.toolchain/bin/`: its head comment. */
+  readonly files: readonly { readonly path: string; readonly bytes: number; readonly about: string | null }[];
 }
 
-/** One file of a harness's `agent/`, cut to a readable size. */
+/** One file of a harness, cut to a readable size; a binary has no value. */
 export interface HarnessFile extends Answer {
   readonly content: FileContent;
   /** The text, or the parsed value of a JSON file. */
@@ -660,7 +659,7 @@ export interface HarnessFile extends Answer {
   readonly bytes: number;
 }
 
-/** Two harnesses' `agent/` files compared, one unified diff a changed file. */
+/** Two harnesses' files compared, one unified diff a changed file. */
 export interface HarnessDiff extends Answer {
   readonly files: readonly {
     readonly path: string;

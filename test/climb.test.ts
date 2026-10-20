@@ -98,7 +98,6 @@ const condition = (task: string, harness: string, host = "h"): Condition => ({
     shellDefaultSeconds: 30,
     shellMaxSeconds: 60,
     concurrency: 1,
-    diskBytes: 1024,
   },
   host,
   side: "test",
@@ -438,9 +437,9 @@ describe("the regression reading beside a comparison", () => {
   });
 
   it("reads two valid answers by the objective where both comparisons fixed the same rule, and on validity alone otherwise", () => {
-    const lower = { direction: "lower", margin: 0.01 };
+    const lower = { direction: "lower" };
     // Both candidates answer v1 in both solves; h3's answers are lighter. g-1 and g-2 fixed the
-    // same rule, so the reading sets them apart; g-3 fixed another margin, and reads a tie.
+    // same rule, so the reading sets them apart; g-3 fixed another direction, and reads a tie.
     const log: LogEvent[] = [
       ...heldOut("v1"),
       ...solved("g-1", "v1", "h1", [false, false]),
@@ -462,7 +461,7 @@ describe("the regression reading beside a comparison", () => {
       ...log,
       ...solved("g-3", "v1", "h1", [false, false]),
       ...solved("g-3", "v1", "h4", [true, true], { measures: [6, 6] }),
-      reported("g-3", "h1", "h4", ["v1"], { ...lower, margin: 0.5, decided: 0 }),
+      reported("g-3", "h1", "h4", ["v1"], { direction: "higher", decided: 0 }),
     ];
     expect(regressionOf(other)).toMatchObject({
       newest: "h4",
@@ -495,8 +494,9 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     });
   const started = event("comparison.started", { session: "g-1", old: "S", fresh: "h2", starter: "S" });
 
-  it("sums the attempts' rates by the rule's design, one a candidate and unsuccessful ones included", () => {
-    // `h2`'s step and its repeat are one attempt; `h3`'s report carries the rule's own rate.
+  it("sums the attempts' rates by the rule's design, every reading against the reference one, unsuccessful ones included", () => {
+    // Since 19 October each reading is an attempt: `h2`'s two readings are two, and `h3`'s report
+    // carries the test's own rate. Until then a step and the repeat it bought were one.
     const rated = event("comparison.reported", {
       ...attempt("g-3", "S", "h3").data,
       frontier: { differences: [0], falseRate: 0.05 },
@@ -508,25 +508,25 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     const log = [started, stepped, attempt("g-2", "S", "h2"), rated];
     const [epoch] = epochsOf(log);
     // Each attempt at its own rate, the level where its report holds none.
-    expect(epoch?.falsePromotion).toMatchObject({ attempts: 2, errors: 0, pairs: 0, bound: 0.1 });
-    expect(epoch?.falsePromotion.union).toBeCloseTo(0.15, 12);
+    expect(epoch?.falsePromotion).toMatchObject({ attempts: 3, errors: 0, controls: 0, bound: 0.1 });
+    expect(epoch?.falsePromotion.union).toBeCloseTo(0.25, 12);
     if (epoch === undefined) throw new Error("an epoch");
     expect(epochLine(epoch)).toContain(
-      "2 promotion attempts under this reference, a false promotion among them estimated at 15%: 10% for the riskiest attempt by the rule's design; no two A/A controls on record",
+      "3 promotion attempts under this reference, a false promotion among them estimated at 25%: 10% for the riskiest attempt by the rule's design; no A/A control on record",
     );
     // The closing report sums the epochs' estimates, here the one epoch's (the plan's 7.6).
     expect(riskLines(log).slice(0, 2)).toEqual([
-      "- Epoch 1: 2 promotion attempts, a false promotion among them estimated at 15%: 10% for the riskiest attempt by the rule's design; no two A/A controls on record.",
-      "Over the campaign, a false promotion in any epoch estimated at 15%: the sum of the epochs' estimates, capped at one, which assumes nothing of how the attempts depend on one another. It sums estimates, so it is an estimate and no bound.",
+      "- Epoch 1: 3 promotion attempts, a false promotion among them estimated at 25%: 10% for the riskiest attempt by the rule's design; no A/A control on record.",
+      "Over the campaign, a false promotion in any epoch estimated at 25%: the sum of the epochs' estimates, capped at one, which assumes nothing of how the attempts depend on one another. It sums estimates, so it is an estimate and no bound.",
     ]);
     // A rate under ten percent is printed to a tenth: 1.8% is not 2%.
     const small = { ...rated, data: { ...rated.data, frontier: { differences: [0], falseRate: 0.018 } } };
     expect(riskLines([started, small])[0]).toContain("1.8% for the riskiest attempt by the rule's design");
   });
 
-  it("counts the pairs of A/A controls the rule promoted beside the design's rate, and lets them set none of it", () => {
-    // Four controls tie every task: two pairs read by the promotion rule, no error. Until 19 October
-    // they replaced the design's 10% with a 95% bound of 78% an attempt, and four attempts read 100%.
+  it("counts the A/A controls that read a step, one-sided at the level, beside the design's rate, and lets them set none of it", () => {
+    // Four controls tie every task: none reads a step. Until 19 October they were read in pairs by
+    // the two-stage rule, and until then too a 95% bound of 78% an attempt replaced the design's 10%.
     const ties = [0, 0, 0];
     const log = [
       started,
@@ -535,28 +535,31 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
       attempt("g-5", "h2", "h4"),
     ];
     const [first, second] = epochsOf(log);
-    // The four are one candidate's readings, none of which bought a repeat: four attempts, each of
-    // which could have (16 October; until then one a candidate, the Oracle's answer of 12 October).
-    expect(first?.falsePromotion).toMatchObject({ attempts: 4, errors: 0, pairs: 2, bound: 0.1 });
+    expect(first?.falsePromotion).toMatchObject({ attempts: 4, errors: 0, controls: 4, bound: 0.1 });
     expect(first?.falsePromotion.union).toBeCloseTo(0.4, 12);
     expect(second?.falsePromotion).toMatchObject({
       attempts: 1,
       errors: 0,
-      pairs: 2,
+      controls: 4,
       bound: 0.1,
       union: 0.1,
     });
     if (second === undefined) throw new Error("an epoch");
     expect(epochLine(second)).toContain(
-      "a false promotion among them estimated at 10%: 10% for the riskiest attempt by the rule's design; 0 of 2 pairs of A/A controls promoted",
+      "a false promotion among them estimated at 10%: 10% for the riskiest attempt by the rule's design; 0 of 4 A/A controls read a step",
     );
     expect(riskLines(log)[2]).toStartWith(
       "Over the campaign, a false promotion in any epoch estimated at 50%:",
     );
-    // Two controls that each read 2-0 promote as a step and its repeat: one error in one pair, said.
-    const lucky = [started, attempt("g-1", "S", "h2", [1, 1]), attempt("g-2", "S", "h2", [1, 1])];
-    expect(epochsOf(lucky)[0]?.falsePromotion).toMatchObject({ errors: 1, pairs: 1 });
-    expect(riskLines(lucky)[0]).toContain("1 of 1 pair of A/A controls promoted");
+    // A control whose four tasks all went one way reads a step at 0.10 (p 1/16): one error, said.
+    // The other way it reads none, one-sided as a comparison is.
+    const lucky = [
+      started,
+      attempt("g-1", "S", "h2", [1, 1, 1, 1]),
+      attempt("g-2", "S", "h2", [-1, -1, -1, -1]),
+    ];
+    expect(epochsOf(lucky)[0]?.falsePromotion).toMatchObject({ errors: 1, controls: 2 });
+    expect(riskLines(lucky)[0]).toContain("1 of 2 A/A controls read a step");
     // Past one the sum is capped there.
     const many = Array.from({ length: 11 }, (_, at) =>
       attempt(`g-${String(at + 1)}`, "S", `h${String(at + 2)}`),
@@ -577,7 +580,7 @@ describe("the bar a promotion is read against, beside an old ladder's readings",
       level: 0.1,
       setting: SETTING,
       versions: ["v1"],
-      // Three tasks won by two pairs each: p 0.125, under the trigger, so it buys a repeat.
+      // Three tasks won by two pairs each: p 0.125, read as a step here by its word.
       frontier: { differences: [2, 2, 2], falseRate: 0.01 },
       retained: "unmeasured",
     });
@@ -621,18 +624,16 @@ describe("the bar a promotion is read against, beside an old ladder's readings",
     );
   });
 
-  it("reads a step as the log stood before its report, with its candidate as one attempt and a repeat as none", () => {
+  it("reads a step as the log stood before its report, as one attempt more, and every reading before it as one", () => {
     const step = log.findIndex(({ data }) => data.session === "g-3" && data.reading === "step");
-    const asked = { id: "g-3", fresh: "hb" };
-    const before = worthOf(log.slice(0, step), asked);
-    expect(worthOf(log.slice(0, step + 1), asked)).toEqual(before);
+    const before = worthOf(log.slice(0, step), "g-3");
+    expect(worthOf(log.slice(0, step + 1), "g-3")).toEqual(before);
     expect(before.cost).toMatchObject({ attempts: 1, met: true });
-    expect(worthOf(log.slice(0, step + 1), { ...asked, id: "g-5" }).cost).toMatchObject({ attempts: 1 });
-    // A reading after that repeat is the candidate's second attempt: until 16 October any earlier
-    // reading made it a repeat, and buffer-159-opus's g-6 read one attempt where there were two.
+    // A reading after the step is an attempt of its own: until 19 October a repeat was none.
+    expect(worthOf(log.slice(0, step + 1), "g-5").cost).toMatchObject({ attempts: 2 });
     const tied = { ...stepRead("g-5", "ha", "hb").data, reading: "no-step", frontier: { differences: [0] } };
-    const repeated = [...log.slice(0, step + 1), event("comparison.reported", tied)];
-    expect(worthOf(repeated, { ...asked, id: "g-6" }).cost).toMatchObject({ attempts: 2 });
+    const again = [...log.slice(0, step + 1), event("comparison.reported", tied)];
+    expect(worthOf(again, "g-6").cost).toMatchObject({ attempts: 3 });
   });
 
   it("reads no old ladder reading as a step, a control or an attempt of the climb's", () => {

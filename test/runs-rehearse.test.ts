@@ -293,7 +293,9 @@ describe("a rehearsal's seats", () => {
         probe: async (task, id, kill) => (await solver.solve(task, reference, kill, id)).ending,
       });
       const gates = read(campaign.log).flatMap(({ kind, data }) => (kind === "task.gate" ? [data] : []));
-      expect(result).toMatchObject({ puts: 2, ended: refused === 0 ? "supplied" : "finished" });
+      // try_task returns before its gate does, so the script reaches its finish whether or not the
+      // gate held enough, and the session ends finished.
+      expect(result).toMatchObject({ puts: 2, ended: "finished" });
       expect(result.refused).toHaveLength(refused);
       expect(result.held).toHaveLength(2 - refused);
       expect(gates.slice(0, refused)).toMatchObject(
@@ -319,7 +321,7 @@ describe("a rehearsal's seats", () => {
             patience: 1,
             unprepared: false,
             practice: null,
-            wanted: { target: 2, level: 0.1, trigger: 0.25 },
+            wanted: { target: 2, level: 0.1 },
             pastStop: null,
             prompted: false,
             admits: [],

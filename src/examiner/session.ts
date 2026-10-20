@@ -55,7 +55,7 @@ interface Sitting {
   readonly model: Model<Api>;
   readonly effort: ThinkingLevel;
   readonly limits: {
-    /** Counted from when the seat began to be set up, so a wall's mount is inside it. */
+    /** Counted from when the seat began to be set up, so a wall's claim is inside it. */
     readonly wallSeconds: number;
     /** The model's turns, each reply one, with or without a tool call. */
     readonly turns: number;
@@ -122,6 +122,11 @@ interface Mode {
   readonly declined: string | null;
   /** Whether the mode's work is done, which ends the session, and how that ending is named. */
   readonly done: () => "stands" | "supplied" | null;
+  /** What the mode's work running beside the session has said since it was last told, read into
+   *  each tool result; `last` where it is the turn's last call. */
+  readonly heard: ((last: boolean) => string) | undefined;
+  /** Waits for that work: before `finish` answers, and before the session ends. */
+  readonly settle: (() => Promise<void>) | undefined;
   /** What its end event holds of its work, under the log's own words. */
   readonly counted: () => JsonObject;
   readonly result: () => Omit<Examined, "ended">;
@@ -214,6 +219,8 @@ function putting<Parameters extends TSchema, Thing>({ limits }: Sitting, of: Put
     finish: of.finish,
     declined: null,
     done: () => (desk.stands ? "stands" : null),
+    heard: undefined,
+    settle: undefined,
     counted: () => ({ ...desk }),
     result: () => ({ puts: desk.tries, held: [], refused: [] }),
     enter: of.enter,
@@ -278,12 +285,16 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
     parameters: Type.Object({ note: Type.String({ minLength: 1, maxLength: 700 }) }),
     executionMode: "sequential",
     execute: async (_id, args) => {
+      // The work still running is waited for and told first, so that the session's end reads it.
+      await mode.settle?.();
+      const heard = mode.heard?.(true) ?? "";
+      const told = (line: string) => text(heard === "" ? line : `${heard}\n\n${line}`);
       if (mode.declined !== null && !said.declined && mode.done() === null) {
         said.declined = true;
-        return text(mode.declined);
+        return told(mode.declined);
       }
       said.note = args.note.trim();
-      return { ...text("Finished."), terminate: true };
+      return { ...told("Finished."), terminate: true };
     },
   });
   const shell = await examinerShell(walls?.shell, mode.enters, mode.home, mode.checked);
@@ -293,12 +304,15 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
   // a turn: the limits were told at the opening alone, and on the six logs read on 14 October two of
   // eleven sessions were cut at their wall while still proposing, one in a command of 207 s.
   let calls: string[] = [];
-  const used = (call: string) =>
-    call === calls.at(-1)
+  const used = (call: string) => {
+    const last = call === calls.at(-1);
+    const turn = last
       ? `Turn ${String(turns.length + 1)} of ${String(limits.turns)}; ${String(Math.floor((performance.now() - began) / 60_000))} of ${plural(Math.round(limits.wallSeconds / 60), "minute")} used.`
       : "";
+    return [mode.heard?.(last) ?? "", turn].filter((line) => line !== "").join("\n\n");
+  };
   const tools = [...[...mode.tools, ...shell].map((each) => endingWith(each, used)), finish];
-  // The wall runs from the seat's start (`began`), so the mount, the wall's own probe and the
+  // The wall runs from the seat's start (`began`), so the claim, the wall's own probe and the
   // shell's network probe, awaited above, are inside the session's limit.
   const wall = new AbortController();
   const timer = setTimeout(
@@ -339,8 +353,16 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
           if (message.role === "assistant") turns.push(message);
           return over() || turns.length >= limits.turns ? { action: "end" } : undefined;
         },
-        getFollowUpMessages: async () =>
-          over() ? [] : [user(`You have not called finish. ${mode.nudge}, or call finish.`)],
+        getFollowUpMessages: async () => {
+          const heard = mode.heard?.(true) ?? "";
+          return over()
+            ? []
+            : [
+                user(
+                  `${heard === "" ? "" : `${heard}\n\n`}You have not called finish. ${mode.nudge}, or call finish.`,
+                ),
+              ];
+        },
         prepareRequest: withinBudget(log, spent, loopCompaction(log, kind, id, stream, summaries)),
       },
       (event) => {
@@ -356,11 +378,15 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
       signal,
       stream,
     );
+    // Work the session left running ends before the session does, under its wall.
+    await mode.settle?.();
   } catch (error) {
     if (!spent.signal.aborted) crash = errorMessage(error);
   } finally {
     clearTimeout(timer);
     done.abort();
+    // What a crash left running is stopped by `done`, and has written its last event before the end's.
+    await mode.settle?.();
     rmSync(state, { recursive: true, force: true });
   }
   const killed = request.kill?.aborted === true;
@@ -396,9 +422,9 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
 
 /**
  * One Examiner session in the mode its request names. With a `wall` it has a shell under the
- * solver's command wall and disk cap (`shell.ts`), with the engines its campaign's checks run where
- * the wall names them, and its time is counted from before the mount; without one it has no shell
- * and computes nothing. A run killed before the session began mounts nothing and starts nothing.
+ * solver's command wall (`shell.ts`), with the engines its campaign's checks run where the wall
+ * names them, and its time is counted from before its root is claimed; without one it has no shell
+ * and computes nothing. A run killed before the session began claims nothing and starts nothing.
  */
 export async function examine(request: ExamRequest, wall?: Wall): Promise<Examined> {
   if (request.kill?.aborted === true) throw new Error(`session ${request.id} was stopped before it began`);

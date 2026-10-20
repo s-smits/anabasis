@@ -13,6 +13,7 @@
  * Split from `read.ts`, which stands near the size policy's ceiling, as `time.ts` and `folds.ts`
  * were. Nothing here reads a file beside the log.
  */
+import { flipP } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy, median } from "#src/meta/tally.ts";
@@ -61,8 +62,34 @@ const MOST_PATHS = 6;
 export function testSaid(tested: JsonValue | undefined): string {
   const record = asRecord(tested);
   if (record === null) return "";
-  const p = count(record.p);
-  return `${String(count(record.wins))}-${String(count(record.losses))}-${String(count(record.ties))} p ${p < 0.001 ? p.toExponential(1) : p.toFixed(3)}`;
+  return `${String(count(record.wins))}-${String(count(record.losses))}-${String(count(record.ties))} p ${pSaid(count(record.p))}`;
+}
+
+/** A test's p as a reading prints it. */
+export const pSaid = (p: number) => (p < 0.001 ? p.toExponential(1) : p.toFixed(3));
+
+/** The frontier differences of a promotion's readings joined, a task more than one scored counted
+ *  once with its differences summed, less the tasks in `without`. Until 19 October a promotion read
+ *  a step and its repeat so (`readTwice`), and a campaign of then is read by that rule. A report
+ *  from before 14 October names no task, and its differences stand alone. */
+export function joinedFrontier(
+  reports: readonly JsonObject[],
+  without: ReadonlySet<string> = new Set(),
+): number[] {
+  const sums = new Map<string, number>();
+  const unnamed: number[] = [];
+  for (const report of reports) {
+    const frontier = asRecord(report.frontier);
+    const differences = Array.isArray(frontier?.differences) ? frontier.differences.filter(isNumber) : [];
+    const of = frontier?.of;
+    const named = Array.isArray(of) && of.every(isString) && of.length === differences.length ? of : null;
+    for (const [at, difference] of differences.entries()) {
+      const task = named?.[at];
+      if (task === undefined) unnamed.push(difference);
+      else if (!without.has(task)) sums.set(task, (sums.get(task) ?? 0) + difference);
+    }
+  }
+  return [...sums.values(), ...unnamed];
 }
 
 /** Of a report's `valid` side, tasks by how many of their solves were valid: the tasks with none,
@@ -169,6 +196,14 @@ function restTriggers(log: Index, { at, until, data }: Epoch): Trigger[] {
     return compared === undefined ? [] : [compared];
   });
   const said = rests.map((compared) => restSaid(log, compared));
+  // The rule tests the two frontiers joined, a task both scored once (`readTwice`): r3's third
+  // promotion read 5-1 p 0.047 and 9-1 p 0.004 alone, and 8-0 p 0.004 joined (19 October).
+  const joined = joinedFrontier(rests.map(({ last }) => last));
+  const [wins, losses] = [joined.filter((one) => one > 0).length, joined.filter((one) => one < 0).length];
+  const together =
+    rests.length < 2 || joined.length === 0
+      ? ""
+      : `; joined ${String(wins)}-${String(losses)}-${String(joined.length - wins - losses)} p ${pSaid(flipP(joined))}`;
   const bare = rests.flatMap(({ session, last }) => {
     const old = validOf(asRecord(last.valid)?.old);
     const fresh = validOf(asRecord(last.valid)?.fresh);
@@ -181,7 +216,7 @@ function restTriggers(log: Index, { at, until, data }: Epoch): Trigger[] {
   return [
     fired(
       "PROMOTED",
-      `${short(harness)} from ${short(text(data.from))} at event ${String(at)}, ${spentTo(log, 0, at)} after the opening, ${byTable ? "by the table" : "by the operator"}${despite > 0 ? ` despite ${plural(despite, "fault")}` : ""}; ${ruleOf(log)}; rests on ${said.join("; ") || "no comparison on record"}`,
+      `${short(harness)} from ${short(text(data.from))} at event ${String(at)}, ${spentTo(log, 0, at)} after the opening, ${byTable ? "by the table" : "by the operator"}${despite > 0 ? ` despite ${plural(despite, "fault")}` : ""}; ${ruleOf(log)}; rests on ${said.join("; ") || "no comparison on record"}${together}`,
     ),
     ...(bare.length > 0 ? [fired("STARTER BARE", bare.join("; "))] : []),
   ];

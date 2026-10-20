@@ -27,7 +27,7 @@ import { type Examined, examine, type Session } from "#src/examiner/session.ts";
 import { read } from "#src/kernel/log.ts";
 import { dirname } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { campaignLog, examinerSession, LIMITS, REPO, stayAwake, worktreesOf } from "../d2/campaign.ts";
+import { campaignLog, examinerSession, REPO, stayAwake, worktreesOf } from "../d2/campaign.ts";
 import { draftReading } from "../d2/exam.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 
@@ -78,7 +78,7 @@ export async function draftCommand(
       models: examinerSession,
       log,
     },
-    { repoRoot: REPO, otherTrees: worktreesOf(REPO), diskBytes: LIMITS.diskBytes },
+    { repoRoot: REPO, otherTrees: worktreesOf(REPO) },
   );
   console.log(JSON.stringify(drafted, null, 2));
   return drafted;

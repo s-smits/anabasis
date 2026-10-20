@@ -16,7 +16,7 @@
  *
  * The first command of a campaign that compares records what its flags name, with the defaults for
  * what they leave out: the stored cycle's own solver, the one budget every solver is held to
- * (`campaign.ts`, `LIMITS`) and twelve tasks by the draw. From then on a command that names nothing runs under the
+ * (`campaign.ts`, `LIMITS`) and `SIZE.tasks`, 24, by the draw. From then on a command that names nothing runs under the
  * record, one that names the same is the same, and one that names another is refused. Until
  * 2026-10-09 the same flags were typed again on every command of a campaign, and a command that
  * differed was told so in a note and went on: a forgotten flag changed the comparison without a
@@ -44,8 +44,8 @@
  * turns are the budget told to the solver and enforced, which seconds cannot be on a loaded host.
  *
  * What does not follow the setting is the campaign's own: a task's state and the harnesses it
- * keeps. The concurrency and the disk cap stay the sweep's: neither is what a harder task runs out
- * of first, and each is one more thing two comparisons could differ in. A rehearsal seats a script
+ * keeps. The concurrency stays the sweep's: it is not what a harder task runs out of first, and it
+ * is one more thing two comparisons could differ in. A rehearsal seats a script
  * where the solver sits and refuses `--solver`; its limits and its scored set are these.
  *
  * The shell's two timeouts are the sweep's as far as the wall leaves room for them

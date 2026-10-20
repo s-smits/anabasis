@@ -68,7 +68,6 @@ const LIMITS = {
   shellDefaultSeconds: 30,
   shellMaxSeconds: 60,
   concurrency: 2,
-  diskBytes: 64 * 1024 * 1024,
   practiceSolves: 3,
 };
 const TASKS: PracticeTask[] = [

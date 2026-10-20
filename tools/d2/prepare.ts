@@ -77,7 +77,6 @@ const OPTIONS = {
   name: { type: "string" },
   practice: { type: "string", default: String(PRACTICE) },
   level: ROUND_OPTIONS.level,
-  trigger: ROUND_OPTIONS.trigger,
   target: ROUND_OPTIONS.target,
   solves: ROUND_OPTIONS.solves,
   tasks: ROUND_OPTIONS.tasks,
@@ -226,11 +225,7 @@ export async function prepareCommand(args: readonly string[]): Promise<number> {
   console.log(`${String(sets.held.length)} held out, ${String(sets.released.length)} released for practice`);
   // What a comparison would score: the tasks the draw can take (`scoredSet`).
   const scored = named.length > 0 ? named.length : Math.min(target, poolOf(events).scorable.length);
-  const asked = {
-    level: Number(values.level),
-    trigger: Number(values.trigger),
-    patience: patienceOf(events),
-  };
+  const asked = { level: Number(values.level), patience: patienceOf(events) };
   for (const line of [...sizeLines(scored, asked), ...awaitingLines(campaign)]) console.log(line);
   if (named.length === 0) return 0;
 

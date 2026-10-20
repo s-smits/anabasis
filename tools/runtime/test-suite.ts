@@ -691,9 +691,9 @@ async function main(): Promise<number> {
     }
     return again.exitCode ?? 1;
   } finally {
-    // A test the idle wall ended can leave its disk image attached under the root
-    // (`src/verify/disk-cap.ts`), whose removal then fails busy: on 15 October that threw over a
-    // rerun of 179 passes and no failure, and the suite exited 1.
+    // A test the idle wall ended can leave something under the root its removal fails on: on
+    // 15 October a disk image still attached threw over a rerun of 179 passes and no failure, and
+    // the suite exited 1. Disk images went on 19 October; a process still writing remains.
     try {
       rmSync(temporaryRoot, { recursive: true, force: true });
     } catch {

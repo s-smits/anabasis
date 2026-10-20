@@ -1,5 +1,5 @@
 /**
- * `bun run runs view <name> [--level N] [--trigger N] [--target N] [--practice N] [--past-stop "<why>"]`
+ * `bun run runs view <name> [--level N] [--target N] [--practice N] [--past-stop "<why>"]`
  *
  * A campaign as its log reads: the set-up, what each step handed over, the climb, and the move
  * that comes next. It is the one reading of `src/builder/handover.ts`, printed whole for the
@@ -7,7 +7,7 @@
  *
  * Its last line is the one move the plan's decision table names on this log (`decide`,
  * `src/builder/decide.ts`), with its reason: what `tools/d2/harness-builder.ts` would make next.
- * The table is asked with the five flags of the campaign command that bear on it, and with the
+ * The table is asked with the four flags of the campaign command that bear on it, and with the
  * terms its opening keeps for those it does not name (`campaign.opened`, `src/builder/opening.ts`),
  * so that the view and `tools/d2/harness-builder.ts` name one move on one log. Until 11 October
  * the view also listed every move a launch would be admitted for, and that list named a promotion
@@ -38,7 +38,6 @@ import { logEvents, runs } from "./registry.ts";
 /** The flags the table is asked with: the campaign command's, with the same names. */
 const VIEW_OPTIONS = {
   level: { type: "string" },
-  trigger: { type: "string" },
   target: { type: "string" },
   practice: { type: "string" },
   "past-stop": { type: "string" },
@@ -154,7 +153,7 @@ export function decidedOn(events: readonly LogEvent[], values: Asked = {}): Deci
   const opening = openingOf(events);
   // Each term as this view is asked it, then as the opening keeps it, then the tree's default: the
   // scored tasks are the record's where it names them (`planOf`).
-  const term = (flag: "level" | "trigger" | "target" | "practice", fallback?: string) =>
+  const term = (flag: "level" | "target" | "practice", fallback?: string) =>
     values[flag] ?? opening?.terms[flag] ?? fallback;
   const target = term("target");
   return decide(
@@ -164,7 +163,6 @@ export function decidedOn(events: readonly LogEvent[], values: Asked = {}): Deci
       {
         unprepared: !events.some(({ kind }) => kind === "task.proposed"),
         level: Number(term("level", COMPARISON_OPTIONS.level.default)),
-        trigger: Number(term("trigger", COMPARISON_OPTIONS.trigger.default)),
         target: target === undefined ? undefined : Number(target),
         pastStop: values["past-stop"],
         // The practice tasks the campaign is brought to, as the command passes them: without a
@@ -189,7 +187,7 @@ export function view(args: readonly string[]): void {
   const run = runs().find((found) => found.tree === tree && found.name === name);
   if (name === undefined || run === undefined) {
     throw new Error(
-      `usage: bun run runs view <name> [--level N] [--trigger N] [--target N] [--practice N] [--past-stop "<why>"]: ${name === undefined ? "name a campaign" : `this worktree holds no campaign ${name}`}`,
+      `usage: bun run runs view <name> [--level N] [--target N] [--practice N] [--past-stop "<why>"]: ${name === undefined ? "name a campaign" : `this worktree holds no campaign ${name}`}`,
     );
   }
   const events = logEvents(run.path);

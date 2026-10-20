@@ -52,7 +52,7 @@ const FRESH = `${NAME}-fresh`;
 /** Campaigns whose checks pass, and reject, the stored sweep's accepted answer. */
 const PROVEN = `${NAME}-proven`;
 const UNPROVEN = `${NAME}-unproven`;
-const ASKED = { level: 0.02, trigger: 0.25, patience: PATIENCE };
+const ASKED = { level: 0.02, patience: PATIENCE };
 const TASKS = Array.from({ length: 7 }, (_, index) => ({
   taskId: `t-${String(index + 1)}`,
   family: "fixture",
@@ -551,8 +551,8 @@ describe("a campaign", () => {
     const valid = { old: [8, 0, 0], fresh: [4, 0, 4], informative: { old: 0, fresh: 0 } };
     expect(reportLines({ valid, objective: null, frontier, noise: null }).slice(0, 2)).toEqual([
       "the step is read on 8 frontier tasks, 4 of them untied: one reading at the comparison's level detects four times in five a harness that wins 95% of them",
-      // Beside the level, the rule's own rate: four untied tasks a stage promote equal harnesses 2%.
-      "an attempt at these margins, this reading and a repeat alike, promotes between equal harnesses 2% of the time: the level is one reading's, and this the rule's",
+      // Beside the level, the test's own rate at the report's margins.
+      "one reading at these margins reads a step between equal harnesses 2% of the time, never more than the level",
     ]);
     expect(
       reportLines({ valid, objective: null, frontier: { ...frontier, detectable: null }, noise: null }).at(0),
@@ -594,10 +594,10 @@ describe("a campaign", () => {
       reportLines({
         valid: { old: [0, 0, 2], fresh: [0, 0, 2], informative: { old: 0, fresh: 0 } },
         frontier: null,
-        objective: { direction: "lower", margin: 0.01, decided: 1 },
+        objective: { direction: "lower", decided: 1 },
         noise: null,
       }).at(-1),
-    ).toBe("the objective (lower is better, margin 0.01) decided 1 task that validity alone would have tied");
+    ).toBe("the objective (lower is better) decided 1 task that validity alone would have tied");
     const campaign = await openCampaign(ARGS);
     expect(read(campaign.log).some(({ data }) => data.session === "z-8")).toBe(false);
   });
@@ -720,13 +720,15 @@ describe("a campaign", () => {
     expect(asked).toContain("nothing is recorded without --yes");
     expect(promotions()).toEqual([]);
     expect(promote("--harness", digest.slice(0, 8))).toContain("is no harness this campaign keeps");
-    // Fix row F28: the plan promotes a step that was read again and did not lose at the full
-    // limit, and a harness no comparison measured is refused the word alone.
+    // Fix row F28: the plan promotes a harness a comparison against the reference read as a step,
+    // and a harness no comparison measured is refused the word alone.
     const refused = promote("--harness", digest, "--yes");
     expect(refused).toContain(
-      `the plan would not promote it now: harness ${digest.slice(0, 8)} has no comparison and repeat that, read together, clear the level against the reference harness`,
+      `the plan would not promote it now: harness ${digest.slice(0, 8)} has no comparison that read a step against the reference harness`,
     );
-    expect(refused).toContain("not promoted: a step is promoted once it was read again");
+    expect(refused).toContain(
+      "not promoted: a harness is promoted where a comparison against the reference read a step",
+    );
     expect(promotions()).toEqual([]);
     // The choice stays the operator's, with a reason: the promotion is an event that keeps it,
     // and the reference harness is read from it.

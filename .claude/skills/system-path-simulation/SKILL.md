@@ -72,7 +72,7 @@ and why the next was not needed.
 - the campaign opened over the real pack, its sets read from the log;
 - the Builder session, which forks the Starter Built Harness as the plan's first round does: its
   tools on the command wall, its capped root, its freeze and digest;
-- each solve: its wall and disk cap, the answer file and `submit`, the verifier on
+- each solve: its wall and root, the answer file and `submit`, the verifier on
   the staged check program, its verdict;
 - the comparison: its terms written before its first solve, the reference harness, which is the
   starter unless `--reference` names another, and the new one solved in turn, the sign test, each
@@ -111,9 +111,9 @@ on 2026-10-09: the first rehearsal on a seed should write these as its predictio
 | `--held fail:pass` | `not-scored`, `aside` 4, `counted` 4-0 | no reviewer is seated, so each rejection sets its task aside until it is labelled |
 | the same, then `settle.ts` with every label `earned` | `step` | the labels restore the tasks, and a settling makes no solve |
 | `--reference <a built digest> --held none:pass` | `step`, sixteen solves | after a promotion the starter is solved on no task: until 11 October a step was held to it, a third arm (`docs/simplify.md`, B2) |
-| fewer than two tasks held out | refused by the comparison's admission; `no-step` at best if run | at a trigger of 0.25 a first reading takes two untied tasks, all won |
+| fewer than six tasks held out | refused by the comparison's admission; `no-step` at best if run | at a level of 0.02 a step takes six untied tasks, all won |
 | a Builder whose edit does not land | `no-change` | the harness froze to its parent's digest |
-| `--campaign --held none:pass --starter pass --supply 40` over a seed of a campaign that drafted its exam | a step read twice and a promotion at each epoch, three in 21 moves on t-10's seed (11 October) | the scripted Examiner proposes copies of the source's answered tasks once the source's own are spent; every epoch goes through the same rows: the reference's room, other tasks, the control, a session, a step and its repeat |
+| `--campaign --held none:pass --starter pass --supply 40` over a seed of a campaign that drafted its exam | a step and a promotion at each epoch, three in 21 moves on t-10's seed (11 October) | the scripted Examiner proposes copies of the source's answered tasks once the source's own are spent; every epoch goes through the same rows: the reference's room, other tasks, the control, a session, a step |
 
 `check-defects` is out of a rehearsal's reach but for a check that cannot run: it takes a Referee's
 ruling of a check defect to count one.
@@ -169,7 +169,7 @@ What the product did:
 - **Practice solves and reviewers in a rehearsal.**
 - **A rehearsal in the test suite.** The tests hold the script and the seed. The joins were walked
   on the truss pack by hand, and no fixture pack walks them on every gate.
-- **Linux.** Every rehearsal so far ran on the Darwin wall and its disk images.
+- **Linux.** Every rehearsal so far ran on the Darwin wall, and until 19 October under its disk images.
 
 ## The result
 

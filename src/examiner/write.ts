@@ -34,7 +34,7 @@ import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { proposalsOf, writtenTasks } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { poolOf } from "../kernel/reports.ts";
-import { informative, MARGIN, type Paired } from "../kernel/compare.ts";
+import { informative, type Paired } from "../kernel/compare.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { packageGate, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
 import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
@@ -45,6 +45,7 @@ import { isNumber, isRecord, isString, type JsonObject, type JsonValue } from ".
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
+import { plural } from "../meta/text.ts";
 import { text, tool } from "../solve/answer.ts";
 import { type CheckRow, firstMessage, systemPrompt } from "./prompt.ts";
 import { gateAnswers, gateBilled, heard, measuredGate, TRIED, UNAFFORDED } from "./record.ts";
@@ -99,6 +100,10 @@ interface Desk {
   readonly planted: Set<string>;
   readonly held: string[];
   readonly refused: string[];
+  /** The gate's work still running under `try_task`, one promise an instance, and the lines it said
+   *  of instances that the session has not been told yet (`heard`). */
+  readonly pending: Set<Promise<void>>;
+  readonly arrived: string[];
 }
 
 /** The most of an example one result shows. */
@@ -115,7 +120,7 @@ const GATES = {
   },
   try_task: {
     label: "Try tasks",
-    description: `Put task instances to the host's gate, every instance of a call at once: the shape of each package, then ${String(TRIED)} solves of it by the reference harness, as the system prompt's section on the gate says. Each instance is a family, a public input and hidden values, in the shape of the existing tasks.`,
+    description: `Put task instances to the host's gate and return at once: the shape of each package, then ${String(TRIED)} solves of it by the reference harness, as the system prompt's section on the gate says. What the gate says of each comes with a later tool result. Each instance is a family, a public input and hidden values, in the shape of the existing tasks.`,
   },
 } as const;
 /** What only the checks read of an instance, as each tool that takes one describes it. */
@@ -167,7 +172,7 @@ function instanceOf(
  *  stores no answer, which the Examiner's own trace alone keeps (`exam.call`), and until
  *  19 October it stored no measure either: 74 of 74 `try_answer`
  *  results of esp32-fresh-opus held none, so whether an author's answer beat the reference
- *  harness's best by the margin, which leaves a task the reference answers every time room to gain
+ *  harness's best, which leaves a task the reference answers every time room to gain
  *  on (`informative`, `src/kernel/compare.ts`), could not be read off any record. Nothing reads it
  *  yet, and no seat is told it. Empty where the contract declares no objective. */
 function measureOf(contract: Contract, verdict: Verdict): JsonObject {
@@ -197,8 +202,7 @@ function shown(measure: number): string {
 /** What the gate reads of one package: its shape, and under `try_task` the reference harness's
  *  solves of a package whose shape passed, `TRIED` of them at once, with what they billed. The task
  *  is held out where the solves that gave a reading leave the reference room as a comparison reads
- *  it (`informative`): a valid answer and a fail, or valid answers apart by the objective past
- *  `MARGIN`; or no valid answer where its author's answer passes on it (`gated`). Until 16 October
+ *  it (`informative`): a valid answer and a fail, or valid answers apart by the objective; or no valid answer where its author's answer passes on it (`gated`). Until 16 October
  *  the gate read no objective, and of the drafts five fresh campaigns' gates refused as answered
  *  every time, 6 held valid answers more than 1% apart. A solve that ended in no reading, or in
  *  a rejection the Referee did not rule earned (`probing`, `tools/d1b/examine.ts`), is no reading,
@@ -246,7 +250,7 @@ async function measured(
   // The measures by the objective, theirs and the author's, which decide room where every solve is
   // valid (`informative`): until 19 October the Examiner was told neither, and 181 of the 338
   // drafts five campaigns' gates refused as answered 3 of 3 with measures held answers apart by
-  // less than the margin, none of which their author could see.
+  // less than the margin then in force, 0.01, none of which their author could see.
   const measures = answers.flatMap(({ measure }) => (measure === null ? [] : [shown(measure)]));
   const theirs = measures.length === 0 ? "" : `, its valid answers measuring ${measures.join(", ")}`;
   const yours =
@@ -258,7 +262,7 @@ async function measured(
   const roomless = `${counted}, ${unsolved ? "and no answer of yours passed try_answer on it" : "which leaves no room"}`;
   // Room as a comparison reads it (`informative`), on the reference's side alone; a task it never
   // answers is held on its author's proof (`gated`), so no feasible task is named here.
-  const objective = contract.objective && { direction: contract.objective.direction, margin: MARGIN };
+  const objective = contract.objective && { direction: contract.objective.direction };
   const pair: Paired = {
     task: taskVersion(task),
     old: readings.map(({ outcome }) => outcome === "pass"),
@@ -298,7 +302,7 @@ async function measured(
  *  reference valid on 14 of 14 tasks and 5 of 6, the set already closed, for $33.06 and 5.9 hours
  *  in one campaign, while a third of these drafts were kept from the exam. Since 19 October one
  *  it answered validly in every solve is held where the proof is better by the objective than each
- *  of those answers past the margin, so the proof is read before the solves. */
+ *  of those answers, so the proof is read before the solves. */
 async function gated(desk: Desk, instance: Task, stop: AbortSignal, ahead: number): Promise<string> {
   const { request } = desk;
   const { log, id: session, verify } = request;
@@ -347,6 +351,39 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal, ahead: numbe
 /** Whether the host has the tasks it asked for. */
 const supplied = (desk: Desk): boolean => desk.held.length >= desk.request.wanted;
 
+/**
+ * A `try_task` call's instances put to the gate without waiting on it: the line of each instance
+ * not taken, and the ids of the ones whose solves now run while the session goes on. What the gate
+ * says of each is told with the session's next tool result after it (`heard`), and `finish` and the
+ * session's end wait for it (`settle`). Until 19 October a call waited on its slowest instance's
+ * three solves: in the three Opus buffer campaigns of that day the first Examiner session spent
+ * 56, 57 and 80 minutes of its 218, 112 and 215 on the gate's replies, putting a mean of 1.0, 3.9
+ * and 1.5 instances a call, and the GPT ones 79 of 171 at 1.0. Until it had held enough tasks no
+ * comparison could start, so its waits were the campaign's first hours.
+ */
+function putAside(
+  desk: Desk,
+  instances: readonly (string | Task)[],
+  gate: (instance: Task) => Promise<string>,
+) {
+  const put = instances.flatMap((instance) => {
+    if (isString(instance)) return [];
+    const running = gate(instance)
+      .catch((error: unknown) => `${instance.taskId}: the gate stopped on it: ${errorMessage(error)}`)
+      .then((line) => {
+        desk.arrived.push(line);
+        desk.pending.delete(running);
+      });
+    desk.pending.add(running);
+    return [instance.taskId];
+  });
+  const gating =
+    put.length === 0
+      ? []
+      : [`${put.join(", ")}: put to the gate. What it says of each comes with a later tool result.`];
+  return [...instances.filter(isString), ...gating].join("\n");
+}
+
 /** The tool that holds tasks out, under the name the session's gate has. */
 function proposeTool(desk: Desk, name: keyof typeof GATES): AgentTool {
   const { id, limits } = desk.request;
@@ -390,11 +427,14 @@ function proposeTool(desk: Desk, name: keyof typeof GATES): AgentTool {
       // a mean of 1.0 to 1.6 instances a call. Being supplied is read before the call's gates, so a
       // call may hold out more than the host asked for.
       let ahead = 0;
+      const instances = args.tasks.map((given) => taken(instanceOf("", given), signal));
+      if (name === "try_task") {
+        return text(putAside(desk, instances, (instance) => gated(desk, instance, signal, ahead++)));
+      }
       const lines = await Promise.all(
-        args.tasks.map(async (given) => {
-          const instance = taken(instanceOf("", given), signal);
-          return isString(instance) ? instance : await gated(desk, instance, signal, ahead++);
-        }),
+        instances.map(async (instance) =>
+          isString(instance) ? instance : await gated(desk, instance, signal, ahead++),
+        ),
       );
       return {
         ...text(`${lines.join("\n")}${supplied(desk) ? `\n\n${SUPPLIED}` : ""}`),
@@ -551,6 +591,8 @@ export function writing(
     planted: new Set(),
     held: [],
     refused: [],
+    pending: new Set(),
+    arrived: [],
   };
   // How a task is held out: on its package's shape, or on that and `TRIED` solves of the reference
   // harness where the host can have it solve one.
@@ -600,6 +642,16 @@ export function writing(
       "End the session. Say in one or two sentences what kinds of task you wrote and what you would try next.",
     declined: MORE,
     done: (): "supplied" | null => (supplied(desk) ? "supplied" : null),
+    // What the gate said since the session was last told, and at a turn's last call how many
+    // instances are still at it (`putAside`).
+    heard: (last: boolean) => {
+      const waiting =
+        last && desk.pending.size > 0 ? `${plural(desk.pending.size, "instance")} still at the gate.` : "";
+      return [...desk.arrived.splice(0), waiting].filter((line) => line !== "").join("\n");
+    },
+    settle: async () => {
+      while (desk.pending.size > 0) await Promise.all(desk.pending);
+    },
     counted: () => ({ proposed: desk.proposed, held: desk.held, refused: desk.refused }),
     result: () => ({ puts: desk.proposed, held: desk.held, refused: desk.refused }),
     // The next session's home is seeded with what the campaign keeps of the last one's.

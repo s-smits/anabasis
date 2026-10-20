@@ -45,7 +45,6 @@ const LIMITS = {
   shellDefaultSeconds: 30,
   shellMaxSeconds: 60,
   concurrency: 1,
-  diskBytes: 64 * 1024 * 1024,
 };
 const walled = osIsolationSupport().ok;
 const toolUse = { stopReason: "toolUse" } as const;

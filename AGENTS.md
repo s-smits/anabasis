@@ -1571,11 +1571,14 @@ request as failures that occur without the change, and do not call the suite gre
 `.claude/skills/stack-pr/SKILL.md` owns this procedure. Read it before you branch and again before
 you push.
 
-Until 11 October v2's work was one linear stack of open pull requests; anabasis-v2#219 and anabasis-v2#221 merged all
-of it into `main` that day. A new subject is now a pull request on `main`, from its own worktree at
-`origin/main`. The stacking rules below apply where one pull request depends on another that has
-not merged yet: there the top is that pull request's branch, and elsewhere it is `main`. Several
-sessions write at once.
+Every open pull request sits on one chain whose bottom is based on `main`, and a new subject is a
+new pull request on the top of that chain, whether or not it depends on what is below it. Skills
+go on the chain like code. Only a change of documentation alone (`AGENTS.md`, `docs/`) that
+describes no open pull request may go on `main` beside it. Several sessions write at once.
+
+One chain, because pull requests beside each other on `main` cannot describe one another, each
+pays the whole gate at its own head, and they land in whatever order the merges come. A chain
+lands with one `bun run land -- <top>`, which runs the whole gate once, at the top.
 
 v2 was built in `s-smits/anabasis-v2` until 11 October 2026, when it took over this repository, v1's.
 A pull request number in text written before then, up to #235, refers to that repository, while
@@ -1590,9 +1593,10 @@ In practice:
   edges and the top; where `gh` has no GraphQL, `gh api repos/<owner>/<repo>/pulls` gives the same
   edges. The top is the end of the longest chain, which need not be the highest number. State no
   fact about the repository without the commit you read it at.
-- **A new subject is a new pull request on the top.** The same subject as one of your own open pull
-  requests is appended to it. Documentation and skills go on the stack too, with the row of
-  `docs/transfer.md` that the change moves.
+- **A new subject is a new pull request on the top of the chain**, never beside it, even where it
+  depends on nothing below; its body says so. The same subject as one of your own open pull
+  requests is appended to it. Skills go on the chain, and so does documentation that describes an
+  open pull request, with the row of `docs/transfer.md` that the change moves.
 - **Another session's pull request is never yours to change**, whatever the fix. A pull request with
   children takes new commits only.
 - **One worktree per pull request**, from the top, pinned by commit, with its own

@@ -5,11 +5,10 @@ description: "Put a change on the one open stack of Anabasis v2 pull requests: f
 
 # Stack a pull request
 
-Until 11 October v2's work was one linear stack of open pull requests, each based on the branch
-below it; PRs #219 and #221 merged the whole of it into `main` that day. A new subject is now a
-pull request on `main`, and a stack forms again only where one pull request depends on another
-that has not merged: there "the top" below is that pull request's branch, and elsewhere it is
-`origin/main`. Several sessions write at once. This skill is the order of operations that keeps a
+Every open pull request sits on one chain based on `main` (`AGENTS.md`, section 11), and "the
+top" below is the end of that chain, or `origin/main` when nothing is open. Only a change of
+documentation alone that describes no open pull request goes on `main` beside it. Several sessions
+write at once. This skill is the order of operations that keeps a
 change on the stack without losing local work, without touching another session's branch, and
 with every commit able to stand alone.
 
@@ -41,8 +40,8 @@ reading from the start of the task is a lead, not a fact.
 - **A pull request with children takes new commits only.** Rewriting it moves every branch
   above it. Fold a fix into its own commit only while `stack.ts --branch` says nothing is
   stacked on the branch.
-- **Documentation and skills go on the stack too**, with the row of `docs/transfer.md` that
-  the change moves, in the same pull request.
+- **Skills go on the stack too**, and so does documentation that describes an open pull request,
+  with the row of `docs/transfer.md` that the change moves, in the same pull request.
 - **Work that names anything private never becomes a pull request**: which provider account a
   run used, a credential's path, a private address.
 

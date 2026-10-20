@@ -1363,8 +1363,10 @@ checkout of its own, and the pushed head holding the newest of them gets the who
 documentation alone gets `git diff --check`. A pass is remembered by content: a whole pass by the
 commit's tree, and a static one by its tree and its parent's, each with the gate that ran and the
 Bun version, so a restack that keeps every tree runs nothing again. `ANA_GATE_FRESH=1` ignores
-remembered passes. A
-failure names the commit, the step and the `--fixup` that repairs it; its log is under
+remembered passes. One push of a clone runs at a time: a push started while another is at its gate
+waits for it, and then gates only what that push did not publish (`queue`); where that push
+replaced the head this one is stacked on, it is refused with the `git rebase --onto` that restacks it
+(`staleBases`). A failure names the commit, the step and the `--fixup` that repairs it; its log is under
 `git rev-parse --git-path ana-gate`.
 
 Run one full suite at a time on a host; two overlapping suites each take about twice as long, and

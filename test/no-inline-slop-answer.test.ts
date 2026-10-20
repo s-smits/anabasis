@@ -20,13 +20,17 @@ export const size = 1; // oxlint-disable-line ana/no-deep-nesting -- a reason st
 // eslint-disable-next-line no-console, ana/no-tangled-ternary // REPORT one slop rule in a list is enough
 // oxlint-disable-next-line no-console -- a core rule keeps its comment // ADMITTED
 /** The inline oxlint-disable comment was the weaker store. */ // ADMITTED prose, not a directive
+/* oxlint-disable-next-line */ // REPORT no rule named silences every rule
+export const silenced = 1;
+/* eslint-disable-next-line -- a reason without a rule */ // REPORT and so does one with only a reason
+export const alsoSilenced = 2;
 export const said = "// oxlint-disable-next-line ana/no-deep-nesting"; // ADMITTED a string, not a comment
 `.trimStart();
 
 describe("ana/no-inline-slop-answer", () => {
   it("reports a disable naming an ana or anti-slop rule, and leaves core rules and prose alone", async () => {
     const expected = expectedLines(COMMENTS);
-    expect(expected).toHaveLength(4);
+    expect(expected).toHaveLength(6);
     expect(await reportedLines("ana", "no-inline-slop-answer", COMMENTS, "src/example.ts")).toStrictEqual(
       expected,
     );

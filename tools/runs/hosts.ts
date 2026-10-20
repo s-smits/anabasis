@@ -30,6 +30,9 @@ import { runs } from "./registry.ts";
 const HOST_MS = 30_000;
 /** The verbs that act on the runs they name: every name `stop` is given, and the first word of the rest. */
 const NAMING = new Set(["stop", "continue", "pause", "keep", "view", "source", "copy"]);
+/** The options of the verbs in `NAMING` that take no value. Any other option not joined to its value
+ *  by `=` takes the next argument as its value. */
+const SWITCHES = new Set(["--yes", "--all", "--once", "--json", "--hold", "--here"]);
 
 export interface Host {
   readonly name: string;
@@ -109,16 +112,26 @@ export async function hosts(args: readonly string[]): Promise<void> {
   );
 }
 
-/** The runs `verb args` names: every name a stop is given, the first word of another verb that acts
- *  on a run, and none for the rest. */
-const namedBy = (verb: string, args: readonly string[]) =>
-  verb === "stop" ? args.filter((arg) => !arg.startsWith("-")) : args.slice(0, NAMING.has(verb) ? 1 : 0);
+/** Where in `args` the runs `verb` acts on are named: every word a stop is given, the first word of
+ *  another verb that acts on a run, and none for the rest. A word is an argument that is neither an
+ *  option nor an option's value, before any `--`: `view --level 0.02 r3` names `r3`, and
+ *  `continue finished --after finished` names its first `finished` and keeps the second. */
+function namedAt(verb: string, args: readonly string[]): number[] {
+  const words: number[] = [];
+  for (let at = 0; at < args.length && args[at] !== "--"; at += 1) {
+    const arg = args[at] ?? "";
+    if (!arg.startsWith("-")) words.push(at);
+    else if (!arg.includes("=") && !SWITCHES.has(arg)) at += 1;
+  }
+  return verb === "stop" ? words : words.slice(0, NAMING.has(verb) ? 1 : 0);
+}
 
 /** The routes of `verb args`, given the hosts that claim names among those no worktree here holds.
  *  A name nobody claims stays here, where the verb refuses it in its own words. */
 export function routesOf(verb: string, args: readonly string[], held: ReadonlyMap<string, Host>): Routes {
-  const names = namedBy(verb, args);
-  const rest = args.filter((arg) => !names.includes(arg));
+  const at = namedAt(verb, args);
+  const names = at.map((index) => args[index] ?? "");
+  const rest = args.filter((_, index) => !at.includes(index));
   const away = [...new Set(names.flatMap((name) => held.get(name) ?? []))].map(
     (host) => [host, [verb, ...names.filter((name) => held.get(name) === host), ...rest]] as const,
   );
@@ -157,5 +170,6 @@ export async function holders(names: readonly string[]): Promise<Map<string, Hos
 /** The routes of `verb args` on this machine and the hosts that hold the names no worktree here holds. */
 export async function routed(verb: string, args: readonly string[]): Promise<Routes> {
   const here = new Set(runs().map(({ name }) => name));
-  return routesOf(verb, args, await holders(namedBy(verb, args).filter((name) => !here.has(name))));
+  const names = namedAt(verb, args).map((at) => args[at] ?? "");
+  return routesOf(verb, args, await holders(names.filter((name) => !here.has(name))));
 }

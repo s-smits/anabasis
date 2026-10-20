@@ -11,7 +11,9 @@
  * A session also ends at a wall and at the run's kill. The turn cap bounds spend and not time, and a
  * session that hangs would hang the run that waits on it. The same signal is aborted when the session
  * ends for any reason, because that is what closes a backend's own process: a Claude Code query stays
- * open until its signal fires (`src/backends/claude.ts`).
+ * open until its signal fires (`src/backends/claude.ts`). On 20 October triage found that the wall
+ * could stop the model loop while an executing probe kept verifier work open; that signal now also
+ * reaches each tool, so a Referee probe can cancel the verifier and its check cell with the session.
  */
 import { type AgentTool, runAgentLoop } from "@earendil-works/pi-agent-core";
 import {

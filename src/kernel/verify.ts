@@ -12,6 +12,10 @@
  * itself failed on the request (it threw, returned no boolean, or is missing), or a non-result when
  * the wall, a tool or the program's loading could not decide. No answer is a fail. A faulty check is
  * the task's defect and drops the task; a non-result is the verifier's and stops the run.
+ * On 20 October triage found that the reader wall aborted the model loop while an executing probe
+ * ignored it, and a detached check child could hold stderr open. The verifier now accepts the
+ * reader's abort signal, races a check's result against it, reaps the check group and its cell's
+ * holders, and returns a non-result.
  *
  * The contract is v1's check-program/v1, the format of the experiment's stored answers: a
  * `brief.json` declaring the checks and an `evaluator.ts` exporting them as `checks`. A check
@@ -53,6 +57,7 @@ import {
   isolatedArgv,
   toolTreeSearchDirs,
 } from "../verify/solve-command-isolation.ts";
+import { releaseRoot } from "../verify/seat-root.ts";
 import { type SolveIsolationPolicy, solveIsolationPolicy } from "../verify/solve-sandbox.ts";
 import { hostScratch } from "../verify/wall-policy.ts";
 import type { CheckChildInput, CheckChildResult } from "./check-child.ts";
@@ -130,7 +135,7 @@ export type Verdict =
   | { readonly kind: "non-result"; readonly reason: string };
 
 /** Whether an answer passes a task's checks. No answer is a fail. */
-export type Verifier = (task: Task, answer: JsonValue | undefined) => Promise<Verdict>;
+export type Verifier = (task: Task, answer: JsonValue | undefined, signal?: AbortSignal) => Promise<Verdict>;
 
 interface Wall {
   readonly tree: VerifierTree;
@@ -368,12 +373,13 @@ export function openVerifier(given: VerifierTree & Closed): Verifier {
       network: false,
     }),
   };
-  return async (task, answer) => {
+  return async (task, answer, signal) => {
     if (answer === undefined) return { kind: "fail", blocking: [] };
+    if (signal?.aborted === true) return { kind: "non-result", reason: "the verifier was cancelled" };
     const blocking: string[] = [];
     const request = { publicTask: task, artifact: answer, hidden: task.hidden };
     for (const check of applicableTruthChecks(brief, task)) {
-      const result = await runCheck(wall, check, request);
+      const result = await runCheck(wall, check, request, signal);
       if ("nonResult" in result) return { kind: "non-result", reason: `${check.id}: ${result.nonResult}` };
       if ("faulty" in result) return { kind: "faulty", check: check.id, reason: result.faulty };
       if ("value" in result) {
@@ -384,7 +390,7 @@ export function openVerifier(given: VerifierTree & Closed): Verifier {
     if (blocking.length > 0) return { kind: "fail", blocking };
     if (brief.objective === undefined) return { kind: "pass" };
     // The objective is read of a valid answer only, in a cell of its own like a check.
-    const measured = await runCheck(wall, OBJECTIVE, request);
+    const measured = await runCheck(wall, OBJECTIVE, request, signal);
     if ("nonResult" in measured) {
       return { kind: "non-result", reason: `${OBJECTIVE.id}: ${measured.nonResult}` };
     }
@@ -413,8 +419,10 @@ async function runCheck(
   wall: Wall,
   check: BriefTruthCheck,
   request: EvaluationRequest,
+  signal?: AbortSignal,
 ): Promise<CheckChildResult> {
   const { base } = wall;
+  if (signal?.aborted === true) return { nonResult: "the verifier was cancelled" };
   if ("unsupported" in base) return { nonResult: `this host cannot wall a check: ${base.unsupported}` };
   // The cell is a seat of its own: one root the check writes, the program in the host's folder in
   // it, which the check reads and cannot write, and the profile beside the root, out of its reach.
@@ -427,6 +435,14 @@ async function runCheck(
     kept: join(root, "kept"),
     host: `${root}.host`,
   };
+  let child: Bun.Subprocess | null = null;
+  let captured: Promise<{
+    readonly kind: "finished";
+    readonly stderr: string;
+    readonly exitCode: number;
+  }> | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let abort: (() => void) | null = null;
   try {
     for (const dir of [dirs.home, dirs.temp, dirs.host]) mkdirSync(dir, { recursive: true });
     // The program goes below the host's folder, so no file of it can stand as the check's
@@ -448,7 +464,7 @@ async function runCheck(
     const policy = commandIsolationPolicy(base, { ...dirs, toolTree: wall.tree.tools });
     // The wall a seat's command takes, without its shell: the check child leads its own group, and
     // the group is ended below.
-    const child = capturedSpawn({
+    const process = capturedSpawn({
       cmd: isolatedArgv(policy, join(dirs.host, "check.sb"), [capturedExecPath, CHECK_CHILD]),
       cwd: root,
       env: policy.environment,
@@ -457,25 +473,50 @@ async function runCheck(
       stdout: "ignore",
       stderr: "pipe",
     });
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      killProcessGroupId(child.pid, "SIGKILL");
-    }, CHECK_WALL_MS);
-    const [stderr, exitCode] = await Promise.all([new Response(child.stderr).text(), child.exited]);
-    clearTimeout(timer);
-    // A tool the check left running must not outlive the cell it writes to.
-    await terminateAndReapProcessGroupId(child.pid);
-    if (timedOut) return { nonResult: `the check ran past ${CHECK_WALL_MS} ms` };
+    child = process;
+    const stopped = Promise.withResolvers<"deadline" | "cancelled">();
+    let stopReason: "deadline" | "cancelled" | null = null;
+    const stop = (reason: "deadline" | "cancelled") => {
+      if (stopReason !== null) return;
+      stopReason = reason;
+      killProcessGroupId(process.pid, "SIGKILL");
+      stopped.resolve(reason);
+    };
+    timer = setTimeout(() => stop("deadline"), CHECK_WALL_MS);
+    abort = () => stop("cancelled");
+    signal?.addEventListener("abort", abort, { once: true });
+    captured = Promise.all([new Response(process.stderr).text(), process.exited]).then(
+      ([stderr, exitCode]) => ({ kind: "finished" as const, stderr, exitCode }),
+    );
+    const outcome = await Promise.race([
+      captured,
+      stopped.promise.then((reason) => ({ kind: "stopped" as const, reason })),
+    ]);
+    if (outcome.kind === "stopped") {
+      return {
+        nonResult:
+          outcome.reason === "deadline"
+            ? `the check ran past ${CHECK_WALL_MS} ms`
+            : "the verifier was cancelled",
+      };
+    }
+    // End work left in the check's group before reading its result. The root's release below
+    // also ends detached holders, whose process group is their own.
+    await terminateAndReapProcessGroupId(process.pid);
     return (
       writtenResult(join(root, "result.json")) ?? {
-        nonResult: `the check exited ${exitCode} without a result: ${stderr.slice(-2000).trim()}`,
+        nonResult: `the check exited ${outcome.exitCode} without a result: ${outcome.stderr.slice(-2000).trim()}`,
       }
     );
   } catch (error) {
     return { nonResult: `the verifier could not run the check: ${errorMessage(error)}` };
   } finally {
-    for (const dir of [root, dirs.host]) rmSync(dir, { recursive: true, force: true });
+    if (timer !== null) clearTimeout(timer);
+    if (signal !== undefined && abort !== null) signal.removeEventListener("abort", abort);
+    if (child !== null) await terminateAndReapProcessGroupId(child.pid);
+    await releaseRoot(root);
+    if (captured !== null) await captured.catch(() => undefined);
+    rmSync(dirs.host, { recursive: true, force: true });
   }
 }
 

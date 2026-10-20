@@ -224,7 +224,7 @@ describe("pre-push", () => {
     expect(gatesRun(log)).toEqual([`${moved} -`, `${sourceMoved} test/owner.test.ts`]);
   });
 
-  it("runs a tree again under a changed gate, though it passed under the gate before", () => {
+  it("runs a tree again once a file the gate imports changed, and not for a neighbour it never imports", () => {
     // A copy of the checker as a caller's checkout holds it: the hook, the gate and what it imports.
     const checker = join(fixture, "checker");
     const parts = [
@@ -241,7 +241,10 @@ describe("pre-push", () => {
     rmSync(log, { force: true });
     expect(push([update(second, docs)], {}, by).status).toBe(0);
     expect(gatesRun(log)).toEqual([]);
-    appendFileSync(join(checker, "tools", "runtime", "gate.ts"), "\n// the gate, changed\n");
+    appendFileSync(join(checker, "tools", "runtime", "lint.ts"), "\n// a step the target runs as its own\n");
+    expect(push([update(second, docs)], {}, by).status).toBe(0);
+    expect(gatesRun(log)).toEqual([]);
+    appendFileSync(join(checker, "src", "meta", "subprocess.ts"), "\n// the gate's import, changed\n");
     expect(push([update(second, docs)], {}, by).status).toBe(0);
     expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`, `${second} suite`]);
   });

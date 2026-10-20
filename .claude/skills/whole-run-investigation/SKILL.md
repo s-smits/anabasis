@@ -59,8 +59,8 @@ holds.
    *Check:* exit 0, and count the sessions that this call built. If it built none, launch nothing:
    an earlier `launch.json` remains on disk. The count is the number of sessions to authorise,
    not a dollar estimate.
-4. **Launch.** `launch.json` is a [codex-luna-swarm](../codex-luna-swarm/SKILL.md) manifest:
-   `luna-sessions.ts --manifest <dir>/launch.json --output-dir <new dir> ...` on the model the
+4. **Launch.** `launch.json` is a [codex-gpt-swarm](../codex-gpt-swarm/SKILL.md) manifest:
+   `gpt-sessions.ts --manifest <dir>/launch.json --output-dir <new dir> ...` on the model the
    operator chose. A Claude session is handed its row's `task`, one line, and nothing else; start
    them all in one message.
    *Check:* read the model each transcript recorded before using its report.

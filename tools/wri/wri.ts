@@ -20,7 +20,7 @@
  *   in and two sections left for the primary to write. `--with` names peer campaigns' logs, which a
  *   lane that reads peers (lane 31) is given read the same way, at `lanes` time, and never reviews.
  * - `lanes` builds one prompt per lane, and `launch.json`, one session for each lane it built, in
- *   the manifest codex-luna-swarm's launcher reads. With no `--lanes` it opens the lanes a trigger
+ *   the manifest codex-gpt-swarm's launcher reads. With no `--lanes` it opens the lanes a trigger
  *   started and the standing ones; an isolated lane is built only when named. A prompt built before
  *   is kept and launched again by nobody: `launch.json` holds only what this call built.
  * - `collect` holds every expected report to its shape and writes `reports.md`. It exits 1 until

@@ -4,11 +4,11 @@
  *
  *   bun tools/d2/round.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
  *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --session b-1 \
- *     --builder claude/claude-opus-5-5 --tasks <eight task ids> --cap 625
+ *     --builder claude/claude-opus-5-5 --target 8 --cap 625
  *
  * That is the plan's first round and its gate G0 (`7f0add79:docs/plan.md`, Phase 0). The Builder forks the
  * Starter Built Harness and builds on it, and the harness it leaves is compared with the starter
- * on the eight tasks named, two solves a harness, under today's limits and a dollar cap. The same
+ * on eight drawn tasks, two solves a harness, under today's limits and a dollar cap. The same
  * comparison shows how the starter does by itself: the report holds, for each harness, on how
  * many tasks it was valid in every solve, in some and in none (`valid`), which the command also
  * prints in words. With no `--reviewer`, every rejection waits for a
@@ -16,10 +16,8 @@
  * Judge.
  *
  * The sets are the log's (`prepare.ts`): the released tasks are the Builder's practice. The scored
- * set is the tasks `--tasks` names by id, where the operator chooses them, as the first round has
- * it. Without it the set is `--target` of the held-out tasks, the newest epoch's first and within an
- * epoch drawn by the contract's hash alone.
- * Either way it is fixed before any solve, so that no harness's results choose it
+ * set is `--target` of the held-out tasks, the newest epoch's first and within an epoch drawn by
+ * the contract's hash alone. It is fixed before any solve, so that no harness's results choose it
  * (`src/builder/round.ts`, `scoredSet`).
  *
  * The defaults are the plan's (`SIZE`, `src/kernel/size.ts`): 24 scored tasks, four solves a
@@ -47,9 +45,9 @@
  * its solves were told; until 2026-10-11 `--budget turns=40` read the same solves at shorter
  * budgets as well, which read a solver told the longer one (`7f0add79:docs/simplify.md`, A2).
  *
- * Who solves, what a solve is held to and which tasks are scored are the campaign's setting, which
+ * Who solves, what a solve is held to and how many tasks are drawn are the campaign's setting, which
  * its log records once (`setting.ts`). A round that names none of it runs under the record, and
- * one whose `--solver`, `--solve-minutes`, `--solve-model-turns`, `--tasks` or
+ * one whose `--solver`, `--solve-minutes`, `--solve-model-turns` or
  * `--target` name another is refused. The first comparison of a campaign records what it names, with the stored cycle's own
  * solver and the sweep's limits for the rest. `--minutes` and `--turns` are the Builder session's
  * own.
@@ -78,7 +76,7 @@ import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { priceKey } from "#src/kernel/meter.ts";
-import { type Cap, capHolds, poolOf, stopRule } from "#src/kernel/reports.ts";
+import { type Cap, capHolds, stopRule } from "#src/kernel/reports.ts";
 import { solverLast } from "#src/kernel/solves.ts";
 import { readBrief } from "#src/kernel/verify.ts";
 import { type TaskPackage, taskSets } from "#src/kernel/task.ts";
@@ -146,7 +144,6 @@ export type Seated = (
  *  Tuning). */
 export const COMPARISON_OPTIONS = {
   reference: { type: "string", default: PROMOTED },
-  tasks: { type: "string" },
   reviewer: { type: "string" },
   "reviewer-effort": { type: "string", default: "high" },
   target: { type: "string" },
@@ -164,8 +161,8 @@ export const COMPARISON_OPTIONS = {
 } as const;
 
 /** The flags of a Builder session, in a round or with no comparison after it (`session.ts`), and
- *  their defaults. `--tasks` and `--target` are the campaign's scored set, which a session scores
- *  nothing of: they are the setting's, and the campaign's first command records them. */
+ *  their defaults. `--target` is the size of the campaign's scored draw, which a session scores
+ *  nothing of: it is the setting's, and the campaign's first command records it. */
 export const SESSION_OPTIONS = {
   root: { type: "string" },
   sweep: { type: "string" },
@@ -176,7 +173,6 @@ export const SESSION_OPTIONS = {
   builder: { type: "string" },
   "builder-effort": { type: "string", default: "high" },
   ...SETTING_OPTIONS,
-  tasks: COMPARISON_OPTIONS.tasks,
   target: COMPARISON_OPTIONS.target,
   reviewer: COMPARISON_OPTIONS.reviewer,
   "reviewer-effort": COMPARISON_OPTIONS["reviewer-effort"],
@@ -301,29 +297,6 @@ export function sessionNamed(
 }
 
 /**
- * The scored set a command's flags name, by task version, and the retained tasks in it: the
- * tasks `--tasks` lists by id, each a task of the pack or of a session, or `--target` of the
- * held-out tasks by the contract's draw (`scoredSet`). Whether each is a held-out task is the
- * comparison's to refuse.
- */
-export function scoredNamed(
-  campaign: Campaign,
-  tasks: string | undefined,
-  target: number,
-): ReturnType<typeof scoredSet> {
-  const events = read(campaign.log);
-  if (tasks === undefined) return scoredSet(events, target, contractHash(campaign.contract));
-  const packages = [...campaign.packages()];
-  const named = tasks.split(",").map((taskId) => {
-    const found = packages.find(([, task]) => task.taskId === taskId);
-    if (found === undefined) throw new Error(`--tasks ${taskId}: the campaign holds no task of that id`);
-    return found[0];
-  });
-  const { retained } = poolOf(events);
-  return { tasks: named, retained: named.filter((task) => retained.includes(task)) };
-}
-
-/**
  * What a command's flags ask of a comparison, as its admission takes it (`admitComparison`): the
  * size, the cap, the reason to go on past the stop rule where one is given, and what the setting
  * named here is against the one the log's last test-side solves ran under.
@@ -337,13 +310,12 @@ export function wantedNamed(
   },
   given: { readonly setting: AskedSetting; readonly cap: Cap | undefined; readonly builds: boolean },
 ): Wanted {
-  const { named, tasks, target } = given.setting;
+  const { named, target } = given.setting;
   // The campaign is open, so who solves is known whether or not a flag named it.
   const solving = solvingAs(campaign, named);
   const ran = solverLast(read(campaign.log));
   return {
-    // A comparison that names its tasks scores those, however many the log holds beside them.
-    target: tasks === undefined ? target : tasks.split(",").length,
+    target,
     solves: Number(values.solves),
     level: Number(values.level),
     builds: given.builds,
@@ -586,7 +558,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
     session: built,
     reference,
     starter: await starter(campaign),
-    ...scoredNamed(campaign, setting.tasks, setting.target),
+    ...scoredSet(read(campaign.log), setting.target, contractHash(campaign.contract)),
     solves: Number(values.solves),
     level: Number(values.level),
     objective: objectiveNamed(campaign),

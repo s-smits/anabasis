@@ -35,13 +35,13 @@ bun tools/d2/prepare.ts <pack flags> --name sim-<what> --practice 2
 ```sh
 bun run runs rehearse <pack flags> --name sim-<what> --session r-1 \
   --solves 1 --target 6 --level 0.02 --minutes 10 --turns 10 \
-  [--tasks <task ids>] [--held old:new] [--starter pass|fail|none] [--supply N]
+  [--held old:new] [--starter pass|fail|none] [--supply N]
 ```
 
 The flags are `tools/d2/round.ts`'s, less the three that name a model. The pack flags are the
 campaign's `--root`, `--sweep`, `--cycle` and `--bundle`. Omit them for a seed that drafted its exam.
 Keep the round small unless its size is the question. Its setting is still the seed's: a recorded
-target or task list cannot be changed by these flags. Six frontier wins clear 0.02; four do not.
+target cannot be changed by these flags. Six frontier wins clear 0.02; four do not.
 
 - The Builder's script appends one line to the harness's guide through its walled shell, then calls
   `finish`. It forks `--parent latest`, the starter until a session has left a harness. The same
@@ -62,7 +62,7 @@ target or task list cannot be changed by these flags. Six frontier wins clear 0.
   can be held on that proof. `pass:pass` refuses an answered draft unless an answer on record
   beats the reference by the objective (`informative`). A campaign with no task admitted can
   reach `no-room` or `exam` at its patience.
-- `--tasks` names the scored tasks by id, as the first round does, in place of `--target`'s draw.
+- `--target` draws that many held-out tasks by the contract's hash.
 - A rehearsal needs no `--cap`: a script is paid nothing.
 - It bypasses supply, checker-read and stop-rule admission, while its comparison's own terms still
   apply (`admitComparison`). A small rehearsal running does not prove a paid start would be admitted.
@@ -105,7 +105,7 @@ harness: rehearse a session or round first. At four solves a side the report rea
 against itself on halves of its own solves too:
 
 ```sh
-bun run runs rehearse <pack flags> --name sim-<what> --id g2 --tasks <task ids> \
+bun run runs rehearse <pack flags> --name sim-<what> --id g2 --target 6 \
   --solves 4 --held pass:pass
 ```
 

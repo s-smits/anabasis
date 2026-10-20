@@ -75,5 +75,7 @@ describe("what a campaign runs by", () => {
       prompted: false,
       admits: [],
     });
+    const old = setting(8);
+    expect(planOf([{ ...old, data: { ...old.data, tasks: ["t-1"] } }], ASKED).wanted.target).toBe(12);
   });
 });

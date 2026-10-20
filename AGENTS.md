@@ -591,7 +591,7 @@ its manual and lists its flags.
 | --- | --- | --- |
 | 0 | `bun tools/d1b/draft.ts --name <name> --session d-1 --examiner <model>` | For a campaign that opened from a prompt: the session in which an Examiner drafts its exam, and the whole draft that stood (`exam.drafted`). The host reads each draft without a model before it stands |
 | 1 | `bun tools/c/accept.ts ... [--admit <checks> \| --admit-authored] [--freeze [--despite "<why>"]]` | What the check program was seen to do (`checker.read`), and the operator's word that the contract and that version stand (`contract.frozen`) |
-| 2 | `bun tools/d2/prepare.ts ... [--practice N] [--tasks <ids>]` | The pack's tasks held out and the practice tasks released. `--tasks` confirms each named task against today's verifier and writes nothing: a comparison names its scored tasks itself |
+| 2 | `bun tools/d2/prepare.ts ... [--practice N]` | The pack's tasks held out and the practice tasks released |
 | 3 | `bun tools/d1b/examine.ts ... --session x-1 --examiner <model>` | More held-out tasks, written by an Examiner session |
 | 4 | `bun tools/d2/round.ts ... --session b-1 --builder <model>` | A Builder session, then the comparison of the harness it left with the reference |
 | 4 | `bun tools/d2/session.ts ... --session b-2 --builder <model>` | A Builder session without a comparison after it, under its own dollar cap. The plan's checkpoint is several of these followed by one comparison |
@@ -740,7 +740,7 @@ hand commands of rows 0 to 7 write no opening and so have no project.
 **The setting** (`campaign.setting`, `tools/d2/setting.ts`) is recorded once, by the first command
 that begins a comparison or a Builder session, and never changes. It says who solves and under
 which limits, named by five flags (`--solver`, `--solver-effort`, `--solver-window`,
-`--solve-minutes`, `--solve-model-turns`), and which tasks are scored (`--tasks` or `--target`).
+`--solve-minutes`, `--solve-model-turns`), and how many held-out tasks a comparison draws (`--target`).
 The first command records what it names and the defaults for the rest. From then on a command that
 names nothing runs under the record, and one whose flag names something different is refused with
 both values: a different setting is a different campaign. A campaign whose solves were made before

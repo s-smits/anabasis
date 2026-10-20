@@ -765,19 +765,9 @@ describe("a hold on the move a row named", () => {
     expect(move(later, plan)).toMatchObject({ move: "prepare" });
     const released = event("task.state", { version: "v13", state: "released" });
     expect(move([...later, released], plan)).toMatchObject({ move: "build" });
-    // Left as it is where the count is reached, where none is held, and where the setting names
-    // the tasks to score: all but one are named, and half of the one left is none.
+    // Left as it is where the count is reached, or where no practice count is held.
     expect(move(more, { ...PLAN, practice: 1 })).toMatchObject({ move: "build" });
     expect(move(more)).toMatchObject({ move: "build" });
-    const named = event("campaign.setting", {
-      solver: null,
-      minutes: 120,
-      turns: 24,
-      modelTurns: null,
-      tasks: [...HELD, ...REPEAT],
-      target: 6,
-    });
-    expect(move([named, ...more], plan)).toMatchObject({ move: "build" });
     // A comparison is no Builder session: the release waits for one.
     expect(move([...more, built("b-1", "h1")], plan)).toMatchObject({ move: "compare" });
     // After a control that read room, practice is brought up by as many again, the tasks the

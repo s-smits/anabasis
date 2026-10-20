@@ -37,7 +37,7 @@ with no rule turned off for it; a whole-tree run without them leaves it out and 
   more (two assertions in `test/wri-read.test.ts`, `.toolchain` spelled five times in
   `src/builder/tools.ts`), fixed on 11 October. Add none, and say in your pull request that the
   strict run is clean.
-- Extra arguments go to Oxlint. Fifteen rules carry a fixer, marked [fix] below, which Oxlint's
+- Extra arguments go to Oxlint. Fourteen rules carry a fixer, marked [fix] below, which Oxlint's
   `--fix` applies; `tools/oxlint/FIXER-DECISIONS.md` says why the others report only.
 - **Never turn a rule off**: no new `"off"` in `.oxlintrc.json`, for the tree, a glob or a file,
   and no `oxlint-disable` comment for a plugin rule (`ana/no-inline-slop-answer` refuses it).

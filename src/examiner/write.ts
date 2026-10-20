@@ -2,33 +2,20 @@
  * The Examiner's task-writing mode: the agent that writes tasks, and the host that holds each one
  * out (`writing`, which `examine` seats, `session.ts`).
  *
- * The session is given the domain's public contract, its checks by id and assertion, and every task
- * the campaign holds, each with its outcome so far and readable whole. It proposes instances, and
- * the host puts each to the task's one gate (`src/kernel/task.ts`): the shape of its package. An
- * instance that passes is a held-out task from then on, and every comparison may score it. The
- * Examiner is told that, or why the gate refused.
- *
- * The only solves here are the reference harness's of a draft task, where the host can have it
- * solve one (`try_task`, `measured`): no stronger solver passes a task first, and the measured
- * solver does not solve it for its author (`7f0add79:docs/plan.md`, Phase 2). v1's solver matched whatever
- * its author's side found, and when sessions here did put each instance to a stronger solver, the
- * first lost 14 of 25 tasks at that solve and the second spent $48.45, of which the Examiner's own
- * turns were $2.01. Of those solves the author hears their counts, turns and measures, and nothing
- * else; the rest it hears comes from the comparisons, one outcome a task with the tasks counted by
- * family or in a total beside them, at the next session's opening (`record.ts`).
+ * The session is given the public contract, its checks by id and assertion, and every task the
+ * campaign holds with its outcome so far (`record.ts`). Each instance it proposes goes to the gate:
+ * the shape of its package (`src/kernel/task.ts`) and, under `try_task`, fresh solves by the
+ * reference harness, held out where they leave it room (`measured`). No stronger solver passes a
+ * task first (`AGENTS.md`, rule 9): when sessions put each instance to one, the first lost 14 of 25
+ * tasks at that solve and the second spent $48.45. Of the gate's solves the author hears counts,
+ * turns and measures, and how far its own answer stands from their best, and nothing else.
  *
  * An Examiner is a new process each session, so the host keeps what a session cannot: an instance
- * an earlier session already wrote is not taken again, whatever id it would get; the home a
- * session computed in is carried whole into the next session's (`Wall.keep`, `shell.ts`), unless
- * it crashed, and what a session said at its `finish` opens the next. On 11 October two sessions
- * of one campaign each spent their first minutes fetching and compiling the same engine and
- * writing an optimiser around it.
- *
- * The session ends at `finish`, at its wall or its turns, or when the host has the tasks it was
- * asked for. An instance is logged whole with its proposal, hidden values too, so a later solve of
- * it needs the log and nothing beside it; no tool here returns a line of the log.
- * An author's accepted answer is kept with its proof for the Referee (20 October): the review
- * found that the packet read passing solves alone, although task.feasible promised a valid answer.
+ * already written is not taken again, the home a session computed in is carried into the next
+ * (`Wall.keep`, `shell.ts`), and what a session said at its `finish` opens the next. An instance is
+ * logged whole with its proposal, hidden values too, so a later solve needs the log alone; no tool
+ * here returns a line of the log. An author's accepted answer is kept for the Referee
+ * (`task.feasible`).
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
@@ -37,7 +24,7 @@ import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { acceptedAnswers, proposalsOf, writtenTasks } from "../kernel/history.ts";
 import { poolOf } from "../kernel/reports.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
-import { informative, type Paired } from "../kernel/compare.ts";
+import { gainOver, informative, type Paired, ROOM } from "../kernel/compare.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { packageGate, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
 import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
@@ -51,7 +38,7 @@ import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import { text, tool } from "../solve/answer.ts";
 import { type CheckRow, firstMessage, systemPrompt } from "./prompt.ts";
-import { gateAnswers, gateBilled, heard, measuredGate, TRIED, UNAFFORDED } from "./record.ts";
+import { gapSaid, gateAnswers, gateBilled, heard, measuredGate, TRIED, UNAFFORDED } from "./record.ts";
 
 /** The home's copy of the reference harness, where the campaign's term lays one there. */
 const REFERENCE_HOME = "reference-harness";
@@ -89,6 +76,11 @@ interface Terms {
    *  launcher a comparison uses, called (`tools/d1b/examine.ts`). Given, a task is held out by
    *  `try_task` on up to `TRIED` such solves; null, by `propose_tasks` on its package's shape. */
   readonly probe: ((task: TaskPackage, session: string, kill: AbortSignal) => Promise<Ending>) | null;
+  /** Whether each task's line says who won it in its last comparison (`exam-results`, `heard`);
+   *  told unless a campaign names the term off. */
+  readonly results?: boolean;
+  /** The objective's room floor the gate holds a draft by (`--room`); `ROOM` where unnamed. */
+  readonly room?: number;
 }
 
 /** What a task-writing session's tools share. */
@@ -173,14 +165,8 @@ function instanceOf(
 }
 
 /** What `task.feasible` keeps of the author's valid answer beside its version, where the contract
- *  declares an objective: the quantity and its direction as the contract states them, and the
- *  measure the verifier took of the answer (`OBJECTIVE`, `src/kernel/verify.ts`). The event
- *  keeps the answer on the exam side for the Referee, and until
- *  19 October it stored no measure either: 74 of 74 `try_answer`
- *  results of esp32-fresh-opus held none, so whether an author's answer beat the reference
- *  harness's best, which leaves a task the reference answers every time room to gain
- *  on (`informative`, `src/kernel/compare.ts`), could not be read off any record.
- *  Empty where the contract declares no objective. */
+ *  declares an objective: the quantity, its direction and the verifier's measure of the answer,
+ *  which `bettered` reads as the author's best. Empty where the contract declares none. */
 function measureOf(contract: Contract, verdict: Verdict): JsonObject {
   const declared = contract.objective;
   if (declared === undefined || verdict.kind !== "pass" || verdict.objective === undefined) return {};
@@ -206,13 +192,11 @@ function shown(measure: number): string {
 }
 
 /** What the reference harness's readings of a draft so far show (`measured`): the counts, its
- *  valid answers with their turns and measures, its author's measure where the contract declares
- *  an objective, and whether they leave the reference room as a comparison reads it
- *  (`informative`): a valid answer and a fail, or valid answers apart by the objective, or by the
- *  author's answer; or no valid answer where its author's answer passes on it. Each later reading
- *  only adds to them, so room once shown stays shown. */
+ *  valid answers with their turns and measures, its author's measure and how far that stands from
+ *  their best (`gap`, by `gainOver`), and whether they leave the reference room as a comparison
+ *  reads it (`informative`). Each later reading only adds to them, so room once shown stays. */
 async function seenOf(
-  { request: { contract, log } }: Desk,
+  { request: { contract, log, room: floor } }: Desk,
   task: TaskPackage,
   {
     from,
@@ -227,7 +211,10 @@ async function seenOf(
   const checked = solves > 0 && (valid === solves || valid === 0) ? await proof() : null;
   const authored =
     checked?.kind === "pass" && contract.objective !== undefined ? checked.objective : undefined;
-  const objective = contract.objective && { direction: contract.objective.direction };
+  const objective = contract.objective && {
+    direction: contract.objective.direction,
+    room: floor ?? ROOM,
+  };
   const pair: Paired = {
     task: taskVersion(task),
     old: readings.map(({ outcome }) => outcome === "pass"),
@@ -238,35 +225,26 @@ async function seenOf(
     ),
   };
   const bests = new Map(authored === undefined ? [] : [[pair.task, authored]]);
+  // How the author's answer stands against the reference's best valid one: the worst of its gains.
+  const gains = answers.flatMap(({ measure }) =>
+    objective === undefined || authored === undefined ? [] : (gainOver(objective, authored, measure) ?? []),
+  );
+  const gap = gains.length === 0 ? undefined : Math.min(...gains);
   // A task the reference never answers is held on its author's proof, so no feasible task is
   // named to `informative`.
   const unsolved = solves > 0 && valid === 0;
   const room = unsolved ? checked?.kind === "pass" : valid > 0 && informative(pair, "old", new Set(), bests);
-  return { solves, valid, answers, authored, unsolved, room };
+  return { solves, valid, answers, authored, gap, unsolved, room };
 }
 
 /** What the gate reads of one package: its shape, and under `try_task` the reference harness's
- *  solves of a package whose shape passed, one at a time and at most `TRIED`, with what they
- *  billed. The task is held out at the first reading after which the readings leave the reference
- *  room (`seenOf`), since no later one could take it away. Until 20 October all `TRIED` ran at
- *  once. Replayed in the order they started, the gates of buffer r3, r5, r6 and r7 and
- *  esp32-fresh-opus decide each of their 304 drafts as they did on 627 of their 912 solves, $89.80
- *  of $152.90; two at once and a third where those leave it open would have run 749, $118.42. One
- *  at a time, the buffer gates' summed time falls by 262 minutes, a solve ending before the
- *  slowest of three, and esp32's, whose drafts the reference mostly answered every time, rises by
- *  176 minutes over 174 drafts, moving its ten sessions' ends by at least 6.8 minutes in all.
- *  Until 16 October the gate read no objective, and of the drafts five fresh campaigns' gates
- *  refused as answered every time, 6 held valid answers more than 1% apart. A solve that ended in
- *  no reading, or in a rejection the Referee did not rule earned (`probing`,
- *  `tools/d1b/examine.ts`), is no reading, and leaves the draft unmeasured only where the readings
- *  left do not decide it: every one valid short of `TRIED`, or none. Until 15 October any such solve refused the draft unmeasured: 29 of
- *  the 174 drafts of four campaigns, 20 of them on readings that already held both a pass and a
- *  fail, or only fails beside a passing proof (main0_5_1 14, buffer-pr169-opus 5). The Examiner
- *  hears the counts, of the solves that ran; no answer and no trace of a solve reaches it. The
- *  session bounds them: `stop` is the session's own signal, which its wall, its end and a killed
- *  run abort, and it is the kill a comparison's solves take (`probe`), so a wall that fires
- *  mid-try leaves no solve running, starts no other, and leaves the task refused unmeasured.
- *  `ahead` is the drafts of the same call measured beside this one (`proposeTool`). */
+ *  solves of a package whose shape passed, one at a time and at most `TRIED`. The draft is held at
+ *  the first reading that leaves the reference room (`seenOf`): replayed, that decided 304 drafts of
+ *  five campaigns as all three at once had, on 627 of 912 solves. A solve that ended in no reading,
+ *  or in a rejection the Referee did not rule earned (`probing`, `tools/d1b/examine.ts`), is no
+ *  reading. `stop` is the session's signal, which its wall, its end and a killed run abort, so a
+ *  wall that fires mid-try starts no other solve and leaves the draft refused unmeasured. `ahead`
+ *  is the drafts of the same call measured beside this one (`proposeTool`). */
 async function measured(
   desk: Desk,
   task: TaskPackage,
@@ -292,7 +270,7 @@ async function measured(
     if (ending.outcome !== "non-result") readings.push(ending);
     seen = await seenOf(desk, task, { from, readings, proof });
   } while (!seen.room && ran < TRIED && !stop.aborted);
-  const { solves, valid, answers, authored, unsolved } = seen;
+  const { solves, valid, answers, authored, gap, unsolved } = seen;
   const unread =
     solves < ran
       ? `, ${String(ran - solves)} of them ending in no reading or in a rejection the Referee did not rule earned`
@@ -301,40 +279,36 @@ async function measured(
   const took = answers.flatMap(({ turns: each }) => (each === null ? [] : [each]));
   const turns = took.length === 0 ? "" : `, taking ${took.join(", ")} of the solver's own turns`;
   // The measures by the objective, theirs and the author's, which decide room where every solve is
-  // valid (`informative`): until 19 October the Examiner was told neither, and 181 of the 338
-  // drafts five campaigns' gates refused as answered 3 of 3 with measures held answers apart by
-  // less than the margin then in force, 0.01, none of which their author could see.
+  // valid (`informative`).
   const measures = answers.flatMap(({ measure }) => (measure === null ? [] : [shown(measure)]));
   const theirs = measures.length === 0 ? "" : `, its valid answers measuring ${measures.join(", ")}`;
   const yours =
-    authored === undefined ? "" : `, and your answer that passed try_answer on it ${shown(authored)}`;
+    authored === undefined
+      ? ""
+      : `, and your answer that passed try_answer on it ${shown(authored)}${gap === undefined ? "" : `, ${gapSaid(gap)}`}`;
   const counted = `the reference harness answered it validly in ${String(valid)} of ${String(ran)} solves${turns}${theirs}${yours}${unread}`;
-  // The rule itself is the system prompt's, said once there (17 October).
+  // The rule itself is the system prompt's, said once there.
   const roomless = `${counted}, ${unsolved ? "and no answer of yours passed try_answer on it" : "which leaves no room"}`;
   return {
     reason: seen.room ? null : unsolved || solves === TRIED ? roomless : `${counted}, so it is not measured`,
     said: `; ${counted}`,
-    reference: { valid, solves, ran, billed: gateBilled(read(log), id, taskVersion(task)) },
+    reference: {
+      valid,
+      solves,
+      ran,
+      billed: gateBilled(read(log), id, taskVersion(task)),
+      ...keyIfDefined("gap", gap),
+    },
   };
 }
 
-/** The gate for one instance the Examiner proposed, and the line it is told (`measured`). Its gate
- *  says whether it came with a proof: an answer of its author's that passed the checks on its
- *  content before it was proposed (`proved`). The proof is put to the checks
- *  again under the task's own id, and the task is on record as feasible only where it passes there.
- *  A task the reference harness answered in none of its solves is held out where it passes so: a
- *  witness says a valid answer exists, which three failed solves do not say either way, and a task
- *  the reference never answers while a valid answer to it is on record is the room a promotion
- *  leaves (`informative`, `src/kernel/compare.ts`). Without a proof it is refused, as is a task the
- *  solves left unmeasured. Until 15 October every such task was held for a ladder, a fixed set read
- *  only after a promotion: in five campaigns of 14 October 31 of 120 drafts were, 47 were held out,
- *  and a promoted harness that answered every scored solve (buffer-149's 68 of 68, recode-151's 56
- *  of 56) was left only the drafts it answered some of the time. Until 16 October the first of
- *  every three still was, and the ladder was retired: its readings after a promotion found the new
- *  reference valid on 14 of 14 tasks and 5 of 6, the set already closed, for $33.06 and 5.9 hours
- *  in one campaign, while a third of these drafts were kept from the exam. Since 19 October one
- *  it answered validly in every solve is held where the proof is better by the objective than each
- *  of those answers, so the proof is read before the solves. */
+/** The gate for one instance the Examiner proposed, and the line it is told (`measured`). Its
+ *  author's answer, where one passed `try_answer` on the same content (`proved`), is put to the
+ *  checks again under the task's own id, before the solves where they leave it to decide (every
+ *  solve valid, or none) and otherwise once the task is held; the task is on record as feasible
+ *  only where it passes there. A task the reference answered in none of its solves is held on that
+ *  proof, since a task it never answers while a valid answer is on record is the room a promotion
+ *  leaves; without one it is refused. */
 async function gated(desk: Desk, instance: Task, stop: AbortSignal, ahead: number): Promise<string> {
   const { request } = desk;
   const { log, id: session, verify } = request;
@@ -385,12 +359,9 @@ const supplied = (desk: Desk): boolean => desk.held.length >= desk.request.wante
 /**
  * A `try_task` call's instances put to the gate without waiting on it: the line of each instance
  * not taken, and the ids of the ones whose solves now run while the session goes on. What the gate
- * says of each is told with the session's next tool result after it (`heard`), and `finish` and the
- * session's end wait for it (`settle`). Until 19 October a call waited on its slowest instance's
- * three solves: in the three Opus buffer campaigns of that day the first Examiner session spent
- * 56, 57 and 80 minutes of its 218, 112 and 215 on the gate's replies, putting a mean of 1.0, 3.9
- * and 1.5 instances a call, and the GPT ones 79 of 171 at 1.0. Until it had held enough tasks no
- * comparison could start, so its waits were the campaign's first hours.
+ * says of each comes with a later tool result, and `finish` and the session's end wait for it
+ * (`settle`). Until 19 October a call waited on its slowest instance, and the first Examiner
+ * sessions of three buffer campaigns spent 56, 57 and 80 minutes on the gate's replies.
  */
 function putAside(
   desk: Desk,
@@ -578,12 +549,8 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
 }
 
 /**
- * The instances earlier sessions wrote that were put to their gate and read by it. A session cut while a task was
- * being measured leaves its proposal with no gate on record, and until 13 October the next session
- * was told that instance was written already: it was neither held out nor refused, and could not
- * be proposed again (one such proposal in each of two campaigns on 12 October, each cut inside its
- * second session). Without a gate it is no task of the campaign's, so it may be proposed again,
- * and is gated then under the id it is given.
+ * The instances earlier sessions wrote that their gate read. One whose session was cut before its
+ * gate wrote anything is no task of the campaign's, and may be proposed again.
  */
 function gatedTasks(events: readonly LogEvent[]): Task[] {
   const gates = new Set(
@@ -597,19 +564,11 @@ function gatedTasks(events: readonly LogEvent[]): Task[] {
 /**
  * The mode that writes tasks: the exam's own tools, `try_answer` where the host verifies, the home
  * carried from the campaign's last session where the wall keeps one (`keep`), and in it a copy of
- * the reference harness where the wall names one (`reference`).
- *
- * The copy answers the supply after a promotion. Told each refused draft's outcome and the turns
- * its solves took, esp32-fresh-opus's Examiner held 0 of 49 drafts under its first promoted
- * reference, 44 of them answered in 3 of 3 solves, and wrote denser instances of what its programs
- * already answered (18 October): it never saw what the reference brings to a task. Seeing it
- * reverses the ruling of 12 October that the Examiner never sees the solver's tools, so it is the
- * operator's term. It was off unless named until the supply ablation of 19 October, one session an
- * arm on the buffer domain after its second promotion: 1 of 8 drafts held blind for $9.22, 4 of 8
- * with the copy for $14.41, $3.60 a held draft; on esp32, with no room left, none either way. It
- * is on unless a campaign names it off since, on the operator's word of that day. The copy
- * is the reference's alone, never a candidate's, laid afresh each session and left out of the
- * kept home.
+ * the reference harness where the wall names one (`reference`): the reference's alone, laid afresh
+ * each session and left out of the kept home. Blind to it, esp32-fresh-opus's Examiner held 0 of 49
+ * drafts under its first promoted reference; in the supply ablation of 19 October on the buffer
+ * domain, 1 of 8 drafts held blind and 4 of 8 with the copy. It is the operator's term
+ * (`exam-reference`), on unless a campaign names it off.
  */
 export function writing(
   request: Terms,
@@ -644,12 +603,18 @@ export function writing(
   const kept = cut?.ended === "crashed" && cut.running === 0 && isString(cut.session) ? cut.session : null;
   return {
     kind: "exam" as const,
-    system: systemPrompt(attempts, reference === undefined ? "unseen" : "in-home"),
-    opening: firstMessage(request.contract, request.checks, heard(before, request.tasks), limits, {
-      brief: openingOf(before)?.prompt ?? null,
-      budget: request.budget,
-      lastNote: isString(note) && note.trim() !== "" ? note : null,
-    }),
+    system: systemPrompt(attempts, reference === undefined ? "unseen" : "in-home", request.room),
+    opening: firstMessage(
+      request.contract,
+      request.checks,
+      heard(before, request.tasks, request.results ?? true),
+      limits,
+      {
+        brief: openingOf(before)?.prompt ?? null,
+        budget: request.budget,
+        lastNote: isString(note) && note.trim() !== "" ? note : null,
+      },
+    ),
     started: {
       limits: { wallSeconds: limits.wallSeconds, turns: limits.turns, proposals: limits.puts, tasks: wanted },
       checks: request.checks.map(({ id }) => id),

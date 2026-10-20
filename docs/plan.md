@@ -35,6 +35,8 @@ factors"). The values below are read from the fresh campaigns' logs on the opera
 | F30 | The checker's identity in every task version | Planned | |
 | F32 | No field engine behind buffer's or recode's checks; every drafted exam stands on `--admit-authored` | Planned | A domain whose exam names an installed engine |
 | F60 | Whether the Examiner's family counts help | Present in source, proved without a model | An ablation, or a read of drafts refused before and after |
+| F61 | The room floor (`ROOM`, 1%, `--room`), one judgement of what improvement counts: two answers closer than it tie in a pair, and a task an answer on record betters by less leaves no room. r6's g-2 would read 3-3-18 where it promoted on 23-0-1. Replayed on r6, it moves all 24 of the first promotion's tasks off the frontier, so the Examiner is asked for a whole comparison's tasks instead of 4 | Proved without a model, replayed | A fresh campaign's drafts held, frontier and comparisons after its first promotion |
+| F62 | The Examiner told each task's winner and objective margin (`exam-results`), the gate's gap on later lines, and `read_opening` | Proved without a model | Drafts held and refused after a promotion, against r6's; an ablation with `exam-results off` |
 | B6 | The investigation's reader still reads its own copy of the campaign | Planned | |
 | H1 | The Seatbelt half of the per-seat `TMPDIR` | Proved without a model (Linux half) | A wall test on macOS |
 | C6, C8 | A side reading of the newest candidate against the previous one; restart from the reference | Planned | C6 first, on a real log with a regression |

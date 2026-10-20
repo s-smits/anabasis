@@ -732,9 +732,14 @@ function standingOf(record: TaskRecord): [string, Standing][] {
  * taken. A task no solve answered in two comparisons goes to the Builder before the draw: it is
  * what a session has to work on, where every released task passes. Then the tasks the reference
  * harness failed in the last comparison, half of them rounded up, so that the comparison keeps
- * tasks it can untie. The rest is the contract's draw over the tasks neither list holds, less any
- * the reference answered in every solve of its last reading, which gives a session nothing to
- * work on (until 16 October the draw took them). The release in `tools/d2/prepare.ts` calls it.
+ * tasks it can untie. The rest is the contract's draw over every task neither list holds, those the
+ * reference answered in every solve among them: such a task still teaches through the objective's
+ * measure a practice pass returns. From 16 to 20 October the draw left them out, and so withheld
+ * the tasks the objective left room on: after r3's third, fourth and fifth promotions 12, 18 and 22
+ * frontier tasks were held, with room to release 6, 12 and 16, and none could be drawn. Reading
+ * that room here would read the other harness's answers and its author's (`bettered`), so which
+ * held-out task a new harness won would change what is released, which the Builder reads (rule 3):
+ * the release reads the reference's own solves alone. The release in `tools/d2/prepare.ts` calls it.
  *
  * The tasks the reference failed are the held-out ones whose last scored result says it failed
  * a solve, excluding a later dispute or comparison between other harnesses, as a task's outcome
@@ -763,23 +768,15 @@ export function releaseOrder(
   const unanswered = among(
     placed(records, ({ answered, tallied }) => (answered ? undefined : runOf(tallied))),
   );
-  /** The tasks whose last reading the reference stood in, where `every` says whether it answered
-   *  each of its solves there. */
-  const readOf = (every: boolean) =>
-    among(
-      placed(records, (record) => {
-        const last = lastRead(record);
-        if (last === null || last === "aside" || last.reference === null) return undefined;
-        const own = last[last.reference];
-        return own.length > 0 && own.every(Boolean) === every ? last.order : undefined;
-      }),
-    );
-  const failed = readOf(false).filter((version) => !unanswered.includes(version));
-  const closed = readOf(true);
+  const failed = among(
+    placed(records, (record) => {
+      const last = lastRead(record);
+      if (last === null || last === "aside" || last.reference === null) return undefined;
+      return last[last.reference].some((valid) => !valid) ? last.order : undefined;
+    }),
+  ).filter((version) => !unanswered.includes(version));
   const first = [...unanswered, ...failed.slice(0, Math.ceil(failed.length / 2))];
-  const rest = pool.filter(
-    (version) => !first.includes(version) && !failed.includes(version) && !closed.includes(version),
-  );
+  const rest = pool.filter((version) => !first.includes(version) && !failed.includes(version));
   const chosen = [
     ...first.slice(0, count),
     ...draw(rest, Math.min(rest.length, Math.max(0, count - first.length)), seed),

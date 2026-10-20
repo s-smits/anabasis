@@ -850,19 +850,20 @@ describe("the release before the draw", () => {
 
   it("takes half of the tasks the reference failed, and the draw cannot release the other half", () => {
     expect(failedOf(log, tasks)).toEqual(["f1", "f2", "f3", "f4"]);
-    // Half of the failed, in the order they failed, then the draw over the tasks no reading of the
-    // reference's closed: the kept half stays scored, and `a1` and `a2`, which it answered in every
-    // solve, give a session nothing to work on. Until 16 October the draw took them.
+    // Half of the failed, in the order they failed, then the draw over every task neither list
+    // holds: the kept half stays scored, and `a1` and `a2`, which the reference answered in every
+    // solve, are drawn like `n1`. From 16 to 20 October the draw left them out.
     const fresh = [...log, ...heldOut("n1")];
     const order = releaseOrder(fresh, [...tasks, "n1"], 4, "seed");
-    expect(order.map(([version]) => version)).toEqual(["f1", "f2", "n1"]);
+    expect(order.map(([version]) => version)).toEqual(["f1", "f2", "a1", "a2"]);
     expect(order.map(([, why]) => why)).toEqual([
       ": the reference harness failed it in the last comparison, and it is",
       ": the reference harness failed it in the last comparison, and it is",
       ":",
+      ":",
     ]);
     // Asked for more than the draw's pool holds, the release takes what there is and no kept task.
-    expect(taken(log, 6).toSorted()).toEqual(["f1", "f2"]);
+    expect(taken(log, 6).toSorted()).toEqual(["a1", "a2", "f1", "f2"]);
     // Half is rounded up, so one failed task alone is released, and a task the reference answered
     // in some solves is failed as one it answered in none: until 16 October neither went, and
     // between buffer-159-opus's two promotions its Builder's practice passed 10 of 10.
@@ -875,6 +876,35 @@ describe("the release before the draw", () => {
       reported("b-1", "no-step", "h2", { ...terms, versions: ["s1", "a1"] }),
     ];
     expect(releaseOrder(once, ["s1", "a1"], 1, "seed").map(([version]) => version)).toEqual(["s1"]);
+  });
+
+  it("releases the same tasks whichever held-out task the new harness bettered by the objective", () => {
+    // Two logs with equal tallies, one task won and one tied, which differ only in which task the
+    // new harness's answers measured half the reference's. The release reads the reference's own
+    // solves alone, so the Builder reads one practice set either way (AGENTS.md rule 3). Drawing
+    // from `poolOf`'s frontier released `a1` from one and `a2` from the other.
+    const won = (better: string) => {
+      const sides = ["a1", "a2"].flatMap((task) => [
+        ...solved("b-1", task, "h1", [P, P]),
+        ...solved("b-1", task, "h2", [P, P]),
+      ]);
+      const measures = better === "a1" ? [10, 10, 5, 5, 10, 10, 10, 10] : [10, 10, 10, 10, 10, 10, 5, 5];
+      return [
+        ...["a1", "a2"].flatMap(heldOut),
+        ...sides,
+        ...measuredAt(sides, measures),
+        reported("b-1", "no-step", "h2", {
+          ...terms,
+          versions: ["a1", "a2"],
+          objective: { direction: "lower", margin: 0.01 },
+        }),
+      ];
+    };
+    expect(poolOf(won("a1")).frontier).toEqual(["a1"]);
+    expect(poolOf(won("a2")).frontier).toEqual(["a2"]);
+    expect(releaseOrder(won("a1"), ["a1", "a2"], 1, "seed")).toEqual(
+      releaseOrder(won("a2"), ["a1", "a2"], 1, "seed"),
+    );
   });
 
   it("keeps the reference's failures through empty reports and comparisons of other harnesses, until the reference answers the task", () => {

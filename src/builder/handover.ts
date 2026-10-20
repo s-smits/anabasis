@@ -28,7 +28,7 @@
  * billed every move made inside its span, which those moves' own lines billed again.
  * The Referee triage of 20 October found unclear and unread practice rejections counted as failures.
  */
-import type { Tally } from "../kernel/compare.ts";
+import type { Gain, Tally } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { billedAll, billedParts, lastReports, latestBuilt, ownedBy, promoted } from "../kernel/reports.ts";
 import { ended, passed, practiceRan, type Ran, rejectionAside, solvesIn } from "../kernel/solves.ts";
@@ -108,6 +108,9 @@ interface Compared {
   /** The tallied tasks the objective decided, where the comparison fixed one: won or lost where
    *  validity alone would have tied. Null where it fixed none. */
   readonly decided: number | null;
+  /** The median relative gain by the objective on the frontier tasks the new harness won, where
+   *  any had a valid measure on both sides (`objectiveGain`); null otherwise and before 20 October. */
+  readonly gain: Gain | null;
   /** The tasks set aside for a person's labels. */
   readonly aside: number;
   /** The Referee's last ruling of each of its rejected answers, by kind. */
@@ -252,6 +255,7 @@ function compared(events: readonly LogEvent[], id: string): Compared {
     ),
   );
   const side = (each: unknown) => (Array.isArray(each) ? each.filter(isNumber) : []);
+  const gain = asRecord(asRecord(report?.objective)?.gain);
   return {
     step: "comparison",
     id,
@@ -271,6 +275,7 @@ function compared(events: readonly LogEvent[], id: string): Compared {
     decided: isNumber(asRecord(report?.objective)?.decided)
       ? count(asRecord(report?.objective)?.decided)
       : null,
+    gain: isNumber(gain?.median) && isNumber(gain.tasks) ? { median: gain.median, tasks: gain.tasks } : null,
     aside: listed(report?.aside),
     rulings: {
       earned: [...ruled.values()].filter((ruling) => ruling === "earned").length,

@@ -515,9 +515,11 @@ describe("a round", () => {
       version === "s1" ? LATE : { ending: PASS, objective: mass(version, side) },
     );
     const objective = { direction: "lower" } as const;
+    // Beside the count, the median relative gain on the won tasks: 0.2 on s2 and 0.1 on s3.
+    const gain = { median: (0.2 + 0.1) / 2, tasks: 2 };
     expect(await round({ ...s.request, objective })).toMatchObject({
       scored: { wins: 2, losses: 0, ties: 2, p: 0.25, unsolved: 1 },
-      objective: { ...objective, decided: 2 },
+      objective: { ...objective, decided: 2, gain },
       reading: NO_STEP,
     });
     // The rule is a term of the comparison, fixed at its start, and the report carries it with

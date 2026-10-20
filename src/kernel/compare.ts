@@ -82,6 +82,7 @@ import { sha256 } from "../meta/digest.ts";
 import { asRecord, isNumber, type JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
+import { median } from "../meta/tally.ts";
 import { conditionsOf, settingId } from "./condition.ts";
 import type { LogEvent } from "./log.ts";
 import { ended, passed, ranUnder, verdictsOf } from "./solves.ts";
@@ -139,6 +140,12 @@ interface Sides {
   readonly halves?: "mirrored" | undefined;
   /** The objective two valid answers are compared by, where the comparison fixed one. */
   readonly objective?: ObjectiveRule | undefined;
+}
+
+/** A median relative gain by the objective, over `tasks` tasks (`objectiveGain`). */
+export interface Gain {
+  readonly median: number;
+  readonly tasks: number;
 }
 
 /** The chance at which a share of untied tasks won is detected (`detectable`): four times in five. */
@@ -389,6 +396,26 @@ export function decidedByObjective(pairs: readonly Paired[]): number {
     const { fresh, old, validity } = pairings(pair);
     return Math.sign(fresh - old) !== Math.sign(validity.fresh - validity.old);
   }).length;
+}
+
+/**
+ * The median relative gain by the objective over the tasks of `pairs` the new harness won: each
+ * task's median valid measure against the reference's, as a share of the larger magnitude
+ * (`apart`), positive where the new one is better, over the won tasks with a valid measure on both
+ * sides (`tasks`). Null where none has. A report beside the tally, which decides nothing (the
+ * improvement plan's C1): in r3 the pair dropped the size of each difference, and g-3's 18 wins
+ * added under no margin had a median gain of 0.00076%.
+ */
+export function objectiveGain(pairs: readonly Paired[]): Gain | null {
+  const gains = pairs.flatMap((pair) => {
+    const { fresh, old } = pairings(pair);
+    const rule = pair.objective;
+    if (rule === undefined || fresh <= old) return [];
+    const [mine, theirs] = [median(rule.fresh.filter(isNumber)), median(rule.old.filter(isNumber))];
+    return mine === null || theirs === null ? [] : [better(rule, mine, theirs) * apart(mine, theirs)];
+  });
+  const middle = median(gains);
+  return middle === null ? null : { median: middle, tasks: gains.length };
 }
 
 /** Whether the harness on `side` closed the task: valid in every counted solve, and not

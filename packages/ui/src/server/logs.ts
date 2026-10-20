@@ -22,22 +22,17 @@
  */
 import { LOG_FILE, read } from "../../../../src/kernel/log.ts";
 import { sha256 } from "../../../../src/meta/digest.ts";
-import {
-  closeSync,
-  existsSync,
-  openSync,
-  readdirSync,
-  readSync,
-  statSync,
-} from "../../../../src/meta/filesystem.ts";
+import { closeSync, existsSync, openSync, readSync, statSync } from "../../../../src/meta/filesystem.ts";
 import { basename, join, resolve } from "../../../../src/meta/path.ts";
 import { errorMessage } from "../../../../src/meta/runtime-values.ts";
 import {
+  CAMPAIGNS,
+  campaignsIn,
+  isCampaign,
   logEvents,
   processes,
   type Run,
   readable,
-  SEED_FILE,
   writers,
 } from "../../../../tools/runs/registry.ts";
 import type { Issue } from "../models.ts";
@@ -105,11 +100,11 @@ let scanned: Scanned | null = null;
 
 /** Where a log is said to be in an issue: its worktree's label and its path inside it. */
 export const sourceOf = ({ label, name }: Pick<Found, "label" | "name">): string =>
-  `${label}/.ana/d2/${name}/${LOG_FILE}`;
+  `${label}/${CAMPAIGNS}/${name}/${LOG_FILE}`;
 
 /** The campaigns under one directory, as `runs` lists those of each worktree. */
 function underDirectory(tree: string): Listed {
-  const d2 = join(tree, ".ana", "d2");
+  const d2 = join(tree, CAMPAIGNS);
   if (!existsSync(d2)) {
     return {
       runs: [],
@@ -117,13 +112,7 @@ function underDirectory(tree: string): Listed {
     };
   }
   try {
-    const found = readdirSync(d2).flatMap((name): Run[] => {
-      const path = join(d2, name, LOG_FILE);
-      return existsSync(path)
-        ? [{ name, tree, path, end: "comparison.reported", seed: existsSync(join(d2, name, SEED_FILE)) }]
-        : [];
-    });
-    return { runs: found, issues: [] };
+    return { runs: campaignsIn(d2, tree), issues: [] };
   } catch (error) {
     return { runs: [], issues: [{ level: "error", source: d2, message: errorMessage(error) }] };
   }
@@ -133,7 +122,7 @@ function underDirectory(tree: string): Listed {
  *  repository the server runs in, which is the one it was started for unless it was moved. */
 function inWorktrees(repo: string): Listed {
   try {
-    const listed = readable().filter((run) => run.end === "comparison.reported");
+    const listed = readable().filter(isCampaign);
     const trees = new Set(listed.map((run) => resolve(run.tree)));
     const issues: Issue[] =
       listed.length > 0 && !trees.has(resolve(repo))

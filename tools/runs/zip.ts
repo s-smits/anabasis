@@ -53,8 +53,8 @@ import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import { receipts } from "./receipt.ts";
-import { hostNamed, quoted, sshScript, verbOn } from "./hosts.ts";
-import { logEvents, type Run, readable, standing, wholeLines } from "./registry.ts";
+import { hostNamed, quoted, rsync, sshScript, verbOn } from "./hosts.ts";
+import { isCampaign, logEvents, type Run, readable, standing, wholeLines } from "./registry.ts";
 
 const LEVELS = ["light", "medium", "verbose"] as const;
 const CAMPAIGN_ENDED = "campaign.ended";
@@ -226,10 +226,9 @@ function gather(chosen: readonly Run[], level: Level, stage: string) {
   }
   const told = chosen.map((run) => {
     // A round's folder is its own; a live solve's log lies among the other solves'.
-    const [folder, found] =
-      run.end === "comparison.reported"
-        ? [run.name, fit(dirname(run.path))]
-        : ["live", fit(dirname(run.path), [basename(run.path)])];
+    const [folder, found] = isCampaign(run)
+      ? [run.name, fit(dirname(run.path))]
+      : ["live", fit(dirname(run.path), [basename(run.path)])];
     keep(dirname(run.path), join(basename(run.tree), folder), found);
     const log = logEvents(run.path);
     const last = log.findLast(({ kind }) => kind === run.end)?.data;
@@ -324,7 +323,7 @@ export async function zipRuns(args: readonly string[]): Promise<void> {
       if ((await verbOn(host, ["zip", ...names, `--${level}`, "--out", there, ...mb])) !== 0) {
         throw new Error(`the zip was not made on ${host.name}`);
       }
-      runTextSyncOrThrow(["rsync", "-a", `${host.ssh}:${quoted(there)}`, out]);
+      rsync(`${host.ssh}:${quoted(there)}`, out);
     } finally {
       runTextSyncOrThrow(sshScript(host, `rm -rf ${scratch}`));
     }

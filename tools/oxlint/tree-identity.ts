@@ -155,7 +155,32 @@ interface IdentitySpelling {
  * second copy of a name a reader resolves.
  */
 function insideBackticks(before: string): boolean {
-  return before.split("`").length % 2 === 0;
+  // What is open, innermost last: a template's text (`` ` ``), code inside `${…}` or braces (`{`),
+  // or an ordinary string by its quote, with the backticks counted inside it. Counting every
+  // backtick on the line read `${"a/b"}` and a literal after `"`"` as prose.
+  const open: string[] = [];
+  let ticks = 0;
+  for (let at = 0; at < before.length; at += 1) {
+    const char = before[at] ?? "";
+    const top = open.at(-1);
+    if (char === "\\") at += 1;
+    else if (top === '"' || top === "'") {
+      if (char === top) open.pop();
+      else if (char === "`") ticks += 1;
+    } else if (top === "`") {
+      if (char === "`") open.pop();
+      else if (char === "$" && before[at + 1] === "{") {
+        open.push("{");
+        at += 1;
+      }
+    } else if (`"'\``.includes(char)) {
+      open.push(char);
+      ticks = 0;
+    } else if (char === "{") open.push(char);
+    else if (char === "}" && top === "{") open.pop();
+  }
+  const top = open.at(-1);
+  return top === "`" || ((top === '"' || top === "'") && ticks % 2 === 1);
 }
 
 /** The repository path an aliased specifier names, or the specifier itself when no alias applies. */

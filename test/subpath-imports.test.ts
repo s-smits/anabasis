@@ -177,5 +177,8 @@ describe("the tree scans read an alias as the module it names", () => {
     expect(rows("const help = 'such as `type T = \"sandbox-level/v1\"` in a type';")).toStrictEqual([]);
     expect(rows('const help = `such as type T = "sandbox-level/v1" in a type`;')).toStrictEqual([]);
     expect(rows('const level = "sandbox-level/v1";')).not.toStrictEqual([]);
+    // A literal in a template's `${…}` is code, and so is one after a string that holds a backtick.
+    expect(rows('const level = `at ${"sandbox-level/v1"}`;')).not.toStrictEqual([]);
+    expect(rows('const tick = "`", level = "sandbox-level/v1";')).not.toStrictEqual([]);
   });
 });

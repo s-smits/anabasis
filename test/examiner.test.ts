@@ -333,6 +333,14 @@ function inOrder<T extends JsonValue>(
 }
 
 describe("a session that writes tasks", () => {
+  it("serves its opening again on read_opening, for a context that was compacted", async () => {
+    const s = seat("write", [call("read_opening", {}), finish, finish]);
+    await examine(s.request);
+    const served = s.of(CALLED).find(({ tool }) => tool === "read_opening");
+    expect(served?.text).toContain("- e-1 (fixture): not yet compared; no answer on record");
+    expect(served?.text).toContain("This session has 10 minutes and 12 turns.");
+  });
+
   it("is given the contract, the checks and the campaign's tasks, and nothing of a solver", async () => {
     const s = seat("write", [
       call("read_example", { task: "e-1" }),
@@ -1019,13 +1027,14 @@ describe("a session that writes tasks", () => {
     ]);
   });
 
-  it("holds out a task the reference harness answers alike every time where its author's answer is better by the objective, and not one the same or without one", async () => {
+  it("holds out a task the reference harness answers alike every time where its author's answer is better by the objective by the room floor, and not one closer or without one", async () => {
     // The reference's answers measure 10 on every draft, the third within a billionth of it.
-    // Base 2's author answer measures 9, better than each by 10%; base 3's is the same within a
-    // billionth; base 4 has none. Until 19 October the gate refused all three.
+    // Base 2's author answer measures 9, better than each by 10%; base 3's is better by 0.5%, under
+    // the floor (`ROOM`); base 4 has none. Until 20 October base 3 was held, as r6's gate held
+    // drafts whose author answers were a hundredth of a percent better.
     const authored = new Map([
       [2, 9],
-      [3, 10 - 1e-9],
+      [3, 9.95],
     ]);
     const steps = [tried(2), tried(3), call(TRY, { tasks: [instance(2), instance(3), instance(4)] })];
     const s = seat("write", [...steps, finish, finish]);
@@ -1056,9 +1065,18 @@ describe("a session that writes tasks", () => {
     // better one at the first solve, after which the gate stops.
     const lines = s.of(CALLED).flatMap(({ text: said }) => (isString(said) ? said.split("\n") : []));
     expect(lines.find((line) => line.startsWith("x-1-001: "))).toContain(
-      "1 of 1 solves, its valid answers measuring 10, and your answer that passed try_answer on it 9",
+      "1 of 1 solves, its valid answers measuring 10, and your answer that passed try_answer on it 9, 10% better than its best",
     );
-    expect(lines.find((line) => line.startsWith("x-1-002: "))).toContain("measuring 10, 10, 10");
+    expect(lines.find((line) => line.startsWith("x-1-002: "))).toContain(
+      "measuring 10, 10, 10, and your answer that passed try_answer on it 9.95, 0.5% better than its best, which leaves no room",
+    );
+    // A later session is told the gap beside the refused draft.
+    expect(heard(read(s.log), []).refused).toEqual([
+      expect.stringContaining("x-1-002 (fixture, yours 0.5% better than its best)"),
+    ]);
+    // and beside the held one, on its line.
+    const later = heard(read(s.log), [{ taskId: "x-1-001", family: "fixture" }]);
+    expect(later.lines[0]).toContain("gate 1 of 1 valid, yours 10% better than its best");
     expect(lines.find((line) => line.startsWith("x-1-003: "))).not.toContain("try_answer on it");
   });
 
@@ -1366,6 +1384,27 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       .split("\n")
       .filter((row) => row.startsWith("| ") && !row.startsWith("| family |") && !row.startsWith("| ---"));
 
+  it("says, where the objective alone decided a task, how far apart the sides were and the room its answers leave", () => {
+    const log = logged();
+    log.hold("close");
+    log.solved("b-1", "close", "h1", [true, true]);
+    log.solved("b-1", "close", "h2", [true, true]);
+    log.reported("b-1", ["h1", "h2"], 2, ["close"]);
+    // The reference's answers measure 100 and the other harness's 90, under a rule with a floor.
+    const measures = [100, 100, 90, 90];
+    for (const { kind, data } of log.events) {
+      if (kind === "verdict") data.objective = measures.shift() ?? null;
+      if (kind === "comparison.reported") data.objective = { direction: "lower", room: 0.01 };
+    }
+    const [said] = heard(log.events, [fixture("close")]).lines;
+    expect(said).toContain("won there by the other harness, by the objective alone, 10% apart");
+    expect(said).toContain("an answer on record 10% better than one of its own");
+    // With exam-results off, who won is not said, and the room on record still is.
+    const [blind] = heard(log.events, [fixture("close")], false).lines;
+    expect(blind).not.toContain("won there");
+    expect(blind).toContain("an answer on record 10% better than one of its own");
+  });
+
   it("is one outcome a task on the reference's side, with whether a valid answer is on record, and the counts beside them", async () => {
     const log = logged();
     const tasks = ["some", "none", "every", "unsolved", "practice", "aside", "new", "faulted", "refused"].map(
@@ -1390,10 +1429,10 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     // Whether a valid answer is on record is said where nothing else on the line shows one, and
     // the practice tasks are one line.
     expect(lines).toEqual([
-      line("some", "valid in some solves"),
-      line("none", `valid in no solve; ${VALID}`),
-      line("every", "valid in every solve"),
-      line("unsolved", `valid in no solve; ${NONE}`),
+      line("some", "valid in some solves; won there by the other harness"),
+      line("none", `valid in no solve; ${VALID}; won there by the other harness`),
+      line("every", "valid in every solve; tied there"),
+      line("unsolved", `valid in no solve; ${NONE}; tied there`),
       line("aside", `disputed: a rejection of an answer to it is not settled; ${NONE}`),
       line("new", `not yet compared; ${NONE}`),
       line("faulted", "disputed: a check was at fault on an answer to it"),
@@ -1517,20 +1556,28 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
   });
 
   it("says nothing it cannot count: a task the log does not hold, one task alone, no task at all", () => {
-    const uncounted = { counts: null, turns: null, refused: [], earlier: null };
+    const uncounted = { legend: heard([], []).legend, counts: null, turns: null, refused: [], earlier: null };
     // A task the log does not hold yet, as a pack's is before `prepare.ts`, is not yet compared.
     expect(heard([], [fixture("e-1")])).toEqual({
       lines: [line("e-1", `not yet compared; ${NONE}`)],
       ...uncounted,
     });
     expect(heard([], [])).toEqual({ lines: [], ...uncounted });
-    // One task counted alone is no count at all: it would be that task's result.
+    // One task counted alone is counted, its line telling its result already. With the term off
+    // (`exam-results`) the line names no winner and one task alone is no count, which would be
+    // that task's result.
     const log = logged();
     log.hold("one");
     log.solved("b-1", "one", "h1", [true, true]);
     log.solved("b-1", "one", "h2", [false, false]);
     log.reported("b-1", ["h1", "h2"], 2, ["one"]);
-    expect(heard(log.events, [fixture("one")]).counts).toBeNull();
+    expect(rows(heard(log.events, [fixture("one")]).counts)).toEqual([
+      "| fixture | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |",
+    ]);
+    const blind = heard(log.events, [fixture("one")], false);
+    expect(blind.counts).toBeNull();
+    expect(blind.lines.join("\n")).not.toContain("won there");
+    expect(blind.legend).not.toContain("who won it");
     // A task the reference answered in every solve of its last comparison is told so, as any
     // task's outcome; the line speaks of the reference's solves alone. Until 16 October two of
     // such tasks in three were told they were no longer scored.
@@ -1545,7 +1592,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     }
     const spent = heard(log.events, closed.map(fixture)).lines.filter((each) =>
       each.endsWith(
-        ": valid in every solve; last 2 comparisons: every, every; the last 2 in a row closed it",
+        ": valid in every solve; tied there; last 2 comparisons: every, every; the last 2 in a row closed it",
       ),
     );
     expect(spent).toHaveLength(3);
@@ -1580,12 +1627,12 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     expect(lines).toEqual([
       line(
         "run",
-        "valid in every solve; last 3 comparisons: every, every, every; the last 4 in a row closed it",
+        "valid in every solve; won there by the reference harness; last 3 comparisons: every, every, every; the last 4 in a row closed it",
       ),
-      line("once", "valid in some solves"),
+      line("once", "valid in some solves; won there by the other harness"),
       line(
         "mixed",
-        "valid in every solve; last 3 comparisons: every, none (a solve cut at a limit), every; the last closed it",
+        "valid in every solve; won there by the reference harness; last 3 comparisons: every, none (a solve cut at a limit), every; the last closed it",
       ),
     ]);
     // The history is of the reference's side alone: the same lines whatever h2 answered, and
@@ -1614,7 +1661,10 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     ] as const) {
       quiet.reported(session, pair, 2, ids);
     }
-    expect(heard(quiet.events, tasks).lines).toEqual(lines);
+    // With the term off, the lines are the same whoever won each task: the other harness's result
+    // on a task reaches the author only where the campaign tells it (`exam-results`).
+    expect(heard(quiet.events, tasks, false).lines).toEqual(heard(log.events, tasks, false).lines);
+    expect(heard(quiet.events, tasks).lines).not.toEqual(lines);
   });
 
   it("counts in a total where a family holds one task, reads no comparison between two other harnesses, and tells the reference's turns", () => {
@@ -1655,18 +1705,29 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     const said = (taskId: string, family: string, outcome: string) => `${taskId} (${family}): ${outcome}`;
     const { lines, counts, turns } = heard(log.events, tasks);
     expect(lines).toEqual([
-      said("a-1", "beam", `valid in no solve; ${VALID}`),
+      said("a-1", "beam", `valid in no solve; ${VALID}; won there by the other harness`),
       said("a-2", "beam", `last compared between two other harnesses; ${VALID}`),
       // b-1 stood in c-1 and c-3 against the reference, so its line carries both, newest first;
       // c-3 closed it, which retires it.
-      said("b-1", "slab", "valid in every solve; last 2 comparisons: every, none; the last closed it"),
-      said("b-2", "slab", "valid in some solves"),
+      said(
+        "b-1",
+        "slab",
+        "valid in every solve; won there by the reference harness; last 2 comparisons: every, none; the last closed it",
+      ),
+      said("b-2", "slab", "valid in some solves; tied there"),
       "In use as practice, and so never scored: b-3 (slab).",
     ]);
     // a-2, b-3 and b-4 were each scored by c-1 and are in no count. Family beam counts one task,
-    // a-1, so its row would be a-1's result: the rows by family fold into the total. Until
-    // 12 October beam's row said which side won a-1, and esp32's 40 families each held one task.
-    expect(rows(counts)).toEqual(["| every family | 3 | 1 | 1 | 0 | 0 | 0 | 1 | 0 |"]);
+    // a-1: its line says who won it, so the rows stand by family. With the term off they fold into
+    // the total, since beam's row would be a-1's result (esp32's 40 families each held one task).
+    expect(rows(counts)).toEqual([
+      "| beam | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |",
+      "| slab | 2 | 0 | 1 | 0 | 0 | 0 | 1 | 0 |",
+      "| every family | 3 | 1 | 1 | 0 | 0 | 0 | 1 | 0 |",
+    ]);
+    expect(rows(heard(log.events, tasks, false).counts)).toEqual([
+      "| every family | 3 | 1 | 1 | 0 | 0 | 0 | 1 | 0 |",
+    ]);
     expect(counts).toContain(" 2 to 3 solves a side");
     // The turns of the reference's valid answers, from the comparison each line reads: a-2's
     // answers in c-1 are not its last comparison's, b-3 is practice, and no turn of another
@@ -1681,6 +1742,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     log.reported("c-0", ["h3", "h4"], 2, ["b-2"]);
     const control = log.events.splice(from);
     expect(heard(log.events.toSpliced(first, 0, ...control), tasks)).toEqual({
+      legend: heard([], []).legend,
       lines,
       refused: [],
       counts,

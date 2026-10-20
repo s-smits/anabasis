@@ -78,7 +78,6 @@
     "ana/no-tangled-ternary": "error",
     "ana/no-thrice-spelled-object": "error",
     "ana/no-transposed-argument": "error",
-    "ana/no-unknown-union": "error",
     "ana/prefer-condition-over-boolean-returns": "error",
     "ana/prefer-const-conditional": "error",
     "ana/prefer-entries-over-keys-lookup": "error",

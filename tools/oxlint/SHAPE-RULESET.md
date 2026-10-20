@@ -97,7 +97,8 @@ The pattern in both is the same, and it is the practical answer to how far this 
 about shape — where a declaration sits, how many parameters a function takes, whether a helper has
 one caller, whether a ternary nests — always leave a legal move, because the tree has nothing else
 to say about shape.** Rules about types at a validation boundary already have three owners
-(`unproven-unknown-parameter`, `no-object-parameters`, `no-unknown-union`) working at their limit,
+(`unproven-unknown-parameter`, `no-object-parameters`, and Oxlint's
+`typescript/no-redundant-type-constituents` for `unknown` in a union) working at their limit,
 and a fourth collides. So the ruleset can get considerably stricter about shape and should stop
 adding owners to the type boundary.
 

@@ -27,7 +27,7 @@ first line, and the round trip through the linter mostly disappears.
 `--deny-warnings` and `--report-unused-disable-directives`, type-aware. `packages/ui` is linted
 once its own dependencies are installed (`bun run ui:deps`), under its own `tsconfig.json` and
 with no rule turned off for it; a whole-tree run without them leaves it out and says so. Two repository plugins ride along: `ana`
-(39 rules) and `anti-slop` (17 rules). Every enabled rule in `.oxlintrc.json` is an error.
+(38 rules) and `anti-slop` (17 rules). Every enabled rule in `.oxlintrc.json` is an error.
 
 - **Plugin findings fail the run only in strict mode**: `bun run lint -- --strict`,
   `ANA_LINT_STRICT=1`, or a clone with `git config ana.lintStrict true`. A plain run holds you to
@@ -201,7 +201,6 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
 
 **Types**
 
-- `no-unknown-union`: `Row | unknown` is `unknown`. Write the real type.
 - `unproven-unknown-parameter`: an `unknown` parameter is proved in the body, by a predicate, a
   narrowing guard or a hand-off to a prover (`is…`, `as…`, `assert…`, `parse…`, `errorMessage`).
   Passing it straight on proves nothing.

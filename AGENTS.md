@@ -361,9 +361,10 @@ The tools of each model seat, as its source names them:
 - Examiner: `propose_tasks`, or `try_task` where the host can have the reference harness solve a
   draft task, then `read_example`, `try_answer`, `bash`, `read`, `write` and `finish`. `try_task`
   returns at once with the ids it put to the gate. The gate's word on each instance comes with the
-  session's next tool result, or with the reminder after a turn that made no call, and `finish` and
-  the session's end wait for every instance still at the gate (`putAside`,
-  `src/examiner/write.ts`), so a session goes on writing while its drafts are solved.
+  session's next tool result, or with the reminder after a turn that made no call, which waits for
+  that word where the gate has said nothing new (`settle`), and `finish` and the session's end wait
+  for every instance still at the gate (`putAside`, `src/examiner/write.ts`), so a session goes on
+  writing while its drafts are solved.
   `propose_tasks` runs no solve and answers in its own result.
   `try_answer` runs the checks on an instance with an answer of the Examiner's own. Where the checks
   pass, the session holds the answer in memory until the task has its final id. A task proposed with

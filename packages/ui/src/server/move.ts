@@ -120,15 +120,13 @@ function sensitivityOf(report: Report): Sensitivity | null {
   const { scored, frontier, valid, noise, families, overlap } = report;
   if (scored === null) return null;
   const untied = Object.values(families ?? {}).map(({ frontier: { wins, losses } }) => wins + losses);
+  // The set the step was read on: the scored tasks, or the frontier in a report before 20 October.
+  const test = scored.falseRate === undefined ? frontier : scored;
   return {
     frontier:
-      frontier === null
+      test?.falseRate === undefined
         ? null
-        : {
-            untied: frontier.wins + frontier.losses,
-            detectable: frontier.detectable,
-            falseRate: frontier.falseRate,
-          },
+        : { untied: test.wins + test.losses, detectable: test.detectable ?? null, falseRate: test.falseRate },
     informative: valid?.informative ?? null,
     unsolved: scored.unsolved,
     flagged: report.flagged.length,

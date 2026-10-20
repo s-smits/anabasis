@@ -429,7 +429,8 @@ export function refereeNamed(
 }
 
 /**
- * A report in lines, printed with every reading: the frontier it was read on, with its untied tasks,
+ * A report in lines, printed with every reading: the tasks its step was read on (`scored`, or the
+ * frontier before 20 October), with their untied tasks,
  * the least share of them one reading detects four times in five (`detectable`) and the chance
  * it reads a step between equal harnesses (`falseRate`), and its p with what the test weighs; the
  * reference against itself where the comparison carries it (`aaLines`); the tasks it drew, by what
@@ -441,29 +442,31 @@ export function refereeNamed(
 export function reportLines({
   valid,
   objective,
+  scored = null,
   frontier,
   noise,
   turns = null,
   worth = null,
   ...apart
 }: Pick<Report, "valid" | "objective" | "frontier" | "noise"> &
-  Partial<Pick<Report, "turns" | "worth" | Apart>>): string[] {
+  Partial<Pick<Report, "scored" | "turns" | "worth" | Apart>>): string[] {
   if (valid === null) return [];
   // The turns of a valid answer, over the tasks both harnesses answered: reported, in no test.
   const both = Object.values(turns ?? {}).flatMap(({ old, fresh }) =>
     old === null || fresh === null ? [] : [{ old, fresh }],
   );
   const took = (side: "old" | "fresh") => String(median(both.map((each) => each[side])));
-  const share = frontier?.detectable ?? null;
-  const untied = frontier === null ? 0 : frontier.wins + frontier.losses;
+  const test = scored?.falseRate === undefined ? frontier : scored;
+  const share = test?.detectable ?? null;
+  const untied = test === null ? 0 : test.wins + test.losses;
   return [
-    ...(frontier === null
+    ...(test?.falseRate === undefined
       ? []
       : [
-          `the step is read on ${plural(frontier.tasks.length, "frontier task")}, ${String(untied)} of them untied: one reading at the comparison's level detects four times in five ${share === null ? "no share of them" : `a harness that wins ${String(Math.round(100 * share))}% of them`}`,
-          `one reading at these margins reads a step between equal harnesses ${String(Math.round(1000 * frontier.falseRate) / 10)}% of the time, never more than the level`,
+          `the step is read on ${plural(untied + test.ties, "tallied task")}, ${String(untied)} of them untied: one reading at the comparison's level detects four times in five ${share === null ? "no share of them" : `a harness that wins ${String(Math.round(100 * share))}% of them`}`,
+          `one reading at these margins reads a step between equal harnesses ${String(Math.round(1000 * test.falseRate) / 10)}% of the time, never more than the level`,
           // The test weighs margins, but a sweep's p is its count's alone (the plan's 7.5).
-          `its p is ${rounded(frontier.p)}: the test weighs each untied task by its margin in pair wins${frontier.losses === 0 && untied > 0 ? `, and where every untied task is won p is one half to the power of their count whatever the margins: ${String(untied)} won read ${rounded(0.5 ** untied)}` : ""}`,
+          `its p is ${rounded(test.p)}: the test weighs each untied task by its margin in pair wins${test.losses === 0 && untied > 0 ? `, and where every untied task is won p is one half to the power of their count whatever the margins: ${String(untied)} won read ${rounded(0.5 ** untied)}` : ""}`,
         ]),
     ...(noise === null ? [] : aaLines(noise)),
     ...accounted(apart),
@@ -532,7 +535,7 @@ function accounted({
   const drew = new Set([...versions, ...aside, ...short, ...disputed, ...withdrawn]).size;
   const left = out.flatMap(([tasks, why]) => (tasks.length === 0 ? [] : [`${String(tasks.length)} ${why}`]));
   return [
-    `of the ${plural(drew, "task")} the comparison drew, ${String(versions.length)} ${versions.length === 1 ? "was" : "were"} tallied${left.length === 0 ? "" : ` and ${left.join(", ")}`}: the columns below and room are read over the tallied ones, the test over the frontier among them`,
+    `of the ${plural(drew, "task")} the comparison drew, ${String(versions.length)} ${versions.length === 1 ? "was" : "were"} tallied${left.length === 0 ? "" : ` and ${left.join(", ")}`}: the columns below, room and the test are read over the tallied ones`,
   ];
 }
 

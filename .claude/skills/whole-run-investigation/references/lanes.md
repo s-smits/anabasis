@@ -601,11 +601,12 @@ The question is what the comparison's test could and could not have shown at its
 sign-flip test reads each task's difference in pair wins; a tie carries nothing. It reduces to the
 sign test where all untied margins are equal. v1 found the signal too
 rare to settle a comparison at the size it ran: 11 of 322 batteries held a fail nobody
-contested. Read the frontier's `differences`, p, `detectable` and `falseRate`, the retained
-reading, and `scored` with its ties and unanswered tasks. Say
+contested. Read `scored` with its `differences`, p, `detectable`, `falseRate`, ties and
+unanswered tasks, which the step tested since 20 October, and the frontier and retained tallies
+apart (before 20 October the step, `detectable` and `falseRate` were the frontier's). Say
 how many untied tasks there were and what the smallest result is that would have cleared the
 level on those margins. `FEW INFORMATIVE PAIRS` fires when reversing the smallest positive
-frontier difference makes the reading miss its level; it also names `sweepOf(level)`.
+tested difference makes the reading miss its level; it also names `sweepOf(level)`.
 It does not test every possible result containing a loss. A
 comparison that tallied no task tested nothing and reads `not-scored`; before the report learned
 to say so it read `no-step`, as the eight truss rounds of 8 October did. `CUT BY ITS CAP` names
@@ -858,8 +859,8 @@ any faults it was promoted `despite`), and the comparisons it rests on, each wit
 p, its level and the reference against itself. Say which rule the campaign ran under: a level
 pinned in its opening terms, or none, so the tree's default. Until 19 October a step was read in two
 stages: a first reading at or under a trigger bought a repeat on fresh solves, and the two read
-together had to clear the level. Since then one reading at the level promotes, where the
-retained tasks did not regress. Set the tally beside its own A/A noise as evidence about
+together had to clear the level. Since then one reading at the level promotes, and since
+20 October that reading is one test over the frontier and the retained tasks together. Set the tally beside its own A/A noise as evidence about
 variance, without replacing the recorded test with a threshold on untied share.
 
 Then what the step measured. `STARTER BARE` names a rest comparison where the reference answered

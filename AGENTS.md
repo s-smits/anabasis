@@ -1324,9 +1324,9 @@ Cite a rule by its number in a pull request or a review.
     an operational result and says nothing about a harness. Do not remeasure a dead provider just
     because budget remains.
 
-15. **Credit and session limits are expected, and are not defects of the system.** Runs here share
-    a few logins, and a login running out of credit or reaching its session limit is part of the
-    development process, like a host restart (operator, 19 October). Keep what was recorded,
+15. **Credit and session limits are expected, and are not defects of the system.** A login running
+    out of credit or reaching its session limit is part of the development process, like a host
+    restart. Keep what was recorded,
     classify the affected work from its events, and continue from the log at the run's own commit
     once the login has room again, or under another login (section 10, item 9). A named reset is
     waited out in code (`waitOut`, `tools/d2/host.ts`); a crash without a named reset counts towards
@@ -1563,7 +1563,7 @@ request as failures that occur without the change, and do not call the suite gre
 - `.ana/`: campaign logs, kept harnesses, launch receipts. Read them through the readers; never
   edit, move or commit them.
 - A pack, a check program or a kept harness, by rule 2.
-- `.env`, `.accounts/` and any credential. Never copy one from another checkout to make a command
+- `.env` and any credential. Never copy one from another checkout to make a command
   start.
 - `vendor/`: `pi-coding-agent` and `pi-claude-bridge` are copies of upstream. A local change is
   marked in place and kept small. Biome and Oxlint both skip `vendor`.

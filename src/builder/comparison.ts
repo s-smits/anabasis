@@ -15,8 +15,10 @@
 import {
   decidedByObjective,
   detectable,
+  type Gain,
   power,
   type ObjectiveRule,
+  objectiveGain,
   objectiveRuleIn,
   type Paired,
   pairsOf,
@@ -143,9 +145,10 @@ export interface Report {
   readonly capped: boolean;
   readonly reading: Reading;
   /** The objective the comparison fixed, and how many tallied tasks it decided: won or lost where
-   *  validity alone would have tied. Null where the check program declares none, and in a report
-   *  written before 10 October. */
-  readonly objective: (ObjectiveRule & { readonly decided: number }) | null;
+   *  validity alone would have tied, and the median relative gain on the frontier tasks the new
+   *  harness won (`objectiveGain`; absent before 20 October). Null where the check program declares
+   *  none, and in a report written before 10 October. */
+  readonly objective: (ObjectiveRule & { readonly decided: number; readonly gain?: Gain | null }) | null;
   /** By task, the median turns each harness's valid answers took, null where it gave none: what
    *  the comparison reports beside each pair and no tally reads (the overhaul plan's P2). */
   readonly turns: Readonly<
@@ -459,7 +462,13 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     // The cost bar, read where a step is (the plan's W): printed, and gating nothing.
     worth: reading === "step" ? worthOf(events, fixed.id) : null,
     objective:
-      fixed.objective === undefined ? null : { ...fixed.objective, decided: decidedByObjective(pairs) },
+      fixed.objective === undefined
+        ? null
+        : {
+            ...fixed.objective,
+            decided: decidedByObjective(pairs),
+            gain: objectiveGain(pairs.filter(({ task }) => !fixed.retained.includes(task))),
+          },
   };
 }
 

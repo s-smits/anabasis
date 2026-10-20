@@ -6,6 +6,7 @@ import { describe, expect, it } from "bun:test";
 import {
   closedTo,
   decidedByObjective,
+  objectiveGain,
   detectable,
   draw,
   flipP,
@@ -425,6 +426,33 @@ describe("a task's pairings", () => {
         even,
       ]),
     ).toBe(1);
+  });
+
+  it("reports the median relative gain by the objective on the tasks the new harness won, over those with a measure on both sides", () => {
+    const even = { task: "e", old: [P, P], fresh: [P, P] };
+    const higher = { direction: "higher" as const };
+    const gain = objectiveGain([
+      // Won by the objective: 10 to 8, lower better, is 0.2 of the larger; 4 to 5, higher, is 0.2.
+      { ...even, objective: { ...lowerRule, old: [10, 10], fresh: [8, 8] } },
+      { ...even, objective: { ...higher, old: [4, 4], fresh: [5, 5] } },
+      { ...even, objective: { ...lowerRule, old: [10, 10], fresh: [9, 9] } },
+      // Won on validity with a worse measure: the gain is negative, a sixth.
+      {
+        task: "v",
+        old: [P, F, F],
+        fresh: [P, P],
+        objective: { ...lowerRule, old: [5, null, null], fresh: [6, 6] },
+      },
+      // Lost, and won where the reference has no valid measure: neither counts.
+      { ...even, objective: { ...lowerRule, old: [8, 8], fresh: [10, 10] } },
+      { ...even, old: [F, F], objective: { ...lowerRule, old: [null, null], fresh: [3, 3] } },
+    ]);
+    expect(gain?.tasks).toBe(4);
+    expect(gain?.median).toBeCloseTo(0.15, 12);
+    expect(objectiveGain([even])).toBeNull();
+    expect(
+      objectiveGain([{ ...even, objective: { ...lowerRule, old: [8, 8], fresh: [10, 10] } }]),
+    ).toBeNull();
   });
 
   it("calls a task informative for a side valid on some solves and not all, bettered by the objective, or on none where a valid answer is on record", () => {

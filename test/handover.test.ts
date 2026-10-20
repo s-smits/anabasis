@@ -195,6 +195,7 @@ describe("a campaign's reading", () => {
         tally: { wins: 4, losses: 0, ties: 0 },
         valid: { old: [4, 0, 0], fresh: [0, 0, 4] },
         decided: null,
+        gain: null,
         aside: 0,
         rulings: { earned: 1, "check-defect": 0, unclear: 0 },
         // Its two solves and the Referee's reading, and nothing of the session under the same id.
@@ -218,6 +219,7 @@ describe("a campaign's reading", () => {
         tally: null,
         valid: null,
         decided: null,
+        gain: null,
         aside: 0,
         rulings: { earned: 0, "check-defect": 0, unclear: 0 },
         billed: 0,

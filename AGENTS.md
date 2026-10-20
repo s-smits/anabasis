@@ -336,11 +336,12 @@ Six consequences guide a change:
    with both harnesses valid in every solve stays outside the range between the last comparison
    before a session was told counts and the comparison after the third such session.
 3. **Keep the Builder free.** It may change or rewrite anything in the harness. One limit stands:
-   nothing in a harness may return a finished answer for a task. A part that both proposes a
-   candidate and reports it as meeting the rules has returned one, so searching and judging stay
-   in separate parts (the operator's ruling of 10 October, stated in the Builder's prompt,
-   `src/builder/prompt.ts`). Add no second limit in a prompt or a check. Both harnesses run under
-   one budget, and that budget prices whatever a harness does.
+   nothing in a harness answers a particular task, so no part of it names a task, copies its text
+   or holds its answer. A program may search for candidates and test them against the public
+   rules, and the solver writes and submits the answer (the operator's ruling of 20 October, stated
+   in the Builder's prompt, `src/builder/prompt.ts`; from 10 October until then searching and
+   judging had to stay in separate parts). Add no second limit in a prompt or a check. Both
+   harnesses run under one budget, and that budget prices whatever a harness does.
 4. **Keep code from choosing content just because reasoning about it is hard.** Code may validate
    a declared structure. A classifier in code that decides what a harness or a task should contain
    is a model's decision made badly.

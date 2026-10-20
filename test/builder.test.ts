@@ -503,9 +503,9 @@ describe("a Builder session", () => {
       "The next session opens in a new home, and what you learned reaches it only through MEMORY.md, SCRATCHPAD.md and scratch/ in your home directory (files up to 256 KB each, 4096 KB in all;",
     );
     expect(s.sent[0]).not.toContain("Comparisons so far");
-    // The one limit on a harness, as the operator settled it on 9 October: a program may test a
-    // candidate against a public rule, and nothing returns a finished answer.
-    expect(s.sent[0]).toContain("No program, tool or guide line returns a finished answer for a task");
+    // The one limit on a harness, as the operator settled it on 20 October: a program may search
+    // and test candidates against the public rules, and nothing in it answers a particular task.
+    expect(s.sent[0]).toContain("task identifiers, copied task text and answers are not");
     // Each part of a harness has one purpose: a computation is a program, and no tool beside it.
     // Programs and tools are both the Builder's to choose, told what each costs; no sentence steers
     // it from tools while the solver has the shell (that was a second limit in a prompt, lifted
@@ -513,13 +513,12 @@ describe("a Builder session", () => {
     expect(s.sent[0]).toContain("Whether a computation is a program, a tool or both is yours to choose");
     expect(s.sent[0]).not.toContain("Leave its list empty");
     expect(s.sent[0]).not.toContain("same thing built twice");
-    expect(s.sent[0]).toContain("test the candidate against a public rule and say what it does not meet");
-    expect(s.sent[0]).not.toContain("says whether a candidate meets a rule");
-    // The judge and the search were separately permitted and so composable, and the harness of
-    // 10 October composed them behind one program every solve ran from the shell. The rule now
-    // names the composition, and gives the test a reader can apply to a harness (transfer.md).
-    expect(s.sent[0]).toContain("Nor does any one of them both propose a candidate and judge it");
-    expect(s.sent[0]).toContain("Output the solver can submit unchanged is a finished answer");
+    expect(s.sent[0]).toContain(
+      "search for candidates, test them against the public rules and report which meet them",
+    );
+    // Until 20 October the rule also named the composition of a search and a judge in one part,
+    // which no reader of a harness could tell from a filter; the operator lifted it.
+    expect(s.sent[0]).not.toContain("both propose a candidate and judge it");
     // What the rounds of 9 October showed of a guide and of the practice solves: four of the six
     // harnesses that went to a comparison told the solver that time was short, and both truss
     // sessions spent their last solve before their last change. The prompt states each of these

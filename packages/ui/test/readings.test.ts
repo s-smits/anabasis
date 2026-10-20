@@ -395,6 +395,7 @@ describe("the risk and the runway beside the counters", () => {
       union: risk?.union ?? -1,
       bound: risk?.bound ?? -1,
       controls: risk?.controls ?? -1,
+      incapable: risk?.incapable ?? -1,
       errors: risk?.errors ?? -1,
     });
   });

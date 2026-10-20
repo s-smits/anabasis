@@ -23,6 +23,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "#src/meta/
 import { gitMaybe } from "#src/meta/git.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { dirname, join } from "#src/meta/path.ts";
+import { compareCodeUnits } from "#src/meta/stable-json.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { readNamed } from "./registry.ts";
 
@@ -45,6 +46,7 @@ export interface Receipt {
 const RECEIPT = /^launch-(.+)\.json$/;
 /** The refs `source` names of one commit before it counts the rest. */
 const SHOWN = 3;
+const runOf = (session: string) => Number(/^run-(\d+)$/.exec(session)?.[1] ?? 0);
 
 /** Keep `receipt` as the run of `session` beside `log`. */
 export function writeReceipt(log: string, session: string, receipt: Receipt): void {
@@ -52,7 +54,8 @@ export function writeReceipt(log: string, session: string, receipt: Receipt): vo
 }
 
 /** Every receipt beside `log`, oldest first, with the session it was kept under. None for a
- *  campaign whose rounds were started by hand or that has not started. */
+ *  campaign whose rounds were started by hand or that has not started. Two runs started in one
+ *  millisecond are ordered by their number, which `nextRun` gave them in turn. */
 export function receipts(log: string): (Receipt & { readonly session: string })[] {
   const folder = dirname(log);
   if (!existsSync(folder)) return [];
@@ -62,7 +65,9 @@ export function receipts(log: string): (Receipt & { readonly session: string })[
       if (session === undefined) return [];
       return [{ ...parseJsonAs<Receipt>(readFileSync(join(folder, file), "utf8")), session }];
     })
-    .toSorted((one, other) => one.at.localeCompare(other.at));
+    .toSorted(
+      (one, other) => compareCodeUnits(one.at, other.at) || runOf(one.session) - runOf(other.session),
+    );
 }
 
 /** The session the next run of the campaign command beside `log` keeps its receipt under. */

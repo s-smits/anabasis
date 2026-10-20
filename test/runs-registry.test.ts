@@ -104,4 +104,10 @@ describe("a run's receipts", () => {
     expect(read.at(-1)?.flags).toEqual(["--project", "p", "--budget", "800"]);
     expect(nextRun(log)).toBe("run-3");
   });
+
+  it("orders two runs started in one millisecond by their number, so the tenth is the last", () => {
+    kept("run-9", "2026-10-16T08:00:00.000Z", ["--project", "p"]);
+    kept("run-10", "2026-10-16T08:00:00.000Z", ["--project", "p", "--budget", "900"]);
+    expect(receipts(log).at(-1)?.session).toBe("run-10");
+  });
 });

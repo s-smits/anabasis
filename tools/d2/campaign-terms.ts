@@ -2,6 +2,9 @@
  * What a campaign's command and a live Builder's campaign tools share (`harness-builder.ts`,
  * `campaign-actions.ts`): the command's flags, what a campaign runs by and keeps in its opening,
  * and the flags of each move's command. Nothing here knows who makes a move.
+ * A paid campaign needs a Referee before it opens (20 October). The 81 unruled admission
+ * rejections in the recent logs predate gate review, but source triage found a campaign could
+ * still omit its reviewer and silently leave every admission rejection unmeasured.
  */
 import { shortOf } from "#src/builder/decide.ts";
 import { cutShort, type Plan } from "#src/builder/ground.ts";
@@ -226,6 +229,9 @@ export function opened(
       ),
     },
   };
+  if (seats === "paid" && named.seats.reviewer === null) {
+    throw new Error("name --reviewer: a paid campaign needs a Referee to rule its rejections");
+  }
   counted(named.sessions, `--sessions ${String(values.sessions)}: the Builder sessions before a comparison`);
   counted(
     named.patience,

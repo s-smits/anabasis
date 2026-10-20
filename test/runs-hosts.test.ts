@@ -16,6 +16,18 @@ describe("a verb's routes", () => {
     expect(routesOf("view", ["r3"], held).away).toEqual([[runner, ["view", "r3"]]]);
   });
 
+  it("finds the run among a verb's options, and keeps an option's value that spells a run's name", () => {
+    const held = new Map([["r3", runner]]);
+    expect(routesOf("view", ["--level", "0.02", "r3"], held).away).toEqual([
+      [runner, ["view", "r3", "--level", "0.02"]],
+    ]);
+    expect(routesOf("continue", ["finished", "--after", "finished", "--yes"], new Map())).toEqual({
+      here: ["finished", "--after", "finished", "--yes"],
+      away: [],
+    });
+    expect(routesOf("stop", ["--yes", "r3"], held).away).toEqual([[runner, ["stop", "r3", "--yes"]]]);
+  });
+
   it("keeps here a run nobody claims, so the verb refuses it in its own words", () => {
     expect(routesOf("keep", ["gone", "--yes"], new Map())).toEqual({ here: ["gone", "--yes"], away: [] });
   });

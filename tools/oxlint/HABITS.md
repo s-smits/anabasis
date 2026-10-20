@@ -27,7 +27,7 @@ first line, and the round trip through the linter mostly disappears.
 `--deny-warnings` and `--report-unused-disable-directives`, type-aware. `packages/ui` is linted
 once its own dependencies are installed (`bun run ui:deps`), under its own `tsconfig.json` and
 with no rule turned off for it; a whole-tree run without them leaves it out and says so. Two repository plugins ride along: `ana`
-(39 rules) and `anti-slop` (17 rules). Every enabled rule in `.oxlintrc.json` is an error.
+(40 rules) and `anti-slop` (17 rules). Every enabled rule in `.oxlintrc.json` is an error.
 
 - **Plugin findings fail the run only in strict mode**: `bun run lint -- --strict`,
   `ANA_LINT_STRICT=1`, or a clone with `git config ana.lintStrict true`. A plain run holds you to
@@ -175,6 +175,9 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
 - `no-positional-boolean-parameter`: take a union of two string literals. Tests are exempt.
 - `no-side-effect-in-predicate`: no mutation inside a `filter`, `find`, `some` or `every`
   callback. Deduplicate with `new Map(rows.map((r) => [r.id, r]))`, or write the loop.
+- `no-patch-through-optional-chain`: no one-line `if (kind === "x" && …) built.at(-1)?.set.add(…)`.
+  It patches a fold from the side; fix the owner that builds the value, or read the fold that
+  already owns the fact.
 
 **Arrays and loops**
 

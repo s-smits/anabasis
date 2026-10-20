@@ -29,6 +29,7 @@ import { noPassThroughWrapperRule } from "./rules/no-pass-through-wrapper.ts";
 import { noPropertyReadOnFunctionRule } from "./rules/no-property-read-on-function.ts";
 import { noRenamingTemporaryRule } from "./rules/no-renaming-temporary.ts";
 import { noRepeatedStringLiteralRule } from "./rules/no-repeated-string-literal.ts";
+import { noPatchThroughOptionalChainRule } from "./rules/no-patch-through-optional-chain.ts";
 import { noSideEffectInPredicateRule } from "./rules/no-side-effect-in-predicate.ts";
 import { noTangledTernaryRule } from "./rules/no-tangled-ternary.ts";
 import { noThriceSpelledObjectRule } from "./rules/no-thrice-spelled-object.ts";
@@ -94,6 +95,7 @@ const anaPlugin = eslintCompatPlugin({
     "no-inline-block-reducer": noInlineBlockReducerRule,
     "no-inline-schema-literal": noInlineSchemaLiteralRule,
     "prefer-find-over-loop": preferFindOverLoopRule,
+    "no-patch-through-optional-chain": noPatchThroughOptionalChainRule,
     "no-side-effect-in-predicate": noSideEffectInPredicateRule,
     "prefer-flatmap-over-map-filter": preferFlatmapOverMapFilterRule,
     "prefer-entries-over-keys-lookup": preferEntriesOverKeysLookupRule,

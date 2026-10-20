@@ -72,6 +72,7 @@
     "ana/no-property-read-on-function": "error",
     "ana/no-renaming-temporary": "error",
     "ana/no-repeated-string-literal": "error",
+    "ana/no-patch-through-optional-chain": "error",
     "ana/no-side-effect-in-predicate": "error",
     "ana/no-single-caller-helper": "error",
     "ana/no-single-use-const-chain": "error",

@@ -1,7 +1,7 @@
 # Which rules fix, and which only report
 
-Fifty-six rules are registered: thirty-nine `ana` and seventeen `anti-slop`, every one of them
-`error`. **Fourteen carry a fixer. Forty-two report and leave the repair to the author.**
+Fifty-seven rules are registered: forty `ana` and seventeen `anti-slop`, every one of them
+`error`. **Fourteen carry a fixer. Forty-three report and leave the repair to the author.**
 
 That split is not an accident of effort, and it is not a backlog. This file says what a fixer has
 to be true of before it ships, which rules pass that test, which ones sit right on the edge and are
@@ -85,7 +85,7 @@ they are reversing a decision, and should say so.
 `no-repeated-string-literal`'s source half belongs on this list too; it is above because the rule as
 a whole ships a fixer.
 
-## The rest: thirty-two where the rule does not hold the repair
+## The rest: thirty-three where the rule does not hold the repair
 
 Not borderline. In each of these the missing piece is information the rule has no access to, and
 every one of them says so in its own doc comment — `test/oxlint-rule-contract.test.ts` refuses a
@@ -114,12 +114,14 @@ for a reason the rule states more precisely itself.
   10 October, when it was removed: it sent a skill script to `openRecordedRun` and the
   controller's `opening.json` and `terminal.json`, and v2 has none of the three, since a run here
   is its log, opened through `tools/runs/`.
-- **The repair reaches other files** (5): `no-pass-through-wrapper`, `no-lifetime-outside-owner`,
-  `no-module-mocking`, `no-object-parameters`, `no-inline-slop-answer`. Deleting the wrapper means
+- **The repair reaches other files** (6): `no-pass-through-wrapper`, `no-lifetime-outside-owner`,
+  `no-module-mocking`, `no-object-parameters`, `no-inline-slop-answer`,
+  `no-patch-through-optional-chain`. Deleting the wrapper means
   editing every caller; moving a kill to its owner is two files and usually a deletion; an
   owner-provided parameter type is a new contract in another file and at every call; a disable
   comment's answer moves into a row of `not-slop.tsv`, under an id only a lint run computes and a
-  reason only the author can check. A per-file fixer cannot do any of them.
+  reason only the author can check; a fold patched from the side is mended in the owner that builds
+  the value, which the line does not name. A per-file fixer cannot do any of them.
 - **The repair changes a semantic the rule can only ask about** (3):
   `prefer-flatmap-over-map-filter`, `no-transposed-argument` and `no-hand-spelled-git`. `Boolean`
   drops `0`, `""` and `false` along with `null` and `undefined`, so whether the `?? []` rewrite
@@ -345,7 +347,7 @@ enforceable, because a clean lint no longer means what it says. **Fourteen is th
 under the four conditions, not a target that was missed.**
 
 A report with no fixer is a working outcome and the majority outcome: the author is told exactly
-what is wrong and makes the call. That is what these forty-two are for.
+what is wrong and makes the call. That is what these forty-three are for.
 
 ## A fixer's finding has no answer
 

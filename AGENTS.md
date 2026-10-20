@@ -1,7 +1,7 @@
 # AGENTS.md
 
 This is the working contract for coding agents in this repository: Claude Code, Codex and their
-subagents. `CLAUDE.md` is a symlink to this file, so both read the same text.
+subagents. Claude Code reads it directly, and a `CLAUDE.md` beside it is the operator's own.
 
 It holds what stays true from one pull request to the next: what the system is for, who decides
 what, how a result is read, and how to write code here that passes its checks the first time. It

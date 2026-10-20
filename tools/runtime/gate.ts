@@ -80,7 +80,6 @@ interface Prover {
  *  such commits alone gets `git diff --check` and nothing more. No test reads these files. */
 const DOCUMENTATION = [
   ":(exclude)AGENTS.md",
-  ":(exclude)CLAUDE.md",
   ":(exclude)README.md",
   ":(exclude)docs/**",
   ":(exclude).claude/**/*.md",

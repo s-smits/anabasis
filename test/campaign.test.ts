@@ -4,6 +4,7 @@
 // own, and the campaign keeps its harnesses by name: the one it started with, the starter
 // and the latest a session left.
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
+import { ROOM } from "../src/kernel/compare.ts";
 import { type Condition, recordCondition } from "../src/kernel/condition.ts";
 import { append, read } from "../src/kernel/log.ts";
 import { priceKey } from "../src/kernel/meter.ts";
@@ -39,6 +40,7 @@ import {
   roundCommand,
   gainSaid,
   reportLines,
+  roomNamed,
 } from "../tools/d2/round.ts";
 import { sessionCommand } from "../tools/d2/session.ts";
 
@@ -719,6 +721,13 @@ describe("a campaign", () => {
     await expect(sessionCommand(flags, seats)).rejects.toThrow("name --builder");
     expect(against).toEqual([(await starter(campaign)).dir]);
     expect(read(campaign.log).some(({ data }) => data.session === "z-6")).toBe(false);
+  });
+
+  it("takes a room floor as a share from 0 up to 1, and the default where none is named", () => {
+    expect(roomNamed(undefined)).toBe(ROOM);
+    expect(roomNamed("0")).toBe(0);
+    expect(roomNamed("0.05")).toBe(0.05);
+    for (const bad of ["1", "-0.01", "five"]) expect(() => roomNamed(bad)).toThrow("--room");
   });
 
   it("refuses a labels file with an entry that is no label, and a --target that is no count", async () => {

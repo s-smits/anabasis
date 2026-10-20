@@ -514,7 +514,8 @@ describe("a round", () => {
     const s = await setup([edit, finish], (version, side) =>
       version === "s1" ? LATE : { ending: PASS, objective: mass(version, side) },
     );
-    const objective = { direction: "lower" } as const;
+    // The room floor rides with the direction: it decides which tasks leave room, and no pair.
+    const objective = { direction: "lower", room: 0.05 } as const;
     // Beside the count, the median relative gain on the won tasks: 0.2 on s2 and 0.1 on s3.
     const gain = { median: (0.2 + 0.1) / 2, tasks: 2 };
     expect(await round({ ...s.request, objective })).toMatchObject({

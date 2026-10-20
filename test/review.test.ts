@@ -428,14 +428,32 @@ describe("the Referee", () => {
     ]);
     failed(s.record);
     let runs = 0;
-    const slow = async (task: Task, answer: JsonValue | undefined): Promise<Verdict> => {
+    const signals: (AbortSignal | undefined)[] = [];
+    const slow = async (
+      task: Task,
+      answer: JsonValue | undefined,
+      signal?: AbortSignal,
+    ): Promise<Verdict> => {
       runs += 1;
-      if (runs > 1) await Bun.sleep(400);
+      signals.push(signal);
+      if (runs > 1) {
+        if (signal === undefined) return { kind: "non-result", reason: "the verifier was not cancellable" };
+        const stopped = Promise.withResolvers<Verdict>();
+        const stop = () => stopped.resolve({ kind: "non-result", reason: "the verifier was cancelled" });
+        signal.addEventListener("abort", stop, { once: true });
+        if (signal.aborted) stop();
+        try {
+          return await stopped.promise;
+        } finally {
+          signal.removeEventListener("abort", stop);
+        }
+      }
       return verify(task, answer);
     };
     const finding = await referee({ ...s.reader, wallSeconds: 0.05 }, { ...fail(s), verify: slow });
     expect(finding.ruling).toBe("unclear");
     expect(read(s.log).at(-1)?.data).toMatchObject({ walled: true, ruling: "unclear" });
+    expect(signals.at(-1)?.aborted).toBe(true);
   });
 
   it("leaves the fail unclear when the reader never rules", async () => {

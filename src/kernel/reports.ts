@@ -92,7 +92,7 @@ export interface Standing {
   /** How far apart the sides' measures were where the objective alone won it (`objectiveMargin`). */
   readonly margin: number | null;
   /** The room by the objective the reference harness's answers left there, against its own and its
-   *  author's (`roomLeft`). */
+   *  author's (`roomLeft`), and 0 under the campaign's floor. */
   readonly room: number | null;
 }
 
@@ -128,8 +128,8 @@ interface TalliedIn {
   /** How far apart the sides' measures were where the objective alone won it (`objectiveMargin`). */
   readonly margin: number | null;
   /** The room by the objective the reference harness's answers left there, against its own and its
-   *  author's (`roomLeft`); null where
-   *  it stood on neither side. */
+   *  author's (`roomLeft`), and 0 under the campaign's floor, where it leaves none; null where it
+   *  stood on neither side. */
   readonly room: number | null;
 }
 
@@ -521,6 +521,8 @@ function tallyReports(
       const cutOn = (harness: unknown): boolean =>
         isString(harness) && cut.has(cutIn(session, task, harness));
       const { wins, losses } = tally([pair]);
+      // Room under the floor decides no pair and holds no draft, so its author is told none.
+      const left = side === null ? null : roomLeft(pair, side, [of(task).best]);
       order += 1;
       of(task).tallied.push({
         index,
@@ -533,7 +535,7 @@ function tallyReports(
         closed: side !== null && closedTo(pair, side, of(task).best, floor),
         won: wins > 0 ? "fresh" : losses > 0 ? "old" : null,
         margin: objectiveMargin(pair),
-        room: side === null ? null : roomLeft(pair, side, [of(task).best]),
+        room: left === null || left >= floor ? left : 0,
       });
     }
     for (const task of Array.isArray(data.aside) ? data.aside.filter(isString) : []) {

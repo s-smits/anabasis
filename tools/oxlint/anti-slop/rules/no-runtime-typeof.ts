@@ -3,6 +3,7 @@ import { defineRule } from "@oxlint/plugins";
 import type { ESTree } from "@oxlint/plugins";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { isRepresentationOwner, REPRESENTATION_OWNER } from "../shared/representation-owner.ts";
+import type { RuleExample } from "../../rule-examples.ts";
 
 /** The keyword a type predicate names for what each `typeof` answer establishes by itself. */
 const ESTABLISHED = new Map([
@@ -159,6 +160,18 @@ export const noRuntimeTypeofRule = defineRule({
     docs: {
       description:
         "Disallow runtime typeof checks; external values must be decoded into meaningful types at their I/O boundary.",
+      examples: [
+        {
+          before: 'if (typeof event.billed === "number") total += event.billed;',
+          after:
+            'import { isNumber } from "#src/meta/json-shape.ts";\nif (isNumber(event.billed)) total += event.billed;',
+        },
+        {
+          before: 'const reason = typeof ending.reason === "string" ? ending.reason : "unknown";',
+          after:
+            'import { isString } from "#src/meta/json-shape.ts";\nconst reason = isString(ending.reason) ? ending.reason : "unknown";',
+        },
+      ] satisfies RuleExample[],
     },
     messages: {
       runtimeTypeof:

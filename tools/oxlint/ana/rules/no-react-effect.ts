@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 import { isOneOf, isTestFile } from "../shared/file-role.ts";
 
 /**
@@ -46,7 +47,23 @@ function effectCalled(callee: ESTree.Expression): string | null {
 export const noReactEffectRule = defineRule({
   meta: {
     type: "problem",
-    docs: { description: "No React effect: render, key, handler, callback ref or external store." },
+    docs: {
+      description: "No React effect: render, key, handler, callback ref or external store.",
+      examples: [
+        {
+          before:
+            "export function Count({ rows }: Props) {\n  const [count, setCount] = useState(0);\n  useEffect(() => setCount(rows.length), [rows]);\n  return <span>{count}</span>;\n}",
+          after: "export function Count({ rows }: Props) {\n  return <span>{rows.length}</span>;\n}",
+          path: "packages/ui/src/views/count.tsx",
+        },
+        {
+          before:
+            "export function Picker({ onPick }: Props) {\n  const [choice, setChoice] = useState<string | null>(null);\n  useEffect(() => { if (choice !== null) onPick(choice); }, [choice]);\n  return <List onSelect={setChoice} />;\n}",
+          after: "export function Picker({ onPick }: Props) {\n  return <List onSelect={onPick} />;\n}",
+          path: "packages/ui/src/views/picker.tsx",
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       effect:
         "`{{hook}}` draws its result one frame late. Derive the value during render, reset with `key`, act in the event handler, use a callback ref, hold the external system as a store read through `useSyncExternalStore`, or act once as a keyed component mounts through `useMountEffect` (packages/ui/src/mount.ts).",

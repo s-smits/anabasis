@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 import { everyStatementList } from "../shared/statements.ts";
 
 /**
@@ -59,7 +60,23 @@ const ARM_FLOOR = 3;
 export const preferLookupOverEqualityChainRule = defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: "Three branches comparing one name to literals are a lookup table." },
+    docs: {
+      description: "Three branches comparing one name to literals are a lookup table.",
+      examples: [
+        {
+          before:
+            'function weightOf(kind: Kind): number | null {\n  if (kind === "verified") return 1;\n  if (kind === "unaccepted") return 0;\n  if (kind === "non-result") return null;\n}',
+          after:
+            'const WEIGHT = { verified: 1, unaccepted: 0, "non-result": null } as const satisfies Record<Kind, number | null>;\nconst weight = WEIGHT[kind];',
+        },
+        {
+          before:
+            'function labelOf(ending: Ending): string {\n  if (ending === "pass") return "valid";\n  if (ending === "fail") return "not valid";\n  if (ending === "non-result") return "no measurement";\n  throw new Error(`unknown ending ${ending}`);\n}',
+          after:
+            'const LABEL: Record<Ending, string> = { pass: "valid", fail: "not valid", "non-result": "no measurement" };\nconst label = LABEL[solve.ending];',
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       spelledTable:
         "{{count}} branches compare `{{subject}}` against a literal and return. A table states the same thing and makes the set visible: `satisfies Record<…>` then checks the cases, which a chain cannot.",

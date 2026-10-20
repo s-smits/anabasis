@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 import { withoutProse } from "../shared/masked.ts";
 import { narrowedIn } from "../shared/narrowed.ts";
 import { statementBelow } from "../shared/statements.ts";
@@ -81,7 +82,22 @@ export const noRenamingTemporaryRule = defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
-    docs: { description: "A const that renames an expression and is read once is the expression." },
+    docs: {
+      description: "A const that renames an expression and is read once is the expression.",
+      examples: [
+        {
+          before:
+            "export function caseIds(bundle: Bundle) {\n  const rows = bundle.rows;\n  return rows.map(toCase);\n}",
+          after: "export function caseIds(bundle: Bundle) {\n  return bundle.rows.map(toCase);\n}",
+        },
+        {
+          before:
+            'export function openLog(campaignDir: string) {\n  const dir = campaignDir;\n  return readLog(join(dir, "notes.jsonl"));\n}',
+          after:
+            'export function openLog(campaignDir: string) {\n  return readLog(join(campaignDir, "notes.jsonl"));\n}',
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       renamed:
         "`{{name}}` is `{{value}}` under a second name and is read once. The line holds no work and adds no word the expression does not already have; using `{{value}}` at its one reader removes it.",

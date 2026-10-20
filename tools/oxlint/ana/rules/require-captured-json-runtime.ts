@@ -1,4 +1,5 @@
 import { defineRule } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 import { isOneOf, isUnder } from "../shared/file-role.ts";
 import { importTracker } from "../shared/import-fix.ts";
 
@@ -38,6 +39,18 @@ export const requireCapturedJsonRuntimeRule = defineRule({
     docs: {
       description:
         "Read and write JSON through the captured bindings in src/meta/json-runtime.ts, not the ambient globals.",
+      examples: [
+        {
+          before: "const event = JSON.parse(line);",
+          after:
+            'import { capturedJsonParse } from "./meta/json-runtime.ts";\nconst event = capturedJsonParse(line);',
+        },
+        {
+          before: "const line = `${JSON.stringify(event)}\\n`;",
+          after:
+            'import { capturedJsonStringify } from "./meta/json-runtime.ts";\nconst line = `${capturedJsonStringify(event)}\\n`;',
+        },
+      ] satisfies RuleExample[],
     },
     messages: {
       ambient:

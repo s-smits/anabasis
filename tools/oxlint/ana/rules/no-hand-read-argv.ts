@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 
 import { isOneOf, isTestFile, isUnder } from "../shared/file-role.ts";
 import { argumentOf, calleeName, forwardingTracker } from "../shared/forwarding.ts";
@@ -70,7 +71,23 @@ function sliceCall(argv: ESTree.MemberExpression): ESTree.CallExpression | null 
 export const noHandReadArgvRule = defineRule({
   meta: {
     type: "problem",
-    docs: { description: "Parse a skill script's arguments through .claude/skills/main/cli.ts." },
+    docs: {
+      description: "Parse a skill script's arguments through .claude/skills/main/cli.ts.",
+      examples: [
+        {
+          before: "const [campaign] = Bun.argv.slice(2);\nprintStatus(campaign);",
+          after:
+            'import { runCommand } from "#skills/main/cli.ts";\n\nconst spec = { name: "status", usage: "status <campaign>", positionals: 1 };\nif (import.meta.main) await runCommand(spec, ({ positionals }) => printStatus(positionals[0]));',
+          path: ".claude/skills/run-management/scripts/status.ts",
+        },
+        {
+          before: 'const json = Bun.argv.includes("--json");',
+          after:
+            'import { exitWith, parseOrDie } from "#skills/main/cli.ts";\n\nconst { flags } = parseOrDie(exitWith("status"), { flags: ["json"] });\nconst json = flags.has("json");',
+          path: ".claude/skills/run-management/scripts/status.ts",
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       handRead:
         "`{{read}}` reads the process arguments by hand. Declare them in a runCommand spec, or pass the slice straight to parseOrDie / parseCommandOrDie from .claude/skills/main/cli.ts, so a misspelled flag refuses instead of being ignored.",

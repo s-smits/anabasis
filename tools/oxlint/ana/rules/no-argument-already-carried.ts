@@ -1,4 +1,5 @@
 import { defineRule, type ESTree, type Fix, type Fixer, type Scope, type Variable } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 import { holdsProse } from "../shared/masked.ts";
 import { narrowedIn } from "../shared/narrowed.ts";
 import { calls, writes } from "../shared/predicate-effect.ts";
@@ -183,7 +184,23 @@ export const noArgumentAlreadyCarriedRule = defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",
-    docs: { description: "An argument the callee already holds inside another argument travels twice." },
+    docs: {
+      description: "An argument the callee already holds inside another argument travels twice.",
+      examples: [
+        {
+          before:
+            "function toolsView(bundle: Bundle, findings: Finding[]): string {\n  return `${bundle.name}: ${findings.length}`;\n}\ntoolsView(opened, opened.findings);\ntoolsView(closed, closed.findings);",
+          after:
+            "function toolsView(bundle: Bundle): string {\n  return `${bundle.name}: ${bundle.findings.length}`;\n}\ntoolsView(opened);\ntoolsView(closed);",
+        },
+        {
+          before:
+            "function reserveOf(campaign: Campaign, setting: Setting, solves: number): number {\n  return setting.reserve * solves - campaign.billed;\n}\nreserveOf(campaign, campaign.setting, 4);\nreserveOf(rehearsal, rehearsal.setting, 2);",
+          after:
+            "function reserveOf(campaign: Campaign, solves: number): number {\n  return campaign.setting.reserve * solves - campaign.billed;\n}\nreserveOf(campaign, 4);\nreserveOf(rehearsal, 2);",
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       carried:
         "`{{part}}` is a part of `{{whole}}`, which this call already passes. The callee can read it; passing both sends the same value through the frame twice and lets the two disagree.",

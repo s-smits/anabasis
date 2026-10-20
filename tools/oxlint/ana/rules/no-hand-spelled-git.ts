@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 
 import { isOneOf, isTestFile, isUnder } from "../shared/file-role.ts";
 
@@ -73,7 +74,22 @@ function isCommandPosition(array: ESTree.ArrayExpression): boolean {
 export const noHandSpelledGitRule = defineRule({
   meta: {
     type: "problem",
-    docs: { description: "Run git through the tree's owner, not a hand-spelled subprocess." },
+    docs: {
+      description: "Run git through the tree's owner, not a hand-spelled subprocess.",
+      examples: [
+        {
+          before:
+            'const head = Bun.spawnSync(["git", "-C", repo, "rev-parse", "HEAD"]).stdout.toString().trim();',
+          after:
+            'import { gitText } from "#src/meta/git.ts";\n\nconst head = gitText(repo, "rev-parse", "HEAD");',
+        },
+        {
+          before: 'const dirty = (await $`git -C ${repo} status --porcelain`.text()) !== "";',
+          after:
+            'import { gitText } from "#src/meta/git.ts";\n\nconst dirty = gitText(repo, "status", "--porcelain") !== "";',
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       spelled:
         "This spells a git subprocess by hand. Ask gitOutput, gitText or gitMaybe from src/meta/git.ts, which resolves the executable through hostTool and bounds the capture.",

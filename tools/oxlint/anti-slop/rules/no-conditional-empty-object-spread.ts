@@ -1,5 +1,6 @@
 import { defineRule } from "@oxlint/plugins";
 import type { ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 
 function isEmptyObjectExpression(node: ESTree.Expression): boolean {
   return node.type === "ObjectExpression" && node.properties.length === 0;
@@ -46,6 +47,16 @@ export const noConditionalEmptyObjectSpreadRule = defineRule({
     type: "suggestion",
     docs: {
       description: "Disallow object spreads that conditionally spread an empty object to omit fields.",
+      examples: [
+        {
+          before: "const opening = { name, ...(project === undefined ? {} : { project }) };",
+          after: 'const opening = { name, ...keyIfDefined("project", project) };',
+        },
+        {
+          before: "const start = { task, ...(limits.turns > 0 ? { turns: limits.turns } : {}) };",
+          after: "const start = { task, ...keysIf(limits.turns > 0, () => ({ turns: limits.turns })) };",
+        },
+      ] satisfies RuleExample[],
     },
     messages: {
       avoid:

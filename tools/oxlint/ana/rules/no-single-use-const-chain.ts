@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 import { everyStatementList, singleConst } from "../shared/statements.ts";
 
 /** How many threaded steps make a chain worth a reader's attention. The dial the shape was queued with. */
@@ -66,7 +67,23 @@ const MINIMUM_LINKS = 3;
 export const noSingleUseConstChainRule = defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: "A run of single-use consts threading one value is one expression." },
+    docs: {
+      description: "A run of single-use consts threading one value is one expression.",
+      examples: [
+        {
+          before:
+            "export function taskIds(text: string) {\n  const parsed = parseJsonAs(text, isBundle);\n  const rows = parsed.tasks;\n  const ids = rows.map(byId);\n  return ids.filter(unique);\n}",
+          after:
+            "export function taskIds(text: string) {\n  return parseJsonAs(text, isBundle).tasks.map(byId).filter(unique);\n}",
+        },
+        {
+          before:
+            "export function scoredCount(log: LogEvent[]) {\n  const last = log.findLast(isComparisonStart);\n  const terms = last?.terms;\n  const tasks = terms?.tasks ?? [];\n  return tasks.length;\n}",
+          after:
+            "export function scoredCount(log: LogEvent[]) {\n  return log.findLast(isComparisonStart)?.terms.tasks.length ?? 0;\n}",
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       chain:
         "`{{names}}` thread one value through {{count}} lines, each read once, into the statement below. Compose the steps that need no name, and keep the one or two names that say something the expression does not.",

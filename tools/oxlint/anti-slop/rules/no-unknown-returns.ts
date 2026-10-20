@@ -7,6 +7,7 @@ import {
   resolvedTypeMatches,
   type TypeAliasEnvironment,
 } from "../shared/type-alias-resolution.ts";
+import type { RuleExample } from "../../rule-examples.ts";
 
 type FunctionWithReturnType =
   | ESTree.ArrowFunctionExpression
@@ -47,6 +48,17 @@ export const noUnknownReturnsRule = defineRule({
     type: "problem",
     docs: {
       description: "Disallow functions whose explicit return contract is unknown or Promise<unknown>.",
+      examples: [
+        {
+          before:
+            "function readOpening(path: string): unknown {\n  return capturedJsonParse(readText(path));\n}",
+          after: "function readOpening(path: string): Opening {\n  return parseOpening(readText(path));\n}",
+        },
+        {
+          before: "interface Backend {\n  complete(prompt: string): Promise<unknown>;\n}",
+          after: "interface Backend {\n  complete(prompt: string): Promise<Completion>;\n}",
+        },
+      ] satisfies RuleExample[],
     },
     messages: {
       unknownReturn:

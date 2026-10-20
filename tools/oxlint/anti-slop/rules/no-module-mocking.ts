@@ -3,6 +3,7 @@ import { defineRule } from "@oxlint/plugins";
 import { resolveVariable } from "../shared/scope.ts";
 
 import type { ESTree, SourceCode } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 
 const moduleMockMethods = new Set(["doMock", "mock", "unstable_mockModule"]);
 
@@ -93,6 +94,21 @@ export const noModuleMockingRule = defineRule({
     docs: {
       description:
         "Disallow Vitest and Jest module mocking; tests must replace dependencies through real interfaces.",
+      examples: [
+        {
+          path: "test/round.test.ts",
+          before:
+            'import { mock } from "bun:test";\nmock.module("#src/kernel/log.ts", () => ({ append: () => undefined }));',
+          after:
+            "const events: LogEvent[] = [];\nawait runRound(task, { append: (event: LogEvent) => events.push(event) });",
+        },
+        {
+          path: "test/host.test.ts",
+          before:
+            'import { mock } from "bun:test";\nmock.module("#src/meta/os.ts", () => ({ loadavg: () => [0, 0, 0] }));',
+          after: "const idle = { load: () => 0, cores: 8 };\nexpect(await waitForHost(idle)).toBe(0);",
+        },
+      ] satisfies RuleExample[],
     },
     messages: {
       moduleMock:

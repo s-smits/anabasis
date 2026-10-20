@@ -1,4 +1,5 @@
 import { defineRule, type ESTree, type Fix, type Fixer } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 
 import { isTestFile, isUnder } from "../shared/file-role.ts";
 import { importSpecifier } from "../shared/import-fix.ts";
@@ -87,7 +88,22 @@ export const requireMetaRuntimeImportRule = defineRule({
   meta: {
     type: "problem",
     fixable: "code",
-    docs: { description: "Import host runtime capabilities from src/meta, which owns that surface." },
+    docs: {
+      description: "Import host runtime capabilities from src/meta, which owns that surface.",
+      examples: [
+        {
+          before: 'import { readFileSync } from "node:fs";\nconst text = readFileSync(logPath, "utf8");',
+          after:
+            'import { readFileSync } from "./meta/filesystem.ts";\nconst text = readFileSync(logPath, "utf8");',
+        },
+        {
+          before:
+            'import { dirname } from "./meta/path.ts";\nimport { join } from "node:path";\nconst logPath = join(dirname(root), "journal.jsonl");',
+          after:
+            'import { dirname, join } from "./meta/path.ts";\nconst logPath = join(dirname(root), "journal.jsonl");',
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       directBuiltin:
         'Import "{{builtin}}" through src/meta, which owns the runtime surface: re-export what this file needs from the module there that already wraps it, or add one beside them. A direct import is a second door isolation cannot close.',

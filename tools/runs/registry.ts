@@ -149,11 +149,16 @@ export function archived(repo = runtimeProcess.cwd()): Run[] {
 /** Every run a name can be taken by: the worktrees' and the archive's. */
 export const everyRun = (repo = runtimeProcess.cwd()): Run[] => [...runs(repo), ...archived(repo)];
 
-/** The runs a reader reads: every worktree's, and each archived campaign whose name none of those has. */
+/** The runs a reader reads: every worktree's, and one archived copy of each campaign whose name none
+ *  of those has, this machine's before a host's, so a page keys it and a zip stages it once. */
 export function readable(repo = runtimeProcess.cwd()): Run[] {
   const held = runs(repo);
   const names = new Set(held.map(({ name }) => name));
-  return [...held, ...archived(repo).filter(({ name }) => !names.has(name))];
+  const copies = new Map<string, Run>();
+  for (const run of archived(repo)) {
+    if (!names.has(run.name) && (!copies.has(run.name) || run.archived === HERE)) copies.set(run.name, run);
+  }
+  return [...held, ...copies.values()];
 }
 
 /** The campaign `name` a reader reads: the one a worktree holds, else this machine's archived one,

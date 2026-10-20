@@ -35,7 +35,7 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { type Host, hostsOf, quoted, rsync, sshScript, verbOn, worktreesIn } from "./hosts.ts";
-import { ARCHIVE, archiveOf, HERE, keepers, processes, type Run, runs, writers } from "./registry.ts";
+import { ARCHIVE, archiveOf, HERE, keepers, processes, runs, writers } from "./registry.ts";
 
 /** What one sweep is asked: the main worktree, how long idle is, the time, and whether to act. */
 export interface Sweep {
@@ -53,32 +53,30 @@ const USAGE = "usage: bun run runs retire [--days 1] [--yes]";
 
 const say = (sweep: Sweep, line: string) => console.log(`${sweep.yes ? "" : "would: "}${line}`);
 
-/** Where `run` goes in the archive's folder `own`: its name, or its name after its tree's where
- *  that is taken. */
-function archivedAs(own: string, run: Run): string | undefined {
-  if (run.end === "solve.finished") return join(own, ".live", basename(run.path));
-  return [run.name, `${run.name}.${basename(run.tree)}`]
-    .map((name) => join(own, name))
-    .find((path) => !existsSync(path));
-}
-
 /** Every run no process writes or keeps whose log has not grown for `days`, moved to the archive.
  *  Returns the logs it moved, or would move. */
 export function archiveIdle(sweep: Sweep): Set<string> {
   const moved = new Set<string>();
+  const taken = new Set<string>();
   const own = archiveOf(sweep.main, HERE);
   for (const run of runs(sweep.main)) {
     if (sweep.now - lstatSync(run.path).mtimeMs < sweep.days * DAY_MS) continue;
     // Read again for each run: one launched while the sweep ran is live.
     if (writers(run, processes()).length > 0 || keepers(run.name).length > 0) continue;
     const from = run.end === "solve.finished" ? run.path : dirname(run.path);
-    const to = archivedAs(own, run);
+    // Its name, or its name after its tree's where that is taken, on disk or earlier in this sweep
+    // (two trees' live solve logs share a file name).
+    const name = run.end === "solve.finished" ? join(".live", basename(run.path)) : run.name;
+    const to = [name, `${name}.${basename(run.tree)}`]
+      .map((each) => join(own, each))
+      .find((path) => !existsSync(path) && !taken.has(path));
     if (to === undefined) {
       console.error(`${from}: the archive holds ${run.name} under both its names, so it stays`);
       continue;
     }
     say(sweep, `${from} -> ${to}`);
     moved.add(run.path);
+    taken.add(to);
     if (!sweep.yes) continue;
     mkdirSync(dirname(to), { recursive: true });
     // mv, which copies where the two lie on different volumes (a worktree under /tmp on Linux).

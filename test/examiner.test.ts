@@ -1404,6 +1404,8 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     // answers are its result on the task.
     expect(said).not.toContain("better than one of its own");
     expect(lines([100, 95, 90, 90])[0]).toContain("an answer on record 5% better than one of its own");
+    // Room under the campaign's floor decides no pair and holds no draft: it is told as none.
+    expect(lines([100, 99.5, 90, 90])[0]).not.toContain("better than one of its own");
     // With exam-results off, who won is not said, and nothing of the other harness's answers is:
     // the lines read the same whatever it measured.
     const [blind] = lines([100, 95, 90, 90], false);

@@ -86,7 +86,7 @@ or "review this" is too weak; the same generic question numbered six times is on
 - **Keep reports within the seat's permitted view** (`AGENTS.md`, sections 1 and 3), and keep
   private details out of prompts and published text (section 10).
 
-Reports are research. Check every finding you act on against the source (`AGENTS.md`, section 11).
+Reports are research. Check every finding you act on as `AGENTS.md`, section 11, says.
 
 ## The manifest
 

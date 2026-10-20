@@ -10,7 +10,7 @@
  *
  * The only solves here are the reference harness's of a draft task, where the host can have it
  * solve one (`try_task`, `measured`): no stronger solver passes a task first, and the measured
- * solver does not solve it for its author (`docs/plan.md`, Phase 2). v1's solver matched whatever
+ * solver does not solve it for its author (`7f0add79:docs/plan.md`, Phase 2). v1's solver matched whatever
  * its author's side found, and when sessions here did put each instance to a stronger solver, the
  * first lost 14 of 25 tasks at that solve and the second spent $48.45, of which the Examiner's own
  * turns were $2.01. Of those solves the author hears their counts, turns and measures, and nothing

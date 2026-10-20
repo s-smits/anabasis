@@ -9,11 +9,11 @@ keeps no queue and no status. Those live elsewhere:
 
 | Question | Owner |
 | --- | --- |
-| What is designed, in what order, and how far each part has got | the plan of record; `docs/plan.md` is the repository's copy |
+| What is designed, in what order, and how far each part has got | `docs/plan.md`: the four factors' values, the open rows with their level, the tuning, the open decisions |
 | What came over from v1, and what was replaced or dropped | `docs/transfer.md` |
 | What v1 measured, and why it did not climb | `docs/v1.md` |
 | A prompt handed whole to another session: an audit, a review | `docs/prompts.md` |
-| Where v2 stood at PR #91 and PR #168, with the three reviews of 9 October | `docs/plan-history.md` |
+| The plan until 20 October, its history and the simplification plan of 11 October | `git show 7f0add79:docs/plan.md` (and `plan-history.md`, `simplify.md`); a comment that cites `7f0add79:docs/<file>` means that text |
 | What the code does today | the source at the stack's head, and the head comment of each module |
 | How a procedure is carried out: stacking, launching, reading a run, wording a claim | the skill that owns it, under `.claude/skills/` (sections 10 and 11) |
 | How code is written here so that it passes its checks the first time | `tools/oxlint/HABITS.md` (section 12) |
@@ -307,7 +307,7 @@ Six consequences guide a change:
    Grant the folder instead of a list of subfolders inside a seat's root, a path per command, or a
    single file: each narrower grant is one more policy to keep true on two operating systems, and
    on the record narrow grants ended solves by the dozen while no wide one leaked a hidden value
-   (`docs/plan.md`, rows B10, B12 and B17). Narrow a grant only where two would collide, as two
+   (`7f0add79:docs/plan.md`, rows B10, B12 and B17). Narrow a grant only where two would collide, as two
    solves writing one path in a shared `/tmp` did, or where the wider grant would open one of the
    three protected things. A seat's commands write one root, except for the host's own folder
    inside it (`SolveDirs`, `src/solve/command.ts`), and each policy is probed once per process by
@@ -388,7 +388,7 @@ The tools of each model seat, as its source names them:
   answer.
 - Referee: `probe_check`, `read_check_program` and `record_ruling`.
 
-An older log may hold `diagnosis.*` events from a removed Diagnoser seat (`docs/simplify.md`, E1).
+An older log may hold `diagnosis.*` events from a removed Diagnoser seat (`7f0add79:docs/simplify.md`, E1).
 
 ### What waits for the operator
 
@@ -840,7 +840,7 @@ For a small campaign, set `--reserve` to roughly what one solve of the solver bi
 of any earlier campaign under the same solver shows (`solve.finished.billed`): a campaign ends once
 less of its total is left than one reserve. `bun run runs fresh <pack>` opens and launches a
 measured campaign from the operator's prompt for that pack (the skill `run-management`). What these
-commands and flags replaced is in `docs/simplify.md` and `docs/plan-history.md`.
+commands and flags replaced is in `7f0add79:docs/simplify.md` and `7f0add79:docs/plan-history.md`.
 
 ## 7. How a comparison is read
 
@@ -1200,7 +1200,7 @@ about it names the level:
 
 None of them stands in for the next. The four middle levels are the skill's, and the plan uses the
 same words. The plan keeps the level of each part, and a pull request names
-what it moves: in `docs/plan.md` that is the level column of the fix plan. Keep no second status
+what it moves: in `docs/plan.md` that is the level column of its open rows. Keep no second status
 list: not in this file, not in a new file, not in a code comment.
 
 ### Evidence

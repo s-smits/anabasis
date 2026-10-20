@@ -7,7 +7,7 @@
  *     --tasks <eight task ids>
  *
  * Run it before a comparison. What it finds already in place it leaves. It is the plan's set-up of
- * the first round (`docs/plan.md`, Phase 0).
+ * the first round (`7f0add79:docs/plan.md`, Phase 0).
  *
  * Each task of the pack that the log does not hold is proposed and put to its one gate, the shape
  * of its package (`src/kernel/task.ts`). A task that passes is a held-out task. No solve and no

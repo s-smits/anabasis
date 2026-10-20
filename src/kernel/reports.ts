@@ -11,7 +11,7 @@
  *
  * The harness a comparison is made against is the reference harness: the Starter Built Harness
  * until the operator promotes another, and from then on the one last promoted (`promoted`). The
- * choice is the operator's and the record is the log's (`docs/plan.md`, Phase 6). A Builder goes
+ * choice is the operator's and the record is the log's (`7f0add79:docs/plan.md`, Phase 6). A Builder goes
  * on from the harness its last session left (`latestBuilt`), step or none.
  * Practice priority reads each task's last scored or disputed result, as its outcome does.
  *
@@ -115,7 +115,7 @@ interface TalliedIn {
 /**
  * What a log holds of one task, for every reader of its state: the pool and the release are
  * predicates over it, since while each read the log for itself their arithmetic was mended four
- * times (`docs/simplify.md`, C1). Filled by `taskRecords`, which is why its fields are not read-only.
+ * times (`7f0add79:docs/simplify.md`, C1). Filled by `taskRecords`, which is why its fields are not read-only.
  */
 interface TaskRecord {
   readonly version: string;
@@ -215,7 +215,7 @@ export function lastReports(events: readonly LogEvent[], all = false): Reported[
 /**
  * The harness the last whole Builder session left, by its digest, or null while none has changed
  * one. It is where the next session starts unless the operator names another: after a comparison
- * without a step the Builder continues from its latest harness (`docs/plan.md`, Phase 5). A session
+ * without a step the Builder continues from its latest harness (`7f0add79:docs/plan.md`, Phase 5). A session
  * that was killed or that crashed is passed over, except for a checkpoint already frozen inside
  * its live conversation: that version was kept before the interruption.
  */
@@ -262,7 +262,7 @@ export function comparedAs(events: readonly LogEvent[], harness: string) {
 }
 
 /**
- * What room a comparison's report shows a harness to gain in (`docs/plan.md`, "How move 7
+ * What room a comparison's report shows a harness to gain in (`7f0add79:docs/plan.md`, "How move 7
  * decides"): `room` where a task was informative for the reference harness (`informative`,
  * `compare.ts`: valid on some solves and not all, two valid answers apart by the objective past its
  * margin, or valid on none where a valid answer to it is on record), `too-hard` where neither
@@ -293,7 +293,7 @@ export function patienceOf(events: readonly LogEvent[]): number {
 
 /**
  * The plan's stop rule over a log: how many moves could have shown a gain, how many of them have
- * passed since the last step, and whether that is the campaign's patience (`docs/plan.md`, row
+ * passed since the last step, and whether that is the campaign's patience (`7f0add79:docs/plan.md`, row
  * F48; `patienceOf`).
  *
  * A move that counts is one of two. The first is a harness a Builder session changed, compared
@@ -308,7 +308,7 @@ export function patienceOf(events: readonly LogEvent[]): number {
  * session failed: it was shown a failure and declined it. A session whose every practice solve
  * passed, or that ran none, had nothing to work on, which is a fault of the supply and no evidence about the domain: all ten campaigns of
  * 9 and 10 October stopped on three such sessions after a promotion, each practising on tasks the
- * promoted harness passed (`docs/plan.md`, row F52).
+ * promoted harness passed (`7f0add79:docs/plan.md`, row F52).
  *
  * What does not count: a comparison of two harnesses no session made, which a control and a
  * reading of the reference against itself are; one stopped on its check defects, cut by its cap,
@@ -526,7 +526,7 @@ function tallyReports(
  *
  * **Awaiting** are the tasks that go to a person as possibly infeasible: no solve on record gave a
  * valid answer to them, and two comparisons that gave their solves room gave none either
- * (`docs/plan.md`, Phase 2). A task with no valid answer ties whatever the harnesses are and costs
+ * (`7f0add79:docs/plan.md`, Phase 2). A task with no valid answer ties whatever the harnesses are and costs
  * its solves at every comparison. It may be hard, it may be wrongly checked, or it may have no
  * valid answer at all, and only a person can tell the third: on an infeasible task every rejection
  * is a true fail, correctly, every time. So it leaves the scored set until it is labelled
@@ -603,13 +603,13 @@ function tallyReports(
  * **Outcomes** hold each task some comparison scored or set aside, by task version, from the last
  * comparison that did: how the reference harness did on it, valid in every one of its counted
  * solves, in some, or in none. The plan lets a task's author hear this of each task
- * (`docs/plan.md`, Phase 2): without a stronger solve the author would otherwise hear nothing, and
+ * (`7f0add79:docs/plan.md`, Phase 2): without a stronger solve the author would otherwise hear nothing, and
  * a difficulty zone or a target count is what v1 found an author writes towards. The reading is of
  * the reference's side alone: which other harness was compared, and what it answered on that
  * task, are not the author's. What the other side did reaches the author only as counts by family
  * (`standings`). An outcome that named a winner told the author nothing of where the room was:
  * after a control a task the reference and the starter both failed read as one with no valid
- * answer, which the author's prompt says measures nothing (`docs/simplify.md`, F3). A task no
+ * answer, which the author's prompt says measures nothing (`7f0add79:docs/simplify.md`, F3). A task no
  * comparison has scored has no outcome.
  *
  * An outcome is the last report's of the task, whatever the setting id the report carries: a
@@ -819,7 +819,7 @@ export function billedFor(events: readonly LogEvent[], id: string): number {
 }
 
 /** Every billed dollar a log holds, whoever billed it: what a campaign's total budget is held
- *  against (`docs/plan.md`, row F49). A start the log holds no end of was killed before it could
+ *  against (`7f0add79:docs/plan.md`, row F49). A start the log holds no end of was killed before it could
  *  sum its turns, and is billed by what it metered (`unfinished`). */
 export function billedAll(events: readonly LogEvent[]): number {
   const summed = events.reduce(

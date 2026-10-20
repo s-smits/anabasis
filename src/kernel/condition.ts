@@ -26,7 +26,7 @@ export type Limits = {
    * a solve that reaches it without an answer ends there (`turns-ended`). It is the unit of a
    * budget that does not move with the host's load: the one step on record was read under a time
    * limit on a host loaded at ten times its cores, and `turns` above bound no solve, since every
-   * finished solve was given one prompt (`docs/plan.md`, Phase 2).
+   * finished solve was given one prompt (`7f0add79:docs/plan.md`, Phase 2).
    */
   readonly modelTurns?: number;
   /** How long one shell command runs when the solver names no timeout. A timeout it names only

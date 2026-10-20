@@ -46,7 +46,7 @@
  *
  * Until 12 October the command drew every rejection that set a task aside, and read the passes
  * apart; until 13 October it drew up to ten rejections, ruled earned or not, and three passes. Until 11 October it read a Diagnoser's accounts of practice fails; the seat went
- * (`docs/simplify.md`, E1), and a log of before keeps its `diagnosis.*` events.
+ * (`7f0add79:docs/simplify.md`, E1), and a log of before keeps its `diagnosis.*` events.
  *
  * Where a task itself looks infeasible, say so with `prepare.ts --infeasible <task id> --note`,
  * which refuses the task and logs the note. A task disputed here on a check's fault is a repair

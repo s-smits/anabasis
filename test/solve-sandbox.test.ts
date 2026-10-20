@@ -2,7 +2,7 @@
 // a command runs it as a seat's commands run (`runWalled`, in a claimed root), on the host the suite
 // runs on, because a profile checked only as configuration is a profile nobody has seen refuse
 // anything. Until 11 October these cases ran v1's launch of its sandboxed model process, which no
-// seat of v2 runs (`docs/simplify.md`, F5 and W2).
+// seat of v2 runs (`7f0add79:docs/simplify.md`, F5 and W2).
 //
 // Each refusal is paired with a read that has to succeed: a wall that refuses everything would pass
 // a suite testing refusals alone while making the product unusable. Run 4 is the reason it is not

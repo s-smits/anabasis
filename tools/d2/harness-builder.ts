@@ -9,7 +9,7 @@
  *   bun tools/d2/harness-builder.ts --name queues --prompt "<the domain, in the operator's words>" \
  *     --solver claude/claude-sonnet-5-5 --budget 60 --builder ... --examiner ... --reviewer ...
  *
- * A campaign is a loop of moves over one log (`docs/plan.md`, "The process"). Until 2026-10-09 a
+ * A campaign is a loop of moves over one log (`7f0add79:docs/plan.md`, "The process"). Until 2026-10-09 a
  * session carried each one by hand: it read the view, chose a move by a skill's walk, and typed
  * the command with its flags. This command does that. It reads the log, asks move 7 for the one
  * move that follows (`decide`, `src/builder/decide.ts`), prints it with its reason, makes it by
@@ -64,7 +64,7 @@
  * these are the operator's conditions, and a comparison logs its own terms at its start. The
  * setting is the log's own record (`campaign.setting`), and every command refuses another.
  *
- * **The budget is one total** (`docs/plan.md`, row F49). Each move's cap is what is left of it:
+ * **The budget is one total** (`7f0add79:docs/plan.md`, row F49). Each move's cap is what is left of it:
  * the total less every billed dollar the log holds, and where less is left than one solve is held
  * at, the campaign ends on its budget. **What it risks** is said as it opens: what one reading of
  * its target can show and its per-comparison rate (`sizeLines`, `src/kernel/size.ts`).
@@ -516,7 +516,7 @@ function closed(log: string, from: number): boolean {
 /**
  * Refuses a flag that names another setting than the campaign's, with both, as every command
  * refuses it; the scored tasks are the record's where it names them. Until 11 October the record's
- * model turns stood in for the flag (`docs/simplify.md`, A1), so another number ran at the record's.
+ * model turns stood in for the flag (`7f0add79:docs/simplify.md`, A1), so another number ran at the record's.
  */
 function settingHeld(log: string, given: Values): void {
   const recorded = recordedSetting(read(log));

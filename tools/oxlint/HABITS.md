@@ -27,7 +27,7 @@ first line, and the round trip through the linter mostly disappears.
 `--deny-warnings` and `--report-unused-disable-directives`, type-aware. `packages/ui` is linted
 once its own dependencies are installed (`bun run ui:deps`), under its own `tsconfig.json` and
 with no rule turned off for it; a whole-tree run without them leaves it out and says so. Two repository plugins ride along: `ana`
-(36 rules) and `anti-slop` (17 rules). Every enabled rule in `.oxlintrc.json` is an error.
+(36 rules) and `anti-slop` (15 rules). Every enabled rule in `.oxlintrc.json` is an error.
 
 - **Plugin findings fail the run only in strict mode**: `bun run lint -- --strict`,
   `ANA_LINT_STRICT=1`, or a clone with `git config ana.lintStrict true`. A plain run holds you to
@@ -241,7 +241,6 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
 - `no-object-parameters`: no parameter typed `object`.
 - `no-reduce-accumulator-copy`: no copy of the accumulator at every step. Mutate a local and
   return it.
-- `no-reflect-apply`, `no-reflect-get`: typed calls and typed access.
 - `no-runtime-typeof`: the predicates of `src/meta/json-shape.ts`. `typeof x === "undefined"` is
   allowed.
 - `no-shape-in-symbol-names`: no name with the word "shape", "shapes" or "shaped" in it. An

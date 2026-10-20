@@ -8,8 +8,8 @@ whose licences require their notices to travel with the copies.
 - Source: https://github.com/dmmulroy/anti-slop, first copied at commit 9b80d9a and updated to
   commit c44ef22
 - Copies: `tools/oxlint/anti-slop/`. Local changes: the plugin registers through
-  `eslintCompatPlugin`; the `no-unknown-parameters`, `require-readable-spacing` and Effect rules
-  are left out; `rules/prefer-subpath-import.ts` and `shared/ast-node.ts`,
+  `eslintCompatPlugin`; the `no-unknown-parameters`, `require-readable-spacing`, `no-reflect-apply`,
+  `no-reflect-get` and Effect rules are left out; `rules/prefer-subpath-import.ts` and `shared/ast-node.ts`,
   `shared/representation-owner.ts` and `shared/subpath-alias.ts` are this repository's own; and
   the plugin's code carries line-scoped lint suppressions.
 

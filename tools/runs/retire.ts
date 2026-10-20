@@ -151,7 +151,7 @@ function bringHome(sweep: Sweep, host: Host): void {
   say(sweep, `${host.name}:${found} -> ${into}`);
   if (!sweep.yes) return;
   mkdirSync(into, { recursive: true });
-  runTextSyncOrThrow(["rsync", "-a", `${host.ssh}:${quoted(found)}/`, `${into}/`]);
+  runTextSyncOrThrow(["rsync", "-az", `${host.ssh}:${quoted(found)}/`, `${into}/`]);
 }
 
 /** `bun run runs retire`. */

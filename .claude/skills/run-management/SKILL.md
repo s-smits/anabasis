@@ -28,6 +28,7 @@ one two worktrees hold.
 | `stop <name> ... [--yes]` | ends the process that writes each log, and its keeper, and releases what its unfinished solves and sessions held | `stop.ts` |
 | `status [--all]` | one row a run: the live ones and those whose log moved in a day, with tree, commit, login, open comparison, comparisons reported, promotions and ending; then each host `ANA_HOSTS` lists, all asked at once and each printed as it answers, within 30 s | `pulse.ts` |
 | `logins [N ...] [--json]` | each login's five-hour and weekly use, and when the pool runs out | `logins.ts` |
+| `fetch <name> [--from <host>]` | a copy of a campaign another machine holds, to read here, under `.ana/fetched/` | `move.ts` |
 | `on <host> <verb ...>`, `hosts [--all]` | any verb on another host over ssh; `status` on each other host alone. A verb that names a run goes to its host by itself | `hosts.ts` |
 | `pulse [<name>] [--once]` | what each run gained since the last look | `pulse.ts` |
 | `view <name>` | one campaign as its log reads, and the move the table names next | `view.ts` |

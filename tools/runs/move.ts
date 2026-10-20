@@ -29,11 +29,21 @@
  * Examiner's or a Builder's shell left in its home links where that machine's tools are, and the
  * next session there builds its own again. A `runs keep` that keeps the campaign at its source is
  * not stopped by the move: stop it first.
+ *
+ *   bun --env-file=.env.runs run runs fetch <name> [--from <host>]
+ *
+ * `fetch` takes a copy of a campaign another machine holds, to read here: its folder whole, under
+ * `.ana/fetched/<host>/<name>/` of the main worktree, which no registry reads as a run, so the name
+ * stays one run. It asks every host which holds the name unless `--from` names one, prints the
+ * copy's log, and run again brings the copy level with its source. The run is left as it is. On
+ * 20 October a whole-run investigation of three runs on another host read copies made by hand.
  */
+import { mkdirSync } from "#src/meta/filesystem.ts";
+import { worktrees } from "#src/meta/git.ts";
 import { dirname, join } from "#src/meta/path.ts";
-import { parseArgs } from "#src/meta/process.ts";
+import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
-import { type Host, hostNamed, quoted, sshScript, verbOn } from "./hosts.ts";
+import { type Host, holders, hostNamed, quoted, sshScript, verbOn } from "./hosts.ts";
 import { asideOf, continueRun, lastRun, pause, setAside } from "./manage.ts";
 
 /** One end of a move: this machine or a host, with the folder its worktrees sit in. */
@@ -170,4 +180,29 @@ export async function move(args: readonly string[]): Promise<void> {
   }
   if (to.host === undefined) await continueRun(going.slice(1));
   else if ((await verbOn(to.host, going)) !== 0) throw new Error(`${name} did not go on at ${to.name}`);
+}
+
+/** `bun run runs fetch`. */
+export async function fetch(args: readonly string[]): Promise<void> {
+  const { values, positionals } = parseArgs({
+    args: [...args],
+    allowPositionals: true,
+    options: { from: { type: "string" } },
+  });
+  const [name] = positionals;
+  if (name === undefined) throw new Error("usage: bun run runs fetch <name> [--from <host>]");
+  const host = values.from === undefined ? (await holders([name])).get(name) : hostNamed(values.from);
+  if (host === undefined) throw new Error(`no host ANA_HOSTS lists holds a campaign ${name}`);
+  const from = endOf(host.name);
+  const [main = "."] = worktrees(runtimeProcess.cwd());
+  const into = join(main, ".ana", "fetched", host.name, name);
+  mkdirSync(into, { recursive: true });
+  runTextSyncOrThrow([
+    "rsync",
+    "-a",
+    "--delete",
+    `${side(from, join(treeOf(from, name), ".ana", "d2", name))}/`,
+    `${into}/`,
+  ]);
+  console.log(`${name} from ${host.name}: ${join(into, "log.jsonl")}`);
 }

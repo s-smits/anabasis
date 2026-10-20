@@ -171,7 +171,7 @@ The pre-push hook gates what the push adds, over a scratch checkout of each comm
 working tree may hold anything. What it adds is the commits along each pushed head's first
 parents that no remote-tracking ref of the clone holds. Of those, a commit whose patch the
 replaced branch held is a replay a rebase carried, and `bun run land` proves it where it sits; a
-commit changing only `AGENTS.md`, `CLAUDE.md`, `README.md`, `docs/` or a `.md` under `.claude/` is
+commit changing only `AGENTS.md`, `README.md`, `docs/` or a `.md` under `.claude/` is
 documentation; every other gets the static steps and its nearby tests, and the lowest pushed head
 holding the newest of them the whole gate. A push of documentation alone gets `git diff --check`.
 A history brought in through a merge's other parent is counted and left alone, and the merge is

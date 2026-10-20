@@ -34,7 +34,8 @@
  * built into one is as often a build's record as the place it runs from.
  *
  * `practice` is where the Referee meets the Builder. A rejected answer goes to it, as in a
- * comparison; one it rules a check defect does not count and its task leaves the session. What comes back names the ending and the
+ * comparison; a check defect's task leaves the session. The triage of 20 October found unclear and
+ * unread rejections still shown as failures. What comes back names the ending and the
  * task's record, and never a check, a verdict's detail or the Referee's reasons. A practice solve
  * that could not be run at all, the verifier failing to decide for one, ends the session: its
  * error can name a check, so it is kept for the host and the Builder is told only that the session
@@ -48,7 +49,7 @@ import type { Ending } from "../kernel/solve.ts";
 import { limitsIn } from "../kernel/condition.ts";
 import type { Contract } from "../kernel/contract.ts";
 import { billedAll, billedParts } from "../kernel/reports.ts";
-import { ended, passed, practiceRan, solvesIn, verdictsOf } from "../kernel/solves.ts";
+import { ended, passed, practiceRan, rejectionAside, solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import {
   cpSync,
@@ -171,6 +172,7 @@ function measuredText(events: readonly LogEvent[], solve: string, contract: Cont
 export function record(events: readonly LogEvent[], version: string, harness: string) {
   const mine = practiceRan(events).filter(({ under }) => under.task === version && under.harness === harness);
   const counted = ended(mine).flatMap((solve) => {
+    if (rejectionAside(events, solve)) return [];
     const pass = passed(solve);
     return pass === null ? [] : [{ solve: solve.id, pass }];
   });
@@ -351,7 +353,7 @@ function usedText(events: readonly LogEvent[], solve: string): string {
 }
 
 /** One practice solve and what the Referee read of its fail. Throws only what the solve itself
- *  threw: a Referee that fails is noted for the host and the solve stands. */
+ *  threw: a Referee that fails is noted for the host and leaves the rejection set aside. */
 async function practise(bench: Bench, task: PracticeTask, kept: Snapshot, kill: AbortSignal) {
   const { request } = bench;
   const { solve, ending } = await request.practise(task, kept.dir, kept.harness.digest, kill);
@@ -368,17 +370,10 @@ async function practise(bench: Bench, task: PracticeTask, kept: Snapshot, kill: 
       const finding = await request.referee(solve, task, kill);
       if (finding.ruling === "check-defect") {
         bench.disputed.add(task.version);
-        lines.push(
-          "The Referee ruled this fail a check defect: it does not count, and the task leaves this session's practice.",
-        );
-      } else if (finding.ruling === "unclear") {
-        lines.push("The Referee could not settle whether this fail counts, so it is counted.");
-      } else if (finding.ruling === null) {
-        lines.push("The Referee did not finish reading this fail.");
+        lines.push("The task leaves this session's practice.");
       }
     } catch (error) {
       bench.faults.push(`${solve}: ${errorMessage(error)}`);
-      lines.push("The Referee did not finish reading this fail.");
     }
   }
   return { task, solve, ending, lines };
@@ -485,11 +480,14 @@ export function practiceTool(bench: Bench): AgentTool {
       }
       const events = read(request.log);
       const said = solved.flat().map(({ task, solve, ending, lines }) => {
+        const shown = rejectionAside(events, { id: solve, ending })
+          ? "rejection set aside"
+          : endingText(ending);
         const [now, before] = [bench.opened?.harness.digest ?? null, bench.parent].map((harness) =>
           harness === null ? null : record(events, task.version, harness),
         );
         return [
-          `${task.task.taskId}${UNDER[args.under ?? "harness"]}: ${endingText(ending)}. Solve ${solve}.${usedText(events, solve)}${measuredText(events, solve, request.contract)}`,
+          `${task.task.taskId}${UNDER[args.under ?? "harness"]}: ${shown}. Solve ${solve}.${usedText(events, solve)}${measuredText(events, solve, request.contract)}`,
           `Record under this harness: passed ${String(now?.passed ?? 0)} of ${String(now?.solves.length ?? 0)}. Under the harness you started from: ${String(before?.passed ?? 0)} of ${String(before?.solves.length ?? 0)}.`,
           ...lines,
         ].join("\n");
@@ -540,7 +538,7 @@ export function traceTool(bench: Bench): AgentTool {
       const closing = closingOf(own);
       return text(
         [
-          `ending: ${isString(ending?.outcome) ? `${ending.outcome}${isString(ending.kind) ? ` (${ending.kind})` : ""}` : "not recorded"}`,
+          `ending: ${rejectionAside(events, ran) ? "rejection set aside" : isString(ending?.outcome) ? `${ending.outcome}${isString(ending.kind) ? ` (${ending.kind})` : ""}` : "not recorded"}`,
           answer === undefined
             ? "no answer was submitted"
             : `submitted answer: ${capturedJsonStringify(answer).slice(0, HEAD_CHARS)}`,

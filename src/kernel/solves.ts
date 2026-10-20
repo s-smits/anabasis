@@ -15,6 +15,8 @@
  * resolves nothing, so a watcher can read a log whose conditions it has no use for; `ranUnder` adds
  * the condition; `ended` puts solves in the order they finished, which is the order every count of
  * "the latest so many" means; `verdictsOf` is the last verdict of each.
+ * On 20 October the Referee triage found practice records counting unclear and unread rejections.
+ * `rejectionAside` keeps those out of every practice failure reader, under rule 8.
  */
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -167,6 +169,16 @@ export function ended<Each extends Solve>(solves: readonly Each[]): (Each & Ende
 export function passed({ ending }: Pick<Solve, "ending">): boolean | null {
   if (ending?.outcome === "pass") return true;
   return ending?.outcome === "fail" || ending?.outcome === "flagged" ? false : null;
+}
+
+/** A rejection is established only when its latest ruling is earned; other endings need no ruling. */
+export function rejectionAside(events: readonly LogEvent[], solve: Pick<Solve, "id" | "ending">): boolean {
+  return (
+    solve.ending?.outcome === "fail" &&
+    solve.ending.kind === "rejected" &&
+    events.findLast(({ kind, data }) => kind === "referee.finding" && data.solve === solve.id)?.data
+      .ruling !== "earned"
+  );
 }
 
 /** The last verdict a log holds for each solve, by the solve. */

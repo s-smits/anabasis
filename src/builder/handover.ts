@@ -26,11 +26,12 @@
  * read as cut once its first Examiner session began. A session is billed its own dollars alone,
  * open or ended (`ownedBy`, `src/kernel/reports.ts`): until 19 October an ended led Builder was
  * billed every move made inside its span, which those moves' own lines billed again.
+ * The Referee triage of 20 October found unclear and unread practice rejections counted as failures.
  */
 import type { Tally } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { billedAll, billedParts, lastReports, latestBuilt, ownedBy, promoted } from "../kernel/reports.ts";
-import { ended, passed, practiceRan, type Ran, solvesIn } from "../kernel/solves.ts";
+import { ended, passed, practiceRan, type Ran, rejectionAside, solvesIn } from "../kernel/solves.ts";
 import { heldAtGate, taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { type Supply, supplyOf } from "./admission.ts";
@@ -80,7 +81,7 @@ interface Built extends SoFar {
   readonly harness: string | null;
   readonly changed: boolean;
   readonly practiceSolves: number;
-  /** Its failed practice solves that count: one ruled a check defect is none. */
+  /** Its established practice failures: only earned rejections count. */
   readonly fails: number;
   /** Its own turns, its practice solves and their reviewers. */
   readonly billed: number;
@@ -213,13 +214,10 @@ function soFar(events: readonly LogEvent[], index: number, id: string, seat: "ex
 function practiceFails(events: readonly LogEvent[]): (PracticeFail & { readonly started: number })[] {
   const released = new Set(taskSets(events).released);
   const practice = ended(practiceRan(events).filter(({ under }) => released.has(under.task))).filter(
-    (solve) => passed(solve) !== null,
+    (solve) => passed(solve) !== null && !rejectionAside(events, solve),
   );
-  const last = (kind: string, solve: string) =>
-    events.findLast((event) => event.kind === kind && event.data.solve === solve)?.data;
   return practice.flatMap((solve) => {
-    // A fail the Referee ruled a check defect does not count, and is nobody's to build around.
-    if (passed(solve) !== false || last("referee.finding", solve.id)?.ruling === "check-defect") return [];
+    if (passed(solve) !== false) return [];
     return [
       {
         solve: solve.id,

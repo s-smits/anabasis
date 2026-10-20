@@ -50,6 +50,7 @@ import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync } from "../.
 import { availableParallelism, loadavg, tmpdir } from "../../src/meta/os.ts";
 import { join, resolve } from "../../src/meta/path.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
+import { compareCodeUnits } from "../../src/meta/stable-json.ts";
 import { interruptAndReapProcessGroup, killProcessGroup } from "../../src/meta/subprocess.ts";
 
 const REPO_ROOT = join(import.meta.dir, "../..");
@@ -632,6 +633,7 @@ async function main(): Promise<number> {
     requested.length === 0
       ? readdirSync(join(REPO_ROOT, "test"))
           .filter((name) => /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(name))
+          .toSorted(compareCodeUnits)
           .map((name) => fileIdentity(join(REPO_ROOT, "test", name)))
       : requestedFiles(requested);
   try {

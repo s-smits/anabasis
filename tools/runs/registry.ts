@@ -234,9 +234,11 @@ export function processes(): Running[] {
 }
 
 /** The processes in `running` that write `run`'s log: a campaign's by its name, a live solve's by
- *  the task and cycle its name begins with. */
+ *  the task and cycle its name begins with. A flag is read in both forms `parseArgs` takes: until
+ *  20 October a campaign started by hand with `--name=r1` read as closed while it wrote. */
 export function writers(run: Run, running: readonly Running[]): Running[] {
-  const flag = (args: readonly string[], name: string) => args[args.indexOf(name) + 1];
+  const flag = (args: readonly string[], name: string) =>
+    args.find((arg) => arg.startsWith(`${name}=`))?.slice(name.length + 1) ?? args[args.indexOf(name) + 1];
   const writes = (args: readonly string[]) =>
     run.end === CAMPAIGN_END
       ? writesCampaign(args) && flag(args, "--name") === run.name

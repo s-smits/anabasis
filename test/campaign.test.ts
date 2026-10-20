@@ -39,6 +39,7 @@ import {
   ROUND_OPTIONS,
   roundCommand,
   gainSaid,
+  objectiveNamed,
   reportLines,
   roomNamed,
 } from "../tools/d2/round.ts";
@@ -728,6 +729,17 @@ describe("a campaign", () => {
     expect(roomNamed("0")).toBe(0);
     expect(roomNamed("0.05")).toBe(0.05);
     for (const bad of ["1", "-0.01", "five"]) expect(() => roomNamed(bad)).toThrow("--room");
+  });
+
+  it("goes on with the objective a comparison began with, a floor or none, unless --room names another", async () => {
+    const campaign = await openCampaign(ARGS);
+    // The shape a comparison begun before 21 October recorded: a direction and no floor.
+    append(campaign.log, "comparison.started", { session: "g-8", objective: { direction: "lower" } });
+    append(campaign.log, "comparison.started", { session: "g-9" });
+    expect(objectiveNamed(campaign, undefined, "g-8")).toEqual({ direction: "lower" });
+    expect(objectiveNamed(campaign, undefined, "g-9")).toBeUndefined();
+    // A named floor is asked of it as of a comparison not yet begun, which its start then refuses.
+    expect(objectiveNamed(campaign, "0.05", "g-8")).toEqual(objectiveNamed(campaign, "0.05", "g-10"));
   });
 
   it("refuses a labels file with an entry that is no label, and a --target that is no count", async () => {

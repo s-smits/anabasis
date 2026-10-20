@@ -30,6 +30,7 @@ import {
   objectiveRuleIn,
   type Paired,
   pairsOf,
+  ROOM,
   roomLeft,
   tally,
 } from "./compare.ts";
@@ -90,7 +91,8 @@ export interface Standing {
   readonly solves: number | null;
   /** How far apart the sides' measures were where the objective alone won it (`objectiveMargin`). */
   readonly margin: number | null;
-  /** The room by the objective the reference harness's answers left there (`roomLeft`). */
+  /** The room by the objective the reference harness's answers left there, against its own and its
+   *  author's (`roomLeft`). */
   readonly room: number | null;
 }
 
@@ -125,7 +127,8 @@ interface TalliedIn {
   readonly won: "old" | "fresh" | null;
   /** How far apart the sides' measures were where the objective alone won it (`objectiveMargin`). */
   readonly margin: number | null;
-  /** The room by the objective the reference harness's answers left there (`roomLeft`); null where
+  /** The room by the objective the reference harness's answers left there, against its own and its
+   *  author's (`roomLeft`); null where
    *  it stood on neither side. */
   readonly room: number | null;
 }
@@ -505,6 +508,10 @@ function tallyReports(
   cut: ReadonlySet<string>,
 ): void {
   const reference = referenceOf(events);
+  // The room floor the campaign runs by as its opening last named it (`--room`), or `ROOM`: its
+  // frontier is read at that one, as its gate is, whatever an earlier comparison recorded.
+  const named = asRecord(events.findLast(({ kind }) => kind === "campaign.opened")?.data.terms)?.room;
+  const floor = isString(named) ? Number(named) : ROOM;
   let order = 0;
   for (const report of lastReports(events, true)) {
     const { index, session, data } = report;
@@ -523,10 +530,10 @@ function tallyReports(
         reference: side,
         cut: cutOn(data.old) || cutOn(data.fresh),
         referenceCut: side !== null && cutOn(data[side]),
-        closed: side !== null && closedTo(pair, side, of(task).best),
+        closed: side !== null && closedTo(pair, side, of(task).best, floor),
         won: wins > 0 ? "fresh" : losses > 0 ? "old" : null,
         margin: objectiveMargin(pair),
-        room: side === null ? null : roomLeft(pair, side, of(task).best),
+        room: side === null ? null : roomLeft(pair, side, [of(task).best]),
       });
     }
     for (const task of Array.isArray(data.aside) ? data.aside.filter(isString) : []) {

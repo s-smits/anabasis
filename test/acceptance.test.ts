@@ -202,6 +202,8 @@ describe("a checker's acceptance", () => {
     });
     expect(unadmitted([logged(["span"])])).toEqual(["mass"]);
     expect(unadmitted([logged(["span"]), logged(["mass", "span"])])).toEqual([]);
+    // Every check its author decides, admitted or not, for the closing report.
+    expect(unadmitted([logged(["span"])], [])).toEqual(["mass", "span"]);
   });
 
   it("reads the objective as its author's own computation, seen to measure a valid answer or none", async () => {

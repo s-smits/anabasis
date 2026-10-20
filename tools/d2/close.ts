@@ -18,9 +18,14 @@
  *   RULES.md     the domain's public contract: its scope, conventions, rules and answer format.
  *   REPORT.md    the closing report: how the campaign ended, each promotion and the comparisons
  *                behind it, every comparison's tally and reading, the chance of a false promotion
- *                over the whole campaign (`riskLines`), what the Referee ruled and what a person's
- *                labels settled, and what was billed. It names each harness by its letter beside
- *                its digest's head (`namesOf`, `src/builder/names.ts`).
+ *                over the whole campaign (`riskLines`), which checks their author's own computation
+ *                decides (`unadmitted`), what the Referee ruled and what a person's labels
+ *                settled, and what was billed. It names each harness by its letter beside its
+ *                digest's head (`namesOf`, `src/builder/names.ts`).
+ *
+ * Until 20 October the report said the checker was read and frozen, and not what decides it: in
+ * buffer-fresh-opus-forkedPR223_v0_5_4-r3 every one of the 7 checks, the objective among them, was
+ * its author's own computation, and a reader of the report could not tell.
  *
  * The report is a view of the log, written once, and nothing reads it back. It names no task and
  * holds no check, hidden value or answer, so the folder can leave the exam side: `--to` lies
@@ -43,7 +48,7 @@ import { short } from "#src/builder/move.ts";
 import { type Called, calledBy, namesOf } from "#src/builder/names.ts";
 import { parentToolTree } from "#src/builder/tools.ts";
 import { openingOf } from "#src/builder/opening.ts";
-import { frozenChecker } from "#src/kernel/acceptance.ts";
+import { frozenChecker, unadmitted } from "#src/kernel/acceptance.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { comparisonsOf } from "#src/builder/ground.ts";
@@ -141,6 +146,8 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
     }
   }
   const sessions = steps.filter((step) => step.step === "builder").length;
+  // The checks of the last reading that no installed instrument decides, the objective among them.
+  const authored = unadmitted(events, []);
   const budget = opening?.budget ?? null;
   return [
     `# ${name}: closing report`,
@@ -182,6 +189,11 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
     "## What was audited, and what was not",
     [
       `- The exam: its checker ${supply.faults === null ? "was never read" : `was read, with ${plural(supply.faults, "fault")} in its last reading`}, and ${frozenChecker(events) === null ? "nobody froze it" : "the operator froze it"}.`,
+      ...(authored.length === 0
+        ? []
+        : [
+            `- What decides a pass: ${plural(authored.length, "check")} of the checker's last reading ${authored.length === 1 ? "is" : "are"} decided by ${authored.length === 1 ? "its" : "their"} author's own computation and no installed instrument; the operator admitted ${String(authored.length - unadmitted(events).length)}. Such a check agrees with its author by construction: nothing outside the exam confirms what it lets pass.`,
+          ]),
       `- Rejected answers: the Referee ruled ${String(ruled.earned)} earned, ${String(ruled.defect)} a check defect and ${String(ruled.unclear)} unclear. A ruling is a model's reading and is not measured against a person's labels here.`,
       `- A person's labels settled ${plural(settled.length, "comparison")}, and ${plural(unsettled, "comparison")} ${unsettled === 1 ? "is" : "are"} unsettled: ${unsettled === 1 ? "its packet waits" : "their packets wait"} for a person (settle.ts), and no promotion waited for one. ${plural(supply.awaiting, "held-out task")} ${supply.awaiting === 1 ? "waits" : "wait"} for a person to say whether a valid answer exists.`,
       passes.comparisons === 0

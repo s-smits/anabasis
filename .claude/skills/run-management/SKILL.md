@@ -28,7 +28,7 @@ one two worktrees hold.
 | `stop <name> ... [--yes]` | ends the process that writes each log, and its keeper, and releases what its unfinished solves and sessions held | `stop.ts` |
 | `status [--all]` | one row a run: the live ones and those whose log moved in a day, with tree, commit, login, open comparison, comparisons reported, promotions and ending; then each host `ANA_HOSTS` lists, all asked at once and each printed as it answers, within 30 s | `pulse.ts` |
 | `logins [N ...] [--json]` | each login's five-hour and weekly use, and when the pool runs out | `logins.ts` |
-| `on <host> <verb ...>`, `hosts [--all]` | any verb on another host over ssh; `status` on each other host alone | `hosts.ts` |
+| `on <host> <verb ...>`, `hosts [--all]` | any verb on another host over ssh; `status` on each other host alone. A verb that names a run goes to its host by itself | `hosts.ts` |
 | `pulse [<name>] [--once]` | what each run gained since the last look | `pulse.ts` |
 | `view <name>` | one campaign as its log reads, and the move the table names next | `view.ts` |
 | `source <name> [--holds <c>]...` | each run's commit, its tree, where the commit is published, whether it holds a fix | `receipt.ts` |
@@ -214,7 +214,11 @@ runs out at the week's pace and at the last 14 hours'. A login has room for a mo
 is under 90% and allowed, and its five hours under 100% (`room`), which is what `keep` reads.
 `status` hides seeds and runs quiet for a day unless `--all`, and below this machine's rows shows
 each host `ANA_HOSTS` lists, so one command on any machine whose `.env.runs` lists the others
-shows every run. `on` runs any verb in a host's worktree under a login shell there, with that
+shows every run. A verb that names a run (`stop`, `continue`, `pause`, `keep`, `view`, `source`,
+`copy`) goes to wherever the run is: a name no worktree here holds is asked of every host at once,
+and the verb runs on the one that holds it, so `runs stop a b c --yes` stops runs on three machines.
+`view` runs in the worktree that holds its campaign, since the move it names is that tree's code.
+A host's tree needs a commit that has this, as `fresh --host` needs one that has `fresh`. `on` runs any verb in a host's worktree under a login shell there, with that
 host's env files and `ANA_HOSTS` empty, which Bun keeps over an env file's: a verb run on another
 host reaches no further one, and two machines that list each other do not loop. `hosts` is the
 other hosts' `status` alone. None of these reads `.ana/` content beyond events and counts.

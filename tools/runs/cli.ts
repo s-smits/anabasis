@@ -11,11 +11,12 @@
  * how much of each login is used (`logins.ts`), `keep` keeps a run going across logins (`keep.ts`),
  * `copy` takes a stopped campaign whole to another worktree (`manage.ts`), `move` takes one to another
  * machine and goes on with it there (`move.ts`), and `on` and `hosts` run a verb on another machine
- * (`hosts.ts`).
+ * (`hosts.ts`). A verb that names a run no worktree here holds runs on the host that holds it
+ * (`routed`), and `holds` is what that host is asked.
  */
 import { runtimeProcess } from "#src/meta/process.ts";
 import { fresh } from "./fresh.ts";
-import { hosts, on } from "./hosts.ts";
+import { holds, hosts, on, routed, verbOn } from "./hosts.ts";
 import { keep } from "./keep.ts";
 import { logins } from "./logins.ts";
 import { continueRun, copy, launch, pause } from "./manage.ts";
@@ -50,6 +51,7 @@ const VERBS = {
   move,
   on,
   hosts,
+  holds,
 };
 const [verb, ...args] = Bun.argv.slice(2);
 const run = Object.entries(VERBS).find(([name]) => name === verb)?.[1];
@@ -58,6 +60,13 @@ if (run === undefined) {
     `usage: bun run runs ${Object.keys(VERBS).join("|")} ..., each verb's options in its file's head`,
   );
   runtimeProcess.exitCode = 1;
-} else await run(args);
+} else {
+  const { here, away } = await routed(verb ?? "", args);
+  for (const [host, words] of away) {
+    const code = await verbOn(host, words);
+    if (code !== 0) runtimeProcess.exitCode = code;
+  }
+  if (here !== null) await run(here);
+}
 // With the code a verb set: a verb that refused is not a success.
 runtimeProcess.exit();

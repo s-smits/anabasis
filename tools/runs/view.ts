@@ -29,11 +29,11 @@ import { type Called, calledBy, namesOf } from "#src/builder/names.ts";
 import { openingOf, planOf } from "#src/builder/opening.ts";
 import { type Campaign, campaignOf, type Handover, openSteps } from "#src/builder/handover.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { PRACTICE } from "../d2/prepare.ts";
 import { COMPARISON_OPTIONS } from "../d2/round.ts";
-import { logEvents, runs } from "./registry.ts";
+import { CLI, logEvents, runNamed } from "./registry.ts";
 
 /** The flags the table is asked with: the campaign command's, with the same names. */
 const VIEW_OPTIONS = {
@@ -175,20 +175,24 @@ export function decidedOn(events: readonly LogEvent[], values: Asked = {}): Deci
   );
 }
 
-/** `bun run runs view`. */
-export function view(args: readonly string[]): void {
+/** `bun run runs view`, in the worktree that holds the campaign, whose code its table's move is. */
+export async function view(args: readonly string[]): Promise<void> {
   const { values, positionals } = parseArgs({
     args: [...args],
     allowPositionals: true,
     options: VIEW_OPTIONS,
   });
   const [name] = positionals;
-  const tree = runtimeProcess.cwd();
-  const run = runs().find((found) => found.tree === tree && found.name === name);
-  if (name === undefined || run === undefined) {
+  if (name === undefined) {
     throw new Error(
-      `usage: bun run runs view <name> [--level N] [--target N] [--practice N] [--past-stop "<why>"]: ${name === undefined ? "name a campaign" : `this worktree holds no campaign ${name}`}`,
+      'usage: bun run runs view <name> [--level N] [--target N] [--practice N] [--past-stop "<why>"]',
     );
+  }
+  const run = runNamed(name);
+  if (run.tree !== runtimeProcess.cwd()) {
+    const io = { cwd: run.tree, stdin: "inherit", stdout: "inherit", stderr: "inherit" } as const;
+    runtimeProcess.exitCode = await capturedSpawn([capturedExecPath, CLI, "view", ...args], io).exited;
+    return;
   }
   const events = logEvents(run.path);
   const campaign = campaignOf(events);

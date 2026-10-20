@@ -227,7 +227,8 @@ export async function launch(args: readonly string[]): Promise<void> {
       "usage: bun run runs launch <name> [--login N] [--yes] -- <the campaign command's flags but --name>",
     );
   }
-  const held = everyRun().find((run) => run.name === name && isCampaign(run));
+  // By case too: on macOS's file system a name that differs only by case is the same folder.
+  const held = everyRun().find((run) => run.name.toLowerCase() === name.toLowerCase() && isCampaign(run));
   if (held !== undefined) {
     throw new Error(`${name} names a campaign in ${dirname(held.path)}: go on with it by runs continue`);
   }

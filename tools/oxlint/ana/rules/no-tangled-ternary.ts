@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 
 /**
  * A ternary may grow along its tail, and only so far. `a ? x : b ? y : z` reads as a list of
@@ -62,7 +63,22 @@ function cases(head: ESTree.ConditionalExpression): number {
 export const noTangledTernaryRule = defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: "A ternary may grow along its tail, up to three cases." },
+    docs: {
+      description: "A ternary may grow along its tail, up to three cases.",
+      examples: [
+        {
+          before: 'const word = page.available ? (findings === 0 ? "clear" : "findings") : "blocked";',
+          after:
+            'const found = findings === 0 ? "clear" : "findings";\nconst word = page.available ? found : "blocked";',
+        },
+        {
+          before:
+            'const label =\n  ending === "pass" ? "valid" : ending === "fail" ? "not valid" : ending === "flagged" ? "flagged" : "no result";',
+          after:
+            'const LABELS = new Map([["pass", "valid"], ["fail", "not valid"], ["flagged", "flagged"]]);\nconst label = LABELS.get(ending) ?? "no result";',
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       tooManyCases:
         "This ternary decides between {{count}} values, so reading the last one means holding every condition ruled out before it. Four cases is usually a `Map` keyed on what the tests compare, or a function whose branches return.",

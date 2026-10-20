@@ -1,4 +1,5 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
+import type { RuleExample } from "../../rule-examples.ts";
 
 /** Oxlint's `Function` covers the three declaration forms alone, so an arrow needs its own arm. */
 type AnyFunction = ESTree.Function | ESTree.ArrowFunctionExpression;
@@ -55,7 +56,21 @@ type AnyFunction = ESTree.Function | ESTree.ArrowFunctionExpression;
 export const noPassThroughWrapperRule = defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: "A function whose body only forwards its parameters is a second name." },
+    docs: {
+      description: "A function whose body only forwards its parameters is a second name.",
+      examples: [
+        {
+          before:
+            "function readOpening(dir: string) {\n  return loadOpening(dir);\n}\nexport const opening = readOpening(campaignDir);",
+          after: "export const opening = loadOpening(campaignDir);",
+        },
+        {
+          before:
+            "const textOf = (count: number) => String(count);\nexport const label = `${textOf(wins)} of ${textOf(untied)}`;",
+          after: "export const label = `${String(wins)} of ${String(untied)}`;",
+        },
+      ] satisfies RuleExample[],
+    },
     messages: {
       secondName:
         "`{{name}}` forwards its parameters to `{{callee}}` and does nothing else, so the two names are one function and a reader has to open both. Call `{{callee}}` at the sites, or give this one a job — a default, a narrowing, a fixed argument.",

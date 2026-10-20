@@ -10,7 +10,8 @@ whose licences require their notices to travel with the copies.
 - Copies: `tools/oxlint/anti-slop/`. Local changes: the plugin registers through
   `eslintCompatPlugin`; the `no-unknown-parameters`, `require-readable-spacing`, `no-array-filter-map`,
   `no-reflect-apply`, `no-reflect-get` and Effect rules are left out; `no-module-mocking` also
-  reads `mock.module` from `bun:test`; `rules/prefer-subpath-import.ts` and `shared/ast-node.ts`,
+  reads `mock.module` from `bun:test`; each rule's `meta.docs` carries this repository's
+  `examples`; `rules/prefer-subpath-import.ts` and `shared/ast-node.ts`,
   `shared/representation-owner.ts` and `shared/subpath-alias.ts` are this repository's own; and
   the plugin's code carries line-scoped lint suppressions.
 

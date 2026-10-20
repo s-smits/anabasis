@@ -8,13 +8,14 @@
  * instance that passes is a held-out task from then on, and every comparison may score it. The
  * Examiner is told that, or why the gate refused.
  *
- * No solve runs here unless the host can have the reference harness solve a draft task
- * (`try_task`): no stronger solver passes a task first, and the measured solver does not solve it
- * for its author (`docs/plan.md`, Phase 2). v1's solver matched whatever its author's side found,
- * and when sessions here did put each instance to a stronger solver, the first lost 14 of 25 tasks
- * at that solve and the second spent $48.45, of which the Examiner's own turns were $2.01. What a
- * task's author hears instead comes from the comparisons, one outcome a task with the tasks
- * counted by family or in a total beside them, at the next session's opening (`record.ts`).
+ * The only solves here are the reference harness's of a draft task, where the host can have it
+ * solve one (`try_task`, `measured`): no stronger solver passes a task first, and the measured
+ * solver does not solve it for its author (`docs/plan.md`, Phase 2). v1's solver matched whatever
+ * its author's side found, and when sessions here did put each instance to a stronger solver, the
+ * first lost 14 of 25 tasks at that solve and the second spent $48.45, of which the Examiner's own
+ * turns were $2.01. Of those solves the author hears their counts, turns and measures, and nothing
+ * else; the rest it hears comes from the comparisons, one outcome a task with the tasks counted by
+ * family or in a total beside them, at the next session's opening (`record.ts`).
  *
  * An Examiner is a new process each session, so the host keeps what a session cannot: an instance
  * an earlier session already wrote is not taken again, whatever id it would get; the home a

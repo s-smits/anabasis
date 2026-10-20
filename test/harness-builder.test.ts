@@ -31,6 +31,7 @@ import { closeCommand } from "../tools/d2/close.ts";
 import { harnessBuilder as command } from "../tools/d2/harness-builder.ts";
 import { HOST } from "../tools/d2/host.ts";
 import { importCommand } from "../tools/d2/import.ts";
+import * as prepare from "../tools/d2/prepare.ts";
 import { packetOf, settleCommand } from "../tools/d2/settle.ts";
 import { wordCommand } from "../tools/d2/word.ts";
 import { scriptedSeats } from "../tools/runs/rehearse.ts";
@@ -130,6 +131,23 @@ describe("a campaign run by its log", () => {
     expect(asked).toEqual([{ tasks: 7, minutes: 7 }]);
     expect(of(name, "exam.started")).toMatchObject([{ limits: { tasks: 7 } }]);
     expect(ending).toMatchObject({ move: "end", ending: "exam" });
+  });
+
+  it("ends on its environment where a move it began changed nothing, so the run is never left without an ending", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
+    const name = `${STEM}-empty-move`;
+    // The move that takes the pack's tasks in writes nothing, as the M1's release did on 20 October,
+    // where the draw held no task and the process exited with no ending on record.
+    const released = spyOn(prepare, "prepareCommand").mockResolvedValue(0);
+    const seats: Seats = {
+      seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
+    };
+    try {
+      await expect(harnessBuilder(seeded(name), seats)).rejects.toThrow("the move changed nothing");
+    } finally {
+      released.mockRestore();
+    }
+    expect(of(name, "campaign.ended")).toMatchObject([{ ending: "environment", move: "prepare" }]);
   });
 
   it("lays the reference harness in the Examiner's home where the campaign names no term, and none where it names off", async () => {

@@ -397,6 +397,10 @@ describe("a row of the table", () => {
       move: "prepare",
       why: "no task is released for practice: the contract's draw releases some",
     });
+    // A campaign that names no practice is released none: the release would take nothing.
+    expect(move([READ, ...HELD.flatMap(heldOut)], { ...PLAN, practice: 0 })).not.toMatchObject({
+      move: "prepare",
+    });
     // A word for other tasks has them written, and the event that acts on it names it.
     const word = (data: JsonObject) => event("campaign.word", data);
     expect(decide([...FIRST, word({ word: "tasks", why: "three batches tied" })], PLAN)).toEqual({

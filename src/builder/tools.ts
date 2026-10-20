@@ -331,7 +331,7 @@ export async function snapshot(bench: Bench): Promise<Snapshot> {
  *  its start to its end, the verifier's among them, of its time limit, the model's own turns, and
  *  the tokens the model read and wrote over them. Empty where the log holds no end for the solve.
  *  A Builder that is not told this cannot tell a harness that passes with a minute to spare from
- *  one that passes at the limit (`docs/plan.md`, Phase 2). The tokens are the one measure of what
+ *  one that passes at the limit (`7f0add79:docs/plan.md`, Phase 2). The tokens are the one measure of what
  *  a tool or a program costs a solve that the Builder can act on: on 10 October a promoted
  *  harness's solve read 8,600 to 13,200 tokens over two turns in three campaigns, nearly all of it
  *  the prompt read twice. */

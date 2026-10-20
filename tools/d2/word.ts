@@ -6,7 +6,7 @@
  *   bun tools/d2/word.ts --name buffer --budget 250
  *
  * Until 2026-10-09 the operator could steer a campaign only by running a command, which meant
- * stopping the one that ran (`docs/plan.md`, row F50). A word is one event in the campaign's log
+ * stopping the one that ran (`7f0add79:docs/plan.md`, row F50). A word is one event in the campaign's log
  * (`campaign.word`). The campaign command reads it at the next move's boundary
  * (`pendingWords`, `src/builder/word.ts`), so it changes the move after the one that is running
  * and nothing in it, and it is never waited for: a campaign with no word left goes on.

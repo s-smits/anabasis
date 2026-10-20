@@ -4,7 +4,7 @@
  * (`sizeLines`).
  *
  * The plan fixes the sample size before each round and never changes it once results are visible
- * (`docs/plan.md`, principle 7), so the size is a choice made on arithmetic, and the arithmetic is
+ * (`7f0add79:docs/plan.md`, principle 7), so the size is a choice made on arithmetic, and the arithmetic is
  * the comparison's own test (`flipP`, `power` and `detectable`, `compare.ts`): exact, with no
  * normal approximation, since the sizes in question are the ones where an approximation is worst.
  * Nothing here decides.

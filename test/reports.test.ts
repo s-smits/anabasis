@@ -262,7 +262,7 @@ describe("the stop rule", () => {
     expect(stopRule([...two, reported("g-1", "step", "h3")])).toEqual(counted(2, 0));
     // Every comparison on record is read, whatever setting id it carries: the id names the host's
     // code too, so until 2026-10-11 a tree moved to a new commit began the count again
-    // (`docs/simplify.md`, A4). A harness compared again under another id is one harness still.
+    // (`7f0add79:docs/simplify.md`, A4). A harness compared again under another id is one harness still.
     const earlier = [...sessions, flat("b-1", "h2", { setting: "s1" }), flat("b-2", "h3", { setting: "s1" })];
     expect(stopRule([...earlier, flat("b-3", "h4", { setting: "s2" })])).toEqual(counted(3, 3));
     expect(stopRule([...earlier, flat("b-3", "h3", { setting: "s2" })])).toEqual(counted(2, 2));

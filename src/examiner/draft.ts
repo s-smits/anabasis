@@ -2,7 +2,7 @@
  * Move 2 of a campaign that opens from a prompt: the Examiner drafts the exam.
  *
  * A campaign opens either over a stored pack a v1 Builder wrote, which four flags name, or from a
- * prompt (`docs/plan.md`, row F53). Here the operator's prompt names a domain, and one session
+ * prompt (`7f0add79:docs/plan.md`, row F53). Here the operator's prompt names a domain, and one session
  * drafts what a campaign needs before its first task is solved: the public rules, each with the
  * source that states it, the answer format, one check for each rule, a few example tasks, and
  * controls, which are answers to those examples with a known label.

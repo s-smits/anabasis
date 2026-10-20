@@ -39,7 +39,7 @@
  * the host's and is never told to the Examiner. The campaign command names it from what the
  * campaign is short of (`examTasks`, `tools/d2/campaign-terms.ts`); run by hand it defaults to 12,
  * a scored set's size until 12 October (`SIZE.tasks` is 24 since). Asking for many at once is what v1 found dilutes them, a probe grown to
- * 25 tasks in 10 of 13 cases (`docs/plan.md`).
+ * 25 tasks in 10 of 13 cases (`7f0add79:docs/plan.md`).
  *
  * `--reference-home on`, the default, lays a copy of the reference harness the gate solves with in
  * the home, laid afresh each session; `off` keeps the home blind (the campaign's term

@@ -25,7 +25,7 @@
  * A campaign's setting does not change. Until 2026-10-11 `--new-setting` changed it, as when the
  * budget was set anew, and every fold then read the log by setting: the stop rule, the tasks
  * both harnesses exhausted, the outcome an Examiner hears, the size of the next comparison. The
- * ladder went (`docs/simplify.md`, A1), and the flag and the filters with it (A4): another solver,
+ * ladder went (`7f0add79:docs/simplify.md`, A1), and the flag and the filters with it (A4): another solver,
  * another wall or another number of turns is another campaign.
  *
  * A record is written as a command begins its comparison and not before, so a command that is
@@ -40,7 +40,7 @@
  * The prompts a solver is given before a solve stops without an answer are v1's cap on nudges,
  * `LIMITS.turns`, the same for every solve: every finished solve of the first rounds was given
  * one, so the cap bound no solve, and until 2026-10-11 `--solve-turns` named it and the record
- * held it (`docs/simplify.md`, A3). A record that holds another count is refused. The model's own
+ * held it (`7f0add79:docs/simplify.md`, A3). A record that holds another count is refused. The model's own
  * turns are the budget told to the solver and enforced, which seconds cannot be on a loaded host.
  *
  * What does not follow the setting is the campaign's own: a task's state and the harnesses it

@@ -232,7 +232,7 @@ describe("what the gate refuses, by its code", () => {
     expect(refusals(stopped, WANTED)).toEqual([
       {
         code: "stopped",
-        why: 'the campaign has had 3 moves that could have shown a gain since its last step, and none did: its patience is spent (docs/plan.md, row F48; --patience). To go on all the same, pass --past-stop "<why>", which is logged',
+        why: 'the campaign has had 3 moves that could have shown a gain since its last step, and none did: its patience is spent (--patience). To go on all the same, pass --past-stop "<why>", which is logged',
       },
     ]);
     expect(codes(stopped, { pastStop: "the budget was set anew" })).toEqual([]);

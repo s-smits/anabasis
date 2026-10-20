@@ -6,7 +6,7 @@
  * of the answer and the task, under the wall a seat's commands run under with the network closed. A
  * check's tools run in that same wall. No wall of the verifier's own is needed, as v1's was while
  * its Builder wrote the checks: here an answer is data and a check is the exam side's code
- * (`docs/simplify.md`, W6).
+ * (`7f0add79:docs/simplify.md`, W6).
  *
  * The verdict is a pass, a fail naming the checks that refused the answer, faulty when a check
  * itself failed on the request (it threw, returned no boolean, or is missing), or a non-result when

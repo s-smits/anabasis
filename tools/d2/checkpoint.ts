@@ -7,7 +7,7 @@
  *
  * With no `--reference` and no `--new` it compares the latest harness a Builder session left with
  * the Starter Built Harness, which is the plan's checkpoint: several sessions, then one comparison
- * on fresh solves (`docs/plan.md`, Phase 5). While no session has left a harness there is nothing
+ * on fresh solves (`7f0add79:docs/plan.md`, Phase 5). While no session has left a harness there is nothing
  * to compare, and the command says so. The plan's first experiment is no checkpoint: it is the
  * first round (`round.ts`).
  *

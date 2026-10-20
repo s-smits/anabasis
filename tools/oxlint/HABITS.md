@@ -1,6 +1,6 @@
 # Code that passes the first time
 
-The habits of `AGENTS.md` section 12, moved here on 11 October (`docs/simplify.md`, T1): a
+The habits of `AGENTS.md` section 12, moved here on 11 October (`7f0add79:docs/simplify.md`, T1): a
 session that writes no code does not read them, and one that does reads them whole before its
 first line. The contract itself is the ten lines of section 12 there: the gate, strict mode, never
 turn a rule off, and this file.

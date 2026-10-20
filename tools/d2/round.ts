@@ -6,7 +6,7 @@
  *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --session b-1 \
  *     --builder claude/claude-opus-5-5 --tasks <eight task ids> --cap 625
  *
- * That is the plan's first round and its gate G0 (`docs/plan.md`, Phase 0). The Builder forks the
+ * That is the plan's first round and its gate G0 (`7f0add79:docs/plan.md`, Phase 0). The Builder forks the
  * Starter Built Harness and builds on it, and the harness it leaves is compared with the starter
  * on the eight tasks named, two solves a harness, under today's limits and a dollar cap. The same
  * comparison shows how the starter does by itself: the report holds, for each harness, on how
@@ -45,7 +45,7 @@
  * fail. One ruled a check defect or unclear, and with no reviewer every one, sets its task aside
  * until a person has labelled it (`tools/d2/settle.ts`). The comparison is read at the one budget
  * its solves were told; until 2026-10-11 `--budget turns=40` read the same solves at shorter
- * budgets as well, which read a solver told the longer one (`docs/simplify.md`, A2).
+ * budgets as well, which read a solver told the longer one (`7f0add79:docs/simplify.md`, A2).
  *
  * Who solves, what a solve is held to and which tasks are scored are the campaign's setting, which
  * its log records once (`setting.ts`). A round that names none of it runs under the record, and
@@ -142,7 +142,7 @@ export type Seated = (
   given: { readonly builder: string | undefined; readonly reference: string },
 ) => Seats;
 
-/** The flags of every command that compares, and their defaults: the plan's (`docs/plan.md`,
+/** The flags of every command that compares, and their defaults: the plan's (`7f0add79:docs/plan.md`,
  *  Tuning). */
 export const COMPARISON_OPTIONS = {
   reference: { type: "string", default: PROMOTED },
@@ -398,7 +398,7 @@ export function capRead(cap: string, reserve: string): Cap {
 
 /**
  * The dollar cap `--cap` and `--reserve` name. A command whose solves are paid for is refused
- * without one (`docs/plan.md`, Phase 0); a simulation, whose seats are scripts, may name none.
+ * without one (`7f0add79:docs/plan.md`, Phase 0); a simulation, whose seats are scripts, may name none.
  */
 export function capNamed(
   values: { readonly cap?: string | undefined; readonly reserve: string },
@@ -436,7 +436,7 @@ export function refereeNamed(
  * reference against itself where the comparison carries it (`aaLines`); the tasks it drew, by what
  * became of each (`accounted`); and `valid`,
  * each harness by itself, as the tasks by how many of their solves were valid, which is what the
- * plan's first gate reads of the starter, the reference harness of the first round (`docs/plan.md`,
+ * plan's first gate reads of the starter, the reference harness of the first round (`7f0add79:docs/plan.md`,
  * G0); the objective's margin. None for a report that compared nothing.
  */
 export function reportLines({

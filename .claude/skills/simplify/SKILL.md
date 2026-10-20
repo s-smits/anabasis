@@ -108,7 +108,7 @@ behaviour the minimum must keep: prefer the form with about half the machinery t
 all of the result, measured on both sides, with `measure.py` for the mechanism and a replay or the
 decision the code feeds for what it still does.
 
-v2's own review named four forms its growth took (`docs/simplify.md`, section 5), and each is a
+v2's own review named four forms its growth took (`7f0add79:docs/simplify.md`, section 5), and each is a
 rung-1 or rung-2 question: two generations of one mechanism standing side by side; a weak seat
 compensated by more rows in the controller instead of being mended at the seat; an incident
 written into the code as a date and a branch; and proof machinery carried from v1 for a threat v2

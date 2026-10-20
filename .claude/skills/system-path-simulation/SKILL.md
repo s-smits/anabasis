@@ -61,6 +61,7 @@ and why the next was not needed.
    The test in `test/` that fails without the fix is what keeps it found.
 10. **Clean up.** A seed is listed by the pulse and read by `runs replay`.
     Move it to the Trash when its question is answered: `/usr/bin/trash .ana/d2/sim-<what>`.
+    `bun run runs retire` deletes one left idle for a day, in a worktree or in the archive.
 
 ## What a rehearsal walks, and what it cannot say
 

@@ -104,8 +104,6 @@ const STEPS = [
 ] as const;
 const TEST_FILE = /^test\/[^/]+\.test\.ts$/u;
 const GATE = join(import.meta.dir, "gate.ts");
-/** The one file outside its two folders that the gate imports, through `src/meta/bounded-text.ts`. */
-const TRUNCATE = "vendor/pi-coding-agent/core/tools/truncate.ts";
 const PROVED = {
   static: "its static steps and nearby tests passed on its own checkout",
   whole: "passed the whole gate on its own checkout",
@@ -161,18 +159,27 @@ function parentOf(root: string, commit: string): string {
     : git(root, ["hash-object", "-t", "tree", "/dev/null"]);
 }
 
-/** The checker that runs every pass, as one digest: this gate and every file it can import, read
+/** The checker that runs every pass, as one digest: this gate and the files its imports reach, read
  *  from the caller's checkout as it stands, since `GATE` runs from there over each target. Its
  *  steps run `bun run …` in the target's checkout (`step`), so the lint plugins and configs, the
- *  test wrapper, `package.json` and `bun.lock` they use are the target's, which its tree keys. */
+ *  test wrapper, `package.json` and `bun.lock` they use are the target's, which its tree keys. Until
+ *  20 October the digest took every file of `tools/runtime` and `src/meta`, so a caller whose lint
+ *  or `src/meta/git.ts` had changed proved again what an equal gate had passed: along the chain of
+ *  #267 to #288 it took four values where the gate's own files took two, and the chain's bottom
+ *  commits were proved three times. */
 function checkerDigest(): string {
+  const transpiler = new Bun.Transpiler({ loader: "ts" });
+  const reached = new Set<string>();
+  const reach = (file: string): void => {
+    if (reached.has(file)) return;
+    reached.add(file);
+    for (const { path } of transpiler.scanImports(readFileSync(file, "utf8"))) {
+      if (path.startsWith(".")) reach(Bun.resolveSync(path, dirname(file)));
+    }
+  };
+  reach(GATE);
   const top = join(import.meta.dir, "..", "..");
-  const files = runTextSyncOrThrow(["find", "tools/runtime", "src/meta", TRUNCATE, "-type", "f"], {
-    cwd: top,
-  });
-  const digests = lines(files)
-    .toSorted()
-    .map((file) => `${file} ${sha256OfFile(join(top, file))}`);
+  const digests = [...reached].toSorted().map((file) => `${relative(top, file)} ${sha256OfFile(file)}`);
   return sha256(digests.join("\n")).slice(0, 16);
 }
 

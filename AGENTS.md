@@ -766,9 +766,12 @@ A release takes, in this order:
 1. the tasks no solve answered in two comparisons;
 2. half, rounded up, of the tasks the reference harness failed in a solve of its last reading of
    each; the other half stays held for the comparisons;
-3. the rest by the contract's draw from the tasks neither list holds, less those the reference
-   answered in every solve of its last reading of them (`releaseOrder`, `src/kernel/reports.ts`,
-   which `tools/d2/prepare.ts` calls).
+3. the rest by the contract's draw from every task neither list holds, those the reference
+   answered in every solve among them, since a practice pass returns the objective's measure
+   (`releaseOrder`, `src/kernel/reports.ts`, which `tools/d2/prepare.ts` calls).
+
+The release reads the reference's own solves alone, never the other harness's answers, so which
+held-out task a new harness won leaves the practice set unchanged (rule 3).
 
 The tasks that leave the reference room are what a Builder has to work on. A task that a
 comparison scored before its release keeps that comparison's solves on the exam side: a Builder is

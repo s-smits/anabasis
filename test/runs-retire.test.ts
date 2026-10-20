@@ -1,6 +1,7 @@
 // Retiring what the worktrees no longer use: an idle campaign leaves its worktree for the archive,
 // whole, and readers find it there; a worktree nothing uses goes once it holds no run log, one with
-// an uncommitted change only after a week, and a commit no branch holds keeps a tag.
+// an uncommitted change only after a week, and a commit no branch holds keeps a tag. An idle seed
+// is deleted instead, the archive's too.
 import { afterAll, describe, expect, it } from "bun:test";
 import {
   existsSync,
@@ -29,8 +30,7 @@ const dirty = join(root, "dirty");
 const archive = join(main, "data", "runs", "here");
 
 /** A campaign `name` in `at`, its log last written `daysAgo` days before now. */
-function campaign(at: string, name: string, daysAgo: number): void {
-  const folder = join(at, ".ana", "d2", name);
+function campaign(at: string, name: string, daysAgo: number, folder = join(at, ".ana", "d2", name)): void {
   mkdirSync(folder, { recursive: true });
   writeFileSync(join(folder, "log.jsonl"), "");
   writeFileSync(join(folder, "launch-run-1.json"), "{}");
@@ -124,5 +124,26 @@ describe("retiring", () => {
     archiveIdle(sweep(0, true));
     expect(readFileSync(join(archive, ".live", "s.jsonl"), "utf8")).toBe(main);
     expect(readFileSync(join(archive, ".live", "s.jsonl.wt2"), "utf8")).toBe(other);
+  });
+
+  it("deletes an idle seed, in a worktree or in the archive, and keeps a young one", () => {
+    campaign(main, "sim-old", 2);
+    campaign(main, "sim-young", 0);
+    campaign(main, "sim-filed", 2, join(archive, "sim-filed"));
+    for (const folder of ["sim-old", "sim-young"].map((name) => join(main, ".ana", "d2", name))) {
+      writeFileSync(join(folder, "seed.json"), "{}");
+    }
+    writeFileSync(join(archive, "sim-filed", "seed.json"), "{}");
+    const gone = archiveIdle(sweep(0, true));
+    expect(gone).toContain(join(main, ".ana", "d2", "sim-old", "log.jsonl"));
+    expect(
+      [
+        join(main, ".ana", "d2", "sim-old"),
+        join(archive, "sim-old"),
+        join(archive, "sim-filed"),
+        join(main, ".ana", "d2", "sim-young"),
+        join(archive, "old"),
+      ].map((path) => existsSync(path)),
+    ).toEqual([false, false, false, true, true]);
   });
 });

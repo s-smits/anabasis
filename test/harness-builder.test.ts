@@ -150,6 +150,30 @@ describe("a campaign run by its log", () => {
     expect(of(name, "campaign.ended")).toMatchObject([{ ending: "environment", move: "prepare" }]);
   });
 
+  it("refuses a paid campaign whose target is too small to read a step, before any move", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
+    const name = `${STEM}-small`;
+    // At the default level of 0.02 a step takes six tasks, all won.
+    const model = "claude/claude-opus-5-5";
+    const paid = [
+      ...seeded(name),
+      "--budget",
+      "100",
+      "--builder",
+      model,
+      "--examiner",
+      model,
+      "--reviewer",
+      model,
+    ];
+    await expect(harnessBuilder([...paid, "--target", "5", "--dry-run"])).rejects.toThrow(
+      "name a --target of at least 6",
+    );
+    expect(await harnessBuilder([...paid, "--target", "6", "--dry-run"])).toMatchObject({
+      move: "accept",
+    });
+  });
+
   it("lays the reference harness in the Examiner's home where the campaign names no term, and none where it names off", async () => {
     // On unless named since 19 October: the supply ablation of that day held 4 of 8 drafts with the
     // copy and 1 of 8 blind. A campaign that names `off` keeps the ruling of 12 October.

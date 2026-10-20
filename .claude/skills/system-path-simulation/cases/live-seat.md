@@ -16,6 +16,7 @@ and in the rules below.
 | An Examiner session | cut where the session should start | `bun --env-file=<file> tools/d1b/examine.ts <examine flags> --name sim-<what> --session x-<n>` | the Examiner's turns, admission solves and their Referee rulings where seated |
 | A round's solves, without its Builder | cut by `--events` right after a recorded `build.finished` | the round again, with that session's `--session` | the comparison's solves, under its `--cap` |
 | A whole round | cut before the round's `build.started` | the round, with a `--session` the seed has not seen | a Builder session and every solve |
+| One Referee ruling | cut by `--events` right before the recorded ruling | `scripts/referee-seat.ts --solve <id> --reviewer <model>`, as `start`'s command | one ruling: its replay, probes and model turns |
 | One solve | none: it reads the stored sweep | `bun tools/m0/live-solve.ts <pack flags> --task <id> --live` | one solve |
 
 The second row rests on a round keeping no state of its own: run again under a session whose
@@ -41,7 +42,7 @@ bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat <scra
   commit and the command in `<out>.json`, runs the command niced in a process group of its own on
   the login named, ends the group at `--cap` dollars billed since that event or at `--minutes`, and
   prints the reading when the group is gone. It checks every 30 seconds, so an in-flight request
-  can take it past the named bound. It prints each gate's word as it lands. An abrupt end can leave
+  can take it past the named bound. It prints each gate, ruling and session end as it lands. An abrupt end can leave
   roots; inspect them with `bun run runs stop sim-<what>` and follow run-management for cleanup.
 - Run `start` as one background command and wait for its end. It is the seat's end, so nothing
   re-arms a monitor every 30 minutes, and no turn ends with a seat running unwatched: the
@@ -51,6 +52,19 @@ bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat <scra
   or `unread` (`measuredGate`, `heldAtGate`), how many were held, the turns the reference's valid
   gate answers took (`gateAnswers`), the calls by tool, and with `--mention` the calls whose
   arguments name a text. It quotes no task and no answer.
+- `watch --seat <prefix>` prints the same lines for a seat already running, from where it began,
+  until its process group is gone, then the reading: one Monitor in Claude Code, or any agent's
+  line reader, follows a seat that another command started.
+- `due <prefix>...` prints what each seat wrote since `due` last looked (kept in `<prefix>.seen`).
+  With `--hook` it writes them to stderr and exits 2 when there is any, so an agent harness that
+  reads exit codes stops the agent from ending its turn with a seat's events unread. In Claude Code
+  that is a Stop hook in the worktree's `.claude/settings.local.json`, removed with the seats:
+
+  ```json
+  { "hooks": { "Stop": [{ "hooks": [{ "type": "command",
+    "command": "bun .claude/skills/system-path-simulation/scripts/live-seat.ts due <scratch>/arm-a <scratch>/arm-b --hook" }] }] } }
+  ```
+
 - `start` uses `capturedExecPath`, the Bun that runs it, and sets `RUN_REMOTE=0` for the seat.
   Its seed and selected login stay on the local runner.
 

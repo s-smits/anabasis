@@ -821,6 +821,8 @@ bun run runs fresh | launch | continue | keep | pause | copy | fetch | retire | 
 - `--parent latest` and `--reference promoted`, which is the harness last promoted, and the
   starter until one is;
 - a Builder session of 24 hours (1,440 minutes) of its own time, 300 turns and 24 practice solves;
+  a Builder that leads its campaign has no count of practice solves, only as many as what is left
+  of the campaign's total holds a reserve for (`practiceLeft`, `src/builder/tools.ts`);
 - a solve of 20 of the model's own turns and 30 minutes, whoever solves (`LIMITS`,
   `tools/d2/campaign.ts`), and 24 prompts.
 

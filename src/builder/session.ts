@@ -371,7 +371,7 @@ export async function session(
         family: task.family,
         ...record(recorded, version, parent.digest),
       })),
-      // The count it opens with is the one `practice` holds it to: its own, or its cap's where fewer.
+      // The count it opens with is the one `practice` holds it to (`practiceLeft`).
       {
         ...limits,
         practiceSolves: practiceLeft(bench, recorded),

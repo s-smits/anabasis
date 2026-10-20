@@ -12,7 +12,7 @@
  * `copy` takes a stopped campaign whole to another worktree (`manage.ts`), `move` takes one to another
  * machine and goes on with it there (`move.ts`), and `on` and `hosts` run a verb on another machine
  * (`hosts.ts`), `fetch` takes a copy of a run another machine holds into the archive, to read here (`move.ts`), and `retire` moves
- * each idle campaign into the archive and deletes the worktrees nothing uses, here and on every host (`retire.ts`). A verb that names a run no worktree here holds runs on the host that holds it
+ * each idle campaign into the archive, deletes each idle seed and the worktrees nothing uses, here and on every host (`retire.ts`). A verb that names a run no worktree here holds runs on the host that holds it
  * (`routed`), and `holds` is what that host is asked.
  */
 import { runtimeProcess } from "#src/meta/process.ts";

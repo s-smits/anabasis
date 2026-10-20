@@ -53,6 +53,9 @@ import { gateAnswers, gateBilled, heard, measuredGate, TRIED, UNAFFORDED } from 
 /** The home's copy of the reference harness, where the campaign's term lays one there. */
 const REFERENCE_HOME = "reference-harness";
 
+/** The author's answer to a draft put to the checks under the draft's own id, read once (`gated`). */
+type Proof = () => Promise<Verdict | null>;
+
 /** What a task-writing session is handed: who sits, as far as this mode reads it, and its campaign. */
 interface Terms {
   /** Names the session in the log, and prefixes the ids of the tasks it writes. */
@@ -81,7 +84,7 @@ interface Terms {
    *  comparison is held to, made at the asking of `session`: its start names the session, so no
    *  comparison counts it and no Builder is shown it (`pairsOf`, `practiceRan`). It is the solve
    *  launcher a comparison uses, called (`tools/d1b/examine.ts`). Given, a task is held out by
-   *  `try_task` on `TRIED` such solves; null, by `propose_tasks` on its package's shape. */
+   *  `try_task` on up to `TRIED` such solves; null, by `propose_tasks` on its package's shape. */
   readonly probe: ((task: TaskPackage, session: string, kill: AbortSignal) => Promise<Ending>) | null;
 }
 
@@ -120,7 +123,7 @@ const GATES = {
   },
   try_task: {
     label: "Try tasks",
-    description: `Put task instances to the host's gate and return at once: the shape of each package, then ${String(TRIED)} solves of it by the reference harness, as the system prompt's section on the gate says. What the gate says of each comes with a later tool result. Each instance is a family, a public input and hidden values, in the shape of the existing tasks.`,
+    description: `Put task instances to the host's gate and return at once: the shape of each package, then up to ${String(TRIED)} solves of it by the reference harness, one at a time, as the system prompt's section on the gate says. What the gate says of each comes with a later tool result. Each instance is a family, a public input and hidden values, in the shape of the existing tasks.`,
   },
 } as const;
 /** What only the checks read of an instance, as each tool that takes one describes it. */
@@ -199,69 +202,28 @@ function shown(measure: number): string {
   return String(Number(measure.toPrecision(6)));
 }
 
-/** What the gate reads of one package: its shape, and under `try_task` the reference harness's
- *  solves of a package whose shape passed, `TRIED` of them at once, with what they billed. The task
- *  is held out where the solves that gave a reading leave the reference room as a comparison reads
- *  it (`informative`): a valid answer and a fail, or valid answers apart by the objective; or no valid answer where its author's answer passes on it (`gated`). Until 16 October
- *  the gate read no objective, and of the drafts five fresh campaigns' gates refused as answered
- *  every time, 6 held valid answers more than 1% apart. A solve that ended in no reading, or in
- *  a rejection the Referee did not rule earned (`probing`, `tools/d1b/examine.ts`), is no reading,
- *  and leaves the draft unmeasured only where the readings left do not decide it: every one valid
- *  short of `TRIED`, or none. Until 15 October any such solve refused the draft unmeasured: 29 of
- *  the 174 drafts of four campaigns, 20 of them on readings that already held both a pass and a
- *  fail, or only fails beside a passing proof (main0_5_1 14, buffer-pr169-opus 5). The
- *  Examiner hears the counts; no answer and no trace of a solve reaches it. The session bounds them: `stop` is the session's own signal, which its wall, its end
- *  and a killed run abort, and it is the kill a comparison's solves take (`probe`), so a wall that
- *  fires mid-try leaves no solve running and the task refused unmeasured. `ahead` is the drafts of
- *  the same call measured beside this one (`proposeTool`). */
-async function measured(
-  desk: Desk,
+/** What the reference harness's readings of a draft so far show (`measured`): the counts, its
+ *  valid answers with their turns and measures, its author's measure where the contract declares
+ *  an objective, and whether they leave the reference room as a comparison reads it
+ *  (`informative`): a valid answer and a fail, or valid answers apart by the objective, or by the
+ *  author's answer; or no valid answer where its author's answer passes on it. Each later reading
+ *  only adds to them, so room once shown stays shown. */
+async function seenOf(
+  { request: { contract, log } }: Desk,
   task: TaskPackage,
-  stop: AbortSignal,
-  { ahead, proof }: { readonly ahead: number; readonly proof: () => Promise<Verdict | null> },
+  {
+    from,
+    readings,
+    proof,
+  }: { readonly from: number; readonly readings: readonly Ending[]; readonly proof: Proof },
 ) {
-  const { contract, log, id, probe } = desk.request;
-  if (carries([task.publicInput, task.hidden], desk.planted)) return { reason: PLANTED, said: "" };
-  const packaged = packageGate(contract, task);
-  if (packaged.outcome === "refused") return { reason: packaged.reason, said: "" };
-  if (probe === null) return { reason: null, said: "" };
-  // The three solves are held at the campaign's reserve before any starts, beside the solves in
-  // flight (`affords`) and those of the call's drafts ahead of this one, which start with it and may
-  // not be in flight yet: until 14 October nothing held them, and two reserves left started three.
-  if (!affords(log, TRIED * (ahead + 1))) return { reason: UNAFFORDED, said: "" };
-  const from = read(log).length - 1;
-  const endings = await Promise.all(Array.from({ length: TRIED }, () => probe(task, id, stop)));
-  const readings = endings.filter(({ outcome }) => outcome !== "non-result");
   const solves = readings.length;
   const valid = readings.filter(({ outcome }) => outcome === "pass").length;
-  const unread =
-    solves < TRIED
-      ? `, ${String(TRIED - solves)} of them ending in no reading or in a rejection the Referee did not rule earned`
-      : "";
-  // The turns each valid answer took, as the session's later ones are told by family, and the
-  // objective of each, by which a task the reference answers every time still leaves room.
   const answers = gateAnswers(read(log), from).get(taskVersion(task)) ?? [];
   // The author's proof is read only where it decides: every solve valid, or none (`gated`).
-  const checked = valid === solves || valid === 0 ? await proof() : null;
+  const checked = solves > 0 && (valid === solves || valid === 0) ? await proof() : null;
   const authored =
     checked?.kind === "pass" && contract.objective !== undefined ? checked.objective : undefined;
-  const took = answers.flatMap(({ turns: each }) => (each === null ? [] : [each]));
-  const turns = took.length === 0 ? "" : `, taking ${took.join(", ")} of the solver's own turns`;
-  // The measures by the objective, theirs and the author's, which decide room where every solve is
-  // valid (`informative`): until 19 October the Examiner was told neither, and 181 of the 338
-  // drafts five campaigns' gates refused as answered 3 of 3 with measures held answers apart by
-  // less than the margin then in force, 0.01, none of which their author could see.
-  const measures = answers.flatMap(({ measure }) => (measure === null ? [] : [shown(measure)]));
-  const theirs = measures.length === 0 ? "" : `, its valid answers measuring ${measures.join(", ")}`;
-  const yours =
-    authored === undefined ? "" : `, and your answer that passed try_answer on it ${shown(authored)}`;
-  const counted = `the reference harness answered it validly in ${String(valid)} of ${String(TRIED)} solves${turns}${theirs}${yours}${unread}`;
-  const unmeasured = `${counted}, so it is not measured`;
-  const unsolved = solves > 0 && valid === 0;
-  // The rule itself is the system prompt's, said once there (17 October).
-  const roomless = `${counted}, ${unsolved ? "and no answer of yours passed try_answer on it" : "which leaves no room"}`;
-  // Room as a comparison reads it (`informative`), on the reference's side alone; a task it never
-  // answers is held on its author's proof (`gated`), so no feasible task is named here.
   const objective = contract.objective && { direction: contract.objective.direction };
   const pair: Paired = {
     task: taskVersion(task),
@@ -273,16 +235,83 @@ async function measured(
     ),
   };
   const bests = new Map(authored === undefined ? [] : [[pair.task, authored]]);
-  const some = valid > 0 && informative(pair, "old", new Set(), bests);
+  // A task the reference never answers is held on its author's proof, so no feasible task is
+  // named to `informative`.
+  const unsolved = solves > 0 && valid === 0;
+  const room = unsolved ? checked?.kind === "pass" : valid > 0 && informative(pair, "old", new Set(), bests);
+  return { solves, valid, answers, authored, unsolved, room };
+}
+
+/** What the gate reads of one package: its shape, and under `try_task` the reference harness's
+ *  solves of a package whose shape passed, one at a time and at most `TRIED`, with what they
+ *  billed. The task is held out at the first reading after which the readings leave the reference
+ *  room (`seenOf`), since no later one could take it away. Until 20 October all `TRIED` ran at
+ *  once. Replayed in the order they started, the gates of buffer r3, r5, r6 and r7 and
+ *  esp32-fresh-opus decide each of their 304 drafts as they did on 627 of their 912 solves, $89.80
+ *  of $152.90; two at once and a third where those leave it open would have run 749, $118.42. One
+ *  at a time, the buffer gates' summed time falls by 262 minutes, a solve ending before the
+ *  slowest of three, and esp32's, whose drafts the reference mostly answered every time, rises by
+ *  176 minutes over 174 drafts, moving its ten sessions' ends by at least 6.8 minutes in all.
+ *  Until 16 October the gate read no objective, and of the drafts five fresh campaigns' gates
+ *  refused as answered every time, 6 held valid answers more than 1% apart. A solve that ended in
+ *  no reading, or in a rejection the Referee did not rule earned (`probing`,
+ *  `tools/d1b/examine.ts`), is no reading, and leaves the draft unmeasured only where the readings
+ *  left do not decide it: every one valid short of `TRIED`, or none. Until 15 October any such solve refused the draft unmeasured: 29 of
+ *  the 174 drafts of four campaigns, 20 of them on readings that already held both a pass and a
+ *  fail, or only fails beside a passing proof (main0_5_1 14, buffer-pr169-opus 5). The Examiner
+ *  hears the counts, of the solves that ran; no answer and no trace of a solve reaches it. The
+ *  session bounds them: `stop` is the session's own signal, which its wall, its end and a killed
+ *  run abort, and it is the kill a comparison's solves take (`probe`), so a wall that fires
+ *  mid-try leaves no solve running, starts no other, and leaves the task refused unmeasured.
+ *  `ahead` is the drafts of the same call measured beside this one (`proposeTool`). */
+async function measured(
+  desk: Desk,
+  task: TaskPackage,
+  stop: AbortSignal,
+  { ahead, proof }: { readonly ahead: number; readonly proof: Proof },
+) {
+  const { contract, log, id, probe } = desk.request;
+  if (carries([task.publicInput, task.hidden], desk.planted)) return { reason: PLANTED, said: "" };
+  const packaged = packageGate(contract, task);
+  if (packaged.outcome === "refused") return { reason: packaged.reason, said: "" };
+  if (probe === null) return { reason: null, said: "" };
+  // All three solves are held at the campaign's reserve before any starts, beside the solves in
+  // flight (`affords`) and those of the call's drafts ahead of this one, which start with it and may
+  // not be in flight yet: until 14 October nothing held them, and two reserves left started three.
+  if (!affords(log, TRIED * (ahead + 1))) return { reason: UNAFFORDED, said: "" };
+  const from = read(log).length - 1;
+  const readings: Ending[] = [];
+  let ran = 0;
+  let seen: Awaited<ReturnType<typeof seenOf>>;
+  do {
+    const ending = await probe(task, id, stop);
+    ran += 1;
+    if (ending.outcome !== "non-result") readings.push(ending);
+    seen = await seenOf(desk, task, { from, readings, proof });
+  } while (!seen.room && ran < TRIED && !stop.aborted);
+  const { solves, valid, answers, authored, unsolved } = seen;
+  const unread =
+    solves < ran
+      ? `, ${String(ran - solves)} of them ending in no reading or in a rejection the Referee did not rule earned`
+      : "";
+  // The turns each valid answer took, as the session's later ones are told by family.
+  const took = answers.flatMap(({ turns: each }) => (each === null ? [] : [each]));
+  const turns = took.length === 0 ? "" : `, taking ${took.join(", ")} of the solver's own turns`;
+  // The measures by the objective, theirs and the author's, which decide room where every solve is
+  // valid (`informative`): until 19 October the Examiner was told neither, and 181 of the 338
+  // drafts five campaigns' gates refused as answered 3 of 3 with measures held answers apart by
+  // less than the margin then in force, 0.01, none of which their author could see.
+  const measures = answers.flatMap(({ measure }) => (measure === null ? [] : [shown(measure)]));
+  const theirs = measures.length === 0 ? "" : `, its valid answers measuring ${measures.join(", ")}`;
+  const yours =
+    authored === undefined ? "" : `, and your answer that passed try_answer on it ${shown(authored)}`;
+  const counted = `the reference harness answered it validly in ${String(valid)} of ${String(ran)} solves${turns}${theirs}${yours}${unread}`;
+  // The rule itself is the system prompt's, said once there (17 October).
+  const roomless = `${counted}, ${unsolved ? "and no answer of yours passed try_answer on it" : "which leaves no room"}`;
   return {
-    reason: some ? null : unsolved || solves === TRIED ? roomless : unmeasured,
+    reason: seen.room ? null : unsolved || solves === TRIED ? roomless : `${counted}, so it is not measured`,
     said: `; ${counted}`,
-    reference: {
-      valid,
-      solves,
-      billed: gateBilled(read(log), id, taskVersion(task)),
-    },
-    unsolved,
+    reference: { valid, solves, ran, billed: gateBilled(read(log), id, taskVersion(task)) },
   };
 }
 
@@ -323,9 +352,8 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal, ahead: numbe
           );
     return checked;
   };
-  const { reason, said, reference, unsolved } = await measured(desk, task, stop, { ahead, proof });
-  const proved = unsolved === true && (await proof())?.kind === "pass";
-  const outcome = reason === null || proved ? { outcome: "passed" } : { outcome: "refused", reason };
+  const { reason, said, reference } = await measured(desk, task, stop, { ahead, proof });
+  const outcome = reason === null ? { outcome: "passed" } : { outcome: "refused", reason };
   append(log, GATE, {
     version,
     gate: 1,

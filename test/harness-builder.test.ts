@@ -361,7 +361,6 @@ describe("a campaign run by its log", () => {
       budget: null,
       limit: null,
       sessions: 1,
-      // One attempt: at 24 tasks a longer patience passes the bound an opening may risk (`openingLines`).
       patience: 1,
       seats: { builder: null, examiner: null, reviewer: null },
       terms: { practice: "2" },
@@ -396,7 +395,6 @@ describe("a campaign run by its log", () => {
       "1",
       "--target",
       "7",
-      // The patience the opening's bound holds at these terms (`openingLines`).
       "--patience",
       "1",
     ];

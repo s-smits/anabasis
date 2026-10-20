@@ -56,7 +56,7 @@
  */
 import { contractHash } from "#src/kernel/contract.ts";
 import { append, read } from "#src/kernel/log.ts";
-import { patienceOf, poolOf, releaseOrder } from "#src/kernel/reports.ts";
+import { poolOf, releaseOrder } from "#src/kernel/reports.ts";
 import { SIZE, sizeLines } from "#src/kernel/size.ts";
 import { packageGate, taskSets, taskStates, taskVersion } from "#src/kernel/task.ts";
 import type { JsonValue } from "#src/meta/json-shape.ts";
@@ -225,7 +225,7 @@ export async function prepareCommand(args: readonly string[]): Promise<number> {
   console.log(`${String(sets.held.length)} held out, ${String(sets.released.length)} released for practice`);
   // What a comparison would score: the tasks the draw can take (`scoredSet`).
   const scored = named.length > 0 ? named.length : Math.min(target, poolOf(events).scorable.length);
-  const asked = { level: Number(values.level), patience: patienceOf(events) };
+  const asked = { level: Number(values.level) };
   for (const line of [...sizeLines(scored, asked), ...awaitingLines(campaign)]) console.log(line);
   if (named.length === 0) return 0;
 

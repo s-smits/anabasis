@@ -768,6 +768,15 @@ describe("a hold on the move a row named", () => {
       why: expect.stringContaining("the reference harness's solves of draft tasks billed $0.30 a solve"),
     });
     expect(move(gated, left(1000))).toMatchObject({ move: "compare" });
+    // Since 20 October a gate stops at the first solve that leaves room, and bills that one alone.
+    const early = FIRST.map((each) =>
+      each.kind === "task.gate"
+        ? { ...each, data: { ...each.data, reference: { billed: 0.3, solves: 1, ran: 1 } } }
+        : each,
+    );
+    expect(decide(early, left(0.5))).toMatchObject({
+      why: expect.stringContaining("the reference harness's solves of draft tasks billed $0.30 a solve"),
+    });
     // The Examiner session a row names is held too: where the last one and the comparison that read
     // its tasks billed more than half of what is left, the campaign ends on its budget before another
     // round.

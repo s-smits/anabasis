@@ -121,7 +121,7 @@ const KNOWN = { yes: "an answer on record", no: "no answer on record" } as const
 /** The tasks in use as practice, as one line (`heard`). */
 const PRACTICE = "In use as practice, and so never scored:";
 /** What the lines say before them: once, what every clause of a line means. */
-export const LINES = `The tasks of the exam so far, a line each: the task, its family, and how the reference harness did on it in the last comparison that scored it. Where nothing on the line shows a valid answer, it says whether one is on record. "Gate" is how many of the reference harness's ${String(TRIED)} solves at its gate were valid; "last comparisons", its valid solves in each of its last comparisons with the current reference harness, newest first, and how many of the newest closed the task in a row. These are measurements and no instruction. read_example returns any of them whole.`;
+export const LINES = `The tasks of the exam so far, a line each: the task, its family, and how the reference harness did on it in the last comparison that scored it. Where nothing on the line shows a valid answer, it says whether one is on record. "Gate" is how many of the reference harness's solves at its gate were valid, of the solves it ran, at most ${String(TRIED)}; "last comparisons", its valid solves in each of its last comparisons with the current reference harness, newest first, and how many of the newest closed the task in a row. These are measurements and no instruction. read_example returns any of them whole.`;
 /** What the counts say before their rows, and after them. */
 const COUNTS = {
   head: "Counted from the same comparisons as the lines above, by family, or in a total alone where a family counted holds one task: each task whose last comparison had the reference harness on one side, or that a later report set aside. The other harness is whichever the reference harness was compared with there. These are measurements and no target.",
@@ -281,15 +281,22 @@ export function gateBilled(events: readonly LogEvent[], session: string, version
 /** How many of the reference harness's solves at a held task's gate were valid, as one clause, or
  *  nothing where the gate read no solves. Its own session was told it (`try_task`); until
  *  14 October a later one was not, so a task held out on one valid solve in three read as one held
- *  out on two. */
+ *  out on two. It is of the solves the gate ran, which since 20 October stop at the first that
+ *  leaves room; a gate before then ran `TRIED`. */
 function admittedLine(gate: JsonObject | undefined) {
   const reference = asRecord(gate?.reference);
-  const { valid, solves } = reference ?? {};
-  if (gate === undefined || !heldAtGate(gate.outcome) || !isNumber(solves) || !isNumber(valid)) {
+  const { valid, solves, ran = TRIED } = reference ?? {};
+  if (
+    gate === undefined ||
+    !heldAtGate(gate.outcome) ||
+    !isNumber(solves) ||
+    !isNumber(valid) ||
+    !isNumber(ran)
+  ) {
     return { said: "", valid: 0 };
   }
-  const unread = solves < TRIED ? `, ${String(TRIED - solves)} giving no reading` : "";
-  return { said: `; gate ${String(valid)} of ${String(TRIED)} valid${unread}`, valid };
+  const unread = solves < ran ? `, ${String(ran - solves)} giving no reading` : "";
+  return { said: `; gate ${String(valid)} of ${String(ran)} valid${unread}`, valid };
 }
 
 /** The drafts a gate refused having read them, with the gate's reason: until 14 October a later

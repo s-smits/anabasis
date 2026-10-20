@@ -165,4 +165,17 @@ describe("the tree scans read an alias as the module it names", () => {
     expect(rows("#skills/main/cli-owner.ts")).toStrictEqual([]);
     expect(rows("#skills/main/other.ts")).not.toStrictEqual([]);
   });
+
+  it("reads a name quoted inside a backtick span as prose, and the same name bare as an identity", () => {
+    const rows = (line: string) =>
+      identitiesWithoutOwner(
+        new Map([
+          ["a/probe.ts", line],
+          ["b/probe.ts", line],
+        ]),
+      ).map((row) => row.detail);
+    expect(rows("const help = 'such as `type T = \"sandbox-level/v1\"` in a type';")).toStrictEqual([]);
+    expect(rows('const help = `such as type T = "sandbox-level/v1" in a type`;')).toStrictEqual([]);
+    expect(rows('const level = "sandbox-level/v1";')).not.toStrictEqual([]);
+  });
 });

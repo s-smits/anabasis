@@ -676,13 +676,15 @@ export function epochReleased(events: readonly LogEvent[]) {
   return { promotedAt, epoch };
 }
 
-/** How many more tasks a release may take for practice, each one fewer to compare: after a
- *  promotion, never leaving fewer frontier tasks than a sweep at `level` takes, since it takes
- *  failed ones first (`releaseOrder`). Until 16 October it was also at most one in four of the
+/** How many more tasks a release may take for practice, each one fewer to compare: once practice
+ *  exists or a promotion is on record, leave a sweep at `level` of frontier tasks held.
+ *  Top-ups before a promotion consumed esp32-r2's frontier (20 October 2026, whole-run
+ *  investigations of six campaigns). Until 16 October it was also at most one in four of the
  *  epoch's scorable and released tasks, which bound alone in none of 35 releases on record. */
 export function practiceRoom(events: readonly LogEvent[], level: number): number {
   const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
-  return promotedAt === -1 ? Infinity : Math.max(0, poolOf(events).frontier.length - sweepOf(level));
+  if (promotedAt === -1 && taskSets(events).released.length === 0) return Infinity;
+  return Math.max(0, poolOf(events).frontier.length - sweepOf(level));
 }
 
 /** A release for practice before a Builder session, where the epoch holds fewer than the campaign

@@ -19,12 +19,18 @@ import { defineRule } from "@oxlint/plugins";
  * and its exception is a fact about the code that belongs beside it. `oxlint-enable` is not
  * reported, since it answers nothing; it goes with the disable it closes.
  *
+ * A disable that names no rule at all silences every rule on its line, the ana and anti-slop ones
+ * among them, so it answers a slop finding with no name and no reason. Until 20 October the rule
+ * read only a directive followed by a list, and passed that one by. Only the next-line form can
+ * be read: a bare `disable` or `disable-line` silences this rule's own report on its line too.
+ *
  * There is no fix. The comment's reason moves into a ledger row, which needs an id only a lint run
  * computes and a sentence only the author can check.
  */
 
 /** A directive at the start of a comment, and the rule list before any ` -- reason`. */
-const DIRECTIVE = /^\s*(?:oxlint|eslint)-disable(?:-next-line|-line)?\s+(?<rules>.*?)(?:\s+--\s.*)?$/su;
+const DIRECTIVE =
+  /^\s*(?:oxlint|eslint)-disable(?:-next-line|-line)?(?:\s+(?<rules>(?!--\s).*?))?(?:\s+--\s.*)?\s*$/su;
 
 /** A rule in that list from one of the two plugins the ledger answers for. */
 const SLOP_RULE = /(?:^|[\s,])(?<rule>(?:ana|anti-slop)\/[\w-]+)/gu;
@@ -39,13 +45,21 @@ export const noInlineSlopAnswerRule = defineRule({
     messages: {
       inlineAnswer:
         '{{rules}} answered by a disable comment, which outlives an edit to the line it excuses. Remove it, run bun run lint for the finding\'s id, and answer it with bun run not-slop -- answer <id> "<why>".',
+      everyRule:
+        'A disable comment that names no rule silences every rule, the ana and anti-slop ones among them. Name the core rule it answers, and answer a slop finding with bun run not-slop -- answer <id> "<why>".',
     },
   },
   createOnce(context) {
     return {
       Program() {
         for (const comment of context.sourceCode.getAllComments()) {
-          const rules = DIRECTIVE.exec(comment.value)?.groups?.rules ?? "";
+          const directive = DIRECTIVE.exec(comment.value);
+          if (directive === null) continue;
+          const rules = directive.groups?.rules ?? "";
+          if (rules.trim() === "") {
+            context.report({ node: comment, messageId: "everyRule" });
+            continue;
+          }
           const named = [...rules.matchAll(SLOP_RULE)].map((match) => match.groups?.rule ?? "");
           if (named.length === 0) continue;
           context.report({ node: comment, messageId: "inlineAnswer", data: { rules: named.join(", ") } });

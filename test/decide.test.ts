@@ -330,32 +330,21 @@ describe("a row of the table", () => {
     // the plan's patience only words the reason.
     expect(move([...SET_UP, ...flat])).toMatchObject({ move: "build" });
 
-    // The control: the epoch's first A/A read as a step either way, until the cause is on record.
-    // Two-sided at the level: 5 tasks all one way is p 1/32 a side, 1/16 both; 4 is 1/8.
-    const aa = (id: string, apart: readonly number[]) =>
-      compared(id, "h1", "step", {
+    // An A/A that reads a step either way ends nothing: it stands as a reading, and a step against
+    // the reference promotes beside it. Until 20 October the epoch's first such ended the campaign
+    // on its control until the operator left a cause; none of 60 reproducible A/As on record read
+    // one. An older log's `cause` word changes no move.
+    const aa = (apart: readonly number[]) =>
+      compared("g-1", "h1", "step", {
         tally: [8, 0, 4],
         extra: { level: 0.1, noise: { wins: 0, losses: 0, ties: 4, differences: [...apart] } },
       });
-    const epoch = (apart: readonly number[]) => [...FIRST, ...aa("g-1", apart)];
-    for (const apart of [
-      [2, 2, 2, 2, 2],
-      [-2, -2, -2, -2, -2],
-    ]) {
-      expect(decide(epoch(apart), PLAN)).toEqual({
-        move: "end",
-        ending: "control",
-        code: "bound",
-        why: 'comparison g-1 read the reference against itself as a step, so its two sides are not interchangeable and no comparison against it reads anything until the cause is on record: leave it with tools/d2/word.ts --cause "<the cause>", and the campaign goes on when run again',
-      });
-    }
-    for (const apart of [[2, 2, 2, 2], [2, -2, 0, 0], []]) {
+    const epoch = (apart: readonly number[]) => [...FIRST, ...aa(apart)];
+    for (const apart of [[2, 2, 2, 2, 2], [-2, -2, -2, -2, -2], [2, -2, 0, 0], []]) {
       expect(move(epoch(apart))).toMatchObject({ move: "promote", harness: "h1" });
     }
     const cause = event("campaign.word", { word: "cause", why: "the host was loaded while g-1 ran" });
-    expect(move([...epoch([2, 2, 2, 2, 2]), cause])).toEqual(move(epoch([2, -2, 0, 0])));
-    // It is the epoch's first A/A: those after it stand as readings.
-    expect(move([...epoch([2, -2, 0, 0]), ...aa("g-2", [2, 2, 2, 2, 2])])).not.toMatchObject({ move: "end" });
+    expect(move([...epoch([2, 2, 2, 2, 2]), cause])).toEqual(move(epoch([2, 2, 2, 2, 2])));
 
     // A comparison stopped on its check defects, and one its cap cut before it tallied a task.
     const defects = compared("g-1", "h1", "check-defects", { extra: { scored: null } });

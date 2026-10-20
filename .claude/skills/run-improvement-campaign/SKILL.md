@@ -131,7 +131,7 @@ Links 1, 2 and 6 limit what the reading can establish.
 | 4 | session | 1 | Builder practised and changed something the solver uses | `build.*`, `harness.version`, practice verdicts |
 | 5 | size | 2 | frontier has enough untied tasks and power at its margins | `frontier`, `scored.unsolved`, `frontier.detectable` |
 | 6 | host | 2 | solve-start loads are read, including changes within a comparison | `HOST LOADED`, `LOAD MOVED`, `campaign.waited` |
-| 7 | promotion | 2 | comparison against reference reads `step` and the epoch's control has not stopped the campaign | `step` row, `harness.promoted`, `noise` |
+| 7 | promotion | 2 | comparison against reference reads `step` | `step` row, `harness.promoted`, `noise` |
 | 8 | next epoch | 1 | Examiner writes for the new reference and the tasks leave room | `harness.promoted`, subsequent `task.gate` and comparisons |
 
 Read room by `informative`, rather than a target pass share. `noRoom` in `src/builder/decide.ts`

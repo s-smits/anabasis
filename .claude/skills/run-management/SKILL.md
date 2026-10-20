@@ -152,8 +152,7 @@ pause and then the continue, which is how a run moves to another login or commit
 
 A word left with `tools/d2/word.ts` acts at the next move boundary and spends no session:
 `--stop "<why>"` ends the campaign `operator`, which is a pause the operator words; `--budget N`
-sets its total; `--tasks "<why>"` asks for an Examiner session first; `--cause "<why>"` records
-the cause of an A/A that read a step, so a campaign ended on its control can continue. Name the
+sets its total; `--tasks "<why>"` asks for an Examiner session first. Name the
 campaign with `--name <name>` and leave one word per command. A word reaches no seat.
 
 ## Keep a campaign going

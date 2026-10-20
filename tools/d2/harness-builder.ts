@@ -67,7 +67,8 @@
  * **The budget is one total** (`7f0add79:docs/plan.md`, row F49). Each move's cap is what is left of it:
  * the total less every billed dollar the log holds, and where less is left than one solve is held
  * at, the campaign ends on its budget. **What it risks** is said as it opens: what one reading of
- * its target can show and its per-comparison rate (`sizeLines`, `src/kernel/size.ts`).
+ * its target can show and its per-comparison rate (`sizeLines`, `src/kernel/size.ts`), and a paid
+ * campaign whose target is too small for a step at its level is refused there.
  *
  * **A campaign runs unattended** (row F29; the operator, 12 and 16 October): it admits every check
  * its author's own computation decides, a drafted exam's objective among them, freezes an exam whose reading holds no fault and promotes a harness a comparison
@@ -111,6 +112,7 @@ import { pendingWords } from "#src/builder/word.ts";
 import { keepPractised } from "#src/builder/session.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { unadmitted } from "#src/kernel/acceptance.ts";
+import { sweepOf } from "#src/kernel/compare.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { cutSessions, latestBuilt, promoted } from "#src/kernel/reports.ts";
 import { sizeLines } from "#src/kernel/size.ts";
@@ -579,7 +581,14 @@ export async function harnessBuilder(
     const turn = turnOf({ log, values, opening, seats, held, campaign });
     const { plan } = turn;
     if (made === 0) {
-      for (const line of sizeLines(plan.wanted.target, plan.wanted)) console.log(line);
+      const size = sizeLines(plan.wanted.target, plan.wanted);
+      for (const line of size) console.log(line);
+      // A paid campaign that could never read a step is refused before it is paid for (rule 14):
+      // until 20 October it ran, and the table sent for tasks no target that small could use.
+      const sweep = sweepOf(plan.wanted.level);
+      if (paid === "paid" && plan.wanted.target < sweep) {
+        throw new Error(`${size[0] ?? ""}: name a --target of at least ${String(sweep)}`);
+      }
     }
     const decided = decide(events, plan);
     // Led by its Builder, every move but set-up and what the host owes (`hostOwed`) is the

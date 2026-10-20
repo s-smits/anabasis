@@ -1,7 +1,7 @@
 # Which rules fix, and which only report
 
-Fifty-one rules are registered: thirty-six `ana` and fifteen `anti-slop`, every one of them
-`error`. **Fourteen carry a fixer. Thirty-seven report and leave the repair to the author.**
+Fifty rules are registered: thirty-six `ana` and fourteen `anti-slop`, every one of them
+`error`. **Fourteen carry a fixer. Thirty-six report and leave the repair to the author.**
 
 That split is not an accident of effort, and it is not a backlog. This file says what a fixer has
 to be true of before it ships, which rules pass that test, which ones sit right on the edge and are
@@ -65,7 +65,7 @@ source file, where the constant belongs is the whole question, and a fixer would
 local one every time. So the fixer runs in tests and nowhere else — the same rule, two scopes, one
 of them a fact and one a decision.
 
-## On the bridge: six where the edit is available and refused
+## On the bridge: five where the edit is available and refused
 
 These are the ones worth naming, because in every case a fixer is mechanically within reach and the
 refusal is a judgement. A future author who writes one of these is not solving an open problem;
@@ -78,7 +78,6 @@ they are reversing a decision, and should say so.
 | `require-safety-comment-for-type-assertion` | insert a `SAFETY:` comment | the comment's content is the entire requirement; a generated one satisfies the rule and proves nothing, which is worse than the missing comment |
 | `no-conditional-empty-object-spread` | emit the field as `null` | absent or present-and-null is the contract, and the spread is where that decision was avoided |
 | `no-alias-restating-return` | delete the alias and the annotation | condition 2: an inferred return is not the annotated one, and a plugin that cannot see types cannot tell the two apart. The pass that measured this rule watched a dropped annotation widen a narrowed `severity` back to `string` |
-| `no-array-filter-map` | rewrite to `flatMap` | condition 1 in the ordinary case and condition 3 at the edges: a callback reading its index, or one whose order matters, does not survive the rewrite, and the rule reads the callbacks well enough to ask the question and not well enough to answer it |
 
 `no-repeated-string-literal`'s source half belongs on this list too; it is above because the rule as
 a whole ships a fixer.
@@ -342,7 +341,7 @@ enforceable, because a clean lint no longer means what it says. **Fourteen is th
 under the four conditions, not a target that was missed.**
 
 A report with no fixer is a working outcome and the majority outcome: the author is told exactly
-what is wrong and makes the call. That is what these thirty-seven are for.
+what is wrong and makes the call. That is what these thirty-six are for.
 
 ## A fixer's finding has no answer
 

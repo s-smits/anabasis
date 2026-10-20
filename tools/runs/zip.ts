@@ -54,7 +54,7 @@ import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import { receipts } from "./receipt.ts";
 import { hostNamed, quoted, sshScript, verbOn } from "./hosts.ts";
-import { logEvents, type Run, runs, standing, wholeLines } from "./registry.ts";
+import { logEvents, type Run, readable, standing, wholeLines } from "./registry.ts";
 
 const LEVELS = ["light", "medium", "verbose"] as const;
 const CAMPAIGN_ENDED = "campaign.ended";
@@ -332,7 +332,7 @@ export async function zipRuns(args: readonly string[]): Promise<void> {
     return;
   }
   const made = zip(
-    runs().filter((run) => names.length === 0 || names.some((name) => run.name.includes(name))),
+    readable().filter((run) => names.length === 0 || names.some((name) => run.name.includes(name))),
     level,
     {
       out,

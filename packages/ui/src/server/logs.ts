@@ -32,7 +32,14 @@ import {
 } from "../../../../src/meta/filesystem.ts";
 import { basename, join, resolve } from "../../../../src/meta/path.ts";
 import { errorMessage } from "../../../../src/meta/runtime-values.ts";
-import { logEvents, processes, type Run, runs, SEED_FILE, writers } from "../../../../tools/runs/registry.ts";
+import {
+  logEvents,
+  processes,
+  type Run,
+  readable,
+  SEED_FILE,
+  writers,
+} from "../../../../tools/runs/registry.ts";
 import type { Issue } from "../models.ts";
 import { type Reading, Unanswerable } from "./context.ts";
 import type { Log } from "./folds.ts";
@@ -126,7 +133,7 @@ function underDirectory(tree: string): Listed {
  *  repository the server runs in, which is the one it was started for unless it was moved. */
 function inWorktrees(repo: string): Listed {
   try {
-    const listed = runs().filter((run) => run.end === "comparison.reported");
+    const listed = readable().filter((run) => run.end === "comparison.reported");
     const trees = new Set(listed.map((run) => resolve(run.tree)));
     const issues: Issue[] =
       listed.length > 0 && !trees.has(resolve(repo))

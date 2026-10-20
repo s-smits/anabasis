@@ -67,8 +67,13 @@ describe("a run's writers", () => {
       // Started by hand with the name joined to its flag, as `parseArgs` takes it.
       { pid: 16, cwd: "/wt", args: ["bun", "tools/d2/harness-builder.ts", "--name=r1"] },
       { pid: 17, cwd: "/wt", args: ["bun", "tools/d2/harness-builder.ts", "--name=r10"] },
+      // A shell whose command line names the campaign command runs no script of its own, and a
+      // script belongs to the worktree it lives in, whichever directory started it.
+      { pid: 18, cwd: "/wt", args: ["zsh", "-c", "bun tools/d2/harness-builder.ts --name r1"] },
+      { pid: 19, cwd: "/elsewhere", args: ["/bin/bun", "/wt/tools/d2/harness-builder.ts", "--name", "r1"] },
+      { pid: 20, cwd: "/wt", args: ["bun", "/other/tools/d2/harness-builder.ts", "--name", "r1"] },
     ];
-    expect(writers(round, running).map(({ pid }) => pid)).toEqual([1, 2, 6, 12, 14, 15, 16]);
+    expect(writers(round, running).map(({ pid }) => pid)).toEqual([1, 2, 6, 12, 14, 15, 16, 19]);
     const solve: Run = { ...round, name: "r1-c01-opus-1234", end: "solve.finished" };
     expect(writers(solve, running).map(({ pid }) => pid)).toEqual([5]);
   });

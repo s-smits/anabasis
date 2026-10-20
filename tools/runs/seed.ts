@@ -26,7 +26,7 @@ import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { taskSets } from "#src/kernel/task.ts";
-import { SEED_FILE } from "./registry.ts";
+import { CAMPAIGNS, SEED_FILE } from "./registry.ts";
 
 const SESSION_STARTS = new Set<unknown>(["build.started", "exam.started"]);
 
@@ -119,7 +119,7 @@ export async function seed(args: readonly string[]): Promise<void> {
       "usage: bun run runs seed --from <campaign folder> --name <name> [--before <session> | --events <n>]",
     );
   }
-  const to = resolve(import.meta.dir, "..", "..", ".ana", "d2", name);
+  const to = join(resolve(import.meta.dir, "..", ".."), CAMPAIGNS, name);
   const { sets, ...made } = seedCampaign(from, to, { before, events });
   console.log(
     `seeded ${name} from ${made.from}: ${String(made.events)} of ${String(made.of)} events${made.before === null ? "" : `, cut before session ${made.before}`}`,

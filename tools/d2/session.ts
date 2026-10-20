@@ -66,9 +66,8 @@ export async function sessionCommand(
   const pack = packNamed(values, " and --session");
   const { name } = pack;
   if (session === undefined) throw new Error("name --session, the id the session takes in the log");
-  const paid = seated === solved ? "paid" : "scripted";
   // Read before the campaign is opened: a paid session with no cap starts nothing.
-  const cap = capNamed(values, paid);
+  const cap = capNamed(values, seated === solved ? "paid" : "scripted");
   const setting = settingAsked(values, recordedSetting(read(campaignLog(name))));
   const campaign = await openCampaign({ ...pack, ...setting.named });
   const parent = await parentNamed(campaign, { ...values, session });
@@ -96,7 +95,7 @@ export async function sessionCommand(
       practiceSolves: Number(values["practice-solves"]),
       unrecorded: firstRecord(setting, solvingAs(campaign, setting.named), solverLast(read(campaign.log))),
     },
-    seats: paid,
+    seats: seats.paid ? "paid" : "scripted",
   });
   for (const note of notes) console.log(`· ${note}`);
   keepSetting(campaign.log, setting);

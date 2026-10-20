@@ -127,6 +127,12 @@ interface SolverSeat {
  *  first and never reads the second (`checkpoint.ts`). */
 export interface Seats extends SolverSeat {
   readonly builder: Pick<BuildRequest, "model" | "models"> | null;
+  /** Set by the paid seats, and kept by whatever holds them, as the host's gate does: until
+   *  20 October a command told them by `seated === solved`, and every move the campaign command
+   *  made through the gate read as a rehearsal's and skipped its admission (a Builder's compare on
+   *  esp32-fresh-opus-m1-air-r2 began on 1 task, where a step at the level takes 6). The cap is still read by identity before the campaign opens,
+   *  and the admission refuses a paid move without one. */
+  readonly paid?: true;
 }
 
 /** Who sits in the seats, once the campaign is open and the comparison's reference harness is
@@ -523,6 +529,7 @@ export const solved: Seated = (campaign, { builder }) => ({
   solve: (task, harness, kill, comparison) =>
     campaign.solveOnce(task, harness, campaign.test, kill, comparison),
   setting: campaign.setting(campaign.test),
+  paid: true,
 });
 
 /** `bun tools/d2/round.ts`, and under a simulation's `seated` the same round with its seats scripted. */
@@ -573,7 +580,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
   const notes = admitComparison(campaign.log, {
     id: session,
     wanted: wantedNamed(campaign, values, { setting, cap, builds: true }),
-    seats: seated === solved ? "paid" : "scripted",
+    seats: seats.paid ? "paid" : "scripted",
     own: () =>
       refuseTerms(request, {
         log: campaign.log,

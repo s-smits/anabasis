@@ -122,6 +122,24 @@ describe("the gate at a solve's start", () => {
   });
 });
 
+describe("the seats behind the gate", () => {
+  it("say they are paid where the seats they hold do, so a move the campaign command makes asks its admission", () => {
+    const script: Seats = {
+      builder: null,
+      setting: "s",
+      solve: async () => ({ solve: "s-1", ending: { outcome: "pass" } }),
+    };
+    // SAFETY: as in `gate`, the gate hands the campaign to the seat it wraps and reads nothing of it.
+    const through = (seats: Seats) =>
+      gated({ seated: () => seats, loaded: false, host: hostOf(() => 0) }, logIn("paid"))({} as Campaign, {
+        builder: undefined,
+        reference: "h1",
+      });
+    expect(through({ ...script, paid: true }).paid).toBe(true);
+    expect(through(script).paid).toBeUndefined();
+  });
+});
+
 describe("the provider's named reset", () => {
   it("is read from a clock time in a named zone, from the host's, from a week's date, or from Unix seconds", () => {
     expect(resetOf("You've hit your limit · resets 3:50pm (Europe/Amsterdam)", NOW)?.toISOString()).toBe(

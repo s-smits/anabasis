@@ -1,7 +1,7 @@
 # Which rules fix, and which only report
 
-Fifty-four rules are registered: thirty-seven `ana` and seventeen `anti-slop`, every one of them
-`error`. **Fourteen carry a fixer. Forty report and leave the repair to the author.**
+Fifty-three rules are registered: thirty-six `ana` and seventeen `anti-slop`, every one of them
+`error`. **Fourteen carry a fixer. Thirty-nine report and leave the repair to the author.**
 
 That split is not an accident of effort, and it is not a backlog. This file says what a fixer has
 to be true of before it ships, which rules pass that test, which ones sit right on the edge and are
@@ -65,7 +65,7 @@ source file, where the constant belongs is the whole question, and a fixer would
 local one every time. So the fixer runs in tests and nowhere else — the same rule, two scopes, one
 of them a fact and one a decision.
 
-## On the bridge: nine where the edit is available and refused
+## On the bridge: eight where the edit is available and refused
 
 These are the ones worth naming, because in every case a fixer is mechanically within reach and the
 refusal is a judgement. A future author who writes one of these is not solving an open problem;
@@ -76,7 +76,6 @@ they are reversing a decision, and should say so.
 | `no-inline-schema-literal` | hoist the literal to module scope | the rename and the sentence are the value, and the hoist is the only occasion for them; condition 4 |
 | `no-single-caller-helper` | substitute the arguments into the one-`return` body | **written and thrown away.** Mechanically fine — the ranges come from scope analysis — but the result is a longer expression where the author wanted a statement, at three hundred sites. It would have produced exactly the shape the rule exists to remove |
 | `require-safety-comment-for-type-assertion` | insert a `SAFETY:` comment | the comment's content is the entire requirement; a generated one satisfies the rule and proves nothing, which is worse than the missing comment |
-| `no-property-read-on-function` | delete the read | the read evaluates to `undefined`, so it is evidence a rename went wrong; deleting it deletes the evidence |
 | `no-reflect-get`, `no-reflect-apply` | rewrite to `obj[key]` / `fn(...args)` | that keeps the dynamic dispatch and loses the finding. The repair is typed access or a parse, which is the question the reflection dodged |
 | `no-conditional-empty-object-spread` | emit the field as `null` | absent or present-and-null is the contract, and the spread is where that decision was avoided |
 | `no-alias-restating-return` | delete the alias and the annotation | condition 2: an inferred return is not the annotated one, and a plugin that cannot see types cannot tell the two apart. The pass that measured this rule watched a dropped annotation widen a narrowed `severity` back to `string` |
@@ -344,7 +343,7 @@ enforceable, because a clean lint no longer means what it says. **Fourteen is th
 under the four conditions, not a target that was missed.**
 
 A report with no fixer is a working outcome and the majority outcome: the author is told exactly
-what is wrong and makes the call. That is what these forty are for.
+what is wrong and makes the call. That is what these thirty-nine are for.
 
 ## A fixer's finding has no answer
 

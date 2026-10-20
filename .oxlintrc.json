@@ -69,7 +69,6 @@
     "ana/no-lifetime-outside-owner": "error",
     "ana/no-pass-through-wrapper": "error",
     "ana/no-positional-boolean-parameter": "error",
-    "ana/no-property-read-on-function": "error",
     "ana/no-renaming-temporary": "error",
     "ana/no-repeated-string-literal": "error",
     "ana/no-side-effect-in-predicate": "error",

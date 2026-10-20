@@ -67,6 +67,8 @@ const LIVE = "tools/m0/live-solve.ts";
 /** The flag a keeper runs under once it has left the verb that started it (`keep.ts`). */
 export const KEEPING = "--here";
 const CAMPAIGN_END = "comparison.reported";
+/** Where a worktree keeps its campaigns, one folder each. */
+export const CAMPAIGNS = join(".ana", "d2");
 /** The archive, under the main worktree, which git ignores. */
 export const ARCHIVE = join("data", "runs");
 /** The archive's folder of this machine's own campaigns, and the word `runs move` names it by. */
@@ -79,17 +81,23 @@ export const archiveOf = (repo: string, ...parts: readonly string[]) =>
 /** A folder's names in one order on every host: Linux's file systems list them unsorted, and on 20
  *  October the archive's campaigns read in another order there than on macOS. */
 const listed = (dir: string) => (existsSync(dir) ? readdirSync(dir).toSorted() : []);
+/** The campaign `name` whose folder lies in `dir`, read as `tree`'s. */
+const campaignIn = (dir: string, name: string, tree: string): Run => ({
+  name,
+  tree,
+  path: join(dir, name, LOG_FILE),
+  end: CAMPAIGN_END,
+  seed: existsSync(join(dir, name, SEED_FILE)),
+});
+/** The campaign `name` of the worktree `tree`, whether or not its log is there yet. */
+export const campaignOf = (tree: string, name: string) => campaignIn(join(tree, CAMPAIGNS), name, tree);
 /** The campaigns whose folders in `dir` hold a log, read as `tree`'s. */
-const campaignsIn = (dir: string, tree: string): Run[] =>
+export const campaignsIn = (dir: string, tree: string): Run[] =>
   listed(dir)
     .filter((name) => existsSync(join(dir, name, LOG_FILE)))
-    .map((name) => ({
-      name,
-      tree,
-      path: join(dir, name, LOG_FILE),
-      end: CAMPAIGN_END,
-      seed: existsSync(join(dir, name, SEED_FILE)),
-    }));
+    .map((name) => campaignIn(dir, name, tree));
+/** Whether `run` is a campaign, as against a live solve. */
+export const isCampaign = (run: Run) => run.end === CAMPAIGN_END;
 const runsAs = (args: readonly string[], tools: readonly string[]) =>
   args.some((arg) => tools.some((tool) => arg.endsWith(tool)));
 
@@ -116,7 +124,7 @@ function writesCampaign(args: readonly string[]): boolean {
 export function runs(repo = runtimeProcess.cwd()): Run[] {
   const trees = worktrees(repo);
   return trees.flatMap((tree) => [
-    ...campaignsIn(join(tree, ".ana", "d2"), tree),
+    ...campaignsIn(join(tree, CAMPAIGNS), tree),
     ...listed(join(tree, ".ana", "live"))
       .filter((file) => file.endsWith(".jsonl"))
       .map((file) => ({
@@ -138,6 +146,9 @@ export function archived(repo = runtimeProcess.cwd()): Run[] {
     .flatMap((from) => campaignsIn(join(root, from), main).map((run) => ({ ...run, archived: from })));
 }
 
+/** Every run a name can be taken by: the worktrees' and the archive's. */
+export const everyRun = (repo = runtimeProcess.cwd()): Run[] => [...runs(repo), ...archived(repo)];
+
 /** The runs a reader reads: every worktree's, and each archived campaign whose name none of those has. */
 export function readable(repo = runtimeProcess.cwd()): Run[] {
   const held = runs(repo);
@@ -149,7 +160,7 @@ export function readable(repo = runtimeProcess.cwd()): Run[] {
  *  else a host's copy, refused where two hosts' copies are all there is. */
 export function readNamed(name: string, repo = runtimeProcess.cwd()): Run {
   const held = runs(repo);
-  if (held.some((run) => run.name === name && run.end === CAMPAIGN_END)) return runNamed(name, held);
+  if (held.some((run) => run.name === name && isCampaign(run))) return runNamed(name, held);
   const copies = archived(repo).filter((run) => run.name === name);
   const own = copies.find((run) => run.archived === HERE);
   if (own !== undefined) return own;
@@ -165,7 +176,7 @@ export function readNamed(name: string, repo = runtimeProcess.cwd()): Run {
  *  worktrees hold one. An archived campaign is none: no process writes it until `runs copy` brings
  *  it back to a worktree. */
 export function runNamed(name: string, among: readonly Run[] = runs()): Run {
-  const found = among.filter((run) => run.name === name && run.end === CAMPAIGN_END);
+  const found = among.filter((run) => run.name === name && isCampaign(run));
   const [only, other] = found;
   if (only === undefined) {
     const back = archived().some((run) => run.name === name && run.archived === HERE)

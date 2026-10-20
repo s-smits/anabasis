@@ -1,7 +1,7 @@
 # Which rules fix, and which only report
 
-Fifty-six rules are registered: thirty-nine `ana` and seventeen `anti-slop`, every one of them
-`error`. **Fourteen carry a fixer. Forty-two report and leave the repair to the author.**
+Fifty-five rules are registered: thirty-eight `ana` and seventeen `anti-slop`, every one of them
+`error`. **Fourteen carry a fixer. Forty-one report and leave the repair to the author.**
 
 That split is not an accident of effort, and it is not a backlog. This file says what a fixer has
 to be true of before it ships, which rules pass that test, which ones sit right on the edge and are
@@ -93,8 +93,7 @@ rule that neither declares `fixable` nor writes the words. The groups below were
 those sentences on 2026-09-20 and three rules moved, because a group label had been standing in
 for a reason the rule states more precisely itself.
 
-- **The repair is a type** (10): `unproven-unknown-parameter`, `no-unknown-union`,
-  `no-unknown-returns`, `no-unknown-type-aliases`, `no-unsafe-dictionary-type`,
+- **The repair is a type** (9): `unproven-unknown-parameter`, `no-unknown-returns`, `no-unknown-type-aliases`, `no-unsafe-dictionary-type`,
   `no-known-value-widening`, `no-widen-then-assert`, `no-chained-type-assertions`,
   `require-type-for-null-default`, `no-runtime-typeof`. The `unknown` or the widening is exactly
   the work someone avoided; writing it is the finding. A plugin rule does not read the checker.
@@ -345,7 +344,7 @@ enforceable, because a clean lint no longer means what it says. **Fourteen is th
 under the four conditions, not a target that was missed.**
 
 A report with no fixer is a working outcome and the majority outcome: the author is told exactly
-what is wrong and makes the call. That is what these forty-two are for.
+what is wrong and makes the call. That is what these forty-one are for.
 
 ## A fixer's finding has no answer
 

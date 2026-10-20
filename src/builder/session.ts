@@ -61,8 +61,8 @@ import type { Contract } from "../kernel/contract.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import type { Ending } from "../kernel/solve.ts";
-import { billedParts, type Cap } from "../kernel/reports.ts";
-import { ended as endedSolves, solvesIn } from "../kernel/solves.ts";
+import { billedParts, type Cap, ownedBy } from "../kernel/reports.ts";
+import { ended as endedSolves, practiceRan, solvesIn } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import { mkdirSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
@@ -237,6 +237,28 @@ const ENDINGS = ["finished", "killed", "wall", "crashed", "turns"] as const;
 
 function endedBy(by: Record<(typeof ENDINGS)[number], boolean>): Built["ended"] {
   return ENDINGS.find((reason) => by[reason]) ?? "stopped";
+}
+
+/** Keep the state an interrupted session's own practice solve last ran on as a checkpoint, once,
+ *  where it changed the parent and its saved state opens. A cut harness is passed over
+ *  (`latestBuilt`) as one left half way through an edit, but a practised state is no half-edit: on
+ *  13 October buffer-149's b-1 crashed with a harness it had practised three of three on, and b-2
+ *  rebuilt it from b-1's notes for 25 turns. Until 20 October only a crash kept it, and a session a
+ *  stop cut was ended as killed with nothing kept: esp32-r2's and recode's b-2 began from the
+ *  starter (whole-run investigations of 20 October). */
+export async function keepPractised(log: string, id: string, states: string): Promise<void> {
+  const events = read(log);
+  const mine = events.filter(ownedBy(events, id));
+  const harness = practiceRan(mine).at(-1)?.under.harness;
+  const parent = mine.find(({ kind }) => kind === BUILD_STARTED)?.data.parent;
+  if (harness === undefined || harness === parent) return;
+  if (mine.some(({ kind, data }) => kind === "build.checkpoint" && data.harness === harness)) return;
+  try {
+    if ((await openHarness(join(states, harness))).digest !== harness) return;
+  } catch {
+    return;
+  }
+  append(log, "build.checkpoint", { session: id, harness });
 }
 
 /**
@@ -495,7 +517,6 @@ export async function session(
   // never practised has no such state, and leaves none.
   let frozen: Snapshot | null;
   let broken: string | null = null;
-  const lastPractised = bench.opened?.harness.digest ?? null;
   try {
     frozen = await snapshot(bench);
   } catch (error) {
@@ -521,15 +542,7 @@ export async function session(
           turns: turns.length >= limits.turns,
         })
       : "crashed";
-  // A crashed session's harness is passed over (`latestBuilt`), as one it may have left half way
-  // through an edit. The state its own practice solve last ran on is no half-edit, and is kept as
-  // a checkpoint, whether or not edits followed it: on 13 October buffer-149's b-1 crashed on a
-  // provider error with a harness it had practised three of three on, and b-2 rebuilt it from
-  // b-1's notes for 25 turns. Until 14 October only a crash with no edit after that solve kept it,
-  // so one more line written before the crash lost every practised version of the session.
-  if (ended === "crashed" && changed && lastPractised !== null && lastPractised !== parent.digest) {
-    append(log, "build.checkpoint", { session: request.id, harness: lastPractised });
-  }
+  if (ended === "crashed" || ended === "killed") await keepPractised(log, request.id, request.states);
   const tokens = tokensOf([...turns.map((turn) => turn.usage), ...summaries]);
   // Kept before the session is recorded as ended, so a session on record as ended has its notes.
   keepMemory(dirs.home, request.memory, request.id);

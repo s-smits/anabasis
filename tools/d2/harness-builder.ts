@@ -87,7 +87,8 @@
  * threw after it had begun is the environment's ending, and run again the command goes on from the
  * log; one whose session is on record as crashed is the provider's failure, which the campaign
  * goes on from (`goesOn`). A session a stopped run left open is ended on record as killed before
- * the next run's first move (`endCut`). A move refused before it began is no ending: the refusal is printed,
+ * the next run's first move (`endCut`), keeping its last practised harness where the saved state
+ * opens. A move refused before it began is no ending: the refusal is printed,
  * nothing kept.
  *
  * A move is recorded as it begins (`campaign.move`), with the code of the table's row that chose it and its
@@ -108,6 +109,7 @@ import { decide } from "#src/builder/decide.ts";
 import { sessionEnded } from "#src/builder/ground.ts";
 import { type Decided, decidedLine } from "#src/builder/move.ts";
 import { pendingWords } from "#src/builder/word.ts";
+import { keepPractised } from "#src/builder/session.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { unadmitted } from "#src/kernel/acceptance.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
@@ -116,7 +118,7 @@ import { openingLines } from "#src/kernel/size.ts";
 import { existsSync, mkdirSync } from "#src/meta/filesystem.ts";
 import { isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
-import { dirname } from "#src/meta/path.ts";
+import { dirname, join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { acceptCommand } from "../c/accept.ts";
@@ -374,8 +376,9 @@ function keepReceipt(log: string, args: readonly string[]): void {
  * beside them, and readers metered each only to its last turn and counted it open (x-1 and x-2 of
  * two campaigns stopped and reopened). Killed is no crash, so the crash rule counts none of them.
  */
-function endCut(log: string): void {
+export async function endCut(log: string): Promise<void> {
   for (const { of, session, ...spent } of cutSessions(read(log))) {
+    if (of === "build") await keepPractised(log, session, join(dirname(log), "states"));
     append(log, `${of}.finished`, { session, ended: "killed", crash: null, ...spent });
   }
 }
@@ -557,7 +560,7 @@ export async function harnessBuilder(
   settingHeld(log, given);
   let opening = opened(log, given, paid);
   if (paid === "paid" && !given["dry-run"]) keepReceipt(log, args);
-  if (!given["dry-run"] && existsSync(log)) endCut(log);
+  if (!given["dry-run"] && existsSync(log)) await endCut(log);
   // Every move is made with the terms the opening keeps: this command's, and the record's for
   // each it does not name.
   const values: Values = { ...given, ...opening.terms };

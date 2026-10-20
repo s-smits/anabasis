@@ -9,7 +9,8 @@
  *   bun .claude/skills/harness-audit/scripts/harness-versions.ts --name <campaign> --diff <harness> [--against <harness>]
  *
  * A harness is named as a campaign's commands name one (`keptAs`, `tools/d2/campaign.ts`): `starter`,
- * `promoted`, `latest` or a whole digest. The states sit beside the log, under `states/`.
+ * `promoted`, `latest`, a whole digest or its unambiguous letter. The states sit beside the log,
+ * under `states/`.
  *
  * v1's final-harness-audit joined each workspace commit to its iteration, its battery and its claim
  * through four scripts of 1,246 lines. v2 writes those joins as events, `harness.version`,
@@ -44,7 +45,7 @@ const USAGE = `usage:
   bun .claude/skills/harness-audit/scripts/harness-versions.ts --log <path> [--json]
   bun .claude/skills/harness-audit/scripts/harness-versions.ts --name <campaign> --diff <harness> [--against <harness>]
 
-<harness> is starter, promoted, latest or a whole digest the campaign keeps. --against defaults to
+<harness> is starter, promoted, latest, a whole digest or its unambiguous letter. --against defaults to
 the parent the log records.`;
 
 const OPTIONS = { name: "text", log: "abs", json: "flag", diff: "text", against: "text" } as const;
@@ -70,7 +71,7 @@ interface Parts {
   /** Nonblank lines of `agent/tools.ts`. */
   readonly module: number;
   readonly toolTree: { readonly files: number; readonly bytes: number; readonly linked: boolean } | null;
-  /** Files outside the four parts, `agent/config.yaml` among them, which no solve reads. */
+  /** Files outside the four parts; `agent/config.yaml` is ignored, others may be module imports. */
   readonly other: readonly string[];
 }
 

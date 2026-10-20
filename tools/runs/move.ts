@@ -30,10 +30,6 @@
  * next session there builds its own again. A `runs keep` that keeps the campaign at its source is
  * not stopped by the move: stop it first.
  *
- * Every rsync between machines here compresses what it sends (`-z`). A campaign's folder is
- * mostly logs and traces: on 20 October rsync took one log of 4.6 MB to another host in 18.6 s, and
- * 2.5 s with `-z`, and the 330 MB folder of one campaign packs to 132 MB with `gzip -1`.
- *
  *   bun --env-file=.env.runs run runs fetch <name> [--from <host>]
  *
  * `fetch` takes a copy of a campaign another machine holds, to read here: its folder whole, into
@@ -43,12 +39,13 @@
  * source. The run is left as it is. On 20 October a whole-run investigation of three runs on another
  * host read copies made by hand; until then a copy went to `.ana/fetched/`, which no reader read.
  */
+import { LOG_FILE } from "#src/kernel/log.ts";
 import { mkdirSync } from "#src/meta/filesystem.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
-import { type Host, holders, hostNamed, quoted, sshScript, verbOn } from "./hosts.ts";
-import { archiveOf, HERE } from "./registry.ts";
+import { type Host, holders, hostNamed, quoted, rsync, sshScript, verbOn, worktreesIn } from "./hosts.ts";
+import { archiveOf, CAMPAIGNS, campaignOf, HERE } from "./registry.ts";
 import { asideOf, continueRun, lastRun, pause, setAside } from "./manage.ts";
 
 /** One end of a move: this machine or a host, with the folder its worktrees sit in. */
@@ -95,7 +92,7 @@ function endOf(name: string): End {
 function treeOf(end: End, name: string): string {
   const found = at(
     end,
-    `git -C ${quoted(end.repo)} worktree list --porcelain | sed -n 's/^worktree //p' | while IFS= read -r w; do test -f "$w/.ana/d2/${name}/log.jsonl" && echo "$w"; done; true`,
+    `${worktreesIn(quoted(end.repo))} | while IFS= read -r w; do test -f "$w/${CAMPAIGNS}/${name}/${LOG_FILE}" && echo "$w"; done; true`,
   )
     .split("\n")
     .filter((line) => line !== "");
@@ -134,7 +131,7 @@ export async function move(args: readonly string[]): Promise<void> {
   const source = treeOf(from, name);
   const commit = at(from, `git -C ${quoted(source)} rev-parse HEAD`);
   const tree = join(dirname(to.repo), `anabasis-${name}`);
-  const folder = (root: string) => join(root, ".ana", "d2", name);
+  const folder = (root: string) => join(root, CAMPAIGNS, name);
   const login = values.login === undefined ? [] : ["--login", values.login];
   // Read before anything stops: a pause that a taken destination then refuses leaves the run stopped.
   if (at(to, `test -e ${quoted(tree)} && echo taken; true`) === "taken") {
@@ -154,20 +151,15 @@ export async function move(args: readonly string[]): Promise<void> {
     to,
     `git -C ${quoted(to.repo)} fetch -q origin && git -C ${quoted(to.repo)} worktree add -q --detach ${quoted(tree)} ${commit} && mkdir -p ${quoted(folder(tree))}`,
   );
-  runTextSyncOrThrow(["rsync", "-az", `${side(from, folder(source))}/`, `${side(to, folder(tree))}/`]);
-  const size = (end: End, root: string) => at(end, `wc -c < ${quoted(join(folder(root), "log.jsonl"))}`);
+  rsync(`${side(from, folder(source))}/`, `${side(to, folder(tree))}/`);
+  const size = (end: End, root: string) => at(end, `wc -c < ${quoted(join(folder(root), LOG_FILE))}`);
   if (size(from, source) !== size(to, tree)) {
     throw new Error(`the log did not arrive whole in ${folder(tree)}: ${folder(source)} is left as it was`);
   }
   // The receipts are read where they are on this machine: the source's before it is set aside, or
   // the copy that arrived.
   const local = from.host === undefined ? source : tree;
-  const kept = lastRun({
-    name,
-    tree: local,
-    path: join(folder(local), "log.jsonl"),
-    end: "comparison.reported",
-  });
+  const kept = lastRun(campaignOf(local, name));
   const flags = given.length > 0 ? given : rehomed(kept.flags, dirname(from.repo), dirname(to.repo));
   const aside = asideOf(source, name);
   if (from.host === undefined) setAside(folder(source), aside);
@@ -200,12 +192,6 @@ export async function fetch(args: readonly string[]): Promise<void> {
   const from = endOf(host.name);
   const into = archiveOf(runtimeProcess.cwd(), host.name, name);
   mkdirSync(into, { recursive: true });
-  runTextSyncOrThrow([
-    "rsync",
-    "-az",
-    "--delete",
-    `${side(from, join(treeOf(from, name), ".ana", "d2", name))}/`,
-    `${into}/`,
-  ]);
-  console.log(`${name} from ${host.name}: ${join(into, "log.jsonl")}`);
+  rsync(`${side(from, join(treeOf(from, name), CAMPAIGNS, name))}/`, `${into}/`, "--delete");
+  console.log(`${name} from ${host.name}: ${join(into, LOG_FILE)}`);
 }

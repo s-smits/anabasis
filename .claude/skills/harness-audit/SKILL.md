@@ -99,7 +99,7 @@ Without `--solve` it calls no model. Then arrange a blind review:
 
 - Hand an independent reviewer `harness/` and `RULES.md` and nothing else: not `REPORT.md`, the
   log, a reading, the operator's diagnosis, an expected fix or an earlier review. A Codex reviewer
-  is one read-only row through [codex-luna-swarm](../codex-luna-swarm/SKILL.md), with the folder as
+  is one read-only row through [codex-gpt-swarm](../codex-gpt-swarm/SKILL.md), with the folder as
   its workdir.
 - Ask neutrally: the structure; whether `tools-spec.json` has one row for each tool `tools.ts`
   returns, under the same name and in the same order; whether the guide's account of each program

@@ -1624,7 +1624,7 @@ packages/ui/    the page over a campaign's log: a server on the loopback that re
 vendor/         pi-coding-agent and pi-claude-bridge, copied
 docs/           the plan, the transfer ledger, the account of v1, the helper prompts
 .claude/skills/ the procedures (section 10), stack-pr, simplify, reduce-complexity, commit-r,
-                codex-luna-swarm and promotion-tuner, and main/ with the skill scripts' argument
+                codex-gpt-swarm and promotion-tuner, and main/ with the skill scripts' argument
                 parser and git helper
 .ana/           campaign logs and kept harnesses; ignored, and never edited by hand
 ```

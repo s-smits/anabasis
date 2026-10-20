@@ -144,6 +144,20 @@ interface IdentitySpelling {
   typed: boolean;
 }
 
+/**
+ * Whether a literal sits inside a backtick span opened earlier on its line.
+ *
+ * A comment is not the only prose: a scan's description and a message are strings, and an example
+ * quoted in one of them, `type T = … | "darwin-seatbelt/v1"`, is a reading of the name just as it
+ * is in a comment. On 20 October the scan's own description in `tree-findings.ts` was one of the
+ * three rows it reported. Of the 10 identity-like literals inside a backtick span in the tree that
+ * day, 5 were examples in those descriptions and 5 sat in messages or shell text; none was a
+ * second copy of a name a reader resolves.
+ */
+function insideBackticks(before: string): boolean {
+  return before.split("`").length % 2 === 0;
+}
+
 /** The repository path an aliased specifier names, or the specifier itself when no alias applies. */
 function unaliased(specifier: string): string {
   const alias = ALIASES.find((one) => specifier.startsWith(one.key));
@@ -226,8 +240,8 @@ function identitySpellings(path: string, text: string): IdentitySpelling[] {
     }
     for (const match of line.matchAll(QUOTED)) {
       const value = match[1] ?? "";
-      if (!identityLiteral(value) || moduleSpelling(value)) continue;
       const before = line.slice(0, match.index ?? 0);
+      if (!identityLiteral(value) || moduleSpelling(value) || insideBackticks(before)) continue;
       found.push({
         value,
         path,

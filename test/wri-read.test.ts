@@ -322,6 +322,45 @@ describe("the whole-run investigation's reader", () => {
     expect(detail("NEVER CHECKED")).toBe("b-1: no check_harness call");
   });
 
+  it("counts as a session's practice a task released while it ran, and a solver's flag beside a pass as a flip", () => {
+    // Buffer-r3 on 20 October: b-1 opened on 1 task and practised 24 solves, of which the set of its
+    // opening counted 5; a flagged solve beside a passing one in g-3 was left out of the flips.
+    const ended = (
+      id: string,
+      task: string,
+      harness: string,
+      outcome: string,
+      made: JsonObject,
+    ): LogEvent[] => {
+      const ran = condition(task, harness);
+      return (
+        [
+          [CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) }],
+          [SOLVE_STARTED, { solve: id, condition: conditionId(ran), limits: { wallSeconds: 100 }, ...made }],
+          [SOLVE_FINISHED, { solve: id, ending: { outcome }, seconds: 2, responseModels: ["m-1"] }],
+        ] as const
+      ).map(([kind, data]) => ({ at: new Date(START).toISOString(), kind, data }));
+    };
+    const at = events.findIndex(({ kind }) => kind === REPORTED);
+    const { triggers } = overview([
+      ...events.slice(0, at),
+      ...ended("f3", "v3", "hc", "flagged", { comparison: "b-1" }),
+      ...events.slice(at),
+      ...(
+        [
+          [PROPOSED, { version: "t9" }],
+          [GATE, { version: "t9", gate: 1, outcome: "passed" }],
+          ["task.state", { version: "t9", state: "released" }],
+        ] as const
+      ).map(([kind, data]) => ({ at: new Date(START).toISOString(), kind, data })),
+      ...ended("p9", "t9", "hc", "pass", {}),
+    ]);
+    expect(triggers.map(({ name }) => name)).not.toContain("FINAL BYTES NEVER PRACTISED");
+    expect(triggers.find(({ name }) => name === "FLIPS")?.detail).toBe(
+      "b-1: 1 of 8 task and harness pairs both passed and failed",
+    );
+  });
+
   it("says an erred call is a non-zero exit, which a test reporting what is unmet gives by design", () => {
     // Buffer on 12 October: all 44 erred calls under the child were its own test's documented exit 1.
     const ran = condition("v1", "hc");
@@ -1227,6 +1266,7 @@ describe("the reader of a harness that answered for its solver", () => {
       put("task.proposed", { version });
       put(GATE, { version, gate: 1, outcome: "passed" });
     }
+    put("task.state", { version: "t1", state: "released" });
     put("build.started", { session: "p-1", parent: "href", tasks: ["t1"] });
     for (const calls of practice) made("t1", "hy", calls, null);
     put("build.finished", { session: "p-1", ended: "finished", harness: "hy", changed: true });

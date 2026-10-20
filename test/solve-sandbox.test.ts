@@ -1,5 +1,5 @@
 // The solve isolation's policy, and the wall built on it proved by running it: every case that runs
-// a command runs it as a seat's commands run (`runWalled`, on a mounted cap), on the host the suite
+// a command runs it as a seat's commands run (`runWalled`, in a claimed root), on the host the suite
 // runs on, because a profile checked only as configuration is a profile nobody has seen refuse
 // anything. Until 11 October these cases ran v1's launch of its sandboxed model process, which no
 // seat of v2 runs (`docs/simplify.md`, F5 and W2).
@@ -30,7 +30,7 @@ import {
   solveDirs,
   walledBase,
 } from "../src/solve/command.ts";
-import { mountDiskCap } from "../src/verify/disk-cap.ts";
+import { claimRoot } from "../src/verify/seat-root.ts";
 import { LINUX_BWRAP_ID } from "../src/verify/linux-bwrap.ts";
 import { moveBlockingRules } from "../src/verify/seatbelt-path-guard.ts";
 import { commandIsolationPolicy } from "../src/verify/solve-command-isolation.ts";
@@ -46,7 +46,6 @@ import { CLOSED } from "./helpers/wall.ts";
 const onDarwin = runtimeProcess.platform === "darwin";
 const nodePath = Bun.which("node");
 const realNode = nodePath !== null && !realpathSync(nodePath).endsWith("/bun");
-const CAP_BYTES = 16 * 1024 * 1024;
 
 const made: string[] = [];
 function workRepo(): string {
@@ -61,15 +60,15 @@ afterEach(() => {
 });
 let seats = 0;
 
-/** A seat's wall over `repoRoot`, unprobed, on a mounted cap; `fn` runs with it, and the cap goes
- *  after. */
+/** A seat's wall over `repoRoot`, unprobed, in a claimed root; `fn` runs with it, and the root
+ *  goes after. */
 async function inSeat(
   repoRoot: string,
   otherTrees: readonly string[],
   fn: (wall: CommandWall, run: (command: string) => Promise<string>) => Promise<void>,
 ) {
   const dirs = solveDirs(`sandbox-${String(runtimeProcess.pid)}-${String(Date.now())}-${String(seats++)}`);
-  const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
+  const release = claimRoot(dirs.root);
   try {
     makeSeatDirs(dirs);
     const base = solveIsolationPolicy({ repoRoot, otherTrees });
@@ -305,11 +304,7 @@ describe("the wall's probe", () => {
       // A sibling with no `package.json` proves nothing by refusing it, and is not tried.
       expect(await probeWall(wall, repoRoot, bare)).toBeNull();
       // The seat's probe: once a policy a process, before the wall's first use.
-      const base = await walledBase(
-        wall.dirs,
-        { repoRoot, otherTrees: [sibling, bare], diskBytes: CAP_BYTES },
-        "a test",
-      );
+      const base = await walledBase(wall.dirs, { repoRoot, otherTrees: [sibling, bare] }, "a test");
       expect(base.policyHash).toBe(wall.base.policyHash);
       // The probe writes nothing in a sibling, which another user may own (10 October), leaves
       // nothing in the repository, and nothing in the seat's own folders or the host's in it.

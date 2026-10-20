@@ -20,9 +20,8 @@
  * effort are those it recorded, and its contract, task and resources are the bundle's, as
  * `tools/d2/campaign.ts` reads them. `--harness` solves under another state instead, such as a Builder's
  * kept one, and the read-back sets its ending beside the stored solve's: the pilot's informal reading
- * of old against new until M2. `--solver` and `--solver-effort` solve on another model in its place. The limits are the sweep's `config.yaml` and `maxTurns`, but for the
- * disk cap, which the sweep did not have.
- * The harness's digest binds its tool tree, so it is the condition's `solverTools` too. The condition's `sandbox` stands in for the policy's digest with its profile, platform and cap,
+ * of old against new until M2. `--solver` and `--solver-effort` solve on another model in its place. The limits are the sweep's `config.yaml` and `maxTurns`.
+ * The harness's digest binds its tool tree, so it is the condition's `solverTools` too. The condition's `sandbox` stands in for the policy's digest with its profile and platform,
  * since the policy names each solve's own directories.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
@@ -44,9 +43,10 @@ import { countBy } from "#src/meta/tally.ts";
 import { openDesk } from "#src/solve/answer.ts";
 import { networkReach, solveDirs, walledBase } from "#src/solve/command.ts";
 import { type Harness, openHarness, treeContent } from "#src/solve/harness.ts";
-import { firstTurn, installedPrograms, NUDGE, seedHome, systemPrompt } from "#src/solve/prompt.ts";
+import { installedPrograms } from "#src/solve/programs.ts";
+import { firstTurn, NUDGE, seedHome, systemPrompt } from "#src/solve/prompt.ts";
 import { type SolveRequest, solve, solverTools } from "#src/solve/run.ts";
-import { mountDiskCap } from "#src/verify/disk-cap.ts";
+import { claimRoot } from "#src/verify/seat-root.ts";
 import { HOST_SOLVE_ISOLATION_PROFILE_ID } from "#src/verify/solve-sandbox.ts";
 import { codeOf, worktreesOf } from "../d2/campaign.ts";
 import {
@@ -86,7 +86,6 @@ const LIMITS: Limits = {
   shellDefaultSeconds: 300,
   shellMaxSeconds: 900,
   concurrency: 1,
-  diskBytes: 2 * 1024 ** 3,
 };
 const REPO = resolve(import.meta.dir, "..", "..");
 
@@ -140,7 +139,6 @@ async function main(): Promise<number> {
       sandbox: hashJsonValue({
         profile: HOST_SOLVE_ISOLATION_PROFILE_ID,
         platform: runtimeProcess.platform,
-        diskBytes: LIMITS.diskBytes,
       }),
       limits: LIMITS,
       // The files as they stand, not the commit: a commit to tests or tools runs no other solve, and
@@ -203,14 +201,9 @@ async function shown(
   harness: Harness,
 ): Promise<string> {
   const dirs = solveDirs(`dry-${String(runtimeProcess.pid)}-${String(Date.now())}`);
-  const cap = { root: dirs.root, bytes: LIMITS.diskBytes };
-  const release = await mountDiskCap(cap);
+  const release = claimRoot(dirs.root);
   try {
-    const base = await walledBase(
-      dirs,
-      { repoRoot: REPO, otherTrees: worktreesOf(REPO), diskBytes: cap.bytes },
-      "a solve",
-    );
+    const base = await walledBase(dirs, { repoRoot: REPO, otherTrees: worktreesOf(REPO) }, "a solve");
     const files = seedHome(dirs.home, request.task, request.resources, request.contract.answerFormat);
     const wall = { base, dirs, toolTree: harness.toolTree, limits: LIMITS };
     const tools = await solverTools(request, harness, wall, openDesk());

@@ -78,8 +78,6 @@ export const TERMS = [
   "target",
   "solves",
   "level",
-  "trigger",
-  "margin",
   "defects",
   "minutes",
   "turns",
@@ -176,7 +174,6 @@ export function planOf(
     /** Whether the campaign's pack holds a task its log does not. */
     readonly unprepared: boolean;
     readonly level: number;
-    readonly trigger: number;
     /** The tasks to score, where the log's setting names none yet. */
     readonly target?: number | undefined;
     readonly pastStop?: string | undefined;
@@ -195,7 +192,6 @@ export function planOf(
     wanted: {
       target: isNumber(named) ? named : (beside.target ?? SIZE.tasks),
       level: beside.level,
-      trigger: beside.trigger,
     },
     left:
       opening?.budget == null

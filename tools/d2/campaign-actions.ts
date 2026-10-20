@@ -33,8 +33,6 @@ import {
   epochReleased,
   heldAfter,
   practiceRoom,
-  repeatDue,
-  shortOf,
   unaffordedAsked,
   unpromoted,
 } from "#src/builder/decide.ts";
@@ -61,7 +59,7 @@ import { taskSets } from "#src/kernel/task.ts";
 import { mkdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isString, type JsonObject } from "#src/meta/json-shape.ts";
-import { keyIfDefined } from "#src/meta/optional-key.ts";
+import { keyIfDefined, keysIf } from "#src/meta/optional-key.ts";
 import { join } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { plural } from "#src/meta/text.ts";
@@ -205,9 +203,9 @@ function actionTool(
         "Ask a separate Examiner to write tasks under the fixed exam. It returns at once and the Examiner writes beside you; the campaign's facts say what it has held out. A comparison is won on tasks the reference fails in some solve, or where the objective tells two valid answers apart.",
       release_practice: "Release the host's draw of public practice tasks into this workspace.",
       compare:
-        "Freeze harness/ and compare it with the current reference on fresh held-out solves. Where a comparison began and has not reported, it goes on under its original terms. Where the last one bought a repeat, its result at or under the trigger whatever it read by itself, this is that repeat: of the harness as that comparison froze it, on the tasks it untied again and on tasks it did not score, and it waits only where the campaign holds too few for it to read a step. The comparison and its repeat, read together, decide a promotion.",
+        "Freeze harness/ and compare it with the current reference on fresh held-out solves. Where a comparison began and has not reported, it goes on under its original terms. A comparison that reads a step against the reference promotes the harness it froze.",
       promote:
-        "Make the harness whose comparison and repeat, read together, cleared the level the campaign's reference, where the host has not already done so as the repeat reported. Nothing else is promoted, and this measures nothing.",
+        "Make the harness whose comparison read a step against the reference the campaign's reference, where the host has not already done so as the comparison reported. Nothing else is promoted, and this measures nothing.",
     }[move],
     parameters: Type.Object({}),
     executionMode: "sequential",
@@ -220,12 +218,15 @@ function actionTool(
         return halt("The campaign move limit has been reached; the host will stop this conversation.");
       }
       if (signal?.aborted === true) return text("The campaign has been stopped by the host.");
-      // An Examiner session writes beside the conversation, and any other action waits for it, on
-      // the host's time: two actions never spend from the total at once.
+      // An Examiner session writes beside the conversation, and a comparison or a promotion waits
+      // for it, on the host's time: two actions never spend from the total at once. A release
+      // spends nothing and goes on beside it: until 19 October it waited too, and in each of three
+      // replicates of 19 October the Builder's first release waited 1.6 to 2.6 hours, with no
+      // practice task released meanwhile.
       const writing = context.examining;
       if (writing != null) {
         if (move === "examine") return text(`Examiner session ${writing.session} is still writing.`);
-        await bench.within(() => writing.done);
+        if (move !== RELEASE) await bench.within(() => writing.done);
       }
       if (context.failed !== null) return text("The campaign has been stopped by the host.");
       const { turn, decided } = actionTurn(context);
@@ -352,7 +353,7 @@ const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
       });
     context.examining = { session, done };
     return {
-      said: `Examiner session ${session} is writing ${tasks === undefined ? "tasks" : plural(Number(tasks), "task")} beside this conversation: edit and practise meanwhile. Any other campaign action waits for it to end, and campaign_status says how many it has held out.`,
+      said: `Examiner session ${session} is writing ${tasks === undefined ? "tasks" : plural(Number(tasks), "task")} beside this conversation: edit, release practice and practise meanwhile. A comparison or a promotion waits for it to end, and campaign_status says how many it has held out.`,
     };
   });
 
@@ -372,7 +373,7 @@ const releaseTool = (context: CampaignContext, bench: Bench): AgentTool =>
       "--practice",
       String(practice),
       // The campaign's terms, so what it prints of a comparison's size is the campaign's.
-      ...(["solves", "level", "trigger"] as const).flatMap((name) => flag(name, values[name])),
+      ...(["solves", "level"] as const).flatMap((name) => flag(name, values[name])),
     ]);
     if (result !== 0) throw new Error("the practice release was refused");
     begin({});
@@ -384,9 +385,8 @@ const releaseTool = (context: CampaignContext, bench: Bench): AgentTool =>
 
 /**
  * The two harnesses a `compare` reads, and what the Builder is told of the choice. A comparison
- * that began goes on, and the repeat of a reading under the trigger is of the harness that reading
- * froze: an edit made between the two would otherwise be measured in the repeat's place, and the
- * step would never be read twice. Otherwise the working copy is frozen and compared, unless it is
+ * that began goes on; until 19 October so did the repeat of a reading under the trigger, of the
+ * harness that reading froze. Otherwise the working copy is frozen and compared, unless it is
  * the reference harness, where the table's own comparison is made (the control, or the latest
  * harness on tasks written since), or one a comparison has read with nothing changed since, which
  * would be a second draw of one pair that no row of the table names.
@@ -399,18 +399,6 @@ async function comparedOf(
 ): Promise<{ readonly move: Compare; readonly froze?: string; readonly note: string } | { refused: string }> {
   const latest = latestBuilt(events);
   if (decided.move === "compare" && decided.id !== undefined) return { move: decided, note: "" };
-  // A repeat waits where too few tasks are held for it to read a step (`shortOf`).
-  if (decided.move === "examine" && decided.repeats !== undefined) {
-    return {
-      refused: `The repeat of comparison ${decided.repeats} waits for ${plural(shortOf(events, plan), "more held-out task")} before it can read a step: call examine first.`,
-    };
-  }
-  if (decided.move === "compare" && decided.repeats !== undefined) {
-    return {
-      move: decided,
-      note: `This comparison repeated harness ${short(decided.fresh)} as comparison ${decided.repeats} froze it: changes made to harness/ since are not in it.`,
-    };
-  }
   let working: string;
   try {
     working = (await snapshot(bench)).harness.digest;
@@ -434,13 +422,17 @@ async function comparedOf(
   // The table's budget hold, which its own comparisons meet in `decide` (14 October).
   const unafforded = decided.move === "compare" ? null : unaffordedAsked(events, plan);
   if (unafforded !== null) return { refused: `The host refused the compare action: ${unafforded}.` };
+  // Another comparison than the table's is the Builder's own, on record as `asked` with what the
+  // table named: until 19 October it kept the table's code and reason, and r3's g-3 and g-6 read as
+  // controls of the starter while each measured a changed checkpoint.
+  const table = decided.move === "compare" ? `a comparison of the ${decided.fresh} harness` : toolOf(decided);
   return {
     move: {
       move: "compare",
-      code: decided.move === "compare" ? decided.code : ASKED,
+      code: ASKED,
       fresh: working,
       reference: "promoted",
-      why: "the Builder asked for a comparison",
+      why: `the Builder asked for it, where the table named ${table}`,
     },
     note: "",
     ...keyIfDefined("froze", working === latest ? undefined : working),
@@ -467,7 +459,11 @@ const compareTool = (context: CampaignContext, bench: Bench): AgentTool =>
     // record once the comparison is admitted: until 14 October it was written first, and a
     // comparison the admission refused left a move that never began.
     await checkpointCommand(args, context.held, signal, () =>
-      begin({ session, args: args.slice(packOf(context.values).length) }),
+      begin({
+        session,
+        args: args.slice(packOf(context.values).length),
+        ...keysIf(named.move !== decided, () => ({ code: named.move.code, why: named.move.why })),
+      }),
     );
     const events = read(context.log);
     const step = campaignOf(events).steps.findLast(
@@ -504,13 +500,13 @@ async function promoteOwed(context: CampaignContext, bench: Bench): Promise<stri
   await promoteCommand(["--name", context.values.name ?? "", "--harness", decided.harness, "--yes"]);
   await refreshCampaign(context, bench);
   return [
-    `Harness ${short(decided.harness)} and its repeat, read together, cleared the level against the reference, and the host has made it the campaign's reference.`,
+    `Harness ${short(decided.harness)} read a step against the reference, and the host has made it the campaign's reference.`,
   ];
 }
 
 const promoteTool = (context: CampaignContext, bench: Bench): AgentTool =>
   actionTool(context, bench, "promote", async (turn, decided, begin) => {
-    // The harness the rule names, which is not always the last one frozen (`twice`, `decide.ts`).
+    // The harness the rule names, which is not always the last one frozen (`stepped`, `decide.ts`).
     const candidate = decided.move === "promote" ? decided.harness : latestBuilt(turn.events);
     const name = context.values.name ?? "";
     if (candidate === null) {
@@ -535,7 +531,7 @@ const promoteTool = (context: CampaignContext, bench: Bench): AgentTool =>
     if (!promoted) {
       return {
         refused:
-          "Nothing was promoted: no harness other than the reference has a comparison and repeat that, read together, cleared the level against it.",
+          "Nothing was promoted: no harness other than the reference has a comparison that read a step against it.",
       };
     }
     begin({ harness: candidate });
@@ -545,7 +541,7 @@ const promoteTool = (context: CampaignContext, bench: Bench): AgentTool =>
 
 /** What a comparison of `scored` tasks can read, as the operator reads it before one (`sizeLines`):
  *  until 13 October the Builder was not told, and a led Builder bought one of six scored tasks,
- *  whose step and repeat together clear at 6-0 at the least. */
+ *  which reads a step at 6-0 at the least. */
 function sizeLine({ events, plan }: Turn, scored = Math.min(plan.wanted.target, supplyOf(events).held)) {
   return `Comparison size: ${sizeLines(scored, { ...plan.wanted, patience: plan.patience })[0] ?? ""}.`;
 }
@@ -564,7 +560,7 @@ function examinedLines(events: readonly LogEvent[], writing: string | undefined)
     const held = plural(started === -1 ? 0 : heldAfter(events, started), "task");
     return [
       begun === writing
-        ? `Examiner session ${begun} is writing beside this conversation, ${minutesFrom(events[started]?.at)}, and has held out ${held} so far; any other campaign action waits for it.`
+        ? `Examiner session ${begun} is writing beside this conversation, ${minutesFrom(events[started]?.at)}, and has held out ${held} so far; a comparison or a promotion waits for it.`
         : `Examiner session ${begun} stopped with the run of the campaign that began it, and held out ${held}.`,
     ];
   }
@@ -593,13 +589,12 @@ function minutesFrom(from: string | undefined, to = new Date().toISOString()): s
 
 /**
  * What the host has spent and counted, as a led Builder reads it where it acts or asks: the last
- * comparison's minutes and dollars, a repeat that is due, the moves without a gain against the
+ * comparison's minutes and dollars, the moves without a gain against the
  * patience, and the sessions the provider failed in a row. Until 14 October a Builder bought a
  * comparison of hours knowing of the last one its tally alone. None of it names a task (rule 3).
  */
-function spentLines({ events, plan }: Turn): string[] {
+function spentLines({ events }: Turn): string[] {
   const last = comparisonsOf(events).at(-1);
-  const due = repeatDue(events, plan);
   const { sinceStep } = stopRule(events);
   const { count } = crashedRun(events);
   return [
@@ -609,11 +604,6 @@ function spentLines({ events, plan }: Turn): string[] {
           // One not reported is read to its last solve's event, not to now: a led Builder sees one only
           // after a kill, and the time since would count the downtime (14 October).
           `Comparison ${last.id} ${last.reported === null ? "has run" : "took"} ${minutesFrom(events[last.at]?.at, events[last.reported ?? lastSolveOf(events, last.id)]?.at)} and billed ${billedParts(events, last.id).comparison.toFixed(2)} dollars.`,
-        ]),
-    ...(due === null
-      ? []
-      : [
-          `Comparison ${due.id} bought a repeat: it scores the tasks it untied again, with ${plural(due.fresh, "held-out task")} it did not score, up to ${String(plan.wanted.target)}.`,
         ]),
     `Moves without a gain since the last step: ${String(sinceStep)} of the patience's ${String(patienceOf(events))}.`,
     ...(count === 0
@@ -629,18 +619,10 @@ function spentLines({ events, plan }: Turn): string[] {
 function namedLine(decided: Decided, size: string): string {
   if (decided.move === "build") return "Edit and practise the harness.";
   if (decided.move === "promote") return `promote makes harness ${short(decided.harness)} the reference.`;
-  if (decided.move === "examine") {
-    // A repeat waits where too few tasks are held for it to read a step (`comparedOf`).
-    return decided.repeats === undefined
-      ? size
-      : `${size}\nThe repeat of comparison ${decided.repeats} waits for the tasks examine writes.`;
-  }
+  if (decided.move === "examine") return size;
   if (decided.move !== "compare") return `Choose the ${toolOf(decided)} action.`;
   if (decided.id !== undefined) {
     return `compare goes on with comparison ${decided.id}, which began and has not reported.`;
-  }
-  if (decided.repeats !== undefined) {
-    return `compare repeats harness ${short(decided.fresh)} as comparison ${decided.repeats} froze it: changes made to harness/ since are not in it.`;
   }
   return decided.fresh === "starter"
     ? "While harness/ is the reference harness, compare reads the starter against it on the tasks held out since."
@@ -721,6 +703,20 @@ export function campaignTools(
 ): NonNullable<BuildRequest["campaign"]> {
   return (bench) => {
     const examining = examineTool(context, bench);
+    // An action that promoted is followed by the Examiner session the table then names, started by
+    // the host as at a conversation's opening: on 19 October r1's Builder compared six minutes after
+    // its promotion where the table named one, on 1 task of 25 informative for its new reference.
+    const promoting = (made: AgentTool): AgentTool => ({
+      ...made,
+      execute: async (id, args, signal) => {
+        const before = lastPromoted(read(context.log));
+        const result = await made.execute(id, args, signal);
+        if (lastPromoted(read(context.log)) === before || context.examining != null) return result;
+        if (toolOf(actionTurn(context).decided) !== "examine") return result;
+        const started = await examining.execute(id, {}, signal);
+        return { ...result, content: [...result.content, ...started.content] };
+      },
+    });
     return {
       start: async () =>
         opens
@@ -729,9 +725,10 @@ export function campaignTools(
               .join("\n")
           : "",
       tools: [
-        ...[examining, ...[releaseTool, compareTool, promoteTool].map((made) => made(context, bench))].map(
-          (made) => endingWith(made, () => campaignStatus(context, bench)),
-        ),
+        ...[
+          examining,
+          ...[releaseTool, compareTool, promoteTool].map((made) => promoting(made(context, bench))),
+        ].map((made) => endingWith(made, () => campaignStatus(context, bench))),
         tool({
           name: "campaign_status",
           label: "Campaign Status",

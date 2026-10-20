@@ -6,6 +6,12 @@
  * `--repo <dir>` it lists the ones under that one directory, a fixture's or another checkout's, so
  * that the page can be pointed at either.
  *
+ * A seed is left out wherever it lies: a copy of another campaign cut at a recorded position and
+ * rehearsed with a script in each seat (`seed.json` beside its log, `bun run runs seed`), which
+ * proves a path and no climb (`AGENTS.md`, section 10, item 9). On 19 October 538 of the 633 logs
+ * in this repository's worktrees were seeds, most of them the campaign command's own tests
+ * (`test-hb-*`), and they buried the 95 real campaigns in the picker. A seed's key opens nothing.
+ *
  * The list is polled every few seconds and a host may hold thirty logs of several megabytes, so a
  * log is read and folded again only where its size or its modification time moved since the last
  * read, and the events stay in memory for the detail endpoints (`Log`, `folds.ts`). A log is read
@@ -167,7 +173,8 @@ export function campaignsFound(reading: Pick<Reading, "repo" | "trees">): Looked
   const now = Date.now();
   if (looked?.where === where && now - looked.at < LOOK_MS) return looked;
   const listed = reading.trees === "directory" ? underDirectory(reading.repo) : inWorktrees(reading.repo);
-  looked = { at: now, where, found: keyed(listed.runs), issues: listed.issues };
+  const found = keyed(listed.runs.filter((run) => run.seed !== true));
+  looked = { at: now, where, found, issues: listed.issues };
   return looked;
 }
 

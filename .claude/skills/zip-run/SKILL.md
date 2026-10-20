@@ -8,8 +8,13 @@ description: "Zip recorded Anabasis v2 runs for handover at a chosen depth (--li
 One command makes the bundle, and the level decides how deep it reaches.
 
 ```sh
-bun run runs zip [<name> ...] --light|--medium|--verbose [--out <zip>] [--max-mb N] [--note <file>]
+bun run runs zip [<name> ...] --light|--medium|--verbose [--out <zip>] [--max-mb N] [--note <file>] [--from <host>]
 ```
+
+A run on another host is zipped there and brought back: `--from <host>` names a host of `ANA_HOSTS`
+(`bun --env-file=.env.runs run runs zip <name> --medium --from <host>`), and the level chooses its
+files as it does here. Bring a run to this machine this way to read it; `bun run runs move` is for
+going on with a campaign elsewhere. A live run's log is cut at its last whole line.
 
 A name is a round (`.ana/d2/<name>/`) or a live solve (`.ana/live/<name>.jsonl`) in any worktree of
 the repository, matched as `bun run runs pulse` matches it: `abl25` takes the four rounds whose
@@ -34,7 +39,8 @@ gate, session, turn, tool call, verdict and reading.
 
 - **light** adds what the log names by digest only: each harness a session kept
   (`states/<digest>/`, less a checker copy) and the brief.
-- **medium** adds the checker (`checks/`, and the `correctness-model/` a harness holds when its
+- **medium** adds the checker (`checks/`, or `exams/<digest>/` for an exam the campaign drafted,
+  and the `correctness-model/` a harness holds when its
   Builder was given one) and the toolchain's own files (`states/tree-*`).
 - **verbose** adds whatever else the round's folder holds, and the tracked `src`, `tools`, `docs`
   and `package.json` of each worktree at its commit. The prompts are rendered by that source and are

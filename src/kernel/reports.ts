@@ -21,17 +21,7 @@
  * Nothing here decides a comparison or makes a solve.
  */
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
-import {
-  closedTo,
-  draw,
-  objectiveRuleIn,
-  type Paired,
-  pairsOf,
-  readTwice,
-  tally,
-  TRIGGER,
-  triggered,
-} from "./compare.ts";
+import { closedTo, draw, objectiveRuleIn, type Paired, pairsOf, tally } from "./compare.ts";
 import type { LogEvent } from "./log.ts";
 import { providerFailed, windowEnded } from "./solve.ts";
 import { passed, practiceRan, ranUnder } from "./solves.ts";
@@ -113,7 +103,8 @@ interface TalliedIn {
   /** Whether one of the reference harness's own solves of it did: all its author hears (rule 4). */
   readonly referenceCut: boolean;
   /** Whether the reference harness closed the task in this comparison (`closedTo`): valid in every
-   *  solve, and no two valid answers the objective told apart. False where it stood on neither side. */
+   *  solve, and no valid answer better than one of its own by the objective. False where it stood
+   *  on neither side. */
   readonly closed: boolean;
   /** The side that won the task in this comparison's tally (`tally`), or null for a tie. */
   readonly won: "old" | "fresh" | null;
@@ -304,16 +295,16 @@ export function patienceOf(events: readonly LogEvent[]): number {
  * F48; `patienceOf`).
  *
  * A move that counts is one of two. The first is a harness a Builder session changed, compared
- * with one reference, where the comparison tallied a task and left room (`roomOf`), or read
- * under the trigger. Such a pair counts once, where it first reported, and reads as its last
- * comparison: a step its repeat does not read again was one draw, and three repeats of one
- * harness are one harness that showed no gain. Its last two read together as the promotion rule
- * reads them (`readTwice`) are a step whatever the repeat reads alone. The count is of the epoch:
- * the moves since the last promotion. On 9 October one harness compared with the starter
- * three times, each time on more tasks, stopped a campaign. The second is a whole session that
- * left its harness as it was, where a practice solve of the session failed: it was shown a failure
- * and declined it. A session whose every practice solve passed, or that ran none, had nothing to
- * work on, which is a fault of the supply and no evidence about the domain: all ten campaigns of
+ * with one reference, where the comparison tallied a task and left room (`roomOf`), or read a step.
+ * Such a pair counts once, where it first reported, and showed a gain where any of its comparisons
+ * read a step, which promotes it: three readings of one harness are one harness. The count is of
+ * the epoch, the moves since the last promotion, so a step restarts it. On 9 October one harness
+ * compared with the starter three times, each time on more tasks, stopped a campaign. Until
+ * 19 October a reading under the trigger counted as a gain too, since it bought the repeat.
+ *
+ * The second is a whole session that left its harness as it was, where a practice solve of the
+ * session failed: it was shown a failure and declined it. A session whose every practice solve
+ * passed, or that ran none, had nothing to work on, which is a fault of the supply and no evidence about the domain: all ten campaigns of
  * 9 and 10 October stopped on three such sessions after a promotion, each practising on tasks the
  * promoted harness passed (`docs/plan.md`, row F52).
  *
@@ -342,30 +333,17 @@ export function stopRule(events: readonly LogEvent[]) {
     );
     if (shown) idle.push({ index, step: false });
   }
-  // The campaign's trigger as its opening records it (`--trigger`, a string), or `TRIGGER`.
-  const named = asRecord(events.findLast(({ kind }) => kind === "campaign.opened")?.data.terms)?.trigger;
-  const parsed = isString(named) ? Number(named) : Number.NaN;
-  const trigger = Number.isFinite(parsed) ? parsed : TRIGGER;
-  /** Each pair of a harness and a reference, where it first reported, as it last read, and its
-   *  reports so far. */
-  const pairs = new Map<string, { index: number; step: boolean; counts: boolean; reports: JsonObject[] }>();
+  /** Each pair of a harness and a reference, where it first reported, and whether any of its
+   *  comparisons read a step or left room. */
+  const pairs = new Map<string, { index: number; step: boolean; counts: boolean }>();
   for (const { index, data } of lastReports(events)) {
     const { old, fresh, versions } = data;
     const tallied = asRecord(data.scored) !== null && Array.isArray(versions) && versions.length > 0;
     if (!tallied || !isString(fresh) || !built.has(fresh)) continue;
     const pair = `${fresh} ${isString(old) ? old : ""}`;
-    const reports = [...(pairs.get(pair)?.reports ?? []), data];
-    // A reading under the trigger showed a gain too: it bought the repeat. A repeat that reads
-    // `no-step` by itself and promotes with its first stage is a step: until 14 October the
-    // repeat's own reading ended a campaign of patience 1 before the table could name `twice`.
-    const level = isNumber(data.level) ? data.level : 0;
-    const step = data.reading === STEP || triggered(data, trigger) || readTwice(reports, level, trigger);
-    pairs.set(pair, {
-      index: pairs.get(pair)?.index ?? index,
-      step,
-      counts: step || roomOf(data) === "room",
-      reports,
-    });
+    const was = pairs.get(pair);
+    const step = was?.step === true || data.reading === STEP;
+    pairs.set(pair, { index: was?.index ?? index, step, counts: step || roomOf(data) === "room" });
   }
   const moves = [...pairs.values().filter(({ counts }) => counts), ...idle].toSorted(
     (one, other) => one.index - other.index,
@@ -575,9 +553,11 @@ function tallyReports(
  * set (`scoredSet`). The fold is read again against whatever harness is the
  * reference at the time, so a promotion re-derives it at once: the comparisons the promoted
  * harness won before its promotion count. Such a task can only tie again at that budget or be
- * lost, unless the comparison carried an objective that told two valid answers of it apart
- * (`closedTo`, `compare.ts`): a task the objective still separates is not closed, since the next harness can
- * win it. Every one in the set is a task a step cannot be read on: on the operator's host (9 and
+ * lost, unless the comparison carried an objective by which a valid answer, its own or the other
+ * side's, was better than one of the reference's (`closedTo`, `compare.ts`): a better answer is
+ * then there for the next harness to reach. Until 19 October any two answers told apart kept it
+ * open, the reference's own wins among them, so a harness promoted on the objective stood on a
+ * frontier of the tasks it had already won. Every one in the set is a task a step cannot be read on: on the operator's host (9 and
  * 10 October) a harness came one win short of a step three times with most of its tasks tied, and
  * one promoted harness and the starter tied 10 of 10 twice. The reference's own answers close a
  * task, since its answers are what the next harness has to match: closed only where both
@@ -590,7 +570,7 @@ function tallyReports(
  * of four solves had closed them, and a later reading reopens some (below). The Examiner hears
  * such a task's outcome as any other's (`outcomes`); in the counts by family it stands where its
  * last comparison's tally puts it (`standings`). Since 15 October the reference's last reading of a task decides, where two closed
- * comparisons had: a promotion's repeat draws fresh tasks, so a promoted harness had stood once in
+ * comparisons had: a promotion's repeat drew fresh tasks, so a promoted harness had stood once in
  * the tasks it was promoted on, closed 50 of 51 in four campaigns' logs, and the next comparisons
  * tied on them. A later reading that leaves a task open opens it again, as 3 of 34 rechecks did,
  * and one where a limit cut a solve of the reference's says neither (rule 7).

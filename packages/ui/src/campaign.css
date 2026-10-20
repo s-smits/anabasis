@@ -369,7 +369,23 @@
 
 .ana-harness-files {
   display: grid;
+  gap: 8px;
+}
+/* One part of a harness: its name over its files. */
+.ana-harness-part {
+  display: grid;
   gap: 2px;
+}
+.ana-harness-part small {
+  color: var(--ana-faint);
+}
+/* A program's head comment under its path: its usage and what it computes. */
+.ana-harness-about {
+  color: var(--ana-dim);
+  font-size: var(--ana-text-sm);
+  margin: 0 0 6px;
+  max-width: 80ch;
+  white-space: pre-wrap;
 }
 
 /* The two small charts side by side, one above the other on a narrow page. */

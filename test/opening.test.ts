@@ -19,7 +19,7 @@ describe("what a campaign runs by", () => {
     seats: { builder: { model: "claude/claude-opus-5-5", effort: "high" }, examiner: null, reviewer: null },
   });
   const billed = (dollars: number) => event("solve.finished", { solve: "s-1", billed: dollars });
-  const ASKED = { unprepared: false, level: 0.1, trigger: 0.25 };
+  const ASKED = { unprepared: false, level: 0.1 };
 
   it("is its opening: the limit, the sessions, and what is left of its total", () => {
     expect(openingOf([])).toBeNull();
@@ -47,7 +47,7 @@ describe("what a campaign runs by", () => {
       patience: 6,
       unprepared: false,
       practice: null,
-      wanted: { target: 24, level: 0.1, trigger: 0.25 },
+      wanted: { target: 24, level: 0.1 },
       pastStop: null,
       left: { dollars: 360, reserve: 10 },
       prompted: false,
@@ -59,7 +59,6 @@ describe("what a campaign runs by", () => {
     const plan = planOf([setting(15), setting(8)], {
       unprepared: true,
       level: 0.2,
-      trigger: 0.3,
       target: 9,
       pastStop: "why",
       practice: 3,
@@ -70,7 +69,7 @@ describe("what a campaign runs by", () => {
       unprepared: true,
       practice: 3,
       // The setting on record names twelve tasks to score, which stands over the caller's nine.
-      wanted: { target: 12, level: 0.2, trigger: 0.3 },
+      wanted: { target: 12, level: 0.2 },
       pastStop: "why",
       left: null,
       prompted: false,

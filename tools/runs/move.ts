@@ -30,12 +30,11 @@
  * next session there builds its own again. A `runs keep` that keeps the campaign at its source is
  * not stopped by the move: stop it first.
  */
-import { renameSync } from "#src/meta/filesystem.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { type Host, hostNamed, quoted, sshScript, verbOn } from "./hosts.ts";
-import { continueRun, lastRun, pause } from "./manage.ts";
+import { asideOf, continueRun, lastRun, pause, setAside } from "./manage.ts";
 
 /** One end of a move: this machine or a host, with the folder its worktrees sit in. */
 interface End {
@@ -156,8 +155,8 @@ export async function move(args: readonly string[]): Promise<void> {
     end: "comparison.reported",
   });
   const flags = given.length > 0 ? given : rehomed(kept.flags, dirname(from.repo), dirname(to.repo));
-  const aside = join(source, ".ana", "moved", `${name}-${new Date().toISOString().replace(/[:.]/g, "")}`);
-  if (from.host === undefined) renameSync(folder(source), aside);
+  const aside = asideOf(source, name);
+  if (from.host === undefined) setAside(folder(source), aside);
   else at(from, `mkdir -p ${quoted(dirname(aside))} && mv ${quoted(folder(source))} ${quoted(aside)}`);
   console.log(
     `${name} is in ${tree} on ${to.name}, and its folder at ${from.name} was set aside as ${aside}`,

@@ -19,14 +19,14 @@
  * how a climb of more than one epoch is rehearsed: the Examiner of a source that climbed once
  * wrote tasks for one epoch, and a rehearsal with `--held none:pass --starter pass --supply 30`
  * goes round the table again, from the promoted harness through other tasks, the control, a
- * session and a step read twice, until the supply is spent (11 October).
+ * session and a step, until the supply is spent (11 October).
  * Since 18 October 2026 the same scripted solver stands at the admission gate: esp32-fresh-opus
  * refused 45 of 50 drafts after promotion, while five rehearsals saw no reference solve there.
  * A gate's three solves of a draft end as the reference's do (`--held`'s old), after a promotion
  * too: `pass` refuses every draft, and `none` holds one on its recorded answer, tried through
  * try_answer.
  * Everything under the seats is a paid round's: the campaign's log and sets, the Builder's tools on
- * the command wall and its freeze, each solve's wall and disk cap, the answer file and `submit`,
+ * the command wall and its freeze, each solve's wall and root, the answer file and `submit`,
  * the verifier, the comparison and the report. It is `roundCommand` with other
  * seats, so its flags and defaults are the round's, but that it needs no `--cap`: a script is paid
  * nothing. The three flags that name a model are refused. The answers the script writes are a

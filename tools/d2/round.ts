@@ -73,7 +73,7 @@ import { worthLine } from "#src/builder/climb.ts";
 import { predicted, type Report } from "#src/builder/comparison.ts";
 import { refuseTerms, type RoundRequest, round, scoredSet } from "#src/builder/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
-import { MARGIN, type ObjectiveRule, TRIGGER } from "#src/kernel/compare.ts";
+import type { ObjectiveRule } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
@@ -145,19 +145,11 @@ export const COMPARISON_OPTIONS = {
   "reviewer-effort": { type: "string", default: "high" },
   target: { type: "string" },
   solves: { type: "string", default: String(SIZE.solves) },
-  // The step and its repeat read together clear `level`; a first reading at or under `trigger`
-  // buys the repeat (`src/kernel/compare.ts`, `readTwice`). 0.20 on each reading alone was the default from
-  // #175 until 10 October's two-stage rule, then 0.10, which risks 34.8% over a patience of six; at
-  // 0.02 it is 7.6%, under the opening's cap, with 90% power at three in four untied tasks won (the
-  // operator, 12 October).
+  // One reading at or under `level` is a step (`stepOf`, `src/kernel/compare.ts`). 0.20 was the
+  // default from #175 until 10 October, then 0.10 under the two-stage rule, and 0.02 since
+  // 12 October (the operator). Since 19 October one reading promotes, which at 0.02 on 24 untied
+  // tasks risks 6.8% over a patience of six, under the opening's cap; at 0.10 it would be 45.5%.
   level: { type: "string", default: "0.02" },
-  trigger: { type: "string", default: String(TRIGGER) },
-  // Two valid answers are compared by the objective where the check program declares one
-  // (`src/kernel/compare.ts`, `ObjectiveRule`), and the better by more than this share of the
-  // larger measure wins the pair. It is fixed with the comparison's other terms, and read by no
-  // comparison of a check program that declares none. Where no command names it, it is the gate's
-  // (`MARGIN`); from 12 to 18 October the last A/A on record set it from the reference's own spread.
-  margin: { type: "string" },
   defects: { type: "string", default: "3" },
   cap: { type: "string" },
   reserve: { type: "string", default: "10" },
@@ -295,29 +287,26 @@ export function sessionNamed(
     otherTrees: campaign.trees,
     packRoots: campaign.packRoots,
     practise: (task, dir, digest, kill) => seats.solve(packageOf(task.version), { dir, digest }, kill),
-    ...(reviewers === null
-      ? {}
-      : {
-          referee: (solve, task, kill) => reviewers.referee(solve, packageOf(task.version), kill),
-        }),
+    referee:
+      reviewers === null
+        ? undefined
+        : (solve, task, kill) => reviewers.referee(solve, packageOf(task.version), kill),
   };
 }
 
 /**
  * The scored set a command's flags name, by task version, and the retained tasks in it: the
  * tasks `--tasks` lists by id, each a task of the pack or of a session, or `--target` of the
- * held-out tasks by the contract's draw (`scoredSet`), which takes a `repeat`'s first stage's
- * untied tasks first and its other tasks and their kin last: a checkpoint names the comparison it may repeat and a round, never a
- * repeat, does not. Whether each is a held-out task is the comparison's to refuse.
+ * held-out tasks by the contract's draw (`scoredSet`). Whether each is a held-out task is the
+ * comparison's to refuse.
  */
 export function scoredNamed(
   campaign: Campaign,
   tasks: string | undefined,
   target: number,
-  repeat?: Parameters<typeof scoredSet>[3],
 ): ReturnType<typeof scoredSet> {
   const events = read(campaign.log);
-  if (tasks === undefined) return scoredSet(events, target, contractHash(campaign.contract), repeat);
+  if (tasks === undefined) return scoredSet(events, target, contractHash(campaign.contract));
   const packages = [...campaign.packages()];
   const named = tasks.split(",").map((taskId) => {
     const found = packages.find(([, task]) => task.taskId === taskId);
@@ -338,7 +327,6 @@ export function wantedNamed(
   values: {
     readonly solves: string;
     readonly level: string;
-    readonly trigger: string;
     readonly "past-stop"?: string | undefined;
   },
   given: { readonly setting: AskedSetting; readonly cap: Cap | undefined; readonly builds: boolean },
@@ -352,7 +340,6 @@ export function wantedNamed(
     target: tasks === undefined ? target : tasks.split(",").length,
     solves: Number(values.solves),
     level: Number(values.level),
-    trigger: Number(values.trigger),
     patience: patienceOf(read(campaign.log)),
     builds: given.builds,
     cap: given.cap ?? null,
@@ -369,15 +356,11 @@ export function solvingAs(campaign: Campaign, { limits }: Pick<AskedSetting, "na
 }
 
 /** The objective this campaign's comparisons pair two valid answers by, where its check program
- *  declares one: the brief's direction and the margin `--margin` names, or else the gate's
- *  (`MARGIN`). Undefined otherwise. */
-export function objectiveNamed(
-  campaign: Pick<Campaign, "checks">,
-  margin: string | undefined,
-): ObjectiveRule | undefined {
+ *  declares one: the brief's direction. Undefined otherwise. Until 19 October a margin went with it
+ *  (`--margin`, `SAME` in `src/kernel/compare.ts`). */
+export function objectiveNamed(campaign: Pick<Campaign, "checks">): ObjectiveRule | undefined {
   const declared = readBrief(campaign.checks).objective;
-  if (declared === undefined) return undefined;
-  return { direction: declared.direction, margin: margin === undefined ? MARGIN : Number(margin) };
+  return declared === undefined ? undefined : { direction: declared.direction };
 }
 
 /** What `--predict` names: the operator's expectation of the comparison, in a sentence, or none. */
@@ -427,8 +410,8 @@ export function capNamed(
 
 /**
  * A report in lines, printed with every reading: the frontier it was read on, with its untied tasks,
- * the least share of them one reading detects four times in five (`detectable`) and the rule's
- * false rate an attempt beside the level (`falseRate`), and its p with what the test weighs; the
+ * the least share of them one reading detects four times in five (`detectable`) and the chance
+ * it reads a step between equal harnesses (`falseRate`), and its p with what the test weighs; the
  * reference against itself where the comparison carries it (`aaLines`); the tasks it drew, by what
  * became of each (`accounted`); and `valid`,
  * each harness by itself, as the tasks by how many of their solves were valid, which is what the
@@ -458,7 +441,7 @@ export function reportLines({
       ? []
       : [
           `the step is read on ${plural(frontier.tasks.length, "frontier task")}, ${String(untied)} of them untied: one reading at the comparison's level detects four times in five ${share === null ? "no share of them" : `a harness that wins ${String(Math.round(100 * share))}% of them`}`,
-          `an attempt at these margins, this reading and a repeat alike, promotes between equal harnesses ${String(Math.round(1000 * frontier.falseRate) / 10)}% of the time: the level is one reading's, and this the rule's`,
+          `one reading at these margins reads a step between equal harnesses ${String(Math.round(1000 * frontier.falseRate) / 10)}% of the time, never more than the level`,
           // The test weighs margins, but a sweep's p is its count's alone (the plan's 7.5).
           `its p is ${rounded(frontier.p)}: the test weighs each untied task by its margin in pair wins${frontier.losses === 0 && untied > 0 ? `, and where every untied task is won p is one half to the power of their count whatever the margins: ${String(untied)} won read ${rounded(0.5 ** untied)}` : ""}`,
         ]),
@@ -469,7 +452,7 @@ export function reportLines({
     ...(objective === null
       ? []
       : [
-          `the objective (${objective.direction} is better, margin ${String(objective.margin)}) decided ${plural(objective.decided, "task")} that validity alone would have tied`,
+          `the objective (${objective.direction} is better) decided ${plural(objective.decided, "task")} that validity alone would have tied`,
         ]),
     ...(both.length === 0
       ? []
@@ -573,8 +556,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
     ...scoredNamed(campaign, setting.tasks, setting.target),
     solves: Number(values.solves),
     level: Number(values.level),
-    trigger: Number(values.trigger),
-    objective: objectiveNamed(campaign, values.margin),
+    objective: objectiveNamed(campaign),
     defects: Number(values.defects),
     cap,
     prediction: predictionNamed(values.predict),

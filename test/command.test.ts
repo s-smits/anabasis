@@ -1,9 +1,8 @@
-// A solve's commands, executed under the real command wall on a mounted cap: the home survives
+// A solve's commands, executed under the real command wall in a claimed root: the home survives
 // between commands, the folder a command that brings files starts in does not, staged input
 // reaches it, neither the host-only folder, the repository, its other worktrees, a stored pack nor
 // a reviewer's Claude home can be read, the host's folder in the seat cannot be written, and no
-// command outlives the shell limits. And a command still starts on a full volume, where it is the
-// one that can empty it.
+// command outlives the shell limits.
 import { describe, expect, it } from "bun:test";
 import {
   existsSync,
@@ -25,7 +24,7 @@ import {
   runWalled,
   solveDirs,
 } from "../src/solve/command.ts";
-import { mountDiskCap } from "../src/verify/disk-cap.ts";
+import { claimRoot } from "../src/verify/seat-root.ts";
 import { toolchainTemp } from "./helpers/toolchain-temp.ts";
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
 import { hostScratch } from "../src/verify/wall-policy.ts";
@@ -33,9 +32,7 @@ import { commandSearchPath } from "../src/verify/solve-command-isolation.ts";
 import { osIsolationSupport } from "../src/verify/os-isolation.ts";
 import { CLOSED } from "./helpers/wall.ts";
 
-const CAP_BYTES = 16 * 1024 * 1024;
-
-/** A wall over a mounted seat, with no tool tree and 30 seconds a command. */
+/** A wall over a claimed seat, with no tool tree and 30 seconds a command. */
 const walled = (base: CommandWall["base"], dirs: CommandWall["dirs"]): CommandWall => ({
   base,
   dirs,
@@ -113,36 +110,6 @@ async function stillBeats(beat: string): Promise<boolean> {
 }
 
 describe("a solve's walled commands", () => {
-  it.skipIf(runtimeProcess.platform !== "darwin")(
-    "still start on a volume a solver has filled, so that it can empty it",
-    async () => {
-      const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-full-")));
-      const dirs = solveDirs(`full-${String(runtimeProcess.pid)}-${String(Date.now())}`);
-      const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
-      try {
-        makeSeatDirs(dirs);
-        const base = solveIsolationPolicy({ repoRoot });
-        if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
-        const wall = walled(base, dirs);
-        // Four times the cap, so the volume is full whatever the filesystem keeps back.
-        const filled = await run(wall, "dd if=/dev/zero of=fill bs=1048576 count=64 2>&1; echo dd:$?");
-        expect(filled.output).not.toContain("dd:0");
-        // One that brings files has nowhere to stage them, and fails as the full volume it is.
-        await expect(
-          run(wall, "true", (into) => writeFileSync(join(into, "big"), "x".repeat(1 << 20))),
-        ).rejects.toThrow("ENOSPC");
-        // On 2026-10-09 a solve in this state was refused `rm -rf ~/w` fourteen times running.
-        expect((await run(wall, "rm -f fill && echo freed")).output).toContain("freed");
-        expect((await run(wall, "echo again > note && cat note")).output).toBe("again\n");
-      } finally {
-        await release();
-        rmSync(dirs.host, { recursive: true, force: true });
-        rmSync(repoRoot, { recursive: true, force: true });
-      }
-    },
-    60_000,
-  );
-
   it.skipIf(!osIsolationSupport().ok)(
     "keep the home, drop each command's folder, and read neither the host folder, the repository nor a reader's home",
     async () => {
@@ -152,7 +119,7 @@ describe("a solve's walled commands", () => {
       const reader = realpathSync.native(hostScratch("claude-cli-reader-"));
       writeFileSync(join(reader, "session"), "reader-canary");
       const dirs = solveDirs(`test-${String(runtimeProcess.pid)}-${String(Date.now())}`);
-      const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
+      const release = claimRoot(dirs.root);
       try {
         makeSeatDirs(dirs);
         writeFileSync(join(dirs.host, "config"), "host-canary");
@@ -192,7 +159,7 @@ describe("a solve's walled commands", () => {
         // The leader was spared: the command's exit code reported after the reaping.
         // A job in a process group of its own is out of that trap's reach once the shell that started
         // it has gone, and GNU `timeout` makes one: a solver's three searches under it ran on after
-        // their command returned (2026-10-09). It still works on the solve's volume.
+        // their command returned (2026-10-09). It still works in the solve's root.
         await run(wall, `set -m; ${beating("apart")} >/dev/null 2>&1 &`);
         expect(await stillBeats(join(dirs.home, "apart"))).toBe(false);
 
@@ -223,7 +190,7 @@ describe("a solve's walled commands", () => {
     const sibling = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-sibling-")));
     writeFileSync(join(sibling, "package.json"), '{ "name": "sibling-canary" }');
     const dirs = solveDirs(`reads-${String(runtimeProcess.pid)}-${String(Date.now())}`);
-    const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
+    const release = claimRoot(dirs.root);
     try {
       makeSeatDirs(dirs);
       const base = solveIsolationPolicy({ repoRoot, otherTrees: [sibling] });
@@ -260,7 +227,7 @@ describe("a solve's walled commands", () => {
     mkdirSync(dirname(hidden), { recursive: true });
     writeFileSync(hidden, "pack-canary\n");
     const dirs = solveDirs(`pack-${String(runtimeProcess.pid)}-${String(Date.now())}`);
-    const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
+    const release = claimRoot(dirs.root);
     try {
       makeSeatDirs(dirs);
       const readUnder = async (packRoots: string[]) => {
@@ -282,11 +249,11 @@ describe("a solve's walled commands", () => {
   }, 60_000);
 
   it.skipIf(runtimeProcess.platform !== "linux")(
-    "give a seat a temporary directory of its own under its volume, and each command a /tmp that shows nothing another left in the host's",
+    "give a seat a temporary directory of its own under its root, and each command a /tmp that shows nothing another left in the host's",
     async () => {
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-private-tmp-")));
       const dirs = solveDirs(`tmp-${String(runtimeProcess.pid)}-${String(Date.now())}`);
-      const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
+      const release = claimRoot(dirs.root);
       // A canary another solve, a verification cell or the host itself might have left in /tmp.
       const canary = join("/tmp", `ana-h1-canary-${String(runtimeProcess.pid)}`);
       writeFileSync(canary, "left by the host");
@@ -295,7 +262,7 @@ describe("a solve's walled commands", () => {
         const base = solveIsolationPolicy({ repoRoot });
         if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
         const wall = walled(base, dirs);
-        // The seat's TMPDIR is its own folder on its volume, where the cap counts it, and the host's
+        // The seat's TMPDIR is its own folder in its root, removed with it, and the host's
         // /tmp with the canary in it is hidden behind an empty private one.
         const first = await run(
           wall,
@@ -327,7 +294,7 @@ describe("a solve's walled commands", () => {
     async () => {
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-closed-tmp-")));
       const dirs = solveDirs(`closed-tmp-${String(runtimeProcess.pid)}-${String(Date.now())}`);
-      const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
+      const release = claimRoot(dirs.root);
       // What another campaign's Builder left in /tmp on 10 October: a file, and a program a later
       // solve of a third campaign ran.
       const canary = join("/tmp", `ana-h1-canary-${String(runtimeProcess.pid)}`);
@@ -389,11 +356,11 @@ describe("a solve's walled commands", () => {
   );
 
   it.skipIf(!osIsolationSupport().ok)(
-    "keep what Python and make write as temporary in the seat's own folder, on its volume",
+    "keep what Python and make write as temporary in the seat's own folder, in its root",
     async () => {
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-temp-")));
       const dirs = solveDirs(`temp-${String(runtimeProcess.pid)}-${String(Date.now())}`);
-      const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
+      const release = claimRoot(dirs.root);
       try {
         makeSeatDirs(dirs);
         const base = solveIsolationPolicy({ repoRoot });
@@ -402,7 +369,7 @@ describe("a solve's walled commands", () => {
         const own = join(basename(dirs.root), "tmp");
         // `/usr/bin/python3` and `/usr/bin/make` are xcrun shims, which start their tool with TMPDIR
         // reset to the user temporary directory: three days of campaigns left 1.56 million Python
-        // temp folders there, outside every solve's cap and its command's end (2026-10-10).
+        // temp folders there, outside every solve's root and its command's end (2026-10-10).
         const made = await run(wall, "python3 -c 'import tempfile; print(tempfile.mkdtemp())'");
         expect(made.output).toContain(own);
         expect(existsSync(made.output.trim())).toBe(true);
@@ -428,7 +395,7 @@ describe("a solve's walled commands", () => {
     async () => {
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-bun-temp-")));
       const dirs = solveDirs(`bun-temp-${String(runtimeProcess.pid)}-${String(Date.now())}`);
-      const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
+      const release = claimRoot(dirs.root);
       try {
         makeSeatDirs(dirs);
         const base = solveIsolationPolicy({ repoRoot });

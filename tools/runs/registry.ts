@@ -42,9 +42,9 @@ export interface Running {
 
 /** The command a whole campaign runs as, which runs each of its moves in its own process. */
 export const BUILDER = "tools/d2/harness-builder.ts";
-/** The command the session that drafts an exam runs as. It holds a capped root as an Examiner
- *  session does since 11 October, and run by itself it was read as closed while it ran: a stop
- *  would have released its root and left it running, its next command outside the cap. */
+/** The command the session that drafts an exam runs as. It holds a root as an Examiner session
+ *  does since 11 October, and run by itself it was read as closed while it ran: a stop would have
+ *  released its root and left it running. */
 export const DRAFT = "tools/d1b/draft.ts";
 /** The file beside a log that says its campaign is a seed, and of what. */
 export const SEED_FILE = "seed.json";
@@ -115,11 +115,15 @@ export function runNamed(name: string, among: readonly Run[] = runs()): Run {
   return only;
 }
 
-/** The whole lines of a log an append may be writing to: a torn last line is an append in flight. */
-export function logEvents(path: string): LogEvent[] {
+/** A log's text up to its last whole line: a torn last line is an append in flight. */
+export function wholeLines(path: string): string {
   const text = readFileSync(path, "utf8");
-  return text
-    .slice(0, text.lastIndexOf("\n") + 1)
+  return text.slice(0, text.lastIndexOf("\n") + 1);
+}
+
+/** The whole lines of a log an append may be writing to. */
+export function logEvents(path: string): LogEvent[] {
+  return wholeLines(path)
     .split("\n")
     .slice(0, -1)
     .map((line) => parseJsonAs<LogEvent>(line));

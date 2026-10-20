@@ -5,21 +5,13 @@
 // opening message and the public files the home is seeded with.
 import { describe, expect, it } from "bun:test";
 import type { Contract } from "../src/kernel/contract.ts";
-import {
-  chmodSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "../src/meta/filesystem.ts";
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { openDesk, publicResource, submitTool } from "../src/solve/answer.ts";
 import { codingTools, fileTools } from "../src/solve/coding-tools.ts";
 import { type CommandWall, solveDirs } from "../src/solve/command.ts";
-import { firstTurn, installedPrograms, seedHome, systemPrompt, type Told } from "../src/solve/prompt.ts";
+import { firstTurn, seedHome, systemPrompt, type Told } from "../src/solve/prompt.ts";
 
 const CONTRACT: Contract = {
   answerFormat: { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] },
@@ -28,7 +20,6 @@ const CONTRACT: Contract = {
   scope: "Fixture.",
 };
 const HOME = "/scratch/solve-s1/home";
-const GIB = 1024 * 1024 * 1024;
 
 const PI = `You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
 
@@ -64,7 +55,6 @@ const ENVIRONMENT = [
   "- The working directory is your home directory, $HOME, kept for the whole task. Of what it holds, only answer.json is read as your answer, and only when you submit.",
   "- Commands and the file tools can write the home directory and $TMPDIR, which is kept for the whole task as the home is; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. They can read the host's toolchains and public runtime roots, but no repository or private data.",
   "- Commands have network access: a package index was reached from inside the command wall when this process started, so a toolchain or package can be installed into the home directory. sh, bun, node, python3 and the system C and C++ compilers run, with versions and libraries that differ by host.",
-  "- The home directory and $TMPDIR share one volume of 2 GiB.",
   "- A command runs for at most 300 seconds unless it names a longer timeout, and 900 seconds is the longest it may name. One that would run into the last 60 seconds of the solve time is cut there, so that its result still reaches you.",
   "- Nothing a command starts runs on after it returns: a background job ends with the command that started it.",
 ];
@@ -92,7 +82,7 @@ const TOLD: Told = {
   home: HOME,
   guide: null,
   wallSeconds: 7200,
-  limits: { shellDefaultSeconds: 300, shellMaxSeconds: 900, diskBytes: 2 * GIB },
+  limits: { shellDefaultSeconds: 300, shellMaxSeconds: 900 },
   resources: 4,
   programs: [],
   network: "reached",
@@ -164,13 +154,12 @@ describe("the solver's system prompt", () => {
     );
   });
 
-  it("states the volume, the command limits and the installed programs as the host has them", () => {
+  it("states the command limits and the installed programs as the host has them", () => {
     const prompt = systemPrompt({
       ...TOLD,
-      limits: { shellDefaultSeconds: 30, shellMaxSeconds: 60, diskBytes: 64 * 1024 * 1024 },
+      limits: { shellDefaultSeconds: 30, shellMaxSeconds: 60 },
       programs: ["pynite-python", "python3", "f2py"],
     });
-    expect(prompt).toContain("- The home directory and $TMPDIR share one volume of 64 MiB.");
     expect(prompt).toContain(
       "- A command runs for at most 30 seconds unless it names a longer timeout, and 60 seconds is the longest it may name. One that would run into the last 60 seconds of the solve time is cut there,",
     );
@@ -184,31 +173,6 @@ describe("the solver's system prompt", () => {
     expect(systemPrompt({ ...TOLD, programs: many })).toEndWith(
       ", tool-20, and 3 more on PATH.\n</environment>",
     );
-    expect(systemPrompt({ ...TOLD, limits: { ...TOLD.limits, diskBytes: 1.5 * GIB } })).toContain(
-      "one volume of 1.5 GiB.",
-    );
-  });
-});
-
-describe("the programs a harness installed", () => {
-  it("are the names a command's PATH runs, in its order, each once", () => {
-    // The sweep's tool tree: the Builder's interpreter in `bin`, a venv beside it whose `activate` is
-    // sourced rather than run and whose `python3` repeats a name `bin` already holds.
-    const tree = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-prompt-tree-")));
-    const program = (path: string, mode: number) => {
-      mkdirSync(join(path, ".."), { recursive: true });
-      writeFileSync(path, "#!/bin/sh\n");
-      chmodSync(path, mode);
-    };
-    try {
-      for (const name of ["pynite-python", "python3"]) program(join(tree, "bin", name), 0o755);
-      for (const name of ["f2py", "numpy-config", "python3"]) program(join(tree, "venv", "bin", name), 0o755);
-      program(join(tree, "venv", "bin", "activate"), 0o644);
-      expect(installedPrograms(tree)).toEqual(["pynite-python", "python3", "f2py", "numpy-config"]);
-      expect(installedPrograms(null)).toEqual([]);
-    } finally {
-      rmSync(tree, { recursive: true, force: true });
-    }
   });
 });
 

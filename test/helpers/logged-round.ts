@@ -13,7 +13,6 @@ const LIMITS: Limits = {
   shellDefaultSeconds: 300,
   shellMaxSeconds: 900,
   concurrency: 4,
-  diskBytes: 1024,
 };
 const event = (kind: EventKind, data: JsonObject): LogEvent => ({
   at: "2026-10-09T00:00:00.000Z",

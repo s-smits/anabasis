@@ -49,7 +49,6 @@ const condition = (task: string, harness: string): Condition => ({
     shellDefaultSeconds: 30,
     shellMaxSeconds: 60,
     concurrency: 1,
-    diskBytes: 1024,
   },
   host: "h",
   side: "test",
@@ -225,15 +224,13 @@ describe("the stop rule", () => {
     expect(stopRule(after)).toEqual(counted(4, 1));
     const lower = (id: string, fresh: string) => reported(id, "below-starter", fresh);
     expect(stopRule([...after, lower("b-5", "h6"), lower("b-6", "h7")])).toEqual(counted(6, 3));
-    // A reading under the trigger showed a gain: it bought the repeat, and reads `no-step` by
-    // itself. Counted as no gain, a 2-0 at level 0.10 ended a campaign of patience 3 before its
-    // repeat was bought (found by review, 11 October). The trigger is the opening's where it
-    // names one, as a term, and 0.25 otherwise: a 1-0 clears neither.
-    const bought = flat("b-3", "h4", tallied(2, 0, 10));
-    expect(stopRule([...two, bought])).toEqual(counted(3, 0));
-    expect(stopRule([...two, flat("b-3", "h4", tallied(1, 0, 11))])).toEqual(counted(3, 3));
-    const strict = event("campaign.opened", { ...three.data, terms: { trigger: "0.1" } });
-    expect(stopOf([strict, ...two, bought])).toEqual(counted(3, 3));
+    // A reading short of the level shows no gain: until 19 October a 2-0 at 0.10 bought a repeat
+    // at the trigger and counted as one. An opening of then that holds a trigger is read past.
+    const near = flat("b-3", "h4", tallied(2, 0, 10));
+    expect(stopRule([...two, near])).toEqual(counted(3, 3));
+    const old = event("campaign.opened", { ...three.data, terms: { trigger: "0.25", level: "0.1" } });
+    expect(stopOf([old, ...two, near])).toEqual(counted(3, 3));
+    expect(stopOf([old, ...two, reported("b-3", "step", "h4")])).toEqual(counted(3, 0));
   });
 
   // Fix row F48. On 9 October one harness was compared with the starter three times, each time on
@@ -248,9 +245,9 @@ describe("the stop rule", () => {
     const versus = (id: string, old: string) => reported(id, "no-step", "h2", { old, starter: "base" });
     expect(stopRule([...sessions, versus("b-1", "base")])).toEqual(counted(1, 1));
     expect(stopRule([...sessions, versus("b-1", "h1"), versus("g-1", "base")])).toEqual(counted(2, 2));
-    // The pair reads as its last comparison: a step its repeat does not read again was one draw,
-    // and one the repeat reads is the step the count starts again from.
-    expect(stopRule([...sessions, reported("b-1", "step", "h2"), flat("g-1", "h2")])).toEqual(counted(1, 1));
+    // A pair showed a gain where any comparison of it read a step, which promotes it: a reading
+    // of it after the step takes nothing from that. Until 19 October the pair read as its last.
+    expect(stopRule([...sessions, reported("b-1", "step", "h2"), flat("g-1", "h2")])).toEqual(counted(1, 0));
     expect(stopRule([...two, reported("g-1", "step", "h3")])).toEqual(counted(2, 0));
     // Every comparison on record is read, whatever setting id it carries: the id names the host's
     // code too, so until 2026-10-11 a tree moved to a new commit began the count again
@@ -260,18 +257,17 @@ describe("the stop rule", () => {
     expect(stopRule([...earlier, flat("b-3", "h3", { setting: "s2" })])).toEqual(counted(2, 2));
   });
 
-  // Found by review, 14 October: the pair read as its repeat alone, so a 3-0 that bought the
-  // repeat and a 3-1 that promotes with it read as no gain, and at patience 1 the table's `bound`
-  // row ended the campaign before its `twice` row could promote.
-  it("reads a pair whose last two promote together as a step, and counts each epoch apart", () => {
+  // Until 19 October two readings of a pair that promoted together were a step, though neither
+  // read one alone (found by review, 14 October). One reading promotes since, and two readings
+  // short of the level are no gain however they sum.
+  it("reads a pair as a step where one of its comparisons read one, and counts each epoch apart", () => {
     const one = event("campaign.opened", { ...three.data, patience: 1 });
     const stage = (id: string, wins: number, losses: number) =>
       flat(id, "h2", { ...tallied(wins, losses, 0), level: 0.1 });
     const pair = [...sessions, stage("g-1", 3, 0), stage("g-2", 3, 1)];
-    expect(stopOf([one, ...pair])).toEqual({ checkpoints: 1, sinceStep: 0, stop: false });
-    // A repeat that loses as much as it wins promotes nothing, and counts as no gain.
-    const lost = [...sessions, stage("g-1", 3, 0), stage("g-2", 1, 1)];
-    expect(stopOf([one, ...lost])).toEqual({ checkpoints: 1, sinceStep: 1, stop: true });
+    expect(stopOf([one, ...pair])).toEqual({ checkpoints: 1, sinceStep: 1, stop: true });
+    const stepped = [...sessions, stage("g-1", 3, 0), reported("g-2", "step", "h2", tallied(4, 0, 0))];
+    expect(stopOf([one, ...stepped])).toEqual({ checkpoints: 1, sinceStep: 0, stop: false });
     // A promotion starts an epoch: what showed no gain before it does not count after it.
     const toH2 = event("harness.promoted", { harness: "h2", from: "base", rests: [] });
     expect(stopRule([...two, toH2])).toEqual(counted(2, 0));
@@ -995,7 +991,7 @@ describe("the tasks the reference harness exhausted", () => {
 
   it("spares a task the objective told two valid answers apart on: the next harness can still win it", () => {
     // The same two comparisons, under an objective: on `e1` the new harness's answers are the
-    // better by more than the margin, on `e2` the two sides are even. Until 11 October both
+    // better, on `e2` the two sides are even. Until 11 October both
     // closed alike, and the Examiner was told `e1` could only tie again.
     const measured = (log: readonly LogEvent[], session: string, fresh: string) => {
       const sides = [
@@ -1023,7 +1019,7 @@ describe("the tasks the reference harness exhausted", () => {
     expect(poolOf(log).outcomes.get("e1")).toBe("reference-every");
     expect(poolOf(measured(log, "b-3", "h4")).exhausted).toEqual(["e2"]);
     // An author's answer on record that outdoes every answer on `e2` keeps it open: the room it was
-    // held for stays on the frontier (19 October). One within the margin closes it as before.
+    // held for stays on the frontier (19 October). One within a billionth closes it as before.
     const authored = (measure: number) =>
       poolOf([
         ...log,
@@ -1034,7 +1030,7 @@ describe("the tasks the reference harness exhausted", () => {
         }),
       ]);
     expect(authored(5)).toMatchObject({ exhausted: [], frontier: ["e1", "e2"] });
-    expect(authored(9.95)).toMatchObject({ exhausted: ["e2"], frontier: ["e1"] });
+    expect(authored(10 - 1e-9)).toMatchObject({ exhausted: ["e2"], frontier: ["e1"] });
   });
 
   it("hold each held-out task in exactly one place: scorable or waiting for a person, with the exhausted among the retained and the retained among the scorable", () => {

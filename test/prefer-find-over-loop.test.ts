@@ -80,6 +80,16 @@ export function ownedBy(wanted: string): boolean {
   return false;
 }
 
+export function ownedIn(owners: ReadonlySet<string>, wanted: string): boolean {
+  for (const owner of owners) if (owner === wanted) return true; // ADMITTED an annotated Set has no find
+  return false;
+}
+
+export function hasDot(text: string): boolean {
+  for (const letter of text) if (letter === ".") return true; // ADMITTED a string has no find
+  return false;
+}
+
 export async function anySettled(rows: Row[]): Promise<boolean> {
   for (const row of rows) if (await settle(row)) return true; // ADMITTED find takes no async predicate
   return false;

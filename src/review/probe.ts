@@ -220,7 +220,7 @@ export function probeTool(verify: Verifier, task: Task, answer: JsonValue, rows:
       ),
     }),
     executionMode: "sequential",
-    execute: async (_id, args) => {
+    execute: async (_id, args, signal) => {
       if (rows.length >= PROBE_BUDGET) {
         throw new Error(`a review runs at most ${String(PROBE_BUDGET)} probes`);
       }
@@ -229,8 +229,8 @@ export function probeTool(verify: Verifier, task: Task, answer: JsonValue, rows:
           ? null
           : { find: args.find, replace: args.replace };
       const changed = changedAnswer(answer, args);
-      original ??= verify(task, answer);
-      const [before, after] = [await original, await verify(task, changed)];
+      original ??= verify(task, answer, signal);
+      const [before, after] = [await original, await verify(task, changed, signal)];
       const row = {
         id: rows.length + 1,
         path: args.path,

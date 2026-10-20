@@ -351,7 +351,7 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
   if (verdict === null) {
     throw new Error(`solve ${fail.solve} has no answer on record: the Referee rules a rejected answer alone`);
   }
-  const replay = verdict.fault === null ? await fail.verify(fail.task, verdict.answer) : null;
+  const replay = verdict.fault === null ? await fail.verify(fail.task, verdict.answer, reader.kill) : null;
   const host = hostRuling(verdict, replay);
   const rows: ProbeRow[] = [];
   const found: RefereeFinding[] = [];
@@ -363,8 +363,8 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
       ? await readOnce(reader, SYSTEM_PROMPT, packet(fail, verdict, accepted), [
           readProgramTool(fail.checks),
           probeTool(
-            async (task, answer) =>
-              replay !== null && answer === verdict.answer ? replay : fail.verify(task, answer),
+            async (task, answer, signal) =>
+              replay !== null && answer === verdict.answer ? replay : fail.verify(task, answer, signal),
             fail.task,
             verdict.answer,
             rows,

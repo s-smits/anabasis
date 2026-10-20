@@ -623,6 +623,11 @@ export async function harnessBuilder(
     const begin = beginning(log, decided);
     try {
       await make(decided, turn, begin);
+      // Inside the `try`, so a move that changed nothing ends the campaign as any other move that
+      // threw does: until 20 October the process exited here with no ending on record.
+      if (read(log).length <= events.length + 1) {
+        throw new Error(`the move changed nothing in ${log}: made again it would change nothing again`);
+      }
     } catch (error) {
       // A move the provider's limit ended, or whose session crashed, is waited out and the campaign
       // goes on: it counts against `--moves` as the move it was, since it is on record as one, and
@@ -637,9 +642,6 @@ export async function harnessBuilder(
         append(log, ENDED, { ending: "environment", why: errorMessage(error), move: decided.move });
       }
       throw error;
-    }
-    if (read(log).length <= events.length + 1) {
-      throw new Error(`the move changed nothing in ${log}: made again it would change nothing again`);
     }
     last = decided.move;
     made += 1;

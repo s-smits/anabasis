@@ -30,7 +30,7 @@
  * operator's, which read the checkout's `.env` itself, and a shell loop applied the room rule.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
-import { worktrees } from "#src/meta/git.ts";
+import { mainTree } from "#src/meta/git.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
@@ -412,8 +412,7 @@ export async function logins(args: readonly string[]): Promise<void> {
       ? []
       : [{ login: reading.login, pct: reading.sevenDay.pct, reset }];
   });
-  const [main = runtimeProcess.cwd()] = worktrees(runtimeProcess.cwd());
-  const history = join(main, ".ana", "logins-history.jsonl");
+  const history = join(mainTree(runtimeProcess.cwd()), ".ana", "logins-history.jsonl");
   const kept = existsSync(history)
     ? readFileSync(history, "utf8")
         .split("\n")

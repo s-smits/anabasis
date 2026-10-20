@@ -1,16 +1,16 @@
 # Log replay
 
-Every campaign a real run wrote is still on disk, in some worktree's `.ana/d2/`. When an event's
-shape, a fold or a reader changes, the recorded logs are the cheapest real input there is.
+Recorded campaigns in the repository's worktrees give real input when an event's shape, a fold
+or a reader changes.
 
 ```sh
 bun run runs replay [<name> ...]
 ```
 
-It reads each campaign log in the repository's worktrees with the kernel's own readers: the events
-and their kinds, the task states and a round's sets, what the sessions wrote, the conditions and the
-stop rule. It writes nothing. A log this tree refuses is named in the reader's own words,
-and the command exits 1. On 2026-10-08 all 24 logs on the host read.
+It reads campaign logs found by `runs()`, including seeds, in the repository's worktrees. Names
+are substring filters. `replayed` checks the events and their kinds, task states and sets,
+session-written tasks, conditions, the stop rule and the whole-run investigation's `overview`.
+It writes nothing. A refusal is named in the reader's own words and makes the command exit 1.
 
 A log being appended to at that instant can read torn. Run it again.
 
@@ -18,8 +18,8 @@ A log being appended to at that instant can read torn. Run it again.
 
 - Before a commit that changes `EVENT_KINDS`, a field a fold reads, or the order a fold enforces.
 - After a rebase onto a stack that moved: another session's commit can change what a log must hold.
-- Before seeding from an old campaign. `bun run runs seed` reads its copy the same way and refuses
-  it the same way, which is the same check for one log.
+- Before seeding from an old campaign. `seedCampaign` checks its copy with `read` and `taskSets`;
+  `replayed` exercises the wider set of folds above.
 
 ## A changed reader, read against the past
 

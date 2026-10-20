@@ -25,7 +25,7 @@ interface Sides {
   readonly setting: string;
   readonly comparison: string;
   readonly halves: "mirrored";
-  readonly objective?: { readonly direction: string; readonly margin: number };
+  readonly objective?: { readonly direction: "lower" | "higher"; readonly margin?: number };
 }
 
 /** The kernel of one tree, as the replay calls it. */
@@ -73,7 +73,7 @@ export async function loadTree(path: string): Promise<Tree> {
   ]);
   const own = isFunction(compare.promotes);
   const twice = isFunction(compare.readTwice);
-  const grouped = isFunction(compare.attemptsOf);
+  const grouped = isFunction(compare.attemptsOf) && isFunction(compare.triggered);
   const changed = gitText(path, "status", "--porcelain", "--", "src") !== "";
   return {
     path,

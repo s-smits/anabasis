@@ -39,12 +39,14 @@ import { everyStatementList, onlyStatement, singleConst } from "../shared/statem
  *
  * Which helper is which: `!== undefined` is `keyIfDefined`, which omits undefined alone; `!==
  * null`, `!= null` and `!= undefined` are `keyIfNotNull`, which omits both. A `!== null` guard
- * over a value that may also be undefined would have assigned that undefined, and the fold does
- * not; under `exactOptionalPropertyTypes` that assignment is the compile error the guard was
- * avoiding, so the difference is a program that did not compile.
+ * over a value that may also be undefined assigned that undefined, and the fold does not. The
+ * head comment used to call that a program that did not compile; on 20 October a key declared
+ * `k?: string | null | undefined` compiled with `if (w !== null) o.k = w`, and the fold dropped a
+ * key the original set to `undefined`. A plugin rule cannot see whether the value admits
+ * undefined, so a run holding a strict `!== null` guard is reported without a fix.
  *
- * It fixes. The rewrite is the owner's own spelling, the import edit rides with it, and every
- * removed statement is a whole line.
+ * Otherwise it fixes. The rewrite is the owner's own spelling, the import edit rides with it, and
+ * every removed statement is a whole line.
  */
 const OWNER = "src/meta/optional-key.ts";
 
@@ -55,6 +57,8 @@ interface Fold {
   readonly key: string;
   readonly value: string;
   readonly helper: Helper;
+  /** A strict `!== null` guard, whose fold also omits an undefined the guard assigned. */
+  readonly nullOnly: boolean;
 }
 
 /** Whether `node` only reads: a name, a member chain, `this`, or a cast over one of those. */
@@ -71,7 +75,9 @@ function isRead(node: ESTree.Expression): boolean {
 }
 
 /** The helper a `!== undefined` / `!= null` test names, and the side it guards; null otherwise. */
-function guardTest(test: ESTree.Expression): { helper: Helper; guarded: ESTree.Expression } | null {
+function guardTest(
+  test: ESTree.Expression,
+): { helper: Helper; guarded: ESTree.Expression; nullOnly: boolean } | null {
   if (test.type !== "BinaryExpression") return null;
   if (test.operator !== "!==" && test.operator !== "!=") return null;
   for (const [absent, guarded] of [
@@ -82,7 +88,7 @@ function guardTest(test: ESTree.Expression): { helper: Helper; guarded: ESTree.E
     const isNull = absent.type === "Literal" && absent.value === null;
     if (!isUndefined && !isNull) continue;
     const helper = isUndefined && test.operator === "!==" ? "keyIfDefined" : "keyIfNotNull";
-    return { helper, guarded };
+    return { helper, guarded, nullOnly: isNull && test.operator === "!==" };
   }
   return null;
 }
@@ -121,7 +127,12 @@ export const preferKeyIfDefinedRule = defineRule({
       const bare =
         right.type === "TSAsExpression" || right.type === "TSNonNullExpression" ? right.expression : right;
       if (context.sourceCode.getText(bare) !== guarded) return null;
-      return { key: left.property.name, value: context.sourceCode.getText(right), helper: test.helper };
+      return {
+        key: left.property.name,
+        value: context.sourceCode.getText(right),
+        helper: test.helper,
+        nullOnly: test.nullOnly,
+      };
     }
 
     /** The start of `node`'s line through its newline, when the line holds nothing else. */
@@ -184,13 +195,16 @@ export const preferKeyIfDefinedRule = defineRule({
           node: statement,
           messageId: "guardedAfterLiteral",
           data: { name: target.name, count: String(folds.length), plural: folds.length === 1 ? "" : "s" },
-          fix: (fixer) => [
-            last === undefined
-              ? fixer.replaceText(literal, `{ ${spreads.join(", ")} }`)
-              : fixer.insertTextAfter(last, spreads.map((spread) => `, ${spread}`).join("")),
-            ...removed.map((node) => fixer.replaceTextRange(wholeLine(node), "")),
-            imports.fix(fixer, helpers, context.filename),
-          ],
+          fix: (fixer) =>
+            folds.some((fold) => fold.nullOnly)
+              ? null
+              : [
+                  last === undefined
+                    ? fixer.replaceText(literal, `{ ${spreads.join(", ")} }`)
+                    : fixer.insertTextAfter(last, spreads.map((spread) => `, ${spread}`).join("")),
+                  ...removed.map((node) => fixer.replaceTextRange(wholeLine(node), "")),
+                  imports.fix(fixer, helpers, context.filename),
+                ],
         });
       }
     }

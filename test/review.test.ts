@@ -277,7 +277,7 @@ describe("the Referee", () => {
     expect(answers).toEqual([ANSWER, { ...ANSWER, span: 10 }]);
   });
 
-  it("rules a check that does not repeat a check-defect, and an undecided replay unclear, unread", async () => {
+  it("rules a check that does not repeat a check-defect", async () => {
     const s = setup([]);
     failed(s.record);
     expect(await referee(s.reader, { ...fail(s), verify: async () => ({ kind: "pass" }) })).toMatchObject({
@@ -286,12 +286,25 @@ describe("the Referee", () => {
       probes: [],
     });
     expect(read(s.log).at(-1)?.data).toMatchObject({ ruling: "check-defect", replay: { kind: "pass" } });
-    const undecided = async (): Promise<Verdict> => ({ kind: "non-result", reason: "the cell timed out" });
-    expect(await referee(s.reader, { ...fail(s), verify: undecided })).toMatchObject({
-      ruling: "unclear",
-      reason: "the replay reached no verdict: the cell timed out",
-    });
     expect(s.calls()).toBe(0);
+  });
+
+  it("leaves a replay that reaches no verdict unruled, without a model read", async () => {
+    const replays = [
+      { kind: "non-result", reason: "the cell timed out" },
+      { kind: "faulty", check: "span", reason: "the check threw" },
+    ] as const satisfies readonly Verdict[];
+    for (const replay of replays) {
+      const s = setup([]);
+      failed(s.record);
+      const finding = await referee(s.reader, { ...fail(s), verify: async () => replay });
+      expect(finding).toMatchObject({
+        ruling: null,
+        reason: `the replay reached no verdict: ${replay.reason}`,
+      });
+      expect(s.calls()).toBe(0);
+      expect(read(s.log).at(-1)?.data).toMatchObject({ ruling: null, replay });
+    }
   });
 
   it("refuses a solve with no answer on record, writing nothing, and rules an answer outside the format earned unread", async () => {

@@ -54,6 +54,28 @@ export function turnOf(
   return last.data.ending === "environment" ? "continue" : "done";
 }
 
+/**
+ * The login a run goes on with after `turn`, or null to wait: its own on a continue, unless this
+ * keeper saw it spent, else the first of `roomy`, those with room. A run with no `claude/` seat
+ * bills no login, so it goes on whatever room they have: on 20 October the two Codex runs kept on
+ * the M1 named no login, and would have waited for one of three spent logins none of their seats
+ * used.
+ */
+export async function nextLogin(
+  turn: Turn,
+  {
+    current,
+    spent,
+    flags,
+  }: { current: string | undefined; spent: ReadonlySet<string>; flags: readonly string[] },
+  roomy: () => Promise<readonly string[]>,
+  logins: readonly string[],
+): Promise<string | null> {
+  const billed = flags.some((flag) => flag.startsWith("claude/"));
+  if (turn === "continue" && current !== undefined && !(billed && spent.has(current))) return current;
+  return (await roomy())[0] ?? (billed ? null : (logins[0] ?? null));
+}
+
 /** Keep `run` going on `logins` until it ends on its own terms. */
 async function keepGoing(run: Run, logins: readonly string[], waitMs: number): Promise<void> {
   // A login this keeper moved off, until its limit resets.
@@ -79,10 +101,12 @@ async function keepGoing(run: Run, logins: readonly string[], waitMs: number): P
       if (at <= now) spentUntil.delete(login);
     }
     const spent = new Set(spentUntil.keys());
-    const target =
-      turn === "continue" && current !== undefined && !spent.has(current)
-        ? current
-        : (room(await readLogins(logins, runtimeProcess.env), logins, spent)[0] ?? null);
+    const target = await nextLogin(
+      turn,
+      { current, spent, flags: lastRun(run).flags },
+      async () => room(await readLogins(logins, runtimeProcess.env), logins, spent),
+      logins,
+    );
     if (target === null) {
       if (!waiting) console.log(`${run.name}: no login with room; left waiting`);
       waiting = true;

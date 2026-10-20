@@ -84,16 +84,20 @@ describe("the contract", () => {
     // v1's prose artifact rows, which the validator would read as no constraint at all.
     const prose = { ...CONTRACT, answerFormat: [{ name: "design", shape: "object {joints}" }] };
     expect(() => contractHash(prose)).toThrow("not a JSON Schema");
-    expect(() => answerFormatFault(prose, { junk: 1 })).toThrow("not a JSON Schema");
+    expect(() => answerFormatFault(prose.answerFormat, { junk: 1 })).toThrow("not a JSON Schema");
   });
 
   it("says why an answer is outside its format, and refuses one that fits only once coerced", () => {
-    expect(answerFormatFault(CONTRACT, { depth: 1, steel: "S355" })).toBeNull();
-    expect(answerFormatFault(CONTRACT, { steel: "S355" })).toContain("must have required properties depth");
-    expect(answerFormatFault(CONTRACT, [1])).toContain("root: must be object");
+    expect(answerFormatFault(CONTRACT.answerFormat, { depth: 1, steel: "S355" })).toBeNull();
+    expect(answerFormatFault(CONTRACT.answerFormat, { steel: "S355" })).toContain(
+      "must have required properties depth",
+    );
+    expect(answerFormatFault(CONTRACT.answerFormat, [1])).toContain("root: must be object");
     // pi-ai's validator would read "1" as 1 and drop the null; the caller's value stays as it was.
     const coercible = { depth: "1", steel: null };
-    expect(answerFormatFault(CONTRACT, coercible)).toBe("the answer follows the format only once coerced");
+    expect(answerFormatFault(CONTRACT.answerFormat, coercible)).toBe(
+      "the answer follows the format only once coerced",
+    );
     expect(coercible).toEqual({ depth: "1", steel: null });
   });
 });

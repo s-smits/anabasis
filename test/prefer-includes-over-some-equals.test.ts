@@ -43,12 +43,24 @@ export function indexed(values: string[]) {
 export function ordered(values: string[]) {
   return values.some((value) => value.length > 0); // ADMITTED not an equality
 }
+export function named(names: Map<string, string>) {
+  return names.values().some((name) => name === "brief"); // ADMITTED an iterator has no includes
+}
+export function chained(names: Map<string, string>) {
+  return names.keys().filter(Boolean).some((name) => name === "brief"); // ADMITTED still an iterator down the chain
+}
+export function walked(names: MapIterator<string>) {
+  return names.some((name) => name === "brief"); // ADMITTED annotated as an iterator
+}
+export function listed(names: Record<string, string>) {
+  return Object.keys(names).some((name) => name === "brief"); // REPORT Object.keys takes an argument and returns an array
+}
 `.trimStart();
 
 describe("ana/prefer-includes-over-some-equals", () => {
   it("reports a string or boolean literal from either side and nothing whose type it cannot settle", async () => {
     const expected = expectedLines(CLOSURES);
-    expect(expected).toHaveLength(4);
+    expect(expected).toHaveLength(5);
     expect(await reportedLines("ana", "prefer-includes-over-some-equals", CLOSURES)).toStrictEqual(expected);
   });
 

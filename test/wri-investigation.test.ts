@@ -55,6 +55,10 @@ describe("an investigation's lanes", () => {
   it("builds a named isolated lane only on its trigger", () => {
     expect(numbers(selected(lanes, fired(5), numbersOf("3-4,5")).isolated)).toEqual([5]);
     expect(() => selected(lanes, fired(4), [19])).toThrow("runs only on its trigger");
+    const wins = { lane: 19, name: "WINS" as const, detail: "" };
+    expect(() => selected(lanes, [wins], [19])).toThrow("runs only on its trigger");
+    const program = { lane: 19, name: "ANSWER FROM A PROGRAM" as const, detail: "" };
+    expect(numbers(selected(lanes, [wins, program], [19]).isolated)).toEqual([19]);
     expect(() => selected(lanes, [], [32])).toThrow("no lane 32");
   });
 

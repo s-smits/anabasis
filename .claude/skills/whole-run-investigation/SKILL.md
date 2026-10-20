@@ -42,6 +42,10 @@ holds.
    campaign's row filled in and two sections left blank. When the campaign promoted a harness and
    other campaigns ran the same pack, name their logs with `--with <log>,<log>`: lane 31 is given
    each as `read` prints it, read again when the lanes are built, and compares with them.
+   A campaign another machine holds is read from a copy: `bun --env-file=.env.runs run runs fetch
+   <name>` takes its folder whole to `.ana/fetched/<host>/<name>/` and prints the log to give
+   `--log`. Lanes read the copy with this checkout's tree, so check out the commit the receipt
+   names where the host line says the code differs.
    *Check:* read the last line it prints. When the last condition ran under another host hash than
    this checkout's, every statement about source is about another tree: check out the tree that ran,
    or say so in the orientation. Then settle rows A to F yourself, from the log.

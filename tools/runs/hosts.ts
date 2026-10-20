@@ -132,20 +132,17 @@ export function holds(names: readonly string[]): void {
   for (const name of names.filter((one) => here.has(one))) console.log(name);
 }
 
-/** The routes of `verb args` on this machine and the hosts `ANA_HOSTS` lists, every host asked at
- *  once which of the names no worktree here holds it holds. */
-export async function routed(verb: string, args: readonly string[]): Promise<Routes> {
-  const here = new Set(runs().map(({ name }) => name));
-  const asked = namedBy(verb, args).filter((name) => !here.has(name));
+/** The host that holds each of `names`, every host `ANA_HOSTS` lists asked at once. */
+export async function holders(names: readonly string[]): Promise<Map<string, Host>> {
   const held = new Map<string, Host>();
-  if (asked.length === 0) return routesOf(verb, args, held);
+  if (names.length === 0) return held;
   await Promise.all(
     hostsOf().map(async (host) => {
       const io = { stdin: "ignore", stdout: "pipe", stderr: "ignore", timeout: HOST_MS } as const;
-      const child = capturedSpawn(sshTo(host, ["holds", ...asked]), io);
+      const child = capturedSpawn(sshTo(host, ["holds", ...names]), io);
       const [said, code] = await Promise.all([new Response(child.stdout).text(), child.exited]);
       if (code !== 0) console.error(`${host.name} did not say which runs it holds (exit ${String(code)})`);
-      for (const name of said.split("\n").filter((one) => asked.includes(one))) {
+      for (const name of said.split("\n").filter((one) => names.includes(one))) {
         const other = held.get(name);
         if (other !== undefined) {
           throw new Error(`${name} names a campaign on ${other.name} and on ${host.name}`);
@@ -154,5 +151,11 @@ export async function routed(verb: string, args: readonly string[]): Promise<Rou
       }
     }),
   );
-  return routesOf(verb, args, held);
+  return held;
+}
+
+/** The routes of `verb args` on this machine and the hosts that hold the names no worktree here holds. */
+export async function routed(verb: string, args: readonly string[]): Promise<Routes> {
+  const here = new Set(runs().map(({ name }) => name));
+  return routesOf(verb, args, await holders(namedBy(verb, args).filter((name) => !here.has(name))));
 }

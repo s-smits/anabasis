@@ -24,8 +24,8 @@ functions in a neighbouring module that exist only to serve it. Three of v2's, a
 
 - **what the Builder is told of the past**: the failed practice solves and each comparison's tally
   (`src/builder/past.ts`, `src/builder/prompt.ts`, `test/builder.test.ts`);
-- **which tasks a comparison scores**: the draw and the two kinds it leaves out
-  (`scoredSet` and `firstStageOf` in `src/builder/round.ts`, `test/round.test.ts`);
+- **which tasks a comparison scores**: the frontier draw and the retained tasks beside it
+  (`scoredSet` in `src/builder/round.ts`, `poolOf` in `src/kernel/reports.ts`, `test/round.test.ts`);
 - **the move that follows a reading** (`decide` in `src/builder/decide.ts`, `test/decide.test.ts`).
 
 Each compartment gets a **hypothesis**, written before any test: what should change, why a path
@@ -35,8 +35,7 @@ gives up if it does not. Map what stands now as rule 13 of `AGENTS.md` asks,
 link is what the rewrite drops. Two compartments in one pass carry different hypotheses, or they
 are one compartment.
 
-Take one to three compartments a pass, which usually comes to 500 to 2,000 test lines in all.
-Fewer finds nothing new, and more cannot be reviewed as one argument.
+Take one to three compartments a pass, small enough to review as one argument.
 
 ## The sequence
 
@@ -63,8 +62,8 @@ step 8 squashes them before anything is pushed, since every published commit pas
    served only the old shape. Find every reader of each export and each member: a branch whose
    producer is gone is dead code to remove. Then look for the simpler algorithm, the one that
    computes an answer once instead of twice, or drops a case no recorded log reaches
-   (`bun run runs replay` puts every log through the tree's readers). A claim that nothing produces
-   something needs the search against `origin/main` in the same turn (`AGENTS.md`, section 9).
+   (`bun run runs replay` reads logs whose last event is `comparison.reported`). A negative claim
+   needs the named symbol, its call sites and a check in the same turn (`AGENTS.md`, section 9).
 5. **`R: <production paths>`.** `git rm` the production files the rewrite replaces, and commit with
    the subject `R: src/x.ts src/y.ts`.
 6. **Write production again, and rewrite or remove what it leaves outdated.** Make the new tests

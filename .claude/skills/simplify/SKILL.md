@@ -1,6 +1,6 @@
 ---
 name: simplify
-description: "Review changed Anabasis v2 code for reuse, simplification, efficiency and altitude, then apply the fixes. Quality only: it hunts no bugs, which /code-review does. Starts from what the repository already finds (the lint plugins, the whole-tree census, the not-slop ledger), measures before and after with reduce-complexity's scripts, and holds a pass to its budgets and to the rules no pass trades. Use as /simplify on your own diff before a commit, or when the operator asks whether code is simple enough, why something exists, to go one layer higher, or to remove something and find another way."
+description: "Review changed Anabasis v2 code for reuse, simplification and efficiency, then apply the fixes. Report correctness bugs separately. Starts from the lint plugins, the whole-tree census and the not-slop ledger, measures before and after with reduce-complexity's scripts, and holds a pass to its budgets and the repository's rules. Use as /simplify on your own diff before a commit, or when the operator asks whether code is simple enough, why something exists, to go one layer higher, or to remove something and find another way."
 ---
 
 # Simplify
@@ -8,7 +8,7 @@ description: "Review changed Anabasis v2 code for reuse, simplification, efficie
 This file is `/simplify` in this repository. An operator's own skill pack may hold another
 `/simplify`; where the two disagree, this one governs here. The method is reading: why the code
 exists, which owner already does its job, what can go. [reduce-complexity](../reduce-complexity/SKILL.md)
-is the instrument and owns the two scripts below, and [commit-r](../commit-r/SKILL.md) owns a
+is the instrument and owns the three measurement scripts, and [commit-r](../commit-r/SKILL.md) owns a
 rewrite from scratch.
 
 ## First
@@ -67,12 +67,13 @@ Read these before reading by hand. Each was a shape this skill kept finding by e
   express (HABITS 12.9): orphan and test-only modules and exports, single-reader exports, copied
   blocks, unread fields, compatibility paths. `bun run commit:check` prints the ones on your
   changed lines. Each row is a question.
-- `bun run not-slop -- answer <id> "<a reason a reviewer can check>"` answers a site that is
-  right as it stands, and nothing reports it again until its code changes. `-- prune` drops the
-  answers whose site went.
+- `bun run not-slop -- answer <id> "<a reason a reviewer can check>"` records an answer for an
+  eligible finding. Fixable plugin rules and registers refuse an answer; follow HABITS 12.2.
+  `-- prune` drops answers whose finding no longer exists.
 - `bun tools/loc/source-policy.ts`: 800 nonblank lines a file and 115 a function over `src`,
-  `tools` and `vendor`, and every export with a reader in another file. No CI job runs it, so run
-  it yourself and add no finding; it does not read `.claude`, where the census does.
+  `tools` and `vendor`, plus unread exports in `src`, `tools` and `packages/ui/src`. No CI job runs it, so run
+  it yourself and add no finding. It reads `.claude` as evidence of export use; the census also
+  treats skill scripts as finding candidates.
 
 ## Measure before and after
 
@@ -90,12 +91,9 @@ Climb it for each mechanism, and stop at the first rung that holds.
 
 1. **Does it need to exist?** Map it as rule 13 asks,
    `owner → live reader → decision it changes → evidence → hostile test`, and drop it when a link is
-   missing. The Diagnoser named the first wrong step of each failed practice solve; 20 of 20 of its
-   readings named the solver, and it went with 1,063 lines (`docs/simplify.md`, E1).
-2. **Does a higher layer already do it?** The launcher's refusals were asked again by each move's
-   own command (`src/builder/admission.ts`), and the campaign command already waited for the host's
-   load, so `bun run runs launch` went: 1,363 lines out, 610 in (`docs/simplify.md`, D2). The verb
-   that came back on 15 October starts the command and asks none of them.
+   missing.
+2. **Does a higher layer already do it?** A campaign move's admission belongs in
+   `src/builder/admission.ts`; the launcher in `tools/runs/manage.ts` starts the command.
 3. **Is it already in this repository?** Add no second reader of one fact: find the fold that reads
    it and call that (`AGENTS.md`, section 5). `measure.py`'s repeats name candidates.
 4. **The platform, Bun or an installed dependency?** Every runtime surface has one owner in
@@ -124,32 +122,23 @@ does not have.
   one (`filesystem-import-budget`, HABITS 12.9).
 - A ceiling is met with fewer branches in the owner, then a closure, then a function. Helpers with
   one use spread the same count over more places. A sibling module that lets new code sit outside
-  the 800-line count is refused, and `tools/loc/source-policy.json` stays empty. v2 has no
+  the 800-line count is refused, and `copiedFileLimits` in `tools/loc/source-policy.json` stays empty. v2 has no
   complexity gate: `measure.py`'s branch count over 21 is a lead, never a refusal.
 
 ## When the change is a producer, replay it
 
-Code that writes events, rows, reports or prompts is measured on recorded input. A reader of the
-log is put through every recorded log with `bun run runs replay`, and its output is counted before
-and after. Label a count taken any other way an estimate, and say which numbers were replayed.
+Code that writes events, rows, reports or prompts is measured on recorded input. `bun run runs
+replay` reads logs in the repository's worktrees whose last event is `comparison.reported`;
+it leaves out live or interrupted logs and reports selected folds, rather than every output.
+Count the changed output before and after with its owning reader. Say which logs were read,
+and label estimated counts as estimates.
 
 ## What a pass must not cut
 
-The rules of `AGENTS.md` section 8 are what no pass trades. A measure that improved because one of
-them left is no simplification.
-
-- The wall: a change to a hidden value, a check or which held-out task was won leaves every message
-  a Builder or a solver reads byte-identical (rule 3, `test/builder.test.ts`).
-- Terms logged before the first solve, both sides solved afresh, a non-result typed and never a
-  pass or a fail, a rejection counted only once ruled (rules 4, 5, 7 and 8).
-- The log: no second store, no second reader of one fact, no event written by hand, and an old
-  event kind still readable (section 5). `null` for unknown is a state, never a zero.
-- Code owns the conditions and models own the content (section 2): never put a classifier in code
-  where a model decides because the reasoning is hard.
-- A head comment that names the defect, the record and the date stays, and changes with its
-  mechanism.
-- `vendor/` is a copy of upstream and not reshaped. `.ana/`, a pack, a check program and a kept
-  harness are never edited (section 11).
+Keep the conditions and content split in `AGENTS.md` section 2, the log rules in section 5, the
+rules in section 8, the protected files in section 11 and the head comments in section 13.
+A measure that improves by breaking one of them is no simplification. `null` for unknown stays
+distinct from zero.
 
 ## Keep, and not a finding
 

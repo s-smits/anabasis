@@ -92,12 +92,14 @@ new harness is like. The informative tasks lie in between (`informative`,
 
 - sometimes;
 - never, while a valid answer is on record (another harness's or the task author's);
-- every time, where an answer on record beats one of its answers by the objective (another of its
-  own, the other harness's, or the author's).
+- every time, where an answer on record beats one of its answers by the objective, by at least the
+  room floor of the larger measure (another of its own, the other harness's, or the author's;
+  `ROOM`, 1%, or `--room`).
 
 In most learning the data stays fixed and the model moves; here the solver stays fixed and the
-Examiner keeps the exam at its frontier. It is told what the reference did on each task, and never
-how the other harness did (section 3). Supply is measured as the number of
+Examiner keeps the exam at its frontier. It is told what the reference did on each task and, unless
+the campaign's term `exam-results` is `off`, which harness won it in the last comparison
+(section 3). Supply is measured as the number of
 informative tasks in a comparison's scored set. Bar: at least four before each comparison starts.
 It is not reported as a factor, because passing it only says a comparison can show a difference,
 and says nothing about whether one was shown. It binds first, because every other number is
@@ -286,7 +288,10 @@ Six consequences guide a change:
    Examiner is told what was measured on the reference side (section 3, "What the Examiner
    reads"), with no number to reach. It is told the budget every solve is held to, because a task
    that tells two harnesses apart is one a better method answers within that budget and a worse one
-   does not. It is never told how the other harness did on any one task.
+   does not. Which harness won each task of the last comparison is a fact of the record, and it is
+   told unless the campaign's term `exam-results` is `off`: the operator accepted on 20 October
+   that an author who knows which tasks the newest harness wins may write towards that harness,
+   to give it the plainest signal of where the exam has fallen behind.
 3. **Keep the Builder free.** It may change or rewrite anything in the harness. One limit stands:
    nothing in a harness answers a particular task, so no part of it names a task, copies its text
    or holds its answer. A program may search for candidates and test them against the public
@@ -336,22 +341,29 @@ What the **Examiner** reads:
   last three, newest first, each with whether a limit cut one of the reference's solves, and how
   many of the newest closed it in a row (`histories`, `poolOf`), since one outcome cannot tell a
   task answered once from one answered every time;
-- those tasks counted by family, with the solves per side they rest on, and by family the turns
-  each valid answer of the reference took (`src/examiner/record.ts`). Where any family holds one
-  task, which would give away the other harness's result on it, the counts are a total only, and
-  a total of one is withheld. Whether the counts help is untested (`docs/plan.md`, row F60);
+- for each task the last comparison tallied, which harness won it or that it tied, and, where the
+  objective alone decided it, how far apart the two sides' measures were (`objectiveMargin`). This
+  is the operator's word of 20 October, a term of the campaign (`exam-results`, on by default):
+  the Examiner learns which tasks the newest harness wins, and so what to write against it. With the
+  term `off` it is told none of it;
+- those tasks counted by family, with the solves per side they rest on, the tasks won by the
+  objective alone by less than the room floor, and by family the turns each valid answer of the
+  reference took (`src/examiner/record.ts`). With `exam-results` off, where any family holds one
+  task, the counts are a total only, and a total of one is withheld. Whether the counts help is
+  untested (`docs/plan.md`, row F60);
 - what the last session under the current reference said at its `finish`;
 - the home the last session left, with a copy of the reference harness in it unless the
   campaign's term `exam-reference` is `off`;
 - how many of its gate's solves each held task passed on, and the drafts a gate refused after
-  reading them, with the reason: those read on the current reference counted alone, and those
+  reading them, with the reason, each with how far its author's answer stood from the reference's
+  best by the objective (`reference.gap` of `task.gate`): those read on the current reference counted alone, and those
   read on a replaced reference as one count;
 - the checks, through `try_answer`, on an instance with an answer of its own;
 - when it drafts an exam: the operator's prompt, what the host's reading found in each draft, and
   a walled home of its own, empty when it starts.
 
 What the **Examiner** never reads: a target, a harness's name, the other harness's result on any one
-task, or a count of a task's valid solves beyond every, some or none. The one exception is how many
+task where `exam-results` is `off`, or a count of a task's valid solves beyond every, some or none. The one exception is how many
 of the reference harness's solves of a draft task were valid (`try_task`, and in later sessions; up
 to three, one at a time until they leave room), how many of them gave no reading, the turns each
 valid one took and, where the contract declares an objective, their measure and its own answer's.
@@ -360,7 +372,9 @@ Nothing else of those solves reaches it. The Examiner makes none of the exam's s
 The tools of each model seat, as its source names them:
 
 - Examiner: `propose_tasks`, or `try_task` where the host can have the reference harness solve a
-  draft task, then `read_example`, `try_answer`, `bash`, `read`, `write` and `finish`. `try_task`
+  draft task, then `read_example`, `try_answer`, `read_opening`, `bash`, `read`, `write` and
+  `finish`. `read_opening` serves the session's opening message again, for a context that was
+  compacted. `try_task`
   returns at once with the ids it put to the gate. The gate's word on each instance comes with the
   session's next tool result, or with the reminder after a turn that made no call, which waits for
   that word where the gate has said nothing new (`settle`), and `finish` and the session's end wait
@@ -815,8 +829,11 @@ bun run runs fresh | launch | continue | keep | pause | copy | fetch | retire | 
 - 4 solves per side (`--solves`; `SIZE` in `src/kernel/size.ts`);
 - level 0.02 (`--level`), with a patience of 6 (`--patience`): one comparison that reads a step at
   the level promotes;
-- no objective margin: two measures are one only within a billionth of the larger, which is
-  floating-point arithmetic (`SAME`);
+- a room floor of 1% (`--room`; `ROOM`), the least improvement by the objective worth counting, as
+  a share of the larger measure. Two valid answers closer than it tie in a pair, and an answer on
+  record better than one of the reference's by less leaves that task no room, at the gate, on the
+  frontier and in `roomOf`. A comparison that began before 21 October recorded no floor, and its
+  pairs read at floating-point equality (`SAME`), as they were read;
 - a stop after more than 3 tasks with a check defect (`--defects`);
 - a reserve of 10 dollars per solve (`--reserve`);
 - `--parent latest` and `--reference promoted`, which is the harness last promoted, and the
@@ -863,7 +880,7 @@ hash. The draw does two more things:
   comparison it stood in for that task, on whichever side. Such a task can only tie again or be
   lost: it is **exhausted** (`poolOf`). A task is not closed where a valid answer on record (the
   reference's own, the other side's or its author's) is better by the objective than one of the
-  reference's, since the next harness can still win it (`bettered`).
+  reference's by at least the room floor, since the next harness can still win it (`bettered`).
 
 An exhausted task stays in the draw as **retained**, so that a harness that breaks what the
 reference answers still shows its losses. A loss can only come from a task the reference answers.
@@ -899,8 +916,10 @@ the test.
 Where the check program declares an **objective** (a quantity its evaluator computes from a valid
 answer, with a direction: `brief.objective`, `objective(request)`, verified after the checks pass;
 `OBJECTIVE`, `src/kernel/verify.ts`), two valid answers in a pair are compared by it, and the better
-one wins the pair (`ObjectiveRule`, `better`, `src/kernel/compare.ts`), with no margin beyond
-floating-point equality (`SAME`). Validity is read first, so a refused
+one wins the pair where the two are at least the room floor apart (`ObjectiveRule`, `better`,
+`src/kernel/compare.ts`; `--room`, 1% of the larger measure by default), and otherwise they tie.
+The sign-flip test says whether a difference is believable, and the floor whether it is worth
+counting: six tasks with room won by 0.01% read p = 0.016 and would promote. Validity is read first, so a refused
 answer can never be the better one. The objective is public, in the contract and in the solver's
 resources, and the report says how many tallied tasks it decided (`objective.decided`). The rule is
 a term of the comparison, fixed at its start; with a check program that declares no objective,
@@ -987,8 +1006,8 @@ would exceed the cap.
 - **room** where a task was informative for the reference harness (`informative`,
   `src/kernel/compare.ts`, the same definition `try_task` uses to admit a draft):
   - valid on some of its solves and not all;
-  - one of its valid answers bettered by the objective, by another of its own,
-    by the other harness's or by its author's on record (`bettered`);
+  - one of its valid answers bettered by the objective by at least the room floor, by another of
+    its own, by the other harness's or by its author's on record (`bettered`);
   - valid on none where a valid answer to it is on record: another harness's, a reference solve's
     at the gate, or its author's;
 - **too hard** where neither harness gave a valid answer and none is on record;

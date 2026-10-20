@@ -416,7 +416,7 @@ export async function session(
     ...walled(bench),
     practiceTool(bench),
     traceTool(bench),
-    openingTool(campaign === undefined ? first : opening, bench.said),
+    openingTool(campaign === undefined ? first : opening, bench.said.opening),
     finishTool(bench, campaign?.unmeasured),
     ...(campaign?.tools ?? []),
   ].map((each) => endingWith(each, footer));

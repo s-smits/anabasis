@@ -32,7 +32,7 @@ import {
 import { type Static, type TSchema, Type } from "typebox";
 import { reportedCost } from "../backends/claude.ts";
 import { openingOf } from "../builder/opening.ts";
-import { endingWith } from "../builder/tools.ts";
+import { endingWith, openingTool } from "../builder/tools.ts";
 import { append, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import { billedAll } from "../kernel/reports.ts";
@@ -311,7 +311,11 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
       : "";
     return told(last, turn);
   };
-  const tools = [...[...mode.tools, ...shell].map((each) => endingWith(each, used)), finish];
+  const reread = openingTool(
+    mode.opening,
+    "The session's opening message again, as it was sent: the record of the campaign's tasks and drafts it began with. Read it after your context was compacted.",
+  );
+  const tools = [...[...mode.tools, ...shell, reread].map((each) => endingWith(each, used)), finish];
   // The wall runs from the seat's start (`began`), so the claim, the wall's own probe and the
   // shell's network probe, awaited above, are inside the session's limit.
   const wall = new AbortController();

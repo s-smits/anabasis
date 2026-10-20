@@ -148,6 +148,7 @@ import {
   type Turn,
   turnOf,
   type Values,
+  flagsHelp,
 } from "./campaign-terms.ts";
 import { checkpointCommand } from "./checkpoint.ts";
 import { closeCommand } from "./close.ts";
@@ -289,6 +290,8 @@ async function make(
         ...flag("minutes", values["exam-minutes"]),
         ...flag("turns", values["exam-turns"]),
         ...flag("reference-home", values["exam-reference"]),
+        ...flag("results", values["exam-results"]),
+        ...flag("room", values.room),
       ],
       seats.examine,
       // The campaign's own seat, so the tries wait on the load and share the reserve (14 October).
@@ -657,4 +660,10 @@ export async function harnessBuilder(
   }
 }
 
-if (import.meta.main) await harnessBuilder(Bun.argv.slice(2));
+if (import.meta.main) {
+  if (Bun.argv.includes("--help")) {
+    console.log(`bun tools/d2/harness-builder.ts --name <name> ...\n${flagsHelp()}`);
+  } else {
+    await harnessBuilder(Bun.argv.slice(2));
+  }
+}

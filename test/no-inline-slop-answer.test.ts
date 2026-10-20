@@ -15,8 +15,8 @@ const COMMENTS = `
 // oxlint-disable-next-line anti-slop/no-runtime-typeof // REPORT the next-line spelling
 export const kind = (value: string | number) => typeof value;
 export const size = 1; // oxlint-disable-line ana/no-deep-nesting -- a reason still belongs in a row // REPORT the same-line spelling
-/* oxlint-disable anti-slop/no-reflect-get */ // REPORT a block disable
-/* oxlint-enable anti-slop/no-reflect-get */ // ADMITTED an enable answers nothing
+/* oxlint-disable anti-slop/no-chained-type-assertions */ // REPORT a block disable
+/* oxlint-enable anti-slop/no-chained-type-assertions */ // ADMITTED an enable answers nothing
 // eslint-disable-next-line no-console, ana/no-tangled-ternary // REPORT one slop rule in a list is enough
 // oxlint-disable-next-line no-console -- a core rule keeps its comment // ADMITTED
 /** The inline oxlint-disable comment was the weaker store. */ // ADMITTED prose, not a directive

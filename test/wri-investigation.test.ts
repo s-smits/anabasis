@@ -1,7 +1,8 @@
 // What an investigation builds from the catalogue and one log's overview: which lanes open, the
 // prompt each session is given, and whether a report has the shape the synthesis reads; and the
 // `lanes` verb, run twice over one directory, building each prompt once and listing each session once;
-// and the `read` verb's host line, which finds the code a campaign ran in the tree its log sits in.
+// and the `read` verb's host line, which finds the code a campaign ran in the tree its log sits in;
+// and the `grade` verb, which holds an answer to a drafted exam's format before its checks.
 import { afterAll, describe, expect, it } from "bun:test";
 import {
   mkdirSync,
@@ -13,11 +14,14 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { type Condition, conditionId } from "../src/kernel/condition.ts";
+import { append } from "../src/kernel/log.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
+import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
 import { codeOf } from "../tools/d2/campaign.ts";
+import { stageExam } from "../tools/d2/exam.ts";
 import { catalogueText, type Lane, lanesOf, ownersOf } from "../tools/wri/catalogue.ts";
 import {
   blankSections,
@@ -29,6 +33,7 @@ import {
 } from "../tools/wri/investigation.ts";
 import type { Overview } from "../tools/wri/read.ts";
 import { execTextSync } from "./helpers/bun-spawn-sync.ts";
+import { SOUND } from "./helpers/examiner-seat.ts";
 
 const shared =
   "## Orientation\n\nWhy the step.\n\n## Campaign under review\n\nthe row\n\n## Hard rules\n\n- quote nothing\n";
@@ -283,5 +288,33 @@ describe("the read verb's host line", () => {
 
   it("says source is another tree when neither the checkout nor the campaign's tree holds it", () => {
     expect(hostLine("0".repeat(64))).toContain("so every statement about source is about another tree");
+  });
+});
+
+describe("the grade verb", () => {
+  const REPO = resolve(import.meta.dir, "..");
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "ana-wri-grade-")));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+  // A drafted exam whose format refuses a key it does not name, and whose check reads one key alone.
+  const answerFormat = {
+    type: "object",
+    properties: { answer: { type: "string" } },
+    required: ["answer"],
+    additionalProperties: false,
+  };
+  const draft = { ...SOUND, answerFormat };
+  const log = join(dir, "log.jsonl");
+  append(log, "exam.drafted", { session: "d-1", draft: parseJsonAs<JsonObject>(JSON.stringify(draft)) });
+  stageExam(dir, draft);
+  const graded = (answer: JsonObject) => {
+    const file = join(dir, "answer.json");
+    writeFileSync(file, JSON.stringify(answer));
+    const args = ["tools/wri/wri.ts", "grade", "--log", log, "--task", "ex-001", "--answer", file];
+    return execTextSync(capturedExecPath, args, { cwd: REPO }).trim();
+  };
+
+  it("refuses an answer outside the format before any check reads it, as the host refuses a solver's", () => {
+    expect(graded({ answer: "12", note: "x" })).toStartWith("fail format: ");
+    expect(graded({ answer: "12" })).toBe("pass");
   });
 });

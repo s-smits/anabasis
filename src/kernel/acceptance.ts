@@ -333,7 +333,7 @@ export async function readChecker(given: Read) {
   const { verify, brief, tasks, width } = given;
   const runs = await runControls(verify, tasks, given.controls, width);
   const idle = doNothingAnswer(given.contract.answerFormat);
-  const unformed = answerFormatFault(given.contract, idle);
+  const unformed = answerFormatFault(given.contract.answerFormat, idle);
   const rejected = unformed === null ? await runDoNothing(verify, tasks, idle, width) : [];
   const { checks, faults } = acceptance(brief, tasks, runs, [], given.found);
   const { checks: historical } = acceptance(brief, tasks, [], given.stored, given.found);

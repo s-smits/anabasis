@@ -518,7 +518,7 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
       const gate =
         packaged.outcome === "passed" ? "" : `The gate would refuse this instance: ${packaged.reason}\n`;
       if (signal?.aborted === true) throw new Error("The session has ended.");
-      const unformed = answerFormatFault(contract, answer);
+      const unformed = answerFormatFault(contract.answerFormat, answer);
       if (unformed !== null) {
         return text(
           `${gate}This answer does not follow the answer format, so a solver's answer like it is refused before any check reads it, and no check was run: ${unformed}`,

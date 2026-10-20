@@ -474,7 +474,7 @@ export async function judge(request: SolveRequest, id: string, played: Played): 
     };
   }
   if (played.submitted !== undefined) {
-    const fault = answerFormatFault(request.contract, played.submitted);
+    const fault = answerFormatFault(request.contract.answerFormat, played.submitted);
     const verdict = fault === null ? await request.verify(request.task, played.submitted) : null;
     append(request.log, "verdict", {
       solve: id,

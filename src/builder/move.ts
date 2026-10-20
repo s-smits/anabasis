@@ -11,6 +11,7 @@ export type Ending =
   | "no-room"
   | "environment"
   | "operator"
+  /** An older log's: until 20 October an epoch's first A/A that read a step ended the campaign. */
   | "control"
   | "finished";
 

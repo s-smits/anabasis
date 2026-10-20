@@ -18,12 +18,12 @@
  * log is read, at the one budget it names (`docs/simplify.md`, package A).
  */
 import { unadmitted } from "../kernel/acceptance.ts";
-import { readsStepEitherWay, sweepOf } from "../kernel/compare.ts";
+import { sweepOf } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { poolOf, roomOf } from "../kernel/reports.ts";
 import { practiceRan } from "../kernel/solves.ts";
 import { heldAtGate, taskSets } from "../kernel/task.ts";
-import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
+import { isNumber, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { draftOf } from "../examiner/draft.ts";
 import { plural } from "../meta/text.ts";
@@ -289,8 +289,6 @@ function bound(ground: Ground): Move | null {
       `${plural(supply.stop.sinceStep, "move")} in a row could have shown a gain and showed none: the campaign's patience is ${String(plan.patience)}`,
     );
   }
-  const control = controlled(ground);
-  if (control !== null) return end("control", control);
   if (read?.report.reading === "check-defects") {
     return end(
       "exam",
@@ -299,37 +297,6 @@ function bound(ground: Ground): Move | null {
   }
   return read?.report.reading === "not-scored" && read.report.capped === true
     ? end("budget", `comparison ${read.id} was cut by its dollar cap before it tallied a task`)
-    : null;
-}
-
-/**
- * Why the campaign ends on its control, or null. The control is the epoch's first A/A, the
- * reference read against itself beside the first comparison against it that carries one
- * (`comparison.ts`). Read two-sided at that comparison's level, since which half is which is
- * arbitrary, it reads a step at most as often as the level; a step there is false by
- * construction, so what it measures is the comparison and not either harness: the host, the
- * provider or the solver moved between halves of one harness's solves. It holds until the
- * operator leaves a cause after its report (`--cause`), never a wait. The A/As after it stand as
- * readings, and the climb reads them for its false promotion (`climb.ts`).
- */
-function controlled({ events, reports, reference, starter }: Ground): string | null {
-  const differencesOf = ({ report }: Reading) => asRecord(report.noise)?.differences;
-  const control = reports.find(
-    (each) => each.old === (reference ?? starter) && Array.isArray(differencesOf(each)),
-  );
-  if (control === undefined) return null;
-  // A cause the operator left on record after the control (`--cause`) lets the campaign go on.
-  const after = control.reported;
-  if (
-    events.some(({ kind, data }, index) => index > after && kind === "campaign.word" && data.word === "cause")
-  ) {
-    return null;
-  }
-  const apart = differencesOf(control);
-  const level = isNumber(control.report.level) ? control.report.level : 0;
-  // Two-sided at the level: either one-sided test at half of it.
-  return readsStepEitherWay(Array.isArray(apart) ? apart.filter(isNumber) : [], level / 2)
-    ? `comparison ${control.id} read the reference against itself as a step, so its two sides are not interchangeable and no comparison against it reads anything until the cause is on record: leave it with tools/d2/word.ts --cause "<the cause>", and the campaign goes on when run again`
     : null;
 }
 

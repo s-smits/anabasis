@@ -79,17 +79,16 @@
  * runs by from that move on. A word changes nothing in the move that was running when it came.
  *
  * **Endings.** A campaign ends on its budget, on the stop rule, on an exam that was not accepted,
- * on tasks that could not be made to leave room, on its environment, on the operator's word, on
- * its control (`decide.ts`) or, led by its Builder, once three of its conversations in a row made
- * no campaign move (`idleOf`), and its log's last event says which (`campaign.ended`). With
- * `--handover <dir>` it then writes what it hands over there: the reference harness as a directory
- * that stands by itself, the public rules and the closing report (`close.ts`, row F51). A move that
- * threw after it had begun is the environment's ending, and run again the command goes on from the
- * log; one whose session is on record as crashed is the provider's failure, which the campaign
- * goes on from (`goesOn`). A session a stopped run left open is ended on record as killed before
- * the next run's first move (`endCut`), keeping its last practised harness where the saved state
- * opens. A move refused before it began is no ending: the refusal is printed,
- * nothing kept.
+ * on tasks that could not be made to leave room, on its environment, on the operator's word or, led
+ * by its Builder, once three of its conversations in a row made no campaign move (`idleOf`), and
+ * its log's last event says which (`campaign.ended`). With `--handover <dir>` it then writes what
+ * it hands over there: the reference harness as a directory that stands by itself, the public rules
+ * and the closing report (`close.ts`, row F51). A move that threw after it had begun is the
+ * environment's ending, and run again the command goes on from the log; one whose session is on
+ * record as crashed is the provider's failure, which the campaign goes on from (`goesOn`). A
+ * session a stopped run left open is ended on record as killed before the next run's first move
+ * (`endCut`), keeping its last practised harness where the saved state opens. A move refused before
+ * it began is no ending: the refusal is printed, nothing kept.
  *
  * A move is recorded as it begins (`campaign.move`), with the code of the table's row that chose it and its
  * reason, so the log holds what was decided before what was done. Each run of the command keeps a receipt beside the

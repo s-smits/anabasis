@@ -649,7 +649,7 @@ one solve is held at (`--reserve`). No forecast of what the next move will bill 
 comparison begun near the end of the budget runs under what is left, and one the cap cuts tallies
 nothing and reads `not-scored`.
 
-**It ends in one of eight ways**, and the log's last event says which (`campaign.ended`):
+**It ends in one of seven ways**, and the log's last event says which (`campaign.ended`):
 
 - `budget`;
 - `stop` (the stop rule, section 7);
@@ -657,7 +657,6 @@ nothing and reads `not-scored`.
 - `no-room`;
 - `environment`;
 - `operator`;
-- `control` (an A/A that read a step, section 7);
 - `finished` (three Builder conversations in a row made no campaign move, the last ending by
   `finish` or at its limits).
 
@@ -972,12 +971,10 @@ reading at a shorter budget would describe a solver that was told the longer one
 
 Beside every comparison of four solves per side stands the reference read against itself, on
 halves of its own solves mirrored in time. It should read no step; its tie share is the noise every
-comparison has to beat, and its flip rate is how often two solves of a task disagree. The epoch's
-first such A/A is its control. It is read two-sided at the comparison's level, since which half is
-which is arbitrary. A step there in either direction ends the campaign on its control, because its
-two sides are not interchangeable, and no comparison against that reference reads anything until
-the operator records the cause (`tools/d2/word.ts --cause`); run again, the campaign continues. The
-later A/As stand as readings.
+comparison has to beat, and its flip rate is how often two solves of a task disagree. The
+A/A is read two-sided at the comparison's level, since which half is which is arbitrary. Every A/A
+stands as a reading and ends nothing: the climb counts it beside the false-promotion estimate
+(section 1, factor 2). An older log may end `control`, an ending no command writes now.
 
 **The dollar cap.** `--cap` is required. Before each solve the comparison's billed dollars are
 summed from the log, and the solve does not start if a reserve for it and for every solve in flight
@@ -1042,8 +1039,8 @@ a move chooses it, and the decision carries that row's code:
    where nobody has read its checker, and the campaign ends where the reading shows a fault that
    nobody froze or admitted.
 3. `bound`: a bound is spent: the budget; the provider (three sessions in a row that crashed before
-   they held out a task or changed a harness, section 6); the stop rule; the epoch's first A/A read
-   as a step with no cause on record; a comparison stopped on its check defects or cut by its cap.
+   they held out a task or changed a harness, section 6); the stop rule; a comparison stopped on its
+   check defects or cut by its cap.
 4. `tasks`: the tasks are not set up yet. A pack's tasks are taken in, practice is released, and
    tasks are written where the campaign has none or the operator asked for others, and before the
    first comparison up to a comparison's target plus the practice the release still draws from

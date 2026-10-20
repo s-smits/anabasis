@@ -528,7 +528,7 @@ describe("a Builder session", () => {
     // harnesses that went to a comparison told the solver that time was short, and both truss
     // sessions spent their last solve before their last change. The prompt states each of these
     // once; what a tool result ends with (the turn, the time, the solves left, whether a practice
-    // solve has run harness/) it does not restate (`docs/simplify.md`, E3).
+    // solve has run harness/) it does not restate (`7f0add79:docs/simplify.md`, E3).
     expect(s.sent[0]).toContain("so the guide says nothing of time or turns");
     expect(s.sent[0]).toContain("is measured untried");
     expect(s.sent[0]).not.toContain("Every tool result ends with the turn");
@@ -537,7 +537,7 @@ describe("a Builder session", () => {
     expect(readFileSync(join(s.home, "resources.json"), "utf8")).toContain('"maxSpan": 12');
     expect(s.sent[0]).toContain("are in resources.json");
     // The practice result: endings, records under both harnesses, the budget. Until 2026-10-11 a
-    // Diagnoser's reading of the fail came too (`docs/simplify.md`, E1).
+    // Diagnoser's reading of the fail came too (`7f0add79:docs/simplify.md`, E1).
     const practised = s.sent[2] ?? "";
     expect(practised).toContain("t-1: fail (rejected). Solve s-3.");
     expect(practised).toContain("passed 0 of 1. Under the harness you started from: 0 of 1.");

@@ -14,10 +14,10 @@
  *   The frontier already leaves out every task the reference closed in its last comparison, so
  *   the share of the last comparison's tasks left untied, read since 8 October and mended six
  *   times, read 1 at 69 of 72 recorded starts by 16 October and refused none (`untied-short`):
- *   it went, as `docs/simplify.md` C1 had planned;
+ *   it went, as `7f0add79:docs/simplify.md` C1 had planned;
  * - `unread`: a checker `tools/c/accept.ts` has never read;
  * - `stopped`: a campaign the plan's stop rule has stopped, as many moves in a row as its patience
- *   that could have shown a gain and showed none (`stopRule`, `docs/plan.md`, row F48). The
+ *   that could have shown a gain and showed none (`stopRule`, `7f0add79:docs/plan.md`, row F48). The
  *   operator may go on past it by saying why (`--past-stop`), and the reason is logged.
  *
  * Two more are the command's, and are asked beside them: a start with no dollar cap, and a first
@@ -161,7 +161,7 @@ function stopped({ stop }: Supply, pastStop: string | undefined) {
   const after = `${String(stop.sinceStep)} moves that could have shown a gain`;
   return {
     refuses: stop.stop && pastStop === undefined,
-    why: `the campaign has had ${after} since its last step, and none did: its patience is spent (docs/plan.md, row F48; --patience). To go on all the same, pass --past-stop "<why>", which is logged`,
+    why: `the campaign has had ${after} since its last step, and none did: its patience is spent (--patience). To go on all the same, pass --past-stop "<why>", which is logged`,
     notes: said([
       [
         stop.stop && pastStop !== undefined,

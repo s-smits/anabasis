@@ -11,7 +11,7 @@
  * the lanes that read the clock, which are `time.ts`.
  *
  * Split from `read.ts` on 10 October, when that file stood at 1,227 nonblank lines against the
- * size policy's ceiling of 800 (`tools/loc/source-policy.ts`, `docs/plan.md` row F34). The lanes
+ * size policy's ceiling of 800 (`tools/loc/source-policy.ts`, `7f0add79:docs/plan.md` row F34). The lanes
  * need the folds, so the folds sit below every lane, and the exam side's lanes sit with them so
  * that each of the two files is under the ceiling. Every function keeps the name and the body it
  * had in `read.ts`; `taskTriggers` alone was split at its tallies (`tallyTriggers`), which held it
@@ -366,7 +366,7 @@ const ROLE_EVENTS = {
   // that read as no role's on 12 October.
   examiner: [EXAM_START, EXAM_END, "exam.turn", "draft.started", "draft.finished", "draft.turn"],
   referee: ["referee.finding"],
-  // A seat until 11 October (`docs/simplify.md`, E1): a log of before holds what it billed.
+  // A seat until 11 October (`7f0add79:docs/simplify.md`, E1): a log of before holds what it billed.
   diagnoser: ["diagnosis.recorded"],
 } as const;
 
@@ -556,7 +556,7 @@ export function instrumentTriggers(log: Index): Trigger[] {
  *  spread of the budget (lane 9), the ties (lane 10), and each harness by itself
  *  (`VALID BY HARNESS`, lane 23). A report written before 2026-10-11 also holds the same test
  *  read at shorter budgets (`budgets`), which no trigger reads: the reading was of a solver told
- *  the longer budget (`docs/simplify.md`, A2). */
+ *  the longer budget (`7f0add79:docs/simplify.md`, A2). */
 function tallyTriggers(compared: readonly Compared[]): Trigger[] {
   const decided = compared.flatMap(({ session, last, scoring }) => {
     const scored = asRecord(last.scored);

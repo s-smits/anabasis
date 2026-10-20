@@ -105,7 +105,7 @@ In this order:
    and what the report settles.
 2. **What you can read.** The repository, `https://github.com/s-smits/anabasis`. A table of
    every cited commit: what it is and whether it is published. One line per folder of the zip.
-   Point at `docs/plan.md` and `docs/transfer.md` at a cited commit for how the system works and
+   Point at `7f0add79:docs/plan.md` and `docs/transfer.md` at a cited commit for how the system works and
    what it defers, and do not write a second manual.
 3. **What happened.** Recorded facts only, each with its path in the zip or on GitHub. Keep
    valid answers, rejections and non-results apart, and say which campaigns were still running.

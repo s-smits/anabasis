@@ -5,7 +5,7 @@
  *   bun tools/d2/promote.ts --name buffer --harness latest [--yes]
  *
  * A comparison is made against the campaign's reference harness, which is the Starter Built
- * Harness until the operator promotes another (`docs/plan.md`, Phase 6). Until 2026-10-09 a
+ * Harness until the operator promotes another (`7f0add79:docs/plan.md`, Phase 6). Until 2026-10-09 a
  * promotion was `--reference <digest>` on one command: nothing recorded it, and the next command
  * without the flag was read against the starter again. Here it is an event, `harness.promoted`,
  * and every command that compares reads its reference from the last one (`promoted`,
@@ -18,7 +18,7 @@
  * Without `--yes` it records nothing. With it the event is written, with the comparisons it rests
  * on, so that a reader of the log sees what the operator saw.
  *
- * The plan promotes a harness a comparison against the reference read as a step (`docs/plan.md`,
+ * The plan promotes a harness a comparison against the reference read as a step (`7f0add79:docs/plan.md`,
  * row F28; until 19 October once that step was read again on fresh solves). That rule is move 7's (`unpromoted`, `src/builder/decide.ts`),
  * and it is asked here: a harness it would not promote now is refused, with the reason. The
  * choice stays the operator's: `--despite "<why>"` promotes all the same, and the event keeps the

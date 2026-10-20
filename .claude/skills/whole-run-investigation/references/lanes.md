@@ -491,7 +491,7 @@ around anyway is a harness fitted to the exam's fault. Keep the count honest: fa
 ruled earned, of which followed by an edit, of which passed after. Until 11 October a Diagnoser
 named an owner and a first divergence for each earned fail, and a log of before holds its
 readings (`diagnosis.recorded`): 20 of 20 named the solver, and the seat went
-(`docs/simplify.md`, E1). The decision it changes is whether the session produced a change with a
+(`7f0add79:docs/simplify.md`, E1). The decision it changes is whether the session produced a change with a
 reason, which is the only kind worth a round's solves; it routes to `harness/guide` or
 `harness/tools` for a fail left standing, and `builder-prompt` when the fail was ignored.
 
@@ -793,7 +793,7 @@ the logged one is a check that does not repeat. Then read what the Builder chang
 earned fail and whether it was the side that failed. Until 11 October a Diagnoser named an owner
 for each earned fail, the harness, the public rules or the solver, and a log of before holds
 its readings beside the rulings; 20 of 20 named the solver, and the seat went
-(`docs/simplify.md`, E1). The decision it changes is whether the next change goes to the harness
+(`7f0add79:docs/simplify.md`, E1). The decision it changes is whether the next change goes to the harness
 or to the exam's owner; it routes to `reviewer-prompt` (`src/review/referee.ts`) for a ruling
 that cannot be right, `pack/evaluator` for a check that does not repeat, and `harness/guide` or
 `harness/tools` for a repair on the wrong side.

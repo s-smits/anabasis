@@ -1574,7 +1574,7 @@ describe("a checkpoint with no session", () => {
 describe("a session with no comparison after it", () => {
   const practise = call("practice", { tasks: ["t-p1"] });
 
-  // The plan's checkpoint (`docs/plan.md`, Phase 5): several sessions, then one comparison. Until
+  // The plan's checkpoint (`7f0add79:docs/plan.md`, Phase 5): several sessions, then one comparison. Until
   // 2026-10-09 a session ran only inside a round, so two sessions were two paid comparisons.
   it("runs twice, the second from what the first left, and one checkpoint compares what they leave", async () => {
     const s = await setup([edit, practise, finish, again, finish], step);

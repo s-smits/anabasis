@@ -5,7 +5,7 @@
  *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --session b-2 \
  *     --builder claude/claude-opus-5-5 --cap 150
  *
- * The plan's checkpoint is several sessions and then one comparison (`docs/plan.md`, Phase 5).
+ * The plan's checkpoint is several sessions and then one comparison (`7f0add79:docs/plan.md`, Phase 5).
  * Until 2026-10-09 the only command that ran a session was a round, which compares what it leaves,
  * so several sessions cost several paid comparisons. This is the session by itself: it forks the
  * harness `--parent` names, `latest` by default, practises on the campaign's released tasks and

@@ -40,7 +40,7 @@
  * Until 15 October this was shell lines in a skill and scripts of the operator's: each continue was
  * typed by hand from the receipt, a pause was a shell loop, and a login went through a wrapper that
  * also carried the run's name, so a stop ended two process groups for one run. The launcher that
- * went on 11 October (`docs/simplify.md`, D2) asked a move's admissions a second time; these verbs
+ * went on 11 October (`7f0add79:docs/simplify.md`, D2) asked a move's admissions a second time; these verbs
  * ask none, and the command refuses what it refuses.
  */
 import { unfinished } from "#src/kernel/reports.ts";

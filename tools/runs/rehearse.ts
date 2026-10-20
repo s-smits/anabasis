@@ -2,7 +2,7 @@
  * `bun run runs rehearse <the flags of tools/d2/round.ts that name no model> [--held none:pass] [--starter none]`
  *
  * A round over a seeded campaign (`seed.ts`) with a script in each model seat and no model called.
- * The plan's first round is walked this way before it is paid for (`docs/plan.md`, Phase 0): the
+ * The plan's first round is walked this way before it is paid for (`7f0add79:docs/plan.md`, Phase 0): the
  * scripted Builder forks the Starter Built Harness, and the harness it leaves is compared with the
  * starter. Flags that hold `--id` are a checkpoint's, as a launch reads them, and rehearse one
  * comparison with no Builder session (`tools/d2/checkpoint.ts`). With `--no-comparison` the flags

@@ -9,7 +9,7 @@
  * and the cut that keeps both ends and marks what went, the one copy of a repeated section, the
  * notes block a fresh session opens on, the notice for a file over its limit, and the carry, with
  * the `scratch/` helpers under their two limits and no link followed. The plan keeps v1's notes as
- * what a session opens with when the conversation is lost (`docs/plan.md`, Phase 5), and every v2
+ * what a session opens with when the conversation is lost (`7f0add79:docs/plan.md`, Phase 5), and every v2
  * session is that case.
  *
  * Departures, each because v2 is laid out otherwise:

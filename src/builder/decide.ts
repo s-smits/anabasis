@@ -1,7 +1,7 @@
 /**
  * Move 7 of a campaign: the one move that follows from its log.
  *
- * A campaign is a loop of moves over one log (`docs/plan.md`, "The process"): the exam is read,
+ * A campaign is a loop of moves over one log (`7f0add79:docs/plan.md`, "The process"): the exam is read,
  * tasks are written, a Builder builds, two harnesses are compared, and then something has to say
  * what comes next. This is the plan's decision table: it takes the log and the campaign's plan and
  * returns one move with its reason, or an ending. It decides which move, and nothing of a move's
@@ -15,7 +15,7 @@
  * One count ends a campaign that cannot be given tasks or room (`roomless`), at its patience.
  *
  * A setting is recorded once (`campaign.setting`) and does not change, so every comparison of the
- * log is read, at the one budget it names (`docs/simplify.md`, package A).
+ * log is read, at the one budget it names (`7f0add79:docs/simplify.md`, package A).
  */
 import { unadmitted } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";

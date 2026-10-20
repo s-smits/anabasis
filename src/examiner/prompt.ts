@@ -27,7 +27,7 @@
  * the tools, none of which an Examiner writes. On 7 October a Builder told to make its exam harder
  * removed a solver tool instead; an Examiner has no harness to weaken.
  *
- * The prompt describes no stronger solver and asks for no reject controls (`docs/plan.md`, Phase
+ * The prompt describes no stronger solver and asks for no reject controls (`7f0add79:docs/plan.md`, Phase
  * 2). It says how a task is scored: under one compute budget for both harnesses, an answer that
  * passes every check within it is valid, and the harness with more valid answers wins the task. A
  * task that can tell two harnesses apart is therefore one a better method answers validly within

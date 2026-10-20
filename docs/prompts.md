@@ -34,8 +34,8 @@ factors, in the order they bind, each a question, a measurement and a bar:
   4 Verdicts  the Referee's rulings against a person's blind labels
   5 Worth     effect size, transfer, cost; no bar set
 
-The text is AGENTS.md "The five success factors"; the recorded values are
-docs/plan.md "Goal and the five factors"; the campaign skill
+The text is AGENTS.md "The four reported factors"; the recorded values are
+docs/plan.md "Goal and the four factors"; the campaign skill
 .claude/skills/run-improvement-campaign/SKILL.md names the factor a pass holds.
 The claim is that these five are (a) the right set, (b) each measurable from
 the log as written, (c) each stated once, and (d) true to the source. Audit

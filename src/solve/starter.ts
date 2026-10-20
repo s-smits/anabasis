@@ -8,7 +8,7 @@
  * host's, the same under every harness: the command wall behind the tools, the answer file and
  * `submit`, and the prompt's addendum and environment (`run.ts`, `answer.ts`, `prompt.ts`).
  *
- * Every campaign starts from it (`docs/plan.md`, Terms and Phase 0). The Builder forks it in its
+ * Every campaign starts from it (`7f0add79:docs/plan.md`, Terms and Phase 0). The Builder forks it in its
  * first session, since a session copies the harness it starts from whole. It is the first
  * reference harness: a new harness is compared with it until a step is promoted. And it stays the
  * control after that: once another harness is promoted, the tasks written for it are read by the

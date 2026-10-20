@@ -18,7 +18,7 @@
  * with the answer format the sweep's record tool took, and the limits are the sweep's `config.yaml`
  * without its disk cap. The test condition's model and effort are the stored cycle's. The cycle's own
  * harness is not used: it comes from v1's runs, and a campaign starts from the Starter Built
- * Harness, which is also its first reference harness (`src/solve/starter.ts`, `docs/plan.md`,
+ * Harness, which is also its first reference harness (`src/solve/starter.ts`, `7f0add79:docs/plan.md`,
  * Phase 0). Until 2026-10-09 the stored harness was both.
  *
  * It first ran against a model on 8 October, in a round with a Claude Builder (issue #1). It needs

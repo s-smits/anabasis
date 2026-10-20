@@ -1,4 +1,4 @@
-// The size of a comparison: the plan's (`docs/plan.md`, "Statistical power and cost"), and what a
+// The size of a comparison: the plan's (`7f0add79:docs/plan.md`, "Statistical power and cost"), and what a
 // comparison of a given size says it can show and risks before it runs. The lines are the whole
 // surface: the results that clear a level are read off them. The power itself is the test's own
 // arithmetic (`test/compare.test.ts`).

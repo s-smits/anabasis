@@ -30,7 +30,7 @@
  * One comparison's reading, `step`, is that test at or under the level, 0.02 by default,
  * and a step against the reference promotes (`stepOf`; `decide.ts`). The level is the caller's and
  * recorded with the campaign's opening, so a campaign reads by its own rule whatever the tree's
- * default (`docs/plan.md`, Statistical power and cost). From 10 to 19 October the step was read in
+ * default (`7f0add79:docs/plan.md`, Statistical power and cost). From 10 to 19 October the step was read in
  * two stages: a first reading at or under a trigger, 0.25, bought a repeat on fresh solves, and the
  * two read together had to clear the level. Of 24 readings in 56 campaigns that cleared the level by
  * themselves, 11 were read again and 11 of 11 won at least as many tasks as they lost; the repeat
@@ -39,7 +39,7 @@
  * harnesses 1.13% of the time on 24 untied tasks each won or lost by a pair (`power` at one half).
  *
  * How each ending of a solve enters a pair (`solve.ts` names the endings; the table is the plan's,
- * `docs/plan.md`, Phase 2):
+ * `7f0add79:docs/plan.md`, Phase 2):
  *
  * | The solve ended | Its part in a pair |
  * | --- | --- |
@@ -286,7 +286,7 @@ export function objectiveRuleIn(data: JsonObject): ObjectiveRule | undefined {
 
 // Two other readings of a tally, the trinomial test and the chance that the new harness is the
 // better one, decide nothing and are not built: their formulas and what they read of the recorded
-// comparisons are in `docs/plan.md`, "Statistical power and cost" (row C3).
+// comparisons are in `7f0add79:docs/plan.md`, "Statistical power and cost" (row C3).
 
 /** How far apart two measures are, as a share of the larger magnitude. */
 function apart(one: number, other: number): number {

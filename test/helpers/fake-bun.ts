@@ -8,7 +8,8 @@
  * ANA_FAKE_TOGETHER=N holds each install until N have started, or about five seconds, and logs its
  * end, so gates run side by side overlap in the log and gates run one after another do not; the
  * install of ANA_FAKE_LATE's commit ends half a second later. ANA_FAKE_SUITE is printed by a test
- * step, which then takes two seconds, for a pulse to read.
+ * step, which then takes two seconds, for a pulse to read. A test step also logs the workers it was
+ * given, `workers <sha> <ANA_TEST_WORKERS>`, empty for none.
  */
 import { chmodSync, existsSync, readFileSync, writeFileSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
@@ -21,6 +22,7 @@ install | run) ;;
 esac
 commit=$(git rev-parse HEAD)
 printf '%s\t%s\n' "$commit" "$*" >> "$ANA_FAKE_LOG"
+[ "$1 $2" != "run test" ] || printf 'workers\t%s\t%s\n' "$commit" "$ANA_TEST_WORKERS" >> "$ANA_FAKE_LOG"
 if [ "$1" = install ] && [ -n "$ANA_FAKE_TOGETHER" ]; then
   i=0
   while [ "$(grep -c 'install --frozen-lockfile' "$ANA_FAKE_LOG")" -lt "$ANA_FAKE_TOGETHER" ] && [ "$i" -lt 500 ]; do

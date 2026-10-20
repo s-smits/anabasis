@@ -3,12 +3,17 @@
  * One live seat on a seed, and the reading of what it wrote. `start` runs a campaign command on a
  * seed in a worktree, on one login, niced and in a process group of its own; it watches the dollars
  * the log bills from where the seat began, ends the group at the seat's cap or its minutes, and
- * prints the reading once the group is gone. `read` is that reading of any stretch of a log.
+ * prints the reading once the group is gone. `read` is that reading of any stretch of a log. `watch`
+ * and `due` tell an agent what a seat wrote as it lands (`newsOf`): `watch` one line an event for a
+ * line reader such as Claude Code's Monitor, `due` what is unread since it last looked, and with
+ * `--hook` an exit of 2 that a Claude Code Stop hook turns into a turn the agent must take.
  *
  *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts start --tree <worktree> --name sim-<what>
  *     --out <prefix> --cap <dollars> --minutes <n> [--login N] [--mention <text>]... -- <command> <its flags>
  *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat <prefix>
  *     | --log <path> --from <event> [--mention <text>]... [--json]
+ *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts watch --seat <prefix>
+ *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts due <prefix>... [--hook]
  *
  * Run `start` under `bun --env-file=<file>` and as one background command: it ends when the seat
  * does, so its end is the one notice to wait for, and the 30-minute monitor a watcher re-arms is not
@@ -32,7 +37,8 @@ import { existsSync, openSync, readFileSync, writeFileSync } from "#src/meta/fil
 import { gitText } from "#src/meta/git.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { type JsonObject, asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
-import { join } from "#src/meta/path.ts";
+import { basename, join } from "#src/meta/path.ts";
+import { plural } from "#src/meta/text.ts";
 import { capturedExecPath, capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { processGroupExists, terminateAndReapProcessGroupId } from "#src/meta/subprocess.ts";
 import { SEED_FILE } from "#tools/runs/registry.ts";
@@ -42,8 +48,13 @@ const USAGE = `usage:
   live-seat.ts start --tree <worktree> --name sim-<what> --out <prefix> --cap <dollars> --minutes <n>
     [--login N] [--mention <text>]... -- <command> <its flags>
   live-seat.ts read --seat <prefix> | --log <path> --from <event> [--mention <text>]... [--json]
+  live-seat.ts watch --seat <prefix>
+  live-seat.ts due <prefix>... [--hook]
 
-start runs <command> with --name in <tree>, on a seed only, and prints the reading when it ends.`;
+start runs <command> with --name in <tree>, on a seed only, and prints the reading when it ends.
+watch prints one line for each event worth reading as it lands, until the seat's process is gone.
+due prints what landed in each seat since due last looked; with --hook it writes that to stderr and
+exits 2 when there is any, as a Claude Code Stop hook keeps the session from stopping.`;
 const OPTIONS = {
   tree: "abs",
   name: "text",
@@ -56,6 +67,7 @@ const OPTIONS = {
   from: "int",
   mention: "list",
   json: "flag",
+  hook: "flag",
 } as const;
 /** How often the watch reads the log, and how often it says so when nothing new was gated. */
 const TICK_MS = 30_000;
@@ -78,6 +90,9 @@ interface Reading {
    *  proved` (its author's answer passes), `package` (refused on its package before a solve) or `unread`. */
   readonly gates: Readonly<Record<string, number>>;
   readonly held: number;
+  /** The solves the reference ran at each gate that solved its draft: `ran`, or the solves it read
+   *  where a gate from before one solve at a time (#280) did not say. */
+  readonly ran: readonly number[];
   /** The solver's own turns of each valid gate answer, least, median and most. */
   readonly turns: readonly [number, number, number] | null;
   readonly calls: Readonly<Record<string, number>>;
@@ -125,6 +140,11 @@ export function readingOf(events: readonly LogEvent[], from: number, mentions: r
     proposed: of("task.proposed").length,
     gates: counted(gates.map(gateWord)),
     held: gates.filter(({ outcome }) => heldAtGate(outcome)).length,
+    ran: gates.flatMap(({ reference }) => {
+      const { ran, solves } = asRecord(reference) ?? {};
+      const count = ran ?? solves;
+      return isNumber(count) && count > 0 ? [count] : [];
+    }),
     turns: spread(turns),
     calls: counted(calls.flatMap(({ tool }) => (isString(tool) ? [tool] : []))),
     mentions: Object.fromEntries(
@@ -148,10 +168,31 @@ export function told(reading: Reading): string[] {
     `events ${String(reading.events[0])} to ${String(reading.events[1])}, ${reading.minutes.toFixed(0)} min, $${reading.billed.toFixed(2)} billed`,
     `sessions ${reading.sessions.join(", ") || "none"}; ended ${reading.ended.join(", ") || "none yet"}`,
     `drafts proposed ${String(reading.proposed)}, gated ${listed(reading.gates)}; held ${String(reading.held)}`,
+    `the gate ran ${String(reading.ran.reduce((sum, count) => sum + count, 0))} solves over ${String(reading.ran.length)} drafts${reading.ran.length === 0 ? "" : `: ${reading.ran.join(", ")}`}`,
     `the reference's valid gate answers took ${turns === null ? "no turns on record" : `${String(turns[0])} to ${String(turns[2])} turns, median ${String(turns[1])}`}`,
     `calls ${listed(reading.calls)}`,
     ...Object.entries(reading.mentions).map(([text, count]) => `calls naming ${text}: ${String(count)}`),
   ];
+}
+
+/** The events of a stretch an agent should read as they land, one line each: a gate's word with the
+ *  solves it ran, a Referee's ruling or refusal, and a session's end. */
+export function newsOf(events: readonly LogEvent[], from: number): string[] {
+  const text = (value: unknown) => (isString(value) ? value : JSON.stringify(value));
+  return events.slice(from).flatMap(({ kind, data }) => {
+    if (kind === "task.gate") {
+      const ran = asRecord(data.reference)?.ran;
+      return [
+        `gate ${text(data.outcome)}, ${gateWord(data)}${isNumber(ran) ? `, ${plural(ran, "solve")} ran` : ""}`,
+      ];
+    }
+    if (kind === "referee.finding") return [`ruling ${text(data.ruling)} on ${text(data.solve)}`];
+    if (kind === "referee.refused") return [`ruling refused on ${text(data.solve)}`];
+    if (kind === "exam.finished" || kind === "build.finished") {
+      return [`${text(data.session)} ended ${text(data.ended)}`];
+    }
+    return [];
+  });
 }
 
 /** The events of a log as far as they read: a line torn while the seat writes waits a tick. */
@@ -195,7 +236,7 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
   );
   console.log(`${name} at ${commit}: pid ${String(child.pid)}, from event ${String(from)}; ${out}.err`);
   const began = Date.now();
-  let gated = 0;
+  let seen = from;
   let quiet = 0;
   let stopped: string | null = null;
   while (processGroupExists(child.pid)) {
@@ -204,10 +245,10 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
     if (events === null) continue;
     const billed = billedBetween(events, from);
     const elapsed = (Date.now() - began) / 60_000;
-    const gates = events.slice(from).filter(({ kind }) => kind === "task.gate");
-    for (const { data } of gates.slice(gated)) console.log(`gate ${gateWord(data)}, $${billed.toFixed(2)}`);
-    quiet = gates.length > gated ? 0 : quiet + 1;
-    gated = gates.length;
+    const news = newsOf(events, seen);
+    for (const line of news) console.log(`${line}, $${billed.toFixed(2)}`);
+    quiet = news.length > 0 ? 0 : quiet + 1;
+    seen = events.length;
     if (quiet >= QUIET_TICKS) {
       console.log(`${elapsed.toFixed(0)} min, $${billed.toFixed(2)}`);
       quiet = 0;
@@ -233,10 +274,54 @@ function stretchOf(args: CommandArgs): Stretch {
   if (args.value("log") !== null || args.int("from") !== null) {
     args.die("name a seat, or a log and an event, not both");
   }
+  return keptSeat(seat, args.die);
+}
+
+/** Where a seat `start` kept began: its log, its first event and the process that leads its group. */
+function keptSeat(seat: string, die: CommandArgs["die"]): Stretch & { readonly pid: number | null } {
   const kept = asRecord(capturedJsonParse(readFileSync(`${seat}.json`, "utf8")));
-  const { tree, name, from } = kept ?? {};
-  if (!isString(tree) || !isString(name) || !isNumber(from)) args.die(`${seat}.json is no seat start kept`);
-  return { log: join(tree, ".ana", "d2", name, LOG_FILE), from };
+  const { tree, name, from, pid } = kept ?? {};
+  if (!isString(tree) || !isString(name) || !isNumber(from)) die(`${seat}.json is no seat start kept`);
+  return { log: join(tree, ".ana", "d2", name, LOG_FILE), from, pid: isNumber(pid) ? pid : null };
+}
+
+/** Each line worth reading as the seat writes it, then its reading once its process is gone: what a
+ *  Monitor in Claude Code, or any agent reading a command's lines, waits on. */
+async function watch(args: CommandArgs): Promise<number> {
+  const { log, from, pid } = keptSeat(args.required("seat"), args.die);
+  let upTo = from;
+  for (;;) {
+    const events = eventsNow(log);
+    if (events !== null) {
+      for (const line of newsOf(events, upTo)) console.log(line);
+      upTo = events.length;
+    }
+    if (pid === null || !processGroupExists(pid)) break;
+    await Bun.sleep(TICK_MS);
+  }
+  console.log(told(readingOf(read(log), from, [])).join("\n"));
+  return 0;
+}
+
+/** What landed in each seat since `due` last looked, kept as an event count in `<prefix>.seen`. An
+ *  agent's hook runs it between turns, so what a seat wrote is read before the agent stops waiting. */
+function due(args: CommandArgs, seats: readonly string[]): number {
+  if (seats.length === 0) args.die("name the seats' prefixes");
+  const lines = seats.flatMap((seat) => {
+    const { log, from } = keptSeat(seat, args.die);
+    const seen = existsSync(`${seat}.seen`) ? Number(readFileSync(`${seat}.seen`, "utf8")) : from;
+    const events = eventsNow(log);
+    if (events === null) return [];
+    writeFileSync(`${seat}.seen`, `${String(events.length)}\n`);
+    return newsOf(events, seen).map((line) => `${basename(seat)}: ${line}`);
+  });
+  if (lines.length === 0) return 0;
+  if (!args.flag("hook")) {
+    console.log(lines.join("\n"));
+    return 0;
+  }
+  console.error([...lines, "Read them against the simulation's predictions before going on."].join("\n"));
+  return 2;
 }
 
 function readCommand(args: CommandArgs): number {
@@ -250,11 +335,13 @@ function readCommand(args: CommandArgs): number {
 async function main(args: CommandArgs): Promise<number> {
   const [verb, ...command] = args.positionals;
   if (verb === "start") return start(args, command);
+  if (verb === "watch") return watch(args);
+  if (verb === "due") return due(args, command);
   if (verb === "read") {
     if (command.length > 0) args.die("read takes no command");
     return readCommand(args);
   }
-  return args.die(`the verb is start or read, not ${verb ?? "none"}`);
+  return args.die(`the verb is start, read, watch or due, not ${verb ?? "none"}`);
 }
 
 if (import.meta.main) {

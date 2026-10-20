@@ -126,7 +126,9 @@ function limitTriggers(log: Index): Trigger[] {
           ),
         ];
   });
-  const outside = misses(log.solves.filter((solve) => solve.comparison === null));
+  // An Examiner's admission solve names its session where a comparison's names the comparison.
+  const started = new Set(log.of("comparison.started").map((start) => text(start.session)));
+  const outside = misses(log.solves.filter((solve) => !started.has(solve.comparison ?? "")));
   const { at, of } = detail(outside);
   return [
     ...compared,

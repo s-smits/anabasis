@@ -953,24 +953,23 @@ describe("the reader of misses at a limit, by comparison and side", () => {
   };
   const refused = { outcome: "fail", kind: "rejected" };
 
-  it("keeps misses in an unreported comparison out of the outside count beside a practice miss", () => {
+  it("keeps misses in an unreported comparison out of the outside count, and counts practice and admission misses in it", () => {
+    // buffer-171-opus: an admission solve names its Examiner session, and while only a null
+    // comparison was read as outside one the lane printed 2 of 3 misses at a limit for 20 of 77.
     const log: LogEvent[] = [];
     const put = appendTo(log);
     put(COMPARISON_STARTED, { session: "g-1", old: "hp", fresh: "hc", tasks: [] });
-    for (const id of ["reference", "new", "practice"]) {
-      put(SOLVE_STARTED, {
-        solve: id,
-        limits: { wallSeconds: 100 },
-        ...keyIfDefined("comparison", id === "practice" ? undefined : "g-1"),
-      });
+    const named = { reference: "g-1", new: "g-1", practice: undefined, admission: "x-1" };
+    for (const [id, under] of Object.entries(named)) {
+      put(SOLVE_STARTED, { solve: id, limits: { wallSeconds: 100 }, ...keyIfDefined("comparison", under) });
       put(SOLVE_FINISHED, { solve: id, ending: refused, seconds: 97 });
-      if (id !== "practice") {
+      if (under === "g-1") {
         expect(overview(log).triggers.filter((trigger) => trigger.name === "MISSES AT A LIMIT")).toEqual([]);
       }
     }
     const misses = overview(log).triggers.filter((trigger) => trigger.name === "MISSES AT A LIMIT");
     expect(misses).toHaveLength(1);
-    expect(misses[0]?.detail.match(/\d+/g)).toEqual(["1", "1", "1"]);
+    expect(misses[0]?.detail.match(/\d+/g)).toEqual(["2", "2", "2"]);
     expect(misses[0]?.detail).not.toContain("g-1");
   });
 

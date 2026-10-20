@@ -182,15 +182,17 @@ pass, on a solve a limit cut short, or on a crash. First the host replays the ch
 answer, and a verdict that does not repeat is ruled a check defect by the host. The Referee reads
 the task with its hidden values, the public rules, the answer, the rejecting checks with the fields
 each reads, the check program's source, a valid answer for the task where one is on record, and a
-probe that changes one field and reruns the checks (at most eight probes per ruling). It never
-reads the harness, the trace or anything the Builder wrote. It records one ruling
-(`referee.finding`): `earned` must name the rule broken and the field that breaks it, both cited by
-a rejecting check; `check-defect` must cite a probe that decided both sides on a field the check
-reads; `unclear` covers the rest. A ruling without its evidence is refused, and each refusal is
-recorded with the ruling asked for and why (`referee.refused`, 19 October; no report reads them
-yet). `earned` counts as a
-loss; the other two set the task aside for both harnesses, so a broken check scores against
-nobody.
+probe that changes existing fields or their parent together and reruns the checks (at most eight
+probes per ruling). A coupled probe changes at most three paths that one rejecting check reads
+together, or their parents; only a scalar answer's root can be replaced. It never reads the harness,
+the trace or anything the Builder wrote. It records one ruling (`referee.finding`): `earned` must
+name the rule broken and the field that breaks it, both cited by a rejecting check; `check-defect`
+must cite a probe that decided both sides on a field the check reads, or shows a refusal independent
+of the answer where it declares none. A cited probe that supplies an accepted answer, whole or on
+every field that check reads, is refused as defect evidence; `unclear` covers the rest. A ruling
+without its evidence is refused, and each refusal is recorded with the ruling asked for and why
+(`referee.refused`, 19 October; no report reads them yet). `earned` counts as a loss; the other two
+set the task aside for both harnesses, so a broken check scores against nobody.
 
 The Referee is a model, and it is measured by how well it agrees with a person who labels the same
 rejections blind (`tools/d2/settle.ts`, `src/review/agreement.ts`): a three-by-three table of label

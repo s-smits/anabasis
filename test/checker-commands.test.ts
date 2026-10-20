@@ -483,42 +483,28 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     expect(carry().said).toContain("0 refused, 7 already there");
     expect(read(join(carried, LOG))).toHaveLength(events.length);
   });
-  it("confirms the tasks named to score against today's verifier, and releases none of them", () => {
-    const prepare = (tasks: string) =>
-      run("tools/d2/prepare.ts", { cycle: "c01", name: PREPARED, practice: "1", tasks });
-    // The plan's set-up of its first round. Both tasks are named, so neither is practice. The
-    // stored sweep accepted an answer to t-1, which still passes, and none to t-2.
-    const both = prepare("t-1,t-2");
-    expect(both.said).toContain(
-      "practice is 1 short of 1: a release takes at most half of the 0 held out and not named to score",
-    );
+  it("records a stored answer that still passes today's verifier once, and releases practice by the draw", () => {
+    const prepare = (practice: string) =>
+      run("tools/d2/prepare.ts", { cycle: "c01", name: PREPARED, practice, target: "2" });
+    // The stored sweep accepted an answer to t-1, which still passes, and none to t-2.
+    const both = prepare("0");
     expect(both.said).toContain("t-1: a stored accepted answer passes today's verifier");
-    expect(both.said).toContain(
-      "t-2: the stored sweep accepted no answer to it, so nothing confirms its checks",
-    );
-    expect(both.said).toContain(
-      "1 of the 2 tasks named to score have no stored accepted answer that passes today's verifier",
-    );
-    expect(both.code).toBe(1);
+    expect(both.code).toBe(0);
     const sets = taskSets(read(join(prepared, LOG)));
     expect([sets.held.length, sets.released.length]).toEqual([2, 0]);
-    // Named alone, the confirmed task is a set a comparison can be asked for.
-    const one = prepare("t-1");
-    expect(one.said).toContain(
-      "each of the 1 tasks named to score has a stored accepted answer that passes today's verifier",
-    );
-    expect(one.code).toBe(0);
-    // The reading writes nothing: the log holds the tasks' proposals and gates, and the one fact
-    // the preparation itself logs since 14 October, that a stored answer to t-1 passes today's
-    // checks, once however often it prepares (`task.feasible`).
+    expect(prepare("1").code).toBe(0);
+    expect(prepare("1").code).toBe(0);
+    const released = taskSets(read(join(prepared, LOG)));
+    expect([released.held.length, released.released.length]).toEqual([1, 1]);
+    // The proof is recorded once however often preparation runs (`task.feasible`).
     const events = read(join(prepared, LOG));
     expect([...new Set(events.map(({ kind }) => kind))].sort()).toEqual([
       "task.feasible",
       "task.gate",
       "task.proposed",
+      "task.state",
     ]);
     expect(events.filter(({ kind }) => kind === "task.feasible")).toHaveLength(1);
-    expect(prepare("t-9").said).toContain("--tasks t-9: the campaign holds no task of that id");
   });
 
   it("names a do-nothing answer the format refuses as a fault, and freezes nothing over it", () => {
@@ -565,15 +551,12 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
       read(join(seeded, LOG)).flatMap((event) => (event.kind === kind ? [event.data] : []));
 
     // Fix row F44: a round refused on its own terms leaves the log as it was. Until 2026-10-09 it
-    // had recorded the campaign's setting first, a mistyped task with it, and the corrected
+    // had recorded the campaign's setting first, a mistyped flag with it, and the corrected
     // command was then refused as another setting.
     const lines = () => read(join(seeded, LOG)).length;
     const before = lines();
-    expect(rehearse("--session", "b-0", "--tasks", "t-9").said).toContain(
-      "--tasks t-9: the campaign holds no task of that id",
-    );
-    expect(rehearse("--session", "b-0", "--tasks", "t-1,t-2").said).toContain(
-      "is a practice task, and a round scores no task its session saw",
+    expect(rehearse("--session", "b-0", "--target", "0").said).toContain(
+      "--target 0: the tasks to score are a whole number of at least one",
     );
     expect(lines()).toBe(before);
     expect(of("campaign.setting")).toEqual([]);

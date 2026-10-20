@@ -179,6 +179,9 @@ gated: 444 of v2's commits came into this repository that way on 11 October, and
 gated every commit new to the remote, could not pass one of them. To push another repository's
 history as a branch of its own, fetch it as a remote first, so that its commits are already held.
 
+One push of the clone runs at a time (`queue`): push a pull request above one still at its gate,
+and it waits, then gates only its own commits, since the one beneath is the remote's by then. Where
+that push rewrote the branch beneath, yours is refused with the `git rebase --onto` that restacks it.
 A pass is remembered by content in the common Git directory, a whole pass by the commit's tree and a
 static one by its tree and its parent's, so a push its lease refused or a restack that kept every
 tree goes out again without paying twice, and after a failure the commits beneath the fix keep their

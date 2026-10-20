@@ -149,7 +149,7 @@ export async function checkpointCommand(
   const notes = admitComparison(campaign.log, {
     id,
     wanted: wantedNamed(campaign, values, { setting, cap, builds: false }),
-    seats: seated === solved ? "paid" : "scripted",
+    seats: seats.paid ? "paid" : "scripted",
     own,
   });
   for (const note of notes) console.log(`· ${note}`);

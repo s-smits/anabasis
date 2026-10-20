@@ -76,7 +76,9 @@ export function selected(
   triggers: readonly Trigger[],
   named: readonly number[] | null,
 ): Selection {
-  const started = new Set(triggers.map((trigger) => trigger.lane));
+  // `WINS` lists lane 19's evidence and starts nothing by itself: r3's lane 19 ran on it alone on
+  // 20 October, with no shortcut suspected and no answer from a program.
+  const started = new Set(triggers.flatMap((trigger) => (trigger.name === "WINS" ? [] : [trigger.lane])));
   const unknown = (named ?? []).filter((number) => !lanes.some((lane) => lane.number === number));
   if (unknown.length > 0) throw new Error(`no lane ${unknown.join(", ")} in the catalogue`);
   const asked = (lane: Lane) =>

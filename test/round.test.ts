@@ -10,7 +10,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { passesIn, predicted, swapped, toLabel } from "../src/builder/comparison.ts";
+import { type PassLabel, passesIn, predicted, swapped, toLabel } from "../src/builder/comparison.ts";
 import {
   type CheckpointRequest,
   checkpoint,
@@ -886,7 +886,8 @@ describe("a round", () => {
       expect(taskStates(read(earned.s.log)).get("s1")).toBe("held");
 
       // A task set aside on a rejection no label reaches stays out of this comparison, as one
-      // labelled unclear does. A pass's label is recorded and moves no tally.
+      // labelled unclear does. A pass labelled wrong is its side's fail, as an earned rejection is:
+      // one of the new harness's two valid answers to a task still wins it against two fails.
       const partial = await ruledOn();
       const [one = ""] = partial.asked.aside;
       const [valid = ""] = passesIn(read(partial.s.log), "b-1");
@@ -896,6 +897,19 @@ describe("a round", () => {
         scored: { wins: 3, losses: 0 },
         aside: ["s1"],
         settled: { labelled: 1, defects: 0, restored: [], passes: { [valid]: "wrong" } },
+      });
+      // Every pass labelled wrong leaves the new harness no valid answer, and each task it won ties;
+      // labelled sound or unclear, the same passes leave the tally as it was.
+      const wrong = await ruledOn();
+      const passes = (log: string, label: PassLabel) =>
+        new Map(passesIn(read(log), "b-1").map((solve) => [solve, label] as const));
+      expect(settleReading(wrong.s.log, "b-1", new Map(), passes(wrong.s.log, "wrong"))).toMatchObject({
+        scored: { wins: 0, losses: 0, ties: 3 },
+        reading: "no-step",
+      });
+      const sound = await ruledOn();
+      expect(settleReading(sound.s.log, "b-1", new Map(), passes(sound.s.log, "sound"))).toMatchObject({
+        scored: { wins: 3, losses: 0 },
       });
 
       // Labelled unclear, the task stays out of this comparison and is disputed nowhere.

@@ -723,9 +723,8 @@ describe("a campaign run by its log", () => {
     // No word is left for a campaign that has no opening, and none that names two things.
     expect(() => wordCommand(["--name", `${name}-none`, "--stop", "x"])).toThrow("has no opening on record");
     expect(() => wordCommand(["--name", name, "--stop", "x", "--budget", "5"])).toThrow("one word");
-    // The cause of an A/A that read a step is a word too, read where it stands (`decide.ts`).
-    expect(wordCommand(["--name", name, "--cause", " the host was loaded "])).toBe("cause");
-    expect(of(name, "campaign.word").at(-1)).toEqual({ word: "cause", why: "the host was loaded" });
+    // `--cause` released a campaign its control ended until 20 October, and is no word now.
+    expect(() => wordCommand(["--name", name, "--cause", "the host was loaded"])).toThrow();
     expect(strayed).toEqual([]);
   });
 

@@ -440,7 +440,7 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
         : {
             ...aa,
             flips: flipsOf(mirrored),
-            // Two-sided, as the control is read (`controlled`, `decide.ts`): each side at half the level.
+            // Two-sided, since which half is which is arbitrary: each side at half the level.
             detectable: detectable(aa.differences, fixed.level / 2),
           },
     counted: pairs.length === first.pairs.length ? null : scored(first.pairs),

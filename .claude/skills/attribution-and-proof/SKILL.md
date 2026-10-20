@@ -69,9 +69,9 @@ Answer these from the log before using the word step in a sentence of your own:
   reading holds the step, say it is one draw at its level. Until 19 October promotion required a repeat.
 - **What does the reference do against itself?** Read `noise` on the same tallied tasks, with
   halves of the reference's solves mirrored in time. It is available at four or more even solves
-  per side (`compared`, `src/builder/comparison.ts`). The epoch's first A/A is the campaign control:
-  either one-sided p at or below half the comparison's level ends it as `control` until the operator
-  records a cause (`controlled`, `src/builder/decide.ts`). Later A/As remain readings.
+  per side (`compared`, `src/builder/comparison.ts`). Every A/A is a reading and ends nothing: one
+  with either one-sided p at or below half the comparison's level says the two halves of one
+  harness's solves were not interchangeable, so say so beside the step it stands with.
 - **How thin?** At `--level 0.02`, six untied tasks all won is the least that reads a step
   (p = 0.015625), and 5-0 (p = 0.03125) reads none. With equal pair margins, 8-1, 10-2 and
   12-3 also clear 0.02; unequal margins need `flipP`, rather than the tally alone. Retained net

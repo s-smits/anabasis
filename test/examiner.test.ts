@@ -48,6 +48,7 @@ import {
 
 /** The event a tool call of the Examiner writes, with the text it was told. */
 const CALLED = "exam.call";
+const TRY = "try_task";
 const GATE = "task.gate";
 const PROPOSED = "task.proposed";
 /** A solver-side secret no Examiner may be shown: the text of a measured solve's answer. */
@@ -801,7 +802,7 @@ describe("a session that writes tasks", () => {
       tried(9),
       tried(5),
       tried(10),
-      call("try_task", { tasks: [4, 8, 9, 7, 5, 10].map(instance) }),
+      call(TRY, { tasks: [4, 8, 9, 7, 5, 10].map(instance) }),
       finish,
       finish,
     ]);
@@ -859,7 +860,7 @@ describe("a session that writes tasks", () => {
       [2, [REJECTED, PASS, PASS]],
       [5, [PASS, PASS, PASS]],
     ]);
-    const s = seat("write", [tried(4), call("try_task", { tasks: [4, 2, 5].map(instance) }), finish, finish]);
+    const s = seat("write", [tried(4), call(TRY, { tasks: [4, 2, 5].map(instance) }), finish, finish]);
     const asked: number[] = [];
     const probe = async (task: TaskPackage) => {
       const base = Number(asRecord(task.publicInput)?.base);
@@ -887,7 +888,7 @@ describe("a session that writes tasks", () => {
   });
 
   it("starts no solve of a draft where the campaign's budget holds no reserve for all three", async () => {
-    const s = seat("write", [call("try_task", { tasks: [instance(2)] }), finish, finish]);
+    const s = seat("write", [call(TRY, { tasks: [instance(2)] }), finish, finish]);
     // Two reserves of $0.5 are left: until 14 October the three solves started all the same.
     append(s.log, "campaign.opened", { budget: { dollars: 1, reserve: 0.5 } });
     let asked = 0;
@@ -928,7 +929,7 @@ describe("a session that writes tasks", () => {
       ],
       [7, [PASS, PASS, { outcome: "non-result", kind: "provider", reason: "overloaded" }]],
     ]);
-    const s = seat("write", [call("try_task", { tasks: [2, 3, 4, 5, 6, 7].map(instance) }), finish, finish]);
+    const s = seat("write", [call(TRY, { tasks: [2, 3, 4, 5, 6, 7].map(instance) }), finish, finish]);
     const asked: string[] = [];
     // The launcher's record of each solve, as a comparison's solve writes it, with the answer the
     // Examiner must never be shown, and its price.
@@ -994,7 +995,7 @@ describe("a session that writes tasks", () => {
       [2, [10, 10, 12]],
       [3, [10, 10, 10 + 1e-9]],
     ]);
-    const s = seat("write", [call("try_task", { tasks: [instance(2), instance(3)] }), finish, finish]);
+    const s = seat("write", [call(TRY, { tasks: [instance(2), instance(3)] }), finish, finish]);
     const probe = measuredProbe(
       s.log,
       (task, nth) => measures.get(Number(asRecord(task.publicInput)?.base))?.[nth],
@@ -1026,7 +1027,7 @@ describe("a session that writes tasks", () => {
       [2, 9],
       [3, 10 - 1e-9],
     ]);
-    const steps = [tried(2), tried(3), call("try_task", { tasks: [instance(2), instance(3), instance(4)] })];
+    const steps = [tried(2), tried(3), call(TRY, { tasks: [instance(2), instance(3), instance(4)] })];
     const s = seat("write", [...steps, finish, finish]);
     const probe = measuredProbe(s.log, (_task, nth) => [10, 10, 10 + 1e-9][nth]);
     const examined = await examine({
@@ -1063,7 +1064,7 @@ describe("a session that writes tasks", () => {
 
   it("ends at its wall with no solve of the reference harness left running, and starts none after it", async () => {
     // Both instances of the call are gated together, a solve at a time, so the wall finds two running.
-    const s = seat("write", [call("try_task", { tasks: [instance(2), instance(3)] }), finish, finish]);
+    const s = seat("write", [call(TRY, { tasks: [instance(2), instance(3)] }), finish, finish]);
     const running = new Set<string>();
     // Each solve would pass long after the wall, unless the kill a comparison's solves take
     // stops it first; the launcher records its end either way.
@@ -1109,7 +1110,7 @@ describe("a session that writes tasks", () => {
       release = settle;
     });
     const s = seat("write", [
-      call("try_task", { tasks: [instance(2)] }),
+      call(TRY, { tasks: [instance(2)] }),
       () => {
         release();
         return tried(3);
@@ -1132,8 +1133,27 @@ describe("a session that writes tasks", () => {
     expect(kinds.indexOf(GATE)).toBeLessThan(kinds.indexOf("exam.finished"));
   });
 
+  it("waits for the gate's next word at a turn that ends with no call, and not with nothing at the gate", async () => {
+    const s = seat("write", [
+      fauxAssistantMessage("Nothing to put yet."),
+      call(TRY, { tasks: [instance(2)] }),
+      fauxAssistantMessage("Waiting for the gate."),
+      finish,
+      finish,
+    ]);
+    const measured = measuredProbe(s.log, () => undefined);
+    const probe = async (task: TaskPackage, session: string) => {
+      await Bun.sleep(50);
+      return await measured(task, session);
+    };
+    await examine({ ...s.request, limits: { ...s.request.limits, puts: 1 }, probe });
+    // The request after `try_task` returns has no word yet; the one after the turn with no call does.
+    expect(s.sent[2]).not.toContain("x-1-001: refused");
+    expect(s.sent[3]).toContain("x-1-001: refused");
+  });
+
   it("solves the instances of one call together, and bills each draft its own solves", async () => {
-    const s = seat("write", [call("try_task", { tasks: [instance(2), instance(3)] }), finish, finish]);
+    const s = seat("write", [call(TRY, { tasks: [instance(2), instance(3)] }), finish, finish]);
     // No solve ends until both instances' first have started: gated one instance at a time, the
     // call would wait on the first instance's solve for ever.
     let release = () => {};

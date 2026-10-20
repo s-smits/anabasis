@@ -311,7 +311,9 @@ function tasks(ground: Ground): Move | null {
   if (supply.held + supply.awaiting + supply.exhausted + supply.released === 0) {
     return examine(ground, "tasks", "the campaign holds no task");
   }
-  if (supply.released === 0 && supply.held >= 2) {
+  // A campaign that names no practice is released none: until 20 October this named a release that
+  // took nothing, and the campaign command threw on the move that changed nothing.
+  if (supply.released === 0 && supply.held >= 2 && plan.practice !== 0) {
     return { move: "prepare", why: "no task is released for practice: the contract's draw releases some" };
   }
   // Other tasks on the operator's word, once the campaign has an exam to write them against.

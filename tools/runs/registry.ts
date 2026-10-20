@@ -53,7 +53,7 @@ export const SEED_FILE = "seed.json";
  *  checkpoint and a Builder session alone. */
 const BY_HAND = ["tools/d2/round.ts", EXAMINE, "tools/d2/checkpoint.ts", "tools/d2/session.ts", DRAFT];
 /** This CLI, whose verbs start, read and stop runs; `rehearse` alone writes a log. */
-const CLI = "tools/runs/cli.ts";
+export const CLI = "tools/runs/cli.ts";
 const LIVE = "tools/m0/live-solve.ts";
 /** The flag a keeper runs under once it has left the verb that started it (`keep.ts`). */
 export const KEEPING = "--here";

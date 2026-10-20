@@ -575,7 +575,8 @@ Four habits follow:
 wall denies the repository, along with its other worktrees (`worktreesOf`,
 `tools/d2/campaign.ts`). A campaign runs from a worktree kept for it. Once it has been idle for a
 day, `bun run runs retire` moves its folder whole into the archive, `data/runs/` of the main
-worktree, which is also ignored and also behind the wall. Nothing deletes a log or a trace there.
+worktree, which is also ignored and also behind the wall, and deletes a seed instead. Nothing else
+deletes a log or a trace there.
 The log holds hidden values and the checks' verdicts, so it stays on the exam side: keep it out of
 prompts, pull requests and pastes.
 

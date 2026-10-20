@@ -1,9 +1,9 @@
-// The Codex launcher of the codex-luna-swarm skill, through its command line, with a stand-in
+// The Codex launcher of the codex-gpt-swarm skill, through its command line, with a stand-in
 // `codex` passed by `--codex-bin`: no real Codex session starts. The stand-in knows a session by
 // the report path it is handed (`<out>/<name>.md`), since a resumed attempt's prompt does not carry
 // the task, and runs the next step of that session's plan on each call.
 import { afterAll, describe, expect, it } from "bun:test";
-import { type Session, sessionsOf } from "#skills/codex-luna-swarm/scripts/luna-sessions.ts";
+import { type Session, sessionsOf } from "#skills/codex-gpt-swarm/scripts/gpt-sessions.ts";
 import {
   mkdirSync,
   mkdtempSync,
@@ -28,11 +28,11 @@ interface Step {
   exit?: number;
 }
 
-const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-luna-sessions-test-")));
+const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-gpt-sessions-test-")));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 const workdir = join(root, "workdir");
 mkdirSync(workdir);
-const launcher = join(import.meta.dir, "../.claude/skills/codex-luna-swarm/scripts/luna-sessions.ts");
+const launcher = join(import.meta.dir, "../.claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts");
 const codex = join(root, "fake-codex");
 writeFileSync(
   codex,

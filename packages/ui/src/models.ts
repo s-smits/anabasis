@@ -313,8 +313,8 @@ export interface Counters {
     readonly errors: number;
   } | null;
   /** The dollars left of the campaign's total (`Plan.left`), and what the last comparison the cap
-   *  did not cut billed for its solves (`billedParts`), which the table prices the next one by
-   *  (`unafforded`). Null for a campaign with no total, or before a comparison has reported. */
+   *  did not cut billed for its solves (`billedParts`): a reading for the operator, which no move
+   *  waits on. Null for a campaign with no total, or before a comparison has reported. */
   readonly runway: { readonly left: number; readonly each: number; readonly comparison: string } | null;
 }
 

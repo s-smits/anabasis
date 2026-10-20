@@ -27,15 +27,7 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import { Refused, supplyOf } from "#src/builder/admission.ts";
-import {
-  CRASHES,
-  decide,
-  epochReleased,
-  heldAfter,
-  practiceRoom,
-  unaffordedAsked,
-  unpromoted,
-} from "#src/builder/decide.ts";
+import { CRASHES, decide, epochReleased, heldAfter, practiceRoom, unpromoted } from "#src/builder/decide.ts";
 import { comparisonsOf, crashedRun } from "#src/builder/ground.ts";
 import { campaignOf } from "#src/builder/handover.ts";
 import { type Decided, short } from "#src/builder/move.ts";
@@ -178,8 +170,8 @@ function toolOf(decided: Decided): string {
 /**
  * One campaign tool. Before anything runs: the run's moves, the host's stop, an ending the table
  * names (a lack of room excepted, which is advice here), and the operator's word for other tasks.
- * A comparison that began goes on under its own cap whatever is left of the total, as the table
- * has it (`unafforded`, `src/builder/decide.ts`): the budget's ending is the table's, read above.
+ * A comparison that began goes on under its own cap whatever is left of the total: the budget's
+ * ending is the table's, read above.
  * `run` is handed `begin`, which writes the move's event (`campaign.move`): the table's code and
  * reason where the Builder made the move it named, and `asked` with what the table named otherwise.
  */
@@ -394,7 +386,7 @@ const releaseTool = (context: CampaignContext, bench: Bench): AgentTool =>
 async function comparedOf(
   context: CampaignContext,
   bench: Bench,
-  { events, plan }: Turn,
+  { events }: Turn,
   decided: Decided,
 ): Promise<{ readonly move: Compare; readonly froze?: string; readonly note: string } | { refused: string }> {
   const latest = latestBuilt(events);
@@ -419,9 +411,6 @@ async function comparedOf(
       refused: `harness/ is harness ${short(working)}, which a comparison has read against the reference, and nothing in it has changed since: there is nothing new to compare.`,
     };
   }
-  // The table's budget hold, which its own comparisons meet in `decide` (14 October).
-  const unafforded = decided.move === "compare" ? null : unaffordedAsked(events, plan);
-  if (unafforded !== null) return { refused: `The host refused the compare action: ${unafforded}.` };
   // Another comparison than the table's is the Builder's own, on record as `asked` with what the
   // table named: until 19 October it kept the table's code and reason, and r3's g-3 and g-6 read as
   // controls of the starter while each measured a changed checkpoint.

@@ -727,10 +727,10 @@ describe("a row of the table", () => {
 });
 
 describe("a hold on the move a row named", () => {
-  it("afford: a comparison that what is left would not hold is not begun, by what the last one billed", () => {
-    // A comparison of two sides whose solves billed 1.00 in all: the next solves two sides again,
-    // and would bill about 1.00. On 9 October a campaign with $1.45 left
-    // began a comparison after one that had billed $1.00, and was cut after $1.06.
+  it("begins a comparison or an Examiner session while what is left holds a solve's reserve, whatever the last one billed", () => {
+    // A comparison whose solves billed 1.00 in all, and $0.95 left. Until 20 October the `afford`
+    // hold ended the campaign here on a forecast; over 1,336 recorded decision boundaries it never
+    // changed a move. The cap and the reserve bound the spend.
     const solve = (id: string, billed: number) => [
       event("solve.started", { solve: id, comparison: "g-1" }),
       event("solve.finished", { solve: id, billed, ending: { outcome: "pass" } }),
@@ -745,45 +745,13 @@ describe("a hold on the move a row named", () => {
       built("b-2", "h2"),
     ];
     const left = (dollars: number) => ({ ...PLAN, left: { dollars, reserve: 0.4 } });
-    expect(decide(log, left(0.95))).toEqual({
-      move: "end",
-      ending: "budget",
-      code: "afford",
-      why: "$0.95 of the campaign's budget are left, and comparison g-1 billed $1.00: the next would bill about as much, so it would be cut before it reports",
-    });
-    expect(move(log, left(1))).toMatchObject({ move: "compare" });
-    // A campaign with no total is held to none, and before any comparison has reported nothing
-    // says what one bills.
-    expect(move(log)).toMatchObject({ move: "compare" });
-    expect(move(FIRST, left(0.5))).toMatchObject({ move: "compare" });
-    // Before one has, the reference harness's solves of draft tasks price the first: until
-    // 14 October nothing held it, and buffer-149's gate billed about $0.43 a solve.
-    // The price is a solve started: a gate whose third solve gave no reading billed it all the same.
-    const tried = { reference: { billed: 0.9, solves: 2 } };
-    const gated = FIRST.map((each) =>
-      each.kind === "task.gate" ? { ...each, data: { ...each.data, ...tried } } : each,
-    );
-    expect(decide(gated, left(0.5))).toMatchObject({ move: "end", ending: "budget", code: "afford" });
-    expect(decide(gated, left(0.5))).toMatchObject({
-      why: expect.stringContaining("the reference harness's solves of draft tasks billed $0.30 a solve"),
-    });
-    expect(move(gated, left(1000))).toMatchObject({ move: "compare" });
-    // Since 20 October a gate stops at the first solve that leaves room, and bills that one alone.
-    const early = FIRST.map((each) =>
-      each.kind === "task.gate"
-        ? { ...each, data: { ...each.data, reference: { billed: 0.3, solves: 1, ran: 1 } } }
-        : each,
-    );
-    expect(decide(early, left(0.5))).toMatchObject({
-      why: expect.stringContaining("the reference harness's solves of draft tasks billed $0.30 a solve"),
-    });
-    // The Examiner session a row names is held too: where the last one and the comparison that read
-    // its tasks billed more than half of what is left, the campaign ends on its budget before another
-    // round.
+    expect(move(log, left(0.95))).toMatchObject({ move: "compare" });
+    // Below one solve's reserve the campaign ends on its budget.
+    expect(decide(log, left(0.3))).toMatchObject({ move: "end", ending: "budget" });
+    // The Examiner session a row names is begun too, though the last one and the comparison that
+    // read its tasks billed more than half of what is left.
     const dear = [...FIRST, ...full("g-1"), ...examined("x-1", ["v13"], { billed: 6 }), ...full("g-2")];
-    const reserved = (dollars: number) => ({ ...PLAN, left: { dollars, reserve: 0.5 } });
-    expect(decide(dear, reserved(10))).toMatchObject({ move: "end", ending: "budget", code: "afford" });
-    expect(move(dear, reserved(13))).toMatchObject({ move: "examine" });
+    expect(move(dear, { ...PLAN, left: { dollars: 10, reserve: 0.5 } })).toMatchObject({ move: "examine" });
   });
 
   it("practice: practice is brought towards the campaign's count before a Builder session", () => {

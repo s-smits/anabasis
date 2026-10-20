@@ -17,16 +17,17 @@ session. It decides the wording of a claim from what the log already holds.
 ## What a reading is
 
 A v2 claim rests on a comparison: two harnesses, the same held-out tasks, solves made afresh and
-interleaved, a sign test over tasks. `step` says that under one condition the new harness gave a
-valid answer on more tasks than the reference, by more than the level allows to chance. It says
-that and no more. It does not say:
+interleaved, a one-sided paired sign-flip test over each task's difference in pair wins (`flipP`,
+`src/kernel/compare.ts`). Validity decides first; a declared objective compares two valid answers.
+The null treats each untied task's sign as equally likely and independent, at its fixed pair margin.
+`step` means the frontier cleared its level and the retained tasks did not regress (`stepOf`).
+It does not say:
 
 - **that the harness is better under another condition.** Another wall, budget, solver, effort
-  or host code is another condition, and no solve of one counts for the other. On 9 October one
-  Starter passed 18 of 18 buffer solves at a two-hour wall and 5 of 14 at eight minutes.
+  or host code is another condition, and no solve of one counts for the other.
 - **which part of the harness did it.** A harness is presets, programs and a guide. The control
   `programs-of:<digest>` is the Starter with that harness's installed programs alone
-  (`tools/d2/campaign.ts`); a checkpoint against it separates the programs from the rest.
+  (`keptAs`, `tools/d2/campaign.ts`); a checkpoint against it separates the programs from the rest.
 - **that the solver designs better.** A harness that installs an engine the public rules name
   saves a solver its setup time. Under a short wall that reads as a step.
 - **that it would read so again.** One comparison is one draw.
@@ -36,8 +37,7 @@ that and no more. It does not say:
 - **Match the identities.** Every solve has a `condition.recorded`: contract, harness, task,
   solver model and effort, compaction, limits, the host's code by content. Two solves compare
   when their conditions differ in the one thing compared. Two harnesses are set side by side by
-  a checkpoint, under one condition; rounds made apart are not compared (`AGENTS.md`, section 9,
-  and `docs/simplify.md`, R1: `bun run runs compare` went on 11 October).
+  a checkpoint, under one setting; rounds made apart are not a comparison (`AGENTS.md`, section 9).
 - **Count no solve twice.** Solves of two rounds were made apart, each under its own hour of
   the host. Setting them side by side is a description. A pair is made by one comparison.
 - **Keep the counts apart**: valid answers; rejected answers, by ruling (earned, a check defect,
@@ -45,7 +45,7 @@ that and no more. It does not say:
   provider's end, a cap); tasks set aside for a person's label. A rate has a denominator, and
   the tasks left out of it are named beside it.
 - **Keep three kinds of statement apart**: the verifier's verdict, a reviewer's finding, and a
-  fact of the environment. A Referee's ruling and a Diagnoser's account are a model's output.
+  fact of the environment. A Referee's ruling is a model's output.
 - **Say what did not run** and what could not be compared.
 
 Take the owner from the record that produced the number, in that record's own words. Never turn
@@ -53,12 +53,9 @@ a model's causal guess into a label.
 
 ## How strong is the evidence
 
-Four levels, reported one by one. None stands in for the next.
-
-1. **Present in source**: the change is in the tree at a named commit.
-2. **Proved without a model**: a test, a replay of recorded logs, a rehearsal on a seed.
-3. **Exercised live**: an event in a real run's log shows the mechanism did its work there.
-4. **Shown in an outcome**: a reading that moved, repeated once on fresh solves.
+Use the four evidence levels in `AGENTS.md`, section 9: present in source, proved without a
+model, exercised live, shown in an outcome. The last still requires a repeat on fresh solves;
+the promotion rule itself requires one reading. None of the levels stands in for the next.
 
 A replay can establish that a value is delivered while better model behaviour stays unrun. A
 refusal that fired establishes its own condition and nothing about the answers.
@@ -67,18 +64,33 @@ refusal that fired establishes its own condition and nothing about the answers.
 
 Answer these from the log before using the word step in a sentence of your own:
 
-- **Repeated?** Since 19 October one reading promotes and nothing repeats it. A checkpoint of the
-  same two harnesses on fresh solves (`--id`) is a second draw; until it is made, say the step is
-  one draw, at its level.
-- **What does the reference do against itself?** The report's `noise`, which every comparison of
-  four solves a side carries. A reference that wins tasks from itself sets the floor under every other tally of that hour.
+- **Repeated?** One reading promotes. A checkpoint of the same two harnesses with a new `--id`
+  makes a second draw on fresh solves; the same id returns the existing report. Until a later
+  reading holds the step, say it is one draw at its level. Until 19 October promotion required a repeat.
+- **What does the reference do against itself?** Read `noise` on the same tallied tasks, with
+  halves of the reference's solves mirrored in time. It is available at four or more even solves
+  per side (`compared`, `src/builder/comparison.ts`). The epoch's first A/A is the campaign control:
+  either one-sided p at or below half the comparison's level ends it as `control` until the operator
+  records a cause (`controlled`, `src/builder/decide.ts`). Later A/As remain readings.
 - **How thin?** At `--level 0.02`, six untied tasks all won is the least that reads a step
-  (p = 0.0156), and 5-0 (p = 0.031) reads none. Say the tally, never the word alone.
+  (p = 0.015625), and 5-0 (p = 0.03125) reads none. With equal pair margins, 8-1, 10-2 and
+  12-3 also clear 0.02; unequal margins need `flipP`, rather than the tally alone. Retained net
+  pair loss regresses at `REGRESSION = 0.25` by the mirrored test: one loss alone does not, two
+  of two do. An empty retained set is `unmeasured`, not evidence of no loss.
+- **How much power and risk?** Give `frontier.detectable`, the least winning share detected four
+  times in five at these margins, and `frontier.falseRate`, `power(differences, 0.5, level)`.
+  The latter is at most the level under the test's null. `sizeLines` assumes no ties and equal
+  margins before a run; `openingLines` refuses a sum over patience above 10% (`src/kernel/size.ts`).
+  Give the campaign estimate from `riskLines` in `src/builder/climb.ts`: it sums attempt rates,
+  capped at one, across epochs. It is an estimate, not a measured bound. Its A/A error count is
+  one-sided at the comparison's level, distinct from the two-sided campaign control.
+- **Objective?** Give `objective.decided` beside the untied count, and check pair margins to state how many untied tasks the objective decided.
 - **Under what load?** A wall counts the clock. The reader's `HOST LOADED` and `LOAD MOVED` say
-  when a comparison ran on a busy host or two comparisons ran under different loads. Compare no
-  times across them.
-- **At which budget?** Give the reading at the full limit and at each budget fixed beforehand.
-  A step at one budget alone is a statement about that budget.
+  when solve-start loads were high or moved between halves within or across comparisons. Compare
+  no times across those loads.
+- **At which budget?** Give the setting's model-turn and wall limits. A comparison reads the one
+  budget its solver was told; it does not rescore those solves at shorter budgets. A different
+  budget needs a separate setting and fresh solves (`settingAsked`, `tools/d2/setting.ts`).
 
 ## Validity and exploitation
 
@@ -89,9 +101,10 @@ rests on.
 - **Measurement validity**: `demonstrated gap`, `no gap found in the named checks`, or
   `unassessed`. What v2 runs: the checker's reading (`bun tools/c/accept.ts`), which puts each
   control to the checks twice and the do-nothing answer to every task; the Referee on each
-  rejection; a person's labels where `tools/d2/settle.ts` draws them. What it does not run: no
-  role reads a pass, and a check its author's own computation decides stands on the operator's
-  word (`--admit`). Say both.
+  rejection that reached a check; a person's labels where `tools/d2/settle.ts` draws them,
+  including its blind sample of passes. No model seat reviews a pass. An authored check stands
+  on the operator's admission, by `--admit` or `--admit-authored`; a campaign launch without
+  `--hitl` supplies the latter (`planOf`, `src/builder/opening.ts`). State this coverage.
 - **Exploitation**: `observed`, `not observed in the traces read`, or `unobservable`. `observed`
   needs a trace that joins something the solver was given to the accepted answer through the
   gap. Keep four things apart: an ordinary efficient solution, a checker with a gap, a way past
@@ -126,7 +139,7 @@ A stack published after the launch changes no running process.
 
 1. State the variable that moved and check every other identity.
 2. Give the counts, with what was left out of each denominator.
-3. Read the tasks one by one: which changed sides between the two harnesses, and at which budget.
+3. Read the frontier and retained tasks one by one, including their pair margins and objective decisions.
 4. Look for something else that moved with it: the checker, the scored set, the limits, the
    load, the host's code.
 5. Mark the attribution `proven`, `likely`, `mixed` or `unproven`.
@@ -137,7 +150,7 @@ Condition and identities:
 Reference harness:
 New harness:
 Tally (wins, losses, ties, p, unsolved, set aside):
-Each harness by itself (valid solves), at the full limit and each budget:
+Each harness by itself (valid solves), at the setting's budget:
 Repeat and noise:
 Host load:
 Non-results and what was left out:
@@ -150,10 +163,9 @@ Unrun or provisional:
 Evidence (log, event ids, commit):
 ```
 
-Use exact counts and narrow claims: "valid on 14 of 14 solves where the Starter was on 5, at an
-eight-minute wall, repeated once", not "made the solver better". Where the log does not hold
-the evidence, say so.
+Use exact counts and scoped claims, naming the setting, frontier, retained reading and repeat.
+Where the log does not hold the evidence, say so.
 
 The report quotes no task's text, no answer, no hidden value, no check's failure text and no
 passage of a trace. Solve ids, digests, check ids, counts and paths carry it. It reaches no
-Builder, Examiner, Referee or Diagnoser.
+Builder, Examiner, solver or Referee.

@@ -14,16 +14,15 @@ argument is a pull request number in the repository the checkout's `origin` name
 through `gh` and fetched if the local repository has
 not seen it, so a stack can be named the way the operator names it.
 
-The first revision is read as `first...last` — the point they diverged — so work landed on the base
+The first revision is read from the merge base of first and last, so work landed on the base
 since the branch was cut is not charged to the branch. `--literal-base` compares the tips as given.
 
 This is v1's instrument, adapted; v1's copy reads back with
 `git show 5bc9988:.claude/skills/reduce-complexity/scripts/stack-complexity.py`, and no other copy
-runs. What is v1's and not v2's was replaced rather than dropped — v2 has no cyclomatic baseline
-and no document a model reads whole, and it has two standing exemption ledgers v1 had not written.
+runs. v2 has no cyclomatic baseline; this script reads its lint answers and copied-file limits.
 
-Measures, grouped by the question each answers. "Source" is what `tools/loc/source-policy.ts`
-calls authored: `src`, `tools` and `packages`, never `vendor`, which is pinned verbatim.
+Measures, grouped by the question each answers. "Source" is code under `SOURCE_ROOTS`, filtered
+by `SOURCE_SUFFIX` and `EXCLUDE`, rather than `source-policy.ts`'s narrower `AUTHORED_ROOTS`.
 
   How much is there
     files, nonblank           source files and their nonblank lines
@@ -47,7 +46,7 @@ calls authored: `src`, `tools` and `packages`, never `vendor`, which is pinned v
                               percentile. An edge through a hub is a property of the hub, so their
                               number is the number of places where any change reaches most of the
                               tree.
-    max fan-in                the most-imported module: how many files one edit can reach
+    max fan-in                the largest count of import occurrences naming one target
 
   How wide the interface
     exports                   exported symbols, the surface one part offers another
@@ -56,7 +55,7 @@ calls authored: `src`, `tools` and `packages`, never `vendor`, which is pinned v
 
   How many rules there are
     refusal codes             distinct finding and refusal code literals. This is the size of the
-                              contract a Builder has to satisfy: every one is a way to be refused.
+                              host's textual code surface, including codes no seat receives.
     env knobs                 distinct environment variables read, the configuration surface
 
   How much is excused
@@ -66,15 +65,13 @@ calls authored: `src`, `tools` and `packages`, never `vendor`, which is pinned v
                               lint` then asks for `not-slop -- prune`.
     copied ceilings           `copiedFileLimits` entries in `tools/loc/source-policy.json`: files
                               held at a limit of their own, which also turns the function check off
-                              for them. AGENTS.md §12.10 keeps the map empty and says to add no
-                              entry to pass, so anything above 0 is a finding by itself.
+                              for them. `tools/oxlint/HABITS.md`, 12.10, keeps the map empty: add no
+                              entry to pass, so anything above 0 needs review.
 
   How much a model must read
-    prompt bytes              string-literal bytes in the files composing model-visible text: every
-                              file that builds a prompt or declares a tool description. v1 counted
-                              starter and contract documents beside this; v2 composes every
-                              model-visible document in TypeScript and keeps none in the tree, so
-                              the literal count is the whole of it.
+    prompt bytes              string-literal bytes in the selected composers in `PROMPT_FILES`.
+                              A proxy: it includes other literals in those files and omits runtime
+                              values, campaign data and upstream tool descriptions.
 
 A stack that adds behaviour usually moves the first four groups up. The trade this system is trying
 to make is mechanism the harness enforces in place of prose it asks for, so the reading that
@@ -91,8 +88,7 @@ import sys
 from collections import Counter
 from dataclasses import dataclass, fields
 
-# `runs/` was an exclusion in v1, where it held run evidence. Here `tools/runs/` is the run CLI and
-# nine authored modules, and v2 keeps every campaign outside the tree, so only the extension stays.
+# `runs/` held evidence in v1. Here `tools/runs/` is source and `.ana/` holds campaign evidence.
 EXCLUDE = re.compile(
     r"(^|/)generated/|\.jsonl$"
     r"|\.(md|mdx|txt)$"
@@ -105,28 +101,29 @@ SOURCE_SUFFIX = (".ts", ".tsx", ".mts", ".js", ".mjs", ".py")
 
 # Files that compose text a model receives in an ordinary session: system prompts, the loop's
 # continuation and advice text, and the descriptions and results of the tools a session calls.
-# Kept explicit: an AST census guesses audiences, and for a delta the honest move is to name the
-# composers and let the number be exact. The membership rule, so a new one can be added without
-# re-deriving it: a file is here when it builds prompt text or declares a tool description. That
-# is why `src/examiner/session.ts` is in and `src/builder/session.ts` is out — the Builder's whole
-# text lives in `prompt.ts`, which that session imports. Out too: the harness openers
-# (`src/solve/harness.ts`, `harness-shim.ts`) and `src/kernel/contract.ts`, whose model-visible
-# text is a campaign's data rather than this repository's literals; and the validators, whose
-# literals are codes and paths only a refused session reads.
+# Keep this selection explicit; the count is a literal-byte proxy, not the delivered message.
+# Campaign data and upstream descriptions are outside it. The Diagnoser was removed on 11 October;
+# task-writing tools, carried history and campaign tools now have their own live composers.
 PROMPT_FILES = (
     "src/builder/prompt.ts",
     "src/builder/tools.ts",
     "src/builder/memory.ts",
+    "src/builder/past.ts",
+    "src/builder/session.ts",
     "src/examiner/prompt.ts",
     "src/examiner/draft.ts",
     "src/examiner/session.ts",
+    "src/examiner/write.ts",
+    "src/examiner/shell.ts",
+    "src/examiner/record.ts",
     "src/solve/prompt.ts",
     "src/solve/starter.ts",
     "src/solve/coding-tools.ts",
     "src/solve/answer.ts",
+    "src/solve/run.ts",
     "src/review/referee.ts",
-    "src/review/diagnoser.ts",
     "src/review/probe.ts",
+    "tools/d2/campaign-actions.ts",
 )
 WAIVER_FILE = "tools/oxlint/not-slop.tsv"
 POLICY_FILE = "tools/loc/source-policy.json"
@@ -141,9 +138,8 @@ OPTIONAL = re.compile(r"[A-Za-z_$][\w$]*\?:")
 # Single- and double-quoted literals plus backtick templates, which is where prompt text lives.
 LITERAL = re.compile(r'"(?:[^"\\\n]|\\.)*"' r"|'(?:[^'\\\n]|\\.)*'" r"|`(?:[^`\\]|\\.)*`", re.S)
 # An import of another module in this tree, by relative path or by a `#` subpath, which are the only
-# edge kinds that count: a package import is not a coupling this repository can shorten. v1 read
-# relative paths alone, which held there (8 `#` imports to 3,423 relative ones); v2 writes 347 of
-# its 1,184 as `#src/` or `#tools/`, so reading only `./` lost nearly a third of the graph.
+# edge kinds that count: package imports stay outside this count. Resolve aliases through the
+# revision's own `package.json` instead of silently omitting them from the graph.
 IMPORT = re.compile(r"""\bfrom\s+["']([.#][^"']*)["']|\bimport\s*\(\s*["']([.#][^"']*)["']""")
 # A finding, refusal or non-result code: kebab-case string literals in a `code`/`kind` position.
 CODE = re.compile(r"""\b(?:code|kind|check)\s*:\s*["']([a-z][a-z0-9]*(?:-[a-z0-9]+){1,6})["']""")
@@ -252,9 +248,8 @@ def is_test(path: str) -> bool:
 
 
 def literal_bytes(text: str) -> int:
-    """Bytes of string-literal content. Comments carry no model-visible text, and a prompt file's
-    own explanation of why a clause exists is often longer than the clause, so counting whole
-    files would report the reasoning as prompt."""
+    """Bytes inside regex-matched literals, including quoted text in comments. This proxy neither
+    parses TypeScript nor measures the messages delivered to a seat."""
     return sum(len(m.group(0).encode()) - 2 for m in LITERAL.finditer(text))
 
 
@@ -270,7 +265,7 @@ def wide_signatures(text: str) -> int:
 def excused(repo: str, rev: str) -> tuple[int, int]:
     """The two standing exemptions this repository writes down, both exact: answered lint sites
     and files held at a size limit of their own. They take the place of v1's cyclomatic baseline,
-    which v2 does not carry (AGENTS.md §12.10: there is no complexity gate in v2)."""
+    which v2 does not carry (`tools/oxlint/HABITS.md`, 12.10)."""
     rows = [line for line in blob(repo, rev, WAIVER_FILE).splitlines() if line.strip()]
     try:
         policy = json.loads(blob(repo, rev, POLICY_FILE) or "{}")
@@ -410,7 +405,7 @@ def main() -> int:
     print(" -> ".join(args.revs) + "\n")
     print(f"{'measure'.ljust(width)}  " + "  ".join(h.rjust(10) for h in heads) + f"  {'net':>10}  {'':>7}")
     for title, keys in GROUPS:
-        print(("— " + title + " ").ljust(width + 14 + 12 * len(heads), "—"))
+        print(("- " + title + " ").ljust(width + 14 + 12 * len(heads), "-"))
         for key in keys:
             row = [getattr(m, key) for m in values]
             print(f"{LABEL[key].ljust(width)}  " + "  ".join(cell(v).rjust(10) for v in row)

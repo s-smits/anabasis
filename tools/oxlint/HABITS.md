@@ -158,8 +158,8 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
 - `no-renaming-temporary` [fix]: `const rows = bundle.rows;` read once below is `bundle.rows`. A
   binding read inside a closure, after the function has tested that path, is exempt: it keeps
   the narrowing.
-- `no-alias-restating-return`: a type alias used only as one function's return type is
-  `ReturnType<typeof f>`, or nothing.
+- `no-alias-restating-return`: a type alias used only as one function's return type is that
+  function's annotation: write the alias's body there and delete the alias.
 
 **Branches**
 

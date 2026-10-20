@@ -90,7 +90,6 @@
     "ana/require-captured-json-runtime": "error",
     "ana/require-meta-runtime-import": "error",
     "ana/unproven-unknown-parameter": "error",
-    "anti-slop/no-array-filter-map": "error",
     "anti-slop/no-chained-type-assertions": "error",
     "anti-slop/no-conditional-empty-object-spread": "error",
     "anti-slop/no-known-value-widening": "error",

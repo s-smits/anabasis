@@ -8,9 +8,10 @@ import { defineRule, type ESTree } from "@oxlint/plugins";
  *     function findingArgs(row: Row): FindingArgs { … }
  *
  * The alias is spelled once, as that one function's return annotation, and nothing else in the
- * file names it. `ReturnType<typeof findingArgs>` says the same thing and cannot drift: today,
- * adding a field to what the function returns and forgetting the alias is a compile error at
- * the function, which reads as the alias being right and the function being wrong.
+ * file names it. Its body written as the annotation says the same thing in the one place it is
+ * decided: today, adding a field to what the function returns and forgetting the alias is a
+ * compile error at the function, which reads as the alias being right and the function being
+ * wrong.
  *
  * A simplify pass made exactly this cut twice inside one review (`8c162e5f`): `FindingArgs`
  * became `ReturnType<typeof findingArgs>` and `ProbeArgs` was deleted outright. The same pass
@@ -41,12 +42,16 @@ import { defineRule, type ESTree } from "@oxlint/plugins";
  * Measured 2026-09-20: 30 sites, 19 with unions excluded, 9 with wide bodies excluded, 5 once
  * object shapes were excluded too.
  *
- * There is no fix, and the message's own replacement is why. `ReturnType<typeof findingArgs>`
- * cannot be written as `findingArgs`'s annotation — that is circular — so the edit is to delete
- * the alias and the annotation and let the return infer. An inferred return type is not the
- * annotated one: that is the `satisfies` trap the same pass recorded, where dropping the
- * annotation widened a narrowed `severity` back to `string`. A plugin that cannot see types
- * cannot tell the two apart, and the case where they differ is the case that matters.
+ * Until 20 October the message asked for `ReturnType<typeof findingArgs>`, which cannot be
+ * written as `findingArgs`'s own annotation, since that is circular; the only edit left was to
+ * delete the alias and the annotation and let the return infer, and an inferred return is not
+ * the annotated one: that is the `satisfies` trap the same pass recorded, where dropping the
+ * annotation widened a narrowed `severity` back to `string`. The message now asks for the
+ * alias's body as the annotation, which keeps the annotation and is the same type. The rule
+ * reports only a body of 60 characters or fewer, so the signature stays one line.
+ *
+ * There is no fix yet. The edit is mechanical where the alias takes no type parameter and
+ * carries no comment, and no site in the tree has asked for it.
  */
 /** Annotation width above which the alias is carrying the signature, not restating it. */
 const INLINE_WIDTH = 60;
@@ -54,10 +59,10 @@ const INLINE_WIDTH = 60;
 export const noAliasRestatingReturnRule = defineRule({
   meta: {
     type: "suggestion",
-    docs: { description: "A type alias used only as one function's return type is ReturnType<typeof f>." },
+    docs: { description: "A type alias used only as one function's return type belongs in that annotation." },
     messages: {
       restated:
-        "`{{alias}}` is named once, as `{{owner}}`'s return type. `ReturnType<typeof {{owner}}>` states it where it is decided; two spellings of one shape can disagree, and the compiler will blame the wrong one.",
+        "`{{alias}}` is named once, as `{{owner}}`'s return type. Write its body as `{{owner}}`'s return annotation and delete the alias, so the shape is stated where it is decided; two spellings of one shape can disagree, and the compiler will blame the wrong one.",
     },
   },
   createOnce(context) {

@@ -201,10 +201,10 @@ export async function awaitedTail(value: string) {
 
 /**
  * The two ceilings the rule yields to. `tools/loc/source-policy.ts` refuses a function over 115
- * nonblank lines and `tools/loc/complexity-policy.ts` refuses one at 22 branches, so a caller
- * already there has no spelling that absorbs a helper: reporting it would ask for a file that
- * cannot pass the gate. Six sites in this tree are of that kind, across `src/backends`,
- * `src/builder`, `src/solve`, `src/correctness-bundle`, `src/author` and `vendor/pi-claude-bridge`.
+ * nonblank lines, and 22 branches is the rule's own limit, the one v1's
+ * `tools/loc/complexity-policy.ts` refused at, so a caller already there has no spelling that
+ * absorbs a helper without growing past it. In v1, six sites were of that kind; on 20 October
+ * two in `tools/wri/folds.ts` were.
  *
  * The last pair is the same argument for a caller with room for one of them. Reporting both is
  * what the rule did to `settle` in `src/builder/verifier-workshop.ts`, whose two helpers each

@@ -44,12 +44,11 @@
  * host read copies made by hand; until then a copy went to `.ana/fetched/`, which no reader read.
  */
 import { mkdirSync } from "#src/meta/filesystem.ts";
-import { worktrees } from "#src/meta/git.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { type Host, holders, hostNamed, quoted, sshScript, verbOn } from "./hosts.ts";
-import { ARCHIVE, HERE } from "./registry.ts";
+import { archiveOf, HERE } from "./registry.ts";
 import { asideOf, continueRun, lastRun, pause, setAside } from "./manage.ts";
 
 /** One end of a move: this machine or a host, with the folder its worktrees sit in. */
@@ -199,8 +198,7 @@ export async function fetch(args: readonly string[]): Promise<void> {
   const host = values.from === undefined ? (await holders([name])).get(name) : hostNamed(values.from);
   if (host === undefined) throw new Error(`no host ANA_HOSTS lists holds a campaign ${name}`);
   const from = endOf(host.name);
-  const [main = "."] = worktrees(runtimeProcess.cwd());
-  const into = join(main, ARCHIVE, host.name, name);
+  const into = archiveOf(runtimeProcess.cwd(), host.name, name);
   mkdirSync(into, { recursive: true });
   runTextSyncOrThrow([
     "rsync",

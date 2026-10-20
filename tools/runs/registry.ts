@@ -22,8 +22,8 @@
 import { EXAMINE } from "#src/builder/admission.ts";
 import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
 import { lastReports } from "#src/kernel/reports.ts";
-import { existsSync, readdirSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
-import { gitText, worktrees } from "#src/meta/git.ts";
+import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
+import { gitText, mainTree, worktrees } from "#src/meta/git.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { basename, join } from "#src/meta/path.ts";
@@ -72,7 +72,22 @@ export const ARCHIVE = join("data", "runs");
 /** The archive's folder of this machine's own campaigns, and the word `runs move` names it by. */
 export const HERE = "here";
 
+/** A path in the archive of the repository `repo` lies in. */
+export const archiveOf = (repo: string, ...parts: readonly string[]) =>
+  join(mainTree(repo), ARCHIVE, ...parts);
+
 const listed = (dir: string) => (existsSync(dir) ? readdirSync(dir) : []);
+/** The campaigns whose folders in `dir` hold a log, read as `tree`'s. */
+const campaignsIn = (dir: string, tree: string): Run[] =>
+  listed(dir)
+    .filter((name) => existsSync(join(dir, name, LOG_FILE)))
+    .map((name) => ({
+      name,
+      tree,
+      path: join(dir, name, LOG_FILE),
+      end: CAMPAIGN_END,
+      seed: existsSync(join(dir, name, SEED_FILE)),
+    }));
 const runsAs = (args: readonly string[], tools: readonly string[]) =>
   args.some((arg) => tools.some((tool) => arg.endsWith(tool)));
 
@@ -99,12 +114,7 @@ function writesCampaign(args: readonly string[]): boolean {
 export function runs(repo = runtimeProcess.cwd()): Run[] {
   const trees = worktrees(repo);
   return trees.flatMap((tree) => [
-    ...listed(join(tree, ".ana", "d2")).flatMap((name) => {
-      const path = join(tree, ".ana", "d2", name, LOG_FILE);
-      if (!existsSync(path)) return [];
-      const seed = existsSync(join(tree, ".ana", "d2", name, SEED_FILE));
-      return [{ name, tree, path, end: CAMPAIGN_END, seed } satisfies Run];
-    }),
+    ...campaignsIn(join(tree, ".ana", "d2"), tree),
     ...listed(join(tree, ".ana", "live"))
       .filter((file) => file.endsWith(".jsonl"))
       .map((file) => ({
@@ -118,45 +128,35 @@ export function runs(repo = runtimeProcess.cwd()): Run[] {
 
 /** Every campaign the archive holds, under the main worktree of the repository `repo` lies in. */
 export function archived(repo = runtimeProcess.cwd()): Run[] {
-  const [main] = worktrees(repo);
-  if (main === undefined) return [];
-  const root = join(main, ARCHIVE);
-  return listed(root).flatMap((from) =>
-    // A file beside the folders (a `.DS_Store`) holds no campaign.
-    statSync(join(root, from)).isDirectory()
-      ? listed(join(root, from)).flatMap((name) => {
-          const path = join(root, from, name, LOG_FILE);
-          if (!existsSync(path)) return [];
-          const seed = existsSync(join(root, from, name, SEED_FILE));
-          return [{ name, tree: main, path, end: CAMPAIGN_END, seed, archived: from } satisfies Run];
-        })
-      : [],
-  );
+  const main = mainTree(repo);
+  const root = archiveOf(main);
+  // `here` and a folder for each host; a dot file beside them (`.DS_Store`) holds no campaign.
+  return listed(root)
+    .filter((from) => !from.startsWith("."))
+    .flatMap((from) => campaignsIn(join(root, from), main).map((run) => ({ ...run, archived: from })));
 }
 
 /** The runs a reader reads: every worktree's, and each archived campaign whose name none of those has. */
-export function readable(): Run[] {
-  const held = runs();
+export function readable(repo = runtimeProcess.cwd()): Run[] {
+  const held = runs(repo);
   const names = new Set(held.map(({ name }) => name));
-  return [...held, ...archived().filter(({ name }) => !names.has(name))];
+  return [...held, ...archived(repo).filter(({ name }) => !names.has(name))];
 }
 
-/** The campaign `name` a reader reads: the one a worktree holds, else the archive's, this machine's
- *  own before a host's copy, refused where two hosts' copies are all there is. */
+/** The campaign `name` a reader reads: the one a worktree holds, else this machine's archived one,
+ *  else a host's copy, refused where two hosts' copies are all there is. */
 export function readNamed(name: string, repo = runtimeProcess.cwd()): Run {
   const held = runs(repo);
   if (held.some((run) => run.name === name && run.end === CAMPAIGN_END)) return runNamed(name, held);
   const copies = archived(repo).filter((run) => run.name === name);
-  const [first, second] = copies.toSorted(
-    (a, b) => Number(b.archived === HERE) - Number(a.archived === HERE),
-  );
-  if (first === undefined) return runNamed(name, held);
-  if (second !== undefined && first.archived !== HERE) {
-    throw new Error(
-      `${name} names copies from ${copies.map(({ archived: from }) => String(from)).join(" and from ")}`,
-    );
+  const own = copies.find((run) => run.archived === HERE);
+  if (own !== undefined) return own;
+  const [only, other] = copies;
+  if (only === undefined) return runNamed(name, held);
+  if (other !== undefined) {
+    throw new Error(`${name} names copies from ${copies.map((run) => run.archived).join(" and from ")}`);
   }
-  return first;
+  return only;
 }
 
 /** The one campaign named `name`, whole, among `among`: refused where none is and where two

@@ -36,3 +36,6 @@ export const worktrees = (repo: string): string[] =>
   gitText(repo, "worktree", "list", "--porcelain")
     .split("\n")
     .flatMap((line) => (line.startsWith("worktree ") ? [line.slice("worktree ".length)] : []));
+
+/** The main worktree of the repository `repo` lies in, which holds what all its worktrees share. */
+export const mainTree = (repo: string): string => worktrees(repo)[0] ?? repo;

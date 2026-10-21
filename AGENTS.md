@@ -1438,8 +1438,12 @@ request as failures that occur without the change, and do not call the suite gre
 - A pack, a check program or a kept harness, by rule 2.
 - `.env` and any credential. Never copy one from another checkout to make a command
   start.
-- `vendor/`: `pi-coding-agent` and `pi-claude-bridge` are copies of upstream. A local change is
-  marked in place and kept small. Biome and Oxlint both skip `vendor`.
+- `vendor/`: `pi-coding-agent` and `pi-claude-bridge` are copies of upstream, brought in by a
+  **sed**. The upstream files at a cited path and commit are copied over the local ones whole.
+  The result is then compared with what the local copy held, and only the most important missing
+  parts are added back, each marked in place as a local change and kept small. Porting by hand,
+  merging upstream into the local file and adding the package as a dependency are no sed. Biome
+  and Oxlint both skip `vendor`.
 - Installed dependencies: no patches, and no edits under `node_modules`.
 
 ### The stack and pull requests

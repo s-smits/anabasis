@@ -788,6 +788,13 @@ function standingOf(record: TaskRecord): [string, Standing][] {
  * down released no task where one had failed: between buffer-159-opus's two promotions its
  * Builder's practice passed 10 of 10.
  *
+ * A task the reference answered in every solve of its last reading still leaves it room where an
+ * answer of its own or its author's on record is better by the objective by at least the floor
+ * (`room`, `roomLeft`), and it is put first beside the failed ones. Until 21 October it went to the
+ * draw: in an objective domain every solve is valid, so in seven buffer campaigns every release
+ * after a first promotion was the draw alone while the frontier held 4 to 21 tasks with room. The
+ * other harness's answers stay out of `room`, so which held-out task it won moves no release (rule 3).
+ *
  * The tasks no solve answered are the held-out ones without a valid answer in `UNSOLVED_RUN` or
  * more comparisons, cut at a limit or not. On 10 October one campaign held four to five such tasks
  * of ten while its last three Builder sessions passed every practice task and changed nothing.
@@ -810,7 +817,7 @@ export function releaseOrder(
     placed(records, (record) => {
       const last = lastRead(record);
       if (last === null || last === "aside" || last.reference === null) return undefined;
-      return last[last.reference].some((valid) => !valid) ? last.order : undefined;
+      return last[last.reference].some((valid) => !valid) || (last.room ?? 0) > 0 ? last.order : undefined;
     }),
   ).filter((version) => !unanswered.includes(version));
   const first = [...unanswered, ...failed.slice(0, Math.ceil(failed.length / 2))];
@@ -823,7 +830,7 @@ export function releaseOrder(
     const why = unanswered.includes(version)
       ? ": no solve answered it in two comparisons, and it is"
       : failed.includes(version)
-        ? ": the reference harness failed it in the last comparison, and it is"
+        ? ": the reference harness failed it in the last comparison, or a better answer on record left it room, and it is"
         : ":";
     return [version, why];
   });

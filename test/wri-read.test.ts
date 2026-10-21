@@ -1152,6 +1152,16 @@ describe("the reader of the campaign's clock", () => {
     ]);
   });
 
+  it("bills a compaction of a session that never ended to its role, as the host's budget does", () => {
+    const cost = (total: number) => ({ cost: { total } });
+    const log = timed([
+      [0, "build.started", { session: "b-1" }],
+      [1, "build.turn", { session: "b-1", usage: cost(2) }],
+      [2, "build.compacted", { session: "b-1", usages: [cost(1)] }],
+    ]);
+    expect(overview(log).rows[0]?.lines).toContain("billed dollars: builder 3.00");
+  });
+
   it("counts the solves an Examiner session asked for as the Examiner's, and says its cost a task held out", () => {
     // `try_task`: about seven reference solves an admitted task at three a draft (the overhaul plan,
     // 4b), which until 12 October read as the solver's.

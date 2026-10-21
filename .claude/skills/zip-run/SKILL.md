@@ -46,7 +46,9 @@ gate, session, turn, tool call, verdict and reading.
   (`states/<digest>/`, less a checker copy), the brief and Builder memory (`memory/`).
 - **medium** adds the checker (`checks/`, or `exams/<digest>/` for an exam the campaign drafted,
   and the `correctness-model/` a harness holds when its
-  Builder was given one) and the toolchain's own files (`states/tree-*`).
+  Builder was given one), the toolchain's own files (`states/tree-*`), and each solve's and
+  session's trace as an ATIF v1.8 trajectory under `trajectories/`, the format Harbor's viewer and
+  the agents of Harbor's benchmarks read. They are written from the log and hold nothing it lacks.
 - **verbose** adds whatever else the campaign's folder holds, and the tracked `src`, `tools`,
   `docs` and `package.json` at each worktree's current `HEAD`. Compare that commit with the launch
   receipts: it may differ from the source a run used. That source holds the prompt templates.

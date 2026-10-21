@@ -8,7 +8,8 @@
  *   light    the log and each launch's receipt and output, each harness a session kept
  *            (`states/<digest>/`) and the brief
  *   medium   and the checker (`checks/`, and the copy a harness holds when its Builder was given
- *            one) and the toolchain's own files (`states/tree-*`)
+ *            one), the toolchain's own files (`states/tree-*`), and each solve's and session's
+ *            trace as an ATIF trajectory (`trajectories/`, `src/kernel/atif.ts`)
  *   verbose  and whatever else the run's folder holds, and the source each worktree ran at its commit
  *
  * With no names, every run log in the repository's worktrees, as the pulse finds them. In the zip a
@@ -34,9 +35,12 @@
  * own runs, and brings the zip back to `--out`: on 19 October three live campaigns on two other
  * hosts were wanted here for an investigation, and the files a level holds are chosen in one place.
  */
+import { tracedRuns, trajectoryOf } from "#src/kernel/atif.ts";
+import type { LogEvent } from "#src/kernel/log.ts";
 import {
   cpSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readlinkSync,
@@ -84,6 +88,12 @@ const GROUPS: readonly (readonly [name: string, holds: string, level: Level, pat
     /^(checks|exams\/[^/]+|states\/[0-9a-f]{64}\/correctness-model)\//,
   ],
   ["toolchain", "what a harness installed, less the packages", "medium", /^states\/tree-[^/]+\//],
+  [
+    "trajectories",
+    "each solve's and session's trace as an ATIF trajectory, which Harbor's viewer reads (`trajectoryOf`)",
+    "medium",
+    /^trajectories\//,
+  ],
   ["memory", "the notes and helper files each Builder session left the next", "light", /^memory\//],
   ["source", "the tracked src, tools and docs of the worktree at its commit", "verbose", /^source\//],
   ["rest", "anything else in the run's folder", "verbose", /^/],
@@ -198,6 +208,19 @@ function readme({ level, made, runs: ran, files, left }: ReturnType<typeof gathe
   ].join("\n");
 }
 
+/** Each trace in `log` written in `stage` as `<under>/trajectories/<seat>-<id>.json`, the agent
+ *  named by the commit its run first started at. The log holds every fact they hold. */
+function trajectories(log: readonly LogEvent[], stage: string, under: string, commit: string): Held[] {
+  mkdirSync(join(stage, under, "trajectories"), { recursive: true });
+  return tracedRuns(log).map(({ seat, id }) => {
+    const path = join(under, "trajectories", `${seat}-${id}.json`);
+    const agent = { name: "anabasis", version: commit.slice(0, 9), model: null };
+    const text = `${capturedJsonStringify(trajectoryOf(log, seat, id, agent), null, 2)}\n`;
+    writeFileSync(join(stage, path), text);
+    return { path, bytes: Buffer.byteLength(text), group: "trajectories" };
+  });
+}
+
 /** Copy what `level` holds of `chosen` under `stage`, and say what the zip then is. */
 function gather(chosen: readonly Run[], level: Level, stage: string) {
   const files: Held[] = [];
@@ -229,8 +252,12 @@ function gather(chosen: readonly Run[], level: Level, stage: string) {
     const [folder, found] = isCampaign(run)
       ? [run.name, fit(dirname(run.path))]
       : ["live", fit(dirname(run.path), [basename(run.path)])];
-    keep(dirname(run.path), join(basename(run.tree), folder), found);
+    const under = join(basename(run.tree), folder);
+    keep(dirname(run.path), under, found);
     const log = logEvents(run.path);
+    const ranAt = [...new Set(receipts(run.path).map(({ commit }) => commit))];
+    const now = standing(run.tree);
+    if (holds(level, "trajectories")) files.push(...trajectories(log, stage, under, ranAt[0] ?? now.commit));
     const last = log.findLast(({ kind }) => kind === run.end)?.data;
     const reading = last?.reading ?? asRecord(last?.ending)?.outcome;
     // A campaign's ending is its log's last event: one that goes on after an ending has none.
@@ -241,8 +268,8 @@ function gather(chosen: readonly Run[], level: Level, stage: string) {
       worktree: run.tree,
       // The commit of each launch beside the log, oldest first, which is the source each ran; the
       // worktree's own commit is where it stands when zipped, which can differ from every one.
-      ranAt: [...new Set(receipts(run.path).map(({ commit }) => commit))],
-      ...standing(run.tree),
+      ranAt,
+      ...now,
       events: log.length,
       reading: isString(reading) ? reading : null,
       ended: isString(ended) ? ended : null,

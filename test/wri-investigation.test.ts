@@ -31,12 +31,11 @@ import {
   reportOf,
   selected,
 } from "../tools/wri/investigation.ts";
-import type { Overview } from "../tools/wri/read.ts";
 import { execTextSync } from "./helpers/bun-spawn-sync.ts";
 import { SOUND } from "./helpers/examiner-seat.ts";
 
 const shared =
-  "## Orientation\n\nWhy the step.\n\n## Campaign under review\n\nthe row\n\n## Hard rules\n\n- quote nothing\n";
+  "## Orientation\n\nWhy the step.\n\n## Campaigns under review\n\nthe row\n\n## Hard rules\n\n- quote nothing\n";
 const catalogue = catalogueText();
 const lanes = lanesOf(catalogue);
 const owners = ownersOf(catalogue);
@@ -73,19 +72,35 @@ describe("an investigation's lanes", () => {
     ]);
   });
 
-  const seen: Overview = {
-    rows: [{ id: "A", title: "campaign and log", lines: ["3 events"] }],
-    triggers: [
-      { lane: 4, name: "REFUSED UNREAD", detail: "2 of 2" },
-      { lane: 5, name: "FAILS ON ONE CHECK", detail: "check-a refused 2 of 2" },
-    ],
-  };
+  const rows = [{ id: "A", title: "campaign and log", lines: ["3 events"] }];
+  const one = [
+    {
+      name: "buffer-a",
+      log: "/a/log.jsonl",
+      overview: {
+        rows,
+        triggers: [
+          { lane: 4, name: "REFUSED UNREAD" as const, detail: "2 of 2" },
+          { lane: 5, name: "FAILS ON ONE CHECK" as const, detail: "check-a refused 2 of 2" },
+        ],
+      },
+    },
+  ];
+  // A second campaign on which lane 4 fired another trigger and lane 5 none.
+  const two = [
+    ...one,
+    {
+      name: "buffer-b",
+      log: "/b/log.jsonl",
+      overview: { rows, triggers: [{ lane: 4, name: "CHECK DEFECT RULED" as const, detail: "1 of 3" }] },
+    },
+  ];
 
   it("gives an open lane the shared instructions and every trigger", () => {
     const prompt = lanePrompt({
       lane: lane(4),
       shared,
-      overview: seen,
+      campaigns: one,
       catalogue,
       owners,
       report: "/r/04.md",
@@ -100,7 +115,7 @@ describe("an investigation's lanes", () => {
     const prompt = lanePrompt({
       lane: lane(5),
       shared,
-      overview: seen,
+      campaigns: one,
       catalogue,
       owners,
       report: "/r/05.md",
@@ -112,7 +127,7 @@ describe("an investigation's lanes", () => {
   });
 
   it("says which of the lane's own triggers fired and which did not, so a name in its body is no lead", () => {
-    const parts = { shared, overview: seen, catalogue, owners, report: "/r/04.md" };
+    const parts = { shared, campaigns: one, catalogue, owners, report: "/r/04.md" };
     const prompt = lanePrompt({ ...parts, lane: lane(4) });
     expect(prompt).toContain("Fired on this campaign: `REFUSED UNREAD`");
     expect(prompt).toContain("Not fired: `CHECK DEFECT RULED`, `RULED UNCLEAR`.");
@@ -122,14 +137,36 @@ describe("an investigation's lanes", () => {
     expect(standing).toContain("Not fired: `NEVER CHECKED`, `TOOLS CALLED`, `TOOL CALLS ERRED`.");
   });
 
-  it("gives the lane that reads peers each one named, or says none was, and no other lane either", () => {
-    const parts = { shared, overview: seen, catalogue, owners, report: "/r/31.md" };
-    expect(lane(31).peers).toBe(true);
-    const named = lanePrompt({ ...parts, lane: lane(31), peers: "### buffer-a\n\nLog: `/a/log.jsonl`" });
-    expect(named).toContain("## Peer campaigns");
-    expect(named).toContain("### buffer-a");
-    expect(lanePrompt({ ...parts, lane: lane(31) })).toContain("None were named: read this campaign alone");
-    expect(lanePrompt({ ...parts, lane: lane(4), peers: "### buffer-a" })).not.toContain("## Peer campaigns");
+  it("gives the lane that reads the climb side by side the table, or says one campaign is read, and no other lane either", () => {
+    const parts = { shared, campaigns: two, catalogue, owners, report: "/r/31.md" };
+    expect(lane(31).sideBySide).toBe(true);
+    const named = lanePrompt({ ...parts, lane: lane(31), climb: "### The climb, side by side" });
+    expect(named).toContain("## The campaigns side by side");
+    expect(named).toContain("### The climb, side by side");
+    expect(lanePrompt({ ...parts, campaigns: one, lane: lane(31) })).toContain(
+      "One campaign is under review",
+    );
+    expect(lanePrompt({ ...parts, lane: lane(4), climb: "### The climb" })).not.toContain("side by side");
+  });
+
+  it("gives every lane every campaign as an equal, with each trigger under the campaign it fired on", () => {
+    const parts = { shared, campaigns: two, catalogue, owners, report: "/r/04.md" };
+    const open = lanePrompt({ ...parts, lane: lane(4) });
+    expect(open).toContain("### buffer-a");
+    expect(open).toContain("### buffer-b");
+    expect(open).toContain("## Every campaign is under review");
+    expect(open).toContain("Fired on `buffer-a`: `REFUSED UNREAD`; on `buffer-b`: `CHECK DEFECT RULED`");
+    expect(open).toContain("Not fired: `RULED UNCLEAR`.");
+    expect(open).toContain("Seen in: buffer-a <shows | absent | cannot show>, buffer-b");
+    // An isolated lane reads both campaigns too, and of each only its own triggers.
+    const isolated = lanePrompt({ ...parts, lane: lane(5), report: "/r/05.md" });
+    expect(isolated).toContain("### buffer-b");
+    expect(isolated).toContain("FAILS ON ONE CHECK (lane 5)");
+    expect(isolated).not.toContain("CHECK DEFECT RULED (lane 4)");
+    // One campaign is read as before, with no section on the others and no Seen in line.
+    const alone = lanePrompt({ ...parts, campaigns: one, lane: lane(4) });
+    expect(alone).not.toContain("## Every campaign is under review");
+    expect(alone).not.toContain("Seen in:");
   });
 
   it("holds a report to its shape", () => {
@@ -144,23 +181,55 @@ describe("an investigation's lanes", () => {
       "Reverses if: a refused answer is shown invalid by the rule",
       "Decision: whether a repair is owed",
     ].join("\n");
-    expect(reportOf(lane(4), good, owners)).toMatchObject({ state: "ok", verdict: "finding", findings: 1 });
-    expect(reportOf(lane(4), null, owners).state).toBe("missing");
-    expect(reportOf(lane(4), good.replace("pack/evaluator", "the checker"), owners).faults).toEqual([
+    expect(reportOf(lane(4), good, owners, [])).toMatchObject({
+      state: "ok",
+      verdict: "finding",
+      findings: 1,
+    });
+    expect(reportOf(lane(4), null, owners, []).state).toBe("missing");
+    expect(reportOf(lane(4), good.replace("pack/evaluator", "the checker"), owners, []).faults).toEqual([
       "1 of 1 owners are not in the owner table",
     ]);
-    expect(reportOf(lane(4), "# Lane 4: x\nVerdict: finding\n", owners).faults).toEqual([
+    expect(reportOf(lane(4), "# Lane 4: x\nVerdict: finding\n", owners, []).faults).toEqual([
       "the verdict is a finding and none is written",
     ]);
     // Recode's lane 15 on 10 October: no finding said, two written, and accepted.
     const denied = `${good.replace("Verdict: finding", "Verdict: no finding")}\n${good.split("\n").slice(3).join("\n")}`;
-    expect(reportOf(lane(4), denied, owners)).toMatchObject({
+    expect(reportOf(lane(4), denied, owners, [])).toMatchObject({
       state: "invalid",
       faults: ["the verdict is no finding and the report writes 2 findings"],
     });
     expect(
-      reportOf(lane(4), "# Lane 4: x\nVerdict: no finding, all sound\n## Findings\n", owners).state,
+      reportOf(lane(4), "# Lane 4: x\nVerdict: no finding, all sound\n## Findings\n", owners, []).state,
     ).toBe("ok");
+  });
+
+  it("holds each finding of several campaigns to a Seen in line that names every one", () => {
+    const finding = [
+      "# Lane 4: False rejection among fails",
+      "Verdict: finding, one check refuses a valid rounding.",
+      "## Findings",
+      "### The tolerance",
+      "Observation: verdict, 40 of 55 name check-a",
+      "Cause: the tolerance is tighter than the published rounding",
+      "Owner: pack/evaluator",
+      "Reverses if: a refused answer is shown invalid by the rule",
+      "Decision: whether a repair is owed",
+    ].join("\n");
+    const names = ["buffer-a", "buffer-b"];
+    expect(
+      reportOf(lane(4), `${finding}\nSeen in: buffer-a shows, buffer-b absent`, owners, names).state,
+    ).toBe("ok");
+    expect(reportOf(lane(4), finding, owners, names).faults).toEqual([
+      "the findings are uneven: Observation: 1, Cause: 1, Owner: 1, Reverses if: 1, Decision: 1, Seen in: 0",
+    ]);
+    expect(reportOf(lane(4), `${finding}\nSeen in: buffer-a shows`, owners, names).faults).toEqual([
+      "a Seen in: line leaves out buffer-b",
+    ]);
+    // A name that holds another as its prefix stands for that campaign alone.
+    expect(
+      reportOf(lane(4), `${finding}\nSeen in: buffer-a-r5 shows, buffer-b absent`, owners, names).faults,
+    ).toEqual(["a Seen in: line leaves out buffer-a"]);
   });
 
   it("fills a template's slots and names one it cannot fill", () => {
@@ -208,7 +277,7 @@ describe("the lanes verb", () => {
 
   it("keeps a prompt built before, and launches only the lanes each call built", () => {
     mkdirSync(join(out, "lanes"), { recursive: true });
-    writeFileSync(join(out, "investigation.json"), JSON.stringify({ log }));
+    writeFileSync(join(out, "investigation.json"), JSON.stringify({ logs: [log] }));
     writeFileSync(join(out, "shared-instructions.md"), shared);
     lanesVerb();
     const [built, first] = [prompts(), sessions()];

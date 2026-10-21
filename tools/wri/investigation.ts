@@ -4,10 +4,17 @@
  * here touches a file; `tools/wri/wri.ts` does the reading and the writing.
  *
  * An open lane's prompt carries the shared instructions, the overview, the catalogue's stance, the
- * lane and the reporting rules. An isolated lane's carries the campaign's row, the hard rules, the
+ * lane and the reporting rules. An isolated lane's carries the campaigns' rows, the hard rules, the
  * deterministic rows, its own triggers, the lane and the reporting rules: it is told neither the
  * operator's question nor what any other lane was started by, because it freezes its result before
  * it reads anything that could lead it.
+ *
+ * An investigation reads one campaign or several as equals, and each lane reads every one of them.
+ * Until 21 October one campaign was under review and the others were peers that only lane 31 read
+ * beside it: the final investigation of four stopped Opus campaigns then ran 40 sessions, ten lanes
+ * a campaign, and found the crashed Examiner session after a promotion four times over, while a
+ * defect one campaign held alone was read by the ten sessions of that campaign only. Now every
+ * finding says on its `Seen in:` line which campaigns show it.
  */
 import { plural } from "#src/meta/text.ts";
 import { type Lane, section } from "./catalogue.ts";
@@ -23,6 +30,13 @@ interface Selection {
   readonly waiting: readonly Lane[];
 }
 
+/** A campaign under review, with the overview its log reads into. */
+export interface Campaign {
+  readonly name: string;
+  readonly log: string;
+  readonly overview: Overview;
+}
+
 export interface Report {
   readonly lane: number;
   readonly state: "ok" | "missing" | "invalid";
@@ -35,20 +49,21 @@ interface PromptParts {
   readonly lane: Lane;
   /** The shared instructions as the primary edited them. */
   readonly shared: string;
-  readonly overview: Overview;
+  readonly campaigns: readonly Campaign[];
   /** The whole catalogue, for its stance and its owner table. */
   readonly catalogue: string;
   readonly owners: readonly string[];
   /** Where the session writes its report. */
   readonly report: string;
-  /** The peer campaigns' overviews, for a lane that reads them; "" where none was named. */
-  readonly peers?: string;
+  /** The campaigns' climbs side by side, for a lane that reads them; "" where one campaign is read. */
+  readonly climb?: string;
 }
 
-const CAMPAIGN_HEADING = "Campaign under review";
+const CAMPAIGN_HEADING = "Campaigns under review";
 const RULES_HEADING = "Hard rules";
 const VERDICTS = ["finding", "no finding", "could not read"] as const;
 const FIELDS = ["Observation:", "Cause:", "Owner:", "Reverses if:", "Decision:"] as const;
+const SEEN = "Seen in:";
 
 /** A lane's file stem: `07` for lane 7. */
 export function stem(lane: number): string {
@@ -107,7 +122,8 @@ export function blankSections(shared: string): string[] {
   );
 }
 
-function reporting(lane: Lane, report: string, owners: readonly string[]): string {
+function reporting(lane: Lane, report: string, owners: readonly string[], names: readonly string[]): string {
+  const several = names.length > 1;
   return [
     "## Your report",
     "",
@@ -125,6 +141,9 @@ function reporting(lane: Lane, report: string, owners: readonly string[]): strin
     "Owner: exactly one owner",
     "Reverses if: the observation that would reverse the finding",
     "Decision: what it changes for the operator",
+    ...(several
+      ? [`${SEEN} ${names.map((name) => `${name} <shows | absent | cannot show>`).join(", ")}`]
+      : []),
     "",
     "## Checked",
     "With a verdict of no finding, which leaves Findings empty: what you checked and found sound, in sentences without the five fields",
@@ -133,7 +152,7 @@ function reporting(lane: Lane, report: string, owners: readonly string[]): strin
     "What you could not read, and why.",
     "```",
     "",
-    "Each of the five fields starts a line of its own, as above: the collector counts them by the line's first word, and a finding written as one paragraph is refused (abl175-new's lane 9, 11 October).",
+    `Each of the ${several ? "six" : "five"} fields starts a line of its own, as above: the collector counts them by the line's first word, and a finding written as one paragraph is refused (abl175-new's lane 9, 11 October).`,
     "",
     `An owner is one of: ${owners.map((owner) => `\`${owner}\``).join(", ")}. Name the file beside \`host\` and a prompt owner.`,
     "",
@@ -141,77 +160,110 @@ function reporting(lane: Lane, report: string, owners: readonly string[]): strin
   ].join("\n");
 }
 
-function triggerLines(triggers: readonly Trigger[]): string[] {
-  return triggers.map((trigger) => `${trigger.name} (lane ${String(trigger.lane)}): ${trigger.detail}`);
+/** Each campaign's rows and the triggers `pick` keeps, under its name where several are read. */
+function holds(campaigns: readonly Campaign[], pick: (trigger: Trigger) => boolean): string {
+  return campaigns
+    .map(({ name, log, overview: { rows, triggers } }) => {
+      const block = [
+        "```",
+        ...rows.flatMap((row) => [`${row.id}. ${row.title}`, ...row.lines.map((line) => `   ${line}`)]),
+        "",
+        ...triggers
+          .filter(pick)
+          .map((trigger) => `${trigger.name} (lane ${String(trigger.lane)}): ${trigger.detail}`),
+        "```",
+      ].join("\n");
+      return campaigns.length === 1 ? block : `### ${name}\n\nLog: \`${log}\`\n\n${block}`;
+    })
+    .join("\n\n");
 }
 
-function rowLines({ rows }: Overview): string[] {
-  return rows.flatMap((row) => [`${row.id}. ${row.title}`, ...row.lines.map((line) => `   ${line}`)]);
-}
-
-/** One lane's prompt. */
-/** A peer-reading lane's section: the peers' overviews, or what to do where none was named. */
-function peerSection(peers: string): string[] {
+/**
+ * What a lane owes where several campaigns are read: each read first-hand, and each finding triaged
+ * against the others. The operator's word of 21 October: read every campaign as an equal, and for
+ * everything found on one, look whether the others show it.
+ */
+function equalsSection(campaigns: readonly Campaign[]): string[] {
+  if (campaigns.length === 1) return [];
+  const names = campaigns.map(({ name }) => `\`${name}\``).join(", ");
   return [
-    "## Peer campaigns",
-    peers.trim() === ""
-      ? "None were named: read this campaign alone, and say which peer would settle what one campaign cannot."
-      : `Each was read by the same reader as this campaign, and none is under review: compare, and cite each by its name and log.\n\n${peers.trim()}`,
+    "## Every campaign is under review",
+    [
+      `This investigation reads ${String(campaigns.length)} campaigns as equals: ${names}. Read your lane on each one first-hand, from its own log, its traces and its states. No campaign stands in for another, and no other session's reading stands in for yours: start where your lane has the most to read, and read the traces of each campaign yourself.`,
+      `Triage everything you find on one campaign against each of the others: does it occur there, is it absent, or can that campaign not show it, and why. Write the answer on the finding's \`${SEEN}\` line, naming every campaign once. A finding one campaign holds alone is still a finding: say what that campaign has that the others lack.`,
+      "Take the time this needs. A lane read whole on every campaign is worth more than one read quickly on one.",
+    ].join("\n\n"),
+  ];
+}
+
+/** The climb side by side, for the lane that reads it, or what to do where one campaign is read. */
+function climbSection(climb: string): string[] {
+  return [
+    "## The campaigns side by side",
+    climb.trim() === ""
+      ? "One campaign is under review: say which other campaign would settle what one cannot."
+      : climb.trim(),
   ];
 }
 
 /**
- * Which of the triggers a lane starts from fired on this campaign. The lane's body names every one
- * it can start from, and a session read a name there as a trigger the log had fired: buffer-a's lane
- * 14 on 11 October reported `NEVER CHECKED` false, which the reader had never fired.
+ * Which of the triggers a lane starts from fired, and on which campaign. The lane's body names every
+ * one it can start from, and a session read a name there as a trigger the log had fired: buffer-a's
+ * lane 14 on 11 October reported `NEVER CHECKED` false, which the reader had never fired.
  */
-function firedLine(lane: Lane, own: readonly Trigger[]): string {
+function firedLine(lane: Lane, campaigns: readonly Campaign[]): string {
   const names = Object.entries(TRIGGERS).flatMap(([name, number]) => (number === lane.number ? [name] : []));
-  const fired = names.filter((name) => own.some((trigger) => trigger.name === name));
-  const quiet = names.filter((name) => !fired.includes(name));
   const list = (each: readonly string[]) => each.map((name) => `\`${name}\``).join(", ");
+  const on = campaigns.flatMap(({ name, overview: { triggers } }) => {
+    const fired = names.filter((each) => triggers.some((trigger) => trigger.name === each));
+    return fired.length === 0 ? [] : [{ name, fired }];
+  });
+  const quiet = names.filter((each) => !on.some(({ fired }) => fired.includes(each)));
+  const one = campaigns.length === 1;
   return [
-    fired.length === 0
-      ? "None of these triggers fired on this campaign: the lane is open because its question stands whenever a harness was compared."
-      : `Fired on this campaign: ${list(fired)}, as "What the log holds" prints them.`,
+    on.length === 0
+      ? `None of these triggers fired on ${one ? "this campaign" : "any campaign under review"}: the lane is open because its question stands whenever a harness was compared.`
+      : `Fired ${on.map(({ name, fired }) => `on ${one ? "this campaign" : `\`${name}\``}: ${list(fired)}`).join("; ")}, as "What the logs hold" prints them.`,
     ...(quiet.length === 0
       ? []
-      : [`Not fired: ${list(quiet)}. Read each as the log's silence on it, not as a lead.`]),
+      : [`Not fired: ${list(quiet)}. Read each as the logs' silence on it, not as a lead.`]),
   ].join(" ");
 }
 
+/** One lane's prompt. */
 export function lanePrompt({
   lane,
   shared,
-  overview,
+  campaigns,
   catalogue,
   owners,
   report,
-  peers = "",
+  climb = "",
 }: PromptParts): string {
   const clean = shared.replaceAll(/<!--[\s\S]*?-->\n?/g, "").trim();
-  const own = overview.triggers.filter((trigger) => trigger.lane === lane.number);
   const context = lane.isolated
     ? [
         `## ${CAMPAIGN_HEADING}`,
         section(clean, CAMPAIGN_HEADING),
         `## ${RULES_HEADING}`,
         section(clean, RULES_HEADING),
-        "## What the log holds",
-        ["```", ...rowLines(overview), "", ...triggerLines(own), "```"].join("\n"),
+        "## What the logs hold",
+        holds(campaigns, (trigger) => trigger.lane === lane.number),
       ]
     : [
         clean,
-        "## What the log holds",
+        "## What the logs hold",
         "The rows are the primary reviewer's and are settled. A trigger says a lane has something to read and never what the answer is.",
-        ["```", ...rowLines(overview), "", ...triggerLines(overview.triggers), "```"].join("\n"),
+        holds(campaigns, () => true),
       ];
+  const what = campaigns.length === 1 ? "an Anabasis campaign" : "several Anabasis campaigns";
   return [
     `# Lane ${String(lane.number)}: ${lane.title}`,
     lane.isolated
-      ? "You are one session of a whole-run investigation of an Anabasis campaign. Your lane runs alone: you are given no other lane's report and you open none."
-      : "You are one session of a whole-run investigation of an Anabasis campaign. Other sessions read other lanes; you read yours.",
+      ? `You are one session of a whole-run investigation of ${what}. Your lane runs alone: you are given no other lane's report and you open none.`
+      : `You are one session of a whole-run investigation of ${what}. Other sessions read other lanes; you read yours.`,
     ...context,
+    ...equalsSection(campaigns),
     "## Who holds which pen",
     section(catalogue, "Who holds which pen"),
     "## How the catalogue is read",
@@ -219,14 +271,27 @@ export function lanePrompt({
     "## Your lane",
     `**${String(lane.number)}. ${lane.title}.**`,
     lane.body,
-    firedLine(lane, own),
-    ...(lane.peers ? peerSection(peers) : []),
-    reporting(lane, report, owners),
+    firedLine(lane, campaigns),
+    ...(lane.sideBySide ? climbSection(climb) : []),
+    reporting(
+      lane,
+      report,
+      owners,
+      campaigns.map(({ name }) => name),
+    ),
   ].join("\n\n");
 }
 
-/** Whether a report has the shape the synthesis reads. `text` is null where no file stands. */
-export function reportOf(lane: Lane, text: string | null, owners: readonly string[]): Report {
+/**
+ * Whether a report has the shape the synthesis reads. `text` is null where no file stands. Where
+ * several campaigns are read, `names` lists them, and each finding's `Seen in:` line names them all.
+ */
+export function reportOf(
+  lane: Lane,
+  text: string | null,
+  owners: readonly string[],
+  names: readonly string[],
+): Report {
   if (text === null) return { lane: lane.number, state: "missing", faults: [], verdict: null, findings: 0 };
   const lines = text.split("\n");
   const said =
@@ -235,10 +300,23 @@ export function reportOf(lane: Lane, text: string | null, owners: readonly strin
       ?.slice("Verdict:".length)
       .trim() ?? "";
   const verdict = VERDICTS.find((each) => said.startsWith(each)) ?? null;
-  const counts = FIELDS.map((field) => lines.filter((line) => line.startsWith(field)).length);
+  const fields = names.length > 1 ? [...FIELDS, SEEN] : FIELDS;
+  const counts = fields.map((field) => lines.filter((line) => line.startsWith(field)).length);
   const [findings = 0] = counts;
   const named = lines.flatMap((line) => (line.startsWith("Owner:") ? [line.slice("Owner:".length)] : []));
   const unowned = named.filter((line) => !owners.some((owner) => line.includes(owner))).length;
+  // Each entry is a campaign's whole name and its triage: a name that holds another as a prefix
+  // must not pass for it (review of 21 October).
+  const unseen = names.filter((name) =>
+    lines.some(
+      (line) =>
+        line.startsWith(SEEN) &&
+        !line
+          .slice(SEEN.length)
+          .split(",")
+          .some((entry) => entry.trim().split(" ")[0] === name),
+    ),
+  );
   const faults = [
     ...(lines[0]?.startsWith(`# Lane ${String(lane.number)}:`) === true
       ? []
@@ -246,7 +324,7 @@ export function reportOf(lane: Lane, text: string | null, owners: readonly strin
     ...(verdict === null ? [`no verdict among: ${VERDICTS.join(", ")}`] : []),
     ...(counts.some((count) => count !== findings)
       ? [
-          `the findings are uneven: ${FIELDS.map((field, index) => `${field} ${String(counts[index])}`).join(", ")}`,
+          `the findings are uneven: ${fields.map((field, index) => `${field} ${String(counts[index])}`).join(", ")}`,
         ]
       : []),
     ...(verdict === "finding" && findings === 0 ? ["the verdict is a finding and none is written"] : []),
@@ -257,6 +335,7 @@ export function reportOf(lane: Lane, text: string | null, owners: readonly strin
     ...(unowned > 0
       ? [`${String(unowned)} of ${String(named.length)} owners are not in the owner table`]
       : []),
+    ...(unseen.length > 0 && names.length > 1 ? [`a ${SEEN} line leaves out ${unseen.join(", ")}`] : []),
   ];
   return { lane: lane.number, state: faults.length === 0 ? "ok" : "invalid", faults, verdict, findings };
 }

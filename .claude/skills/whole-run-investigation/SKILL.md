@@ -1,22 +1,23 @@
 ---
 name: whole-run-investigation
-description: "Investigate one Anabasis v2 campaign from its log and turn what it shows into findings with one owner each. Answers whether a comparison's reading (step, no-step, not-scored) may be believed, whether a fail was the solver's or the exam's, whether the harness could know the exam, whether the tasks bracket the solver, whether the campaign is climbing, and where the hours and dollars went. Reads evidence; starts no solve, session or round, and changes no verdict."
+description: "Investigate one Anabasis v2 campaign, or several as equals, from their logs and turn what it shows into findings with one owner each. Answers whether a comparison's reading (step, no-step, not-scored) may be believed, whether a fail was the solver's or the exam's, whether the harness could know the exam, whether the tasks bracket the solver, whether the campaign is climbing, and where the hours and dollars went. Reads evidence; starts no solve, session or round, and changes no verdict."
 ---
 
 # Whole-Run Investigation
 
-A whole-run investigation (WRI) reads one campaign: its log, the check program staged beside it and
-the harness states it kept, against the question the operator asked. It ends in one adjudicated
+A whole-run investigation (WRI) reads one campaign, or several as equals: each one's log, the check
+program staged beside it and the harness states it kept, against the question the operator asked. It ends in one adjudicated
 synthesis that says whether each reading may be believed, what limited it, and which owner each next
 change belongs to. It reads and proposes. It starts no solve, no session and no round, it appends to
 no log, and the host's verifier stays the one owner of every verdict.
 
 The catalogue has six deterministic rows and thirty-one lanes. [from-v1.md](references/from-v1.md)
-maps the earlier catalogue to this one. Lane 31 reads a promotion and the climb after it, beside
-peer campaigns where they are named. `AGENTS.md` sections 1 to 8 own the campaign's rules.
+maps the earlier catalogue to this one. Lane 31 reads a promotion and the climb after it, with
+every campaign under review side by side. `AGENTS.md` sections 1 to 8 own the campaign's rules.
 
 These narrower questions need no lanes. Start there when one is the whole question. A `wri.ts`
-command's `--log` and `--with` accept a path or a campaign's whole name, as `bun run runs` does.
+command's `--log` accepts a path or a campaign's whole name, as `bun run runs` does, and `start` and
+`climb` take several, separated by commas.
 `accept.ts` and `settle.ts` below write to the campaign and belong to their own authorised
 procedures; they are not commands to run inside a read-only investigation.
 
@@ -28,7 +29,7 @@ procedures; they are not commands to run inside a read-only investigation.
 | What does a repaired checker move, and does the repair stand? | `bun tools/c/repaired.ts --log <log> --bundle <repaired pack>` |
 | A report names tasks set aside on rejections: what does it read once they are labelled? | `bun tools/d2/settle.ts <the campaign's flags> --session <id>`, then label the rejections it draws |
 | Which sessions ran, from which parent, with which reading? | `bun tools/wri/wri.ts read --log <log>`, row F and the `CHAIN` line |
-| Did a promotion climb, beside the campaigns that ran the same pack, and did one campaign's `/tmp` reach another's solves? | `bun tools/wri/wri.ts climb --log <log> --with <log>,<log>`: one row a campaign, then each solve that named what another campaign's session left |
+| Did a promotion climb, beside the campaigns that ran the same pack, and did one campaign's `/tmp` reach another's solves? | `bun tools/wri/wri.ts climb --log <log>,<log>,<log>`: one row a campaign, then each solve that named what another campaign's session left |
 
 ## The procedure
 
@@ -36,11 +37,13 @@ Six steps. Keep the investigation's files in one directory, `<dir>`, under the
 ignored `.ana/wri/<date>-<campaign>/`. Do not start a step until the check named for the one before
 holds.
 
-1. **Start.** `wri.ts start --log <log> --out <dir>` folds the log into the six rows and the
-   triggers, writes them to `<dir>/overview.md`, and writes `<dir>/shared-instructions.md` with the
-   campaign's row filled in and two sections left blank. When the campaign promoted a harness and
-   other campaigns ran the same pack, name their logs with `--with <log>,<log>`: lane 31 is given
-   each as `read` prints it, read again when the lanes are built, and compares with them.
+1. **Start.** `wri.ts start --log <log>[,<log>...] --out <dir>` folds each log into the six rows and
+   the triggers, writes them to `<dir>/overview.md`, and writes `<dir>/shared-instructions.md` with
+   each campaign's row filled in and two sections left blank. Where one question spans several
+   campaigns (other domains, other hosts, other commits of one pack), name them all: they are read
+   as equals. Every lane reads every campaign, opens where a trigger fired on any of them, and
+   triages each finding against the others on its `Seen in:` line; lane 31 is also given their
+   climbs side by side. The logs are read again when the lanes are built.
    A campaign another machine holds is read from a copy: `bun --env-file=.env.runs run runs fetch
    <name>` takes its folder whole to `.ana/fetched/<host>/<name>/` and prints the log to give
    `--log`. Lanes read the copy with this checkout's tree, so check out the commit the receipt
@@ -84,19 +87,20 @@ Each runs as `bun tools/wri/wri.ts <verb>` from the checkout. The usage block at
 | step | command | writes |
 | --- | --- | --- |
 | read | `read --log <log>` | nothing: the rows, the triggers and the host line, printed |
-| compare peers | `climb --log <log> [--with <log>,<log>]` | nothing: the campaign table and shared temporary paths, printed |
-| 1 | `start --log <log> --out <dir> [--with <log>,<log>]` | `overview.md`, `shared-instructions.md`, `investigation.json` |
+| compare climbs | `climb --log <log>,<log>[,<log>...]` | nothing: the campaign table and shared temporary paths, printed |
+| 1 | `start --log <log>[,<log>...] --out <dir>` | `overview.md`, `shared-instructions.md`, `investigation.json` |
 | 3 | `lanes --out <dir> [--lanes 1-4,7]` | `lanes/NN-prompt.md`, `launch.json` |
 | 5 | `collect --out <dir>` | `reports.md` |
 | 6 | `synthesis --out <dir>` | `synthesis-prompt.md` |
 | lanes 1, 5 | `grade --log <log> [--bundle <pack>] --task <taskId> --answer <file>` | nothing: one verdict line. `--bundle` names a stored pack; a campaign that drafted its exam names none |
 
-One investigation reads one campaign. Two campaigns of one pack, one under a checker and one under
-its repair, are read apart, and lane 6 of the later one joins them.
+One investigation reads one question, over one campaign or several. Two campaigns of one pack, one
+under a checker and one under its repair, are read apart, and lane 6 of the later one joins them.
 
 ## Sizing
 
-One session reads one lane. `selected` opens all four standing lanes even before a comparison
+One session reads one lane, on every campaign under review: more campaigns make each session
+longer, and add none. `selected` opens all four standing lanes even before a comparison
 reports, alongside any triggered open lanes. Count the manifest rather than assuming a size.
 When the budget is
 smaller than the build, read the groups in this order, because each rests on the one before:
@@ -173,7 +177,7 @@ and deleting a heading drops its section on purpose.
 | --- | --- | --- |
 | Orientation | the primary | the operator's question and where its evidence is, never the answer expected |
 | The moved variable and prior state | the primary | what changed since the campaign before, the earlier findings this one checks and what would falsify each; "none" when nothing moved |
-| Campaign under review | `start` | the campaign, its log, its size, the checkout and the host line |
+| Campaigns under review | `start` | each campaign, its log, its size, the checkout and its host line |
 | Hard rules | the preset | the rules above |
 
 A lane told what to find finds it. An earlier diagnosis goes under the prior state as a hypothesis,

@@ -49,6 +49,37 @@ describe("the three backends", () => {
     expect(compactionMode(key, options)).toBe(compactionMode(login_, options));
   });
 
+  it("route a model pinned to one OpenRouter endpoint there alone, at that endpoint's price", () => {
+    const models = backends(options);
+    const dated = models.getModel("openrouter", "deepseek/deepseek-v4.1-flash-1017");
+    expect(dated?.compat).toMatchObject({
+      openRouterRouting: { only: ["deepinfra/fp8"], allow_fallbacks: false },
+    });
+    expect(dated?.cost).toMatchObject({ input: 0.098, output: 0.294, cacheRead: 0.00294 });
+    expect(dated).toMatchObject({
+      name: "DeepSeek: DeepSeek V4.1 Flash 1017",
+      api: "openai-completions",
+      baseUrl: "https://openrouter.ai/api/v1",
+      reasoning: true,
+      contextWindow: 1_048_576,
+      maxTokens: 131_072,
+    });
+    // A model nobody pinned keeps pi's own entry, routed as OpenRouter chooses.
+    // Every listing pi's collection offers holds it, as `getModel` does.
+    const chat = models.getModelsOfType("chat", "openrouter").map(({ id }) => id);
+    expect(chat).toContain("deepseek/deepseek-v4.1-flash-1017");
+    const base = models.getModel("openrouter", "deepseek/deepseek-v4.1-flash");
+    expect(base?.compat ?? {}).not.toHaveProperty("openRouterRouting");
+    // models.json gives an added model no base, so the file restates the base entry's request terms;
+    // a pi whose entry for the release it is dated from changed them fails here.
+    const terms = (model: typeof base) => {
+      const compat = { ...model?.compat, openRouterRouting: undefined };
+      return [model?.reasoning, model?.thinkingLevelMap, model?.input, model?.inputLimits, compat];
+    };
+    expect(terms(dated)).toEqual(terms(base));
+    expect(models.getModel("openrouter", "deepseek/deepseek-v4.1-flash-0101")).toBeUndefined();
+  });
+
   it("read the Codex CLI's login as it stands", async () => {
     const access = login(HOUR_S);
     const auth = await backends(options).getAuth("openai-codex");

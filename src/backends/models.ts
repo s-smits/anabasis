@@ -11,6 +11,7 @@ import {
   type CredentialStore,
   createAssistantMessageEventStream,
   createModels,
+  isModelType,
   type Model,
   type MutableModels,
   type OAuthCredential,
@@ -20,6 +21,14 @@ import {
 } from "@earendil-works/pi-ai";
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
+import {
+  formatValidationPath,
+  validateModelsConfig,
+} from "../../vendor/pi-coding-agent/core/model-config.ts";
+import {
+  applyModelsJson,
+  getAllProviderModels,
+} from "../../vendor/pi-coding-agent/core/provider-composer.ts";
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { capturedJsonParse } from "../meta/json-runtime.ts";
@@ -34,6 +43,7 @@ import {
   emptyTurn,
   servedByClaude,
 } from "./claude.ts";
+import listed from "./openrouter-listed.json" with { type: "json" };
 import { piCompactionMode } from "./pi-compaction.ts";
 
 const CODEX = "openai-codex";
@@ -77,10 +87,40 @@ const codexLogin: CredentialStore = {
 export function backends(options: BackendOptions): MutableModels {
   const models = createModels({ credentials: codexLogin });
   models.setProvider(retried(openaiCodexProvider()));
-  models.setProvider(retried(openrouterProvider()));
+  models.setProvider(retried(openrouter()));
   models.setProvider(claudeProvider(options.claude));
   models.setProvider(claudeProvider(options.claude, CLAUDE_API_PROVIDER));
   return models;
+}
+
+/**
+ * OpenRouter as pi serves it, with the models `openrouter-listed.json` adds: DeepSeek V4.1 Flash of
+ * 17 October alone, a dated release pi 1.3.0's catalogue lacks (21 October). The file is a models.json
+ * and is laid over pi's catalogue by pi's own code for one (`vendor/pi-coding-agent/core`), so an
+ * added model states every field, as there. Its terms are OpenRouter's listing of the release and of
+ * DeepInfra's fp8 endpoint, the one it is served at, with no fallback (operator, 21 October):
+ * OpenRouter otherwise picks one of the release's 26 endpoints for each call, at fp4, fp8 or an
+ * unnamed quantization, so two solves of one model could run on different weights. The rest are
+ * those pi's catalogue gives the release it is dated from, `deepseek/deepseek-v4.1-flash`. A file
+ * that fails the schema is refused with the words pi's `ModelConfig.load` uses.
+ */
+function openrouter(): Provider {
+  const router = openrouterProvider();
+  if (!validateModelsConfig.Check(listed)) {
+    const errors =
+      validateModelsConfig
+        .Errors(listed)
+        .map((error) => `  - ${formatValidationPath(error)}: ${error.message}`)
+        .join("\n") || "Unknown schema error";
+    throw new Error(`Invalid models.json schema:\n${errors}\n\nFile: src/backends/openrouter-listed.json`);
+  }
+  const config = listed.providers[router.id];
+  const getAllModels = () => applyModelsJson(router.id, getAllProviderModels(router), config);
+  return {
+    ...router,
+    getModels: () => getAllModels().filter((model) => isModelType(model, "chat")),
+    getAllModels,
+  };
 }
 
 /**

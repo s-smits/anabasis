@@ -574,7 +574,7 @@ as truth.
   sandbox, which it names by the isolation profile and the platform (`tools/d2/campaign.ts`). Two
   solves are comparable only when their conditions differ in the one thing being compared.
 - A solve's trace is in the log (`solve.turn`, `solve.call`), and so are the turns and calls of
-  each Builder session and Examiner session.
+  each Builder session and Examiner session. `src/kernel/trace.ts` is the one reader of them all.
 
 Four habits follow:
 
@@ -1638,7 +1638,7 @@ read the conversation.
 ### Map
 
 ```text
-src/kernel/     the log, tasks, conditions, the verifier's contract, the comparison, the reports
+src/kernel/     the log, tasks, conditions, traces, the verifier's contract, the comparison, the reports
 src/solve/      one solve: the starter, the prompt, the command wall's tools, the answer file
 src/builder/    a Builder session, its tools, prompt, notes and what it is told of the past; the round,
                 and what the log holds of a comparison (comparison); whether a comparison may start

@@ -35,6 +35,7 @@ import type { EventKind } from "../../../src/kernel/log.ts";
 import type { comparedAs } from "../../../src/kernel/reports.ts";
 import type { Ending as SolveEnding } from "../../../src/kernel/solve.ts";
 import type { taskStates } from "../../../src/kernel/task.ts";
+import type { Call as TracedCall, Turn as TracedTurn } from "../../../src/kernel/trace.ts";
 import type { JsonObject, JsonValue } from "../../../src/meta/json-shape.ts";
 import type { Ruling } from "../../../src/review/referee.ts";
 import { hasText } from "../../../src/meta/text.ts";
@@ -368,31 +369,21 @@ export interface CampaignReading extends Answer {
 // ---------------------------------------------------------------------------------------------
 // GET /api/move?key=&move=, /api/solve?key=&id=
 
-/** One model turn of a solve or a session (`<seat>.turn`). */
-export interface Turn {
-  readonly index: number;
+/** One model turn of a solve or a session, as the kernel reads it (`traceOf`). */
+export type Turn = Pick<TracedTurn, "index" | "text" | "stopReason" | "error" | "billed"> & {
   readonly turn: number;
-  readonly text: string;
-  readonly stopReason: string | null;
-  readonly error: string | null;
-  /** The turn's metered dollars (`usage.cost.total`), null where it carries none. */
-  readonly billed: number | null;
-}
+};
 
-/** One tool call of a solve or a session (`<seat>.call`). The result is cut by the server to a
- *  readable length; `truncated` says so, and the raw event is the exam tier's `/api/event`. */
-export interface ToolCall {
-  readonly index: number;
+/** One tool call of a solve or a session, as the kernel reads it (`traceOf`). The result is cut by
+ *  the server to a readable length; `truncated` says so, and the raw event is the exam tier's
+ *  `/api/event`. */
+export type ToolCall = Pick<TracedCall, "index" | "tool" | "args" | "isError" | "ms"> & {
   /** Its number among the calls of its solve or session, from one. */
   readonly seq: number;
   readonly turn: number;
-  readonly tool: string;
-  readonly args: JsonValue;
-  readonly isError: boolean;
   readonly result: string | null;
   readonly truncated: boolean;
-  readonly ms: number | null;
-}
+};
 
 /** One solve as a list row shows it. */
 export interface SolveRow {

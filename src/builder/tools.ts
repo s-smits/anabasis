@@ -51,6 +51,7 @@ import type { Contract } from "../kernel/contract.ts";
 import { billedAll, billedParts } from "../kernel/reports.ts";
 import { ended, passed, practiceRan, rejectionAside, solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
+import { callList, callText, closingOf, traceOf } from "../kernel/trace.ts";
 import {
   cpSync,
   existsSync,
@@ -73,7 +74,6 @@ import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { pooled } from "../meta/pool.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
-import { callList, callsOf, callText, closingOf, solveOf } from "../review/trace.ts";
 import { openDesk, text, tool } from "../solve/answer.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../solve/coding-tools.ts";
 import { type CommandWall, type NetworkReach, networkReach } from "../solve/command.ts";
@@ -530,12 +530,11 @@ export function traceTool(bench: Bench): AgentTool {
       if (ran === undefined || !versions.has(ran.under.task)) {
         throw new Error(`${args.solve} is not a solve of one of this session's practice tasks`);
       }
-      const own = solveOf(events, args.solve);
-      const calls = callsOf(own);
+      const { turns, calls } = traceOf(events, "solve", args.solve);
       if (args.call !== undefined) return text(callText(calls, args.call, args.from ?? 0));
       const { ending } = ran;
       const answer = verdictsOf(events).get(args.solve)?.answer;
-      const closing = closingOf(own);
+      const closing = closingOf(turns);
       return text(
         [
           `ending: ${rejectionAside(events, ran) ? "rejection set aside" : isString(ending?.outcome) ? `${ending.outcome}${isString(ending.kind) ? ` (${ending.kind})` : ""}` : "not recorded"}`,

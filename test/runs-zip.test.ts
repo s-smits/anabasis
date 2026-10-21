@@ -5,6 +5,7 @@ import { describe, expect, it } from "bun:test";
 import {
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   readlinkSync,
   realpathSync,
   rmSync,
@@ -21,6 +22,7 @@ import { fit, type Level, zip, zipRuns } from "../tools/runs/zip.ts";
 const DIGEST = "ab".repeat(32);
 const LOG = [
   { at: "2026-10-08T12:00:00.000Z", kind: "build.started", data: { session: "r1-1" } },
+  { at: "2026-10-08T12:10:00.000Z", kind: "build.turn", data: { session: "r1-1", turn: 1, text: "edited" } },
   { at: "2026-10-08T12:30:00.000Z", kind: "comparison.reported", data: { reading: "no-step" } },
   { at: "2026-10-08T12:31:00.000Z", kind: "campaign.ended", data: { ending: "stop" } },
 ];
@@ -113,6 +115,7 @@ describe("the runs zip", () => {
         `checker tree/r1/states/${DIGEST}/correctness-model/controls.json`,
         "toolchain tree/r1/states/tree-abc/bin/solver",
         `toolchain tree/r1/states/${DIGEST}/.toolchain`,
+        "trajectories tree/r1/trajectories/build-r1-1.json",
       ];
       expect(listed("light").sort()).toEqual(light.sort());
       expect(listed("medium").sort()).toEqual(medium.sort());
@@ -120,6 +123,12 @@ describe("the runs zip", () => {
       expect(readlinkSync(join(root, "opened", "medium", "tree", "r1", "states", DIGEST, ".toolchain"))).toBe(
         "../tree-abc",
       );
+      // The Builder's session as Harbor reads a run, named by the commit its launch ran at.
+      const trajectory = parseJsonAs<{ agent: { version: string }; steps: { message: string }[] }>(
+        readFileSync(join(root, "opened", "medium", "tree", "r1", "trajectories", "build-r1-1.json"), "utf8"),
+      );
+      expect(trajectory.agent.version).toBe(RAN_AT.slice(0, 9));
+      expect(trajectory.steps.map(({ message }) => message)).toEqual(["edited"]);
       expect(listed("verbose").sort()).toEqual(
         [
           ...medium,
@@ -160,7 +169,7 @@ describe("the runs zip", () => {
           log: "tree/r1/log.jsonl",
           ranAt: [RAN_AT],
           ...told,
-          events: 3,
+          events: 4,
           reading: "no-step",
           ended: "stop",
         },
@@ -181,7 +190,7 @@ describe("the runs zip", () => {
       expect(read("NOTES.md")).toBe("# What the sender saw\n");
       expect(read("tree/r1/log.jsonl")).toBe(`${LOG.map((event) => JSON.stringify(event)).join("\n")}\n`);
       expect(read("README.md")).toContain(
-        `| tree/r1/log.jsonl | ${RAN_AT.slice(0, 9)} | ${told.commit.slice(0, 9)}, with uncommitted changes | 3 | no-step | stop |`,
+        `| tree/r1/log.jsonl | ${RAN_AT.slice(0, 9)} | ${told.commit.slice(0, 9)}, with uncommitted changes | 4 | no-step | stop |`,
       );
       expect(read("README.md")).toContain("| tree/live/s1.jsonl | no receipt |");
       expect(read("README.md")).toContain("| brief | the brief the tasks answer | light | 2 files, 0 KB |");

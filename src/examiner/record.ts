@@ -7,20 +7,21 @@
  *   gate's count, its last comparisons where it stood in two or more, and whether a valid answer
  *   is on record where nothing on the line shows one (`poolOf`). An author told only "one harness
  *   won" could not tell where the room was (`7f0add79:docs/simplify.md`, F3).
- * - Who won each task in that comparison, and by how much where the objective alone decided it.
- *   Until 20 October only counts by family told this, folded into a total where a family held one
- *   task, so that no author learnt which of its tasks a pair of harnesses split. The operator took
+ * - Who won each task in that comparison, by how much where the objective alone decided it, and
+ *   how far apart the reference's own valid answers were where that reaches the room floor, its
+ *   room by the objective (`comparedOf`). Until 20 October only counts by family told who won,
+ *   folded into a total where a family held one task, so that no author learnt which of its tasks
+ *   a pair of harnesses split. The operator took
  *   the risk of an author writing towards the other harness's wins for the feedback: from the
  *   reference's side alone a win by rounding reads as one by method, and buffer-fresh-opus-r6's
  *   comparison g-2 read 23-0-1 on gains under 0.7%.
- * - Counts by family (`counts`): how the tasks were won, lost and tied, how many wins the objective
- *   alone decided by less than the room floor, and how many were set aside.
+ * - Counts by family (`counts`): how the tasks were won, lost and tied, and how many were set
+ *   aside.
  * - The turns each valid answer of the reference took, by family, in those comparisons and at the
  *   gates since the last promotion (`turnsOf`), so an author sees how much of the budget its tasks
  *   already spend.
- * - The drafts a gate refused after reading them, by reason, with how far each author's answer
- *   stood from the reference's best (`refusedLines`), and the gates read on a replaced reference
- *   as one count (`earlierLine`).
+ * - The drafts a gate refused after reading them, by reason (`refusedLines`), and the gates read on
+ *   a replaced reference as one count (`earlierLine`).
  *
  * Everything is told by epoch: on 16 October a session after a promotion read the starter's gate
  * counts as the new reference's. Nothing here names a harness, a check or a target, and no count
@@ -88,7 +89,8 @@ const PRACTICE = "In use as practice, and so never scored:";
 /** What the counts say before their rows, and after them. */
 const COUNTS = {
   head: "Counted from the same comparisons as the lines above, by family, or in a total alone where the lines do not say who won each task and a family counted holds one: each task whose last comparison had the reference harness on one side, or that a later report set aside. The other harness is whichever the reference harness was compared with there. These are measurements and no target.",
-  columns: `| family | tasks | won by the other harness | won by the reference harness | tied, both valid in every solve | tied, neither valid in any solve | of those, an answer on record | tied otherwise | set aside, a rejection not settled |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |`,
+  columns:
+    "| family | tasks | won by the other harness | won by the reference harness | tied, both valid in every solve | tied, neither valid in any solve | of those, an answer on record | tied otherwise | set aside, a rejection not settled |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   weak: "The same harness fails a task once and passes it the next time, so a count over a few tasks, and more so one family's share of them, is weak evidence.",
 } as const;
 /** What the turns say before their rows. */
@@ -104,19 +106,18 @@ function legendOf(results: boolean): string {
   return `The tasks of the exam so far, a line each: the task, its family, and how the reference harness did on it in the last comparison that scored it${won}. Where nothing on the line shows a valid answer, it says whether one is on record. "Gate" is how many of the reference harness's solves at its gate were valid, of the solves it ran, at most ${String(TRIED)}; "last comparisons", its valid solves in each of its last comparisons with the current reference harness, newest first, and how many of the newest closed the task in a row. These are measurements and no instruction. read_example returns any of them whole.`;
 }
 
-/** Who won a task in its last comparison with the reference harness on a side, said on its line
- *  (the operator's word of 20 October; until then only counts by family were told). */
-function resultOf({ cell }: Standing): string {
-  if (cell === "aside") return "";
-  if (cell === "other-won" || cell === "reference-won") {
-    return `; won there by the ${cell === "other-won" ? "other" : "reference"} harness`;
-  }
-  return "; tied there";
-}
-
-/** A share as a percentage of two significant digits, without its sign. */
-function percent(share: number): string {
-  return `${String(Number((Math.abs(share) * 100).toPrecision(2)))}%`;
+/** What a task's last comparison with the reference harness on a side says on its line: with
+ *  `results` (the operator's word of 20 October), who won it there and, where the objective alone
+ *  decided it, how far apart the sides' medians were; and how far apart the reference's own valid
+ *  answers were, where that reaches the floor (`roomLeft`), which is all its room by the objective. */
+function comparedOf(standing: Standing | undefined, results: boolean): string {
+  if (standing === undefined) return "";
+  const { cell, margin, room } = standing;
+  const percent = (share: number) => `${String(Number((share * 100).toPrecision(2)))}%`;
+  const winner = cell === "other-won" ? "other" : cell === "reference-won" ? "reference" : null;
+  const alone = margin === null ? "" : `, by the objective alone, ${percent(margin)} apart`;
+  const won = winner === null ? "; tied there" : `; won there by the ${winner} harness${alone}`;
+  return `${results && cell !== "aside" ? won : ""}${(room ?? 0) > 0 ? `; its own valid answers ${percent(room ?? 0)} apart` : ""}`;
 }
 
 /** Whether a gate read its draft: one refused on fewer than the reference harness's `TRIED`
@@ -186,15 +187,8 @@ export function heard(
     // A valid solve of the last comparison or the gate shows an answer on record; elsewhere it is said.
     const shown = outcome === "reference-every" || outcome === "reference-some" || gate.valid > 0;
     const known = shown ? "" : `; ${feasible.has(version) ? KNOWN.yes : KNOWN.no}`;
-    const result = standing === undefined || !results ? "" : resultOf(standing);
-    const margin =
-      result === "" || standing?.margin == null
-        ? ""
-        : `, by the objective alone, ${percent(standing.margin)} apart`;
-    const room =
-      (standing?.room ?? 0) > 0 ? `; its own valid answers ${percent(standing?.room ?? 0)} apart` : "";
     return [
-      `${taskId} (${family}): ${said}${known}${result}${margin}${room}${gate.said}${historyLine(histories.get(version))}`,
+      `${taskId} (${family}): ${said}${known}${comparedOf(standing, results)}${gate.said}${historyLine(histories.get(version))}`,
     ];
   });
   const gated = gateAnswers(events, since);

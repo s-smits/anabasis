@@ -26,7 +26,7 @@ import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { acceptedAnswers, proposalsOf, writtenTasks } from "../kernel/history.ts";
 import { poolOf } from "../kernel/reports.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
-import { informative, type Paired, ROOM } from "../kernel/compare.ts";
+import { informative, type Paired } from "../kernel/compare.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { packageGate, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
 import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
@@ -191,25 +191,29 @@ async function seenOf(
 ) {
   const solves = readings.length;
   const valid = readings.filter(({ outcome }) => outcome === "pass").length;
-  const answers = gateAnswers(read(log), from).get(taskVersion(task)) ?? [];
-  // A task the reference never answers is held on its author's proof, the one place it decides.
+  const version = taskVersion(task);
+  const answers = gateAnswers(read(log), from).get(version) ?? [];
+  // A task the reference never answers is held on its author's proof, the one place it decides:
+  // `informative` reads it as a valid answer on record.
   const unsolved = solves > 0 && valid === 0;
-  const checked = unsolved ? await proof() : null;
-  const objective = contract.objective && {
-    direction: contract.objective.direction,
-    room: ROOM,
-  };
+  const proved = unsolved && (await proof())?.kind === "pass";
+  const declared = contract.objective;
   const pair: Paired = {
-    task: taskVersion(task),
+    task: version,
     old: readings.map(({ outcome }) => outcome === "pass"),
     fresh: [],
     ...keyIfDefined(
       "objective",
-      objective && { ...objective, old: answers.map(({ measure }) => measure), fresh: [] },
+      declared && { direction: declared.direction, old: answers.map(({ measure }) => measure), fresh: [] },
     ),
   };
-  const room = unsolved ? checked?.kind === "pass" : valid > 0 && informative(pair, "old", new Set());
-  return { solves, valid, answers, unsolved, room };
+  return {
+    solves,
+    valid,
+    answers,
+    unsolved,
+    room: informative(pair, "old", new Set(proved ? [version] : [])),
+  };
 }
 
 /** What the gate reads of one package: its shape, and under `try_task` the reference harness's

@@ -38,6 +38,7 @@ import type { LogEvent } from "./log.ts";
 import { providerFailed, windowEnded } from "./solve.ts";
 import { passed, practiceRan, ranUnder, rejectionAside } from "./solves.ts";
 import { taskSets } from "./task.ts";
+import { SEATS, traced, tracesIn, whose } from "./trace.ts";
 
 /** A session or a solve that began and has no end on record: what kind of start and its id, the
  *  dollars its turns and compactions metered, its turns, and when it began and wrote its last
@@ -197,13 +198,7 @@ const BUILD_FINISHED = "build.finished";
  *  field that names the session or the solve in all four events: a Builder's session, an
  *  Examiner's three kinds and a solve attempt. No session opens `repair.*` since 13 October; a log
  *  of before is billed whole. */
-const METERED = [
-  { of: "build", id: "session" },
-  { of: "exam", id: "session" },
-  { of: "draft", id: "session" },
-  { of: "repair", id: "session" },
-  { of: "solve", id: "solve" },
-] as const;
+const METERED = SEATS.map((of) => ({ of, id: whose(of) }));
 /** The events that carry what their own model turns were billed, in a `billed` field: the end of
  *  each of those, and a reviewer's reading. */
 export const BILLED: ReadonlySet<string> = new Set([
@@ -486,8 +481,8 @@ function taskRecords(events: readonly LogEvent[]) {
   const cut = new Set<string>();
   /** Each solve's last recorded turn, by the solve's id. */
   const lastTurn = new Map(
-    events.flatMap(({ kind, data }) =>
-      kind === "solve.turn" && isString(data.solve) ? [[data.solve, data]] : [],
+    tracesIn(events).flatMap((each) =>
+      each.seat === "solve" && each.part === "turn" ? [[each.id, each]] : [],
     ),
   );
   for (const solve of ranUnder(events)) {
@@ -878,12 +873,6 @@ export function billedBetween(events: readonly LogEvent[], from: number, to = ev
   return billedAll(events.slice(0, to)) - billedAll(events.slice(0, from));
 }
 
-/** The backend's price of one usage, `cost.total`, or nothing where it holds none. */
-function costOf(usage: JsonValue | undefined): number {
-  const total = asRecord(asRecord(usage)?.cost)?.total;
-  return isNumber(total) ? total : 0;
-}
-
 /**
  * Every session and solve that began and never ended on record, with the dollars it metered: the
  * run was killed from outside, so no `finished` event summed them, and the cap and the total read 0
@@ -898,7 +887,8 @@ export function unfinished(events: readonly LogEvent[]): Unfinished[] {
   return METERED.flatMap(({ of, id }) => {
     const ended = new Set(events.flatMap(({ kind, data }) => (kind === `${of}.finished` ? [data[id]] : [])));
     const open = new Map<JsonValue | undefined, Unfinished>();
-    for (const { at, kind, data } of events) {
+    for (const [index, event] of events.entries()) {
+      const { at, kind, data } = event;
       if (kind === `${of}.started` && !ended.has(data[id])) {
         open.set(data[id], {
           of,
@@ -912,13 +902,10 @@ export function unfinished(events: readonly LogEvent[]): Unfinished[] {
       const found = open.get(data[id]);
       if (found === undefined) continue;
       found.last = at;
-      if (kind === `${of}.turn`) {
-        found.dollars += costOf(data.usage);
-        found.turns += 1;
-      }
-      if (kind === `${of}.compacted` && Array.isArray(data.usages)) {
-        found.dollars += data.usages.reduce((sum: number, usage) => sum + costOf(usage), 0);
-      }
+      const part = traced(event, index);
+      if (part?.seat !== of || part.part === "call") continue;
+      found.dollars += part.billed ?? 0;
+      found.turns += part.part === "turn" ? 1 : 0;
     }
     return [...open.values()];
   });

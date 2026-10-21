@@ -1,0 +1,3 @@
+# The solver's source is the study's commit, recorded in each run's terms.json.
+harness:
+  params: {}

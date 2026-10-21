@@ -428,6 +428,7 @@ describe("a task's pairings", () => {
     ).toEqual({
       fresh: 1,
       old: 2,
+      rule: null,
       validity: { fresh: 1, old: 1 },
       objective: { fresh: 0, old: 1 },
       cost: { fresh: 0, old: 0 },
@@ -452,6 +453,11 @@ describe("a task's pairings", () => {
     // cheaper side.
     const cheap = { ...even, used: { old: billed(0.12, 0.12), fresh: billed(0.08, 0.08) } };
     expect(won(cheap)).toEqual({ fresh: 4, old: 0 });
+    // A fifth less is at the floor, whatever the float of (0.5 - 0.4) / 0.5 reads.
+    expect(won({ ...cheap, used: { old: billed(0.5, 0.5), fresh: billed(0.4, 0.4) } })).toEqual({
+      fresh: 4,
+      old: 0,
+    });
     // Closer than the floor (13% less) is even.
     expect(won({ ...cheap, used: { old: billed(0.115, 0.115), fresh: billed(0.1, 0.1) } })).toEqual({
       fresh: 0,

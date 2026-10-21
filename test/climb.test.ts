@@ -472,6 +472,25 @@ describe("the regression reading beside a comparison", () => {
       ties: 1,
     });
   });
+
+  it("reads validity first where both comparisons recorded one cost floor, and adds the rules up where they did not", () => {
+    // h3 answers in one solve of two, better by the objective; h2 in both. Added up, the two
+    // pairings h3 wins by the objective cancel the two it loses on validity; in order it loses.
+    const log = (cost?: number): LogEvent[] => [
+      ...heldOut("v1"),
+      ...["g-1", "g-2"].map((session) =>
+        event("comparison.started", { session, ...keyIfDefined("cost", cost) }),
+      ),
+      ...solved("g-1", "v1", "h1", [false, false]),
+      ...solved("g-1", "v1", "h2", [true, true], { measures: [10, 10] }),
+      reported("g-1", "h1", "h2", ["v1"], { direction: "lower", decided: 0 }),
+      ...solved("g-2", "v1", "h1", [false, false]),
+      ...solved("g-2", "v1", "h3", [true, false], { measures: [8] }),
+      reported("g-2", "h1", "h3", ["v1"], { direction: "lower", decided: 0 }),
+    ];
+    expect(regressionOf(log(0.2))).toMatchObject({ shared: 1, wins: 0, losses: 1, ties: 0 });
+    expect(regressionOf(log())).toMatchObject({ shared: 1, wins: 0, losses: 0, ties: 1 });
+  });
 });
 
 describe("the chance of a false promotion among an epoch's attempts", () => {

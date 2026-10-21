@@ -458,6 +458,7 @@ export function pairings(pair: Paired) {
   return {
     fresh: side("fresh"),
     old: side("old"),
+    rule: rule ?? null,
     validity,
     objective,
     cost,
@@ -473,22 +474,25 @@ function cheaper(pair: Paired, f: number, o: number): -1 | 0 | 1 {
   const dearer = Math.max(fresh ?? 0, old ?? 0);
   if (pair.cost === undefined || fresh === null || old === null || dearer === 0) return 0;
   const saving = (old - fresh) / dearer;
-  return Math.abs(saving) < pair.cost ? 0 : Math.sign(saving) === 1 ? 1 : -1;
+  // A fifth less is at the floor, though (0.5 - 0.4) / 0.5 reads 0.19999999999999996.
+  return Math.abs(saving) < pair.cost - SAME ? 0 : Math.sign(saving) === 1 ? 1 : -1;
 }
 
 /** The rules a comparison that records a cost floor reads a task by, in order. */
 const RULES = ["validity", "objective", "cost"] as const;
 
-/** Which rule decided a task, or null where it tied: under the order (`RULES`) the first by which
- *  the sides' counts differ; where the comparison records no cost floor, the objective where it gave
- *  the task a sign that validity alone did not, and validity otherwise. Until 21 October a rule was
- *  read around itself alone, so a task the bill won was told as won by the objective. */
+/** Which rule decided a task, or null where it tied: under the order, the one `pairings` counted
+ *  the task by; where the comparison records no cost floor, the objective where it gave the task a
+ *  sign that validity alone did not, and validity otherwise. Until 21 October a rule was read
+ *  around itself alone, so a task the bill won was told as won by the objective. */
 function ruling(pair: Paired): (typeof RULES)[number] | null {
   const counted = pairings(pair);
   const sign = Math.sign(counted.fresh - counted.old);
   if (sign === 0) return null;
-  if (pair.cost !== undefined) return RULES.find((rule) => counted[rule].fresh !== counted[rule].old) ?? null;
-  return sign === Math.sign(counted.validity.fresh - counted.validity.old) ? "validity" : "objective";
+  return (
+    counted.rule ??
+    (sign === Math.sign(counted.validity.fresh - counted.validity.old) ? "validity" : "objective")
+  );
 }
 
 /** Whether a rule decided a task (`ruling`). */

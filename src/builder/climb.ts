@@ -391,8 +391,10 @@ export function regressionOf(events: readonly LogEvent[]): Regression | null {
     if (other === undefined) continue;
     counts.shared += 1;
     // By the objective too, where both comparisons fixed the same rule; on validity alone otherwise.
+    // In order and by the bill, where both recorded one cost floor; added up as before otherwise.
     const rule = pair.objective;
     const same = rule !== undefined && other.objective?.direction === rule.direction;
+    const costed = pair.cost !== undefined && pair.cost === other.cost;
     const won = pairings({
       task: pair.task,
       old: other.fresh,
@@ -400,6 +402,11 @@ export function regressionOf(events: readonly LogEvent[]): Regression | null {
       ...keyIfDefined(
         "objective",
         same ? { ...rule, old: other.objective?.fresh ?? [], fresh: rule.fresh } : undefined,
+      ),
+      ...keyIfDefined("cost", costed ? pair.cost : undefined),
+      ...keyIfDefined(
+        "used",
+        costed ? { old: other.used?.fresh ?? [], fresh: pair.used?.fresh ?? [] } : undefined,
       ),
     });
     counts[won.fresh > won.old ? "wins" : won.fresh < won.old ? "losses" : "ties"] += 1;

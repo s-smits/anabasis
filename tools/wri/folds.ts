@@ -88,6 +88,8 @@ export interface Compared {
   readonly session: string;
   /** Its own report, which a settling leaves in the log, and where it stands. */
   readonly own: JsonObject;
+  /** The log indices where it began and where it reported. */
+  readonly began: number;
   readonly at: number;
   /** Its last report: its own, or the one a person's labels settled. */
   readonly last: JsonObject;
@@ -334,12 +336,24 @@ export function indexOf(events: readonly LogEvent[]): Index {
 function comparedOf(events: readonly LogEvent[], log: Pick<Index, "solves" | "builds">): Compared[] {
   return lastReports(events).map(({ session, data: last }) => {
     const at = events.findIndex(({ kind, data }) => kind === REPORTED && data.session === session);
+    const began = events.findIndex(
+      ({ kind, data }) => kind === "comparison.started" && data.session === session,
+    );
     const own = events[at]?.data ?? last;
     // A comparison the campaign command runs is a session of its own (`g-N`), and the round it
     // measured is the Builder session that left its new harness. Read by name alone, none of the
     // six comparisons of the #107 buffer and recode campaigns had a round, and every trigger of a
     // session's comparison read nothing (2026-10-10).
-    const makers = log.builds.filter((each) => each.from < at && each.finished?.harness === own.fresh);
+    // A led Builder freezes a harness for a comparison inside its conversation (`build.checkpoint`),
+    // which may never end: v061's g-2 read such a harness of b-1 (21 October).
+    const frozen = new Set(
+      events.flatMap(({ kind, data }, index) =>
+        kind === "build.checkpoint" && index < at && data.harness === own.fresh ? [data.session] : [],
+      ),
+    );
+    const makers = log.builds.filter(
+      (each) => each.from < at && (each.finished?.harness === own.fresh || frozen.has(each.session)),
+    );
     const build =
       log.builds.find((each) => each.session === session) ??
       makers.find((each) => each.finished?.changed === true) ??
@@ -353,7 +367,7 @@ function comparedOf(events: readonly LogEvent[], log: Pick<Index, "solves" | "bu
     const scoring = log.solves.filter(
       (solve) => solve.side === TEST && solve.index < at && scoredSet.has(solve.version) && counted(solve),
     );
-    return { session, own, at, last, build, scoredSet, scoring };
+    return { session, own, began, at, last, build, scoredSet, scoring };
   });
 }
 

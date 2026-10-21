@@ -26,7 +26,7 @@
  * report's own `p` is one-sided.
  */
 import { type Decided, decidedLine, type Ending } from "../../../../src/builder/move.ts";
-import { barsOf, regressionOf } from "../../../../src/builder/climb.ts";
+import { barsOf } from "../../../../src/builder/climb.ts";
 import { openSteps } from "../../../../src/builder/handover.ts";
 import { reported } from "../../../../src/builder/comparison.ts";
 import { namesOf } from "../../../../src/builder/names.ts";
@@ -224,7 +224,6 @@ const coreIn = once((log) => {
       risk: riskIn(log),
       runway: runwayIn(log),
     },
-    regression: regressionOf(log.events),
   };
 });
 

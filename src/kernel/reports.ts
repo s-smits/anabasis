@@ -23,16 +23,7 @@
  * Nothing here decides a comparison or makes a solve.
  */
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
-import {
-  closedTo,
-  draw,
-  objectiveMargin,
-  objectiveRuleIn,
-  type Paired,
-  pairsOf,
-  roomLeft,
-  tally,
-} from "./compare.ts";
+import { closedTo, draw, objectiveRuleIn, type Paired, pairsOf, roomLeft, tally } from "./compare.ts";
 import type { LogEvent } from "./log.ts";
 import { providerFailed, windowEnded } from "./solve.ts";
 import { passed, practiceRan, ranUnder, rejectionAside } from "./solves.ts";
@@ -88,8 +79,6 @@ export interface Standing {
     | "tied-mixed"
     | "aside";
   readonly solves: number | null;
-  /** How far apart the sides' measures were where the objective alone won it (`objectiveMargin`). */
-  readonly margin: number | null;
   /** The room by the objective the reference harness's answers left there, against its own and its
    *  author's (`roomLeft`), and 0 under the floor (`ROOM`). */
   readonly room: number | null;
@@ -127,8 +116,6 @@ interface TalliedIn {
   readonly closed: boolean;
   /** The side that won the task in this comparison's tally (`tally`), or null for a tie. */
   readonly won: "old" | "fresh" | null;
-  /** How far apart the sides' measures were where the objective alone won it (`objectiveMargin`). */
-  readonly margin: number | null;
   /** The room by the objective the reference harness's answers left there, against its own and its
    *  author's (`roomLeft`), and 0 under the floor (`ROOM`), where it leaves none; null where it
    *  stood on neither side. */
@@ -401,7 +388,14 @@ export function pairsReported(events: readonly LogEvent[], report: Reported): Pa
   }
   const begun = events.find(({ kind, data: start }) => kind === STARTED && start.session === session);
   const halves = begun?.data.noise === true ? ("mirrored" as const) : undefined;
-  const sides = { old, fresh, setting, comparison: session, objective: objectiveRuleIn(data), halves };
+  const sides = {
+    old,
+    fresh,
+    setting,
+    comparison: session,
+    objective: objectiveRuleIn(data),
+    halves,
+  };
   return pairsOf(events.slice(0, index + 1), versions, sides, solves).pairs;
 }
 
@@ -532,7 +526,6 @@ function tallyReports(
         referenceCut: side !== null && cutOn(data[side]),
         closed: side !== null && closedTo(pair, side, of(task).best),
         won: wins > 0 ? "fresh" : losses > 0 ? "old" : null,
-        margin: objectiveMargin(pair),
         room: left,
       });
     }
@@ -745,7 +738,7 @@ function outcomeOf(record: TaskRecord): [string, Outcome][] {
 function standingOf(record: TaskRecord): [string, Standing][] {
   const last = lastRead(record);
   if (last === null) return [];
-  const aside = { cell: "aside", solves: null, margin: null, room: null } as const;
+  const aside = { cell: "aside", solves: null, room: null } as const;
   if (last === "aside") return [[record.version, aside]];
   const { reference, won, old, fresh } = last;
   if (reference === null) return [];
@@ -753,7 +746,7 @@ function standingOf(record: TaskRecord): [string, Standing][] {
   const none = record.feasible ? "tied-none-known" : "tied-none";
   const tied = both.every(Boolean) ? "tied-every" : both.some(Boolean) ? "tied-mixed" : none;
   const cell = won === null ? tied : won === reference ? "reference-won" : "other-won";
-  return [[record.version, { cell, solves: old.length, margin: last.margin, room: last.room }]];
+  return [[record.version, { cell, solves: old.length, room: last.room }]];
 }
 
 /**

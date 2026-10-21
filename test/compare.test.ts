@@ -5,17 +5,15 @@
 import { describe, expect, it } from "bun:test";
 import {
   closedTo,
-  decidedByObjective,
-  objectiveGain,
-  objectiveMargin,
+  differenceOf,
   detectable,
   draw,
   flipP,
   informative,
   objectiveRuleIn,
   type Paired,
-  pairings,
   pairsOf,
+  pointsOf,
   power,
   roomLeft,
   scored,
@@ -199,15 +197,16 @@ describe("the paired sign-flip test", () => {
     expect(read.get(LEVEL)).toBeGreaterThan(0);
   });
 
-  it("counts a task once by how often each harness was valid, and takes it into the test by how many pairs it was won", () => {
+  it("counts a task once by how often each harness was valid, and takes it into the test by its score", () => {
     expect(tally(pairs(6, 1, 17))).toEqual({ wins: 6, losses: 1, ties: 17 });
-    // Each task here is won or lost by three pairs: four of the nine to one, or three to none.
+    // Each task here is won or lost by three pairs of nine on validity, four to one or three to
+    // none: a third of validity's 600 points.
     expect(scored(pairs(6, 1, 17))).toEqual({
       wins: 6,
       losses: 1,
       ties: 17,
       p: 0.0625,
-      differences: units(6, 1, 3, 17),
+      differences: units(6, 1, 200, 17),
     });
     expect(scored(pairs(5, 1, 18)).p).toBe(0.109375);
     expect(() => tally([{ task: "t", old: [P, P, P], fresh: [P, P] }])).toThrow(
@@ -334,182 +333,138 @@ describe("one reading", () => {
 });
 
 describe("a task's pairings", () => {
-  /** The pairs each side won of one task. */
-  const won = (pair: Parameters<typeof pairings>[0]) => {
-    const { fresh, old } = pairings(pair);
-    return { fresh, old };
-  };
-
   it("gives a valid answer the pair over one that is not and leaves two alike even, so a task reads as the harness with more valid answers", () => {
-    // Two solves a side: the new harness is valid twice, the reference once.
-    expect(won({ task: "t", old: [P, F], fresh: [P, P] })).toEqual({ fresh: 2, old: 0 });
+    // Two solves a side: the new harness is valid twice, the reference once, so it wins two of the
+    // four pairings on validity: half of validity's 600 points.
+    expect(differenceOf({ task: "t", old: [P, F], fresh: [P, P] })).toBe(300);
     // Two valid answers are even, however good either is: no objective is read.
-    expect(won({ task: "t", old: [P, P], fresh: [P, P] })).toEqual({ fresh: 0, old: 0 });
-    expect(won({ task: "t", old: [F, F], fresh: [F, F] })).toEqual({ fresh: 0, old: 0 });
+    expect(differenceOf({ task: "t", old: [P, P], fresh: [P, P] })).toBe(0);
+    expect(differenceOf({ task: "t", old: [F, F], fresh: [F, F] })).toBe(0);
     // One valid answer a side wins a pair each, and the task is a tie.
-    expect(won({ task: "t", old: [P, F], fresh: [F, P] })).toEqual({ fresh: 1, old: 1 });
+    expect(differenceOf({ task: "t", old: [P, F], fresh: [F, P] })).toBe(0);
     expect(unsolved({ task: "t", old: [F, F], fresh: [F, F] })).toBe(true);
     expect(unsolved({ task: "t", old: [F, F], fresh: [F, P] })).toBe(false);
     for (let solves = 1; solves <= 4; solves += 1) {
       for (let valid = 0; valid <= solves; valid += 1) {
         for (let other = 0; other <= solves; other += 1) {
           const side = (passes: number) => Array.from({ length: solves }, (_, nth) => nth < passes);
-          const each = won({ task: "t", old: side(other), fresh: side(valid) });
-          expect(Math.sign(each.fresh - each.old)).toBe(Math.sign(valid - other));
+          const pair = { task: "t", old: side(other), fresh: side(valid) };
+          expect(Math.sign(differenceOf(pair))).toBe(Math.sign(valid - other));
         }
       }
     }
   });
 
-  it("sets two valid answers apart by the objective, measures within a billionth as one, and no invalid one", () => {
+  it("sets two valid answers apart by the objective from the room floor, and no invalid one", () => {
     const lower = { direction: "lower" } as const;
-    // Two valid answers a side, the new harness's lighter: it wins every pairing of the four.
+    // Two valid answers a side, the new harness's a tenth or more lighter in every pairing: the
+    // objective's whole 300 points.
     expect(
-      won({
+      differenceOf({
         task: "t",
         old: [P, P],
         fresh: [P, P],
         objective: { ...lower, old: [10, 11], fresh: [8, 9] },
       }),
-    ).toEqual({ fresh: 4, old: 0 });
+    ).toBe(300);
     // The same measures the other way up, where higher is better.
     expect(
-      won({
+      differenceOf({
         task: "t",
         old: [P, P],
         fresh: [P, P],
-        objective: { ...lower, direction: "higher", old: [10, 11], fresh: [8, 9] },
+        objective: { direction: "higher", old: [10, 11], fresh: [8, 9] },
       }),
-    ).toEqual({ fresh: 0, old: 4 });
-    // Any difference sets two answers apart, 10 against 10.05 among them (until 19 October a
-    // margin of 0.01 made those two even); within a billionth of the larger they are one measure,
-    // which is floating-point arithmetic. A measure missing on one side decides nothing.
+    ).toBe(-300);
+    // Two valid answers closer than the room floor tie: 10 against 10.05 is half a percent, and a
+    // measure missing on one side decides nothing.
     expect(
-      won({
+      differenceOf({
         task: "t",
         old: [P, P],
         fresh: [P, P],
-        objective: { ...lower, old: [10.05, 10 + 1e-9], fresh: [10, null] },
+        objective: { ...lower, old: [10.05, 10], fresh: [10, 8] },
       }),
-    ).toEqual({ fresh: 1, old: 0 });
-    // Under a room floor, the comparison's term since 21 October, two valid answers closer than it
-    // tie: 10 against 10.05 is half a percent. 8 against 10 still sets them apart.
-    const floored = { ...lower, room: 0.01 } as const;
+    ).toBe(150);
     expect(
-      won({
+      differenceOf({
         task: "t",
         old: [P, P],
         fresh: [P, P],
-        objective: { ...floored, old: [10.05, 10], fresh: [10, 8] },
+        objective: { ...lower, old: [10.05, 10], fresh: [10, null] },
       }),
-    ).toEqual({ fresh: 2, old: 0 });
+    ).toBe(0);
     // Validity is read first: a refused answer loses to a valid one whatever either measures, and
-    // a measure on a refused answer is never read. Between the two valid answers the objective
-    // decides, so the new harness, valid once at 100, loses that pairing too.
+    // a measure on a refused answer is never read.
     expect(
-      won({
+      pointsOf({
         task: "t",
         old: [P, F],
         fresh: [F, P],
         objective: { ...lower, old: [1, 1], fresh: [1, 100] },
       }),
-    ).toEqual({ fresh: 1, old: 2 });
-    // Each pairing is decided once: by validity where one answer was valid, by the objective between
-    // two valid answers it told apart, and the pairings of two valid answers are counted beside.
-    expect(
-      pairings({
-        task: "t",
-        old: [P, F],
-        fresh: [F, P],
-        objective: { ...lower, old: [1, 1], fresh: [1, 100] },
-      }),
-    ).toEqual({
-      fresh: 1,
-      old: 2,
-      validity: { fresh: 1, old: 1 },
-      objective: { fresh: 0, old: 1 },
-      valid: 1,
+    ).toEqual({ validity: 0, objective: -75, bill: 0 });
+  });
+
+  it("scores a task by its measures over the pairings, weighed, with the objective full at a tenth better and the bill full at half, each from its floor", () => {
+    const billed = (...each: number[]) => each.map((one) => ({ billed: one }));
+    const points = (pair: Paired) => {
+      const { validity, objective, bill } = pointsOf(pair);
+      return [validity, objective, bill].map((one) => Math.round(one));
+    };
+    const even = { task: "c", old: [P, P], fresh: [P, P] };
+    // Half the bill on every solve, with answers alike: the bill's whole weight, 100 points.
+    const cheap = { ...even, used: { old: billed(0.2, 0.2), fresh: billed(0.1, 0.1) } };
+    expect(points(cheap)).toEqual([0, 0, 100]);
+    expect(differenceOf({ ...cheap, used: { old: billed(0.4, 0.4), fresh: billed(0.1, 0.1) } })).toBe(100);
+    // A fifth less is at the floor, whatever the float of 0.5 against 0.4 reads; 13% less is under it.
+    expect(differenceOf({ ...cheap, used: { old: billed(0.5, 0.5), fresh: billed(0.4, 0.4) } })).toBe(32);
+    expect(differenceOf({ ...cheap, used: { old: billed(0.115, 0.115), fresh: billed(0.1, 0.1) } })).toBe(0);
+    // The objective: 5% better is half its weight, a tenth or more the whole, under 1% nothing.
+    const measured = (old: number, fresh: number): Paired => ({
+      ...even,
+      objective: { direction: "lower", old: [old, old], fresh: [fresh, fresh] },
     });
-    // How many tasks the objective decided: the ones that validity alone would have tied.
-    const even = { task: "e", old: [P, P], fresh: [P, P] };
-    expect(
-      decidedByObjective([
-        { ...even, objective: { ...lower, old: [10, 10], fresh: [8, 8] } },
-        { ...even, objective: { ...lower, old: [10, 10], fresh: [10, 10] } },
-        { ...even, task: "w", old: [F, F], objective: { ...lower, old: [1, 1], fresh: [100, 100] } },
-        even,
-      ]),
-    ).toBe(1);
-  });
-
-  it("reports the median relative gain by the objective on the tasks the new harness won, over those with a measure on both sides", () => {
-    const even = { task: "e", old: [P, P], fresh: [P, P] };
-    const higher = { direction: "higher" as const };
-    const gain = objectiveGain([
-      // Won by the objective: 10 to 8, lower better, is 0.2 of the larger; 4 to 5, higher, is 0.2.
-      { ...even, objective: { ...lowerRule, old: [10, 10], fresh: [8, 8] } },
-      { ...even, objective: { ...higher, old: [4, 4], fresh: [5, 5] } },
-      { ...even, objective: { ...lowerRule, old: [10, 10], fresh: [9, 9] } },
-      // Won on validity with a worse measure: the gain is negative, a sixth.
-      {
-        task: "v",
-        old: [P, F, F],
-        fresh: [P, P],
-        objective: { ...lowerRule, old: [5, null, null], fresh: [6, 6] },
-      },
-      // Lost, and won where the reference has no valid measure: neither counts.
-      { ...even, objective: { ...lowerRule, old: [8, 8], fresh: [10, 10] } },
-      { ...even, old: [F, F], objective: { ...lowerRule, old: [null, null], fresh: [3, 3] } },
+    expect(differenceOf(measured(100, 95))).toBe(150);
+    expect(differenceOf(measured(100, 50))).toBe(300);
+    expect(differenceOf(measured(100, 99.5))).toBe(0);
+    expect(differenceOf(measured(95, 100))).toBe(-150);
+    // A dearer answer that measures a fifth better wins the task from a cheaper one.
+    expect(points({ ...measured(10, 8), used: { old: billed(0.1, 0.1), fresh: billed(0.2, 0.2) } })).toEqual([
+      0, 300, -100,
     ]);
-    expect(gain?.tasks).toBe(4);
-    expect(gain?.median).toBeCloseTo(0.15, 12);
-    expect(objectiveGain([even])).toBeNull();
-    expect(
-      objectiveGain([{ ...even, objective: { ...lowerRule, old: [8, 8], fresh: [10, 10] } }]),
-    ).toBeNull();
-  });
-
-  it("measures how far apart a task won by the objective alone was, and nothing where validity decided it or it tied", () => {
-    const even = { task: "e", old: [P, P], fresh: [P, P] };
-    // Won by the objective alone: 100 to 99.9, a thousandth of the larger, either side winning.
-    expect(
-      objectiveMargin({ ...even, objective: { ...lowerRule, old: [100, 100], fresh: [99.9, 99.9] } }),
-    ).toBeCloseTo(0.001, 12);
-    expect(
-      objectiveMargin({ ...even, objective: { ...lowerRule, old: [99.9, 99.9], fresh: [100, 100] } }),
-    ).toBeCloseTo(0.001, 12);
-    // Won on validity, tied at one measure, or no objective at all: no margin.
-    const validity = { ...even, old: [P, F], objective: { ...lowerRule, old: [100, null], fresh: [99, 99] } };
-    expect(objectiveMargin(validity)).toBeNull();
-    expect(
-      objectiveMargin({ ...even, objective: { ...lowerRule, old: [100, 100], fresh: [100, 100] } }),
-    ).toBeNull();
-    expect(objectiveMargin(even)).toBeNull();
+    // An answer that fails fast is cheap, and its pairings read no bill; nor do two failed answers.
+    const failed = { ...cheap, fresh: [F, F] };
+    expect(points(failed)).toEqual([-600, 0, 0]);
+    expect(differenceOf({ ...failed, old: [F, F] })).toBe(0);
+    // The measures trade: valid in 3 solves of 4 against 4 of 4, the new harness gives up 150 points
+    // of validity and gains 225 by measuring a fifth better and 75 by billing half on the twelve
+    // pairings of two valid answers, so it wins the task.
+    const lapsed: Paired = {
+      task: "l",
+      old: [P, P, P, P],
+      fresh: [P, P, P, F],
+      objective: { direction: "lower", old: [10, 10, 10, 10], fresh: [8, 8, 8, null] },
+      used: { old: billed(0.2, 0.2, 0.2, 0.2), fresh: billed(0.1, 0.1, 0.1, 0.1) },
+    };
+    expect(points(lapsed)).toEqual([-150, 225, 75]);
+    expect(differenceOf(lapsed)).toBe(150);
   });
 
   it("counts a gain by the objective in a pair only at the room floor, the one it holds room to", () => {
     // Six tasks with room: the reference measures 100, its author's answer 70, and the new harness
-    // 99.99. Read at floating-point equality, as a comparison that recorded no floor is, the
-    // 0.01% gain wins all six, which reads a step at 0.02.
-    const one = (n: number, room?: number): Paired => ({
+    // 99.99. A 0.01% gain is under the floor, so the six tie, while the room the author's answer
+    // leaves stays told. Read at floating-point equality, as comparisons begun before 21 October
+    // once were, they read 6-0 and a step at 0.02.
+    const one = (n: number): Paired => ({
       task: `t${String(n)}`,
       old: [P, P],
       fresh: [P, P],
-      objective: {
-        direction: "lower",
-        ...keyIfDefined("room", room),
-        old: [100, 100],
-        fresh: [99.99, 99.99],
-      },
+      objective: { direction: "lower", old: [100, 100], fresh: [99.99, 99.99] },
     });
-    const precision = (room?: number) => [1, 2, 3, 4, 5, 6].map((n) => one(n, room));
-    expect(tally(precision())).toEqual({ wins: 6, losses: 0, ties: 0 });
-    expect(flipP(scored(precision()).differences)).toBe(1 / 64);
-    // At the floor the same answers tie, while the room the author's answer leaves stays told.
-    const floored = precision(0.01);
-    expect(tally(floored)).toEqual({ wins: 0, losses: 0, ties: 6 });
-    expect(roomLeft(one(1, 0.01), "old", [70])).toBeCloseTo(0.3);
-    expect(informative(one(1, 0.01), "old", new Set(), new Map([["t1", 70]]))).toBe(true);
+    expect(tally([1, 2, 3, 4, 5, 6].map(one))).toEqual({ wins: 0, losses: 0, ties: 6 });
+    expect(roomLeft(one(1), "old", [70])).toBeCloseTo(0.3);
+    expect(informative(one(1), "old", new Set(), new Map([["t1", 70]]))).toBe(true);
     expect(roomLeft({ task: "t", old: [F], fresh: [P] }, "old", [70])).toBeNull();
   });
 
@@ -593,16 +548,6 @@ describe("a task's pairings", () => {
     expect(closedTo(pair([12, 12], [10, 11]), "fresh")).toBe(false);
     // Apart by less than the room floor is closed: the next harness can only win it by rounding.
     expect(closedTo(pair([12, 12], [10, 10.05]), "fresh")).toBe(true);
-    // Closure reads the one floor, even where the comparison began with none recorded.
-    expect(
-      closedTo(
-        {
-          ...pair([12, 12], [10, 10.05]),
-          objective: { direction: "lower", room: 0, old: [12, 12], fresh: [10, 10.05] },
-        },
-        "fresh",
-      ),
-    ).toBe(true);
     // One better answer of the other side's opens it, as many as there are.
     expect(closedTo(pair([12, 9], [10, 10]), "fresh")).toBe(false);
     // Within a billionth is alike.

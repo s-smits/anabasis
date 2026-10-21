@@ -256,7 +256,14 @@ function sensitivityFacts(seen: Sensitivity): (readonly [string, string])[] {
         ] as const)),
     ["Tied with no valid answer", plural(seen.unsolved, "task")],
     ["Flagged as malformed", plural(seen.flagged, "task")],
-    ...(seen.decided === null ? [] : ([["Decided by the objective", plural(seen.decided, "task")]] as const)),
+    ...(seen.points === null
+      ? []
+      : ([
+          [
+            "Points to the new",
+            `validity ${String(seen.points.validity)}, objective ${String(seen.points.objective)}, bill ${String(seen.points.bill)}`,
+          ],
+        ] as const)),
     ...(overlap === null
       ? []
       : ([[`Shared with ${overlap.with}`, `${plural(overlap.tasks, "task")} both scored`]] as const)),

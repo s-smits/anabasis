@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { type Decided, short } from "../../../../src/builder/move.ts";
+import type { Decided } from "../../../../src/builder/move.ts";
 import { plural } from "../../../../src/meta/text.ts";
 import { ComparisonsChart } from "../components/charts/comparisons.tsx";
 import { ShareKey, SpendChart, ValidShareChart } from "../components/charts/small.tsx";
@@ -21,8 +21,7 @@ import { money, percent, time } from "./format.ts";
  *
  * What `bun run runs view` prints and the readouts do not stands one click or one line away: the
  * set-up line with the seats and the terms in one collapsed disclosure, the steps open at the log's
- * end in the next move's detail as the view words it, the regression reading beside the counters,
- * and when the log was last written beside the status, since an open campaign that last wrote long
+ * end in the next move's detail as the view words it, and when the log was last written beside the status, since an open campaign that last wrote long
  * ago is probably a process stopped with no ending, which the log cannot say.
  */
 
@@ -230,7 +229,7 @@ function rateSource(risk: NonNullable<CampaignReading["counters"]["risk"]>): str
 
 function Counters({ reading }: { reading: CampaignReading }) {
   const { withoutGain, patience, labels, controls, controlSteps, risk, runway } = reading.counters;
-  const { regression, promotions, row } = reading;
+  const { promotions, row } = reading;
   const affords =
     runway === null || runway.each <= 0 ? null : Math.floor(Math.max(0, runway.left) / runway.each);
   return (
@@ -265,15 +264,6 @@ function Counters({ reading }: { reading: CampaignReading }) {
           title={`${money(runway.left)} left; comparison ${runway.comparison} billed ${money(runway.each)}, which the table prices the next one by`}
         >
           Comparisons left at the last one's price <b className="ana-num">{affords}</b>
-        </span>
-      )}
-      {regression === null ? null : (
-        <span title="A reading beside the test: it decides nothing">
-          Regression check {short(regression.newest)} ({regression.comparisons[0]}) against{" "}
-          {short(regression.previous)} ({regression.comparisons[1]}) on {plural(regression.shared, "task")}{" "}
-          <b className="ana-num">
-            {regression.wins}–{regression.losses}–{regression.ties}
-          </b>
         </span>
       )}
     </p>

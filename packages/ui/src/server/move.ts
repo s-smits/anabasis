@@ -130,7 +130,7 @@ function sensitivityOf(report: Report): Sensitivity | null {
     informative: valid?.informative ?? null,
     unsolved: scored.unsolved,
     flagged: report.flagged.length,
-    decided: report.objective?.decided ?? null,
+    points: report.points ?? null,
     overlap: overlap === null ? null : { with: overlap.with, tasks: overlap.tasks.length },
     billed: report.billed,
     noise: noise === null ? null : { flips: noise.flips, detectable: noise.detectable ?? null },

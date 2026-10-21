@@ -184,10 +184,7 @@ function replayedSet(
   }
   const differences = of.map((task, at) => {
     const pair = isString(task) ? pairs.get(task) : undefined;
-    if (pair !== undefined) {
-      const { fresh, old } = tree.pairings(pair);
-      return fresh - old;
-    }
+    if (pair !== undefined) return tree.difference(pair);
     totals.storedTasks += 1;
     return stored[at] ?? 0;
   });
@@ -219,10 +216,9 @@ function aaOf(tree: Tree, events: readonly LogEvent[], report: Reported, margin:
     ...keyIfDefined("objective", replayObjective),
   };
   const tasks = Array.isArray(versions) ? versions.filter(isString) : [];
-  return tree.pairsOf(events.slice(0, report.index + 1), tasks, sides, solves / 2).map((pair) => {
-    const { fresh, old: lost } = tree.pairings(pair);
-    return fresh - lost;
-  });
+  return tree
+    .pairsOf(events.slice(0, report.index + 1), tasks, sides, solves / 2)
+    .map((pair) => tree.difference(pair));
 }
 
 /** Each comparison with a frontier, read again: its pairs at the margin asked, its sets rebuilt
@@ -332,12 +328,11 @@ function consistency(tree: Tree, readings: readonly Reading[]): string {
       const pair = reading.pairs.get(reading.named[at] ?? "");
       if (difference < 0) lost += 1;
       if (difference <= 0 || pair === undefined) continue;
-      const all = pair.fresh.length * pair.old.length;
-      if (tree.pairings(pair).fresh === all) every += 1;
+      if (pair.fresh.every(Boolean) && !pair.old.some(Boolean)) every += 1;
       else some += 1;
     }
   }
-  return `untied tasks won in every pairing ${String(every)}, in some ${String(some)}, lost ${String(lost)}`;
+  return `untied tasks won on validity in every pairing ${String(every)}, otherwise ${String(some)}, lost ${String(lost)}`;
 }
 
 /** Whether a reading of the reference against itself reads a step either way at half the level. */

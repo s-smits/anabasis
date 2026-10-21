@@ -101,22 +101,20 @@ const TURNS =
  *  won each task in its last comparison is among them (`exam-results`). */
 function legendOf(results: boolean): string {
   const won = results
-    ? ", and who won it there: the other harness, whichever the reference harness was compared with, the reference harness, or neither; where the objective alone decided it, how far apart the two sides' median measures were"
+    ? ", and who won it there: the other harness, whichever the reference harness was compared with, the reference harness, or neither"
     : "";
   return `The tasks of the exam so far, a line each: the task, its family, and how the reference harness did on it in the last comparison that scored it${won}. Where nothing on the line shows a valid answer, it says whether one is on record. "Gate" is how many of the reference harness's solves at its gate were valid, of the solves it ran, at most ${String(TRIED)}; "last comparisons", its valid solves in each of its last comparisons with the current reference harness, newest first, and how many of the newest closed the task in a row. These are measurements and no instruction. read_example returns any of them whole.`;
 }
 
 /** What a task's last comparison with the reference harness on a side says on its line: with
- *  `results` (the operator's word of 20 October), who won it there and, where the objective alone
- *  decided it, how far apart the sides' medians were; and how much better an answer on record, its
+ *  `results` (the operator's word of 20 October), who won it there; and how much better an answer on record, its
  *  author's or another of its own, was than one of the reference's, where that reaches the floor
  *  (`roomLeft`), which is all its room by the objective. */
 function comparedOf(standing: Standing | undefined, results: boolean): string {
   if (standing === undefined) return "";
-  const { cell, margin, room } = standing;
+  const { cell, room } = standing;
   const winner = cell === "other-won" ? "other" : cell === "reference-won" ? "reference" : null;
-  const alone = margin === null ? "" : `, by the objective alone, ${percent(margin)} apart`;
-  const won = winner === null ? "; tied there" : `; won there by the ${winner} harness${alone}`;
+  const won = winner === null ? "; tied there" : `; won there by the ${winner} harness`;
   return `${results && cell !== "aside" ? won : ""}${(room ?? 0) > 0 ? `; an answer on record ${percent(room ?? 0)} better than one of its own` : ""}`;
 }
 

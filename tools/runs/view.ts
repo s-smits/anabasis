@@ -22,7 +22,7 @@
  * closing report. It names no task, and it is for the operator and the session that stands in for
  * the campaign's owner: what a Builder is told of the same rows is `src/builder/past.ts`.
  */
-import { epochLine, epochsOf, regressionLine, regressionOf } from "#src/builder/climb.ts";
+import { epochLine, epochsOf } from "#src/builder/climb.ts";
 import { decide } from "#src/builder/decide.ts";
 import { type Decided, decidedLine, short } from "#src/builder/move.ts";
 import { type Called, calledBy, namesOf } from "#src/builder/names.ts";
@@ -110,7 +110,11 @@ function stepLine(step: Handover, now: number, called: Called): string {
         : [
             `tasks with ${valid.old.map((_, index) => String(index)).join(", ")} valid answers: reference ${valid.old.join("/")}, new ${valid.fresh.join("/")}`,
           ]),
-      ...(step.decided === null ? [] : [`${plural(step.decided, "task")} decided by the objective`]),
+      ...(step.points === null
+        ? []
+        : [
+            `points to the new harness by validity ${String(step.points.validity)}, the objective ${String(step.points.objective)}, the bill ${String(step.points.bill)}`,
+          ]),
       ...(step.aside > 0 ? [`${plural(step.aside, "task")} set aside for a person's labels`] : []),
       ...(ruled.length === 0 ? [] : [ruled.join(", ")]),
       dollars(step.billed),
@@ -203,13 +207,10 @@ export async function view(args: readonly string[]): Promise<void> {
   const open = openSteps(campaign.steps);
   const decided = decidedOn(events, values);
   const climb = epochsOf(events).map((epoch) => `  ${epochLine(epoch, called)}`);
-  const regression = regressionOf(events);
-  const beside = regression === null ? [] : [`  ${regressionLine(regression)}`];
   for (const line of [
     ...lines,
     "the climb",
     ...climb,
-    ...beside,
     open.length === 0
       ? "the table's move"
       : `the table's move, on the log as it stands with ${open.join(", ")} open`,

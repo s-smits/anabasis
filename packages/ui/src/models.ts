@@ -24,7 +24,7 @@
  * shows, never a silent empty list.
  */
 import type { Supply } from "../../../src/builder/admission.ts";
-import type { regressionOf, Share, Worth } from "../../../src/builder/climb.ts";
+import type { Share, Worth } from "../../../src/builder/climb.ts";
 import type { Handover } from "../../../src/builder/handover.ts";
 import type { Decided, Ending as CampaignEnding } from "../../../src/builder/move.ts";
 import type { Seat, Terms } from "../../../src/builder/opening.ts";
@@ -365,9 +365,6 @@ export interface CampaignReading extends Answer {
   readonly harnesses: readonly HarnessCard[];
   readonly spend: readonly SpendPoint[];
   readonly counters: Counters;
-  /** The newest candidate read against the one before it (`regressionOf`), one line beside the
-   *  counters; null where the log holds no two candidates read against one reference. */
-  readonly regression: ReturnType<typeof regressionOf>;
   /** The whole-run reader's rows and triggers (`overview`, `tools/wri/read.ts`), and how many of its
    *  triggers the default tier withholds: those of the exam side's lanes, which name checks and
    *  what they refused. */
@@ -491,10 +488,11 @@ export interface Sensitivity {
    *  report written before 9 October. */
   readonly informative: { readonly old: number; readonly fresh: number } | null;
   /** The tied tasks no counted solve answered validly, the tallied tasks with a solve a solver
-   *  flagged, and the tallied tasks the objective decided (null where it fixed none). */
+   *  flagged, and the points each measure gave the tallied tasks (null in a report before 21
+   *  October). */
   readonly unsolved: number;
   readonly flagged: number;
-  readonly decided: number | null;
+  readonly points: { readonly validity: number; readonly objective: number; readonly bill: number } | null;
   /** The comparison of the same two harnesses before this one, and the tasks both scored. */
   readonly overlap: { readonly with: string; readonly tasks: number } | null;
   /** The mean billed dollars of a counted solve under each harness. */

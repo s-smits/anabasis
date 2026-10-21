@@ -215,7 +215,7 @@ test("a comparison cut before its report stands at its scored tasks, never at ze
   expect(html).toContain("No report yet");
 });
 
-test("what the view prints beside the readouts is one click or one line away: the set-up, the open steps, the regression, the last write", () => {
+test("what the view prints beside the readouts is one click or one line away: the set-up, the open steps, the last write", () => {
   const reading = readingOf(fixture.name);
   const html = paneOf(reading);
   const { supply } = reading;
@@ -236,11 +236,4 @@ test("what the view prints beside the readouts is one click or one line away: th
   expect(html).toContain(
     `Waiting for a label: tasks <b class="ana-num">${String(labels.tasks)}</b>, rejections set aside in unsettled comparisons <b class="ana-num">${String(labels.rejections)}</b>`,
   );
-  const units = readingOf(fixture.units);
-  if (units.regression === null) {
-    throw new Error("the units campaign reads two candidates against one reference");
-  }
-  const { wins, losses, ties } = units.regression;
-  expect(paneOf(units)).toContain(`<b class="ana-num">${String(wins)}–${String(losses)}–${String(ties)}</b>`);
-  expect(paneOf(units)).toContain("Regression check");
 });

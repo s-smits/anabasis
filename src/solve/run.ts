@@ -35,7 +35,7 @@ import type { Limits } from "../kernel/condition.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { append } from "../kernel/log.ts";
 import { priceKey } from "../kernel/meter.ts";
-import { type Ending, providerFailed, windowEnded } from "../kernel/solve.ts";
+import { type Ending, unanswered } from "../kernel/solve.ts";
 import type { Task, Verifier } from "../kernel/verify.ts";
 import { lstatSync, rmSync } from "../meta/filesystem.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
@@ -394,22 +394,11 @@ export async function judge(request: SolveRequest, id: string, played: Played): 
   if (played.flagged !== undefined) return { outcome: "flagged", reason: played.flagged };
   if (played.crash !== null) return { outcome: "non-result", kind: "sandbox-crash", reason: played.crash };
   if (played.broken !== null) return { outcome: "fail", kind: "broken-harness", reason: played.broken };
-  if (played.wallEnded) return { outcome: "fail", kind: "wall-ended" };
-  const last = played.turns.at(-1);
-  // A last turn the provider failed is the provider's, though it was the last the solve was
-  // allowed: until 14 October it was read as the solver's loss at its turns (`turns-ended`). A
-  // context the solver filled is its own, and comes as an error too.
-  if (last !== undefined && providerFailed(last)) {
-    return {
-      outcome: "non-result",
-      kind: "provider",
-      reason: last.errorMessage ?? "the provider failed the turn",
-    };
-  }
-  // A full context or a cut reply is the window's, the last allowed turn included (`windowEnded`).
-  if (last !== undefined && windowEnded(last)) return { outcome: "fail", kind: "context-ended" };
-  if (played.turnsEnded) return { outcome: "fail", kind: "turns-ended" };
-  return { outcome: "fail", kind: "no-answer" };
+  return unanswered({
+    wallEnded: played.wallEnded,
+    turnsEnded: played.turnsEnded,
+    last: played.turns.at(-1),
+  });
 }
 
 /** Each entry under `dir` by path, size and modification time, links unfollowed. */

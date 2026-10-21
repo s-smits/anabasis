@@ -7,7 +7,7 @@ import { existsSync, mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { pulse, watch } from "../tools/runs/pulse.ts";
+import { leftOut, pulse, watch } from "../tools/runs/pulse.ts";
 import type { Run } from "../tools/runs/registry.ts";
 
 const round: Run = { name: "r1", tree: "/wt", path: "/wt/.ana/d2/r1/log.jsonl", end: "comparison.reported" };
@@ -196,5 +196,19 @@ describe("the runs pulse", () => {
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
+  });
+
+  it("says under the status rows the closed runs it leaves out, and the archive's newest", () => {
+    const newest = [
+      { name: "buffer-a", days: 1.4, promoted: 3 },
+      { name: "buffer-b", days: 2.9, promoted: 0 },
+    ];
+    const lines = leftOut(2, 39, newest);
+    expect(lines[0]).toContain("2 closed runs quiet over a day");
+    expect(lines[1]).toContain("39 campaigns in the archive");
+    expect(lines[1]).toContain("buffer-a · 1d · 3x promotion; buffer-b · 2d");
+    // Nothing left out says nothing, so a machine with no archive prints no line for it.
+    expect(leftOut(0, 0, [])).toEqual([]);
+    expect(leftOut(1, 0, [])).toHaveLength(1);
   });
 });

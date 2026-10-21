@@ -31,7 +31,7 @@ archived campaign; `copy <name> --to <worktree>` brings this machine's back to g
 | `copy <name> --to <worktree> [--yes]` | copies a stopped campaign whole to another worktree, from a worktree or the archive, and sets the source aside | `manage.ts` |
 | `move <name> --to <host\|here> [--from <host\|here>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]` | pauses a campaign at a clean point, takes its folder whole to a new worktree on the other machine at the same commit, sets the source aside and continues it there on its kept flags | `move.ts` |
 | `stop <name> ... [--yes]` | ends the process that writes each log, and its keeper, and releases what its unfinished solves and sessions held | `stop.ts` |
-| `status [--all]` | one row a run: the live ones and those whose log moved in a day, with tree, commit, login, open comparison, comparisons reported, promotions and ending; then each host `ANA_HOSTS` lists, all asked at once and each printed as it answers, within 30 s | `pulse.ts` |
+| `status [--all]` | one row a run: the live ones and those whose log moved in a day, with tree, commit, login, open comparison, comparisons reported, promotions and ending, and on a closed row the hours until it leaves; under the rows, the closed runs it leaves out and the archive's newest campaigns; then each host `ANA_HOSTS` lists, all asked at once and each printed as it answers, within 30 s | `pulse.ts` |
 | `logins [N ...] [--json]` (also `usage`) | each login's five-hour and weekly use; without numbers or `--json`, also the pool forecast | `logins.ts` |
 | `fetch <name> [--from <host>]` | a copy of a campaign another machine holds, to read here, into the archive as `data/runs/<host>/<name>/` | `move.ts` |
 | `retire [--days 1] [--yes]` | moves each campaign no process writes or keeps, idle for `--days`, into the archive whole (a seed, `seed.json` beside its log, is deleted instead, the archive's too), and deletes each worktree nothing has used for a week (two for one with uncommitted work); then the same on every host, whose archive comes here. A daily job runs it with `--yes`; nothing else in an archive is deleted | `retire.ts` |
@@ -225,7 +225,9 @@ keeping eight days. With no numbers or `--json`, it forecasts when the pool runs
 week's pace and a recent pace from a reading 2 to 24 hours old (`poolLines`). A login has room
 for a move when its week is under 90%, its five hours under 100%, and neither window is refused
 (`room`), which is what `keep` reads.
-`status` hides stopped seeds and stopped runs whose logs have not changed for a day unless `--all`.
+`status` hides stopped seeds and stopped runs whose logs have not changed for a day unless `--all`;
+a stopped row says how many hours it has left, and the lines under the rows count the hidden runs
+and name the archive's three newest campaigns, so an agent reading `status` alone knows they ran.
 Below this machine's rows it shows each host `ANA_HOSTS` lists. A verb that names a run (`stop`,
 `continue`, `pause`, `keep`, `view`, `source`, `copy`) goes to wherever the run is: a name no
 worktree here holds is asked of every host at once, and the verb runs on the one that holds it, so

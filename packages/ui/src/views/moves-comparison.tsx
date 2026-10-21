@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Section } from "../components/layout.tsx";
-import { TriggerList } from "../components/triggers.tsx";
 import { Badge, Button, Card, DataTable, Disclosure, HashValue } from "../components/primitives.tsx";
 import type {
   CampaignReading,
@@ -25,8 +24,7 @@ import { plural } from "../../../../src/meta/text.ts";
  * One comparison: what it was, what its scored tasks came to, and each task's solves on both sides.
  * The outcome split uses the six outcomes of `outcome.ts`, the colours of the Campaign pane's bars,
  * each with its label and count beside it; a legend entry filters the tasks to that outcome. The
- * terms are the ones the comparison fixed before its first solve, and the reader's triggers of the
- * comparison lanes sit collapsed at the foot. The tasks its report left out of the split, disputed,
+ * terms are the ones the comparison fixed before its first solve. The tasks its report left out of the split, disputed,
  * short of solves or withdrawn, are named under it, so that the parts sum to the tasks it fixed. A
  * comparison that has not reported lists the tasks its start fixed with their solves so far, and
  * no outcome. Its rulings go by kind only while none is withheld (`Rulings`).
@@ -403,9 +401,6 @@ export function ComparisonDetailView({
           </DataTable>
         </div>
       </Section>
-      <Disclosure title={`The reader's triggers (${String(detail.triggers.length)})`}>
-        <TriggerList triggers={detail.triggers} none="No trigger fired for this comparison." />
-      </Disclosure>
     </div>
   );
 }

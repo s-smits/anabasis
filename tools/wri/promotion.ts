@@ -21,6 +21,7 @@ import { short } from "#src/builder/move.ts";
 import { flipP } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { billedBetween } from "#src/kernel/reports.ts";
+import type { Call, Seat } from "#src/kernel/trace.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy, median } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
@@ -56,11 +57,15 @@ const BARE = 0.5;
  *  Until 12 October `/var/tmp` was not read here, where it held a v1 solve of a held task that every
  *  seat could read on buffer. The seats' `ana-built-bash` parent is private even under `/tmp`.
  *  A path ends at the first character a shell or JSON ends a word on. */
-export const SHARED_PATH =
+const SHARED_PATH =
   /(?:^|[\s"'=:;(|&>])(\/(?:private\/)?(?:var\/)?tmp\/(?!ana-built-bash\/)[^\s"'\\;)|&<>*]+)/g;
 /** The paths a reader is shown, of those more than one solve or session named: a path one solve
  *  writes and another runs is the leak, and a solve's own scratch file is named by it alone. */
 const MOST_PATHS = 6;
+
+/** The shared temporary paths call `call` names in its arguments. */
+export const sharedPaths = ({ args }: Call) =>
+  [...JSON.stringify(args).matchAll(SHARED_PATH)].map(([, path = ""]) => path);
 
 /** `w-l-t p` of a test record, or "" where there is none. */
 export function testSaid(tested: JsonValue | undefined): string {
@@ -295,19 +300,16 @@ function afterTrigger(log: Index, { at, until, data }: Epoch, starter: string): 
  *  host's temporary folders, by role, solves by side and practice apart, with paths named by more
  *  than one seat. */
 function sharedTmpTrigger(log: Index): Trigger[] {
-  const named = (kind: string) =>
-    log.events.filter(
-      ({ kind: each, data }) =>
-        each === kind &&
-        data.isError === false &&
-        JSON.stringify(data.args ?? "").match(SHARED_PATH) !== null,
-    );
+  const calls = log.traces.filter(
+    (each): each is Call => each.part === "call" && !each.isError && sharedPaths(each).length > 0,
+  );
+  const of = (seat: Seat) => calls.filter((call) => call.seat === seat);
   const solves = new Map(log.solves.map((solve) => [solve.id, solve]));
   // Read from each start, so a comparison still running has its sides too.
   const reference = new Map(
     log.of("comparison.started").map((start) => [text(start.session), text(start.old)]),
   );
-  const touched = [...new Set(named("solve.call").map(({ data }) => text(data.solve)))];
+  const touched = [...new Set(of("solve").map(({ id }) => id))];
   const bySide = countBy(touched, (id) => {
     const solve = solves.get(id);
     if (solve === undefined) return "unknown";
@@ -315,13 +317,9 @@ function sharedTmpTrigger(log: Index): Trigger[] {
     const side = solve.harness === reference.get(solve.comparison) ? "reference" : "new";
     return `${solve.comparison} ${side} ${short(solve.harness)}`;
   });
-  const calls = ["solve.call", "build.call", "exam.call"].flatMap(named);
   const namers = new Map<string, Set<string>>();
-  for (const { data } of calls) {
-    const namer = text(data.solve) || text(data.session);
-    for (const [, path = ""] of JSON.stringify(data.args ?? "").matchAll(SHARED_PATH)) {
-      namers.set(path, (namers.get(path) ?? new Set()).add(namer));
-    }
+  for (const call of calls) {
+    for (const path of sharedPaths(call)) namers.set(path, (namers.get(path) ?? new Set()).add(call.id));
   }
   const crossing = [...namers]
     .filter(([, by]) => by.size > 1)
@@ -331,12 +329,11 @@ function sharedTmpTrigger(log: Index): Trigger[] {
   const programs = [...namers].flatMap(([path, by]) =>
     path.includes("/bin/") ? [`${path} by ${[...by].sort().join(" ")}`] : [],
   );
-  const sessions = (kind: string) =>
-    tally(countBy(named(kind), ({ data }) => text(data.session) || "unknown"));
+  const sessions = (seat: Seat) => tally(countBy(of(seat), ({ id }) => id || "unknown"));
   const lines = [
     ...(touched.length > 0 ? [`${plural(touched.length, "solve")} by side: ${tally(bySide)}`] : []),
-    ...(named("build.call").length > 0 ? [`Builder calls: ${sessions("build.call")}`] : []),
-    ...(named("exam.call").length > 0 ? [`Examiner calls: ${sessions("exam.call")}`] : []),
+    ...(of("build").length > 0 ? [`Builder calls: ${sessions("build")}`] : []),
+    ...(of("exam").length > 0 ? [`Examiner calls: ${sessions("exam")}`] : []),
     ...(programs.length > 0 ? [`programs under it: ${programs.join(", ")}`] : []),
     ...(crossing.length > 0 ? [`named by more than one solve or session: ${crossing.join(", ")}`] : []),
   ];

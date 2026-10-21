@@ -45,8 +45,11 @@ resolved through `gh` and fetched if this checkout has not seen it.
 | how much is excused | waived findings, copied-file ceilings | `tools/oxlint/not-slop.tsv` rows and `copiedFileLimits` entries in `tools/loc/source-policy.json`. `bun run not-slop -- prune` removes answers whose finding no longer exists. HABITS 12.10 keeps the ceiling map empty |
 | how much a model reads | prompt literal bytes, and the same per composer | more literal text in the selected composers, subject to the limits below |
 
-"Source" here is the script's `SOURCE_ROOTS` and `SOURCE_SUFFIX`: code under `src`, `tools` and
-`packages`, excluding tests, generated files and `vendor`. This is wider than
+"Source" here is the script's `SOURCE_ROOTS` and `SOURCE_SUFFIX`: code under `src`, `tools`,
+`packages` and `.claude/skills`, excluding tests, generated files and `vendor`. A pull request that
+changes only a skill's scripts reads its rows here, and decision points are the script's `DECISION`
+tokens (`if`, `for`, `while`, `case`, `catch`, `&&`, `||`, `??`, `?.` and the ternary), never a
+count by hand over another set. This is wider than
 `source-policy.ts`'s `AUTHORED_ROOTS`, which names `packages/ui/src` rather than all of `packages`.
 `PROMPT_FILES` names selected files composing seat prompts, descriptions and tool results. Add a
 new composer there in the same pull request. Literal bytes are a regex proxy: they include

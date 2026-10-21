@@ -4,7 +4,7 @@
  * commit, and starts the campaign there by `launch` (`manage.ts`), which installs, runs the dry run
  * and refuses what it refuses.
  *
- *   bun run runs fresh <pack> [--model opus|sonnet|gpt|deepseek] [--effort hhmm] [--login N] [--budget 800]
+ *   bun run runs fresh <pack> [--model opus|sonnet|gpt|<provider>/<id>] [--effort hhmm] [--login N] [--budget 800]
  *     [--at <commit>] [--as <suffix>] [--host <host>] [--yes] [-- <more of the campaign command's flags>]
  *
  * The prompt is the operator's, `<pack>-prompt.txt` in the folder `ANA_PROMPTS` names, by default
@@ -25,45 +25,51 @@
  * budget a solve, held in two places that disagreed.
  *
  * `gpt` seats GPT-6.1 Sol through the Codex CLI's login, which `--login` does not choose, at high in
- * every seat (the operator, 19 October). `deepseek` seats DeepSeek V4.1 Flash 1017 on OpenRouter, at
- * high in every seat (the operator, 21 October).
+ * every seat (the operator, 19 October). Any other model a backend serves is named by its id, so
+ * `--model openrouter/deepseek/deepseek-v4.1-flash-1017` seats DeepSeek V4.1 Flash 1017 in every seat
+ * as `<pack>-fresh-deepseek-v4.1-flash-1017`; on 21 October such a campaign needed four seat flags
+ * after `--` under a name that said opus.
  */
 import { existsSync } from "#src/meta/filesystem.ts";
 import { gitText, mainTree } from "#src/meta/git.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { on } from "./hosts.ts";
+import { modelNamed } from "../m0/stored-sweep.ts";
 import { launch } from "./manage.ts";
 import { everyRun } from "./registry.ts";
 
-const MODELS = {
-  opus: "claude/claude-opus-5-5",
-  sonnet: "claude/claude-sonnet-5-5",
-  gpt: "openai-codex/gpt-6.1-sol",
-  deepseek: "openrouter/deepseek/deepseek-v4.1-flash-1017",
+/** The operator's named conditions: a model and its efforts a seat, as the operator ran them. */
+const NAMED = {
+  opus: { id: "claude/claude-opus-5-5", effort: "hhmm" },
+  sonnet: { id: "claude/claude-sonnet-5-5", effort: "xxhh" },
+  gpt: { id: "openai-codex/gpt-6.1-sol", effort: "hhhh" },
 } as const;
-/** Each model's efforts where none is named, as the operator ran them. */
-const EFFORTS = { opus: "hhmm", sonnet: "xxhh", gpt: "hhhh", deepseek: "hhhh" } as const;
 const LEVELS = { l: "low", m: "medium", h: "high", x: "xhigh" } as const;
-const named = <T>(table: Record<string, T>, key: string | undefined, usage: string): T => {
-  const value = Object.entries(table).find(([one]) => one === key)?.[1];
-  if (value === undefined) throw new Error(usage);
-  return value;
-};
 
-/** The four seats' flags for `model` at `effort`, or at the model's own efforts. */
-export function seats(model: string, effort: string | undefined): string[] {
-  const id = named(MODELS, model, `--model takes ${Object.keys(MODELS).join("|")}`);
-  const letters = effort ?? named(EFFORTS, model, "");
+/**
+ * `--model`: a named condition, or any model a backend serves as `<provider>/<id>`, at high in every
+ * seat and named by its id. A served model is refused here, before a worktree is made, where no
+ * backend serves it.
+ */
+export function modelOf(model: string): { id: string; effort: string; label: string } {
+  const named = Object.entries(NAMED).find(([one]) => one === model);
+  if (named !== undefined) return { ...named[1], label: named[0] };
+  if (!model.includes("/")) {
+    throw new Error(`--model takes ${Object.keys(NAMED).join("|")} or a served model's <provider>/<id>`);
+  }
+  modelNamed(model);
+  return { id: model, effort: "hhhh", label: model.split("/").at(-1) ?? model };
+}
+
+/** The four seats' flags for model `id` at `letters`, one of `lmhx` a seat. */
+export function seats(id: string, letters: string): string[] {
   const usage = "--effort takes four of lmhx, for the Builder, the Examiner, the Referee and the solver";
-  if (letters.length !== 4) throw new Error(usage);
-  const [build, examine, review, solve] = letters.split("").map((letter) => named(LEVELS, letter, usage));
-  const seat = (name: string, level: string | undefined) => [
-    `--${name}`,
-    id,
-    `--${name}-effort`,
-    level ?? "",
-  ];
+  const level = (letter: string) => Object.entries(LEVELS).find(([one]) => one === letter)?.[1];
+  const levels = letters.split("").map(level);
+  if (levels.length !== 4 || levels.includes(undefined)) throw new Error(usage);
+  const [build, examine, review, solve] = levels;
+  const seat = (name: string, at: string | undefined) => [`--${name}`, id, `--${name}-effort`, at ?? ""];
   return [
     ...seat("builder", build),
     ...seat("examiner", examine),
@@ -98,7 +104,7 @@ export async function fresh(args: readonly string[]): Promise<void> {
   const [pack, ...more] = positionals;
   if (pack === undefined) {
     throw new Error(
-      "usage: bun run runs fresh <pack> [--model opus|sonnet|gpt|deepseek] [--effort hhmm] [--login N] [--host <host>] [--yes]",
+      "usage: bun run runs fresh <pack> [--model opus|sonnet|gpt|<provider>/<id>] [--effort hhmm] [--login N] [--host <host>] [--yes]",
     );
   }
   const here = runtimeProcess.cwd();
@@ -121,9 +127,10 @@ export async function fresh(args: readonly string[]): Promise<void> {
     `${pack}-prompt.txt`,
   );
   if (!existsSync(prompt)) throw new Error(`no ${prompt}: a pack's prompt is the operator's to write there`);
-  const seated = seats(values.model, values.effort);
+  const model = modelOf(values.model);
+  const seated = seats(model.id, values.effort ?? model.effort);
   const held = new Set(everyRun().map((run) => run.name));
-  const base = [pack, "fresh", values.model, ...(values.as === undefined ? [] : [values.as])].join("-");
+  const base = [pack, "fresh", model.label, ...(values.as === undefined ? [] : [values.as])].join("-");
   const name = freeName(base, (one) => held.has(one) || existsSync(join(beside, `anabasis-${one}`)));
   const tree = join(beside, `anabasis-${name}`);
   gitText(here, "fetch", "-q", "origin");

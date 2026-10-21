@@ -91,8 +91,8 @@ export interface Standing {
   readonly solves: number | null;
   /** How far apart the sides' measures were where the objective alone won it (`objectiveMargin`). */
   readonly margin: number | null;
-  /** The room by the objective the reference harness's answers left there, against its own and its
-   *  author's (`roomLeft`), and 0 under the floor (`ROOM`). */
+  /** How far apart by the objective the reference harness's own answers were there (`roomLeft`),
+   *  and 0 under the floor (`ROOM`). */
   readonly room: number | null;
 }
 
@@ -127,9 +127,8 @@ interface TalliedIn {
   readonly won: "old" | "fresh" | null;
   /** How far apart the sides' measures were where the objective alone won it (`objectiveMargin`). */
   readonly margin: number | null;
-  /** The room by the objective the reference harness's answers left there, against its own and its
-   *  author's (`roomLeft`), and 0 under the floor (`ROOM`), where it leaves none; null where it
-   *  stood on neither side. */
+  /** How far apart by the objective the reference harness's own answers were there (`roomLeft`),
+   *  and 0 under the floor (`ROOM`), where they leave none; null where it stood on neither side. */
   readonly room: number | null;
 }
 
@@ -149,9 +148,6 @@ interface TaskRecord {
   /** `answered`, or `task.feasible` records a passing author answer, or its gate says a reference
    *  solve under `try_task` gave a valid answer, which answers nothing. */
   feasible: boolean;
-  /** The best measure by the objective of an author's answer on record (`task.feasible`), or null
-   *  where none carries one (`informative`, `compare.ts`; 19 October). */
-  best: number | null;
   /** Each comparison whose last report tallied it, in the order the comparisons reported. */
   readonly tallied: TalliedIn[];
   /** The last report that set it aside on a rejection, or -1, and its place among every pair
@@ -435,7 +431,6 @@ function taskRecords(events: readonly LogEvent[]) {
       keptAt: -1,
       answered: false,
       feasible: false,
-      best: null,
       tallied: [],
       asideAt: -1,
       asideOrder: Number.POSITIVE_INFINITY,
@@ -448,12 +443,6 @@ function taskRecords(events: readonly LogEvent[]) {
     if (kind === "task.state" && data.state === "held") of(data.version).keptAt = index;
     const tried = kind === "task.gate" ? asRecord(data.reference)?.valid : undefined;
     if (kind === "task.feasible" || (isNumber(tried) && tried > 0)) of(data.version).feasible = true;
-    const { measure, direction } = asRecord(data.objective) ?? {};
-    if (kind !== "task.feasible" || !isNumber(measure)) continue;
-    const record = of(data.version);
-    const beaten =
-      direction === "lower" ? measure < (record.best ?? Infinity) : measure > (record.best ?? -Infinity);
-    if (beaten) record.best = measure;
   }
   /**
    * Each comparison's tasks a solve of which a limit cut short, by harness, as `cutIn` names them:
@@ -518,7 +507,7 @@ function tallyReports(
         isString(harness) && cut.has(cutIn(session, task, harness));
       const { wins, losses } = tally([pair]);
       // Room under the floor decides no pair and holds no draft, so its author is told none.
-      const left = side === null ? null : roomLeft(pair, side, [of(task).best]);
+      const left = side === null ? null : roomLeft(pair, side, []);
       order += 1;
       of(task).tallied.push({
         index,
@@ -528,7 +517,7 @@ function tallyReports(
         reference: side,
         cut: cutOn(data.old) || cutOn(data.fresh),
         referenceCut: side !== null && cutOn(data[side]),
-        closed: side !== null && closedTo(pair, side, of(task).best),
+        closed: side !== null && closedTo(pair, side),
         won: wins > 0 ? "fresh" : losses > 0 ? "old" : null,
         margin: objectiveMargin(pair),
         room: left === null || left >= ROOM ? left : 0,
@@ -620,10 +609,8 @@ function tallyReports(
  * and at any limits, an author's answer the host saw pass on the task under its own id
  * (`task.feasible`), or a reference solve's under `try_task`, which its gate counts. It is the one
  * fact an author may hear beside a task's outcome that names no side: a task the reference
- * answers in no solve is then told apart from one nobody has answered. **Bests** are the best
- * measure by the objective an author's answer on record took of each, where its `task.feasible`
- * carries one: a task the reference answers alike in every solve still leaves room where one is
- * better than all of its answers (`informative`, `compare.ts`; 19 October).
+ * answers in no solve is then told apart from one nobody has answered. It decides no room by the
+ * objective: from 19 to 21 October an author's measure did (`bettered`, `compare.ts`).
  *
  * **Outcomes** hold each task some comparison scored or set aside, by task version, from the last
  * comparison that did: how the reference harness did on it, valid in every one of its counted
@@ -696,7 +683,6 @@ export function poolOf(events: readonly LogEvent[]) {
     exhausted: spent,
     retained,
     feasible: new Set(records.flatMap(({ version, feasible }) => (feasible ? [version] : []))),
-    bests: new Map(records.flatMap(({ version, best }) => (best === null ? [] : [[version, best] as const]))),
     outcomes: new Map(records.toSorted((one, other) => first(one) - first(other)).flatMap(outcomeOf)),
     standings: new Map(records.flatMap(standingOf)),
     histories: new Map(records.flatMap(historyOf)),
@@ -764,7 +750,7 @@ function standingOf(record: TaskRecord): [string, Standing][] {
  * measure a practice pass returns. From 16 to 20 October the draw left them out, and so withheld
  * the tasks the objective left room on: after r3's third, fourth and fifth promotions 12, 18 and 22
  * frontier tasks were held, with room to release 6, 12 and 16, and none could be drawn. Reading
- * that room here would read the other harness's answers and its author's (`bettered`), so which
+ * that room here would read the other harness's answers (`bettered`), so which
  * held-out task a new harness won would change what is released, which the Builder reads (rule 3):
  * the release reads the reference's own solves alone. The release in `tools/d2/prepare.ts` calls it.
  *

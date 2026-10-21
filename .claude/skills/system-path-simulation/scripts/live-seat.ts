@@ -33,6 +33,7 @@ import { gateAnswers, measuredGate } from "#src/examiner/record.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { billedBetween } from "#src/kernel/reports.ts";
 import { heldAtGate } from "#src/kernel/task.ts";
+import { tracesIn } from "#src/kernel/trace.ts";
 import { existsSync, openSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { gitText } from "#src/meta/git.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
@@ -125,7 +126,9 @@ export function readingOf(events: readonly LogEvent[], from: number, mentions: r
   const stretch = events.slice(from);
   const of = (kind: string) => stretch.flatMap((event) => (event.kind === kind ? [event.data] : []));
   const gates = of("task.gate");
-  const calls = of("exam.call");
+  const calls = tracesIn(stretch).flatMap((each) =>
+    each.seat === "exam" && each.part === "call" ? [each] : [],
+  );
   const first = stretch[0]?.at;
   const last = stretch.at(-1)?.at;
   const turns = [...gateAnswers(events, from - 1).values()].flatMap((answers) =>
@@ -146,11 +149,11 @@ export function readingOf(events: readonly LogEvent[], from: number, mentions: r
       return isNumber(count) && count > 0 ? [count] : [];
     }),
     turns: spread(turns),
-    calls: counted(calls.flatMap(({ tool }) => (isString(tool) ? [tool] : []))),
+    calls: counted(calls.map(({ tool }) => tool)),
     mentions: Object.fromEntries(
       mentions.map((text) => [
         text,
-        calls.filter(({ args }) => capturedJsonStringify(args ?? null).includes(text)).length,
+        calls.filter(({ args }) => capturedJsonStringify(args).includes(text)).length,
       ]),
     ),
   };

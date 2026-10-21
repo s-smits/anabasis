@@ -39,7 +39,11 @@ describe("bun run runs fresh", () => {
       "openai-codex/gpt-6.1-sol",
       "high",
     ]);
-    expect(() => seats("haiku", "hhmm")).toThrow("--model takes opus|sonnet|gpt");
+    // DeepSeek V4.1 Flash 1017 on OpenRouter, at high in every seat.
+    expect(new Set(seats("deepseek", undefined).filter((_, at) => at % 2 === 1))).toEqual(
+      new Set(["openrouter/deepseek/deepseek-v4.1-flash-1017", "high"]),
+    );
+    expect(() => seats("haiku", "hhmm")).toThrow("--model takes opus|sonnet|gpt|deepseek");
     expect(() => seats("opus", "hhm")).toThrow("--effort takes four of lmhx");
     expect(() => seats("opus", "hhmq")).toThrow("--effort takes four of lmhx");
   });

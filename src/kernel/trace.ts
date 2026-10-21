@@ -47,11 +47,15 @@ export interface Turn extends Mark {
   readonly error: string | null;
   readonly usage: JsonObject | null;
   readonly billed: number | null;
+  /** The model the provider says answered, where it said. */
+  readonly model: string | null;
 }
 
 /** One tool call: its tool, its arguments, its result's text and how long it ran. */
 export interface Call extends Mark {
   readonly part: "call";
+  /** The provider's id for the call, which a log of before 21 October does not hold. */
+  readonly callId: string | null;
   readonly turn: number | null;
   readonly tool: string;
   readonly args: JsonValue;
@@ -97,7 +101,7 @@ export function traced({ kind, at, data }: LogEvent, index: number): Traced | nu
   if (seat === undefined) return null;
   const mark = { index, at, seat, id: textOf(data[whose(seat)]) };
   if (part === "turn") {
-    const { usage, turn, text, stopReason, error } = data;
+    const { usage, turn, text, stopReason, error, responseModel } = data;
     return {
       ...mark,
       part,
@@ -107,11 +111,17 @@ export function traced({ kind, at, data }: LogEvent, index: number): Traced | nu
       error: orNull(error, isString),
       usage: asRecord(usage),
       billed: costOf(usage),
+      model: orNull(responseModel, isString),
     };
   }
   if (part === "call") {
-    const { turn, tool, args, isError, text, ms } = data;
-    const call = { turn: orNull(turn, isNumber), tool: textOf(tool), args: args ?? null };
+    const { toolCallId, turn, tool, args, isError, text, ms } = data;
+    const call = {
+      callId: orNull(toolCallId, isString),
+      turn: orNull(turn, isNumber),
+      tool: textOf(tool),
+      args: args ?? null,
+    };
     return {
       ...mark,
       part,

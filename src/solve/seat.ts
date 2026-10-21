@@ -51,6 +51,7 @@ export function traceSink(log: string, of: Traced, id: string, turn: () => numbe
       calls.delete(event.toolCallId);
       append(log, traceKind(of, "call"), {
         ...named,
+        toolCallId: event.toolCallId,
         turn: turn(),
         tool: event.toolName,
         args: call?.args ?? null,

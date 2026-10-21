@@ -20,6 +20,10 @@ __pycache__/
 # The suite's recorded file timings: each checkout learns its own order from its first run
 # (`tools/runtime/test-suite.ts`).
 /test/.test-timings.json
+# Every study's clones of the systems it compares against, with the benchmarks they download and
+# the benchmark's raw job folders, in one folder (`studies/README.md`). The run records a study
+# keeps, under studies/runs/, are tracked.
+/studies/external/
 # v1's local state, which a checkout of this repository from before 11 October 2026 still holds
 # on disk: run outputs, Builder-written domains, operator notes, runtime pins and the UI build.
 # v2 reads none of it.

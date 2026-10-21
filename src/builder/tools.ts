@@ -620,6 +620,25 @@ export function openingTool(opening: string | (() => string), description: strin
   });
 }
 
+/**
+ * `wait`: the next word of work running beside a session, as a call, for a seat whose results come
+ * later: an Examiner's gate, or the Examiner session beside a Builder's conversation. Without one a
+ * sleep in the shell was the only call that waits: on record, Builders slept bare 536 times while an
+ * Examiner wrote beside them, most for about 900 s, on their own clock, and Examiners 119 times; on
+ * 21 October a live Examiner still slept 190 s past its gate's word at a head whose turn with no call
+ * waited for it.
+ */
+export function waitTool(description: string, next: () => Promise<string>): AgentTool {
+  return tool({
+    name: "wait",
+    label: "Wait",
+    description,
+    parameters: Type.Object({}),
+    executionMode: "sequential",
+    execute: async () => text(await next()),
+  });
+}
+
 /** A Builder's tool with a line of the host's, given the call's id, as the last of whatever it
  *  returns, a result or an error, where the line is not empty: what the session has used of its
  *  limits (`usedLine`, `prompt.ts`). */

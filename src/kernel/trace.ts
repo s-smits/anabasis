@@ -1,7 +1,7 @@
 /**
  * A model's trace as the log holds it, and as its readers page it: every turn, tool call and
  * compaction of a solve or of a session, each under its seat's prefix (`solve.turn`, `build.call`,
- * `exam.compacted`), as `traceSink` and `loopCompaction` write them (`src/solve/run.ts`).
+ * `exam.compacted`), as `traceSink` and `loopCompaction` write them (`src/solve/seat.ts`).
  *
  * Until 21 October nine readers took these events apart for themselves: the dollars of a session
  * that never ended, the last turn of a solve, the Builder's `read_trace`, the campaign page's

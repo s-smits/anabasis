@@ -41,7 +41,7 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
 import { text, tool } from "../solve/answer.ts";
-import { failedTurn, loopCompaction, spentBy, traceSink } from "../solve/run.ts";
+import { failedTurn, loopCompaction, spentBy, traceSink } from "../solve/seat.ts";
 import { hostScratch } from "../verify/wall-policy.ts";
 import { drafting } from "./draft.ts";
 import { examinerShell, inExaminerWall, type Wall, type Walls } from "./shell.ts";

@@ -21,8 +21,9 @@ This is v1's instrument, adapted; v1's copy reads back with
 `git show 5bc9988:.claude/skills/reduce-complexity/scripts/stack-complexity.py`, and no other copy
 runs. v2 has no cyclomatic baseline; this script reads its lint answers and copied-file limits.
 
-Measures, grouped by the question each answers. "Source" is code under `SOURCE_ROOTS`, filtered
-by `SOURCE_SUFFIX` and `EXCLUDE`, rather than `source-policy.ts`'s narrower `AUTHORED_ROOTS`.
+Measures, grouped by the question each answers. "Source" is code under `SOURCE_ROOTS`, the skills'
+scripts among it, filtered by `SOURCE_SUFFIX` and `EXCLUDE`, rather than `source-policy.ts`'s
+narrower `AUTHORED_ROOTS`.
 
   How much is there
     files, nonblank           source files and their nonblank lines
@@ -30,7 +31,7 @@ by `SOURCE_SUFFIX` and `EXCLUDE`, rather than `source-policy.ts`'s narrower `AUT
                               at the expense of nothing and a mechanism nobody proved does not
 
   How much branching
-    decisions                 if/for/while/case/catch/&&/||/?./ternary. A McCabe proxy, not McCabe:
+    decisions                 if/for/while/case/catch/&&/||/??/?./ternary. A McCabe proxy, not McCabe:
                               comparable between two revisions of one tree and nothing else.
     per 100 lines             the same count against the source it sits in. v1 read exact branching
                               debt off `complexity-baseline.json`; v2 holds no baseline and no
@@ -96,7 +97,9 @@ EXCLUDE = re.compile(
     r"|(^|/)(vendor|vendored|third_party)/|\.venv/|\.uv-cache/"
     r"|(^|/)node_modules/"
 )
-SOURCE_ROOTS = ("src/", "tools/", "packages/")
+# Skill scripts are code a reviewer reads as well. Until 21 October they were outside, so #322's
+# rewrite of the promotion tuner read 0 on every row and its decision points were counted by hand.
+SOURCE_ROOTS = ("src/", "tools/", "packages/", ".claude/skills/")
 SOURCE_SUFFIX = (".ts", ".tsx", ".mts", ".js", ".mjs", ".py")
 
 # Files that compose text a model receives in an ordinary session: system prompts, the loop's

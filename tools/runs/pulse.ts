@@ -32,7 +32,17 @@ import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import { hosts, hostsOf } from "./hosts.ts";
 import { receipts } from "./receipt.ts";
-import { logEvents, openComparisons, processes, type Run, runs, writers } from "./registry.ts";
+import {
+  ARCHIVE,
+  archived,
+  HERE,
+  logEvents,
+  openComparisons,
+  processes,
+  type Run,
+  runs,
+  writers,
+} from "./registry.ts";
 
 /** What the last look saw of one log. */
 interface Seen {
@@ -57,7 +67,11 @@ interface Memory {
 
 const QUIET_MS = 20 * 60_000;
 /** A closed run `status` shows without `--all`: one whose log changed this recently. */
-const RECENT_MS = 24 * 60 * 60_000;
+const HOUR_MS = 60 * 60_000;
+const DAY_MS = 24 * HOUR_MS;
+const RECENT_MS = DAY_MS;
+/** How many of the archive's newest campaigns `status` names under its rows. */
+const NEWEST = 3;
 const GIB = 2 ** 30;
 const REPORTED = "comparison.reported";
 /** The events that start something a run then has to finish. */
@@ -270,6 +284,7 @@ export async function watch(args: readonly string[]): Promise<void> {
 
 /**
  * `bun run runs status`: one row a run, open or written in the last day, or every one with `--all`;
+ * a closed row says when it leaves, and the lines under the rows what they leave out (`leftOut`);
  * then the same on each host `ANA_HOSTS` lists (`hosts.ts`), so one command shows every machine's.
  */
 export async function runsStatus(args: readonly string[]): Promise<void> {
@@ -278,12 +293,14 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
   const now = Date.now();
   // Every host is asked first, and its rows print once this machine's have.
   const away = hostsOf().length > 0 ? hosts(args) : undefined;
-  let [promoted, compared] = [0, 0];
+  let [promoted, compared, quiet] = [0, 0, 0];
   for (const run of runs()) {
     const open = writers(run, running).length > 0;
+    const age = now - statSync(run.path).mtimeMs;
     // A seed no process writes is a rehearsal's copy, and its promotions are its source's; one a
     // process writes was continued as a run (16 October: fork-ladder-buffer-opus was not shown).
-    if (!values.all && !open && (run.seed === true || now - statSync(run.path).mtimeMs > RECENT_MS)) {
+    if (!values.all && !open && (run.seed === true || age > RECENT_MS)) {
+      if (run.seed !== true) quiet += 1;
       continue;
     }
     const log = logEvents(run.path);
@@ -300,11 +317,51 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
       `${String(reads)} compared`,
       steps > 0 ? `* ${String(steps)}x promotion *` : "",
       open ? "" : ended,
+      open || age > RECENT_MS ? "" : `off status in ${String(Math.ceil((RECENT_MS - age) / HOUR_MS))}h`,
     ];
     console.log(
       `${status(run, log, solvesIn(log), open, now)}\n  ${where.filter((part) => part !== "").join(" · ")}`,
     );
   }
   console.log(`${plural(promoted, "promotion")} in ${plural(compared, "comparison")} over the runs shown`);
+  // This machine's own: a host's copy is said by that host's `status`, as its rows are.
+  const archive = archived().filter((run) => run.archived === HERE && run.seed !== true);
+  const newest = archive
+    .map((run) => ({ run, at: statSync(run.path).mtimeMs }))
+    .toSorted((one, other) => other.at - one.at)
+    .slice(0, NEWEST)
+    .map(({ run, at }) => ({
+      name: run.name,
+      days: (now - at) / DAY_MS,
+      promoted: count(logEvents(run.path), "harness.promoted"),
+    }));
+  for (const line of leftOut(quiet, archive.length, newest)) console.log(line);
   await away;
+}
+
+/**
+ * What `status` leaves out, said under its rows, so that a reader who sees only the rows still knows
+ * what ran: the closed runs quiet for over a day, still in their worktrees and continued from there,
+ * and the archive `runs retire` moves them to after a day, with its newest campaigns. Until
+ * 22 October a run fell off the rows after a day without a word, and an agent reading `status`
+ * alone took the campaigns it had stopped for gone (operator, 22 October).
+ */
+export function leftOut(
+  quiet: number,
+  archive: number,
+  newest: readonly { readonly name: string; readonly days: number; readonly promoted: number }[],
+): string[] {
+  const lines =
+    quiet > 0 ? [`${plural(quiet, "closed run")} quiet over a day not shown: \`status --all\``] : [];
+  if (archive === 0) return lines;
+  const named = newest.map(({ name, days, promoted }) =>
+    [name, `${String(Math.floor(days))}d`, promoted > 0 ? `${String(promoted)}x promotion` : ""]
+      .filter((part) => part !== "")
+      .join(" · "),
+  );
+  return [
+    ...lines,
+    `${plural(archive, "campaign")} in the archive (${ARCHIVE}), newest: ${named.join("; ")}`,
+    "  `runs view <name>` reads one; `runs copy <name> --to <worktree>` brings one back to continue",
+  ];
 }

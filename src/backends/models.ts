@@ -77,7 +77,13 @@ const codexLogin: CredentialStore = {
 export function backends(options: BackendOptions): MutableModels {
   const models = createModels({ credentials: codexLogin });
   models.setProvider(retried(openaiCodexProvider()));
-  models.setProvider(retried(openrouterProvider()));
+  // pi's catalogue lacks OpenRouter's dated 1017 release of DeepSeek V4.1 Flash (21 October), served
+  // as its base. It is metered at OpenRouter's off-peak price, on the operator's word; peak is twice.
+  const router = openrouterProvider();
+  const base = router.getModels().find(({ id }) => id === "deepseek/deepseek-v4.1-flash");
+  const cost = { input: 0.15, output: 0.6, cacheRead: 0.003, cacheWrite: 0 };
+  const dated = base === undefined ? [] : [{ ...base, id: `${base.id}-1017`, cost }];
+  models.setProvider(retried({ ...router, getModels: () => [...router.getModels(), ...dated] }));
   models.setProvider(claudeProvider(options.claude));
   models.setProvider(claudeProvider(options.claude, CLAUDE_API_PROVIDER));
   return models;

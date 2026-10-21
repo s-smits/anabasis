@@ -17,8 +17,10 @@
  * Split from `read.ts`, which stands near the size policy's ceiling, as `time.ts` and `folds.ts`
  * were. Nothing here reads a file beside the log.
  */
+import { short } from "#src/builder/move.ts";
 import { flipP } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
+import { billedBetween } from "#src/kernel/reports.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy, median } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
@@ -32,8 +34,6 @@ import {
   measured,
   practiceOf,
   share,
-  short,
-  spendOf,
   tally,
   text,
   type Trigger,
@@ -180,13 +180,7 @@ export function spentTo(log: Index, from: number, to: number): string {
     Date.parse(events[Math.max(from, to - 1)]?.at ?? ""),
   ];
   const hours = Number.isNaN(start) || Number.isNaN(end) ? 0 : (end - start) / 3_600_000;
-  // The whole log's index with its events cut to a prefix: an index of the slice alone would fold
-  // a release of a task proposed before it, and refuse it as never proposed. What was billed by
-  // `to` less what was by `from` (`billedBetween`): a sum over the slice billed a session open
-  // across its start at its whole sum where it ended.
-  const by = (upTo: number) =>
-    spendOf({ ...log, events: events.slice(0, upTo) }).reduce((sum, [, each]) => sum + each, 0);
-  const dollars = by(to) - by(from);
+  const dollars = billedBetween(events, from, to);
   return `${hours.toFixed(1)} h and $${dollars.toFixed(0)}`;
 }
 

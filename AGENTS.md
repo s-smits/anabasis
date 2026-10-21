@@ -1649,6 +1649,12 @@ read the conversation.
 | Session | One bounded stretch of an agent's work: a Builder's ends with a frozen harness version |
 | Trace | The record of one solve: every model turn and every tool call with its result |
 
+To **sed** something from a source is to copy it verbatim: its code, names, constants and messages,
+with the upstream path and commit cited beside the copy. Change only what this repository forces (a
+lint rule, a primitive the tree already owns, a colliding name) and list each change, so nobody has to
+diff against upstream. Rewriting the idea yourself, or adding the upstream package as a dependency, is
+not a sed.
+
 ### Map
 
 ```text

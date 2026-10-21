@@ -12,7 +12,8 @@
  * - pi's system prompt from pi's builder, with the harness's guide as project context under the
  *   sentence a campaign's solver reads, and a duty that names the benchmark's deliverable;
  * - the solve wall and the model-turn cap, told on every tool result by `timed`, the nudge after a
- *   turn that stops without `submit`, pi's compaction, and the retried OpenRouter provider;
+ *   turn that stops without `submit`, pi's compaction, and OpenRouter as the backends serve it,
+ *   retried (`openrouter`, `src/backends/models.ts`);
  * - the trace as `solve.turn`, `solve.call` and `solve.compacted` events in a log of its own,
  *   written by `traceSink` and `loopCompaction` and read by `src/kernel/trace.ts`, and the spend
  *   as `spentBy` sums a campaign's solve, so a change to the log's format has one owner to change;
@@ -22,7 +23,7 @@
  *
  * The model is reached through the benchmark's own proxy on the host (`harbor/pi_agent.py`), so the
  * provider's key stays on the host and the container holds only the token that names its route.
- * The model keeps pi's catalogue entry and its prices, and only its URL changes.
+ * The model keeps its entry and its prices as the backends serve them, and only its URL changes.
  *
  * With `--dry-run` it does everything but call the model: it opens the harness, composes the
  * system prompt, runs `command -v` for each installed program through the solver's own shell and
@@ -39,7 +40,6 @@ import {
   toToolDeclaration,
   type Usage,
 } from "@earendil-works/pi-ai";
-import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 import { Type } from "typebox";
 import type { ToolDefinition } from "../../vendor/pi-coding-agent/core/extensions/types.ts";
 import { buildSystemPrompt } from "../../vendor/pi-coding-agent/core/system-prompt.ts";
@@ -48,7 +48,7 @@ import { createEditToolDefinition } from "../../vendor/pi-coding-agent/core/tool
 import { createReadToolDefinition } from "../../vendor/pi-coding-agent/core/tools/read.ts";
 import { wrapToolDefinitions } from "../../vendor/pi-coding-agent/core/tools/tool-definition-wrapper.ts";
 import { createWriteToolDefinition } from "../../vendor/pi-coding-agent/core/tools/write.ts";
-import { retried } from "#src/backends/models.ts";
+import { openrouter, retried } from "#src/backends/models.ts";
 import { trajectoryOf } from "#src/kernel/atif.ts";
 import { read } from "#src/kernel/log.ts";
 import { unanswered } from "#src/kernel/solve.ts";
@@ -198,9 +198,9 @@ async function solve(ask: Asked) {
         ? {}
         : { environment: `- Programs this harness installed run by name: ${programs.join(", ")}.` },
   });
-  const provider = retried(openrouterProvider());
+  const provider = retried(openrouter());
   const listed = provider.getModels().find(({ id }) => id === ask.model);
-  if (listed === undefined) throw new Error(`pi's OpenRouter catalogue has no ${ask.model}`);
+  if (listed === undefined) throw new Error(`OpenRouter as the backends serve it has no ${ask.model}`);
   if (ask.dryRun) {
     return { ending: "dry-run", harness: harness.digest, prompt, found: resolved(prefix, programs) };
   }

@@ -90,9 +90,10 @@ export function backends(options: BackendOptions): MutableModels {
  * differently for it: its name, DeepInfra fp8's prices per million tokens and output limit, and
  * that endpoint alone, with no fallback (operator, 21 October). OpenRouter otherwise picks one of the
  * release's 26 endpoints for each call, at fp4, fp8 or an unnamed quantization, so two solves of one
- * model could run on different weights.
+ * model could run on different weights. The study's solver (`studies/shared/pi-solve.ts`) serves its
+ * models from here too.
  */
-function openrouter(): Provider<"anthropic-messages" | "openai-completions"> {
+export function openrouter(): Provider<"anthropic-messages" | "openai-completions"> {
   const router = openrouterProvider();
   const base = router.getModels().find(({ id }) => id === "deepseek/deepseek-v4.1-flash");
   const routing = { only: ["deepinfra/fp8"], allow_fallbacks: false };

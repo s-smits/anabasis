@@ -157,6 +157,7 @@ describe("a campaign run by its live Builder", () => {
     const seats: Seats = {
       seated: builderScript(base, [
         ["examine", {}],
+        ["wait", {}],
         ["finish", { note: "The campaign needs more held-out tasks." }],
       ]),
       examine: (request) => {
@@ -226,6 +227,13 @@ describe("a campaign run by its live Builder", () => {
     expect(examinerCall?.text).not.toContain("Suggested action");
     expect(examinerCall?.text).toContain("Campaign facts: 5 held-out tasks, 2 practice tasks.");
     expect(examinerCall?.text).not.toContain("check-product");
+    // wait returns once the session beside it has ended, with the campaign's facts.
+    const events = read(join(REPO, ".ana", "d2", name, LOG_FILE));
+    const ended = events.findIndex(({ kind, data }) => kind === "exam.finished" && data.session === "x-1");
+    const waited = events.findIndex(({ kind, data }) => kind === CALLED && data.tool === "wait");
+    expect(ended).toBeGreaterThan(-1);
+    expect(waited).toBeGreaterThan(ended);
+    expect(events[waited]?.data.text).toContain("Campaign facts:");
   });
 
   it("starts the campaign's first Examiner session as the conversation opens, where the table names one", async () => {

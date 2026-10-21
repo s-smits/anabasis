@@ -373,13 +373,13 @@ Nothing else of those solves reaches it. The Examiner makes none of the exam's s
 
 The tools of each model seat, as its source names them:
 
-- Examiner: `propose_tasks`, or `try_task` where the host can have the reference harness solve a
-  draft task, then `read_example`, `try_answer`, `read_opening`, `bash`, `read`, `write` and
-  `finish`. `read_opening` serves the session's opening message again, for a context that was
-  compacted. `try_task`
-  returns at once with the ids it put to the gate. The gate's word on each instance comes with the
-  session's next tool result, or with the reminder after a turn that made no call, which waits for
-  that word where the gate has said nothing new (`settle`), and `finish` and the session's end wait
+- Examiner: `propose_tasks`, or `try_task` and `wait` where the host can have the reference harness
+  solve a draft task, then `read_example`, `try_answer`, `read_opening`, `bash`, `read`, `write`
+  and `finish`. `read_opening` serves the session's opening message again, for a context that was
+  compacted. `try_task` returns at once with the ids it put to the gate. The gate's word on each
+  instance comes with the session's next tool result. `wait`, and the reminder after a turn that
+  made no call, wait for that word where the gate has said nothing new (`settled`), and `finish`
+  and the session's end wait
   for every instance still at the gate (`putAside`, `src/examiner/write.ts`), so a session goes on
   writing while its drafts are solved.
   `propose_tasks` runs no solve and answers in its own result.
@@ -398,7 +398,8 @@ The tools of each model seat, as its source names them:
   way from it into the exam is `draft_exam`.
 - Builder: `read`, `bash`, `edit`, `write`, `practice`, `read_trace`, `read_opening`,
   `check_harness`, `preview_harness` and `finish`. In the campaign command it also has `examine`,
-  `release_practice`, `compare`, `promote` and `campaign_status`.
+  `release_practice`, `compare`, `promote`, `campaign_status` and `wait`, which returns once the
+  Examiner session beside the conversation ends, on the host's time.
 - Solver: `read`, `bash`, `edit`, `write` and `submit`. Its answer is the file `answer.json`;
   `submit` with `malformed` is its statement that the task is malformed, given instead of an
   answer.

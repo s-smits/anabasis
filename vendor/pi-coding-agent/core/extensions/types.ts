@@ -1,7 +1,7 @@
-// Copied from pi coding-agent v1.1.0 (github.com/earendil-works/pi, abe508e1, MIT, see LICENSE):
+// Copied from pi coding-agent v1.3.0 (github.com/earendil-works/pi, 71023aec, MIT, see LICENSE):
 // packages/coding-agent/src/core/extensions/types.ts, only the members the copied tools read, in
 // upstream's own words. Left out: the extension runtime (UI, modes, model registry, loadout, exposure,
-// namespaces, annotations, executeTool and the renderers), which nothing here hosts. ReadonlySessionManager
+// namespaces, annotations, executeTool, reachesTools and the renderers), which nothing here hosts. ReadonlySessionManager
 // is cut to the two methods the bash tool reads. The tools run with no context, so they fall back to the
 // cwd they were created with and to no session environment.
 // Strict compiler options force the `!` on indexed reads and the `| undefined` on optional fields.

@@ -23,7 +23,7 @@ archived campaign; `copy <name> --to <worktree>` brings this machine's back to g
 
 | verb | what it does | file |
 | --- | --- | --- |
-| `fresh <pack> [--model opus\|sonnet\|gpt\|deepseek] [--effort hhmm] [--login N] [--budget 800] [--as <suffix>] [--at <c>] [--host <host>] [--yes] [-- <flags>]` | names a campaign from a blank project, makes its worktree at a published commit and launches it there | `fresh.ts` |
+| `fresh <pack> [--model opus\|sonnet\|gpt\|<provider>/<id>] [--effort hhmm] [--login N] [--budget 800] [--as <suffix>] [--at <c>] [--host <host>] [--yes] [-- <flags>]` | names a campaign from a blank project, makes its worktree at a published commit and launches it there | `fresh.ts` |
 | `launch <name> [--login N] [--yes] -- <flags>` | starts the campaign command under a new name, in this worktree | `manage.ts` |
 | `continue <name> [--at <c>] [--login N] [--budget N] [--after <event>] [--yes] [-- <flags>]` | runs a campaign again from its log, on its kept flags or their replacement after `--` | `manage.ts` |
 | `pause <name> --after <event> [--yes]` | stops a campaign once its log gains one more of the event and nothing but its Builder's conversation is open | `manage.ts` |
@@ -58,11 +58,12 @@ It reads the operator's prompt, `<pack>-prompt.txt` in `ANA_PROMPTS` (by default
 `anabasis-prompts` beside the main worktree), and refuses a pack with none: a prompt is the operator's
 to write. It names the run `<pack>-fresh-<model>[-<suffix>][-r<n>]` and its project `<pack>-fresh`,
 seats one model in all four seats (`--effort` a letter a seat of `lmhx`, by default `hhmm` for
-Opus, `xxhh` for Sonnet and `hhhh` for GPT and DeepSeek), takes a budget of 800 dollars unless `--budget`,
+Opus, `xxhh` for Sonnet and `hhhh` for GPT and any other model), takes a budget of 800 dollars unless `--budget`,
 makes the worktree `anabasis-<name>` beside the main worktree, detached at `--at` (this
 checkout's commit by default), and launches there as below. Opus is the default model. `gpt`
 seats `openai-codex/gpt-6.1-sol` through the Codex CLI's login, which `--login` does not select,
-and `deepseek` seats `openrouter/deepseek/deepseek-v4.1-flash-1017` on `OPENROUTER_API_KEY`.
+and any other model a backend serves goes as its `<provider>/<id>`, at `hhhh` and named by its id:
+`--model openrouter/deepseek/deepseek-v4.1-flash-1017` makes `<pack>-fresh-deepseek-v4.1-flash-1017`.
 The solve defaults are the campaign's: 20 model turns and 30 minutes (`LIMITS`,
 `tools/d2/campaign.ts`).
 

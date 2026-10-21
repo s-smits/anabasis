@@ -4,7 +4,6 @@
 // own, and the campaign keeps its harnesses by name: the one it started with, the starter
 // and the latest a session left.
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
-import { ROOM } from "../src/kernel/compare.ts";
 import { type Condition, recordCondition } from "../src/kernel/condition.ts";
 import { append, read } from "../src/kernel/log.ts";
 import { priceKey } from "../src/kernel/meter.ts";
@@ -41,7 +40,6 @@ import {
   gainSaid,
   objectiveNamed,
   reportLines,
-  roomNamed,
 } from "../tools/d2/round.ts";
 import { sessionCommand } from "../tools/d2/session.ts";
 
@@ -724,22 +722,13 @@ describe("a campaign", () => {
     expect(read(campaign.log).some(({ data }) => data.session === "z-6")).toBe(false);
   });
 
-  it("takes a room floor as a share from 0 up to 1, and the default where none is named", () => {
-    expect(roomNamed(undefined)).toBe(ROOM);
-    expect(roomNamed("0")).toBe(0);
-    expect(roomNamed("0.05")).toBe(0.05);
-    for (const bad of ["1", "-0.01", "five"]) expect(() => roomNamed(bad)).toThrow("--room");
-  });
-
-  it("goes on with the objective a comparison began with, a floor or none, unless --room names another", async () => {
+  it("goes on with the objective a comparison began with, a floor or none", async () => {
     const campaign = await openCampaign(ARGS);
     // The shape a comparison begun before 21 October recorded: a direction and no floor.
     append(campaign.log, "comparison.started", { session: "g-8", objective: { direction: "lower" } });
     append(campaign.log, "comparison.started", { session: "g-9" });
-    expect(objectiveNamed(campaign, undefined, "g-8")).toEqual({ direction: "lower" });
-    expect(objectiveNamed(campaign, undefined, "g-9")).toBeUndefined();
-    // A named floor is asked of it as of a comparison not yet begun, which its start then refuses.
-    expect(objectiveNamed(campaign, "0.05", "g-8")).toEqual(objectiveNamed(campaign, "0.05", "g-10"));
+    expect(objectiveNamed(campaign, "g-8")).toEqual({ direction: "lower" });
+    expect(objectiveNamed(campaign, "g-9")).toBeUndefined();
   });
 
   it("refuses a labels file with an entry that is no label, and a --target that is no count", async () => {

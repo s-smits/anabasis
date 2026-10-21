@@ -94,7 +94,7 @@ new harness is like. The informative tasks lie in between (`informative`,
 - never, while a valid answer is on record (another harness's or the task author's);
 - every time, where an answer on record beats one of its answers by the objective, by at least the
   room floor of the larger measure (another of its own, the other harness's, or the author's;
-  `ROOM`, 1%, or `--room`).
+  `ROOM`, 1%).
 
 In most learning the data stays fixed and the model moves; here the solver stays fixed and the
 Examiner keeps the exam at its frontier. It is told what the reference did on each task and, unless
@@ -831,11 +831,11 @@ bun run runs fresh | launch | continue | keep | pause | copy | fetch | retire | 
 - 4 solves per side (`--solves`; `SIZE` in `src/kernel/size.ts`);
 - level 0.02 (`--level`), with a patience of 6 (`--patience`): one comparison that reads a step at
   the level promotes;
-- a room floor of 1% (`--room`; `ROOM`), the least improvement by the objective worth counting, as
+- a room floor of 1% (`ROOM`), the least improvement by the objective worth counting, as
   a share of the larger measure. Two valid answers closer than it tie in a pair, and an answer on
   record better than one of the reference's by less leaves that task no room, at the gate, on the
-  frontier and in `roomOf`. The frontier is read at the floor the campaign's opening names now,
-  as the gate is. A comparison keeps the floor it began with, and one that began before 21 October
+  frontier and in `roomOf`. It is a constant, the same for every campaign. A comparison keeps the
+  floor it began with, and one that began before 21 October
   recorded none: its pairs read at floating-point equality (`SAME`), as they were read;
 - a stop after more than 3 tasks with a check defect (`--defects`);
 - a reserve of 10 dollars per solve (`--reserve`);
@@ -920,7 +920,7 @@ Where the check program declares an **objective** (a quantity its evaluator comp
 answer, with a direction: `brief.objective`, `objective(request)`, verified after the checks pass;
 `OBJECTIVE`, `src/kernel/verify.ts`), two valid answers in a pair are compared by it, and the better
 one wins the pair where the two are at least the room floor apart (`ObjectiveRule`, `better`,
-`src/kernel/compare.ts`; `--room`, 1% of the larger measure by default), and otherwise they tie.
+`src/kernel/compare.ts`; `ROOM`, 1% of the larger measure), and otherwise they tie.
 The sign-flip test says whether a difference is believable, and the floor whether it is worth
 counting: six tasks with room won by 0.01% read p = 0.016 and would promote. Validity is read first, so a refused
 answer can never be the better one. The objective is public, in the contract and in the solver's

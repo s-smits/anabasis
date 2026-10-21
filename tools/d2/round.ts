@@ -153,8 +153,6 @@ export const COMPARISON_OPTIONS = {
   // 12 October (the operator). Since 19 October one reading promotes. It is a per-comparison level:
   // one reading on 24 untied tasks reads a step between equal harnesses 1.1% of the time at 0.02.
   level: { type: "string", default: "0.02" },
-  // The objective's room floor, a term of the comparison (`roomNamed`); unnamed, `ROOM`.
-  room: { type: "string" },
   defects: { type: "string", default: "3" },
   cap: { type: "string" },
   reserve: { type: "string", default: "10" },
@@ -335,27 +333,19 @@ export function solvingAs(campaign: Campaign, { limits }: Pick<AskedSetting, "na
 }
 
 /** The objective comparison `id` pairs two valid answers by, where its check program declares one:
- *  the brief's direction and the room floor. Undefined otherwise. A comparison that began goes on by
- *  the objective it recorded unless `--room` names another, since one begun before 21 October
- *  recorded no floor, and asking it for one refused it as begun on other terms. Until 19 October a
- *  margin went with it (`--margin`, `SAME` in `src/kernel/compare.ts`). */
+ *  the brief's direction and the room floor (`ROOM`). Undefined otherwise. A comparison that began
+ *  goes on by the objective it recorded, since one begun before 21 October recorded no floor and
+ *  reads at floating-point equality. Until 19 October a margin went with it (`--margin`, `SAME` in
+ *  `src/kernel/compare.ts`), and on 21 October a `--room` term named the floor: no campaign named
+ *  one, and the operator chose one fixed floor over a setting nobody had a reason to change. */
 export function objectiveNamed(
   campaign: Pick<Campaign, "checks" | "log">,
-  room: string | undefined,
   id: string,
 ): ObjectiveRule | undefined {
   const began = startOf(read(campaign.log), id);
-  if (began !== undefined && room === undefined) return objectiveRuleIn(began);
+  if (began !== undefined) return objectiveRuleIn(began);
   const declared = readBrief(campaign.checks).objective;
-  return declared === undefined ? undefined : { direction: declared.direction, room: roomNamed(room) };
-}
-
-/** What `--room` names: the least share of the larger measure an answer on record must be better
- *  by before a task leaves room (`ROOM`, `src/kernel/compare.ts`), from 0 up to 1. */
-export function roomNamed(flag: string | undefined): number {
-  const room = flag === undefined ? ROOM : Number(flag);
-  if (!(room >= 0 && room < 1)) throw new Error(`--room is a share from 0 up to 1, not ${String(flag)}`);
-  return room;
+  return declared === undefined ? undefined : { direction: declared.direction, room: ROOM };
 }
 
 /** What `--predict` names: the operator's expectation of the comparison, in a sentence, or none. */
@@ -579,7 +569,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
     ...scoredSet(read(campaign.log), setting.target, contractHash(campaign.contract)),
     solves: Number(values.solves),
     level: Number(values.level),
-    objective: objectiveNamed(campaign, values.room, session),
+    objective: objectiveNamed(campaign, session),
     defects: Number(values.defects),
     cap,
     prediction: predictionNamed(values.predict),

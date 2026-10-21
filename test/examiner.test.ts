@@ -1170,6 +1170,29 @@ describe("a session that writes tasks", () => {
     expect(s.sent[3]).toContain("x-1-001: refused");
   });
 
+  it("returns from wait with the gate's next word, and at once with nothing at the gate", async () => {
+    const s = seat("write", [
+      call(TRY, { tasks: [instance(2)] }),
+      call("wait", {}),
+      call("wait", {}),
+      finish,
+      finish,
+    ]);
+    const measured = measuredProbe(s.log, () => undefined);
+    const probe = async (task: TaskPackage, session: string) => {
+      await Bun.sleep(50);
+      return await measured(task, session);
+    };
+    await examine({ ...s.request, limits: { ...s.request.limits, puts: 1 }, probe });
+    const [, waited, idle] = s.of(CALLED);
+    expect(waited?.text).toContain("x-1-001: refused");
+    expect(idle?.text).toContain("Nothing is at the gate.");
+    // A session whose gate solves nothing has no word to wait for.
+    const unprobed = seat("write", [finish, finish]);
+    await examine(unprobed.request);
+    expect(unprobed.sent[0]).not.toContain("wait returns");
+  });
+
   it("solves the instances of one call together, and bills each draft its own solves", async () => {
     const s = seat("write", [call(TRY, { tasks: [instance(2), instance(3)] }), finish, finish]);
     // No solve ends until both instances' first have started: gated one instance at a time, the

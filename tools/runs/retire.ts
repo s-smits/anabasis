@@ -17,9 +17,12 @@
  * a cut log made to rehearse on, and its source keeps the record. On 20 October a sweep would have
  * archived 563 of them, 547 left by the suite.
  *
- * A worktree other than the main one is then deleted once nothing has used it for `--days`: no
+ * A worktree other than the main one is then deleted once nothing has used it for `TREE_DAYS`: no
  * process works in it or names it on its command line, it holds no run log, and its last commit
- * and its top entries are older. One with a change no commit names stays for `DIRTY_DAYS`. Where
+ * and its top entries are older. One with a change no commit names stays for `DIRTY_DAYS`. Its
+ * campaigns leave for the archive after `--days`, so the traces gather in one place within a day
+ * while the tree waits a week for a session to come back to it (operator, 21 October: at one day
+ * a dry run would delete 32 worktrees, every one idle less than two days). Where
  * no branch holds its commit, a local tag `retired/<sha9>` keeps it reachable (the repository is
  * public, so the tag is not pushed). Its node_modules, toolchains and the copies `.ana/moved/` set
  * aside go with it: what `copy` and `move` set aside goes on elsewhere, whole.
@@ -51,9 +54,10 @@ export interface Sweep {
 }
 
 const DAY_MS = 86_400_000;
-/** A worktree with a change no commit names stays this long: past it the system has moved too far
- *  for the change to apply (operator, 26 September). */
-const DIRTY_DAYS = 7;
+/** A worktree nothing uses stays this long, and one with a change no commit names twice as long:
+ *  past it the system has moved too far for the change to apply (operator, 26 September). */
+const TREE_DAYS = 7;
+const DIRTY_DAYS = 14;
 const USAGE = "usage: bun run runs retire [--days 1] [--yes]";
 
 const say = (sweep: Sweep, line: string) => console.log(`${sweep.yes ? "" : "would: "}${line}`);
@@ -116,7 +120,7 @@ function keepCommit(sweep: Sweep, tree: string): void {
   if (sweep.yes) gitText(sweep.main, "tag", tag, head);
 }
 
-/** Every worktree but the main one that nothing has used for `days`, deleted, deepest first; a
+/** Every worktree but the main one that nothing has used for `TREE_DAYS`, deleted, deepest first; a
  *  run log in `archiving` counts as gone. */
 export function retireTrees(sweep: Sweep, archiving: ReadonlySet<string>): void {
   const logs = runs(sweep.main).filter((run) => !archiving.has(run.path));
@@ -129,7 +133,7 @@ export function retireTrees(sweep: Sweep, archiving: ReadonlySet<string>): void 
     const committed = Number(gitMaybe(tree, "log", "-1", "--format=%ct") ?? 0) * 1000;
     const touched = readdirSync(tree).map((entry) => lstatSync(join(tree, entry)).mtimeMs);
     const idle = (sweep.now - Math.max(committed, ...touched)) / DAY_MS;
-    if (idle < sweep.days || logs.some((run) => run.tree === tree) || inUse(tree)) continue;
+    if (idle < TREE_DAYS || logs.some((run) => run.tree === tree) || inUse(tree)) continue;
     const dirty = (gitMaybe(tree, "status", "--porcelain") ?? "changed") !== "";
     if (dirty && idle < DIRTY_DAYS) {
       console.log(`${tree}: idle ${idle.toFixed(1)} days with a change no commit names, kept`);

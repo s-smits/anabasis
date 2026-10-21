@@ -2,8 +2,9 @@
  * One solve, start to ending: a home seeded with the public task, pi's coding tools on the
  * command wall with the harness's tools and `submit` beside them, pi's agent loop under the host's
  * wall and turn cap, then the ending typed and logged with the trace and the meter. A non-result from the solve's side is run
- * again, up to three times with backoff; one from the task's own check is returned for the caller to
- * drop the task, and one from the verifier stops the run.
+ * again, up to three times with backoff; named provider resets are waited out here without using a
+ * rerun. On 21 October, 128 gate solves refused 43 of 1,396 drafts in 30 campaigns at such resets.
+ * A task's check non-result returns to its caller; a verifier non-result stops the run.
  *
  * The loop runs in this process and so does the model's own process: under the Claude backend,
  * Claude Code runs on the host with a home of its own outside the command wall. v1 confined the
@@ -127,25 +128,65 @@ export interface Played {
 }
 
 const RERUNS = 3;
-/** The wait before rerun `rerun`, cut short by the solve's kill. */
-const backoff = (rerun: number, kill?: AbortSignal) =>
-  new Promise<void>((done) => {
-    const timer = setTimeout(done, 30_000 * 2 ** (rerun - 1));
-    kill?.addEventListener("abort", () => (clearTimeout(timer), done()), { once: true });
-  });
+/** Sleep, including an injected sleep, ends at the request's kill. */
+async function waiting(ms: number, kill?: AbortSignal, wait?: (ms: number) => Promise<void>) {
+  if (kill?.aborted === true) return;
+  const stopped = Promise.withResolvers<void>();
+  const abort = () => stopped.resolve();
+  kill?.addEventListener("abort", abort, { once: true });
+  const timer = wait === undefined ? setTimeout(abort, ms) : undefined;
+  try {
+    await Promise.race([wait?.(ms) ?? stopped.promise, stopped.promise]);
+  } finally {
+    clearTimeout(timer);
+    kill?.removeEventListener("abort", abort);
+  }
+}
+
+/**
+ * Whether the campaign waited out the provider limit `said` names, an ending's reason, a throw or a
+ * crash's words: where its reset is still ahead, the wait is on record (`for: "provider"`) and slept
+ * to a minute past it, however far on, or until `kill`. Until 15 October a week's reset was the
+ * environment's ending, and nothing reran buffer-159-opus for 7 h 10 min on 14 October; a long wait
+ * is the operator's, or a keeper's (`tools/runs/keep.ts`), to move to another login.
+ */
+export async function waitOut(
+  log: string,
+  said: unknown,
+  wait?: (ms: number) => Promise<void>,
+  now = new Date(),
+  kill?: AbortSignal,
+): Promise<boolean> {
+  const reset = resetOf(errorMessage(said), now);
+  const ms = reset === null ? 0 : reset.getTime() - now.getTime() + 60_000;
+  if (reset === null || ms <= 0 || kill?.aborted === true) return false;
+  console.log(
+    `the provider's limit resets at ${reset.toISOString()}: the campaign waits for it, then goes on`,
+  );
+  append(log, "campaign.waited", { for: "provider", until: reset.toISOString(), ms });
+  await waiting(ms, kill, wait);
+  return true;
+}
 
 /**
  * Solve until an ending that is not the solve side's non-result, or until the reruns run out. A
- * provider limit that names its reset is returned at once, for the campaign to wait out
- * (`waitOut`, `tools/d2/host.ts`): reruns minutes apart only spend themselves before it. A kill
- * during the wait starts no rerun: on 12 October six attempts of truss's g-1 began after its stop.
+ * provider's named reset waits without spending a rerun. Every attempt keeps its own id, and a
+ * kill during either wait returns the ending and starts nothing.
  */
-export async function solve(request: SolveRequest, wait = backoff): Promise<Ending> {
-  for (let attempt = 1; ; attempt++) {
+export async function solve(request: SolveRequest, wait?: (ms: number) => Promise<void>): Promise<Ending> {
+  for (let attempt = 1, reruns = 0; ; attempt++) {
     const ending = await attemptSolve(request, `${request.id}-${String(attempt)}`);
     const solveSide = ending.outcome === "non-result" && ending.kind !== "check";
-    if (!solveSide || attempt > RERUNS || resetOf(ending.reason, new Date()) !== null) return ending;
-    if (request.kill?.aborted !== true) await wait(attempt, request.kill);
+    if (!solveSide) return ending;
+    if (
+      ending.kind === "provider" &&
+      (await waitOut(request.log, ending.reason, wait, new Date(), request.kill))
+    ) {
+      if (request.kill?.aborted === true) return ending;
+      continue;
+    }
+    if (reruns === RERUNS) return ending;
+    await waiting(30_000 * 2 ** reruns++, request.kill, wait);
     if (request.kill?.aborted === true) return ending;
   }
 }

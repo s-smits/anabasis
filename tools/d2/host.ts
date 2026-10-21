@@ -13,7 +13,7 @@
  *   holds no reserve for it (`affords`); until 14 October each kind of solve held its own.
  * - **A provider's named reset.** A usage limit that names when it lifts is slept out, not a crash:
  *   on 12 October one login's limit, an hour and forty minutes from its reset, ended five campaigns
- *   on two hosts at once (`waitOut`).
+ *   on two hosts at once (`waitOut`, `src/solve/run.ts`, which a solve also calls).
  * - **A network that failed a session**, a minute after the first crash and five after the second:
  *   in buffer-149 on 13 October, Builder session b-2 began 2 s after b-1 crashed on a failed DNS
  *   lookup (`waitCrashed`).
@@ -21,14 +21,13 @@
  * Every wait but the reserve's is on record as `campaign.waited`, so a reader tells the solver's
  * time from the host's, and a provider's starts the crash rule's count again (`crashedRun`).
  */
-import { resetOf } from "#src/backends/claude.ts";
 import { CRASHES } from "#src/builder/decide.ts";
 import { crashedRun } from "#src/builder/ground.ts";
 import { affords, flying, inFlight } from "#src/builder/opening.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
-import { errorMessage } from "#src/meta/runtime-values.ts";
+import { waitOut } from "#src/solve/run.ts";
 import { type Seated, solved } from "./round.ts";
 
 /** A host as the waits read it: its one-minute load, its cores, how long a look waits, and how it
@@ -57,8 +56,6 @@ export const HOST: Host = {
 
 /** The looks at the load before a solve starts all the same: half an hour on `HOST`. */
 const LOOKS = 60;
-/** Past the named minute, so that the first call is not made in the minute the limit lifts. */
-const RESET_MARGIN_MS = 60_000;
 const NETWORK_WAITS_MS = [60_000, 300_000];
 const NETWORK =
   /\b(?:ENOTFOUND|EAI_AGAIN|ECONNRESET|ECONNREFUSED|ENETUNREACH|ETIMEDOUT|ConnectionRefused|FailedToOpenSocket)\b/;
@@ -114,30 +111,6 @@ export function gated(
 }
 
 /**
- * Whether the campaign waited out the provider limit `said` names, a throw or a crash's words:
- * where its reset is still ahead, the wait is on record (`for: "provider"`) and slept to a minute
- * past it, however far on. Until 15 October a week's reset was the environment's ending, and
- * nothing reran buffer-159-opus for 7 h 10 min on 14 October; a long wait is the operator's, or a
- * keeper's (`tools/runs/keep.ts`), to move to another login.
- */
-export async function waitOut(
-  log: string,
-  said: unknown,
-  host: Host = HOST,
-  now = new Date(),
-): Promise<boolean> {
-  const reset = resetOf(errorMessage(said), now);
-  const ms = reset === null ? 0 : reset.getTime() - now.getTime() + RESET_MARGIN_MS;
-  if (reset === null || ms <= 0) return false;
-  console.log(
-    `the provider's limit resets at ${reset.toISOString()}: the campaign waits for it, then goes on`,
-  );
-  append(log, WAITED, { for: "provider", until: reset.toISOString(), ms });
-  await host.sleep(ms);
-  return true;
-}
-
-/**
  * The wait after the sessions in a row that crashed (`crashedRun`): to the provider's reset where
  * the last crash names one, counted or not, and otherwise, where the network failed it, one wait a
  * crash on record as `for: "network"`. The third ends the campaign on its environment (`CRASHES`,
@@ -147,7 +120,7 @@ export async function waitOut(
 export async function waitCrashed(log: string, host: Host = HOST): Promise<void> {
   const events = read(log);
   const { count, crash } = crashedRun(events);
-  if ((await waitOut(log, crash, host)) || crash === null || !NETWORK.test(crash)) return;
+  if ((await waitOut(log, crash, host.sleep)) || crash === null || !NETWORK.test(crash)) return;
   if (count === 0 || count >= CRASHES) return;
   const ended = events.findLastIndex(({ kind }) => kind === "exam.finished" || kind === "build.finished");
   if (events.slice(ended + 1).some(({ kind, data }) => kind === WAITED && data.for === "network")) return;

@@ -296,6 +296,13 @@ export function patienceOf(events: readonly LogEvent[]): number {
   return isNumber(named) ? named : PATIENCE;
 }
 
+/** Established practice failures, shared by the stop rule and the next move. */
+export function practiceFailures(events: readonly LogEvent[]) {
+  return practiceRan(events).filter(
+    (solve) => solve.ending?.outcome === "fail" && !rejectionAside(events, solve),
+  );
+}
+
 /**
  * The plan's stop rule over a log: how many moves could have shown a gain, how many of them have
  * passed since the last step, and whether that is the campaign's patience (`7f0add79:docs/plan.md`, row
@@ -322,7 +329,7 @@ export function patienceOf(events: readonly LogEvent[]): number {
  * it carries, since the id names the host's code and a tree moved to a new commit changes it.
  */
 export function stopRule(events: readonly LogEvent[]) {
-  const practised = practiceRan(events);
+  const practised = practiceFailures(events);
   /** The harnesses a whole session changed or a live one froze at a checkpoint, where each session began, and the whole sessions that left
    *  their harness as it was after a practice solve of theirs failed. */
   const built = new Set<unknown>();
@@ -335,13 +342,7 @@ export function stopRule(events: readonly LogEvent[]) {
     if (data.changed === true && !CUT.has(data.ended) && isString(data.harness)) built.add(data.harness);
     if (data.changed !== false || CUT.has(data.ended)) continue;
     const from = began.get(data.session) ?? -1;
-    const shown = practised.some(
-      (solve) =>
-        solve.started > from &&
-        solve.started < index &&
-        solve.ending?.outcome === "fail" &&
-        !rejectionAside(events, solve),
-    );
+    const shown = practised.some((solve) => solve.started > from && solve.started < index);
     if (shown) idle.push({ index, step: false });
   }
   /** Each pair of a harness and a reference, where it first reported, and whether any of its

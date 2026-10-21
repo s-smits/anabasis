@@ -9,9 +9,11 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { draftOf } from "../src/examiner/draft.ts";
+import { flying } from "../src/builder/opening.ts";
 import { heard, measuredGate } from "../src/examiner/record.ts";
 import { examine } from "../src/examiner/session.ts";
 import { examinerDirs } from "../src/examiner/shell.ts";
+import { writing } from "../src/examiner/write.ts";
 import { conditionId, settingId } from "../src/kernel/condition.ts";
 import { writtenTasks } from "../src/kernel/history.ts";
 import { append, type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
@@ -896,26 +898,143 @@ describe("a session that writes tasks", () => {
     ).toEqual(expect.arrayContaining(["0 of 1", "1 of 2", "3 of 3"]));
   });
 
-  it("starts no solve of a draft where the campaign's budget holds no reserve for all three", async () => {
+  it("reserves only the next solve of each draft, and stops when that reserve is spent", async () => {
     const s = seat("write", [call(TRY, { tasks: [instance(2)] }), finish, finish]);
-    // Two reserves of $0.5 are left: until 14 October the three solves started all the same.
-    append(s.log, "campaign.opened", { budget: { dollars: 1, reserve: 0.5 } });
+    append(s.log, "campaign.opened", { budget: { dollars: 0.5, reserve: 0.5 } });
     let asked = 0;
     const probe = async () => {
       asked += 1;
+      append(s.log, "solve.finished", { solve: `reserve-${String(asked)}`, billed: 0.5 });
       return PASS;
     };
-    const examined = await examine({ ...s.request, limits: { ...s.request.limits, puts: 1 }, probe });
-    expect(asked).toBe(0);
-    expect(examined.refused).toEqual([s.versionOf("x-1-001", 2)]);
-    expect(
-      s
-        .of(CALLED)
-        .flatMap(({ text: said }) => (isString(said) ? [said] : []))
-        .join("\n"),
-    ).toContain(
-      "x-1-001: refused: the campaign's budget holds no reserve for the reference harness's three solves of it",
+    // Call the writing owner directly so the model's own budget cannot end the session first.
+    const mode = writing({ ...s.request, probe }, [], undefined, undefined);
+    await mode.tools[0]!.execute("put", { tasks: [instance(2)] });
+    await mode.settle(true);
+    expect(asked).toBe(1);
+    expect(mode.result().refused).toEqual([s.versionOf("x-1-001", 2)]);
+    expect(s.of(GATE)).toMatchObject([{ outcome: "refused", reference: { solves: 1, ran: 1 } }]);
+    expect(s.of(GATE).filter(measuredGate)).toEqual([]);
+    // Below one reserve the next draft starts nothing.
+    await mode.tools[0]!.execute("put-again", { tasks: [instance(3)] });
+    await mode.settle(true);
+    expect(asked).toBe(1);
+    // Two drafts need two reserves. The first solve in flight must not be counted again as ahead.
+    const pair = seat("write", []);
+    append(pair.log, "campaign.opened", { budget: { dollars: 1, reserve: 0.5 } });
+    const release = Promise.withResolvers<void>();
+    let together = 0;
+    const batch = writing(
+      {
+        ...pair.request,
+        probe: () =>
+          flying(pair.log, async () => {
+            together += 1;
+            await release.promise;
+            return PASS;
+          }),
+      },
+      [],
+      undefined,
+      undefined,
     );
+    await batch.tools[0]!.execute("batch", { tasks: [instance(2), instance(3)] });
+    try {
+      expect(together).toBe(2);
+    } finally {
+      release.resolve();
+      await batch.settle(true);
+    }
+  });
+
+  it("reads a proof that passes after a draft's first reading while it is still at the gate", async () => {
+    for (const alreadyProved of [false, true]) {
+      const s = seat("write", []);
+      append(s.log, "exam.started", { session: s.request.id });
+      const first = Promise.withResolvers<void>();
+      const later = Promise.withResolvers<void>();
+      let asked = 0;
+      const measured = measuredProbe(s.log, () => 10);
+      const mode = writing(
+        {
+          ...s.request,
+          contract: { ...s.request.contract, objective: { quantity: "mass", direction: "lower" } },
+          verify: async (_task, answer) => ({ kind: "pass", objective: Number(asRecord(answer)?.answer) }),
+          probe: async (task, session) => {
+            asked += 1;
+            if (asked === 2) {
+              first.resolve();
+              await later.promise;
+            }
+            return alreadyProved ? await measured(task, session) : REJECTED;
+          },
+        },
+        [],
+        undefined,
+        undefined,
+      );
+      const put = mode.tools.find(({ name }) => name === TRY)!;
+      const answer = mode.tools.find(({ name }) => name === "try_answer")!;
+      if (alreadyProved) {
+        await answer.execute("earlier", { ...instance(7), answer: { ...GOOD, answer: "9.95" } });
+      }
+      await put.execute("put", { tasks: [instance(7)] });
+      await first.promise;
+      const better = { ...GOOD, answer: "9" };
+      await answer.execute("proof", { ...instance(7), answer: better });
+      later.resolve();
+      await mode.settle(true);
+      expect(s.of(GATE)).toMatchObject([{ outcome: "passed" }]);
+      expect(mode.result().held).toEqual([s.versionOf("x-1-001", 7)]);
+      expect(asked).toBe(2);
+      expect(s.of("task.feasible")).toMatchObject([{ answer: better }]);
+    }
+  });
+
+  it("takes an unmeasured draft again in the same session and keeps every measured or pending duplicate refused", async () => {
+    const s = seat("write", []);
+    const release = Promise.withResolvers<void>();
+    let asked = 0;
+    const mode = writing(
+      {
+        ...s.request,
+        limits: { ...s.request.limits, puts: 8 },
+        probe: async () => {
+          asked += 1;
+          if (asked <= 3) return { outcome: "non-result", kind: "provider", reason: "offline" };
+          await release.promise;
+          return PASS;
+        },
+      },
+      [],
+      undefined,
+      undefined,
+    );
+    const put = mode.tools[0]!;
+    await put.execute("first", { tasks: [instance(7)] });
+    await mode.settle(true);
+    await put.execute("retry", { tasks: [instance(7), instance(7)] });
+    expect(mode.result().puts).toBe(2);
+    release.resolve();
+    await mode.settle(true);
+    await put.execute("measured", { tasks: [instance(7)] });
+    expect(mode.result().puts).toBe(2);
+    expect(s.of(GATE).map(measuredGate)).toEqual([false, true]);
+    // A held draft also stays a duplicate.
+    const proved = writing(
+      { ...s.request, id: "x-2", verify, probe: async () => REJECTED },
+      [],
+      undefined,
+      undefined,
+    );
+    await proved.tools
+      .find(({ name }) => name === "try_answer")!
+      .execute("proof", { ...instance(8), answer: GOOD });
+    await proved.tools[0]!.execute("held", { tasks: [instance(8)] });
+    await proved.settle(true);
+    await proved.tools[0]!.execute("duplicate", { tasks: [instance(8)] });
+    expect(proved.result().held).toHaveLength(1);
+    expect(proved.result().puts).toBe(1);
   });
 
   it("holds a task out by try_task at some valid solves of the reference harness and not all, and tells the counts alone", async () => {
@@ -1106,6 +1225,55 @@ describe("a session that writes tasks", () => {
     const [gate] = s.of(GATE);
     expect(asRecord(gate?.reference)).toMatchObject({ valid: 1, solves: 2 });
     expect(asRecord(gate?.reference)?.gap).toBeCloseTo(0.005, 9);
+  });
+
+  it("settles a gate after a thrown model crash under the wall, kill and budget, then closes the model", async () => {
+    for (const [stop, ended] of [
+      ["none", "crashed"],
+      ["wall", "wall"],
+      ["kill", "killed"],
+      ["spent", "stopped"],
+    ] as const) {
+      const s = seat("write", [call(TRY, { tasks: [instance(2)] })]);
+      const release = Promise.withResolvers<void>();
+      const kill = new AbortController();
+      const models = s.request.models();
+      // SAFETY: the inherited collection is complete; only the streaming seam changes.
+      const crashing = Object.create(models) as typeof models;
+      let requests = 0;
+      let modelSignal: AbortSignal | undefined;
+      crashing.streamSimple = (...asked: Parameters<typeof models.streamSimple>) => {
+        modelSignal = asked[2]?.signal;
+        requests += 1;
+        if (requests === 2) {
+          if (stop === "none") setTimeout(() => release.resolve(), 0);
+          if (stop === "kill") setTimeout(() => kill.abort(), 0);
+          throw new Error("provider limit reached");
+        }
+        return models.streamSimple(...asked);
+      };
+      let ran = 0;
+      const examined = await examine({
+        ...s.request,
+        models: () => crashing,
+        kill: kill.signal,
+        limits: { ...s.request.limits, wallSeconds: stop === "wall" ? 0.1 : 600 },
+        probe: async (_task, _session, signal) => {
+          ran += 1;
+          signal.addEventListener("abort", () => release.resolve(), { once: true });
+          if (stop === "spent") append(s.log, "campaign.opened", { budget: { dollars: 0, reserve: 1 } });
+          await release.promise;
+          if (signal.aborted) return { outcome: "non-result", kind: "killed", reason: "stopped" };
+          return ran === 1 ? PASS : REJECTED;
+        },
+      });
+      expect(modelSignal?.aborted).toBe(true);
+      expect(examined.ended).toBe(ended);
+      expect(s.of(GATE)).toMatchObject([{ outcome: stop === "none" ? "passed" : "refused" }]);
+      expect(ran).toBe(stop === "none" ? 2 : 1);
+      const kinds = read(s.log).map(({ kind }) => kind);
+      expect(kinds.indexOf(GATE)).toBeLessThan(kinds.indexOf("exam.finished"));
+    }
   });
 
   it("ends at its wall with no solve of the reference harness left running, and starts none after it", async () => {

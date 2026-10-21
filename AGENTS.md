@@ -1211,12 +1211,12 @@ Cite a rule by its number in a pull request or a review.
     out of credit or reaching its session limit is part of the development process, like a host
     restart. Keep what was recorded, classify the affected work from its events, and continue from
     the log at the run's own commit once the login has room again, or under another login (section
-    10, item 9). A named reset is waited out in code (`waitOut`, `tools/d2/host.ts`); a crash
-    without a named reset counts towards the crash rule (`crashedRun`) and ends a campaign on its
-    environment, which is a pause and not a result. Such an ending is not a failure of any
-    mechanism: do not patch, triage or report it as one, do not count it against a change, and do
-    not spend a pull request on waiting it out. A generic 429, a timeout or a crash that does not
-    name a limit is a different matter: investigate the failure itself.
+    10, item 9). A named reset is waited out in code, inside the solve it ended (`waitOut`,
+    `src/solve/run.ts`); a crash without a named reset counts towards the crash rule (`crashedRun`)
+    and ends a campaign on its environment, which is a pause and not a result. Such an ending is not
+    a failure of any mechanism: do not patch, triage or report it as one, do not count it against a
+    change, and do not spend a pull request on waiting it out. A generic 429, a timeout or a crash
+    that does not name a limit is a different matter: investigate the failure itself.
 
 ## 9. Status, evidence and claims
 

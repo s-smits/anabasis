@@ -92,7 +92,7 @@ export interface Standing {
   /** How far apart the sides' measures were where the objective alone won it (`objectiveMargin`). */
   readonly margin: number | null;
   /** The room by the objective the reference harness's answers left there, against its own and its
-   *  author's (`roomLeft`), and 0 under the campaign's floor. */
+   *  author's (`roomLeft`), and 0 under the floor (`ROOM`). */
   readonly room: number | null;
 }
 
@@ -128,7 +128,7 @@ interface TalliedIn {
   /** How far apart the sides' measures were where the objective alone won it (`objectiveMargin`). */
   readonly margin: number | null;
   /** The room by the objective the reference harness's answers left there, against its own and its
-   *  author's (`roomLeft`), and 0 under the campaign's floor, where it leaves none; null where it
+   *  author's (`roomLeft`), and 0 under the floor (`ROOM`), where it leaves none; null where it
    *  stood on neither side. */
   readonly room: number | null;
 }
@@ -508,10 +508,6 @@ function tallyReports(
   cut: ReadonlySet<string>,
 ): void {
   const reference = referenceOf(events);
-  // The room floor the campaign runs by as its opening last named it (`--room`), or `ROOM`: its
-  // frontier is read at that one, as its gate is, whatever an earlier comparison recorded.
-  const named = asRecord(events.findLast(({ kind }) => kind === "campaign.opened")?.data.terms)?.room;
-  const floor = isString(named) ? Number(named) : ROOM;
   let order = 0;
   for (const report of lastReports(events, true)) {
     const { index, session, data } = report;
@@ -532,10 +528,10 @@ function tallyReports(
         reference: side,
         cut: cutOn(data.old) || cutOn(data.fresh),
         referenceCut: side !== null && cutOn(data[side]),
-        closed: side !== null && closedTo(pair, side, of(task).best, floor),
+        closed: side !== null && closedTo(pair, side, of(task).best),
         won: wins > 0 ? "fresh" : losses > 0 ? "old" : null,
         margin: objectiveMargin(pair),
-        room: left === null || left >= floor ? left : 0,
+        room: left === null || left >= ROOM ? left : 0,
       });
     }
     for (const task of Array.isArray(data.aside) ? data.aside.filter(isString) : []) {

@@ -79,8 +79,6 @@ interface Terms {
   /** Whether each task's line says who won it in its last comparison (`exam-results`, `heard`);
    *  told unless a campaign names the term off. */
   readonly results?: boolean;
-  /** The objective's room floor the gate holds a draft by (`--room`); `ROOM` where unnamed. */
-  readonly room?: number;
 }
 
 /** What a task-writing session's tools share. */
@@ -196,7 +194,7 @@ function shown(measure: number): string {
  *  their best (`gap`, by `gainOver`), and whether they leave the reference room as a comparison
  *  reads it (`informative`). Each later reading only adds to them, so room once shown stays. */
 async function seenOf(
-  { request: { contract, log, room: floor } }: Desk,
+  { request: { contract, log } }: Desk,
   task: TaskPackage,
   {
     from,
@@ -213,7 +211,7 @@ async function seenOf(
     checked?.kind === "pass" && contract.objective !== undefined ? checked.objective : undefined;
   const objective = contract.objective && {
     direction: contract.objective.direction,
-    room: floor ?? ROOM,
+    room: ROOM,
   };
   const pair: Paired = {
     task: taskVersion(task),
@@ -603,7 +601,7 @@ export function writing(
   const kept = cut?.ended === "crashed" && cut.running === 0 && isString(cut.session) ? cut.session : null;
   return {
     kind: "exam" as const,
-    system: systemPrompt(attempts, reference === undefined ? "unseen" : "in-home", request.room),
+    system: systemPrompt(attempts, reference === undefined ? "unseen" : "in-home"),
     opening: firstMessage(
       request.contract,
       request.checks,

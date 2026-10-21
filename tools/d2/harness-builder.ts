@@ -291,7 +291,6 @@ async function make(
         ...flag("turns", values["exam-turns"]),
         ...flag("reference-home", values["exam-reference"]),
         ...flag("results", values["exam-results"]),
-        ...flag("room", values.room),
       ],
       seats.examine,
       // The campaign's own seat, so the tries wait on the load and share the reserve (14 October).

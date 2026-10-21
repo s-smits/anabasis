@@ -1,0 +1,9 @@
+# An Anabasis harness on pi's coding agent (studies/shared/harbor/pi_agent.py). The study's
+# run.ts bind-mounts one arm read-only at /opt/anabasis; the model is reached through the job's
+# proxy (model_connection: local_proxy), and the limits come in harness_params_override.
+harness:
+  name: anabasis-pi
+  import_path: "workbuddy_bench.agents.pi_agent:PiAgent"
+  protocol: openai
+  params:
+    PI_MOUNT: "/opt/anabasis"

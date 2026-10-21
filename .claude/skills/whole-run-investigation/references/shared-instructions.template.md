@@ -1,9 +1,9 @@
 <!--
 The shared instructions every open lane of this investigation carries, whole. `wri.ts start` filled
-in the campaign's row; write the two marked sections before `wri.ts lanes`, and edit any other line
+in each campaign's row; write the two marked sections before `wri.ts lanes`, and edit any other line
 every lane should read. Comments like this one are dropped when the prompts are built. A `##`
 section left blank refuses `wri.ts lanes`; delete its heading to drop it on purpose. An isolated
-lane is given the campaign's row and the hard rules, and neither of the two sections you write.
+lane is given the campaigns' rows and the hard rules, and neither of the two sections you write.
 -->
 
 ## Orientation
@@ -14,16 +14,16 @@ from the log. -->
 
 ## The moved variable and prior state
 
-<!-- AUTHOR: what changed between this campaign and the one before it (the checker, the host's
+<!-- AUTHOR: what changed between these campaigns and the ones before them, and between each other (the checker, the host's
 code, the model, the Builder's or the Examiner's prompt), the earlier findings this investigation
 checks, and what would falsify each. Write "none" when nothing moved. An earlier diagnosis goes here
 as a hypothesis, never above as a premise. -->
 
-## Campaign under review
+## Campaigns under review
 
-{campaign}
+{campaigns}
 
-The log is the campaign's whole record: one event a line, append-only. Its folder also holds
+Each log is its campaign's whole record: one event a line, append-only. Its folder also holds
 the check program as it was staged, at `checks/` for a stored pack and at `exams/<digest>/checks/`
 for an exam the campaign drafted, and `states/`, every harness state by digest. A
 campaign command that ran left `launch-run-<n>.json` there as well (and until 11 October a round
@@ -37,9 +37,9 @@ to none.
   text, no prompt, no passage of a trace, no ruling's prose. Report event kinds, solve
   ids, the first eight characters of a version or digest, check ids, counts, paths and line numbers,
   and describe a mechanism in your own words.
-- Never write under the campaign's folder, and never append to a log. Open both to read. Scratch
+- Never write under a campaign's folder, and never append to a log. Open both to read. Scratch
   goes in a temporary directory of your own.
-- Run no command with its working directory inside the campaign's folder: a tool's cache or log
+- Run no command with its working directory inside a campaign's folder: a tool's cache or log
   lands where it runs.
 - Start no solve, no Builder or Examiner session, no round and no check run. `wri.ts grade` is the
   one exception, where your lane names it, and it writes nothing.
@@ -48,11 +48,11 @@ to none.
   `## Checked`, in sentences without `Observation:`, `Cause:`, `Owner:`, `Reverses if:` or
   `Decision:` lines.
 - You are independent: open no other lane's prompt or report and no synthesis of this investigation.
-- Run the repository's commands (`bun tools/...`, `bun .claude/...`) from the checkout the campaign
-  row names, which has its dependencies installed, and name a log or a tree by its path: a
+- Run the repository's commands (`bun tools/...`, `bun .claude/...`) from the checkout the campaigns'
+  rows name, which has its dependencies installed, and name a log or a tree by its path: a
   campaign's own tree may hold none, and on 14 October four lanes could not start a reader there.
-- Read source where the campaign's row says the code it last ran stands: the campaign's own tree
-  when the row names it, and otherwise the checkout the row names. Where the row says the last
+- Read source where each campaign's host line says the code it last ran stands: the campaign's own tree
+  when the line names it, and otherwise the checkout the rows name. Where the line says the last
   condition ran under another host hash than both, every statement you make about source is about
   another tree and may not be what ran: say so beside the statement.
 - Your report is for the operator and the primary reviewer. It is never given to a Builder, an

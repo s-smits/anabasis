@@ -20,8 +20,8 @@ export interface Lane {
   readonly standing: boolean;
   /** Runs alone, on its trigger, and reads no other report. */
   readonly isolated: boolean;
-  /** Reads the peer campaigns the primary named with `start --with` beside this one. */
-  readonly peers: boolean;
+  /** Is given every campaign under review side by side, in lane 31's columns. */
+  readonly sideBySide: boolean;
   /** The lane whole, as a session is given it. */
   readonly body: string;
 }
@@ -73,7 +73,7 @@ export function lanesOf(markdown: string): Lane[] {
       triggers: named.flatMap(([, name = "", lane]) => (lane === number ? [name] : [])),
       standing: startsFrom.includes("standing"),
       isolated: startsFrom.includes("It runs alone"),
-      peers: startsFrom.includes("peer campaigns"),
+      sideBySide: startsFrom.includes("side by side"),
       body,
     };
   });

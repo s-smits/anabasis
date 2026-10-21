@@ -93,7 +93,7 @@ it predicts. Quiet between milestones is read against the limits of the work in 
 | M2 supply | first Examiner sessions' `task.gate` | held and refused by reason, objective room, missing readings, dry run | held out of drafted, a range | none |
 | M3 first reading | first `comparison.reported` | `valid.informative.old`, tested untied and tied, `scored.detectable`, A/A, load | reading and untied count | only if a `read` trigger fires |
 | M4 step | `comparison.reported` with `reading: step` against the reference | tested margins, the retained tally apart, A/A | untied count and A/A result | none |
-| M5 promotion | `harness.promoted` | supporting reading, untied tasks, A/A and campaign risk; `wri.ts climb --log <log> --with <peers>` | write M6 prediction now | first promotion, once M6's first Examiner session has ended |
+| M5 promotion | `harness.promoted` | supporting reading, untied tasks, A/A and campaign risk; `wri.ts climb --log <log>,<peer>,<peer>` | write M6 prediction now | first promotion, once M6's first Examiner session has ended |
 | M6 next epoch | first Examiner session and first comparison after M5 | drafts held and refused by reason, frontier and retained sizes, objective room | held out after M5 against before it | lane 31 with standing lanes, when owed at M5 |
 | M7 ending | `campaign.ended` | ending kind, closing report, resolve every prediction | every open row | full investigation where the campaign promoted or an early ending raises an unresolved question |
 

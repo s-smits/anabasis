@@ -113,7 +113,7 @@ export interface Report {
   /** The reference harness against itself on halves of its own solves mirrored in time, the A/A,
    *  where it holds four or more of a task: how often two of its solves of a task
    *  disagree (`flips`), the least share of its untied tasks one half has to win for a reading of it
-   *  two-sided at the level to detect it four times in five (`detectable`), which says how much its
+   *  either way at the level (`readsStepEitherWay`) to detect it four times in five (`detectable`), which says how much its
    *  reading no step can show. A report of 12 to 18 October also holds the objective's margin its
    *  own spread set, which the next comparison read by until one margin stood for all, and none
    *  since 19 October (`SAME`, `compare.ts`). */
@@ -450,8 +450,8 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
         : {
             ...aa,
             flips: flipsOf(mirrored),
-            // Two-sided, since which half is which is arbitrary: each side at half the level.
-            detectable: detectable(aa.differences, fixed.level / 2),
+            // Either half may win, each read at the level, as `readsStepEitherWay` reads the A/A.
+            detectable: detectable(aa.differences, fixed.level),
           },
     counted: pairs.length === first.pairs.length ? null : scored(first.pairs),
     versions: pairs.map(({ task }) => task),

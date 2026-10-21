@@ -660,9 +660,9 @@ the direct measure: at four or more even solves per side, `compared` splits the 
 own solves into two halves mirrored in time, on the tasks the comparison tallied. It runs no
 extra solves. Two samples of one harness should tie on most tasks and win as
 often as lose; the tally's untied share is the noise every comparison at that budget has to
-exceed. `readsStepEitherWay` tests either direction at half the level. The epoch's first A/A
-that clears this two-sided test ends the campaign on `control` until the operator records a
-cause; later A/As remain reports. Count the flips per
+exceed. `readsStepEitherWay` reads it either way, each half at the comparison's level, and its
+`detectable` is sized at the same level. An A/A that reads a step is a report and ends nothing;
+the climb counts it beside the false-promotion estimate. Count the flips per
 harness beside it. Where the new harness flips less than the reference on the same tasks, the
 gain may be steadiness; where both flip alike, a win by one solve in two is within what one
 harness does to itself. The decision it changes is how many solves a side a task needs, and

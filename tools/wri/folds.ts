@@ -17,11 +17,12 @@
  * had in `read.ts`; `taskTriggers` alone was split at its tallies (`tallyTriggers`), which held it
  * at 147 lines against the policy's 115.
  */
+import { unadmitted } from "#src/kernel/acceptance.ts";
 import { type Condition, conditionsOf } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { unsolved as noneAnswered } from "#src/kernel/compare.ts";
 import { billedAll, lastReports, poolOf, pairsReported } from "#src/kernel/reports.ts";
-import { solvesIn } from "#src/kernel/solves.ts";
+import { type Judged, refusedBy, solvesIn, verdictsOf } from "#src/kernel/solves.ts";
 import { heldAtGate, taskSets } from "#src/kernel/task.ts";
 import { OBJECTIVE } from "#src/kernel/verify.ts";
 import { short } from "#src/builder/move.ts";
@@ -106,7 +107,7 @@ export interface Index {
   readonly events: readonly LogEvent[];
   readonly conditions: ReadonlyMap<string, Condition>;
   readonly solves: readonly Solve[];
-  readonly verdicts: ReadonlyMap<string, JsonObject>;
+  readonly verdicts: ReadonlyMap<string, Judged>;
   readonly rulings: ReadonlyMap<string, JsonObject>;
   readonly states: ReadonlyMap<string, string>;
   readonly builds: readonly Build[];
@@ -315,7 +316,7 @@ export function indexOf(events: readonly LogEvent[]): Index {
     events,
     conditions,
     solves,
-    verdicts: last("verdict"),
+    verdicts: verdictsOf(events),
     rulings: last("referee.finding"),
     states,
     builds,
@@ -442,10 +443,7 @@ function examinerSessions(log: Index): Set<JsonValue | undefined> {
 
 /** The answers some check refused: a format fault reached no check and is none. */
 function refusals(log: Index): Solve[] {
-  return log.solves.filter((solve) => {
-    const verdict = log.verdicts.get(solve.id);
-    return verdict?.kind === "fail" && items(verdict.blocking).length > 0;
-  });
+  return log.solves.filter((solve) => refusedBy(log.verdicts.get(solve.id)).length > 0);
 }
 
 /** A Builder session's practice solves: the test-side solves of released tasks made in its own window
@@ -472,7 +470,7 @@ export function instrumentTriggers(log: Index): Trigger[] {
   const rows = records(reading?.rows);
   // Named by the tool it runs since 12 October (`acceptance.ts`): until then the brief's evidence
   // kind, and 5 of buffer's 7 `authored` checks ran the pack's installed engine.
-  const authored = rows.filter((row) => row.instrument === "author").length;
+  const authored = unadmitted(log.events, []).length;
   const passes = log.solves.filter((solve) => solve.outcome === "pass").length;
   const trees = new Set([...log.conditions.values()].map((condition) => condition.verifierTools)).size;
   const faults = strings(reading?.faults);
@@ -486,7 +484,7 @@ export function instrumentTriggers(log: Index): Trigger[] {
   const ruled = countBy(refused, rulingOf);
   const defects = refused.filter((solve) => rulingOf(solve) === DEFECT);
   const defectChecks = countBy(defects, (solve) => text(log.rulings.get(solve.id)?.check));
-  const blocking = refused.flatMap((solve) => strings(log.verdicts.get(solve.id)?.blocking));
+  const blocking = refused.flatMap((solve) => refusedBy(log.verdicts.get(solve.id)));
   const byCheck = countBy(blocking, (check) => check);
   // One check refusing most answers, and no other refusing as many: t-10's one refusal on 10
   // October was blocked by all four checks, and the first of four equal counts read as a fault

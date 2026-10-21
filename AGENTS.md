@@ -1410,7 +1410,9 @@ pre-commit hook runs `bun run commit:check`. The pre-push hook gates the work a 
 checkout of its own, and the pushed head holding the newest of them gets the whole gate. A push of
 documentation alone gets `git diff --check`. A pass is remembered by content: a whole pass by the
 commit's tree, and a static one by its tree and its parent's, each with the gate that ran and the
-Bun version, so a restack that keeps every tree runs nothing again. `ANA_GATE_FRESH=1` ignores
+Bun version, so a restack that keeps every tree runs nothing again. Each proof, of the hook and of
+`bun run land`, stops at its first failed test (`ANA_TEST_BAIL`), where CI runs every test to name
+every failure. `ANA_GATE_FRESH=1` ignores
 remembered passes. One push of a clone runs at a time: a push started while another is at its gate
 waits for it, and then gates only what that push did not publish (`queue`); where that push
 replaced the head this one is stacked on, it is refused with the `git rebase --onto` that restacks it

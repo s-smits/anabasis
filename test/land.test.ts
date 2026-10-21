@@ -230,8 +230,8 @@ describe("bun run land", () => {
     expect(order.slice(4)).toEqual([`start ${upper}`, `end ${upper}`]);
     const share = String(Math.max(2, Math.floor((availableParallelism() - 2) / 2)));
     expect(logLines(gateLog).filter((row) => row.startsWith("workers\t"))).toEqual([
-      `workers\t${lowerMore}\t${Bun.env.ANA_TEST_WORKERS ?? share}`,
-      `workers\t${upper}\t${Bun.env.ANA_TEST_WORKERS ?? ""}`,
+      `workers\t${lowerMore}\t${Bun.env.ANA_TEST_WORKERS ?? share}\t1`,
+      `workers\t${upper}\t${Bun.env.ANA_TEST_WORKERS ?? ""}\t1`,
     ]);
   });
 

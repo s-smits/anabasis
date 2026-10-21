@@ -13,13 +13,12 @@
  * module.
  */
 import {
-  decidedByObjective,
   detectable,
-  type Gain,
   power,
   type ObjectiveRule,
-  objectiveGain,
   objectiveRuleIn,
+  type Measures,
+  pointsOf,
   type Paired,
   pairsOf,
   scored,
@@ -54,7 +53,7 @@ import { type Worth, worthOf } from "./climb.ts";
  * control after a promotion (`decide.ts`).
  */
 type Reading = "step" | "no-step" | "regressed" | "narrow" | "not-scored" | "check-defects" | "no-change";
-/** One test's tally, each task's difference in pair wins, and its p. */
+/** One test's tally, each task's score, and its p. */
 type Tested = ReturnType<typeof scored>;
 /** One of the two sets a comparison fixes at its start (`retained`, `Fixed`): the tasks that
  *  entered it, which are its denominator, those of them set aside, and its tally and test. */
@@ -144,11 +143,13 @@ export interface Report {
   /** Whether the dollar cap cut the comparison short of its test, where nothing is tallied. */
   readonly capped: boolean;
   readonly reading: Reading;
-  /** The objective the comparison fixed, and how many tallied tasks it decided: won or lost where
-   *  validity alone would have tied, and the median relative gain on the frontier tasks the new
-   *  harness won (`objectiveGain`; absent before 20 October). Null where the check program declares
-   *  none, and in a report written before 10 October. */
-  readonly objective: (ObjectiveRule & { readonly decided: number; readonly gain?: Gain | null }) | null;
+  /** The objective the comparison fixed. Null where the check program declares none, and in a
+   *  report written before 10 October. A report of 10 to 21 October also holds how many tallied
+   *  tasks it decided and the median gain on the tasks won, which nothing reads. */
+  readonly objective: ObjectiveRule | null;
+  /** The points each measure gave the tallied tasks together (`pointsOf`), positive for the new
+   *  harness; null where nothing was tallied, and absent from every report before 21 October. */
+  readonly points: Measures | null;
   /** By task, the median turns each harness's valid answers took, null where it gave none: what
    *  the comparison reports beside each pair and no tally reads (the overhaul plan's P2). */
   readonly turns: Readonly<
@@ -230,6 +231,7 @@ export const NOTHING = {
   capped: false,
   settled: null,
   objective: null,
+  points: null,
   turns: null,
   worth: null,
 } as const;
@@ -461,15 +463,17 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     turns: turnsOf(events, pairs),
     // The cost bar, read where a step is (the plan's W): printed, and gating nothing.
     worth: reading === "step" ? worthOf(events, fixed.id) : null,
-    objective:
-      fixed.objective === undefined
-        ? null
-        : {
-            ...fixed.objective,
-            decided: decidedByObjective(pairs),
-            gain: objectiveGain(pairs.filter(({ task }) => !fixed.retained.includes(task))),
-          },
+    objective: fixed.objective ?? null,
+    points: pairs.length === 0 ? null : pointsIn(pairs),
   };
+}
+
+/** The points each measure gave `pairs` together (`pointsOf`), to the whole point. */
+function pointsIn(pairs: readonly Paired[]): Measures {
+  const each = pairs.map(pointsOf);
+  const sum = (measure: keyof Measures) =>
+    Math.round(each.reduce((total, points) => total + points[measure], 0));
+  return { validity: sum("validity"), objective: sum("objective"), bill: sum("bill") };
 }
 
 /** The mean billed dollars of a counted solve under one side of `pairs`, or null where none billed. */

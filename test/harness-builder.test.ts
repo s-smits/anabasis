@@ -653,9 +653,10 @@ describe("a campaign run by its log", () => {
       `harness ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}), set-up (epoch 0), read by g-1. In g-1 it won 6, lost 0 and tied 1`,
     );
     expect(report).toContain(`| g-1 | ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}) | A (`);
-    // Its cost beside it, read against the bar and gating nothing (the plan's W).
+    // The points each measure of the score gave it, all by validity here, and its cost beside
+    // them, read against the bar and gating nothing (the plan's W).
     expect(report).toMatch(
-      /tied 1\. Its cost, gating nothing: 1 promotion attempt this epoch \(bar 3 after set-up\): met/,
+      /tied 1, the score giving it [1-9]\d* points by validity, 0 by the objective and 0 by the bill\. Its cost, gating nothing: 1 promotion attempt this epoch \(bar 3 after set-up\): met/,
     );
     expect(report).not.toContain("ladder");
     // What each measured thing cost, the climb's velocity first, and how many comparisons that

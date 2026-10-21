@@ -124,7 +124,7 @@ export async function checkpointCommand(
     ...scoredSet(read(campaign.log), setting.target, contractHash(campaign.contract)),
     solves: Number(values.solves),
     level: Number(values.level),
-    objective: objectiveNamed(campaign, id),
+    objective: objectiveNamed(campaign),
     defects: Number(values.defects),
     cap,
     prediction: predictionNamed(values.predict),

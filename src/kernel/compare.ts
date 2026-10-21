@@ -2,12 +2,12 @@
  * The comparison: does the new harness beat the reference harness on tasks neither was built on?
  *
  * Both harnesses solve the same held-out tasks under the same compute budget, and each task
- * counts once. Every solve of the new harness is paired with every solve of the reference one
- * (`pairings`), and in a pair a valid answer beats one that is not. Two valid answers are even,
- * and so are two that are not. The harness that wins more pairs wins the task, and otherwise the
- * task is a tie (`tally`).
+ * counts once. Every solve of the new harness is paired with every solve of the reference one, and
+ * each task is scored by three weighted measures over its pairings (`pointsOf`, `WEIGHTS`): validity,
+ * and between two valid answers the objective and the bill. A task with a positive score is won, a
+ * negative one lost, and one at zero tied (`tally`).
  *
- * The test is a paired sign-flip test on each task's difference in pair wins (`flipP`, since
+ * The test is a paired sign-flip test on each task's score (`flipP`, since
  * 12 October): were the two harnesses interchangeable, each untied task would be as likely won as
  * lost by its margin, and p is the share of the signs that sum to at least the sum read. It is
  * exact, by one convolution over the integer sums, and needs no more than the sign test it
@@ -50,16 +50,14 @@
  * | fail, `rejected`, ruled a check defect or unclear, or waiting for a person | the task is set aside and left out of the test for both harnesses (`src/builder/round.ts`) |
  * | non-result of any kind | no measurement. It was solved again, and is in no pair; a task left short of its solves is in no tally |
  *
- * With the same number of solves a side, the pairing reads exactly as "the harness with more valid
- * answers wins": of n solves a side with f and o valid, the new harness wins f(n-o) pairs and the
- * reference o(n-f), a difference of n(f-o). It is stated over pairs because that is the form the
- * objective joins (`ObjectiveRule`, since 10 October): where the check program declares one, a
- * quantity its evaluator computes from a valid answer (`verify.ts`, `OBJECTIVE`), two valid answers
- * in a pair are compared by it, and the better one wins the pair (`better`). Validity is read
- * first and the objective only between two valid answers, so no answer the checks refuse is ever
- * the better one. The rule is a term of the comparison, fixed at its start
- * (`comparison.started`, `objective`); a comparison whose start names none pairs on validity alone.
- * The value is the host's: no value the answer reports about itself is read.
+ * Validity is the measure that weighs most, and it is read alone where one answer of a pairing is
+ * valid: the objective and the bill are read only between two valid answers, so no answer the checks
+ * refuse is ever the better or the cheaper one. Where the check program declares an objective, a
+ * quantity its evaluator computes from a valid answer (`verify.ts`, `OBJECTIVE`), its direction is a
+ * term of the comparison, fixed at its start (`comparison.started`, `objective`). The value is the
+ * host's: no value the answer reports about itself is read. The weights and floors are this tree's
+ * constants: a comparison continued under other code is refused by its condition, so no comparison
+ * is ever scored by a tree other than the one it began under.
  *
  * Every held-out task is compared (`task.ts`). The controls are the Starter Built Harness, which is
  * the first reference and the fixed lower one after a promotion, and the reference harness set
@@ -82,7 +80,6 @@ import { sha256 } from "../meta/digest.ts";
 import { asRecord, isNumber, type JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
-import { median } from "../meta/tally.ts";
 import { conditionsOf, settingId } from "./condition.ts";
 import type { LogEvent } from "./log.ts";
 import { ended, passed, ranUnder, verdictsOf } from "./solves.ts";
@@ -95,12 +92,9 @@ interface Used {
 }
 
 /** How two valid answers on one task are set against each other: by the quantity the check program
- *  computes of each, lower or higher being better (`better`). */
+ *  computes of each, lower or higher being better (`told`). */
 export interface ObjectiveRule {
   readonly direction: "lower" | "higher";
-  /** The least share of the larger measure by which one valid answer beats another in a pair
-   *  (`better`): `ROOM` for a comparison begun since 21 October, none before. */
-  readonly room?: number;
 }
 
 /** One task version's counted solves under the reference harness and under the new: true for a
@@ -121,6 +115,10 @@ export interface Paired {
   /** What each of those solves cost, in the same order. */
   readonly used?: { readonly old: readonly Used[]; readonly fresh: readonly Used[] };
 }
+
+/** A number for each of the three measures a task is scored by (`pointsOf`): its weight, or the
+ *  points it gave. */
+export type Measures = Readonly<Record<"validity" | "objective" | "bill", number>>;
 
 export interface Tally {
   readonly wins: number;
@@ -145,12 +143,6 @@ interface Sides {
   readonly objective?: ObjectiveRule | undefined;
 }
 
-/** A median relative gain by the objective, over `tasks` tasks (`objectiveGain`). */
-export interface Gain {
-  readonly median: number;
-  readonly tasks: number;
-}
-
 /** The chance at which a share of untied tasks won is detected (`detectable`): four times in five. */
 const POWER = 0.8;
 /** What a report holds for a retained set no task was tallied in: no reading, never no loss. */
@@ -172,8 +164,8 @@ export const UNMEASURED = "unmeasured" as const;
 const SAME = 1e-9;
 /**
  * The least improvement by the objective worth counting, as a share of the larger magnitude: the
- * room floor, recorded with the rule's direction at each comparison's start. One
- * judgement in every place it is asked: two valid answers closer than it tie in a pair (`better`),
+ * room floor. One judgement in every place it is asked: two valid answers closer than it tie in a
+ * pair (`told`),
  * and an answer on record better than one of a harness's own by less leaves that harness no room on
  * the task (`bettered`), which decides the gate, the frontier and `roomOf`.
  *
@@ -182,16 +174,43 @@ const SAME = 1e-9;
  * 3-3-18, and its gate held 10 of the 29 drafts it held at `SAME`. The sign-flip test says whether
  * a difference is believable, and the floor whether it is worth counting: six tasks with room won by
  * 0.01% read p = 0.016 and promoted. It declines smaller gains even where they are consistent. A
- * comparison that began before 21 October recorded no floor, and its pairs read at `SAME` as they
- * were read, while what room its tasks leave now is read at this one. A `--room` term set it per
- * campaign for a day; no campaign named one, and on 21 October the operator chose one fixed floor.
+ * `--room` term set it per campaign for a day; no campaign named one, and on 21 October the operator
+ * chose one fixed floor. Until 21 October each comparison recorded it at its start; this tree reads
+ * every comparison at it.
  */
 export const ROOM = 0.01;
 
 /**
+ * How much each measure weighs in a task's score (`pointsOf`): whether an answer was valid, then between two valid answers how much better it is by
+ * the objective and how much less its solve billed. Each measure is the mean over the task's pairings
+ * of a solve of each side, from -1 to 1, so a task's score runs from -1 to 1 and is read in
+ * thousandths (`POINTS`) by the one test.
+ *
+ * Until 21 October a task was read by validity, then the objective, then the bill, one rule to a
+ * task, and the size of a gain counted nowhere: a harness that won 23 tasks by 0.01% read as
+ * strongly as one that halved every bill. The operator then chose a score of weighted measures
+ * (60, 30 and 10, in steps of five). Replayed on 74 recorded comparisons, it reads 52 steps where 47
+ * were read, and none of the 26 A/A controls reads one; the five steps it drops rested on objective
+ * gaps of a ten-thousandth, and the ones it adds mostly halved the bill on tasks that otherwise tied.
+ * The test reads the signs of the task scores more than their size, so a harness a little better on
+ * enough tasks still steps: the floors below (`ROOM`, `CHEAPER`) set the least gain a pairing counts.
+ * The weights are a constant of the tree, as the floors are, and this tree reads every comparison by
+ * them, those begun before 21 October included: the report each wrote is its record.
+ */
+export const WEIGHTS: Measures = { validity: 0.6, objective: 0.3, bill: 0.1 };
+/** The objective's gain, as a share of the larger magnitude, at which a pairing takes the whole of
+ *  the objective's weight: an answer a tenth better. */
+export const FULL = 0.1;
+/** The least ratio of two valid answers' bills that counts, a fifth less of the dearer; half the bill
+ *  takes the whole of the bill's weight (`saved`). */
+export const CHEAPER = 1.25;
+/** A task's score in whole points: thousandths, since the test's convolution is over whole numbers. */
+const POINTS = 1000;
+
+/**
  * The chance of each total of `sizes` taken with a plus sign, where each is taken so with chance
  * `share`, independently: entry k is the chance that the sizes signed plus sum to k. The sizes are
- * whole numbers, as differences in pair wins are, so the convolution is over integer sums and
+ * whole numbers, as task scores in points are, so the convolution is over integer sums and
  * exact up to the rounding of each step; an entry too small for a number reads 0 and takes no
  * other with it.
  */
@@ -281,7 +300,7 @@ export function sweepOf(level: number): number {
 }
 
 /** One comparison's reading of its report at `level`: `step` where the one test over its frontier
- *  and retained tasks' differences in pair wins together clears it, and `no-step` otherwise. A
+ *  and retained tasks' scores together clears it, and `no-step` otherwise. A
  *  step against the reference promotes (`decide.ts`). A report written before 12 October holds a
  *  pooled tally alone, with no frontier and retained set, and is refused. */
 export function stepOf(report: JsonObject, level: number): "step" | "no-step" {
@@ -298,11 +317,20 @@ export function stepOf(report: JsonObject, level: number): "step" | "no-step" {
 }
 
 /** The objective rule a comparison's start, or its report, carries, or undefined where it fixed
- *  none. A log of before 19 October holds a margin beside the direction, which is no longer read. */
+ *  none. A log of before 21 October may hold a margin or a floor beside the direction, which is no
+ *  longer read. */
 export function objectiveRuleIn(data: JsonObject): ObjectiveRule | undefined {
-  const { direction, room } = asRecord(data.objective) ?? {};
-  if (direction !== "lower" && direction !== "higher") return undefined;
-  return { direction, ...keyIfDefined("room", isNumber(room) ? room : undefined) };
+  const { direction } = asRecord(data.objective) ?? {};
+  return direction === "lower" || direction === "higher" ? { direction } : undefined;
+}
+
+/** A number for each measure where `value` holds one, as a report holds the points each measure
+ *  gave; undefined otherwise, as in every report before 21 October. */
+export function measuresIn(value: unknown): Measures | undefined {
+  const { validity, objective, bill } = asRecord(value) ?? {};
+  return isNumber(validity) && isNumber(objective) && isNumber(bill)
+    ? { validity, objective, bill }
+    : undefined;
 }
 
 // Two other readings of a tally, the trinomial test and the chance that the new harness is the
@@ -383,89 +411,59 @@ export function gainOver(rule: ObjectiveRule, one: number | null, other: number 
   return (rule.direction === "lower") === one < other ? gap : -gap;
 }
 
-/** Which of two valid answers' measures is the better in a pair: 1 for the first, -1 for the second,
- *  0 where they are closer than the comparison's floor (`ROOM`; none where its start recorded
- *  none), one measure (`SAME`), or one is missing. */
-function better(rule: ObjectiveRule, one: number | null, other: number | null): -1 | 0 | 1 {
-  const gain = gainOver(rule, one, other) ?? 0;
-  if (gain === 0 || Math.abs(gain) < (rule.room ?? 0)) return 0;
-  return gain > 0 ? 1 : -1;
+/** How much better the new side's answer of pairing (`f`, `o`) is by the objective, between two
+ *  valid answers: its gain as a share of `FULL`, at most one either way; 0 under the floor (`ROOM`)
+ *  or where a measure is missing. */
+function told(pair: Paired, f: number, o: number): number {
+  const rule = pair.objective;
+  const gain = rule === undefined ? 0 : (gainOver(rule, rule.fresh[f] ?? null, rule.old[o] ?? null) ?? 0);
+  return Math.abs(gain) < ROOM ? 0 : capped(gain / FULL);
 }
 
-/** One task's pairings: every solve of the new harness against every solve of the reference one,
- *  and how many each side won. A valid answer beats one that is not; two valid answers are even,
- *  unless the pair carries an objective and one is the better by it. Beside each side's wins, what
- *  decided them: `validity`, where one answer was valid; the `objective`, between two valid answers
- *  it told apart; and `valid`, the pairings of two valid answers, which
- *  the effect bar reads the objective over (`climb.ts`). */
-export function pairings(pair: Paired) {
-  const [validity, objective] = [
-    { fresh: 0, old: 0 },
-    { fresh: 0, old: 0 },
-  ];
-  let valid = 0;
+/** How much less the new side's solve of pairing (`f`, `o`) billed, between two valid answers: the
+ *  base-2 logarithm of the reference's bill over the new one's, at most one either way, so half the
+ *  bill takes the whole weight; 0 where the two are within `CHEAPER` of each other or a bill is
+ *  missing. */
+function saved(pair: Paired, f: number, o: number): number {
+  const [fresh, old] = [pair.used?.fresh[f]?.billed ?? 0, pair.used?.old[o]?.billed ?? 0];
+  if (fresh <= 0 || old <= 0) return 0;
+  const ratio = Math.log2(old / fresh);
+  // A fifth less is at the floor, though log2(0.5 / 0.4) reads a hair over log2(1.25).
+  return Math.abs(ratio) < Math.log2(CHEAPER) - SAME ? 0 : capped(ratio);
+}
+
+/** `value`, held between -1 and 1. */
+function capped(value: number): number {
+  return Math.max(-1, Math.min(1, value));
+}
+
+/** One task's score by measure, the new side's against the reference's over every pairing of a solve
+ *  of each: each measure is its mean over the pairings, from -1 to 1, times its weight (`WEIGHTS`),
+ *  in thousandths (`POINTS`): `validity` where one answer of the two was valid, the `objective` and the
+ *  `bill` between two valid answers (`told`, `saved`). */
+export function pointsOf(pair: Paired): Measures {
+  const sums = { validity: 0, objective: 0, bill: 0 };
   for (const [f, freshValid] of pair.fresh.entries()) {
     for (const [o, oldValid] of pair.old.entries()) {
-      if (freshValid !== oldValid) validity[freshValid ? "fresh" : "old"] += 1;
+      if (freshValid !== oldValid) sums.validity += freshValid ? 1 : -1;
       if (!freshValid || !oldValid) continue;
-      valid += 1;
-      const told =
-        pair.objective &&
-        better(pair.objective, pair.objective.fresh[f] ?? null, pair.objective.old[o] ?? null);
-      if (told === 1 || told === -1) objective[told === 1 ? "fresh" : "old"] += 1;
+      sums.objective += told(pair, f, o);
+      sums.bill += saved(pair, f, o);
     }
   }
+  const each = POINTS / Math.max(1, pair.fresh.length * pair.old.length);
   return {
-    fresh: validity.fresh + objective.fresh,
-    old: validity.old + objective.old,
-    validity,
-    objective,
-    valid,
+    validity: sums.validity * WEIGHTS.validity * each,
+    objective: sums.objective * WEIGHTS.objective * each,
+    bill: sums.bill * WEIGHTS.bill * each,
   };
 }
 
-/** Whether the objective decided a task's pairings: they read otherwise on validity alone. */
-function byObjective({ fresh, old, validity }: ReturnType<typeof pairings>): boolean {
-  return Math.sign(fresh - old) !== Math.sign(validity.fresh - validity.old);
-}
-
-/** How many of `pairs` the objective decided (`byObjective`). */
-export function decidedByObjective(pairs: readonly Paired[]): number {
-  return pairs.filter((pair) => byObjective(pairings(pair))).length;
-}
-
-/** How much better the new side's median valid measure is than the reference's, as a share of the
- *  larger magnitude; null where the pair carries no objective or a side no measure. */
-function medianGain(pair: Paired): number | null {
-  const rule = pair.objective;
-  if (rule === undefined) return null;
-  return gainOver(rule, median(rule.fresh.filter(isNumber)), median(rule.old.filter(isNumber)));
-}
-
-/** How far apart the two sides' median valid measures were where the objective alone decided a
- *  task, as a share of the larger magnitude; null where validity decided it, or it tied. */
-export function objectiveMargin(pair: Paired): number | null {
-  const counted = pairings(pair);
-  const gain = counted.fresh !== counted.old && byObjective(counted) ? medianGain(pair) : null;
-  return gain === null ? null : Math.abs(gain);
-}
-
-/**
- * The median relative gain by the objective over the tasks of `pairs` the new harness won: each
- * task's median valid measure against the reference's, as a share of the larger magnitude
- * (`apart`), positive where the new one is better, over the won tasks with a valid measure on both
- * sides (`tasks`). Null where none has. A report beside the tally, which decides nothing (the
- * improvement plan's C1): in r3 the pair dropped the size of each difference, and g-3's 18 wins
- * added under no margin had a median gain of 0.00076%.
- */
-export function objectiveGain(pairs: readonly Paired[]): Gain | null {
-  const gains = pairs.flatMap((pair) => {
-    const { fresh, old } = pairings(pair);
-    const gain = fresh > old ? medianGain(pair) : null;
-    return gain === null ? [] : [gain];
-  });
-  const middle = median(gains);
-  return middle === null ? null : { median: middle, tasks: gains.length };
+/** One task's difference: its points by every measure together (`pointsOf`), to the whole point,
+ *  positive where the new harness won it. */
+export function differenceOf(pair: Paired): number {
+  const { validity, objective, bill } = pointsOf(pair);
+  return Math.round(validity + objective + bill);
 }
 
 /** Whether the harness on `side` closed the task: valid in every counted solve, and not
@@ -481,7 +479,7 @@ export function unsolved({ old, fresh }: Paired): boolean {
   return ![...old, ...fresh].some(Boolean);
 }
 
-/** Each task's difference in pair wins, the new harness's less the reference's. A task solved more
+/** Each task's difference (`differenceOf`), the new harness's less the reference's. A task solved more
  *  often under one harness than the other is refused, since the harness with more solves has more
  *  chances. */
 function differencesOf(pairs: readonly Paired[]): number[] {
@@ -492,13 +490,12 @@ function differencesOf(pairs: readonly Paired[]): number[] {
         `task ${task} has ${String(old.length)} solve(s) under the old harness and ${String(fresh.length)} under the new; a comparison needs as many of each`,
       );
     }
-    const won = pairings(pair);
-    return won.fresh - won.old;
+    return differenceOf(pair);
   });
 }
 
-/** The scored set's reading: each task once, won by the harness that wins more of its pairings and
- *  tied otherwise, each task's difference in pair wins, and the test's p for the new harness. */
+/** The scored set's reading: each task once, won by the harness its score favours and
+ *  tied otherwise, each task's score (`differenceOf`), and the test's p for the new harness. */
 export function scored(pairs: readonly Paired[]) {
   const differences = differencesOf(pairs);
   const count = (sign: number) => differences.filter((one) => Math.sign(one) === sign).length;

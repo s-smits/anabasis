@@ -13,7 +13,7 @@
  *    hours or the warmer cache.
  * 2. The comparison (`src/kernel/compare.ts`): every solve of the new harness paired with every
  *    solve of the reference one, a valid answer over one that is not, each task counted once, and
- *    the paired sign-flip test over the frontier's differences in pair wins.
+ *    the paired sign-flip test over the tasks' scores.
  * 3. The reading, logged as `comparison.reported`.
  *
  * What is fixed before the first solve. A comparison writes `comparison.started` with its
@@ -235,7 +235,7 @@ const UNCOMPARED: ReadonlySet<string> = new Set(["session", "tasks", "retained"]
  * The retained set, read in the step's one test and reported apart, since 16 October holds every task of the epochs
  * before that the reference has stood in no comparison of (`poolOf`): until then one task in four
  * of the set was kept for those epochs as frontier, and after each promotion they tied (the plan's
- * climb section, C2; `regressionOf` reads the same gap after the fact). The epoch chooses the set and no result does: the hash is fixed before any task
+ * climb section, C2). The epoch chooses the set and no result does: the hash is fixed before any task
  * exists, and which epoch a task is in is where it passed its gate (`tasksByEpoch`). A draw over
  * every epoch at once, in a simulated climb after two promotions, drew for a target of 8 over 19
  * held tasks two or three the reference failed, so three comparisons read one win short and the

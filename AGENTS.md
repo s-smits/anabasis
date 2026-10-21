@@ -43,8 +43,8 @@ one question:
 
 A comparison in code answers it. Both harnesses solve the same held-out tasks afresh, under the
 same limits. A hidden check program decides whether each answer is valid. Each task then counts as
-a win, a loss or a tie for the new harness, by its difference in pair wins, and a one-sided paired
-sign-flip test over the tasks reads either a **step** or nothing.
+a win, a loss or a tie for the new harness, by its score over validity, the objective and the bill,
+and a one-sided paired sign-flip test over the tasks reads either a **step** or nothing.
 
 ```text
                         OPERATOR   freezes the exam, sets the dollar cap, labels answers blind
@@ -209,8 +209,9 @@ Left out on purpose:
   message under a changed hidden value, and it is not something to optimise.
 - The Builder's practice results are excluded by rule 1: a learner's score on its own training set
   is the overfitting signal, and no metric.
-- Cost is read as economy, beside the climb it bought, because a cheap system that does not climb
-  has no cost worth reporting.
+- A campaign's cost is read as economy, beside the climb it bought, because a cheap system that
+  does not climb has no cost worth reporting. A solve's bill weighs only between two valid answers, a
+  tenth of a task's score (section 7, "The tally").
 
 The four are ordered by where they bind, after supply (without which there is no gradient):
 without climb there is no result, without honesty and verdicts no result anyone can believe, and
@@ -341,8 +342,7 @@ What the **Examiner** reads:
   last three, newest first, each with whether a limit cut one of the reference's solves, and how
   many of the newest closed it in a row (`histories`, `poolOf`), since one outcome cannot tell a
   task answered once from one answered every time;
-- for each task the last comparison tallied, which harness won it or that it tied, and, where the
-  objective alone decided it, how far apart the two sides' measures were (`objectiveMargin`). This
+- for each task the last comparison tallied, which harness won it or that it tied. This
   is the operator's word of 20 October, a term of the campaign (`exam-results`, on by default):
   the Examiner learns which tasks the newest harness wins, and so what to write against it. With the
   term `off` it is told none of it;
@@ -835,9 +835,7 @@ bun run runs fresh | launch | continue | keep | pause | copy | fetch | retire | 
 - a room floor of 1% (`ROOM`), the least improvement by the objective worth counting, as
   a share of the larger measure. Two valid answers closer than it tie in a pair, and an answer on
   record better than one of the reference's by less leaves that task no room, at the gate, on the
-  frontier and in `roomOf`. It is a constant, the same for every campaign. A comparison keeps the
-  floor it began with, and one that began before 21 October
-  recorded none: its pairs read at floating-point equality (`SAME`), as they were read;
+  frontier and in `roomOf`. It is a constant, the same for every campaign and every comparison;
 - a stop after more than 3 tasks with a check defect (`--defects`);
 - a reserve of 10 dollars per solve (`--reserve`);
 - `--parent latest` and `--reference promoted`, which is the harness last promoted, and the
@@ -905,7 +903,7 @@ comparisons, and one frozen draw of the reference's solves would bias every late
 
 | Ending | Kinds | In a pair |
 | --- | --- | --- |
-| pass | | Valid. It beats an answer that is not valid, and is even with another valid one unless the comparison fixed an objective and one is better by it |
+| pass | | Valid. It beats an answer that is not valid; against another valid one it gains by how much better it is by the objective, where the comparison fixed one, and by how much less its solve billed |
 | fail | `rejected`, once the rejection is ruled a true fail | Not valid |
 | fail | `wall-ended`, `turns-ended`, `context-ended`, `no-answer` | Not valid. There is nothing to recompute, so no ruling is needed |
 | fail | `broken-harness` | Not valid. The harness is what is compared, and one that cannot open answers nothing |
@@ -914,26 +912,43 @@ comparisons, and one frozen draw of the reference's solves would bias every late
 | flagged | | Not valid: the solver's statement, with a reason, that the task is malformed (`submit` with `malformed`), counted as the flagging side's own fail and reported separately (`flagged` in the report). A task both sides flag ties; one the other side answers is lost |
 
 **The tally.** Every solve of the new harness is paired with every solve of the reference on the
-same task. The harness that wins more pairs wins the task; otherwise the task is a tie. Ties leave
-the test.
+same task, and the task is scored by three measures over those pairings, each from -1 to 1 and
+weighed by fixed weights (`pointsOf`, `WEIGHTS`, `src/kernel/compare.ts`):
+
+- **validity**, 0.6: the share of pairings in which only the new side's answer is valid, less the
+  share in which only the reference's is;
+- **the objective**, 0.3: between two valid answers, how much better the new one is, as a share of
+  the larger measure, counted from the room floor (`ROOM`, 1%) and taking the whole weight at a
+  tenth better (`FULL`);
+- **the bill**, 0.1: between two valid answers, the base-2 logarithm of the reference's bill over
+  the new one's, counted from a fifth less (`CHEAPER`) and taking the whole weight at half.
+
+A task's score is their weighted sum, read in thousandths: positive is a win, negative a loss, zero
+a tie. Ties leave the test. A pairing with an answer that is not valid reads neither the objective
+nor the bill, so a refused answer is never the better one, and one that fails fast is never
+cheaper. The measures trade against each other: a harness valid in 3 solves of 4 against 4 of 4
+wins the task where its valid answers measure a fifth better and bill half. The weights are the
+operator's, in steps of five, and constants of the host, as the floors are. A comparison continued
+under other code is refused on its setting, so no comparison is ever read by two sets of weights; a
+recorded comparison read again by this tree is scored by them, and its own report stays what it
+said. The report gives the points each measure gave the tallied tasks together (`points`).
 
 Where the check program declares an **objective** (a quantity its evaluator computes from a valid
 answer, with a direction: `brief.objective`, `objective(request)`, verified after the checks pass;
-`OBJECTIVE`, `src/kernel/verify.ts`), two valid answers in a pair are compared by it, and the better
-one wins the pair where the two are at least the room floor apart (`ObjectiveRule`, `better`,
-`src/kernel/compare.ts`; `ROOM`, 1% of the larger measure), and otherwise they tie.
-The sign-flip test says whether a difference is believable, and the floor whether it is worth
-counting: six tasks with room won by 0.01% read p = 0.016 and would promote. Validity is read first, so a refused
-answer can never be the better one. The objective is public, in the contract and in the solver's
-resources, and the report says how many tallied tasks it decided (`objective.decided`). The rule is
-a term of the comparison, fixed at its start; with a check program that declares no objective,
-pairs are decided on validity alone.
+`OBJECTIVE`, `src/kernel/verify.ts`), it is public, in the contract and in the solver's resources,
+and a term of the comparison fixed at its start (`ObjectiveRule`); with none, two valid answers
+differ only by their bill. The sign-flip test says whether a difference is believable, and the
+floors whether it is worth counting: six tasks with room won by 0.01% read p = 0.016 and would
+promote. A task the reference closes on validity and the objective leaves no room in supply
+(`informative`), so a harness that only bills less wins it as a retained task, read in the same
+test, and the Examiner is still asked for tasks the reference fails.
 
-**The test.** A one-sided paired sign-flip test reads each task's difference in pair wins (`flipP`,
+**The test.** A one-sided paired sign-flip test reads each task's score (`flipP`,
 `src/kernel/compare.ts`). If the harnesses were interchangeable, each untied task would be as
 likely won as lost by its margin, and p is the share of sign assignments that sum to at least what
-was observed. It is exact, and where every task is won or lost by the same number of pairs it is
-the sign test.
+was observed. It is exact, and where every task is won or lost by the same margin it is the sign
+test. Where every untied task is won, p is one half to the power of their count whatever the
+margins, so the size of a gain weighs only where wins and losses meet.
 
 The step is read on every tallied task in one test: the **frontier**, the scored tasks that are
 not exhausted, and the **retained** tasks, fixed alongside them at the comparison's start from the
@@ -988,10 +1003,7 @@ reading at a shorter budget would describe a solver that was told the longer one
   valid);
 - which tasks entered each of its two sets;
 - its overlap with the previous comparison of the same two harnesses;
-- where the contract declares an objective, the median relative gain by it on the frontier tasks
-  the new harness won, over those with a valid measure on both sides (`objectiveGain`): a pair
-  keeps only the sign of a difference, so this gives a step's size. The closing report prints it
-  beside each promotion's tally, and nothing decides on it.
+- the points each measure gave, which the closing report prints beside each promotion's tally.
 
 Beside every comparison of four solves per side stands the reference read against itself, on
 halves of its own solves mirrored in time. It should read no step; its tie share is the noise every

@@ -464,7 +464,7 @@ describe("lane 31 across campaigns", () => {
     const said = safeguardTriggers(indexOf(leaning({ author: 4, spread: 2, fails: false })));
     expect(said.map(({ name, detail }) => `${name}: ${detail}`)).toEqual([
       "SAFEGUARD-8 PROMOTION ON AUTHOR ROOM: hn 6-0 p 0.016 joined at level 0.02, 2-0 p 0.250 without the tasks held on their author's answer alone",
-      "SAFEGUARD-9 PROMOTION BEYOND VALIDITY: hn 6-0 p 0.016 joined at level 0.02, 0-0 p 1.000 on validity alone, 6-0 p 0.016 without the bill",
+      "SAFEGUARD-9 PROMOTION BEYOND VALIDITY: hn 6-0 p 0.016 joined at level 0.02, 0-0 p 1.000 on validity alone, 6-0 p 0.016 without the bill by the current score",
     ]);
   });
 
@@ -472,7 +472,7 @@ describe("lane 31 across campaigns", () => {
     // The M1 fork of #306 on 22 October: 11-0 joined, the bill deciding 10 tasks, 1-0 without it.
     const said = safeguardTriggers(indexOf(leaning({ author: 0, spread: 6, fails: false, by: "bill" })));
     expect(said.map(({ name, detail }) => `${name}: ${detail}`)).toEqual([
-      "SAFEGUARD-9 PROMOTION BEYOND VALIDITY: hn 6-0 p 0.016 joined at level 0.02, 0-0 p 1.000 on validity alone, 0-0 p 1.000 without the bill",
+      "SAFEGUARD-9 PROMOTION BEYOND VALIDITY: hn 6-0 p 0.016 joined at level 0.02, 0-0 p 1.000 on validity alone, 0-0 p 1.000 without the bill by the current score",
     ]);
   });
 

@@ -319,7 +319,8 @@ moved between repeated solves of one harness on one task, which decided the budg
 unit is the model's turns, and no trigger reads it since. Seconds move with the host's load,
 which each `solve.started` and `solve.finished` records. `SAFEGUARD-9` names a promotion whose
 frontier on validity alone does not clear its level, with the frontier read again without the
-bill beside it. Where that clears the level the objective decided the promotion, as it did all
+bill beside it, by the current score: its objective counts a gain by its size, so for a comparison
+begun before 21 October the reading can differ from the ordered rule it was read by. Where that clears the level the objective decided the promotion, as it did all
 three of r3's; where it does not, the bill did, as for the M1 fork of #306's second promotion
 (1-0 without the bill, 22 October). In a drafted exam the objective is its author's own computation
 (`INSTRUMENT AUTHORED`, lane 1), so the claim is "better by the objective" or "cheaper", and the

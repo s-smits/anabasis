@@ -157,7 +157,11 @@ export function climbTable(campaigns: readonly Campaign[]): string {
  * bill decided it, as one did all three of r3's (1-0, 0-0 and 1-0 on validity); a drafted exam's
  * objective is its author's own computation, which nothing outside it has checked. It reads the
  * frontier without the bill beside, since until 22 October it named every such promotion "by the
- * objective alone": the M1 fork of #306 promoted on 11-0 where the bill decided 10 tasks.
+ * objective alone": the M1 fork of #306 promoted on 11-0 where the bill decided 10 tasks. That
+ * reading is by this tree's score, whose objective counts a gain by its size (`FULL`), so it can
+ * differ from the ordered rule a comparison begun before 21 October was read by: an outside review
+ * of 22 October built eight tasks won by 1.1% and one lost by 20%, 8-1 at p 0.0195 by that rule and
+ * p 0.502 by this score. The line says so.
  */
 export function safeguardTriggers(log: Index): Trigger[] {
   const authored = authorRoom(log.events);
@@ -200,7 +204,7 @@ export function safeguardTriggers(log: Index): Trigger[] {
             beyond
               .map(
                 ({ harness, valid, unbilled }) =>
-                  `${harness}, ${said(valid)} on validity alone, ${said(unbilled)} without the bill`,
+                  `${harness}, ${said(valid)} on validity alone, ${said(unbilled)} without the bill by the current score`,
               )
               .join("; "),
           ),

@@ -117,6 +117,7 @@ interface Totals {
   wonBy: Record<Measure, number>;
   followed: number;
   held: number;
+  cleared: number;
   hours: number[];
   dollars: number[];
 }
@@ -151,6 +152,7 @@ function emptyTotals(): Totals {
     wonBy: { validity: 0, objective: 0, bill: 0 },
     followed: 0,
     held: 0,
+    cleared: 0,
     hours: [],
     dollars: [],
   };
@@ -336,13 +338,16 @@ function pairLines(
   return lines;
 }
 
-/** Readings that step, and whether the pair's next reading won at least as many tasks as it lost. */
+/** Readings that step, and whether the pair's next reading stepped too or only won at least as many
+ *  tasks as it lost: on 22 October an outside review found r3's g-14, 12-9-11 at p 0.0223, counted as
+ *  held at 0.02, and a tied repeat would have been. */
 function countFollowed(list: readonly Reading[], totals: Totals): void {
   for (const [at, reading] of list.entries()) {
     const next = list[at + 1]?.differences;
     if (!reading.step || next === undefined) continue;
     totals.followed += 1;
     totals.held += won(next) >= lost(next) ? 1 : 0;
+    totals.cleared += list[at + 1]?.step === true ? 1 : 0;
   }
 }
 
@@ -404,7 +409,7 @@ function totalLines(score: Score, totals: Totals): string[] {
     `  readings ${String(totals.readings)}${reconciled}; reading otherwise than recorded: to a step ${String(totals.toStep)}, from a step ${String(totals.fromStep)}; tasks read from the stored difference for want of a pair ${String(totals.storedTasks)}`,
     `  A/A controls ${String(totals.controls)}, steps ${String(totals.aaSteps)}, untied won ${String(totals.aaWon)} lost ${String(totals.aaLost)}`,
     `  tasks the promoting readings won: by validity ${String(validity)}, by the objective ${String(objective)}, by the bill alone ${String(bill)}`,
-    `  steps followed by a reading of the same pair ${String(totals.followed)}, of which won at least as many as lost ${String(totals.held)}`,
+    `  steps followed by a reading of the same pair ${String(totals.followed)}, of which stepped again ${String(totals.cleared)} and won at least as many as lost ${String(totals.held)}`,
     `  per promotion: hours ${per(totals.hours, " h")}; dollars ${per(totals.dollars, "")}`,
   ];
 }

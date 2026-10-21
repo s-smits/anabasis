@@ -563,6 +563,13 @@ describe("a row of the table", () => {
       why: "harness h1 was promoted, and no Examiner session has written tasks for it since: tasks are written for each new reference",
     });
     expect(move([...promotedOn(HALF), ...examined("x-1")])).toMatchObject({ move: "build" });
+    // One the provider crashed before it held out a task wrote nothing for it; one that held a task
+    // out before it crashed did, and its task is read first.
+    const crashed = { ended: "crashed", crash: "x" };
+    expect(move([...promotedOn(HALF), ...examined("x-1", [], crashed)])).toMatchObject({ move: "examine" });
+    expect(move([...promotedOn(HALF), ...examined("x-1", ["v13"], crashed)])).toMatchObject({
+      move: "compare",
+    });
     // A comparison made against it by name before the promotion has read the tasks.
     const stepped = [
       ...FIRST,

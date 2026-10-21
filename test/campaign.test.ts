@@ -39,8 +39,10 @@ import {
   roundCommand,
   gainSaid,
   objectiveNamed,
+  costRuleNamed,
   reportLines,
 } from "../tools/d2/round.ts";
+import { COST } from "../src/kernel/compare.ts";
 import { sessionCommand } from "../tools/d2/session.ts";
 
 const REPO = resolve(import.meta.dir, "..");
@@ -729,6 +731,12 @@ describe("a campaign", () => {
     append(campaign.log, "comparison.started", { session: "g-9" });
     expect(objectiveNamed(campaign, "g-8")).toEqual({ direction: "lower" });
     expect(objectiveNamed(campaign, "g-9")).toBeUndefined();
+    // The cost floor is the host's: a new comparison takes the constant, one begun goes on with
+    // what it recorded, and one begun before 21 October with none.
+    expect(costRuleNamed(campaign, "g-10")).toEqual({ cost: COST });
+    expect(costRuleNamed(campaign, "g-9")).toEqual({});
+    append(campaign.log, "comparison.started", { session: "g-11", cost: 0.5 });
+    expect(costRuleNamed(campaign, "g-11")).toEqual({ cost: 0.5 });
   });
 
   it("refuses a labels file with an entry that is no label, and a --target that is no count", async () => {

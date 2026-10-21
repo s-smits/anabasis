@@ -71,7 +71,15 @@ import { worthLine } from "#src/builder/climb.ts";
 import { predicted, type Report, startOf } from "#src/builder/comparison.ts";
 import { refuseTerms, type RoundRequest, round, scoredSet } from "#src/builder/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
-import { type Gain, type ObjectiveRule, objectiveRuleIn, ROOM } from "#src/kernel/compare.ts";
+import {
+  COST,
+  type Gain,
+  type ObjectiveRule,
+  objectiveRuleIn,
+  ROOM,
+  type CostRule,
+  costRuleIn,
+} from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
@@ -348,6 +356,13 @@ export function objectiveNamed(
   return declared === undefined ? undefined : { direction: declared.direction, room: ROOM };
 }
 
+/** The cost floor comparison `id` reads its pairings by: the one it began with, which is none for
+ *  one begun before 21 October, or `COST` for a new one. */
+export function costRuleNamed(campaign: Pick<Campaign, "log">, id: string): CostRule {
+  const began = startOf(read(campaign.log), id);
+  return began === undefined ? { cost: COST } : costRuleIn(began);
+}
+
 /** What `--predict` names: the operator's expectation of the comparison, in a sentence, or none. */
 export function predictionNamed(flag: string | undefined): string | undefined {
   const said = flag?.trim() ?? "";
@@ -427,9 +442,10 @@ export function reportLines({
   noise,
   turns = null,
   worth = null,
+  cost = null,
   ...apart
 }: Pick<Report, "valid" | "objective" | "frontier" | "noise"> &
-  Partial<Pick<Report, "scored" | "turns" | "worth" | Apart>>): string[] {
+  Partial<Pick<Report, "scored" | "turns" | "worth" | "cost" | Apart>>): string[] {
   if (valid === null) return [];
   // The turns of a valid answer, over the tasks both harnesses answered: reported, in no test.
   const both = Object.values(turns ?? {}).flatMap(({ old, fresh }) =>
@@ -456,6 +472,11 @@ export function reportLines({
       ? []
       : [
           `the objective (${objective.direction} is better) decided ${plural(objective.decided, "task")} that validity alone would have tied${gainSaid(objective.gain)}`,
+        ]),
+    ...(cost === null
+      ? []
+      : [
+          `the bill decided ${plural(cost.decided, "task")} that validity and the objective left even, where one valid answer's solve billed at least ${String(Math.round(100 * cost.cost))}% less`,
         ]),
     ...(both.length === 0
       ? []
@@ -570,6 +591,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
     solves: Number(values.solves),
     level: Number(values.level),
     objective: objectiveNamed(campaign, session),
+    costRule: costRuleNamed(campaign, session),
     defects: Number(values.defects),
     cap,
     prediction: predictionNamed(values.predict),

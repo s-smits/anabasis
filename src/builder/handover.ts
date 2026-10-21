@@ -108,6 +108,8 @@ interface Compared {
   /** The tallied tasks the objective decided, where the comparison fixed one: won or lost where
    *  validity alone would have tied. Null where it fixed none. */
   readonly decided: number | null;
+  /** The tallied tasks the bill decided, where the comparison began with a cost floor; null otherwise. */
+  readonly billDecided: number | null;
   /** The median relative gain by the objective on the frontier tasks the new harness won, where
    *  any had a valid measure on both sides (`objectiveGain`); null otherwise and before 20 October. */
   readonly gain: Gain | null;
@@ -275,6 +277,7 @@ function compared(events: readonly LogEvent[], id: string): Compared {
     decided: isNumber(asRecord(report?.objective)?.decided)
       ? count(asRecord(report?.objective)?.decided)
       : null,
+    billDecided: isNumber(asRecord(report?.cost)?.decided) ? count(asRecord(report?.cost)?.decided) : null,
     gain: isNumber(gain?.median) && isNumber(gain.tasks) ? { median: gain.median, tasks: gain.tasks } : null,
     aside: listed(report?.aside),
     rulings: {

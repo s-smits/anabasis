@@ -74,6 +74,7 @@ import {
   solved,
   reportLines,
   wantedNamed,
+  costRuleNamed,
 } from "./round.ts";
 import { keepSetting, recordedSetting, SETTING_OPTIONS, settingAsked } from "./setting.ts";
 
@@ -125,6 +126,7 @@ export async function checkpointCommand(
     solves: Number(values.solves),
     level: Number(values.level),
     objective: objectiveNamed(campaign, id),
+    costRule: costRuleNamed(campaign, id),
     defects: Number(values.defects),
     cap,
     prediction: predictionNamed(values.predict),

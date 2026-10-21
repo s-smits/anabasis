@@ -120,7 +120,13 @@ export interface Paired {
   readonly solves?: { readonly old: readonly string[]; readonly fresh: readonly string[] };
   /** What each of those solves cost, in the same order. */
   readonly used?: { readonly old: readonly Used[]; readonly fresh: readonly Used[] };
+  /** The cost rule's floor (`COST`) the comparison began with, which also orders its rules
+   *  (`pairings`); absent where it began with none. */
+  readonly cost?: number;
 }
+
+/** The cost rule's floor a comparison begins with (`COST`), absent where it began with none. */
+export type CostRule = { readonly cost?: number };
 
 export interface Tally {
   readonly wins: number;
@@ -143,6 +149,8 @@ interface Sides {
   readonly halves?: "mirrored" | undefined;
   /** The objective two valid answers are compared by, where the comparison fixed one. */
   readonly objective?: ObjectiveRule | undefined;
+  /** The cost rule's floor (`COST`), where the comparison began with one. */
+  readonly cost?: number | undefined;
 }
 
 /** A median relative gain by the objective, over `tasks` tasks (`objectiveGain`). */
@@ -187,6 +195,23 @@ const SAME = 1e-9;
  * campaign for a day; no campaign named one, and on 21 October the operator chose one fixed floor.
  */
 export const ROOM = 0.01;
+
+/**
+ * The least saving in billed dollars by which one valid answer's solve beats another's, as a share
+ * of the dearer bill: the cost rule, recorded at each comparison's start (`cost`). Until 21 October
+ * what a solve cost decided nothing, and two harnesses that answered alike tied however much one
+ * spent. A pairing with an answer that is not valid reads no bill: an answer that fails fast is
+ * cheap. A comparison that records the floor reads its rules in order (`pairings`): validity, then
+ * the objective, then the cost, each only where the ones before it leave a task even. The order
+ * replaced weights of 60/25/15 on 21 October, before any comparison ran under them: at those a
+ * harness valid in 3 solves of 4 won a task from one valid in 4 of 4 by measuring better and billing
+ * less. Replayed on the 20 comparisons of r5, r6 and r3 as begun now, the order reads 12 steps where
+ * the room floor alone reads 11: r5's g-2 (0-2-22 at the floor, its new harness billing $0.142 a
+ * solve against $0.170) and r3's g-6 read a step and r3's g-13 does not, and the reference against
+ * its mirrored halves reads no step in any. Each harness read against itself on cost alone at this floor, on the
+ * halves of its own solves in r5, r6 and r3, read no step in 38 halves.
+ */
+export const COST = 0.2;
 
 /**
  * The chance of each total of `sizes` taken with a plus sign, where each is taken so with chance
@@ -305,6 +330,12 @@ export function objectiveRuleIn(data: JsonObject): ObjectiveRule | undefined {
   return { direction, ...keyIfDefined("room", isNumber(room) ? room : undefined) };
 }
 
+/** The cost rule's floor a comparison's start carries (`COST`), undefined where it began with
+ *  none, as every comparison before 21 October did. */
+export function costRuleIn(data: JsonObject): CostRule {
+  return keyIfDefined("cost", isNumber(data.cost) ? data.cost : undefined);
+}
+
 // Two other readings of a tally, the trinomial test and the chance that the new harness is the
 // better one, decide nothing and are not built: their formulas and what they read of the recorded
 // comparisons are in `7f0add79:docs/plan.md`, "Statistical power and cost" (row C3).
@@ -393,13 +424,16 @@ function better(rule: ObjectiveRule, one: number | null, other: number | null): 
 }
 
 /** One task's pairings: every solve of the new harness against every solve of the reference one,
- *  and how many each side won. A valid answer beats one that is not; two valid answers are even,
- *  unless the pair carries an objective and one is the better by it. Beside each side's wins, what
- *  decided them: `validity`, where one answer was valid; the `objective`, between two valid answers
- *  it told apart; and `valid`, the pairings of two valid answers, which
- *  the effect bar reads the objective over (`climb.ts`). */
+ *  and what each side won. One rule decides a pairing: a valid answer beats one that is not; between
+ *  two valid answers the objective tells one apart where it clears its floor, and the cost only
+ *  where the objective ties. Where the comparison records a cost floor, a side's count is that of
+ *  the first rule by which the two sides' counts differ (`ruling`); otherwise it is its pairings won
+ *  on validity and the objective together, as every comparison before 21 October read them. Beside each side's weighed total, how many pairings each rule decided: `validity`, where
+ *  one answer was valid; the `objective` and the `cost`, between two valid answers; and `valid`, the
+ *  pairings of two valid answers, which the effect bar reads the objective over (`climb.ts`). */
 export function pairings(pair: Paired) {
-  const [validity, objective] = [
+  const [validity, objective, cost] = [
+    { fresh: 0, old: 0 },
     { fresh: 0, old: 0 },
     { fresh: 0, old: 0 },
   ];
@@ -412,26 +446,59 @@ export function pairings(pair: Paired) {
       const told =
         pair.objective &&
         better(pair.objective, pair.objective.fresh[f] ?? null, pair.objective.old[o] ?? null);
+      const saved = told === 0 || told === undefined ? cheaper(pair, f, o) : 0;
       if (told === 1 || told === -1) objective[told === 1 ? "fresh" : "old"] += 1;
+      if (saved !== 0) cost[saved === 1 ? "fresh" : "old"] += 1;
     }
   }
+  const counts = { validity, objective, cost };
+  const rule = pair.cost === undefined ? null : RULES.find((one) => counts[one].fresh !== counts[one].old);
+  const side = (one: "fresh" | "old") =>
+    rule === null ? validity[one] + objective[one] : rule === undefined ? 0 : counts[rule][one];
   return {
-    fresh: validity.fresh + objective.fresh,
-    old: validity.old + objective.old,
+    fresh: side("fresh"),
+    old: side("old"),
     validity,
     objective,
+    cost,
     valid,
   };
 }
 
-/** Whether the objective decided a task's pairings: they read otherwise on validity alone. */
-function byObjective({ fresh, old, validity }: ReturnType<typeof pairings>): boolean {
-  return Math.sign(fresh - old) !== Math.sign(validity.fresh - validity.old);
+/** Which of two valid answers' solves billed less by at least the comparison's cost floor
+ *  (`COST`): 1 for the new side's, -1 for the reference's, 0 where the pair carries no floor, a bill
+ *  is missing, or they are closer. */
+function cheaper(pair: Paired, f: number, o: number): -1 | 0 | 1 {
+  const [fresh, old] = [pair.used?.fresh[f]?.billed ?? null, pair.used?.old[o]?.billed ?? null];
+  const dearer = Math.max(fresh ?? 0, old ?? 0);
+  if (pair.cost === undefined || fresh === null || old === null || dearer === 0) return 0;
+  const saving = (old - fresh) / dearer;
+  return Math.abs(saving) < pair.cost ? 0 : Math.sign(saving) === 1 ? 1 : -1;
 }
 
-/** How many of `pairs` the objective decided (`byObjective`). */
-export function decidedByObjective(pairs: readonly Paired[]): number {
-  return pairs.filter((pair) => byObjective(pairings(pair))).length;
+/** The rules a comparison that records a cost floor reads a task by, in order. */
+const RULES = ["validity", "objective", "cost"] as const;
+
+/** Which rule decided a task, or null where it tied: under the order (`RULES`) the first by which
+ *  the sides' counts differ; where the comparison records no cost floor, the objective where it gave
+ *  the task a sign that validity alone did not, and validity otherwise. Until 21 October a rule was
+ *  read around itself alone, so a task the bill won was told as won by the objective. */
+function ruling(pair: Paired): (typeof RULES)[number] | null {
+  const counted = pairings(pair);
+  const sign = Math.sign(counted.fresh - counted.old);
+  if (sign === 0) return null;
+  if (pair.cost !== undefined) return RULES.find((rule) => counted[rule].fresh !== counted[rule].old) ?? null;
+  return sign === Math.sign(counted.validity.fresh - counted.validity.old) ? "validity" : "objective";
+}
+
+/** Whether a rule decided a task (`ruling`). */
+function decides(rule: "objective" | "cost", pair: Paired): boolean {
+  return ruling(pair) === rule;
+}
+
+/** How many of `pairs` a rule decided (`decides`). */
+export function decidedBy(rule: "objective" | "cost", pairs: readonly Paired[]): number {
+  return pairs.filter((pair) => decides(rule, pair)).length;
 }
 
 /** How much better the new side's median valid measure is than the reference's, as a share of the
@@ -445,8 +512,7 @@ function medianGain(pair: Paired): number | null {
 /** How far apart the two sides' median valid measures were where the objective alone decided a
  *  task, as a share of the larger magnitude; null where validity decided it, or it tied. */
 export function objectiveMargin(pair: Paired): number | null {
-  const counted = pairings(pair);
-  const gain = counted.fresh !== counted.old && byObjective(counted) ? medianGain(pair) : null;
+  const gain = decides("objective", pair) ? medianGain(pair) : null;
   return gain === null ? null : Math.abs(gain);
 }
 
@@ -542,7 +608,7 @@ export function pairsOf(
   sides: Sides,
   solves: number,
 ) {
-  const { old, fresh, setting, comparison, halves, objective } = sides;
+  const { old, fresh, setting, comparison, halves, objective, cost } = sides;
   const verdicts = objective === undefined ? null : verdictsOf(events);
   if (old === fresh && halves === undefined) {
     throw new Error(`a comparison sets two harnesses against each other, and both sides are ${old}`);
@@ -604,6 +670,7 @@ export function pairsOf(
         solves: side(({ id }) => id),
         used: side(({ end }): Used => ({ billed: isNumber(end.billed) ? end.billed : null })),
         ...keyIfDefined("objective", objective === undefined ? undefined : { ...objective, ...measured }),
+        ...keyIfDefined("cost", cost),
       },
     ];
   });

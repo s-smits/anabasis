@@ -13,13 +13,15 @@
  * module.
  */
 import {
-  decidedByObjective,
+  decidedBy,
   detectable,
   type Gain,
   power,
   type ObjectiveRule,
   objectiveGain,
   objectiveRuleIn,
+  type CostRule,
+  costRuleIn,
   type Paired,
   pairsOf,
   scored,
@@ -149,6 +151,9 @@ export interface Report {
    *  harness won (`objectiveGain`; absent before 20 October). Null where the check program declares
    *  none, and in a report written before 10 October. */
   readonly objective: (ObjectiveRule & { readonly decided: number; readonly gain?: Gain | null }) | null;
+  /** The cost floor the comparison began with, and how many tallied tasks the bill decided
+   *  (`decidedBy`). Null where it began with none, as every one before 21 October. */
+  readonly cost: { readonly cost: number; readonly decided: number } | null;
   /** By task, the median turns each harness's valid answers took, null where it gave none: what
    *  the comparison reports beside each pair and no tally reads (the overhaul plan's P2). */
   readonly turns: Readonly<
@@ -197,6 +202,8 @@ export interface Fixed {
   readonly retained: readonly string[];
   /** The objective two valid answers are compared by, where the check program declares one. */
   readonly objective: ObjectiveRule | undefined;
+  /** The cost floor, where the comparison began with one (`COST`, `compare.ts`). */
+  readonly costRule: CostRule;
 }
 
 export const STARTED = "comparison.started";
@@ -230,6 +237,7 @@ export const NOTHING = {
   capped: false,
   settled: null,
   objective: null,
+  cost: null,
   turns: null,
   worth: null,
 } as const;
@@ -406,6 +414,7 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     setting: fixed.setting,
     comparison: fixed.id,
     objective: fixed.objective,
+    ...fixed.costRule,
   };
   const first = pairsOf(events, live, sides, fixed.solves);
   const kept = (pairs: readonly Paired[]) => pairs.filter(({ task }) => !open.has(task));
@@ -466,9 +475,13 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
         ? null
         : {
             ...fixed.objective,
-            decided: decidedByObjective(pairs),
+            decided: decidedBy("objective", pairs),
             gain: objectiveGain(pairs.filter(({ task }) => !fixed.retained.includes(task))),
           },
+    cost:
+      fixed.costRule.cost === undefined
+        ? null
+        : { cost: fixed.costRule.cost, decided: decidedBy("cost", pairs) },
   };
 }
 
@@ -606,6 +619,7 @@ export function fixedIn(events: readonly LogEvent[], id: string): Fixed | null {
         tasks: Array.isArray(tasks) ? tasks.filter(isString) : [],
         retained: Array.isArray(retained) ? retained.filter(isString) : [],
         objective: objectiveRuleIn(start),
+        costRule: costRuleIn(start),
       }
     : null;
 }

@@ -33,7 +33,7 @@ const UNNAMED: Recorded = {
 const UNLIMITED: Recorded = { ...UNNAMED, minutes: 120, modelTurns: null };
 /** One an operator recorded: another solver, an eight-minute wall, forty model turns, three tasks. */
 const SHORT: Recorded = {
-  solver: { model: "anthropic/claude-sonnet-5-5", effort: "low" },
+  solver: { model: "claude/claude-sonnet-5-5", effort: "low" },
   minutes: 8,
   modelTurns: 40,
   target: 3,
@@ -61,10 +61,20 @@ describe("what the flags of a setting name", () => {
     // The model's own turns are the one budget's where no command names a number, whoever solves.
     expect(longer.modelTurns).toBe(LIMITS.modelTurns);
     expect(settingNamed({ "solve-model-turns": "40" }).limits).toEqual({ ...LIMITS, modelTurns: 40 });
-    expect(settingNamed({ solver: "anthropic/claude-sonnet-5-5", "solver-effort": "low" }).solver).toEqual({
-      model: "anthropic/claude-sonnet-5-5",
+    expect(settingNamed({ solver: "claude/claude-sonnet-5-5", "solver-effort": "low" }).solver).toEqual({
+      model: "claude/claude-sonnet-5-5",
       effort: "low",
     });
+  });
+
+  it("records the effort pi sends: a level the model does not serve as the next one it does", () => {
+    const at = (solver: string, effort: string) =>
+      settingNamed({ solver, "solver-effort": effort }).solver?.effort;
+    // DeepSeek V4.1 Flash serves low, high and max, and pi sends `medium` as `high` (21 October).
+    expect(at("openrouter/deepseek/deepseek-v4.1-flash-1017", "medium")).toBe("high");
+    expect(at("openrouter/deepseek/deepseek-v4.1-flash-1017", "low")).toBe("low");
+    expect(at("claude/claude-opus-5-5", "medium")).toBe("medium");
+    expect(() => at("openrouter/no-such/model", "high")).toThrow("no backend serves");
   });
 
   it("holds one command to a share of the wall: a quarter by default and half at most", () => {
@@ -110,7 +120,7 @@ describe("a campaign's setting, recorded once", () => {
     });
     const first = settingAsked(
       {
-        solver: "anthropic/claude-sonnet-5-5",
+        solver: "claude/claude-sonnet-5-5",
         "solver-effort": "low",
         "solve-minutes": "8",
         "solve-model-turns": "40",
@@ -128,7 +138,7 @@ describe("a campaign's setting, recorded once", () => {
     expect(asked.record).toBeNull();
     expect(asked.named).toEqual(
       settingNamed({
-        solver: "anthropic/claude-sonnet-5-5",
+        solver: "claude/claude-sonnet-5-5",
         "solver-effort": "low",
         "solve-minutes": "8",
         "solve-model-turns": "40",
@@ -161,7 +171,7 @@ describe("a campaign's setting, recorded once", () => {
     );
     expect(() => settingAsked({ solver: "claude/claude-opus-5-5" }, SHORT)).toThrow(
       // The effort it names none of is the campaign's, as every flag it leaves out is.
-      "--solver claude/claude-opus-5-5 --solver-effort low names another setting than the campaign's, which was recorded as --solver anthropic/claude-sonnet-5-5 --solver-effort low",
+      "--solver claude/claude-opus-5-5 --solver-effort low names another setting than the campaign's, which was recorded as --solver claude/claude-sonnet-5-5 --solver-effort low",
     );
     expect(() => settingAsked({ target: "8" }, UNLIMITED)).toThrow(
       "--target 8 names another setting than the campaign's, which was recorded as --target 24",
@@ -228,7 +238,7 @@ describe("a campaign's setting, recorded once", () => {
     );
     // A record without a window is the sweep's window, as every record before it was.
     expect(settingAsked({}, SHORT).named.solver).toEqual({
-      model: "anthropic/claude-sonnet-5-5",
+      model: "claude/claude-sonnet-5-5",
       effort: "low",
     });
     expect(() => settingNamed({ ...haiku, "solver-window": "2e5.5" })).toThrow(
@@ -250,7 +260,7 @@ describe("a campaign's setting, recorded once", () => {
 // own turns, under a 30-minute wall, and its log holds no record.
 describe("the first record of a campaign that already holds solves", () => {
   const ran = {
-    model: "anthropic/claude-sonnet-5-5",
+    model: "claude/claude-sonnet-5-5",
     effort: "high",
     limits: { ...LIMITS, wallSeconds: 1800, modelTurns: 15 },
   };
@@ -261,7 +271,7 @@ describe("the first record of a campaign that already holds solves", () => {
     const forgot = settingAsked({}, null);
     expect(forgot.first).toBe(true);
     expect(firstRecord(forgot, { ...forgot.named, solver }, ran)).toBe(
-      "the campaign's log records no setting yet, and this command names another than its last test-side solves ran under, which was --solver anthropic/claude-sonnet-5-5 --solver-effort high --solve-minutes 30 --solve-model-turns 15. Name that setting, which is then recorded as the campaign's; another setting is another campaign (tools/d2/setting.ts)",
+      "the campaign's log records no setting yet, and this command names another than its last test-side solves ran under, which was --solver claude/claude-sonnet-5-5 --solver-effort high --solve-minutes 30 --solve-model-turns 15. Name that setting, which is then recorded as the campaign's; another setting is another campaign (tools/d2/setting.ts)",
     );
     // Another solver under the same limits is another setting as much.
     const named = settingAsked(same, null);

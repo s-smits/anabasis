@@ -6,23 +6,20 @@
  * with the calls it made since its last start. Its ruling is what stands of its rejection: a person's label where a settled report holds one, the
  * Referee's last finding otherwise. A ruling is withheld in both tiers where `withheld.ts` says so.
  *
- * Turns and calls are the trace events themselves (`<seat>.turn`, `<seat>.call`), which no fold
- * reads but the Builder's own view of a solve's calls (`solveOf`, `src/review/trace.ts`).
+ * Turns and calls are the kernel's reading of the trace events (`traceOf`, `src/kernel/trace.ts`),
+ * the one the Builder's `read_trace` pages, with a call's result cut for the default tier.
  */
 import { reported, UNSETTLED } from "../../../../src/builder/comparison.ts";
-import type { LogEvent } from "../../../../src/kernel/log.ts";
 import type { Ending } from "../../../../src/kernel/solve.ts";
 import type { Solve } from "../../../../src/kernel/solves.ts";
-import { asRecord, isBoolean, isNumber, isString, type JsonObject } from "../../../../src/meta/json-shape.ts";
+import { type Seat, traceOf } from "../../../../src/kernel/trace.ts";
+import { isNumber, isString, type JsonObject } from "../../../../src/meta/json-shape.ts";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
 import type { Ruling } from "../../../../src/review/referee.ts";
 import type { SolveRow, Tier, ToolCall, Turn } from "../models.ts";
 import { callsIn, conditionsIn, type Log, once, practiceIn, reportsIn } from "./folds.ts";
 import { movesIn } from "./moves.ts";
 import { rulingWithheld } from "./withheld.ts";
-
-/** A seat whose turns and calls the log holds under its own prefix. */
-type Seat = "solve" | "build" | "exam" | "draft";
 
 /** How much of a call's result an answer carries; the raw event is the exam tier's. */
 const RESULT_CHARS = 8_000;
@@ -131,45 +128,35 @@ export function solveRow(log: Log, solve: Solve, tier: Tier): SolveRow {
   };
 }
 
-/** The turns and the calls of one seat's in `events` that `own` keeps, in the order logged. */
-function traced(events: readonly LogEvent[], own: (data: JsonObject) => boolean, seat: Seat) {
-  const turns: Turn[] = [];
-  const calls: ToolCall[] = [];
-  for (const [index, { kind, data }] of events.entries()) {
-    if (kind === `${seat}.turn` && own(data)) {
-      const cost = asRecord(asRecord(data.usage)?.cost)?.total;
-      turns.push({
-        index,
-        turn: isNumber(data.turn) ? data.turn : turns.length + 1,
-        text: isString(data.text) ? data.text : "",
-        stopReason: isString(data.stopReason) ? data.stopReason : null,
-        error: isString(data.error) ? data.error : null,
-        billed: isNumber(cost) ? cost : null,
-      });
-    }
-    if (kind === `${seat}.call` && own(data)) {
-      const result = isString(data.text) ? data.text : null;
-      calls.push({
-        index,
-        seq: calls.length + 1,
-        turn: isNumber(data.turn) ? data.turn : 0,
-        tool: isString(data.tool) ? data.tool : "",
-        args: data.args ?? null,
-        isError: isBoolean(data.isError) && data.isError,
-        result: result === null ? null : result.slice(0, RESULT_CHARS),
-        truncated: result !== null && result.length > RESULT_CHARS,
-        ms: isNumber(data.ms) ? data.ms : null,
-      });
-    }
-  }
-  return { turns, calls };
+/** The turns and the calls of seat `seat`'s solve or session `id`, as the page serves them. */
+function traced(log: Log, seat: Seat, id: string): { turns: Turn[]; calls: ToolCall[] } {
+  const { turns, calls } = traceOf(log.events, seat, id);
+  return {
+    turns: turns.map(({ index, turn, text, stopReason, error, billed }, at) => ({
+      index,
+      turn: turn ?? at + 1,
+      text,
+      stopReason,
+      error,
+      billed,
+    })),
+    calls: calls.map(({ index, turn, tool, args, isError, text, ms }, at) => ({
+      index,
+      seq: at + 1,
+      turn: turn ?? 0,
+      tool,
+      args,
+      isError,
+      // An empty result reads as none, as the Builder's page of a call says it (`callText`).
+      result: text === "" ? null : text.slice(0, RESULT_CHARS),
+      truncated: text.length > RESULT_CHARS,
+      ms,
+    })),
+  };
 }
 
-/** A solve's turns and calls: its own events, as the Builder's view of a solve selects them
- *  (`solveOf`, `src/review/trace.ts`). */
-export const solveTrace = (log: Log, solve: string) =>
-  traced(log.events, (data) => data.solve === solve, "solve");
+/** A solve's turns and calls: its own events, as the Builder's `read_trace` reads them. */
+export const solveTrace = (log: Log, solve: string) => traced(log, "solve", solve);
 
 /** A Builder's or an Examiner's session's own turns and calls. */
-export const sessionTrace = (log: Log, session: string, seat: "build" | "exam") =>
-  traced(log.events, (data) => data.session === session, seat);
+export const sessionTrace = (log: Log, session: string, seat: "build" | "exam") => traced(log, seat, session);

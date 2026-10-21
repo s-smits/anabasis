@@ -1,4 +1,4 @@
-// Copied from pi coding-agent v1.1.0 (github.com/earendil-works/pi, abe508e1, MIT, see LICENSE):
+// Copied from pi coding-agent v1.3.0 (github.com/earendil-works/pi, 71023aec, MIT, see LICENSE):
 // packages/coding-agent/src/core/tools/read.ts. Departure: the TUI renderers are left out, since no terminal UI draws these calls.
 // Strict compiler options force the `!` on indexed reads and the `| undefined` on optional fields.
 import type { AgentTool } from "@earendil-works/pi-agent-core";

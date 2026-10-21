@@ -1,4 +1,4 @@
-// Copied from pi coding-agent v1.1.0 (github.com/earendil-works/pi, abe508e1, MIT, see LICENSE):
+// Copied from pi coding-agent v1.3.0 (github.com/earendil-works/pi, 71023aec, MIT, see LICENSE):
 // packages/coding-agent/src/utils/image-convert.ts. Departure: loadPngTranscoder and
 // ensurePngTranscoder, which register photon as pi-tui's Kitty image transcoder, are left out with
 // their pi-tui import, since no terminal draws images here.

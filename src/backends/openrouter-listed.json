@@ -1,0 +1,39 @@
+{
+  "providers": {
+    "openrouter": {
+      "models": [
+        {
+          "id": "deepseek/deepseek-v4.1-flash-1017",
+          "name": "DeepSeek: DeepSeek V4.1 Flash 1017",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "off": "none",
+            "minimal": null,
+            "low": "low",
+            "medium": null,
+            "high": "high",
+            "xhigh": null,
+            "max": "max"
+          },
+          "input": ["text", "image"],
+          "inputLimits": {
+            "images": {
+              "resize": { "maxWidth": 2000, "maxHeight": 2000, "maxBytes": 4718592, "jpegQuality": 80 }
+            }
+          },
+          "cost": { "input": 0.098, "output": 0.294, "cacheRead": 0.00294, "cacheWrite": 0 },
+          "contextWindow": 1048576,
+          "maxTokens": 131072,
+          "compat": {
+            "supportsDeveloperRole": false,
+            "thinkingFormat": "openrouter",
+            "supportsStrictMode": true,
+            "sendSessionAffinityHeaders": true,
+            "requiresReasoningContentOnAssistantMessages": true,
+            "openRouterRouting": { "only": ["deepinfra/fp8"], "allow_fallbacks": false }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -78,8 +78,7 @@ Builder practises and edits → comparison.reported: step → harness.promoted
 
 The gate uses `informative` in `src/kernel/compare.ts`, as the comparison does. A task leaves room
 where the reference answers some solves, answers none while a valid answer is on record, or has a
-valid answer that a solve's answer betters by the objective by at least the 1% room floor. An
-author's answer only proves a task feasible. All reference solves passing therefore does
+valid answer beaten by a recorded objective measure. All reference solves passing therefore does
 not by itself close a task. `AGENTS.md`, section 7, owns the full scoring procedure.
 
 ## Milestones: what to read, and when

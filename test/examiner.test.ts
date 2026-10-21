@@ -337,8 +337,9 @@ describe("a session that writes tasks", () => {
     const s = seat("write", [call("read_opening", {}), finish, finish]);
     await examine(s.request);
     const served = s.of(CALLED).find(({ tool }) => tool === "read_opening");
-    expect(served?.text).toContain("- e-1 (fixture): not yet compared; no answer on record");
-    expect(served?.text).toContain("This session has 10 minutes and 12 turns.");
+    // The text served is the opening the session's first turn read, whole.
+    expect(isString(served?.text) && served.text.length > 0).toBe(true);
+    expect(s.sent[0]).toContain(JSON.stringify(served?.text).slice(1, -1));
   });
 
   it("is given the contract, the checks and the campaign's tasks, and nothing of a solver", async () => {
@@ -592,23 +593,42 @@ describe("a session that writes tasks", () => {
     );
   });
 
-  it("keeps its author's valid answer once as the task's proof, and neither keeps nor tells its measure", async () => {
-    // A try, its task, then two tries of the held task, each pass measured by a declared objective.
+  it("keeps the objective's measure of its author's valid answer where the contract declares one, and none where it declares none", async () => {
+    // A try, its task, then two tries of the held task: the measure each pass took is kept.
     const steps = [tried(7), propose(7), tried(7), tried(7, { answer: "1", unit: "N" }), finish, finish];
-    const s = seat("write", steps);
-    await examine({
-      ...s.request,
-      contract: { ...s.request.contract, objective: { quantity: "mass", direction: "lower" } },
-      verify: async (task, answer) => {
-        const verdict = await verify(task, answer);
-        return verdict.kind === "pass" ? { kind: "pass", objective: 2.25 } : verdict;
-      },
+    // The provisional try, the recheck under the task's final id, the later try.
+    const measures = [3.5, 3.25, 2.25];
+    const run = async (declared: boolean) => {
+      const s = seat("write", steps);
+      const taken = [...measures];
+      await examine({
+        ...s.request,
+        contract: declared
+          ? { ...s.request.contract, objective: { quantity: "mass", direction: "lower" } }
+          : s.request.contract,
+        verify: async (task, answer) => {
+          const verdict = await verify(task, answer);
+          return verdict.kind === "pass" ? { kind: "pass", objective: taken.shift() ?? 0 } : verdict;
+        },
+      });
+      return s;
+    };
+    const declared = await run(true);
+    const version = declared.versionOf("x-1-001", 7);
+    const kept = (measure: number) => ({
+      version,
+      session: "x-1",
+      answer: GOOD,
+      objective: { quantity: "mass", direction: "lower", measure },
     });
-    // Its answer proves the task feasible and decides no room (21 October), so one proof is kept.
-    const version = s.versionOf("x-1-001", 7);
-    expect(s.of("task.feasible")).toEqual([{ version, session: "x-1", answer: GOOD }]);
-    const told = s.of(CALLED).flatMap(({ text }) => (isString(text) ? [text] : []));
-    expect(told.join("\n")).not.toContain("2.25");
+    expect(declared.of("task.feasible")).toEqual([kept(3.25), kept(2.25)]);
+    // The verifier measured, but the contract declares no objective: the record is the version.
+    const undeclared = await run(false);
+    expect(undeclared.of("task.feasible")).toEqual([{ version, session: "x-1", answer: GOOD }]);
+    // The Examiner is told each measure the record keeps, and none where none is kept (19 October).
+    const told = (s: typeof declared) => s.of(CALLED).flatMap(({ text }) => (isString(text) ? [text] : []));
+    expect(told(declared).filter((line) => line.includes("By the objective it measures"))).toHaveLength(2);
+    expect(told(undeclared).join("\n")).not.toContain("By the objective");
   });
 
   /** One order of tries and proposals, the verifier's answers by the id it is asked under, and
@@ -1008,38 +1028,84 @@ describe("a session that writes tasks", () => {
     ]);
   });
 
-  it("refuses a task the reference harness answers alike every time, however much better its author's answer is", async () => {
-    // The reference's answers measure 10 on both drafts, the third within a billionth of it. Base
-    // 2's author answer measures 9, better than each by 10%; base 4 has none. From 19 to 21 October
-    // base 2 was held at its first solve, and the exam filled with tasks the reference answered
-    // every time: the author's answer proves a task feasible, and no more (`bettered`).
-    const steps = [tried(2), call(TRY, { tasks: [instance(2), instance(4)] })];
+  it("holds out a task the reference harness answers alike every time where its author's answer is better by the objective by the room floor, and not one closer or without one", async () => {
+    // The reference's answers measure 10 on every draft, the third within a billionth of it.
+    // Base 2's author answer measures 9, better than each by 10%; base 3's is better by 0.5%, under
+    // the floor (`ROOM`); base 4 has none. Until 20 October base 3 was held, as r6's gate held
+    // drafts whose author answers were a hundredth of a percent better.
+    const authored = new Map([
+      [2, 9],
+      [3, 9.95],
+    ]);
+    const steps = [tried(2), tried(3), call(TRY, { tasks: [instance(2), instance(3), instance(4)] })];
     const s = seat("write", [...steps, finish, finish]);
     const probe = measuredProbe(s.log, (_task, nth) => [10, 10, 10 + 1e-9][nth]);
     const examined = await examine({
       ...s.request,
       contract: { ...s.request.contract, objective: { quantity: "the mass", direction: "lower" } },
-      limits: { ...s.request.limits, puts: 2 },
+      limits: { ...s.request.limits, puts: 3 },
       probe,
       verify: async (task, answer) => {
         const verdict = await verify(task, answer);
-        return verdict.kind === "pass" && asRecord(task.publicInput)?.base === 2
-          ? { kind: "pass", objective: 9 }
+        const measure = authored.get(Number(asRecord(task.publicInput)?.base));
+        return verdict.kind === "pass" && measure !== undefined
+          ? { kind: "pass", objective: measure }
           : verdict;
       },
     });
-    const [better, unproved] = [s.versionOf("x-1-001", 2), s.versionOf("x-1-002", 4)];
-    expect(examined).toMatchObject({ held: [] });
-    expect(new Set(examined.refused)).toEqual(new Set([better, unproved]));
-    // Each line tells the reference's own measures, and nothing of the author's answer.
+    const [better, within, unproved] = [
+      s.versionOf("x-1-001", 2),
+      s.versionOf("x-1-002", 3),
+      s.versionOf("x-1-003", 4),
+    ];
+    expect(examined).toMatchObject({ held: [better] });
+    expect(new Set(examined.refused)).toEqual(new Set([within, unproved]));
+    // The author's measure is on record for the held task alone, where a comparison reads it.
+    expect(poolOf(read(s.log)).bests).toEqual(new Map([[better, 9]]));
+    // Each draft's line tells the reference's measures and, where it tried one, its own: the
+    // better one at the first solve, after which the gate stops.
     const lines = s.of(CALLED).flatMap(({ text: said }) => (isString(said) ? said.split("\n") : []));
     expect(lines.find((line) => line.startsWith("x-1-001: "))).toContain(
-      "3 of 3 solves, its valid answers measuring 10, 10, 10, which leaves no room",
+      "1 of 1 solves, its valid answers measuring 10, and your answer that passed try_answer on it 9, 10% better than its best",
     );
-    expect(lines.join("\n")).not.toContain("try_answer on it");
+    expect(lines.find((line) => line.startsWith("x-1-002: "))).toContain(
+      "measuring 10, 10, 10, and your answer that passed try_answer on it 9.95, 0.5% better than its best, which leaves no room",
+    );
+    // A later session is told the gap beside the refused draft.
     expect(heard(read(s.log), []).refused).toEqual([
-      expect.stringContaining("x-1-001 (fixture), x-1-002 (fixture)"),
+      expect.stringContaining("x-1-002 (fixture, yours 0.5% better than its best)"),
     ]);
+    // and beside the held one, on its line.
+    const later = heard(read(s.log), [{ taskId: "x-1-001", family: "fixture" }]);
+    expect(later.lines[0]).toContain("gate 1 of 1 valid, yours 10% better than its best");
+    expect(lines.find((line) => line.startsWith("x-1-003: "))).not.toContain("try_answer on it");
+  });
+
+  it("tells its author's gap on a draft the reference answers in some of its solves", async () => {
+    // Base 2's first reference solve measures 10 and its second ends without an answer: the
+    // readings disagree, which holds the draft. Its author's answer measures 9.95, 0.5% better.
+    // Until 21 October the proof was read only where every reading agreed, so this gap was lost.
+    const s = seat("write", [tried(2), call(TRY, { tasks: [instance(2)] }), finish, finish]);
+    const measured = measuredProbe(s.log, () => 10);
+    let solves = 0;
+    const probe = async (task: TaskPackage, session: string): Promise<Ending> => {
+      solves += 1;
+      return solves === 1 ? await measured(task, session) : { outcome: "fail", kind: "turns-ended" };
+    };
+    const examined = await examine({
+      ...s.request,
+      contract: { ...s.request.contract, objective: { quantity: "the mass", direction: "lower" } },
+      limits: { ...s.request.limits, puts: 1 },
+      probe,
+      verify: async (task, answer) => {
+        const verdict = await verify(task, answer);
+        return verdict.kind === "pass" ? { kind: "pass", objective: 9.95 } : verdict;
+      },
+    });
+    expect(examined).toMatchObject({ held: [s.versionOf("x-1-001", 2)] });
+    const [gate] = s.of(GATE);
+    expect(asRecord(gate?.reference)).toMatchObject({ valid: 1, solves: 2 });
+    expect(asRecord(gate?.reference)?.gap).toBeCloseTo(0.005, 9);
   });
 
   it("ends at its wall with no solve of the reference harness left running, and starts none after it", async () => {
@@ -1362,19 +1428,38 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     };
     const [said] = lines([100, 100, 90, 90]);
     expect(said).toContain("won there by the other harness, by the objective alone, 10% apart");
-    // The room told is how far apart the reference's own answers were: the other harness's answers
-    // are its result on the task.
-    expect(said).not.toContain("own valid answers");
-    expect(lines([100, 95, 90, 90])[0]).toContain("its own valid answers 5% apart");
-    // Room under the floor decides no pair and holds no draft: it is told as none.
-    expect(lines([100, 99.5, 90, 90])[0]).not.toContain("own valid answers");
+    // The room told is against the reference's own answers and its author's: the other harness's
+    // answers are its result on the task.
+    expect(said).not.toContain("better than one of its own");
+    expect(lines([100, 95, 90, 90])[0]).toContain("an answer on record 5% better than one of its own");
+    // Room under the campaign's floor decides no pair and holds no draft: it is told as none.
+    expect(lines([100, 99.5, 90, 90])[0]).not.toContain("better than one of its own");
     // With exam-results off, who won is not said, and nothing of the other harness's answers is:
     // the lines read the same whatever it measured.
     const [blind] = lines([100, 95, 90, 90], false);
     expect(blind).not.toContain("won there");
-    expect(blind).toContain("its own valid answers 5% apart");
+    expect(blind).toContain("an answer on record 5% better than one of its own");
     expect(lines([100, 95, 100, 100], false)).toEqual(lines([100, 95, 90, 90], false));
     expect(lines([100, 100, 80, 100], false)).toEqual(lines([100, 100, 100, 100], false));
+    // Over two comparisons the count of closures in a row reads the reference's answers and its
+    // author's alone: the other harness's better answers leave it as it was (`historyOf`).
+    const twice = (other: number) => {
+      const log = logged();
+      log.hold("close");
+      for (const comparison of ["b-1", "b-2"]) {
+        log.solved(comparison, "close", "h1", [true, true]);
+        log.solved(comparison, "close", "h2", [true, true]);
+        log.reported(comparison, ["h1", "h2"], 2, ["close"]);
+      }
+      const measures = [100, 100, other, other, 100, 100, other, other];
+      for (const { kind, data } of log.events) {
+        if (kind === "verdict") data.objective = measures.shift() ?? null;
+        if (kind === "comparison.reported") data.objective = { direction: "lower", room: 0.01 };
+      }
+      return heard(log.events, [fixture("close")], false).lines;
+    };
+    expect(twice(100)[0]).toContain("the last 2 in a row closed it");
+    expect(twice(90)).toEqual(twice(100));
   });
 
   it("is one outcome a task on the reference's side, with whether a valid answer is on record, and the counts beside them", async () => {

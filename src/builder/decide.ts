@@ -436,9 +436,15 @@ function noRoom(ground: Ground): Move | null {
   const room = roomOf(last.report, side);
   if (room === "room") {
     const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
-    const written = events
-      .slice(promotedAt)
-      .some(({ kind }) => kind === "exam.started" || kind === "exam.finished");
+    // A session the provider crashed or a stop killed before it held out a task wrote nothing for
+    // the new reference (`cutShort`): on 21 October r5's x-4 and r6's x-5 crashed so, and each
+    // campaign compared its next harness on the tasks the old reference had closed.
+    const since = events.slice(promotedAt);
+    const cut = new Set(since.filter(cutShort).map(({ data }) => data.session));
+    const written = since.some(
+      (event) =>
+        (event.kind === "exam.started" || event.kind === "exam.finished") && !cut.has(event.data.session),
+    );
     return promotedAt === -1 || written
       ? null
       : {
@@ -572,6 +578,12 @@ export function practiceRoom(events: readonly LogEvent[], level: number): number
   return Math.max(0, poolOf(events).frontier.length - sweepOf(level));
 }
 
+/** How many more tasks the epoch's practice is owed: the `practice` a campaign names less what it
+ *  has released since the last promotion, as far as its room goes (`practiceRoom`). */
+export function practiceOwed(events: readonly LogEvent[], practice: number, level: number): number {
+  return Math.min(practice - Math.min(practice, epochReleased(events).epoch), practiceRoom(events, level));
+}
+
 /** A release for practice before a Builder session, where the epoch holds fewer than the campaign
  *  names, tasks were held out since the last release, and it has room (`practiceRoom`): on
  *  9 October two sessions practised on the same two tasks while sixteen more were held. */
@@ -604,7 +616,7 @@ function toPractise({ events, plan, supply, read }: Ground, named: Move): Move |
     promotedAt === -1
       ? ", and tasks were held out since the last release"
       : " since the reference harness was last promoted, and tasks were held out since";
-  const owed = Math.min(practice - epoch, room);
+  const owed = practiceOwed(events, practice, plan.wanted.level);
   return owed <= 0
     ? null
     : {

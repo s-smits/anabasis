@@ -20,8 +20,14 @@
  * first process fails, the run is attributed before it is believed: if a clock ended every
  * failure, or the host passed its cores in load while they ran, the failed files run again
  * alone, beside any whose worker crashed or that Bun never finished, and that verdict is the
- * suite's. A failure on a quiet host, more of those files than a busy host explains, and a run
- * that bailed before reaching the rest all stand as they were printed.
+ * suite's. A failure on a quiet host, and more of those files than a busy host explains, stand as
+ * they were printed.
+ *
+ * `ANA_TEST_BAIL=1` stops the run at its first failed test (`--bail`), which every proof of the
+ * pre-push hook and `bun run land` asks for, so a red commit comes back in minutes rather than after
+ * the rest of its tests; CI leaves it unset, so one run names every failure. A bailed run never
+ * reached the files after its failure, so where the machine is to blame the failed files run alone
+ * first and, once they pass, the whole request runs again and decides.
  *
  * The wall. `--timeout=60000` bounds each test, not the worker. Bun 1.4 sometimes leaves a
  * `--test-worker` spinning at full CPU with exited, unreaped children after a subprocess-heavy
@@ -86,6 +92,7 @@ const COMMON_FLAGS = [
   `--timeout=${String(PER_TEST_WALL_MS)}`,
   `--timings=${TIMINGS}`,
   "--update-timings",
+  ...(Bun.env.ANA_TEST_BAIL === "1" ? ["--bail"] : []),
 ];
 
 /** `reported` holds every file whose results Bun printed and `failed` those among them with a
@@ -594,8 +601,8 @@ export function attribute(
     first.clockEnded === first.failures ? "clock-only" : first.peakLoad > cores ? "crowded-host" : null;
   if (because === null) return { rerun: null, exitCode: first.exitCode, because: "stands", subject: [] };
   // A bailed run never ran the files after the failure that stopped it, and names none of them, so
-  // a passing rerun of the failed files alone would clear an invocation nothing has yet tested.
-  if (first.bailed) return { rerun: null, exitCode: first.exitCode, because: "bailed", subject: failed };
+  // a passing rerun of the failed files alone clears only those: `main` then runs the whole request.
+  if (first.bailed) return { rerun: failed, exitCode: first.exitCode, because: "bailed", subject: failed };
   // A file whose worker crashed, or that Bun aborted or never started, printed no `(fail)` line, so
   // it is not in `failed` but it is in the exit code: it runs again beside them or the verdict stands.
   const unfinished = [...new Set([...failed, ...first.interrupted, ...first.incomplete])];
@@ -671,7 +678,7 @@ async function main(): Promise<number> {
         "clock-only": `host-wall: ${machine}; ${rerunning}`,
         "crowded-host": `host-wall: ${machine}; ${rerunning}`,
         "unhandled-error": `host-wall: error: ${String(first.errors)} error(s) printed outside any test, which running any file again cannot clear.`,
-        bailed: `host-wall: error: ${machine}, but the run bailed, so the files it never ran cannot be cleared by running the failed ones again: ${relative(step.subject)}`,
+        bailed: `host-wall: ${machine}, and the run bailed; ${rerunning}, and once they pass the whole request again`,
       };
       console.error(said[step.because]);
     }
@@ -696,7 +703,14 @@ async function main(): Promise<number> {
     if (again.exitCode === null) {
       console.error("idle-wall: error: the rerun was ended by the idle wall named above.");
     }
-    return again.exitCode ?? 1;
+    if (step.because !== "bailed" || again.exitCode !== 0) return again.exitCode ?? 1;
+    const whole = await runWalled(
+      testCommand(requested, Bun.env.ANA_TEST_WORKERS),
+      temporaryRoot,
+      idleSeconds,
+      cwd,
+    );
+    return whole.exitCode ?? 1;
   } finally {
     // A test the idle wall ended can leave something under the root its removal fails on: on
     // 15 October a disk image still attached threw over a rerun of 179 passes and no failure, and

@@ -166,12 +166,30 @@ describe("a campaign run by its log", () => {
       "--reviewer",
       model,
     ];
-    await expect(harnessBuilder([...paid, "--target", "5", "--dry-run"])).rejects.toThrow(
-      "name a --target of at least 6",
-    );
-    expect(await harnessBuilder([...paid, "--target", "6", "--dry-run"])).toMatchObject({
-      move: "accept",
-    });
+    const [token, key] = [Bun.env.CLAUDE_CODE_OAUTH_TOKEN, Bun.env.OPENROUTER_API_KEY];
+    Bun.env.CLAUDE_CODE_OAUTH_TOKEN = "a-login";
+    delete Bun.env.OPENROUTER_API_KEY;
+    try {
+      await expect(harnessBuilder([...paid, "--target", "5", "--dry-run"])).rejects.toThrow(
+        "name a --target of at least 6",
+      );
+      expect(await harnessBuilder([...paid, "--target", "6", "--dry-run"])).toMatchObject({
+        move: "accept",
+      });
+      // A seat whose provider holds no key would end every call a provider non-result (21 October).
+      const solver = ["--solver", "openrouter/deepseek/deepseek-v4.1-flash-1017"];
+      await expect(harnessBuilder([...paid, ...solver, "--target", "6", "--dry-run"])).rejects.toThrow(
+        "the solver's openrouter/deepseek/deepseek-v4.1-flash-1017: its provider holds no credential",
+      );
+    } finally {
+      for (const [variable, value] of [
+        ["CLAUDE_CODE_OAUTH_TOKEN", token],
+        ["OPENROUTER_API_KEY", key],
+      ] as const) {
+        if (value === undefined) delete Bun.env[variable];
+        else Bun.env[variable] = value;
+      }
+    }
   });
 
   it("lays the reference harness in the Examiner's home where the campaign names no term, and none where it names off", async () => {
@@ -653,9 +671,10 @@ describe("a campaign run by its log", () => {
       `harness ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}), set-up (epoch 0), read by g-1. In g-1 it won 6, lost 0 and tied 1`,
     );
     expect(report).toContain(`| g-1 | ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}) | A (`);
-    // Its cost beside it, read against the bar and gating nothing (the plan's W).
+    // The points each measure of the score gave it, all by validity here, and its cost beside
+    // them, read against the bar and gating nothing (the plan's W).
     expect(report).toMatch(
-      /tied 1\. Its cost, gating nothing: 1 promotion attempt this epoch \(bar 3 after set-up\): met/,
+      /tied 1, the score giving it [1-9]\d* points by validity, 0 by the objective and 0 by the bill\. Its cost, gating nothing: 1 promotion attempt this epoch \(bar 3 after set-up\): met/,
     );
     expect(report).not.toContain("ladder");
     // What each measured thing cost, the climb's velocity first, and how many comparisons that

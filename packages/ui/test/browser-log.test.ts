@@ -29,10 +29,10 @@ import {
 import { answersOver, MARKERS } from "./fixture-campaign.ts";
 
 /*
- * The Log pane in Chrome over the fixture's 1,495 events: the reader's disclosure, the Kind and
- * Session filters the server applies before it pages, the paging and its counter, an event opened
- * in the inspector on either tier, the columns under their heads, and what the page paints while a
- * page or an event is read: the page before, never a placeholder in its place (14 October).
+ * The Log pane in Chrome over the fixture's 1,495 events: the Kind and Session filters the server
+ * applies before it pages, the paging and its counter, an event opened in the inspector on either
+ * tier, the columns under their heads, and what the page paints while a page or an event is read:
+ * the page before, never a placeholder in its place (14 October).
  */
 
 const EVENTS = 1495;
@@ -66,7 +66,6 @@ const counter = (page: Page): Locator => page.getByRole("status").filter({ hasTe
 const rows = (page: Page): Locator => page.getByRole("button", { name: /^#\d+$/u });
 const row = (page: Page, index: number): Locator =>
   page.getByRole("button", { name: `#${String(index)}`, exact: true });
-const reader = (page: Page): Locator => page.locator("summary").filter({ hasText: "The reader:" });
 const table = (page: Page): Locator => page.getByRole("main").getByRole("table");
 
 /** How many of the log's events a filter matches, as the server's handler counts them. */
@@ -91,31 +90,6 @@ async function openWatched(server: Served, regions: readonly string[], busy: str
 }
 
 describe("the Log pane", () => {
-  test("says how many rows and triggers the reader holds, and opens them on a click", async () => {
-    const opened = await openLog(served);
-    const { page } = opened;
-    const summary = reader(page);
-    await expect(summary).toHaveText(/The reader: 6 rows, 62 triggers$/u);
-    await expect(summary).toBeVisible();
-    const disclosure = page.locator("details", { has: summary });
-    await expect(disclosure).not.toHaveAttribute("open");
-    await summary.click();
-    await expect(disclosure).toHaveAttribute("open");
-    await expect(disclosure.locator("dt")).toHaveCount(6);
-    await expect(disclosure.getByText(/exam side holds/u)).toBeVisible();
-    await summary.click();
-    await expect(disclosure).not.toHaveAttribute("open");
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
-  test("on the exam side holds back no trigger", async () => {
-    const opened = await openLog(exam);
-    await expect(reader(opened.page)).toHaveText(/The reader: 6 rows, 73 triggers$/u);
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
   test("pages the log a hundred events at a time, Previous closed on the first and Next on the last", async () => {
     const opened = await openLog(served);
     const { page } = opened;
@@ -322,7 +296,6 @@ describe("the Log pane", () => {
   test("breaks no accessibility rule, on either tier", async () => {
     for (const server of [served, exam]) {
       const opened = await openLog(server);
-      await reader(opened.page).click();
       expect(await accessibilityViolations(opened.page, "main")).toEqual([]);
       expectQuiet(opened);
       await opened.context.close();
@@ -347,7 +320,6 @@ describe("the Log pane", () => {
     const answers = await keepAnswers(page);
     await page.goto(logAt(served));
     await expect(counter(page)).toHaveText("1–100 of 1495 events");
-    await reader(page).click();
     await page.getByLabel("Session").selectOption("b-1");
     await expect(counter(page)).toHaveText(/of 192 events/u);
     await row(page, 87).click();

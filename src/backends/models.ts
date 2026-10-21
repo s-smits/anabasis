@@ -77,10 +77,44 @@ const codexLogin: CredentialStore = {
 export function backends(options: BackendOptions): MutableModels {
   const models = createModels({ credentials: codexLogin });
   models.setProvider(retried(openaiCodexProvider()));
-  models.setProvider(retried(openrouterProvider()));
+  models.setProvider(retried(openrouter()));
   models.setProvider(claudeProvider(options.claude));
   models.setProvider(claudeProvider(options.claude, CLAUDE_API_PROVIDER));
   return models;
+}
+
+/**
+ * OpenRouter as pi serves it, with DeepSeek V4.1 Flash of 17 October, a dated release pi 1.3.0's
+ * catalogue lacks (21 October). It is pi's entry for the release it is dated from, so it keeps that
+ * entry's reasoning levels, inputs and request terms as pi moves them, with what OpenRouter lists
+ * differently for it: its name, DeepInfra fp8's prices per million tokens and output limit, and
+ * that endpoint alone, with no fallback (operator, 21 October). OpenRouter otherwise picks one of the
+ * release's 26 endpoints for each call, at fp4, fp8 or an unnamed quantization, so two solves of one
+ * model could run on different weights. The study's solver (`studies/shared/pi-solve.ts`) serves its
+ * models from here too.
+ */
+export function openrouter(): Provider<"anthropic-messages" | "openai-completions"> {
+  const router = openrouterProvider();
+  const base = router.getModels().find(({ id }) => id === "deepseek/deepseek-v4.1-flash");
+  const routing = { only: ["deepinfra/fp8"], allow_fallbacks: false };
+  const added =
+    base === undefined
+      ? []
+      : [
+          {
+            ...base,
+            id: `${base.id}-1017`,
+            name: `${base.name} 1017`,
+            cost: { input: 0.098, output: 0.294, cacheRead: 0.00294, cacheWrite: 0 },
+            maxTokens: 131_072,
+            compat: { ...base.compat, openRouterRouting: routing },
+          },
+        ];
+  return {
+    ...router,
+    getModels: () => [...router.getModels(), ...added],
+    getAllModels: () => [...(router.getAllModels?.() ?? router.getModels()), ...added],
+  };
 }
 
 /**

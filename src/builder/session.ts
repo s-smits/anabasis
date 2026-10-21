@@ -55,11 +55,10 @@ import {
   toToolDeclaration,
   type Usage,
 } from "@earendil-works/pi-ai";
-import { reportedCost } from "../backends/claude.ts";
 import { conditionsOf, type Limits } from "../kernel/condition.ts";
 import type { Contract } from "../kernel/contract.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
-import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
+import { priceKey } from "../kernel/meter.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { billedParts, type Cap, ownedBy } from "../kernel/reports.ts";
 import { ended as endedSolves, practiceRan, solvesIn } from "../kernel/solves.ts";
@@ -75,7 +74,8 @@ import type { PublicResource } from "../solve/answer.ts";
 import { openHarness } from "../solve/harness.ts";
 import { type PublicTask, publicView } from "../solve/prompt.ts";
 import { HARNESS_ACCOUNT } from "../solve/starter.ts";
-import { failedTurn, loopCompaction, type SolveRequest, solve, traceSink } from "../solve/run.ts";
+import { type SolveRequest, solve } from "../solve/run.ts";
+import { failedTurn, loopCompaction, spentBy, traceSink } from "../solve/seat.ts";
 import { claimRoot } from "../verify/seat-root.ts";
 import { campaignOf } from "./handover.ts";
 import { copyHarness, seedKept } from "./kept.ts";
@@ -553,7 +553,6 @@ export async function session(
         })
       : "crashed";
   if (ended === "crashed" || ended === "killed") await keepPractised(log, request.id, request.states);
-  const tokens = tokensOf([...turns.map((turn) => turn.usage), ...summaries]);
   // Kept before the session is recorded as ended, so a session on record as ended has its notes.
   keepMemory(dirs.home, request.memory, request.id);
   append(log, "build.finished", {
@@ -563,14 +562,11 @@ export async function session(
     changed,
     broken,
     crash,
-    turns: turns.length,
+    ...(await spentBy(model, request.id, turns, summaries)),
     practiceSolves: bench.spent,
     disputed: [...bench.disputed],
     faultyChecks: [...bench.faulty],
     reviewFaults: bench.faults,
-    tokens: { ...tokens },
-    ...dollars(freezePrices([model]), priceKey(model), tokens),
-    reportedCost: await reportedCost(request.id, turns),
     seconds: (performance.now() - began) / 1000,
   });
   if (bench.fatal !== null) throw bench.fatal;

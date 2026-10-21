@@ -40,7 +40,9 @@ export interface Tree {
   lastReports(events: readonly LogEvent[]): Reported[];
   pairsReported(events: readonly LogEvent[], report: Reported): Paired[];
   pairsOf(events: readonly LogEvent[], versions: readonly string[], sides: Sides, solves: number): Paired[];
-  pairings(pair: Paired): { readonly fresh: number; readonly old: number };
+  /** A task's difference: its score where the tree weighs one (`differenceOf`, since 21 October),
+   *  its pairings won otherwise. */
+  difference(pair: Paired): number;
   flipP(differences: readonly number[]): number;
   stepOf(report: JsonObject, level: number, trigger: number): string;
   triggered(report: JsonObject, trigger: number): boolean;
@@ -83,7 +85,11 @@ export async function loadTree(path: string): Promise<Tree> {
     lastReports: (events) => reports.lastReports(events),
     pairsReported: (events, report) => reports.pairsReported(events, report),
     pairsOf: (events, versions, sides, solves) => compare.pairsOf(events, versions, sides, solves).pairs,
-    pairings: (pair) => compare.pairings(pair),
+    difference: (pair) => {
+      if (isFunction(compare.differenceOf)) return compare.differenceOf(pair);
+      const { fresh, old } = compare.pairings(pair);
+      return fresh - old;
+    },
     flipP: (differences) => compare.flipP(differences),
     stepOf: (report, level, trigger) => compare.stepOf(report, level, trigger),
     triggered: (report, trigger) => isFunction(compare.triggered) && compare.triggered(report, trigger),

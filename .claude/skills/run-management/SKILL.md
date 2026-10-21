@@ -23,7 +23,7 @@ archived campaign; `copy <name> --to <worktree>` brings this machine's back to g
 
 | verb | what it does | file |
 | --- | --- | --- |
-| `fresh <pack> [--model opus\|sonnet\|gpt] [--effort hhmm] [--login N] [--budget 800] [--as <suffix>] [--at <c>] [--host <host>] [--yes] [-- <flags>]` | names a campaign from a blank project, makes its worktree at a published commit and launches it there | `fresh.ts` |
+| `fresh <pack> [--model opus\|sonnet\|gpt\|<provider>/<id>] [--effort hhmm] [--login N] [--budget 800] [--as <suffix>] [--at <c>] [--host <host>] [--yes] [-- <flags>]` | names a campaign from a blank project, makes its worktree at a published commit and launches it there | `fresh.ts` |
 | `launch <name> [--login N] [--yes] -- <flags>` | starts the campaign command under a new name, in this worktree | `manage.ts` |
 | `continue <name> [--at <c>] [--login N] [--budget N] [--after <event>] [--yes] [-- <flags>]` | runs a campaign again from its log, on its kept flags or their replacement after `--` | `manage.ts` |
 | `pause <name> --after <event> [--yes]` | stops a campaign once its log gains one more of the event and nothing but its Builder's conversation is open | `manage.ts` |
@@ -34,7 +34,7 @@ archived campaign; `copy <name> --to <worktree>` brings this machine's back to g
 | `status [--all]` | one row a run: the live ones and those whose log moved in a day, with tree, commit, login, open comparison, comparisons reported, promotions and ending; then each host `ANA_HOSTS` lists, all asked at once and each printed as it answers, within 30 s | `pulse.ts` |
 | `logins [N ...] [--json]` (also `usage`) | each login's five-hour and weekly use; without numbers or `--json`, also the pool forecast | `logins.ts` |
 | `fetch <name> [--from <host>]` | a copy of a campaign another machine holds, to read here, into the archive as `data/runs/<host>/<name>/` | `move.ts` |
-| `retire [--days 1] [--yes]` | moves each campaign no process writes or keeps, idle for `--days`, into the archive whole (a seed, `seed.json` beside its log, is deleted instead, the archive's too), and deletes each worktree nothing uses (a week for one with uncommitted work); then the same on every host, whose archive comes here. A daily job runs it with `--yes`; nothing else in an archive is deleted | `retire.ts` |
+| `retire [--days 1] [--yes]` | moves each campaign no process writes or keeps, idle for `--days`, into the archive whole (a seed, `seed.json` beside its log, is deleted instead, the archive's too), and deletes each worktree nothing has used for a week (two for one with uncommitted work); then the same on every host, whose archive comes here. A daily job runs it with `--yes`; nothing else in an archive is deleted | `retire.ts` |
 | `on <host> <verb ...>`, `hosts [--all]` | any verb on another host over ssh; `status` on each other host alone. A verb that names a run goes to its host by itself | `hosts.ts` |
 | `pulse [<part of a name> ...] [--once] [--every 290] [--state <file>]` | what each run gained since the last look; state defaults to `.ana/runs-pulse.json` | `pulse.ts` |
 | `view <name>` | one campaign as its log reads, and the move the table names next | `view.ts` |
@@ -58,10 +58,12 @@ It reads the operator's prompt, `<pack>-prompt.txt` in `ANA_PROMPTS` (by default
 `anabasis-prompts` beside the main worktree), and refuses a pack with none: a prompt is the operator's
 to write. It names the run `<pack>-fresh-<model>[-<suffix>][-r<n>]` and its project `<pack>-fresh`,
 seats one model in all four seats (`--effort` a letter a seat of `lmhx`, by default `hhmm` for
-Opus, `xxhh` for Sonnet and `hhhh` for GPT), takes a budget of 800 dollars unless `--budget`,
+Opus, `xxhh` for Sonnet and `hhhh` for GPT and any other model), takes a budget of 800 dollars unless `--budget`,
 makes the worktree `anabasis-<name>` beside the main worktree, detached at `--at` (this
 checkout's commit by default), and launches there as below. Opus is the default model. `gpt`
-seats `openai-codex/gpt-6.1-sol` through the Codex CLI's login, which `--login` does not select.
+seats `openai-codex/gpt-6.1-sol` through the Codex CLI's login, which `--login` does not select,
+and any other model a backend serves goes as its `<provider>/<id>`, at `hhhh` and named by its id:
+`--model openrouter/deepseek/deepseek-v4.1-flash-1017` makes `<pack>-fresh-deepseek-v4.1-flash-1017`.
 The solve defaults are the campaign's: 20 model turns and 30 minutes (`LIMITS`,
 `tools/d2/campaign.ts`).
 

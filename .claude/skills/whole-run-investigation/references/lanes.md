@@ -311,8 +311,9 @@ Starts from `TIES BETWEEN VALID ANSWERS (lane 9)` and
 The question is whether a valid answer within the budget tells two harnesses apart.
 `TIES BETWEEN VALID ANSWERS` fires where more than half the tallied tasks tie and at least one
 answer on each side is valid. An objective is already supported where the contract declares it;
-read `objective.decided` to see which tasks it separated. Two valid measures tie only within
-`SAME`, a billionth of the larger magnitude; until 19 October a margin stood there. A report
+read `points` for what the objective and the bill gave the tallied tasks (`objective.decided`
+in a report begun before 21 October). Two valid measures tie within the room floor, `ROOM`, 1% of the
+larger magnitude, in every comparison this tree reads again; a stored report keeps what it read. A report
 written before 11 October also holds `spread`, how far the use of turns, CPU seconds and seconds
 moved between repeated solves of one harness on one task, which decided the budget's unit; the
 unit is the model's turns, and no trigger reads it since. Seconds move with the host's load,
@@ -598,7 +599,7 @@ Starts from `NOTHING SCORED (lane 22)`, `CUT BY ITS CAP (lane 22)`,
 `FEW INFORMATIVE PAIRS (lane 22)` and `SET SHORT (lane 22)`, and is standing.
 
 The question is what the comparison's test could and could not have shown at its size. The paired
-sign-flip test reads each task's difference in pair wins; a tie carries nothing. It reduces to the
+sign-flip test reads each task's score; a tie carries nothing. It reduces to the
 sign test where all untied margins are equal. v1 found the signal too
 rare to settle a comparison at the size it ran: 11 of 322 batteries held a fail nobody
 contested. Read `scored` with its `differences`, p, `detectable`, `falseRate`, ties and
@@ -843,8 +844,8 @@ may count without a person reading each; it routes to `operator` for the bar and
 **31. The promotion and the climb after it.**
 
 Starts from `PROMOTED (lane 31)`, `STARTER BARE (lane 31)`, `AFTER THE PROMOTION (lane 31)` and
-`SHARED TEMPORARY FOLDER (lane 31)`. It reads the peer campaigns the primary named with
-`start --with`, each as the reader prints it, and reviews none of them.
+`SHARED TEMPORARY FOLDER (lane 31)`. Where several campaigns are under review, it is given their
+climbs side by side, in the columns `wri.ts climb` prints.
 
 The question is whether a promotion measured what the campaign exists to measure, and whether the
 campaign climbed from it. Lane 25 reads the chain and whether a step was promoted; lane 23 reads
@@ -905,8 +906,8 @@ Last the cost: dollars and hours from the opening to the promotion, and from the
 next session's end, by role (lane 28's spend). A campaign that spent most of its budget reaching
 a step against a bare starter has little left to climb with.
 
-Where peer campaigns were named, compare before concluding. The prompt opens their section with
-`wri.ts climb`'s table, which sets every campaign in these columns from its log, and with each
+Where several campaigns are under review, compare before concluding. The prompt's section on them
+opens with `wri.ts climb`'s table, which sets every campaign in these columns from its log, and with each
 solve, its side named, that named a path another campaign's Builder or Examiner session named under
 a shared temporary root first; `crossings` tracks the first occurrence per path and campaign,
 not every use, and proves neither a write nor execution. A scratch name two solvers chose is
@@ -916,8 +917,8 @@ by side the time and dollars to the first promotion, each rest comparison's tall
 tie share, the reference's valid profile, the kind of change that won, the shared-folder exposure
 by side, and how far each got after. A difference in the tree is a candidate cause only where the
 other columns agree; one campaign a tree is one sample, and two runs of one tree that differ as
-much as two trees do say the difference is the campaign's variance. A peer that has not promoted
-yet is read at the same move, not at the same hour. The decision it changes is whether a
+much as two trees do say the difference is the campaign's variance. A campaign that has not
+promoted yet is read at the same move, not at the same hour. The decision it changes is whether a
 promotion is reported as an improvement, whether the campaign is kept running toward a second
 one, and what the host must fix before the next promotion can be believed; it routes to
 `operator` for the report and the keep or stop, `host` (`src/builder/decide.ts`) for a move

@@ -30,11 +30,10 @@ import {
   type Usage,
 } from "@earendil-works/pi-ai";
 import { type Static, type TSchema, Type } from "typebox";
-import { reportedCost } from "../backends/claude.ts";
 import { openingOf } from "../builder/opening.ts";
 import { endingWith, openingTool } from "../builder/tools.ts";
 import { append, read } from "../kernel/log.ts";
-import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
+import { priceKey } from "../kernel/meter.ts";
 import { billedAll } from "../kernel/reports.ts";
 import { rmSync } from "../meta/filesystem.ts";
 import type { JsonObject } from "../meta/json-shape.ts";
@@ -42,7 +41,7 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
 import { text, tool } from "../solve/answer.ts";
-import { failedTurn, loopCompaction, traceSink } from "../solve/run.ts";
+import { failedTurn, loopCompaction, spentBy, traceSink } from "../solve/seat.ts";
 import { hostScratch } from "../verify/wall-policy.ts";
 import { drafting } from "./draft.ts";
 import { examinerShell, inExaminerWall, type Wall, type Walls } from "./shell.ts";
@@ -402,7 +401,6 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
     turns: turns.length >= limits.turns,
   };
   const ended = ENDINGS.find((reason) => by[reason]) ?? "stopped";
-  const tokens = tokensOf([...turns.map((turn) => turn.usage), ...summaries]);
   append(log, `${kind}.finished`, {
     session: id,
     ended,
@@ -410,10 +408,7 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
     ...mode.counted(),
     crash,
     ...keyIfDefined("running", ended === "crashed" ? running : undefined),
-    turns: turns.length,
-    tokens: { ...tokens },
-    ...dollars(freezePrices([model]), priceKey(model), tokens),
-    reportedCost: await reportedCost(id, turns),
+    ...(await spentBy(model, id, turns, summaries)),
     seconds: (performance.now() - began) / 1000,
   });
   if (home !== undefined) mode.leave?.(home, ended, running);

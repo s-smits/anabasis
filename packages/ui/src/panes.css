@@ -433,32 +433,6 @@
   color: var(--ana-info);
 }
 
-.ana-triggers {
-  display: grid;
-  gap: 8px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.ana-triggers li {
-  align-items: baseline;
-  display: grid;
-  gap: 12px;
-  grid-template-columns: 60px minmax(140px, auto) minmax(0, 1fr);
-}
-
-.ana-triggers li .ana-num {
-  color: var(--ana-faint);
-  font-size: var(--ana-text-xs);
-}
-
-.ana-triggers strong {
-  color: var(--ana-text);
-  font-size: var(--ana-text-sm);
-  font-weight: 600;
-}
-
 /* ── the inspector: a harness's files and a diff ───────────────────────────── */
 
 .ana-file-links {
@@ -818,25 +792,6 @@
 }
 
 /* ── the log ────────────────────────────────────────────────────────────────── */
-
-.ana-reader-rows {
-  display: grid;
-  gap: 10px;
-  margin: 0 0 8px;
-}
-
-.ana-reader-rows > div {
-  display: grid;
-  gap: 4px;
-}
-
-.ana-reader-rows dd {
-  color: var(--ana-dim);
-  display: flex;
-  flex-wrap: wrap;
-  font-size: var(--ana-text-sm);
-  gap: 4px 16px;
-}
 
 .ana-log .ana-table td {
   white-space: nowrap;

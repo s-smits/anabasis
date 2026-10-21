@@ -25,10 +25,10 @@ import {
   type ThinkingLevel,
   toToolDeclaration,
 } from "@earendil-works/pi-ai";
-import { reportedCost } from "../backends/claude.ts";
-import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
+import { priceKey } from "../kernel/meter.ts";
 import { rmSync } from "../meta/filesystem.ts";
 import type { JsonObject } from "../meta/json-shape.ts";
+import { spentBy } from "../solve/seat.ts";
 import { hostScratch } from "../verify/wall-policy.ts";
 
 /** Who reads, and on what. */
@@ -94,13 +94,10 @@ export async function readOnce(
     done.abort();
     rmSync(home, { recursive: true, force: true });
   }
-  const tokens = tokensOf(turns.map((turn) => turn.usage));
   return {
     model: priceKey(reader.model),
-    turns: turns.length,
     walled: wall.signal.aborted,
     error: turns.at(-1)?.errorMessage ?? null,
-    ...dollars(freezePrices([reader.model]), priceKey(reader.model), tokens),
-    reportedCost: await reportedCost(session, turns),
+    ...(await spentBy(reader.model, session, turns, [])),
   };
 }

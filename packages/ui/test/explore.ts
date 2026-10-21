@@ -140,10 +140,13 @@ async function controlsOf(page: Page): Promise<Control[]> {
  *  drawn in `main`, and nothing busy or loading. A read says nothing for its first 400 ms
  *  (`waited.ts`), so a page that looks settled may still be about to replace what it shows: on
  *  14 October a walk over a real campaign read the Tasks pane's filters while a task was read, and
- *  waited on them once the task's detail had hidden them. */
+ *  waited on them once the task's detail had hidden them. On a host loaded to 14 on 8 cores the
+ *  walk over the fixture's Campaign pane still read "reading" after 15 s in 13 gate logs from 20 and
+ *  21 October, so the wait is twice an action's, and a read open longer than an action is no longer
+ *  counted (`inFlight`). */
 async function settle(page: Page, pending: () => number): Promise<void> {
   await expect
-    .poll(async () => (pending() > 0 ? "reading" : await drawn(page)), { timeout: ACTION_MS })
+    .poll(async () => (pending() > 0 ? "reading" : await drawn(page)), { timeout: 2 * ACTION_MS })
     .toBe("settled");
 }
 
@@ -225,18 +228,20 @@ async function begin(opened: Opened, start: string, rules: Rules, label: string)
   return { opened, pending, rules, label: `${label} from ${start}`, checked: new Set(), trail: [] };
 }
 
-/** How many reads of the API the page has asked for and not yet had answered or failed. */
+/** How many reads of the API the page has asked for in the last `ACTION_MS` and not yet had
+ *  answered or failed. A read a navigation cancelled can be reported neither finished nor failed
+ *  (`withClock`), and one older than an action may wait is judged by what the page draws instead. */
 function inFlight(page: Page): () => number {
   const known = counted.get(page);
   if (known !== undefined) return known;
-  const open = new Set<Request>();
+  const open = new Map<Request, number>();
   const api = (request: Request) => new URL(request.url()).pathname.startsWith("/api/");
   page.on("request", (request) => {
-    if (api(request)) open.add(request);
+    if (api(request)) open.set(request, Date.now());
   });
   page.on("requestfinished", (request) => open.delete(request));
   page.on("requestfailed", (request) => open.delete(request));
-  const pending = () => open.size;
+  const pending = () => [...open.values()].filter((asked) => Date.now() - asked < ACTION_MS).length;
   counted.set(page, pending);
   return pending;
 }

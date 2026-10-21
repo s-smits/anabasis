@@ -17,12 +17,16 @@
  * had in `read.ts`; `taskTriggers` alone was split at its tallies (`tallyTriggers`), which held it
  * at 147 lines against the policy's 115.
  */
+import { unadmitted } from "#src/kernel/acceptance.ts";
 import { type Condition, conditionsOf } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { unsolved as noneAnswered } from "#src/kernel/compare.ts";
 import { billedAll, lastReports, poolOf, pairsReported } from "#src/kernel/reports.ts";
+import { type Judged, refusedBy, solvesIn, verdictsOf } from "#src/kernel/solves.ts";
 import { heldAtGate, taskSets } from "#src/kernel/task.ts";
+import { type Traced, traced, tracesIn } from "#src/kernel/trace.ts";
 import { OBJECTIVE } from "#src/kernel/verify.ts";
+import { short } from "#src/builder/move.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
@@ -54,15 +58,15 @@ export interface Solve {
    *  start holds none, as before 2026-10-09 for the cores. */
   readonly load: number | null;
   readonly cores: number | null;
-  outcome: string | null;
-  kind: string | null;
-  seconds: number;
+  readonly outcome: string | null;
+  readonly kind: string | null;
+  readonly seconds: number;
   readonly calls: string[];
   errors: number;
   /** A limit a call met that its ending does not name, or null; a call's turn counts from 0. */
   limit: string | null;
   /** Whether the provider named the model that served it. */
-  attested: boolean;
+  readonly attested: boolean;
 }
 
 /** One call of a Builder's tool, at its place in the log. */
@@ -88,6 +92,8 @@ export interface Compared {
   readonly session: string;
   /** Its own report, which a settling leaves in the log, and where it stands. */
   readonly own: JsonObject;
+  /** The log indices where it began and where it reported. */
+  readonly began: number;
   readonly at: number;
   /** Its last report: its own, or the one a person's labels settled. */
   readonly last: JsonObject;
@@ -102,7 +108,9 @@ export interface Index {
   readonly events: readonly LogEvent[];
   readonly conditions: ReadonlyMap<string, Condition>;
   readonly solves: readonly Solve[];
-  readonly verdicts: ReadonlyMap<string, JsonObject>;
+  /** Every model turn, tool call and compaction (`tracesIn`). */
+  readonly traces: readonly Traced[];
+  readonly verdicts: ReadonlyMap<string, Judged>;
   readonly rulings: ReadonlyMap<string, JsonObject>;
   readonly states: ReadonlyMap<string, string>;
   readonly builds: readonly Build[];
@@ -121,6 +129,19 @@ export const BUILD_END = "build.finished";
 export const EXAM_START = "exam.started";
 export const EXAM_END = "exam.finished";
 export const REPORTED = "comparison.reported";
+/** The role whose work an event kind's prefix holds, as `billedAll` reads its dollars: what it was
+ *  billed where it ended, and the turns of a session that never ended. A drafting session is the
+ *  Examiner's, as the host's budget counts it: esp32's d-1 billed $1.57 that read as no role's on
+ *  12 October. The Diagnoser was a seat until 11 October (`7f0add79:docs/simplify.md`, E1): a log
+ *  of before holds what it billed. */
+const ROLES = new Map([
+  ["solve", "solver"],
+  ["build", "builder"],
+  ["exam", "examiner"],
+  ["draft", "examiner"],
+  ["referee", "referee"],
+  ["diagnosis", "diagnoser"],
+]);
 
 /** Every trigger this reader can print, and the lane it starts. `lanes.md` names each one in the
  *  `Starts from` paragraph of that lane, and `test/wri-catalogue.test.ts` holds the two together. */
@@ -208,7 +229,6 @@ export const count = (value: JsonValue | undefined): number => (isNumber(value) 
 export const items = (value: JsonValue | undefined): readonly JsonValue[] =>
   Array.isArray(value) ? value : [];
 export const strings = (value: JsonValue | undefined): string[] => items(value).filter(isString);
-export const short = (digest: string): string => digest.slice(0, 8);
 /** Whether a solve measured its harness: a non-result is in no pair, and a rerun replaced it. A
  *  solver's flag is its side's own fail, as the comparison counts it. */
 export const measured = (solve: Solve): boolean => ["pass", "fail", "flagged"].includes(solve.outcome ?? "");
@@ -232,55 +252,56 @@ export function tally(counts: Readonly<Record<string, number>>): string {
   return named.map(([name, number]) => `${name} ${String(number)}`).join(", ") || "none";
 }
 
-function solvesOf(events: readonly LogEvent[], conditions: ReadonlyMap<string, Condition>): Solve[] {
-  const solves = new Map<string, Solve>();
-  for (const [index, { kind, data }] of events.entries()) {
-    const id = text(data.solve);
-    if (kind === "solve.started") {
-      const condition = conditions.get(text(data.condition));
-      const [minute] = items(data.load);
-      const limits = asRecord(data.limits);
-      solves.set(id, {
+/** Each solve as the kernel reads it (`solvesIn`), with what it ran under and the calls it made. */
+function solvesOf(
+  events: readonly LogEvent[],
+  traces: readonly Traced[],
+  conditions: ReadonlyMap<string, Condition>,
+): Solve[] {
+  const solves = new Map(
+    solvesIn(events).map(({ id, started, condition: named, ending, start, end }): [string, Solve] => {
+      const condition = conditions.get(named);
+      const [minute] = items(start.load);
+      const limits = asRecord(start.limits);
+      return [
         id,
-        index,
-        version: condition?.task ?? "",
-        harness: condition?.harness ?? "",
-        condition: text(data.condition),
-        side: condition?.side ?? "",
-        comparison: isString(data.comparison) ? data.comparison : null,
-        wallSeconds: count(limits?.wallSeconds),
-        modelTurns: isNumber(limits?.modelTurns) ? limits.modelTurns : null,
-        load: isNumber(minute) ? minute : null,
-        cores: isNumber(data.cores) ? data.cores : null,
-        outcome: null,
-        kind: null,
-        seconds: 0,
-        calls: [],
-        errors: 0,
-        limit: null,
-        attested: false,
-      });
-    }
-    const solve = solves.get(id);
-    if (solve !== undefined && kind === "solve.call") {
-      solve.calls.push(text(data.tool));
-      solve.errors += data.isError === true ? 1 : 0;
-      if (count(data.turn) + 1 === solve.modelTurns) solve.limit = "last turn";
-    }
-    if (solve !== undefined && kind === "solve.finished") {
-      const ending = asRecord(data.ending);
-      solve.outcome = text(ending?.outcome);
-      solve.kind = isString(ending?.kind) ? ending.kind : null;
-      solve.seconds = count(data.seconds);
-      solve.attested = items(data.responseModels).length > 0;
-    }
+        {
+          id,
+          index: started,
+          version: condition?.task ?? "",
+          harness: condition?.harness ?? "",
+          condition: named,
+          side: condition?.side ?? "",
+          comparison: isString(start.comparison) ? start.comparison : null,
+          wallSeconds: count(limits?.wallSeconds),
+          modelTurns: isNumber(limits?.modelTurns) ? limits.modelTurns : null,
+          load: isNumber(minute) ? minute : null,
+          cores: isNumber(start.cores) ? start.cores : null,
+          outcome: end === null ? null : text(ending?.outcome),
+          kind: isString(ending?.kind) ? ending.kind : null,
+          seconds: count(end?.seconds),
+          calls: [],
+          errors: 0,
+          limit: null,
+          attested: items(end?.responseModels).length > 0,
+        },
+      ];
+    }),
+  );
+  for (const call of traces) {
+    const solve = call.seat === "solve" ? solves.get(call.id) : undefined;
+    if (solve === undefined || call.part !== "call") continue;
+    solve.calls.push(call.tool);
+    solve.errors += call.isError ? 1 : 0;
+    if ((call.turn ?? 0) + 1 === solve.modelTurns) solve.limit = "last turn";
   }
   return [...solves.values()];
 }
 
 function buildsOf(events: readonly LogEvent[]): Build[] {
   const builds: Build[] = [];
-  for (const [index, { kind, data }] of events.entries()) {
+  for (const [index, event] of events.entries()) {
+    const { kind, data } = event;
     const session = text(data.session);
     if (kind === "build.started") {
       const last = builds.at(-1);
@@ -295,8 +316,9 @@ function buildsOf(events: readonly LogEvent[]): Build[] {
       });
     }
     const build = builds.find((each) => each.session === session);
-    if (build !== undefined && kind === "build.call") {
-      build.calls.push({ index, tool: text(data.tool), args: asRecord(data.args) });
+    const call = traced(event, index);
+    if (build !== undefined && call?.seat === "build" && call.part === "call") {
+      build.calls.push({ index, tool: call.tool, args: asRecord(call.args) });
     }
     if (build !== undefined && kind === BUILD_END) build.finished = data;
   }
@@ -309,13 +331,15 @@ export function indexOf(events: readonly LogEvent[]): Index {
     new Map(events.flatMap((event) => (event.kind === kind ? [[text(event.data.solve), event.data]] : [])));
   const of = (kind: LogEvent["kind"]) => events.flatMap((event) => (event.kind === kind ? [event.data] : []));
   const { states, held, released } = taskSets(events);
-  const solves = solvesOf(events, conditions);
+  const traces = tracesIn(events);
+  const solves = solvesOf(events, traces, conditions);
   const builds = buildsOf(events);
   return {
     events,
     conditions,
     solves,
-    verdicts: last("verdict"),
+    traces,
+    verdicts: verdictsOf(events),
     rulings: last("referee.finding"),
     states,
     builds,
@@ -332,14 +356,25 @@ export function indexOf(events: readonly LogEvent[]): Index {
  * read from its round's own window of the log, as that round counted them.
  */
 function comparedOf(events: readonly LogEvent[], log: Pick<Index, "solves" | "builds">): Compared[] {
-  return lastReports(events).map(({ session, data: last }) => {
-    const at = events.findIndex(({ kind, data }) => kind === REPORTED && data.session === session);
+  return lastReports(events).map(({ session, index: at, data: last }) => {
+    const began = events.findIndex(
+      ({ kind, data }) => kind === "comparison.started" && data.session === session,
+    );
     const own = events[at]?.data ?? last;
     // A comparison the campaign command runs is a session of its own (`g-N`), and the round it
     // measured is the Builder session that left its new harness. Read by name alone, none of the
     // six comparisons of the #107 buffer and recode campaigns had a round, and every trigger of a
     // session's comparison read nothing (2026-10-10).
-    const makers = log.builds.filter((each) => each.from < at && each.finished?.harness === own.fresh);
+    // A led Builder freezes a harness for a comparison inside its conversation (`build.checkpoint`),
+    // which may never end: v061's g-2 read such a harness of b-1 (21 October).
+    const frozen = new Set(
+      events.flatMap(({ kind, data }, index) =>
+        kind === "build.checkpoint" && index < at && data.harness === own.fresh ? [data.session] : [],
+      ),
+    );
+    const makers = log.builds.filter(
+      (each) => each.from < at && (each.finished?.harness === own.fresh || frozen.has(each.session)),
+    );
     const build =
       log.builds.find((each) => each.session === session) ??
       makers.find((each) => each.finished?.changed === true) ??
@@ -353,22 +388,12 @@ function comparedOf(events: readonly LogEvent[], log: Pick<Index, "solves" | "bu
     const scoring = log.solves.filter(
       (solve) => solve.side === TEST && solve.index < at && scoredSet.has(solve.version) && counted(solve),
     );
-    return { session, own, at, last, build, scoredSet, scoring };
+    return { session, own, began, at, last, build, scoredSet, scoring };
   });
 }
 
-/** The events each role's dollars are in, as `billedAll` reads them: what it was billed where it
- *  ended, and the turns of a session that never ended. */
-const ROLE_EVENTS = {
-  solver: ["solve.started", "solve.finished", "solve.turn"],
-  builder: ["build.started", BUILD_END, "build.turn"],
-  // A drafting session is the Examiner's, as the host's budget counts it: esp32's d-1 billed $1.57
-  // that read as no role's on 12 October.
-  examiner: [EXAM_START, EXAM_END, "exam.turn", "draft.started", "draft.finished", "draft.turn"],
-  referee: ["referee.finding"],
-  // A seat until 11 October (`7f0add79:docs/simplify.md`, E1): a log of before holds what it billed.
-  diagnoser: ["diagnosis.recorded"],
-} as const;
+/** The role of kind `kind`, or of a seat by its prefix alone. */
+export const roleOf = (kind: string): string | undefined => ROLES.get(kind.split(".")[0] ?? "");
 
 /** Billed dollars by role, the largest first, counted as the campaign's own budget counts them:
  *  a session a stop cut has no end record, and its turns were read as nothing. Buffer's Examiner
@@ -382,14 +407,13 @@ export function spendOf(log: Index): [string, number][] {
   // 4b), which until 12 October read as the solver's.
   const sessions = examinerSessions(log);
   const tried = new Set(log.solves.flatMap(({ id, comparison }) => (sessions.has(comparison) ? [id] : [])));
-  const roles: [string, readonly string[]][] = Object.entries(ROLE_EVENTS);
-  const roleOf = ({ kind, data }: LogEvent) => {
-    const [role] = roles.find(([, kinds]) => kinds.includes(kind)) ?? [];
+  const whose = ({ kind, data }: LogEvent) => {
+    const role = roleOf(kind);
     return role === "solver" && tried.has(text(data.solve)) ? "examiner" : role;
   };
-  return roles
-    .flatMap(([role]): [string, number][] => {
-      const own = log.events.filter((event) => roleOf(event) === role);
+  return [...new Set(ROLES.values())]
+    .flatMap((role): [string, number][] => {
+      const own = log.events.filter((event) => whose(event) === role);
       return own.length === 0 ? [] : [[role, billedAll(own)]];
     })
     .sort(([, a], [, b]) => b - a);
@@ -422,10 +446,7 @@ function examinerSessions(log: Index): Set<JsonValue | undefined> {
 
 /** The answers some check refused: a format fault reached no check and is none. */
 function refusals(log: Index): Solve[] {
-  return log.solves.filter((solve) => {
-    const verdict = log.verdicts.get(solve.id);
-    return verdict?.kind === "fail" && items(verdict.blocking).length > 0;
-  });
+  return log.solves.filter((solve) => refusedBy(log.verdicts.get(solve.id)).length > 0);
 }
 
 /** A Builder session's practice solves: the test-side solves of released tasks made in its own window
@@ -452,7 +473,7 @@ export function instrumentTriggers(log: Index): Trigger[] {
   const rows = records(reading?.rows);
   // Named by the tool it runs since 12 October (`acceptance.ts`): until then the brief's evidence
   // kind, and 5 of buffer's 7 `authored` checks ran the pack's installed engine.
-  const authored = rows.filter((row) => row.instrument === "author").length;
+  const authored = unadmitted(log.events, []).length;
   const passes = log.solves.filter((solve) => solve.outcome === "pass").length;
   const trees = new Set([...log.conditions.values()].map((condition) => condition.verifierTools)).size;
   const faults = strings(reading?.faults);
@@ -466,7 +487,7 @@ export function instrumentTriggers(log: Index): Trigger[] {
   const ruled = countBy(refused, rulingOf);
   const defects = refused.filter((solve) => rulingOf(solve) === DEFECT);
   const defectChecks = countBy(defects, (solve) => text(log.rulings.get(solve.id)?.check));
-  const blocking = refused.flatMap((solve) => strings(log.verdicts.get(solve.id)?.blocking));
+  const blocking = refused.flatMap((solve) => refusedBy(log.verdicts.get(solve.id)));
   const byCheck = countBy(blocking, (check) => check);
   // One check refusing most answers, and no other refusing as many: t-10's one refusal on 10
   // October was blocked by all four checks, and the first of four equal counts read as a fault

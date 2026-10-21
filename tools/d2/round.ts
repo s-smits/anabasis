@@ -68,10 +68,10 @@
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { admitComparison, type Wanted } from "#src/builder/admission.ts";
 import { worthLine } from "#src/builder/climb.ts";
-import { predicted, type Report, startOf } from "#src/builder/comparison.ts";
+import { predicted, type Report } from "#src/builder/comparison.ts";
 import { refuseTerms, type RoundRequest, round, scoredSet } from "#src/builder/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
-import { type Gain, type ObjectiveRule, objectiveRuleIn, ROOM } from "#src/kernel/compare.ts";
+import { type ObjectiveRule, WEIGHTS } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
@@ -332,20 +332,12 @@ export function solvingAs(campaign: Campaign, { limits }: Pick<AskedSetting, "na
   return { solver: { model: priceKey(model), effort }, limits };
 }
 
-/** The objective comparison `id` pairs two valid answers by, where its check program declares one:
- *  the brief's direction and the room floor (`ROOM`). Undefined otherwise. A comparison that began
- *  goes on by the objective it recorded, since one begun before 21 October recorded no floor and
- *  reads at floating-point equality. Until 19 October a margin went with it (`--margin`, `SAME` in
- *  `src/kernel/compare.ts`), and on 21 October a `--room` term named the floor: no campaign named
- *  one, and the operator chose one fixed floor over a setting nobody had a reason to change. */
-export function objectiveNamed(
-  campaign: Pick<Campaign, "checks" | "log">,
-  id: string,
-): ObjectiveRule | undefined {
-  const began = startOf(read(campaign.log), id);
-  if (began !== undefined) return objectiveRuleIn(began);
+/** The objective a comparison pairs two valid answers by, where its check program declares one:
+ *  the brief's direction. Undefined otherwise. Until 19 October a margin went with it (`--margin`),
+ *  and until 21 October a floor; the floor is now one constant (`ROOM`, `src/kernel/compare.ts`). */
+export function objectiveNamed(campaign: Pick<Campaign, "checks">): ObjectiveRule | undefined {
   const declared = readBrief(campaign.checks).objective;
-  return declared === undefined ? undefined : { direction: declared.direction, room: ROOM };
+  return declared === undefined ? undefined : { direction: declared.direction };
 }
 
 /** What `--predict` names: the operator's expectation of the comparison, in a sentence, or none. */
@@ -427,9 +419,10 @@ export function reportLines({
   noise,
   turns = null,
   worth = null,
+  points = null,
   ...apart
 }: Pick<Report, "valid" | "objective" | "frontier" | "noise"> &
-  Partial<Pick<Report, "scored" | "turns" | "worth" | Apart>>): string[] {
+  Partial<Pick<Report, "scored" | "turns" | "worth" | "points" | Apart>>): string[] {
   if (valid === null) return [];
   // The turns of a valid answer, over the tasks both harnesses answered: reported, in no test.
   const both = Object.values(turns ?? {}).flatMap(({ old, fresh }) =>
@@ -446,17 +439,18 @@ export function reportLines({
           `the step is read on ${plural(untied + test.ties, "tallied task")}, ${String(untied)} of them untied: one reading at the comparison's level detects four times in five ${share === null ? "no share of them" : `a harness that wins ${String(Math.round(100 * share))}% of them`}`,
           `one reading at these margins reads a step between equal harnesses ${String(Math.round(1000 * test.falseRate) / 10)}% of the time, never more than the level`,
           // The test weighs margins, but a sweep's p is its count's alone (the plan's 7.5).
-          `its p is ${rounded(test.p)}: the test weighs each untied task by its margin in pair wins${test.losses === 0 && untied > 0 ? `, and where every untied task is won p is one half to the power of their count whatever the margins: ${String(untied)} won read ${rounded(0.5 ** untied)}` : ""}`,
+          `its p is ${rounded(test.p)}: the test weighs each untied task by its score${test.losses === 0 && untied > 0 ? `, and where every untied task is won p is one half to the power of their count whatever the margins: ${String(untied)} won read ${rounded(0.5 ** untied)}` : ""}`,
         ]),
     ...(noise === null ? [] : aaLines(noise)),
     ...accounted(apart),
     `each harness by itself, as how many tasks had ${valid.old.map((_, count) => String(count)).join(", ")} valid answers in ${String(valid.old.length - 1)} solves (a count of tasks a column, not a share):`,
     `  at its limits: reference ${valid.old.join("/")}, new ${valid.fresh.join("/")}`,
-    ...(objective === null
+    ...(points === null
       ? []
       : [
-          `the objective (${objective.direction} is better) decided ${plural(objective.decided, "task")} that validity alone would have tied${gainSaid(objective.gain)}`,
+          `the score weighs validity ${String(WEIGHTS.validity)}, the objective ${String(WEIGHTS.objective)} and the bill ${String(WEIGHTS.bill)}, and over the tallied tasks gave the new harness ${signed(points.validity)}, ${signed(points.objective)} and ${signed(points.bill)} points, a task's score running from -1000 to 1000`,
         ]),
+    ...(objective === null ? [] : [`the objective: ${objective.direction} is better`]),
     ...(both.length === 0
       ? []
       : [
@@ -466,12 +460,9 @@ export function reportLines({
   ];
 }
 
-/** The median relative gain by the objective on the won frontier tasks, as a report prints it
- *  beside the tally (`objectiveGain`); nothing where no won task has a measure on both sides. */
-export function gainSaid(gain: Gain | null | undefined): string {
-  return gain == null
-    ? ""
-    : `; on the ${plural(gain.tasks, "won frontier task")} with a valid measure on both sides its median relative gain is ${String(Number((100 * gain.median).toPrecision(2)))}%`;
+/** A count of points with its sign. */
+function signed(points: number): string {
+  return points > 0 ? `+${String(points)}` : String(points);
 }
 
 /** A share, to three places. */
@@ -569,7 +560,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
     ...scoredSet(read(campaign.log), setting.target, contractHash(campaign.contract)),
     solves: Number(values.solves),
     level: Number(values.level),
-    objective: objectiveNamed(campaign, session),
+    objective: objectiveNamed(campaign),
     defects: Number(values.defects),
     cap,
     prediction: predictionNamed(values.predict),

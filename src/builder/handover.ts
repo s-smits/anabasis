@@ -28,11 +28,12 @@
  * billed every move made inside its span, which those moves' own lines billed again.
  * The Referee triage of 20 October found unclear and unread practice rejections counted as failures.
  */
-import type { Gain, Tally } from "../kernel/compare.ts";
+import { type Measures, measuresIn, type Tally } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { billedAll, billedParts, lastReports, latestBuilt, ownedBy, promoted } from "../kernel/reports.ts";
 import { ended, passed, practiceRan, type Ran, rejectionAside, solvesIn } from "../kernel/solves.ts";
 import { heldAtGate, taskSets } from "../kernel/task.ts";
+import { traceKind } from "../kernel/trace.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { type Supply, supplyOf } from "./admission.ts";
 import { openingOf } from "./opening.ts";
@@ -105,12 +106,9 @@ interface Compared {
   readonly tally: Tally | null;
   /** Each harness by itself: the tasks with no, one, two... valid answers among its solves. */
   readonly valid: { readonly old: readonly number[]; readonly fresh: readonly number[] } | null;
-  /** The tallied tasks the objective decided, where the comparison fixed one: won or lost where
-   *  validity alone would have tied. Null where it fixed none. */
-  readonly decided: number | null;
-  /** The median relative gain by the objective on the frontier tasks the new harness won, where
-   *  any had a valid measure on both sides (`objectiveGain`); null otherwise and before 20 October. */
-  readonly gain: Gain | null;
+  /** The points each measure gave the tallied tasks together (`pointsOf`); null where nothing was
+   *  tallied, and in every report before 21 October. */
+  readonly points: Measures | null;
   /** The tasks set aside for a person's labels. */
   readonly aside: number;
   /** The Referee's last ruling of each of its rejected answers, by kind. */
@@ -205,7 +203,7 @@ function soFar(events: readonly LogEvent[], index: number, id: string, seat: "ex
   const read: SoFar = {
     ended: closed === -1 ? null : text(events[closed]?.data.ended),
     cut: closed === -1 && past !== -1,
-    turns: window.filter((event) => own(event) && event.kind === `${seat}.turn`).length,
+    turns: window.filter((event) => own(event) && event.kind === traceKind(seat, "turn")).length,
     last: window.findLast(own)?.at ?? "",
   };
   // What an open session billed, where other steps run inside its window: its own (`ownedBy`).
@@ -255,7 +253,6 @@ function compared(events: readonly LogEvent[], id: string): Compared {
     ),
   );
   const side = (each: unknown) => (Array.isArray(each) ? each.filter(isNumber) : []);
-  const gain = asRecord(asRecord(report?.objective)?.gain);
   return {
     step: "comparison",
     id,
@@ -272,10 +269,7 @@ function compared(events: readonly LogEvent[], id: string): Compared {
         ? null
         : { wins: count(scored.wins), losses: count(scored.losses), ties: count(scored.ties) },
     valid: valid === null ? null : { old: side(valid.old), fresh: side(valid.fresh) },
-    decided: isNumber(asRecord(report?.objective)?.decided)
-      ? count(asRecord(report?.objective)?.decided)
-      : null,
-    gain: isNumber(gain?.median) && isNumber(gain.tasks) ? { median: gain.median, tasks: gain.tasks } : null,
+    points: measuresIn(report?.points) ?? null,
     aside: listed(report?.aside),
     rulings: {
       earned: [...ruled.values()].filter((ruling) => ruling === "earned").length,

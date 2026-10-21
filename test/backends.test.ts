@@ -6,7 +6,7 @@ import { read } from "../src/kernel/log.ts";
 import { mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { traceSink } from "../src/solve/run.ts";
+import { traceSink } from "../src/solve/seat.ts";
 
 const HOUR_S = 60 * 60;
 const home = mkdtempSync(join(tmpdir(), "ana-backends-"));
@@ -47,6 +47,30 @@ describe("the three backends", () => {
     expect(key).toMatchObject({ provider: "claude-api", api: "claude-agent-sdk", cost: login_?.cost });
     if (login_ === undefined || key === undefined) throw new Error("the catalog has no claude-sonnet-5-5");
     expect(compactionMode(key, options)).toBe(compactionMode(login_, options));
+  });
+
+  it("route a model pinned to one OpenRouter endpoint there alone, at that endpoint's price", () => {
+    const models = backends(options);
+    const dated = models.getModel("openrouter", "deepseek/deepseek-v4.1-flash-1017");
+    expect(dated?.compat).toMatchObject({
+      openRouterRouting: { only: ["deepinfra/fp8"], allow_fallbacks: false },
+    });
+    expect(dated?.cost).toMatchObject({ input: 0.098, output: 0.294, cacheRead: 0.00294 });
+    expect(dated).toMatchObject({
+      name: "DeepSeek: DeepSeek V4.1 Flash 1017",
+      api: "openai-completions",
+      baseUrl: "https://openrouter.ai/api/v1",
+      reasoning: true,
+      contextWindow: 1_048_576,
+      maxTokens: 131_072,
+    });
+    // A model nobody pinned keeps pi's own entry, routed as OpenRouter chooses.
+    // Every listing pi's collection offers holds it, as `getModel` does.
+    const chat = models.getModelsOfType("chat", "openrouter").map(({ id }) => id);
+    expect(chat).toContain("deepseek/deepseek-v4.1-flash-1017");
+    const base = models.getModel("openrouter", "deepseek/deepseek-v4.1-flash");
+    expect(base?.compat ?? {}).not.toHaveProperty("openRouterRouting");
+    expect(models.getModel("openrouter", "deepseek/deepseek-v4.1-flash-0101")).toBeUndefined();
   });
 
   it("read the Codex CLI's login as it stands", async () => {

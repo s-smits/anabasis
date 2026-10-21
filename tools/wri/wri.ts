@@ -3,22 +3,22 @@
  * the investigation's own directory, which belongs under the ignored `.ana/wri/`.
  *
  *   bun tools/wri/wri.ts read --log .ana/d2/truss/log.jsonl
- *   bun tools/wri/wri.ts climb --log .ana/d2/truss/log.jsonl [--with <log>,<log>]
- *   bun tools/wri/wri.ts start --log .ana/d2/truss/log.jsonl --out .ana/wri/20261008-truss [--with <log>,<log>]
+ *   bun tools/wri/wri.ts climb --log .ana/d2/truss/log.jsonl[,<log>,<log>]
+ *   bun tools/wri/wri.ts start --log .ana/d2/truss/log.jsonl[,<log>,<log>] --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts lanes --out .ana/wri/20261008-truss [--lanes 1-4,7]
  *   bun tools/wri/wri.ts collect --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts synthesis --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts grade --log .ana/d2/truss/log.jsonl [--bundle <pack>] --task <taskId> --answer <file>
  *
- * - `climb` prints lane 31's columns for the campaign and every log `--with` names, one row each,
- *   and the paths under the host's `/tmp` one campaign named before another's solve ran them. It
- *   reads the logs as they stand, so it can be run on campaigns still running.
+ * - `climb` prints lane 31's columns for every log `--log` names, one row each, and the paths
+ *   under the host's `/tmp` one campaign named before another's solve ran them. It reads the logs as they stand, so it can be run on campaigns still running.
  * - `read` prints the six rows and every trigger with the lane it starts (`tools/wri/read.ts`), and
  *   the host hash of the last condition beside this checkout's, and beside the campaign's own
  *   tree's when this checkout's differs.
- * - `start` writes that as `overview.md`, and the shared instructions with the campaign's row filled
- *   in and two sections left for the primary to write. `--with` names peer campaigns' logs, which a
- *   lane that reads peers (lane 31) is given read the same way, at `lanes` time, and never reviews.
+ * - `start` writes that as `overview.md`, and the shared instructions with each campaign's row
+ *   filled in and two sections left for the primary to write. `--log` names one campaign or several,
+ *   which the investigation reads as equals: every lane reads every one, and opens where a trigger
+ *   fired on any of them (`tools/wri/investigation.ts`).
  * - `lanes` builds one prompt per lane, and `launch.json`, one session for each lane it built, in
  *   the manifest codex-gpt-swarm's launcher reads. With no `--lanes` it opens the lanes a trigger
  *   started and the standing ones; an isolated lane is built only when named. A prompt built before
@@ -42,7 +42,7 @@
  *   for a drafted exam and stopped on ENOENT.
  *
  * A log is named by its path or, since 15 October, by its campaign's whole name in any of the
- * repository's worktrees (`runNamed`), as `--with` names peers. No verb starts a solve, a session
+ * repository's worktrees (`runNamed`). No verb starts a solve, a session
  * or a round, and none appends to a log.
  */
 import { draftOf } from "#src/examiner/draft.ts";
@@ -65,6 +65,7 @@ import { catalogueText, lanesOf, ownersOf, REFERENCES } from "./catalogue.ts";
 import { climbTable, crossings } from "./climb.ts";
 import {
   blankSections,
+  type Campaign,
   filled,
   lanePrompt,
   numbersOf,
@@ -73,14 +74,12 @@ import {
   selected,
   stem,
 } from "./investigation.ts";
-import { type Overview, overview, rendered } from "./read.ts";
+import { overview, rendered } from "./read.ts";
 
 interface Investigation {
   readonly out: string;
-  readonly log: string;
   readonly shared: string;
-  readonly seen: Overview;
-  readonly peers: readonly string[];
+  readonly campaigns: readonly Campaign[];
 }
 
 const REPO = resolve(import.meta.dir, "..", "..");
@@ -96,17 +95,23 @@ const { values, positionals } = parseArgs({
     bundle: { type: "string" },
     task: { type: "string" },
     answer: { type: "string" },
-    with: { type: "string" },
   },
 });
 
 /** A log by its path, or a campaign's by the campaign's whole name. */
 const logOf = (named: string) => (existsSync(named) ? named : readNamed(named).path);
+/** Every log `--log` names, comma-separated. */
+const logsOf = (spec: string) =>
+  spec
+    .split(",")
+    .filter((each) => each !== "")
+    .map((each) => resolve(logOf(each)));
+const nameOf = (log: string) => basename(dirname(log));
 
 function needed(name: "log" | "out" | "bundle" | "task" | "answer"): string {
   const value = values[name];
   if (value === undefined) throw new Error(`name --${name}`);
-  return name === "log" ? logOf(value) : value;
+  return value;
 }
 
 /** The host's code as a condition names it (`codeOf`), for a tree that holds it. */
@@ -151,60 +156,51 @@ function overviewText(log: string): string {
 }
 
 function start(): number {
-  const [log, out] = [resolve(needed("log")), resolve(needed("out"))];
+  const [logs, out] = [logsOf(needed("log")), resolve(needed("out"))];
   if (existsSync(join(out, SHARED))) throw new Error(`${out} already holds ${SHARED}`);
-  const peers = (values.with?.split(",") ?? [])
-    .filter((each) => each !== "")
-    .map((each) => resolve(logOf(each)));
-  const absent = peers.filter((peer) => !existsSync(peer));
-  if (absent.length > 0) throw new Error(`--with names no log at ${absent.join(", ")}`);
+  if (new Set(logs.map(nameOf)).size < logs.length) throw new Error("--log names one campaign twice");
   mkdirSync(join(out, "lanes"), { recursive: true });
-  const text = overviewText(log);
-  const campaign = [
+  const texts = logs.map(overviewText);
+  const campaigns = [
     "| campaign | log | events | checkout |",
     "| --- | --- | --- | --- |",
-    `| ${basename(dirname(log))} | \`${log}\` | ${String(read(log).length)} | \`${REPO}\` |`,
+    ...logs.map((log) => `| ${nameOf(log)} | \`${log}\` | ${String(read(log).length)} | \`${REPO}\` |`),
     "",
-    text.trim().split("\n").at(-1) ?? "",
+    ...texts.map((text, index) => {
+      const host = text.trim().split("\n").at(-1) ?? "";
+      return logs.length === 1 ? host : `- ${nameOf(logs[index] ?? "")}: ${host}`;
+    }),
   ].join("\n");
   const template = readFileSync(join(REFERENCES, "shared-instructions.template.md"), "utf8");
   // The author's comments stay in the copy: they say what each blank section is for.
   writeFileSync(
     join(out, SHARED),
-    template.replace("{campaign}", () => campaign),
+    template.replace("{campaigns}", () => campaigns),
   );
+  const text =
+    logs.length === 1
+      ? texts.join("")
+      : texts.map((each, index) => `## ${nameOf(logs[index] ?? "")}\n\n${each}`).join("\n");
   writeFileSync(join(out, "overview.md"), text);
-  writeFileSync(join(out, "investigation.json"), `${JSON.stringify({ log, peers }, null, 2)}\n`);
+  writeFileSync(join(out, "investigation.json"), `${JSON.stringify({ logs }, null, 2)}\n`);
   console.log(text);
   console.log(`wrote ${join(out, SHARED)}: write its two blank sections, then run lanes`);
   return 0;
 }
 
+/** The investigation `start` wrote, each campaign read as its log stands now, so a campaign still
+ *  running is read as it stands when the lanes are built. */
 function opened(): Investigation {
   const out = resolve(needed("out"));
-  // An investigation started before `--with` holds no peers.
-  const { log, peers = [] } = parseJsonAs<{ log: string; peers?: string[] }>(
-    readFileSync(join(out, "investigation.json"), "utf8"),
-  );
-  return { out, log, shared: readFileSync(join(out, SHARED), "utf8"), seen: overview(read(log)), peers };
+  const { logs } = parseJsonAs<{ logs: string[] }>(readFileSync(join(out, "investigation.json"), "utf8"));
+  const campaigns = logs.map((log) => ({ name: nameOf(log), log, overview: overview(read(log)) }));
+  return { out, shared: readFileSync(join(out, SHARED), "utf8"), campaigns };
 }
 
-/** Each peer campaign as `read` prints it, under its name and log. Read when the lanes are built,
- *  so a peer still running is read as it stands then. */
-function peersText(log: string, peers: readonly string[]): string {
-  if (peers.length === 0) return "";
-  const overviews = peers.map((peer) =>
-    [`### ${basename(dirname(peer))}`, `Log: \`${peer}\``, "```", overviewText(peer).trim(), "```"].join(
-      "\n\n",
-    ),
-  );
-  return [climbText(log, peers), ...overviews].join("\n\n");
-}
-
-/** The campaign beside its peers, in lane 31's columns, and the `/tmp` paths one named before
- *  another's solve ran them (`tools/wri/climb.ts`). */
-function climbText(log: string, peers: readonly string[]): string {
-  const campaigns = [log, ...peers].map((each) => ({ name: basename(dirname(each)), events: read(each) }));
+/** The campaigns in lane 31's columns, and the `/tmp` paths one named before another's solve ran
+ *  them (`tools/wri/climb.ts`). */
+function climbText(logs: readonly string[]): string {
+  const campaigns = logs.map((each) => ({ name: nameOf(each), events: read(each) }));
   const { left, scratch } = crossings(campaigns);
   return [
     "### The climb, side by side",
@@ -219,14 +215,18 @@ const promptPath = (out: string, lane: number) => join(out, "lanes", `${stem(lan
 const reportPath = (out: string, lane: number) => join(out, "lanes", `${stem(lane)}-report.md`);
 
 function lanes(): number {
-  const { out, log, shared, seen, peers } = opened();
-  const peerOverviews = peersText(log, peers);
+  const { out, shared, campaigns } = opened();
+  const climb = campaigns.length > 1 ? climbText(campaigns.map(({ log }) => log)) : "";
   const blank = blankSections(shared);
   if (blank.length > 0) throw new Error(`write these sections of ${SHARED} first: ${blank.join(", ")}`);
   const catalogue = catalogueText();
   const owners = ownersOf(catalogue);
   const named = values.lanes === undefined ? null : numbersOf(values.lanes);
-  const { open, isolated, waiting } = selected(lanesOf(catalogue), seen.triggers, named);
+  const { open, isolated, waiting } = selected(
+    lanesOf(catalogue),
+    campaigns.flatMap(({ overview: { triggers } }) => triggers),
+    named,
+  );
   // A prompt already built is kept: a report may have been written against it, and `collect` reads
   // the report and never the prompt, so a rebuilt one would change under it unseen. v1 kept an
   // earlier read's lanes (9762afb0) and bound a report to its prompt's bytes (23bdedb8).
@@ -238,10 +238,7 @@ function lanes(): number {
   // twice against one prompt. Until 15 October each launch turned a Markdown list into this by hand.
   const sessions = built.map((lane) => {
     const [prompt, report] = [promptPath(out, lane.number), reportPath(out, lane.number)];
-    writeFileSync(
-      prompt,
-      `${lanePrompt({ lane, shared, overview: seen, catalogue, owners, report, peers: peerOverviews })}\n`,
-    );
+    writeFileSync(prompt, `${lanePrompt({ lane, shared, campaigns, catalogue, owners, report, climb })}\n`);
     return {
       name: `lane_${stem(lane.number)}`,
       task: `Read \`${prompt}\` and do exactly what it says.`,
@@ -268,14 +265,15 @@ function lanes(): number {
   return 0;
 }
 
-function collected({ out }: Investigation) {
+function collected({ out, campaigns }: Investigation) {
   const catalogue = catalogueText();
   const owners = ownersOf(catalogue);
   return lanesOf(catalogue)
     .filter((lane) => existsSync(promptPath(out, lane.number)))
     .map((lane) => {
       const path = reportPath(out, lane.number);
-      return reportOf(lane, existsSync(path) ? readFileSync(path, "utf8") : null, owners);
+      const names = campaigns.map(({ name }) => name);
+      return reportOf(lane, existsSync(path) ? readFileSync(path, "utf8") : null, owners, names);
     });
 }
 
@@ -313,7 +311,7 @@ function synthesis(): number {
 }
 
 async function grade(): Promise<number> {
-  const [log, taskId] = [needed("log"), needed("task")];
+  const [log, taskId] = [logOf(needed("log")), needed("task")];
   // The pack and the check program: the stored pack `--bundle` names, whose checks the campaign
   // staged beside its log, or the exam the log drafted, where the campaign staged it.
   const staged = values.bundle === undefined ? stagedExamOf(log) : null;
@@ -347,13 +345,12 @@ async function grade(): Promise<number> {
 async function main(): Promise<number> {
   const [verb] = positionals;
   if (verb === "read") {
-    console.log(overviewText(needed("log")));
+    console.log(overviewText(logOf(needed("log"))));
     return 0;
   }
   if (verb === "grade") return grade();
   if (verb === "climb") {
-    const peers = (values.with?.split(",") ?? []).filter((each) => each !== "").map(logOf);
-    console.log(climbText(needed("log"), peers));
+    console.log(climbText(logsOf(needed("log"))));
     return 0;
   }
   const step = Object.entries({ start, lanes, collect, synthesis }).find(([name]) => name === verb)?.[1];

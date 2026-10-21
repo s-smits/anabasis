@@ -22,8 +22,6 @@ import {
   epochLine,
   epochsOf,
   promotionsWorth,
-  regressionLine,
-  regressionOf,
   riskLines,
   worthLine,
   worthOf,
@@ -76,11 +74,10 @@ const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-climb-")));
 const bundle = join(root, "bundle");
 const folder = join(REPO, ".ana", "d2", NAME);
 
-// The regression reading, over a log written here as `test/reports.test.ts` writes one: three
-// harnesses, two candidates read in turn against one reference.
+// A log written here as `test/reports.test.ts` writes one, for the epochs' reading.
 const AT = "2026-10-10T00:00:00.000Z";
 const event = (kind: EventKind, data: JsonObject): LogEvent => ({ at: AT, kind, data });
-const condition = (task: string, harness: string, host = "h"): Condition => ({
+const condition = (task: string, harness: string): Condition => ({
   contract: "c1",
   harness,
   task,
@@ -99,32 +96,21 @@ const condition = (task: string, harness: string, host = "h"): Condition => ({
     shellMaxSeconds: 60,
     concurrency: 1,
   },
-  host,
+  host: "h",
   side: "test",
 });
 const SETTING = settingId(condition("any", "any"));
 let solves = 0;
-function solved(
-  comparison: string,
-  task: string,
-  harness: string,
-  valid: readonly boolean[],
-  under: { host?: string; measures?: readonly number[] } = {},
-) {
-  const { host = "h", measures = [] } = under;
-  const ran = condition(task, harness, host);
+function solved(comparison: string, task: string, harness: string, valid: readonly boolean[]) {
+  const ran = condition(task, harness);
   const id = conditionId(ran);
   return [
     event("condition.recorded", { id, condition: requireJsonValue(ran) }),
-    ...valid.flatMap((each, nth) => {
+    ...valid.flatMap((each) => {
       solves += 1;
       const solve = `s-${String(solves)}`;
-      const measure = measures[nth];
       return [
         event("solve.started", { solve, condition: id, ...keyIfDefined("comparison", comparison) }),
-        ...(each && measure !== undefined
-          ? [event("verdict", { solve, task, answer: {}, kind: "pass", objective: measure })]
-          : []),
         event("solve.finished", {
           solve,
           ending: each ? { outcome: "pass" } : { outcome: "fail", kind: "rejected" },
@@ -138,7 +124,7 @@ const heldOut = (version: string) => [
   event("task.proposed", { version, taskId: version }),
   event("task.gate", { version, gate: 1, outcome: "passed" }),
 ];
-const reported = (session: string, old: string, fresh: string, versions: string[], objective?: JsonObject) =>
+const reported = (session: string, old: string, fresh: string, versions: string[]) =>
   event("comparison.reported", {
     session,
     reading: "no-step",
@@ -147,7 +133,6 @@ const reported = (session: string, old: string, fresh: string, versions: string[
     solves: 2,
     setting: SETTING,
     versions,
-    ...keyIfDefined("objective", objective),
   });
 
 setDefaultTimeout(1_800_000);
@@ -378,99 +363,6 @@ describe("an epoch's shares", () => {
       reported("g-1", "h0", "h1", ["v1"]),
     ];
     expect(epochsOf(log)).toMatchObject([{ tasks: ["v1"], reference_share: { valid: 2, solves: 2 } }]);
-  });
-});
-
-describe("the regression reading beside a comparison", () => {
-  it("reads the newest candidate against the one before it on the tasks both comparisons scored, and nothing where the conditions differ in more than the harness", () => {
-    // g-1 read h2 against the reference h1 on v1..v3; g-2 read h3 against h1 on v2..v4. On v2 h3
-    // loses to h2 (0 of 2 valid against 2 of 2), on v3 it ties, and v4 was not scored by g-1. v1
-    // is scored by both, but g-2's solves of it ran under another setting (another host), so the
-    // comparison itself left them out and the reading shares two tasks.
-    const log: LogEvent[] = [
-      ...["v1", "v2", "v3", "v4"].flatMap(heldOut),
-      ...solved("g-1", "v1", "h1", [false, false]),
-      ...solved("g-1", "v1", "h2", [true, true]),
-      ...solved("g-1", "v2", "h1", [false, false]),
-      ...solved("g-1", "v2", "h2", [true, true]),
-      ...solved("g-1", "v3", "h1", [false, false]),
-      ...solved("g-1", "v3", "h2", [true, false]),
-      reported("g-1", "h1", "h2", ["v1", "v2", "v3"]),
-      ...solved("g-2", "v1", "h1", [false, false], { host: "h2-host" }),
-      ...solved("g-2", "v1", "h3", [true, true], { host: "h2-host" }),
-      ...solved("g-2", "v2", "h1", [false, false]),
-      ...solved("g-2", "v2", "h3", [false, false]),
-      ...solved("g-2", "v3", "h1", [false, false]),
-      ...solved("g-2", "v3", "h3", [true, false]),
-      ...solved("g-2", "v4", "h1", [false, false]),
-      ...solved("g-2", "v4", "h3", [true, true]),
-      reported("g-2", "h1", "h3", ["v1", "v2", "v3", "v4"]),
-    ];
-    const found = regressionOf(log);
-    expect(found).toMatchObject({
-      newest: "h3",
-      previous: "h2",
-      against: "h1",
-      comparisons: ["g-2", "g-1"],
-      shared: 2,
-      wins: 0,
-      losses: 1,
-      ties: 1,
-    });
-    if (found === null) throw new Error("no reading");
-    expect(regressionLine(found)).toContain("1 lost, 1 tied. A reading beside the test");
-    // One comparison reads nothing; a second of the same candidate is read against the one before.
-    expect(
-      regressionOf(
-        log.slice(
-          0,
-          log.indexOf(
-            log.find(({ kind, data }) => kind === "comparison.reported" && data.session === "g-2")!,
-          ) + 0,
-        ),
-      ),
-    ).toBeNull();
-    expect(regressionOf([...log, reported("g-3", "h1", "h3", ["v4"])])).toMatchObject({
-      newest: "h3",
-      previous: "h2",
-    });
-  });
-
-  it("reads two valid answers by the objective where both comparisons fixed the same rule, and on validity alone otherwise", () => {
-    const lower = { direction: "lower" };
-    // Both candidates answer v1 in both solves; h3's answers are lighter. g-1 and g-2 fixed the
-    // same rule, so the reading sets them apart; g-3 fixed another direction, and reads a tie.
-    const log: LogEvent[] = [
-      ...heldOut("v1"),
-      ...solved("g-1", "v1", "h1", [false, false]),
-      ...solved("g-1", "v1", "h2", [true, true], { measures: [10, 10] }),
-      reported("g-1", "h1", "h2", ["v1"], { ...lower, decided: 0 }),
-      ...solved("g-2", "v1", "h1", [false, false]),
-      ...solved("g-2", "v1", "h3", [true, true], { measures: [8, 8] }),
-      reported("g-2", "h1", "h3", ["v1"], { ...lower, decided: 0 }),
-    ];
-    expect(regressionOf(log)).toMatchObject({
-      newest: "h3",
-      previous: "h2",
-      shared: 1,
-      wins: 1,
-      losses: 0,
-      ties: 0,
-    });
-    const other = [
-      ...log,
-      ...solved("g-3", "v1", "h1", [false, false]),
-      ...solved("g-3", "v1", "h4", [true, true], { measures: [6, 6] }),
-      reported("g-3", "h1", "h4", ["v1"], { direction: "higher", decided: 0 }),
-    ];
-    expect(regressionOf(other)).toMatchObject({
-      newest: "h4",
-      previous: "h3",
-      shared: 1,
-      wins: 0,
-      losses: 0,
-      ties: 1,
-    });
   });
 });
 

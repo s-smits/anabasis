@@ -9,27 +9,18 @@
  * hours before, and only the two logs together show it. `wri.ts climb` prints this, and the
  * lane 31 prompt carries it beside the peers' overviews.
  */
+import { short } from "#src/builder/move.ts";
 import { gateAnswers } from "#src/examiner/record.ts";
-import { flipP, informative, type Paired, pairings } from "#src/kernel/compare.ts";
+import { flipP, informative, type Paired } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { pairsReported } from "#src/kernel/reports.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
-import {
-  type Compared,
-  count,
-  fired,
-  type Index,
-  indexOf,
-  items,
-  short,
-  type Trigger,
-  text,
-} from "./folds.ts";
+import { type Compared, count, fired, type Index, indexOf, items, type Trigger, text } from "./folds.ts";
 import {
   epochsOf,
   joinedTest,
   pSaid,
-  SHARED_PATH,
+  sharedPaths,
   spentTo,
   testedOf,
   testSaid,
@@ -217,8 +208,11 @@ function validityOf(events: readonly LogEvent[], rests: readonly Compared[]): nu
       tested.has(task),
     );
     for (const pair of pairs) {
-      const { fresh, old } = pairings(pair).validity;
-      validity.set(pair.task, (validity.get(pair.task) ?? 0) + fresh - old);
+      // Of n solves a side with f and o valid, the new harness wins f(n-o) pairings on validity and
+      // the reference o(n-f), a difference of n(f-o).
+      const valid = (side: readonly boolean[]) => side.filter(Boolean).length;
+      const won = pair.old.length * (valid(pair.fresh) - valid(pair.old));
+      validity.set(pair.task, (validity.get(pair.task) ?? 0) + won);
     }
   }
   return [...validity.values()];
@@ -277,18 +271,12 @@ function namedIn({ name, events }: Campaign): Map<string, Named> {
     ]),
   );
   const first = new Map<string, Named>();
-  for (const { kind, at, data } of events) {
-    if (!["solve.call", "build.call", "exam.call"].includes(kind)) continue;
-    const solve = kind === "solve.call" ? text(data.solve) : null;
-    const by = solve ?? text(data.session);
-    for (const [, path = ""] of JSON.stringify(data.args ?? "").matchAll(SHARED_PATH)) {
+  for (const call of log.traces) {
+    if (call.part !== "call") continue;
+    for (const path of sharedPaths(call)) {
       if (first.has(path)) continue;
-      first.set(path, {
-        campaign: name,
-        by,
-        at,
-        side: solve === null ? null : (sideOf.get(solve) ?? "unknown"),
-      });
+      const side = call.seat === "solve" ? (sideOf.get(call.id) ?? "unknown") : null;
+      first.set(path, { campaign: name, by: call.id, at: call.at, side });
     }
   }
   return first;

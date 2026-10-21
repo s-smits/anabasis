@@ -442,7 +442,6 @@ describe("the other campaigns", () => {
       "Examiner session",
       "Builder session",
     ]);
-    await expect(page.locator(".ana-campaign-counters")).toContainText("Regression check");
     expect(await accessibilityViolations(page, "main")).toEqual([]);
     expectQuiet(opened);
     await opened.context.close();

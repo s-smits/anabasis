@@ -72,7 +72,8 @@ For each pair of harnesses, old digest first:
 
 The totals count recorded promotions (rightful, in doubt, rejected), pairs the score adds, A/A
 controls and their steps, the tasks the promoting readings won by each measure, steps followed by
-a later reading of the pair and how many of those held, and the median and range of promoted
+a later reading of the pair and how many of those stepped again at their level, and how many only
+won at least as many tasks as they lost, and the median and range of promoted
 epochs' hours and dollars.
 
 **Read the reconciliation counts first.**

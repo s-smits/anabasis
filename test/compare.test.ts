@@ -593,8 +593,7 @@ describe("a task's pairings", () => {
     expect(closedTo(pair([12, 12], [10, 11]), "fresh")).toBe(false);
     // Apart by less than the room floor is closed: the next harness can only win it by rounding.
     expect(closedTo(pair([12, 12], [10, 10.05]), "fresh")).toBe(true);
-    // The floor is the campaign's of now: at none, the same half per cent leaves it open.
-    expect(closedTo(pair([12, 12], [10, 10.05]), "fresh", null, 0)).toBe(false);
+    // Closure reads the one floor, even where the comparison began with none recorded.
     expect(
       closedTo(
         {

@@ -101,7 +101,6 @@ const OPTIONS = {
    *  `off` keeps the ruling of 12 October. Unnamed, nothing is passed and the default holds. */
   "exam-reference": { type: "string" },
   "exam-results": { type: "string" },
-  room: { type: "string" },
   cost: { type: "string" },
   moves: { type: "string" },
   handover: { type: "string" },
@@ -147,7 +146,6 @@ const EXPLAINED: Readonly<Record<keyof typeof OPTIONS, string>> = {
   target: "frontier tasks a comparison scores (setting; 24)",
   solves: "solves a side of each scored task (4)",
   level: "the step test's level: one reading at or under it promotes (0.02)",
-  room: "how much better by the objective, as a share of the larger measure, an answer on record must be before a task leaves room: the gate, the frontier and room read it, the tally does not (0.01)",
   defects: "tasks with a check defect before a comparison stops (3)",
   minutes: "a Builder conversation's wall in minutes of its own time (1440)",
   turns: "a Builder conversation's turns (300)",
@@ -400,11 +398,9 @@ function pinned(events: readonly LogEvent[], was: Opening | null): string {
 function termsOf(events: readonly LogEvent[], id: string): string[] {
   const start = events.find(({ kind, data }) => kind === STARTED && data.session === id)?.data ?? {};
   const cap = asRecord(start.cap);
-  const room = asRecord(start.objective)?.room;
   return [
     ...flag("solves", isNumber(start.solves) ? String(start.solves) : undefined),
     ...flag("level", isNumber(start.level) ? String(start.level) : undefined),
-    ...flag("room", isNumber(room) ? String(room) : undefined),
     ...flag("cap", isNumber(cap?.dollars) ? String(cap.dollars) : undefined),
     ...flag("reserve", isNumber(cap?.reserve) ? String(cap.reserve) : undefined),
     ...flag("predict", isString(start.prediction) ? start.prediction : undefined),
@@ -465,12 +461,7 @@ export function comparisonOf(decided: Extract<Decided, { move: "compare" }>, tur
   const session = decided.id ?? nextId(events, "g");
   const terms =
     decided.id === undefined
-      ? [
-          ...flag("solves", values.solves),
-          ...flag("level", values.level),
-          ...flag("room", values.room),
-          ...cap,
-        ]
+      ? [...flag("solves", values.solves), ...flag("level", values.level), ...cap]
       : termsOf(events, decided.id);
   return {
     session,

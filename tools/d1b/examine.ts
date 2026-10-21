@@ -70,7 +70,6 @@ import {
   COMPARISON_OPTIONS,
   refereeNamed,
   reviewersNamed,
-  roomNamed,
   type Seated,
   solved,
   solvingAs,
@@ -107,8 +106,6 @@ const EXAMINE_OPTIONS = {
   /** `on` tells the Examiner who won each task in its last comparison; `off` tells it by family
    *  alone (`exam-results`, `heard`, `src/examiner/record.ts`). */
   results: { type: "string", default: "on" },
-  /** The objective's room floor the gate holds a draft by, as a comparison reads it (`--room`). */
-  room: { type: "string" },
   /** The campaign's setting, as every command that solves takes it: the solver and the limits the
    *  reference harness's solves of a draft task run under (`try_task`), and the budget fact the
    *  Examiner is told, where no setting is on record yet. `--tasks` is this command's own, so the
@@ -220,7 +217,6 @@ export async function examineCommand(
       },
       wanted: Number(values.tasks),
       results: results === "on",
-      room: roomNamed(values.room),
       models: campaign.examiner,
       log: campaign.log,
       ...keyIfDefined("kill", kill),

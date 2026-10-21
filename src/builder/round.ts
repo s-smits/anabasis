@@ -395,8 +395,8 @@ function dispute(log: string, id: string, version: string, found: { solve: strin
  *  not name the comparison is refused: no fold would count it, and the comparison would buy it
  *  again at every pass. */
 function unanswered(log: string, id: string, { solve, ending }: Practised): string | null {
-  const events = read(log);
-  if (!solvesIn(events).some((each) => each.id === solve && each.start.comparison === id)) {
+  const ran = solvesIn(read(log)).find((each) => each.id === solve);
+  if (ran?.start.comparison !== id) {
     throw new Error(
       `solve ${solve} does not name comparison ${id} at its start, so no reading would count it: the caller's solve hands the comparison on to its solve request`,
     );
@@ -404,8 +404,7 @@ function unanswered(log: string, id: string, { solve, ending }: Practised): stri
   if (ending.outcome !== "non-result") return null;
   if (ending.kind === "sandbox-crash") return ending.reason;
   if (ending.kind !== "provider") return null;
-  const record = events.findLast(({ kind, data }) => kind === "solve.finished" && data.solve === solve);
-  return asRecord(record?.data.tokens)?.output === 0 ? ending.reason : null;
+  return asRecord(ran.end?.tokens)?.output === 0 ? ending.reason : null;
 }
 
 /** The rejections of the comparison that hold no ruling, on tasks still held out, by an earlier run

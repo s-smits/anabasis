@@ -186,8 +186,15 @@ export function toolchainPathDirs(): string[] {
  * to the real home would be refused and that refusal reads as a broken tool rather than as the
  * isolation doing its job. The cost is that a toolchain looking for its installation under `$HOME`
  * no longer finds it — `rustc` fails with `rustup could not choose a version` while `~/.rustup`
- * sits readable on disk. These names put each such toolchain back on its real installation, which
- * it may read and may not write.
+ * sits readable on disk. `RUSTUP_HOME` puts rustup back on its real installation, which it may read
+ * and may not write.
+ *
+ * Python's user base stays in the seat's home. It was pointed at the real `~/.local` until
+ * 21 October, so `pip install` and `pip install --user` were refused there ("Operation not
+ * permitted: '~/.local/lib/python'") wherever that directory existed. In the first DeepSeek
+ * campaign on a macOS host, 7 of 10 solves ran pip and 4 were refused so, then spent turns finding
+ * `--target`. A solve on the Linux host would also have seen the 609 packages installed there by
+ * hand, which one on macOS could not.
  *
  * `SDKROOT` is the same for a Darwin compiler. `/usr/bin/cc` is an xcrun shim that names the SDK for
  * the compiler it starts; with the developer directory ahead of `/usr/bin` on PATH no shim runs, and
@@ -198,12 +205,7 @@ export function hostToolchainEnv(home: string | undefined = Bun.env.HOME) {
   const compiler = sdk === undefined ? {} : { SDKROOT: sdk };
   if (home === undefined || home === "") return compiler;
   const rustup = join(home, ".rustup");
-  const pythonUserBase = join(home, ".local");
-  return {
-    ...compiler,
-    ...keysIf(existsSync(rustup), () => ({ RUSTUP_HOME: rustup })),
-    ...keysIf(existsSync(pythonUserBase), () => ({ PYTHONUSERBASE: pythonUserBase })),
-  };
+  return { ...compiler, ...keysIf(existsSync(rustup), () => ({ RUSTUP_HOME: rustup })) };
 }
 
 /** Every directory between `/` and `path`, outermost first, as a resolver walks them. */

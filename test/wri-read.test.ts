@@ -1284,6 +1284,16 @@ describe("the reader of comparisons the campaign command named apart from its Bu
     ]);
   });
 
+  it("reads a task its report's test names by the difference that report recorded", () => {
+    // The Linux fork of #306 on 22 October: a task its comparison tied read as won by a later score.
+    const tied = log.map((event) =>
+      event.kind === REPORTED && event.data.session === "g-1"
+        ? { ...event, data: { ...event.data, frontier: { of: ["v1"], differences: [0] } } }
+        : event,
+    );
+    expect(overview(tied).triggers.some((trigger) => trigger.name === "WINS")).toBe(false);
+  });
+
   it("names a check that refused no answer, beside the answers the others refused", () => {
     expect(said("REFUSALS BY CHECK")).toBe(
       "1 of 2 checks refused none of 6 answers: check-b; the rest: check-a 3",

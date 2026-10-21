@@ -188,12 +188,16 @@ function practiceTriggers(
  * paired them, with the solves under the new harness that passed them and under the reference that
  * failed them. The lane opens those solves' turns and calls, and until this it rebuilt the pairing
  * by hand from a log of thousands of events: the #107 buffer campaign won 11 tasks over 3
- * comparisons in 5,531 (2026-10-10).
+ * comparisons in 5,531 (2026-10-10). A task the report's test names is read by the difference it
+ * recorded (`testedOf`), and only another by this tree's score: on 22 October the score of weighted
+ * measures listed as won a task the Linux fork of #306 tied and one it lost, both scored before it.
  */
 function winTriggers(log: Index): Trigger[] {
   return log.compared.flatMap(({ session, at, last }) => {
     const pairs = pairsReported(log.events, { session, index: at, data: last });
-    const won = pairs.filter((pair) => differenceOf(pair) > 0);
+    const tested = testedOf(last);
+    const recorded = new Map(tested.of.map((task, index) => [task, tested.differences[index]] as const));
+    const won = pairs.filter((pair) => (recorded.get(pair.task) ?? differenceOf(pair)) > 0);
     const named = (side: "old" | "fresh", valid: boolean) =>
       won.flatMap((pair) => pair.solves?.[side].filter((_, index) => pair[side][index] === valid) ?? []);
     return won.length === 0

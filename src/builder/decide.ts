@@ -436,9 +436,15 @@ function noRoom(ground: Ground): Move | null {
   const room = roomOf(last.report, side);
   if (room === "room") {
     const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
-    const written = events
-      .slice(promotedAt)
-      .some(({ kind }) => kind === "exam.started" || kind === "exam.finished");
+    // A session the provider crashed or a stop killed before it held out a task wrote nothing for
+    // the new reference (`cutShort`): on 21 October r5's x-4 and r6's x-5 crashed so, and each
+    // campaign compared its next harness on the tasks the old reference had closed.
+    const since = events.slice(promotedAt);
+    const cut = new Set(since.filter(cutShort).map(({ data }) => data.session));
+    const written = since.some(
+      (event) =>
+        (event.kind === "exam.started" || event.kind === "exam.finished") && !cut.has(event.data.session),
+    );
     return promotedAt === -1 || written
       ? null
       : {

@@ -254,8 +254,13 @@ function asReported(events: readonly LogEvent[], id: string): LogEvent[] {
 
 /** Each harness by itself over `pairs`: the tasks by how many of its solves were valid, and those
  *  informative for it (`informative`), a task it never answered among them where a valid answer to
- *  it is on record (`feasible`, `poolOf`). */
-function validOf(pairs: readonly Paired[], solves: number, feasible: ReadonlySet<string>): Valid {
+ *  it is on record (`feasible`, `poolOf`), and one it answered alike where an author's answer on
+ *  record is better by the objective (`bests`). */
+function validOf(
+  pairs: readonly Paired[],
+  solves: number,
+  { feasible, bests }: Pick<ReturnType<typeof poolOf>, "feasible" | "bests">,
+): Valid {
   const census = (side: "old" | "fresh") => {
     const tasks = Array.from({ length: solves + 1 }, () => 0);
     for (const pair of pairs) {
@@ -264,7 +269,8 @@ function validOf(pairs: readonly Paired[], solves: number, feasible: ReadonlySet
     }
     return tasks;
   };
-  const told = (side: "old" | "fresh") => pairs.filter((pair) => informative(pair, side, feasible)).length;
+  const told = (side: "old" | "fresh") =>
+    pairs.filter((pair) => informative(pair, side, feasible, bests)).length;
   return {
     old: census("old"),
     fresh: census("fresh"),
@@ -419,7 +425,7 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
   // side every comparison carries one.
   const mirrored = fixed.solves >= 4 && fixed.solves % 2 === 0 ? itself() : null;
   const aa = mirrored === null ? null : scored(mirrored);
-  const valid = validOf(pairs, fixed.solves, poolOf(events).feasible);
+  const valid = validOf(pairs, fixed.solves, poolOf(events));
   // The step is read off the sets as a report holds them, which is how it is read again (`stepOf`).
   const reading = pairs.length === 0 ? ("not-scored" as const) : stepOf(asRecord(sets) ?? {}, fixed.level);
   const tested = scored(pairs);

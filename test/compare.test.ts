@@ -505,10 +505,11 @@ describe("a task's pairings", () => {
     const precision = (room?: number) => [1, 2, 3, 4, 5, 6].map((n) => one(n, room));
     expect(tally(precision())).toEqual({ wins: 6, losses: 0, ties: 0 });
     expect(flipP(scored(precision()).differences)).toBe(1 / 64);
-    // At the floor the same answers tie.
+    // At the floor the same answers tie, while the room the author's answer leaves stays told.
     const floored = precision(0.01);
     expect(tally(floored)).toEqual({ wins: 0, losses: 0, ties: 6 });
     expect(roomLeft(one(1, 0.01), "old", [70])).toBeCloseTo(0.3);
+    expect(informative(one(1, 0.01), "old", new Set(), new Map([["t1", 70]]))).toBe(true);
     expect(roomLeft({ task: "t", old: [F], fresh: [P] }, "old", [70])).toBeNull();
   });
 
@@ -539,19 +540,28 @@ describe("a task's pairings", () => {
     // that, the task is closed, as r6's g-2 won its tasks by rounding (`ROOM`).
     expect(informative(pair([P, P], [100, 102]), "old", nobody)).toBe(true);
     expect(informative(pair([P, P], [100, 101]), "old", nobody)).toBe(false);
+    // Alike, where an author's answer on record is better: a better harness can reach it, and wins
+    // the pairs against them (19 October). One that is the same, or worse, leaves none.
+    expect(informative(pair([P, P], [100, 100]), "old", nobody, new Map([["t", 99]]))).toBe(true);
+    expect(informative(pair([P, P], [100, 100]), "old", nobody, new Map([["t", 99.5]]))).toBe(false);
+    expect(informative(pair([P, P], [100, 100]), "old", nobody, new Map([["t", 100]]))).toBe(false);
+    expect(informative(pair([P, P], [100, 100]), "old", nobody, new Map([["t", 120]]))).toBe(false);
+    expect(informative(pair([P, P], [100, 100]), "old", nobody, new Map([["u", 90]]))).toBe(false);
     // Valid answers with no measure, or a pair with no objective, have nothing to be bettered on.
-    expect(informative(pair([P, P], [null, null]), "old", nobody)).toBe(false);
-    const { objective: _none, ...unmeasured } = pair([P, P], [100, 102]);
-    expect(informative(unmeasured, "old", nobody)).toBe(false);
+    expect(informative(pair([P, P], [null, null]), "old", nobody, new Map([["t", 90]]))).toBe(false);
+    const { objective: _none, ...unmeasured } = pair([P, P], [100, 100]);
+    expect(informative(unmeasured, "old", nobody, new Map([["t", 90]]))).toBe(false);
     // One valid answer measured and one not: the measured one is compared, the other with nothing.
-    expect(informative(pair([P, P], [100, null]), "old", nobody)).toBe(false);
-    // Under a higher objective too, its own answers apart by the floor leave room.
+    expect(informative(pair([P, P], [100, null]), "old", nobody, new Map([["t", 90]]))).toBe(true);
+    expect(informative(pair([P, P], [100, null]), "old", nobody, new Map([["t", 100]]))).toBe(false);
+    // Under a higher objective the author's must be the larger, at zero and below as above.
     const higher = (measured: number[]) => ({
       ...pair([P, P], measured),
       objective: { direction: "higher" as const, old: measured, fresh: [null, null] },
     });
-    expect(informative(higher([100, 120]), "old", nobody)).toBe(true);
-    expect(informative(higher([-10, -10]), "old", nobody)).toBe(false);
+    expect(informative(higher([100, 100]), "old", nobody, new Map([["t", 120]]))).toBe(true);
+    expect(informative(higher([100, 100]), "old", nobody, new Map([["t", 90]]))).toBe(false);
+    expect(informative(higher([-10, -10]), "old", nobody, new Map([["t", 0]]))).toBe(true);
     // The other side's valid answer better than one of its own: room. One it beat, or one the same
     // as its own, leaves none (19 October).
     const against = (fresh: number[]) => ({
@@ -599,6 +609,20 @@ describe("a task's pairings", () => {
     expect(closedTo(pair([10 - 1e-9, 10 - 1e-9], [10, 10]), "fresh")).toBe(true);
     // A failed solve of its own leaves it open whatever the objective says.
     expect(closedTo({ ...pair([12, 12], [10, 10]), fresh: [P, F] }, "fresh")).toBe(false);
+  });
+
+  it("leaves a task open that an author's answer on record outdoes, so the room it was held for stays on the frontier", () => {
+    const pair = {
+      task: "t",
+      old: [P, P],
+      fresh: [P, P],
+      objective: { direction: "lower" as const, old: [10, 10], fresh: [10, 10] },
+    };
+    expect(closedTo(pair, "old")).toBe(true);
+    expect(closedTo(pair, "old", 9)).toBe(false);
+    // Within a billionth, or no better, it closes as before (19 October).
+    expect(closedTo(pair, "old", 10 - 1e-9)).toBe(true);
+    expect(closedTo(pair, "old", 11)).toBe(true);
   });
 
   it("reads an objective rule off a comparison's start, and none off a malformed one", () => {

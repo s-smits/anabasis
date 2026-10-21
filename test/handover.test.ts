@@ -266,7 +266,9 @@ describe("a campaign's reading", () => {
       c.record("task.gate", { version, gate: 1, outcome });
     }
     c.record("task.state", { version: "e3", state: "refused", session: "x-1" });
-    const open = { id: "x-1", ended: null, turns: 3, proposed: 3, held: 2, refused: 1, billed: 1.5 };
+    // A draft still at the gate is proposed, and neither held nor refused.
+    c.record("task.proposed", { version: "e4", session: "x-1" });
+    const open = { id: "x-1", ended: null, turns: 3, proposed: 4, held: 2, refused: 1, billed: 1.5 };
     expect(steps(c, "examiner")).toMatchObject([{ ...open, cut: false }]);
     expect(openSteps(campaignOf(c.events()).steps)).toEqual(["x-1"]);
     // The campaign makes one move at a time: a step begun after x-1 means x-1 will write no end.

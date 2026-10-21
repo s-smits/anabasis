@@ -23,7 +23,7 @@ import { decodeOutput, runSync, runTextSyncOrThrow } from "../src/meta/subproces
 import { read } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
-import { receipts, sources } from "../tools/runs/receipt.ts";
+import { ranWith, receipts, sources } from "../tools/runs/receipt.ts";
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-skill-scripts-")));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -190,7 +190,11 @@ describe("the source a campaign's launches ran", () => {
   git("init", "-q");
   git("commit", "-q", "--allow-empty", "-m", "first");
   const first = gitText(repo, "rev-parse", "HEAD");
-  git("commit", "-q", "--allow-empty", "-m", "second");
+  mkdirSync(join(repo, "src"));
+  writeFileSync(join(repo, "src", "score.ts"), "export const WEIGHTS = 1;\n");
+  writeFileSync(join(repo, "plan.md"), "export const ROOM\n");
+  git("add", "src", "plan.md");
+  git("commit", "-q", "-m", "second");
   const second = gitText(repo, "rev-parse", "HEAD");
   const receipt = (session: string, at: string, commit: string, dirty: boolean, bun?: string) =>
     writeFileSync(
@@ -227,6 +231,17 @@ describe("the source a campaign's launches ran", () => {
       `  holds ${second.slice(0, 9)}`,
     ]);
     expect(lines.join("\n")).not.toContain("x.env");
+  });
+
+  it("says a campaign ran with a fix only where every launch holds it, by commit or by text", () => {
+    const log = join(folder, "log.jsonl");
+    expect(ranWith(log, repo, { holds: [first], has: [] })).toBe(true);
+    expect(ranWith(log, repo, { holds: [second], has: [] })).toBe(false);
+    expect(ranWith(log, repo, { holds: [], has: ["export const WEIGHTS"] })).toBe(false);
+    receipt("b-1", "2026-10-09T13:00:00.000Z", second, false);
+    expect(ranWith(log, repo, { holds: [second], has: ["export const WEIGHTS"] })).toBe(true);
+    expect(ranWith(log, repo, { holds: [], has: ["export const ROOM"] })).toBe(false);
+    expect(ranWith(join(root, "none", "log.jsonl"), repo, { holds: [], has: [] })).toBe(false);
   });
 });
 

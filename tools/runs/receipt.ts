@@ -11,13 +11,21 @@
  * then holds those. Until 15 October two readers numbered the next run, and one reader left the
  * flags out and another read them again from the file.
  *
- *   bun run runs source <name> [--holds <commit>]...
+ *   bun run runs source <name> [--holds <commit>]... [--has <text>]...
+ *   bun run runs source (--holds <commit> | --has <text>)...
  *
  * `source` says each run's commit, whether its tree was clean, the load it started under, where the
  * commit is published and whether it holds a named fix: the first two checks of "was the mechanism
  * live in run X" (attribution-and-proof), what an outside reader can open (oracle-handover) and
  * whether a patch can reach a live run (run-improvement-campaign). It prints no flag and no path a
  * receipt holds. Until 15 October it was a skill script that took the campaign's folder.
+ *
+ * Without a name it lists every campaign a reader reads whose every launch carries what is asked
+ * (`ranWith`), and `runs replay` takes the same flags. A fix is asked for by its commit (`--holds`),
+ * or by text its code holds (`--has`, in `src`, `tools` and `packages`), which a restack that rewrote the fix's commits leaves in
+ * place: both #306 runs of 21 October ran an earlier head of #306, which no later head holds. The
+ * operator asked on 21 October that runs be compared and triaged only with runs that had the
+ * mechanism in question, and a run that lacks it is none of its evidence (AGENTS.md, section 9).
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { gitMaybe } from "#src/meta/git.ts";
@@ -25,7 +33,13 @@ import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { compareCodeUnits } from "#src/meta/stable-json.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { readNamed } from "./registry.ts";
+import { isCampaign, readable, readNamed } from "./registry.ts";
+
+/** What a run is asked to have run with: commits its launch holds, and text its source holds. */
+interface Asked {
+  readonly holds: readonly string[];
+  readonly has: readonly string[];
+}
 
 export interface Receipt {
   readonly at: string;
@@ -46,6 +60,10 @@ export interface Receipt {
 const RECEIPT = /^launch-(.+)\.json$/;
 /** The refs `source` names of one commit before it counts the rest. */
 const SHOWN = 3;
+
+/** Where `--has` looks: the code a run executes, and none of the documents that name a mechanism
+ *  before it is built. */
+const CODE = ["src", "tools", "packages"];
 const runOf = (session: string) => Number(/^run-(\d+)$/.exec(session)?.[1] ?? 0);
 
 /** Keep `receipt` as the run of `session` beside `log`. */
@@ -107,15 +125,48 @@ export function sources(log: string, repo: string, fixes: readonly string[]): st
   });
 }
 
-/** `bun run runs source`. */
-export function source(args: readonly string[]): void {
+/** Whether every launch of the campaign at `log` ran with what `asked` names, read in `repo`: false
+ *  for a campaign with no receipt, whose code is on no record, and for a commit unknown here. */
+export function ranWith(log: string, repo: string, asked: Asked): boolean {
+  const launches = receipts(log);
+  return (
+    launches.length > 0 &&
+    launches.every(
+      ({ commit }) =>
+        asked.holds.every((fix) => gitMaybe(repo, "merge-base", "--is-ancestor", fix, commit) !== null) &&
+        asked.has.every(
+          (text) => gitMaybe(repo, "grep", "-q", "-F", "-e", text, commit, "--", ...CODE) !== null,
+        ),
+    )
+  );
+}
+
+/** The `--holds` and `--has` flags `source` and `replay` read, with their other arguments. */
+export function askedIn(args: readonly string[]): { asked: Asked; names: string[] } {
   const { values, positionals } = parseArgs({
     args: [...args],
     allowPositionals: true,
-    options: { holds: { type: "string", multiple: true, default: [] } },
+    options: {
+      holds: { type: "string", multiple: true, default: [] },
+      has: { type: "string", multiple: true, default: [] },
+    },
   });
-  const [name] = positionals;
-  if (name === undefined) throw new Error("usage: bun run runs source <name> [--holds <commit>]...");
-  const run = readNamed(name);
-  console.log(sources(run.path, run.tree, values.holds).join("\n"));
+  return { asked: values, names: positionals };
+}
+
+/** `bun run runs source`. */
+export function source(args: readonly string[]): void {
+  const { asked, names } = askedIn(args);
+  const [name] = names;
+  if (name !== undefined) {
+    const run = readNamed(name);
+    console.log(sources(run.path, run.tree, asked.holds).join("\n"));
+    return;
+  }
+  if (asked.holds.length + asked.has.length === 0) {
+    throw new Error("usage: bun run runs source <name> | (--holds <commit> | --has <text>)...");
+  }
+  for (const run of readable().filter((one) => isCampaign(one) && ranWith(one.path, one.tree, asked))) {
+    console.log(run.name);
+  }
 }

@@ -306,7 +306,7 @@ fault, and `examiner/task` for an instance whose own limits exclude every answer
 **9. Whether validity separates.**
 
 Starts from `TIES BETWEEN VALID ANSWERS (lane 9)` and
-`SAFEGUARD-9 PROMOTION BY THE OBJECTIVE ALONE (lane 9)`.
+`SAFEGUARD-9 PROMOTION BEYOND VALIDITY (lane 9)`.
 
 The question is whether a valid answer within the budget tells two harnesses apart.
 `TIES BETWEEN VALID ANSWERS` fires where more than half the tallied tasks tie and at least one
@@ -318,10 +318,12 @@ written before 11 October also holds `spread`, how far the use of turns, CPU sec
 moved between repeated solves of one harness on one task, which decided the budget's unit; the
 unit is the model's turns, and no trigger reads it since. Seconds move with the host's load,
 which each `solve.started` and `solve.finished` records. `SAFEGUARD-9` names a promotion whose
-frontier on validity alone does not clear its level: the objective decided it, as it did
-all three of r3's. In a drafted exam the objective is its author's own computation
-(`INSTRUMENT AUTHORED`, lane 1), so the claim is "better by the objective", and the objective's
-arithmetic is what a person checks first. The decision it changes is whether
+frontier on validity alone does not clear its level, with the frontier read again without the
+bill beside it. Where that clears the level the objective decided the promotion, as it did all
+three of r3's; where it does not, the bill did, as for the M1 fork of #306's second promotion
+(1-0 without the bill, 22 October). In a drafted exam the objective is its author's own computation
+(`INSTRUMENT AUTHORED`, lane 1), so the claim is "better by the objective" or "cheaper", and the
+objective's arithmetic is what a person checks first. The decision it changes is whether
 the declared objective measures domain quality, and how a promotion is worded; it routes to `operator`.
 
 **10. Ties and the budget.**

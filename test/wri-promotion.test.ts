@@ -6,7 +6,7 @@
 import { describe, expect, it } from "bun:test";
 import { type Condition, conditionId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
-import type { JsonObject } from "../src/meta/json-shape.ts";
+import { asRecord, type JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfNotNull } from "../src/meta/optional-key.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { climbTable, crossings, safeguardTriggers } from "../tools/wri/climb.ts";
@@ -151,10 +151,21 @@ const triggered = (log: readonly LogEvent[]) => {
 /**
  * A promotion read twice on `author` tasks the gate held on their author's answer alone, every
  * reference solve valid at one measure and the author's better, and `spread` held on reference
- * answers apart by the objective. Every frontier task is won by 16 pairs in each reading; on
- * validity alone they tie, unless the reference `fails` each of its solves.
+ * answers apart by the objective. Every frontier task is won in each reading, `by` the new side's
+ * better measure or its bill of half the reference's; on validity alone they tie, unless the
+ * reference `fails` each of its solves.
  */
-function leaning({ author, spread, fails }: { author: number; spread: number; fails: boolean }) {
+function leaning({
+  author,
+  spread,
+  fails,
+  by = "objective",
+}: {
+  author: number;
+  spread: number;
+  fails: boolean;
+  by?: "objective" | "bill";
+}) {
   const events: LogEvent[] = [];
   const put = (kind: EventKind, data: JsonObject) => {
     events.push({ at: new Date(START + events.length * 1_000).toISOString(), kind, data });
@@ -179,7 +190,19 @@ function leaning({ author, spread, fails }: { author: number; spread: number; fa
     const outcomes = Object.fromEntries(tasks.map((task) => [task, fails ? "FF PP" : "PP PP"]));
     const { events: solves, terms } = roundSolves(session, ["hbase", "hn"], outcomes);
     put("comparison.started", { session, old: "hbase", fresh: "hn", ...terms });
-    for (const each of solves) put(each.kind, each.data);
+    let fresh = false;
+    for (const { kind, data } of solves) {
+      if (kind === "condition.recorded") fresh = asRecord(data.condition)?.harness === "hn";
+      const passed = kind === "solve.finished" && asRecord(data.ending)?.outcome === "pass";
+      if (passed) {
+        put("verdict", {
+          solve: data.solve ?? "",
+          kind: "pass",
+          objective: by === "bill" || fresh ? 1 : 1.5,
+        });
+      }
+      put(kind, passed ? { ...data, billed: by === "objective" || fresh ? 1 : 2 } : data);
+    }
     const differences = tasks.map(() => 16);
     put("comparison.reported", {
       ...REPORT,
@@ -188,6 +211,7 @@ function leaning({ author, spread, fails }: { author: number; spread: number; fa
       old: "hbase",
       fresh: "hn",
       level: 0.02,
+      objective: { direction: "lower" },
       scored: { wins: tasks.length, losses: 0, ties: 0, p: 0.5 ** tasks.length, differences },
       frontier: { of: tasks, differences },
       retained: "unmeasured",
@@ -434,13 +458,21 @@ describe("lane 31 across campaigns", () => {
     ]);
   });
 
-  it("names a promotion that cleared its level only on tasks held on their author's answer, and by the objective", () => {
+  it("names a promotion that cleared its level only on tasks held on their author's answer, and beyond validity by the objective", () => {
     // r3's third promotion on 19 October: 8-0 joined, 3-0 (p 0.125) without the tasks its gate held
     // on their author's answer alone, and 1-0 on validity alone.
     const said = safeguardTriggers(indexOf(leaning({ author: 4, spread: 2, fails: false })));
     expect(said.map(({ name, detail }) => `${name}: ${detail}`)).toEqual([
       "SAFEGUARD-8 PROMOTION ON AUTHOR ROOM: hn 6-0 p 0.016 joined at level 0.02, 2-0 p 0.250 without the tasks held on their author's answer alone",
-      "SAFEGUARD-9 PROMOTION BY THE OBJECTIVE ALONE: hn 6-0 p 0.016 joined at level 0.02, 0-0 p 1.000 on validity alone",
+      "SAFEGUARD-9 PROMOTION BEYOND VALIDITY: hn 6-0 p 0.016 joined at level 0.02, 0-0 p 1.000 on validity alone, 6-0 p 0.016 without the bill",
+    ]);
+  });
+
+  it("names a promotion that cleared its level only on the bill", () => {
+    // The M1 fork of #306 on 22 October: 11-0 joined, the bill deciding 10 tasks, 1-0 without it.
+    const said = safeguardTriggers(indexOf(leaning({ author: 0, spread: 6, fails: false, by: "bill" })));
+    expect(said.map(({ name, detail }) => `${name}: ${detail}`)).toEqual([
+      "SAFEGUARD-9 PROMOTION BEYOND VALIDITY: hn 6-0 p 0.016 joined at level 0.02, 0-0 p 1.000 on validity alone, 0-0 p 1.000 without the bill",
     ]);
   });
 

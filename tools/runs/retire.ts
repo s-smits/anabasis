@@ -28,7 +28,10 @@
  * aside go with it: what `copy` and `move` set aside goes on elsewhere, whole.
  *
  * Then every host `ANA_HOSTS` lists does the same over ssh, and its archive of its own campaigns
- * comes here under `data/runs/<host>/`, beside the copies `runs fetch` takes. Nothing else in an
+ * comes here under `data/runs/<host>/`, beside the copies `runs fetch` takes, less the toolchains
+ * its kept states link to (`states/tree-*`), which stay whole on the host for `zip --from`: a Linux
+ * pyenv holds `terminfo/n` beside `terminfo/N`, which a case-insensitive Mac cannot, and on 21
+ * October rsync stopped there after 1.2 of the Linux host's 2.0 GB. Nothing else in an
  * archive is deleted. Without `--yes` it says what it would do, here and on each host, and does nothing.
  *
  * Until 20 October this was an operator's script outside the repository, run once a day: it moved a
@@ -166,7 +169,7 @@ function bringHome(sweep: Sweep, host: Host): void {
   say(sweep, `${host.name}:${found} -> ${into}`);
   if (!sweep.yes) return;
   mkdirSync(into, { recursive: true });
-  rsync(`${host.ssh}:${quoted(found)}/`, `${into}/`);
+  rsync(`${host.ssh}:${quoted(found)}/`, `${into}/`, "--exclude=/*/states/tree-*/");
 }
 
 /** `bun run runs retire`. */

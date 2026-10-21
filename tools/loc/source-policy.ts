@@ -46,6 +46,7 @@ export const READER_ROOTS = [
   "packages",
   "scripts",
   ".claude",
+  "studies",
 ] as const;
 
 /** A declaration that carries `export` and a name of its own. `export { … }` lists and

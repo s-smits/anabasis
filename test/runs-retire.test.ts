@@ -82,18 +82,22 @@ describe("retiring", () => {
     expect(readNamed("young", main).path).toBe(join(tree, ".ana", "d2", "young", "log.jsonl"));
   });
 
-  it("files a name the archive holds already under its tree's, and then deletes the idle tree", () => {
+  it("files a name the archive holds already under its tree's, and keeps the tree for a week", () => {
     retireTrees(sweep(3, true), archiveIdle(sweep(3, true)));
     expect(existsSync(join(archive, "young.wt", "log.jsonl"))).toBe(true);
+    expect(existsSync(tree)).toBe(true);
+  });
+
+  it("deletes a tree nothing used for a week, and keeps one with a change no commit names", () => {
+    retireTrees(sweep(8, true), new Set());
     expect(existsSync(tree)).toBe(false);
-    // The tree with a change no commit names stays for a week.
     expect(existsSync(dirty)).toBe(true);
     expect(git(main, "worktree", "list")).not.toContain(tree);
   });
 
-  it("deletes a tree with a change no commit names after a week, and tags the commit no branch holds", () => {
+  it("deletes a tree with a change no commit names after two weeks, and tags the commit no branch holds", () => {
     const head = git(dirty, "rev-parse", "HEAD");
-    retireTrees(sweep(8, true), new Set());
+    retireTrees(sweep(15, true), new Set());
     expect(existsSync(dirty)).toBe(false);
     expect(git(main, "rev-parse", `retired/${head.slice(0, 9)}`)).toBe(head);
   });

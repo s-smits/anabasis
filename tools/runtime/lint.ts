@@ -44,7 +44,7 @@ import {
 import { renderedExamples, ruleExamples } from "../oxlint/rule-examples.ts";
 import { TREE_REGISTER_KINDS, treeSites } from "../oxlint/tree-findings.ts";
 
-const ROOTS = ["src", "tools", "vendor", "test", "packages", ".claude"];
+const ROOTS = ["src", "tools", "vendor", "test", "packages", ".claude", "studies"];
 
 /** The repository root, which oxlint runs from and every path it reports is relative to. */
 const ROOT = new URL("../..", import.meta.url).pathname;

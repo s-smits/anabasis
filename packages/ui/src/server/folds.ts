@@ -15,7 +15,7 @@ import type { LogEvent } from "../../../../src/kernel/log.ts";
 import { lastReports, poolOf, stopRule } from "../../../../src/kernel/reports.ts";
 import { practiceRan, ranUnder, solvesIn, verdictsOf } from "../../../../src/kernel/solves.ts";
 import { taskSets } from "../../../../src/kernel/task.ts";
-import { isString } from "../../../../src/meta/json-shape.ts";
+import { tracesIn } from "../../../../src/kernel/trace.ts";
 import { countBy } from "../../../../src/meta/tally.ts";
 
 /** One log as it was read: the unit every fold below is kept for. */
@@ -46,18 +46,13 @@ export const ranIn = once(({ events }) => ranUnder(events));
 export const practiceIn = once(({ events }) => new Set(practiceRan(events).map(({ id }) => id)));
 export const verdictsIn = once(({ events }) => verdictsOf(events));
 export const conditionsIn = once(({ events }) => conditionsOf(events));
-/** How many calls each solve made since its last start (`solvedIn`), by id. */
-export const callsIn = once((log) => {
-  const solved = solvedIn(log);
-  return countBy(
-    log.events.flatMap(({ kind, data }, index) =>
-      kind === "solve.call" && isString(data.solve) && index >= (solved.get(data.solve)?.started ?? Infinity)
-        ? [data.solve]
-        : [],
-    ),
-    (solve) => solve,
-  );
-});
+/** How many calls each solve made (`tracesIn`), by id. */
+export const callsIn = once(({ events }) =>
+  countBy(
+    tracesIn(events).filter(({ seat, part }) => seat === "solve" && part === "call"),
+    ({ id }) => id,
+  ),
+);
 /** The one place each held-out task has (`poolOf`): the tasks waiting for a person's label and
  *  the exhausted ones are read off it, as the supply counts them (`supplyOf`,
  *  `src/builder/admission.ts`). */

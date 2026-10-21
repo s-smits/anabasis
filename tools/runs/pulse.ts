@@ -13,6 +13,7 @@
 import { type EventKind, type LogEvent } from "#src/kernel/log.ts";
 import { billedAll } from "#src/kernel/reports.ts";
 import { type Solve, solvesIn } from "#src/kernel/solves.ts";
+import { traceKind, tracesIn } from "#src/kernel/trace.ts";
 import {
   existsSync,
   mkdirSync,
@@ -150,7 +151,7 @@ function stage(log: readonly LogEvent[], running: number, open: boolean): string
   const session = (["build", "exam"] as const).find(
     (role) => log[from]?.kind === `${role}.started` && count(since, `${role}.finished`) === 0,
   );
-  if (session !== undefined) return `${session} turn ${String(count(since, `${session}.turn`))}`;
+  if (session !== undefined) return `${session} turn ${String(count(since, traceKind(session, "turn")))}`;
   return running > 0 ? "solving" : "working";
 }
 
@@ -187,8 +188,8 @@ export function pulse(
   const task = (solve: JsonValue | undefined) => tasks.get(word(solve)) ?? word(solve);
   const fresh = log.slice(before?.lines ?? log.length);
   const lines = fresh.flatMap(({ kind, data }) => SAID[kind]?.(data, task) ?? []);
-  const errors = fresh.flatMap(({ kind, data }) =>
-    kind.endsWith(".turn") && isString(data.error) ? [data.error] : [],
+  const errors = tracesIn(fresh).flatMap((each) =>
+    each.part === "turn" && each.error !== null ? [each.error] : [],
   );
   if (errors.length > 0) {
     lines.push(`⚠ ${plural(errors.length, "failed turn")}: ${[...new Set(errors)].map(short).join("; ")}`);

@@ -10,27 +10,15 @@
  *
  * A comparison's rulings by kind are withheld while any one of its rulings is: only a ruling that is
  * not `earned` sets a task aside, so the kinds beside the outcome split would give a withheld ruling
- * away. The page is then told how many rejections were ruled and no kind (`Rulings`). For the same
- * reason the whole-run reader's "SET ASIDE BY SIDE" trigger of such a comparison is left out in
- * both tiers: it counts the rejections that set a task aside under each harness, which names the
- * side of a ruling that is not `earned`; and so are the two triggers that count over every ruling
- * of the log, while any ruling is withheld. A rejection
+ * away. The page is then told how many rejections were ruled and no kind (`Rulings`). A rejection
  * that could merely be labelled one day with `settle.ts --all` is not withheld: with no label on
  * record that would hide every ruling for good, and whether it should is the operator's question.
  */
 import { reported, toLabel } from "../../../../src/builder/comparison.ts";
 import type { Handover } from "../../../../src/builder/handover.ts";
 import { isString } from "../../../../src/meta/json-shape.ts";
-import type { Trigger } from "../../../../tools/wri/folds.ts";
 import type { Rulings, Withheld } from "../models.ts";
 import { awaitingIn, type Log, once, ranIn, reportsIn, solvedIn } from "./folds.ts";
-
-/** The reader's triggers that count over every ruling of the log, a withheld one included: how many
- *  were ruled `earned` with no probe, and how many a replay moved (`tools/wri/read.ts`). */
-const OVER_EVERY_RULING: ReadonlySet<string> = new Set([
-  "EARNED WITHOUT A PROBE",
-  "REPLAY MOVED THE VERDICT",
-]);
 
 /** The rejections a person is still to label in a comparison nobody has settled (`toLabel`). */
 const unsettledIn = once((log) => {
@@ -82,26 +70,4 @@ export function rulingsOf(log: Log, step: Extract<Handover, { readonly step: "co
   return anyWithheld(log, step.id)
     ? { withheld: true, ruled: kinds.earned + kinds["check-defect"] + kinds.unclear }
     : { withheld: false, kinds };
-}
-
-/** Whether any ruling of the log is withheld. */
-const someWithheld = once((log) =>
-  ranIn(log).some(
-    ({ id, ending, under }) =>
-      ending?.outcome === "fail" &&
-      ending.kind === "rejected" &&
-      rulingWithheld(log, id, under.task) !== null,
-  ),
-);
-
-/** Whether the whole-run reader's trigger may be shown in either tier as far as the rulings go.
- *  Not the count of set-aside rejections by side of a comparison whose rulings are withheld: its
- *  detail opens with the comparison's id (`tools/wri/read.ts`). And not a count over every ruling
- *  of the log while any ruling is withheld, since beside the kinds of the comparisons that are
- *  shown it narrows the withheld ones down. */
-export function triggerKeepsRulings(log: Log, { name, detail }: Pick<Trigger, "name" | "detail">): boolean {
-  if (OVER_EVERY_RULING.has(name)) return !someWithheld(log);
-  if (name !== "SET ASIDE BY SIDE") return true;
-  const [id = ""] = detail.split(": ");
-  return !anyWithheld(log, id);
 }

@@ -4,16 +4,14 @@
  * Every number is a fold's, or computed from one (`folds.ts`): the steps, the supply and the two
  * harnesses are `campaignOf`'s, the next move is the decision table's asked as `bun run runs view`
  * asks it (`decidedOn`, `tools/runs/view.ts`), so that the page and the view name one move on one
- * log by construction, and the reader's rows and triggers are `overview`'s.
+ * log by construction.
  *
  * A campaign's project is the one its opening names (`Opening.project`, `--project` on the campaign
  * command since 12 October). An opening written before then names none, and a campaign run by the
  * hand commands alone has no opening: both stand under `NO_PROJECT`, and no project is guessed for
  * them from a prompt or a name.
  *
- * The reader's triggers of lanes 1 to 12, the exam side's (`triggerShown`), are withheld in the
- * default tier, and the reading says how many: an expected absence and no issue, which is kept for
- * what could not be read. So is the reason of a campaign that ended on its environment: it is the
+ * The reason of a campaign that ended on its environment: it is the
  * error that ended it (`errorMessage`, `tools/d2/harness-builder.ts`), free text that may quote
  * whatever the failing step saw, where every other ending's reason is worded by the controller or
  * is the operator's own word. The next move is held to the same rule (`reasonSaid`): the table's
@@ -46,12 +44,12 @@ import {
   NO_PROJECT,
   type Tier,
 } from "../models.ts";
-import { campaignIn, epochsIn, type Log, once, openingIn, overviewIn, reportsIn, stopIn } from "./folds.ts";
+import { campaignIn, epochsIn, type Log, once, openingIn, reportsIn, stopIn } from "./folds.ts";
 import { harnessesIn, promotionsIn, spendIn } from "./lineage.ts";
 import { type Found, type Process, sourceOf } from "./logs.ts";
 import { barsIn, movesIn, starterIn } from "./moves.ts";
-import { examTier, triggerShown } from "./trace.ts";
-import { triggerKeepsRulings, unsettledCount } from "./withheld.ts";
+import { examTier } from "./trace.ts";
+import { unsettledCount } from "./withheld.ts";
 
 const ENDINGS = [
   "budget",
@@ -241,10 +239,6 @@ export function campaignReading(
   const { decided, issue } = nextIn(log);
   const solver = solverIn(log);
   const opening = openingIn(log);
-  const reader = overviewIn(log);
-  const shown = reader.triggers.filter(
-    (trigger) => triggerShown(trigger, tier) && triggerKeepsRulings(log, trigger),
-  );
   const said: Issue[] = [
     ...issues,
     ...[issue, solver.issue].flatMap((message): Issue[] =>
@@ -263,10 +257,5 @@ export function campaignReading(
       solver: solver.solver,
     },
     nextMove: decided === null ? null : nextShown(decided, tier),
-    reader: {
-      rows: reader.rows,
-      triggers: shown,
-      withheld: reader.triggers.filter((trigger) => !triggerShown(trigger, tier)).length,
-    },
   };
 }

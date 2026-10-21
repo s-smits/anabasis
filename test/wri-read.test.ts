@@ -16,6 +16,7 @@ const START = Date.parse("2026-10-09T12:00:00Z");
 const REPORTED = "comparison.reported";
 const PROPOSED = "task.proposed";
 const BUILD_STARTED = "build.started";
+const BUILD_FINISHED = "build.finished";
 const SOLVE_STARTED = "solve.started";
 const SOLVE_FINISHED = "solve.finished";
 const CONDITION_RECORDED = "condition.recorded";
@@ -128,7 +129,7 @@ record("build.call", { session: "b-1", tool: "practice", args: { task: "t1" } })
 // The practice solve runs under the state as it then stood, hb; the edit after it makes hc.
 solve("t1", "hb", "rejected");
 record("build.call", { session: "b-1", tool: "edit", args: { path: "agent/BUILT_AGENTS.md" } });
-record("build.finished", { session: "b-1", ended: "finished", harness: "hc", changed: true, billed: 2 });
+record(BUILD_FINISHED, { session: "b-1", ended: "finished", harness: "hc", changed: true, billed: 2 });
 // The round's comparison. The reference harness's answers to v1 and v2 are rejected, one ruled a
 // check defect and one ruled by nobody, and it gives none to v3 and v4 within its limits. The new
 // harness answers all four.
@@ -314,7 +315,7 @@ describe("the whole-run investigation's reader", () => {
       "b-2: agent/tools.mjs, .toolchain",
     ]);
     expect(detail("FINAL BYTES NEVER PRACTISED")).toBe(
-      "b-1: no practice solve ran under hc, the harness measured; the last ran under hb",
+      "b-1: no practice solve ran under hc, a harness measured; the last ran under hb",
     );
     expect(detail("PRACTICE FAILS")).toBe(
       "b-1: 1 fail, 0 ruled earned; the same task passed later under changed bytes 0, under the same bytes 0",
@@ -341,11 +342,7 @@ describe("the whole-run investigation's reader", () => {
         ] as const
       ).map(([kind, data]) => ({ at: new Date(START).toISOString(), kind, data }));
     };
-    const at = events.findIndex(({ kind }) => kind === REPORTED);
-    const { triggers } = overview([
-      ...events.slice(0, at),
-      ...ended("f3", "v3", "hc", "flagged", { comparison: "b-1" }),
-      ...events.slice(at),
+    const practised = [
       ...(
         [
           [PROPOSED, { version: "t9" }],
@@ -354,11 +351,44 @@ describe("the whole-run investigation's reader", () => {
         ] as const
       ).map(([kind, data]) => ({ at: new Date(START).toISOString(), kind, data })),
       ...ended("p9", "t9", "hc", "pass", {}),
-    ]);
+    ];
+    const done = events.findIndex(({ kind }) => kind === BUILD_FINISHED);
+    const at = events.findIndex(({ kind }) => kind === REPORTED);
+    const flagged = [...events.slice(done, at), ...ended("f3", "v3", "hc", "flagged", { comparison: "b-1" })];
+    const { triggers } = overview([...events.slice(0, done), ...practised, ...flagged, ...events.slice(at)]);
     expect(triggers.map(({ name }) => name)).not.toContain("FINAL BYTES NEVER PRACTISED");
     expect(triggers.find(({ name }) => name === "FLIPS")?.detail).toBe(
       "b-1: 1 of 8 task and harness pairs both passed and failed",
     );
+    // Practice of the measured bytes after their comparison began says nothing of what it read.
+    const afterwards = overview([...events.slice(0, done), ...flagged, ...events.slice(at), ...practised]);
+    expect(afterwards.triggers.map(({ name }) => name)).toContain("FINAL BYTES NEVER PRACTISED");
+  });
+
+  it("reads a harness a led Builder froze for a comparison inside a conversation that never ended", () => {
+    // v061 on 21 October: b-1 froze 03a5eb57 for g-2 after its last practice and was still open
+    // when the run stopped, and the reader, reading only the end record, said nothing of it.
+    const led = events.flatMap((event): LogEvent[] => {
+      if (event.kind === BUILD_FINISHED) return [];
+      const data =
+        event.data.session === "b-1" && event.kind.startsWith("comparison.")
+          ? { ...event.data, session: "g-1" }
+          : event.data.comparison === "b-1"
+            ? { ...event.data, comparison: "g-1" }
+            : event.data;
+      const frozen = {
+        at: event.at,
+        kind: "build.checkpoint",
+        data: { session: "b-1", harness: "hc" },
+      } as const;
+      return event.kind === COMPARISON_STARTED ? [frozen, { ...event, data }] : [{ ...event, data }];
+    });
+    const { triggers } = overview(led);
+    expect(triggers.find(({ name }) => name === "FINAL BYTES NEVER PRACTISED")?.detail).toBe(
+      "b-1: no practice solve ran under hc, a harness measured; the last ran under hb",
+    );
+    // Its practice task was released before the comparison began and is not among the scored ones.
+    expect(triggers.map(({ name }) => name)).not.toContain("PRACTISED TASK MEASURED");
   });
 
   it("says an erred call is a non-zero exit, which a test reporting what is unmet gives by design", () => {
@@ -561,7 +591,7 @@ describe("the reader on a log written before the plan after the v1 review", () =
   put(SOLVE_STARTED, { solve: "w1", condition: conditionId(strong), limits: { wallSeconds: 100 } });
   put(SOLVE_FINISHED, { solve: "w1", ending: { outcome: "pass" }, seconds: 50 });
   put(BUILD_STARTED, { session: "b-1", parent: "hp", tasks: [] });
-  put("build.finished", { session: "b-1", ended: "finished", harness: "hc", changed: true });
+  put(BUILD_FINISHED, { session: "b-1", ended: "finished", harness: "hc", changed: true });
   put("task.state", { version: "t2", state: "admitted", session: "b-1" });
   put("anchor.scored", { session: "b-1", reading: "held", wins: 0, losses: 0, ties: 1 });
   put(REPORTED, {
@@ -614,7 +644,7 @@ describe("the reader of a round compared with another harness than its session s
   // The session goes on from the harness an earlier one left, hx. Its comparison is made against
   // the reference harness, href.
   put(BUILD_STARTED, { session: "r-1", parent: "hx", tasks: [] });
-  put("build.finished", { session: "r-1", ended: "finished", harness: "hy", changed: true });
+  put(BUILD_FINISHED, { session: "r-1", ended: "finished", harness: "hy", changed: true });
   // Two Examiner sessions: one ended, and one cut, since the comparison began after it.
   put(EXAM_STARTED, { session: "x-8" });
   put("exam.finished", { session: "x-8", ended: "finished" });
@@ -893,7 +923,7 @@ describe("the reader of a comparison whose solves were told a bound, on a host w
   put(PROPOSED, { version: "v1" });
   put(GATE, { version: "v1", gate: 1, outcome: "passed" });
   put(BUILD_STARTED, { session: "t-1", parent: "hp", tasks: [] });
-  put("build.finished", { session: "t-1", ended: "finished", harness: "hc", changed: true });
+  put(BUILD_FINISHED, { session: "t-1", ended: "finished", harness: "hc", changed: true });
   const terms = { session: "t-1", old: "hp", fresh: "hc", starter: "hp", setting: SETTING };
   put(COMPARISON_STARTED, { ...terms, solves: 1, level: 0.1, tasks: ["v1"] });
   made("u1", "hp", { outcome: "fail", kind: "rejected" });
@@ -1031,7 +1061,7 @@ describe("the reader of the campaign's clock", () => {
         { session: "b-1", tool: "bash", isError: false, ms: 29.5 * stretch * 60_000 },
       ],
       [30 * stretch, "build.turn", { session: "b-1", turn: 2, usage: { output: 400 } }],
-      [31 * stretch, "build.finished", { session: "b-1", ended: "finished", harness: "hc" }],
+      [31 * stretch, BUILD_FINISHED, { session: "b-1", ended: "finished", harness: "hc" }],
       [51 * stretch, EXAM_STARTED, { session: "x-1" }],
       [52 * stretch, "exam.turn", { session: "x-1", turn: 1, usage: { output: 300 } }],
       [80 * stretch, PROPOSED, { version: "v1", session: "x-1" }],
@@ -1082,7 +1112,7 @@ describe("the reader of the campaign's clock", () => {
       // A stop cut b-1, and the campaign resumed half an hour later.
       [60, "campaign.ended", {}],
       [90, BUILD_STARTED, { session: "b-2", parent: "hp", tasks: [] }],
-      [150, "build.finished", { session: "b-2", ended: "finished", harness: "hc" }],
+      [150, BUILD_FINISHED, { session: "b-2", ended: "finished", harness: "hc" }],
       [150, COMPARISON_STARTED, { session: "g-1", old: "hp", fresh: "hc", tasks: [] }],
       [160, EXAM_STARTED, { session: "x-1" }],
       [190, "exam.finished", { session: "x-1", ended: "finished" }],
@@ -1208,7 +1238,7 @@ describe("the reader of comparisons the campaign command named apart from its Bu
     put(GATE, { version, gate: 1, outcome: "passed" });
   }
   put(BUILD_STARTED, { session: "b-1", parent: "hp", tasks: ["t1"] });
-  put("build.finished", { session: "b-1", ended: "finished", harness: "hc", changed: true });
+  put(BUILD_FINISHED, { session: "b-1", ended: "finished", harness: "hc", changed: true });
   put("campaign.move", { move: "build" });
   // g-1: the reference fails v1 and the new harness passes it. g-2: both pass v1, which no
   // comparison of g-2's lost, and the reference fails v2 where the new harness fails it too.
@@ -1218,7 +1248,7 @@ describe("the reader of comparisons the campaign command named apart from its Bu
     ["v2", false, false],
   ]);
   put(BUILD_STARTED, { session: "b-2", parent: "hc", tasks: ["t1"] });
-  put("build.finished", { session: "b-2", ended: "finished", harness: "hc", changed: false });
+  put(BUILD_FINISHED, { session: "b-2", ended: "finished", harness: "hc", changed: false });
   put("campaign.move", { move: "build" });
   put("campaign.ended", { ending: "stop" });
   const { rows, triggers } = overview(log);
@@ -1289,7 +1319,7 @@ describe("the reader of a harness that answered for its solver", () => {
     put("task.state", { version: "t1", state: "released" });
     put("build.started", { session: "p-1", parent: "href", tasks: ["t1"] });
     for (const calls of practice) made("t1", "hy", calls, null);
-    put("build.finished", { session: "p-1", ended: "finished", harness: "hy", changed: true });
+    put(BUILD_FINISHED, { session: "p-1", ended: "finished", harness: "hy", changed: true });
     const terms = { session: "p-1", old: "href", fresh: "hy", starter: "hbase", setting: SETTING };
     put(COMPARISON_STARTED, { ...terms, solves: 1, level: 0.1, tasks: ["v1"] });
     for (const [harness, calls] of compared) made("v1", harness, calls, "p-1");

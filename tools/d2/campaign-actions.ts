@@ -27,7 +27,7 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import { Refused, supplyOf } from "#src/builder/admission.ts";
-import { CRASHES, decide, epochReleased, heldAfter, practiceRoom, unpromoted } from "#src/builder/decide.ts";
+import { CRASHES, decide, epochReleased, heldAfter, practiceOwed, unpromoted } from "#src/builder/decide.ts";
 import { comparisonsOf, crashedRun } from "#src/builder/ground.ts";
 import { campaignOf } from "#src/builder/handover.ts";
 import { type Decided, short } from "#src/builder/move.ts";
@@ -336,6 +336,7 @@ const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
     // throw after it began is the environment's ending, as an action's is (`actionTool`).
     const done = work
       .then(() => waitCrashed(context.log, context.seats.host))
+      .then(() => releaseOwed(context, bench))
       .catch(async (error: unknown) => {
         if (await waitOut(context.log, error, context.seats.host)) return;
         context.failed = { move: "examine", why: errorMessage(error) };
@@ -352,33 +353,62 @@ const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
 
 const releaseTool = (context: CampaignContext, bench: Bench): AgentTool =>
   actionTool(context, bench, RELEASE, async (turn, decided, begin) => {
-    const { values } = context;
     // Where the table names no release, the practice named is brought up for this epoch alone, as
-    // far as the epoch's room for practice goes (`epochReleased`).
-    const named = Number(values.practice ?? PRACTICE);
-    const events = read(context.log);
-    const owed = named - Math.min(named, epochReleased(events).epoch);
+    // far as the epoch's room for practice goes (`practiceOwed`).
+    const before = taskSets(read(context.log)).released.length;
     const practice =
-      (decided.move === "prepare" ? decided.practice : undefined) ??
-      taskSets(events).released.length + Math.min(owed, practiceRoom(events, turn.plan.wanted.level));
-    const result = await prepareCommand([
-      ...packOf(values),
-      "--practice",
-      String(practice),
-      // The campaign's terms, so what it prints of a comparison's size is the campaign's.
-      ...(["solves", "level"] as const).flatMap((name) => flag(name, values[name])),
-    ]);
-    if (result !== 0) throw new Error("the practice release was refused");
-    await refreshCampaign(context, bench);
-    const released = taskSets(read(context.log)).released.length;
+      (decided.move === "prepare" ? decided.practice : undefined) ?? before + owedOf(context, turn);
+    const released = await releaseTo(context, bench, practice);
     // A release that took nothing is no move (AGENTS.md, section 4): until 20 October it was
     // recorded and counted, and a conversation of such calls never read as idle.
-    if (released === taskSets(events).released.length) {
+    if (released === before) {
       return { refused: `No practice task can be released now: ${String(released)} tasks available.` };
     }
     begin({});
     return { said: `Practice release completed: ${String(released)} tasks available.` };
   });
+
+/** The practice the campaign names that its epoch is still owed (`practiceOwed`). */
+const owedOf = ({ values }: CampaignContext, { events, plan }: Turn): number =>
+  practiceOwed(events, Number(values.practice ?? PRACTICE), plan.wanted.level);
+
+/** Brings the released tasks up to `practice` through the release command, refreshes the
+ *  Builder's workspace, and returns how many are released. */
+async function releaseTo(context: CampaignContext, bench: Bench, practice: number): Promise<number> {
+  const result = await prepareCommand([
+    ...packOf(context.values),
+    "--practice",
+    String(practice),
+    // The campaign's terms, so what it prints of a comparison's size is the campaign's.
+    ...(["solves", "level"] as const).flatMap((name) => flag(name, context.values[name])),
+  ]);
+  if (result !== 0) throw new Error("the practice release was refused");
+  await refreshCampaign(context, bench);
+  return taskSets(read(context.log)).released.length;
+}
+
+/**
+ * The practice an epoch is owed, released by the host as an Examiner session beside the
+ * conversation ends, as the command releases it before a Builder session between conversations
+ * (`toPractise`, `SETUP`). One conversation spans epochs, and until 21 October only the Builder's
+ * own `release_practice` released practice inside one: in seven buffer campaigns, 14 of 23
+ * Examiner sessions after a promotion ended with the epoch still owed 1 to 6 practice tasks, and
+ * one Opus campaign practised on 2 tasks over three epochs. It is the host's own move, on record
+ * with the hold's code, and `--moves` bounds it as any move.
+ */
+async function releaseOwed(context: CampaignContext, bench: Bench): Promise<void> {
+  if (context.failed !== null || bench.halt.signal.aborted || context.used >= context.maxMoves) return;
+  const { turn } = actionTurn(context);
+  const before = taskSets(turn.events).released.length;
+  const owed = owedOf(context, turn);
+  if (owed <= 0 || (await releaseTo(context, bench, before + owed)) === before) return;
+  context.used += 1;
+  append(context.log, MOVED, {
+    move: "prepare",
+    code: "practice",
+    why: `${String(epochReleased(turn.events).epoch)} practice tasks were released since the reference harness was last promoted, and an Examiner session beside the conversation ended: the host releases the epoch's practice`,
+  });
+}
 
 /**
  * The two harnesses a `compare` reads, and what the Builder is told of the choice. A comparison

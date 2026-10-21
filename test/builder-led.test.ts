@@ -619,10 +619,14 @@ describe("a campaign run by its live Builder", () => {
       "compare",
       "promote",
       "examine",
+      "prepare",
       "compare",
       "promote",
       "examine",
     ]);
+    // The new reference's practice is released by the host as the Examiner session beside the
+    // conversation ends: until 21 October only a Builder's own call released any inside one.
+    expect(of(name, MOVED).findLast(({ move }) => move === "prepare")).toMatchObject({ code: "practice" });
     const [first, second] = of(name, REPORTED);
     expect(of(name, CALLED).findLast(({ tool }) => tool === "compare")?.text).toContain(
       `Harness ${isString(second?.fresh) ? second.fresh.slice(0, 8) : ""} read a step against the reference, and the host has made it the campaign's reference.`,
@@ -907,7 +911,7 @@ describe("a campaign tool where the table names more than the action", () => {
       ]),
       examine: writer,
     };
-    await harnessBuilder([...seeded(name), ...FLAGS, "--moves", "9"], seats);
+    await harnessBuilder([...seeded(name), ...FLAGS, "--moves", "10"], seats);
     const [first, later] = of(name, REPORTED);
     expect(later?.fresh).not.toBe(first?.fresh);
     // The later harness is read against the promoted one, and the Builder's own call finds nothing
@@ -938,21 +942,30 @@ describe("a campaign tool where the table names more than the action", () => {
     };
     // The control reads the tasks x-1 wrote beside retained ones; the promoted harness answers
     // none of them while a valid answer to each is on record, which is room, so the table builds.
-    const ran = await harnessBuilder([...seeded(name), ...FLAGS, "--exam-tasks", "6", "--moves", "7"], seats);
-    expect(ran).toMatchObject({ move: "build" });
+    await harnessBuilder([...seeded(name), ...FLAGS, "--exam-tasks", "6", "--moves", "8"], seats);
     const [first, control] = of(name, REPORTED);
     // The table's control, as it names it: until 12 October the tool froze harness/, which was the
     // reference, the comparison was refused, and the advice stayed the same.
     expect(control).toMatchObject({ fresh: first?.old, old: first?.fresh });
     expect(of(name, "build.checkpoint")).toHaveLength(1);
     expect(said(name, "compare")[1]).toContain("the starter harness was read against it");
+    // The new reference's practice is released by the host as x-1 ends, before the control, and
+    // after the control the table builds.
+    expect(
+      of(name, MOVED)
+        .slice(6, 9)
+        .map(({ move, code }) => [move, code]),
+    ).toEqual([
+      ["prepare", "practice"],
+      ["compare", "unread"],
+      ["build", "led"],
+    ]);
     // buffer-149, 14 October: its Builder finished on the harness just promoted, and the climb
     // stopped at one step while the table named a move.
     const [stopped, closing] = said(name, "finish");
     expect(stopped).toContain("Not finished. harness/ is the harness last promoted,");
     expect(closing).not.toContain("harness last promoted");
-    // The run stops at its seventh move, inside the conversation after the control.
-    expect(of(name, FINISHED).map(({ ended }) => ended)).toEqual(["finished"]);
+    expect(of(name, FINISHED)[0]).toMatchObject({ session: "b-1", ended: "finished" });
   });
 
   it("records the Builder's comparison of a changed harness/ as its own where the table named the control", async () => {
@@ -970,7 +983,7 @@ describe("a campaign tool where the table names more than the action", () => {
       ]),
       examine: writer,
     };
-    await harnessBuilder([...seeded(name), ...FLAGS, "--exam-tasks", "6", "--moves", "8"], seats);
+    await harnessBuilder([...seeded(name), ...FLAGS, "--exam-tasks", "6", "--moves", "7"], seats);
     const [first, second] = of(name, REPORTED);
     const checkpoints = of(name, "build.checkpoint");
     // The changed working copy is what was measured, not the starter the table named.

@@ -36,6 +36,7 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
+import { waitTool } from "../builder/tools.ts";
 import { text, tool } from "../solve/answer.ts";
 import { type CheckRow, firstMessage, systemPrompt } from "./prompt.ts";
 import { gapSaid, gateAnswers, gateBilled, heard, measuredGate, TRIED, UNAFFORDED } from "./record.ts";
@@ -116,7 +117,7 @@ const GATES = {
   },
   try_task: {
     label: "Try tasks",
-    description: `Put task instances to the host's gate and return at once: the shape of each package, then up to ${String(TRIED)} solves of it by the reference harness, one at a time, as the system prompt's section on the gate says. What the gate says of each comes with a later tool result. Each instance is a family, a public input and hidden values, in the shape of the existing tasks.`,
+    description: `Put task instances to the host's gate and return at once: the shape of each package, then up to ${String(TRIED)} solves of it by the reference harness, one at a time, as the system prompt's section on the gate says. What the gate says of each comes with a later tool result, and wait returns with it. Each instance is a family, a public input and hidden values, in the shape of the existing tasks.`,
   },
 } as const;
 /** What only the checks read of an instance, as each tool that takes one describes it. */
@@ -352,6 +353,12 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal, ahead: numbe
 /** Whether the host has the tasks it asked for. */
 const supplied = (desk: Desk): boolean => desk.held.length >= desk.request.wanted;
 
+/** All of the gate, or its next word: the wall ends both, as the solves run on the session's signal. */
+async function settled(desk: Desk, until: "all" | "next"): Promise<void> {
+  const waiting = () => desk.pending.size > 0 && (until === "all" || desk.arrived.length === 0);
+  while (waiting()) await Promise.race(desk.pending);
+}
+
 /**
  * A `try_task` call's instances put to the gate without waiting on it: the line of each instance
  * not taken, and the ids of the ones whose solves now run while the session goes on. What the gate
@@ -378,7 +385,9 @@ function putAside(
   const gating =
     put.length === 0
       ? []
-      : [`${put.join(", ")}: put to the gate. What it says of each comes with a later tool result.`];
+      : [
+          `${put.join(", ")}: put to the gate. What it says of each comes with a later tool result, and wait returns with it.`,
+        ];
   return [...instances.filter(isString), ...gating].join("\n");
 }
 
@@ -623,6 +632,17 @@ export function writing(
       proposeTool(desk, gate),
       exampleTool(request.tasks),
       ...(verify === null ? [] : [tryTool(desk, verify)]),
+      ...(request.probe === null
+        ? []
+        : [
+            waitTool(
+              "Wait for the gate's next word on the instances still at it, and return with it; at once where it has said something you have not been told, or nothing is at the gate.",
+              async () => {
+                await settled(desk, "next");
+                return desk.arrived.length === 0 ? "Nothing is at the gate." : "The gate said:";
+              },
+            ),
+          ]),
     ],
     enters: `a task enters it through ${gate} alone`,
     home:
@@ -646,12 +666,7 @@ export function writing(
         last && desk.pending.size > 0 ? `${plural(desk.pending.size, "instance")} still at the gate.` : "";
       return [...desk.arrived.splice(0), waiting].filter((line) => line !== "").join("\n");
     },
-    // All of the gate, or after a turn with no call its next word; the wall ends both, as the solves run
-    // on the session's signal. Until 20 October that turn was answered at once: 57 sleeps in a shell.
-    settle: async (all: boolean) => {
-      const waiting = () => desk.pending.size > 0 && (all || desk.arrived.length === 0);
-      while (waiting()) await Promise.race(desk.pending);
-    },
+    settle: async (all: boolean) => await settled(desk, all ? "all" : "next"),
     counted: () => ({ proposed: desk.proposed, held: desk.held, refused: desk.refused }),
     result: () => ({ puts: desk.proposed, held: desk.held, refused: desk.refused }),
     // The next session's home is seeded with what the campaign keeps of the last one's.

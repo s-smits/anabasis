@@ -34,7 +34,7 @@ import { type Decided, short } from "#src/builder/move.ts";
 import { type Opening } from "#src/builder/opening.ts";
 import { comparisonsTold } from "#src/builder/past.ts";
 import type { BuildRequest } from "#src/builder/session.ts";
-import { type Bench, endingWith, snapshot } from "#src/builder/tools.ts";
+import { type Bench, endingWith, snapshot, waitTool } from "#src/builder/tools.ts";
 import { pendingWords } from "#src/builder/word.ts";
 import { examine } from "#src/examiner/session.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
@@ -346,7 +346,7 @@ const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
       });
     context.examining = { session, done };
     return {
-      said: `Examiner session ${session} is writing ${tasks === undefined ? "tasks" : plural(Number(tasks), "task")} beside this conversation: edit, release practice and practise meanwhile. A comparison or a promotion waits for it to end, and campaign_status says how many it has held out.`,
+      said: `Examiner session ${session} is writing ${tasks === undefined ? "tasks" : plural(Number(tasks), "task")} beside this conversation: edit, release practice and practise meanwhile. A comparison or a promotion waits for it to end, wait returns when it ends, and campaign_status says how many it has held out.`,
     };
   });
 
@@ -723,6 +723,15 @@ export function campaignTools(
           examining,
           ...[releaseTool, compareTool, promoteTool].map((made) => promoting(made(context, bench))),
         ].map((made) => endingWith(made, () => campaignStatus(context, bench))),
+        // On the host's time, as a comparison's wait for the same session is.
+        waitTool(
+          "Wait for the Examiner session writing beside this conversation to end, on the host's time, and return the campaign's facts; at once where none is writing.",
+          async () => {
+            const writing = context.examining;
+            if (writing != null) await bench.within(() => writing.done);
+            return campaignStatus(context, bench);
+          },
+        ),
         tool({
           name: "campaign_status",
           label: "Campaign Status",

@@ -7,7 +7,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { capturedExecPath } from "../src/meta/process.ts";
+import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 
 import { afterAll, describe, expect, it } from "bun:test";
 
@@ -53,6 +53,41 @@ it("runs after the flaky file", () => appendFileSync(${JSON.stringify(after)}, "
     ran: existsSync(after) ? readFileSync(after, "utf8").split("\n").length - 1 : 0,
   };
 }
+
+it("ends a process a test left in a group of its own, which names the suite's root", () => {
+  const work = mkdtempSync(join(fixture, "left-"));
+  const pidFile = join(work, "pid");
+  // A sleeper with the root on its command line, detached with its own stdio as the UI's browser
+  // tests start serve.ts.
+  writeFileSync(
+    join(work, "leaves.test.ts"),
+    `import { it } from "bun:test";
+import { writeFileSync } from "node:fs";
+import { tmpdir } from "${join(import.meta.dir, "..", "src", "meta", "os.ts")}";
+it("starts a server and never stops it", () => {
+  const left = Bun.spawn([process.execPath, "-e", "await Bun.sleep(300000)", tmpdir()], { detached: true, stdio: ["ignore", "ignore", "ignore"] });
+  left.unref();
+  writeFileSync(${JSON.stringify(pidFile)}, String(left.pid));
+});
+`,
+  );
+  const result = spawnTextSync(capturedExecPath, [suite, "--cwd", work, "./leaves.test.ts"], {
+    env: { ...Bun.env, ANA_TEST_WORKERS: "1" },
+    timeout: 120_000,
+  });
+  const pid = Number(readFileSync(pidFile, "utf8"));
+  const alive = () => {
+    try {
+      runtimeProcess.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const left = alive();
+  if (left) runtimeProcess.kill(pid, "SIGKILL");
+  expect({ status: result.status, left }).toEqual({ status: 0, left: false });
+});
 
 describe("the suite under ANA_TEST_BAIL", () => {
   it("runs a failure on a crowded host alone and then the whole request, which decides", () => {

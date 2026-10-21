@@ -10,7 +10,7 @@
  * lane 31 prompt carries it beside the peers' overviews.
  */
 import { gateAnswers } from "#src/examiner/record.ts";
-import { flipP, informative, type Paired, pairings, roomLeft } from "#src/kernel/compare.ts";
+import { flipP, informative, type Paired, pairings } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { pairsReported } from "#src/kernel/reports.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
@@ -225,9 +225,8 @@ function validityOf(events: readonly LogEvent[], rests: readonly Compared[]): nu
 }
 
 /** The task versions the gate held out on their author's answer alone: every reference solve
- *  valid, their measures alike, and the author's on record better than each by the floor. The gate
- *  held such drafts from 19 to 21 October (`bettered`, `compare.ts`); a log since carries no
- *  author's measure, and none is counted. */
+ *  valid, their measures alike, and the author's on record better than each, the
+ *  room `informative` reads only with the author's measure (since 19 October). */
 function authorRoom(events: readonly LogEvent[]): Set<string> {
   const answers = gateAnswers(events, -1);
   const bests = new Map<string, number>();
@@ -256,8 +255,7 @@ function authorRoom(events: readonly LogEvent[]): Set<string> {
         fresh: [],
         objective: { direction: rule, old: measures, fresh: [] },
       };
-      const best = bests.get(pair.task) ?? null;
-      return !informative(pair, "old", new Set()) && (roomLeft(pair, "old", [best]) ?? 0) > 0
+      return !informative(pair, "old", new Set()) && informative(pair, "old", new Set(), bests)
         ? [pair.task]
         : [];
     }),

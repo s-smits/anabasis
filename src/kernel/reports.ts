@@ -30,7 +30,6 @@ import {
   objectiveRuleIn,
   type Paired,
   pairsOf,
-  ROOM,
   roomLeft,
   tally,
 } from "./compare.ts";
@@ -506,8 +505,6 @@ function tallyReports(
       const cutOn = (harness: unknown): boolean =>
         isString(harness) && cut.has(cutIn(session, task, harness));
       const { wins, losses } = tally([pair]);
-      // Room under the floor decides no pair and holds no draft, so its author is told none.
-      const left = side === null ? null : roomLeft(pair, side, []);
       order += 1;
       of(task).tallied.push({
         index,
@@ -520,7 +517,7 @@ function tallyReports(
         closed: side !== null && closedTo(pair, side),
         won: wins > 0 ? "fresh" : losses > 0 ? "old" : null,
         margin: objectiveMargin(pair),
-        room: left === null || left >= ROOM ? left : 0,
+        room: side === null ? null : roomLeft(pair, side, []),
       });
     }
     for (const task of Array.isArray(data.aside) ? data.aside.filter(isString) : []) {

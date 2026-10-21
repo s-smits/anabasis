@@ -10,7 +10,7 @@
  * lane 31 prompt carries it beside the peers' overviews.
  */
 import { gateAnswers } from "#src/examiner/record.ts";
-import { flipP, informative, type Paired, pairings, ROOM, roomLeft } from "#src/kernel/compare.ts";
+import { flipP, informative, type Paired, pairings, roomLeft } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { pairsReported } from "#src/kernel/reports.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
@@ -257,7 +257,7 @@ function authorRoom(events: readonly LogEvent[]): Set<string> {
         objective: { direction: rule, old: measures, fresh: [] },
       };
       const best = bests.get(pair.task) ?? null;
-      return !informative(pair, "old", new Set()) && (roomLeft(pair, "old", [best]) ?? 0) >= ROOM
+      return !informative(pair, "old", new Set()) && (roomLeft(pair, "old", [best]) ?? 0) > 0
         ? [pair.task]
         : [];
     }),

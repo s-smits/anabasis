@@ -344,17 +344,14 @@ export function informative(pair: Paired, side: "old" | "fresh", feasible: Reado
  * leaves room only where another harness's solve has beaten it.
  */
 function bettered(pair: Paired, side: "old" | "fresh"): boolean {
-  const rule = pair.objective;
-  if (rule === undefined) return false;
-  const left = roomLeft(pair, side, rule[side === "old" ? "fresh" : "old"]) ?? 0;
-  return left > 0 && left >= ROOM;
+  return (roomLeft(pair, side, pair.objective?.[side === "old" ? "fresh" : "old"] ?? []) ?? 0) > 0;
 }
 
-/** The most that a measure on record, one of the side's own or one `against` it, is better by than
- *  one of the side's own valid answers, as a share of the larger magnitude: the room the task
- *  leaves that harness, which `bettered` holds to the floor. Null where the pair carries no
- *  objective or the side no measure. Its author is told it against its own answer alone, since the
- *  other harness's answers are its result on the task (`exam-results`). */
+/** The most that a measure, one of the side's own or one `against` it, is better by than one of
+ *  the side's own valid answers, as a share of the larger magnitude, where that reaches the floor
+ *  (`ROOM`), and 0 under it: the room the task leaves that harness. Null where the pair carries no
+ *  objective or the side no measure. Its author is told it against the side's own answers alone,
+ *  since the other harness's answers are its result on the task (`exam-results`). */
 export function roomLeft(
   pair: Paired,
   side: "old" | "fresh",
@@ -364,7 +361,8 @@ export function roomLeft(
   const own = rule?.[side].filter(isNumber) ?? [];
   if (rule === undefined || own.length === 0) return null;
   const known = [...own, ...against.filter(isNumber)];
-  return Math.max(...own.flatMap((mine) => known.map((other) => gainOver(rule, other, mine) ?? 0)));
+  const most = Math.max(...own.flatMap((mine) => known.map((other) => gainOver(rule, other, mine) ?? 0)));
+  return most >= ROOM ? most : 0;
 }
 
 /** How much better `one` is than `other` by the objective, as a share of the larger magnitude:
@@ -420,22 +418,29 @@ export function pairings(pair: Paired) {
   };
 }
 
-/** How many of `pairs` the objective decided: tasks won or lost that would tie on validity alone. */
+/** Whether the objective decided a task's pairings: they read otherwise on validity alone. */
+function byObjective({ fresh, old, validity }: ReturnType<typeof pairings>): boolean {
+  return Math.sign(fresh - old) !== Math.sign(validity.fresh - validity.old);
+}
+
+/** How many of `pairs` the objective decided (`byObjective`). */
 export function decidedByObjective(pairs: readonly Paired[]): number {
-  return pairs.filter((pair) => {
-    const { fresh, old, validity } = pairings(pair);
-    return Math.sign(fresh - old) !== Math.sign(validity.fresh - validity.old);
-  }).length;
+  return pairs.filter((pair) => byObjective(pairings(pair))).length;
+}
+
+/** How much better the new side's median valid measure is than the reference's, as a share of the
+ *  larger magnitude; null where the pair carries no objective or a side no measure. */
+function medianGain(pair: Paired): number | null {
+  const rule = pair.objective;
+  if (rule === undefined) return null;
+  return gainOver(rule, median(rule.fresh.filter(isNumber)), median(rule.old.filter(isNumber)));
 }
 
 /** How far apart the two sides' median valid measures were where the objective alone decided a
  *  task, as a share of the larger magnitude; null where validity decided it, or it tied. */
 export function objectiveMargin(pair: Paired): number | null {
-  const { fresh, old, validity } = pairings(pair);
-  const rule = pair.objective;
-  if (rule === undefined || fresh === old) return null;
-  if (Math.sign(fresh - old) === Math.sign(validity.fresh - validity.old)) return null;
-  const gain = gainOver(rule, median(rule.fresh.filter(isNumber)), median(rule.old.filter(isNumber)));
+  const counted = pairings(pair);
+  const gain = counted.fresh !== counted.old && byObjective(counted) ? medianGain(pair) : null;
   return gain === null ? null : Math.abs(gain);
 }
 
@@ -450,10 +455,7 @@ export function objectiveMargin(pair: Paired): number | null {
 export function objectiveGain(pairs: readonly Paired[]): Gain | null {
   const gains = pairs.flatMap((pair) => {
     const { fresh, old } = pairings(pair);
-    const rule = pair.objective;
-    if (rule === undefined || fresh <= old) return [];
-    const [mine, theirs] = [median(rule.fresh.filter(isNumber)), median(rule.old.filter(isNumber))];
-    const gain = gainOver(rule, mine, theirs);
+    const gain = fresh > old ? medianGain(pair) : null;
     return gain === null ? [] : [gain];
   });
   const middle = median(gains);

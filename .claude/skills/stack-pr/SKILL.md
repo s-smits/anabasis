@@ -295,12 +295,12 @@ fix keep their passes.
 
 `--merge` dispatches `ci.yml` on the top's head before the proof when no run is there, and waits
 for it after; a failed run is not dispatched again. It then reads every head again, posts
-`ana/stack-gate` on each, and merges bottom-up, each pull request based on `main` just before its
-merge and pinned to its gated head. A native GitHub stack merges whole through its asynchronous
-stack merge; the returned merge commit must have the top's tree. A refused merge stops the
-landing, says which merged, and sets `ana/stack-gate` back to pending on every head left open.
-An uncertain native merge leaves the statuses in place and asks for the trunk to be read before
-another landing. Test `land` against a fake `gh`
+`ana/stack-gate` on each, and merges the top through GitHub's asynchronous merge, pinned to its
+gated head, which merges the native stack beneath it all or nothing; the returned merge commit
+must have the top's tree. A landing of several pull requests outside a native stack is refused
+before the proof, with the `gh stack link` line that makes one. A refused merge sets
+`ana/stack-gate` back to pending on every head. An uncertain merge, or one that went into a merge
+queue, leaves the statuses in place and asks for the trunk to be read before another landing. Test `land` against a fake `gh`
 only (`test/land.test.ts`); never against this repository.
 
 ## Report

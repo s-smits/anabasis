@@ -1488,18 +1488,19 @@ In practice:
   each head to contain the one beneath it, and proves every commit it would publish over its own
   checkout, with the whole gate on the top's head. `--sanitize` stops there and posts each verdict
   as the status `ana/commit`. `--merge` also waits for `ci.yml` on the top's head, posts
-  `ana/stack-gate` on every head, and merges bottom-up, each pull request rebased onto `main` just
-  before its merge and pinned to its gated head. A landing that GitHub holds as a native stack
-  merges whole through the stack's own merge, since GitHub refuses to merge a single member, and
-  the merge commit's tree must match the top's.
+  `ana/stack-gate` on every head, and merges the top through GitHub's asynchronous merge, pinned to
+  its gated head, which merges the native stack beneath it all or nothing; the merge commit's tree
+  must match the top's. A landing of several pull requests is refused unless they are one native
+  stack, its members up to the top the chain of bases.
 - **A restack makes the stack one chain again** (restack, linearize, quench, drain): each pull
   request that left the chain is replayed onto the head beneath it, based there and added to the
   native stack. Resolve conflicts hunk by hunk, never by taking one side's file whole, which drops
   the other side's hunks, and push each moved branch through the gate with a lease.
 - **The native stack.** Setting a base alone leaves a pull request outside GitHub's stack ("can be
-  stacked"). `gh api repos/{owner}/{repo}/stacks` lists the stacks; a POST there creates one; append
-  above its top, bottom-up: `gh api -X POST repos/{owner}/{repo}/stacks/<n>/add -F
-  'pull_requests[]=<pr>'`.
+  stacked"). `gh stack link <pr> <pr> ...` (the `gh-stack` extension) makes one, bottom to top, and
+  `gh stack link <stack> <pr>` appends above its top; it never removes or reorders a member, and it
+  sets the bases. `gh stack unstack <stack>` dissolves a whole stack. `gh api
+  repos/{owner}/{repo}/stacks` lists them.
 
 A commit subject is one imperative sentence that states the finished change: "Refuse a comparison
 on a checker nobody has read". The body says what was wrong and what happens now, with the counts

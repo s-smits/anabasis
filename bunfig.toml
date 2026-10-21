@@ -1,0 +1,3 @@
+[install]
+# A dependency is installed only once its version has been published for a day (operator, 21 October).
+minimumReleaseAge = 86400

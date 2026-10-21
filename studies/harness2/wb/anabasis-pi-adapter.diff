@@ -1,0 +1,23 @@
+--- a/src/workbuddy_bench/runner/harness_adapters.py
++++ b/src/workbuddy_bench/runner/harness_adapters.py
+@@ -125,6 +125,20 @@
+         proxy_url_env="",
+         uses_anthropic_env=False,
+     ),
++    # An Anabasis harness on pi's coding agent (the Anabasis study's pi_agent).
++    # ADDITIVE REGISTRATION ONLY. The agent reads the proxy from the injected
++    # ``connection`` kwarg, as cbc_agent does, and refuses a direct connection,
++    # so no env carries the proxy address and the backend key never enters the
++    # container; the env names keep DIRECT-mode exports and log display coherent.
++    "anabasis-pi": HarnessRuntimeAdapter(
++        harness_name="anabasis-pi",
++        canonical_display_name="Anabasis on pi",
++        harness_protocol="openai",
++        backend_base_env="PI_BASE_URL",
++        backend_key_env="PI_API_KEY",
++        proxy_url_env="",
++        uses_anthropic_env=False,
++    ),
+ }
+ 
+ 

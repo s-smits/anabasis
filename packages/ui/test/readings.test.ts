@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { epochsOf } from "../../../src/builder/climb.ts";
 import { reported, toLabel } from "../../../src/builder/comparison.ts";
 import { campaignOf } from "../../../src/builder/handover.ts";
-import { pairings } from "../../../src/kernel/compare.ts";
+import { differenceOf } from "../../../src/kernel/compare.ts";
 import { LOG_FILE, read } from "../../../src/kernel/log.ts";
 import { billedAll, billedParts, lastReports } from "../../../src/kernel/reports.ts";
 import {
@@ -22,7 +22,6 @@ import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../../../
 import { asRecord, isString, type JsonObject } from "../../../src/meta/json-shape.ts";
 import { tmpdir } from "../../../src/meta/os.ts";
 import { join } from "../../../src/meta/path.ts";
-import { overview } from "../../../tools/wri/read.ts";
 import { SEED_FILE } from "../../../tools/runs/registry.ts";
 import { spawnTextSync } from "../../../test/helpers/bun-spawn-sync.ts";
 import {
@@ -37,7 +36,6 @@ import {
 } from "../src/models.ts";
 import { handleApiRequest } from "../src/server/api.ts";
 import { campaignsFound, loaded } from "../src/server/logs.ts";
-import { triggerKeepsRulings } from "../src/server/withheld.ts";
 import { type Fixture, MARKERS, writeFixtureCampaign } from "./fixture-campaign.ts";
 
 /** A copy of the fixture's root, and its campaign's folder. */
@@ -348,11 +346,11 @@ describe("what a comparison came to", () => {
     if (detail.kind !== "comparison") throw new Error("b-1 is a comparison");
     const told = detail.tasks.map(({ taskId, outcome, old, fresh }) => {
       const [before, after] = [old.map(({ id }) => valid(id)), fresh.map(({ id }) => valid(id))];
-      const won = pairings({ task: "", old: before, fresh: after });
+      const difference = differenceOf({ task: "", old: before, fresh: after });
       const reference = before.filter(Boolean).length;
       let expected: Outcome = reference === before.length ? "tiedEvery" : "tiedSome";
       if (reference === 0) expected = "tiedNone";
-      if (won.fresh !== won.old) expected = won.fresh > won.old ? "won" : "lost";
+      if (difference !== 0) expected = difference > 0 ? "won" : "lost";
       return [taskId, outcome === "aside" ? "aside" : expected, outcome];
     });
     expect(told.map(([taskId, , outcome]) => [taskId, outcome])).toEqual(
@@ -378,7 +376,7 @@ describe("what a comparison came to", () => {
     expect(detail.tasks.map(({ withheld }) => withheld)).toEqual(["report", null, null]);
   });
 
-  test("counts an A/A reading as a step where either sample wins by the level, as the whole-run reader does", async () => {
+  test("counts an A/A reading as a step where either sample wins by the level", async () => {
     const units = `${KEY.split("/")[0] ?? ""}/${fixture.units}`;
     const { answer: reading } = await ask("campaign", { key: units }, "default");
     const control = reading.comparisons.find(({ noise }) => noise !== null);
@@ -387,14 +385,7 @@ describe("what a comparison came to", () => {
       { wins: 0, losses: 4, ties: 0 },
       true,
     ]);
-    const false_steps = overview(
-      read(join(fixture.root, ".ana", "d2", fixture.units, "log.jsonl")),
-    ).triggers.filter(
-      ({ name, detail }) =>
-        name === "REFERENCE AGAINST ITSELF" && detail.includes("reads a step where none can be"),
-    );
-    expect([reading.counters.controls, reading.counters.controlSteps]).toEqual([1, false_steps.length]);
-    expect(false_steps.length).toBe(1);
+    expect([reading.counters.controls, reading.counters.controlSteps]).toEqual([1, 1]);
   });
 
   test("says apart the two things that wait for a person's label: tasks, and set-aside rejections of unsettled comparisons", async () => {
@@ -561,36 +552,6 @@ describe("the rulings and the endings each tier may see", () => {
         row: false,
       });
     }
-  });
-
-  test("leaves out the reader's count of set-aside rejections by side for a comparison whose rulings are withheld", async () => {
-    for (const tier of ["default", "exam"] as const) {
-      const { answer: reading } = await ask("campaign", { key: KEY }, tier);
-      const sides = reading.reader.triggers.flatMap(({ name, detail }) =>
-        name === "SET ASIDE BY SIDE" ? [detail.split(": ")[0]] : [],
-      );
-      const withheld = new Set(
-        reading.comparisons.flatMap(({ id, rulings }) => (rulings.withheld ? [id] : [])),
-      );
-      expect(sides.filter((id) => withheld.has(id ?? ""))).toEqual([]);
-    }
-  });
-
-  test("leaves out the reader's counts over every ruling while any ruling of the log is withheld", () => {
-    // The fixture's reader fires neither count, so the rule is asked directly: of the main
-    // campaign, which holds withheld rulings, and of the one with no comparison, which holds none.
-    const found = campaignsFound({ repo: fixture.root, trees: "directory" }).found;
-    const logOf = (name: string) => {
-      const campaign = found.find((each) => each.name === name);
-      const log = campaign === undefined ? null : loaded(campaign).log;
-      if (log === null) throw new Error(`no log of ${name}`);
-      return log;
-    };
-    for (const name of ["EARNED WITHOUT A PROBE", "REPLAY MOVED THE VERDICT"] as const) {
-      expect(triggerKeepsRulings(logOf(fixture.name), { name, detail: "1 of 3" })).toBe(false);
-      expect(triggerKeepsRulings(logOf(fixture.early), { name, detail: "1 of 3" })).toBe(true);
-    }
-    expect(triggerKeepsRulings(logOf(fixture.name), { name: "NO PRACTICE", detail: "b-1: 1" })).toBe(true);
   });
 
   test("shows a campaign finished by its Builder as ended", async () => {

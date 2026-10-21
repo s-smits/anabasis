@@ -2,3 +2,7 @@
 # brief of 11 October. No environment variable is inlined into the page.
 [serve.static]
 env = "disable"
+
+[install]
+# A dependency is installed only once its version has been published for a day (operator, 21 October).
+minimumReleaseAge = 86400

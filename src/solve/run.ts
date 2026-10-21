@@ -19,14 +19,7 @@
  * - A failed model turn ends the attempt as the provider's non-result, which `solve` runs again whole;
  *   v1 nudged once more into the same session unless the failure repeated.
  */
-import {
-  type AgentEvent,
-  type AgentMessage,
-  type AgentToolResult,
-  type PrepareRequest,
-  runAgentLoop,
-  type StreamFn,
-} from "@earendil-works/pi-agent-core";
+import { type AgentMessage, runAgentLoop, type StreamFn } from "@earendil-works/pi-agent-core";
 import {
   type Api,
   type AssistantMessage,
@@ -37,18 +30,15 @@ import {
   toToolDeclaration,
   type Usage,
 } from "@earendil-works/pi-ai";
-import { CLAUDE_COMPACTED, reportedCost, resetOf } from "../backends/claude.ts";
-import { CALL_RETRIED } from "../backends/models.ts";
-import { type Compacted, compactBeforeRequest } from "../backends/pi-compaction.ts";
+import { resetOf } from "../backends/claude.ts";
 import type { Limits } from "../kernel/condition.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { append } from "../kernel/log.ts";
-import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
-import { type Ending, providerFailed, windowEnded } from "../kernel/solve.ts";
+import { priceKey } from "../kernel/meter.ts";
+import { type Ending, unanswered } from "../kernel/solve.ts";
 import type { Task, Verifier } from "../kernel/verify.ts";
-import { boundText } from "../meta/bounded-text.ts";
 import { lstatSync, rmSync } from "../meta/filesystem.ts";
-import type { JsonObject, JsonValue } from "../meta/json-shape.ts";
+import type { JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { availableParallelism, loadavg } from "../meta/os.ts";
 import { join } from "../meta/path.ts";
@@ -72,6 +62,7 @@ import {
 import { type Harness, harnessTools, openHarness, pathsUnder } from "./harness.ts";
 import { installedPrograms } from "./programs.ts";
 import { firstTurn, NUDGE, type PublicTask, seedHome, systemPrompt } from "./prompt.ts";
+import { loopCompaction, spentBy, traceSink } from "./seat.ts";
 
 export interface SolveRequest {
   /** Names the solve in the log; each attempt is `<id>-<attempt>`. */
@@ -102,10 +93,6 @@ export interface SolveRequest {
   /** Aborts when the run is killed. */
   readonly kill?: AbortSignal;
 }
-
-/** Whose trace a log holds: a solve's, a Builder's session, an Examiner's that writes tasks, or
- *  the one in which it drafts the exam. The word prefixes the event kinds (`draft.turn`). */
-type Traced = "solve" | "build" | "exam" | "draft";
 
 /** What a solve has used of its limits, as its tools are told to say it. */
 export interface Used {
@@ -140,10 +127,6 @@ export interface Played {
 }
 
 const RERUNS = 3;
-/** The text of a result or a turn the trace keeps: more than pi's own tools return of an output
- *  (50 KB), so the trace holds what the solver read. At 4 KB, as v1 cut its traces, it held the
- *  head of a long result, and whoever read a fail afterwards read less than the solver had. */
-const TRACE_TEXT_BYTES = 64 * 1024;
 /** The wait before rerun `rerun`, cut short by the solve's kill. */
 const backoff = (rerun: number, kill?: AbortSignal) =>
   new Promise<void>((done) => {
@@ -185,15 +168,11 @@ async function attemptSolve(request: SolveRequest, id: string): Promise<Ending> 
   });
   const played = await play(request, id);
   const ending = await judge(request, id, played);
-  const tokens = tokensOf([...played.turns.map((turn) => turn.usage), ...played.summaries]);
   append(log, "solve.finished", {
     solve: id,
     ending,
-    turns: played.turns.length,
+    ...(await spentBy(model, id, played.turns, played.summaries)),
     prompts: played.prompts,
-    tokens: { ...tokens },
-    ...dollars(freezePrices([model]), priceKey(model), tokens),
-    reportedCost: await reportedCost(id, played.turns),
     responseModels: [...new Set(played.turns.flatMap((turn) => turn.responseModel ?? []))],
     harness: played.harness,
     homeBytes: played.homeBytes,
@@ -377,85 +356,6 @@ export async function solverTools(
   return [...coding, ...domain, submitTool(desk, request.contract, wall.dirs.home, wallExec(wall))];
 }
 
-/** What the provider said when it failed a session's last turn, or null. pi's loop ends there
- *  without a throw, and what the session made before it is half a session, as a crash's is. A turn
- *  the session's own wall, kill or halt cut ends the same way and is not that: the caller says. */
-export function failedTurn(turns: readonly AssistantMessage[]): string | null {
-  const last = turns.at(-1);
-  return last?.stopReason === "error" ? (last.errorMessage ?? "the provider failed the turn") : null;
-}
-
-/** Every model turn and every tool call into the log, as they end: a solve's as `solve.turn` and
- *  `solve.call` under `solve`, a Builder's or an Examiner's session as `build.`, `exam.` or
- *  `draft.turn` and `.call` under `session`. */
-export function traceSink(log: string, of: Traced, id: string, turn: () => number) {
-  const named = of === "solve" ? { solve: id } : { session: id };
-  const calls = new Map<string, { args: JsonValue; at: number }>();
-  return (event: AgentEvent) => {
-    if (event.type === "tool_execution_start") {
-      // SAFETY: arguments a provider parsed from JSON.
-      calls.set(event.toolCallId, { args: event.args as JsonValue, at: performance.now() });
-    } else if (event.type === "tool_execution_end") {
-      const call = calls.get(event.toolCallId);
-      calls.delete(event.toolCallId);
-      append(log, `${of}.call`, {
-        ...named,
-        turn: turn(),
-        tool: event.toolName,
-        args: call?.args ?? null,
-        isError: event.isError,
-        // SAFETY: pi passes the tool's result, or the error result it built for the call.
-        text: traceText((event.result as AgentToolResult).content),
-        ms: call === undefined ? null : performance.now() - call.at,
-      });
-    } else if (event.type === "turn_end" && event.message.role === "assistant") {
-      const { stopReason, errorMessage: error, responseModel, usage, content, diagnostics } = event.message;
-      // Claude Code compacts in its own CLI, before the turn; its summary is in the query's cost.
-      for (const { type, details } of diagnostics ?? []) {
-        if (type !== CLAUDE_COMPACTED) continue;
-        // SAFETY: the backend's own diagnostic, numbers and null.
-        append(log, `${of}.compacted`, { ...named, ...(details as JsonObject), usages: [], error: null });
-      }
-      append(log, `${of}.turn`, {
-        ...named,
-        turn: turn(),
-        stopReason,
-        error: error ?? null,
-        responseModel: responseModel ?? null,
-        usage: { ...usage },
-        text: traceText(content),
-        // `retried`, on a turn whose call a pi-served provider made again (`CALL_RETRIED`).
-        ...diagnostics?.find(({ type }) => type === CALL_RETRIED)?.details,
-      });
-    }
-  };
-}
-
-/** The `prepareRequest` that compacts pi's own loop through `stream` (`pi-compaction.ts`): each
- *  compaction into the log as `<of>.compacted`, between the turns it came between, and its
- *  summary's usage into `summaries`, which the session's spend counts. */
-export function loopCompaction(
-  log: string,
-  of: Traced,
-  id: string,
-  stream: StreamFn,
-  summaries: Usage[],
-): PrepareRequest {
-  return compactBeforeRequest(stream, ({ usages, ...compacted }: Compacted) => {
-    summaries.push(...usages);
-    append(log, `${of}.compacted`, {
-      ...(of === "solve" ? { solve: id } : { session: id }),
-      ...compacted,
-      usages: usages.map((usage) => ({ ...usage })),
-    });
-  });
-}
-
-function traceText(content: readonly { type: string; text?: string }[]): string {
-  const text = content.flatMap((block) => (block.type === "text" ? [block.text ?? ""] : [])).join("\n");
-  return boundText(text, TRACE_TEXT_BYTES).text;
-}
-
 /** The ending of what was played. A kill or a harness that moved voids it; otherwise an answer the
  *  host holds is judged whatever failed after it was submitted, as v1's close rule had it, a flag
  *  the host holds ends it flagged, and a last turn the provider failed is a non-result. The
@@ -494,22 +394,11 @@ export async function judge(request: SolveRequest, id: string, played: Played): 
   if (played.flagged !== undefined) return { outcome: "flagged", reason: played.flagged };
   if (played.crash !== null) return { outcome: "non-result", kind: "sandbox-crash", reason: played.crash };
   if (played.broken !== null) return { outcome: "fail", kind: "broken-harness", reason: played.broken };
-  if (played.wallEnded) return { outcome: "fail", kind: "wall-ended" };
-  const last = played.turns.at(-1);
-  // A last turn the provider failed is the provider's, though it was the last the solve was
-  // allowed: until 14 October it was read as the solver's loss at its turns (`turns-ended`). A
-  // context the solver filled is its own, and comes as an error too.
-  if (last !== undefined && providerFailed(last)) {
-    return {
-      outcome: "non-result",
-      kind: "provider",
-      reason: last.errorMessage ?? "the provider failed the turn",
-    };
-  }
-  // A full context or a cut reply is the window's, the last allowed turn included (`windowEnded`).
-  if (last !== undefined && windowEnded(last)) return { outcome: "fail", kind: "context-ended" };
-  if (played.turnsEnded) return { outcome: "fail", kind: "turns-ended" };
-  return { outcome: "fail", kind: "no-answer" };
+  return unanswered({
+    wallEnded: played.wallEnded,
+    turnsEnded: played.turnsEnded,
+    last: played.turns.at(-1),
+  });
 }
 
 /** Each entry under `dir` by path, size and modification time, links unfollowed. */

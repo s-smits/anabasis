@@ -5,8 +5,8 @@
  * v2 keeps one log a campaign, and every number here is a fold of it (`AGENTS.md`, section 5). Where
  * a fold's own type is plain data it is imported from the repository and passed through, never
  * declared again: a handover is `Handover` (`src/builder/handover.ts`), the set-up is `Supply`, a
- * tally is `Tally`, the reader's rows and triggers are `Row` and `Trigger`. A field the page needs
- * and no fold returns names, in its comment, the fold it is computed from.
+ * tally is `Tally`. A field the page needs and no fold returns names, in its comment, the fold it is
+ * computed from.
  *
  * Two tiers (the brief of 11 October, section 8). The default tier, a token alone, serves counts,
  * tallies, readings, digests, costs, task ids and states, a Builder session's own turns and calls, a
@@ -24,7 +24,7 @@
  * shows, never a silent empty list.
  */
 import type { Supply } from "../../../src/builder/admission.ts";
-import type { regressionOf, Share, Worth } from "../../../src/builder/climb.ts";
+import type { Share, Worth } from "../../../src/builder/climb.ts";
 import type { Handover } from "../../../src/builder/handover.ts";
 import type { Decided, Ending as CampaignEnding } from "../../../src/builder/move.ts";
 import type { Seat, Terms } from "../../../src/builder/opening.ts";
@@ -35,10 +35,9 @@ import type { EventKind } from "../../../src/kernel/log.ts";
 import type { comparedAs } from "../../../src/kernel/reports.ts";
 import type { Ending as SolveEnding } from "../../../src/kernel/solve.ts";
 import type { taskStates } from "../../../src/kernel/task.ts";
+import type { Call as TracedCall, Turn as TracedTurn } from "../../../src/kernel/trace.ts";
 import type { JsonObject, JsonValue } from "../../../src/meta/json-shape.ts";
 import type { Ruling } from "../../../src/review/referee.ts";
-import type { Trigger } from "../../../tools/wri/folds.ts";
-import type { Row } from "../../../tools/wri/read.ts";
 import { hasText } from "../../../src/meta/text.ts";
 
 export type Tone = "good" | "bad" | "warn" | "info" | "neutral";
@@ -365,47 +364,26 @@ export interface CampaignReading extends Answer {
   readonly harnesses: readonly HarnessCard[];
   readonly spend: readonly SpendPoint[];
   readonly counters: Counters;
-  /** The newest candidate read against the one before it (`regressionOf`), one line beside the
-   *  counters; null where the log holds no two candidates read against one reference. */
-  readonly regression: ReturnType<typeof regressionOf>;
-  /** The whole-run reader's rows and triggers (`overview`, `tools/wri/read.ts`), and how many of its
-   *  triggers the default tier withholds: those of the exam side's lanes, which name checks and
-   *  what they refused. */
-  readonly reader: {
-    readonly rows: readonly Row[];
-    readonly triggers: readonly Trigger[];
-    readonly withheld: number;
-  };
 }
 
 // ---------------------------------------------------------------------------------------------
 // GET /api/move?key=&move=, /api/solve?key=&id=
 
-/** One model turn of a solve or a session (`<seat>.turn`). */
-export interface Turn {
-  readonly index: number;
+/** One model turn of a solve or a session, as the kernel reads it (`traceOf`). */
+export type Turn = Pick<TracedTurn, "index" | "text" | "stopReason" | "error" | "billed"> & {
   readonly turn: number;
-  readonly text: string;
-  readonly stopReason: string | null;
-  readonly error: string | null;
-  /** The turn's metered dollars (`usage.cost.total`), null where it carries none. */
-  readonly billed: number | null;
-}
+};
 
-/** One tool call of a solve or a session (`<seat>.call`). The result is cut by the server to a
- *  readable length; `truncated` says so, and the raw event is the exam tier's `/api/event`. */
-export interface ToolCall {
-  readonly index: number;
+/** One tool call of a solve or a session, as the kernel reads it (`traceOf`). The result is cut by
+ *  the server to a readable length; `truncated` says so, and the raw event is the exam tier's
+ *  `/api/event`. */
+export type ToolCall = Pick<TracedCall, "index" | "tool" | "args" | "isError" | "ms"> & {
   /** Its number among the calls of its solve or session, from one. */
   readonly seq: number;
   readonly turn: number;
-  readonly tool: string;
-  readonly args: JsonValue;
-  readonly isError: boolean;
   readonly result: string | null;
   readonly truncated: boolean;
-  readonly ms: number | null;
-}
+};
 
 /** One solve as a list row shows it. */
 export interface SolveRow {
@@ -491,10 +469,11 @@ export interface Sensitivity {
    *  report written before 9 October. */
   readonly informative: { readonly old: number; readonly fresh: number } | null;
   /** The tied tasks no counted solve answered validly, the tallied tasks with a solve a solver
-   *  flagged, and the tallied tasks the objective decided (null where it fixed none). */
+   *  flagged, and the points each measure gave the tallied tasks (null in a report before 21
+   *  October). */
   readonly unsolved: number;
   readonly flagged: number;
-  readonly decided: number | null;
+  readonly points: { readonly validity: number; readonly objective: number; readonly bill: number } | null;
   /** The comparison of the same two harnesses before this one, and the tasks both scored. */
   readonly overlap: { readonly with: string; readonly tasks: number } | null;
   /** The mean billed dollars of a counted solve under each harness. */
@@ -515,8 +494,6 @@ export interface ComparisonDetail extends Answer {
   /** Null before it reports, and for a report that compared nothing. */
   readonly sensitivity: Sensitivity | null;
   readonly tasks: readonly ScoredTask[];
-  /** The reader's triggers of the comparison lanes, shown collapsed. */
-  readonly triggers: readonly Trigger[];
 }
 
 export type MoveDetail = SessionDetail | ComparisonDetail;

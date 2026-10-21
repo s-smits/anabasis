@@ -9,13 +9,14 @@
 import { epochsOf } from "../../../../src/builder/climb.ts";
 import { campaignOf } from "../../../../src/builder/handover.ts";
 import { openingOf } from "../../../../src/builder/opening.ts";
+import { conditionsOf } from "../../../../src/kernel/condition.ts";
 import { proposalsOf } from "../../../../src/kernel/history.ts";
 import type { LogEvent } from "../../../../src/kernel/log.ts";
 import { lastReports, poolOf, stopRule } from "../../../../src/kernel/reports.ts";
 import { practiceRan, ranUnder, solvesIn, verdictsOf } from "../../../../src/kernel/solves.ts";
 import { taskSets } from "../../../../src/kernel/task.ts";
-import { indexOf } from "../../../../tools/wri/folds.ts";
-import { overview } from "../../../../tools/wri/read.ts";
+import { tracesIn } from "../../../../src/kernel/trace.ts";
+import { countBy } from "../../../../src/meta/tally.ts";
 
 /** One log as it was read: the unit every fold below is kept for. */
 export interface Log {
@@ -44,8 +45,14 @@ export const ranIn = once(({ events }) => ranUnder(events));
 /** The practice solves (`practiceRan`), by id. */
 export const practiceIn = once(({ events }) => new Set(practiceRan(events).map(({ id }) => id)));
 export const verdictsIn = once(({ events }) => verdictsOf(events));
-export const indexIn = once(({ events }) => indexOf(events));
-export const overviewIn = once(({ events }) => overview(events));
+export const conditionsIn = once(({ events }) => conditionsOf(events));
+/** How many calls each solve made (`tracesIn`), by id. */
+export const callsIn = once(({ events }) =>
+  countBy(
+    tracesIn(events).filter(({ seat, part }) => seat === "solve" && part === "call"),
+    ({ id }) => id,
+  ),
+);
 /** The one place each held-out task has (`poolOf`): the tasks waiting for a person's label and
  *  the exhausted ones are read off it, as the supply counts them (`supplyOf`,
  *  `src/builder/admission.ts`). */

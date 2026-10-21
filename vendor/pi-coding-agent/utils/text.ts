@@ -1,4 +1,4 @@
-// Copied from pi coding-agent v1.1.0 (github.com/earendil-works/pi, abe508e1, MIT, see LICENSE):
+// Copied from pi coding-agent v1.3.0 (github.com/earendil-works/pi, 71023aec, MIT, see LICENSE):
 // packages/coding-agent/src/utils/text.ts, verbatim.
 /** Split a leading UTF-8 byte order mark from decoded text. */
 export function splitBom(content: string): { bom: string; text: string } {

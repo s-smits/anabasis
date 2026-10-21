@@ -20,7 +20,8 @@
  * report can supply a scoring set.
  */
 import { AT_A_LIMIT } from "#src/kernel/reports.ts";
-import { asRecord, isNumber, type JsonValue } from "#src/meta/json-shape.ts";
+import { type Turn, tracesIn } from "#src/kernel/trace.ts";
+import { isNumber, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy, median } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import {
@@ -29,6 +30,7 @@ import {
   type Index,
   measured,
   percent,
+  roleOf,
   type Solve,
   share,
   spendOf,
@@ -57,13 +59,6 @@ const SILENCES_NAMED = 5;
 /** Events written within this many milliseconds of a gap's end are the one move that ended it: an
  *  Examiner's turn is logged a few milliseconds after the task it proposed. */
 const BURST_MS = 1_000;
-/** The role whose turns and calls an event kind's prefix holds. A draft is an Examiner's. */
-const ROLE_OF = new Map([
-  ["solve", "solver"],
-  ["build", "builder"],
-  ["exam", "examiner"],
-  ["draft", "examiner"],
-]);
 /** Where each part of the campaign's hours starts and ends. A part a stop cut ends at the
  *  campaign's ending, or at the log's last event. */
 const SPANS = [
@@ -265,15 +260,13 @@ export function hoursLine(log: Index): string {
 function causeOf(log: Index, spans: readonly Span[], index: number, gap: number): string {
   const end = Date.parse(log.events[index]?.at ?? "");
   const burst = log.events.slice(index).filter(({ at }) => Date.parse(at) - end <= BURST_MS);
-  const role = (kind: string) => ROLE_OF.get(kind.slice(0, kind.indexOf("."))) ?? kind;
-  const command = burst.find(
-    ({ kind, data }) => kind.endsWith(".call") && isNumber(data.ms) && data.ms * 2 >= gap,
-  );
-  if (command !== undefined) return `${role(command.kind)} command`;
-  const turn = burst.find(({ kind }) => kind.endsWith(".turn"));
+  const traces = tracesIn(burst);
+  const command = traces.find((each) => each.part === "call" && each.ms !== null && each.ms * 2 >= gap);
+  if (command !== undefined) return `${roleOf(command.seat) ?? command.seat} command`;
+  const turn = traces.find((each): each is Turn => each.part === "turn");
   if (turn !== undefined) {
-    const output = asRecord(turn.data.usage)?.output;
-    return `${role(turn.kind)} turn${isNumber(output) ? ` (${output.toLocaleString("en-US")} output tokens)` : ""}`;
+    const output = turn.usage?.output;
+    return `${roleOf(turn.seat) ?? turn.seat} turn${isNumber(output) ? ` (${output.toLocaleString("en-US")} output tokens)` : ""}`;
   }
   const open = spans.some(({ from, until }) => from <= end - gap && end - gap < until);
   return open ? `before ${log.events[index]?.kind ?? ""}` : BETWEEN_MOVES;

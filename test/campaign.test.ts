@@ -37,8 +37,6 @@ import {
   refereeNamed,
   ROUND_OPTIONS,
   roundCommand,
-  gainSaid,
-  objectiveNamed,
   reportLines,
 } from "../tools/d2/round.ts";
 import { sessionCommand } from "../tools/d2/session.ts";
@@ -592,7 +590,7 @@ describe("a campaign", () => {
     // count's alone (the plan's 7.5).
     const two = { ...scored, wins: 2, ties: 0, p: 0.25, differences: [4, 1] };
     expect(reportLines({ valid, objective: null, scored: two, frontier: null, noise: null }).at(2)).toBe(
-      "its p is 0.25: the test weighs each untied task by its margin in pair wins, and where every untied task is won p is one half to the power of their count whatever the margins: 2 won read 0.25",
+      "its p is 0.25: the test weighs each untied task by its score, and where every untied task is won p is one half to the power of their count whatever the margins: 2 won read 0.25",
     );
     // The A/A beside every reading that carries one: three readings of the noise, one a line, and
     // what the tally drew, by what became of each task (the plan's 7.2 and 7.3).
@@ -620,29 +618,19 @@ describe("a campaign", () => {
       "  least detectable shift: one reading of it, two-sided at the level, detects four times in five a half that wins 90% of its untied tasks",
     );
     expect(ROUND_OPTIONS).not.toHaveProperty("budget");
-    // Where the comparison fixed an objective, how many tallied tasks it decided is said beside.
+    // Where the report carries points, the points each measure gave are said beside.
     expect(
       reportLines({
         valid: { old: [0, 0, 2], fresh: [0, 0, 2], informative: { old: 0, fresh: 0 } },
         frontier: null,
-        objective: { direction: "lower", decided: 1 },
+        objective: { direction: "lower" },
+        points: { validity: -150, objective: 225, bill: 75 },
         noise: null,
-      }).at(-1),
-    ).toBe("the objective (lower is better) decided 1 task that validity alone would have tied");
-    // Beside it, where the report carries one, the median relative gain on the won frontier tasks
-    // with a measure on both sides; nothing where none had (`gainSaid`, which the closing report
-    // prints beside a promotion's tally too).
-    expect(
-      reportLines({
-        valid: { old: [0, 0, 2], fresh: [0, 0, 2], informative: { old: 0, fresh: 0 } },
-        frontier: null,
-        objective: { direction: "lower", decided: 3, gain: { median: 0.000_007_6, tasks: 18 } },
-        noise: null,
-      }).at(-1),
-    ).toBe(
-      "the objective (lower is better) decided 3 tasks that validity alone would have tied; on the 18 won frontier tasks with a valid measure on both sides its median relative gain is 0.00076%",
-    );
-    expect(gainSaid(null)).toBe("");
+      }).slice(-2),
+    ).toEqual([
+      "the score weighs validity 0.6, the objective 0.3 and the bill 0.1, and over the tallied tasks gave the new harness -150, +225 and +75 points, a task's score running from -1000 to 1000",
+      "the objective: lower is better",
+    ]);
     const campaign = await openCampaign(ARGS);
     expect(read(campaign.log).some(({ data }) => data.session === "z-8")).toBe(false);
   });
@@ -720,15 +708,6 @@ describe("a campaign", () => {
     await expect(sessionCommand(flags, seats)).rejects.toThrow("name --builder");
     expect(against).toEqual([(await starter(campaign)).dir]);
     expect(read(campaign.log).some(({ data }) => data.session === "z-6")).toBe(false);
-  });
-
-  it("goes on with the objective a comparison began with, a floor or none", async () => {
-    const campaign = await openCampaign(ARGS);
-    // The shape a comparison begun before 21 October recorded: a direction and no floor.
-    append(campaign.log, "comparison.started", { session: "g-8", objective: { direction: "lower" } });
-    append(campaign.log, "comparison.started", { session: "g-9" });
-    expect(objectiveNamed(campaign, "g-8")).toEqual({ direction: "lower" });
-    expect(objectiveNamed(campaign, "g-9")).toBeUndefined();
   });
 
   it("refuses a labels file with an entry that is no label, and a --target that is no count", async () => {

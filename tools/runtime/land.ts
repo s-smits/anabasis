@@ -19,15 +19,16 @@
  * runner. No pull request push starts that run (since 19 October, `ci.yml`); when none exists and
  * `ci.yml` takes `workflow_dispatch`, `--merge` dispatches one before gating, so it runs meanwhile,
  * and waits for it after. No pull request merges before that run has passed. A failed run is not dispatched again, since nothing about its head changed. Then, on heads
- * read again, it posts `ana/stack-gate` on every head and merges the pull requests bottom-up through
- * GitHub, each pinned to its gated head, so each ends Merged; a local merge pushed to main left 98
- * pull requests open on 21 September 2026. The repository does not delete a merged branch, so
- * GitHub does not retarget the next pull request itself, and each is based on main just before its
- * merge. A merge that does not go through sets the status of every head left open back to pending.
- * A landing GitHub holds as one of its own stacks merges whole instead, through the stack's
- * asynchronous merge of everything up to the top, which commits all or nothing: GitHub refuses the
- * pull request's own merge for a stack's member (HTTP 403), and on 14 October that left stack 160,
- * #150 to #166, open after every one of its 64 commits had passed.
+ * read again, it posts `ana/stack-gate` on every head and merges through GitHub, so each pull request
+ * ends Merged; a local merge pushed to main left 98 pull requests open on 21 September 2026. The
+ * merge is GitHub's asynchronous merge of the top, pinned to the top's gated head, which merges
+ * everything beneath it in the native stack all or nothing: GitHub refuses the pull request's own
+ * merge for a stack's member (HTTP 403), and on 14 October that left stack 160, #150 to #166, open
+ * after every one of its 64 commits had passed. So a landing of several pull requests has to be one
+ * native stack, its members up to the top the chain of bases (`gh stack link` makes one). Until 21
+ * October a chain outside a stack was merged one pull request at a time, each retargeted to main
+ * first; every landing since 14 October went through a stack. A merge that does not go through sets
+ * the status of every head back to pending.
  *
  * A failure names the commit and the pull request it sits on. Its fix goes into that commit, the
  * pull requests above it are replayed on it (stack-pr, section 8), and a second landing runs only
@@ -68,13 +69,9 @@ const CI_WORKFLOW = "ci.yml";
 const CI_POLL_MS = Number(runtimeProcess.env.ANA_CI_POLL_MS) || 20_000;
 /** `ci.yml`'s jobs stop at 45 minutes; the rest is the macOS runner's queue. */
 const CI_WAIT_MS = 75 * 60_000;
-/** GitHub answers `mergeable: null` while it computes a pull request's mergeability after its base
- *  moved, and a merge asked for meanwhile is refused. */
-const MERGEABLE_POLL_MS = 2000;
-const MERGEABLE_WAIT_MS = 2 * 60_000;
 /** A stack's merge is queued on GitHub's side and read back until it ends; stack 160's took a
  *  second. ANA_CI_POLL_MS shortens the poll for the tests as for `ci.yml`. */
-const STACK_POLL_MS = Number(runtimeProcess.env.ANA_CI_POLL_MS) || MERGEABLE_POLL_MS;
+const STACK_POLL_MS = Number(runtimeProcess.env.ANA_CI_POLL_MS) || 2000;
 const STACK_WAIT_MS = 10 * 60_000;
 const USAGE = "usage: bun run land -- <pull request> [--sanitize | --merge] [--jobs N]";
 
@@ -240,21 +237,11 @@ async function awaitCi(root: string, top: Pull): Promise<void> {
   );
 }
 
-/** Whether GitHub calls the pull request mergeable, once it has finished computing it. */
-async function mergeable(root: string, pull: Pull): Promise<boolean> {
-  const deadline = Date.now() + MERGEABLE_WAIT_MS;
-  for (;;) {
-    const read = gh(root, ["api", api(`pulls/${String(pull.number)}`), "--jq", ".mergeable"]);
-    if (read.out === "true" || read.out === "false" || Date.now() >= deadline) return read.out === "true";
-    await Bun.sleep(MERGEABLE_POLL_MS);
-  }
-}
-
-/** The open native stack GitHub holds the top in, or undefined where there is none or GitHub did
- *  not say: a member of a stack that is merged alone is refused (HTTP 403), so a stack the read
- *  missed still merges nothing. The stack merges everything up to the top, so its members up to
- *  the top have to be the landing's pull requests, bottom to top. */
-function stackOf(root: string, landing: Landing): number | undefined {
+/** The open native stack GitHub holds the top in, or null for a landing of one pull request that is
+ *  in none. The stack merges everything up to the top, so its members up to the top have to be the
+ *  landing's pull requests, bottom to top; a landing of several outside a stack, or one GitHub did
+ *  not say, is refused, since the top's merge would merge it alone into its base. */
+function stackOf(root: string, landing: Landing): number | null {
   // SAFETY: a landing holds at least the pull request it was named by.
   const top = landing.pulls.at(-1) as Pull;
   const read = gh(root, [
@@ -263,7 +250,16 @@ function stackOf(root: string, landing: Landing): number | undefined {
     "--jq",
     String.raw`map(select(.open)) | first // empty | "\(.number) \(.pull_requests | map(.number) | join(","))"`,
   ]);
-  if (!read.ok || read.out === "") return undefined;
+  if (!read.ok) {
+    throw new Refusal(`GitHub did not say which stack #${String(top.number)} is in: ${read.err} Land again.`);
+  }
+  if (read.out === "" && landing.pulls.length === 1) return null;
+  if (read.out === "") {
+    throw new Refusal(
+      `${numbers(landing.pulls)} are in no stack on GitHub. Make them one, bottom to top, with ` +
+        `gh stack link ${landing.pulls.map((pull) => String(pull.number)).join(" ")}, and land again.`,
+    );
+  }
   const [stack = "", listed = ""] = read.out.split(" ");
   const members = listed.split(",");
   const upTo = members.slice(0, members.indexOf(String(top.number)) + 1);
@@ -276,20 +272,20 @@ function stackOf(root: string, landing: Landing): number | undefined {
   return Number(stack);
 }
 
-/** Merges a stack through the top whole, as GitHub's asynchronous merge does, all or nothing, and
- *  reads it back until it ends. `refused` means nothing merged; `unsure` that something may have,
- *  or merged to a tree other than the top's, which is the one the gate read: that merge takes no
- *  head to pin. */
+/** Merges the top, with the stack beneath it, as GitHub's asynchronous merge does, all or nothing,
+ *  pinned to the top's gated head, and reads it back until it ends. `refused` means nothing merged;
+ *  `unsure` that something may have, went into a merge queue (a merge request ends there), or merged
+ *  to a tree other than the top's, which is the one the gate read. */
 async function mergeStack(
   root: string,
   landing: Landing,
-  stack: number,
+  stack: number | null,
 ): Promise<"merged" | "refused" | "unsure"> {
   // SAFETY: a landing holds at least the pull request it was named by.
   const top = landing.pulls.at(-1) as Pull;
   const path = api(`pulls/${String(top.number)}/merge-async`);
   const fields = String.raw`[.status, .details.uuid // "", .details.sha // "", .details.message // ""] | join("\t")`;
-  const name = `stack ${String(stack)}`;
+  const name = stack === null ? `#${String(top.number)}` : `stack ${String(stack)}`;
   const asked = gh(root, [
     "api",
     "-X",
@@ -299,6 +295,8 @@ async function mergeStack(
     "merge_method=merge",
     "-f",
     "merge_action=direct_merge",
+    "-f",
+    `sha=${top.headRefOid}`,
     "--jq",
     fields,
   ]);
@@ -309,11 +307,13 @@ async function mergeStack(
   let [status = "", uuid = "", sha = "", message = ""] = asked.out.split("\t");
   const deadline = Date.now() + STACK_WAIT_MS;
   while (status === "pending" || status === "enqueued") {
-    if (uuid === "" || Date.now() >= deadline) {
+    if (status === "enqueued" || uuid === "" || Date.now() >= deadline) {
       const why =
-        uuid === ""
-          ? "named no merge to read back"
-          : `had not ended after ${String(STACK_WAIT_MS / 60_000)} minutes`;
+        status === "enqueued"
+          ? "went into the merge queue"
+          : uuid === ""
+            ? "named no merge to read back"
+            : `had not ended after ${String(STACK_WAIT_MS / 60_000)} minutes`;
       console.error(
         `land: GitHub's merge of ${name} ${why}; the statuses stand. Read ${landing.trunk} and the stack before ` +
           `anything lands.`,
@@ -346,9 +346,8 @@ async function mergeStack(
   return "unsure";
 }
 
-/** Posts the required status on every head, then merges the pull requests bottom-up, each at
- *  exactly its gated head. A pull request that does not merge stops the landing and takes the status
- *  back from every head still open. */
+/** Posts the required status on every head, then merges the top with the stack beneath it. A merge
+ *  that does not go through takes the status back from every head. */
 async function merge(root: string, target: number, landing: Landing): Promise<boolean> {
   const again = readLanding(root, target);
   checkChain(root, again);
@@ -357,68 +356,22 @@ async function merge(root: string, target: number, landing: Landing): Promise<bo
     throw new Refusal("a pull request's head moved while its commits were gated. Land again.");
   }
   const stack = stackOf(root, landing);
-  const revoke = (from: number): void => {
-    for (const sha of heads.slice(from)) {
-      postStatus(root, sha, STACK_CONTEXT, "pending", "Waiting for bun run land");
-    }
+  const revoke = (): void => {
+    for (const sha of heads) postStatus(root, sha, STACK_CONTEXT, "pending", "Waiting for bun run land");
   };
   const proved = "every commit passed on its own; the top passed the whole gate here and ci.yml on GitHub";
   if (!heads.every((sha) => postStatus(root, sha, STACK_CONTEXT, "success", proved))) {
-    revoke(0);
+    revoke();
     throw new Error(`the ${STACK_CONTEXT} status could not be posted on every head`);
   }
-  if (stack !== undefined) {
-    const ended = await mergeStack(root, landing, stack);
-    if (ended === "refused") {
-      revoke(0);
-      console.error(
-        `land: nothing merged; ${numbers(landing.pulls)} ${landing.pulls.length === 1 ? "is" : "are"} open.`,
-      );
-    }
-    return ended === "merged";
-  }
-  for (const [index, pull] of landing.pulls.entries()) {
-    const stop = (why: string): false => {
-      revoke(index);
-      const merged = landing.pulls.slice(0, index);
-      const left = `${numbers(landing.pulls.slice(index))} ${index === landing.pulls.length - 1 ? "is" : "are"} open`;
-      console.error(`land: GitHub did not merge #${String(pull.number)}: ${why}`);
-      console.error(
-        `land: ${merged.length === 0 ? "nothing merged" : `${numbers(merged)} merged`}; ${left}.`,
-      );
-      return false;
-    };
-    if (pull.baseRefName !== landing.trunk) {
-      const based = gh(root, [
-        "api",
-        "-X",
-        "PATCH",
-        api(`pulls/${String(pull.number)}`),
-        "-f",
-        `base=${landing.trunk}`,
-        "--silent",
-      ]);
-      if (!based.ok) return stop(`it could not be based on ${landing.trunk}: ${based.err}`);
-    }
-    if (!(await mergeable(root, pull))) return stop("GitHub does not call it mergeable.");
-    const merged = gh(root, [
-      "api",
-      "-X",
-      "PUT",
-      api(`pulls/${String(pull.number)}/merge`),
-      "-f",
-      "merge_method=merge",
-      "-f",
-      `sha=${pull.headRefOid}`,
-      "--jq",
-      ".sha",
-    ]);
-    if (!merged.ok) return stop(merged.err);
-    say(
-      `#${String(pull.number)} merged into ${landing.trunk} at ${short(pull.headRefOid)}: ${short(merged.out)}.`,
+  const ended = await mergeStack(root, landing, stack);
+  if (ended === "refused") {
+    revoke();
+    console.error(
+      `land: nothing merged; ${numbers(landing.pulls)} ${landing.pulls.length === 1 ? "is" : "are"} open.`,
     );
   }
-  return true;
+  return ended === "merged";
 }
 
 /** Where the fix for a failed commit goes, and how a second landing finds it. */
@@ -475,7 +428,10 @@ async function main(argv: readonly string[]): Promise<number> {
     if (values.merge && draft !== undefined) {
       throw new Refusal(`#${String(draft.number)} is a draft, and it would merge in this landing.`);
     }
-    if (values.merge) startCi(root, top);
+    if (values.merge) {
+      stackOf(root, landing);
+      startCi(root, top);
+    }
     // Each commit the landing publishes along the top's first parents, with the pass it needs.
     const proofs = addedLine(root, [top.headRefOid], [landing.trunkSha], say).map(
       (commit): Proof => ({

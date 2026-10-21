@@ -23,20 +23,12 @@
  * Nothing here decides a comparison or makes a solve.
  */
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
-import {
-  closedTo,
-  draw,
-  objectiveMargin,
-  objectiveRuleIn,
-  type Paired,
-  pairsOf,
-  roomLeft,
-  tally,
-} from "./compare.ts";
+import { closedTo, draw, objectiveRuleIn, type Paired, pairsOf, roomLeft, tally } from "./compare.ts";
 import type { LogEvent } from "./log.ts";
 import { providerFailed, windowEnded } from "./solve.ts";
 import { passed, practiceRan, ranUnder, rejectionAside } from "./solves.ts";
 import { taskSets } from "./task.ts";
+import { SEATS, traced, tracesIn, whose } from "./trace.ts";
 
 /** A session or a solve that began and has no end on record: what kind of start and its id, the
  *  dollars its turns and compactions metered, its turns, and when it began and wrote its last
@@ -88,8 +80,6 @@ export interface Standing {
     | "tied-mixed"
     | "aside";
   readonly solves: number | null;
-  /** How far apart the sides' measures were where the objective alone won it (`objectiveMargin`). */
-  readonly margin: number | null;
   /** The room by the objective the reference harness's answers left there, against its own and its
    *  author's (`roomLeft`), and 0 under the floor (`ROOM`). */
   readonly room: number | null;
@@ -127,8 +117,6 @@ interface TalliedIn {
   readonly closed: boolean;
   /** The side that won the task in this comparison's tally (`tally`), or null for a tie. */
   readonly won: "old" | "fresh" | null;
-  /** How far apart the sides' measures were where the objective alone won it (`objectiveMargin`). */
-  readonly margin: number | null;
   /** The room by the objective the reference harness's answers left there, against its own and its
    *  author's (`roomLeft`), and 0 under the floor (`ROOM`), where it leaves none; null where it
    *  stood on neither side. */
@@ -196,13 +184,7 @@ const BUILD_FINISHED = "build.finished";
  *  field that names the session or the solve in all four events: a Builder's session, an
  *  Examiner's three kinds and a solve attempt. No session opens `repair.*` since 13 October; a log
  *  of before is billed whole. */
-const METERED = [
-  { of: "build", id: "session" },
-  { of: "exam", id: "session" },
-  { of: "draft", id: "session" },
-  { of: "repair", id: "session" },
-  { of: "solve", id: "solve" },
-] as const;
+const METERED = SEATS.map((of) => ({ of, id: whose(of) }));
 /** The events that carry what their own model turns were billed, in a `billed` field: the end of
  *  each of those, and a reviewer's reading. */
 export const BILLED: ReadonlySet<string> = new Set([
@@ -401,7 +383,14 @@ export function pairsReported(events: readonly LogEvent[], report: Reported): Pa
   }
   const begun = events.find(({ kind, data: start }) => kind === STARTED && start.session === session);
   const halves = begun?.data.noise === true ? ("mirrored" as const) : undefined;
-  const sides = { old, fresh, setting, comparison: session, objective: objectiveRuleIn(data), halves };
+  const sides = {
+    old,
+    fresh,
+    setting,
+    comparison: session,
+    objective: objectiveRuleIn(data),
+    halves,
+  };
   return pairsOf(events.slice(0, index + 1), versions, sides, solves).pairs;
 }
 
@@ -476,8 +465,8 @@ function taskRecords(events: readonly LogEvent[]) {
   const cut = new Set<string>();
   /** Each solve's last recorded turn, by the solve's id. */
   const lastTurn = new Map(
-    events.flatMap(({ kind, data }) =>
-      kind === "solve.turn" && isString(data.solve) ? [[data.solve, data]] : [],
+    tracesIn(events).flatMap((each) =>
+      each.seat === "solve" && each.part === "turn" ? [[each.id, each]] : [],
     ),
   );
   for (const solve of ranUnder(events)) {
@@ -532,7 +521,6 @@ function tallyReports(
         referenceCut: side !== null && cutOn(data[side]),
         closed: side !== null && closedTo(pair, side, of(task).best),
         won: wins > 0 ? "fresh" : losses > 0 ? "old" : null,
-        margin: objectiveMargin(pair),
         room: left,
       });
     }
@@ -745,7 +733,7 @@ function outcomeOf(record: TaskRecord): [string, Outcome][] {
 function standingOf(record: TaskRecord): [string, Standing][] {
   const last = lastRead(record);
   if (last === null) return [];
-  const aside = { cell: "aside", solves: null, margin: null, room: null } as const;
+  const aside = { cell: "aside", solves: null, room: null } as const;
   if (last === "aside") return [[record.version, aside]];
   const { reference, won, old, fresh } = last;
   if (reference === null) return [];
@@ -753,7 +741,7 @@ function standingOf(record: TaskRecord): [string, Standing][] {
   const none = record.feasible ? "tied-none-known" : "tied-none";
   const tied = both.every(Boolean) ? "tied-every" : both.some(Boolean) ? "tied-mixed" : none;
   const cell = won === null ? tied : won === reference ? "reference-won" : "other-won";
-  return [[record.version, { cell, solves: old.length, margin: last.margin, room: last.room }]];
+  return [[record.version, { cell, solves: old.length, room: last.room }]];
 }
 
 /**
@@ -779,6 +767,13 @@ function standingOf(record: TaskRecord): [string, Standing][] {
  * down released no task where one had failed: between buffer-159-opus's two promotions its
  * Builder's practice passed 10 of 10.
  *
+ * A task the reference answered in every solve of its last reading still leaves it room where an
+ * answer of its own or its author's on record is better by the objective by at least the floor
+ * (`room`, `roomLeft`), and it is put first beside the failed ones. Until 21 October it went to the
+ * draw: in an objective domain every solve is valid, so in seven buffer campaigns every release
+ * after a first promotion was the draw alone while the frontier held 4 to 21 tasks with room. The
+ * other harness's answers stay out of `room`, so which held-out task it won moves no release (rule 3).
+ *
  * The tasks no solve answered are the held-out ones without a valid answer in `UNSOLVED_RUN` or
  * more comparisons, cut at a limit or not. On 10 October one campaign held four to five such tasks
  * of ten while its last three Builder sessions passed every practice task and changed nothing.
@@ -801,7 +796,7 @@ export function releaseOrder(
     placed(records, (record) => {
       const last = lastRead(record);
       if (last === null || last === "aside" || last.reference === null) return undefined;
-      return last[last.reference].some((valid) => !valid) ? last.order : undefined;
+      return last[last.reference].some((valid) => !valid) || (last.room ?? 0) > 0 ? last.order : undefined;
     }),
   ).filter((version) => !unanswered.includes(version));
   const first = [...unanswered, ...failed.slice(0, Math.ceil(failed.length / 2))];
@@ -814,7 +809,7 @@ export function releaseOrder(
     const why = unanswered.includes(version)
       ? ": no solve answered it in two comparisons, and it is"
       : failed.includes(version)
-        ? ": the reference harness failed it in the last comparison, and it is"
+        ? ": the reference harness failed it in the last comparison, or a better answer on record left it room, and it is"
         : ":";
     return [version, why];
   });
@@ -868,12 +863,6 @@ export function billedBetween(events: readonly LogEvent[], from: number, to = ev
   return billedAll(events.slice(0, to)) - billedAll(events.slice(0, from));
 }
 
-/** The backend's price of one usage, `cost.total`, or nothing where it holds none. */
-function costOf(usage: JsonValue | undefined): number {
-  const total = asRecord(asRecord(usage)?.cost)?.total;
-  return isNumber(total) ? total : 0;
-}
-
 /**
  * Every session and solve that began and never ended on record, with the dollars it metered: the
  * run was killed from outside, so no `finished` event summed them, and the cap and the total read 0
@@ -882,13 +871,14 @@ function costOf(usage: JsonValue | undefined): number {
  * decimals on every session and solve of one campaign of 10 October; a Builder session of another,
  * killed at its seventh turn the same day, had metered 0.12 dollars that nothing summed. A
  * compaction of pi's loop is billed in the end's sum too, and its summary's price is on its
- * `*.compacted` event (`loopCompaction`, `src/solve/run.ts`); a stop and a pause read it too (`tools/runs`).
+ * `*.compacted` event (`loopCompaction`, `src/solve/seat.ts`); a stop and a pause read it too (`tools/runs`).
  */
 export function unfinished(events: readonly LogEvent[]): Unfinished[] {
   return METERED.flatMap(({ of, id }) => {
     const ended = new Set(events.flatMap(({ kind, data }) => (kind === `${of}.finished` ? [data[id]] : [])));
     const open = new Map<JsonValue | undefined, Unfinished>();
-    for (const { at, kind, data } of events) {
+    for (const [index, event] of events.entries()) {
+      const { at, kind, data } = event;
       if (kind === `${of}.started` && !ended.has(data[id])) {
         open.set(data[id], {
           of,
@@ -902,13 +892,10 @@ export function unfinished(events: readonly LogEvent[]): Unfinished[] {
       const found = open.get(data[id]);
       if (found === undefined) continue;
       found.last = at;
-      if (kind === `${of}.turn`) {
-        found.dollars += costOf(data.usage);
-        found.turns += 1;
-      }
-      if (kind === `${of}.compacted` && Array.isArray(data.usages)) {
-        found.dollars += data.usages.reduce((sum: number, usage) => sum + costOf(usage), 0);
-      }
+      const part = traced(event, index);
+      if (part?.seat !== of || part.part === "call") continue;
+      found.dollars += part.billed ?? 0;
+      found.turns += part.part === "turn" ? 1 : 0;
     }
     return [...open.values()];
   });

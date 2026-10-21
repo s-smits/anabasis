@@ -1437,8 +1437,8 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       .split("\n")
       .filter((row) => row.startsWith("| ") && !row.startsWith("| family |") && !row.startsWith("| ---"));
 
-  it("says, where the objective alone decided a task, how far apart the sides were and the room its answers leave", () => {
-    // The reference's answers and the other harness's, measured under a rule with a floor.
+  it("says who won a task the objective decided, and the room its answers leave", () => {
+    // The reference's answers and the other harness's, measured under the objective.
     const lines = (measures: number[], results?: boolean) => {
       const log = logged();
       log.hold("close");
@@ -1447,17 +1447,17 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       log.reported("b-1", ["h1", "h2"], 2, ["close"]);
       for (const { kind, data } of log.events) {
         if (kind === "verdict") data.objective = measures.shift() ?? null;
-        if (kind === "comparison.reported") data.objective = { direction: "lower", room: 0.01 };
+        if (kind === "comparison.reported") data.objective = { direction: "lower" };
       }
       return heard(log.events, [fixture("close")], results).lines;
     };
     const [said] = lines([100, 100, 90, 90]);
-    expect(said).toContain("won there by the other harness, by the objective alone, 10% apart");
+    expect(said).toContain("won there by the other harness");
     // The room told is against the reference's own answers and its author's: the other harness's
     // answers are its result on the task.
     expect(said).not.toContain("better than one of its own");
     expect(lines([100, 95, 90, 90])[0]).toContain("an answer on record 5% better than one of its own");
-    // Room under the campaign's floor decides no pair and holds no draft: it is told as none.
+    // Room under the floor decides no pair and holds no draft: it is told as none.
     expect(lines([100, 99.5, 90, 90])[0]).not.toContain("better than one of its own");
     // With exam-results off, who won is not said, and nothing of the other harness's answers is:
     // the lines read the same whatever it measured.

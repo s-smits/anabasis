@@ -52,7 +52,7 @@
  * comparison that read a step, a command was allowed 300 s by default and 900 s at most, so none a
  * solver started could be cut and handed back to it before the solve itself ended.
  */
-import type { ThinkingLevel } from "@earendil-works/pi-ai";
+import { clampThinkingLevel, type ThinkingLevel } from "@earendil-works/pi-ai";
 import type { Limits } from "#src/kernel/condition.ts";
 import { append, type LogEvent } from "#src/kernel/log.ts";
 import { SIZE } from "#src/kernel/size.ts";
@@ -60,6 +60,7 @@ import type { solverLast } from "#src/kernel/solves.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { sameJsonValue } from "#src/meta/stable-json.ts";
+import { modelNamed } from "../m0/stored-sweep.ts";
 import { LIMITS } from "./campaign.ts";
 
 /** What the flags name of the solver and its limits, as `openCampaign` takes it: the solver in the
@@ -201,14 +202,21 @@ export function settingNamed(values: SettingFlags): NamedSetting {
       `--solver-window ${String(given["solver-window"])}: a solver's compaction window is a whole number of tokens`,
     );
   }
-  // SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.
-  const effort = given["solver-effort"] as ThinkingLevel;
+  // SAFETY: an effort is one of pi's levels. pi sends one the model does not serve as the next it
+  // does (`clampThinkingLevel`), so the setting records that one: DeepSeek V4.1 Flash serves no
+  // `medium`, and its solves asked for it ran at `high` while the log said `medium` (21 October). A
+  // model with no reasoning is sent none, whatever is asked, and keeps the asked level.
+  const asked = given["solver-effort"] as ThinkingLevel;
+  const effort = (solver: string) => {
+    const sent = clampThinkingLevel(modelNamed(solver), asked);
+    return sent === "off" ? asked : sent;
+  };
   const wallSeconds = minutes * 60;
   return {
     solver:
       given.solver === undefined
         ? undefined
-        : { model: given.solver, effort, ...keyIfDefined("window", window) },
+        : { model: given.solver, effort: effort(given.solver), ...keyIfDefined("window", window) },
     limits: {
       ...UNTURNED,
       wallSeconds,

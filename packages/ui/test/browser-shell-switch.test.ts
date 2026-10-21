@@ -15,6 +15,7 @@ import {
   launchBrowser,
   type Opened,
   openPage,
+  PATIENCE_FLOOR_MS,
   routeParameters,
   type Served,
   sampleFrames,
@@ -179,7 +180,7 @@ describe("a switch of project or campaign", () => {
     expect(timeline?.busy).toBe(true);
     expect(
       (timeline?.placeholderAt ?? 0) - (timeline?.clickedAt ?? Number.POSITIVE_INFINITY),
-    ).toBeGreaterThanOrEqual(390);
+    ).toBeGreaterThanOrEqual(PATIENCE_FLOOR_MS);
     await expect(page.getByRole("heading", { level: 1, name: "units" })).toBeVisible();
     await expect(page.locator(".ana-pending")).toHaveCount(0);
     expectQuiet(opened);
@@ -189,6 +190,13 @@ describe("a switch of project or campaign", () => {
   test("lets no click on the previous campaign act while the next is read", async () => {
     const opened = await sampled(`campaign=${keys.fixture}`, "fixture");
     const { page } = opened;
+    // The previous campaign stands, inert, only for the page's patience before the placeholder
+    // replaces it, and on a host loaded to 14 on 8 cores on 21 October the click came later than
+    // that and found no card. The page's clock is held, so the patience runs out only after the click.
+    await page.clock.install();
+    await page.reload();
+    await expect(page.getByRole("heading", { level: 1, name: "fixture" })).toBeVisible();
+    await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1_000);
     let release = () => {};
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -206,6 +214,7 @@ describe("a switch of project or campaign", () => {
     // which is the property under test; the browser decides where the click lands.
     await card.click({ force: true });
     expect(routeParameters(page)).toEqual({ campaign: keys.early });
+    await page.clock.resume();
     release();
     await expect(page.getByRole("heading", { level: 1, name: "early" })).toBeVisible();
     expect(routeParameters(page)).toEqual({ campaign: keys.early });

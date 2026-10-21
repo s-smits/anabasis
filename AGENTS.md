@@ -13,6 +13,7 @@ keeps no queue and no status. Those live elsewhere:
 | What came over from v1, and what was replaced or dropped | `docs/transfer.md` |
 | What v1 measured, and why it did not climb | `docs/v1.md` |
 | A prompt handed whole to another session: an audit, a review | `docs/prompts.md` |
+| How Anabasis is measured outside a campaign: against another system on a benchmark, or with one mechanism switched off | `studies/<name>/README.md`, each a protocol written before its first solve (`studies/README.md`) |
 | The plan until 20 October, its history and the simplification plan of 11 October | `git show 7f0add79:docs/plan.md` (and `plan-history.md`, `simplify.md`); a comment that cites `7f0add79:docs/<file>` means that text |
 | What the code does today | the source at the stack's head, and the head comment of each module |
 | How a procedure is carried out: stacking, launching, reading a run, wording a claim | the skill that owns it, under `.claude/skills/` (sections 10 and 11) |
@@ -43,8 +44,8 @@ one question:
 
 A comparison in code answers it. Both harnesses solve the same held-out tasks afresh, under the
 same limits. A hidden check program decides whether each answer is valid. Each task then counts as
-a win, a loss or a tie for the new harness, by its difference in pair wins, and a one-sided paired
-sign-flip test over the tasks reads either a **step** or nothing.
+a win, a loss or a tie for the new harness, by its score over validity, the objective and the bill,
+and a one-sided paired sign-flip test over the tasks reads either a **step** or nothing.
 
 ```text
                         OPERATOR   freezes the exam, sets the dollar cap, labels answers blind
@@ -209,8 +210,9 @@ Left out on purpose:
   message under a changed hidden value, and it is not something to optimise.
 - The Builder's practice results are excluded by rule 1: a learner's score on its own training set
   is the overfitting signal, and no metric.
-- Cost is read as economy, beside the climb it bought, because a cheap system that does not climb
-  has no cost worth reporting.
+- A campaign's cost is read as economy, beside the climb it bought, because a cheap system that
+  does not climb has no cost worth reporting. A solve's bill weighs only between two valid answers, a
+  tenth of a task's score (section 7, "The tally").
 
 The four are ordered by where they bind, after supply (without which there is no gradient):
 without climb there is no result, without honesty and verdicts no result anyone can believe, and
@@ -341,8 +343,7 @@ What the **Examiner** reads:
   last three, newest first, each with whether a limit cut one of the reference's solves, and how
   many of the newest closed it in a row (`histories`, `poolOf`), since one outcome cannot tell a
   task answered once from one answered every time;
-- for each task the last comparison tallied, which harness won it or that it tied, and, where the
-  objective alone decided it, how far apart the two sides' measures were (`objectiveMargin`). This
+- for each task the last comparison tallied, which harness won it or that it tied. This
   is the operator's word of 20 October, a term of the campaign (`exam-results`, on by default):
   the Examiner learns which tasks the newest harness wins, and so what to write against it. With the
   term `off` it is told none of it;
@@ -574,7 +575,7 @@ as truth.
   sandbox, which it names by the isolation profile and the platform (`tools/d2/campaign.ts`). Two
   solves are comparable only when their conditions differ in the one thing being compared.
 - A solve's trace is in the log (`solve.turn`, `solve.call`), and so are the turns and calls of
-  each Builder session and Examiner session.
+  each Builder session and Examiner session. `src/kernel/trace.ts` is the one reader of them all.
 
 Four habits follow:
 
@@ -772,7 +773,9 @@ that window and needs one it can hold.
 **Practice follows the supply and the outcomes.** One release takes at most half of what is held,
 so a campaign that opens on a few tasks releases fewer than `--practice` names. Before a Builder
 session the table releases more where tasks have been held out since the last release, and after a
-control that read room (section 7) it releases as many again. `--practice` is a per-epoch count,
+control that read room (section 7) it releases as many again. Inside a Builder's conversation,
+which spans epochs, the host releases what the epoch is still owed as each Examiner session beside
+it ends (`releaseOwed`, `tools/d2/campaign-actions.ts`). `--practice` is a per-epoch count,
 and once practice exists a release never leaves fewer frontier tasks than a sweep at the level needs
 (`practiceRoom`, `src/builder/decide.ts`). Each release is one task fewer to compare.
 
@@ -780,7 +783,8 @@ A release takes, in this order:
 
 1. the tasks no solve answered in two comparisons;
 2. half, rounded up, of the tasks the reference harness failed in a solve of its last reading of
-   each; the other half stays held for the comparisons;
+   each, or where an answer of its own or its author's on record bettered one of its answers there
+   by at least the room floor (`room`); the other half stays held for the comparisons;
 3. the rest by the contract's draw from every task neither list holds, those the reference
    answered in every solve among them, since a practice pass returns the objective's measure
    (`releaseOrder`, `src/kernel/reports.ts`, which `tools/d2/prepare.ts` calls).
@@ -835,9 +839,7 @@ bun run runs fresh | launch | continue | keep | pause | copy | fetch | retire | 
 - a room floor of 1% (`ROOM`), the least improvement by the objective worth counting, as
   a share of the larger measure. Two valid answers closer than it tie in a pair, and an answer on
   record better than one of the reference's by less leaves that task no room, at the gate, on the
-  frontier and in `roomOf`. It is a constant, the same for every campaign. A comparison keeps the
-  floor it began with, and one that began before 21 October
-  recorded none: its pairs read at floating-point equality (`SAME`), as they were read;
+  frontier and in `roomOf`. It is a constant, the same for every campaign and every comparison;
 - a stop after more than 3 tasks with a check defect (`--defects`);
 - a reserve of 10 dollars per solve (`--reserve`);
 - `--parent latest` and `--reference promoted`, which is the harness last promoted, and the
@@ -905,7 +907,7 @@ comparisons, and one frozen draw of the reference's solves would bias every late
 
 | Ending | Kinds | In a pair |
 | --- | --- | --- |
-| pass | | Valid. It beats an answer that is not valid, and is even with another valid one unless the comparison fixed an objective and one is better by it |
+| pass | | Valid. It beats an answer that is not valid; against another valid one it gains by how much better it is by the objective, where the comparison fixed one, and by how much less its solve billed |
 | fail | `rejected`, once the rejection is ruled a true fail | Not valid |
 | fail | `wall-ended`, `turns-ended`, `context-ended`, `no-answer` | Not valid. There is nothing to recompute, so no ruling is needed |
 | fail | `broken-harness` | Not valid. The harness is what is compared, and one that cannot open answers nothing |
@@ -914,26 +916,43 @@ comparisons, and one frozen draw of the reference's solves would bias every late
 | flagged | | Not valid: the solver's statement, with a reason, that the task is malformed (`submit` with `malformed`), counted as the flagging side's own fail and reported separately (`flagged` in the report). A task both sides flag ties; one the other side answers is lost |
 
 **The tally.** Every solve of the new harness is paired with every solve of the reference on the
-same task. The harness that wins more pairs wins the task; otherwise the task is a tie. Ties leave
-the test.
+same task, and the task is scored by three measures over those pairings, each from -1 to 1 and
+weighed by fixed weights (`pointsOf`, `WEIGHTS`, `src/kernel/compare.ts`):
+
+- **validity**, 0.6: the share of pairings in which only the new side's answer is valid, less the
+  share in which only the reference's is;
+- **the objective**, 0.3: between two valid answers, how much better the new one is, as a share of
+  the larger measure, counted from the room floor (`ROOM`, 1%) and taking the whole weight at a
+  tenth better (`FULL`);
+- **the bill**, 0.1: between two valid answers, the base-2 logarithm of the reference's bill over
+  the new one's, counted from a fifth less (`CHEAPER`) and taking the whole weight at half.
+
+A task's score is their weighted sum, read in thousandths: positive is a win, negative a loss, zero
+a tie. Ties leave the test. A pairing with an answer that is not valid reads neither the objective
+nor the bill, so a refused answer is never the better one, and one that fails fast is never
+cheaper. The measures trade against each other: a harness valid in 3 solves of 4 against 4 of 4
+wins the task where its valid answers measure a fifth better and bill half. The weights are the
+operator's, in steps of five, and constants of the host, as the floors are. A comparison continued
+under other code is refused on its setting, so no comparison is ever read by two sets of weights; a
+recorded comparison read again by this tree is scored by them, and its own report stays what it
+said. The report gives the points each measure gave the tallied tasks together (`points`).
 
 Where the check program declares an **objective** (a quantity its evaluator computes from a valid
 answer, with a direction: `brief.objective`, `objective(request)`, verified after the checks pass;
-`OBJECTIVE`, `src/kernel/verify.ts`), two valid answers in a pair are compared by it, and the better
-one wins the pair where the two are at least the room floor apart (`ObjectiveRule`, `better`,
-`src/kernel/compare.ts`; `ROOM`, 1% of the larger measure), and otherwise they tie.
-The sign-flip test says whether a difference is believable, and the floor whether it is worth
-counting: six tasks with room won by 0.01% read p = 0.016 and would promote. Validity is read first, so a refused
-answer can never be the better one. The objective is public, in the contract and in the solver's
-resources, and the report says how many tallied tasks it decided (`objective.decided`). The rule is
-a term of the comparison, fixed at its start; with a check program that declares no objective,
-pairs are decided on validity alone.
+`OBJECTIVE`, `src/kernel/verify.ts`), it is public, in the contract and in the solver's resources,
+and a term of the comparison fixed at its start (`ObjectiveRule`); with none, two valid answers
+differ only by their bill. The sign-flip test says whether a difference is believable, and the
+floors whether it is worth counting: six tasks with room won by 0.01% read p = 0.016 and would
+promote. A task the reference closes on validity and the objective leaves no room in supply
+(`informative`), so a harness that only bills less wins it as a retained task, read in the same
+test, and the Examiner is still asked for tasks the reference fails.
 
-**The test.** A one-sided paired sign-flip test reads each task's difference in pair wins (`flipP`,
+**The test.** A one-sided paired sign-flip test reads each task's score (`flipP`,
 `src/kernel/compare.ts`). If the harnesses were interchangeable, each untied task would be as
 likely won as lost by its margin, and p is the share of sign assignments that sum to at least what
-was observed. It is exact, and where every task is won or lost by the same number of pairs it is
-the sign test.
+was observed. It is exact, and where every task is won or lost by the same margin it is the sign
+test. Where every untied task is won, p is one half to the power of their count whatever the
+margins, so the size of a gain weighs only where wins and losses meet.
 
 The step is read on every tallied task in one test: the **frontier**, the scored tasks that are
 not exhausted, and the **retained** tasks, fixed alongside them at the comparison's start from the
@@ -988,10 +1007,7 @@ reading at a shorter budget would describe a solver that was told the longer one
   valid);
 - which tasks entered each of its two sets;
 - its overlap with the previous comparison of the same two harnesses;
-- where the contract declares an objective, the median relative gain by it on the frontier tasks
-  the new harness won, over those with a valid measure on both sides (`objectiveGain`): a pair
-  keeps only the sign of a difference, so this gives a step's size. The closing report prints it
-  beside each promotion's tally, and nothing decides on it.
+- the points each measure gave, which the closing report prints beside each promotion's tally.
 
 Beside every comparison of four solves per side stands the reference read against itself, on
 halves of its own solves mirrored in time. It should read no step; its tie share is the noise every
@@ -1244,6 +1260,16 @@ events in a campaign's log  >  a fold over the log  >  source and tests  >  a co
 - A Referee's ruling is a model's output. Keep it apart from the verifier's verdict and from facts
   about the environment.
 - A session report or a subagent's report is a lead until it is checked as section 11 says.
+- A run is evidence about the code it ran, and about no other. Before runs are read side by side,
+  or a finding from one is triaged, keep only those whose every launch ran with the mechanism in
+  question: `bun run runs source --has <text>` lists them, and `--holds <commit>` asks by commit
+  (`ranWith`, `tools/runs/receipt.ts`). `bun run runs replay` and a whole-run investigation's
+  peers take the same list. Name the mechanism by text its code holds, such as the constant it
+  exports, since a restack rewrites a pull request's commits and a run launched at an earlier head
+  holds no later one. A run that lacks it is no evidence for or against it: a failure it shows
+  that the mechanism removes is triaged as fixed, and a gain of a run with it is never set against
+  a run without it. Runs on another host are listed once fetched (`runs fetch`) or with
+  `runs on <host> source`.
 
 A negative claim about capability, such as "nothing checks X" or "the admission does not refuse
 Y", is the most expensive kind to get wrong, because every later reader compensates for a defect
@@ -1384,7 +1410,9 @@ pre-commit hook runs `bun run commit:check`. The pre-push hook gates the work a 
 checkout of its own, and the pushed head holding the newest of them gets the whole gate. A push of
 documentation alone gets `git diff --check`. A pass is remembered by content: a whole pass by the
 commit's tree, and a static one by its tree and its parent's, each with the gate that ran and the
-Bun version, so a restack that keeps every tree runs nothing again. `ANA_GATE_FRESH=1` ignores
+Bun version, so a restack that keeps every tree runs nothing again. Each proof, of the hook and of
+`bun run land`, stops at its first failed test (`ANA_TEST_BAIL`), where CI runs every test to name
+every failure. `ANA_GATE_FRESH=1` ignores
 remembered passes. One push of a clone runs at a time: a push started while another is at its gate
 waits for it, and then gates only what that push did not publish (`queue`); where that push
 replaced the head this one is stacked on, it is refused with the `git rebase --onto` that restacks it
@@ -1417,8 +1445,12 @@ request as failures that occur without the change, and do not call the suite gre
 - A pack, a check program or a kept harness, by rule 2.
 - `.env` and any credential. Never copy one from another checkout to make a command
   start.
-- `vendor/`: `pi-coding-agent` and `pi-claude-bridge` are copies of upstream. A local change is
-  marked in place and kept small. Biome and Oxlint both skip `vendor`.
+- `vendor/`: `pi-coding-agent` and `pi-claude-bridge` are copies of upstream, brought in by a
+  **sed**. The upstream files at a cited path and commit are copied over the local ones whole.
+  The result is then compared with what the local copy held, and only the most important missing
+  parts are added back, each marked in place as a local change and kept small. Porting by hand,
+  merging upstream into the local file and adding the package as a dependency are no sed. Biome
+  and Oxlint both skip `vendor`.
 - Installed dependencies: no patches, and no edits under `node_modules`.
 
 ### The stack and pull requests
@@ -1469,18 +1501,19 @@ In practice:
   each head to contain the one beneath it, and proves every commit it would publish over its own
   checkout, with the whole gate on the top's head. `--sanitize` stops there and posts each verdict
   as the status `ana/commit`. `--merge` also waits for `ci.yml` on the top's head, posts
-  `ana/stack-gate` on every head, and merges bottom-up, each pull request rebased onto `main` just
-  before its merge and pinned to its gated head. A landing that GitHub holds as a native stack
-  merges whole through the stack's own merge, since GitHub refuses to merge a single member, and
-  the merge commit's tree must match the top's.
+  `ana/stack-gate` on every head, and merges the top through GitHub's asynchronous merge, pinned to
+  its gated head, which merges the native stack beneath it all or nothing; the merge commit's tree
+  must match the top's. A landing of several pull requests is refused unless they are one native
+  stack, its members up to the top the chain of bases.
 - **A restack makes the stack one chain again** (restack, linearize, quench, drain): each pull
   request that left the chain is replayed onto the head beneath it, based there and added to the
   native stack. Resolve conflicts hunk by hunk, never by taking one side's file whole, which drops
   the other side's hunks, and push each moved branch through the gate with a lease.
 - **The native stack.** Setting a base alone leaves a pull request outside GitHub's stack ("can be
-  stacked"). `gh api repos/{owner}/{repo}/stacks` lists the stacks; a POST there creates one; append
-  above its top, bottom-up: `gh api -X POST repos/{owner}/{repo}/stacks/<n>/add -F
-  'pull_requests[]=<pr>'`.
+  stacked"). `gh stack link <pr> <pr> ...` (the `gh-stack` extension) makes one, bottom to top, and
+  `gh stack link <stack> <pr>` appends above its top; it never removes or reorders a member, and it
+  sets the bases. `gh stack unstack <stack>` dissolves a whole stack. `gh api
+  repos/{owner}/{repo}/stacks` lists them.
 
 A commit subject is one imperative sentence that states the finished change: "Refuse a comparison
 on a checker nobody has read". The body says what was wrong and what happens now, with the counts
@@ -1505,7 +1538,7 @@ reviewer the code, and keep your conclusion to yourself.
 A review reads the code first and the runs second, and so does the check of any finding before it is
 acted on or repeated, whoever reported it. Read the owner, its callers, its test and its head
 comment until each claim is a sentence a recorded log can settle. Then put each claim to the newest
-runs it touches before reporting it: a reader through `bun run runs replay`, a campaign through
+runs it touches that ran with the code in question (section 9, "Evidence") before reporting it: a reader through `bun run runs replay`, a campaign through
 `tools/wri/wri.ts` or `bun run runs view`, an event kind by counting it in the logs that hold it.
 Write what the log should show before you look. Report each finding as confirmed, with the campaign
 and event that show it; plausible, from the source alone, with the run that would settle it; or
@@ -1528,6 +1561,14 @@ code can skip it. Whatever you write:
   in a change whose subject is the lint (`HABITS.md`, 12.2).
 - Every runtime surface has one owner in `src/meta` (`HABITS.md`, 12.8); `node:` is imported
   nowhere else.
+- Reuse before you derive. Before writing a fold or a reader, find the production owner that
+  already reads the fact and call it (rule 12), and take the angle to reuse one wherever you see
+  it. Dependencies run one way. Production is `src/`, `vendor/`, `packages/` and the commands under
+  `tools/`; helper code is `.claude/` (the skills and their scripts), the whole-run
+  investigation's reader, `tools/wri/`, and the studies' code, `studies/`. A helper imports
+  production readers and wraps them, and production never imports a helper. Where production
+  needs a fact a helper computes, the fact moves into a production owner and the helper imports it
+  from there.
 - A file has at most 800 nonblank lines and a function 115, and every `export` has a reader in
   another file (`bun tools/loc/source-policy.ts`, which reports vendor only).
 - A test checks what a message carries, never how it is worded: the facts it states (an outcome, a
@@ -1611,7 +1652,7 @@ read the conversation.
 ### Map
 
 ```text
-src/kernel/     the log, tasks, conditions, the verifier's contract, the comparison, the reports
+src/kernel/     the log, tasks, conditions, traces, the verifier's contract, the comparison, the reports
 src/solve/      one solve: the starter, the prompt, the command wall's tools, the answer file
 src/builder/    a Builder session, its tools, prompt, notes and what it is told of the past; the round,
                 and what the log holds of a comparison (comparison); whether a comparison may start
@@ -1648,6 +1689,10 @@ packages/ui/    the page over a campaign's log: a server on the loopback that re
                 Tasks and Log (src/views). It writes nothing. Its design rules are in its DESIGN.md
 vendor/         pi-coding-agent and pi-claude-bridge, copied
 docs/           the plan, the transfer ledger, the account of v1, the helper prompts
+studies/        measurements outside a campaign's reading, one folder each: its protocol, predictions,
+                adapters and patches; shared/ holds what several use, runs/ the records each keeps,
+                and external/ (ignored) the clones. A log, a benchmark's tests and a credential are
+                never kept
 .claude/skills/ the procedures (section 10), stack-pr, simplify, reduce-complexity, commit-r,
                 codex-gpt-swarm and promotion-tuner, and main/ with the skill scripts' argument
                 parser and git helper

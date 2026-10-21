@@ -70,6 +70,8 @@ interface Sampled {
   placeholder: number;
   blank: number;
   frames: number;
+  /** When the last click landed, in the page's clock. */
+  clickedAt: number;
   /** The address of each frame counted as a placeholder or as blank. */
   at: string[];
 }
@@ -82,9 +84,10 @@ declare global {
 
 /** What the frame sampler counted since it was last read. */
 export interface FramesSeen {
-  /** Frames in which `main` showed the "Reading the campaign" placeholder. */
+  /** Frames in which `main` showed the "Reading the campaign" placeholder sooner than the page's
+   *  patience after the last click (`PATIENCE_FLOOR_MS`). */
   readonly placeholder: number;
-  /** Frames in which `main` held no heading and no table: nothing of a pane was painted. */
+  /** Frames in which `main` held no heading, no table and no placeholder: nothing was painted. */
   readonly blank: number;
   readonly frames: number;
 }
@@ -96,6 +99,9 @@ const START_MS = 20_000;
  *  whole 60 s, so a page that never loaded under ten parallel files on 14 October timed the test out
  *  and named no step; at 15 s the stuck step fails with its own message first. */
 export const ACTION_MS = 15_000;
+/** The page's patience (`waited.ts`, 400 ms), less a timer's granularity: no read the page waits on
+ *  says it is reading sooner than this after the click that began it. */
+export const PATIENCE_FLOOR_MS = 390;
 /** Playwright's web-first assertions, each retried for as long as an action may wait. Its own `expect`
  *  gives up at 5 s, which `setDefaultTimeout` does not reach: on 17 October, with campaigns solving on
  *  the host at a load of 30 on 12 cores, 13 browser cases failed a pre-push gate at 5 s each. */
@@ -326,29 +332,40 @@ export async function accessibilityViolations(page: Page, within?: string): Prom
 
 /**
  * Count, on every animation frame of every page of `context`, whether `main` shows the placeholder
- * a campaign stands behind while it is read, and whether it shows nothing of a pane at all, with
- * the address of each such frame. The operator's recording of 14 October caught a switch of project
- * painting the placeholder for four frames; a screenshot taken before or after never would, so the
- * page is sampled where it paints. Read and reset the counts with `framesSeen`.
+ * a campaign stands behind while it is read sooner than the page's patience after the last click,
+ * and whether it shows nothing at all, with the address of each such frame. The operator's
+ * recording of 14 October caught a switch of project painting the placeholder for four frames; a
+ * screenshot taken before or after never would, so the page is sampled where it paints. A
+ * placeholder after the patience is what the page owes a slow read, and on a host loaded to 14 on 8
+ * cores on 21 October a switch whose read the test answered at once still took that long to draw,
+ * so the count is held to the page's own clock. Read and reset the counts with `framesSeen`.
  */
 export async function sampleFrames(context: BrowserContext): Promise<void> {
-  await context.addInitScript(() => {
-    const seen: Sampled = { placeholder: 0, blank: 0, frames: 0, at: [] };
+  await context.addInitScript((patienceMs: number) => {
+    const seen: Sampled = { placeholder: 0, blank: 0, frames: 0, clickedAt: 0, at: [] };
     window.anaFramesSeen = seen;
+    document.addEventListener(
+      "click",
+      () => {
+        seen.clickedAt = performance.now();
+      },
+      { capture: true },
+    );
     const sample = () => {
       const main = document.querySelector("main");
       seen.frames += 1;
       if (main !== null) {
         const placeholder = (main.textContent ?? "").includes("Reading the campaign");
-        const blank = main.querySelector("h1, h2, table") === null;
-        if (placeholder) seen.placeholder += 1;
+        const early = placeholder && performance.now() - seen.clickedAt < patienceMs;
+        const blank = !placeholder && main.querySelector("h1, h2, table") === null;
+        if (early) seen.placeholder += 1;
         if (blank) seen.blank += 1;
-        if (placeholder || blank) seen.at.push(location.search);
+        if (early || blank) seen.at.push(location.search);
       }
       requestAnimationFrame(sample);
     };
     requestAnimationFrame(sample);
-  });
+  }, PATIENCE_FLOOR_MS);
 }
 
 /** The sampler's counts since it was installed or last read, which this resets. */

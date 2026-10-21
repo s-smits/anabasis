@@ -108,16 +108,35 @@ function legendOf(results: boolean): string {
 
 /** What a task's last comparison with the reference harness on a side says on its line: with
  *  `results` (the operator's word of 20 October), who won it there and, where the objective alone
- *  decided it, how far apart the sides' medians were; and how far apart the reference's own valid
- *  answers were, where that reaches the floor (`roomLeft`), which is all its room by the objective. */
+ *  decided it, how far apart the sides' medians were; and how much better an answer on record, its
+ *  author's or another of its own, was than one of the reference's, where that reaches the floor
+ *  (`roomLeft`), which is all its room by the objective. */
 function comparedOf(standing: Standing | undefined, results: boolean): string {
   if (standing === undefined) return "";
   const { cell, margin, room } = standing;
-  const percent = (share: number) => `${String(Number((share * 100).toPrecision(2)))}%`;
   const winner = cell === "other-won" ? "other" : cell === "reference-won" ? "reference" : null;
   const alone = margin === null ? "" : `, by the objective alone, ${percent(margin)} apart`;
   const won = winner === null ? "; tied there" : `; won there by the ${winner} harness${alone}`;
-  return `${results && cell !== "aside" ? won : ""}${(room ?? 0) > 0 ? `; its own valid answers ${percent(room ?? 0)} apart` : ""}`;
+  return `${results && cell !== "aside" ? won : ""}${(room ?? 0) > 0 ? `; an answer on record ${percent(room ?? 0)} better than one of its own` : ""}`;
+}
+
+/** How an author's answer at a gate stood against the reference harness's best valid answer by
+ *  the objective, as a share of the larger magnitude (`gainOver`, `seenOf` in `write.ts`). */
+export function gapSaid(gap: number): string {
+  return gap === 0 ? "the same as its best" : `${percent(gap)} ${gap > 0 ? "better" : "worse"} than its best`;
+}
+
+/** How far the author's answer stood from the reference harness's best at the gate, as a clause,
+ *  where the gate measured both (`reference.gap`, `task.gate`): a later session keeps the size of
+ *  the room each task was held on, and of each refused draft's shortfall. */
+function yoursSaid(reference: unknown): string {
+  const gap = asRecord(reference)?.gap;
+  return isNumber(gap) ? `, yours ${gapSaid(gap)}` : "";
+}
+
+/** A share as a percentage of two significant digits, without its sign. */
+function percent(share: number): string {
+  return `${String(Number((Math.abs(share) * 100).toPrecision(2)))}%`;
 }
 
 /** Whether a gate read its draft: one refused on fewer than the reference harness's `TRIED`
@@ -290,7 +309,7 @@ function admittedLine(gate: JsonObject | undefined) {
     return { said: "", valid: 0 };
   }
   const unread = solves < ran ? `, ${String(ran - solves)} giving no reading` : "";
-  return { said: `; gate ${String(valid)} of ${String(ran)} valid${unread}`, valid };
+  return { said: `; gate ${String(valid)} of ${String(ran)} valid${unread}${yoursSaid(reference)}`, valid };
 }
 
 /** The drafts a gate refused having read them, with the gate's reason: until 14 October a later
@@ -311,7 +330,10 @@ function refusedLines(events: readonly LogEvent[], gates: ReadonlyMap<string, Js
       isNumber(valid) && isNumber(solves)
         ? `the reference harness valid in ${String(valid)} of ${String(solves)} solves`
         : gate.reason;
-    why.set(reason, [...(why.get(reason) ?? []), `${task.taskId} (${task.family})`]);
+    why.set(reason, [
+      ...(why.get(reason) ?? []),
+      `${task.taskId} (${task.family}${yoursSaid(gate.reference)})`,
+    ]);
   }
   return [...why].map(([reason, drafts]) => `${reason}: ${drafts.join(", ")}`);
 }

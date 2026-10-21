@@ -174,7 +174,7 @@ const SAME = 1e-9;
  * The least improvement by the objective worth counting, as a share of the larger magnitude: the
  * room floor, recorded with the rule's direction at each comparison's start. One
  * judgement in every place it is asked: two valid answers closer than it tie in a pair (`better`),
- * and a solve's answer better than one of a harness's own by less leaves that harness no room on
+ * and an answer on record better than one of a harness's own by less leaves that harness no room on
  * the task (`bettered`), which decides the gate, the frontier and `roomOf`.
  *
  * In buffer-fresh-opus-r6 every solve of both sides was valid on all 24 tasks of comparison g-2,
@@ -313,7 +313,7 @@ export function objectiveRuleIn(data: JsonObject): ObjectiveRule | undefined {
  * Whether a task tells something of the harness on `side` (the overhaul plan's one definition of
  * informative, section 4b, the one `try_task` admits a draft by, and the one the exhausted fold
  * closes a task by, through `closedTo`): valid on some of its solves and not all; valid on all
- * where a solve on record is better by the objective (`bettered`); or valid on none where the task is among
+ * where a better answer is on record (`bettered`); or valid on none where the task is among
  * `feasible`, the versions a valid answer is on record for (`poolOf`, `reports.ts`): another
  * harness's, a reference solve's at the gate, or its author's. A task it answers alike in every
  * solve, at the best answer on record, leaves it nothing to gain on, and so does one it fails in
@@ -322,29 +322,35 @@ export function objectiveRuleIn(data: JsonObject): ObjectiveRule | undefined {
  * 68 of 68 in two comparisons, recode-151's 56 of 56, buffer-159-opus's 38 of 40) its room was
  * only the tasks it answered some of the time, and the gate held out only such drafts.
  */
-export function informative(pair: Paired, side: "old" | "fresh", feasible: ReadonlySet<string>): boolean {
+export function informative(
+  pair: Paired,
+  side: "old" | "fresh",
+  feasible: ReadonlySet<string>,
+  bests: ReadonlyMap<string, number> = new Map(),
+): boolean {
   const valid = pair[side].filter(Boolean).length;
   if (valid === 0) return feasible.has(pair.task);
-  return valid < pair[side].length || bettered(pair, side);
+  return valid < pair[side].length || bettered(pair, side, bests.get(pair.task) ?? null);
 }
 
 /**
- * Whether a solve's measure is better by the objective, by at least the floor (`ROOM`), than one of
- * the side's own valid answers: another of its own, or the other side's. A harness that reaches it
- * wins the pairs against that answer, so the task has room. False where the pair carries no
- * objective; a valid answer with no measure is compared with nothing.
+ * Whether a measure on record is better by the objective, by at least the floor (`ROOM`), than one
+ * of the side's own valid answers: another of its own, the other side's, or `best`, its author's
+ * (`task.feasible`). A harness that reaches it wins the pairs against that answer, so the task has
+ * room. False where the pair carries no objective; a valid answer with no measure is compared with
+ * nothing.
  *
- * Only a solve's answer counts. From 19 to 21 October an author's own answer did too
- * (`task.feasible`), so an Examiner could hold a draft by computing a better optimum than the
- * reference's, and a harness then climbed towards its author's optimiser, which rule 9 keeps out.
- * In the 30 comparisons of the buffer campaigns after the first, the reference was valid in every
- * solve on 656 of 687 scored tasks and the objective decided 382 tasks, against 388 won; in
- * buffer-fresh-opus-forkedPR223_v0_5_4-r3 up to 15 of a comparison's 32 tasks had room from the
- * author's answer alone. A task the reference answers in every solve within the floor of itself now
- * leaves room only where another harness's solve has beaten it.
+ * The author's answer counts because it proves a better answer exists, which is the room a better
+ * harness can take; it never reaches a solver. On 21 October it counted from solves alone for a few
+ * hours: a live Examiner then had 7 of 7 drafts refused, three of them with an answer of its own 3%
+ * to 20% cheaper than every reference solve's, because the reference repeated one recipe within the
+ * floor. The floor is what keeps the author's precision out: in buffer-fresh-opus-r6 its answers
+ * held drafts by a hundredth of a percent.
  */
-function bettered(pair: Paired, side: "old" | "fresh"): boolean {
-  return (roomLeft(pair, side, pair.objective?.[side === "old" ? "fresh" : "old"] ?? []) ?? 0) > 0;
+function bettered(pair: Paired, side: "old" | "fresh", best: number | null): boolean {
+  return (
+    (roomLeft(pair, side, [...(pair.objective?.[side === "old" ? "fresh" : "old"] ?? []), best]) ?? 0) > 0
+  );
 }
 
 /** The most that a measure, one of the side's own or one `against` it, is better by than one of
@@ -466,8 +472,8 @@ export function objectiveGain(pairs: readonly Paired[]): Gain | null {
  *  `informative` for it, so that it can only tie again at that budget or be lost. Until 12 October
  *  the supply read validity alone; until 19 October it kept a rule of its own beside `informative`
  *  (`bettered`). */
-export function closedTo(pair: Paired, side: "old" | "fresh"): boolean {
-  return pair[side].length > 0 && pair[side].every(Boolean) && !bettered(pair, side);
+export function closedTo(pair: Paired, side: "old" | "fresh", best: number | null = null): boolean {
+  return pair[side].length > 0 && pair[side].every(Boolean) && !bettered(pair, side, best);
 }
 
 /** Whether no solve of a pair gave a valid answer. */

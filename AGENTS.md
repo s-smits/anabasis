@@ -112,11 +112,9 @@ of them, read as promotions within one campaign (`src/builder/climb.ts`); promot
 across campaigns are no climb. Every draft that the reference answered in none of its admission
 solves, but whose author's own answer passes on it (`task.feasible`), is held out like any other
 task (`try_task`, `gated` in `src/examiner/write.ts`). A task the reference never answers while a
-valid answer is on record is exactly the room a promotion leaves, and so is a draft whose
-reference solves are all valid but at least the room floor apart by the objective (`informative`,
-`src/kernel/compare.ts`). The author's answer proves a task feasible and decides no room by the
-objective: room comes from solves, so the climb never runs towards the author's own optimiser
-(rule 9). An older log's `ladder` tasks read as held out, and its
+valid answer is on record is exactly the room a promotion leaves, and so is a draft the reference
+answers in every solve where the author's answer beats one of the reference's on the objective
+(`informative`, `src/kernel/compare.ts`). An older log's `ladder` tasks read as held out, and its
 ladder readings drive no decision (`lastReports`, `src/kernel/reports.ts`).
 
 An author's passing answer proves the answer passes the checks on the hidden values. It does not
@@ -348,9 +346,9 @@ What the **Examiner** reads:
   is the operator's word of 20 October, a term of the campaign (`exam-results`, on by default):
   the Examiner learns which tasks the newest harness wins, and so what to write against it. With the
   term `off` it is told none of it;
-- for such a task, how far apart the reference's own valid answers were by the objective, where
-  that reaches the room floor (`roomLeft`). The other harness's answers are left out of it, so it
-  reads the same with `exam-results` off whatever that harness measured;
+- for such a task, how much better a measure on record is than one of the reference's answers,
+  where another of its own or its author's is (`roomLeft`). The other harness's answers are left
+  out of it, so it reads the same with `exam-results` off whatever that harness measured;
 - those tasks counted by family, with the solves per side they rest on, and by family the turns
   each valid answer of the reference took (`src/examiner/record.ts`). With `exam-results` off, where any family holds one
   task, the counts are a total only, and a total of one is withheld. Whether the counts help is
@@ -359,7 +357,8 @@ What the **Examiner** reads:
 - the home the last session left, with a copy of the reference harness in it unless the
   campaign's term `exam-reference` is `off`;
 - how many of its gate's solves each held task passed on, and the drafts a gate refused after
-  reading them, with the reason: those read on the current reference counted alone, and those
+  reading them, with the reason, each with how far its author's answer stood from the reference's
+  best by the objective (`reference.gap` of `task.gate`): those read on the current reference counted alone, and those
   read on a replaced reference as one count;
 - the checks, through `try_answer`, on an instance with an answer of its own;
 - when it drafts an exam: the operator's prompt, what the host's reading found in each draft, and
@@ -882,9 +881,9 @@ hash. The draw does two more things:
   it (`poolOf`).
 - It takes off the frontier a task that the reference harness answered in every solve of the last
   comparison it stood in for that task, on whichever side. Such a task can only tie again or be
-  lost: it is **exhausted** (`poolOf`). A task is not closed where a solve's valid answer (the
-  reference's own or the other side's) is better by the objective than one of the reference's by
-  at least the room floor, since the next harness can still win it (`bettered`).
+  lost: it is **exhausted** (`poolOf`). A task is not closed where a valid answer on record (the
+  reference's own, the other side's or its author's) is better by the objective than one of the
+  reference's by at least the room floor, since the next harness can still win it (`bettered`).
 
 An exhausted task stays in the draw as **retained**, so that a harness that breaks what the
 reference answers still shows its losses. A loss can only come from a task the reference answers.
@@ -1011,7 +1010,7 @@ would exceed the cap.
   `src/kernel/compare.ts`, the same definition `try_task` uses to admit a draft):
   - valid on some of its solves and not all;
   - one of its valid answers bettered by the objective by at least the room floor, by another of
-    its own or by the other harness's (`bettered`);
+    its own, by the other harness's or by its author's on record (`bettered`);
   - valid on none where a valid answer to it is on record: another harness's, a reference solve's
     at the gate, or its author's;
 - **too hard** where neither harness gave a valid answer and none is on record;

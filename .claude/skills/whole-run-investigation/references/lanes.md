@@ -843,8 +843,8 @@ may count without a person reading each; it routes to `operator` for the bar and
 **31. The promotion and the climb after it.**
 
 Starts from `PROMOTED (lane 31)`, `STARTER BARE (lane 31)`, `AFTER THE PROMOTION (lane 31)` and
-`SHARED TEMPORARY FOLDER (lane 31)`. It reads the peer campaigns the primary named with
-`start --with`, each as the reader prints it, and reviews none of them.
+`SHARED TEMPORARY FOLDER (lane 31)`. Where several campaigns are under review, it is given their
+climbs side by side, in the columns `wri.ts climb` prints.
 
 The question is whether a promotion measured what the campaign exists to measure, and whether the
 campaign climbed from it. Lane 25 reads the chain and whether a step was promoted; lane 23 reads
@@ -905,8 +905,8 @@ Last the cost: dollars and hours from the opening to the promotion, and from the
 next session's end, by role (lane 28's spend). A campaign that spent most of its budget reaching
 a step against a bare starter has little left to climb with.
 
-Where peer campaigns were named, compare before concluding. The prompt opens their section with
-`wri.ts climb`'s table, which sets every campaign in these columns from its log, and with each
+Where several campaigns are under review, compare before concluding. The prompt's section on them
+opens with `wri.ts climb`'s table, which sets every campaign in these columns from its log, and with each
 solve, its side named, that named a path another campaign's Builder or Examiner session named under
 a shared temporary root first; `crossings` tracks the first occurrence per path and campaign,
 not every use, and proves neither a write nor execution. A scratch name two solvers chose is
@@ -916,8 +916,8 @@ by side the time and dollars to the first promotion, each rest comparison's tall
 tie share, the reference's valid profile, the kind of change that won, the shared-folder exposure
 by side, and how far each got after. A difference in the tree is a candidate cause only where the
 other columns agree; one campaign a tree is one sample, and two runs of one tree that differ as
-much as two trees do say the difference is the campaign's variance. A peer that has not promoted
-yet is read at the same move, not at the same hour. The decision it changes is whether a
+much as two trees do say the difference is the campaign's variance. A campaign that has not
+promoted yet is read at the same move, not at the same hour. The decision it changes is whether a
 promotion is reported as an improvement, whether the campaign is kept running toward a second
 one, and what the host must fix before the next promotion can be believed; it routes to
 `operator` for the report and the keep or stop, `host` (`src/builder/decide.ts`) for a move

@@ -1554,6 +1554,13 @@ code can skip it. Whatever you write:
   in a change whose subject is the lint (`HABITS.md`, 12.2).
 - Every runtime surface has one owner in `src/meta` (`HABITS.md`, 12.8); `node:` is imported
   nowhere else.
+- Reuse before you derive. Before writing a fold or a reader, find the production owner that
+  already reads the fact and call it (rule 12), and take the angle to reuse one wherever you see
+  it. Dependencies run one way. Production is `src/`, `vendor/`, `packages/` and the commands under
+  `tools/`; helper code is `.claude/` (the skills and their scripts) and the whole-run
+  investigation's reader, `tools/wri/`. A helper imports production readers and wraps them, and
+  production never imports a helper. Where production needs a fact a helper computes, the fact
+  moves into a production owner and the helper imports it from there.
 - A file has at most 800 nonblank lines and a function 115, and every `export` has a reader in
   another file (`bun tools/loc/source-policy.ts`, which reports vendor only).
 - A test checks what a message carries, never how it is worded: the facts it states (an outcome, a

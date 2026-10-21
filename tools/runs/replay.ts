@@ -1,7 +1,8 @@
 /**
- * `bun run runs replay [<name> ...]`
+ * `bun run runs replay [<name> ...] [--holds <commit>]... [--has <text>]...`
  *
- * Every campaign log in the repository's worktrees, or those whose names hold one of `name`, through
+ * Every campaign log in the repository's worktrees, or those whose names hold one of `name` and
+ * whose every launch ran with what `--holds` and `--has` name (`ranWith`, `receipt.ts`), through
  * this tree's readers of a log: its events and their kinds (`read`), the task states and the sets a
  * comparison takes (`taskSets`), what its sessions wrote (`writtenTasks`), each recorded condition,
  * and the plan's stop rule over its reports (`stopRule`). It writes nothing. The whole-run
@@ -19,6 +20,7 @@ import { stopRule } from "#src/kernel/reports.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
+import { askedIn, ranWith } from "./receipt.ts";
 import { isCampaign, readable } from "./registry.ts";
 
 /** What this tree's readers make of the log at `path`, in a line. */
@@ -35,9 +37,14 @@ export function replayed(path: string): string {
 }
 
 /** `bun run runs replay`. */
-export function replay(names: readonly string[]): void {
+export function replay(args: readonly string[]): void {
+  const { asked, names } = askedIn(args);
+  const asks = asked.holds.length + asked.has.length > 0;
   const logs = readable().filter(
-    (run) => isCampaign(run) && (names.length === 0 || names.some((name) => run.name.includes(name))),
+    (run) =>
+      isCampaign(run) &&
+      (names.length === 0 || names.some((name) => run.name.includes(name))) &&
+      (!asks || ranWith(run.path, run.tree, asked)),
   );
   let refused = 0;
   for (const run of logs) {

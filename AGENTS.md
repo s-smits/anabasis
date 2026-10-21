@@ -1260,6 +1260,16 @@ events in a campaign's log  >  a fold over the log  >  source and tests  >  a co
 - A Referee's ruling is a model's output. Keep it apart from the verifier's verdict and from facts
   about the environment.
 - A session report or a subagent's report is a lead until it is checked as section 11 says.
+- A run is evidence about the code it ran, and about no other. Before runs are read side by side,
+  or a finding from one is triaged, keep only those whose every launch ran with the mechanism in
+  question: `bun run runs source --has <text>` lists them, and `--holds <commit>` asks by commit
+  (`ranWith`, `tools/runs/receipt.ts`). `bun run runs replay` and a whole-run investigation's
+  peers take the same list. Name the mechanism by text its code holds, such as the constant it
+  exports, since a restack rewrites a pull request's commits and a run launched at an earlier head
+  holds no later one. A run that lacks it is no evidence for or against it: a failure it shows
+  that the mechanism removes is triaged as fixed, and a gain of a run with it is never set against
+  a run without it. Runs on another host are listed once fetched (`runs fetch`) or with
+  `runs on <host> source`.
 
 A negative claim about capability, such as "nothing checks X" or "the admission does not refuse
 Y", is the most expensive kind to get wrong, because every later reader compensates for a defect
@@ -1526,7 +1536,7 @@ reviewer the code, and keep your conclusion to yourself.
 A review reads the code first and the runs second, and so does the check of any finding before it is
 acted on or repeated, whoever reported it. Read the owner, its callers, its test and its head
 comment until each claim is a sentence a recorded log can settle. Then put each claim to the newest
-runs it touches before reporting it: a reader through `bun run runs replay`, a campaign through
+runs it touches that ran with the code in question (section 9, "Evidence") before reporting it: a reader through `bun run runs replay`, a campaign through
 `tools/wri/wri.ts` or `bun run runs view`, an event kind by counting it in the logs that hold it.
 Write what the log should show before you look. Report each finding as confirmed, with the campaign
 and event that show it; plausible, from the source alone, with the run that would settle it; or

@@ -28,6 +28,7 @@ import {
   draw,
   objectiveMargin,
   objectiveRuleIn,
+  measuresIn,
   type Paired,
   pairsOf,
   roomLeft,
@@ -88,7 +89,7 @@ export interface Standing {
     | "tied-mixed"
     | "aside";
   readonly solves: number | null;
-  /** How far apart the sides' measures were where the objective alone won it (`objectiveMargin`). */
+  /** How far apart the sides' measures were where validity left it even and the objective gave it points (`objectiveMargin`). */
   readonly margin: number | null;
   /** The room by the objective the reference harness's answers left there, against its own and its
    *  author's (`roomLeft`), and 0 under the floor (`ROOM`). */
@@ -127,7 +128,7 @@ interface TalliedIn {
   readonly closed: boolean;
   /** The side that won the task in this comparison's tally (`tally`), or null for a tie. */
   readonly won: "old" | "fresh" | null;
-  /** How far apart the sides' measures were where the objective alone won it (`objectiveMargin`). */
+  /** How far apart the sides' measures were where validity left it even and the objective gave it points (`objectiveMargin`). */
   readonly margin: number | null;
   /** The room by the objective the reference harness's answers left there, against its own and its
    *  author's (`roomLeft`), and 0 under the floor (`ROOM`), where it leaves none; null where it
@@ -401,7 +402,15 @@ export function pairsReported(events: readonly LogEvent[], report: Reported): Pa
   }
   const begun = events.find(({ kind, data: start }) => kind === STARTED && start.session === session);
   const halves = begun?.data.noise === true ? ("mirrored" as const) : undefined;
-  const sides = { old, fresh, setting, comparison: session, objective: objectiveRuleIn(data), halves };
+  const sides = {
+    old,
+    fresh,
+    setting,
+    comparison: session,
+    objective: objectiveRuleIn(data),
+    weights: measuresIn(begun?.data.weights),
+    halves,
+  };
   return pairsOf(events.slice(0, index + 1), versions, sides, solves).pairs;
 }
 

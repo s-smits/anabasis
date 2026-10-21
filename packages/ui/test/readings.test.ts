@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { epochsOf } from "../../../src/builder/climb.ts";
 import { reported, toLabel } from "../../../src/builder/comparison.ts";
 import { campaignOf } from "../../../src/builder/handover.ts";
-import { pairings } from "../../../src/kernel/compare.ts";
+import { differenceOf } from "../../../src/kernel/compare.ts";
 import { LOG_FILE, read } from "../../../src/kernel/log.ts";
 import { billedAll, billedParts, lastReports } from "../../../src/kernel/reports.ts";
 import {
@@ -348,11 +348,11 @@ describe("what a comparison came to", () => {
     if (detail.kind !== "comparison") throw new Error("b-1 is a comparison");
     const told = detail.tasks.map(({ taskId, outcome, old, fresh }) => {
       const [before, after] = [old.map(({ id }) => valid(id)), fresh.map(({ id }) => valid(id))];
-      const won = pairings({ task: "", old: before, fresh: after });
+      const difference = differenceOf({ task: "", old: before, fresh: after });
       const reference = before.filter(Boolean).length;
       let expected: Outcome = reference === before.length ? "tiedEvery" : "tiedSome";
       if (reference === 0) expected = "tiedNone";
-      if (won.fresh !== won.old) expected = won.fresh > won.old ? "won" : "lost";
+      if (difference !== 0) expected = difference > 0 ? "won" : "lost";
       return [taskId, outcome === "aside" ? "aside" : expected, outcome];
     });
     expect(told.map(([taskId, , outcome]) => [taskId, outcome])).toEqual(

@@ -491,10 +491,11 @@ export interface Sensitivity {
    *  report written before 9 October. */
   readonly informative: { readonly old: number; readonly fresh: number } | null;
   /** The tied tasks no counted solve answered validly, the tallied tasks with a solve a solver
-   *  flagged, and the tallied tasks the objective decided (null where it fixed none). */
+   *  flagged, and the points each measure gave the tallied tasks (null where the comparison began
+   *  with no weights). */
   readonly unsolved: number;
   readonly flagged: number;
-  readonly decided: number | null;
+  readonly points: { readonly validity: number; readonly objective: number; readonly bill: number } | null;
   /** The comparison of the same two harnesses before this one, and the tasks both scored. */
   readonly overlap: { readonly with: string; readonly tasks: number } | null;
   /** The mean billed dollars of a counted solve under each harness. */

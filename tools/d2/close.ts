@@ -242,8 +242,8 @@ function economyLines(events: readonly LogEvent[]): string[] {
   ];
 }
 
-/** A promotion a line: the comparisons that read its step, its last tally against the reference
- *  it was promoted over, and whether it is set-up (epoch 0) or a rung of the climb. */
+/** A promotion a line: the comparisons that read its step, its last tally and score against the
+ *  reference it was promoted over, and whether it is set-up (epoch 0) or a rung of the climb. */
 function promotionLines(
   events: readonly LogEvent[],
   comparisons: readonly Compared[],
@@ -274,7 +274,7 @@ function promotionLines(
     const held =
       last?.tally === null || last === undefined
         ? ". No comparison of it tallied a task"
-        : `. In ${last.id} it won ${String(last.tally.wins)}, lost ${String(last.tally.losses)} and tied ${String(last.tally.ties)}${gainSaid(last.gain)}`;
+        : `. In ${last.id} it won ${String(last.tally.wins)}, lost ${String(last.tally.losses)} and tied ${String(last.tally.ties)}${gainSaid(last.gain)}${last.points === null ? "" : `, the score giving it ${String(last.points.validity)} points by validity, ${String(last.points.objective)} by the objective and ${String(last.points.bill)} by the bill`}`;
     return [
       `- ${at.slice(0, 10)}: harness ${called(data.harness)}, ${rung}, read by ${stepped.map((each) => each.id).join(" and ") || "no comparison on record"}${held}${isString(data.despite) ? `. Promoted on the operator's reason, where the rule did not name it: ${data.despite}` : ""}${origin}${worth === undefined ? "" : `. Its ${worthLine(worth)}`}`,
     ];

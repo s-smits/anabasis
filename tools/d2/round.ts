@@ -71,7 +71,15 @@ import { worthLine } from "#src/builder/climb.ts";
 import { predicted, type Report, startOf } from "#src/builder/comparison.ts";
 import { refuseTerms, type RoundRequest, round, scoredSet } from "#src/builder/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
-import { type Gain, type ObjectiveRule, objectiveRuleIn, ROOM } from "#src/kernel/compare.ts";
+import {
+  type Gain,
+  type ObjectiveRule,
+  objectiveRuleIn,
+  ROOM,
+  type Measures,
+  WEIGHTS,
+  measuresIn,
+} from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
@@ -348,6 +356,13 @@ export function objectiveNamed(
   return declared === undefined ? undefined : { direction: declared.direction, room: ROOM };
 }
 
+/** The weights comparison `id` scores its tasks by: the ones it began with, which are none for one
+ *  begun before 21 October, or `WEIGHTS` for a new one. */
+export function weightsNamed(campaign: Pick<Campaign, "log">, id: string): Measures | undefined {
+  const began = startOf(read(campaign.log), id);
+  return began === undefined ? WEIGHTS : measuresIn(began.weights);
+}
+
 /** What `--predict` names: the operator's expectation of the comparison, in a sentence, or none. */
 export function predictionNamed(flag: string | undefined): string | undefined {
   const said = flag?.trim() ?? "";
@@ -427,9 +442,10 @@ export function reportLines({
   noise,
   turns = null,
   worth = null,
+  score = null,
   ...apart
 }: Pick<Report, "valid" | "objective" | "frontier" | "noise"> &
-  Partial<Pick<Report, "scored" | "turns" | "worth" | Apart>>): string[] {
+  Partial<Pick<Report, "scored" | "turns" | "worth" | "score" | Apart>>): string[] {
   if (valid === null) return [];
   // The turns of a valid answer, over the tasks both harnesses answered: reported, in no test.
   const both = Object.values(turns ?? {}).flatMap(({ old, fresh }) =>
@@ -446,17 +462,20 @@ export function reportLines({
           `the step is read on ${plural(untied + test.ties, "tallied task")}, ${String(untied)} of them untied: one reading at the comparison's level detects four times in five ${share === null ? "no share of them" : `a harness that wins ${String(Math.round(100 * share))}% of them`}`,
           `one reading at these margins reads a step between equal harnesses ${String(Math.round(1000 * test.falseRate) / 10)}% of the time, never more than the level`,
           // The test weighs margins, but a sweep's p is its count's alone (the plan's 7.5).
-          `its p is ${rounded(test.p)}: the test weighs each untied task by its margin in pair wins${test.losses === 0 && untied > 0 ? `, and where every untied task is won p is one half to the power of their count whatever the margins: ${String(untied)} won read ${rounded(0.5 ** untied)}` : ""}`,
+          `its p is ${rounded(test.p)}: the test weighs each untied task by its ${score === null ? "margin in pair wins" : "score"}${test.losses === 0 && untied > 0 ? `, and where every untied task is won p is one half to the power of their count whatever the margins: ${String(untied)} won read ${rounded(0.5 ** untied)}` : ""}`,
         ]),
     ...(noise === null ? [] : aaLines(noise)),
     ...accounted(apart),
     `each harness by itself, as how many tasks had ${valid.old.map((_, count) => String(count)).join(", ")} valid answers in ${String(valid.old.length - 1)} solves (a count of tasks a column, not a share):`,
     `  at its limits: reference ${valid.old.join("/")}, new ${valid.fresh.join("/")}`,
-    ...(objective === null
+    ...(score === null
       ? []
       : [
-          `the objective (${objective.direction} is better) decided ${plural(objective.decided, "task")} that validity alone would have tied${gainSaid(objective.gain)}`,
+          `the score weighs validity ${String(score.weights.validity)}, the objective ${String(score.weights.objective)} and the bill ${String(score.weights.bill)}, and over the tallied tasks gave the new harness ${signed(score.points.validity)}, ${signed(score.points.objective)} and ${signed(score.points.bill)} points, a task's score running from -1000 to 1000`,
         ]),
+    ...(objective === null
+      ? []
+      : [`the objective: ${objective.direction} is better${gainSaid(objective.gain)}`]),
     ...(both.length === 0
       ? []
       : [
@@ -472,6 +491,11 @@ export function gainSaid(gain: Gain | null | undefined): string {
   return gain == null
     ? ""
     : `; on the ${plural(gain.tasks, "won frontier task")} with a valid measure on both sides its median relative gain is ${String(Number((100 * gain.median).toPrecision(2)))}%`;
+}
+
+/** A count of points with its sign. */
+function signed(points: number): string {
+  return points > 0 ? `+${String(points)}` : String(points);
 }
 
 /** A share, to three places. */
@@ -570,6 +594,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
     solves: Number(values.solves),
     level: Number(values.level),
     objective: objectiveNamed(campaign, session),
+    weights: weightsNamed(campaign, session),
     defects: Number(values.defects),
     cap,
     prediction: predictionNamed(values.predict),

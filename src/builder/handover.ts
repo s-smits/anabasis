@@ -28,7 +28,7 @@
  * billed every move made inside its span, which those moves' own lines billed again.
  * The Referee triage of 20 October found unclear and unread practice rejections counted as failures.
  */
-import type { Gain, Tally } from "../kernel/compare.ts";
+import { type Gain, type Measures, measuresIn, type Tally } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { billedAll, billedParts, lastReports, latestBuilt, ownedBy, promoted } from "../kernel/reports.ts";
 import { ended, passed, practiceRan, type Ran, rejectionAside, solvesIn } from "../kernel/solves.ts";
@@ -105,9 +105,9 @@ interface Compared {
   readonly tally: Tally | null;
   /** Each harness by itself: the tasks with no, one, two... valid answers among its solves. */
   readonly valid: { readonly old: readonly number[]; readonly fresh: readonly number[] } | null;
-  /** The tallied tasks the objective decided, where the comparison fixed one: won or lost where
-   *  validity alone would have tied. Null where it fixed none. */
-  readonly decided: number | null;
+  /** The points each measure gave the tallied tasks together, where the comparison began with
+   *  weights (`pointsOf`); null otherwise. */
+  readonly points: Measures | null;
   /** The median relative gain by the objective on the frontier tasks the new harness won, where
    *  any had a valid measure on both sides (`objectiveGain`); null otherwise and before 20 October. */
   readonly gain: Gain | null;
@@ -272,9 +272,7 @@ function compared(events: readonly LogEvent[], id: string): Compared {
         ? null
         : { wins: count(scored.wins), losses: count(scored.losses), ties: count(scored.ties) },
     valid: valid === null ? null : { old: side(valid.old), fresh: side(valid.fresh) },
-    decided: isNumber(asRecord(report?.objective)?.decided)
-      ? count(asRecord(report?.objective)?.decided)
-      : null,
+    points: measuresIn(asRecord(report?.score)?.points) ?? null,
     gain: isNumber(gain?.median) && isNumber(gain.tasks) ? { median: gain.median, tasks: gain.tasks } : null,
     aside: listed(report?.aside),
     rulings: {

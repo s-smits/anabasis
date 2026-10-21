@@ -30,6 +30,7 @@ import {
 } from "../src/builder/session.ts";
 import type { Bench } from "../src/builder/tools.ts";
 import { type Condition, recordCondition, settingId } from "../src/kernel/condition.ts";
+import { WEIGHTS } from "../src/kernel/compare.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import { latestBuilt, poolOf, stopRule } from "../src/kernel/reports.ts";
@@ -385,6 +386,7 @@ describe("a round", () => {
         noise: null,
         counted: null,
         objective: null,
+        score: null,
         // The turns each harness's valid answers took, by task: in no tally.
         turns: Object.fromEntries(HELD.map((task) => [task, { old: null, fresh: 10 }])),
         versions: HELD,
@@ -506,27 +508,30 @@ describe("a round", () => {
     }
   });
 
-  it("sets two valid answers apart by the objective the comparison fixed, and says how many it decided", async () => {
-    // Every solve but s1's is valid under both harnesses. The new harness's answers are lighter on
-    // s2 and s3, the same on s4 within a billionth, and s1 nobody answers.
+  it("scores two valid answers by the objective under the weights the comparison began with, and reports the points of each measure", async () => {
+    // Every solve but s1's is valid under both harnesses, at one bill. The new harness's answers are
+    // lighter on s2 and s3, the same on s4 within a billionth, and s1 nobody answers.
     const mass = (version: string, side: Side): number =>
       (side === "fresh" ? { s2: 8, s3: 9, s4: 10 + 1e-10 }[version] : 10) ?? 10;
     const s = await setup([edit, finish], (version, side) =>
       version === "s1" ? LATE : { ending: PASS, objective: mass(version, side) },
     );
-    // The room floor rides with the direction: it decides which tasks leave room, and no pair.
+    // Two measures closer than the room floor tie, as s4's do.
     const objective = { direction: "lower", room: 0.05 } as const;
-    // Beside the count, the median relative gain on the won tasks: 0.2 on s2 and 0.1 on s3.
+    // Beside the points, the median relative gain on the won tasks: 0.2 on s2 and 0.1 on s3.
     const gain = { median: (0.2 + 0.1) / 2, tasks: 2 };
-    expect(await round({ ...s.request, objective })).toMatchObject({
+    // A gain of a tenth or more takes the objective's whole weight in each of the four pairings.
+    const full = 1000 * WEIGHTS.objective;
+    expect(await round({ ...s.request, objective, weights: WEIGHTS })).toMatchObject({
       scored: { wins: 2, losses: 0, ties: 2, p: 0.25, unsolved: 1 },
-      objective: { ...objective, decided: 2, gain },
+      objective: { ...objective, gain },
+      score: { weights: WEIGHTS, points: { validity: 0, objective: 2 * full, bill: 0 } },
       reading: NO_STEP,
     });
-    // The rule is a term of the comparison, fixed at its start, and the report carries it with
-    // the count, so a reader of the report pairs as the comparison did.
-    expect(s.of(COMPARISON_STARTED)[0]).toMatchObject({ objective });
-    expect(s.of(COMPARISON_REPORTED)[0]).toMatchObject({ objective: { ...objective, decided: 2 } });
+    // The weights are a term of the comparison, fixed at its start beside the objective, so a
+    // reader of the log scores as the comparison did.
+    expect(s.of(COMPARISON_STARTED)[0]).toMatchObject({ objective, weights: WEIGHTS });
+    expect(s.of(COMPARISON_REPORTED)[0]).toMatchObject({ score: { weights: WEIGHTS } });
   });
 
   it("solves both harnesses afresh at every comparison, to the same reading at four solves side by side", async () => {
@@ -620,6 +625,9 @@ describe("a round", () => {
       await expect(round({ ...s.request, objective: { direction: "lower" } })).rejects.toThrow(
         "other terms (objective)",
       );
+      // It began with no weights, so its tasks are scored as before them, and weights now would
+      // score the solves it already has otherwise.
+      await expect(round({ ...s.request, weights: WEIGHTS })).rejects.toThrow("other terms (weights)");
       // A term the start recorded and a continuation drops has moved too.
       let left = 10;
       const t = await setup([edit, finish], (version, side, nth, digest) => {
@@ -628,8 +636,13 @@ describe("a round", () => {
         return step(version, side, nth, digest);
       });
       const objective = { direction: "lower" } as const;
-      await expect(round({ ...t.request, objective, prediction: "a step" })).rejects.toThrow(STOPS);
-      await expect(round(t.request)).rejects.toThrow("other terms (objective, prediction)");
+      const begun = { ...t.request, objective, prediction: "a step", weights: WEIGHTS };
+      await expect(round(begun)).rejects.toThrow(STOPS);
+      await expect(round(t.request)).rejects.toThrow("other terms (objective, prediction, weights)");
+      // Weights moved after its start would read its solves by another score.
+      await expect(round({ ...begun, weights: { ...WEIGHTS, bill: 0.15 } })).rejects.toThrow(
+        "other terms (weights)",
+      );
       // It began with no prediction, and takes none now that some of its solves can be seen.
       await expect(round({ ...s.request, prediction: "a step, 4 to 0" })).rejects.toThrow(
         "other terms (prediction)",

@@ -29,6 +29,7 @@ import {
   worthOf,
 } from "../src/builder/climb.ts";
 import { examine } from "../src/examiner/session.ts";
+import { WEIGHTS } from "../src/kernel/compare.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import { type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import { GUIDE_FILE } from "../src/meta/bundle-layout.ts";
@@ -444,10 +445,10 @@ describe("the regression reading beside a comparison", () => {
       ...heldOut("v1"),
       ...solved("g-1", "v1", "h1", [false, false]),
       ...solved("g-1", "v1", "h2", [true, true], { measures: [10, 10] }),
-      reported("g-1", "h1", "h2", ["v1"], { ...lower, decided: 0 }),
+      reported("g-1", "h1", "h2", ["v1"], lower),
       ...solved("g-2", "v1", "h1", [false, false]),
       ...solved("g-2", "v1", "h3", [true, true], { measures: [8, 8] }),
-      reported("g-2", "h1", "h3", ["v1"], { ...lower, decided: 0 }),
+      reported("g-2", "h1", "h3", ["v1"], lower),
     ];
     expect(regressionOf(log)).toMatchObject({
       newest: "h3",
@@ -461,7 +462,7 @@ describe("the regression reading beside a comparison", () => {
       ...log,
       ...solved("g-3", "v1", "h1", [false, false]),
       ...solved("g-3", "v1", "h4", [true, true], { measures: [6, 6] }),
-      reported("g-3", "h1", "h4", ["v1"], { direction: "higher", decided: 0 }),
+      reported("g-3", "h1", "h4", ["v1"], { direction: "higher" }),
     ];
     expect(regressionOf(other)).toMatchObject({
       newest: "h4",
@@ -471,6 +472,26 @@ describe("the regression reading beside a comparison", () => {
       losses: 0,
       ties: 1,
     });
+  });
+
+  it("scores by the weights the newer comparison began with, and adds the pairings up where it began with none", () => {
+    // h3 answers in one solve of two, a fifth better by the objective; h2 in both. Added up, the
+    // two pairings h3 wins by the objective cancel the two it loses on validity; weighed, validity's
+    // -300 points outweigh the objective's 150 and it loses.
+    const log = (weights?: JsonObject): LogEvent[] => [
+      ...heldOut("v1"),
+      ...["g-1", "g-2"].map((session) =>
+        event("comparison.started", { session, ...keyIfDefined("weights", weights) }),
+      ),
+      ...solved("g-1", "v1", "h1", [false, false]),
+      ...solved("g-1", "v1", "h2", [true, true], { measures: [10, 10] }),
+      reported("g-1", "h1", "h2", ["v1"], { direction: "lower" }),
+      ...solved("g-2", "v1", "h1", [false, false]),
+      ...solved("g-2", "v1", "h3", [true, false], { measures: [8] }),
+      reported("g-2", "h1", "h3", ["v1"], { direction: "lower" }),
+    ];
+    expect(regressionOf(log({ ...WEIGHTS }))).toMatchObject({ shared: 1, wins: 0, losses: 1, ties: 0 });
+    expect(regressionOf(log())).toMatchObject({ shared: 1, wins: 0, losses: 0, ties: 1 });
   });
 });
 

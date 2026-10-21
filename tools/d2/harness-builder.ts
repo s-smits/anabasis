@@ -105,9 +105,11 @@
  *
  * Not run here: see `campaign.ts`.
  */
+import { backends } from "#src/backends/models.ts";
 import { decide } from "#src/builder/decide.ts";
 import { sessionEnded } from "#src/builder/ground.ts";
 import { type Decided, decidedLine } from "#src/builder/move.ts";
+import { type Opening, SEATS } from "#src/builder/opening.ts";
 import { pendingWords } from "#src/builder/word.ts";
 import { keepPractised } from "#src/builder/session.ts";
 import { draftOf } from "#src/examiner/draft.ts";
@@ -123,6 +125,7 @@ import { dirname, join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { acceptCommand } from "../c/accept.ts";
+import { modelNamed, sweepOptions } from "../m0/stored-sweep.ts";
 import { draftCommand } from "../d1b/draft.ts";
 import { examineCommand } from "../d1b/examine.ts";
 import { nextRun, writeReceipt } from "../runs/receipt.ts";
@@ -539,6 +542,32 @@ function settingHeld(log: string, given: Values): void {
 }
 
 /**
+ * The opening of a paid campaign, refused where a seat's provider holds no credential here, before
+ * anything is paid for (rule 14), and so also under `--dry-run`, which every launch runs first.
+ * Every call of such a seat ends a provider non-result: on 21 October a campaign on the Linux host,
+ * whose env file held no OpenRouter key, ended its Examiner's 9 gate solves "Provider is not
+ * configured: openrouter" while its Opus Examiner billed $3.11.
+ */
+async function served(opening: Opening, paid: "paid" | "scripted", named?: string): Promise<Opening> {
+  if (paid === "scripted") return opening;
+  const { seats, solver } = opening;
+  const models = backends(sweepOptions());
+  // A stored pack's opening keeps no solver: its `--solver` solves, or its cycle's own model.
+  const roles = [
+    ...SEATS.map((name) => [name, seats[name]?.model] as const),
+    ["solver", named ?? solver?.model] as const,
+  ];
+  for (const [role, model] of roles) {
+    if (model !== undefined && (await models.getAuth(modelNamed(model))) === undefined) {
+      throw new Error(
+        `the ${role}'s ${model}: its provider holds no credential in this environment, so every call would end a provider non-result; set its key in the env file the command reads`,
+      );
+    }
+  }
+  return opening;
+}
+
+/**
  * `bun tools/d2/harness-builder.ts`, and under a rehearsal's seats the same loop with a script in
  * each model seat. It returns the last thing move 7 said: the campaign's ending, or the move that
  * would be made next.
@@ -560,7 +589,7 @@ export async function harnessBuilder(
   let campaign = packed(given) ? await openCampaign(packNamed(given)) : null;
   const paid = seats.seated === solved ? "paid" : "scripted";
   settingHeld(log, given);
-  let opening = opened(log, given, paid);
+  let opening = await served(opened(log, given, paid), paid, given.solver);
   if (paid === "paid" && !given["dry-run"]) keepReceipt(log, args);
   if (!given["dry-run"] && existsSync(log)) await endCut(log);
   // Every move is made with the terms the opening keeps: this command's, and the record's for

@@ -9,22 +9,13 @@
  * hours before, and only the two logs together show it. `wri.ts climb` prints this, and the
  * lane 31 prompt carries it beside the peers' overviews.
  */
+import { short } from "#src/builder/move.ts";
 import { gateAnswers } from "#src/examiner/record.ts";
 import { flipP, informative, type Paired, pairings } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { pairsReported } from "#src/kernel/reports.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
-import {
-  type Compared,
-  count,
-  fired,
-  type Index,
-  indexOf,
-  items,
-  short,
-  type Trigger,
-  text,
-} from "./folds.ts";
+import { type Compared, count, fired, type Index, indexOf, items, type Trigger, text } from "./folds.ts";
 import {
   epochsOf,
   joinedTest,

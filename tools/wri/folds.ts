@@ -21,8 +21,10 @@ import { type Condition, conditionsOf } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { unsolved as noneAnswered } from "#src/kernel/compare.ts";
 import { billedAll, lastReports, poolOf, pairsReported } from "#src/kernel/reports.ts";
+import { solvesIn } from "#src/kernel/solves.ts";
 import { heldAtGate, taskSets } from "#src/kernel/task.ts";
 import { OBJECTIVE } from "#src/kernel/verify.ts";
+import { short } from "#src/builder/move.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
@@ -54,15 +56,15 @@ export interface Solve {
    *  start holds none, as before 2026-10-09 for the cores. */
   readonly load: number | null;
   readonly cores: number | null;
-  outcome: string | null;
-  kind: string | null;
-  seconds: number;
+  readonly outcome: string | null;
+  readonly kind: string | null;
+  readonly seconds: number;
   readonly calls: string[];
   errors: number;
   /** A limit a call met that its ending does not name, or null; a call's turn counts from 0. */
   limit: string | null;
   /** Whether the provider named the model that served it. */
-  attested: boolean;
+  readonly attested: boolean;
 }
 
 /** One call of a Builder's tool, at its place in the log. */
@@ -210,7 +212,6 @@ export const count = (value: JsonValue | undefined): number => (isNumber(value) 
 export const items = (value: JsonValue | undefined): readonly JsonValue[] =>
   Array.isArray(value) ? value : [];
 export const strings = (value: JsonValue | undefined): string[] => items(value).filter(isString);
-export const short = (digest: string): string => digest.slice(0, 8);
 /** Whether a solve measured its harness: a non-result is in no pair, and a rerun replaced it. A
  *  solver's flag is its side's own fail, as the comparison counts it. */
 export const measured = (solve: Solve): boolean => ["pass", "fail", "flagged"].includes(solve.outcome ?? "");
@@ -234,48 +235,45 @@ export function tally(counts: Readonly<Record<string, number>>): string {
   return named.map(([name, number]) => `${name} ${String(number)}`).join(", ") || "none";
 }
 
+/** Each solve as the kernel reads it (`solvesIn`), with what it ran under and the calls it made
+ *  since its last start. */
 function solvesOf(events: readonly LogEvent[], conditions: ReadonlyMap<string, Condition>): Solve[] {
-  const solves = new Map<string, Solve>();
-  for (const [index, { kind, data }] of events.entries()) {
-    const id = text(data.solve);
-    if (kind === "solve.started") {
-      const condition = conditions.get(text(data.condition));
-      const [minute] = items(data.load);
-      const limits = asRecord(data.limits);
-      solves.set(id, {
+  const solves = new Map(
+    solvesIn(events).map(({ id, started, condition: named, ending, start, end }): [string, Solve] => {
+      const condition = conditions.get(named);
+      const [minute] = items(start.load);
+      const limits = asRecord(start.limits);
+      return [
         id,
-        index,
-        version: condition?.task ?? "",
-        harness: condition?.harness ?? "",
-        condition: text(data.condition),
-        side: condition?.side ?? "",
-        comparison: isString(data.comparison) ? data.comparison : null,
-        wallSeconds: count(limits?.wallSeconds),
-        modelTurns: isNumber(limits?.modelTurns) ? limits.modelTurns : null,
-        load: isNumber(minute) ? minute : null,
-        cores: isNumber(data.cores) ? data.cores : null,
-        outcome: null,
-        kind: null,
-        seconds: 0,
-        calls: [],
-        errors: 0,
-        limit: null,
-        attested: false,
-      });
-    }
-    const solve = solves.get(id);
-    if (solve !== undefined && kind === "solve.call") {
-      solve.calls.push(text(data.tool));
-      solve.errors += data.isError === true ? 1 : 0;
-      if (count(data.turn) + 1 === solve.modelTurns) solve.limit = "last turn";
-    }
-    if (solve !== undefined && kind === "solve.finished") {
-      const ending = asRecord(data.ending);
-      solve.outcome = text(ending?.outcome);
-      solve.kind = isString(ending?.kind) ? ending.kind : null;
-      solve.seconds = count(data.seconds);
-      solve.attested = items(data.responseModels).length > 0;
-    }
+        {
+          id,
+          index: started,
+          version: condition?.task ?? "",
+          harness: condition?.harness ?? "",
+          condition: named,
+          side: condition?.side ?? "",
+          comparison: isString(start.comparison) ? start.comparison : null,
+          wallSeconds: count(limits?.wallSeconds),
+          modelTurns: isNumber(limits?.modelTurns) ? limits.modelTurns : null,
+          load: isNumber(minute) ? minute : null,
+          cores: isNumber(start.cores) ? start.cores : null,
+          outcome: end === null ? null : text(ending?.outcome),
+          kind: isString(ending?.kind) ? ending.kind : null,
+          seconds: count(end?.seconds),
+          calls: [],
+          errors: 0,
+          limit: null,
+          attested: items(end?.responseModels).length > 0,
+        },
+      ];
+    }),
+  );
+  for (const [index, { kind, data }] of events.entries()) {
+    const solve = kind === "solve.call" && isString(data.solve) ? solves.get(data.solve) : undefined;
+    if (solve === undefined || index < solve.index) continue;
+    solve.calls.push(text(data.tool));
+    solve.errors += data.isError === true ? 1 : 0;
+    if (count(data.turn) + 1 === solve.modelTurns) solve.limit = "last turn";
   }
   return [...solves.values()];
 }
@@ -334,8 +332,7 @@ export function indexOf(events: readonly LogEvent[]): Index {
  * read from its round's own window of the log, as that round counted them.
  */
 function comparedOf(events: readonly LogEvent[], log: Pick<Index, "solves" | "builds">): Compared[] {
-  return lastReports(events).map(({ session, data: last }) => {
-    const at = events.findIndex(({ kind, data }) => kind === REPORTED && data.session === session);
+  return lastReports(events).map(({ session, index: at, data: last }) => {
     const began = events.findIndex(
       ({ kind, data }) => kind === "comparison.started" && data.session === session,
     );
@@ -374,11 +371,20 @@ function comparedOf(events: readonly LogEvent[], log: Pick<Index, "solves" | "bu
 /** The events each role's dollars are in, as `billedAll` reads them: what it was billed where it
  *  ended, and the turns of a session that never ended. */
 const ROLE_EVENTS = {
-  solver: ["solve.started", "solve.finished", "solve.turn"],
-  builder: ["build.started", BUILD_END, "build.turn"],
+  solver: ["solve.started", "solve.finished", "solve.turn", "solve.compacted"],
+  builder: ["build.started", BUILD_END, "build.turn", "build.compacted"],
   // A drafting session is the Examiner's, as the host's budget counts it: esp32's d-1 billed $1.57
   // that read as no role's on 12 October.
-  examiner: [EXAM_START, EXAM_END, "exam.turn", "draft.started", "draft.finished", "draft.turn"],
+  examiner: [
+    EXAM_START,
+    EXAM_END,
+    "exam.turn",
+    "exam.compacted",
+    "draft.started",
+    "draft.finished",
+    "draft.turn",
+    "draft.compacted",
+  ],
   referee: ["referee.finding"],
   // A seat until 11 October (`7f0add79:docs/simplify.md`, E1): a log of before holds what it billed.
   diagnoser: ["diagnosis.recorded"],

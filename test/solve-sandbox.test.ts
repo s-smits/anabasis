@@ -250,6 +250,26 @@ describe("the solve isolation's policy", () => {
     });
   }, 60_000);
 
+  // pip installs into the user base, and refused there it reads as a broken pip (21 October).
+  it.skipIf(Bun.which("python3") === null)(
+    "keeps Python's user base in the seat's home, where a package installs",
+    async () => {
+      await inSeat(workRepo(), [], async (wall, run) => {
+        const said = await run(
+          [
+            "site=$(python3 -c 'import site; print(site.getusersitepackages())')",
+            'mkdir -p "$site" && echo "SAID = 1" > "$site/ana_seat_mod.py"',
+            "python3 -c 'import ana_seat_mod, site; print(ana_seat_mod.SAID); print(site.USER_BASE)'",
+          ].join(" && "),
+        );
+        const [imported, base] = said.trim().split("\n");
+        expect(imported).toBe("1");
+        expect(containsPath(realpathSync(base ?? "/"), realpathSync(wall.dirs.home))).toBe(true);
+      });
+    },
+    60_000,
+  );
+
   // On Linux an overmount leaves the directory empty, so its listing names no tenant either way.
   it.skipIf(!onDarwin)(
     "closes the per-user temporary directory but for what mktemp and the shims make in it, and keeps TMPDIR on the seat's root",

@@ -248,7 +248,8 @@ Read at each milestone, at the timer's predicted moment, and within twenty minut
   "working" hours after its last event is usually a `campaign.waited` naming its reset. An
   `environment` ending under a live keeper is a pause, not an end. On 20 October both were misread:
   a weekly limit as a stall, and three paused runs as finished.
-- `waitOut` in `tools/d2/host.ts` waits for a named provider reset. After an interruption, continue
+- `waitOut` in `src/solve/run.ts` waits for a named provider reset, inside the solve it ended and
+  after a session crash (`tools/d2/host.ts`). After an interruption, continue
   at the run's own commit; counted solves stand. Apply `AGENTS.md`, rule 15, to provider limits.
 - A keeper moves only among the logins it was given. With one login it waits out a weekly limit,
   which can take days. Give a keeper two or more logins. Where a run's wait outlasts its use (its

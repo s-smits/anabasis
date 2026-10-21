@@ -79,8 +79,8 @@
  * nothing: topping up a set a dispute thinned, after the tallies could be seen, would be a second
  * look at the data. It also stops, to go on the same way, when the provider has stopped answering:
  * `SILENT` tasks in a row whose solve ended, after its reruns, with nothing written for it. A login
- * at its session limit does that to every solve in seconds. A limit that names when it resets
- * stops it at the first solve it ends, which is not run again: every solve until then would meet it.
+ * at its session limit does that to every solve in seconds. Named resets wait inside `solve`:
+ * on 21 October they had refused 43 of 1,396 gate drafts across 30 campaigns.
  *
  * A round's session starts from the harness the caller names, which need not be the reference
  * harness: a Builder goes on from its latest harness, and the comparison is against the reference
@@ -100,7 +100,6 @@
  * counted solves, its rejections, its tallies and its report. This file keeps what runs one and
  * what it writes.
  */
-import { resetOf } from "../backends/claude.ts";
 import { draw, type ObjectiveRule } from "../kernel/compare.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { billedFor, type Cap, capHolds, poolOf } from "../kernel/reports.ts";
@@ -455,18 +454,6 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
     const solved = await request.solve(task, under, id, kill);
     const { solve, ending } = solved;
     const why = unanswered(log, id, solved);
-    // Whatever the solve wrote first: on 13 October a weekly limit ended 14 solves of one task in
-    // three minutes, four of them after some output, and the task read short. The campaign waits the
-    // reset out (`waitOut`, `tools/d2/host.ts`).
-    if (
-      ending.outcome === "non-result" &&
-      ending.kind === "provider" &&
-      resetOf(ending.reason, new Date()) !== null
-    ) {
-      throw new Error(
-        `the provider's limit ended a solve, so the comparison stops: ${ending.reason}. Run it again and it goes on from its log`,
-      );
-    }
     if (why === null) silent.clear();
     else if (silent.add(task).size >= SILENT) {
       throw new Error(

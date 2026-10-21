@@ -25,6 +25,8 @@
  * Examiner hears how many of them were valid, how many gave no reading, the turns each valid one
  * took and, where the contract declares an objective, their measures and its own answer's, and
  * nothing else of them.
+ * On 21 October, 128 gate solves across 43 of 1,396 drafts in 30 logs ended at a named reset.
+ * `solve` now owns that wait; the gate receives only its settled ending, under the session's signal.
  * Since 14 October a submitted rejection is ruled by the campaign's Referee before the gate counts
  * it. An unclear, defective or unruled rejection leaves the draft unmeasured; other endings keep
  * their meaning. Neither the answer nor the ruling reaches the Examiner.

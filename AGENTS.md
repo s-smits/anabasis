@@ -1012,7 +1012,7 @@ reading at a shorter budget would describe a solver that was told the longer one
 Beside every comparison of four solves per side stands the reference read against itself, on
 halves of its own solves mirrored in time. It should read no step; its tie share is the noise every
 comparison has to beat, and its flip rate is how often two solves of a task disagree. The
-A/A is read two-sided at the comparison's level, since which half is which is arbitrary. Every A/A
+A/A is read either way, each half at the comparison's level, since which half is which is arbitrary. Every A/A
 stands as a reading and ends nothing: the climb counts it beside the false-promotion estimate
 (section 1, factor 2). An older log may end `control`, an ending no command writes now.
 

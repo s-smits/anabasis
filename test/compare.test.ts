@@ -5,7 +5,8 @@
 import { describe, expect, it } from "bun:test";
 import {
   closedTo,
-  decidedByObjective,
+  COST,
+  decidedBy,
   objectiveGain,
   objectiveMargin,
   detectable,
@@ -17,6 +18,7 @@ import {
   pairings,
   pairsOf,
   power,
+  ROOM,
   roomLeft,
   scored,
   stepOf,
@@ -428,18 +430,80 @@ describe("a task's pairings", () => {
       old: 2,
       validity: { fresh: 1, old: 1 },
       objective: { fresh: 0, old: 1 },
+      cost: { fresh: 0, old: 0 },
       valid: 1,
     });
     // How many tasks the objective decided: the ones that validity alone would have tied.
     const even = { task: "e", old: [P, P], fresh: [P, P] };
     expect(
-      decidedByObjective([
+      decidedBy("objective", [
         { ...even, objective: { ...lower, old: [10, 10], fresh: [8, 8] } },
         { ...even, objective: { ...lower, old: [10, 10], fresh: [10, 10] } },
         { ...even, task: "w", old: [F, F], objective: { ...lower, old: [1, 1], fresh: [100, 100] } },
         even,
       ]),
     ).toBe(1);
+  });
+
+  it("reads a task by validity, then the objective, then the bill, one rule to a pairing, and reads a comparison begun without a cost floor as before", () => {
+    const billed = (...each: number[]) => each.map((one) => ({ billed: one }));
+    const even = { task: "c", old: [P, P], fresh: [P, P], cost: COST };
+    // A third cheaper on every solve, with answers alike: the bill decides, every pairing to the
+    // cheaper side.
+    const cheap = { ...even, used: { old: billed(0.12, 0.12), fresh: billed(0.08, 0.08) } };
+    expect(won(cheap)).toEqual({ fresh: 4, old: 0 });
+    // Closer than the floor (13% less) is even.
+    expect(won({ ...cheap, used: { old: billed(0.115, 0.115), fresh: billed(0.1, 0.1) } })).toEqual({
+      fresh: 0,
+      old: 0,
+    });
+    // One rule decides a pairing: the objective where it tells two answers apart, so the dearer
+    // answer that measures better wins it, and the bill counts for neither side there.
+    const told = {
+      ...cheap,
+      objective: { direction: "lower" as const, room: ROOM, old: [8, 8], fresh: [10, 10] },
+    };
+    expect(won(told)).toEqual({ fresh: 0, old: 4 });
+    // An answer that fails fast is cheap, and its pairings read no bill; nor do two failed answers.
+    const failed = { ...cheap, fresh: [F, F] };
+    expect(won(failed)).toEqual({ fresh: 0, old: 4 });
+    expect(won({ ...failed, old: [F, F] })).toEqual({ fresh: 0, old: 0 });
+    // Validity comes first across the task: valid in 3 solves of 4, the new harness loses to a
+    // reference valid in 4 of 4, though its valid answers all measure better and bill half.
+    const lapsed = {
+      task: "l",
+      old: [P, P, P, P],
+      fresh: [P, P, P, F],
+      cost: COST,
+      objective: { direction: "lower" as const, room: ROOM, old: [10, 10, 10, 10], fresh: [8, 8, 8, null] },
+      used: { old: billed(0.2, 0.2, 0.2, 0.2), fresh: billed(0.1, 0.1, 0.1, 0.1) },
+    };
+    expect(won(lapsed)).toEqual({ fresh: 0, old: 4 });
+    // The objective before the bill: the reference's one better answer wins the task, and the new
+    // side's half bill on the twelve pairings the objective left even counts for nothing.
+    const turned = {
+      task: "t",
+      old: [P, P, P, P],
+      fresh: [P, P, P, P],
+      cost: COST,
+      objective: {
+        direction: "lower" as const,
+        room: ROOM,
+        old: [90, 100, 100, 100],
+        fresh: [100, 100, 100, 100],
+      },
+      used: { old: billed(0.2, 0.2, 0.2, 0.2), fresh: billed(0.1, 0.1, 0.1, 0.1) },
+    };
+    expect(won(turned)).toEqual({ fresh: 0, old: 4 });
+    // A comparison that began with no cost floor reads validity and the objective together and no
+    // bill, as every one before 21 October.
+    const { cost: _, ...unordered } = told;
+    expect(won(unordered)).toEqual({ fresh: 0, old: 4 });
+    // Which rule decided a task: the one the order reached, and no other; a task the bill decided
+    // has no margin by the objective.
+    expect(decidedBy("cost", [cheap, told, failed, lapsed, turned, unordered])).toBe(1);
+    expect(decidedBy("objective", [cheap, told, failed, lapsed, turned, unordered])).toBe(3);
+    expect(objectiveMargin(cheap)).toBeNull();
   });
 
   it("reports the median relative gain by the objective on the tasks the new harness won, over those with a measure on both sides", () => {

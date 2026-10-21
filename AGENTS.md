@@ -209,8 +209,9 @@ Left out on purpose:
   message under a changed hidden value, and it is not something to optimise.
 - The Builder's practice results are excluded by rule 1: a learner's score on its own training set
   is the overfitting signal, and no metric.
-- Cost is read as economy, beside the climb it bought, because a cheap system that does not climb
-  has no cost worth reporting.
+- A campaign's cost is read as economy, beside the climb it bought, because a cheap system that
+  does not climb has no cost worth reporting. A solve's bill decides only between two valid answers,
+  and only on a task validity and the objective leave even (section 7, "The tally").
 
 The four are ordered by where they bind, after supply (without which there is no gradient):
 without climb there is no result, without honesty and verdicts no result anyone can believe, and
@@ -905,7 +906,7 @@ comparisons, and one frozen draw of the reference's solves would bias every late
 
 | Ending | Kinds | In a pair |
 | --- | --- | --- |
-| pass | | Valid. It beats an answer that is not valid, and is even with another valid one unless the comparison fixed an objective and one is better by it |
+| pass | | Valid. It beats an answer that is not valid, and is even with another valid one unless the comparison fixed an objective and one is better by it, or one solve billed at least 20% less |
 | fail | `rejected`, once the rejection is ruled a true fail | Not valid |
 | fail | `wall-ended`, `turns-ended`, `context-ended`, `no-answer` | Not valid. There is nothing to recompute, so no ruling is needed |
 | fail | `broken-harness` | Not valid. The harness is what is compared, and one that cannot open answers nothing |
@@ -914,8 +915,13 @@ comparisons, and one frozen draw of the reference's solves would bias every late
 | flagged | | Not valid: the solver's statement, with a reason, that the task is malformed (`submit` with `malformed`), counted as the flagging side's own fail and reported separately (`flagged` in the report). A task both sides flag ties; one the other side answers is lost |
 
 **The tally.** Every solve of the new harness is paired with every solve of the reference on the
-same task. The harness that wins more pairs wins the task; otherwise the task is a tie. Ties leave
-the test.
+same task, and one rule decides each pair: validity, else the objective, else the bill. A task is
+read by the three in order (`pairings`, `src/kernel/compare.ts`): the harness that wins more pairs
+on validity wins it; where the two are even on validity, the one that wins more on the objective;
+where they are even on that too, the one that wins more on the bill; otherwise the task is a tie,
+and its difference is the deciding rule's own count of pairs. Ties leave the test. A comparison
+records the bill's floor at its start (`cost`), and one begun before 21 October records none and
+reads its pairs won on validity and the objective added up, with no bill.
 
 Where the check program declares an **objective** (a quantity its evaluator computes from a valid
 answer, with a direction: `brief.objective`, `objective(request)`, verified after the checks pass;
@@ -927,7 +933,14 @@ counting: six tasks with room won by 0.01% read p = 0.016 and would promote. Val
 answer can never be the better one. The objective is public, in the contract and in the solver's
 resources, and the report says how many tallied tasks it decided (`objective.decided`). The rule is
 a term of the comparison, fixed at its start; with a check program that declares no objective,
-pairs are decided on validity alone.
+pairs are decided on validity and the bill.
+
+The **bill** decides between two valid answers: the solve that billed at least 20% less than the
+other wins the pair (`COST`, `cheaper`), and the report says how many tallied tasks it decided
+(`cost.decided`). A pair with an answer that is not valid reads no bill, so an answer that fails
+fast is never cheaper. A task the reference closes on validity and the objective leaves no room in
+supply (`informative`), so a harness that only bills less wins it as a retained task, read in the
+same test, and the Examiner is still asked for tasks the reference fails.
 
 **The test.** A one-sided paired sign-flip test reads each task's difference in pair wins (`flipP`,
 `src/kernel/compare.ts`). If the harnesses were interchangeable, each untied task would be as

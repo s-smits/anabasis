@@ -44,6 +44,7 @@ factors"). The values below are read from the fresh campaigns' logs on the opera
 | L2 | A second domain | Planned | M1's milestone in buffer, then the operator names the domain |
 | F34 | The size policy runs in no script, CI job or hook | Present in source | The operator's word on running it in the gate |
 | Builder-led | The single conversation's value | Proved without a model | A matched ablation with `--no-builder-led` |
+| X1 | Whether a harness built without a benchmark's tasks or grades scores higher on it than pi's starter (WorkBuddy-Bench Code), then how it stands against Harness² (`studies/harness2/README.md`) | Present in source (`studies/harness2/run.ts`); WorkBuddy's dry run resolves its job, no container has run it | The operator's word on WorkBuddy-Bench's licence, then `run.ts check` of the starter in WorkBuddy's container and the domain fit, without a model; then the operator's word for the paid arms |
 
 Moved on 20 October by r3's log (`buffer-fresh-opus-forkedPR223_v0_5_4-r3`, commit `0b04d709`):
 

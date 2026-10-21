@@ -881,7 +881,7 @@ export function billedBetween(events: readonly LogEvent[], from: number, to = ev
  * decimals on every session and solve of one campaign of 10 October; a Builder session of another,
  * killed at its seventh turn the same day, had metered 0.12 dollars that nothing summed. A
  * compaction of pi's loop is billed in the end's sum too, and its summary's price is on its
- * `*.compacted` event (`loopCompaction`, `src/solve/run.ts`); a stop and a pause read it too (`tools/runs`).
+ * `*.compacted` event (`loopCompaction`, `src/solve/seat.ts`); a stop and a pause read it too (`tools/runs`).
  */
 export function unfinished(events: readonly LogEvent[]): Unfinished[] {
   return METERED.flatMap(({ of, id }) => {

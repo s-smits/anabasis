@@ -98,8 +98,8 @@ interface Used {
  *  computes of each, lower or higher being better (`better`). */
 export interface ObjectiveRule {
   readonly direction: "lower" | "higher";
-  /** The least share of the larger measure by which an answer on record leaves room (`bettered`),
-   *  where a comparison's terms fixed one (`--room`); `ROOM` otherwise. */
+  /** The least share of the larger measure by which one valid answer beats another in a pair
+   *  (`better`): `ROOM` for a comparison begun since 21 October, none before. */
   readonly room?: number;
 }
 
@@ -172,7 +172,7 @@ export const UNMEASURED = "unmeasured" as const;
 const SAME = 1e-9;
 /**
  * The least improvement by the objective worth counting, as a share of the larger magnitude: the
- * room floor, a term of each comparison (`--room`, recorded with the rule's direction). One
+ * room floor, recorded with the rule's direction at each comparison's start. One
  * judgement in every place it is asked: two valid answers closer than it tie in a pair (`better`),
  * and an answer on record better than one of a harness's own by less leaves that harness no room on
  * the task (`bettered`), which decides the gate, the frontier and `roomOf`.
@@ -183,7 +183,8 @@ const SAME = 1e-9;
  * a difference is believable, and the floor whether it is worth counting: six tasks with room won by
  * 0.01% read p = 0.016 and promoted. It declines smaller gains even where they are consistent. A
  * comparison that began before 21 October recorded no floor, and its pairs read at `SAME` as they
- * were read, while what room its tasks leave now is read at this one.
+ * were read, while what room its tasks leave now is read at this one. A `--room` term set it per
+ * campaign for a day; no campaign named one, and on 21 October the operator chose one fixed floor.
  */
 export const ROOM = 0.01;
 
@@ -329,12 +330,11 @@ export function informative(
 ): boolean {
   const valid = pair[side].filter(Boolean).length;
   if (valid === 0) return feasible.has(pair.task);
-  const floor = pair.objective?.room ?? ROOM;
-  return valid < pair[side].length || bettered(pair, side, bests.get(pair.task) ?? null, floor);
+  return valid < pair[side].length || bettered(pair, side, bests.get(pair.task) ?? null);
 }
 
 /**
- * Whether a measure on record is better by the objective, by at least `floor`, than one of the
+ * Whether a measure on record is better by the objective, by at least the floor (`ROOM`), than one of the
  * side's own valid answers: another of its own, the other side's, or `best`, its author's
  * (`task.feasible`). A harness that reaches it wins the pairs against that answer, so the task has
  * room. False where the pair carries no objective; a valid answer with no measure is compared with
@@ -344,11 +344,11 @@ export function informative(
  * harness promoted on wins by the objective stood on a frontier of the very tasks it had won, and
  * the comparison after its promotion read 4-0-20.
  */
-function bettered(pair: Paired, side: "old" | "fresh", best: number | null, floor: number): boolean {
+function bettered(pair: Paired, side: "old" | "fresh", best: number | null): boolean {
   const rule = pair.objective;
   if (rule === undefined) return false;
   const left = roomLeft(pair, side, [...rule[side === "old" ? "fresh" : "old"], best]) ?? 0;
-  return left > 0 && left >= floor;
+  return left > 0 && left >= ROOM;
 }
 
 /** The most that a measure on record, one of the side's own or one `against` it, is better by than
@@ -462,18 +462,11 @@ export function objectiveGain(pairs: readonly Paired[]): Gain | null {
 }
 
 /** Whether the harness on `side` closed the task: valid in every counted solve, and not
- *  `informative` for it at `floor`, so that it can only tie again at that budget or be lost. The
- *  exhausted fold reads it (`poolOf`, `reports.ts`) at the campaign's floor of now, rather than the
- *  one the comparison recorded, so that the frontier and the gate hold one floor. Until 12 October
+ *  `informative` for it, so that it can only tie again at that budget or be lost. Until 12 October
  *  the supply read validity alone; until 19 October it kept a rule of its own beside `informative`
  *  (`bettered`). */
-export function closedTo(
-  pair: Paired,
-  side: "old" | "fresh",
-  best: number | null = null,
-  floor = ROOM,
-): boolean {
-  return pair[side].length > 0 && pair[side].every(Boolean) && !bettered(pair, side, best, floor);
+export function closedTo(pair: Paired, side: "old" | "fresh", best: number | null = null): boolean {
+  return pair[side].length > 0 && pair[side].every(Boolean) && !bettered(pair, side, best);
 }
 
 /** Whether no solve of a pair gave a valid answer. */

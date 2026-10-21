@@ -39,15 +39,10 @@ export interface CheckRow {
 /** The system prompt of a session that holds tasks out by `propose_tasks`, or, given how many
  *  solves try one, by `try_task`. Each fact is stated once, in the section that owns it; the
  *  tools' descriptions point here for the gate (plan item 5.1, 14 October). `reference` says
- *  whether a copy of the reference harness lies in the home (`exam-reference`, 19 October), and
- *  `room` the objective's room floor the gate holds a draft by (`--room`). */
-export function systemPrompt(
-  tried: number | undefined,
-  reference: "in-home" | "unseen",
-  room: number = ROOM,
-): string {
+ *  whether a copy of the reference harness lies in the home (`exam-reference`, 19 October). */
+export function systemPrompt(tried: number | undefined, reference: "in-home" | "unseen"): string {
   const tool = tried === undefined ? "propose_tasks" : "try_task";
-  const floor = `${String(room * 100)}%`;
+  const floor = `${String(ROOM * 100)}%`;
   // The gate a task enters the exam by: its package's shape alone, or that and `tried` fresh solves
   // of it by the reference harness, held where they leave the room the scoring section names.
   const solved =

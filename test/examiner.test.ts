@@ -592,42 +592,23 @@ describe("a session that writes tasks", () => {
     );
   });
 
-  it("keeps the objective's measure of its author's valid answer where the contract declares one, and none where it declares none", async () => {
-    // A try, its task, then two tries of the held task: the measure each pass took is kept.
+  it("keeps its author's valid answer once as the task's proof, and neither keeps nor tells its measure", async () => {
+    // A try, its task, then two tries of the held task, each pass measured by a declared objective.
     const steps = [tried(7), propose(7), tried(7), tried(7, { answer: "1", unit: "N" }), finish, finish];
-    // The provisional try, the recheck under the task's final id, the later try.
-    const measures = [3.5, 3.25, 2.25];
-    const run = async (declared: boolean) => {
-      const s = seat("write", steps);
-      const taken = [...measures];
-      await examine({
-        ...s.request,
-        contract: declared
-          ? { ...s.request.contract, objective: { quantity: "mass", direction: "lower" } }
-          : s.request.contract,
-        verify: async (task, answer) => {
-          const verdict = await verify(task, answer);
-          return verdict.kind === "pass" ? { kind: "pass", objective: taken.shift() ?? 0 } : verdict;
-        },
-      });
-      return s;
-    };
-    const declared = await run(true);
-    const version = declared.versionOf("x-1-001", 7);
-    const kept = (measure: number) => ({
-      version,
-      session: "x-1",
-      answer: GOOD,
-      objective: { quantity: "mass", direction: "lower", measure },
+    const s = seat("write", steps);
+    await examine({
+      ...s.request,
+      contract: { ...s.request.contract, objective: { quantity: "mass", direction: "lower" } },
+      verify: async (task, answer) => {
+        const verdict = await verify(task, answer);
+        return verdict.kind === "pass" ? { kind: "pass", objective: 2.25 } : verdict;
+      },
     });
-    expect(declared.of("task.feasible")).toEqual([kept(3.25), kept(2.25)]);
-    // The verifier measured, but the contract declares no objective: the record is the version.
-    const undeclared = await run(false);
-    expect(undeclared.of("task.feasible")).toEqual([{ version, session: "x-1", answer: GOOD }]);
-    // The Examiner is told each measure the record keeps, and none where none is kept (19 October).
-    const told = (s: typeof declared) => s.of(CALLED).flatMap(({ text }) => (isString(text) ? [text] : []));
-    expect(told(declared).filter((line) => line.includes("By the objective it measures"))).toHaveLength(2);
-    expect(told(undeclared).join("\n")).not.toContain("By the objective");
+    // Its answer proves the task feasible and decides no room (21 October), so one proof is kept.
+    const version = s.versionOf("x-1-001", 7);
+    expect(s.of("task.feasible")).toEqual([{ version, session: "x-1", answer: GOOD }]);
+    const told = s.of(CALLED).flatMap(({ text }) => (isString(text) ? [text] : []));
+    expect(told.join("\n")).not.toContain("2.25");
   });
 
   /** One order of tries and proposals, the verifier's answers by the id it is asked under, and
@@ -1027,57 +1008,38 @@ describe("a session that writes tasks", () => {
     ]);
   });
 
-  it("holds out a task the reference harness answers alike every time where its author's answer is better by the objective by the room floor, and not one closer or without one", async () => {
-    // The reference's answers measure 10 on every draft, the third within a billionth of it.
-    // Base 2's author answer measures 9, better than each by 10%; base 3's is better by 0.5%, under
-    // the floor (`ROOM`); base 4 has none. Until 20 October base 3 was held, as r6's gate held
-    // drafts whose author answers were a hundredth of a percent better.
-    const authored = new Map([
-      [2, 9],
-      [3, 9.95],
-    ]);
-    const steps = [tried(2), tried(3), call(TRY, { tasks: [instance(2), instance(3), instance(4)] })];
+  it("refuses a task the reference harness answers alike every time, however much better its author's answer is", async () => {
+    // The reference's answers measure 10 on both drafts, the third within a billionth of it. Base
+    // 2's author answer measures 9, better than each by 10%; base 4 has none. From 19 to 21 October
+    // base 2 was held at its first solve, and the exam filled with tasks the reference answered
+    // every time: the author's answer proves a task feasible, and no more (`bettered`).
+    const steps = [tried(2), call(TRY, { tasks: [instance(2), instance(4)] })];
     const s = seat("write", [...steps, finish, finish]);
     const probe = measuredProbe(s.log, (_task, nth) => [10, 10, 10 + 1e-9][nth]);
     const examined = await examine({
       ...s.request,
       contract: { ...s.request.contract, objective: { quantity: "the mass", direction: "lower" } },
-      limits: { ...s.request.limits, puts: 3 },
+      limits: { ...s.request.limits, puts: 2 },
       probe,
       verify: async (task, answer) => {
         const verdict = await verify(task, answer);
-        const measure = authored.get(Number(asRecord(task.publicInput)?.base));
-        return verdict.kind === "pass" && measure !== undefined
-          ? { kind: "pass", objective: measure }
+        return verdict.kind === "pass" && asRecord(task.publicInput)?.base === 2
+          ? { kind: "pass", objective: 9 }
           : verdict;
       },
     });
-    const [better, within, unproved] = [
-      s.versionOf("x-1-001", 2),
-      s.versionOf("x-1-002", 3),
-      s.versionOf("x-1-003", 4),
-    ];
-    expect(examined).toMatchObject({ held: [better] });
-    expect(new Set(examined.refused)).toEqual(new Set([within, unproved]));
-    // The author's measure is on record for the held task alone, where a comparison reads it.
-    expect(poolOf(read(s.log)).bests).toEqual(new Map([[better, 9]]));
-    // Each draft's line tells the reference's measures and, where it tried one, its own: the
-    // better one at the first solve, after which the gate stops.
+    const [better, unproved] = [s.versionOf("x-1-001", 2), s.versionOf("x-1-002", 4)];
+    expect(examined).toMatchObject({ held: [] });
+    expect(new Set(examined.refused)).toEqual(new Set([better, unproved]));
+    // Each line tells the reference's own measures, and nothing of the author's answer.
     const lines = s.of(CALLED).flatMap(({ text: said }) => (isString(said) ? said.split("\n") : []));
     expect(lines.find((line) => line.startsWith("x-1-001: "))).toContain(
-      "1 of 1 solves, its valid answers measuring 10, and your answer that passed try_answer on it 9, 10% better than its best",
+      "3 of 3 solves, its valid answers measuring 10, 10, 10, which leaves no room",
     );
-    expect(lines.find((line) => line.startsWith("x-1-002: "))).toContain(
-      "measuring 10, 10, 10, and your answer that passed try_answer on it 9.95, 0.5% better than its best, which leaves no room",
-    );
-    // A later session is told the gap beside the refused draft.
+    expect(lines.join("\n")).not.toContain("try_answer on it");
     expect(heard(read(s.log), []).refused).toEqual([
-      expect.stringContaining("x-1-002 (fixture, yours 0.5% better than its best)"),
+      expect.stringContaining("x-1-001 (fixture), x-1-002 (fixture)"),
     ]);
-    // and beside the held one, on its line.
-    const later = heard(read(s.log), [{ taskId: "x-1-001", family: "fixture" }]);
-    expect(later.lines[0]).toContain("gate 1 of 1 valid, yours 10% better than its best");
-    expect(lines.find((line) => line.startsWith("x-1-003: "))).not.toContain("try_answer on it");
   });
 
   it("ends at its wall with no solve of the reference harness left running, and starts none after it", async () => {
@@ -1400,17 +1362,17 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     };
     const [said] = lines([100, 100, 90, 90]);
     expect(said).toContain("won there by the other harness, by the objective alone, 10% apart");
-    // The room told is against the reference's own answers and its author's: the other harness's
-    // answers are its result on the task.
-    expect(said).not.toContain("better than one of its own");
-    expect(lines([100, 95, 90, 90])[0]).toContain("an answer on record 5% better than one of its own");
-    // Room under the campaign's floor decides no pair and holds no draft: it is told as none.
-    expect(lines([100, 99.5, 90, 90])[0]).not.toContain("better than one of its own");
+    // The room told is how far apart the reference's own answers were: the other harness's answers
+    // are its result on the task.
+    expect(said).not.toContain("own valid answers");
+    expect(lines([100, 95, 90, 90])[0]).toContain("its own valid answers 5% apart");
+    // Room under the floor decides no pair and holds no draft: it is told as none.
+    expect(lines([100, 99.5, 90, 90])[0]).not.toContain("own valid answers");
     // With exam-results off, who won is not said, and nothing of the other harness's answers is:
     // the lines read the same whatever it measured.
     const [blind] = lines([100, 95, 90, 90], false);
     expect(blind).not.toContain("won there");
-    expect(blind).toContain("an answer on record 5% better than one of its own");
+    expect(blind).toContain("its own valid answers 5% apart");
     expect(lines([100, 95, 100, 100], false)).toEqual(lines([100, 95, 90, 90], false));
     expect(lines([100, 100, 80, 100], false)).toEqual(lines([100, 100, 100, 100], false));
   });

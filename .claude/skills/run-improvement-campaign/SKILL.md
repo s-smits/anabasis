@@ -5,9 +5,9 @@ description: "Run the Anabasis v2 improvement loop, the Super Loop, and the rele
 
 # Run improvement campaign (the Super Loop)
 
-Two loops, one inside the other. The **release cycle** (8 to 12 hours) forks fresh campaigns at
-the stack's top, holds them to a threshold, patches what their predictions falsify and lands the
-stack as a release. Inside it, each **pass** is **score → walk → choose → prove → predict → launch
+Two loops, one inside the other. The **release cycle** (about 14 hours: 12 running, then 2
+improving) forks fresh campaigns at the stack's top, holds them to a threshold, patches what their
+predictions falsify and lands the stack as a release. Inside it, each **pass** is **score → walk → choose → prove → predict → launch
 → watch → read → decide**: it asks what stands between a campaign and its next promotion, fixes
 that link's owner, and leaves the fix to be measured by the next cycle's forks. One pass answers
 one question.
@@ -22,8 +22,11 @@ crossed the wall or a target told to the Examiner cannot establish a gain of the
 
 ## The release cycle
 
-A cycle runs on the operator's word for it ("work towards 0.6.4", "land in 8 to 12 hours"), which
-covers its forks, the stops of the runs they replace, its patches and its landing. Keep the cycle's
+A cycle runs on the operator's word for it ("work towards 0.6.4", "close the full deep ~14 hour
+loop with like 12 hours running and 2 hours improving"), which covers its forks, the stops of the
+runs they replace, its patches and its landing. The forks run for the first 12 hours while patches
+go onto the stack beside them; the last 2 resolve what the forks showed, prove the last patches and
+land. Keep the cycle's
 plan in one local file beside the handover: the word, the threshold, the checkpoints, and a log
 line per step. Every step below reads that file first.
 
@@ -51,12 +54,17 @@ line per step. Every step below reads that file first.
    lands, in the ledger's Resolutions.
 6. **Patch.** Each falsified row, each confirmed finding and each defect seen live gets a fix on
    the top with a hostile test that fails without it, through stack-pr, or a line under "Not done"
-   in the release. A peer session's open pull request is never changed; stack above it. A fix is
-   measured by the next cycle's forks, never by the runs it was found in.
+   in the release. A peer session's open pull request is never changed; stack above it. Each patch
+   is also simulated before and after (system-path-simulation, `cases/before-after.md`): its
+   commit against the commit beneath it, on the same logs or the same seed cut from the run that
+   showed the defect, at the smallest layer that shows it. The pull request states what moved
+   against what was predicted. A fix is measured by the next cycle's forks, never by the runs it
+   was found in.
 7. **Land at the threshold.** The cycle lands when each fork has **three promotions** (the
    operator's threshold, 22 October), the A/A of every promoting reading reads no step, and every
-   prediction whose event exists is resolved. The #306 forks reached their third promotion at 10.0
-   active hours on the Linux runner, so a quiet host reaches it in 8 to 12 hours. The threshold is
+   prediction whose event exists is resolved. The #306 forks reached their first promotion at 11.9
+   and 14.4 hours after their opening and their third at 17.8 and 19.1 hours (`wri.ts start`, lane
+   31), so at the end of the 12 running hours one promotion a fork is the likely reading. The threshold is
    the operator's landing gate: no seat is told it and no campaign stops at it (`AGENTS.md`,
    factor 1). At the cycle's last checkpoint, land with what is proved and say in the release which
    row was unmet; where the proof fails, do not land, and report.
@@ -68,8 +76,8 @@ line per step. Every step below reads that file first.
    not shown. Then step 1 at the new `main`.
 
 The cycle's checkpoints are one-shot timers (section "Timers"): about 30 minutes after the fork
-for M1, then roughly at the first comparison, at the patch point, at the threshold and at the last
-landing time. Each checkpoint may move the plan forward and add, move or delete the cycle's own
+for M1, then roughly at the first comparison, at the patch point, at the end of the running
+hours (T+12) and at the landing (T+14). Each checkpoint may move the plan forward and add, move or delete the cycle's own
 timers to reach its goal.
 
 ## Resume
@@ -420,7 +428,7 @@ idle, a few minutes off the time it names. So:
 
 | Step | Every pass | When triggered |
 | --- | --- | --- |
-| cycle | the plan file and its log | run-management to fork and retire; whole-run-investigation on retired runs; stack-pr and `bun run land` to release |
+| cycle | the plan file and its log | run-management to fork and retire; whole-run-investigation on retired runs; system-path-simulation's before-and-after for each patch; stack-pr and `bun run land` to release |
 | score | five points and milestone | none |
 | walk | epoch, pulse, reader, link table | whole-run-investigation lane 25 for a campaign with a chain |
 | choose | link, owner, falsifier | stack-pr for source; simplify over the diff |

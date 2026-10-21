@@ -80,27 +80,36 @@ interface PractisedSession {
   readonly changed: boolean;
   /** The digest of the harness the session left, or "" where it finished with none. */
   readonly child: string;
+  /** Every harness of the session a comparison read: the one it left, and each it froze for a
+   *  comparison inside its conversation (`build.checkpoint`), each with where its comparison began. */
+  readonly read: readonly (readonly [string, number])[];
   /** The reference harness of the comparison, which need not be the one the session started from.
    *  A report written before 2026-10-09 names none: it compared with its parent. */
   readonly reference: string;
   readonly round: {
     readonly practice: readonly Solve[];
     readonly scoring: readonly Solve[];
-    readonly scoredSet: ReadonlySet<string>;
+    /** The scored tasks a practice solve of the session ran before the comparison that scored
+     *  them began: a task released after a comparison scored it was not exposed to it. */
+    readonly exposed: ReadonlySet<string>;
   };
 }
 
 /** Lanes 16 to 19: one session's practice, and what its comparison then showed of it. */
 function practiceTriggers(
   log: Index,
-  { build, changed, child, reference, round }: PractisedSession,
+  { build, changed, child, read, reference, round }: PractisedSession,
 ): Trigger[] {
   const { session, finished, calls } = build;
   // A practice solve's condition names the state it ran under, so the log says by digest whether
   // the harness that was measured is one the Builder tried: an edit made with the shell leaves no
-  // call to count, and a digest misses none.
-  const practisedUnder = new Set(round.practice.map((solve) => solve.harness));
+  // call to count, and a digest misses none. Practice after its comparison began counts for none.
   const lastPractice = round.practice.at(-1);
+  const unpractised = read.flatMap(([harness, began]) =>
+    harness === "" || round.practice.some((solve) => solve.harness === harness && solve.index < began)
+      ? []
+      : [harness],
+  );
   // A session with no end record may still be running when the log is read: it is not finished by
   // the log's last event, which is not the same as a session cut short.
   const ended = finished === null ? "not finished by the log's last event" : text(finished.ended);
@@ -118,9 +127,7 @@ function practiceTriggers(
     );
   const answered = failed.filter((fail) => laterPass(fail, false)).length;
   const flipped = failed.filter((fail) => laterPass(fail, true)).length;
-  const exposed = [...round.scoredSet].filter((version) =>
-    round.practice.some((solve) => solve.version === version),
-  ).length;
+  const exposed = round.exposed.size;
   const shell = calls.filter(({ tool }) => tool === "bash").length;
   // A task lost in one comparison is no loss of another's: recode's b-1 was measured twice.
   const lost = (solve: Solve) => `${String(solve.comparison)} ${solve.version}`;
@@ -139,13 +146,13 @@ function practiceTriggers(
     ...(changed && lastPractice === undefined
       ? [fired("NO PRACTICE", `${session}: the harness changed and no practice solve ran`)]
       : []),
-    ...(changed && child !== "" && lastPractice !== undefined && !practisedUnder.has(child)
-      ? [
+    ...(changed && lastPractice !== undefined
+      ? [...new Set(unpractised)].map((harness) =>
           fired(
             "FINAL BYTES NEVER PRACTISED",
-            `${session}: no practice solve ran under ${short(child)}, the harness measured; the last ran under ${short(lastPractice.harness)}`,
+            `${session}: no practice solve ran under ${short(harness)}, a harness measured; the last ran under ${short(lastPractice.harness)}`,
           ),
-        ]
+        )
       : []),
     ...(ended === "finished" ? [] : [fired("SESSION ENDED", `${session}: ${ended}`)]),
     ...(failed.length > 0
@@ -247,10 +254,17 @@ function harnessTriggers(log: Index): Trigger[] {
     const { session, finished, parent, calls } = build;
     // Every comparison of the harness this session left: recode measured b-1's twice (2026-10-10).
     const compared = log.compared.filter((each) => each.build === build);
+    const practice = practiceOf(log, build);
     const round = {
-      practice: practiceOf(log, build),
+      practice,
       scoring: compared.flatMap((each) => each.scoring),
-      scoredSet: new Set(compared.flatMap((each) => [...each.scoredSet])),
+      exposed: new Set(
+        compared.flatMap(({ scoredSet, began }) =>
+          [...scoredSet].filter((version) =>
+            practice.some((solve) => solve.version === version && solve.index < began),
+          ),
+        ),
+      ),
     };
     const child = text(finished?.harness);
     // pi's `write` and `edit` since 2026-10-09, `write_file` in the sessions before it, and the tool tree
@@ -313,6 +327,12 @@ function harnessTriggers(log: Index): Trigger[] {
         build,
         changed: edited,
         child,
+        // v061's b-1 froze 03a5eb57 for g-2 after its last practice and never ended, and the
+        // trigger, reading only the end record, said nothing (21 October).
+        read: [
+          [child, Number.POSITIVE_INFINITY],
+          ...compared.map(({ own, began }) => [text(own.fresh), began] as const),
+        ],
         reference: text(compared[0]?.own.old) || parent,
         round,
       }),

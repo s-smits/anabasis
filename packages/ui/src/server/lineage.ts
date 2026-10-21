@@ -17,7 +17,7 @@ import { billedAll, comparedAs } from "../../../../src/kernel/reports.ts";
 import { passed } from "../../../../src/kernel/solves.ts";
 import { isString } from "../../../../src/meta/json-shape.ts";
 import type { HarnessCard, Promotion, SpendPoint } from "../models.ts";
-import { campaignIn, epochsIn, indexIn, type Log, once, practiceIn, ranIn } from "./folds.ts";
+import { campaignIn, epochsIn, type Log, once, practiceIn, ranIn } from "./folds.ts";
 import { barsIn, endOf, movesIn, starterIn } from "./moves.ts";
 
 /** A harness kept by a session or by the operator's import, where its record ends. */
@@ -102,16 +102,16 @@ export const harnessesIn = once((log): HarnessCard[] => {
   const starter = starterIn(log);
   const reference = campaign.reference ?? starter;
   const practice = practiceIn(log);
-  const builds = indexIn(log).builds;
   const bars = barsIn(log);
   const card = (kept: Kept | null, digest: string | null): HarnessCard => {
     const practised = ranIn(log).filter(
       (solve) => practice.has(solve.id) && solve.under.harness === digest && passed(solve) !== null,
     );
-    const broken =
+    const finished =
       kept?.session == null || kept.frozen
         ? undefined
-        : builds.find((build) => build.session === kept.session);
+        : log.events.findLast(({ kind, data }) => kind === "build.finished" && data.session === kept.session)
+            ?.data;
     return {
       digest,
       parent: kept?.parent ?? null,
@@ -121,7 +121,7 @@ export const harnessesIn = once((log): HarnessCard[] => {
       reference: digest === null ? campaign.reference === null : digest === reference,
       latest: digest !== null && digest === campaign.latest,
       imported: kept?.imported === true,
-      broken: isString(broken?.finished?.broken) ? broken.finished.broken : null,
+      broken: isString(finished?.broken) ? finished.broken : null,
       practice: {
         passed: practised.filter((solve) => passed(solve) === true).length,
         solves: practised.length,

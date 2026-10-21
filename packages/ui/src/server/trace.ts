@@ -2,9 +2,8 @@
  * The solves, the turns and the calls the detail endpoints show, and what of them each tier may
  * carry (the brief of 11 October, section 8).
  *
- * A solve is the kernel's join of its two events and its condition (`solvesIn`, `ranUnder`), read
- * through the whole-run reader's index for its version, its harness and its calls (`indexOf`). Its
- * ruling is what stands of its rejection: a person's label where a settled report holds one, the
+ * A solve is the kernel's join of its two events and its condition (`solvesIn`, `conditionsOf`),
+ * with the calls it made since its last start. Its ruling is what stands of its rejection: a person's label where a settled report holds one, the
  * Referee's last finding otherwise. A ruling is withheld in both tiers where `withheld.ts` says so.
  *
  * Turns and calls are the trace events themselves (`<seat>.turn`, `<seat>.call`), which no fold
@@ -17,9 +16,8 @@ import type { Solve } from "../../../../src/kernel/solves.ts";
 import { asRecord, isBoolean, isNumber, isString, type JsonObject } from "../../../../src/meta/json-shape.ts";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
 import type { Ruling } from "../../../../src/review/referee.ts";
-import type { Trigger } from "../../../../tools/wri/folds.ts";
 import type { SolveRow, Tier, ToolCall, Turn } from "../models.ts";
-import { indexIn, type Log, once, practiceIn, reportsIn } from "./folds.ts";
+import { callsIn, conditionsIn, type Log, once, practiceIn, reportsIn } from "./folds.ts";
 import { movesIn } from "./moves.ts";
 import { rulingWithheld } from "./withheld.ts";
 
@@ -34,16 +32,9 @@ const NON_RESULTS = ["provider", "sandbox-crash", "killed", "moved-files", "chec
 const EXAM_REASONS: ReadonlySet<string> = new Set(["check", "verifier"]);
 const RULINGS = ["earned", "check-defect", "unclear"] as const;
 const WITHHELD = "withheld in the default tier: it names what the exam side's checks saw";
-const EXAM_LANES = 12;
 
 /** The answer is served in the exam tier. */
 export const examTier = (tier: Tier): boolean => tier === "exam";
-
-/** Whether `tier` shows one of the whole-run reader's triggers. Lanes 1 to 12 read the exam side,
- *  the instrument and the tasks (`tools/wri/folds.ts`): their triggers name checks, what they
- *  refused and why a task was refused at its gate, so the default tier withholds them. */
-export const triggerShown = ({ lane }: Pick<Trigger, "lane">, tier: Tier): boolean =>
-  examTier(tier) || lane > EXAM_LANES;
 
 /** A logged ending as the kernel types it, or null where it holds none it can read. A reason that
  *  names a check or the verifier's view of an answer is the exam tier's. */
@@ -87,7 +78,9 @@ export function rulingOf(
   if (label !== undefined) {
     return { ruling: label, by: "label", reason: "a person's label, which stands over the ruling" };
   }
-  const finding = indexIn(log).rulings.get(solve);
+  const finding = log.events.findLast(
+    ({ kind, data }) => kind === "referee.finding" && data.solve === solve,
+  )?.data;
   const ruling = RULINGS.find((each) => each === finding?.ruling);
   if (finding === undefined || ruling === undefined) return null;
   // The host rules what needs no reading and meters nothing; a reader's finding carries its probes'
@@ -113,9 +106,9 @@ function sideOf(
 
 /** One solve as a list row, in `tier`. */
 export function solveRow(log: Log, solve: Solve, tier: Tier): SolveRow {
-  const indexed = indexIn(log).solves.find((each) => each.id === solve.id);
-  const task = indexed?.version ?? "";
-  const harness = indexed?.harness ?? "";
+  const under = conditionsIn(log).get(solve.condition);
+  const task = under?.task ?? "";
+  const harness = under?.harness ?? "";
   const comparison = isString(solve.start.comparison) ? solve.start.comparison : null;
   const ruling =
     examTier(tier) && rulingWithheld(log, solve.id, task) === null
@@ -131,7 +124,7 @@ export function solveRow(log: Log, solve: Solve, tier: Tier): SolveRow {
     comparison,
     ending: endingOf(solve.ending, tier),
     turns: isNumber(end?.turns) ? end.turns : null,
-    calls: indexed?.calls.length ?? 0,
+    calls: callsIn(log)[solve.id] ?? 0,
     seconds: isNumber(end?.seconds) ? end.seconds : null,
     billed: isNumber(end?.billed) ? end.billed : null,
     ...keyIfDefined("ruling", ruling),

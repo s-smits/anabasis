@@ -1,21 +1,21 @@
 ---
-name: codex-luna-swarm
+name: codex-gpt-swarm
 description: "Launch and collect independent Codex sessions (gpt-6-luna at high, xhigh or max; gpt-6.1-sol at low to xhigh) for bounded parallel work, from Claude Code or Codex: one manifest, one detached launcher, one report a session, a drain while it runs, and a retry of incomplete sessions. Owns the Codex transport when another skill sets the questions, as whole-run-investigation does for its lanes. Use when the operator asks for Luna or Sol sessions, a swarm, many sessions, a reasoning effort, a Codex subagent from Claude Code, or a later collection of reports. Distinguish a request to launch from one to wait and collect."
 ---
 
-# Codex Luna swarm
+# Codex GPT swarm
 
 One independent Codex session per bounded task. The orchestration stays in the session that
 launches, and the preparation stays smaller than the work it hands out. One script does the
 transport:
 
 ```sh
-bun --no-env-file .claude/skills/codex-luna-swarm/scripts/luna-sessions.ts --manifest <json> --output-dir <new dir> [options]
-bun --no-env-file .claude/skills/codex-luna-swarm/scripts/luna-sessions.ts --drain <output dir>
-bun --no-env-file .claude/skills/codex-luna-swarm/scripts/luna-sessions.ts --retry <output dir> [--max-active N] [--start-interval-ms N]
+bun --no-env-file .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts --manifest <json> --output-dir <new dir> [options]
+bun --no-env-file .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts --drain <output dir>
+bun --no-env-file .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts --retry <output dir> [--max-active N] [--start-interval-ms N]
 ```
 
-The usage block at the head of `luna-sessions.ts` lists every flag. `--no-env-file` is Bun's own:
+The usage block at the head of `gpt-sessions.ts` lists every flag. `--no-env-file` is Bun's own:
 v2 keeps no `bunfig.toml`, so without it a `.env` in the working directory would be loaded into the
 launcher and handed to every session.
 
@@ -44,7 +44,7 @@ batch, and do not wait for earlier reports before starting the rest of a batch: 
 the questions the evidence has not settled.
 
 The table is the batch policy, not a count-based choice in the launcher. Pass its flags explicitly.
-`MODELS` in `luna-sessions.ts` accepts these values:
+`MODELS` in `gpt-sessions.ts` accepts these values:
 
 | model | accepted efforts | default effort |
 | --- | --- | --- |
@@ -63,7 +63,7 @@ Claude subagents run at once (the operator, 4 September); Codex sessions do not 
   return the synthesis asked for.
 
 Say `preparing` while writing the manifest, `launched` only once the launcher printed
-`luna_sessions.started`, and `collecting` only when collection was asked for. When the repository,
+`gpt_sessions.started`, and `collecting` only when collection was asked for. When the repository,
 the count, the authority and the output are clear, make bounded assumptions and start in the same
 turn; do not stop at a plan unless a preview was asked for.
 
@@ -117,15 +117,15 @@ parent on 28 August and took all 24 sessions with it. The output directory must 
 the log goes outside it:
 
 ```sh
-nohup bun --no-env-file .claude/skills/codex-luna-swarm/scripts/luna-sessions.ts \
-  --manifest <scratch>/manifest.json --output-dir <scratch>/luna \
+nohup bun --no-env-file .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts \
+  --manifest <scratch>/manifest.json --output-dir <scratch>/gpt \
   --model gpt-6.1-sol --reasoning-effort medium [--max-active 12] [--start-interval-ms 1000] \
-  > <scratch>/luna.log 2>&1 &
+  > <scratch>/gpt.log 2>&1 &
 ```
 
 Put the output directory somewhere the host does not clean, in the session's scratchpad or beside
 the evidence it serves, never under a campaign's folder. The first line of the log is
-`luna_sessions.started`; only then report the directory, the count, the model, the effort, the
+`gpt_sessions.started`; only then report the directory, the count, the model, the effort, the
 service tier, the active count and the pace as launched. The launcher finds Codex by `--codex-bin`,
 then the ChatGPT app's copy, then Homebrew's, then `codex` on the `PATH`. It needs Codex's own state;
 request shell access only if the sandbox refuses the authorised launch. Each read-only session
@@ -133,13 +133,13 @@ stays read-only.
 
 ## Watch, drain, retry
 
-Read the launcher's log: one `luna_session.finished` line a session, then
-`luna_sessions.completed`. Drain while it runs, not only at the end: `--drain <output dir>` prints
+Read the launcher's log: one `gpt_session.finished` line a session, then
+`gpt_sessions.completed`. Drain while it runs, not only at the end: `--drain <output dir>` prints
 what `reports.md` gained since the last drain, and sixty lanes of one v1 batch sat unread on
 29 September because nothing drained them. `reports.md` gains each report as its session settles,
 so it holds every settled report even if the launcher dies.
 
-After `luna_sessions.completed`, drain once more and read `summary.json`: one result for each
+After `gpt_sessions.completed`, drain once more and read `summary.json`: one result for each
 session asked for. A session that did not complete is missing work, and its result says why
 (`failureKind`: `spawn`, `rate-limit`, or `null` when unclassified). A transport warning in stderr is not a
 failure: a fall-back from WebSocket to HTTPS may still complete. The start line proves the
@@ -147,13 +147,13 @@ configuration asked for, not the model a remote session bound; where identity ca
 read the session's own event log before making it.
 
 Codex retries a request inside a session. A session completes only when its last attempt exits 0
-and writes a report (`settle`, `luna-receipts.ts`). An incomplete session gets one further attempt
+and writes a report (`settle`, `gpt-receipts.ts`). An incomplete session gets one further attempt
 by default (`--retries`, 0 to 5): `codex exec resume` of its thread where Codex named one, a fresh
 start otherwise. After rate-limited sessions, let the launch settle, then run
 again only what is missing, under the recorded model, effort and prompts:
 
 ```sh
-bun --no-env-file .claude/skills/codex-luna-swarm/scripts/luna-sessions.ts --retry <output dir> --max-active 4 --start-interval-ms 5000
+bun --no-env-file .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts --retry <output dir> --max-active 4 --start-interval-ms 5000
 ```
 
 A retry leaves `launch.json` and every completed result as they were, appends the rerun reports to

@@ -249,7 +249,7 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
 }
 
 describe("the Builder running its campaign", () => {
-  it("holds practice to the current campaign total, including other seats and budget changes", async () => {
+  it("holds practice to the current campaign total alone, including other seats and budget changes", async () => {
     const s = await setup([finish]);
     const left: number[] = [];
     await session(
@@ -262,7 +262,7 @@ describe("the Builder running its campaign", () => {
           left.push(practiceLeft(bench, read(s.request.log)));
           append(s.request.log, "campaign.opened", { budget: { dollars: 0, reserve: 1 } });
           left.push(practiceLeft(bench, read(s.request.log)));
-          append(s.request.log, "campaign.opened", { budget: { dollars: 12, reserve: 1 } });
+          append(s.request.log, "campaign.opened", { budget: { dollars: 30, reserve: 1 } });
           left.push(practiceLeft(bench, read(s.request.log)));
           return { tools: [], hook: () => "Campaign spending is refreshed." };
         },
@@ -270,8 +270,9 @@ describe("the Builder running its campaign", () => {
       s,
       s.walled,
     );
-    // Read after the session returns, so a session that never asks its campaign fails here.
-    expect(left).toEqual([2, 0, 2]);
+    // Read after the session returns, so a session that never asks its campaign fails here. The
+    // session's own count is 3 and its own cap $1: neither bounds a Builder that leads its campaign.
+    expect(left).toEqual([2, 0, 20]);
   });
 
   it("keeps its conversation and edits across a nested Examiner call, and refreshes practice", async () => {
@@ -527,7 +528,7 @@ describe("a Builder session", () => {
     // harnesses that went to a comparison told the solver that time was short, and both truss
     // sessions spent their last solve before their last change. The prompt states each of these
     // once; what a tool result ends with (the turn, the time, the solves left, whether a practice
-    // solve has run harness/) it does not restate (`docs/simplify.md`, E3).
+    // solve has run harness/) it does not restate (`7f0add79:docs/simplify.md`, E3).
     expect(s.sent[0]).toContain("so the guide says nothing of time or turns");
     expect(s.sent[0]).toContain("is measured untried");
     expect(s.sent[0]).not.toContain("Every tool result ends with the turn");
@@ -536,7 +537,7 @@ describe("a Builder session", () => {
     expect(readFileSync(join(s.home, "resources.json"), "utf8")).toContain('"maxSpan": 12');
     expect(s.sent[0]).toContain("are in resources.json");
     // The practice result: endings, records under both harnesses, the budget. Until 2026-10-11 a
-    // Diagnoser's reading of the fail came too (`docs/simplify.md`, E1).
+    // Diagnoser's reading of the fail came too (`7f0add79:docs/simplify.md`, E1).
     const practised = s.sent[2] ?? "";
     expect(practised).toContain("t-1: fail (rejected). Solve s-3.");
     expect(practised).toContain("passed 0 of 1. Under the harness you started from: 0 of 1.");

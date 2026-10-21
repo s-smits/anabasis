@@ -77,6 +77,21 @@ function push(updates: readonly string[], env: Record<string, string> = {}, by =
 const update = (local: string, remote: string, branch = "topic"): string =>
   `refs/heads/${branch} ${local} refs/heads/${branch} ${remote}`;
 const forgetPasses = (): void => rmSync(join(work, ".git", "ana-gate-passed"), { force: true });
+/**
+ * Another push under way, which publishes `head` as `below` once this push's hook has begun to wait
+ * for it: the hook writes its own lock file, and reads the held one at once. Until 20 October it
+ * published after a fixed two seconds, and a hook slower than that to start found it gone.
+ * Detached, so that the host reaps it as it would a finished `git push`, and no zombie of it stays.
+ */
+const otherPush = (head: string): string =>
+  execTextSync(
+    "sh",
+    [
+      "-c",
+      `(i=0; until ls .git/ana-pre-push.lock.* || [ $i -ge 400 ]; do i=$((i+1)); sleep 0.05; done; sleep 0.3; git update-ref refs/remotes/origin/below ${head}) >/dev/null 2>&1 & echo $!`,
+    ],
+    { cwd: work },
+  ).trim();
 
 /** The same patches as `source` and `second`, on a trunk that has since changed: what a rebase replaced. */
 function oldCopies() {
@@ -96,6 +111,7 @@ function foreignLine(): string[] {
 
 beforeEach(() => {
   rmSync(log, { force: true });
+  rmSync(join(work, ".git", "ana-pre-push.lock"), { force: true });
   forgetPasses();
 });
 
@@ -224,7 +240,7 @@ describe("pre-push", () => {
     expect(gatesRun(log)).toEqual([`${moved} -`, `${sourceMoved} test/owner.test.ts`]);
   });
 
-  it("runs a tree again under a changed gate, though it passed under the gate before", () => {
+  it("runs a tree again once a file the gate imports changed, and not for a neighbour it never imports", () => {
     // A copy of the checker as a caller's checkout holds it: the hook, the gate and what it imports.
     const checker = join(fixture, "checker");
     const parts = [
@@ -241,7 +257,10 @@ describe("pre-push", () => {
     rmSync(log, { force: true });
     expect(push([update(second, docs)], {}, by).status).toBe(0);
     expect(gatesRun(log)).toEqual([]);
-    appendFileSync(join(checker, "tools", "runtime", "gate.ts"), "\n// the gate, changed\n");
+    appendFileSync(join(checker, "tools", "runtime", "lint.ts"), "\n// a step the target runs as its own\n");
+    expect(push([update(second, docs)], {}, by).status).toBe(0);
+    expect(gatesRun(log)).toEqual([]);
+    appendFileSync(join(checker, "src", "meta", "subprocess.ts"), "\n// the gate's import, changed\n");
     expect(push([update(second, docs)], {}, by).status).toBe(0);
     expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`, `${second} suite`]);
   });
@@ -283,6 +302,49 @@ describe("pre-push", () => {
     const result = push([update(second, absent, "fresh")]);
     expect(result.status).toBe(0);
     expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`, `${second} suite`]);
+  });
+
+  // The other push is a process that publishes `source` as it ends, as `git push` updates its refs.
+  it("waits for a push under way, then gates only what that push did not publish", () => {
+    const lock = join(work, ".git", "ana-pre-push.lock");
+    const other = otherPush(source);
+    const started = execTextSync("ps", ["-o", "lstart=", "-p", other]).trim();
+    writeFileSync(lock, `${other}\n${started}`);
+    const result = push([update(second, absent, "above")]);
+    git("update-ref", "-d", "refs/remotes/origin/below");
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain(`waiting for the push of process ${other}`);
+    expect(gatesRun(log)).toEqual([`${second} suite`]);
+  });
+
+  // The other push replaces `below`'s head `source` with a rewritten copy, as a fixup and force-push do.
+  it("refuses a push stacked on a head the push before it replaced, with the line that restacks it", () => {
+    const rewritten = git("commit-tree", withFile(source, "fixup.txt"), "-p", docs, "-m", "source, amended");
+    const other = otherPush(rewritten);
+    const started = execTextSync("ps", ["-o", "lstart=", "-p", other]).trim();
+    writeFileSync(
+      join(work, ".git", "ana-pre-push.lock"),
+      `${other}\n${started}\nrefs/heads/below ${rewritten} refs/heads/below ${source}`,
+    );
+    const result = push([update(second, absent, "above")]);
+    git("update-ref", "-d", "refs/remotes/origin/below");
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(`is stacked on refs/heads/below at ${short(source)}`);
+    expect(result.stderr).toContain(`git rebase --onto ${rewritten} ${source}`);
+    expect(gatesRun(log)).toEqual([]);
+  });
+
+  it("takes over a lock whose process is gone, or whose id another process now holds", () => {
+    const lock = join(work, ".git", "ana-pre-push.lock");
+    for (const held of [
+      "999999\nThu Jan  1 00:00:00 1970",
+      `${String(process.ppid)}\nThu Jan  1 00:00:00 1970`,
+    ]) {
+      writeFileSync(lock, held);
+      const result = push([update(second, absent, "fresh")]);
+      expect(result.status).toBe(0);
+      expect(result.stderr).not.toContain("waiting for the push");
+    }
   });
 
   it("runs no gate for a push that only replays what the remote held", () => {

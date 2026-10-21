@@ -229,7 +229,7 @@ function sensitivityFacts(seen: Sensitivity): (readonly [string, string])[] {
     ...(frontier === null
       ? []
       : ([
-          ["Untied on the frontier", plural(frontier.untied, "task")],
+          ["Untied in the test", plural(frontier.untied, "task")],
           [
             "A step one reading detects four times in five",
             frontier.detectable === null

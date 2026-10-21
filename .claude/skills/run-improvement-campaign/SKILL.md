@@ -1,9 +1,9 @@
 ---
 name: run-improvement-campaign
-description: "Run the Anabasis v2 improvement loop: score the five points, read each campaign at its milestone, find the link that holds its next promotion, fix that link's owner, prove the path, record a prediction, launch fresh, watch, read and decide. Use when the operator asks to keep campaigns going, run a pass or an hourly audit, read a promotion, investigate a campaign that is not promoting, or choose the next run. Owns the experiment and its evidence; AGENTS.md section 3 owns the operator's decisions."
+description: "Run the Anabasis v2 improvement loop, the Super Loop: score the five points, read each campaign at its milestone, find the link that holds its next promotion, fix that link's owner, prove the path, record a prediction, launch fresh, watch, read and decide. Use when the operator asks to keep campaigns going, run a pass or an hourly audit, read a promotion, investigate a campaign that is not promoting, or choose the next run. Owns the experiment and its evidence; AGENTS.md section 3 owns the operator's decisions."
 ---
 
-# Run improvement campaign
+# Run improvement campaign (the Super Loop)
 
 The loop is **score → walk → choose → prove → predict → launch → watch → read → decide**.
 Each pass asks what stands between a campaign and its next promotion, fixes that link's owner,
@@ -22,7 +22,7 @@ crossed the wall or a target told to the Examiner cannot establish a gain of the
 Read the operator's local handover where one is kept, then read the current evidence:
 
 ```sh
-bun run runs status                          # current runs and process status
+bun --env-file=.env.runs run runs status     # every run on this host and each host ANA_HOSTS lists
 bun run runs pulse --once                    # open runs and endings since the last look
 bun run runs view <name>                     # comparisons, climb and the table's next move
 bun run runs source <name>                   # each launch's commit and whether it was clean
@@ -30,7 +30,8 @@ bun .claude/skills/stack-pr/scripts/stack.ts   # the open stack and its top
 bun tools/wri/wri.ts read --log <worktree>/.ana/d2/<name>/log.jsonl
 ```
 
-The pulse reads this host's worktrees: run it on every host that holds a campaign. `0 open` where
+`status` asks every host `ANA_HOSTS` lists; the pulse reads this host's worktrees only, so run it
+with `runs on <host> pulse --once` for a campaign elsewhere. `0 open` where
 a campaign was launched calls for reading its ending. Use `AGENTS.md`, section 3, for the
 operator's decisions and the authority a campaign launch gives once. Record continuing authority
 in the local handover; the newest instruction governs it.
@@ -90,8 +91,8 @@ it predicts. Quiet between milestones is read against the limits of the work in 
 | M0 opened | receipt and `campaign.opened` | `runs source`: one commit, clean; fresh opening under section 10, item 9 | ledger written before the first solve | none |
 | M1 exam | `exam.drafted`, `checker.read`, `contract.frozen` | faults by kind, `doNothing`, `admitted`; within twenty minutes of M0 | frozen before `build.started` | none; assign an `exam` ending from its faults |
 | M2 supply | first Examiner sessions' `task.gate` | held and refused by reason, objective room, missing readings, dry run | held out of drafted, a range | none |
-| M3 first reading | first `comparison.reported` | `valid.informative.old`, frontier untied and tied, `frontier.detectable`, A/A, load | reading and untied count | only if a `read` trigger fires |
-| M4 step | `comparison.reported` with `reading: step` against the reference | frontier margins, retained tasks, A/A | untied count and A/A result | none |
+| M3 first reading | first `comparison.reported` | `valid.informative.old`, tested untied and tied, `scored.detectable`, A/A, load | reading and untied count | only if a `read` trigger fires |
+| M4 step | `comparison.reported` with `reading: step` against the reference | tested margins, the retained tally apart, A/A | untied count and A/A result | none |
 | M5 promotion | `harness.promoted` | supporting reading, untied tasks, A/A and campaign risk; `wri.ts climb --log <log> --with <peers>` | write M6 prediction now | first promotion, once M6's first Examiner session has ended |
 | M6 next epoch | first Examiner session and first comparison after M5 | drafts held and refused by reason, frontier and retained sizes, objective room | held out after M5 against before it | lane 31 with standing lanes, when owed at M5 |
 | M7 ending | `campaign.ended` | ending kind, closing report, resolve every prediction | every open row | full investigation where the campaign promoted or an early ending raises an unresolved question |
@@ -118,7 +119,7 @@ limits follow `AGENTS.md`, rule 15, and are no defect to fix. To act on a proved
 
 ## The walk: which link holds the next promotion
 
-Start from the milestone: M1 points to link 2; M2 and no room to links 1 and 3; `regressed` to 7;
+Start from the milestone: M1 points to link 2; M2 and no room to links 1 and 3; a retained loss to 7;
 a near miss to 5; promotion to 8. Walk from the first link and stop at the first failure.
 Links 1, 2 and 6 limit what the reading can establish.
 
@@ -128,9 +129,9 @@ Links 1, 2 and 6 limit what the reading can establish.
 | 2 | instrument | 4 | exam stands and rejections have rulings or labels | `checker.read`, `contract.frozen`, `referee.finding`, tasks set aside |
 | 3 | reference's room | 1 | the report finds informative tasks for the reference | `valid.informative.old`, `roomOf` |
 | 4 | session | 1 | Builder practised and changed something the solver uses | `build.*`, `harness.version`, practice verdicts |
-| 5 | size | 2 | frontier has enough untied tasks and power at its margins | `frontier`, `scored.unsolved`, `frontier.detectable` |
+| 5 | size | 2 | the tested set has enough untied tasks and power at its margins | `scored`, `scored.unsolved`, `scored.detectable` |
 | 6 | host | 2 | solve-start loads are read, including changes within a comparison | `HOST LOADED`, `LOAD MOVED`, `campaign.waited` |
-| 7 | promotion | 2 | comparison against reference reads `step` and the epoch's control has not stopped the campaign | `step` row, `harness.promoted`, `noise` |
+| 7 | promotion | 2 | comparison against reference reads `step` | `step` row, `harness.promoted`, `noise` |
 | 8 | next epoch | 1 | Examiner writes for the new reference and the tasks leave room | `harness.promoted`, subsequent `task.gate` and comparisons |
 
 Read room by `informative`, rather than a target pass share. `noRoom` in `src/builder/decide.ts`
@@ -152,16 +153,17 @@ this walk chooses what to do about it.
    or a change the solver never uses. Owners: `systemPrompt`, `SAID`, `firstMessage`,
    `continuation` and `usedLine` in `src/builder/prompt.ts`; `campaignStatus` and campaign tools in
    `tools/d2/campaign-actions.ts`; `idleOf` in `tools/d2/campaign-terms.ts`; session and practice terms.
-5. **Size:** many frontier ties, a near miss, or a high `frontier.detectable`. `detectable` is the
+5. **Size:** many ties, a near miss, or a high `scored.detectable`. `detectable` is the
    least winning share detected four times in five at these margins, in hundredths. It is power,
    not another threshold for the observed tally. Owners: `--target` and `--solves` in the next fresh
    campaign; `settingAsked` fixes the recorded target. The lasting cure for ties is link 1.
 6. **Host:** `HOST LOADED`, `LOAD MOVED`, long waits or rising wall-ended solves. Read load before
    blaming the harness. Owner: the number of campaigns on that host; use the launch load rule.
-7. **Promotion:** `no-step` near the level, `regressed`, or an A/A step. Owners: supply and size
-   first. One `step` promotes (`stepOf`); until 19 October a first reading could buy a repeat.
-   The retained test uses `REGRESSION = 0.25` on net pair loss, mirrored: one lost task alone reads
-   0.5, two of two read 0.25. No retained task tallied is `unmeasured`.
+7. **Promotion:** `no-step` near the level, a retained loss, or an A/A step. Owners: supply and
+   size first. One `step` promotes (`stepOf`), its one test over the frontier and the retained
+   tasks together; until 19 October a first reading could buy a repeat, and until 20 October the
+   retained tasks were a second test that could read `regressed`. No retained task tallied is
+   `unmeasured`.
 8. **Next epoch:** refused drafts, idle conversations or few frontier tasks after promotion.
    Owners: `heard`, `campaignStatus`, `hostOwed` in `tools/d2/harness-builder.ts`, and `ROWS` and
    `HOLDS` in `src/builder/decide.ts`.
@@ -242,8 +244,17 @@ Read at each milestone, at the timer's predicted moment, and within twenty minut
   before their verdict. Read quiet against the solve's wall and the session's `--minutes`.
 - A receipt's process gone before an ending calls for reading its `.err`. A log that stopped
   growing is a lead, not a process check.
+- Read a quiet run's last event before naming its state. A `status` row saying "solving" or
+  "working" hours after its last event is usually a `campaign.waited` naming its reset. An
+  `environment` ending under a live keeper is a pause, not an end. On 20 October both were misread:
+  a weekly limit as a stall, and three paused runs as finished.
 - `waitOut` in `tools/d2/host.ts` waits for a named provider reset. After an interruption, continue
   at the run's own commit; counted solves stand. Apply `AGENTS.md`, rule 15, to provider limits.
+- A keeper moves only among the logins it was given. With one login it waits out a weekly limit,
+  which can take days. Give a keeper two or more logins. Where a run's wait outlasts its use (its
+  commit is days behind the stack by the reset), bring the operator the stop with that reset.
+- A process search by run name also matches the sandboxes of other runs, because each seat's wall
+  names every worktree it denies. Attribute a process by its parent `harness-builder.ts --name`.
 - Do not stop a live run to fix it. `runs source <name> --holds <commit>` checks containment.
   A fix is measured by the next fresh campaign.
 
@@ -263,9 +274,25 @@ Resolve predictions with counts. Before claiming improvement, use
 [attribution-and-proof](../attribution-and-proof/SKILL.md). Use
 [whole-run-investigation](../whole-run-investigation/SKILL.md) for a doubtful reading or failure owner.
 
-**A step is one draw.** Give the supporting reading, frontier untied tasks and margins, retained
-reading, A/A and campaign risk. A near miss buys no repeat. Use `frontier.detectable` and the
+**A step is one draw.** Give the supporting reading, its untied tasks and margins, the retained
+tally apart, A/A and campaign risk. A near miss buys no repeat. Use `scored.detectable` and the
 margins to size the next comparison; a tally alone does not fix its power.
+
+**Two runs side by side** compare the system at two commits, never two harnesses: each run
+drafted its own exam (`AGENTS.md`, section 9). Match them by **active hours**, then check the
+match against dollars billed and comparisons reported. Wall hours mislead, because runs sit in
+provider waits, outages and stopped stretches for different lengths of time. Active hours are the
+time between consecutive events, leaving out:
+
+- any silence over ten minutes;
+- every recorded `campaign.waited`;
+- every stretch that ends in a `provider` non-result or an errored model turn before anything
+  productive happens.
+
+On 20 October r5 and r6 read 16 wall hours and 7.5 and 9.4 active hours: a DNS outage had failed
+their solves as `provider` non-results for four hours. Name each setting the runs differ in
+(limits, objective rule, promotion rule) beside the comparison. No reader in the tree computes
+active hours yet, so give the script with the counts.
 
 ## 7. Decide
 
@@ -316,6 +343,18 @@ prove a row with a replay or rehearsal that passes its link. A failed prediction
 Each firing records what it found, whether useful and when it should have fired. Review those
 rows: three empty watches may justify two-hour spacing; M3 or M5 approaching needs a one-shot.
 Timers act only within recorded authority, including authority for launches and stops.
+
+A Claude Code timer (`CronCreate`) lives only in the session that armed it. It dies when that
+session exits, and a recurring one expires after seven days. It fires only while the session is
+idle, a few minutes off the time it names. So:
+
+- Write each timer's prompt to stand alone, with absolute paths, the ledger file, the runs it reads
+  and its authority. It fires after compactions that will have dropped the context it was armed in.
+- A watch speaks to the operator only when a milestone landed, a run stalled or ended, or a
+  prediction resolved. Otherwise it writes its ledger row and stays silent.
+- When a timer is replaced (an hour moved, a run added), delete the old one by its id. A one-shot
+  that a later reading made early is re-armed, not left to fire on stale facts.
+- The handover timer reads the other timers' ledger rows and says which were useful.
 
 ## Which skill each step uses
 

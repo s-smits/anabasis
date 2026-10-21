@@ -1,5 +1,5 @@
-// A campaign's setting is the campaign's: who solves, what a solve is held to and which tasks are
-// scored. It is recorded once in the log, a command that names nothing runs under the record, and
+// A campaign's setting is the campaign's: who solves, what a solve is held to and how many tasks are
+// drawn. It is recorded once in the log, a command that names nothing runs under the record, and
 // a command that names another is refused until the operator says the campaign's setting changes.
 import { afterAll, describe, expect, it } from "bun:test";
 import { compactionMode } from "../src/backends/models.ts";
@@ -27,7 +27,6 @@ const UNNAMED: Recorded = {
   solver: null,
   minutes: 30,
   modelTurns: 20,
-  tasks: null,
   target: 24,
 };
 /** The same, as a campaign recorded it before 19 October: 120 minutes, the model's turns unlimited. */
@@ -37,8 +36,7 @@ const SHORT: Recorded = {
   solver: { model: "anthropic/claude-sonnet-5-5", effort: "low" },
   minutes: 8,
   modelTurns: 40,
-  tasks: ["t-1", "t-2", "t-3"],
-  target: 24,
+  target: 3,
 };
 
 describe("what the flags of a setting name", () => {
@@ -106,7 +104,6 @@ describe("a campaign's setting, recorded once", () => {
   it("is what the first command names, or the defaults, and that command records it", () => {
     expect(settingAsked({}, null)).toEqual({
       named: { solver: undefined, limits: LIMITS },
-      tasks: undefined,
       target: 24,
       record: UNNAMED,
       first: true,
@@ -117,13 +114,13 @@ describe("a campaign's setting, recorded once", () => {
         "solver-effort": "low",
         "solve-minutes": "8",
         "solve-model-turns": "40",
-        tasks: "t-1,t-2,t-3",
+        target: "3",
       },
       null,
     );
     expect(first.record).toEqual(SHORT);
     expect(first.named.limits).toMatchObject({ wallSeconds: 480, modelTurns: 40, shellDefaultSeconds: 120 });
-    expect(first.tasks).toBe("t-1,t-2,t-3");
+    expect(first.target).toBe(3);
   });
 
   it("is what a command that names nothing runs under, with nothing more to record", () => {
@@ -137,17 +134,13 @@ describe("a campaign's setting, recorded once", () => {
         "solve-model-turns": "40",
       }),
     );
-    expect(asked).toMatchObject({ tasks: "t-1,t-2,t-3", target: 24 });
+    expect(asked).toMatchObject({ target: 3 });
     // Named again as it stands, it is the same setting: a flag that agrees is no other.
-    const again = settingAsked(
-      { "solve-minutes": "8", "solve-model-turns": "40", tasks: "t-3,t-1,t-2" },
-      SHORT,
-    );
+    const again = settingAsked({ "solve-minutes": "8", "solve-model-turns": "40", target: "3" }, SHORT);
     expect(again.record).toBeNull();
     expect(again.named).toEqual(asked.named);
     expect(settingAsked({ target: "24" }, UNNAMED)).toMatchObject({
       record: null,
-      tasks: undefined,
       target: 24,
     });
     // A record from before the one budget runs on under its own limits, the turns unlimited: the
@@ -170,10 +163,6 @@ describe("a campaign's setting, recorded once", () => {
       // The effort it names none of is the campaign's, as every flag it leaves out is.
       "--solver claude/claude-opus-5-5 --solver-effort low names another setting than the campaign's, which was recorded as --solver anthropic/claude-sonnet-5-5 --solver-effort low",
     );
-    // The scored set is the campaign's as the solver is: other tasks, or a draw where tasks were named.
-    expect(() => settingAsked({ tasks: "t-1,t-2" }, SHORT)).toThrow(
-      "--tasks t-1,t-2 names another setting than the campaign's, which was recorded as --tasks t-1,t-2,t-3",
-    );
     expect(() => settingAsked({ target: "8" }, UNLIMITED)).toThrow(
       "--target 8 names another setting than the campaign's, which was recorded as --target 24",
     );
@@ -189,6 +178,7 @@ describe("a campaign's setting, recorded once", () => {
     expect(recordedSetting(read(log))).toBeNull();
     keepSetting(log, settingAsked({}, null));
     expect(recordedSetting(read(log))).toEqual(UNNAMED);
+    expect(read(log)[0]?.data).not.toHaveProperty("tasks");
     // A command that runs under the record keeps nothing more.
     keepSetting(log, settingAsked({}, recordedSetting(read(log))));
     expect(read(log)).toHaveLength(1);
@@ -211,6 +201,12 @@ describe("a campaign's setting, recorded once", () => {
     expect(() => recordedSetting([counted(60)])).toThrow(
       "the campaign's setting was recorded with 60 prompts a solve, and this source gives every solve 24: no tally on record speaks for it",
     );
+    // Old settings still read, and their named tasks have no say in the draw or the next command.
+    for (const tasks of [null, ["t-1", "t-2", "t-3"]]) {
+      const old = recordedSetting([{ ...torn, data: { ...UNNAMED, tasks } }]);
+      expect(old).toEqual(UNNAMED);
+      expect(settingAsked({}, old)).toMatchObject({ target: 24, record: null });
+    }
   });
 
   // 13 October: Claude Code serves claude-haiku-5-5 a 200K context, under the sweep's 300K window.

@@ -221,9 +221,11 @@ function SetUp({ reading }: { reading: CampaignReading }) {
 function rateSource(risk: NonNullable<CampaignReading["counters"]["risk"]>): string {
   const controls =
     risk.controls === 0
-      ? "no A/A control on record"
-      : `${String(risk.errors)} of ${plural(risk.controls, "A/A control")} read a step`;
-  return `${percent(risk.bound)} for the riskiest attempt by the rule's design; ${controls}`;
+      ? "no A/A control on record that could read a step"
+      : `${String(risk.errors)} of ${plural(risk.controls, "A/A control")} that could read a step read one`;
+  const incapable =
+    risk.incapable === 0 ? "" : `, and ${String(risk.incapable)} too small to read one at their level`;
+  return `${percent(risk.bound)} for the riskiest attempt by the rule's design; ${controls}${incapable}`;
 }
 
 function Counters({ reading }: { reading: CampaignReading }) {

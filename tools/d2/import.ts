@@ -5,7 +5,7 @@
  *
  *   bun tools/d2/import.ts --name r-1 --harness ~/handover/t-4/harness [--note "<why>"]
  *
- * Row C7 of the climb plan (`docs/plan.md`, 10 October): its lever L4 opens a campaign's first epoch
+ * Row C7 of the climb plan (`7f0add79:docs/plan.md`, 10 October): its lever L4 opens a campaign's first epoch
  * from a harness that already installs the field's engine, so that the first epoch stops measuring
  * a solver's set-up time, and until now that harness had to be built by a Builder session of the
  * same campaign. What another campaign handed over (`close.ts`, `harness/`), or a harness written

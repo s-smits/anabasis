@@ -1,6 +1,6 @@
 // A task: the contract it is written against, the one gate its package passes, and the states a
 // log folds it into. A stronger solve, a repeat of the checks, per-task controls and screening are
-// gone with the plan after the v1 review (`docs/plan.md`), and what a log written before it holds
+// gone with the plan after the v1 review (`7f0add79:docs/plan.md`), and what a log written before it holds
 // of them is read here as history.
 import { afterAll, describe, expect, it } from "bun:test";
 import { answerFormatFault, type Contract, contractHash } from "../src/kernel/contract.ts";

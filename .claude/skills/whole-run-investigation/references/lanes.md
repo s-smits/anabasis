@@ -491,7 +491,7 @@ around anyway is a harness fitted to the exam's fault. Keep the count honest: fa
 ruled earned, of which followed by an edit, of which passed after. Until 11 October a Diagnoser
 named an owner and a first divergence for each earned fail, and a log of before holds its
 readings (`diagnosis.recorded`): 20 of 20 named the solver, and the seat went
-(`docs/simplify.md`, E1). The decision it changes is whether the session produced a change with a
+(`7f0add79:docs/simplify.md`, E1). The decision it changes is whether the session produced a change with a
 reason, which is the only kind worth a round's solves; it routes to `harness/guide` or
 `harness/tools` for a fail left standing, and `builder-prompt` when the fail was ignored.
 
@@ -601,11 +601,12 @@ The question is what the comparison's test could and could not have shown at its
 sign-flip test reads each task's difference in pair wins; a tie carries nothing. It reduces to the
 sign test where all untied margins are equal. v1 found the signal too
 rare to settle a comparison at the size it ran: 11 of 322 batteries held a fail nobody
-contested. Read the frontier's `differences`, p, `detectable` and `falseRate`, the retained
-reading, and `scored` with its ties and unanswered tasks. Say
+contested. Read `scored` with its `differences`, p, `detectable`, `falseRate`, ties and
+unanswered tasks, which the step tested since 20 October, and the frontier and retained tallies
+apart (before 20 October the step, `detectable` and `falseRate` were the frontier's). Say
 how many untied tasks there were and what the smallest result is that would have cleared the
 level on those margins. `FEW INFORMATIVE PAIRS` fires when reversing the smallest positive
-frontier difference makes the reading miss its level; it also names `sweepOf(level)`.
+tested difference makes the reading miss its level; it also names `sweepOf(level)`.
 It does not test every possible result containing a loss. A
 comparison that tallied no task tested nothing and reads `not-scored`; before the report learned
 to say so it read `no-step`, as the eight truss rounds of 8 October did. `CUT BY ITS CAP` names
@@ -792,7 +793,7 @@ the logged one is a check that does not repeat. Then read what the Builder chang
 earned fail and whether it was the side that failed. Until 11 October a Diagnoser named an owner
 for each earned fail, the harness, the public rules or the solver, and a log of before holds
 its readings beside the rulings; 20 of 20 named the solver, and the seat went
-(`docs/simplify.md`, E1). The decision it changes is whether the next change goes to the harness
+(`7f0add79:docs/simplify.md`, E1). The decision it changes is whether the next change goes to the harness
 or to the exam's owner; it routes to `reviewer-prompt` (`src/review/referee.ts`) for a ruling
 that cannot be right, `pack/evaluator` for a check that does not repeat, and `harness/guide` or
 `harness/tools` for a repair on the wrong side.
@@ -858,8 +859,8 @@ any faults it was promoted `despite`), and the comparisons it rests on, each wit
 p, its level and the reference against itself. Say which rule the campaign ran under: a level
 pinned in its opening terms, or none, so the tree's default. Until 19 October a step was read in two
 stages: a first reading at or under a trigger bought a repeat on fresh solves, and the two read
-together had to clear the level. Since then one reading at the level promotes, where the
-retained tasks did not regress. Set the tally beside its own A/A noise as evidence about
+together had to clear the level. Since then one reading at the level promotes, and since
+20 October that reading is one test over the frontier and the retained tasks together. Set the tally beside its own A/A noise as evidence about
 variance, without replacing the recorded test with a threshold on untied share.
 
 Then what the step measured. `STARTER BARE` names a rest comparison where the reference answered

@@ -220,6 +220,32 @@ describe("a solve's walled commands", () => {
     }
   }, 60_000);
 
+  it("refuse a command a signal to a process outside its wall, and let it signal its own", async () => {
+    // Under Seatbelt's `(allow default)` a command could `kill` any process of the operator's, the
+    // campaign that runs it among them (probe, 20 October); Linux gives it a pid namespace.
+    const outside = Bun.spawn(["sleep", "60"], { stdout: "ignore", stderr: "ignore" });
+    const dirs = solveDirs(`signal-${String(runtimeProcess.pid)}-${String(Date.now())}`);
+    const release = claimRoot(dirs.root);
+    try {
+      makeSeatDirs(dirs);
+      const base = solveIsolationPolicy({ repoRoot: toolchainTemp("ana-command-signal-repo") });
+      if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
+      const sent = await run(
+        walled(base, dirs),
+        [
+          `kill -0 ${String(outside.pid)} 2>/dev/null && echo outside-reached || echo outside-refused`,
+          "sleep 5 & kill $! && echo own-signalled",
+        ].join("; "),
+      );
+      expect(sent.output).toBe("outside-refused\nown-signalled\n");
+      expect(outside.exitCode).toBeNull();
+    } finally {
+      outside.kill();
+      await release();
+      rmSync(dirs.host, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   it("refuse a command a stored pack by the pack's path, which no folder's name stands in for", async () => {
     // A pack laid out as the buffer pack is, its hidden values under `correctness-model`.
     const repoRoot = toolchainTemp("ana-command-pack-repo");

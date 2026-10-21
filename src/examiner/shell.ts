@@ -10,7 +10,7 @@
  * A task-writing session has one because, without it, its notes said that a task's feasibility
  * rested on hand estimates. A drafting session has one so that it can look up the source it names
  * for each rule, and run its own check program on its own controls before it puts a draft
- * (`docs/plan.md`, row F57). One wall and one sentence serve every mode, so that their walls
+ * (`7f0add79:docs/plan.md`, row F57). One wall and one sentence serve every mode, so that their walls
  * cannot drift apart, and the wall says when the seat began to be set up: a session's time is
  * counted from then, so the claim of its root and the wall's probe are inside its limit in every mode.
  *

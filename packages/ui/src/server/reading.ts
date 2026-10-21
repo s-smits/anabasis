@@ -179,12 +179,11 @@ const solverIn = once((log) => {
 function riskIn(log: Log): Counters["risk"] {
   const epoch = epochsIn(log).at(-1);
   if (epoch === undefined) return null;
-  const { attempts, union, bound, controls, errors } = epoch.falsePromotion;
-  return { attempts, union, bound, controls, errors };
+  const { attempts, union, bound, controls, incapable, errors } = epoch.falsePromotion;
+  return { attempts, union, bound, controls, incapable, errors };
 }
 
-/** What is left of the campaign's total, and what the last comparison the cap did not cut billed,
- *  as the table's budget hold reads them (`unafforded`, `decide.ts`). */
+/** What is left of the campaign's total, and what the last comparison the cap did not cut billed. */
 function runwayIn(log: Log): Counters["runway"] {
   const budget = openingIn(log)?.budget?.dollars;
   const last = reportsIn(log).findLast(({ data }) => data.capped !== true);

@@ -4,11 +4,11 @@
  *
  *   bun tools/d2/round.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
  *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --session b-1 \
- *     --builder claude/claude-opus-5-5 --tasks <eight task ids> --cap 625
+ *     --builder claude/claude-opus-5-5 --target 8 --cap 625
  *
- * That is the plan's first round and its gate G0 (`docs/plan.md`, Phase 0). The Builder forks the
+ * That is the plan's first round and its gate G0 (`7f0add79:docs/plan.md`, Phase 0). The Builder forks the
  * Starter Built Harness and builds on it, and the harness it leaves is compared with the starter
- * on the eight tasks named, two solves a harness, under today's limits and a dollar cap. The same
+ * on eight drawn tasks, two solves a harness, under today's limits and a dollar cap. The same
  * comparison shows how the starter does by itself: the report holds, for each harness, on how
  * many tasks it was valid in every solve, in some and in none (`valid`), which the command also
  * prints in words. With no `--reviewer`, every rejection waits for a
@@ -16,10 +16,8 @@
  * Judge.
  *
  * The sets are the log's (`prepare.ts`): the released tasks are the Builder's practice. The scored
- * set is the tasks `--tasks` names by id, where the operator chooses them, as the first round has
- * it. Without it the set is `--target` of the held-out tasks, the newest epoch's first and within an
- * epoch drawn by the contract's hash alone.
- * Either way it is fixed before any solve, so that no harness's results choose it
+ * set is `--target` of the held-out tasks, the newest epoch's first and within an epoch drawn by
+ * the contract's hash alone. It is fixed before any solve, so that no harness's results choose it
  * (`src/builder/round.ts`, `scoredSet`).
  *
  * The defaults are the plan's (`SIZE`, `src/kernel/size.ts`): 24 scored tasks, four solves a
@@ -45,11 +43,11 @@
  * fail. One ruled a check defect or unclear, and with no reviewer every one, sets its task aside
  * until a person has labelled it (`tools/d2/settle.ts`). The comparison is read at the one budget
  * its solves were told; until 2026-10-11 `--budget turns=40` read the same solves at shorter
- * budgets as well, which read a solver told the longer one (`docs/simplify.md`, A2).
+ * budgets as well, which read a solver told the longer one (`7f0add79:docs/simplify.md`, A2).
  *
- * Who solves, what a solve is held to and which tasks are scored are the campaign's setting, which
+ * Who solves, what a solve is held to and how many tasks are drawn are the campaign's setting, which
  * its log records once (`setting.ts`). A round that names none of it runs under the record, and
- * one whose `--solver`, `--solve-minutes`, `--solve-model-turns`, `--tasks` or
+ * one whose `--solver`, `--solve-minutes`, `--solve-model-turns` or
  * `--target` name another is refused. The first comparison of a campaign records what it names, with the stored cycle's own
  * solver and the sweep's limits for the rest. `--minutes` and `--turns` are the Builder session's
  * own.
@@ -70,15 +68,15 @@
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { admitComparison, type Wanted } from "#src/builder/admission.ts";
 import { worthLine } from "#src/builder/climb.ts";
-import { predicted, type Report } from "#src/builder/comparison.ts";
+import { predicted, type Report, startOf } from "#src/builder/comparison.ts";
 import { refuseTerms, type RoundRequest, round, scoredSet } from "#src/builder/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
-import type { ObjectiveRule } from "#src/kernel/compare.ts";
+import { type Gain, type ObjectiveRule, objectiveRuleIn, ROOM } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { priceKey } from "#src/kernel/meter.ts";
-import { type Cap, capHolds, patienceOf, poolOf, stopRule } from "#src/kernel/reports.ts";
+import { type Cap, capHolds, stopRule } from "#src/kernel/reports.ts";
 import { solverLast } from "#src/kernel/solves.ts";
 import { readBrief } from "#src/kernel/verify.ts";
 import { type TaskPackage, taskSets } from "#src/kernel/task.ts";
@@ -142,19 +140,18 @@ export type Seated = (
   given: { readonly builder: string | undefined; readonly reference: string },
 ) => Seats;
 
-/** The flags of every command that compares, and their defaults: the plan's (`docs/plan.md`,
+/** The flags of every command that compares, and their defaults: the plan's (`7f0add79:docs/plan.md`,
  *  Tuning). */
 export const COMPARISON_OPTIONS = {
   reference: { type: "string", default: PROMOTED },
-  tasks: { type: "string" },
   reviewer: { type: "string" },
   "reviewer-effort": { type: "string", default: "high" },
   target: { type: "string" },
   solves: { type: "string", default: String(SIZE.solves) },
   // One reading at or under `level` is a step (`stepOf`, `src/kernel/compare.ts`). 0.20 was the
   // default from #175 until 10 October, then 0.10 under the two-stage rule, and 0.02 since
-  // 12 October (the operator). Since 19 October one reading promotes, which at 0.02 on 24 untied
-  // tasks risks 6.8% over a patience of six, under the opening's cap; at 0.10 it would be 45.5%.
+  // 12 October (the operator). Since 19 October one reading promotes. It is a per-comparison level:
+  // one reading on 24 untied tasks reads a step between equal harnesses 1.1% of the time at 0.02.
   level: { type: "string", default: "0.02" },
   defects: { type: "string", default: "3" },
   cap: { type: "string" },
@@ -164,8 +161,8 @@ export const COMPARISON_OPTIONS = {
 } as const;
 
 /** The flags of a Builder session, in a round or with no comparison after it (`session.ts`), and
- *  their defaults. `--tasks` and `--target` are the campaign's scored set, which a session scores
- *  nothing of: they are the setting's, and the campaign's first command records them. */
+ *  their defaults. `--target` is the size of the campaign's scored draw, which a session scores
+ *  nothing of: it is the setting's, and the campaign's first command records it. */
 export const SESSION_OPTIONS = {
   root: { type: "string" },
   sweep: { type: "string" },
@@ -176,7 +173,6 @@ export const SESSION_OPTIONS = {
   builder: { type: "string" },
   "builder-effort": { type: "string", default: "high" },
   ...SETTING_OPTIONS,
-  tasks: COMPARISON_OPTIONS.tasks,
   target: COMPARISON_OPTIONS.target,
   reviewer: COMPARISON_OPTIONS.reviewer,
   "reviewer-effort": COMPARISON_OPTIONS["reviewer-effort"],
@@ -301,29 +297,6 @@ export function sessionNamed(
 }
 
 /**
- * The scored set a command's flags name, by task version, and the retained tasks in it: the
- * tasks `--tasks` lists by id, each a task of the pack or of a session, or `--target` of the
- * held-out tasks by the contract's draw (`scoredSet`). Whether each is a held-out task is the
- * comparison's to refuse.
- */
-export function scoredNamed(
-  campaign: Campaign,
-  tasks: string | undefined,
-  target: number,
-): ReturnType<typeof scoredSet> {
-  const events = read(campaign.log);
-  if (tasks === undefined) return scoredSet(events, target, contractHash(campaign.contract));
-  const packages = [...campaign.packages()];
-  const named = tasks.split(",").map((taskId) => {
-    const found = packages.find(([, task]) => task.taskId === taskId);
-    if (found === undefined) throw new Error(`--tasks ${taskId}: the campaign holds no task of that id`);
-    return found[0];
-  });
-  const { retained } = poolOf(events);
-  return { tasks: named, retained: named.filter((task) => retained.includes(task)) };
-}
-
-/**
  * What a command's flags ask of a comparison, as its admission takes it (`admitComparison`): the
  * size, the cap, the reason to go on past the stop rule where one is given, and what the setting
  * named here is against the one the log's last test-side solves ran under.
@@ -337,16 +310,14 @@ export function wantedNamed(
   },
   given: { readonly setting: AskedSetting; readonly cap: Cap | undefined; readonly builds: boolean },
 ): Wanted {
-  const { named, tasks, target } = given.setting;
+  const { named, target } = given.setting;
   // The campaign is open, so who solves is known whether or not a flag named it.
   const solving = solvingAs(campaign, named);
   const ran = solverLast(read(campaign.log));
   return {
-    // A comparison that names its tasks scores those, however many the log holds beside them.
-    target: tasks === undefined ? target : tasks.split(",").length,
+    target,
     solves: Number(values.solves),
     level: Number(values.level),
-    patience: patienceOf(read(campaign.log)),
     builds: given.builds,
     cap: given.cap ?? null,
     pastStop: predictionNamed(values["past-stop"]),
@@ -361,12 +332,20 @@ export function solvingAs(campaign: Campaign, { limits }: Pick<AskedSetting, "na
   return { solver: { model: priceKey(model), effort }, limits };
 }
 
-/** The objective this campaign's comparisons pair two valid answers by, where its check program
- *  declares one: the brief's direction. Undefined otherwise. Until 19 October a margin went with it
- *  (`--margin`, `SAME` in `src/kernel/compare.ts`). */
-export function objectiveNamed(campaign: Pick<Campaign, "checks">): ObjectiveRule | undefined {
+/** The objective comparison `id` pairs two valid answers by, where its check program declares one:
+ *  the brief's direction and the room floor (`ROOM`). Undefined otherwise. A comparison that began
+ *  goes on by the objective it recorded, since one begun before 21 October recorded no floor and
+ *  reads at floating-point equality. Until 19 October a margin went with it (`--margin`, `SAME` in
+ *  `src/kernel/compare.ts`), and on 21 October a `--room` term named the floor: no campaign named
+ *  one, and the operator chose one fixed floor over a setting nobody had a reason to change. */
+export function objectiveNamed(
+  campaign: Pick<Campaign, "checks" | "log">,
+  id: string,
+): ObjectiveRule | undefined {
+  const began = startOf(read(campaign.log), id);
+  if (began !== undefined) return objectiveRuleIn(began);
   const declared = readBrief(campaign.checks).objective;
-  return declared === undefined ? undefined : { direction: declared.direction };
+  return declared === undefined ? undefined : { direction: declared.direction, room: ROOM };
 }
 
 /** What `--predict` names: the operator's expectation of the comparison, in a sentence, or none. */
@@ -399,7 +378,7 @@ export function capRead(cap: string, reserve: string): Cap {
 
 /**
  * The dollar cap `--cap` and `--reserve` name. A command whose solves are paid for is refused
- * without one (`docs/plan.md`, Phase 0); a simulation, whose seats are scripts, may name none.
+ * without one (`7f0add79:docs/plan.md`, Phase 0); a simulation, whose seats are scripts, may name none.
  */
 export function capNamed(
   values: { readonly cap?: string | undefined; readonly reserve: string },
@@ -430,41 +409,44 @@ export function refereeNamed(
 }
 
 /**
- * A report in lines, printed with every reading: the frontier it was read on, with its untied tasks,
+ * A report in lines, printed with every reading: the tasks its step was read on (`scored`, or the
+ * frontier before 20 October), with their untied tasks,
  * the least share of them one reading detects four times in five (`detectable`) and the chance
  * it reads a step between equal harnesses (`falseRate`), and its p with what the test weighs; the
  * reference against itself where the comparison carries it (`aaLines`); the tasks it drew, by what
  * became of each (`accounted`); and `valid`,
  * each harness by itself, as the tasks by how many of their solves were valid, which is what the
- * plan's first gate reads of the starter, the reference harness of the first round (`docs/plan.md`,
+ * plan's first gate reads of the starter, the reference harness of the first round (`7f0add79:docs/plan.md`,
  * G0); the objective's margin. None for a report that compared nothing.
  */
 export function reportLines({
   valid,
   objective,
+  scored = null,
   frontier,
   noise,
   turns = null,
   worth = null,
   ...apart
 }: Pick<Report, "valid" | "objective" | "frontier" | "noise"> &
-  Partial<Pick<Report, "turns" | "worth" | Apart>>): string[] {
+  Partial<Pick<Report, "scored" | "turns" | "worth" | Apart>>): string[] {
   if (valid === null) return [];
   // The turns of a valid answer, over the tasks both harnesses answered: reported, in no test.
   const both = Object.values(turns ?? {}).flatMap(({ old, fresh }) =>
     old === null || fresh === null ? [] : [{ old, fresh }],
   );
   const took = (side: "old" | "fresh") => String(median(both.map((each) => each[side])));
-  const share = frontier?.detectable ?? null;
-  const untied = frontier === null ? 0 : frontier.wins + frontier.losses;
+  const test = scored?.falseRate === undefined ? frontier : scored;
+  const share = test?.detectable ?? null;
+  const untied = test === null ? 0 : test.wins + test.losses;
   return [
-    ...(frontier === null
+    ...(test?.falseRate === undefined
       ? []
       : [
-          `the step is read on ${plural(frontier.tasks.length, "frontier task")}, ${String(untied)} of them untied: one reading at the comparison's level detects four times in five ${share === null ? "no share of them" : `a harness that wins ${String(Math.round(100 * share))}% of them`}`,
-          `one reading at these margins reads a step between equal harnesses ${String(Math.round(1000 * frontier.falseRate) / 10)}% of the time, never more than the level`,
+          `the step is read on ${plural(untied + test.ties, "tallied task")}, ${String(untied)} of them untied: one reading at the comparison's level detects four times in five ${share === null ? "no share of them" : `a harness that wins ${String(Math.round(100 * share))}% of them`}`,
+          `one reading at these margins reads a step between equal harnesses ${String(Math.round(1000 * test.falseRate) / 10)}% of the time, never more than the level`,
           // The test weighs margins, but a sweep's p is its count's alone (the plan's 7.5).
-          `its p is ${rounded(frontier.p)}: the test weighs each untied task by its margin in pair wins${frontier.losses === 0 && untied > 0 ? `, and where every untied task is won p is one half to the power of their count whatever the margins: ${String(untied)} won read ${rounded(0.5 ** untied)}` : ""}`,
+          `its p is ${rounded(test.p)}: the test weighs each untied task by its margin in pair wins${test.losses === 0 && untied > 0 ? `, and where every untied task is won p is one half to the power of their count whatever the margins: ${String(untied)} won read ${rounded(0.5 ** untied)}` : ""}`,
         ]),
     ...(noise === null ? [] : aaLines(noise)),
     ...accounted(apart),
@@ -473,7 +455,7 @@ export function reportLines({
     ...(objective === null
       ? []
       : [
-          `the objective (${objective.direction} is better) decided ${plural(objective.decided, "task")} that validity alone would have tied`,
+          `the objective (${objective.direction} is better) decided ${plural(objective.decided, "task")} that validity alone would have tied${gainSaid(objective.gain)}`,
         ]),
     ...(both.length === 0
       ? []
@@ -482,6 +464,14 @@ export function reportLines({
         ]),
     ...(worth === null ? [] : [worthLine(worth)]),
   ];
+}
+
+/** The median relative gain by the objective on the won frontier tasks, as a report prints it
+ *  beside the tally (`objectiveGain`); nothing where no won task has a measure on both sides. */
+export function gainSaid(gain: Gain | null | undefined): string {
+  return gain == null
+    ? ""
+    : `; on the ${plural(gain.tasks, "won frontier task")} with a valid measure on both sides its median relative gain is ${String(Number((100 * gain.median).toPrecision(2)))}%`;
 }
 
 /** A share, to three places. */
@@ -533,7 +523,7 @@ function accounted({
   const drew = new Set([...versions, ...aside, ...short, ...disputed, ...withdrawn]).size;
   const left = out.flatMap(([tasks, why]) => (tasks.length === 0 ? [] : [`${String(tasks.length)} ${why}`]));
   return [
-    `of the ${plural(drew, "task")} the comparison drew, ${String(versions.length)} ${versions.length === 1 ? "was" : "were"} tallied${left.length === 0 ? "" : ` and ${left.join(", ")}`}: the columns below and room are read over the tallied ones, the test over the frontier among them`,
+    `of the ${plural(drew, "task")} the comparison drew, ${String(versions.length)} ${versions.length === 1 ? "was" : "were"} tallied${left.length === 0 ? "" : ` and ${left.join(", ")}`}: the columns below, room and the test are read over the tallied ones`,
   ];
 }
 
@@ -576,10 +566,10 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
     session: built,
     reference,
     starter: await starter(campaign),
-    ...scoredNamed(campaign, setting.tasks, setting.target),
+    ...scoredSet(read(campaign.log), setting.target, contractHash(campaign.contract)),
     solves: Number(values.solves),
     level: Number(values.level),
-    objective: objectiveNamed(campaign),
+    objective: objectiveNamed(campaign, session),
     defects: Number(values.defects),
     cap,
     prediction: predictionNamed(values.predict),

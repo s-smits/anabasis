@@ -195,6 +195,7 @@ describe("a campaign's reading", () => {
         tally: { wins: 4, losses: 0, ties: 0 },
         valid: { old: [4, 0, 0], fresh: [0, 0, 4] },
         decided: null,
+        gain: null,
         aside: 0,
         rulings: { earned: 1, "check-defect": 0, unclear: 0 },
         // Its two solves and the Referee's reading, and nothing of the session under the same id.
@@ -218,6 +219,7 @@ describe("a campaign's reading", () => {
         tally: null,
         valid: null,
         decided: null,
+        gain: null,
         aside: 0,
         rulings: { earned: 0, "check-defect": 0, unclear: 0 },
         billed: 0,
@@ -465,7 +467,7 @@ describe("a campaign's reading", () => {
     c.setUp();
     const [open] = c.built("b-1", STARTER, HA, ["fail"]);
     // A reading of the fail by a Diagnoser, as a log of before 2026-10-11 holds one, is no part of
-    // the fail since (`docs/simplify.md`, E1).
+    // the fail since (`7f0add79:docs/simplify.md`, E1).
     c.record("diagnosis.recorded", {
       solve: open ?? "",
       owner: "solver",
@@ -522,7 +524,7 @@ describe("the Builder's filter over that reading", () => {
     });
     c.solved("p1", HB, "pass");
     const { fails } = campaignOf(c.events());
-    // A Diagnoser's reading in a log of before is not told (`docs/simplify.md`, E1).
+    // A Diagnoser's reading in a log of before is not told (`7f0add79:docs/simplify.md`, E1).
     expect(failsTold(fails, TASKS)).toEqual([
       `- ${open ?? ""}, t-1, harness aaaaaaaa: fail (rejected); open: passed once under harness bbbbbbbb.`,
     ]);

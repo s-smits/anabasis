@@ -311,13 +311,14 @@ test("a comparison says beside its test what the test could see, read off its re
         navigation={navigationAt("?pane=moves")}
       />,
     );
-  // A repeat: its frontier, the tasks it shares with its first stage, and each side's cost a solve.
+  // A repeat: the set its step was read on, every tallied task since 20 October, the tasks it
+  // shares with its first stage, and each side's cost a solve.
   const repeat = comparisonIn("r-1", "default").sensitivity;
   const report = reported(events, "r-1");
   expect(repeat?.frontier).toEqual({
-    untied: (report?.frontier?.wins ?? 0) + (report?.frontier?.losses ?? 0),
-    detectable: report?.frontier?.detectable ?? null,
-    falseRate: report?.frontier?.falseRate ?? 0,
+    untied: (report?.scored?.wins ?? 0) + (report?.scored?.losses ?? 0),
+    detectable: report?.scored?.detectable ?? null,
+    falseRate: report?.scored?.falseRate ?? 0,
   });
   expect(repeat?.overlap).toEqual({ with: "b-1", tasks: report?.overlap?.tasks.length ?? 0 });
   expect(repeat?.informative).toEqual(report?.valid?.informative ?? null);

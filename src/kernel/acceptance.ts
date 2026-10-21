@@ -12,7 +12,7 @@
  * Since 14 October the opening's current faults and counts rest on fresh controls alone; stored
  * verdicts are reported apart, without rerunning them, and cannot clear a current fault.
  *
- * Two readings ask what no control of the pack's does (`docs/plan.md`, the correctness model). The
+ * Two readings ask what no control of the pack's does (`7f0add79:docs/plan.md`, the correctness model). The
  * do-nothing answer, the smallest the answer format allows, must be rejected on every task: Anchor
  * tests its generated verifiers so, and cites a benchmark on which an agent that did nothing passed
  * 38% of the tasks, because the verifier accepted an empty response. And a check whose author's own

@@ -26,7 +26,7 @@ import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { gitText, mainTree, worktrees } from "#src/meta/git.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
-import { basename, join } from "#src/meta/path.ts";
+import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 
@@ -98,8 +98,22 @@ export const campaignsIn = (dir: string, tree: string): Run[] =>
     .map((name) => campaignIn(dir, name, tree));
 /** Whether `run` is a campaign, as against a live solve. */
 export const isCampaign = (run: Run) => run.end === CAMPAIGN_END;
-const runsAs = (args: readonly string[], tools: readonly string[]) =>
-  args.some((arg) => tools.some((tool) => arg.endsWith(tool)));
+/**
+ * The script a process runs: Bun's first argument that is no option of its own, under `nice` where
+ * `start` started it niced, and after `run` where it was named so. Until 20 October any argument
+ * ending in a script's path counted, so a shell whose command line merely named the campaign
+ * command read as its writer.
+ */
+function scriptOf(args: readonly string[]): string | undefined {
+  const [bun, ...rest] = args[0] === "nice" ? args.slice(3) : args;
+  if (bun === undefined || basename(bun) !== "bun") return undefined;
+  const named = rest.filter((arg) => !arg.startsWith("-"));
+  return named[0] === "run" ? named[1] : named[0];
+}
+const runsAs = (args: readonly string[], tools: readonly string[]) => {
+  const script = scriptOf(args);
+  return script !== undefined && tools.some((tool) => script.endsWith(tool));
+};
 
 /**
  * Whether a process writes a campaign's log: the campaign command, a command run by hand, or a
@@ -114,9 +128,6 @@ const runsAs = (args: readonly string[], tools: readonly string[]) =>
  */
 function writesCampaign(args: readonly string[]): boolean {
   if (runsAs(args, [CLI])) return args.includes("rehearse");
-  // The package script `bun run runs <verb>`, which holds no log open whatever the verb: a
-  // rehearsal's log is written by the CLI process it starts.
-  if (args[1] === "run" && args[2] === "runs") return false;
   return runsAs(args, [BUILDER, ...BY_HAND]);
 }
 
@@ -234,15 +245,22 @@ export function processes(): Running[] {
 }
 
 /** The processes in `running` that write `run`'s log: a campaign's by its name, a live solve's by
- *  the task and cycle its name begins with. */
+ *  the task and cycle its name begins with. A flag is read in both forms `parseArgs` takes: until
+ *  20 October a campaign started by hand with `--name=r1` read as closed while it wrote. */
 export function writers(run: Run, running: readonly Running[]): Running[] {
-  const flag = (args: readonly string[], name: string) => args[args.indexOf(name) + 1];
+  const flag = (args: readonly string[], name: string) =>
+    args.find((arg) => arg.startsWith(`${name}=`))?.slice(name.length + 1) ?? args[args.indexOf(name) + 1];
   const writes = (args: readonly string[]) =>
     run.end === CAMPAIGN_END
       ? writesCampaign(args) && flag(args, "--name") === run.name
       : runsAs(args, [LIVE]) &&
         run.name.startsWith(`${String(flag(args, "--task"))}-${String(flag(args, "--cycle"))}-`);
-  return running.filter(({ cwd, args }) => cwd === run.tree && writes(args));
+  // The worktree is the script's, as the campaign command places its log by its own checkout
+  // (`campaignLog`): until 20 October it was the working directory, and a script of another
+  // checkout run from this one was read as this one's writer. Every script is `tools/<dir>/<file>`.
+  const treeOf = (cwd: string, args: readonly string[]) =>
+    dirname(dirname(dirname(resolve(cwd, scriptOf(args) ?? ""))));
+  return running.filter(({ cwd, args }) => treeOf(cwd, args) === run.tree && writes(args));
 }
 
 /** The comparisons of `events` that began and have not reported. An old ladder's reading is none:

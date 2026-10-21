@@ -7,7 +7,7 @@
  *
  * Until 2026-10-09 a campaign handed nothing over: a kept harness stayed a folder among the
  * campaign's states, with its programs behind a link into a tree beside it, and what the campaign
- * had read stood in its log alone (`docs/plan.md`, row F51). This writes, under `--to`:
+ * had read stood in its log alone (`7f0add79:docs/plan.md`, row F51). This writes, under `--to`:
  *
  *   harness/     the reference harness as it then stands, the starter where no step was promoted,
  *                copied whole with its programs. It is opened there before the command returns,
@@ -62,7 +62,7 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { openHarness } from "#src/solve/harness.ts";
 import { keptAs, openCampaign, PROMOTED, packNamed } from "./campaign.ts";
-import { type Seated, solved } from "./round.ts";
+import { gainSaid, type Seated, solved } from "./round.ts";
 import { recordedSetting } from "./setting.ts";
 
 type Campaign = Awaited<ReturnType<typeof openCampaign>>;
@@ -198,7 +198,7 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
       `- A person's labels settled ${plural(settled.length, "comparison")}, and ${plural(unsettled, "comparison")} ${unsettled === 1 ? "is" : "are"} unsettled: ${unsettled === 1 ? "its packet waits" : "their packets wait"} for a person (settle.ts), and no promotion waited for one. ${plural(supply.awaiting, "held-out task")} ${supply.awaiting === 1 ? "waits" : "wait"} for a person to say whether a valid answer exists.`,
       passes.comparisons === 0
         ? "- No answer that passed was read by anyone: a pass is the checks' word alone."
-        : `- Answers that passed: a person read ${String(passes.read)} in ${plural(passes.comparisons, "comparison")}, drawn uniformly by each comparison's id: ${String(passes.sound)} sound, ${String(passes.wrong)} wrong, ${String(passes.unclear)} unclear. A wrong pass is a check's fault, and changes no tally.`,
+        : `- Answers that passed: a person read ${String(passes.read)} in ${plural(passes.comparisons, "comparison")}, drawn uniformly by each comparison's id: ${String(passes.sound)} sound, ${String(passes.wrong)} wrong, ${String(passes.unclear)} unclear. A wrong pass is a check's fault, and its side's fail once settled.`,
     ].join("\n"),
     "## Work and spend",
     `${plural(sessions, "Builder session")}, ${plural(steps.filter((step) => step.step === "examiner").length, "Examiner session")} and ${plural(comparisons.length, "comparison")}. Billed $${billedAll(events).toFixed(2)}${budget === null ? "" : ` of a total of $${String(budget.dollars)}`}.`,
@@ -274,7 +274,7 @@ function promotionLines(
     const held =
       last?.tally === null || last === undefined
         ? ". No comparison of it tallied a task"
-        : `. In ${last.id} it won ${String(last.tally.wins)}, lost ${String(last.tally.losses)} and tied ${String(last.tally.ties)}`;
+        : `. In ${last.id} it won ${String(last.tally.wins)}, lost ${String(last.tally.losses)} and tied ${String(last.tally.ties)}${gainSaid(last.gain)}`;
     return [
       `- ${at.slice(0, 10)}: harness ${called(data.harness)}, ${rung}, read by ${stepped.map((each) => each.id).join(" and ") || "no comparison on record"}${held}${isString(data.despite) ? `. Promoted on the operator's reason, where the rule did not name it: ${data.despite}` : ""}${origin}${worth === undefined ? "" : `. Its ${worthLine(worth)}`}`,
     ];

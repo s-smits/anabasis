@@ -31,6 +31,7 @@ import { closeCommand } from "../tools/d2/close.ts";
 import { harnessBuilder as command } from "../tools/d2/harness-builder.ts";
 import { HOST } from "../tools/d2/host.ts";
 import { importCommand } from "../tools/d2/import.ts";
+import * as prepare from "../tools/d2/prepare.ts";
 import { packetOf, settleCommand } from "../tools/d2/settle.ts";
 import { wordCommand } from "../tools/d2/word.ts";
 import { scriptedSeats } from "../tools/runs/rehearse.ts";
@@ -47,7 +48,8 @@ const MOVED = "campaign.move";
 const NOTHING = "Nothing to add.";
 // Fourteen held once two are released: two comparisons' seven, which a campaign holds before its
 // first comparison (12 October). At the default level, 0.02 since 12 October, a step
-// takes six tasks all won (`sweepOf`), and seven still read one after a pass labelled wrong.
+// takes six tasks all won (`sweepOf`), and seven still read one after a pass labelled wrong turns
+// one win into a tie.
 const TASKS = fixtureTasks(16);
 const scripted = scriptedModel;
 const GRADED = gradedOf(TASKS);
@@ -129,6 +131,47 @@ describe("a campaign run by its log", () => {
     expect(asked).toEqual([{ tasks: 7, minutes: 7 }]);
     expect(of(name, "exam.started")).toMatchObject([{ limits: { tasks: 7 } }]);
     expect(ending).toMatchObject({ move: "end", ending: "exam" });
+  });
+
+  it("ends on its environment where a move it began changed nothing, so the run is never left without an ending", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
+    const name = `${STEM}-empty-move`;
+    // The move that takes the pack's tasks in writes nothing, as the M1's release did on 20 October,
+    // where the draw held no task and the process exited with no ending on record.
+    const released = spyOn(prepare, "prepareCommand").mockResolvedValue(0);
+    const seats: Seats = {
+      seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
+    };
+    try {
+      await expect(harnessBuilder(seeded(name), seats)).rejects.toThrow("the move changed nothing");
+    } finally {
+      released.mockRestore();
+    }
+    expect(of(name, "campaign.ended")).toMatchObject([{ ending: "environment", move: "prepare" }]);
+  });
+
+  it("refuses a paid campaign whose target is too small to read a step, before any move", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
+    const name = `${STEM}-small`;
+    // At the default level of 0.02 a step takes six tasks, all won.
+    const model = "claude/claude-opus-5-5";
+    const paid = [
+      ...seeded(name),
+      "--budget",
+      "100",
+      "--builder",
+      model,
+      "--examiner",
+      model,
+      "--reviewer",
+      model,
+    ];
+    await expect(harnessBuilder([...paid, "--target", "5", "--dry-run"])).rejects.toThrow(
+      "name a --target of at least 6",
+    );
+    expect(await harnessBuilder([...paid, "--target", "6", "--dry-run"])).toMatchObject({
+      move: "accept",
+    });
   });
 
   it("lays the reference harness in the Examiner's home where the campaign names no term, and none where it names off", async () => {
@@ -361,7 +404,6 @@ describe("a campaign run by its log", () => {
       budget: null,
       limit: null,
       sessions: 1,
-      // One attempt: at 24 tasks a longer patience passes the bound an opening may risk (`openingLines`).
       patience: 1,
       seats: { builder: null, examiner: null, reviewer: null },
       terms: { practice: "2" },
@@ -396,7 +438,6 @@ describe("a campaign run by its log", () => {
       "1",
       "--target",
       "7",
-      // The patience the opening's bound holds at these terms (`openingLines`).
       "--patience",
       "1",
     ];
@@ -441,8 +482,10 @@ describe("a campaign run by its log", () => {
     expect(of(name, "campaign.waited")).toEqual([
       expect.objectContaining({ comparison: "g-1", load: 99, cores: 4, ms: expect.any(Number) }),
     ]);
+    // A task's solves start together, so one beside it that read a quiet host may begin before the
+    // wait is written (the Linux job, 20 October): the task's last solve to begin is the one that waited.
     const held = kept[waited]?.data.task;
-    const began = kept.findIndex(({ kind, data }) => kind === "solve.started" && data.task === held);
+    const began = kept.findLastIndex(({ kind, data }) => kind === "solve.started" && data.task === held);
     expect(waited).toBeLessThan(began);
     expect(of(name, MOVED).filter(({ load }) => load !== undefined)).toEqual([]);
     // The comparison was made at the campaign's level, and the move records the command.
@@ -559,10 +602,12 @@ describe("a campaign run by its log", () => {
       /^g-1: decided step, and step at 6-0-1 .*: it holds$/,
     );
     await settleCommand([...pack, "--session", "g-1"]);
-    // A pass's label moves no tally: g-1 reads as it did.
+    // The pass labelled wrong is the new harness's fail in the settled reading, as an earned
+    // rejection is: one task fewer won, 6-0-1, and still a step.
+    expect(first?.scored).toMatchObject({ wins: 7, losses: 0 });
     expect(lastOf()).toMatchObject({
       reading: "step",
-      scored: first?.scored,
+      scored: { wins: 6, losses: 0, ties: 1 },
       settled: { labelled: 0, passes: { [a]: "sound", [b]: "wrong", [c]: "sound" } },
     });
     expect(of(name, "comparison.reported").filter(({ session }) => session === "g-1")).toHaveLength(2);
@@ -605,12 +650,12 @@ describe("a campaign run by its log", () => {
     const letter = /harness ([A-Z]+) \(([0-9a-f]{8})\), set-up \(epoch 0\)/u.exec(report);
     expect(letter?.[2]).toBe(handed.harness.slice(0, 8));
     expect(report).toContain(
-      `harness ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}), set-up (epoch 0), read by g-1. In g-1 it won 7, lost 0 and tied 0`,
+      `harness ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}), set-up (epoch 0), read by g-1. In g-1 it won 6, lost 0 and tied 1`,
     );
     expect(report).toContain(`| g-1 | ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}) | A (`);
     // Its cost beside it, read against the bar and gating nothing (the plan's W).
     expect(report).toMatch(
-      /tied 0\. Its cost, gating nothing: 1 promotion attempt this epoch \(bar 3 after set-up\): met/,
+      /tied 1\. Its cost, gating nothing: 1 promotion attempt this epoch \(bar 3 after set-up\): met/,
     );
     expect(report).not.toContain("ladder");
     // What each measured thing cost, the climb's velocity first, and how many comparisons that
@@ -723,9 +768,8 @@ describe("a campaign run by its log", () => {
     // No word is left for a campaign that has no opening, and none that names two things.
     expect(() => wordCommand(["--name", `${name}-none`, "--stop", "x"])).toThrow("has no opening on record");
     expect(() => wordCommand(["--name", name, "--stop", "x", "--budget", "5"])).toThrow("one word");
-    // The cause of an A/A that read a step is a word too, read where it stands (`decide.ts`).
-    expect(wordCommand(["--name", name, "--cause", " the host was loaded "])).toBe("cause");
-    expect(of(name, "campaign.word").at(-1)).toEqual({ word: "cause", why: "the host was loaded" });
+    // `--cause` released a campaign its control ended until 20 October, and is no word now.
+    expect(() => wordCommand(["--name", name, "--cause", "the host was loaded"])).toThrow();
     expect(strayed).toEqual([]);
   });
 

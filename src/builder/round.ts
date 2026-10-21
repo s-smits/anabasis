@@ -24,7 +24,7 @@
  * comparison and ran under one of its harnesses and its setting. No other solve is counted, made
  * before it or beside it by another comparison: a condition names the host's code, which changes
  * between comparisons, and one frozen draw of the reference harness's solves would bias every
- * later comparison read against it (`docs/plan.md`, What we will not do).
+ * later comparison read against it (`7f0add79:docs/plan.md`, What we will not do).
  *
  * The Starter Built Harness is the reference harness until a step is promoted
  * (`src/solve/starter.ts`). Once the operator has promoted another reference, the starter is the
@@ -34,7 +34,7 @@
  * How each harness did by itself is in the report beside the test (`valid`): on how many tasks it
  * gave a valid answer in every solve, in some and in none. For the starter this is what the
  * plan's first gate reads: where it is valid on nearly every solve, the tasks leave a harness
- * nothing to add (`docs/plan.md`, G0).
+ * nothing to add (`7f0add79:docs/plan.md`, G0).
  *
  * The reference is read against itself as the test is (the plan's A/A): its solves of a task
  * split into two halves mirrored in time, read as two harnesses are, with how often two of them
@@ -132,6 +132,7 @@ import {
   startOf,
   toLabel,
   UNSETTLED,
+  wrongAsFailed,
 } from "./comparison.ts";
 import { type BuildRequest, type Built, type Practised, sessionOnce } from "./session.ts";
 
@@ -177,7 +178,7 @@ interface Terms {
   /** The dollar cap, where the solves are paid for. */
   readonly cap?: Cap | undefined;
   /** What the operator expects the comparison to read, in their own words, written with its terms
-   *  before the first solve (`docs/plan.md`, Phase 4). It decides nothing. A comparison gone on
+   *  before the first solve (`7f0add79:docs/plan.md`, Phase 4). It decides nothing. A comparison gone on
    *  from its log keeps the one it began with: begun on another, or on none, it is refused with
    *  one, as it is on any other term that moved. */
   readonly prediction?: string | undefined;
@@ -231,14 +232,14 @@ const UNCOMPARED: ReadonlySet<string> = new Set(["session", "tasks", "retained"]
  * epoch down and within an epoch drawn by the contract's hash and nothing else (`draw`). The tasks
  * written since the last promotion are the exam the reference harness has not answered, so they
  * come first; what room is left is filled from the epoch before, by the same hash, and so on down.
- * The regression check is the retained set, which since 16 October holds every task of the epochs
+ * The retained set, read in the step's one test and reported apart, since 16 October holds every task of the epochs
  * before that the reference has stood in no comparison of (`poolOf`): until then one task in four
  * of the set was kept for those epochs as frontier, and after each promotion they tied (the plan's
  * climb section, C2; `regressionOf` reads the same gap after the fact). The epoch chooses the set and no result does: the hash is fixed before any task
  * exists, and which epoch a task is in is where it passed its gate (`tasksByEpoch`). A draw over
  * every epoch at once, in a simulated climb after two promotions, drew for a target of 8 over 19
  * held tasks two or three the reference failed, so three comparisons read one win short and the
- * campaign stopped (`docs/plan.md`, B14). A task that waits for a person's label is left out, and
+ * campaign stopped (`7f0add79:docs/plan.md`, B14). A task that waits for a person's label is left out, and
  * an exhausted one, which can only tie again, is retained (`poolOf`). Of the retained, one for
  * each three frontier tasks is scored beside the target, where a step may not lose more pairs than
  * it wins (`compare.ts`). Until 16 October it was what the frontier left of the target: 16 of 94
@@ -687,7 +688,8 @@ export async function round(request: RoundRequest): Promise<Report> {
  * of the same rejection. A task whose rejections then all stand as earned is restored to the tally.
  * One labelled a check defect disputes its task, which leaves every comparison from then on. One
  * labelled unclear, and one set aside on a rejection the packet did not draw, stays out of this
- * comparison. `passes` holds a person's word a drawn answer that passed, which changes no tally.
+ * comparison. `passes` holds a person's word on a drawn answer that passed: one labelled wrong
+ * counts as its side's fail, as an earned rejection does, and sound or unclear change nothing.
  * The tests are read again from the same solves and logged as the comparison's last report, with
  * what was settled and the labels themselves. Run again with the same labels it returns that
  * report. A comparison is settled once: other labels for one already settled are refused.
@@ -751,7 +753,8 @@ export function settleReading(
     const version = versionOf.get(solve) ?? "";
     return dispute(log, id, version, { solve, reason }) ? [version] : [];
   });
-  const found = compared(read(log), fixed, labels);
+  const failed = wrongAsFailed(read(log), labels, Object.fromEntries(passes));
+  const found = compared(failed.events, fixed, failed.labels);
   const settled: Report = {
     old: report.old,
     fresh: report.fresh,

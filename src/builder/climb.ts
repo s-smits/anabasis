@@ -38,9 +38,13 @@ interface FalsePromotion {
    *  none of it. Until 19 October the controls were read in pairs as a step and its repeat, and
    *  until then too a 95% bound off the pairs replaced the design's rate once one pair was on
    *  record: esp32-fresh-opus's closing report read "at most 100%" where its attempts' own rates
-   *  were 1.8%. */
+   *  were 1.8%. Only a control that could read a step counts: one with too few untied tasks to
+   *  reach the level, where every task won reads none, tests nothing about the rate, and is
+   *  counted apart (`incapable`). Until 20 October it counted as a control that read no step,
+   *  and 30 of the 49 recorded controls were such. */
   readonly errors: number;
   readonly controls: number;
+  readonly incapable: number;
   /** The riskiest attempt's rate by the rule's design: the largest of the attempts' own rates at
    *  their margins (`falseRate`), the level where a report holds none. An estimate, no bound. */
   readonly bound: number;
@@ -223,21 +227,23 @@ function falsePromotionOf(
       asRecord(data.frontier) !== null,
   );
   /** The test's own chance a reading at its margins reads a step between equal harnesses
-   *  (`falseRate`), the level where its report holds none. */
+   *  (`falseRate`, the frontier's before 20 October), the level where its report holds none. */
   const rateOf = (attempt: Reported) => {
-    const rate = asRecord(attempt.data.frontier)?.falseRate;
+    const rate = asRecord(attempt.data.scored)?.falseRate ?? asRecord(attempt.data.frontier)?.falseRate;
     return isNumber(rate) ? rate : levelOf(attempt);
   };
-  const controls = reports.flatMap((each) => {
+  const read = reports.flatMap((each) => {
     const apart = asRecord(each.data.noise)?.differences;
     return Array.isArray(apart) ? [{ each, apart: apart.filter(isNumber) }] : [];
   });
+  const controls = read.filter(({ each, apart }) => flipP(apart.map(Math.abs)) <= levelOf(each));
   const errors = controls.filter(({ each, apart }) => flipP(apart) <= levelOf(each)).length;
   const rates = attempts.map(rateOf);
   return {
     attempts: attempts.length,
     errors,
     controls: controls.length,
+    incapable: read.length - controls.length,
     bound: Math.max(0, ...rates),
     union: Math.min(
       1,
@@ -271,16 +277,17 @@ function percent(chance: number): string {
 function sourceOf(risk: FalsePromotion): string {
   const controls =
     risk.controls === 0
-      ? "no A/A control on record"
-      : `${String(risk.errors)} of ${plural(risk.controls, "A/A control")} read a step`;
-  return `${percent(risk.bound)} for the riskiest attempt by the rule's design; ${controls}`;
+      ? "no A/A control on record that could read a step"
+      : `${String(risk.errors)} of ${plural(risk.controls, "A/A control")} that could read a step read one`;
+  const incapable =
+    risk.incapable === 0 ? "" : `, and ${String(risk.incapable)} too small to read one at their level`;
+  return `${percent(risk.bound)} for the riskiest attempt by the rule's design; ${controls}${incapable}`;
 }
 
 /**
  * The campaign's chance of a false promotion, for its closing report (the plan's 7.6): each epoch's
  * summed estimate with what it rests on, and their sum capped at one: estimates all, and no bound.
- * An epoch's sum restarts at its promotion, so the opening's over one patience's attempts describes
- * one window, and no epoch's alone the campaign.
+ * An epoch's sum restarts at its promotion, so no epoch's alone describes the campaign.
  */
 export function riskLines(events: readonly LogEvent[]): string[] {
   const epochs = epochsOf(events);

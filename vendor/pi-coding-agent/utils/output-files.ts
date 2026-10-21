@@ -1,4 +1,4 @@
-// Copied from pi coding-agent v1.1.0 (github.com/earendil-works/pi, abe508e1, MIT, see LICENSE):
+// Copied from pi coding-agent v1.3.0 (github.com/earendil-works/pi, 71023aec, MIT, see LICENSE):
 // packages/coding-agent/src/utils/output-files.ts. Departure: a file may go to a directory the caller
 // names, which is made when the first file is, so a solver's cut output stays in its own home (v1 kept
 // this in its vendored copy; the OS temp directory is shared across walls).

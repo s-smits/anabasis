@@ -49,6 +49,15 @@ describe("the three backends", () => {
     expect(compactionMode(key, options)).toBe(compactionMode(login_, options));
   });
 
+  it("serve an OpenRouter dated release pi's catalog lacks, as its base at its own price", () => {
+    const models = backends(options);
+    const base = models.getModel("openrouter", "deepseek/deepseek-v4.1-flash");
+    const dated = models.getModel("openrouter", "deepseek/deepseek-v4.1-flash-1017");
+    expect(dated).toMatchObject({ api: base?.api, contextWindow: base?.contextWindow, reasoning: true });
+    expect(dated?.cost).toEqual({ input: 0.15, output: 0.6, cacheRead: 0.003, cacheWrite: 0 });
+    expect(models.getModel("openrouter", "deepseek/deepseek-v4.1-flash-0101")).toBeUndefined();
+  });
+
   it("read the Codex CLI's login as it stands", async () => {
     const access = login(HOUR_S);
     const auth = await backends(options).getAuth("openai-codex");

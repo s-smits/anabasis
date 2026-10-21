@@ -20,7 +20,7 @@ import {
   epochsOf,
   joinedTest,
   pSaid,
-  SHARED_PATH,
+  sharedPaths,
   spentTo,
   testedOf,
   testSaid,
@@ -268,18 +268,12 @@ function namedIn({ name, events }: Campaign): Map<string, Named> {
     ]),
   );
   const first = new Map<string, Named>();
-  for (const { kind, at, data } of events) {
-    if (!["solve.call", "build.call", "exam.call"].includes(kind)) continue;
-    const solve = kind === "solve.call" ? text(data.solve) : null;
-    const by = solve ?? text(data.session);
-    for (const [, path = ""] of JSON.stringify(data.args ?? "").matchAll(SHARED_PATH)) {
+  for (const call of log.traces) {
+    if (call.part !== "call") continue;
+    for (const path of sharedPaths(call)) {
       if (first.has(path)) continue;
-      first.set(path, {
-        campaign: name,
-        by,
-        at,
-        side: solve === null ? null : (sideOf.get(solve) ?? "unknown"),
-      });
+      const side = call.seat === "solve" ? (sideOf.get(call.id) ?? "unknown") : null;
+      first.set(path, { campaign: name, by: call.id, at: call.at, side });
     }
   }
   return first;

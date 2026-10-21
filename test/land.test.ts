@@ -6,10 +6,10 @@
  * open pull requests are ANA_FAKE_PULLS; `ci.yml` has passed on the top's head unless ANA_FAKE_CI
  * says otherwise, or ANA_FAKE_CI_AFTER names a file only a dispatch creates. ANA_FAKE_CI_STATES
  * names a file whose lines answer successive run reads, the last repeating: `none` lists no run and
- * `down` fails as a 502 would. ANA_FAKE_REFUSED lists the pull requests GitHub will not merge.
- * ANA_FAKE_STACK is the open native stack the top is in, as its number and its members, none by
- * default. A stack's merge is asked for under the id ANA_FAKE_STACK_UUID and ends
- * as ANA_FAKE_STACK_END says, `refused` refusing the asking, with ANA_FAKE_STACK_SHA as its commit.
+ * `down` fails as a 502 would. ANA_FAKE_STACK is the open native stack the top is in, as its number
+ * and its members, `down` failing the read; by default stack 7 of #11 and #12. The top's merge is
+ * asked for under the id ANA_FAKE_STACK_UUID and ends as ANA_FAKE_STACK_END says, `refused`
+ * refusing the asking, with ANA_FAKE_STACK_SHA as its commit, by default the top's.
  * Nothing here reaches GitHub, and nothing is pushed but to the fixture's own bare origin.
  */
 import {
@@ -40,7 +40,6 @@ const fake = (mkdirSync(bin), fakeBun(bin, gateLog));
 
 const GH = String.raw`#!/bin/sh
 printf '%s\n' "$*" >> "$ANA_GH_LOG"
-number=$(printf '%s' "$*" | sed -nE 's#.*/pulls/([0-9]+).*#\1#p')
 case "$*" in
 "pr list"*) printf '%s\n' "$ANA_FAKE_PULLS" ;;
 "repo view"*) echo main ;;
@@ -55,9 +54,8 @@ fi ;;
 "api -X PUT"*"/merge-async"*) [ "$ANA_FAKE_STACK_END" != refused ] || { echo "gh: Stack is not mergeable (HTTP 422)" >&2; exit 1; }
   printf 'pending\t%s\t\t\n' "$ANA_FAKE_STACK_UUID" ;;
 "api repos/{owner}/{repo}/pulls/"*"/merge-async/"*) printf '%s\t\t%s\t%s\n' "$ANA_FAKE_STACK_END" "$ANA_FAKE_STACK_SHA" "$ANA_FAKE_STACK_END" ;;
-"api repos/{owner}/{repo}/stacks"*) printf '%s\n' "$ANA_FAKE_STACK" ;;
-"api -X PUT"*) case " $ANA_FAKE_REFUSED " in *" $number "*) echo "gh: Pull Request is not mergeable (HTTP 405)" >&2; exit 1 ;; esac
-  echo "merge$number" ;;
+"api repos/{owner}/{repo}/stacks"*) [ "$ANA_FAKE_STACK" != down ] || { echo "gh: Bad Gateway (HTTP 502)" >&2; exit 1; }
+  printf '%s\n' "$ANA_FAKE_STACK" ;;
 "api -X"*) ;;
 "api repos/"*) echo true ;;
 esac
@@ -129,7 +127,17 @@ const stack = (top = upper, ...more: ReturnType<typeof pull>[]): string =>
 function runLand(args: readonly string[], env: Record<string, string> = {}) {
   return spawnTextSync(capturedExecPath, [land, ...args], {
     cwd: work,
-    env: { ...Bun.env, ...fake, ANA_GH_LOG: ghLog, ANA_FAKE_PULLS: stack(), ...env },
+    env: {
+      ...Bun.env,
+      ...fake,
+      ANA_GH_LOG: ghLog,
+      ANA_FAKE_PULLS: stack(),
+      ANA_FAKE_STACK: "7 11,12",
+      ANA_FAKE_STACK_END: "merged",
+      ANA_FAKE_STACK_UUID: "u1",
+      ANA_FAKE_STACK_SHA: upper,
+      ...env,
+    },
   });
 }
 
@@ -289,21 +297,32 @@ describe("bun run land", () => {
     expect(gatesRun(gateLog)).toEqual([]);
   });
 
-  it("posts the required status on every head, then merges bottom-up, each on main and at its gated head", () => {
-    const result = runLand(["12", "--merge"]);
+  it("merges a lone pull request in no stack through its own merge, pinned to its gated head", () => {
+    const result = runLand(["13", "--merge"], { ANA_FAKE_STACK: "", ANA_FAKE_STACK_SHA: beside });
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain(`#11 merged into main at ${short(lowerDocs)}: merge11.`);
-    expect(result.stdout).toContain(`#12 merged into main at ${short(upper)}: merge12.`);
-    expect(statuses("ana/stack-gate")).toEqual([`success ${lowerDocs}`, `success ${upper}`]);
-    const calls = logLines(ghLog);
-    const first = calls.findIndex((line) => line.includes("pulls/11/merge"));
-    expect(calls.findLastIndex((line) => line.includes("context=ana/stack-gate"))).toBeLessThan(first);
-    expect(calls.slice(first).filter((line) => line.startsWith("api"))).toEqual([
-      `api -X PUT repos/{owner}/{repo}/pulls/11/merge -f merge_method=merge -f sha=${lowerDocs} --jq .sha`,
-      "api -X PATCH repos/{owner}/{repo}/pulls/12 -f base=main --silent",
-      "api repos/{owner}/{repo}/pulls/12 --jq .mergeable",
-      `api -X PUT repos/{owner}/{repo}/pulls/12/merge -f merge_method=merge -f sha=${upper} --jq .sha`,
-    ]);
+    expect(result.stdout).toContain(
+      `land: #13 merged into main as #13, at ${short(beside)}: ${short(beside)}.`,
+    );
+    expect(logLines(ghLog)).toContain(
+      `api -X PUT repos/{owner}/{repo}/pulls/13/merge-async -f merge_method=merge -f merge_action=direct_merge -f sha=${beside} --jq [.status, .details.uuid // "", .details.sha // "", .details.message // ""] | join("\\t")`,
+    );
+  });
+
+  it("refuses a landing of several pull requests in no stack, or whose stack GitHub did not say, before gating", () => {
+    for (const [listed, why] of [
+      [
+        "",
+        "#11, #12 are in no stack on GitHub. Make them one, bottom to top, with gh stack link 11 12, and land again.",
+      ],
+      ["down", "GitHub did not say which stack #12 is in: gh: Bad Gateway (HTTP 502) Land again."],
+    ] as const) {
+      writeFileSync(ghLog, "");
+      const result = runLand(["12", "--merge"], { ANA_FAKE_STACK: listed });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(`land: ${why} Nothing was merged.`);
+      expect(gatesRun(gateLog)).toEqual([]);
+      expect(writes()).toEqual([]);
+    }
   });
 
   const stackMerge = (end: string, more: Record<string, string> = {}) =>
@@ -313,8 +332,7 @@ describe("bun run land", () => {
       ANA_FAKE_STACK_UUID: "u1",
       ...more,
     });
-  const askedStack =
-    "api -X PUT repos/{owner}/{repo}/pulls/12/merge-async -f merge_method=merge -f merge_action=direct_merge";
+  const askedStack = `api -X PUT repos/{owner}/{repo}/pulls/12/merge-async -f merge_method=merge -f merge_action=direct_merge -f sha=${upper}`;
 
   it("merges a landing GitHub holds as a stack whole, through the stack's merge, after the statuses", () => {
     const result = stackMerge("merged", { ANA_FAKE_STACK_SHA: upper });
@@ -363,7 +381,13 @@ describe("bun run land", () => {
     expect(other.stderr).toContain(
       `land: stack 7 merged into main as ${short(lowerDocs)}, whose tree is not the tree of ${short(upper)} that the gate read.`,
     );
-    for (const result of [unread, other]) expect(result.stderr).not.toContain("nothing merged");
+    writeFileSync(ghLog, "");
+    const queued = stackMerge("enqueued");
+    expect(queued.status).toBe(1);
+    expect(queued.stderr).toContain(
+      "land: GitHub's merge of stack 7 went into the merge queue; the statuses stand.",
+    );
+    for (const result of [unread, other, queued]) expect(result.stderr).not.toContain("nothing merged");
     expect(statuses("ana/stack-gate")).toEqual([`success ${lowerDocs}`, `success ${upper}`]);
   });
 
@@ -375,18 +399,6 @@ describe("bun run land", () => {
         "Make them agree, and land again. Nothing was merged.",
     );
     expect(statuses("ana/stack-gate")).toEqual([]);
-  });
-
-  it("takes the required status back from every head GitHub left open", () => {
-    const result = runLand(["12", "--merge"], { ANA_FAKE_REFUSED: "12" });
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("GitHub did not merge #12: gh: Pull Request is not mergeable (HTTP 405)");
-    expect(result.stderr).toContain("land: #11 merged; #12 is open.");
-    expect(statuses("ana/stack-gate")).toEqual([
-      `success ${lowerDocs}`,
-      `success ${upper}`,
-      `pending ${upper}`,
-    ]);
   });
 
   it("dispatches ci.yml on the top's head before gating when it has no run, and waits for it", () => {
@@ -438,6 +450,7 @@ describe("bun run land", () => {
   it("refuses before gating when no run exists and ci.yml takes no dispatch", () => {
     const result = runLand(["15", "--merge"], {
       ANA_FAKE_PULLS: JSON.stringify([pull(15, "nodispatch", "main", noDispatch)]),
+      ANA_FAKE_STACK: "",
       ANA_FAKE_CI_STATES: ciStates("none"),
     });
     expect(result.status).toBe(1);

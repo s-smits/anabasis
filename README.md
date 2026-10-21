@@ -21,14 +21,14 @@ That includes researching the domain, setting up toolchains, writing domain-spec
 ## How it works
 
 ```text
-PROMPT → EXAM → BUILD → COMPARE → SETTLE → CLIMB or REBUILD or STOP
+PROMPT → EXAM → TASKS → BUILD → SOLVE BOTH → JUDGE → PAIRWISE TEST → CLIMB or REBUILD or STOP
 ```
 
 _Build_: The Builder starts from a minimal Starter Pack, pi's coding agent as pi releases it, researches the domain, sets up the required tooling and practises on released tasks until it freezes a new version of the Harness.
 
-_Validate_: Before measurement, a separate Examiner writes the tasks and checks, and they must pass a predefined validation suite, including known-good and deliberately incorrect examples, plus a reference-solver check: a task is held out only where the reference Harness fails some, and not all, of three fresh solves. The Builder never sees a held-out task or a check.
+_Validate_: Before measurement, a separate Examiner writes the tasks and checks, and they must pass a predefined validation suite, including known-good and deliberately incorrect examples, plus a reference-solver check: a task is held out only where, in up to three fresh solves, the reference Harness fails some and not all, or fails every one while the Examiner's own answer passes, or is beaten by that answer on the domain's objective. The Builder never sees a held-out task or a check.
 
-_Measure_ & _Iterate_: The Built Harness and the reference Harness solve the same held-out tasks, a Verifier checks their submissions and a Referee rules on every rejection before it counts. A paired sign-flip test over the tasks reads a step or none, and a step read twice is promoted. The results inform further changes to the Harness or its evaluation, attempts at harder tasks, or a decision to stop.
+_Measure_ & _Iterate_: The Built Harness and the reference Harness solve the same held-out tasks, a Verifier checks their submissions and a Referee rules on every rejection before it counts. A paired sign-flip test over the tasks reads a step or none, and a step is promoted at once. The results inform further changes to the Harness, new and harder tasks from the Examiner, or a decision to stop.
 
 ## Results
 
@@ -65,23 +65,9 @@ bun tools/d2/harness-builder.ts \
   --reviewer claude/claude-opus-5-5
 ```
 
-A second domain, in beta, opens the same way:
-
-```sh
-bun tools/d2/harness-builder.ts \
-  --name firmware \
-  --project esp32 \
-  --prompt "Build a harness that writes firmware for ESP32, Raspberry Pi Pico and Arduino Uno, connecting sensors, displays and lights, where the code must compile." \
-  --budget 400 \
-  --solver claude/claude-opus-5-5 \
-  --builder claude/claude-opus-5-5 \
-  --examiner claude/claude-opus-5-5 \
-  --reviewer claude/claude-opus-5-5
-```
-
 `--budget` is required: it caps the dollars the whole campaign may bill.
 `--project` is required when the campaign opens; run the command again with the same `--name` to continue that campaign, or use `--prompt-file` for a longer prompt. `bun run runs view <name>` prints the campaign as its log reads.
-Builder, Examiner, Referee (`--reviewer`) and solver can each use Claude, Codex or OpenRouter, with their own model and effort.
+Builder, Examiner, Referee (`--reviewer`) and solver can each use Claude (Claude Code or the API), Codex or OpenRouter, with their own model and effort.
 For Claude, `CLAUDE_CODE_OAUTH_TOKEN` (process environment or `.env`; `claude setup-token` prints one) serves all four seats at once.
 `.env.example` lists every credential a seat reads; copy it to `.env`, which git ignores. `.env.runs.example` holds what your own machines add for `bun run runs`: the logins a run may take and the other hosts whose runs `runs status` shows.
 
@@ -111,11 +97,11 @@ bun tools/d2/close.ts --name your-campaign --to ../my-harness --solve task-id
 ## Contributing
 
 `bun run hooks:install` turns on the repository's commit and push hooks: the commit hook checks
-format and lint on the staged files and scans them for secrets, and the push hook runs `bun run gate`
-over what the push adds.
+format and lint on the staged files and scans them for secrets, and the push hook gates what the push adds:
+each new commit gets the static steps and its nearby tests, and the pushed head the whole `bun run gate`.
 The two lint plugins, `anti-slop` (copied from dmmulroy/anti-slop) and the repository's own `ana`
 simplify catchers, are optional: their findings are counted on every run and fail only
-`bun run lint -- --strict` or a run with `ANA_LINT_STRICT=1` in the environment.
+`bun run lint -- --strict`, which the gate runs, or a run with `ANA_LINT_STRICT=1` in the environment.
 
 ## Licence
 

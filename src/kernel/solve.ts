@@ -82,3 +82,28 @@ export function windowEnded(last: LastTurn): boolean {
 export function providerFailed(last: LastTurn): boolean {
   return last.stopReason === "error" && !windowEnded(last);
 }
+
+/**
+ * How a solve that left no answer ended: the wall's, its last turn's (the provider's failure or the
+ * window's), its spent turns', or no answer. The one reading of it, which `judge`
+ * (`src/solve/run.ts`) asks once an answer, a flag, a crash and a broken harness are ruled out, and
+ * which any other runner of a solve asks of the solve it ran, so that both read one ending alike.
+ */
+export function unanswered(stopped: {
+  readonly wallEnded: boolean;
+  readonly turnsEnded: boolean;
+  readonly last: LastTurn | undefined;
+}): Extract<Ending, { readonly kind: string }> {
+  const { last } = stopped;
+  if (stopped.wallEnded) return { outcome: "fail", kind: "wall-ended" };
+  // A last turn the provider failed is the provider's, though it was the last the solve was
+  // allowed: until 14 October it was read as the solver's loss at its turns (`turns-ended`). A
+  // context the solver filled is its own, and comes as an error too.
+  if (last !== undefined && providerFailed(last)) {
+    const reason = isString(last.errorMessage) ? last.errorMessage : "the provider failed the turn";
+    return { outcome: "non-result", kind: "provider", reason };
+  }
+  // A full context or a cut reply is the window's, the last allowed turn included (`windowEnded`).
+  if (last !== undefined && windowEnded(last)) return { outcome: "fail", kind: "context-ended" };
+  return { outcome: "fail", kind: stopped.turnsEnded ? "turns-ended" : "no-answer" };
+}

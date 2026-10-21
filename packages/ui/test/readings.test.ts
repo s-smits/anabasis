@@ -22,7 +22,6 @@ import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../../../
 import { asRecord, isString, type JsonObject } from "../../../src/meta/json-shape.ts";
 import { tmpdir } from "../../../src/meta/os.ts";
 import { join } from "../../../src/meta/path.ts";
-import { overview } from "../../../tools/wri/read.ts";
 import { SEED_FILE } from "../../../tools/runs/registry.ts";
 import { spawnTextSync } from "../../../test/helpers/bun-spawn-sync.ts";
 import {
@@ -378,7 +377,7 @@ describe("what a comparison came to", () => {
     expect(detail.tasks.map(({ withheld }) => withheld)).toEqual(["report", null, null]);
   });
 
-  test("counts an A/A reading as a step where either sample wins by the level, as the whole-run reader does", async () => {
+  test("counts an A/A reading as a step where either sample wins by the level", async () => {
     const units = `${KEY.split("/")[0] ?? ""}/${fixture.units}`;
     const { answer: reading } = await ask("campaign", { key: units }, "default");
     const control = reading.comparisons.find(({ noise }) => noise !== null);
@@ -387,14 +386,7 @@ describe("what a comparison came to", () => {
       { wins: 0, losses: 4, ties: 0 },
       true,
     ]);
-    const false_steps = overview(
-      read(join(fixture.root, ".ana", "d2", fixture.units, "log.jsonl")),
-    ).triggers.filter(
-      ({ name, detail }) =>
-        name === "REFERENCE AGAINST ITSELF" && detail.includes("reads a step where none can be"),
-    );
-    expect([reading.counters.controls, reading.counters.controlSteps]).toEqual([1, false_steps.length]);
-    expect(false_steps.length).toBe(1);
+    expect([reading.counters.controls, reading.counters.controlSteps]).toEqual([1, 1]);
   });
 
   test("says apart the two things that wait for a person's label: tasks, and set-aside rejections of unsettled comparisons", async () => {

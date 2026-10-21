@@ -19,11 +19,12 @@
  * overview. The climb's lane (31) is `promotion.ts`. The lanes that read the clock (26 and 28) and
  * row A's hours are `time.ts`, split from here on the same day for the same ceiling.
  */
+import { short } from "#src/builder/move.ts";
 import { campaignOf as handoverOf, type Handover, nextBound, openSteps } from "#src/builder/handover.ts";
 import { flipP, pairings, readsStepEitherWay, sweepOf } from "#src/kernel/compare.ts";
 import type { Condition } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { pairsReported } from "#src/kernel/reports.ts";
+import { billedAll, pairsReported } from "#src/kernel/reports.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
@@ -43,7 +44,6 @@ import {
   practiceOf,
   REPORTED,
   share,
-  short,
   SMALL_WALL_SHARE,
   type Solve,
   spendOf,
@@ -402,7 +402,7 @@ function testTriggers(session: string, last: JsonObject): Trigger[] {
 /** Lanes 20 to 25: the comparison, which is the host's. */
 function comparisonTriggers(log: Index): Trigger[] {
   const hosts = new Set([...log.conditions.values()].map((condition) => condition.host)).size;
-  const perComparison = log.compared.flatMap(({ session, own, last, scoring }) => {
+  const perComparison = log.compared.flatMap(({ session, own, began: start, last, scoring }) => {
     // The rejections that set a task aside: not ruled a true fail, on a task the report names.
     const aside = new Set(strings(own.aside));
     const open = scoring.filter(
@@ -415,9 +415,7 @@ function comparisonTriggers(log: Index): Trigger[] {
     const level = count(last.level);
     // The tasks a comparison scores are fixed at its start, before any solve. One that reported
     // other tasks than it began with lost them on the way: to a dispute, or short of their solves.
-    const began = log.events.find(
-      ({ kind, data }) => kind === "comparison.started" && data.session === session,
-    )?.data;
+    const began = log.events[start]?.data;
     const fixed = strings(began?.tasks);
     const moved = fixed.filter((version) => !strings(last.versions).includes(version)).length;
     const seen = new Map<string, Set<string>>();
@@ -618,7 +616,7 @@ function campaignOf(log: Index): string[] {
   const opened = asRecord(log.of("campaign.opened").at(-1)?.budget);
   if (endings.length === 0 && opened === null) return [];
   const moves = countBy(log.of("campaign.move"), (data) => text(data.move));
-  const billed = spendOf(log).reduce((sum, [, dollars]) => sum + dollars, 0);
+  const billed = billedAll(log.events);
   const budget = isNumber(opened?.dollars) ? ` of ${String(opened.dollars)}` : "";
   return [
     `campaign: moves ${tally(moves)}; ended ${endings.join(", then ") || "never"}; billed ${billed.toFixed(2)}${budget} dollars`,

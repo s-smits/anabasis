@@ -4,7 +4,7 @@
  * commit, and starts the campaign there by `launch` (`manage.ts`), which installs, runs the dry run
  * and refuses what it refuses.
  *
- *   bun run runs fresh <pack> [--model opus|sonnet|gpt] [--effort hhmm] [--login N] [--budget 800]
+ *   bun run runs fresh <pack> [--model opus|sonnet|gpt|deepseek] [--effort hhmm] [--login N] [--budget 800]
  *     [--at <commit>] [--as <suffix>] [--host <host>] [--yes] [-- <more of the campaign command's flags>]
  *
  * The prompt is the operator's, `<pack>-prompt.txt` in the folder `ANA_PROMPTS` names, by default
@@ -25,7 +25,8 @@
  * budget a solve, held in two places that disagreed.
  *
  * `gpt` seats GPT-6.1 Sol through the Codex CLI's login, which `--login` does not choose, at high in
- * every seat (the operator, 19 October).
+ * every seat (the operator, 19 October). `deepseek` seats DeepSeek V4.1 Flash 1017 on OpenRouter, at
+ * high in every seat (the operator, 21 October).
  */
 import { existsSync } from "#src/meta/filesystem.ts";
 import { gitText, mainTree } from "#src/meta/git.ts";
@@ -39,9 +40,10 @@ const MODELS = {
   opus: "claude/claude-opus-5-5",
   sonnet: "claude/claude-sonnet-5-5",
   gpt: "openai-codex/gpt-6.1-sol",
+  deepseek: "openrouter/deepseek/deepseek-v4.1-flash-1017",
 } as const;
 /** Each model's efforts where none is named, as the operator ran them. */
-const EFFORTS = { opus: "hhmm", sonnet: "xxhh", gpt: "hhhh" } as const;
+const EFFORTS = { opus: "hhmm", sonnet: "xxhh", gpt: "hhhh", deepseek: "hhhh" } as const;
 const LEVELS = { l: "low", m: "medium", h: "high", x: "xhigh" } as const;
 const named = <T>(table: Record<string, T>, key: string | undefined, usage: string): T => {
   const value = Object.entries(table).find(([one]) => one === key)?.[1];
@@ -96,7 +98,7 @@ export async function fresh(args: readonly string[]): Promise<void> {
   const [pack, ...more] = positionals;
   if (pack === undefined) {
     throw new Error(
-      "usage: bun run runs fresh <pack> [--model opus|sonnet|gpt] [--effort hhmm] [--login N] [--host <host>] [--yes]",
+      "usage: bun run runs fresh <pack> [--model opus|sonnet|gpt|deepseek] [--effort hhmm] [--login N] [--host <host>] [--yes]",
     );
   }
   const here = runtimeProcess.cwd();

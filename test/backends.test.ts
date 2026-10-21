@@ -6,7 +6,7 @@ import { read } from "../src/kernel/log.ts";
 import { mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { traceSink } from "../src/solve/run.ts";
+import { traceSink } from "../src/solve/seat.ts";
 
 const HOUR_S = 60 * 60;
 const home = mkdtempSync(join(tmpdir(), "ana-backends-"));

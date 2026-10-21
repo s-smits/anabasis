@@ -1,8 +1,8 @@
 /**
  * `GET /api/move?key=&move=`: one step's detail. A session's: its own turns and calls (an Examiner
  * session's in the exam tier only) and a Builder session's practice solves. A comparison's: its
- * terms (`fixedIn`), its scored tasks with each side's solves (`pairsReported`), the tasks it set
- * aside, and the reader's triggers that name it. A comparison with no report yet lists the tasks
+ * terms (`fixedIn`), its scored tasks with each side's solves (`pairsReported`) and the tasks it
+ * set aside. A comparison with no report yet lists the tasks
  * its start fixed and their solves so far, with no outcome: for a campaign that runs, that is the
  * comparison being made.
  *
@@ -16,11 +16,11 @@ import { passed, type Ran } from "../../../../src/kernel/solves.ts";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
 import type { Move, MoveDetail, Outcome, Query, ScoredTask, Sensitivity, SolveRow, Tier } from "../models.ts";
 import { Unanswerable, type Reading } from "./context.ts";
-import { type Log, overviewIn, practiceIn, proposalsIn, ranIn } from "./folds.ts";
+import { type Log, practiceIn, proposalsIn, ranIn } from "./folds.ts";
 import { campaignAt } from "./logs.ts";
 import { barsIn, endOf, movesIn, outcomeOf, pairsIn } from "./moves.ts";
-import { examTier, sessionTrace, solveRow, triggerShown } from "./trace.ts";
-import { rulingWithheld, triggerKeepsRulings } from "./withheld.ts";
+import { examTier, sessionTrace, solveRow } from "./trace.ts";
+import { rulingWithheld } from "./withheld.ts";
 
 type ComparisonMove = Extract<Move, { readonly step: "comparison" }>;
 
@@ -175,7 +175,6 @@ export function moveAnswer(reading: Reading, query: Query<"move">): MoveDetail {
   if (bar === undefined) throw new Error(`comparison ${move.id} has no bar`);
   const fixed = fixedIn(log.events, move.id);
   const report = reported(log.events, move.id);
-  const named = `${move.id}: `;
   return {
     tier,
     issues,
@@ -195,9 +194,5 @@ export function moveAnswer(reading: Reading, query: Query<"move">): MoveDetail {
     },
     sensitivity: report === null ? null : sensitivityOf(report),
     tasks: scoredTasks(log, move, tier),
-    triggers: overviewIn(log).triggers.filter(
-      (trigger) =>
-        trigger.detail.startsWith(named) && triggerShown(trigger, tier) && triggerKeepsRulings(log, trigger),
-    ),
   };
 }

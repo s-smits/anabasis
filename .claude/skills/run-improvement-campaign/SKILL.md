@@ -1,13 +1,16 @@
 ---
 name: run-improvement-campaign
-description: "Run the Anabasis v2 improvement loop, the Super Loop: score the five points, read each campaign at its milestone, find the link that holds its next promotion, fix that link's owner, prove the path, record a prediction, launch fresh, watch, read and decide. Use when the operator asks to keep campaigns going, run a pass or an hourly audit, read a promotion, investigate a campaign that is not promoting, or choose the next run. Owns the experiment and its evidence; AGENTS.md section 3 owns the operator's decisions."
+description: "Run the Anabasis v2 improvement loop, the Super Loop, and the release cycle around it: fork one fresh campaign per runner host at the stack's top, retire and investigate the runs before them, read each at its milestones, resolve predictions, patch what they falsify, and land a release once the forks reach the cycle's threshold. Inside the cycle each pass scores the five points, finds the link that holds the next promotion, fixes its owner, proves the path and predicts. Use when the operator asks to keep campaigns going, fork runs, work towards a release, run a pass or an hourly audit, read a promotion, investigate a campaign that is not promoting, or choose the next run. Owns the experiment and its evidence; AGENTS.md section 3 owns the operator's decisions."
 ---
 
 # Run improvement campaign (the Super Loop)
 
-The loop is **score → walk → choose → prove → predict → launch → watch → read → decide**.
-Each pass asks what stands between a campaign and its next promotion, fixes that link's owner,
-and measures the fix with a new campaign opened at the fixing commit. One pass answers one question.
+Two loops, one inside the other. The **release cycle** (8 to 12 hours) forks fresh campaigns at
+the stack's top, holds them to a threshold, patches what their predictions falsify and lands the
+stack as a release. Inside it, each **pass** is **score → walk → choose → prove → predict → launch
+→ watch → read → decide**: it asks what stands between a campaign and its next promotion, fixes
+that link's owner, and leaves the fix to be measured by the next cycle's forks. One pass answers
+one question.
 
 **Only a fresh campaign counts.** Follow `AGENTS.md`, section 10, item 9: open from a prompt,
 start with the starter, and continue at the opening commit to a typed ending. Seeds, stored packs
@@ -16,6 +19,58 @@ plan, as factor 1 explains. No campaign seat is given a number of promotions to 
 
 Honesty is not traded for climb. A more permissive level, a reused solve, a held-out task that
 crossed the wall or a target told to the Examiner cannot establish a gain of the harness.
+
+## The release cycle
+
+A cycle runs on the operator's word for it ("work towards 0.6.4", "land in 8 to 12 hours"), which
+covers its forks, the stops of the runs they replace, its patches and its landing. Keep the cycle's
+plan in one local file beside the handover: the word, the threshold, the checkpoints, and a log
+line per step. Every step below reads that file first.
+
+1. **Retire.** Stop the runs the last cycle forked, on every host: `runs on <host> stop <name>
+   --yes`. A stop word (`tools/d2/word.ts --stop`) waits for the next move boundary, which inside a
+   led campaign can be an Examiner session of an hour or more: on 21 October two words left at
+   23:44 had not acted 20 minutes later. A retired run's log stays where it is.
+2. **Fork at the top.** Read the stack (stack-pr) and take the top's head. A pull request above the
+   last one that changes code a campaign runs need not hold up the fork; name it. Fork **one fresh
+   campaign per runner host**, so each runs on a host no other campaign loads:
+   `runs fresh <pack> --host <host> --at <commit> --login N --as forkedPR<n>-<host> --yes`, after a
+   dry run without `--yes`. `fresh --host` runs the host's own copy of the verb, so first bring the
+   host's verb tree to the commit and the login into its env file, as the operator's nightly fork
+   does. Launch the hosts one after the other: on 22 October two `fresh --host` launches sent at
+   once from one checkout both exited 1, and each passed when run alone. Count live runs per login
+   across every host before each launch (the operator's machine rules). Tag `run/<name>/1` at the
+   commit and push the tag.
+3. **Predict** before the first solve (section 3): one ledger for the cycle, with at least one row
+   per pull request the forks carry, each naming that pull request, its link and its falsifier. A
+   peer session's ledger for the same forks is read and linked, not repeated.
+4. **Investigate the retired runs** with [whole-run-investigation](../whole-run-investigation/SKILL.md).
+   Check each finding against the head before calling it open (a fix may already be on the stack),
+   and report it confirmed, plausible or refuted.
+5. **Read the forks** at every milestone (below), and resolve each prediction the hour its event
+   lands, in the ledger's Resolutions.
+6. **Patch.** Each falsified row, each confirmed finding and each defect seen live gets a fix on
+   the top with a hostile test that fails without it, through stack-pr, or a line under "Not done"
+   in the release. A peer session's open pull request is never changed; stack above it. A fix is
+   measured by the next cycle's forks, never by the runs it was found in.
+7. **Land at the threshold.** The cycle lands when each fork has **three promotions** (the
+   operator's threshold, 22 October), the A/A of every promoting reading reads no step, and every
+   prediction whose event exists is resolved. The #306 forks reached their third promotion at 10.0
+   active hours on the Linux runner, so a quiet host reaches it in 8 to 12 hours. The threshold is
+   the operator's landing gate: no seat is told it and no campaign stops at it (`AGENTS.md`,
+   factor 1). At the cycle's last checkpoint, land with what is proved and say in the release which
+   row was unmet; where the proof fails, do not land, and report.
+8. **Land and release.** `bun run land -- <top>` proves every commit; `--merge` waits for CI and
+   merges the native stack. Then `git tag v<x.y.z> <merge>` and `gh release create`, in the form of
+   the last release: one sentence on what the release changes, "Includes N PRs from #a to #b,
+   merged into `main` at `<sha>`", one paragraph per change with its recorded counts, and
+   **Validation and limits** with the land counts, the CI run and what the live forks have and have
+   not shown. Then step 1 at the new `main`.
+
+The cycle's checkpoints are one-shot timers (section "Timers"): about 30 minutes after the fork
+for M1, then roughly at the first comparison, at the patch point, at the threshold and at the last
+landing time. Each checkpoint may move the plan forward and add, move or delete the cycle's own
+timers to reach its goal.
 
 ## Resume
 
@@ -226,8 +281,9 @@ description; say so.
 - `bun run runs fresh <pack>` opens from the operator's prompt with a new run name. Set the
   authorised budget and terms. Use `--hitl` only when requested. For a manual launch, run dry run
   and launch as separate commands: a shell line containing both can match the live-process check.
-- One or two campaigns at a time on one host. Each solve waits for load, but that wait cannot
-  predict the next launch's load. Install the toolchain on the host where the campaign runs.
+- One campaign a host for a cycle's forks, at most two on any host. Each solve waits for load,
+  but that wait cannot predict the next launch's load. Install the toolchain on the host where the
+  campaign runs.
 - Use the operator's chosen provider account through run-management's credential procedure.
   Keep its identity in the local handover; publish no account, login number or credential path.
 - Start a chain of commands with `nohup` and output in a file; do not rely on a session's background job.
@@ -331,6 +387,7 @@ local file beside the handover. Timers arrange this procedure; they add no campa
 | watch | hourly, off the hour | every run's milestone and possible stall on every host |
 | pass | every three hours | rewrite ranked triage, rehearse its top row, fix the owner, review timer usefulness |
 | milestone | one-shot at the predicted event | read the named milestone and any investigation it owes |
+| cycle checkpoint | one-shot at each step of the release cycle | carry the cycle's plan as far as it goes now, log it, and re-arm or delete the cycle's timers |
 | handover | one-shot at the agreed handover time | five points, changes and decisions waiting |
 
 Each watch and pass estimates the next event from that run's log and arms a one-shot. For a
@@ -351,6 +408,8 @@ idle, a few minutes off the time it names. So:
 
 - Write each timer's prompt to stand alone, with absolute paths, the ledger file, the runs it reads
   and its authority. It fires after compactions that will have dropped the context it was armed in.
+- Every timer may move its work forward and patch or tune the timers (add, move, delete) to reach
+  the goal it serves (operator, 21 October). Say so in its prompt, and log each change.
 - A watch speaks to the operator only when a milestone landed, a run stalled or ended, or a
   prediction resolved. Otherwise it writes its ledger row and stays silent.
 - When a timer is replaced (an hour moved, a run added), delete the old one by its id. A one-shot
@@ -361,6 +420,7 @@ idle, a few minutes off the time it names. So:
 
 | Step | Every pass | When triggered |
 | --- | --- | --- |
+| cycle | the plan file and its log | run-management to fork and retire; whole-run-investigation on retired runs; stack-pr and `bun run land` to release |
 | score | five points and milestone | none |
 | walk | epoch, pulse, reader, link table | whole-run-investigation lane 25 for a campaign with a chain |
 | choose | link, owner, falsifier | stack-pr for source; simplify over the diff |

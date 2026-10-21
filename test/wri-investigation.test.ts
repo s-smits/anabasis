@@ -226,6 +226,13 @@ describe("an investigation's lanes", () => {
     expect(reportOf(lane(4), `${finding}\nSeen in: buffer-a shows`, owners, names).faults).toEqual([
       "a Seen in: line leaves out buffer-b",
     ]);
+    // A semicolon parts two entries as a comma does, so a triage may hold commas.
+    expect(
+      reportOf(lane(4), `${finding}\nSeen in: buffer-a shows 3, of 4; buffer-b absent`, owners, names).state,
+    ).toBe("ok");
+    expect(
+      reportOf(lane(4), `${finding}\nSeen in: buffer-a shows 3 and buffer-b too`, owners, names).faults,
+    ).toEqual(["a Seen in: line leaves out buffer-b"]);
     // A name that holds another as its prefix stands for that campaign alone.
     expect(
       reportOf(lane(4), `${finding}\nSeen in: buffer-a-r5 shows, buffer-b absent`, owners, names).faults,

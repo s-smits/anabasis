@@ -36,7 +36,6 @@ import {
 } from "../src/models.ts";
 import { handleApiRequest } from "../src/server/api.ts";
 import { campaignsFound, loaded } from "../src/server/logs.ts";
-import { triggerKeepsRulings } from "../src/server/withheld.ts";
 import { type Fixture, MARKERS, writeFixtureCampaign } from "./fixture-campaign.ts";
 
 /** A copy of the fixture's root, and its campaign's folder. */
@@ -553,36 +552,6 @@ describe("the rulings and the endings each tier may see", () => {
         row: false,
       });
     }
-  });
-
-  test("leaves out the reader's count of set-aside rejections by side for a comparison whose rulings are withheld", async () => {
-    for (const tier of ["default", "exam"] as const) {
-      const { answer: reading } = await ask("campaign", { key: KEY }, tier);
-      const sides = reading.reader.triggers.flatMap(({ name, detail }) =>
-        name === "SET ASIDE BY SIDE" ? [detail.split(": ")[0]] : [],
-      );
-      const withheld = new Set(
-        reading.comparisons.flatMap(({ id, rulings }) => (rulings.withheld ? [id] : [])),
-      );
-      expect(sides.filter((id) => withheld.has(id ?? ""))).toEqual([]);
-    }
-  });
-
-  test("leaves out the reader's counts over every ruling while any ruling of the log is withheld", () => {
-    // The fixture's reader fires neither count, so the rule is asked directly: of the main
-    // campaign, which holds withheld rulings, and of the one with no comparison, which holds none.
-    const found = campaignsFound({ repo: fixture.root, trees: "directory" }).found;
-    const logOf = (name: string) => {
-      const campaign = found.find((each) => each.name === name);
-      const log = campaign === undefined ? null : loaded(campaign).log;
-      if (log === null) throw new Error(`no log of ${name}`);
-      return log;
-    };
-    for (const name of ["EARNED WITHOUT A PROBE", "REPLAY MOVED THE VERDICT"] as const) {
-      expect(triggerKeepsRulings(logOf(fixture.name), { name, detail: "1 of 3" })).toBe(false);
-      expect(triggerKeepsRulings(logOf(fixture.early), { name, detail: "1 of 3" })).toBe(true);
-    }
-    expect(triggerKeepsRulings(logOf(fixture.name), { name: "NO PRACTICE", detail: "b-1: 1" })).toBe(true);
   });
 
   test("shows a campaign finished by its Builder as ended", async () => {

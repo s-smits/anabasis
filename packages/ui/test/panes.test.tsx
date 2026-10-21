@@ -99,21 +99,7 @@ test("the shell names the worktree and the tier above a pane, and leaves the cam
   expect(meta.includes(fixture.name)).toBe(false);
 });
 
-test("the Log pane holds the reader collapsed above a page of events, and says in one quiet line what the tier withholds", () => {
-  const reading = readingIn("default");
-  const shell = shellAt("?pane=log");
-  expect(shell).toContain(
-    `The reader: ${String(reading.reader.rows.length)} rows, ${String(reading.reader.triggers.length)} triggers`,
-  );
-  expect(shell).not.toContain('<details class="ana-disclosure" open');
-  expect(reading.reader.withheld).toBeGreaterThan(0);
-  expect(shell).toContain(`${EXAM_LINE} ${String(reading.reader.withheld)} triggers of its lanes 1 to 12`);
-  // An expected absence is no issue, and no callout stands above the pane for it.
-  expect(reading.issues).toEqual([]);
-  expect(shell.includes("ana-callout--warn")).toBe(false);
-  const exam = shellAt("?pane=log", "exam");
-  expect(readingIn("exam").reader.withheld).toBe(0);
-  expect(exam.includes(`${EXAM_LINE} `)).toBe(false);
+test("the Log pane shows a page of events, the one opened marked", () => {
   const page = answers("default").log({ key: fixture.key });
   const html = renderToStaticMarkup(
     <LogList
@@ -172,7 +158,6 @@ test("a comparison shows its split, one row a scored task with each side's solve
   expect(html).toContain("ruled on the exam side");
   expect(detail.tasks.some((task) => task.withheld === "label")).toBe(true);
   expect(html).toContain("withheld while its rejection waits for a person");
-  expect(html).toContain(`The reader&#x27;s triggers (${String(detail.triggers.length)})`);
   expect(html).toContain("Terms fixed before the first solve");
   // The setting is named by its short hash in running text; the whole id is one click away.
   const setting = detail.terms.setting ?? "";

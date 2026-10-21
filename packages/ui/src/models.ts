@@ -5,8 +5,8 @@
  * v2 keeps one log a campaign, and every number here is a fold of it (`AGENTS.md`, section 5). Where
  * a fold's own type is plain data it is imported from the repository and passed through, never
  * declared again: a handover is `Handover` (`src/builder/handover.ts`), the set-up is `Supply`, a
- * tally is `Tally`, the reader's rows and triggers are `Row` and `Trigger`. A field the page needs
- * and no fold returns names, in its comment, the fold it is computed from.
+ * tally is `Tally`. A field the page needs and no fold returns names, in its comment, the fold it is
+ * computed from.
  *
  * Two tiers (the brief of 11 October, section 8). The default tier, a token alone, serves counts,
  * tallies, readings, digests, costs, task ids and states, a Builder session's own turns and calls, a
@@ -37,8 +37,6 @@ import type { Ending as SolveEnding } from "../../../src/kernel/solve.ts";
 import type { taskStates } from "../../../src/kernel/task.ts";
 import type { JsonObject, JsonValue } from "../../../src/meta/json-shape.ts";
 import type { Ruling } from "../../../src/review/referee.ts";
-import type { Trigger } from "../../../tools/wri/folds.ts";
-import type { Row } from "../../../tools/wri/read.ts";
 import { hasText } from "../../../src/meta/text.ts";
 
 export type Tone = "good" | "bad" | "warn" | "info" | "neutral";
@@ -365,14 +363,6 @@ export interface CampaignReading extends Answer {
   readonly harnesses: readonly HarnessCard[];
   readonly spend: readonly SpendPoint[];
   readonly counters: Counters;
-  /** The whole-run reader's rows and triggers (`overview`, `tools/wri/read.ts`), and how many of its
-   *  triggers the default tier withholds: those of the exam side's lanes, which name checks and
-   *  what they refused. */
-  readonly reader: {
-    readonly rows: readonly Row[];
-    readonly triggers: readonly Trigger[];
-    readonly withheld: number;
-  };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -513,8 +503,6 @@ export interface ComparisonDetail extends Answer {
   /** Null before it reports, and for a report that compared nothing. */
   readonly sensitivity: Sensitivity | null;
   readonly tasks: readonly ScoredTask[];
-  /** The reader's triggers of the comparison lanes, shown collapsed. */
-  readonly triggers: readonly Trigger[];
 }
 
 export type MoveDetail = SessionDetail | ComparisonDetail;

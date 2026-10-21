@@ -45,6 +45,7 @@ import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { append } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import { type Ending, providerFailed, windowEnded } from "../kernel/solve.ts";
+import { type Seat, traceKind, whose } from "../kernel/trace.ts";
 import type { Task, Verifier } from "../kernel/verify.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { lstatSync, rmSync } from "../meta/filesystem.ts";
@@ -104,8 +105,9 @@ export interface SolveRequest {
 }
 
 /** Whose trace a log holds: a solve's, a Builder's session, an Examiner's that writes tasks, or
- *  the one in which it drafts the exam. The word prefixes the event kinds (`draft.turn`). */
-type Traced = "solve" | "build" | "exam" | "draft";
+ *  the one in which it drafts the exam. The word prefixes the event kinds (`draft.turn`), which
+ *  `src/kernel/trace.ts` reads. */
+type Traced = Exclude<Seat, "repair">;
 
 /** What a solve has used of its limits, as its tools are told to say it. */
 export interface Used {
@@ -185,15 +187,11 @@ async function attemptSolve(request: SolveRequest, id: string): Promise<Ending> 
   });
   const played = await play(request, id);
   const ending = await judge(request, id, played);
-  const tokens = tokensOf([...played.turns.map((turn) => turn.usage), ...played.summaries]);
   append(log, "solve.finished", {
     solve: id,
     ending,
-    turns: played.turns.length,
+    ...(await spentBy(model, id, played.turns, played.summaries)),
     prompts: played.prompts,
-    tokens: { ...tokens },
-    ...dollars(freezePrices([model]), priceKey(model), tokens),
-    reportedCost: await reportedCost(id, played.turns),
     responseModels: [...new Set(played.turns.flatMap((turn) => turn.responseModel ?? []))],
     harness: played.harness,
     homeBytes: played.homeBytes,
@@ -389,7 +387,7 @@ export function failedTurn(turns: readonly AssistantMessage[]): string | null {
  *  `solve.call` under `solve`, a Builder's or an Examiner's session as `build.`, `exam.` or
  *  `draft.turn` and `.call` under `session`. */
 export function traceSink(log: string, of: Traced, id: string, turn: () => number) {
-  const named = of === "solve" ? { solve: id } : { session: id };
+  const named = { [whose(of)]: id };
   const calls = new Map<string, { args: JsonValue; at: number }>();
   return (event: AgentEvent) => {
     if (event.type === "tool_execution_start") {
@@ -398,7 +396,7 @@ export function traceSink(log: string, of: Traced, id: string, turn: () => numbe
     } else if (event.type === "tool_execution_end") {
       const call = calls.get(event.toolCallId);
       calls.delete(event.toolCallId);
-      append(log, `${of}.call`, {
+      append(log, traceKind(of, "call"), {
         ...named,
         turn: turn(),
         tool: event.toolName,
@@ -414,9 +412,14 @@ export function traceSink(log: string, of: Traced, id: string, turn: () => numbe
       for (const { type, details } of diagnostics ?? []) {
         if (type !== CLAUDE_COMPACTED) continue;
         // SAFETY: the backend's own diagnostic, numbers and null.
-        append(log, `${of}.compacted`, { ...named, ...(details as JsonObject), usages: [], error: null });
+        append(log, traceKind(of, "compacted"), {
+          ...named,
+          ...(details as JsonObject),
+          usages: [],
+          error: null,
+        });
       }
-      append(log, `${of}.turn`, {
+      append(log, traceKind(of, "turn"), {
         ...named,
         turn: turn(),
         stopReason,
@@ -428,6 +431,25 @@ export function traceSink(log: string, of: Traced, id: string, turn: () => numbe
         ...diagnostics?.find(({ type }) => type === CALL_RETRIED)?.details,
       });
     }
+  };
+}
+
+/** What a seat's model turns and its compactions' summaries spent, as its end records it: its
+ *  turns, its tokens, their dollars at `model`'s price, and what Claude Code reported for them.
+ *  The one sum a solve's, a Builder's and an Examiner's end carry, which the log's own sum over
+ *  the turns of a seat that never ended matches (`unfinished`, `src/kernel/reports.ts`). */
+export async function spentBy(
+  model: Model<Api>,
+  id: string,
+  turns: readonly AssistantMessage[],
+  summaries: readonly Usage[],
+) {
+  const tokens = tokensOf([...turns.map((turn) => turn.usage), ...summaries]);
+  return {
+    turns: turns.length,
+    tokens: { ...tokens },
+    ...dollars(freezePrices([model]), priceKey(model), tokens),
+    reportedCost: await reportedCost(id, turns),
   };
 }
 
@@ -443,8 +465,8 @@ export function loopCompaction(
 ): PrepareRequest {
   return compactBeforeRequest(stream, ({ usages, ...compacted }: Compacted) => {
     summaries.push(...usages);
-    append(log, `${of}.compacted`, {
-      ...(of === "solve" ? { solve: id } : { session: id }),
+    append(log, traceKind(of, "compacted"), {
+      [whose(of)]: id,
       ...compacted,
       usages: usages.map((usage) => ({ ...usage })),
     });

@@ -88,6 +88,7 @@ export const TERMS = [
   "exam-minutes",
   "exam-turns",
   "exam-reference",
+  "exam-results",
   "cost",
 ] as const;
 export type Terms = Readonly<Partial<Record<(typeof TERMS)[number], string>>>;
@@ -184,7 +185,7 @@ export function planOf(
   opening: Opening | null = openingOf(events),
 ): Plan {
   const recorded = events.findLast(({ kind }) => kind === SETTING)?.data;
-  const named = Array.isArray(recorded?.tasks) ? recorded.tasks.length : recorded?.target;
+  const named = recorded?.target;
   return {
     sessions: opening?.sessions ?? SESSIONS,
     patience: patienceOf(events),

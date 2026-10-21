@@ -12,7 +12,7 @@
  * so that the view and `tools/d2/harness-builder.ts` name one move on one log. Until 11 October
  * the view also listed every move a launch would be admitted for, and that list named a promotion
  * on one step where the table waits for its repeat; the table's move is the one it prints. The
- * launcher went the same day (`docs/simplify.md`, D2), and the view parses no flag of its own.
+ * launcher went the same day (`7f0add79:docs/simplify.md`, D2), and the view parses no flag of its own.
  * The view opens no campaign, so of a log that holds no task it says what holds for a campaign
  * over a pack: that the pack's tasks are taken in first.
  *

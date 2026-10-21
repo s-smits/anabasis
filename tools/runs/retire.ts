@@ -12,6 +12,11 @@
  * <worktree>` brings a campaign back to go on with, so one paused for longer than `--days` without
  * a keeper is copied back before `continue`.
  *
+ * A seed (`seed.json` beside its log: a `sim-` campaign, or one the suite left behind) is deleted
+ * instead, in a worktree or in the archive, once its log has not grown for `--days`: it is a copy of
+ * a cut log made to rehearse on, and its source keeps the record. On 20 October a sweep would have
+ * archived 563 of them, 547 left by the suite.
+ *
  * A worktree other than the main one is then deleted once nothing has used it for `--days`: no
  * process works in it or names it on its command line, it holds no run log, and its last commit
  * and its top entries are older. One with a change no commit names stays for `DIRTY_DAYS`. Where
@@ -20,8 +25,8 @@
  * aside go with it: what `copy` and `move` set aside goes on elsewhere, whole.
  *
  * Then every host `ANA_HOSTS` lists does the same over ssh, and its archive of its own campaigns
- * comes here under `data/runs/<host>/`, beside the copies `runs fetch` takes. Nothing in an archive
- * is deleted. Without `--yes` it says what it would do, here and on each host, and does nothing.
+ * comes here under `data/runs/<host>/`, beside the copies `runs fetch` takes. Nothing else in an
+ * archive is deleted. Without `--yes` it says what it would do, here and on each host, and does nothing.
  *
  * Until 20 October this was an operator's script outside the repository, run once a day: it moved a
  * retired tree's campaigns into the main worktree's `.ana/d2`, where every verb took them for runs
@@ -35,7 +40,7 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { type Host, hostsOf, quoted, rsync, sshScript, verbOn, worktreesIn } from "./hosts.ts";
-import { ARCHIVE, archiveOf, HERE, keepers, processes, runs, writers } from "./registry.ts";
+import { ARCHIVE, archived, archiveOf, HERE, keepers, processes, runs, writers } from "./registry.ts";
 
 /** What one sweep is asked: the main worktree, how long idle is, the time, and whether to act. */
 export interface Sweep {
@@ -53,17 +58,23 @@ const USAGE = "usage: bun run runs retire [--days 1] [--yes]";
 
 const say = (sweep: Sweep, line: string) => console.log(`${sweep.yes ? "" : "would: "}${line}`);
 
-/** Every run no process writes or keeps whose log has not grown for `days`, moved to the archive.
- *  Returns the logs it moved, or would move. */
+/** Every run no process writes or keeps whose log has not grown for `days`, moved to the archive,
+ *  and every such seed, the archive's too, deleted. Returns the logs it moved or deleted, or would. */
 export function archiveIdle(sweep: Sweep): Set<string> {
   const moved = new Set<string>();
   const taken = new Set<string>();
   const own = archiveOf(sweep.main, HERE);
-  for (const run of runs(sweep.main)) {
+  for (const run of [...runs(sweep.main), ...archived(sweep.main).filter((each) => each.seed === true)]) {
     if (sweep.now - lstatSync(run.path).mtimeMs < sweep.days * DAY_MS) continue;
     // Read again for each run: one launched while the sweep ran is live.
     if (writers(run, processes()).length > 0 || keepers(run.name).length > 0) continue;
     const from = run.end === "solve.finished" ? run.path : dirname(run.path);
+    if (run.seed === true) {
+      say(sweep, `${from}: a seed, deleted`);
+      moved.add(run.path);
+      if (sweep.yes) rmSync(from, { recursive: true, force: true });
+      continue;
+    }
     // Its name, or its name after its tree's where that is taken, on disk or earlier in this sweep
     // (two trees' live solve logs share a file name).
     const name = run.end === "solve.finished" ? join(".live", basename(run.path)) : run.name;

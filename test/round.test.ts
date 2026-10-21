@@ -1,7 +1,6 @@
 // One round on stand-ins: the real session on the faux provider with a host write for the walled
 // one, and solves that end as a table says. What is under test is the order of a round, which
 // solves it counts and which it makes, what it leaves out of a comparison, its cap, and its reading.
-// A lone retained loss no longer regresses: buffer-pr197-opus-m1, 18 October 2026.
 import { afterAll, describe, expect, it } from "bun:test";
 import {
   createModels,
@@ -11,7 +10,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { passesIn, predicted, swapped, toLabel } from "../src/builder/comparison.ts";
+import { type PassLabel, passesIn, predicted, swapped, toLabel } from "../src/builder/comparison.ts";
 import {
   type CheckpointRequest,
   checkpoint,
@@ -366,19 +365,11 @@ describe("a round", () => {
         fresh: report.fresh,
         starter: s.starter.digest,
         // Each task won by two pairs for each valid answer more, of the four a side's two solves make.
-        scored: { ...tested, differences: [4, 4, 4, 4], unsolved: 0 },
-        // Nothing is exhausted yet, so every task is on the frontier, where the step is read, and
-        // the retained set is unmeasured: four untied tasks detect a harness that wins 95% of
-        // them, four times in five, and an attempt at their margins promotes equal harnesses 5 in 256.
-        frontier: {
-          ...tested,
-          tasks: HELD,
-          aside: [],
-          differences: [4, 4, 4, 4],
-          of: HELD,
-          detectable: 0.95,
-          falseRate: 1 / 16,
-        },
+        // The step is read on every tallied task: four untied tasks detect a harness that wins 95%
+        // of them, four times in five, and an attempt at their margins promotes equal harnesses 1 in 16.
+        scored: { ...tested, differences: [4, 4, 4, 4], unsolved: 0, detectable: 0.95, falseRate: 1 / 16 },
+        // Nothing is exhausted yet, so every task is on the frontier and the retained set is unmeasured.
+        frontier: { ...tested, tasks: HELD, aside: [], differences: [4, 4, 4, 4], of: HELD },
         retained: "unmeasured",
         // Each family's tallies, from the same rows, sum to the whole.
         families: {
@@ -523,10 +514,13 @@ describe("a round", () => {
     const s = await setup([edit, finish], (version, side) =>
       version === "s1" ? LATE : { ending: PASS, objective: mass(version, side) },
     );
-    const objective = { direction: "lower" } as const;
+    // The room floor rides with the direction: it decides which tasks leave room, and no pair.
+    const objective = { direction: "lower", room: 0.05 } as const;
+    // Beside the count, the median relative gain on the won tasks: 0.2 on s2 and 0.1 on s3.
+    const gain = { median: (0.2 + 0.1) / 2, tasks: 2 };
     expect(await round({ ...s.request, objective })).toMatchObject({
       scored: { wins: 2, losses: 0, ties: 2, p: 0.25, unsolved: 1 },
-      objective: { ...objective, decided: 2 },
+      objective: { ...objective, decided: 2, gain },
       reading: NO_STEP,
     });
     // The rule is a term of the comparison, fixed at its start, and the report carries it with
@@ -893,7 +887,8 @@ describe("a round", () => {
       expect(taskStates(read(earned.s.log)).get("s1")).toBe("held");
 
       // A task set aside on a rejection no label reaches stays out of this comparison, as one
-      // labelled unclear does. A pass's label is recorded and moves no tally.
+      // labelled unclear does. A pass labelled wrong is its side's fail, as an earned rejection is:
+      // one of the new harness's two valid answers to a task still wins it against two fails.
       const partial = await ruledOn();
       const [one = ""] = partial.asked.aside;
       const [valid = ""] = passesIn(read(partial.s.log), "b-1");
@@ -903,6 +898,19 @@ describe("a round", () => {
         scored: { wins: 3, losses: 0 },
         aside: ["s1"],
         settled: { labelled: 1, defects: 0, restored: [], passes: { [valid]: "wrong" } },
+      });
+      // Every pass labelled wrong leaves the new harness no valid answer, and each task it won ties;
+      // labelled sound or unclear, the same passes leave the tally as it was.
+      const wrong = await ruledOn();
+      const passes = (log: string, label: PassLabel) =>
+        new Map(passesIn(read(log), "b-1").map((solve) => [solve, label] as const));
+      expect(settleReading(wrong.s.log, "b-1", new Map(), passes(wrong.s.log, "wrong"))).toMatchObject({
+        scored: { wins: 0, losses: 0, ties: 3 },
+        reading: "no-step",
+      });
+      const sound = await ruledOn();
+      expect(settleReading(sound.s.log, "b-1", new Map(), passes(sound.s.log, "sound"))).toMatchObject({
+        scored: { wins: 3, losses: 0 },
       });
 
       // Labelled unclear, the task stays out of this comparison and is disputed nowhere.
@@ -1428,7 +1436,9 @@ describe("a checkpoint with no session", () => {
     expect(report.noise).not.toHaveProperty("margin");
   });
 
-  it("reads a step on the frontier despite one unsupported retained loss, on sets fixed before its first solve", async () => {
+  it("reads the frontier and the retained tasks in one test, on sets fixed before its first solve", async () => {
+    // Until 20 October this comparison read a step on its 4-0 frontier and let the one retained
+    // loss pass the second test; read as one, 4-1 by as many pairs is no step.
     // The reference answers s1 in every solve and nothing else; the starter breaks s1 and answers
     // the four tasks held out below.
     const s = await setup([], (version, side) => ((version === "s1") === (side === "old") ? PASS : LATE));
@@ -1457,7 +1467,9 @@ describe("a checkpoint with no session", () => {
       retained: { tasks: ["s1"], aside: [], wins: 0, losses: 1, ties: 0, differences: [-4] },
       // The comparison before it of the same two harnesses scored s1 as well.
       overlap: { with: "g2", tasks: ["s1"] },
-      reading: "step",
+      // Four won and one lost by four pairs each is p 0.1875 in the one test, over the level 0.1.
+      scored: { wins: 4, losses: 1, ties: 0, p: 0.1875 },
+      reading: "no-step",
     });
   });
 
@@ -1563,7 +1575,7 @@ describe("a checkpoint with no session", () => {
 describe("a session with no comparison after it", () => {
   const practise = call("practice", { tasks: ["t-p1"] });
 
-  // The plan's checkpoint (`docs/plan.md`, Phase 5): several sessions, then one comparison. Until
+  // The plan's checkpoint (`7f0add79:docs/plan.md`, Phase 5): several sessions, then one comparison. Until
   // 2026-10-09 a session ran only inside a round, so two sessions were two paid comparisons.
   it("runs twice, the second from what the first left, and one checkpoint compares what they leave", async () => {
     const s = await setup([edit, practise, finish, again, finish], step);

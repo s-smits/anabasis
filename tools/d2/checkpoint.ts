@@ -3,11 +3,11 @@
  *
  *   bun tools/d2/checkpoint.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
  *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --id g2 \
- *     --tasks <eight task ids> --cap 437
+ *     --target 8 --cap 437
  *
  * With no `--reference` and no `--new` it compares the latest harness a Builder session left with
  * the Starter Built Harness, which is the plan's checkpoint: several sessions, then one comparison
- * on fresh solves (`docs/plan.md`, Phase 5). While no session has left a harness there is nothing
+ * on fresh solves (`7f0add79:docs/plan.md`, Phase 5). While no session has left a harness there is nothing
  * to compare, and the command says so. The plan's first experiment is no checkpoint: it is the
  * first round (`round.ts`).
  *
@@ -27,7 +27,7 @@
  * should read no step, and its tie share is the noise every later comparison has to exceed.
  *
  * The scored set and the solver's setting are the campaign's, read from its log as a round reads
- * them (`setting.ts`): `--tasks` or `--target`, and the solver's flags, name them only where the
+ * them (`setting.ts`): `--target`, and the solver's flags, name them only where the
  * campaign has recorded none. Until 19 October a repeat, the comparison that followed one of the
  * same two harnesses whose reading cleared `--trigger`, scored that one's untied tasks again; one
  * reading promotes since. The solves a side, the level, the Referee and the cap are a round's, with a round's defaults
@@ -45,7 +45,8 @@
  */
 import { admitComparison } from "#src/builder/admission.ts";
 import type { Report } from "#src/builder/comparison.ts";
-import { type CheckpointRequest, checkpoint, refuseTerms } from "#src/builder/round.ts";
+import { type CheckpointRequest, checkpoint, refuseTerms, scoredSet } from "#src/builder/round.ts";
+import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
 import { stopRule } from "#src/kernel/reports.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
@@ -69,7 +70,6 @@ import {
   packaged,
   reviewersNamed,
   ROUND_OPTIONS,
-  scoredNamed,
   type Seated,
   solved,
   reportLines,
@@ -121,10 +121,10 @@ export async function checkpointCommand(
     old,
     fresh,
     starter: await starter(campaign),
-    ...scoredNamed(campaign, setting.tasks, setting.target),
+    ...scoredSet(read(campaign.log), setting.target, contractHash(campaign.contract)),
     solves: Number(values.solves),
     level: Number(values.level),
-    objective: objectiveNamed(campaign),
+    objective: objectiveNamed(campaign, id),
     defects: Number(values.defects),
     cap,
     prediction: predictionNamed(values.predict),

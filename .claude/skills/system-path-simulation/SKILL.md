@@ -25,6 +25,7 @@ reads its later tasks and answers from there (`draftedSource`, `tools/runs/rehea
 | Rehearsal | whether commands join, and what a position of this size can read | no model; time depends on the solves and limits | [rehearsal](cases/rehearsal.md) |
 | Live seat | what a real model does from a recorded position | a session's or a solve's dollars | [live-seat](cases/live-seat.md), `scripts/live-seat.ts` |
 | The real run | everything a script cannot say | hours, tens of dollars | run-management, then `bun run runs pulse` |
+| The open stack | which of a stack's changes hold with a real model before it lands, while its other fixes go on | one live seat a change, one after the other | [stack](cases/stack.md), `scripts/referee-seat.ts` |
 
 A cheaper case that answers the question cancels every dearer one. Say which case you stopped at,
 and why the next was not needed.
@@ -60,6 +61,7 @@ and why the next was not needed.
    The test in `test/` that fails without the fix is what keeps it found.
 10. **Clean up.** A seed is listed by the pulse and read by `runs replay`.
     Move it to the Trash when its question is answered: `/usr/bin/trash .ana/d2/sim-<what>`.
+    `bun run runs retire` deletes one left idle for a day, in a worktree or in the archive.
 
 ## What a rehearsal walks, and what it cannot say
 

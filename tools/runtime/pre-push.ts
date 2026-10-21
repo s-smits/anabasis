@@ -17,7 +17,14 @@
  * holding the newest of them gets the whole gate instead, since that is the pull request the work is
  * in. A pass is remembered by its tree (`proveCommits`, `gate.ts`), so a push its lease refused or a
  * restack that kept every tree goes out again without paying twice. The whole gate runs over a checkout too, so the working tree may hold anything.
+ *
+ * One push of this clone runs at a time (`queue`). On 20 October a pull request was pushed while the
+ * one beneath it was still at its gate, and its own gate ran the whole suite over the commits below
+ * as well, since no remote-tracking ref held them yet. A push now waits for the one before it to
+ * finish, so what that push published is the remote's, and it gates only its own work.
  */
+import { existsSync, linkSync, readFileSync, rmSync, writeFileSync } from "../../src/meta/filesystem.ts";
+import { join } from "../../src/meta/path.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
 import { decodeOutput, runSync } from "../../src/meta/subprocess.ts";
 import { plural } from "../../src/meta/text.ts";
@@ -54,9 +61,81 @@ function patchIds(root: string, commits: readonly string[]): Map<string, string>
   );
 }
 
+/** When a process started, as `ps` says, or "" where none runs under that id. */
+const startOf = (pid: string): string =>
+  decodeOutput(runSync(["ps", "-o", "lstart=", "-p", pid], { cwd: "/" }).stdout).trim();
+
+/**
+ * Waits while another push of this clone holds the lock, then holds it, and returns the ref lines of
+ * the push it waited for. The lock names the `git push` that runs this hook, its parent, by its id and
+ * when it started, so it is held until that push has updated its remote-tracking refs; one this push
+ * left, or whose id the host has since given another process, is taken over. It is written whole
+ * beside itself and linked into place, so a reader never sees it half written.
+ */
+async function queue(root: string, mine: string): Promise<string[]> {
+  const lock = join(
+    git(root, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
+    "ana-pre-push.lock",
+  );
+  const own = `${lock}.${String(runtimeProcess.pid)}`;
+  const parent = String(runtimeProcess.ppid);
+  writeFileSync(own, `${parent}\n${startOf(parent)}\n${mine}`);
+  let before: string[] = [];
+  for (let said = false; ; await Bun.sleep(1000)) {
+    try {
+      linkSync(own, lock);
+      rmSync(own);
+      return before;
+    } catch {
+      const [holder = "", start = "", ...pushed] = (existsSync(lock) ? readFileSync(lock, "utf8") : "").split(
+        "\n",
+      );
+      const live = holder !== parent && start !== "" && startOf(holder) === start;
+      if (!live) rmSync(lock, { force: true });
+      if (live && !said) {
+        say(`waiting for the push of process ${holder}; this push then gates only what it did not publish.`);
+      }
+      if (live) [said, before] = [true, pushed];
+    }
+  }
+}
+
+/**
+ * What a push would publish on a base the push before it replaced: a head of this push that holds a
+ * branch's old head but not the one that push published. Restacking is the author's, so the push is
+ * refused with what happened and the line that restacks it.
+ */
+function staleBases(
+  root: string,
+  remote: string,
+  before: readonly string[],
+  heads: readonly string[],
+): string[] {
+  return before.flatMap((line) => {
+    const [, pushed = "", ref = "", replaced = ""] = line.split(" ");
+    const tracking = `refs/remotes/${remote}/${ref.replace(/^refs\/heads\//u, "")}`;
+    if (ABSENT.test(replaced) || ABSENT.test(pushed) || replaced === pushed) return [];
+    if (!gitSays(root, ["merge-base", "--is-ancestor", pushed, tracking])) return [];
+    return heads.flatMap((head) =>
+      gitSays(root, ["merge-base", "--is-ancestor", replaced, head]) &&
+      !gitSays(root, ["merge-base", "--is-ancestor", pushed, head])
+        ? [
+            `${short(head)} is stacked on ${ref} at ${short(replaced)}, but the push this one waited for replaced`,
+            `  that branch with ${short(pushed)}. Published as it is, it would sit on a head the stack no longer`,
+            `  has, and its gate would run over the old commits again. Restack it in the worktree that holds it:`,
+            `  git rebase --onto ${pushed} ${replaced}`,
+            `  then resolve any conflict commit by commit, and push again.`,
+          ]
+        : [],
+    );
+  });
+}
+
 async function main(): Promise<number> {
   const root = git(runtimeProcess.cwd(), ["rev-parse", "--show-toplevel"]);
-  const updates = lines(await Bun.stdin.text()).flatMap((line) => {
+  const told = await Bun.stdin.text();
+  const before = await queue(root, told);
+  const updates = lines(told).flatMap((line) => {
     const [, local = "", , remote = ""] = line.split(" ");
     return ABSENT.test(local) ? [] : [{ local, remote }];
   });
@@ -65,6 +144,12 @@ async function main(): Promise<number> {
     return 0;
   }
   const heads = updates.map((update) => update.local);
+  const stale = staleBases(root, runtimeProcess.argv[2] ?? "origin", before, heads);
+  if (stale.length > 0) {
+    for (const line of stale) say(line);
+    say("Nothing was pushed.");
+    return 1;
+  }
   // A branch someone else moved is not in this clone, and its old commits cannot be read here.
   const replaced = updates.flatMap(({ remote }) =>
     !ABSENT.test(remote) && gitSays(root, ["cat-file", "-e", `${remote}^{commit}`]) ? [remote] : [],

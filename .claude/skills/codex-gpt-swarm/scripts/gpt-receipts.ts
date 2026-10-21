@@ -1,7 +1,7 @@
 /**
  * What a launch of Codex sessions records, and how its reports are read back: the launch record,
  * one result a session, `reports.md`, the summary, and the drain. A session's outcome is decided
- * here once, from its last attempt, and every reader takes that decision. `luna-sessions.ts` runs
+ * here once, from its last attempt, and every reader takes that decision. `gpt-sessions.ts` runs
  * the sessions and hands each one's last attempt here.
  *
  * Two records of v1's launcher decide what is kept. On 2026-09-25 lanes ended by SIGTERM were all
@@ -83,8 +83,8 @@ interface Drained {
 
 type SessionPaths = ReturnType<typeof sessionPaths>;
 
-export const LAUNCH_TYPE = "luna_sessions.launch";
-export const SUMMARY_TYPE = "luna_sessions.completed";
+export const LAUNCH_TYPE = "gpt_sessions.launch";
+export const SUMMARY_TYPE = "gpt_sessions.completed";
 export const SUMMARY_FILE = "summary.json";
 const LAUNCH_FILE = "launch.json";
 /** The first event of a Codex thread, which names it: `{"type":"thread.started","thread_id":…}`. */
@@ -128,7 +128,7 @@ export function readLaunch(outputDir: string): LaunchRecord {
   const path = join(outputDir, LAUNCH_FILE);
   const launch = existsSync(path) ? parseJsonAs<LaunchRecord | null>(readFileSync(path, "utf8")) : null;
   if (launch?.type !== LAUNCH_TYPE || !Array.isArray(launch.sessions)) {
-    throw new Error(`not a launch directory of luna-sessions: ${outputDir}`);
+    throw new Error(`not a launch directory of gpt-sessions: ${outputDir}`);
   }
   return launch;
 }

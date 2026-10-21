@@ -37,6 +37,8 @@ import {
   refereeNamed,
   ROUND_OPTIONS,
   roundCommand,
+  gainSaid,
+  objectiveNamed,
   reportLines,
 } from "../tools/d2/round.ts";
 import { sessionCommand } from "../tools/d2/session.ts";
@@ -53,7 +55,6 @@ const EARLIER = `${NAME}-earlier`;
  *  backend serves is refused with the command's other flags, before the log is asked anything. */
 const SERVED = "claude/claude-opus-5-5";
 /** A campaign whose recorded setting names the tasks to score. */
-const RECORDED = `${NAME}-recorded`;
 /** A campaign opened and given a harness before it keeps any. */
 const FRESH = `${NAME}-fresh`;
 /** Campaigns whose checks pass, and reject, the stored sweep's accepted answer. */
@@ -73,7 +74,7 @@ setDefaultTimeout(60_000);
 
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });
-  for (const name of [NAME, EARLIER, RECORDED, FRESH, PROVEN, UNPROVEN]) {
+  for (const name of [NAME, EARLIER, FRESH, PROVEN, UNPROVEN]) {
     rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
   }
 });
@@ -554,11 +555,11 @@ describe("a campaign", () => {
     ).toBe(
       "the median turns of a valid answer, over the 2 tasks both answered: reference 11, new 5 (reported, in no test)",
     );
-    // Every reading says how many of the frontier's tasks were untied and the least share of them it
-    // detects four times in five, or none where they are fewer than the least sweep.
-    const frontier = {
-      tasks: ["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"],
-      aside: [],
+    // Every reading says how many of its tallied tasks, frontier and retained together, were untied
+    // and the least share of them it detects four times in five, or none where they are fewer than
+    // the least sweep.
+    const scored = {
+      unsolved: 0,
       wins: 4,
       losses: 0,
       ties: 4,
@@ -568,18 +569,29 @@ describe("a campaign", () => {
       falseRate: 0.01953125,
     };
     const valid = { old: [8, 0, 0], fresh: [4, 0, 4], informative: { old: 0, fresh: 0 } };
-    expect(reportLines({ valid, objective: null, frontier, noise: null }).slice(0, 2)).toEqual([
-      "the step is read on 8 frontier tasks, 4 of them untied: one reading at the comparison's level detects four times in five a harness that wins 95% of them",
+    const frontier = { ...scored, tasks: ["v1", "v2", "v3", "v4", "v5", "v6", "v7"], aside: [] };
+    expect(reportLines({ valid, objective: null, scored, frontier, noise: null }).slice(0, 2)).toEqual([
+      "the step is read on 8 tallied tasks, 4 of them untied: one reading at the comparison's level detects four times in five a harness that wins 95% of them",
       // Beside the level, the test's own rate at the report's margins.
       "one reading at these margins reads a step between equal harnesses 2% of the time, never more than the level",
     ]);
+    // A report written before 20 October read its step, and these two, on its frontier alone.
+    expect(reportLines({ valid, objective: null, frontier, noise: null }).at(0)).toContain(
+      "read on 8 tallied",
+    );
     expect(
-      reportLines({ valid, objective: null, frontier: { ...frontier, detectable: null }, noise: null }).at(0),
+      reportLines({
+        valid,
+        objective: null,
+        scored: { ...scored, detectable: null },
+        frontier,
+        noise: null,
+      }).at(0),
     ).toEndWith("detects four times in five no share of them");
     // The p beside it is the test's, which weighs margins; where every untied task is won it is the
     // count's alone (the plan's 7.5).
-    const two = { ...frontier, tasks: ["v1", "v2"], wins: 2, ties: 0, p: 0.25, differences: [4, 1] };
-    expect(reportLines({ valid, objective: null, frontier: two, noise: null }).at(2)).toBe(
+    const two = { ...scored, wins: 2, ties: 0, p: 0.25, differences: [4, 1] };
+    expect(reportLines({ valid, objective: null, scored: two, frontier: null, noise: null }).at(2)).toBe(
       "its p is 0.25: the test weighs each untied task by its margin in pair wins, and where every untied task is won p is one half to the power of their count whatever the margins: 2 won read 0.25",
     );
     // The A/A beside every reading that carries one: three readings of the noise, one a line, and
@@ -602,7 +614,7 @@ describe("a campaign", () => {
       "  tie share 75%: the share of tasks two equal harnesses tied at half the comparison's solves a side, where equal harnesses tie more often than at the comparison's own, so no floor for its ties",
       "  flip rate 13%: how often two of its solves of one task disagree on validity",
       "  least detectable shift: none, too few of its tasks are untied for any shift between its halves to read as a step, so its reading no step shows little",
-      "of the 8 tasks the comparison drew, 6 were tallied and 1 set aside on a rejection not ruled a true fail, 1 disputed: the columns below and room are read over the tallied ones, the test over the frontier among them",
+      "of the 8 tasks the comparison drew, 6 were tallied and 1 set aside on a rejection not ruled a true fail, 1 disputed: the columns below, room and the test are read over the tallied ones",
     ]);
     expect(lines(0.9)[3]).toBe(
       "  least detectable shift: one reading of it, two-sided at the level, detects four times in five a half that wins 90% of its untied tasks",
@@ -617,6 +629,20 @@ describe("a campaign", () => {
         noise: null,
       }).at(-1),
     ).toBe("the objective (lower is better) decided 1 task that validity alone would have tied");
+    // Beside it, where the report carries one, the median relative gain on the won frontier tasks
+    // with a measure on both sides; nothing where none had (`gainSaid`, which the closing report
+    // prints beside a promotion's tally too).
+    expect(
+      reportLines({
+        valid: { old: [0, 0, 2], fresh: [0, 0, 2], informative: { old: 0, fresh: 0 } },
+        frontier: null,
+        objective: { direction: "lower", decided: 3, gain: { median: 0.000_007_6, tasks: 18 } },
+        noise: null,
+      }).at(-1),
+    ).toBe(
+      "the objective (lower is better) decided 3 tasks that validity alone would have tied; on the 18 won frontier tasks with a valid measure on both sides its median relative gain is 0.00076%",
+    );
+    expect(gainSaid(null)).toBe("");
     const campaign = await openCampaign(ARGS);
     expect(read(campaign.log).some(({ data }) => data.session === "z-8")).toBe(false);
   });
@@ -694,6 +720,15 @@ describe("a campaign", () => {
     await expect(sessionCommand(flags, seats)).rejects.toThrow("name --builder");
     expect(against).toEqual([(await starter(campaign)).dir]);
     expect(read(campaign.log).some(({ data }) => data.session === "z-6")).toBe(false);
+  });
+
+  it("goes on with the objective a comparison began with, a floor or none", async () => {
+    const campaign = await openCampaign(ARGS);
+    // The shape a comparison begun before 21 October recorded: a direction and no floor.
+    append(campaign.log, "comparison.started", { session: "g-8", objective: { direction: "lower" } });
+    append(campaign.log, "comparison.started", { session: "g-9" });
+    expect(objectiveNamed(campaign, "g-8")).toEqual({ direction: "lower" });
+    expect(objectiveNamed(campaign, "g-9")).toBeUndefined();
   });
 
   it("refuses a labels file with an entry that is no label, and a --target that is no count", async () => {
@@ -878,36 +913,6 @@ describe("a campaign", () => {
 
   // Fix row F47: `prepare.ts` read the recorded target and not the recorded tasks, so its draw
   // could release for practice a task the campaign's setting names to score, for good.
-  it("releases for practice no task the campaign's recorded setting names to score", async () => {
-    const campaign = await openCampaign({ ...ARGS, name: RECORDED });
-    const prepared = (practice: string) => {
-      const flags = Object.entries({ ...ARGS, name: RECORDED, practice }).flatMap(([flag, value]) => [
-        `--${flag}`,
-        value,
-      ]);
-      const ran = Bun.spawnSync({ cmd: [capturedExecPath, "tools/d2/prepare.ts", ...flags], cwd: REPO });
-      return `${ran.stdout.toString()}${ran.stderr.toString()}`;
-    };
-    expect(prepared("0")).toContain("7 held out, 0 released for practice");
-    const scored = ["t-1", "t-2", "t-3", "t-4"];
-    append(campaign.log, "campaign.setting", {
-      solver: null,
-      minutes: 120,
-      turns: 24,
-      modelTurns: null,
-      tasks: scored,
-      target: 12,
-    });
-    // Three are asked for, and half of the three tasks the record does not name is one.
-    expect(prepared("3")).toContain(
-      "practice is 2 short of 3: a release takes at most half of the 3 held out and not named to score",
-    );
-    const packages = campaign.packages();
-    const released = taskSets(read(campaign.log)).released.map((version) => packages.get(version)?.taskId);
-    expect(released).toHaveLength(1);
-    expect(released.filter((taskId) => scored.includes(taskId ?? ""))).toEqual([]);
-  });
-
   // Recode ran on 9 October with its solver held to 15 of its own turns, and its log holds no
   // record of a setting: the first command of this source there has to name what it ran under.
   it("holds the first record of a campaign that already holds solves to what they ran under", async () => {

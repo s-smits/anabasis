@@ -331,7 +331,7 @@ export async function snapshot(bench: Bench): Promise<Snapshot> {
  *  its start to its end, the verifier's among them, of its time limit, the model's own turns, and
  *  the tokens the model read and wrote over them. Empty where the log holds no end for the solve.
  *  A Builder that is not told this cannot tell a harness that passes with a minute to spare from
- *  one that passes at the limit (`docs/plan.md`, Phase 2). The tokens are the one measure of what
+ *  one that passes at the limit (`7f0add79:docs/plan.md`, Phase 2). The tokens are the one measure of what
  *  a tool or a program costs a solve that the Builder can act on: on 10 October a promoted
  *  harness's solve read 8,600 to 13,200 tokens over two turns in three campaigns, nearly all of it
  *  the prompt read twice. */
@@ -380,20 +380,20 @@ async function practise(bench: Bench, task: PracticeTask, kept: Snapshot, kill: 
 }
 
 /**
- * The practice solves a session may still start: what is left of its own count, and no more than
- * its dollar cap holds a reserve for, where it runs under one (`BuildRequest.cap`). The dollars are
- * the log's, the session's own part (`billedParts`): the practice solves this session ran and their
- * Referee, and its own live turns, and not what a comparison under the same id billed. In a live campaign, the current total includes every seat
- * and any budget change the operator left. The Builder is told a count and never a sum.
+ * The practice solves a session may still start. A Builder that leads its campaign has as many as
+ * what is left of the campaign's total holds a reserve for, and no count of its own: r3's b-1 ran
+ * out of its 24 at turn 161 with $560 left (deep dive, 20 October). A session the host runs keeps
+ * its count, and no more than its own part of the log leaves its cap a reserve for (`billedParts`).
+ * The Builder is told a count and never a sum.
  */
 export function practiceLeft({ request, spent }: Bench, events: readonly LogEvent[]): number {
-  const campaign = request.campaign === undefined ? null : openingOf(events)?.budget;
-  const cap = campaign ?? request.cap;
-  const { limits } = request;
-  const counted = limits.practiceSolves - spent;
-  if (cap === undefined) return counted;
-  const billed = campaign == null ? billedParts(events, request.id).session : billedAll(events);
-  const afforded = Math.floor((cap.dollars - billed) / cap.reserve);
+  const budget = request.campaign === undefined ? null : openingOf(events)?.budget;
+  if (budget != null) return Math.max(0, Math.floor((budget.dollars - billedAll(events)) / budget.reserve));
+  const counted = request.limits.practiceSolves - spent;
+  if (request.cap === undefined) return counted;
+  const afforded = Math.floor(
+    (request.cap.dollars - billedParts(events, request.id).session) / request.cap.reserve,
+  );
   return Math.max(0, Math.min(counted, afforded));
 }
 
@@ -605,16 +605,37 @@ export async function harnessNow(bench: Bench): Promise<string | Error> {
  * The opening message again, as it was sent. A session whose conversation was compacted, or lost
  * with its process, has the public rules, the practice tasks, the failed practice solves and the
  * comparisons in no other place: they are built by the host from the log, and the Builder's own
- * notes are its prose about them. v1 served its round's opening facts the same way.
+ * notes are its prose about them. v1 served its round's opening facts the same way. An Examiner's
+ * opening holds the record of every task, and since 21 October it is served the same way: 65
+ * Examiner sessions on record compacted, and the summary kept what the model chose of that record.
  */
-export function openingTool(opening: string | (() => string), said: Said): AgentTool {
+export function openingTool(opening: string | (() => string), description: string): AgentTool {
   return tool({
     name: "read_opening",
     label: "Read the opening",
-    description: said.opening,
+    description,
     parameters: Type.Object({}),
     executionMode: "sequential",
     execute: async () => text(isFunction(opening) ? opening() : opening),
+  });
+}
+
+/**
+ * `wait`: the next word of work running beside a session, as a call, for a seat whose results come
+ * later: an Examiner's gate, or the Examiner session beside a Builder's conversation. Without one a
+ * sleep in the shell was the only call that waits: on record, Builders slept bare 536 times while an
+ * Examiner wrote beside them, most for about 900 s, on their own clock, and Examiners 119 times; on
+ * 21 October a live Examiner still slept 190 s past its gate's word at a head whose turn with no call
+ * waited for it.
+ */
+export function waitTool(description: string, next: () => Promise<string>): AgentTool {
+  return tool({
+    name: "wait",
+    label: "Wait",
+    description,
+    parameters: Type.Object({}),
+    executionMode: "sequential",
+    execute: async () => text(await next()),
   });
 }
 

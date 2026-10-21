@@ -512,11 +512,11 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     expect(epoch?.falsePromotion.union).toBeCloseTo(0.25, 12);
     if (epoch === undefined) throw new Error("an epoch");
     expect(epochLine(epoch)).toContain(
-      "3 promotion attempts under this reference, a false promotion among them estimated at 25%: 10% for the riskiest attempt by the rule's design; no A/A control on record",
+      "3 promotion attempts under this reference, a false promotion among them estimated at 25%: 10% for the riskiest attempt by the rule's design; no A/A control on record that could read a step",
     );
     // The closing report sums the epochs' estimates, here the one epoch's (the plan's 7.6).
     expect(riskLines(log).slice(0, 2)).toEqual([
-      "- Epoch 1: 3 promotion attempts, a false promotion among them estimated at 25%: 10% for the riskiest attempt by the rule's design; no A/A control on record.",
+      "- Epoch 1: 3 promotion attempts, a false promotion among them estimated at 25%: 10% for the riskiest attempt by the rule's design; no A/A control on record that could read a step.",
       "Over the campaign, a false promotion in any epoch estimated at 25%: the sum of the epochs' estimates, capped at one, which assumes nothing of how the attempts depend on one another. It sums estimates, so it is an estimate and no bound.",
     ]);
     // A rate under ten percent is printed to a tenth: 1.8% is not 2%.
@@ -524,29 +524,40 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     expect(riskLines([started, small])[0]).toContain("1.8% for the riskiest attempt by the rule's design");
   });
 
-  it("counts the A/A controls that read a step, one-sided at the level, beside the design's rate, and lets them set none of it", () => {
-    // Four controls tie every task: none reads a step. Until 19 October they were read in pairs by
-    // the two-stage rule, and until then too a 95% bound of 78% an attempt replaced the design's 10%.
+  it("counts the A/A controls that could read a step and those that read one, one-sided at the level, beside the design's rate, and lets them set none of it", () => {
+    // Three controls tie every task and cannot read a step at any level; the fourth wins three of
+    // four untied tasks, which could have read one at 0.10 (four of four, p 1/16) and reads none
+    // (p 5/16). Until 20 October a control that could not read a step counted as one that read
+    // none, and 30 of the 49 controls on record were such. Until 19 October they were read in
+    // pairs by the two-stage rule, and until then too a 95% bound replaced the design's 10%.
     const ties = [0, 0, 0];
     const log = [
       started,
-      ...["g-1", "g-2", "g-3", "g-4"].map((id) => attempt(id, "S", "h2", ties)),
+      ...["g-1", "g-2", "g-3"].map((id) => attempt(id, "S", "h2", ties)),
+      attempt("g-4", "S", "h2", [1, -1, 1, 1]),
       event("harness.promoted", { harness: "h2" }),
       attempt("g-5", "h2", "h4"),
     ];
     const [first, second] = epochsOf(log);
-    expect(first?.falsePromotion).toMatchObject({ attempts: 4, errors: 0, controls: 4, bound: 0.1 });
+    expect(first?.falsePromotion).toMatchObject({
+      attempts: 4,
+      errors: 0,
+      controls: 1,
+      incapable: 3,
+      bound: 0.1,
+    });
     expect(first?.falsePromotion.union).toBeCloseTo(0.4, 12);
     expect(second?.falsePromotion).toMatchObject({
       attempts: 1,
       errors: 0,
-      controls: 4,
+      controls: 1,
+      incapable: 3,
       bound: 0.1,
       union: 0.1,
     });
     if (second === undefined) throw new Error("an epoch");
     expect(epochLine(second)).toContain(
-      "a false promotion among them estimated at 10%: 10% for the riskiest attempt by the rule's design; 0 of 4 A/A controls read a step",
+      "a false promotion among them estimated at 10%: 10% for the riskiest attempt by the rule's design; 0 of 1 A/A control that could read a step read one, and 3 too small to read one at their level",
     );
     expect(riskLines(log)[2]).toStartWith(
       "Over the campaign, a false promotion in any epoch estimated at 50%:",
@@ -558,8 +569,8 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
       attempt("g-1", "S", "h2", [1, 1, 1, 1]),
       attempt("g-2", "S", "h2", [-1, -1, -1, -1]),
     ];
-    expect(epochsOf(lucky)[0]?.falsePromotion).toMatchObject({ errors: 1, controls: 2 });
-    expect(riskLines(lucky)[0]).toContain("1 of 2 A/A controls read a step");
+    expect(epochsOf(lucky)[0]?.falsePromotion).toMatchObject({ errors: 1, controls: 2, incapable: 0 });
+    expect(riskLines(lucky)[0]).toContain("1 of 2 A/A controls that could read a step read one.");
     // Past one the sum is capped there.
     const many = Array.from({ length: 11 }, (_, at) =>
       attempt(`g-${String(at + 1)}`, "S", `h${String(at + 2)}`),

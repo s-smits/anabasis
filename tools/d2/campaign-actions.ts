@@ -27,22 +27,14 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import { Refused, supplyOf } from "#src/builder/admission.ts";
-import {
-  CRASHES,
-  decide,
-  epochReleased,
-  heldAfter,
-  practiceRoom,
-  unaffordedAsked,
-  unpromoted,
-} from "#src/builder/decide.ts";
+import { CRASHES, decide, epochReleased, heldAfter, practiceRoom, unpromoted } from "#src/builder/decide.ts";
 import { comparisonsOf, crashedRun } from "#src/builder/ground.ts";
 import { campaignOf } from "#src/builder/handover.ts";
 import { type Decided, short } from "#src/builder/move.ts";
 import { type Opening } from "#src/builder/opening.ts";
 import { comparisonsTold } from "#src/builder/past.ts";
 import type { BuildRequest } from "#src/builder/session.ts";
-import { type Bench, endingWith, snapshot } from "#src/builder/tools.ts";
+import { type Bench, endingWith, snapshot, waitTool } from "#src/builder/tools.ts";
 import { pendingWords } from "#src/builder/word.ts";
 import { examine } from "#src/examiner/session.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
@@ -178,8 +170,8 @@ function toolOf(decided: Decided): string {
 /**
  * One campaign tool. Before anything runs: the run's moves, the host's stop, an ending the table
  * names (a lack of room excepted, which is advice here), and the operator's word for other tasks.
- * A comparison that began goes on under its own cap whatever is left of the total, as the table
- * has it (`unafforded`, `src/builder/decide.ts`): the budget's ending is the table's, read above.
+ * A comparison that began goes on under its own cap whatever is left of the total: the budget's
+ * ending is the table's, read above.
  * `run` is handed `begin`, which writes the move's event (`campaign.move`): the table's code and
  * reason where the Builder made the move it named, and `asked` with what the table named otherwise.
  */
@@ -328,6 +320,7 @@ const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
         ...flag("minutes", values["exam-minutes"]),
         ...flag("turns", values["exam-turns"]),
         ...flag("reference-home", values["exam-reference"]),
+        ...flag("results", values["exam-results"]),
       ],
       (request, wall) => sitting({ ...request, opened: resolve }, wall),
       // The campaign's own seat, so the tries wait on the load and share the reserve (14 October).
@@ -353,7 +346,7 @@ const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
       });
     context.examining = { session, done };
     return {
-      said: `Examiner session ${session} is writing ${tasks === undefined ? "tasks" : plural(Number(tasks), "task")} beside this conversation: edit, release practice and practise meanwhile. A comparison or a promotion waits for it to end, and campaign_status says how many it has held out.`,
+      said: `Examiner session ${session} is writing ${tasks === undefined ? "tasks" : plural(Number(tasks), "task")} beside this conversation: edit, release practice and practise meanwhile. A comparison or a promotion waits for it to end, wait returns when it ends, and campaign_status says how many it has held out.`,
     };
   });
 
@@ -376,11 +369,15 @@ const releaseTool = (context: CampaignContext, bench: Bench): AgentTool =>
       ...(["solves", "level"] as const).flatMap((name) => flag(name, values[name])),
     ]);
     if (result !== 0) throw new Error("the practice release was refused");
-    begin({});
     await refreshCampaign(context, bench);
-    return {
-      said: `Practice release completed: ${String(taskSets(read(context.log)).released.length)} tasks available.`,
-    };
+    const released = taskSets(read(context.log)).released.length;
+    // A release that took nothing is no move (AGENTS.md, section 4): until 20 October it was
+    // recorded and counted, and a conversation of such calls never read as idle.
+    if (released === taskSets(events).released.length) {
+      return { refused: `No practice task can be released now: ${String(released)} tasks available.` };
+    }
+    begin({});
+    return { said: `Practice release completed: ${String(released)} tasks available.` };
   });
 
 /**
@@ -394,7 +391,7 @@ const releaseTool = (context: CampaignContext, bench: Bench): AgentTool =>
 async function comparedOf(
   context: CampaignContext,
   bench: Bench,
-  { events, plan }: Turn,
+  { events }: Turn,
   decided: Decided,
 ): Promise<{ readonly move: Compare; readonly froze?: string; readonly note: string } | { refused: string }> {
   const latest = latestBuilt(events);
@@ -419,9 +416,6 @@ async function comparedOf(
       refused: `harness/ is harness ${short(working)}, which a comparison has read against the reference, and nothing in it has changed since: there is nothing new to compare.`,
     };
   }
-  // The table's budget hold, which its own comparisons meet in `decide` (14 October).
-  const unafforded = decided.move === "compare" ? null : unaffordedAsked(events, plan);
-  if (unafforded !== null) return { refused: `The host refused the compare action: ${unafforded}.` };
   // Another comparison than the table's is the Builder's own, on record as `asked` with what the
   // table named: until 19 October it kept the table's code and reason, and r3's g-3 and g-6 read as
   // controls of the starter while each measured a changed checkpoint.
@@ -543,7 +537,7 @@ const promoteTool = (context: CampaignContext, bench: Bench): AgentTool =>
  *  until 13 October the Builder was not told, and a led Builder bought one of six scored tasks,
  *  which reads a step at 6-0 at the least. */
 function sizeLine({ events, plan }: Turn, scored = Math.min(plan.wanted.target, supplyOf(events).held)) {
-  return `Comparison size: ${sizeLines(scored, { ...plan.wanted, patience: plan.patience })[0] ?? ""}.`;
+  return `Comparison size: ${sizeLines(scored, plan.wanted)[0] ?? ""}.`;
 }
 
 /** The campaign's last Examiner session: writing, stopped with the run that began it, or how it
@@ -729,6 +723,15 @@ export function campaignTools(
           examining,
           ...[releaseTool, compareTool, promoteTool].map((made) => promoting(made(context, bench))),
         ].map((made) => endingWith(made, () => campaignStatus(context, bench))),
+        // On the host's time, as a comparison's wait for the same session is.
+        waitTool(
+          "Wait for the Examiner session writing beside this conversation to end, on the host's time, and return the campaign's facts; at once where none is writing.",
+          async () => {
+            const writing = context.examining;
+            if (writing != null) await bench.within(() => writing.done);
+            return campaignStatus(context, bench);
+          },
+        ),
         tool({
           name: "campaign_status",
           label: "Campaign Status",

@@ -22,11 +22,19 @@ import {
   indexOf,
   items,
   short,
-  strings,
   type Trigger,
   text,
 } from "./folds.ts";
-import { epochsOf, joinedFrontier, pSaid, SHARED_PATH, spentTo, testSaid, validOf } from "./promotion.ts";
+import {
+  epochsOf,
+  joinedTest,
+  pSaid,
+  SHARED_PATH,
+  spentTo,
+  testedOf,
+  testSaid,
+  validOf,
+} from "./promotion.ts";
 
 /** One campaign as the climb table names it: its name and its log's events. */
 export interface Campaign {
@@ -167,12 +175,10 @@ export function safeguardTriggers(log: Index): Trigger[] {
     const rests = items(data.rests).flatMap((rest) => reported.get(text(asRecord(rest)?.comparison)) ?? []);
     const level = count(rests[0]?.last.level);
     const reports = rests.map(({ last }) => last);
-    const joined = joinedFrontier(reports);
+    const joined = joinedTest(reports);
     if (rests.length === 0 || flipP(joined) > level) return [];
     const harness = `${short(text(data.harness))} ${said(joined)} joined at level ${String(level)}`;
-    return [
-      { level, harness, without: joinedFrontier(reports, authored), valid: validityOf(log.events, rests) },
-    ];
+    return [{ level, harness, without: joinedTest(reports, authored), valid: validityOf(log.events, rests) }];
   });
   const author = promotions.filter(({ without, level }) => flipP(without) > level);
   const objective = promotions.filter(({ valid, level }) => flipP(valid) > level);
@@ -201,14 +207,14 @@ export function safeguardTriggers(log: Index): Trigger[] {
   ];
 }
 
-/** Each frontier task's difference in pairs won on validity alone, summed over a promotion's two
- *  readings as `joined` sums them. */
+/** Each tested task's difference in pairs won on validity alone (`testedOf`), summed over a
+ *  promotion's two readings as `joined` sums them. */
 function validityOf(events: readonly LogEvent[], rests: readonly Compared[]): number[] {
   const validity = new Map<string, number>();
   for (const { session, at, last } of rests) {
-    const frontier = new Set(strings(asRecord(last.frontier)?.of));
+    const tested = new Set(testedOf(last).of);
     const pairs = pairsReported(events, { session, index: at, data: last }).filter(({ task }) =>
-      frontier.has(task),
+      tested.has(task),
     );
     for (const pair of pairs) {
       const { fresh, old } = pairings(pair).validity;

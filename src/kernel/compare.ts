@@ -19,22 +19,18 @@
  * than one half is the power (`power`), and every reading says the least share of its untied tasks
  * it detects four times in five (`detectable`).
  *
- * The step is read on the frontier (12 October, the revised plan's M1.4): the scored tasks not
- * exhausted, fixed at the comparison's start (`round.ts`, `begin`). The retained tasks, fixed at
- * the same time from the exhausted ones and an earlier epoch's (`poolOf`, `reports.ts`),
- * regress where they lose more pairs than they win and the loss, read by the frontier's own test
- * mirrored, is at or under `REGRESSION`: `regressed`, which promotes nothing. Until 18 October any
- * net loss did, and in buffer-pr197-opus-m1 one flagged solve of four on one retained task, which
- * the reference passed in all 24 of its solves, vetoed g-5's repeat and g-6 and g-7's
- * promotion. A retained set with no task tallied is `unmeasured`,
- * never no loss: against the provisioned starter nothing is exhausted yet. Until 16 October one
- * whose untied tasks all fell in one family of the two or more its set held read `narrow` and
- * promoted nothing either; in 1,598 recorded readings it never fired, and an old report keeps it.
+ * The step is one test over the frontier, the scored tasks not exhausted, and the retained tasks,
+ * both fixed at the comparison's start (`round.ts`, `begin`; `poolOf`, `reports.ts`). From 12 to
+ * 20 October the retained tasks were a second test, read `regressed`; in 58 real readings it fired
+ * once, on r3's g-12, the starter, which the one test reads `no-step` (p 0.147). Gains on new tasks
+ * may now offset losses on old ones, and the report keeps the two sets' tallies apart. A retained
+ * set with no task tallied is `unmeasured`, never no loss. Until 16 October a step whose untied
+ * tasks all fell in one family read `narrow`; in 1,598 recorded readings it never fired.
  *
- * One comparison's reading, `step`, is its frontier's test at or under the level, 0.02 by default,
+ * One comparison's reading, `step`, is that test at or under the level, 0.02 by default,
  * and a step against the reference promotes (`stepOf`; `decide.ts`). The level is the caller's and
  * recorded with the campaign's opening, so a campaign reads by its own rule whatever the tree's
- * default (`docs/plan.md`, Statistical power and cost). From 10 to 19 October the step was read in
+ * default (`7f0add79:docs/plan.md`, Statistical power and cost). From 10 to 19 October the step was read in
  * two stages: a first reading at or under a trigger, 0.25, bought a repeat on fresh solves, and the
  * two read together had to clear the level. Of 24 readings in 56 campaigns that cleared the level by
  * themselves, 11 were read again and 11 of 11 won at least as many tasks as they lost; the repeat
@@ -43,7 +39,7 @@
  * harnesses 1.13% of the time on 24 untied tasks each won or lost by a pair (`power` at one half).
  *
  * How each ending of a solve enters a pair (`solve.ts` names the endings; the table is the plan's,
- * `docs/plan.md`, Phase 2):
+ * `7f0add79:docs/plan.md`, Phase 2):
  *
  * | The solve ended | Its part in a pair |
  * | --- | --- |
@@ -86,6 +82,7 @@ import { sha256 } from "../meta/digest.ts";
 import { asRecord, isNumber, type JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
+import { median } from "../meta/tally.ts";
 import { conditionsOf, settingId } from "./condition.ts";
 import type { LogEvent } from "./log.ts";
 import { ended, passed, ranUnder, verdictsOf } from "./solves.ts";
@@ -101,6 +98,9 @@ interface Used {
  *  computes of each, lower or higher being better (`better`). */
 export interface ObjectiveRule {
   readonly direction: "lower" | "higher";
+  /** The least share of the larger measure by which one valid answer beats another in a pair
+   *  (`better`): `ROOM` for a comparison begun since 21 October, none before. */
+  readonly room?: number;
 }
 
 /** One task version's counted solves under the reference harness and under the new: true for a
@@ -145,20 +145,12 @@ interface Sides {
   readonly objective?: ObjectiveRule | undefined;
 }
 
-/**
- * What a reading reads of one comparison: each frontier task's difference in pair wins, where the
- * step is read; and the retained tasks', or null where none was tallied, which is unmeasured and
- * never no loss (`comparison.ts`, `compared`).
- */
-interface Stage {
-  readonly frontier: readonly number[];
-  readonly retained: readonly number[] | null;
+/** A median relative gain by the objective, over `tasks` tasks (`objectiveGain`). */
+export interface Gain {
+  readonly median: number;
+  readonly tasks: number;
 }
 
-/** The p at or under which the retained tasks' net loss, read by the frontier's test mirrored,
- *  regresses: one task lost alone reads 0.5 and does not, two of two read 0.25 and do. It was the
- *  trigger's value until 19 October, when the trigger went. */
-const REGRESSION = 0.25;
 /** The chance at which a share of untied tasks won is detected (`detectable`): four times in five. */
 const POWER = 0.8;
 /** What a report holds for a retained set no task was tallied in: no reading, never no loss. */
@@ -178,6 +170,23 @@ export const UNMEASURED = "unmeasured" as const;
  * difference the test does not trust is a tie of the test's own, and none is needed of the pair's.
  */
 const SAME = 1e-9;
+/**
+ * The least improvement by the objective worth counting, as a share of the larger magnitude: the
+ * room floor, recorded with the rule's direction at each comparison's start. One
+ * judgement in every place it is asked: two valid answers closer than it tie in a pair (`better`),
+ * and an answer on record better than one of a harness's own by less leaves that harness no room on
+ * the task (`bettered`), which decides the gate, the frontier and `roomOf`.
+ *
+ * In buffer-fresh-opus-r6 every solve of both sides was valid on all 24 tasks of comparison g-2,
+ * which read 23-0-1 and promoted on gains of 0.01% to 0.65%: at this floor the same solves read
+ * 3-3-18, and its gate held 10 of the 29 drafts it held at `SAME`. The sign-flip test says whether
+ * a difference is believable, and the floor whether it is worth counting: six tasks with room won by
+ * 0.01% read p = 0.016 and promoted. It declines smaller gains even where they are consistent. A
+ * comparison that began before 21 October recorded no floor, and its pairs read at `SAME` as they
+ * were read, while what room its tasks leave now is read at this one. A `--room` term set it per
+ * campaign for a day; no campaign named one, and on 21 October the operator chose one fixed floor.
+ */
+export const ROOM = 0.01;
 
 /**
  * The chance of each total of `sizes` taken with a plus sign, where each is taken so with chance
@@ -242,9 +251,8 @@ export function flipP(differences: readonly number[]): number {
 /** Whether a reading of one harness against itself reads a step either way at `level`: the
  *  smaller of its two one-sided tests at or under it, as a comparison would read a step whichever
  *  sample it took for the new harness. Its two sides are interchangeable by construction, so such
- *  a step says the comparison moved, not a harness. The whole-run reader and the UI count it so;
- *  the decision table holds its control to the level two-sided, and asks it at half the level
- *  (`controlled`, `decide.ts`). */
+ *  a step says the comparison moved, not a harness. The whole-run reader and the UI count it so,
+ *  and no move waits on it: until 20 October the table ended a campaign on its epoch's first. */
 export function readsStepEitherWay(differences: readonly number[], level: number): boolean {
   return Math.min(flipP(differences), flipP(differences.map((one) => -one))) <= level;
 }
@@ -272,48 +280,34 @@ export function sweepOf(level: number): number {
   return sweep;
 }
 
-/** A report's stage, where it holds a frontier and a retained reading. A report written before
- *  12 October holds a pooled tally alone, which reads as none. */
-function stageOf(report: JsonObject): Stage | null {
+/** One comparison's reading of its report at `level`: `step` where the one test over its frontier
+ *  and retained tasks' differences in pair wins together clears it, and `no-step` otherwise. A
+ *  step against the reference promotes (`decide.ts`). A report written before 12 October holds a
+ *  pooled tally alone, with no frontier and retained set, and is refused. */
+export function stepOf(report: JsonObject, level: number): "step" | "no-step" {
   const differences = (held: unknown) => {
     const found = asRecord(held)?.differences;
     return Array.isArray(found) && found.every(isNumber) ? found : null;
   };
   const frontier = differences(report.frontier);
-  const retained = report.retained === UNMEASURED ? null : differences(report.retained);
-  if (frontier === null || (retained === null && report.retained !== UNMEASURED)) return null;
-  return { frontier, retained };
-}
-
-/** One comparison's reading of its report's frontier at `level`: `no-step` short of it, and
- *  `regressed` where its retained tasks lost more pairs than they won, by a loss the mirrored test
- *  reads at or under `REGRESSION`. A step against the reference promotes (`decide.ts`). A report
- *  with no frontier and retained set holds no reading, and is refused. */
-export function stepOf(report: JsonObject, level: number): "step" | "no-step" | "regressed" {
-  const stage = stageOf(report);
-  if (stage === null) throw new Error("a reading needs a frontier and a retained set");
-  if (flipP(stage.frontier) > level) return "no-step";
-  const { retained } = stage;
-  const lost = retained !== null && total(retained) < 0 && flipP(retained.map((one) => -one)) <= REGRESSION;
-  return lost ? "regressed" : "step";
+  const retained = report.retained === UNMEASURED ? [] : differences(report.retained);
+  if (frontier === null || retained === null) {
+    throw new Error("a reading needs a frontier and a retained set");
+  }
+  return flipP([...frontier, ...retained]) <= level ? "step" : "no-step";
 }
 
 /** The objective rule a comparison's start, or its report, carries, or undefined where it fixed
  *  none. A log of before 19 October holds a margin beside the direction, which is no longer read. */
 export function objectiveRuleIn(data: JsonObject): ObjectiveRule | undefined {
-  const { direction } = asRecord(data.objective) ?? {};
-  return direction === "lower" || direction === "higher" ? { direction } : undefined;
+  const { direction, room } = asRecord(data.objective) ?? {};
+  if (direction !== "lower" && direction !== "higher") return undefined;
+  return { direction, ...keyIfDefined("room", isNumber(room) ? room : undefined) };
 }
 
 // Two other readings of a tally, the trinomial test and the chance that the new harness is the
 // better one, decide nothing and are not built: their formulas and what they read of the recorded
-// comparisons are in `docs/plan.md`, "Statistical power and cost" (row C3).
-
-/** How far apart two measures are, as a share of the larger magnitude. */
-function apart(one: number, other: number): number {
-  const larger = Math.max(Math.abs(one), Math.abs(other));
-  return larger === 0 ? 0 : Math.abs(one - other) / larger;
-}
+// comparisons are in `7f0add79:docs/plan.md`, "Statistical power and cost" (row C3).
 
 /**
  * Whether a task tells something of the harness on `side` (the overhaul plan's one definition of
@@ -340,43 +334,62 @@ export function informative(
 }
 
 /**
- * Whether a measure on record is better by the objective than one of the side's
- * own valid answers: another of its own, the other side's, or `best`, its author's
+ * Whether a measure on record is better by the objective, by at least the floor (`ROOM`), than one
+ * of the side's own valid answers: another of its own, the other side's, or `best`, its author's
  * (`task.feasible`). A harness that reaches it wins the pairs against that answer, so the task has
  * room. False where the pair carries no objective; a valid answer with no measure is compared with
  * nothing.
  *
- * One rule since 19 October, where three had stood. The supply's closing rule kept a task open on
- * any two answers the objective told apart, the side's own wins among them; the room rule read the
- * side's own answers alone; and the author's answer had to beat every one of the side's. A harness
- * promoted on wins by the objective therefore stood on a frontier of the very tasks it had won, at
- * answers nobody had bettered: in buffer-fresh-opus-forkedPR223_v0_5_4-r2 the comparison after its
- * promotion scored 18 such tasks of 24, both sides valid and alike in every solve of each, and read
- * 4-0-20; its repeat drew 6 more and read 4-0-6, two untied tasks short of the six a step at 0.02
- * needs. Replayed under this rule the frontier before that comparison held 6 tasks where it held 30.
- * The author's answer came in on 19 October too: of the drafts buffer-pr197-opus-m1's gate refused
- * as answered in 3 of 3 solves, 136 carried an author's answer with a measure, and 15 of them were
- * better than the reference's best answer by more than a hundredth; on esp32-fresh-opus 57 did, and
- * none was better.
+ * The author's answer counts because it proves a better answer exists, which is the room a better
+ * harness can take; it never reaches a solver. On 21 October it counted from solves alone for a few
+ * hours: a live Examiner then had 7 of 7 drafts refused, three of them with an answer of its own 3%
+ * to 20% cheaper than every reference solve's, because the reference repeated one recipe within the
+ * floor. The floor is what keeps the author's precision out: in buffer-fresh-opus-r6 its answers
+ * held drafts by a hundredth of a percent.
  */
 function bettered(pair: Paired, side: "old" | "fresh", best: number | null): boolean {
-  const rule = pair.objective;
-  if (rule === undefined) return false;
-  const own = rule[side].filter(isNumber);
-  const known = [
-    ...own,
-    ...rule[side === "old" ? "fresh" : "old"].filter(isNumber),
-    ...(best === null ? [] : [best]),
-  ];
-  return own.some((mine) => known.some((other) => better(rule, other, mine) === 1));
+  return (
+    (roomLeft(pair, side, [...(pair.objective?.[side === "old" ? "fresh" : "old"] ?? []), best]) ?? 0) > 0
+  );
 }
 
-/** Which of two valid answers' measures is the better: 1 for the first, -1 for the second, 0 where
- *  they are one measure (`SAME`) or one is missing. */
+/** The most that a measure, one of the side's own or one `against` it, is better by than one of
+ *  the side's own valid answers, as a share of the larger magnitude, where that reaches the floor
+ *  (`ROOM`), and 0 under it: the room the task leaves that harness. Null where the pair carries no
+ *  objective or the side no measure. Its author is told it against the side's own answers alone,
+ *  since the other harness's answers are its result on the task (`exam-results`). */
+export function roomLeft(
+  pair: Paired,
+  side: "old" | "fresh",
+  against: readonly (number | null)[],
+): number | null {
+  const rule = pair.objective;
+  const own = rule?.[side].filter(isNumber) ?? [];
+  if (rule === undefined || own.length === 0) return null;
+  const known = [...own, ...against.filter(isNumber)];
+  const most = Math.max(...own.flatMap((mine) => known.map((other) => gainOver(rule, other, mine) ?? 0)));
+  return most >= ROOM ? most : 0;
+}
+
+/** How much better `one` is than `other` by the objective, as a share of the larger magnitude:
+ *  negative where it is worse, 0 where they are one measure (`SAME`), null where one is missing.
+ *  The floor plays no part: this is the fact a floor is held to. */
+export function gainOver(rule: ObjectiveRule, one: number | null, other: number | null): number | null {
+  if (one === null || other === null) return null;
+  // How far apart they are, as a share of the larger magnitude.
+  const larger = Math.max(Math.abs(one), Math.abs(other));
+  const gap = larger === 0 ? 0 : Math.abs(one - other) / larger;
+  if (gap <= SAME) return 0;
+  return (rule.direction === "lower") === one < other ? gap : -gap;
+}
+
+/** Which of two valid answers' measures is the better in a pair: 1 for the first, -1 for the second,
+ *  0 where they are closer than the comparison's floor (`ROOM`; none where its start recorded
+ *  none), one measure (`SAME`), or one is missing. */
 function better(rule: ObjectiveRule, one: number | null, other: number | null): -1 | 0 | 1 {
-  if (one === null || other === null || apart(one, other) <= SAME) return 0;
-  const lower = one < other ? 1 : -1;
-  return rule.direction === "lower" ? lower : lower === 1 ? -1 : 1;
+  const gain = gainOver(rule, one, other) ?? 0;
+  if (gain === 0 || Math.abs(gain) < (rule.room ?? 0)) return 0;
+  return gain > 0 ? 1 : -1;
 }
 
 /** One task's pairings: every solve of the new harness against every solve of the reference one,
@@ -411,18 +424,54 @@ export function pairings(pair: Paired) {
   };
 }
 
-/** How many of `pairs` the objective decided: tasks won or lost that would tie on validity alone. */
+/** Whether the objective decided a task's pairings: they read otherwise on validity alone. */
+function byObjective({ fresh, old, validity }: ReturnType<typeof pairings>): boolean {
+  return Math.sign(fresh - old) !== Math.sign(validity.fresh - validity.old);
+}
+
+/** How many of `pairs` the objective decided (`byObjective`). */
 export function decidedByObjective(pairs: readonly Paired[]): number {
-  return pairs.filter((pair) => {
-    const { fresh, old, validity } = pairings(pair);
-    return Math.sign(fresh - old) !== Math.sign(validity.fresh - validity.old);
-  }).length;
+  return pairs.filter((pair) => byObjective(pairings(pair))).length;
+}
+
+/** How much better the new side's median valid measure is than the reference's, as a share of the
+ *  larger magnitude; null where the pair carries no objective or a side no measure. */
+function medianGain(pair: Paired): number | null {
+  const rule = pair.objective;
+  if (rule === undefined) return null;
+  return gainOver(rule, median(rule.fresh.filter(isNumber)), median(rule.old.filter(isNumber)));
+}
+
+/** How far apart the two sides' median valid measures were where the objective alone decided a
+ *  task, as a share of the larger magnitude; null where validity decided it, or it tied. */
+export function objectiveMargin(pair: Paired): number | null {
+  const counted = pairings(pair);
+  const gain = counted.fresh !== counted.old && byObjective(counted) ? medianGain(pair) : null;
+  return gain === null ? null : Math.abs(gain);
+}
+
+/**
+ * The median relative gain by the objective over the tasks of `pairs` the new harness won: each
+ * task's median valid measure against the reference's, as a share of the larger magnitude
+ * (`apart`), positive where the new one is better, over the won tasks with a valid measure on both
+ * sides (`tasks`). Null where none has. A report beside the tally, which decides nothing (the
+ * improvement plan's C1): in r3 the pair dropped the size of each difference, and g-3's 18 wins
+ * added under no margin had a median gain of 0.00076%.
+ */
+export function objectiveGain(pairs: readonly Paired[]): Gain | null {
+  const gains = pairs.flatMap((pair) => {
+    const { fresh, old } = pairings(pair);
+    const gain = fresh > old ? medianGain(pair) : null;
+    return gain === null ? [] : [gain];
+  });
+  const middle = median(gains);
+  return middle === null ? null : { median: middle, tasks: gains.length };
 }
 
 /** Whether the harness on `side` closed the task: valid in every counted solve, and not
- *  `informative` for it, so that it can only tie again at that budget or be lost. The exhausted
- *  fold reads it (`poolOf`, `reports.ts`). Until 12 October the supply read validity alone; until
- *  19 October it kept a rule of its own beside `informative` (`bettered`). */
+ *  `informative` for it, so that it can only tie again at that budget or be lost. Until 12 October
+ *  the supply read validity alone; until 19 October it kept a rule of its own beside `informative`
+ *  (`bettered`). */
 export function closedTo(pair: Paired, side: "old" | "fresh", best: number | null = null): boolean {
   return pair[side].length > 0 && pair[side].every(Boolean) && !bettered(pair, side, best);
 }

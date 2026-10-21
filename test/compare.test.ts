@@ -6,14 +6,18 @@ import { describe, expect, it } from "bun:test";
 import {
   closedTo,
   decidedByObjective,
+  objectiveGain,
+  objectiveMargin,
   detectable,
   draw,
   flipP,
   informative,
   objectiveRuleIn,
+  type Paired,
   pairings,
   pairsOf,
   power,
+  roomLeft,
   scored,
   stepOf,
   sweepOf,
@@ -47,9 +51,8 @@ const units = (wins: number, losses: number, by = 1, ties = 0): number[] => [
   ...Array.from({ length: losses }, () => -by),
   ...Array.from({ length: ties }, () => 0),
 ];
-/** A comparison's report as the log holds what a stage reads: each frontier task's difference, where
- *  the step is read; the retained tasks', or `unmeasured` where none was tallied; and each family's
- *  tallies on the two. */
+/** A comparison's report as the log holds what its step reads: each frontier task's difference; the
+ *  retained tasks', or `unmeasured` where none was tallied; and each family's tallies on the two. */
 const report = (
   frontier: readonly number[],
   retained: readonly number[] | null = null,
@@ -290,21 +293,20 @@ describe("one reading", () => {
     expect(sweepOf(STRICT)).toBe(6);
   });
 
-  it("reads the step on the frontier and tests the retained losses by the same mirrored test at 0.25, an empty retained set being unmeasured and never no loss", () => {
+  it("reads the frontier and the retained tasks in one test, an empty retained set being unmeasured and never no loss", () => {
     const fixes = [16, 16, 16, 16];
-    const broke = [-16, -16, -16];
-    // One comparison reads its retained loss at 0.25: three tasks lost is p 0.125 and regresses,
-    // two lost is p 0.25 and does too, and one task lost alone is p 0.5 and does not.
-    expect(stepOf(report(fixes, broke), LEVEL)).toBe("regressed");
-    expect(stepOf(report(fixes, [-4, -4]), LEVEL)).toBe("regressed");
-    expect(stepOf(report(fixes, [0, -4, 0]), LEVEL)).toBe("step");
-    expect(stepOf(report(fixes, [-4, -4, -4, -4]), LEVEL)).toBe("regressed");
-    expect(stepOf(report(fixes, [0, 4]), LEVEL)).toBe("step");
-    expect(stepOf(report(units(6, 0, 4), [-4, -4]), STRICT)).toBe("regressed");
-    expect(stepOf(report(units(6, 0, 4), [-4]), STRICT)).toBe("step");
-    // A frontier short of the level reads `no-step` whatever the retained tasks lost: `regressed`
-    // is said of a step alone, so a recorded comparison settled again reads as it did.
-    expect(stepOf(report(fixes.slice(1), broke), LEVEL)).toBe("no-step");
+    // Since 20 October the retained tasks enter the frontier's test. Four won and three lost by as
+    // many pairs is p 0.5 and no step; until then it read `regressed`, the same in what it promoted.
+    expect(stepOf(report(fixes, [-16, -16, -16]), LEVEL)).toBe("no-step");
+    expect(stepOf(report(units(6, 0, 4), [-4, -4]), STRICT)).toBe("no-step");
+    // One retained task lost by a small margin leaves a wide frontier's step standing (p 0.0625),
+    // and at 0.02 sinks a 6-0 one (p 0.0625), which the second test let through.
+    expect(stepOf(report(fixes, [-4]), LEVEL)).toBe("step");
+    expect(stepOf(report(units(6, 0, 4), [-4]), STRICT)).toBe("no-step");
+    // What it gives up: a retained win counts as a frontier one, so it lifts a 5-0 frontier to a
+    // step at 0.02 (p 1/64), which the frontier alone does not clear (p 1/32).
+    expect(stepOf(report(units(5, 0, 4), [4]), STRICT)).toBe("step");
+    expect(stepOf(report(units(5, 0, 4)), STRICT)).toBe("no-step");
     expect(stepOf(report(units(0, 0, 1, 4), [-4]), LEVEL)).toBe("no-step");
     // Against the provisioned starter nothing is exhausted yet: the first promotion's reading
     // holds no retained task, and promotes on the frontier alone.
@@ -390,6 +392,17 @@ describe("a task's pairings", () => {
         objective: { ...lower, old: [10.05, 10 + 1e-9], fresh: [10, null] },
       }),
     ).toEqual({ fresh: 1, old: 0 });
+    // Under a room floor, the comparison's term since 21 October, two valid answers closer than it
+    // tie: 10 against 10.05 is half a percent. 8 against 10 still sets them apart.
+    const floored = { ...lower, room: 0.01 } as const;
+    expect(
+      won({
+        task: "t",
+        old: [P, P],
+        fresh: [P, P],
+        objective: { ...floored, old: [10.05, 10], fresh: [10, 8] },
+      }),
+    ).toEqual({ fresh: 2, old: 0 });
     // Validity is read first: a refused answer loses to a valid one whatever either measures, and
     // a measure on a refused answer is never read. Between the two valid answers the objective
     // decides, so the new harness, valid once at 100, loses that pairing too.
@@ -429,6 +442,77 @@ describe("a task's pairings", () => {
     ).toBe(1);
   });
 
+  it("reports the median relative gain by the objective on the tasks the new harness won, over those with a measure on both sides", () => {
+    const even = { task: "e", old: [P, P], fresh: [P, P] };
+    const higher = { direction: "higher" as const };
+    const gain = objectiveGain([
+      // Won by the objective: 10 to 8, lower better, is 0.2 of the larger; 4 to 5, higher, is 0.2.
+      { ...even, objective: { ...lowerRule, old: [10, 10], fresh: [8, 8] } },
+      { ...even, objective: { ...higher, old: [4, 4], fresh: [5, 5] } },
+      { ...even, objective: { ...lowerRule, old: [10, 10], fresh: [9, 9] } },
+      // Won on validity with a worse measure: the gain is negative, a sixth.
+      {
+        task: "v",
+        old: [P, F, F],
+        fresh: [P, P],
+        objective: { ...lowerRule, old: [5, null, null], fresh: [6, 6] },
+      },
+      // Lost, and won where the reference has no valid measure: neither counts.
+      { ...even, objective: { ...lowerRule, old: [8, 8], fresh: [10, 10] } },
+      { ...even, old: [F, F], objective: { ...lowerRule, old: [null, null], fresh: [3, 3] } },
+    ]);
+    expect(gain?.tasks).toBe(4);
+    expect(gain?.median).toBeCloseTo(0.15, 12);
+    expect(objectiveGain([even])).toBeNull();
+    expect(
+      objectiveGain([{ ...even, objective: { ...lowerRule, old: [8, 8], fresh: [10, 10] } }]),
+    ).toBeNull();
+  });
+
+  it("measures how far apart a task won by the objective alone was, and nothing where validity decided it or it tied", () => {
+    const even = { task: "e", old: [P, P], fresh: [P, P] };
+    // Won by the objective alone: 100 to 99.9, a thousandth of the larger, either side winning.
+    expect(
+      objectiveMargin({ ...even, objective: { ...lowerRule, old: [100, 100], fresh: [99.9, 99.9] } }),
+    ).toBeCloseTo(0.001, 12);
+    expect(
+      objectiveMargin({ ...even, objective: { ...lowerRule, old: [99.9, 99.9], fresh: [100, 100] } }),
+    ).toBeCloseTo(0.001, 12);
+    // Won on validity, tied at one measure, or no objective at all: no margin.
+    const validity = { ...even, old: [P, F], objective: { ...lowerRule, old: [100, null], fresh: [99, 99] } };
+    expect(objectiveMargin(validity)).toBeNull();
+    expect(
+      objectiveMargin({ ...even, objective: { ...lowerRule, old: [100, 100], fresh: [100, 100] } }),
+    ).toBeNull();
+    expect(objectiveMargin(even)).toBeNull();
+  });
+
+  it("counts a gain by the objective in a pair only at the room floor, the one it holds room to", () => {
+    // Six tasks with room: the reference measures 100, its author's answer 70, and the new harness
+    // 99.99. Read at floating-point equality, as a comparison that recorded no floor is, the
+    // 0.01% gain wins all six, which reads a step at 0.02.
+    const one = (n: number, room?: number): Paired => ({
+      task: `t${String(n)}`,
+      old: [P, P],
+      fresh: [P, P],
+      objective: {
+        direction: "lower",
+        ...keyIfDefined("room", room),
+        old: [100, 100],
+        fresh: [99.99, 99.99],
+      },
+    });
+    const precision = (room?: number) => [1, 2, 3, 4, 5, 6].map((n) => one(n, room));
+    expect(tally(precision())).toEqual({ wins: 6, losses: 0, ties: 0 });
+    expect(flipP(scored(precision()).differences)).toBe(1 / 64);
+    // At the floor the same answers tie, while the room the author's answer leaves stays told.
+    const floored = precision(0.01);
+    expect(tally(floored)).toEqual({ wins: 0, losses: 0, ties: 6 });
+    expect(roomLeft(one(1, 0.01), "old", [70])).toBeCloseTo(0.3);
+    expect(informative(one(1, 0.01), "old", new Set(), new Map([["t1", 70]]))).toBe(true);
+    expect(roomLeft({ task: "t", old: [F], fresh: [P] }, "old", [70])).toBeNull();
+  });
+
   it("calls a task informative for a side valid on some solves and not all, bettered by the objective, or on none where a valid answer is on record", () => {
     const pair = (old: boolean[], measured: (number | null)[] = []) => ({
       task: "t",
@@ -452,12 +536,14 @@ describe("a task's pairings", () => {
     // Valid in every solve at one measure, or within a billionth of it: no room (#144's hostile case).
     expect(informative(pair([P, P], [100, 100]), "old", nobody)).toBe(false);
     expect(informative(pair([P, P], [100, 100 + 1e-8]), "old", nobody)).toBe(false);
-    // Its own answers apart: its better one is there to find (until 19 October only past a margin
-    // of 0.01, so 100 against 101 had no room).
-    expect(informative(pair([P, P], [100, 101]), "old", nobody)).toBe(true);
+    // Its own answers apart by the room floor or more: its better one is there to find. Closer than
+    // that, the task is closed, as r6's g-2 won its tasks by rounding (`ROOM`).
+    expect(informative(pair([P, P], [100, 102]), "old", nobody)).toBe(true);
+    expect(informative(pair([P, P], [100, 101]), "old", nobody)).toBe(false);
     // Alike, where an author's answer on record is better: a better harness can reach it, and wins
     // the pairs against them (19 October). One that is the same, or worse, leaves none.
     expect(informative(pair([P, P], [100, 100]), "old", nobody, new Map([["t", 99]]))).toBe(true);
+    expect(informative(pair([P, P], [100, 100]), "old", nobody, new Map([["t", 99.5]]))).toBe(false);
     expect(informative(pair([P, P], [100, 100]), "old", nobody, new Map([["t", 100]]))).toBe(false);
     expect(informative(pair([P, P], [100, 100]), "old", nobody, new Map([["t", 120]]))).toBe(false);
     expect(informative(pair([P, P], [100, 100]), "old", nobody, new Map([["u", 90]]))).toBe(false);
@@ -485,6 +571,7 @@ describe("a task's pairings", () => {
       objective: { direction: "lower" as const, old: [100, 100], fresh },
     });
     expect(informative(against([90, 100]), "old", nobody)).toBe(true);
+    expect(informative(against([99.9, 99.9]), "old", nobody)).toBe(false);
     expect(informative(against([120, 120]), "old", nobody)).toBe(false);
     expect(informative(against([100, 100]), "old", nobody)).toBe(false);
   });
@@ -504,6 +591,18 @@ describe("a task's pairings", () => {
     expect(closedTo(pair([12, 12], [10, 10]), "old")).toBe(false);
     // Its own answers apart: its better one is there to find every time.
     expect(closedTo(pair([12, 12], [10, 11]), "fresh")).toBe(false);
+    // Apart by less than the room floor is closed: the next harness can only win it by rounding.
+    expect(closedTo(pair([12, 12], [10, 10.05]), "fresh")).toBe(true);
+    // Closure reads the one floor, even where the comparison began with none recorded.
+    expect(
+      closedTo(
+        {
+          ...pair([12, 12], [10, 10.05]),
+          objective: { direction: "lower", room: 0, old: [12, 12], fresh: [10, 10.05] },
+        },
+        "fresh",
+      ),
+    ).toBe(true);
     // One better answer of the other side's opens it, as many as there are.
     expect(closedTo(pair([12, 9], [10, 10]), "fresh")).toBe(false);
     // Within a billionth is alike.

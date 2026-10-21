@@ -6,7 +6,7 @@
  * of the answer and the task, under the wall a seat's commands run under with the network closed. A
  * check's tools run in that same wall. No wall of the verifier's own is needed, as v1's was while
  * its Builder wrote the checks: here an answer is data and a check is the exam side's code
- * (`docs/simplify.md`, W6).
+ * (`7f0add79:docs/simplify.md`, W6).
  *
  * The verdict is a pass, a fail naming the checks that refused the answer, faulty when a check
  * itself failed on the request (it threw, returned no boolean, or is missing), or a non-result when
@@ -321,18 +321,21 @@ export function checkEvaluationRequest(
 
 /**
  * A check program's files by their path under its directory, nested directories walked, in code-unit
- * order. A program is plain files: a symlink, or anything else that is neither a file nor a
+ * order, each directory read in that order so a refusal names the same entry on every filesystem. A
+ * program is plain files: a symlink, or anything else that is neither a file nor a
  * directory, is refused rather than followed, since a link would let the program's version and its
  * cell's copy read bytes from outside the directory the version names.
  */
 export function checkProgramFiles(checks: string): string[] {
   const walk = (under: string): string[] =>
-    readdirSync(join(checks, under), { withFileTypes: true }).flatMap((entry) => {
-      const path = under === "" ? entry.name : `${under}/${entry.name}`;
-      if (entry.isDirectory()) return walk(path);
-      if (entry.isFile()) return [path];
-      throw new Error(`the check program's ${path} is neither a file nor a directory`);
-    });
+    readdirSync(join(checks, under), { withFileTypes: true })
+      .toSorted((one, other) => compareCodeUnits(one.name, other.name))
+      .flatMap((entry) => {
+        const path = under === "" ? entry.name : `${under}/${entry.name}`;
+        if (entry.isDirectory()) return walk(path);
+        if (entry.isFile()) return [path];
+        throw new Error(`the check program's ${path} is neither a file nor a directory`);
+      });
   return walk("").sort(compareCodeUnits);
 }
 

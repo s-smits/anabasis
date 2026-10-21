@@ -69,7 +69,7 @@ const IDLE: readonly Step[] = [FINISH_IDLE, FINISH_IDLE];
 
 // Five held-out tasks all won read a step at 0.05 and none at the tree's default, 0.02, which takes
 // six: this suite is of who makes the moves, so it names the level its five tasks can read at, and
-// a patience of three, the most the opening's bound holds at five tasks (`openingLines`).
+// a patience of three.
 const LEVEL = ["--level", "0.05", "--patience", "3"];
 const FLAGS = ["--practice", "2", "--solves", "1", "--sessions", "1", "--target", "5", ...LEVEL];
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-hb-")));
@@ -157,6 +157,7 @@ describe("a campaign run by its live Builder", () => {
     const seats: Seats = {
       seated: builderScript(base, [
         ["examine", {}],
+        ["wait", {}],
         ["finish", { note: "The campaign needs more held-out tasks." }],
       ]),
       examine: (request) => {
@@ -226,6 +227,13 @@ describe("a campaign run by its live Builder", () => {
     expect(examinerCall?.text).not.toContain("Suggested action");
     expect(examinerCall?.text).toContain("Campaign facts: 5 held-out tasks, 2 practice tasks.");
     expect(examinerCall?.text).not.toContain("check-product");
+    // wait returns once the session beside it has ended, with the campaign's facts.
+    const events = read(join(REPO, ".ana", "d2", name, LOG_FILE));
+    const ended = events.findIndex(({ kind, data }) => kind === "exam.finished" && data.session === "x-1");
+    const waited = events.findIndex(({ kind, data }) => kind === CALLED && data.tool === "wait");
+    expect(ended).toBeGreaterThan(-1);
+    expect(waited).toBeGreaterThan(ended);
+    expect(events[waited]?.data.text).toContain("Campaign facts:");
   });
 
   it("starts the campaign's first Examiner session as the conversation opens, where the table names one", async () => {
@@ -320,9 +328,8 @@ describe("a campaign run by its live Builder", () => {
     const at = (kind: string) => kinds.indexOf(kind);
     // A release spends nothing and goes on beside the session: until 19 October it waited for it,
     // and each of three replicates' Builders waited 1.6 to 2.6 hours with no practice task.
-    const released = read(log).findIndex(
-      ({ kind, data }, index) => kind === MOVED && data.move === "prepare" && index > at("exam.started"),
-    );
+    // Read by its call: a release that takes nothing is answered too, and writes no move.
+    const released = at(`${CALLED}:release_practice`);
     expect(released).toBeGreaterThan(at("exam.started"));
     expect(released).toBeLessThan(at(EXAMINED));
     expect(at("exam.started")).toBeLessThan(at(`${CALLED}:practice`));
@@ -508,9 +515,10 @@ describe("a campaign run by its live Builder", () => {
                 'mkdir -p "$HOME/fixtures/links"; printf LINK-CANARY > "$HOME/fixtures/links/kept.json"; first=$(ls "$HOME/practice" | head -1); ln -sf "$HOME/fixtures/links/kept.json" "$HOME/practice/$first"',
             },
           ],
-          ["examine", {}],
-          ["bash", { command: 'cat "$HOME/fixtures/links/kept.json"' }],
+          // A release that takes nothing is no move, and it lays the practice out again all the same.
           ["release_practice", {}],
+          ["bash", { command: 'cat "$HOME/fixtures/links/kept.json"' }],
+          ["examine", {}],
           ["finish", { note: "The host's move limit should stop before this call." }],
         ],
       ),
@@ -524,13 +532,14 @@ describe("a campaign run by its live Builder", () => {
         }),
     };
     await harnessBuilder(
-      [...seeded(name), "--target", "5", "--practice", "2", ...LEVEL, "--moves", "4"],
+      [...seeded(name), "--target", "5", "--practice", "2", ...LEVEL, "--moves", "3"],
       seats,
     );
     const shells = of(name, CALLED).filter(({ tool }) => tool === "bash");
     expect(shells).toHaveLength(2);
     expect(shells[1]?.text).toContain("LINK-CANARY");
-    expect(of(name, MOVED)).toHaveLength(5);
+    // The examine is the last permitted move; the conversation is a move that `--moves` does not count.
+    expect(of(name, MOVED)).toHaveLength(4);
     expect(of(name, CALLED).some(({ tool }) => tool === "finish")).toBe(false);
   });
 
@@ -1205,8 +1214,8 @@ describe("a campaign's endings", () => {
       examine: unwritten,
     };
     // Three sessions that fail their practice and change nothing are three moves towards the
-    // patience, so it is four here, at six tasks, which the opening's bound allows at the level;
-    // one practice task leaves the seed's seven six to score.
+    // patience, so it is four here, at six tasks; one practice task leaves the seed's seven six to
+    // score.
     const longer = ["--turns", "3", "--practice", "1", "--target", "6", "--patience", "4"];
     expect(await harnessBuilder([...seeded(editing), ...FLAGS, ...longer], edits)).toMatchObject({
       move: "end",
@@ -1365,9 +1374,9 @@ describe("a campaign's endings", () => {
     const flags = seeded(name).slice(0, -2);
     const seats: Seats = { seated: passing() };
     const printed = spyOn(console, "log");
-    // One attempt: at 24 tasks a longer patience passes the bound an opening may risk (`openingLines`),
-    // and the opening keeps it for the command it prints. Only an attended campaign waits for the
-    // word: since 16 October an unattended launch admits every check its author decides (#186).
+    // A patience of one, which the opening keeps for the command it prints. Only an attended
+    // campaign waits for the word: since 16 October an unattended launch admits every check its
+    // author decides (#186).
     const ending = await harnessBuilder([...flags, "--patience", "1", "--hitl"], seats);
     const lines = printed.mock.calls.map(([line]) => (isString(line) ? line : ""));
     printed.mockRestore();

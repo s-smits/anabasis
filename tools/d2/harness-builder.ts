@@ -9,7 +9,7 @@
  *   bun tools/d2/harness-builder.ts --name queues --prompt "<the domain, in the operator's words>" \
  *     --solver claude/claude-sonnet-5-5 --budget 60 --builder ... --examiner ... --reviewer ...
  *
- * A campaign is a loop of moves over one log (`docs/plan.md`, "The process"). Until 2026-10-09 a
+ * A campaign is a loop of moves over one log (`7f0add79:docs/plan.md`, "The process"). Until 2026-10-09 a
  * session carried each one by hand: it read the view, chose a move by a skill's walk, and typed
  * the command with its flags. This command does that. It reads the log, asks move 7 for the one
  * move that follows (`decide`, `src/builder/decide.ts`), prints it with its reason, makes it by
@@ -64,10 +64,11 @@
  * these are the operator's conditions, and a comparison logs its own terms at its start. The
  * setting is the log's own record (`campaign.setting`), and every command refuses another.
  *
- * **The budget is one total** (`docs/plan.md`, row F49). Each move's cap is what is left of it:
+ * **The budget is one total** (`7f0add79:docs/plan.md`, row F49). Each move's cap is what is left of it:
  * the total less every billed dollar the log holds, and where less is left than one solve is held
- * at, the campaign ends on its budget. **What it risks** is said as it opens, and an opening whose
- * false promotion over its patience may pass 10% is refused (`openingLines`, `src/kernel/size.ts`).
+ * at, the campaign ends on its budget. **What it risks** is said as it opens: what one reading of
+ * its target can show and its per-comparison rate (`sizeLines`, `src/kernel/size.ts`), and a paid
+ * campaign whose target is too small for a step at its level is refused there.
  *
  * **A campaign runs unattended** (row F29; the operator, 12 and 16 October): it admits every check
  * its author's own computation decides, a drafted exam's objective among them, freezes an exam whose reading holds no fault and promotes a harness a comparison
@@ -79,17 +80,16 @@
  * runs by from that move on. A word changes nothing in the move that was running when it came.
  *
  * **Endings.** A campaign ends on its budget, on the stop rule, on an exam that was not accepted,
- * on tasks that could not be made to leave room, on its environment, on the operator's word, on
- * its control (`decide.ts`) or, led by its Builder, once three of its conversations in a row made
- * no campaign move (`idleOf`), and its log's last event says which (`campaign.ended`). With
- * `--handover <dir>` it then writes what it hands over there: the reference harness as a directory
- * that stands by itself, the public rules and the closing report (`close.ts`, row F51). A move that
- * threw after it had begun is the environment's ending, and run again the command goes on from the
- * log; one whose session is on record as crashed is the provider's failure, which the campaign
- * goes on from (`goesOn`). A session a stopped run left open is ended on record as killed before
- * the next run's first move (`endCut`), keeping its last practised harness where the saved state
- * opens. A move refused before it began is no ending: the refusal is printed,
- * nothing kept.
+ * on tasks that could not be made to leave room, on its environment, on the operator's word or, led
+ * by its Builder, once three of its conversations in a row made no campaign move (`idleOf`), and
+ * its log's last event says which (`campaign.ended`). With `--handover <dir>` it then writes what
+ * it hands over there: the reference harness as a directory that stands by itself, the public rules
+ * and the closing report (`close.ts`, row F51). A move that threw after it had begun is the
+ * environment's ending, and run again the command goes on from the log; one whose session is on
+ * record as crashed is the provider's failure, which the campaign goes on from (`goesOn`). A
+ * session a stopped run left open is ended on record as killed before the next run's first move
+ * (`endCut`), keeping its last practised harness where the saved state opens. A move refused before
+ * it began is no ending: the refusal is printed, nothing kept.
  *
  * A move is recorded as it begins (`campaign.move`), with the code of the table's row that chose it and its
  * reason, so the log holds what was decided before what was done. Each run of the command keeps a receipt beside the
@@ -112,9 +112,10 @@ import { pendingWords } from "#src/builder/word.ts";
 import { keepPractised } from "#src/builder/session.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { unadmitted } from "#src/kernel/acceptance.ts";
+import { sweepOf } from "#src/kernel/compare.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { cutSessions, latestBuilt, promoted } from "#src/kernel/reports.ts";
-import { openingLines } from "#src/kernel/size.ts";
+import { sizeLines } from "#src/kernel/size.ts";
 import { existsSync, mkdirSync } from "#src/meta/filesystem.ts";
 import { isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
@@ -147,6 +148,7 @@ import {
   type Turn,
   turnOf,
   type Values,
+  flagsHelp,
 } from "./campaign-terms.ts";
 import { checkpointCommand } from "./checkpoint.ts";
 import { closeCommand } from "./close.ts";
@@ -288,6 +290,7 @@ async function make(
         ...flag("minutes", values["exam-minutes"]),
         ...flag("turns", values["exam-turns"]),
         ...flag("reference-home", values["exam-reference"]),
+        ...flag("results", values["exam-results"]),
       ],
       seats.examine,
       // The campaign's own seat, so the tries wait on the load and share the reserve (14 October).
@@ -516,8 +519,8 @@ function closed(log: string, from: number): boolean {
 
 /**
  * Refuses a flag that names another setting than the campaign's, with both, as every command
- * refuses it; the scored tasks are the record's where it names them. Until 11 October the record's
- * model turns stood in for the flag (`docs/simplify.md`, A1), so another number ran at the record's.
+ * refuses it. Until 11 October the record's
+ * model turns stood in for the flag (`7f0add79:docs/simplify.md`, A1), so another number ran at the record's.
  */
 function settingHeld(log: string, given: Values): void {
   const recorded = recordedSetting(read(log));
@@ -529,8 +532,7 @@ function settingHeld(log: string, given: Values): void {
       "solver-window": given["solver-window"],
       "solve-minutes": given["solve-minutes"],
       "solve-model-turns": given["solve-model-turns"],
-      tasks: recorded.tasks?.join(","),
-      target: recorded.tasks === null ? given.target : String(recorded.target),
+      target: given.target,
     },
     recorded,
   );
@@ -580,7 +582,14 @@ export async function harnessBuilder(
     const turn = turnOf({ log, values, opening, seats, held, campaign });
     const { plan } = turn;
     if (made === 0) {
-      for (const line of openingLines({ ...plan.wanted, patience: opening.patience })) console.log(line);
+      const size = sizeLines(plan.wanted.target, plan.wanted);
+      for (const line of size) console.log(line);
+      // A paid campaign that could never read a step is refused before it is paid for (rule 14):
+      // until 20 October it ran, and the table sent for tasks no target that small could use.
+      const sweep = sweepOf(plan.wanted.level);
+      if (paid === "paid" && plan.wanted.target < sweep) {
+        throw new Error(`${size[0] ?? ""}: name a --target of at least ${String(sweep)}`);
+      }
     }
     const decided = decide(events, plan);
     // Led by its Builder, every move but set-up and what the host owes (`hostOwed`) is the
@@ -624,6 +633,11 @@ export async function harnessBuilder(
     const begin = beginning(log, decided);
     try {
       await make(decided, turn, begin);
+      // Inside the `try`, so a move that changed nothing ends the campaign as any other move that
+      // threw does: until 20 October the process exited here with no ending on record.
+      if (read(log).length <= events.length + 1) {
+        throw new Error(`the move changed nothing in ${log}: made again it would change nothing again`);
+      }
     } catch (error) {
       // A move the provider's limit ended, or whose session crashed, is waited out and the campaign
       // goes on: it counts against `--moves` as the move it was, since it is on record as one, and
@@ -639,13 +653,16 @@ export async function harnessBuilder(
       }
       throw error;
     }
-    if (read(log).length <= events.length + 1) {
-      throw new Error(`the move changed nothing in ${log}: made again it would change nothing again`);
-    }
     last = decided.move;
     made += 1;
     await waitCrashed(log, seats.host);
   }
 }
 
-if (import.meta.main) await harnessBuilder(Bun.argv.slice(2));
+if (import.meta.main) {
+  if (Bun.argv.includes("--help")) {
+    console.log(`bun tools/d2/harness-builder.ts --name <name> ...\n${flagsHelp()}`);
+  } else {
+    await harnessBuilder(Bun.argv.slice(2));
+  }
+}

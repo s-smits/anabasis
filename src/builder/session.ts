@@ -371,7 +371,7 @@ export async function session(
         family: task.family,
         ...record(recorded, version, parent.digest),
       })),
-      // The count it opens with is the one `practice` holds it to: its own, or its cap's where fewer.
+      // The count it opens with is the one `practice` holds it to (`practiceLeft`).
       {
         ...limits,
         practiceSolves: practiceLeft(bench, recorded),
@@ -416,7 +416,7 @@ export async function session(
     ...walled(bench),
     practiceTool(bench),
     traceTool(bench),
-    openingTool(campaign === undefined ? first : opening, bench.said),
+    openingTool(campaign === undefined ? first : opening, bench.said.opening),
     finishTool(bench, campaign?.unmeasured),
     ...(campaign?.tools ?? []),
   ].map((each) => endingWith(each, footer));
@@ -629,7 +629,7 @@ async function left(events: readonly LogEvent[], request: BuildRequest, parent: 
  * again: it is read from the log, whether it ran now or in an earlier run of the command, and one
  * that did not end whole is refused (`spent`). It is the session of a round, which then compares
  * what it left, and the whole of a session run with no comparison after it: the plan's checkpoint
- * is several sessions and then one comparison (`docs/plan.md`, Phase 5).
+ * is several sessions and then one comparison (`7f0add79:docs/plan.md`, Phase 5).
  */
 export async function sessionOnce(
   request: BuildRequest,

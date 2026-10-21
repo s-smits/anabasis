@@ -64,8 +64,16 @@ describe("a run's writers", () => {
         cwd: "/wt",
         args: ["nice", "-n", "19", "bun", "tools/d2/harness-builder.ts", "--name", "r1"],
       },
+      // Started by hand with the name joined to its flag, as `parseArgs` takes it.
+      { pid: 16, cwd: "/wt", args: ["bun", "tools/d2/harness-builder.ts", "--name=r1"] },
+      { pid: 17, cwd: "/wt", args: ["bun", "tools/d2/harness-builder.ts", "--name=r10"] },
+      // A shell whose command line names the campaign command runs no script of its own, and a
+      // script belongs to the worktree it lives in, whichever directory started it.
+      { pid: 18, cwd: "/wt", args: ["zsh", "-c", "bun tools/d2/harness-builder.ts --name r1"] },
+      { pid: 19, cwd: "/elsewhere", args: ["/bin/bun", "/wt/tools/d2/harness-builder.ts", "--name", "r1"] },
+      { pid: 20, cwd: "/wt", args: ["bun", "/other/tools/d2/harness-builder.ts", "--name", "r1"] },
     ];
-    expect(writers(round, running).map(({ pid }) => pid)).toEqual([1, 2, 6, 12, 14, 15]);
+    expect(writers(round, running).map(({ pid }) => pid)).toEqual([1, 2, 6, 12, 14, 15, 16, 19]);
     const solve: Run = { ...round, name: "r1-c01-opus-1234", end: "solve.finished" };
     expect(writers(solve, running).map(({ pid }) => pid)).toEqual([5]);
   });
@@ -95,5 +103,11 @@ describe("a run's receipts", () => {
     expect(read.map(({ session }) => session)).toEqual(["b-1", "run-1", "run-2"]);
     expect(read.at(-1)?.flags).toEqual(["--project", "p", "--budget", "800"]);
     expect(nextRun(log)).toBe("run-3");
+  });
+
+  it("orders two runs started in one millisecond by their number, so the tenth is the last", () => {
+    kept("run-9", "2026-10-16T08:00:00.000Z", ["--project", "p"]);
+    kept("run-10", "2026-10-16T08:00:00.000Z", ["--project", "p", "--budget", "900"]);
+    expect(receipts(log).at(-1)?.session).toBe("run-10");
   });
 });

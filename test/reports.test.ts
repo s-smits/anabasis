@@ -262,7 +262,7 @@ describe("the stop rule", () => {
     expect(stopRule([...two, reported("g-1", "step", "h3")])).toEqual(counted(2, 0));
     // Every comparison on record is read, whatever setting id it carries: the id names the host's
     // code too, so until 2026-10-11 a tree moved to a new commit began the count again
-    // (`docs/simplify.md`, A4). A harness compared again under another id is one harness still.
+    // (`7f0add79:docs/simplify.md`, A4). A harness compared again under another id is one harness still.
     const earlier = [...sessions, flat("b-1", "h2", { setting: "s1" }), flat("b-2", "h3", { setting: "s1" })];
     expect(stopRule([...earlier, flat("b-3", "h4", { setting: "s2" })])).toEqual(counted(3, 3));
     expect(stopRule([...earlier, flat("b-3", "h3", { setting: "s2" })])).toEqual(counted(2, 2));
@@ -565,11 +565,11 @@ describe("the outcome an Examiner hears of a task", () => {
       standing: poolOf(log_).standings.get("kept") ?? null,
       failed: failedOf(log_, ["kept"]),
     });
-    const won = { cell: "other-won", solves: 2 } as const;
+    const won = { cell: "other-won", solves: 2, margin: null, room: null } as const;
     expect(read(before)).toEqual({ outcome: "reference-none", standing: won, failed: ["kept"] });
     expect(read(after)).toEqual({
       outcome: "reference-every",
-      standing: { cell: "reference-won", solves: 2 },
+      standing: { cell: "reference-won", solves: 2, margin: null, room: null },
       failed: [],
     });
     expect(read(beside)).toEqual({ outcome: "earlier-reference", standing: null, failed: [] });
@@ -620,8 +620,8 @@ describe("where a task stands in the counts an Examiner hears", () => {
     // Read from the record the outcome is read from: the same tasks, and the solves a side.
     const { standings, outcomes } = poolOf(log);
     expect(sorted(standings.keys())).toEqual(sorted(outcomes.keys()));
-    expect(standings.get("every")).toEqual({ cell: "tied-every", solves: 2 });
-    expect(standings.get("aside")).toEqual({ cell: "aside", solves: null });
+    expect(standings.get("every")).toEqual({ cell: "tied-every", solves: 2, margin: null, room: null });
+    expect(standings.get("aside")).toEqual({ cell: "aside", solves: null, margin: null, room: null });
   });
 
   it("counts a task the objective told apart between two valid answers as told apart, and the same answers without one as a tie", () => {
@@ -720,10 +720,25 @@ describe("the tasks that go to a person as possibly infeasible", () => {
     // answered is counted apart where a valid answer is known.
     expect(poolOf(twice).feasible).toEqual(new Set(["easy"]));
     expect(poolOf(proved).feasible).toEqual(new Set(["hard", "easy"]));
-    expect(poolOf(twice).standings.get("hard")).toEqual({ cell: "tied-none", solves: 2 });
-    expect(poolOf(proved).standings.get("hard")).toEqual({ cell: "tied-none-known", solves: 2 });
+    expect(poolOf(twice).standings.get("hard")).toEqual({
+      cell: "tied-none",
+      solves: 2,
+      margin: null,
+      room: null,
+    });
+    expect(poolOf(proved).standings.get("hard")).toEqual({
+      cell: "tied-none-known",
+      solves: 2,
+      margin: null,
+      room: null,
+    });
     const elsewhere = [...twice, ...solved(undefined, "hard", "h9", [P])];
-    expect(poolOf(elsewhere).standings.get("hard")).toEqual({ cell: "tied-none-known", solves: 2 });
+    expect(poolOf(elsewhere).standings.get("hard")).toEqual({
+      cell: "tied-none-known",
+      solves: 2,
+      margin: null,
+      room: null,
+    });
   });
 
   it("do not count a comparison that cut a solve of the task at a limit", () => {
@@ -850,19 +865,20 @@ describe("the release before the draw", () => {
 
   it("takes half of the tasks the reference failed, and the draw cannot release the other half", () => {
     expect(failedOf(log, tasks)).toEqual(["f1", "f2", "f3", "f4"]);
-    // Half of the failed, in the order they failed, then the draw over the tasks no reading of the
-    // reference's closed: the kept half stays scored, and `a1` and `a2`, which it answered in every
-    // solve, give a session nothing to work on. Until 16 October the draw took them.
+    // Half of the failed, in the order they failed, then the draw over every task neither list
+    // holds: the kept half stays scored, and `a1` and `a2`, which the reference answered in every
+    // solve, are drawn like `n1`. From 16 to 20 October the draw left them out.
     const fresh = [...log, ...heldOut("n1")];
     const order = releaseOrder(fresh, [...tasks, "n1"], 4, "seed");
-    expect(order.map(([version]) => version)).toEqual(["f1", "f2", "n1"]);
+    expect(order.map(([version]) => version)).toEqual(["f1", "f2", "a1", "a2"]);
     expect(order.map(([, why]) => why)).toEqual([
       ": the reference harness failed it in the last comparison, and it is",
       ": the reference harness failed it in the last comparison, and it is",
       ":",
+      ":",
     ]);
     // Asked for more than the draw's pool holds, the release takes what there is and no kept task.
-    expect(taken(log, 6).toSorted()).toEqual(["f1", "f2"]);
+    expect(taken(log, 6).toSorted()).toEqual(["a1", "a2", "f1", "f2"]);
     // Half is rounded up, so one failed task alone is released, and a task the reference answered
     // in some solves is failed as one it answered in none: until 16 October neither went, and
     // between buffer-159-opus's two promotions its Builder's practice passed 10 of 10.
@@ -875,6 +891,35 @@ describe("the release before the draw", () => {
       reported("b-1", "no-step", "h2", { ...terms, versions: ["s1", "a1"] }),
     ];
     expect(releaseOrder(once, ["s1", "a1"], 1, "seed").map(([version]) => version)).toEqual(["s1"]);
+  });
+
+  it("releases the same tasks whichever held-out task the new harness bettered by the objective", () => {
+    // Two logs with equal tallies, one task won and one tied, which differ only in which task the
+    // new harness's answers measured half the reference's. The release reads the reference's own
+    // solves alone, so the Builder reads one practice set either way (AGENTS.md rule 3). Drawing
+    // from `poolOf`'s frontier released `a1` from one and `a2` from the other.
+    const won = (better: string) => {
+      const sides = ["a1", "a2"].flatMap((task) => [
+        ...solved("b-1", task, "h1", [P, P]),
+        ...solved("b-1", task, "h2", [P, P]),
+      ]);
+      const measures = better === "a1" ? [10, 10, 5, 5, 10, 10, 10, 10] : [10, 10, 10, 10, 10, 10, 5, 5];
+      return [
+        ...["a1", "a2"].flatMap(heldOut),
+        ...sides,
+        ...measuredAt(sides, measures),
+        reported("b-1", "no-step", "h2", {
+          ...terms,
+          versions: ["a1", "a2"],
+          objective: { direction: "lower", margin: 0.01 },
+        }),
+      ];
+    };
+    expect(poolOf(won("a1")).frontier).toEqual(["a1"]);
+    expect(poolOf(won("a2")).frontier).toEqual(["a2"]);
+    expect(releaseOrder(won("a1"), ["a1", "a2"], 1, "seed")).toEqual(
+      releaseOrder(won("a2"), ["a1", "a2"], 1, "seed"),
+    );
   });
 
   it("keeps the reference's failures through empty reports and comparisons of other harnesses, until the reference answers the task", () => {
@@ -1042,6 +1087,8 @@ describe("the tasks the reference harness exhausted", () => {
       ]);
     expect(authored(5)).toMatchObject({ exhausted: [], frontier: ["e1", "e2"] });
     expect(authored(10 - 1e-9)).toMatchObject({ exhausted: ["e2"], frontier: ["e1"] });
+    // Half a per cent better is under the room floor and closes it, as it holds no draft at the gate.
+    expect(authored(9.95)).toMatchObject({ exhausted: ["e2"], frontier: ["e1"] });
   });
 
   it("hold each held-out task in exactly one place: scorable or waiting for a person, with the exhausted among the retained and the retained among the scorable", () => {

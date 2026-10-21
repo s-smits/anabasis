@@ -32,9 +32,9 @@
  * the report is written once more, as the comparison's last, with the labels. A task whose
  * rejections then all stand as earned is restored to the tally; one labelled a check defect
  * disputes its task, which leaves this comparison and every later one; one labelled unclear, or set
- * aside on a rejection the packet did not draw, stays out of this comparison. A pass's label
- * changes no tally and no reading: a wrong pass is a check's fault, for the check program's owner,
- * and the closing report names it. Once settled it prints, over every settled packet of the
+ * aside on a rejection the packet did not draw, stays out of this comparison. A pass labelled wrong
+ * is its side's fail, as an earned rejection is, and its check's fault for the check program's
+ * owner; the closing report names it. Sound and unclear change nothing. Once settled it prints, over every settled packet of the
  * campaign, the Referee's agreement with the labels, of each kind and over all three as PABAK
  * beside kappa, a line where a person labelled more than one in four `unclear` rulings earned
  * (`unclearReport`), and each settled comparison's decision read again with its labels in place of the
@@ -46,7 +46,7 @@
  *
  * Until 12 October the command drew every rejection that set a task aside, and read the passes
  * apart; until 13 October it drew up to ten rejections, ruled earned or not, and three passes. Until 11 October it read a Diagnoser's accounts of practice fails; the seat went
- * (`docs/simplify.md`, E1), and a log of before keeps its `diagnosis.*` events.
+ * (`7f0add79:docs/simplify.md`, E1), and a log of before keeps its `diagnosis.*` events.
  *
  * Where a task itself looks infeasible, say so with `prepare.ts --infeasible <task id> --note`,
  * which refuses the task and logs the note. A task disputed here on a check's fault is a repair

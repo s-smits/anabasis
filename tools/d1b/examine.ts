@@ -39,7 +39,7 @@
  * the host's and is never told to the Examiner. The campaign command names it from what the
  * campaign is short of (`examTasks`, `tools/d2/campaign-terms.ts`); run by hand it defaults to 12,
  * a scored set's size until 12 October (`SIZE.tasks` is 24 since). Asking for many at once is what v1 found dilutes them, a probe grown to
- * 25 tasks in 10 of 13 cases (`docs/plan.md`).
+ * 25 tasks in 10 of 13 cases (`7f0add79:docs/plan.md`).
  *
  * `--reference-home on`, the default, lays a copy of the reference harness the gate solves with in
  * the home, laid afresh each session; `off` keeps the home blind (the campaign's term
@@ -103,6 +103,9 @@ const EXAMINE_OPTIONS = {
   /** `on` lays a copy of the reference harness the gate solves with in the Examiner's home; `off`
    *  keeps it blind. The one owner of the default, which a campaign that names no term reads. */
   "reference-home": { type: "string", default: "on" },
+  /** `on` tells the Examiner who won each task in its last comparison; `off` tells it by family
+   *  alone (`exam-results`, `heard`, `src/examiner/record.ts`). */
+  results: { type: "string", default: "on" },
   /** The campaign's setting, as every command that solves takes it: the solver and the limits the
    *  reference harness's solves of a draft task run under (`try_task`), and the budget fact the
    *  Examiner is told, where no setting is on record yet. `--tasks` is this command's own, so the
@@ -159,14 +162,12 @@ export async function examineCommand(
   refereeNamed(values, session === examine && seated !== null ? "paid" : "scripted");
   const home = values["reference-home"];
   if (home !== "on" && home !== "off") throw new Error(`--reference-home is on or off, not ${home}`);
+  const { results } = values;
+  if (results !== "on" && results !== "off") throw new Error(`--results is on or off, not ${results}`);
   const pack = packNamed(values, ", --session and --examiner");
   // The campaign's setting is its log's, as a comparison reads it: the reference harness's solves
-  // of a draft task run under it and record it where none is on record (`setting.ts`). `--tasks`
-  // is the held-out tasks this session is to stop at, and names no scored set.
-  const setting = settingAsked(
-    { ...values, tasks: undefined },
-    recordedSetting(read(campaignLog(pack.name))),
-  );
+  // of a draft task run under it and record it where none is on record (`setting.ts`).
+  const setting = settingAsked(values, recordedSetting(read(campaignLog(pack.name))));
   const campaign = await openCampaign({ ...pack, ...setting.named });
   // The brief's rows in the verifier's reading and in the pack's are the same rows in the same order.
   const declared = readBrief(campaign.checks).truthChecks;
@@ -215,6 +216,7 @@ export async function examineCommand(
         puts: Number(values.proposals),
       },
       wanted: Number(values.tasks),
+      results: results === "on",
       models: campaign.examiner,
       log: campaign.log,
       ...keyIfDefined("kill", kill),

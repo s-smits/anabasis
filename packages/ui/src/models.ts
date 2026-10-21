@@ -309,11 +309,12 @@ export interface Counters {
     readonly union: number;
     readonly bound: number;
     readonly controls: number;
+    readonly incapable: number;
     readonly errors: number;
   } | null;
   /** The dollars left of the campaign's total (`Plan.left`), and what the last comparison the cap
-   *  did not cut billed for its solves (`billedParts`), which the table prices the next one by
-   *  (`unafforded`). Null for a campaign with no total, or before a comparison has reported. */
+   *  did not cut billed for its solves (`billedParts`): a reading for the operator, which no move
+   *  waits on. Null for a campaign with no total, or before a comparison has reported. */
   readonly runway: { readonly left: number; readonly each: number; readonly comparison: string } | null;
 }
 
@@ -476,7 +477,8 @@ export interface ScoredTask {
 
 /** What a comparison's report says beside its test of what the test could see (`reported`). */
 export interface Sensitivity {
-  /** The step's own set: its untied tasks, the least share of them the new harness has to win for
+  /** The set the step was read on, every tallied task (the frontier alone in a report written
+   *  before 20 October): its untied tasks, the least share of them the new harness has to win for
    *  one reading to detect a step four times in five, null where none would; and the chance that an
    *  attempt at its margins promotes between equal harnesses (`falseRate`). Null in a report
    *  written before the sets were read apart. */

@@ -13,6 +13,7 @@ keeps no queue and no status. Those live elsewhere:
 | What came over from v1, and what was replaced or dropped | `docs/transfer.md` |
 | What v1 measured, and why it did not climb | `docs/v1.md` |
 | A prompt handed whole to another session: an audit, a review | `docs/prompts.md` |
+| How Anabasis is measured outside a campaign: against another system on a benchmark, or with one mechanism switched off | `studies/<name>/README.md`, each a protocol written before its first solve (`studies/README.md`) |
 | The plan until 20 October, its history and the simplification plan of 11 October | `git show 7f0add79:docs/plan.md` (and `plan-history.md`, `simplify.md`); a comment that cites `7f0add79:docs/<file>` means that text |
 | What the code does today | the source at the stack's head, and the head comment of each module |
 | How a procedure is carried out: stacking, launching, reading a run, wording a claim | the skill that owns it, under `.claude/skills/` (sections 10 and 11) |
@@ -1545,10 +1546,11 @@ code can skip it. Whatever you write:
 - Reuse before you derive. Before writing a fold or a reader, find the production owner that
   already reads the fact and call it (rule 12), and take the angle to reuse one wherever you see
   it. Dependencies run one way. Production is `src/`, `vendor/`, `packages/` and the commands under
-  `tools/`; helper code is `.claude/` (the skills and their scripts) and the whole-run
-  investigation's reader, `tools/wri/`. A helper imports production readers and wraps them, and
-  production never imports a helper. Where production needs a fact a helper computes, the fact
-  moves into a production owner and the helper imports it from there.
+  `tools/`; helper code is `.claude/` (the skills and their scripts), the whole-run
+  investigation's reader, `tools/wri/`, and the studies' code, `studies/`. A helper imports
+  production readers and wraps them, and production never imports a helper. Where production
+  needs a fact a helper computes, the fact moves into a production owner and the helper imports it
+  from there.
 - A file has at most 800 nonblank lines and a function 115, and every `export` has a reader in
   another file (`bun tools/loc/source-policy.ts`, which reports vendor only).
 - A test checks what a message carries, never how it is worded: the facts it states (an outcome, a
@@ -1669,6 +1671,10 @@ packages/ui/    the page over a campaign's log: a server on the loopback that re
                 Tasks and Log (src/views). It writes nothing. Its design rules are in its DESIGN.md
 vendor/         pi-coding-agent and pi-claude-bridge, copied
 docs/           the plan, the transfer ledger, the account of v1, the helper prompts
+studies/        measurements outside a campaign's reading, one folder each: its protocol, predictions,
+                adapters and patches; shared/ holds what several use, runs/ the records each keeps,
+                and external/ (ignored) the clones. A log, a benchmark's tests and a credential are
+                never kept
 .claude/skills/ the procedures (section 10), stack-pr, simplify, reduce-complexity, commit-r,
                 codex-gpt-swarm and promotion-tuner, and main/ with the skill scripts' argument
                 parser and git helper

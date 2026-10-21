@@ -28,6 +28,7 @@ import {
   draw,
   objectiveMargin,
   objectiveRuleIn,
+  costRuleIn,
   type Paired,
   pairsOf,
   roomLeft,
@@ -401,7 +402,16 @@ export function pairsReported(events: readonly LogEvent[], report: Reported): Pa
   }
   const begun = events.find(({ kind, data: start }) => kind === STARTED && start.session === session);
   const halves = begun?.data.noise === true ? ("mirrored" as const) : undefined;
-  const sides = { old, fresh, setting, comparison: session, objective: objectiveRuleIn(data), halves };
+  const costRule = costRuleIn(begun?.data ?? {});
+  const sides = {
+    old,
+    fresh,
+    setting,
+    comparison: session,
+    objective: objectiveRuleIn(data),
+    ...costRule,
+    halves,
+  };
   return pairsOf(events.slice(0, index + 1), versions, sides, solves).pairs;
 }
 

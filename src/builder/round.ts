@@ -101,7 +101,7 @@
  * what it writes.
  */
 import { resetOf } from "../backends/claude.ts";
-import { draw, type ObjectiveRule } from "../kernel/compare.ts";
+import { type CostRule, draw, type ObjectiveRule } from "../kernel/compare.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { billedFor, type Cap, capHolds, poolOf } from "../kernel/reports.ts";
 import type { Ending } from "../kernel/solve.ts";
@@ -158,6 +158,8 @@ interface Terms {
   /** The objective two valid answers are compared by, where the check program declares one: the
    *  brief's direction. */
   readonly objective?: ObjectiveRule | undefined;
+  /** The cost floor (`COST`, `compare.ts`), where the comparison begins with one. */
+  readonly costRule?: CostRule | undefined;
   /** Tasks with a check defect past which the comparison stops. */
   readonly defects: number;
   /** Solves in flight at once. */
@@ -561,6 +563,7 @@ function begin(request: CheckpointRequest): Fixed {
     cap: request.cap === undefined ? null : { ...request.cap },
     ...keyIfDefined("prediction", request.prediction),
     ...keyIfDefined("objective", request.objective === undefined ? undefined : { ...request.objective }),
+    ...request.costRule,
   };
   const was = startOf(read(log), id);
   if (was === undefined) {

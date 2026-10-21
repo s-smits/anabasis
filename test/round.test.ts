@@ -385,6 +385,7 @@ describe("a round", () => {
         noise: null,
         counted: null,
         objective: null,
+        cost: null,
         // The turns each harness's valid answers took, by task: in no tally.
         turns: Object.fromEntries(HELD.map((task) => [task, { old: null, fresh: 10 }])),
         versions: HELD,

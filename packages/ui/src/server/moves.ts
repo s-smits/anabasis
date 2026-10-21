@@ -16,7 +16,7 @@
 import { nextBound } from "../../../../src/builder/handover.ts";
 import { fixedIn, type Report, reported } from "../../../../src/builder/comparison.ts";
 import type { Share } from "../../../../src/builder/climb.ts";
-import { type Paired, pairings } from "../../../../src/kernel/compare.ts";
+import { differenceOf, type Paired } from "../../../../src/kernel/compare.ts";
 import { pairsReported } from "../../../../src/kernel/reports.ts";
 import { isNumber, isString } from "../../../../src/meta/json-shape.ts";
 import type { ComparisonBar, LeftOut, Move, Outcome, Tally } from "../models.ts";
@@ -122,8 +122,8 @@ export const starterIn = once((log): string | null => {
 
 /** What one scored task came to. A tie is split by the reference harness (the old side) alone. */
 export function outcomeOf(pair: Paired): Outcome {
-  const won = pairings(pair);
-  if (won.fresh !== won.old) return won.fresh > won.old ? "won" : "lost";
+  const difference = differenceOf(pair);
+  if (difference !== 0) return difference > 0 ? "won" : "lost";
   const valid = pair.old.filter(Boolean).length;
   if (valid === pair.old.length) return "tiedEvery";
   return valid === 0 ? "tiedNone" : "tiedSome";

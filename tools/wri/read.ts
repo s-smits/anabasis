@@ -20,7 +20,7 @@
  * row A's hours are `time.ts`, split from here on the same day for the same ceiling.
  */
 import { campaignOf as handoverOf, type Handover, nextBound, openSteps } from "#src/builder/handover.ts";
-import { flipP, pairings, readsStepEitherWay, sweepOf } from "#src/kernel/compare.ts";
+import { differenceOf, flipP, readsStepEitherWay, sweepOf } from "#src/kernel/compare.ts";
 import type { Condition } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { pairsReported } from "#src/kernel/reports.ts";
@@ -186,10 +186,7 @@ function practiceTriggers(
 function winTriggers(log: Index): Trigger[] {
   return log.compared.flatMap(({ session, at, last }) => {
     const pairs = pairsReported(log.events, { session, index: at, data: last });
-    const won = pairs.filter((pair) => {
-      const { fresh, old } = pairings(pair);
-      return fresh > old;
-    });
+    const won = pairs.filter((pair) => differenceOf(pair) > 0);
     const named = (side: "old" | "fresh", valid: boolean) =>
       won.flatMap((pair) => pair.solves?.[side].filter((_, index) => pair[side][index] === valid) ?? []);
     return won.length === 0

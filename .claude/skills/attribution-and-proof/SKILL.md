@@ -17,9 +17,9 @@ session. It decides the wording of a claim from what the log already holds.
 ## What a reading is
 
 A v2 claim rests on a comparison: two harnesses, the same held-out tasks, solves made afresh and
-interleaved, a one-sided paired sign-flip test over each task's difference in pair wins (`flipP`,
-`src/kernel/compare.ts`). Validity decides first; a declared objective compares two valid answers.
-The null treats each untied task's sign as equally likely and independent, at its fixed pair margin.
+interleaved, a one-sided paired sign-flip test over each task's score (`flipP`,
+`src/kernel/compare.ts`). Validity weighs most; a declared objective and the bill compare two valid
+answers. The null treats each untied task's sign as equally likely and independent, at its fixed margin.
 `step` means one test over the frontier and the retained tasks together cleared its level (`stepOf`).
 It does not say:
 
@@ -86,7 +86,7 @@ Answer these from the log before using the word step in a sentence of your own:
   Give the campaign estimate from `riskLines` in `src/builder/climb.ts`: it sums attempt rates,
   capped at one, across epochs. It is an estimate, not a measured bound. Its A/A error count is
   one-sided at the comparison's level, and counts only the controls that could read a step.
-- **Objective?** Give `objective.decided` beside the untied count, and check pair margins to state how many untied tasks the objective decided.
+- **Which measure?** Give `score.points` beside the untied count: the points validity, the objective and the bill gave the tallied tasks, so a step the bill carried is named as one. A report begun before 21 October holds `objective.decided` instead.
 - **Under what load?** A wall counts the clock. The reader's `HOST LOADED` and `LOAD MOVED` say
   when solve-start loads were high or moved between halves within or across comparisons. Compare
   no times across those loads.

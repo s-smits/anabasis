@@ -11,7 +11,7 @@
  * had promoted once each and none twice, and no view said at which epoch a campaign stood or what
  * its tasks had done since the promotion. `runs view` prints the rows.
  */
-import { flipP, pairings } from "../kernel/compare.ts";
+import { differenceOf, flipP } from "../kernel/compare.ts";
 import { conditionsOf } from "../kernel/condition.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { billedBetween, lastReports, pairsReported, type Reported } from "../kernel/reports.ts";
@@ -391,9 +391,11 @@ export function regressionOf(events: readonly LogEvent[]): Regression | null {
     if (other === undefined) continue;
     counts.shared += 1;
     // By the objective too, where both comparisons fixed the same rule; on validity alone otherwise.
+    // Scored by the weights the newer comparison began with, the bill among them; read as before
+    // 21 October where it began with none.
     const rule = pair.objective;
     const same = rule !== undefined && other.objective?.direction === rule.direction;
-    const won = pairings({
+    const difference = differenceOf({
       task: pair.task,
       old: other.fresh,
       fresh: pair.fresh,
@@ -401,8 +403,10 @@ export function regressionOf(events: readonly LogEvent[]): Regression | null {
         "objective",
         same ? { ...rule, old: other.objective?.fresh ?? [], fresh: rule.fresh } : undefined,
       ),
+      ...keyIfDefined("weights", pair.weights),
+      used: { old: other.used?.fresh ?? [], fresh: pair.used?.fresh ?? [] },
     });
-    counts[won.fresh > won.old ? "wins" : won.fresh < won.old ? "losses" : "ties"] += 1;
+    counts[difference > 0 ? "wins" : difference < 0 ? "losses" : "ties"] += 1;
   }
   return {
     newest,

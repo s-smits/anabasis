@@ -110,7 +110,11 @@ function stepLine(step: Handover, now: number, called: Called): string {
         : [
             `tasks with ${valid.old.map((_, index) => String(index)).join(", ")} valid answers: reference ${valid.old.join("/")}, new ${valid.fresh.join("/")}`,
           ]),
-      ...(step.decided === null ? [] : [`${plural(step.decided, "task")} decided by the objective`]),
+      ...(step.points === null
+        ? []
+        : [
+            `points to the new harness by validity ${String(step.points.validity)}, the objective ${String(step.points.objective)}, the bill ${String(step.points.bill)}`,
+          ]),
       ...(step.aside > 0 ? [`${plural(step.aside, "task")} set aside for a person's labels`] : []),
       ...(ruled.length === 0 ? [] : [ruled.join(", ")]),
       dollars(step.billed),

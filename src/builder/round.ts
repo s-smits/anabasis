@@ -13,7 +13,7 @@
  *    hours or the warmer cache.
  * 2. The comparison (`src/kernel/compare.ts`): every solve of the new harness paired with every
  *    solve of the reference one, a valid answer over one that is not, each task counted once, and
- *    the paired sign-flip test over the frontier's differences in pair wins.
+ *    the paired sign-flip test over the tasks' scores.
  * 3. The reading, logged as `comparison.reported`.
  *
  * What is fixed before the first solve. A comparison writes `comparison.started` with its
@@ -101,7 +101,7 @@
  * what it writes.
  */
 import { resetOf } from "../backends/claude.ts";
-import { draw, type ObjectiveRule } from "../kernel/compare.ts";
+import { draw, type ObjectiveRule, type Measures } from "../kernel/compare.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { billedFor, type Cap, capHolds, poolOf } from "../kernel/reports.ts";
 import type { Ending } from "../kernel/solve.ts";
@@ -158,6 +158,8 @@ interface Terms {
   /** The objective two valid answers are compared by, where the check program declares one: the
    *  brief's direction. */
   readonly objective?: ObjectiveRule | undefined;
+  /** The weights its tasks are scored by (`WEIGHTS`, `compare.ts`), where it begins with them. */
+  readonly weights?: Measures | undefined;
   /** Tasks with a check defect past which the comparison stops. */
   readonly defects: number;
   /** Solves in flight at once. */
@@ -561,6 +563,7 @@ function begin(request: CheckpointRequest): Fixed {
     cap: request.cap === undefined ? null : { ...request.cap },
     ...keyIfDefined("prediction", request.prediction),
     ...keyIfDefined("objective", request.objective === undefined ? undefined : { ...request.objective }),
+    ...keyIfDefined("weights", request.weights === undefined ? undefined : { ...request.weights }),
   };
   const was = startOf(read(log), id);
   if (was === undefined) {

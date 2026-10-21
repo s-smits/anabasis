@@ -311,8 +311,9 @@ Starts from `TIES BETWEEN VALID ANSWERS (lane 9)` and
 The question is whether a valid answer within the budget tells two harnesses apart.
 `TIES BETWEEN VALID ANSWERS` fires where more than half the tallied tasks tie and at least one
 answer on each side is valid. An objective is already supported where the contract declares it;
-read `objective.decided` to see which tasks it separated. Two valid measures tie only within
-`SAME`, a billionth of the larger magnitude; until 19 October a margin stood there. A report
+read `score.points` for what the objective and the bill gave the tallied tasks (`objective.decided`
+in a report begun before 21 October). Two valid measures tie within the room floor, `ROOM`, 1% of the
+larger magnitude; a comparison begun before 21 October recorded none and read them at `SAME`. A report
 written before 11 October also holds `spread`, how far the use of turns, CPU seconds and seconds
 moved between repeated solves of one harness on one task, which decided the budget's unit; the
 unit is the model's turns, and no trigger reads it since. Seconds move with the host's load,
@@ -598,7 +599,7 @@ Starts from `NOTHING SCORED (lane 22)`, `CUT BY ITS CAP (lane 22)`,
 `FEW INFORMATIVE PAIRS (lane 22)` and `SET SHORT (lane 22)`, and is standing.
 
 The question is what the comparison's test could and could not have shown at its size. The paired
-sign-flip test reads each task's difference in pair wins; a tie carries nothing. It reduces to the
+sign-flip test reads each task's score; a tie carries nothing. It reduces to the
 sign test where all untied margins are equal. v1 found the signal too
 rare to settle a comparison at the size it ran: 11 of 322 batteries held a fail nobody
 contested. Read `scored` with its `differences`, p, `detectable`, `falseRate`, ties and

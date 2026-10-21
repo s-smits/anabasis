@@ -39,8 +39,10 @@ import {
   roundCommand,
   gainSaid,
   objectiveNamed,
+  weightsNamed,
   reportLines,
 } from "../tools/d2/round.ts";
+import { WEIGHTS } from "../src/kernel/compare.ts";
 import { sessionCommand } from "../tools/d2/session.ts";
 
 const REPO = resolve(import.meta.dir, "..");
@@ -620,15 +622,19 @@ describe("a campaign", () => {
       "  least detectable shift: one reading of it, two-sided at the level, detects four times in five a half that wins 90% of its untied tasks",
     );
     expect(ROUND_OPTIONS).not.toHaveProperty("budget");
-    // Where the comparison fixed an objective, how many tallied tasks it decided is said beside.
+    // Where the comparison began with weights, the points each measure gave are said beside.
     expect(
       reportLines({
         valid: { old: [0, 0, 2], fresh: [0, 0, 2], informative: { old: 0, fresh: 0 } },
         frontier: null,
-        objective: { direction: "lower", decided: 1 },
+        objective: { direction: "lower" },
+        score: { weights: WEIGHTS, points: { validity: -150, objective: 225, bill: 75 } },
         noise: null,
-      }).at(-1),
-    ).toBe("the objective (lower is better) decided 1 task that validity alone would have tied");
+      }).slice(-2),
+    ).toEqual([
+      "the score weighs validity 0.6, the objective 0.3 and the bill 0.1, and over the tallied tasks gave the new harness -150, +225 and +75 points, a task's score running from -1000 to 1000",
+      "the objective: lower is better",
+    ]);
     // Beside it, where the report carries one, the median relative gain on the won frontier tasks
     // with a measure on both sides; nothing where none had (`gainSaid`, which the closing report
     // prints beside a promotion's tally too).
@@ -636,11 +642,11 @@ describe("a campaign", () => {
       reportLines({
         valid: { old: [0, 0, 2], fresh: [0, 0, 2], informative: { old: 0, fresh: 0 } },
         frontier: null,
-        objective: { direction: "lower", decided: 3, gain: { median: 0.000_007_6, tasks: 18 } },
+        objective: { direction: "lower", gain: { median: 0.000_007_6, tasks: 18 } },
         noise: null,
       }).at(-1),
     ).toBe(
-      "the objective (lower is better) decided 3 tasks that validity alone would have tied; on the 18 won frontier tasks with a valid measure on both sides its median relative gain is 0.00076%",
+      "the objective: lower is better; on the 18 won frontier tasks with a valid measure on both sides its median relative gain is 0.00076%",
     );
     expect(gainSaid(null)).toBe("");
     const campaign = await openCampaign(ARGS);
@@ -729,6 +735,13 @@ describe("a campaign", () => {
     append(campaign.log, "comparison.started", { session: "g-9" });
     expect(objectiveNamed(campaign, "g-8")).toEqual({ direction: "lower" });
     expect(objectiveNamed(campaign, "g-9")).toBeUndefined();
+    // The weights are the host's: a new comparison takes the constant, one begun goes on with what
+    // it recorded, and one begun before 21 October with none.
+    expect(weightsNamed(campaign, "g-10")).toEqual(WEIGHTS);
+    expect(weightsNamed(campaign, "g-9")).toBeUndefined();
+    const other = { validity: 0.5, objective: 0.5, bill: 0 };
+    append(campaign.log, "comparison.started", { session: "g-11", weights: other });
+    expect(weightsNamed(campaign, "g-11")).toEqual(other);
   });
 
   it("refuses a labels file with an entry that is no label, and a --target that is no count", async () => {

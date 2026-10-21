@@ -13,13 +13,15 @@
  * module.
  */
 import {
-  decidedByObjective,
   detectable,
   type Gain,
   power,
   type ObjectiveRule,
   objectiveGain,
   objectiveRuleIn,
+  type Measures,
+  pointsOf,
+  measuresIn,
   type Paired,
   pairsOf,
   scored,
@@ -54,7 +56,7 @@ import { type Worth, worthOf } from "./climb.ts";
  * control after a promotion (`decide.ts`).
  */
 type Reading = "step" | "no-step" | "regressed" | "narrow" | "not-scored" | "check-defects" | "no-change";
-/** One test's tally, each task's difference in pair wins, and its p. */
+/** One test's tally, each task's score, and its p. */
 type Tested = ReturnType<typeof scored>;
 /** One of the two sets a comparison fixes at its start (`retained`, `Fixed`): the tasks that
  *  entered it, which are its denominator, those of them set aside, and its tally and test. */
@@ -144,11 +146,15 @@ export interface Report {
   /** Whether the dollar cap cut the comparison short of its test, where nothing is tallied. */
   readonly capped: boolean;
   readonly reading: Reading;
-  /** The objective the comparison fixed, and how many tallied tasks it decided: won or lost where
-   *  validity alone would have tied, and the median relative gain on the frontier tasks the new
+  /** The objective the comparison fixed, and the median relative gain on the frontier tasks the new
    *  harness won (`objectiveGain`; absent before 20 October). Null where the check program declares
-   *  none, and in a report written before 10 October. */
-  readonly objective: (ObjectiveRule & { readonly decided: number; readonly gain?: Gain | null }) | null;
+   *  none, and in a report written before 10 October. A report of 10 to 21 October also holds how
+   *  many tallied tasks it decided, which nothing reads. */
+  readonly objective: (ObjectiveRule & { readonly gain?: Gain | null }) | null;
+  /** The weights the comparison began with, and the points each measure gave the tallied tasks
+   *  together (`pointsOf`), positive for the new harness. Null where it began with none, as every one
+   *  before 21 October. */
+  readonly score: { readonly weights: Measures; readonly points: Measures } | null;
   /** By task, the median turns each harness's valid answers took, null where it gave none: what
    *  the comparison reports beside each pair and no tally reads (the overhaul plan's P2). */
   readonly turns: Readonly<
@@ -197,6 +203,8 @@ export interface Fixed {
   readonly retained: readonly string[];
   /** The objective two valid answers are compared by, where the check program declares one. */
   readonly objective: ObjectiveRule | undefined;
+  /** The weights its tasks are scored by, where it began with them (`WEIGHTS`, `compare.ts`). */
+  readonly weights: Measures | undefined;
 }
 
 export const STARTED = "comparison.started";
@@ -230,6 +238,7 @@ export const NOTHING = {
   capped: false,
   settled: null,
   objective: null,
+  score: null,
   turns: null,
   worth: null,
 } as const;
@@ -406,6 +415,7 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     setting: fixed.setting,
     comparison: fixed.id,
     objective: fixed.objective,
+    weights: fixed.weights,
   };
   const first = pairsOf(events, live, sides, fixed.solves);
   const kept = (pairs: readonly Paired[]) => pairs.filter(({ task }) => !open.has(task));
@@ -466,10 +476,18 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
         ? null
         : {
             ...fixed.objective,
-            decided: decidedByObjective(pairs),
             gain: objectiveGain(pairs.filter(({ task }) => !fixed.retained.includes(task))),
           },
+    score: fixed.weights === undefined ? null : { weights: fixed.weights, points: pointsIn(pairs) },
   };
+}
+
+/** The points each measure gave `pairs` together (`pointsOf`), to the whole point. */
+function pointsIn(pairs: readonly Paired[]): Measures {
+  const each = pairs.map(pointsOf);
+  const sum = (measure: keyof Measures) =>
+    Math.round(each.reduce((total, points) => total + points[measure], 0));
+  return { validity: sum("validity"), objective: sum("objective"), bill: sum("bill") };
 }
 
 /** The mean billed dollars of a counted solve under one side of `pairs`, or null where none billed. */
@@ -606,6 +624,7 @@ export function fixedIn(events: readonly LogEvent[], id: string): Fixed | null {
         tasks: Array.isArray(tasks) ? tasks.filter(isString) : [],
         retained: Array.isArray(retained) ? retained.filter(isString) : [],
         objective: objectiveRuleIn(start),
+        weights: measuresIn(start.weights),
       }
     : null;
 }

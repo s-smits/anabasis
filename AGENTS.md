@@ -772,7 +772,9 @@ that window and needs one it can hold.
 **Practice follows the supply and the outcomes.** One release takes at most half of what is held,
 so a campaign that opens on a few tasks releases fewer than `--practice` names. Before a Builder
 session the table releases more where tasks have been held out since the last release, and after a
-control that read room (section 7) it releases as many again. `--practice` is a per-epoch count,
+control that read room (section 7) it releases as many again. Inside a Builder's conversation,
+which spans epochs, the host releases what the epoch is still owed as each Examiner session beside
+it ends (`releaseOwed`, `tools/d2/campaign-actions.ts`). `--practice` is a per-epoch count,
 and once practice exists a release never leaves fewer frontier tasks than a sweep at the level needs
 (`practiceRoom`, `src/builder/decide.ts`). Each release is one task fewer to compare.
 
@@ -780,7 +782,8 @@ A release takes, in this order:
 
 1. the tasks no solve answered in two comparisons;
 2. half, rounded up, of the tasks the reference harness failed in a solve of its last reading of
-   each; the other half stays held for the comparisons;
+   each, or where an answer of its own or its author's on record bettered one of its answers there
+   by at least the room floor (`room`); the other half stays held for the comparisons;
 3. the rest by the contract's draw from every task neither list holds, those the reference
    answered in every solve among them, since a practice pass returns the objective's measure
    (`releaseOrder`, `src/kernel/reports.ts`, which `tools/d2/prepare.ts` calls).

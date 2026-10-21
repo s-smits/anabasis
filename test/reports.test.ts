@@ -869,8 +869,8 @@ describe("the release before the draw", () => {
     const order = releaseOrder(fresh, [...tasks, "n1"], 4, "seed");
     expect(order.map(([version]) => version)).toEqual(["f1", "f2", "a1", "a2"]);
     expect(order.map(([, why]) => why)).toEqual([
-      ": the reference harness failed it in the last comparison, and it is",
-      ": the reference harness failed it in the last comparison, and it is",
+      ": the reference harness failed it in the last comparison, or a better answer on record left it room, and it is",
+      ": the reference harness failed it in the last comparison, or a better answer on record left it room, and it is",
       ":",
       ":",
     ]);
@@ -917,6 +917,31 @@ describe("the release before the draw", () => {
     expect(releaseOrder(won("a1"), ["a1", "a2"], 1, "seed")).toEqual(
       releaseOrder(won("a2"), ["a1", "a2"], 1, "seed"),
     );
+  });
+
+  it("puts first a task the reference answered in every solve where its own better answer leaves it room", () => {
+    // The reference's two answers to one task measure 10 and 5, lower being better: it answered in
+    // every solve and still has room, which the draw alone left to chance until 21 October.
+    const roomIn = (task: string) => {
+      const sides = ["a1", "a2"].flatMap((each) => [
+        ...solved("b-1", each, "h1", [P, P]),
+        ...solved("b-1", each, "h2", [P, P]),
+      ]);
+      const measures = task === "a1" ? [10, 5, 10, 10, 10, 10, 10, 10] : [10, 10, 10, 10, 10, 5, 10, 10];
+      return [
+        ...["a1", "a2"].flatMap(heldOut),
+        ...sides,
+        ...measuredAt(sides, measures),
+        reported("b-1", "no-step", "h2", {
+          ...terms,
+          versions: ["a1", "a2"],
+          objective: { direction: "lower", margin: 0.01 },
+        }),
+      ];
+    };
+    for (const task of ["a1", "a2"]) {
+      expect(releaseOrder(roomIn(task), ["a1", "a2"], 1, "seed").map(([version]) => version)).toEqual([task]);
+    }
   });
 
   it("keeps the reference's failures through empty reports and comparisons of other harnesses, until the reference answers the task", () => {

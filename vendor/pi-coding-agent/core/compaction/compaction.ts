@@ -1,4 +1,4 @@
-// Copied from pi coding-agent v1.1.0 (github.com/earendil-works/pi, abe508e1, MIT, see LICENSE):
+// Copied from pi coding-agent v1.3.0 (github.com/earendil-works/pi, 71023aec, MIT, see LICENSE):
 // packages/coding-agent/src/core/compaction/compaction.ts. Departures:
 // - It reads one loop's message list, not a session's entries: the cut point is an index into that
 //   list, the previous summary is the caller's to pass, and the session projection, its context edits

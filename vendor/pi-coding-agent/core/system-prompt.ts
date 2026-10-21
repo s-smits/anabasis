@@ -1,4 +1,4 @@
-// Copied from pi coding-agent v1.1.0 (github.com/earendil-works/pi, abe508e1, MIT, see LICENSE):
+// Copied from pi coding-agent v1.3.0 (github.com/earendil-works/pi, 71023aec, MIT, see LICENSE):
 // packages/coding-agent/src/core/system-prompt.ts. Departures: the docs section is left out, since it
 // names pi's own documentation on the host's disk, which no command behind the wall can read; and the
 // skills section with it, since a solve loads none. Strict compiler options force the `| undefined` on

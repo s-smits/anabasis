@@ -14,7 +14,7 @@ report: write nothing else, commit nothing and edit no source.
 
 {sharedInstructions}
 
-## What the log holds
+## What the logs hold
 
 ```
 {overview}
@@ -33,7 +33,7 @@ the event kinds, solve ids and counts the report cites: a report is a lead and n
 
 ## What the note owes, in this order
 
-1. **Whether the reading may be believed.** One row per `comparison.reported`, four links, each
+1. **Whether the reading may be believed.** One row per `comparison.reported` of each campaign, four links, each
    `holds`, `does not hold` or `undeterminable`, with the event kind and the count it rests on:
    (a) the exam measured: the checker was frozen and read, and the refusals that entered the tally
    read sound (lanes 1 to 6); (b) the tasks bracketed: the scored set was held out, fixed before
@@ -43,9 +43,11 @@ the event kinds, solve ids and counts the report cites: a report is a lead and n
    written, believed with a named limit, or not believed.
 2. **The binding constraint.** The one mechanism that most limits the next round, and why it
    outranks the rest.
-3. **One merged findings table:** `finding | lanes | owner | evidence | outcome`. Collapse repeats
-   under the earliest owner shown. `lanes` names every lane that raised the row: agreement counts,
-   because no lane saw another. `owner` is exactly one owner of the catalogue's table, with the file
+3. **One merged findings table:** `finding | lanes | campaigns | owner | evidence | outcome`. Collapse
+   repeats under the earliest owner shown. `lanes` names every lane that raised the row: agreement
+   counts, because no lane saw another. Where several campaigns were read, `campaigns` names those
+   that show the finding, from the reports' `Seen in:` lines checked against the logs, and a finding
+   one campaign shows alone says what that campaign has that the others lack. `owner` is exactly one owner of the catalogue's table, with the file
    for `host` and for a prompt. `evidence` is an event kind and a count. `outcome` is exactly one of
    `patch`, `decision`, `prediction` or `drop`. Rank rows by their consequence for the four links.
 4. **Conflicts resolved.** Where two lanes disagree, the events that settle it, or the two readings
@@ -66,6 +68,6 @@ the event kinds, solve ids and counts the report cites: a report is a lead and n
 - Keep each observation apart from its cause, in two sentences.
 - Recount every "N of M" you carry from rows A to F of the overview before you use it.
 - A ruling is a reviewer's reading. Say whose a count is before you lean on it.
-- Never write under the campaign's folder, and start no solve, session, round or check run.
+- Never write under a campaign's folder, and start no solve, session, round or check run.
 
 When the note is written, reply with its path and one line per table row: finding, outcome.

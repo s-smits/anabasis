@@ -62,8 +62,8 @@ import {
  * the seat's cap counts them.
  *
  * `hostToolchainEnv` adds the names a toolchain uses to find its own installation, which moving
- * `HOME` otherwise hides — `RUSTUP_HOME` and `PYTHONUSERBASE`, each naming a real directory the
- * command may read and may not write. Both are host-dependent and absent when the directory is.
+ * `HOME` otherwise hides — `RUSTUP_HOME`, naming a real directory the command may read and may not
+ * write, absent where the directory is. Python's user base stays in the home, where pip can install.
  *
  * The four fixed names sit on the type rather than only in the body, so a reader sees what a
  * command gets without opening the function and a caller cannot quietly lose one.

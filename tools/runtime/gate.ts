@@ -20,7 +20,8 @@
  *
  * `proveCommits` runs this gate over a list of commits for `.githooks/pre-push` and `bun run land`:
  * in scratch worktrees made for the run, its output in a log under the Git directory, a pulse while
- * a pass runs, and each pass remembered in `ana-gate-passed` under the common Git directory, so a
+ * a pass runs, its tests stopped at the first that fails (`ANA_TEST_BAIL`, `test-suite.ts`) as the
+ * gate stops at its first failed step, and each pass remembered in `ana-gate-passed` under the common Git directory, so a
  * commit that passed is not run again from any worktree. A pass is remembered by content
  * (`contentKey`): a whole pass by the commit's tree, a static one by its tree and its parent's, both
  * with the checker and the Bun version. The checker is this gate and what it imports, read from the
@@ -46,6 +47,7 @@ import {
 } from "../../src/meta/filesystem.ts";
 import { sha256, sha256OfFile } from "../../src/meta/digest.ts";
 import { isString } from "../../src/meta/json-shape.ts";
+import { keysIf } from "../../src/meta/optional-key.ts";
 import { availableParallelism, tmpdir } from "../../src/meta/os.ts";
 import { basename, dirname, join, relative } from "../../src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "../../src/meta/process.ts";
@@ -375,10 +377,13 @@ export async function proveCommits(
     const pulsing = setInterval(() => say(`${short(commit)} ${pulse(log, started)}`), PULSE_MS);
     const child = Bun.spawn(["bun", GATE, ...(pass === "static" ? ["--static"] : [])], {
       cwd: tree,
-      env:
-        pass === "whole" || runtimeProcess.env.ANA_TEST_WORKERS !== undefined
-          ? runtimeProcess.env
-          : { ...runtimeProcess.env, ANA_TEST_WORKERS: share },
+      env: {
+        ...runtimeProcess.env,
+        ANA_TEST_BAIL: "1",
+        ...keysIf(pass === "static" && runtimeProcess.env.ANA_TEST_WORKERS === undefined, () => ({
+          ANA_TEST_WORKERS: share,
+        })),
+      },
       stdin: "ignore",
       stdout: fd,
       stderr: fd,

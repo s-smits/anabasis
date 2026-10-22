@@ -84,36 +84,28 @@ export function backends(options: BackendOptions): MutableModels {
 }
 
 /**
- * OpenRouter as pi serves it, with DeepSeek V4.1 Flash of 17 October, a dated release pi 1.3.0's
- * catalogue lacks (21 October). It is pi's entry for the release it is dated from, so it keeps that
- * entry's reasoning levels, inputs and request terms as pi moves them, with what OpenRouter lists
- * differently for it: its name, DeepInfra fp8's prices per million tokens and output limit, and
- * that endpoint alone, with no fallback (operator, 21 October). OpenRouter otherwise picks one of the
- * release's 26 endpoints for each call, at fp4, fp8 or an unnamed quantization, so two solves of one
- * model could run on different weights. The study's solver (`studies/shared/pi-solve.ts`) serves its
+ * OpenRouter as pi serves it, with DeepSeek V4.1 Flash of 17 October held to one endpoint: pi's own
+ * entry for the release, with what OpenRouter lists differently for DeepInfra fp8, its prices per
+ * million tokens and output limit, and that endpoint alone, with no fallback (operator, 21 October).
+ * OpenRouter otherwise picks one of the release's 26 endpoints for each call, at fp4, fp8 or an
+ * unnamed quantization, so two solves of one model could run on different weights, and pi's entry
+ * prices it at OpenRouter's list price. The study's solver (`studies/shared/pi-solve.ts`) serves its
  * models from here too.
  */
 export function openrouter(): Provider<"anthropic-messages" | "openai-completions"> {
   const router = openrouterProvider();
-  const base = router.getModels().find(({ id }) => id === "deepseek/deepseek-v4.1-flash");
-  const routing = { only: ["deepinfra/fp8"], allow_fallbacks: false };
-  const added =
-    base === undefined
-      ? []
-      : [
-          {
-            ...base,
-            id: `${base.id}-1017`,
-            name: `${base.name} 1017`,
-            cost: { input: 0.098, output: 0.294, cacheRead: 0.00294, cacheWrite: 0 },
-            maxTokens: 131_072,
-            compat: { ...base.compat, openRouterRouting: routing },
-          },
-        ];
+  const dated = router.getModels().find(({ id }) => id === "deepseek/deepseek-v4.1-flash-1017");
+  const pinned = dated && {
+    ...dated,
+    cost: { input: 0.098, output: 0.294, cacheRead: 0.00294, cacheWrite: 0 },
+    maxTokens: 131_072,
+    compat: { ...dated.compat, openRouterRouting: { only: ["deepinfra/fp8"], allow_fallbacks: false } },
+  };
+  const pin = <M extends { readonly id: string }>(model: M) => (model.id === pinned?.id ? pinned : model);
   return {
     ...router,
-    getModels: () => [...router.getModels(), ...added],
-    getAllModels: () => [...(router.getAllModels?.() ?? router.getModels()), ...added],
+    getModels: () => router.getModels().map(pin),
+    getAllModels: () => (router.getAllModels?.() ?? router.getModels()).map(pin),
   };
 }
 

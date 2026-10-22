@@ -38,7 +38,7 @@ afterAll(() => {
 describe("the three backends", () => {
   it("serve Codex, OpenRouter and Claude Code from pi's catalogs", () => {
     const models = backends(options);
-    expect(models.getModel("openai-codex", "gpt-5.5")?.api).toBe("openai-codex-responses");
+    expect(models.getModel("openai-codex", "gpt-6.1-sol")?.api).toBe("openai-codex-responses");
     expect(models.getModel("openrouter", "anthropic/claude-opus-5")).toBeDefined();
     expect(models.getModel("claude", "claude-opus-5")?.api).toBe("claude-agent-sdk");
     // The same backend on an API key is a provider of its own, with the same catalog and prices,
@@ -91,7 +91,7 @@ describe("the three backends", () => {
     const claude = (id: string) => ({ provider: "claude", id, contextWindow: 1_000_000 });
     expect(compactionMode(claude("claude-opus-5"), sweep)).toBe("autoCompactWindow=300000");
     expect(compactionMode(claude("claude-opus-5-5"), options)).toBe("off");
-    const codex = { provider: "openai-codex", id: "gpt-5.5", contextWindow: 400_000 };
+    const codex = { provider: "openai-codex", id: "gpt-6.1-sol", contextWindow: 400_000 };
     expect(compactionMode(codex, sweep)).toBe("pi window=300000 reserve=16384 keep=20000");
     const glm = { provider: "openrouter", id: "z-ai/glm-5", contextWindow: 200_000 };
     expect(compactionMode(glm, options)).toBe("pi window=200000 reserve=16384 keep=20000");

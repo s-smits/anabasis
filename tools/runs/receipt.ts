@@ -33,7 +33,8 @@ import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { compareCodeUnits } from "#src/meta/stable-json.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { isCampaign, readable, readNamed } from "./registry.ts";
+import { isCampaign } from "./registry.ts";
+import { readAcross, readableAcross } from "./snapshots.ts";
 
 /** What a run is asked to have run with: commits its launch holds, and text its source holds. */
 interface Asked {
@@ -159,18 +160,20 @@ export function askedIn(args: readonly string[]): { asked: Asked; names: string[
 }
 
 /** `bun run runs source`. */
-export function source(args: readonly string[]): void {
+export async function source(args: readonly string[]): Promise<void> {
   const { asked, names } = askedIn(args);
   const [name] = names;
   if (name !== undefined) {
-    const run = readNamed(name);
+    const run = await readAcross(name);
     console.log(sources(run.path, run.tree, asked.holds).join("\n"));
     return;
   }
   if (asked.holds.length + asked.has.length === 0) {
     throw new Error("usage: bun run runs source <name> | (--holds <commit> | --has <text>)...");
   }
-  for (const run of readable().filter((one) => isCampaign(one) && ranWith(one.path, one.tree, asked))) {
+  for (const run of (await readableAcross()).filter(
+    (one) => isCampaign(one) && ranWith(one.path, one.tree, asked),
+  )) {
     console.log(run.name);
   }
 }

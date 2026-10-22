@@ -9,8 +9,9 @@
  * without them is refused: until 21 October the tuner also read the margin, the trigger and the
  * two-stage rule of older trees, which no candidate branched from `main` can hold.
  *
- * The logs are every campaign under `<logs>/<worktree>/.ana/d2/`, one a campaign name, the largest
- * file where copies of one name sit in several worktrees. Left out: a seed (`seed.json` beside its
+ * Default discovery uses the production registry and refreshed records on every configured host
+ * (22 October 2026). Explicit --logs retains the offline <logs>/<worktree>/.ana/d2/ layout, with
+ * the largest copy of each name there. Left out: a seed (`seed.json` beside its
  * log), a name that starts `sim-`, `rh-` or `test-`, and a rehearsal, whose seats are
  * `faux/script`.
  */
@@ -20,7 +21,8 @@ import type { Reported } from "#src/kernel/reports.ts";
 import { closeSync, existsSync, openSync, readdirSync, readSync, statSync } from "#src/meta/filesystem.ts";
 import { gitText } from "#src/meta/git.ts";
 import { type JsonValue, asRecord, isFunction, isString } from "#src/meta/json-shape.ts";
-import { dirname, join } from "#src/meta/path.ts";
+import { join } from "#src/meta/path.ts";
+import { readableAcross } from "#tools/runs/snapshots.ts";
 
 /** What a reading of the reference against itself is made between (`Sides`, `compare.ts`). */
 interface Sides {
@@ -95,11 +97,6 @@ export async function loadTree(path: string): Promise<Tree> {
   };
 }
 
-/** The folder that holds the repository's worktrees: the parent of its main checkout. */
-export function worktreesHome(tree: string): string {
-  return dirname(dirname(gitText(tree, "rev-parse", "--path-format=absolute", "--git-common-dir")));
-}
-
 /** The time of a log's last event, read from its end; null where the end holds no whole event. */
 function lastAt(path: string): string | null {
   const size = statSync(path).size;
@@ -141,8 +138,18 @@ function everyLog(home: string): Found[] {
 
 /** The logs a replay reads: those `names` lists where it lists any, else those whose last event is
  *  at or after `since`. */
-export function campaignLogs(home: string, names: readonly string[], since: string): Found[] {
-  return everyLog(home).filter(({ name, path }) =>
+export async function campaignLogs(
+  home: string | null,
+  names: readonly string[],
+  since: string,
+): Promise<Found[]> {
+  const all =
+    home === null
+      ? (await readableAcross(names)).filter(
+          (run) => run.seed !== true && !LEFT_OUT.some((prefix) => run.name.startsWith(prefix)),
+        )
+      : everyLog(home);
+  return all.filter(({ name, path }) =>
     names.length > 0 ? names.includes(name) : (lastAt(path) ?? "") >= since,
   );
 }

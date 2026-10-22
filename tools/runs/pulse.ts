@@ -8,7 +8,9 @@
  *
  * With no names a look covers the open runs and those open at the last look, so a run's ending is
  * said once; a name matches every run whose name holds it. Quiet, no event for 20 minutes in an
- * open run, is said when it starts and when it ends.
+ * open run, is said when it starts and when it ends. Since 22 October each look also polls every
+ * configured host once, with a cursor for this observer, unless --here is named. A missing peer
+ * is a warning and exit 1. No local state path is sent to another machine.
  */
 import { type EventKind, type LogEvent } from "#src/kernel/log.ts";
 import { billedAll } from "#src/kernel/reports.ts";
@@ -26,12 +28,16 @@ import {
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
-import { basename, dirname, join } from "#src/meta/path.ts";
-import { parseArgs } from "#src/meta/process.ts";
+import { basename, dirname, join, resolve } from "#src/meta/path.ts";
+import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { sha256 } from "#src/meta/digest.ts";
+import { mainTree } from "#src/meta/git.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
-import { hosts, hostsOf } from "./hosts.ts";
+import { asked, hosts } from "./hosts.ts";
+import { hostsOf } from "./host-config.ts";
 import { lastLaunch } from "./receipt.ts";
+import { runReason } from "./diagnosis.ts";
 import {
   ARCHIVE,
   archived,
@@ -228,7 +234,7 @@ export function pulse(
 }
 
 /** One look over the chosen runs, said to the console and remembered in `state`. */
-function look(state: string, names: readonly string[]): void {
+async function look(state: string, names: readonly string[]): Promise<void> {
   const memory: Memory = existsSync(state)
     ? parseJsonAs<Memory>(readFileSync(state, "utf8"))
     : { freeGiB: null, logs: {} };
@@ -238,9 +244,16 @@ function look(state: string, names: readonly string[]): void {
     run,
     open: writers(run, running).length > 0,
     before: memory.logs[run.path],
+    events: logEvents(run.path),
   }));
-  const chosen = all.filter(({ run, open, before }) =>
-    names.length > 0 ? names.some((name) => run.name.includes(name)) : open || before?.open === true,
+  const chosen = all.filter(({ run, open, before, events }) =>
+    names.length > 0
+      ? names.some((name) => run.name.includes(name))
+      : open ||
+        before?.open === true ||
+        (run.seed !== true &&
+          Date.now() - statSync(run.path).mtimeMs < RECENT_MS &&
+          events.at(-1)?.kind !== "campaign.ended"),
   );
   const disk = statfsSync(".");
   const free = Math.round((disk.bavail * disk.bsize) / GIB);
@@ -252,10 +265,11 @@ function look(state: string, names: readonly string[]): void {
   );
   // A run this look left out keeps what the last look saw of it.
   const logs: Record<string, Seen> = { ...memory.logs };
-  for (const { run, open, before } of chosen) {
-    const seen = pulse(run, logEvents(run.path), open ? "open" : "closed", before, now);
+  for (const { run, open, before, events } of chosen) {
+    const seen = pulse(run, events, open ? "open" : "closed", before, now);
     console.log(seen.status);
     for (const line of seen.said) console.log(`  ${line}`);
+    for (const line of await runReason(run, events, open ? "open" : "closed")) console.log(`  ${line}`);
     logs[run.path] = seen.seen;
   }
   // A checkout no campaign ran in has no `.ana/`, as the Linux runner's had none on 20 October.
@@ -273,10 +287,26 @@ export async function watch(args: readonly string[]): Promise<void> {
       once: { type: "boolean", default: false },
       every: { type: "string", default: "290" },
       state: { type: "string", default: join(".ana", "runs-pulse.json") },
+      here: { type: "boolean", default: false },
     },
   });
   for (;;) {
-    look(values.state, names);
+    // Each observer has its own cursor on each host. A local --state is never a remote path.
+    const cursor = sha256(`${runtimeProcess.cwd()}\n${values.state}`).slice(0, 24);
+    const away = values.here
+      ? []
+      : asked(["pulse", ...names, "--once", "--here", "--state", `.ana/pulse/${cursor}.json`]);
+    if (!values.here && hostsOf().length > 0) console.log("── here");
+    await look(values.here ? resolve(mainTree(runtimeProcess.cwd()), values.state) : values.state, names);
+    for (const { host, lines, elapsedMs } of await away) {
+      console.log(`── ${host.name} (${(elapsedMs / 1000).toFixed(1)} s)`);
+      if (lines === null) {
+        console.error(`⚠ ${host.name}: pulse unavailable`);
+        runtimeProcess.exitCode = 1;
+      } else {
+        console.log(lines.join("\n"));
+      }
+    }
     if (values.once) break;
     await Bun.sleep(Number(values.every) * 1000);
   }

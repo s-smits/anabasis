@@ -58,7 +58,7 @@ import { plural } from "#src/meta/text.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { codeOf } from "../d2/campaign.ts";
 import { receipts } from "../runs/receipt.ts";
-import { readNamed } from "../runs/registry.ts";
+import { logAcross } from "../runs/snapshots.ts";
 import { stagedExamOf } from "../d2/exam.ts";
 import { readPack } from "../m0/stored-sweep.ts";
 import { catalogueText, lanesOf, ownersOf, REFERENCES } from "./catalogue.ts";
@@ -98,15 +98,20 @@ const { values, positionals } = parseArgs({
   },
 });
 
-/** A log by its path, or a campaign's by the campaign's whole name. */
-const logOf = (named: string) => (existsSync(named) ? named : readNamed(named).path);
 /** Every log `--log` names, comma-separated. */
-const logsOf = (spec: string) =>
-  spec
+const resolvedLogs = await Promise.all(
+  (values.log ?? "")
     .split(",")
     .filter((each) => each !== "")
-    .map((each) => resolve(logOf(each)));
+    .map(async (each) => resolve(await logAcross(each))),
+);
 const nameOf = (log: string) => basename(dirname(log));
+
+function oneLog(): string {
+  const [log] = resolvedLogs;
+  if (log === undefined || resolvedLogs.length !== 1) throw new Error("name one --log");
+  return log;
+}
 
 function needed(name: "log" | "out" | "bundle" | "task" | "answer"): string {
   const value = values[name];
@@ -156,7 +161,8 @@ function overviewText(log: string): string {
 }
 
 function start(): number {
-  const [logs, out] = [logsOf(needed("log")), resolve(needed("out"))];
+  needed("log");
+  const [logs, out] = [resolvedLogs, resolve(needed("out"))];
   if (existsSync(join(out, SHARED))) throw new Error(`${out} already holds ${SHARED}`);
   if (new Set(logs.map(nameOf)).size < logs.length) throw new Error("--log names one campaign twice");
   mkdirSync(join(out, "lanes"), { recursive: true });
@@ -311,7 +317,7 @@ function synthesis(): number {
 }
 
 async function grade(): Promise<number> {
-  const [log, taskId] = [logOf(needed("log")), needed("task")];
+  const [log, taskId] = [oneLog(), needed("task")];
   // The pack and the check program: the stored pack `--bundle` names, whose checks the campaign
   // staged beside its log, or the exam the log drafted, where the campaign staged it.
   const staged = values.bundle === undefined ? stagedExamOf(log) : null;
@@ -345,12 +351,13 @@ async function grade(): Promise<number> {
 async function main(): Promise<number> {
   const [verb] = positionals;
   if (verb === "read") {
-    console.log(overviewText(logOf(needed("log"))));
+    console.log(overviewText(oneLog()));
     return 0;
   }
   if (verb === "grade") return grade();
   if (verb === "climb") {
-    console.log(climbText(logsOf(needed("log"))));
+    needed("log");
+    console.log(climbText(resolvedLogs));
     return 0;
   }
   const step = Object.entries({ start, lanes, collect, synthesis }).find(([name]) => name === verb)?.[1];

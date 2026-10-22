@@ -4,7 +4,7 @@
  * commit, and starts the campaign there by `launch` (`manage.ts`), which installs, runs the dry run
  * and refuses what it refuses.
  *
- *   bun run runs fresh <pack> [--model opus|sonnet|gpt|<provider>/<id>] [--effort hhmm] [--login N] [--budget 800]
+ *   bun run runs fresh <pack> [<pack> ...] [--logins <allowed-list>] [--model opus|sonnet|gpt|<provider>/<id>] [--effort hhmm] [--login N] [--budget 800]
  *     [--at <commit>] [--as <suffix>] [--host <host>] [--yes] [-- <more of the campaign command's flags>]
  *
  * The prompt is the operator's, `<pack>-prompt.txt` in the folder `ANA_PROMPTS` names, by default
@@ -12,9 +12,9 @@
  * `<pack>-fresh-<model>[-<suffix>]`, with `-r<n>` where a worktree holds that name or its folder,
  * and the project `<pack>-fresh`. `--effort` is four letters of `lmhx`, for the Builder, the Examiner,
  * the Referee and the solver. The worktree is `anabasis-<name>` beside the checkout, at `--at`, by
- * default this one's commit. `--host` runs the verb on a host `ANA_HOSTS` lists (`hosts.ts`), at this
- * checkout's commit, the host's name the suffix unless `--as` names one; that host's tree runs the
- * verb, so it needs a commit that has it.
+ * default this checkout's commit. Without `--host`, placement prefers a pack's prior machine below
+ * its configured cap, then the fewest live campaigns and simulation seats (22 October 2026). An explicit
+ * `--host here` or peer overrides placement. Remote source is prepared by `code.ts` before launch.
  *
  * Until 16 October each fresh launch was typed by hand: a worktree, a prompt file, eight seat
  * flags and a name, and one launch that left out `--login` ended on its environment.
@@ -34,10 +34,28 @@ import { existsSync } from "#src/meta/filesystem.ts";
 import { gitText, mainTree } from "#src/meta/git.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
-import { on } from "./hosts.ts";
+import { isSafePathSegment } from "#src/meta/path-segment.ts";
+import { hostNamed } from "./host-config.ts";
+import { verbOn } from "./hosts.ts";
+import { preparedHost, publishedAt } from "./code.ts";
+import { freshFleet, freshLogin, placeFresh, loginPool, loginPresent } from "./placement.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 import { launch } from "./manage.ts";
 import { everyRun } from "./registry.ts";
+import { seatModels } from "./keep.ts";
+import { batchFresh } from "./batch.ts";
+import { readLogins } from "./logins.ts";
+
+interface FreshStart {
+  readonly model: ReturnType<typeof modelOf>;
+  readonly effort: string;
+  readonly suffix: string | undefined;
+  readonly budget: string;
+  readonly more: readonly string[];
+  readonly login: string | undefined;
+  readonly commit: string;
+  readonly yes: boolean;
+}
 
 /** The operator's named conditions: a model and its efforts a seat, as the operator ran them. */
 const NAMED = {
@@ -86,14 +104,17 @@ export function freeName(base: string, taken: (name: string) => boolean): string
 }
 
 /** `bun run runs fresh`. */
-export async function fresh(args: readonly string[]): Promise<void> {
+export async function fresh(args: readonly string[], read: typeof readLogins = readLogins): Promise<void> {
+  const boundary = args.indexOf("--");
+  const more = boundary === -1 ? [] : args.slice(boundary + 1);
   const { values, positionals } = parseArgs({
-    args: [...args],
+    args: [...(boundary === -1 ? args : args.slice(0, boundary))],
     allowPositionals: true,
     options: {
       model: { type: "string", default: "opus" },
       effort: { type: "string" },
       login: { type: "string" },
+      logins: { type: "string" },
       budget: { type: "string", default: "800" },
       at: { type: "string", default: "HEAD" },
       as: { type: "string" },
@@ -101,64 +122,138 @@ export async function fresh(args: readonly string[]): Promise<void> {
       yes: { type: "boolean", default: false },
     },
   });
-  const [pack, ...more] = positionals;
+  const [pack] = positionals;
   if (pack === undefined) {
     throw new Error(
-      "usage: bun run runs fresh <pack> [--model opus|sonnet|gpt|<provider>/<id>] [--effort hhmm] [--login N] [--host <host>] [--yes]",
+      "usage: bun run runs fresh <pack> [<pack> ...] [--logins <allowed-list>] [--model opus|sonnet|gpt|<provider>/<id>] [--effort hhmm] [--login N] [--host <host>] [--yes]",
     );
+  }
+  if (
+    positionals.some((name) => !isSafePathSegment(name)) ||
+    (values.as !== undefined && !isSafePathSegment(values.as))
+  ) {
+    throw new Error("a pack and suffix each take a safe path segment");
   }
   const here = runtimeProcess.cwd();
-  if (values.host !== undefined) {
-    // The host makes the run at this checkout's commit, whatever its own tree is at.
-    const at = gitText(here, "rev-parse", "--verify", `${values.at}^{commit}`);
-    const forwarded = ["--host", "--at"];
-    const kept = args.filter(
-      (arg, n) =>
-        !forwarded.includes(arg) &&
-        !forwarded.includes(args[n - 1] ?? "") &&
-        !forwarded.some((flag) => arg.startsWith(`${flag}=`)),
+  const model = modelOf(values.model);
+  const billed = seatModels([], [model.id, ...more]).some((id) => id.startsWith("claude/"));
+  if (positionals.length > 1) {
+    if (values.host !== undefined) throw new Error("a batch chooses its hosts automatically");
+    return await batchFresh(
+      positionals,
+      {
+        flags: [
+          "--model",
+          values.model,
+          "--budget",
+          values.budget,
+          ...(values.as === undefined ? [] : ["--as", values.as]),
+          ...(values.effort === undefined ? [] : ["--effort", values.effort]),
+        ],
+        more,
+        at: values.at,
+        login: values.login,
+        logins: values.logins,
+        billed,
+        yes: values.yes,
+      },
+      (words) => fresh(words, read),
+      read,
     );
-    const suffix = values.as === undefined ? ["--as", values.host] : [];
-    return on([values.host, "fresh", "--at", at, ...suffix, ...kept]);
   }
+  const fleet = await freshFleet();
+  const login =
+    values.login !== undefined || billed
+      ? await freshLogin(values.login, fleet, read, loginPool(values.logins))
+      : undefined;
+  const host =
+    values.host === undefined
+      ? await placeFresh(pack, fleet)
+      : values.host === "here"
+        ? undefined
+        : hostNamed(values.host);
+  const commit = publishedAt(here, values.at);
+  if (host !== undefined) {
+    console.log(`${host.name}: prepare a detached controller at ${commit.slice(0, 9)}, then fresh ${pack}`);
+    if (!values.yes) return console.log("nothing is launched without --yes");
+    if (login !== undefined && !(await loginPresent(host, login))) {
+      console.error(`login ${login} must be carried to ${host.name} first`);
+      runtimeProcess.exitCode = 1;
+      return;
+    }
+    const forwarded = [
+      "fresh",
+      pack,
+      "--at",
+      commit,
+      "--model",
+      values.model,
+      "--budget",
+      values.budget,
+      "--as",
+      values.as ?? host.name,
+      ...(values.effort === undefined ? [] : ["--effort", values.effort]),
+      ...(login === undefined ? [] : ["--login", login]),
+      "--yes",
+      "--",
+      ...more,
+    ];
+    runtimeProcess.exitCode = await verbOn(preparedHost(host, commit), forwarded);
+    return;
+  }
+  await startFresh(pack, {
+    model,
+    effort: values.effort ?? model.effort,
+    suffix: values.as,
+    budget: values.budget,
+    more,
+    login,
+    commit,
+    yes: values.yes,
+  });
+}
+
+/** Make and launch the local worktree after fleet admission. */
+async function startFresh(pack: string, options: FreshStart): Promise<void> {
+  const here = runtimeProcess.cwd();
   const beside = dirname(mainTree(here));
   const prompt = join(
     runtimeProcess.env.ANA_PROMPTS ?? join(beside, "anabasis-prompts"),
     `${pack}-prompt.txt`,
   );
   if (!existsSync(prompt)) throw new Error(`no ${prompt}: a pack's prompt is the operator's to write there`);
-  const model = modelOf(values.model);
-  const seated = seats(model.id, values.effort ?? model.effort);
+  const seated = seats(options.model.id, options.effort);
   const held = new Set(everyRun().map((run) => run.name));
-  const base = [pack, "fresh", model.label, ...(values.as === undefined ? [] : [values.as])].join("-");
+  const base = [
+    pack,
+    "fresh",
+    options.model.label,
+    ...(options.suffix === undefined ? [] : [options.suffix]),
+  ].join("-");
   const name = freeName(base, (one) => held.has(one) || existsSync(join(beside, `anabasis-${one}`)));
+  if (!isSafePathSegment(name)) throw new Error("the campaign name exceeds the path-segment limit");
   const tree = join(beside, `anabasis-${name}`);
-  gitText(here, "fetch", "-q", "origin");
-  const commit = gitText(here, "rev-parse", "--verify", `${values.at}^{commit}`);
-  if (gitText(here, "branch", "-r", "--contains", commit) === "") {
-    throw new Error(`${commit.slice(0, 9)} is on no remote branch`);
-  }
   const flags = [
     "--project",
     `${pack}-fresh`,
     "--prompt-file",
     prompt,
     "--budget",
-    values.budget,
+    options.budget,
     ...seated,
-    ...more,
+    ...options.more,
   ];
-  if (!values.yes) {
+  if (!options.yes) {
     console.log(
-      `would make ${tree} at ${commit.slice(0, 9)} and launch ${name} on ${flags.join(" ")}; nothing is done without --yes`,
+      `would make ${tree} at ${options.commit.slice(0, 9)} and launch ${name} on ${flags.join(" ")}; nothing is done without --yes`,
     );
     return;
   }
-  gitText(here, "worktree", "add", "-q", "--detach", tree, commit);
+  gitText(here, "worktree", "add", "-q", "--detach", tree, options.commit);
   runtimeProcess.chdir(tree);
   await launch([
     name,
-    ...(values.login === undefined ? [] : ["--login", values.login]),
+    ...(options.login === undefined ? [] : ["--login", options.login]),
     "--yes",
     "--",
     ...flags,

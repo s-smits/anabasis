@@ -30,19 +30,22 @@ land. Keep the cycle's
 plan in one local file beside the handover: the word, the threshold, the checkpoints, and a log
 line per step. Every step below reads that file first.
 
-1. **Retire.** Stop the runs the last cycle forked, on every host: `runs on <host> stop <name>
-   --yes`. A stop word (`tools/d2/word.ts --stop`) waits for the next move boundary, which inside a
+1. **Retire.** Stop the runs the last cycle forked by name: `runs stop <name> ... --yes` routes
+   them to their machines. A stop word (`tools/d2/word.ts --stop`) waits for the next move boundary, which inside a
    led campaign can be an Examiner session of an hour or more: on 21 October two words left at
    23:44 had not acted 20 minutes later. A retired run's log stays where it is.
 2. **Fork at the top.** Read the stack (stack-pr) and take the top's head. A pull request above the
    last one that changes code a campaign runs need not hold up the fork; name it. Fork **one fresh
    campaign per runner host**, so each runs on a host no other campaign loads:
    `runs fresh <pack> --host <host> --at <commit> --login N --as forkedPR<n>-<host> --yes`, after a
-   dry run without `--yes`. `fresh --host` runs the host's own copy of the verb, so first bring the
-   host's verb tree to the commit and the login into its env file, as the operator's scheduled fork
-   does. Launch the hosts one after the other: on 22 October two `fresh --host` launches sent at
-   once from one checkout both exited 1, and each passed when run alone. Count live runs per login
-   across every host before each launch (`runs usage`, against the operator's machine rules). Tag `run/<name>/1` at the
+   dry run without `--yes`. Take the host list from `ANA_HOSTS` through `hostsOf`, never from a
+   machine list in a script. The backend prepares each peer's controller at the commit; the login
+   must already be available there. This explicit override belongs to the isolation condition; read
+   `runs hosts --health` before selecting idle hosts. Ordinary forks omit `--host` and `--login`:
+   `fresh` prefers the pack's prior eligible host and chooses a login below its fleet cap. Several
+   packs sharing their flags can use one fresh batch. Launch the hosts one after the other: on 22 October two `fresh --host` launches sent at
+   once from one checkout both exited 1, and each passed when run alone. Fresh performs the fleet
+   login admission before each launch. Tag `run/<name>/1` at the
    commit and push the tag.
 3. **Predict** before the first solve (section 3): one ledger for the cycle, with at least one row
    per pull request the forks carry, each naming that pull request, its link and its falsifier. A
@@ -93,8 +96,8 @@ bun .claude/skills/stack-pr/scripts/stack.ts   # the open stack and its top
 bun tools/wri/wri.ts read --log <worktree>/.ana/d2/<name>/log.jsonl
 ```
 
-`status` asks every host `ANA_HOSTS` lists; the pulse reads this host's worktrees only, so run it
-with `runs on <host> pulse --once` for a campaign elsewhere. `0 open` where
+`status` and `pulse` ask every host `ANA_HOSTS` lists. WRI accepts campaign names from any host
+and refreshes their copies automatically when invoked with the host environment loaded. `0 open` where
 a campaign was launched calls for reading its ending. Use `AGENTS.md`, section 3, for the
 operator's decisions and the authority a campaign launch gives once. Record continuing authority
 in the local handover; the newest instruction governs it.

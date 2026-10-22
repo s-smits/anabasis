@@ -11,7 +11,10 @@ One command makes the bundle, and the level decides how deep it reaches.
 bun run runs zip [<name> ...] --light|--medium|--verbose [--out <zip>] [--max-mb N] [--note <file>] [--from <host>]
 ```
 
-A run on another host is zipped there and brought back: `--from <host>` names a host of `ANA_HOSTS`
+A normal zip discovers matching campaigns on every configured host, fetches their folders into
+the existing archive and bundles them here, with local notes supported. A failed refresh refuses
+the zip. For a toolchain whose case-sensitive filenames cannot be copied here, zip on its own
+machine instead: `--from <host>` names a host of `ANA_HOSTS`
 (`bun --env-file=.env.runs run runs zip <name> --medium --from <host>`), and the level chooses its
 files as it does here. `--note` cannot be combined with `--from`. Bring a run to this machine
 this way to read it; `bun run runs move` is for going on with a campaign elsewhere. A live run's

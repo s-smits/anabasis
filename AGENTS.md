@@ -1268,8 +1268,8 @@ events in a campaign's log  >  a fold over the log  >  source and tests  >  a co
   exports, since a restack rewrites a pull request's commits and a run launched at an earlier head
   holds no later one. A run that lacks it is no evidence for or against it: a failure it shows
   that the mechanism removes is triaged as fixed, and a gain of a run with it is never set against
-  a run without it. Runs on another host are listed once fetched (`runs fetch`) or with
-  `runs on <host> source`.
+  a run without it. With `ANA_HOSTS` loaded, source, replay and the investigation refresh remote
+  records automatically through `tools/runs/snapshots.ts`; explicit log paths select offline copies.
 
 A negative claim about capability, such as "nothing checks X" or "the admission does not refuse
 Y", is the most expensive kind to get wrong, because every later reader compensates for a defect
@@ -1391,7 +1391,7 @@ npm or npx. `src/meta` wraps the few Node surfaces Bun lacks (`tools/oxlint/HABI
 | `bun run hooks:install` | Points this clone's `core.hooksPath` at `.githooks`, once; every worktree shares it |
 | `bun run commit:check` | What the pre-commit hook runs, also by hand: author email, format and lint of staged files, the slop report, the secret scan |
 | `bun run secrets` | The secret scan |
-| `bun run runs <verb>` | `fresh`, `launch`, `continue`, `keep`, `pause`, `copy`, `fetch`, `retire`, `stop`, `source`, `status`, `usage`, `active`, `on`, `hosts`, `pulse`, `rehearse`, `seed`, `replay`, `zip`, `view`. A verb that names a run goes to the machine that holds it |
+| `bun run runs <verb>` | `fresh`, `launch`, `continue`, `keep`, `pause`, `copy`, `fetch`, `retire`, `stop`, `source`, `status`, `usage`, `active`, `on`, `hosts`, `pulse`, `rehearse`, `seed`, `replay`, `zip`, `view`. Mutating named verbs route to their machine; readers refresh remote records. `fresh` admits a login below its fleet cap and prefers a pack's prior machine with room. `hosts --health` reads fleet resources and live work. `holds` and `catalogue` serve discovery |
 | `bun run ui:dev` | The page that shows a campaign as its log reads, on the loopback with a token (`packages/ui/README.md`). `-- --exam-side` adds the exam side's content: start that only where no Builder or solver runs |
 | `bun run ui:gate` | The UI's own gate: its dependencies, its typecheck and build, and its tests under `packages/ui/test` |
 | `bun .claude/skills/stack-pr/scripts/stack.ts` | The open stack: every edge, and the top |

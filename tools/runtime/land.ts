@@ -30,6 +30,13 @@
  * first; every landing since 14 October went through a stack. A merge that does not go through sets
  * the status of every head back to pending.
  *
+ * A merge is refused before anything is gated where another open chain starts on main, a pull
+ * request based there with another above it: the merge would leave that chain short of main's new
+ * head, and every pull request on it would have to be replayed before it could land. On 22 October
+ * #343 merged alone beside the chain #338 to #352, which then needed 26 commits replayed, three of
+ * them by hand, before it could land. A lone pull request beside the landing is cheap to replay and
+ * is left alone.
+ *
  * A failure names the commit and the pull request it sits on. Its fix goes into that commit, the
  * pull requests above it are replayed on it (stack-pr, section 8), and a second landing runs only
  * what the replay moved. `--jobs N` gates up to N commits at once; the top's whole gate runs alone.
@@ -54,6 +61,8 @@ interface Landing {
   readonly trunkSha: string;
   /** The open pull requests the landing merges, bottom to top; the last is the one named. */
   readonly pulls: readonly Pull[];
+  /** The bottom of each other open chain on the trunk, with another pull request above it. */
+  readonly beside: readonly Pull[];
 }
 
 interface Answer {
@@ -141,7 +150,13 @@ function readLanding(root: string, target: number): Landing {
   }
   const trunkSha = git(root, ["ls-remote", "origin", `refs/heads/${trunk}`]).split("\t")[0] ?? "";
   git(root, ["fetch", "-q", "origin", trunkSha, ...pulls.map((pull) => pull.headRefOid)]);
-  return { trunk, trunkSha, pulls };
+  const beside = open.filter(
+    (pull) =>
+      pull.baseRefName === trunk &&
+      !pulls.includes(pull) &&
+      open.some((above) => above.baseRefName === pull.headRefName),
+  );
+  return { trunk, trunkSha, pulls, beside };
 }
 
 /** The last merge has the top's tree only when each head contains the one beneath it, down to the
@@ -427,6 +442,14 @@ async function main(argv: readonly string[]): Promise<number> {
     const draft = landing.pulls.find((pull) => pull.isDraft);
     if (values.merge && draft !== undefined) {
       throw new Refusal(`#${String(draft.number)} is a draft, and it would merge in this landing.`);
+    }
+    const [chain] = landing.beside;
+    if (values.merge && chain !== undefined) {
+      throw new Refusal(
+        `#${String(chain.number)} (${chain.headRefName}) starts another chain on ${landing.trunk}, which this merge ` +
+          `would leave short of ${landing.trunk}'s new head, so that every pull request on it has to be replayed. ` +
+          `Put ${numbers(landing.pulls)} on that chain's top, or land that chain first.`,
+      );
     }
     if (values.merge) {
       stackOf(root, landing);

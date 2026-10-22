@@ -292,9 +292,9 @@ describe("the Builder running its campaign", () => {
     const built = await session(
       {
         ...s.request,
-        models: (home) => {
+        models: (home, shutdown) => {
           opened += 1;
-          return s.request.models(home);
+          return s.request.models(home, shutdown);
         },
         campaign: (bench) => ({
           hook: () => guidance,

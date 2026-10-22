@@ -75,7 +75,7 @@ export interface SolveRequest {
   readonly effort: ThinkingLevel;
   readonly limits: Limits;
   /** The backends, built for one solve on the home its model process keeps its state in. */
-  readonly models: (home: string) => Models;
+  readonly models: (home: string, shutdown: AbortSignal) => Models;
   readonly verify: Verifier;
   readonly log: string;
   /** The repository, closed to every command, and its other worktrees and the stored pack, closed

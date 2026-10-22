@@ -240,8 +240,14 @@ export function storedAnswer(row: Row): JsonValue | undefined {
  *  cache lives five minutes: over 110,009 recorded solver turns, 0.9% came more than five minutes
  *  after the one before, and the hour-long writes a login gets by default billed 13% more than
  *  five-minute writes would have (20 October). */
-export function sweepOptions(home = homedir(), window = SWEEP_COMPACT_WINDOW): BackendOptions {
-  return { claude: { executable: claudeExecutable(), compaction: { window }, home, cacheTtl: "5m" } };
+export function sweepOptions(
+  home = homedir(),
+  window = SWEEP_COMPACT_WINDOW,
+  shutdown?: AbortSignal,
+): BackendOptions {
+  return {
+    claude: { executable: claudeExecutable(), compaction: { window }, home, cacheTtl: "5m", shutdown },
+  };
 }
 
 /** The model a row ran, from the backends this system runs on. */

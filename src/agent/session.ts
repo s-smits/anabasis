@@ -46,8 +46,9 @@ import { hostScratch } from "../wall/policy.ts";
 
 /** What a seat hands `sit`. */
 export interface Seat {
-  /** The backends, built on the home the model's process keeps its state in. */
-  readonly models: (home: string) => { readonly streamSimple: StreamFn };
+  /** The backends, built on the home the model's process keeps its state in. `shutdown` aborts when
+   *  the session ends or a stop cuts it, and closes what the backend keeps live for it. */
+  readonly models: (home: string, shutdown: AbortSignal) => { readonly streamSimple: StreamFn };
   /** That home, where the seat has one; a scratch of the host's own is made and removed otherwise,
    *  which every wall closes (`policy.ts`), since the model's process keeps what it was sent. */
   readonly home?: string;
@@ -180,10 +181,11 @@ export async function sit(seat: Seat): Promise<Sat> {
   const summaries: Usage[] = [];
   const stops = seat.stops.filter((stop) => stop !== undefined);
   const done = new AbortController();
+  const shutdown = AbortSignal.any([...stops, done.signal]);
   const traced = trace && traceSink(trace.log, trace.of, id, () => turns.length);
   let thrown: string | null = null;
   try {
-    const models = seat.models(home);
+    const models = seat.models(home, shutdown);
     // Bound, since pi's `Models` reads its providers through `this`.
     const stream = models.streamSimple.bind(models);
     // Each compaction of pi's own loop (`pi-compaction.ts`) goes into the log as `<of>.compacted`,
@@ -228,7 +230,7 @@ export async function sit(seat: Seat): Promise<Sat> {
           traced?.(event);
         }
       },
-      AbortSignal.any([...stops, done.signal]),
+      shutdown,
       stream,
     );
   } catch (error) {

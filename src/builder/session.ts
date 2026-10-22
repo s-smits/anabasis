@@ -149,7 +149,7 @@ export interface BuildRequest {
    *  leave another short (`firstMessage`). */
   readonly solver: Solver;
   /** The backends, built on the home the Builder's model process keeps its state in. */
-  readonly models: (home: string) => Models;
+  readonly models: (home: string, shutdown: AbortSignal) => Models;
   readonly log: string;
   /** The repository, closed to every command, and its other worktrees and the stored pack, closed
    *  with it (`Walled`). */

@@ -14,6 +14,8 @@
  * writes its directory and git state into its prompt. A nudge is a further user message into the
  * same query, where v1 resumed the session in a fresh one; the model reads the same history either
  * way.
+ * A request's signal interrupts only the turn being read; the query closes on the seat's shutdown
+ * signal (`ClaudeOptions.shutdown`), including while tools run between turns.
  *
  * One of the sweep's options is not kept: its solver read Claude Code's own system prompt with the
  * harness's appended. That prompt is a coding assistant's, about a repository and Claude Code's own
@@ -218,6 +220,8 @@ export interface ClaudeOptions {
   /** How long Claude Code keeps its prompt cache. Left out, it keeps it for an hour on a login and
    *  five minutes on an API key, as the CLI chooses. */
   readonly cacheTtl?: "5m" | "1h";
+  /** The seat's lifetime, independent of the invocation signal pi passes to each request. */
+  readonly shutdown?: AbortSignal | undefined;
 }
 
 /**
@@ -308,7 +312,8 @@ function streamClaude(
       out.end();
     },
     (cause: unknown) => {
-      turn.stopReason = options?.signal?.aborted === true ? "aborted" : "error";
+      turn.stopReason =
+        options?.signal?.aborted === true || claude.shutdown?.aborted === true ? "aborted" : "error";
       turn.errorMessage = errorMessage(cause);
       out.push({ type: "error", reason: turn.stopReason, error: turn });
       out.end();
@@ -329,6 +334,7 @@ async function runTurn(
   // An abort listener never fires for a signal that has already aborted, so a turn asked under one
   // would launch Claude Code and run its query to the end.
   if (options.signal?.aborted === true) throw new Error(`session ${key} was aborted before its turn`);
+  if (claude.shutdown?.aborted === true) throw new Error(`session ${key} was shut down before its turn`);
   const { results } = extractAllToolResults(context.messages.map((message) => ({ ...message })));
   let session = sessions.get(key);
   if (results.length > 0) {
@@ -342,7 +348,7 @@ async function runTurn(
     session ??= open(claude, model, context, options, key);
     await session.prompt.push(userMessage(promptText(context)));
   }
-  return await readTurn(key, session, model, turn);
+  return await readTurn(key, session, model, turn, options.signal);
 }
 
 function open(
@@ -400,12 +406,9 @@ function open(
   });
   const session: Session = { query: live, prompt, abort, parked, early, reading: false };
   sessions.set(key, session);
-  // The signal is the solve's, the same on every turn, so its abort ends the query whether it comes
-  // inside a turn, at the wall, or after the loop stopped with the query still open: on a submit,
-  // which ends pi's loop while Claude Code waits on the result, or once the last nudge is answered,
-  // which leaves the query open for a prompt that never comes.
-  options.signal?.addEventListener("abort", () => sessions.get(key) === session && close(key, session), {
+  claude.shutdown?.addEventListener("abort", () => close(key, session), {
     once: true,
+    signal: abort.signal,
   });
   return session;
 }
@@ -493,12 +496,19 @@ async function readTurn(
   session: Session,
   model: Model<Api>,
   turn: AssistantMessage,
+  signal: AbortSignal | undefined,
 ): Promise<TurnEnd> {
   const spent: Usage[] = [];
+  const interrupt = () => {
+    session.query.interrupt().catch(() => close(key, session));
+  };
   session.reading = true;
+  signal?.addEventListener("abort", interrupt, { once: true });
+  if (signal?.aborted === true) interrupt();
   try {
-    return await readMessages(key, session, model, turn, spent);
+    return await readMessages(key, session, model, turn, { spent, signal });
   } finally {
+    signal?.removeEventListener("abort", interrupt);
     session.reading = false;
     for (const usage of spent) addUsage(turn.usage, usage);
     calculateCost(model, turn.usage);
@@ -510,7 +520,7 @@ async function readMessages(
   session: Session,
   model: Model<Api>,
   turn: AssistantMessage,
-  spent: Usage[],
+  request: { readonly spent: Usage[]; readonly signal: AbortSignal | undefined },
 ): Promise<TurnEnd> {
   let apiStop: string | null = null;
   // The reset of a limit the provider reported refusing on, said with a refused turn's error.
@@ -535,8 +545,10 @@ async function readMessages(
       message.event.type === "message_stop" &&
       apiStop === "tool_use"
     ) {
-      if (turn.content.some((block) => block.type === "toolCall")) return "toolUse";
-      spent.push(turn.usage);
+      if (request.signal?.aborted !== true && turn.content.some((block) => block.type === "toolCall")) {
+        return "toolUse";
+      }
+      request.spent.push(turn.usage);
       turn.usage = emptyUsage();
     } else if (message.type === "rate_limit_event") {
       const { status, resetsAt } = message.rate_limit_info;
@@ -547,6 +559,7 @@ async function readMessages(
         ...(turn.diagnostics ?? []),
         { type: REPORTED_COST, timestamp: Date.now(), details: { totalCostUsd: message.total_cost_usd } },
       ];
+      if (request.signal?.aborted === true) throw new Error("the Claude Code request was interrupted");
       const end = apiStop === null ? undefined : FINAL_STOPS.get(apiStop);
       if (message.subtype === "success" && !message.is_error && end !== undefined) return end;
       // Claude Code reports the turn the host's own close interrupted as a run that failed.
@@ -614,6 +627,7 @@ function take(message: SDKAssistantMessage, model: Model<Api>, turn: AssistantMe
  * and ends there (`reportedCost`); a turn being read takes that result itself.
  */
 function close(key: string, session: Session): void {
+  if (sessions.get(key) !== session) return;
   sessions.delete(key);
   session.prompt.end();
   const end = () => session.abort.abort();

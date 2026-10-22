@@ -173,7 +173,7 @@ async function main(): Promise<number> {
       model,
       effort,
       limits: LIMITS,
-      models: (home) => backends(sweepOptions(home)),
+      models: (home, shutdown) => backends(sweepOptions(home, undefined, shutdown)),
       verify: openVerifier({
         checks,
         tools: join(bundle, ".toolchain"),

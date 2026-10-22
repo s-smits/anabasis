@@ -54,7 +54,7 @@ interface Sitting {
     readonly puts: number;
   };
   /** The backends, built on the home the Examiner's model process keeps its state in. */
-  readonly models: (home: string) => Models;
+  readonly models: (home: string, shutdown: AbortSignal) => Models;
   readonly log: string;
   /** Aborts when the run is killed. */
   readonly kill?: AbortSignal;

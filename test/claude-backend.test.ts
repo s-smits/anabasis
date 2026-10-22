@@ -1,7 +1,7 @@
 // The Claude backend replayed against Claude Code streams pi-claude-bridge recorded (e870bc89, MIT:
 // tests/fixtures/sdk-streams/, copied verbatim into test/fixtures/claude-sdk-streams/). The recording
 // served its tools as `mcp__custom-tools__*`, as v1 and this backend do. Each test is its own solve,
-// whose signal ends the query it left open. The real Agent SDK runs; the binary it launches is test/fixtures/fake-claude-cli.ts, passed the way
+// whose shutdown signal ends the query it left open. The real Agent SDK runs; the binary it launches is test/fixtures/fake-claude-cli.ts, passed the way
 // the host passes the real one, which plays the stream back and records what the SDK launched it with.
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
@@ -51,7 +51,8 @@ const home = mkdtempSync(join(tmpdir(), "ana-claude-backend-"));
 const executable = join(home, "claude");
 const fake = join(import.meta.dir, "fixtures", "fake-claude-cli.ts");
 writeFileSync(executable, `#!/bin/sh\nexec '${runtimeProcess.execPath}' '${fake}' "$@"\n`, { mode: 0o755 });
-const sweep = claudeProvider({ executable, compaction: { window: SWEEP_COMPACT_WINDOW }, home });
+let shutdown = new AbortController();
+let sweep = claudeProvider({ executable, compaction: { window: SWEEP_COMPACT_WINDOW }, home });
 // The model the fixtures were recorded on, so its list prices are the ones Claude Code billed.
 const haiku = sweep.getModels().find((entry) => entry.id === "claude-haiku-4-5");
 if (haiku === undefined) throw new Error("pi's Anthropic catalog has no claude-haiku-4-5");
@@ -62,10 +63,17 @@ let solves = 0;
 beforeEach(() => {
   writeFileSync(join(home, "launch.jsonl"), "");
   solve = new AbortController();
+  shutdown = new AbortController();
+  sweep = claudeProvider({
+    executable,
+    compaction: { window: SWEEP_COMPACT_WINDOW },
+    home,
+    shutdown: shutdown.signal,
+  });
   solves += 1;
 });
 afterEach(() => {
-  solve.abort();
+  shutdown.abort();
 });
 
 /** The options of one turn of this test's solve. */
@@ -114,10 +122,30 @@ function turn(
   reasoning?: ThinkingLevel,
   compaction?: ClaudeCompaction,
 ): Promise<AssistantMessage> {
-  const provider = compaction === undefined ? sweep : claudeProvider({ executable, compaction, home });
-  const context = normalizeContext({ systemPrompt: "You are a solver.", messages, tools: [read] });
+  const provider =
+    compaction === undefined
+      ? sweep
+      : claudeProvider({ executable, compaction, home, shutdown: shutdown.signal });
+  const context = solverContext(messages);
   const options = { ...solveOptions(), ...keyIfDefined("reasoning", reasoning) };
   return provider.streamSimple(recorded, context, options).result();
+}
+
+/** A solver's context over `messages`, with the one tool the recordings call. */
+function solverContext(messages: Message[]) {
+  return normalizeContext({ systemPrompt: "You are a solver.", messages, tools: [read] });
+}
+
+/** How many times this test launched Claude Code. */
+function launches(): number {
+  return readFileSync(join(home, "launch.jsonl"), "utf8")
+    .split("\n")
+    .filter((line) => line.includes('"argv"')).length;
+}
+
+/** Whether Claude Code was sent an interrupt. */
+function interrupted(): boolean {
+  return launched().stdin.some((sent) => asRecord(sent.request)?.subtype === "interrupt");
 }
 
 /** The tool results pi sends back for every call in `message`. */
@@ -197,7 +225,13 @@ describe("the Claude backend", () => {
     });
     const started = async (webSearch: boolean) => {
       replay(TEXT);
-      const provider = claudeProvider({ executable, compaction: "off", home, webSearch });
+      const provider = claudeProvider({
+        executable,
+        compaction: "off",
+        home,
+        webSearch,
+        shutdown: shutdown.signal,
+      });
       const options = { ...solveOptions(), sessionId: `own-${String(solves)}-${String(webSearch)}` };
       await provider.streamSimple(recorded, context, options).result();
       const launch = launched();
@@ -224,11 +258,7 @@ describe("the Claude backend", () => {
   });
 
   it("asks for the long-context id of a model the sweep ran at a million tokens", async () => {
-    const context = normalizeContext({
-      systemPrompt: "You are a solver.",
-      messages: [opening],
-      tools: [read],
-    });
+    const context = solverContext([opening]);
     for (const id of ["claude-opus-5", "claude-opus-5-5", "claude-sonnet-5-5"]) {
       replay(TEXT);
       const model = sweep.getModels().find((entry) => entry.id === id);
@@ -242,16 +272,15 @@ describe("the Claude backend", () => {
   // name is on the command line and in every condition, and a key in the host's environment never
   // reaches a solve asked of the login.
   it("hands Claude Code the one credential of the account its provider names", async () => {
-    const onKey = claudeProvider({ executable, compaction: { window: 300_000 }, home }, "claude-api");
+    const onKey = claudeProvider(
+      { executable, compaction: { window: 300_000 }, home, shutdown: shutdown.signal },
+      "claude-api",
+    );
     const model = onKey.getModels().find(({ id }) => id === recorded.id);
     if (model === undefined) throw new Error(`the catalog has no ${recorded.id}`);
     expect(model.provider).toBe("claude-api");
     replay(TEXT);
-    const context = normalizeContext({
-      systemPrompt: "You are a solver.",
-      messages: [opening],
-      tools: [read],
-    });
+    const context = solverContext([opening]);
     const said = await onKey.streamSimple(model, context, { ...solveOptions(), apiKey: "key" }).result();
     expect(said.errorMessage).toBeUndefined();
     const { env } = launched();
@@ -277,6 +306,7 @@ describe("the Claude backend", () => {
         executable,
         compaction: "off",
         home,
+        shutdown: shutdown.signal,
         ...keyIfDefined("cacheTtl", cacheTtl),
       });
       const options = { ...solveOptions(), sessionId: `ttl-${String(solves)}-${String(cacheTtl)}` };
@@ -348,27 +378,75 @@ describe("the Claude backend", () => {
     expect(refused.errorMessage).toContain("refusal");
   });
 
-  // A submit ends pi's loop while Claude Code still waits on the call's result; the solve's abort,
-  // not a later turn, is what ends that query. It interrupts the turn first: Claude Code left to
-  // find its stdin closed goes on with the turn and asks the model again.
-  it("interrupts and ends a query left open when the solve's signal aborts between turns", async () => {
+  it("keeps the query open when a completed request aborts while its tools run", async () => {
     replay("parallel-tools.jsonl");
-    const context = (messages: Message[]) =>
-      normalizeContext({ systemPrompt: "You are a solver.", messages, tools: [read] });
     const options = solveOptions();
-    const first = await sweep.streamSimple(recorded, context([opening]), options).result();
+    const first = await sweep.streamSimple(recorded, solverContext([opening]), options).result();
     expect(first.stopReason).toBe("toolUse");
-    const interrupted = () =>
-      launched().stdin.some((sent) => asRecord(sent.request)?.subtype === "interrupt");
     expect(interrupted()).toBe(false);
     solve.abort();
-    for (let waited = 0; waited < 2000 && !interrupted(); waited += 20) await Bun.sleep(20);
-    expect(interrupted()).toBe(true);
     const next = { ...options, signal: new AbortController().signal };
     const after = await sweep
-      .streamSimple(recorded, context([opening, first, ...answered(first)]), next)
+      .streamSimple(recorded, solverContext([opening, first, ...answered(first)]), next)
       .result();
-    expect(after.errorMessage).toContain("no live Claude Code query");
+    expect(after.errorMessage).toBeUndefined();
+    expect(after.stopReason).toBe("stop");
+    expect(interrupted()).toBe(false);
+    expect(launches()).toBe(1);
+  });
+
+  it("interrupts an active request and takes a later prompt in the same query", async () => {
+    // Hold the result until an interrupt, so cancellation happens while the request is reading.
+    const script = join(home, "interrupt-cli.ts");
+    writeFileSync(
+      script,
+      readFileSync(fake, "utf8").replace(
+        'if (message.type === "control_request") {',
+        `if (message.type === "control_request" && JSON.parse(line).request.subtype === "interrupt") {
+        process.stdout.write(readFileSync(join(home, "interrupted.jsonl"), "utf8"));
+      }
+      if (message.type === "control_request") {`,
+      ),
+    );
+    const interruptCli = join(home, "claude-interrupt");
+    writeFileSync(interruptCli, `#!/bin/sh\nexec '${runtimeProcess.execPath}' '${script}' "$@"\n`, {
+      mode: 0o755,
+    });
+    replay(TEXT, (text) => {
+      const lines = text.trim().split("\n");
+      const result = lines.pop();
+      if (result === undefined) throw new Error("the recording has no result");
+      writeFileSync(join(home, "interrupted.jsonl"), `${result}\n`);
+      return `${lines.join("\n")}\n`;
+    });
+    const provider = claudeProvider({
+      executable: interruptCli,
+      compaction: "off",
+      home,
+      shutdown: shutdown.signal,
+    });
+    const options = solveOptions();
+    const pending = provider.streamSimple(recorded, solverContext([opening]), options).result();
+    const prompted = () => readFileSync(join(home, "launch.jsonl"), "utf8").includes('"type":"user"');
+    const deadline = Date.now() + 2000;
+    while (!prompted() && Date.now() < deadline) await Bun.sleep(10);
+    expect(prompted()).toBe(true);
+    solve.abort();
+    const first = await pending;
+    expect(first.stopReason).toBe("aborted");
+    expect(
+      first.diagnostics?.find((entry) => entry.type === REPORTED_COST)?.details?.totalCostUsd,
+    ).toBeCloseTo(0.020421, 10);
+    replay(TEXT);
+    const nudge: Message = { role: "user", content: "Again.", timestamp: 0 };
+    const after = await provider
+      .streamSimple(recorded, solverContext([opening, first, nudge]), {
+        ...options,
+        signal: new AbortController().signal,
+      })
+      .result();
+    expect(after.stopReason).toBe("stop");
+    expect(launches()).toBe(1);
   });
 
   // A session that ends on its own call, `finish` or `submit`, leaves the query's `result`, which
@@ -376,25 +454,36 @@ describe("the Claude backend", () => {
   // 13.35 billed dollars had no figure of Claude Code's beside them for it.
   it("takes Claude Code's cost from the result that follows a session's last call, at its close", async () => {
     replay("parallel-tools.jsonl");
-    const context = normalizeContext({
-      systemPrompt: "You are a solver.",
-      messages: [opening],
-      tools: [read],
-    });
+    const context = solverContext([opening]);
     const options = solveOptions();
     const last = await sweep.streamSimple(recorded, context, options).result();
     expect(last.stopReason).toBe("toolUse");
     expect(last.diagnostics ?? []).toEqual([]);
-    solve.abort();
+    shutdown.abort();
     expect(await reportedCost(options.sessionId, [last])).toBeCloseTo(0.0056776, 10);
     // A turn that read its own result carries it, and no provider but Claude Code reports one.
     replay(TEXT);
     const other = new AbortController();
-    const own = { ...options, sessionId: `${options.sessionId}-text`, signal: other.signal };
-    const stopped = await sweep.streamSimple(recorded, context, own).result();
+    const own = { ...options, sessionId: `${options.sessionId}-text` };
+    const stopped = await claudeProvider({ executable, compaction: "off", home, shutdown: other.signal })
+      .streamSimple(recorded, context, own)
+      .result();
     other.abort();
     expect(await reportedCost(own.sessionId, [stopped])).toBeCloseTo(0.020421, 10);
     expect(await reportedCost("solve-elsewhere", [])).toBeNull();
+  });
+
+  it("closes a query on the seat's kill signal and reads its closing cost", async () => {
+    replay("parallel-tools.jsonl");
+    const first = await turn([opening]);
+    expect(first.stopReason).toBe("toolUse");
+    shutdown.abort();
+    expect(await reportedCost(solveOptions().sessionId, [first])).toBeCloseTo(0.0056776, 10);
+    // The fake CLI logs its stdin as it reads it, which can come after the closing cost.
+    for (let waited = 0; waited < 2000 && !interrupted(); waited += 20) await Bun.sleep(20);
+    expect(interrupted()).toBe(true);
+    const after = await turn([opening, first, ...answered(first)]);
+    expect(after.stopReason).toBe("aborted");
   });
 
   it("takes a nudge into the live query, as v1 did (provider.ts:525-560)", async () => {
@@ -418,18 +507,15 @@ describe("the Claude backend", () => {
     const refused = await turn([opening]);
     expect(refused.stopReason).toBe("aborted");
     expect(refused.errorMessage).toContain("was aborted before its turn");
-    const launches = readFileSync(join(home, "launch.jsonl"), "utf8")
-      .trim()
-      .split("\n")
-      .filter((line) => line.includes('"argv"'));
-    expect(launches).toEqual([]);
+    expect(launches()).toBe(0);
   });
 
   it("refuses a later prompt with no live query to hold the conversation", async () => {
     replay(TEXT);
     const answer = await turn([opening]);
-    solve.abort();
-    solve = new AbortController();
+    // The seat's shutdown closed the query; a provider built afresh holds none for it.
+    shutdown.abort();
+    sweep = claudeProvider({ executable, compaction: { window: SWEEP_COMPACT_WINDOW }, home });
     const nudge: Message = { role: "user", content: "Again.", timestamp: 0 };
     const refused = await turn([opening, answer, nudge]);
     expect(refused.stopReason).toBe("error");
@@ -439,19 +525,15 @@ describe("the Claude backend", () => {
   it("asks for v1's effort: the model's own map, then the bridge's table", async () => {
     const opus = sweep.getModels().find((entry) => entry.id === "claude-opus-5");
     if (opus === undefined) throw new Error("pi's Anthropic catalog has no claude-opus-5");
-    const context = normalizeContext({
-      systemPrompt: "You are a solver.",
-      messages: [opening],
-      tools: [read],
-    });
-    let launches = 0;
+    const context = solverContext([opening]);
+    let asks = 0;
     /** The effort Claude Code is launched with for one turn of `model` at `reasoning`. */
     const asked = async (model: Model<Api>, reasoning?: ThinkingLevel) => {
       replay(TEXT);
-      launches += 1;
+      asks += 1;
       const options = {
         ...solveOptions(),
-        sessionId: `effort-${String(launches)}`,
+        sessionId: `effort-${String(asks)}`,
         ...keyIfDefined("reasoning", reasoning),
       };
       await sweep.streamSimple(model, context, options).result();

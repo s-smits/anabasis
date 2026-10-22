@@ -33,7 +33,8 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { wrapToolDefinitions } from "../../vendor/pi-coding-agent/core/tools/tool-definition-wrapper.ts";
 import { type Engine, pinnedEngines, type VerifierTree } from "../kernel/verify.ts";
-import { chmodSync, rmSync } from "../meta/filesystem.ts";
+import { read } from "../kernel/log.ts";
+import { chmodSync, cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
 import { basename, dirname, join } from "../meta/path.ts";
 import {
   type CommandWall,
@@ -60,7 +61,7 @@ export interface Wall extends Walled {
    *  carried, as a test may want. */
   readonly keep?: string | undefined;
   /** The reference harness's kept directory, laid in a task-writing session's home as
-   *  `reference-harness/` where the campaign's term `exam-reference` is on (`writing`). */
+   *  `reference-harness/` where the campaign's term `exam-reference` is on, and never kept. */
   readonly reference?: string | undefined;
 }
 
@@ -72,6 +73,9 @@ export interface Walls {
   readonly began: number;
 }
 
+/** Where the reference harness lies in a task-writing session's home. */
+const REFERENCE_HOME = "reference-harness";
+
 /** Where an Examiner session's shell runs: a root of its own, as a Builder's. A drafting
  *  session's id (`d-N`) and a task-writing one's (`x-N`) never meet. */
 export const examinerDirs = (log: string, id: string): SolveDirs =>
@@ -80,18 +84,14 @@ export const examinerDirs = (log: string, id: string): SolveDirs =>
 /**
  * The shell's three tools where the session has one, and none where it has not. `bash` carries
  * what the session is told of its wall, after pi's own description: the network as the wall's probe
- * found it (`networkReach`), the engines it runs by name where it has them (`inExaminerWall`),
- * `enters`, how something of the session does enter the exam, and `checked`, the tool through which the host runs the checks for it.
+ * found it (`networkReach`), the engines it runs by name where it has them (`inExaminerWall`), and
+ * `enters`, how something of the session does enter the exam.
  */
-export async function examinerShell(
-  shell: CommandWall | undefined,
-  enters: string,
-  checked = "try_answer alone runs the checks on an answer",
-): Promise<AgentTool[]> {
+export async function examinerShell(shell: CommandWall | undefined, enters: string): Promise<AgentTool[]> {
   if (shell === undefined) return [];
   const network = await networkReach(shell);
   const engines = installedPrograms(shell.toolTree);
-  const walls = ` The command runs in your home directory, which is yours for the session. It can write there and $TMPDIR, which is kept for the whole session; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. It can read the host's own toolchains and public runtime roots, but no repository or private data. ${network === "reached" ? "It has network access: a package index was reached from inside the wall when this process started." : "It has no network access: a package index could not be reached from inside the wall when this process started, so nothing can be installed."}${engines.length === 0 ? "" : ` The engines the exam's checks run are installed, and run by name: ${engines.join(", ")}. They compute; ${checked}.`} A command has a default time limit and may name a longer timeout. Nothing a command starts runs on after it returns. Nothing in your home enters the exam: ${enters}.`;
+  const walls = ` The command runs in your home directory, which is yours for the session. It can write there and $TMPDIR, which is kept for the whole session; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. It can read the host's own toolchains and public runtime roots, but no repository or private data. ${network === "reached" ? "It has network access: a package index was reached from inside the wall when this process started." : "It has no network access: a package index could not be reached from inside the wall when this process started, so nothing can be installed."}${engines.length === 0 ? "" : ` The engines the exam's checks run are installed, and run by name: ${engines.join(", ")}. They compute; try_answer alone runs the checks on an answer.`} A command has a default time limit and may name a longer timeout. Nothing a command starts runs on after it returns. Nothing in your home enters the exam: ${enters}.`;
   // SAFETY: pi's wrapper types its tools' parameters `any`; each is one of pi's definitions.
   return (wrapToolDefinitions(codingTools(shell, ["bash", "read", "write"])) as AgentTool[]).map((each) =>
     each.name === "bash" ? { ...each, description: `${each.description}${walls}` } : each,
@@ -99,7 +99,8 @@ export async function examinerShell(
 }
 
 /** `run` with an Examiner's shell under the solver's command wall, and the engines installed in
- *  it: claim its root, install the engines the wall names, run, tear down.
+ *  it: claim its root, install the engines the wall names, seed the home, run, keep the home, tear
+ *  down.
  *
  *  Each engine runs from the verifier's tree where it lies, which a pack or the repository closes:
  *  the wall opens that tree again for reading, and the shell's tool tree, first on its PATH, holds
@@ -113,7 +114,7 @@ export async function inExaminerWall<T>(
 ): Promise<T> {
   const began = performance.now();
   const dirs = examinerDirs(log, id);
-  const { engines } = wall;
+  const { engines, keep, reference } = wall;
   const pinned = engines === undefined ? [] : pinnedEngines(engines);
   const reopened = engines === undefined || pinned.length === 0 ? [] : [engines.tools];
   const tree = join(dirs.kept, "engines");
@@ -132,7 +133,30 @@ export async function inExaminerWall<T>(
       toolTree: pinned.length === 0 ? null : tree,
       limits: { shellDefaultSeconds: 120, shellMaxSeconds: 600 },
     };
-    return await run({ shell, pinned, began });
+    const { home } = dirs;
+    if (keep !== undefined && existsSync(keep)) cpSync(keep, home, { recursive: true });
+    // A kept state names its programs by a link to the campaign's store, which the wall closes.
+    if (reference !== undefined) {
+      cpSync(reference, join(home, REFERENCE_HOME), { recursive: true, dereference: true });
+    }
+    const result = await run({ shell, pinned, began });
+    // The campaign's copy of a session's home, made whole when the session ends and replacing the
+    // one before: it is the exam side's, under the campaign's folder beside the log, which every
+    // wall closes. No link is followed, as the Builder's carry follows none. Not a session that
+    // crashed with a command running, whose home is as no command left it, as its last event says.
+    // Until 12 October every crashed session's home replaced the kept one, and on buffer the next
+    // session opened in the working files of one whose turn the provider failed; from then until
+    // 14 October none did, and a crashed Examiner's work was lost to the provider.
+    const ended = read(log).findLast(
+      ({ kind, data }) => kind === "exam.finished" && data.session === id,
+    )?.data;
+    if (keep !== undefined && !(ended?.ended === "crashed" && Number(ended.running) > 0)) {
+      rmSync(keep, { recursive: true, force: true });
+      cpSync(home, keep, { recursive: true });
+      // The copy is the session's own, so a session with the term off never opens on one.
+      rmSync(join(keep, REFERENCE_HOME), { recursive: true, force: true });
+    }
+    return result;
   } finally {
     await release();
     rmSync(dirs.host, { recursive: true, force: true });

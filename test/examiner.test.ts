@@ -12,7 +12,7 @@ import { draftOf } from "../src/examiner/draft.ts";
 import { flying } from "../src/builder/opening.ts";
 import { heard, measuredGate } from "../src/examiner/record.ts";
 import { examine } from "../src/examiner/session.ts";
-import { examinerDirs } from "../src/examiner/shell.ts";
+import { examinerDirs, inExaminerWall } from "../src/examiner/shell.ts";
 import { writing } from "../src/examiner/write.ts";
 import { conditionId, settingId } from "../src/kernel/condition.ts";
 import { writtenTasks } from "../src/kernel/history.ts";
@@ -80,124 +80,109 @@ const triedExample = call("try_answer", {
 setDefaultTimeout(120_000);
 afterAll(sweep);
 
+/** A collection whose turns each bill `cost` dollars, since the faux provider bills nothing. */
+function billing(models: ReturnType<ReturnType<typeof seat>["request"]["models"]>, cost: number) {
+  // SAFETY: the inherited instance supplies every method; streamSimple alone is replaced.
+  const metered = Object.create(models) as typeof models;
+  metered.streamSimple = (...asked: Parameters<typeof models.streamSimple>) => {
+    const streamed = createAssistantMessageEventStream();
+    void (async () => {
+      for await (const event of models.streamSimple(...asked)) {
+        const total = { input: 0, output: cost, cacheRead: 0, cacheWrite: 0, total: cost };
+        streamed.push(
+          event.type === "done"
+            ? { ...event, message: { ...event.message, usage: { ...event.message.usage, cost: total } } }
+            : event,
+        );
+      }
+    })().catch(() => undefined);
+    return streamed;
+  };
+  return metered;
+}
+
 describe("a session of any mode", () => {
-  it("ends at finish with nothing put, and its result and its last event say the same", async () => {
+  it("ends at finish, or at its turns, its wall, a kill, a failed turn or a spent budget, and its result and last event say which", async () => {
     for (const mode of MODES) {
-      const s = seat(mode, [finish, finish]);
-      const before = billedAll(read(s.log));
-      expect(await examine(s.request)).toEqual({
-        ended: "finished",
-        puts: 0,
-        held: [],
-        refused: [],
-      });
-      expect(s.of(`${KIND[mode]}.started`)).toMatchObject([
-        { session: s.request.id, effort: "medium", limits: { wallSeconds: 600, turns: 12 } },
+      const finished = seat(mode, [finish, finish]);
+      const before = billedAll(read(finished.log));
+      expect(await examine(finished.request)).toEqual({ ended: "finished", puts: 0, held: [], refused: [] });
+      expect(finished.of(`${KIND[mode]}.started`)).toMatchObject([
+        { session: finished.request.id, effort: "medium", limits: { wallSeconds: 600, turns: 12 } },
       ]);
-      expect(s.of(`${KIND[mode]}.finished`)).toMatchObject([
-        { session: s.request.id, ended: "finished", note: NOTE, crash: null },
+      expect(finished.of(`${KIND[mode]}.finished`)).toMatchObject([
+        { session: finished.request.id, ended: "finished", note: NOTE, crash: null },
       ]);
       // What it billed is in its last event, and so in the campaign's total.
-      expect(billedAll(read(s.log))).toBeGreaterThan(before);
-      // Without a wall it is given no shell, and no tool's description speaks of a home.
-      expect(s.sent[0]).not.toContain('{"name":"bash"');
-      expect(s.sent[0]).not.toContain("Nothing in your home enters the exam");
-    }
-  });
+      expect(billedAll(read(finished.log))).toBeGreaterThan(before);
+      // Without a wall it is given no shell.
+      expect(finished.sent[0]).not.toContain('{"name":"bash"');
+      expect(finished.sent[0]).not.toContain("Nothing in your home enters the exam");
 
-  it("stops before another turn where its campaign's budget holds no reserve for one", async () => {
-    for (const mode of MODES) {
-      const s = seat(mode, [fauxAssistantMessage("One turn."), fauxAssistantMessage("Never asked for.")]);
-      const models = s.request.models();
-      // The faux provider bills a turn nothing, so each turn is given a cost as it ends.
-      // SAFETY: the inherited instance supplies every method; streamSimple alone is replaced.
-      const metered = Object.create(models) as typeof models;
-      metered.streamSimple = (...asked: Parameters<typeof models.streamSimple>) => {
-        const streamed = createAssistantMessageEventStream();
-        void (async () => {
-          for await (const event of models.streamSimple(...asked)) {
-            if (event.type === "done") {
-              const cost = { input: 0, output: 0.15, cacheRead: 0, cacheWrite: 0, total: 0.15 };
-              streamed.push({
-                ...event,
-                message: { ...event.message, usage: { ...event.message.usage, cost } },
-              });
-            } else streamed.push(event);
-          }
-        })().catch(() => undefined);
-        return streamed;
-      };
-      // A budget with nothing over its reserve: what the first turn bills takes it under.
-      append(s.log, "campaign.opened", { budget: { dollars: 0.1, reserve: 0.1 } });
-      expect(await examine({ ...s.request, models: () => metered })).toMatchObject({
-        ended: "stopped",
-        puts: 0,
-      });
-      expect(s.sent).toHaveLength(1);
-      expect(s.of(`${KIND[mode]}.finished`)).toMatchObject([{ ended: "stopped", crash: null, turns: 1 }]);
-    }
-  });
-
-  it("takes one session to an id", async () => {
-    for (const mode of MODES) {
-      const s = seat(mode, [finish, finish, finish]);
-      await examine(s.request);
-      await expect(examine(s.request)).rejects.toThrow(
-        `session ${s.request.id} is in the log already; a session's id names one session`,
-      );
-      expect(s.of(`${KIND[mode]}.started`)).toHaveLength(1);
-    }
-  });
-
-  it("mounts and starts nothing for a run that was stopped before it began", async () => {
-    for (const mode of MODES) {
-      const s = seat(mode, [PUT[mode], finish]);
-      const stopped = examine({ ...s.request, kill: AbortSignal.abort() }, WALL);
-      await expect(stopped).rejects.toThrow(`session ${s.request.id} was stopped before it began`);
-      expect(existsSync(s.log)).toBe(false);
-      expect(existsSync(examinerDirs(s.log, s.request.id).root)).toBe(false);
-      expect(s.sent).toEqual([]);
-    }
-  });
-
-  it("is a crashed session when the provider fails its turn, with what the provider said", async () => {
-    const limit = "You've hit your session limit";
-    for (const mode of MODES) {
-      const s = seat(mode, [failed(limit)]);
-      expect(await examine(s.request)).toMatchObject({ ended: "crashed", puts: 0 });
-      expect(s.of(`${KIND[mode]}.finished`)).toMatchObject([{ ended: "crashed", crash: limit, note: null }]);
-    }
-  });
-
-  it("ends at its turns, at its wall, and when the run is killed", async () => {
-    for (const mode of MODES) {
       // A put that does not end the session: a draft with a fault, one task of many.
-      const faulted = <T extends object>(request: T) => ({ ...request, reading: async () => ["a fault"] });
       const turned = seat(mode, [PUT[mode], finish]);
       const { limits } = turned.request;
-      expect(await examine({ ...faulted(turned.request), limits: { ...limits, turns: 1 } })).toMatchObject({
-        ended: "turns",
-        puts: 1,
-      });
+      const faulted = {
+        ...turned.request,
+        reading: async () => ["a fault"],
+        limits: { ...limits, turns: 1 },
+      };
+      expect(await examine(faulted)).toMatchObject({ ended: "turns", puts: 1 });
       expect(turned.of(`${KIND[mode]}.finished`)).toMatchObject([{ ended: "turns", turns: 1, crash: null }]);
 
-      // A provider that answers after the wall: the session ends there, and is no crash. The faux
-      // provider cannot be cut short, so the session ends when its late reply comes.
+      // The faux provider cannot be cut short, so a late reply ends the session at its wall, and no crash.
       const slow: FauxResponseStep = () => new Promise((settle) => setTimeout(() => settle(finish), 600));
       const walled = seat(mode, [slow, finish]);
       expect(await examine({ ...walled.request, limits: { ...limits, wallSeconds: 0.2 } })).toMatchObject({
         ended: "wall",
       });
-      expect(walled.of(`${KIND[mode]}.finished`)).toMatchObject([{ ended: "wall" }]);
+      expect(walled.of(`${KIND[mode]}.finished`)).toMatchObject([{ ended: "wall", crash: null }]);
 
       const kill = new AbortController();
-      const killing: FauxResponseStep = () => {
-        kill.abort();
-        return fauxAssistantMessage("Thinking.");
-      };
-      const killed = seat(mode, [killing, finish]);
+      const killed = seat(mode, [
+        () => {
+          kill.abort();
+          return fauxAssistantMessage("Thinking.");
+        },
+        finish,
+      ]);
       expect(await examine({ ...killed.request, kill: kill.signal })).toMatchObject({ ended: "killed" });
-      expect(killed.of(`${KIND[mode]}.finished`)).toMatchObject([{ ended: "killed" }]);
+
+      const limit = "You've hit your session limit";
+      const crashed = seat(mode, [failed(limit)]);
+      expect(await examine(crashed.request)).toMatchObject({ ended: "crashed", puts: 0 });
+      expect(crashed.of(`${KIND[mode]}.finished`)).toMatchObject([
+        { ended: "crashed", crash: limit, note: null },
+      ]);
+
+      // A budget with nothing over its reserve: the first turn's bill takes it under, and no second
+      // turn is asked for.
+      const spent = seat(mode, [fauxAssistantMessage("One turn."), fauxAssistantMessage("Never asked for.")]);
+      append(spent.log, "campaign.opened", { budget: { dollars: 0.1, reserve: 0.1 } });
+      const metered = billing(spent.request.models(), 0.15);
+      expect(await examine({ ...spent.request, models: () => metered })).toMatchObject({ ended: "stopped" });
+      expect(spent.sent).toHaveLength(1);
+      expect(spent.of(`${KIND[mode]}.finished`)).toMatchObject([{ ended: "stopped", crash: null, turns: 1 }]);
+    }
+  });
+
+  it("starts nothing for a run stopped before it began, nor for an id the log already holds", async () => {
+    for (const mode of MODES) {
+      const stopped = seat(mode, [PUT[mode], finish]);
+      await expect(examine({ ...stopped.request, kill: AbortSignal.abort() }, WALL)).rejects.toThrow(
+        `session ${stopped.request.id} was stopped before it began`,
+      );
+      expect(existsSync(stopped.log)).toBe(false);
+      expect(existsSync(examinerDirs(stopped.log, stopped.request.id).root)).toBe(false);
+      expect(stopped.sent).toEqual([]);
+
+      const s = seat(mode, [finish, finish, finish]);
+      await examine(s.request);
+      await expect(examine(s.request, WALL)).rejects.toThrow(
+        `session ${s.request.id} is in the log already; a session's id names one session`,
+      );
+      expect(s.of(`${KIND[mode]}.started`)).toHaveLength(1);
+      expect(existsSync(examinerDirs(s.log, s.request.id).root)).toBe(false);
     }
   });
 
@@ -214,25 +199,108 @@ describe("a session of any mode", () => {
         finish,
         finish,
       ]);
-      const examined = await examine(s.request, WALL);
-      expect(examined.ended).toBe(mode === "write" ? "finished" : "stands");
-      // The session's calls are in the log as the session's own, in order.
+      expect((await examine(s.request, WALL)).ended).toBe(mode === "write" ? "finished" : "stands");
       const calls = s.of(`${KIND[mode]}.call`);
       expect(calls.slice(0, 4).map(({ tool, isError }) => [tool, isError])).toEqual(
         ["bash", "read", "bash", "bash"].map((tool) => [tool, false]),
       );
       expect(calls.slice(1, 4).map(({ text }) => text)).toEqual(["noted", "refused", "refused"]);
       expect(existsSync(outside)).toBe(false);
-      // The host's folder of the capped root goes with the session.
       expect(existsSync(examinerDirs(s.log, s.request.id).host)).toBe(false);
-      // It is told what the shell is, what the probe found of the network and how the exam is
-      // entered; and nothing about what to do with it.
+      // It is told what the shell is and how the exam is entered, and nothing about what to do with it.
       const told = s.sent[0] ?? "";
       expect(told).toContain("but no repository or private data");
       expect(told).toMatch(/It has (no )?network access: a package index (was|could not be) reached/);
       expect(told).toContain(`Nothing in your home enters the exam: ${ENTERS[mode]}.`);
       if (mode === "draft") expect(told).not.toMatch(/research/i);
     }
+  });
+
+  it("ends each turn's last tool result with the turn it is in and the minutes it has used", async () => {
+    const example = () => fauxToolCall("read_example", { task: "e-1" });
+    const s = seat("write", [
+      fauxAssistantMessage([example(), example()], TOOL_USE),
+      call("read_example", { task: "e-1" }),
+      finish,
+      finish,
+    ]);
+    await examine(s.request);
+    const texts = read(s.log)
+      .filter(({ kind }) => kind === CALLED)
+      .map(({ data }) => (isString(data.text) ? data.text : ""));
+    expect(texts.map((text) => text.match(USED)?.[0] ?? null)).toEqual([
+      null,
+      "\nTurn 1 of 12; 0 of 10 minutes used.",
+      "\nTurn 2 of 12; 0 of 10 minutes used.",
+      null,
+      null,
+    ]);
+  });
+});
+
+describe("the home a wall keeps for a campaign's writing sessions", () => {
+  /** A wall's home: run once with `seeded` files kept and the reference harness laid, under a
+   *  session that writes `wrote` there and ends as `ended` with `running` commands. */
+  async function sat(ended: string, running: number) {
+    const s = seat("write", []);
+    const keep = join(dirname(s.log), "examiner-home");
+    const reference = join(dirname(s.log), "kept-reference");
+    mkdirSync(join(reference, "agent"), { recursive: true });
+    writeFileSync(join(reference, "agent", "BUILT_AGENTS.md"), "# Guide\n");
+    mkdirSync(keep);
+    writeFileSync(join(keep, "kept.txt"), "kept\n");
+    const found = await inExaminerWall(s.request, { ...WALL, keep, reference }, async ({ shell }) => {
+      const { home } = shell.dirs;
+      const seen = readdirSync(home).sort();
+      writeFileSync(join(home, "wrote.txt"), "wrote\n");
+      append(s.log, "exam.finished", { session: s.request.id, ended, running });
+      return seen;
+    });
+    return { found, kept: readdirSync(keep).sort() };
+  }
+
+  it("seeds the home with what it kept and the reference harness, and keeps the home after, without the harness", async () => {
+    expect(await sat("finished", 0)).toEqual({
+      found: ["kept.txt", "reference-harness"],
+      kept: ["kept.txt", "wrote.txt"],
+    });
+    // A failed model request leaves the home as its last command left it, and it is kept.
+    expect((await sat("crashed", 0)).kept).toEqual(["kept.txt", "wrote.txt"]);
+  });
+
+  it("keeps nothing of a home whose session crashed with a command running", async () => {
+    expect((await sat("crashed", 1)).kept).toEqual(["kept.txt"]);
+  });
+
+  it("carries a writing session's home into the next, whole, and lays no harness in a drafting session's", async () => {
+    const s = seat("write", [
+      bash("rm kept.txt; echo half > half.txt"),
+      finish,
+      finish,
+      bash("ls"),
+      finish,
+      finish,
+    ]);
+    const keep = join(dirname(s.log), "examiner-home");
+    mkdirSync(keep);
+    writeFileSync(join(keep, "kept.txt"), "kept\n");
+    const reference = join(dirname(s.log), "kept-reference");
+    mkdirSync(join(reference, "agent"), { recursive: true });
+    await examine(s.request, { ...WALL, keep, reference });
+    expect(s.of("exam.started")).toMatchObject([{ referenceHome: true }]);
+    expect(s.sent[0]).toContain("A copy of the reference harness is in your home under reference-harness/");
+    // Off, the next session opens on what the last one wrote and on no reference.
+    await examine({ ...s.request, id: "x-2" }, { ...WALL, keep });
+    expect(s.sent.at(-1)).toContain(
+      "You never see the solver: not its tools, its guide, its answers or its mistakes.",
+    );
+    expect(s.of(CALLED).filter(({ tool }) => tool === "bash")[1]?.text).toBe("half.txt");
+    expect(readdirSync(keep)).toEqual(["half.txt"]);
+
+    const drafted = seat("draft", [bash("ls"), PUT.draft, finish]);
+    await examine(drafted.request, { ...WALL, keep, reference: keep });
+    expect(drafted.of("draft.call")[0]?.text).toBe("(no output)");
+    expect(readdirSync(keep)).toEqual(["half.txt"]);
   });
 });
 
@@ -502,27 +570,6 @@ describe("a session that writes tasks", () => {
 
   // On the six logs read on 14 October two of eleven Examiner sessions were cut at their wall while
   // still proposing, one in a command; the session's limits were told at its opening alone.
-  it("ends each turn's last tool result with the turn it is in and the minutes it has used", async () => {
-    const example = () => fauxToolCall("read_example", { task: "e-1" });
-    const s = seat("write", [
-      fauxAssistantMessage([example(), example()], TOOL_USE),
-      call("read_example", { task: "e-1" }),
-      finish,
-      finish,
-    ]);
-    await examine(s.request);
-    const texts = read(s.log)
-      .filter(({ kind }) => kind === CALLED)
-      .map(({ data }) => (isString(data.text) ? data.text : ""));
-    expect(texts.map((text) => text.match(USED)?.[0] ?? null)).toEqual([
-      null,
-      "\nTurn 1 of 12; 0 of 10 minutes used.",
-      "\nTurn 2 of 12; 0 of 10 minutes used.",
-      null,
-      null,
-    ]);
-  });
-
   it("ends when the host has its tasks, and declines a first finish once while it has not", async () => {
     const both = fauxAssistantMessage(
       [
@@ -907,7 +954,7 @@ describe("a session that writes tasks", () => {
       return PASS;
     };
     // Call the writing owner directly so the model's own budget cannot end the session first.
-    const mode = writing({ ...s.request, probe }, [], undefined, undefined);
+    const mode = writing({ ...s.request, probe }, [], "unseen");
     await mode.tools[0]!.execute("put", { tasks: [instance(2)] });
     await mode.settle(true);
     expect(asked).toBe(1);
@@ -934,8 +981,7 @@ describe("a session that writes tasks", () => {
           }),
       },
       [],
-      undefined,
-      undefined,
+      "unseen",
     );
     await batch.tools[0]!.execute("batch", { tasks: [instance(2), instance(3)] });
     try {
@@ -969,8 +1015,7 @@ describe("a session that writes tasks", () => {
           },
         },
         [],
-        undefined,
-        undefined,
+        "unseen",
       );
       const put = mode.tools.find(({ name }) => name === TRY)!;
       const answer = mode.tools.find(({ name }) => name === "try_answer")!;
@@ -1006,8 +1051,7 @@ describe("a session that writes tasks", () => {
         },
       },
       [],
-      undefined,
-      undefined,
+      "unseen",
     );
     const put = mode.tools[0]!;
     await put.execute("first", { tasks: [instance(7)] });
@@ -1020,12 +1064,7 @@ describe("a session that writes tasks", () => {
     expect(mode.result().puts).toBe(2);
     expect(s.of(GATE).map(measuredGate)).toEqual([false, true]);
     // A held draft also stays a duplicate.
-    const proved = writing(
-      { ...s.request, id: "x-2", verify, probe: async () => REJECTED },
-      [],
-      undefined,
-      undefined,
-    );
+    const proved = writing({ ...s.request, id: "x-2", verify, probe: async () => REJECTED }, [], "unseen");
     await proved.tools
       .find(({ name }) => name === "try_answer")!
       .execute("proof", { ...instance(8), answer: GOOD });
@@ -1470,58 +1509,6 @@ describe("a session that writes tasks", () => {
       "The engines the exam's checks run are installed, and run by name: fixeng. They compute; try_answer alone runs the checks on an answer.",
     );
     expect(s.sent[0]).not.toContain("solver-x");
-  });
-
-  it("carries the home of a session that ended into the next, whole, and of one whose model request the provider failed, named", async () => {
-    const s = seat("write", [
-      bash("echo half > half.txt"),
-      failed("overloaded"),
-      bash("ls; rm stale.txt; echo whole > whole.txt"),
-      finish,
-      finish,
-    ]);
-    const keep = join(dirname(s.log), "examiner-home");
-    mkdirSync(keep);
-    writeFileSync(join(keep, "kept.txt"), "kept\n");
-    writeFileSync(join(keep, "stale.txt"), "old\n");
-    const wall = { ...WALL, keep };
-    expect((await examine(s.request, wall)).ended).toBe("crashed");
-    // No command ran as the provider failed the turn: the home is as its last command left it.
-    expect(s.of("exam.finished")).toMatchObject([{ ended: "crashed", running: 0 }]);
-    expect(readdirSync(keep).sort()).toEqual(["half.txt", "kept.txt", "stale.txt"]);
-    expect((await examine({ ...s.request, id: "x-2" }, wall)).ended).toBe("finished");
-    // The next session found what was kept; its home replaced the kept copy, and what it deleted
-    // stays deleted.
-    expect(s.of(CALLED)[1]?.text).toBe("half.txt\nkept.txt\nstale.txt");
-    expect(readdirSync(keep).sort()).toEqual(["half.txt", "kept.txt", "whole.txt"]);
-  });
-
-  it("lays the reference harness in the home where the term is on, and keeps no copy of it", async () => {
-    const s = seat("write", [
-      bash("cat reference-harness/agent/BUILT_AGENTS.md; reference-harness/.toolchain/bin/prog"),
-      finish,
-      finish,
-      bash("ls"),
-      finish,
-      finish,
-    ]);
-    const reference = join(dirname(s.log), "kept-reference");
-    mkdirSync(join(reference, "agent"), { recursive: true });
-    mkdirSync(join(reference, ".toolchain", "bin"), { recursive: true });
-    writeFileSync(join(reference, "agent", "BUILT_AGENTS.md"), "# Guide\n");
-    writeFileSync(join(reference, ".toolchain", "bin", "prog"), "#!/bin/sh\necho ran\n", { mode: 0o755 });
-    const keep = join(dirname(s.log), "examiner-home");
-    await examine(s.request, { ...WALL, keep, reference });
-    expect(s.of(CALLED)[0]?.text).toBe("# Guide\nran");
-    expect(s.of("exam.started")).toMatchObject([{ referenceHome: true }]);
-    expect(s.sent[0]).toContain("A copy of the reference harness is in your home under reference-harness/");
-    expect(existsSync(join(keep, "reference-harness"))).toBe(false);
-    // Off, the next session opens on what the last one wrote and on no reference.
-    await examine({ ...s.request, id: "x-2" }, { ...WALL, keep });
-    expect(s.of(CALLED)[1]?.text).not.toContain("reference-harness");
-    const off = s.sent.at(-1) ?? "";
-    expect(off).toContain("You never see the solver: not its tools, its guide, its answers or its mistakes.");
-    expect(off).not.toContain("reference-harness/");
   });
 });
 

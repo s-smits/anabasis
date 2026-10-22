@@ -333,7 +333,7 @@ export async function runWalled(
   } finally {
     // What left the command's group is out of its exit trap's reach, and a command the host killed
     // never ran that trap. Both still work in the seat's root, where one command runs at a time.
-    await endHolders(dirs.root);
+    endHolders(dirs.root);
     if (into !== null) rmSync(into, { recursive: true, force: true });
   }
 }

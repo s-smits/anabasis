@@ -33,10 +33,10 @@ describe("a seat's root", () => {
     mkdirSync(join(root, "home"));
     expect(() => claimRoot(root)).toThrow("EEXIST");
     expect(existsSync(join(root, "home"))).toBe(true);
-    await release();
+    release();
     expect(existsSync(root)).toBe(false);
     // Released, it can be claimed again, as a session run again under its id claims it.
-    await claimRoot(root)();
+    claimRoot(root)();
     rmSync(parent, { recursive: true, force: true });
   });
 
@@ -47,7 +47,7 @@ describe("a seat's root", () => {
     const closed = join(root, "home", "closed");
     mkdirSync(join(closed, "inner"), { recursive: true });
     chmodSync(closed, 0);
-    await release();
+    release();
     expect(existsSync(root)).toBe(false);
     rmSync(parent, { recursive: true, force: true });
   });
@@ -72,7 +72,7 @@ describe("a seat's root", () => {
       const spared = loop(beside);
       try {
         await Bun.sleep(300);
-        await releaseRoot(root);
+        releaseRoot(root);
         await left.exited;
         expect(left.signalCode).toBe("SIGKILL");
         expect(spared.exitCode).toBeNull();
@@ -101,12 +101,12 @@ describe("a seat's root", () => {
       });
       try {
         await Bun.sleep(300);
-        await endHolders(root);
+        endHolders(root);
         await left.exited;
         expect(left.signalCode).toBe("SIGKILL");
       } finally {
         left.kill("SIGKILL");
-        await release();
+        release();
         rmSync(parent, { recursive: true, force: true });
       }
     },

@@ -16,14 +16,10 @@
 import { chmodSync, existsSync, mkdirSync, readdirSync, realpathSync, rmSync } from "../meta/filesystem.ts";
 import { dirname, join, resolve } from "../meta/path.ts";
 import { runtimeProcess } from "../meta/process.ts";
+import { processPaths } from "../meta/process-table.ts";
 
 /** Undo `claimRoot`: `releaseRoot` on its root. */
-export type ReleaseRoot = () => Promise<void>;
-
-/** How long a listing of every process's working directory may take. It read 846 processes in
- *  0.3 s on the operator's host at a load of 11 (19 October); a listing stuck in the kernel is left
- *  behind rather than awaited, as one held every controller on the host on 11 October. */
-const LISTING_MS = 30_000;
+export type ReleaseRoot = () => void;
 
 /**
  * Create the seat's root, and return its release, which the caller runs once the solve or session
@@ -45,8 +41,8 @@ export function claimRoot(root: string): ReleaseRoot {
  * root's name in the log (`tools/runs/stop.ts`). A process a seat left behind is ended here, where
  * the root it works in goes: on 9 October one ran on at 80 forks a second after its solve.
  */
-export async function releaseRoot(root: string): Promise<void> {
-  await endHolders(root);
+export function releaseRoot(root: string): void {
+  endHolders(root);
   removeWhole(root);
 }
 
@@ -78,12 +74,12 @@ function removeWhole(root: string): void {
  * program from it, for a few passes while one that forks leaves another. Each walled command's end
  * calls this too (`runWalled`), for what left the command's group or outran its exit trap.
  */
-export async function endHolders(root: string): Promise<void> {
+export function endHolders(root: string): void {
   if (runtimeProcess.platform !== "darwin" || !existsSync(root)) return;
-  // lsof names a file by its real path, and a root under /var is /private/var to it.
+  // libproc names a file by its real path, and a root under /var is /private/var to it.
   const real = realpathSync.native(root);
   for (let pass = 0; pass < 5; pass++) {
-    const holders = await holdersOf(real);
+    const holders = holdersOf(real);
     if (holders.length === 0) return;
     for (const pid of holders) {
       try {
@@ -95,23 +91,13 @@ export async function endHolders(root: string): Promise<void> {
   }
 }
 
-/** The pids, but this process's, whose working directory or program lies in `root`: none where the
- *  listing did not answer within its bound. */
-async function holdersOf(root: string): Promise<number[]> {
-  const argv = ["/usr/sbin/lsof", "-d", "cwd,txt", "-Fpn"];
-  const child = Bun.spawn(argv, { stdin: "ignore", stdout: "pipe", stderr: "ignore" });
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const late = new Promise<null>((done) => {
-    timer = setTimeout(() => done(null), LISTING_MS);
-  });
-  const answer = await Promise.race([new Response(child.stdout).text(), late]);
-  clearTimeout(timer);
-  const holders = new Set<number>();
-  let pid = 0;
-  for (const line of answer?.split("\n") ?? []) {
-    if (line.startsWith("p")) pid = Number(line.slice(1));
-    const name = line.startsWith("n") ? line.slice(1) : "";
-    if (name === root || name.startsWith(`${root}/`)) holders.add(pid);
-  }
-  return [...holders].filter((each) => each > 1 && each !== runtimeProcess.pid);
+/** The pids, but this process's and launchd's, whose working directory or program lies in `root`
+ *  (`processPaths`, libproc, which reads them as lsof named them: by their real paths). */
+function holdersOf(root: string): number[] {
+  const inRoot = (path: string | null) => path !== null && (path === root || path.startsWith(`${root}/`));
+  return processPaths()
+    .filter(
+      ({ pid, cwd, program }) => pid > 1 && pid !== runtimeProcess.pid && (inRoot(cwd) || inRoot(program)),
+    )
+    .map(({ pid }) => pid);
 }

@@ -11,11 +11,14 @@
  * turns and measures, and how far its own answer stands from their best, and nothing else.
  *
  * An Examiner is a new process each session, so the host keeps what a session cannot: an instance
- * already written is not taken again, the home a session computed in is carried into the next
+ * held, measured or still at the gate is not taken again, the session's home is carried into the next
  * (`Wall.keep`, `shell.ts`), and what a session said at its `finish` opens the next. An instance is
  * logged whole with its proposal, hidden values too, so a later solve needs the log alone; no tool
  * here returns a line of the log. An author's accepted answer is kept for the Referee
  * (`task.feasible`).
+ * On 21 October, 23 passing tries followed a proposal in 30 logs; the proof is read when needed.
+ * Unmeasured drafts may return in the same session (5 retry signatures in 30 logs), and the
+ * reserve holds the next solve alone (2 reserve refusals of 1,396 drafts).
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
@@ -44,7 +47,7 @@ import { gapSaid, gateAnswers, gateBilled, heard, measuredGate, TRIED, UNAFFORDE
 /** The home's copy of the reference harness, where the campaign's term lays one there. */
 const REFERENCE_HOME = "reference-harness";
 
-/** The author's answer to a draft put to the checks under the draft's own id, read once (`gated`). */
+/** The author's current answer checked under the draft's own id when needed (`gated`). */
 type Proof = () => Promise<Verdict | null>;
 
 /** What a task-writing session is handed: who sits, as far as this mode reads it, and its campaign. */
@@ -86,8 +89,7 @@ interface Terms {
 interface Desk {
   readonly request: Terms;
   proposed: number;
-  /** The instances this campaign has been given so far, by content, so that none is taken twice:
-   *  this session's, and the ones earlier sessions wrote. */
+  /** Content held, refused on a reading or still at the gate, in this or an earlier session. */
   readonly seen: Map<string, "now" | "earlier">;
   /** The last author answer that passed on each instance, kept only in session memory and
    *  rechecked on the final task before recording proof. */
@@ -240,23 +242,14 @@ async function seenOf(
  *  five campaigns as all three at once had, on 627 of 912 solves. A solve that ended in no reading,
  *  or in a rejection the Referee did not rule earned (`probing`, `tools/d1b/examine.ts`), is no
  *  reading. `stop` is the session's signal, which its wall, its end and a killed run abort, so a
- *  wall that fires mid-try starts no other solve and leaves the draft refused unmeasured. `ahead`
- *  is the drafts of the same call measured beside this one (`proposeTool`). */
-async function measured(
-  desk: Desk,
-  task: TaskPackage,
-  stop: AbortSignal,
-  { ahead, proof }: { readonly ahead: number; readonly proof: Proof },
-) {
+ *  wall that fires mid-try starts no other solve and leaves the draft refused unmeasured. */
+async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal, proof: Proof) {
   const { contract, log, id, probe } = desk.request;
   if (carries([task.publicInput, task.hidden], desk.planted)) return { reason: PLANTED, said: "" };
   const packaged = packageGate(contract, task);
   if (packaged.outcome === "refused") return { reason: packaged.reason, said: "" };
   if (probe === null) return { reason: null, said: "" };
-  // All three solves are held at the campaign's reserve before any starts, beside the solves in
-  // flight (`affords`) and those of the call's drafts ahead of this one, which start with it and may
-  // not be in flight yet: until 14 October nothing held them, and two reserves left started three.
-  if (!affords(log, TRIED * (ahead + 1))) return { reason: UNAFFORDED, said: "" };
+  if (!affords(log, 1)) return { reason: UNAFFORDED, said: "" };
   const from = read(log).length - 1;
   const readings: Ending[] = [];
   let ran = 0;
@@ -266,7 +259,7 @@ async function measured(
     ran += 1;
     if (ending.outcome !== "non-result") readings.push(ending);
     seen = await seenOf(desk, task, { from, readings, proof });
-  } while (!seen.room && ran < TRIED && !stop.aborted);
+  } while (!seen.room && ran < TRIED && !stop.aborted && affords(log, 1));
   const { solves, valid, answers, authored, gap, unsolved } = seen;
   const unread =
     solves < ran
@@ -287,7 +280,7 @@ async function measured(
   // The rule itself is the system prompt's, said once there.
   const roomless = `${counted}, ${unsolved ? "and no answer of yours passed try_answer on it" : "which leaves no room"}`;
   return {
-    reason: seen.room ? null : unsolved || solves === TRIED ? roomless : `${counted}, so it is not measured`,
+    reason: seen.room ? null : solves === TRIED ? roomless : `${counted}, so it is not measured`,
     said: `; ${counted}`,
     reference: {
       valid,
@@ -299,43 +292,38 @@ async function measured(
   };
 }
 
-/** The gate for one instance the Examiner proposed, and the line it is told (`measured`). Its
- *  author's answer, where one passed `try_answer` on the same content (`proved`), is put to the
- *  checks again under the task's own id, before the solves where they leave it to decide (every
- *  solve valid, or none) and otherwise once the task is held; the task is on record as feasible
- *  only where it passes there. A task the reference answered in none of its solves is held on that
- *  proof, since a task it never answers while a valid answer is on record is the room a promotion
- *  leaves; without one it is refused. */
-async function gated(desk: Desk, instance: Task, stop: AbortSignal, ahead: number): Promise<string> {
+/** One proposed instance and its reply. The author's current passing answer is checked under
+ *  the task's id at each reading and once held. No cached absence or verdict hides a later try.
+ *  A task the reference never answers needs that proof to leave room (`measured`). */
+async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<string> {
   const { request } = desk;
   const { log, id: session, verify } = request;
   const task = request.pack(instance);
   const version = taskVersion(task);
   const { taskId, family, publicInput, hidden } = instance;
   append(log, "task.proposed", { version, taskId, session, task: { taskId, family, publicInput, hidden } });
-  const answer = desk.answered.get(contentOf(instance));
-  // The proof is read once: before the gate where the solves leave it to decide, a task the
-  // reference never answered or answered alike in every solve (`measured`), else once it is held.
-  let checked: Promise<Verdict | null> | undefined;
+  let answer: JsonValue | undefined;
   const proof = () => {
-    checked ??=
-      verify === null || answer === undefined
-        ? Promise.resolve(null)
-        : Promise.try(() => verify(instance, answer)).catch(
-            (error: unknown) => ({ kind: "non-result", reason: errorMessage(error) }) as const,
-          );
-    return checked;
+    answer = desk.answered.get(contentOf(instance));
+    return verify === null || answer === undefined
+      ? Promise.resolve(null)
+      : Promise.try(() => verify(instance, answer)).catch(
+          (error: unknown) => ({ kind: "non-result", reason: errorMessage(error) }) as const,
+        );
   };
-  const { reason, said, reference } = await measured(desk, task, stop, { ahead, proof });
+  const { reason, said, reference } = await measured(desk, task, stop, proof);
   const outcome = reason === null ? { outcome: "passed" } : { outcome: "refused", reason };
   append(log, GATE, {
     version,
     gate: 1,
     ...outcome,
     ...keyIfDefined("reference", reference),
-    proved: answer !== undefined,
+    proved: desk.answered.has(contentOf(instance)),
   });
   if (outcome.outcome === "refused") {
+    if (!measuredGate({ ...outcome, ...keyIfDefined("reference", reference) })) {
+      desk.seen.delete(contentOf(instance));
+    }
     append(log, "task.state", { version, state: "refused", session });
     desk.refused.push(version);
     return `${taskId}: refused: ${reason}`;
@@ -428,19 +416,14 @@ function proposeTool(desk: Desk, name: keyof typeof GATES): AgentTool {
     execute: async (_id, args, signal = new AbortController().signal) => {
       if (supplied(desk)) throw new Error(SUPPLIED);
       if (spent()) throw new Error("This session can propose no further task. Call finish.");
-      // A call's instances are taken in order and then gated together. Until 17 October they were
-      // gated one at a time, each waiting on the last one's three solves: the gate was 13.4 of
-      // buffer-159-opus's 63.6 hours and 15.4 of recode-pr169-sonnet's 33.1, its Examiners putting
-      // a mean of 1.0 to 1.6 instances a call. Being supplied is read before the call's gates, so a
-      // call may hold out more than the host asked for.
-      let ahead = 0;
+      // Take the call's instances before their gates start, so a batch may exceed what is wanted.
       const instances = args.tasks.map((given) => taken(instanceOf("", given), signal));
       if (name === "try_task") {
-        return text(putAside(desk, instances, (instance) => gated(desk, instance, signal, ahead++)));
+        return text(putAside(desk, instances, (instance) => gated(desk, instance, signal)));
       }
       const lines = await Promise.all(
         instances.map(async (instance) =>
-          isString(instance) ? instance : await gated(desk, instance, signal, ahead++),
+          isString(instance) ? instance : await gated(desk, instance, signal),
         ),
       );
       return {
@@ -510,7 +493,7 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
     name: "try_answer",
     label: "Try an answer",
     description:
-      "Run the checks on an instance with an answer of yours, and say which checks refuse it, or that none does. A try enters no task in the exam. Where the checks pass, the host holds the answer for a task proposed with that content, before or after the try, and keeps it with the task's proof on the exam side for the Referee. The gate's reading of the instance's package comes first, where it would refuse it.",
+      "Run the checks on an instance with an answer of yours, and say which checks refuse it, or that none does. A try enters no task in the exam. Where the checks pass, the host holds the answer for a task proposed with that content before or after the try. While its gate is still reading, the proof can decide admission; once held, it is kept on the exam side for the Referee. A refused task stays refused. The gate's reading of the instance's package comes first, where it would refuse it.",
     parameters: Type.Object({
       family: Type.String({ minLength: 1 }),
       public_input: Type.Unknown({ description: "What the solver would read of the task." }),

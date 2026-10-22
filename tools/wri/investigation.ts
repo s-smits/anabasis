@@ -306,14 +306,16 @@ export function reportOf(
   const named = lines.flatMap((line) => (line.startsWith("Owner:") ? [line.slice("Owner:".length)] : []));
   const unowned = named.filter((line) => !owners.some((owner) => line.includes(owner))).length;
   // Each entry is a campaign's whole name and its triage: a name that holds another as a prefix
-  // must not pass for it (review of 21 October).
+  // must not pass for it (review of 21 October). Entries part at a comma or a semicolon: on 22
+  // October 9 of 20 lanes over two campaigns parted them with semicolons, their triage holding
+  // commas, and were refused for leaving out a campaign they named.
   const unseen = names.filter((name) =>
     lines.some(
       (line) =>
         line.startsWith(SEEN) &&
         !line
           .slice(SEEN.length)
-          .split(",")
+          .split(/[,;]/u)
           .some((entry) => entry.trim().split(" ")[0] === name),
     ),
   );

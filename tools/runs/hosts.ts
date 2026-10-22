@@ -20,12 +20,14 @@
  * A verb that acts on a run it names goes wherever the run is (`routesOf`): a name no worktree here
  * holds is asked of every host at once (`holds`), and the verb runs on the host that answers it. On
  * 20 October a stop of eight runs on two machines took two commands, each naming its host, and a
- * keeper, a continue and a view each took the host's name by hand.
+ * keeper, a continue and a view each took the host's name by hand. `active --here` is what `active`
+ * asks of each host, so that it counts each login's live runs on every machine (`liveOf`).
  */
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
-import { runs } from "./registry.ts";
+import { lastLaunch } from "./receipt.ts";
+import { processes, runs, writers } from "./registry.ts";
 
 /** How long `hosts` waits for one host's rows, and a verb for each host's `holds`. */
 const HOST_MS = 30_000;
@@ -43,6 +45,17 @@ export interface Host {
   readonly bun: string;
   /** The env files there, credentials and this list among them. */
   readonly envFiles?: readonly string[];
+}
+
+/** A run a process writes, the login its last launch named (none for a run that bills no Claude
+ *  login), and the machine it runs on. */
+/** The script a live seat of `system-path-simulation` runs. */
+const SEAT = "system-path-simulation/scripts/live-seat.ts";
+
+export interface Live {
+  readonly name: string;
+  readonly login: string | null;
+  readonly host: string;
 }
 
 /** Where a verb runs: here with `here` (none where every name it was given is elsewhere), and on
@@ -158,26 +171,72 @@ export function holds(names: readonly string[]): void {
   for (const name of names.filter((one) => here.has(one))) console.log(name);
 }
 
+/** The lines the verb `args` prints on each host `ANA_HOSTS` lists, every host asked at once, and
+ *  null from a host that fails or does not answer in time, which is said on stderr. */
+export async function asked(args: readonly string[]): Promise<{ host: Host; lines: string[] | null }[]> {
+  return await Promise.all(
+    hostsOf().map(async (host) => {
+      const io = { stdin: "ignore", stdout: "pipe", stderr: "ignore", timeout: HOST_MS } as const;
+      const child = capturedSpawn(sshTo(host, args), io);
+      const [said, code] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+      if (code !== 0) console.error(`${host.name} did not answer ${args[0] ?? ""} (exit ${String(code)})`);
+      return { host, lines: code === 0 ? said.split("\n").filter((line) => line !== "") : null };
+    }),
+  );
+}
+
 /** The host that holds each of `names`, every host `ANA_HOSTS` lists asked at once. */
 export async function holders(names: readonly string[]): Promise<Map<string, Host>> {
   const held = new Map<string, Host>();
   if (names.length === 0) return held;
-  await Promise.all(
-    hostsOf().map(async (host) => {
-      const io = { stdin: "ignore", stdout: "pipe", stderr: "ignore", timeout: HOST_MS } as const;
-      const child = capturedSpawn(sshTo(host, ["holds", ...names]), io);
-      const [said, code] = await Promise.all([new Response(child.stdout).text(), child.exited]);
-      if (code !== 0) console.error(`${host.name} did not say which runs it holds (exit ${String(code)})`);
-      for (const name of said.split("\n").filter((one) => names.includes(one))) {
-        const other = held.get(name);
-        if (other !== undefined) {
-          throw new Error(`${name} names a campaign on ${other.name} and on ${host.name}`);
-        }
-        held.set(name, host);
+  for (const { host, lines } of await asked(["holds", ...names])) {
+    for (const name of (lines ?? []).filter((one) => names.includes(one))) {
+      const other = held.get(name);
+      if (other !== undefined) {
+        throw new Error(`${name} names a campaign on ${other.name} and on ${host.name}`);
       }
-    }),
-  );
+      held.set(name, host);
+    }
+  }
   return held;
+}
+
+/** The live seats of the skill `system-path-simulation` on this machine, each by the seed and the
+ *  login its own flags name, since a seat keeps no launch receipt. A shell that started one names it
+ *  too, so a seed is listed once. */
+export function seatsIn(table: readonly string[], host: string): Live[] {
+  const seats = table.flatMap((row) => {
+    const all = row.trim().split(/\s+/);
+    const own = all.slice(0, all.includes("--") ? all.indexOf("--") : all.length);
+    const flag = (name: string) => (own.includes(name) ? (own[own.indexOf(name) + 1] ?? null) : null);
+    const name = flag("--name");
+    return own.some((arg) => arg.endsWith(SEAT)) && own.includes("start") && name !== null
+      ? [{ name, login: flag("--login"), host }]
+      : [];
+  });
+  return [...new Map(seats.map((seat) => [seat.name, seat])).values()];
+}
+
+/** The runs a process writes on this machine, which `host` names, and the simulations: a seat's
+ *  seed is counted on the login the seat names. */
+export function liveHere(host = "here"): Live[] {
+  const seats = seatsIn(runTextSyncOrThrow(["ps", "-axo", "args="]).split("\n"), host);
+  const running = processes();
+  const live = runs()
+    .filter((run) => !seats.some(({ name }) => name === run.name) && writers(run, running).length > 0)
+    .map((run) => ({ name: run.name, login: lastLaunch(run.path)?.login ?? null, host }));
+  return [...live, ...seats];
+}
+
+/** The runs `host` said it writes, from the lines of its answer to `active --here`, or null where
+ *  the answer is no JSON list. */
+export function liveOf(host: string, lines: readonly string[] | null): Live[] | null {
+  try {
+    const said = parseJsonAs<Live[]>(lines?.join("\n") ?? "");
+    return Array.isArray(said) ? said.map((run) => ({ ...run, host })) : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The routes of `verb args` on this machine and the hosts that hold the names no worktree here holds. */

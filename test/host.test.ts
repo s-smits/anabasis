@@ -13,7 +13,8 @@ import { mkdtempSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import type { Kept } from "../tools/d2/campaign.ts";
-import { gated, type Host, waitCrashed, waitOut } from "../tools/d2/host.ts";
+import { waitOut } from "../src/solve/run.ts";
+import { gated, type Host, waitCrashed } from "../tools/d2/host.ts";
 import type { Campaign, Seats } from "../tools/d2/round.ts";
 import { EXAMPLE } from "./helpers/examiner-seat.ts";
 
@@ -170,15 +171,20 @@ describe("the provider's named reset", () => {
     const log = logIn("reset");
     const host = hostOf(() => 0);
     expect(
-      await waitOut(log, new Error("You've hit your limit · resets 3:50pm (Europe/Amsterdam)"), host, NOW),
+      await waitOut(
+        log,
+        new Error("You've hit your limit · resets 3:50pm (Europe/Amsterdam)"),
+        host.sleep,
+        NOW,
+      ),
     ).toBe(true);
-    expect(await waitOut(log, "Weekly limit reached|1792416600", host, NOW)).toBe(true);
+    expect(await waitOut(log, "Weekly limit reached|1792416600", host.sleep, NOW)).toBe(true);
     // A reset past, a message with no reset and a throw that is no limit are not waited for.
-    expect(await waitOut(log, "limit reached|1791811800", host, new Date("2026-10-12T14:00:00Z"))).toBe(
+    expect(await waitOut(log, "limit reached|1791811800", host.sleep, new Date("2026-10-12T14:00:00Z"))).toBe(
       false,
     );
-    expect(await waitOut(log, new Error("exited 1"), host, NOW)).toBe(false);
-    expect(await waitOut(log, null, host, NOW)).toBe(false);
+    expect(await waitOut(log, new Error("exited 1"), host.sleep, NOW)).toBe(false);
+    expect(await waitOut(log, null, host.sleep, NOW)).toBe(false);
     const minutes = 101 * 60_000 + 60_000;
     const week = 7 * 86_400_000 + 81 * 60_000 + 60_000;
     expect(host.slept).toEqual([minutes, week]);

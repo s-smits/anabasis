@@ -124,6 +124,7 @@ import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
+import { waitOut } from "#src/solve/run.ts";
 import { acceptCommand } from "../c/accept.ts";
 import { modelNamed, sweepOptions } from "../m0/stored-sweep.ts";
 import { draftCommand } from "../d1b/draft.ts";
@@ -155,7 +156,7 @@ import {
 } from "./campaign-terms.ts";
 import { checkpointCommand } from "./checkpoint.ts";
 import { closeCommand } from "./close.ts";
-import { gated, HOST, waitCrashed, waitOut } from "./host.ts";
+import { gated, HOST, waitCrashed } from "./host.ts";
 import { prepareCommand } from "./prepare.ts";
 import { promoteCommand } from "./promote.ts";
 import { solved } from "./round.ts";
@@ -207,7 +208,7 @@ function hostOwed(decided: Decided): boolean {
  * (`crashedRun`).
  */
 async function goesOn(log: string, from: number, error: unknown, host: Seats["host"]): Promise<boolean> {
-  if (await waitOut(log, error, host)) return true;
+  if (await waitOut(log, error, host?.sleep)) return true;
   const events = read(log);
   const crashed = events.slice(from).some((event) => sessionEnded(event) && event.data.ended === "crashed");
   if (crashed) await waitCrashed(log, host);

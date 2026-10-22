@@ -3,7 +3,7 @@
  * and, read over every login, when the pool runs out: what a move to another login asks before it
  * chooses one (`room`, `keep.ts`).
  *
- *   bun --env-file=<file> run runs logins [N ...] [--json]
+ *   bun --env-file=<file> run runs usage [N ...] [--json]
  *
  * A login is `CLAUDE_CODE_OAUTH_TOKEN<N>` in this process's environment, which Bun's own
  * `--env-file` loads: the verb opens no file of credentials, and prints no token. With no number it
@@ -25,6 +25,13 @@
  * hours old gives its rise since, any other its week's pace. The 5-hour windows are left out: they
  * cap how fast one login spends, not what a week holds.
  *
+ * `bun run runs active` names the runs a process writes, by the login each run's last launch named,
+ * and the live seats of `system-path-simulation`, by the login each seat names (`liveHere`),
+ * on this machine and every host `ANA_HOSTS` lists (`liveEverywhere`), and asks no
+ * provider, and `usage` puts each login's count on its head line, out of the most `ANA_LOGIN_RUNS`
+ * lets that login carry (`capOf`). Until 22 October that count took `status` on every host and a
+ * tally by hand before each launch, a continue or a move.
+ *
  * `ANA_LOGINS` in the environment, such as `2,3,4`, names the logins a run may take (`allowedLogins`),
  * every login the environment holds where it is unset. Until 15 October this was a script of the
  * operator's, which read the checkout's `.env` itself, and a shell loop applied the room rule.
@@ -37,6 +44,7 @@ import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
+import { asked, type Live, liveHere, liveOf } from "./hosts.ts";
 
 interface Window {
   readonly pct: number | null;
@@ -98,6 +106,17 @@ export function allowedLogins(env: Readonly<Record<string, string | undefined>>)
     .map((login) => login.trim())
     .filter((login) => login !== "");
   return named === undefined || named.length === 0 ? loginsIn(env) : named;
+}
+
+/** The most live runs `login` may carry, from `ANA_LOGIN_RUNS` such as `2,1:4`: a bare number for
+ *  every login, `N:most` for login N. `null` where it names neither. */
+export function capOf(env: Readonly<Record<string, string | undefined>>, login: string): string | null {
+  const entries = (env.ANA_LOGIN_RUNS ?? "").split(",").map((entry) => entry.trim().split(":"));
+  return (
+    entries.find(([who, most]) => who === login && most !== undefined)?.[1] ??
+    entries.find(([most, rest]) => most !== "" && rest === undefined)?.[0] ??
+    null
+  );
 }
 
 /** The usage endpoint's window `value`: its share used and its reset. */
@@ -393,7 +412,57 @@ function poolLines(
   ];
 }
 
-/** `bun run runs logins`. */
+/** The runs a process writes on this machine and on every host that answered, and the hosts that
+ *  did not. Each host answers `active --here` with one JSON list; any other answer leaves it
+ *  uncounted, since on 22 October a tree that predates the verb answered with nothing and exit 0,
+ *  which as lines would have read as no run live. */
+async function liveEverywhere(): Promise<{ live: Live[]; unasked: string[] }> {
+  const answers = (await asked(["active", "--here"])).map(({ host, lines }) => ({
+    host: host.name,
+    live: liveOf(host.name, lines),
+  }));
+  return {
+    live: [...liveHere(), ...answers.flatMap(({ live }) => live ?? [])],
+    unasked: answers.flatMap(({ host, live }) => (live === null ? [host] : [])),
+  };
+}
+
+const uncounted = (hosts: readonly string[]) => `not counted on ${hosts.join(", ")}: no answer to \`active\``;
+
+/** One line a login of the runs in `live`, each login `allowed` names first, then any other a run
+ *  names and the runs that name none, and the hosts in `unasked` that went uncounted. */
+export function activeLines(
+  live: readonly Live[],
+  allowed: readonly string[],
+  unasked: readonly string[],
+): string[] {
+  const named = [...new Set([...allowed, ...live.flatMap(({ login }) => login ?? [])])];
+  const lines = [...named, null].flatMap((login) => {
+    const on = live.filter((run) => run.login === login).map(({ name, host }) => `${name} (${host})`);
+    if (login === null && on.length === 0) return [];
+    const head = login === null ? "no login" : `login ${login}`;
+    return [
+      `${head.padEnd(10)}${on.length === 0 ? "none live" : `${String(on.length)} live: ${on.join(", ")}`}`,
+    ];
+  });
+  return unasked.length === 0
+    ? lines
+    : [...lines, `not counted on ${unasked.join(", ")}: no answer to \`active\``];
+}
+
+/** `bun run runs active [--here]`: the live runs on each login, on every host; with `--here` this
+ *  machine's alone, as one JSON list, which is what each host is asked. */
+export async function active(args: readonly string[]): Promise<void> {
+  const { values } = parseArgs({ args: [...args], options: { here: { type: "boolean", default: false } } });
+  if (values.here) {
+    console.log(capturedJsonStringify(liveHere()));
+    return;
+  }
+  const { live, unasked } = await liveEverywhere();
+  console.log(activeLines(live, allowedLogins(runtimeProcess.env), unasked).join("\n"));
+}
+
+/** `bun run runs usage`. */
 export async function logins(args: readonly string[]): Promise<void> {
   const { values, positionals } = parseArgs({
     args: [...args],
@@ -404,7 +473,11 @@ export async function logins(args: readonly string[]): Promise<void> {
   if (held.length === 0) {
     throw new Error(`no ${TOKEN}<N> is set: run the verb under bun --env-file=<the file that holds them>`);
   }
-  const readings = await readLogins(positionals.length > 0 ? positionals : held, runtimeProcess.env);
+  // Every host is asked for its live runs while the logins are read.
+  const [readings, counted] = await Promise.all([
+    readLogins(positionals.length > 0 ? positionals : held, runtimeProcess.env),
+    values.json ? null : liveEverywhere(),
+  ]);
   const now = Date.now();
   const weeks = readings.flatMap((reading): Week[] => {
     const reset = "error" in reading ? null : resetOf(reading.sevenDay.resetsAt);
@@ -421,13 +494,17 @@ export async function logins(args: readonly string[]): Promise<void> {
     : [];
   if (values.json) console.log(capturedJsonStringify(readings, null, 2));
   for (const reading of values.json ? [] : readings) {
-    const head = `login ${reading.login}${reading.plain ? `  (= plain ${TOKEN})` : ""}`;
+    const on = counted?.live.filter(({ login }) => login === reading.login).length ?? 0;
+    const cap = capOf(runtimeProcess.env, reading.login);
+    const runsOn = counted === null ? "" : ` · ${String(on)}${cap === null ? "" : `/${cap}`} active`;
+    const head = `login ${reading.login}${runsOn}${reading.plain ? `  (= plain ${TOKEN})` : ""}`;
     console.log(
       "error" in reading
         ? `${head}\n  ${reading.error}`
         : `${head}\n  5h    ${shown(reading.fiveHour, 5 * 60, now)}\n  week  ${shown(reading.sevenDay, 7 * 1440, now)}${reading.notes.length > 0 ? `\n  ${reading.notes.join(" · ")}` : ""}`,
     );
   }
+  if ((counted?.unasked.length ?? 0) > 0) console.log(uncounted(counted?.unasked ?? []));
   if (!values.json && positionals.length === 0 && weeks.length > 0) {
     console.log(poolLines(weeks, kept, held.length - weeks.length, now).join("\n"));
   }

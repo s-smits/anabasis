@@ -11,7 +11,7 @@
  */
 import { short } from "#src/builder/move.ts";
 import { gateAnswers } from "#src/examiner/record.ts";
-import { flipP, informative, type Paired } from "#src/kernel/compare.ts";
+import { flipP, informative, type Measures, type Paired, pointsOf } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { pairsReported } from "#src/kernel/reports.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
@@ -153,9 +153,15 @@ export function climbTable(campaigns: readonly Campaign[]): string {
  * and alike and the author's better than each (`authorRoom`). Its second promotion
  * read 8-0 joined and 5-0 (p 0.031) without them, its third 8-0 and 3-0 (p 0.125): such a task's
  * room is the author's answer measured by the author's objective, and the promotion is as sound as
- * both. 9: the joined frontier on validity alone does not clear the level, so the objective decided
- * it, as it did all three of r3's (1-0, 0-0 and 1-0 on validity); a drafted exam's objective is its
- * author's own computation, which nothing outside it has checked.
+ * both. 9: the joined frontier on validity alone does not clear the level, so the objective or the
+ * bill decided it, as one did all three of r3's (1-0, 0-0 and 1-0 on validity); a drafted exam's
+ * objective is its author's own computation, which nothing outside it has checked. It reads the
+ * frontier without the bill beside, since until 22 October it named every such promotion "by the
+ * objective alone": the M1 fork of #306 promoted on 11-0 where the bill decided 10 tasks. That
+ * reading is by this tree's score, whose objective counts a gain by its size (`FULL`), so it can
+ * differ from the ordered rule a comparison begun before 21 October was read by: an outside review
+ * of 22 October built eight tasks won by 1.1% and one lost by 20%, 8-1 at p 0.0195 by that rule and
+ * p 0.502 by this score. The line says so.
  */
 export function safeguardTriggers(log: Index): Trigger[] {
   const authored = authorRoom(log.events);
@@ -169,10 +175,14 @@ export function safeguardTriggers(log: Index): Trigger[] {
     const joined = joinedTest(reports);
     if (rests.length === 0 || flipP(joined) > level) return [];
     const harness = `${short(text(data.harness))} ${said(joined)} joined at level ${String(level)}`;
-    return [{ level, harness, without: joinedTest(reports, authored), valid: validityOf(log.events, rests) }];
+    const without = joinedTest(reports, authored);
+    const valid = measuredOf(log.events, rests, ["validity"]);
+    return [
+      { level, harness, without, valid, unbilled: measuredOf(log.events, rests, ["validity", "objective"]) },
+    ];
   });
   const author = promotions.filter(({ without, level }) => flipP(without) > level);
-  const objective = promotions.filter(({ valid, level }) => flipP(valid) > level);
+  const beyond = promotions.filter(({ valid, level }) => flipP(valid) > level);
   return [
     ...(author.length > 0
       ? [
@@ -187,35 +197,39 @@ export function safeguardTriggers(log: Index): Trigger[] {
           ),
         ]
       : []),
-    ...(objective.length > 0
+    ...(beyond.length > 0
       ? [
           fired(
-            "SAFEGUARD-9 PROMOTION BY THE OBJECTIVE ALONE",
-            objective.map(({ harness, valid }) => `${harness}, ${said(valid)} on validity alone`).join("; "),
+            "SAFEGUARD-9 PROMOTION BEYOND VALIDITY",
+            beyond
+              .map(
+                ({ harness, valid, unbilled }) =>
+                  `${harness}, ${said(valid)} on validity alone, ${said(unbilled)} without the bill by the current score`,
+              )
+              .join("; "),
           ),
         ]
       : []),
   ];
 }
 
-/** Each tested task's difference in pairs won on validity alone (`testedOf`), summed over a
+/** Each tested task's score (`testedOf`) on the `kept` measures alone (`pointsOf`), summed over a
  *  promotion's two readings as `joined` sums them. */
-function validityOf(events: readonly LogEvent[], rests: readonly Compared[]): number[] {
-  const validity = new Map<string, number>();
+function measuredOf(
+  events: readonly LogEvent[],
+  rests: readonly Compared[],
+  kept: readonly (keyof Measures)[],
+) {
+  const sums = new Map<string, number>();
   for (const { session, at, last } of rests) {
     const tested = new Set(testedOf(last).of);
-    const pairs = pairsReported(events, { session, index: at, data: last }).filter(({ task }) =>
-      tested.has(task),
-    );
-    for (const pair of pairs) {
-      // Of n solves a side with f and o valid, the new harness wins f(n-o) pairings on validity and
-      // the reference o(n-f), a difference of n(f-o).
-      const valid = (side: readonly boolean[]) => side.filter(Boolean).length;
-      const won = pair.old.length * (valid(pair.fresh) - valid(pair.old));
-      validity.set(pair.task, (validity.get(pair.task) ?? 0) + won);
+    for (const pair of pairsReported(events, { session, index: at, data: last })) {
+      const points = pointsOf(pair);
+      const score = Math.round(kept.reduce((sum, measure) => sum + points[measure], 0));
+      if (tested.has(pair.task)) sums.set(pair.task, (sums.get(pair.task) ?? 0) + score);
     }
   }
-  return [...validity.values()];
+  return [...sums.values()];
 }
 
 /** The task versions the gate held out on their author's answer alone: every reference solve

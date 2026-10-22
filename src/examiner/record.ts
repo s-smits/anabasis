@@ -22,6 +22,8 @@
  *   already spend.
  * - The drafts a gate refused after reading them, by reason (`refusedLines`), and the gates read on
  *   a replaced reference as one count (`earlierLine`).
+ * On 21 October, 2 of 1,396 drafts in 30 logs were refused for three reserved solves; the gate
+ * reserves only its next solve. An unmeasured refusal may return within the same session too.
  *
  * Everything is told by epoch: on 16 October a session after a promotion read the starter's gate
  * counts as the new reference's. Nothing here names a harness, a check or a target, and no count
@@ -64,15 +66,11 @@ interface Heard {
   readonly earlier: string | null;
 }
 
-/** The reference harness's solves of one draft task under `try_task`: the least the operator's
- *  ruling of 12 October names. Every paper the overhaul's research read that kept tasks at a
- *  frontier admitted them by a measurement of the target, none blind (one at four attempts and a
- *  pass-rate band); its probe asks for three or more fresh solves at the campaign's budget, and a
- *  task admitted at a pass rate strictly between 0 and 1. */
+/** At most three reference probes per draft; the gate stops at the first reading that leaves room. */
 export const TRIED = 3;
-/** Why a draft is not measured where the campaign's budget holds no reserve for its three solves. */
+/** Why a draft is not measured where the campaign's budget holds no reserve for its next solve. */
 export const UNAFFORDED =
-  "the campaign's budget holds no reserve for the reference harness's three solves of it beside the solves running, so it is not measured";
+  "the campaign's budget holds no reserve for the reference harness's next solve of it beside the solves running, so it is not measured";
 
 /** How each outcome is said. */
 const SAID: Readonly<Record<Outcome, string>> = {
@@ -143,7 +141,11 @@ function percent(share: number): string {
  *  its draft, or refused the package on its shape, stands. */
 export function measuredGate(data: JsonObject): boolean {
   const solves = asRecord(data.reference)?.solves;
-  return data.reason !== UNAFFORDED && !(data.outcome === "refused" && isNumber(solves) && solves < TRIED);
+  return !(
+    data.outcome === "refused" &&
+    ((isNumber(solves) && solves < TRIED) ||
+      (isString(data.reason) && data.reason.endsWith("so it is not measured")))
+  );
 }
 
 /** One line a task among `tasks`, in their order: the task by id and family, its outcome, and for

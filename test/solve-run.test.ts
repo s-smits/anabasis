@@ -489,26 +489,62 @@ describe.skipIf(!walled)("a solve end to end", () => {
     const closed = fauxAssistantMessage("", { stopReason: "error", errorMessage: "WebSocket closed 1000" });
     const { request, finished } = setup([closed, closed, closed, closed]);
     const waits: number[] = [];
-    const ending = await solve(request, async (rerun) => {
-      waits.push(rerun);
+    const ending = await solve(request, async (ms) => {
+      waits.push(ms);
     });
     expect(ending).toEqual({ outcome: "non-result", kind: "provider", reason: "WebSocket closed 1000" });
-    expect(waits).toEqual([1, 2, 3]);
+    expect(waits).toEqual([30_000, 60_000, 120_000]);
     expect(finished()).toHaveLength(4);
   }, 120_000);
 
-  it.concurrent("returns a provider limit that names its reset at once, for the campaign to wait out", async () => {
+  it.concurrent("waits out repeated named resets without spending a rerun, between ordinary provider failures", async () => {
+    const until = Math.ceil(Date.now() / 1000) + 3600;
     const limited = fauxAssistantMessage("", {
       stopReason: "error",
-      errorMessage: "Claude Code: usage limit (limit reached|1791811800)",
+      errorMessage: `Claude Code: usage limit (limit reached|${String(until)})`,
     });
-    const { request, finished } = setup([limited, limited]);
+    const closed = fauxAssistantMessage("", { stopReason: "error", errorMessage: "WebSocket closed 1000" });
+    const { request, finished, events } = setup([
+      closed,
+      limited,
+      limited,
+      limited,
+      limited,
+      closed,
+      closed,
+      ...answer,
+    ]);
     const waits: number[] = [];
-    const ending = await solve(request, async (rerun) => {
-      waits.push(rerun);
+    const ending = await solve(request, async (ms) => {
+      waits.push(ms);
+    });
+    expect(ending).toEqual({ outcome: "pass" });
+    expect(waits.filter((ms) => ms <= 120_000)).toEqual([30_000, 60_000, 120_000]);
+    const waited = events().filter(({ kind }) => kind === "campaign.waited");
+    expect(waited).toHaveLength(4);
+    expect(
+      waited.every(
+        ({ data }) => data.for === "provider" && data.until === new Date(until * 1000).toISOString(),
+      ),
+    ).toBe(true);
+    expect(waits.filter((ms) => ms > 120_000).every((ms) => ms > 3_500_000 && ms <= 3_661_000)).toBe(true);
+    expect(finished()).toHaveLength(8);
+    expect(new Set(finished().map(({ data }) => data.solve)).size).toBe(8);
+  }, 120_000);
+
+  it.concurrent("returns the ending when killed in a named-reset wait even when the stub sleep never finishes", async () => {
+    const limited = fauxAssistantMessage("", {
+      stopReason: "error",
+      errorMessage: `limit reached|${String(Math.ceil(Date.now() / 1000) + 3600)}`,
+    });
+    const kill = new AbortController();
+    const { request, finished, events } = setup([limited, ...answer]);
+    const ending = await solve({ ...request, kill: kill.signal }, async () => {
+      kill.abort();
+      await Promise.withResolvers<void>().promise;
     });
     expect(ending).toMatchObject({ outcome: "non-result", kind: "provider" });
-    expect(waits).toEqual([]);
+    expect(events().filter(({ kind }) => kind === "campaign.waited")).toHaveLength(1);
     expect(finished()).toHaveLength(1);
   }, 120_000);
 

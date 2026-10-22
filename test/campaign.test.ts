@@ -615,7 +615,7 @@ describe("a campaign", () => {
       "of the 8 tasks the comparison drew, 6 were tallied and 1 set aside on a rejection not ruled a true fail, 1 disputed: the columns below, room and the test are read over the tallied ones",
     ]);
     expect(lines(0.9)[3]).toBe(
-      "  least detectable shift: one reading of it, two-sided at the level, detects four times in five a half that wins 90% of its untied tasks",
+      "  least detectable shift: one reading of it, either half read at the level, detects four times in five a half that wins 90% of its untied tasks",
     );
     expect(ROUND_OPTIONS).not.toHaveProperty("budget");
     // Where the report carries points, the points each measure gave are said beside.

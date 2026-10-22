@@ -322,8 +322,7 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
     () => wall.abort(),
     Math.max(0, limits.wallSeconds * 1000 - (performance.now() - began)),
   );
-  // `done` is aborted when the loop returns, whatever returned it, so the model's own process is
-  // closed; `spent` where the campaign's budget holds no reserve for the next request.
+  // `done` closes the model after its gate settles; `spent` stops both when no reserve remains.
   const [done, spent] = [new AbortController(), new AbortController()];
   const kill = request.kill ? [request.kill] : [];
   const signal = AbortSignal.any([wall.signal, done.signal, spent.signal, ...kill]);
@@ -377,16 +376,17 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
       signal,
       stream,
     );
-    // Work the session left running ends before the session does, under its wall.
-    await mode.settle?.(true);
   } catch (error) {
     if (!spent.signal.aborted) crash = errorMessage(error);
   } finally {
-    clearTimeout(timer);
-    done.abort();
-    // What a crash left running is stopped by `done`, and has written its last event before the end's.
-    await mode.settle?.(true);
-    rmSync(state, { recursive: true, force: true });
+    try {
+      // A crash leaves the gate under its wall, kill and budget, just as finish does (21 October).
+      await mode.settle?.(true);
+    } finally {
+      clearTimeout(timer);
+      done.abort();
+      rmSync(state, { recursive: true, force: true });
+    }
   }
   const killed = request.kill?.aborted === true;
   crash ??= wall.signal.aborted || killed || spent.signal.aborted ? null : failedTurn(turns);

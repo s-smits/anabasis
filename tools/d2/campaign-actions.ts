@@ -22,7 +22,7 @@
  *
  * An action that threw after it began ends the campaign on its environment
  * (`CampaignContext.failed`), unless what it threw was a provider's limit with a reset the
- * campaign waits out (`waitOut`, `host.ts`): the Builder is then told to call the tool again.
+ * campaign waits out (`waitOut`, `src/solve/run.ts`): the Builder is then told to call the tool again.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
@@ -57,6 +57,7 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 import { plural } from "#src/meta/text.ts";
 import { text, tool } from "#src/solve/answer.ts";
 import { publicView } from "#src/solve/prompt.ts";
+import { waitOut } from "#src/solve/run.ts";
 import { examineCommand } from "../d1b/examine.ts";
 import { keptAs, openCampaign, PROMOTED, packNamed } from "./campaign.ts";
 import {
@@ -77,7 +78,7 @@ import {
   type Values,
 } from "./campaign-terms.ts";
 import { checkpointCommand } from "./checkpoint.ts";
-import { waitCrashed, waitOut } from "./host.ts";
+import { waitCrashed } from "./host.ts";
 import { PRACTICE, prepareCommand } from "./prepare.ts";
 import { promoteCommand } from "./promote.ts";
 import { type Campaign, type Seated, solved } from "./round.ts";
@@ -257,7 +258,7 @@ function actionTool(
           // Asked before the throw is read as a refusal, as the host's loop asks it: a limit that
           // ended a session before its first event is no refusal, and asked for again at once the
           // action would meet the same limit.
-          if (await waitOut(context.log, error, host)) {
+          if (await waitOut(context.log, error, host?.sleep)) {
             return text(
               `The provider's limit ended the ${label} action, and the host has waited it out: call ${move} again.`,
             );
@@ -338,7 +339,7 @@ const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
       .then(() => waitCrashed(context.log, context.seats.host))
       .then(() => releaseOwed(context, bench))
       .catch(async (error: unknown) => {
-        if (await waitOut(context.log, error, context.seats.host)) return;
+        if (await waitOut(context.log, error, context.seats.host?.sleep)) return;
         context.failed = { move: "examine", why: errorMessage(error) };
         bench.halt.abort();
       })

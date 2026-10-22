@@ -146,6 +146,10 @@ interface Put<Parameters extends TSchema, Thing> {
   readonly stood: (thing: Thing) => void;
   /** What the session is told when one stands, before it is told that it ends. */
   readonly stands: string;
+  /** What the host measured of a thing with no fault that it has not yet told the session of, which
+   *  then does not stand until it is put again; null where it has, or where the measure was cut
+   *  short, and the thing stands. Absent, a thing with no fault stands at once. */
+  readonly measure?: ((thing: Thing, stop: AbortSignal) => Promise<string | null>) | undefined;
   readonly finish: string;
   /** The tools it reads with beside its shell. */
   readonly reads: readonly AgentTool[];
@@ -172,18 +176,21 @@ function putting<Parameters extends TSchema, Thing>({ limits }: Sitting, of: Put
   const put = tool({
     ...of.put,
     executionMode: "sequential",
-    execute: async (_id, args) => {
+    execute: async (_id, args, signal = new AbortController().signal) => {
       if (desk.tries >= limits.puts) throw new Error(none);
       desk.tries += 1;
       const thing = of.thing(args);
       const unformed = of.unformed(thing);
       const faults = unformed.length > 0 ? unformed : await of.reading(thing);
+      const left = limits.puts - desk.tries;
+      // The last put stands without a measure, so a session told one always has a put to answer it.
+      const told = faults.length > 0 || left === 0 ? null : ((await of.measure?.(thing, signal)) ?? null);
+      if (told !== null) return text(`${told}\nThis session can put ${plural(left, `more ${kind}`)}.`);
       if (faults.length === 0) {
         of.stood(thing);
         desk.stands = true;
         return { ...text(`${of.stands} The session ends here.`), terminate: true };
       }
-      const left = limits.puts - desk.tries;
       return text(
         [
           `The ${kind} does not stand. ${plural(faults.length, "fault")}:`,

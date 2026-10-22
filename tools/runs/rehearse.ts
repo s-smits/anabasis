@@ -64,7 +64,7 @@ import {
 import type { Control } from "#src/kernel/acceptance.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { proposalsOf } from "#src/kernel/history.ts";
-import { verdictsOf } from "#src/kernel/solves.ts";
+import { examinerSessions, verdictsOf } from "#src/kernel/solves.ts";
 import type { Task } from "#src/kernel/verify.ts";
 import { examine, type Session } from "#src/examiner/session.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
@@ -263,9 +263,7 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
       setting: campaign.setting({ ...campaign.test, ...scripted([], 0) }),
       solve: async (task, harness, kill, comparison) => {
         const side = await sideOf(harness.dir);
-        const admission = read(campaign.log).some(
-          ({ kind, data }) => kind === "exam.started" && data.session === comparison,
-        );
+        const admission = examinerSessions(read(campaign.log)).has(comparison);
         const wanted = admission
           ? script.held.old
           : { old: script.held.old, new: script.held.fresh, starter: script.starter }[side];

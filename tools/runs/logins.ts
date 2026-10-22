@@ -32,6 +32,12 @@
  * lets that login carry (`capOf`). Until 22 October that count took `status` on every host and a
  * tally by hand before each launch, a continue or a move.
  *
+ * Each reading keeps that count beside each login's week, and the rises between readings over the
+ * runs counted give the share of a week a run spends an hour (`perRunRate`). The most a login
+ * carries is then the lower of its cap and the runs its week left fits until its reset, each run
+ * active 16 of 24 hours (`fitOf`), and a login with more live runs than that reads oversubscribed
+ * (`carried`): a cap of two read 0/2 on a login at 92% of its week with 11 hours of it left.
+ *
  * `ANA_LOGINS` in the environment, such as `2,3,4`, names the logins a run may take (`allowedLogins`),
  * every login the environment holds where it is unset. Until 15 October this was a script of the
  * operator's, which read the checkout's `.env` itself, and a shell loop applied the room rule.
@@ -40,6 +46,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/fi
 import { mainTree } from "#src/meta/git.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
+import { keysIf } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
@@ -73,6 +80,8 @@ interface Week {
 interface Snapshot {
   readonly at: number;
   readonly weeks: Record<string, { pct: number; reset: number }>;
+  /** Each login's live runs when the reading was taken; readings before 22 October hold none. */
+  readonly runs?: Record<string, number>;
 }
 
 const TOKEN = "CLAUDE_CODE_OAUTH_TOKEN";
@@ -86,6 +95,11 @@ const STEP = HOUR / 12;
 const KEPT_MS = 8 * 24 * HOUR;
 /** A login's week past this share has no room for a run moved to it (`room`). */
 const FULL_WEEK = 90;
+/** The share of a day a run is taken to be active when a week is read for how many runs it fits:
+ *  16 of 24 hours (operator, 22 October). */
+const ACTIVE_SHARE = 16 / 24;
+/** Fewer run-hours than this on record measure no rate a run spends (`perRunRate`). */
+const LEAST_RUN_HOURS = 6;
 const NOTED = [
   ["seven_day_opus", "opus"],
   ["seven_day_sonnet", "sonnet"],
@@ -412,6 +426,45 @@ function poolLines(
   ];
 }
 
+/** The share of one login's week a live run spends an hour, over `history`: each login's rise
+ *  between two readings a quarter of an hour to 3 hours apart in one window, over the runs the
+ *  earlier reading counted on it. A person's own session on a login is charged to its runs, so the
+ *  rate errs high. Null below `LEAST_RUN_HOURS`. */
+export function perRunRate(history: readonly Snapshot[]): number | null {
+  const sorted = history.toSorted((one, other) => one.at - other.at);
+  const spans = sorted.flatMap((then, at) => {
+    const next = sorted[at + 1];
+    const hours = next === undefined ? 0 : (next.at - then.at) / HOUR;
+    if (next === undefined || hours < 0.25 || hours > 3) return [];
+    return Object.entries(then.runs ?? {}).flatMap(([login, runs]) => {
+      const [was, now] = [then.weeks[login], next.weeks[login]];
+      return runs === 0 || was === undefined || now === undefined || Math.abs(was.reset - now.reset) >= HOUR
+        ? []
+        : [{ used: Math.max(0, now.pct - was.pct), runHours: runs * hours }];
+    });
+  });
+  const runHours = spans.reduce((sum, span) => sum + span.runHours, 0);
+  return runHours < LEAST_RUN_HOURS ? null : spans.reduce((sum, span) => sum + span.used, 0) / runHours;
+}
+
+/** How many runs `week` carries to its reset at `rate` a run-hour, each active `ACTIVE_SHARE` of
+ *  the time; null without a rate. */
+export function fitOf(week: Week, rate: number | null, now: number): number | null {
+  if (rate === null) return null;
+  const need = rate * ACTIVE_SHARE * Math.max(0, (week.reset - now) / HOUR);
+  return need <= 0 ? Number.POSITIVE_INFINITY : Math.floor(Math.max(0, 100 - week.pct) / need);
+}
+
+/** A login's live runs out of the most it carries, the lower of its cap (`capOf`) and what its
+ *  week fits (`fitOf`), and whether more run on it than its week fits. Until 22 October the most
+ *  was the cap alone, and a login at 92% of its week read 0/2 with 11 hours of it left. */
+export function carried(on: number, cap: string | null, fit: number | null): string {
+  const fits = fit !== null && Number.isFinite(fit) ? fit : null;
+  const most = [cap === null ? null : Number(cap), fits].filter((one): one is number => one !== null);
+  const of = most.length === 0 ? "" : `/${String(Math.min(...most))}`;
+  return `${String(on)}${of} active${fits !== null && on > fits ? " · oversubscribed" : ""}`;
+}
+
 /** The runs a process writes on this machine and on every host that answered, and the hosts that
  *  did not. Each host answers `active --here` with one JSON list; any other answer leaves it
  *  uncounted, since on 22 October a tree that predates the verb answered with nothing and exit 0,
@@ -492,11 +545,16 @@ export async function logins(args: readonly string[]): Promise<void> {
         .filter((line) => line !== "")
         .map((line) => parseJsonAs<Snapshot>(line))
     : [];
+  const rate = perRunRate(kept);
+  const onEach = (login: string) => counted?.live.filter((run) => run.login === login).length ?? 0;
   if (values.json) console.log(capturedJsonStringify(readings, null, 2));
   for (const reading of values.json ? [] : readings) {
-    const on = counted?.live.filter(({ login }) => login === reading.login).length ?? 0;
-    const cap = capOf(runtimeProcess.env, reading.login);
-    const runsOn = counted === null ? "" : ` · ${String(on)}${cap === null ? "" : `/${cap}`} active`;
+    const week = weeks.find(({ login }) => login === reading.login);
+    const fit = week === undefined ? null : fitOf(week, rate, now);
+    const runsOn =
+      counted === null
+        ? ""
+        : ` · ${carried(onEach(reading.login), capOf(runtimeProcess.env, reading.login), fit)}`;
     const head = `login ${reading.login}${runsOn}${reading.plain ? `  (= plain ${TOKEN})` : ""}`;
     console.log(
       "error" in reading
@@ -507,12 +565,20 @@ export async function logins(args: readonly string[]): Promise<void> {
   if ((counted?.unasked.length ?? 0) > 0) console.log(uncounted(counted?.unasked ?? []));
   if (!values.json && positionals.length === 0 && weeks.length > 0) {
     console.log(poolLines(weeks, kept, held.length - weeks.length, now).join("\n"));
+    console.log(
+      rate === null
+        ? `  a run       no rate yet: under ${String(LEAST_RUN_HOURS)} run-hours between readings that counted live runs`
+        : `  a run       ~${rate.toFixed(2)}% of a login's week an hour, active ${String(Math.round(ACTIVE_SHARE * 24))} of 24h: the most each login carries to its reset`,
+    );
   }
   if (weeks.length === 0) return;
   mkdirSync(dirname(history), { recursive: true });
   const snapshot: Snapshot = {
     at: now,
     weeks: Object.fromEntries(weeks.map(({ login, pct, reset }) => [login, { pct, reset }])),
+    ...keysIf(counted !== null, () => ({
+      runs: Object.fromEntries(weeks.map(({ login }) => [login, onEach(login)])),
+    })),
   };
   const lines = [...kept.filter(({ at }) => now - at < KEPT_MS), snapshot].map((one) =>
     capturedJsonStringify(one),

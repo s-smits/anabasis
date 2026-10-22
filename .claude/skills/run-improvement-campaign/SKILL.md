@@ -39,10 +39,10 @@ line per step. Every step below reads that file first.
    campaign per runner host**, so each runs on a host no other campaign loads:
    `runs fresh <pack> --host <host> --at <commit> --login N --as forkedPR<n>-<host> --yes`, after a
    dry run without `--yes`. `fresh --host` runs the host's own copy of the verb, so first bring the
-   host's verb tree to the commit and the login into its env file, as the operator's nightly fork
+   host's verb tree to the commit and the login into its env file, as the operator's scheduled fork
    does. Launch the hosts one after the other: on 22 October two `fresh --host` launches sent at
    once from one checkout both exited 1, and each passed when run alone. Count live runs per login
-   across every host before each launch (the operator's machine rules). Tag `run/<name>/1` at the
+   across every host before each launch (`runs usage`, against the operator's machine rules). Tag `run/<name>/1` at the
    commit and push the tag.
 3. **Predict** before the first solve (section 3): one ledger for the cycle, with at least one row
    per pull request the forks carry, each naming that pull request, its link and its falsifier. A

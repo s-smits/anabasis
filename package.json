@@ -21,7 +21,7 @@
     "format": "bun node_modules/@biomejs/biome/bin/biome format --write .",
     "format:check": "bun node_modules/@biomejs/biome/bin/biome format .",
     "secrets": "bun tools/secrets/scan.ts",
-    "runs": "bun tools/runs/cli.ts",
+    "runs": "bun --env-file=.env --env-file=.env.runs tools/runs/cli.ts",
     "commit:check": "sh tools/runtime/commit-check.sh",
     "gate": "bun tools/runtime/gate.ts",
     "hooks:install": "git config core.hooksPath .githooks",

@@ -827,7 +827,7 @@ The other verbs over a campaign's log:
 bun run runs rehearse [--no-comparison] <the flags of tools/d2/round.ts that name no model>
 bun run runs rehearse --campaign <the flags of tools/d2/harness-builder.ts that name no model>
 bun run runs view <name> [--level N] [--target N] [--practice N] [--past-stop "<why>"]
-bun run runs fresh | launch | continue | keep | pause | copy | fetch | retire | stop <name> | source <name> | status | logins | pulse | replay | seed | zip
+bun run runs fresh | launch | continue | keep | pause | copy | fetch | retire | stop <name> | source <name> | status | usage | active | pulse | replay | seed | zip
 ```
 
 ### Defaults
@@ -1391,7 +1391,7 @@ npm or npx. `src/meta` wraps the few Node surfaces Bun lacks (`tools/oxlint/HABI
 | `bun run hooks:install` | Points this clone's `core.hooksPath` at `.githooks`, once; every worktree shares it |
 | `bun run commit:check` | What the pre-commit hook runs, also by hand: author email, format and lint of staged files, the slop report, the secret scan |
 | `bun run secrets` | The secret scan |
-| `bun run runs <verb>` | `fresh`, `launch`, `continue`, `keep`, `pause`, `copy`, `fetch`, `retire`, `stop`, `source`, `status`, `logins` (or `usage`), `on`, `hosts`, `pulse`, `rehearse`, `seed`, `replay`, `zip`, `view`. A verb that names a run goes to the machine that holds it |
+| `bun run runs <verb>` | `fresh`, `launch`, `continue`, `keep`, `pause`, `copy`, `fetch`, `retire`, `stop`, `source`, `status`, `usage`, `active`, `on`, `hosts`, `pulse`, `rehearse`, `seed`, `replay`, `zip`, `view`. A verb that names a run goes to the machine that holds it |
 | `bun run ui:dev` | The page that shows a campaign as its log reads, on the loopback with a token (`packages/ui/README.md`). `-- --exam-side` adds the exam side's content: start that only where no Builder or solver runs |
 | `bun run ui:gate` | The UI's own gate: its dependencies, its typecheck and build, and its tests under `packages/ui/test` |
 | `bun .claude/skills/stack-pr/scripts/stack.ts` | The open stack: every edge, and the top |

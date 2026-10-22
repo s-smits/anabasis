@@ -9,7 +9,7 @@
  *
  * `launch` starts the campaign command (`tools/d2/harness-builder.ts`) under a name no worktree
  * holds a campaign of, in this worktree. `continue` runs a campaign again from its log in the
- * worktree that holds it, on the flags its last run kept (`receipts`), less its name and its
+ * worktree that holds it, on the flags its last run kept (`lastLaunch`), less its name and its
  * total: the record holds the total, which a budget word may have set since, and `--budget` names
  * another. `pause` waits until the log has gained one more of the named event and no comparison,
  * Examiner session or draft is open, and then stops the run (`stop.ts`); `continue --after` is that
@@ -50,7 +50,7 @@ import { gitText, worktrees } from "#src/meta/git.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, processGroupExists, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
-import { nextRun, receipts } from "./receipt.ts";
+import { lastLaunch, nextRun } from "./receipt.ts";
 import {
   BUILDER,
   CAMPAIGNS,
@@ -206,7 +206,7 @@ export async function start(
 
 /** The last run of the campaign command `run` kept a receipt of. */
 export function lastRun(run: Run) {
-  const kept = receipts(run.path).findLast(({ session }) => session.startsWith("run-"));
+  const kept = lastLaunch(run.path);
   if (kept === undefined) throw new Error(`no run of the campaign command beside ${run.path} kept its flags`);
   return kept;
 }

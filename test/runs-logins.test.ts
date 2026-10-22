@@ -1,8 +1,9 @@
 // What `runs active` prints: each login's live runs across machines, the runs that name no login,
 // and the hosts that went uncounted.
 import { describe, expect, it } from "bun:test";
+import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { liveOf, seatsIn } from "../tools/runs/live.ts";
-import { activeLines, capOf } from "../tools/runs/logins.ts";
+import { activeLines, capOf, carried, fitOf, perRunRate } from "../tools/runs/logins.ts";
 
 const live = [
   { name: "a", login: "2", host: "here" },
@@ -69,5 +70,41 @@ describe("seatsIn", () => {
     expect(seatsIn([seat.replace(" --login 3", "")], "here")).toEqual([
       { name: "sim-a", login: null, host: "here" },
     ]);
+  });
+});
+
+describe("how many runs a login's week carries", () => {
+  const HOUR = 3_600_000;
+  const reading = (hour: number, pct: number, runs?: number) => ({
+    at: hour * HOUR,
+    weeks: { "2": { pct, reset: 100 * HOUR } },
+    ...keyIfDefined("runs", runs === undefined ? undefined : { "2": runs }),
+  });
+
+  it("measures a run's share of a week an hour from rises over the runs the earlier reading counted", () => {
+    const history = [reading(0, 10, 2), reading(1, 12, 2), reading(2, 14, 2), reading(3, 16, 2)];
+    expect(perRunRate(history)).toBe(1);
+  });
+
+  it("measures nothing from readings that counted no runs, too few run-hours, or a window that reset", () => {
+    expect(perRunRate([reading(0, 10), reading(1, 12), reading(2, 14), reading(3, 16)])).toBeNull();
+    expect(perRunRate([reading(0, 10, 2), reading(1, 12, 2)])).toBeNull();
+    const reset = { at: 2 * HOUR, weeks: { "2": { pct: 0, reset: 268 * HOUR } }, runs: { "2": 2 } };
+    expect(perRunRate([reading(0, 10, 2), reading(1, 12, 2), reset])).toBeNull();
+  });
+
+  it("fits as many runs as the week left carries to its reset, active 16 of 24 hours", () => {
+    const now = 0;
+    expect(fitOf({ login: "3", pct: 92, reset: 42 * HOUR }, 1, now)).toBe(0);
+    expect(fitOf({ login: "2", pct: 33, reset: 9 * HOUR }, 1, now)).toBe(11);
+    expect(fitOf({ login: "2", pct: 33, reset: 9 * HOUR }, null, now)).toBeNull();
+  });
+
+  it("shows the lower of the cap and the fit, and marks more live runs than the week fits", () => {
+    expect(carried(2, "2", 1)).toBe("2/1 active · oversubscribed");
+    expect(carried(1, "2", 1)).toBe("1/1 active");
+    expect(carried(1, "2", null)).toBe("1/2 active");
+    expect(carried(1, "2", Number.POSITIVE_INFINITY)).toBe("1/2 active");
+    expect(carried(0, null, null)).toBe("0 active");
   });
 });

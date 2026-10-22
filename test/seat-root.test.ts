@@ -112,4 +112,40 @@ describe("a seat's root", () => {
     },
     20_000,
   );
+
+  // The release's passes run a few milliseconds apart since the listing became libproc's, where each
+  // waited 240 ms on lsof: a child forked between a pass's listing and its kill is the next pass's.
+  it.skipIf(!onDarwin)(
+    "ends a loop that forks children which live on, and every child it forked",
+    async () => {
+      const { parent, root } = unclaimed();
+      claimRoot(root);
+      const home = join(root, "home");
+      mkdirSync(home);
+      const marker = `61.${String(runtimeProcess.pid)}`;
+      const alive = () =>
+        Bun.spawnSync(["/usr/bin/pgrep", "-f", `sleep ${marker}`])
+          .stdout.toString()
+          .trim()
+          .split("\n")
+          .filter(Boolean).length;
+      const loop = Bun.spawn(["/bin/sh", "-c", `while :; do /bin/sleep ${marker} & done`], {
+        cwd: home,
+        stdio: ["ignore", "ignore", "ignore"],
+      });
+      try {
+        await Bun.sleep(300);
+        expect(alive()).toBeGreaterThan(0);
+        releaseRoot(root);
+        await loop.exited;
+        expect(loop.signalCode).toBe("SIGKILL");
+        expect(alive()).toBe(0);
+      } finally {
+        loop.kill("SIGKILL");
+        Bun.spawnSync(["/usr/bin/pkill", "-9", "-f", `sleep ${marker}`]);
+        rmSync(parent, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
 });

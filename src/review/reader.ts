@@ -9,19 +9,17 @@
  * a cap on model turns stands in for v1's single turn.
  *
  * A session also ends at a wall and at the run's kill. The turn cap bounds spend and not time, and a
- * session that hangs would hang the run that waits on it. The same signal is aborted when the session
- * ends for any reason, because that is what closes a backend's own process: a Claude Code query stays
- * open until its signal fires (`src/backends/claude.ts`). On 20 October triage found that the wall
+ * session that hangs would hang the run that waits on it. The seat's frame aborts the loop's signal
+ * when the session ends for any reason (`sit`, `src/seat/session.ts`), because that is what closes a
+ * backend's own process: a Claude Code query stays open until its signal fires. On 20 October triage found that the wall
  * could stop the model loop while an executing probe kept verifier work open; that signal now also
  * reaches each tool, so a Referee probe can cancel the verifier and its check cell with the session.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { priceKey } from "../kernel/meter.ts";
-import { rmSync } from "../meta/filesystem.ts";
 import type { JsonObject } from "../meta/json-shape.ts";
-import { seatLoop, spentBy } from "../solve/seat.ts";
-import { hostScratch } from "../verify/wall-policy.ts";
+import { sit } from "../seat/session.ts";
 
 /** Who reads, and on what. */
 export interface Reader {
@@ -49,45 +47,27 @@ export async function readOnce(
   packet: string,
   tools: readonly AgentTool[],
 ): Promise<JsonObject> {
-  // Under the host's own scratch, which every wall closes (`wall-policy.ts`): the reader's Claude
-  // Code keeps what it was sent here, hidden expectations included.
-  const home = hostScratch("claude-cli-reader-");
-  const turns: AssistantMessage[] = [];
-  // A record tool ends the loop while Claude Code still waits on its result, and only this signal
-  // ends that query: on 8 October a live Referee's Claude Code outlived its ruling by two hours.
-  const [wall, done] = [new AbortController(), new AbortController()];
+  const wall = AbortSignal.timeout((reader.wallSeconds ?? WALL_SECONDS) * 1000);
   // The Claude backend keeps one live query a session id in the process. A comparison rules its
   // rejections in parallel, so the id is random: two rulings begun in one millisecond once shared
   // an id, and the second reader's packet went into the first one's query.
-  const session = `reader-${crypto.randomUUID()}`;
-  const timer = setTimeout(() => wall.abort(), (reader.wallSeconds ?? WALL_SECONDS) * 1000);
-  try {
-    await seatLoop({
-      models: reader.models(home),
-      id: session,
-      system,
-      opening: packet,
-      tools,
-      config: {
-        model: reader.model,
-        reasoning: reader.effort,
-        finishTurn: ({ message }) => {
-          if (message.role === "assistant") turns.push(message);
-          return turns.length >= TURN_CAP ? { action: "end" } : undefined;
-        },
-      },
-      emit: () => {},
-      signal: AbortSignal.any([wall.signal, done.signal, ...(reader.kill ? [reader.kill] : [])]),
-    });
-  } finally {
-    clearTimeout(timer);
-    done.abort();
-    rmSync(home, { recursive: true, force: true });
-  }
+  const turns: AssistantMessage[] = [];
+  const { spent } = await sit({
+    models: reader.models,
+    id: `reader-${crypto.randomUUID()}`,
+    model: reader.model,
+    effort: reader.effort,
+    system,
+    opening: packet,
+    tools,
+    turns,
+    most: TURN_CAP,
+    stops: [wall, reader.kill],
+  });
   return {
     model: priceKey(reader.model),
-    walled: wall.signal.aborted,
+    walled: wall.aborted,
     error: turns.at(-1)?.errorMessage ?? null,
-    ...(await spentBy(reader.model, session, turns, [])),
+    ...spent,
   };
 }

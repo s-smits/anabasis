@@ -15,8 +15,8 @@
  *   turn that stops without `submit`, pi's compaction, and OpenRouter as the backends serve it,
  *   retried (`openrouter`, `src/backends/models.ts`);
  * - the trace as `solve.turn`, `solve.call` and `solve.compacted` events in a log of its own,
- *   written by `traceSink` and `seatLoop` and read by `src/kernel/trace.ts`, and the spend
- *   as `spentBy` sums a campaign's solve, so a change to the log's format has one owner to change;
+ *   written by `sit` (`src/seat/session.ts`) and read by `src/kernel/trace.ts`, and the spend
+ *   as `sit` sums a campaign's solve, so a change to the log's format has one owner to change;
  *   the same trace as Harbor's ATIF trajectory (`trajectoryOf`, `src/kernel/atif.ts`), where the
  *   benchmark's tools look for an agent's run, and the ending of a solve that left no answer as a
  *   campaign's solve is read (`unanswered`, `src/kernel/solve.ts`).
@@ -33,7 +33,7 @@
  * declared one on 21 October 2026 (0 of 193), and serving them would need the harness shim.
  */
 import type { StreamFn } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, ThinkingLevel, Usage } from "@earendil-works/pi-ai";
+import type { AssistantMessage, ThinkingLevel } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import type { ToolDefinition } from "../../vendor/pi-coding-agent/core/extensions/types.ts";
 import { buildSystemPrompt } from "../../vendor/pi-coding-agent/core/system-prompt.ts";
@@ -59,7 +59,7 @@ import { openHarness } from "#src/solve/harness.ts";
 import { installedPrograms } from "#src/solve/programs.ts";
 import { NUDGE } from "#src/solve/prompt.ts";
 import { timed } from "#src/solve/run.ts";
-import { seatLoop, spentBy, traceSink, userTurn } from "#src/solve/seat.ts";
+import { sit } from "#src/seat/session.ts";
 import { shellQuote, toolTreeSearchDirs } from "#src/verify/solve-command-isolation.ts";
 
 /** The file names the Harbor agent reads back from the trial's log folder (`harbor/pi_agent.py`). */
@@ -203,7 +203,6 @@ async function solve(ask: Asked) {
   const streamSimple: StreamFn = (_asking, context, options) =>
     provider.streamSimple(model, context, { ...options, apiKey: ask.key });
   const turns: AssistantMessage[] = [];
-  const summaries: Usage[] = [];
   const started = performance.now();
   const clock: SolveClock = { started, seconds: ask.wallSeconds };
   const tools = wrapToolDefinitions(
@@ -213,37 +212,26 @@ async function solve(ask: Asked) {
   const wall = new AbortController();
   const timer = setTimeout(() => wall.abort(), ask.wallSeconds * 1000);
   let prompts = 1;
-  let crash: string | null = null;
-  try {
-    await seatLoop({
-      models: { streamSimple },
-      id: "pi-solve",
-      system: prompt,
-      opening: ask.instruction,
-      tools,
-      config: {
-        model,
-        reasoning: ask.effort,
-        toolExecution: "sequential",
-        finishTurn: ({ message }) => {
-          if (message.role === "assistant") turns.push(message);
-          return turns.length >= ask.modelTurns || said.submitted ? { action: "end" } : undefined;
-        },
-        getFollowUpMessages: async () => {
-          if (said.submitted || prompts >= ask.prompts) return [];
-          prompts += 1;
-          return [userTurn(NUDGE)];
-        },
-      },
-      compact: { log, of: "solve", summaries },
-      emit: traceSink(log, "solve", "pi-solve", () => turns.length),
-      signal: wall.signal,
-    });
-  } catch (error) {
-    crash = errorMessage(error);
-  } finally {
-    clearTimeout(timer);
-  }
+  const { thrown: crash, spent } = await sit({
+    models: () => ({ streamSimple }),
+    id: "pi-solve",
+    model,
+    effort: ask.effort,
+    system: prompt,
+    opening: ask.instruction,
+    tools,
+    trace: { log, of: "solve" },
+    turns,
+    most: ask.modelTurns,
+    over: () => said.submitted,
+    next: async () => {
+      if (said.submitted || prompts >= ask.prompts) return null;
+      prompts += 1;
+      return NUDGE;
+    },
+    stops: [wall.signal],
+  });
+  clearTimeout(timer);
   // Harbor's viewer and `harbor analyze` read an agent's run from `agent/trajectory.json`.
   const trajectory = trajectoryOf(read(log), "solve", "pi-solve", {
     name: "anabasis",
@@ -259,7 +247,7 @@ async function solve(ask: Asked) {
     effort: ask.effort,
     prompts,
     seconds: (performance.now() - started) / 1000,
-    ...(await spentBy(model, "pi-solve", turns, summaries)),
+    ...spent,
   };
 }
 

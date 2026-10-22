@@ -4,8 +4,9 @@
  * repairs a check (`AGENTS.md` rule 2). A log of before keeps its `repair.*` events.
  *
  * A mode is what a session is told, the tools it works with and when its work is done (`Mode`);
- * everything else is one loop (`sit`): its start event, its `finish`, its shell where it has one,
- * the turns and calls in the log under the mode's kind, and its end event with what it billed. A
+ * everything else is one loop (`examining`) in the frame every seat's session has (`sit`,
+ * `src/seat/session.ts`): its start event, its `finish`, its shell where it has one, the turns and
+ * calls in the log under the mode's kind, and its end event with what it billed. A
  * turn of its own the provider failed ends it crashed, with what the provider said. A drafting
  * session puts one whole draft to the host's reading until one stands (`putting`); a writing
  * session proposes many tasks. The id, the root and the home are the wall's (`inExaminerWall`,
@@ -21,7 +22,6 @@ import {
   type Model,
   type Models,
   type ThinkingLevel,
-  type Usage,
 } from "@earendil-works/pi-ai";
 import { type Static, type TSchema, Type } from "typebox";
 import { openingOf } from "../builder/opening.ts";
@@ -30,14 +30,11 @@ import { append, read } from "../kernel/log.ts";
 import { examinerSessions } from "../kernel/solves.ts";
 import { priceKey } from "../kernel/meter.ts";
 import { billedAll } from "../kernel/reports.ts";
-import { rmSync } from "../meta/filesystem.ts";
 import type { JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
+import { sit } from "../seat/session.ts";
 import { text, tool } from "../solve/answer.ts";
-import { failedTurn, seatLoop, spentBy, traceSink, userTurn } from "../solve/seat.ts";
-import { hostScratch } from "../verify/wall-policy.ts";
 import { drafting } from "./draft.ts";
 import { examinerShell, inExaminerWall, type Wall, type Walls } from "./shell.ts";
 import { writing } from "./write.ts";
@@ -91,7 +88,7 @@ export type Session<M extends ExamRequest["mode"]> = (
 ) => Promise<Examined>;
 
 /** What a mode is: what a session of it is told, what it works with, and when its work is done.
- *  The loop reads nothing else of the mode (`sit`). */
+ *  The loop reads nothing else of the mode (`examining`). */
 interface Mode {
   /** The log's kind for the session's events: `exam.*` or `draft.*`. */
   readonly kind: "exam" | "draft";
@@ -271,7 +268,7 @@ function finishTool(mode: Mode, said: Said, told: (last: boolean, line: string) 
  * its turns and calls, and its end with what it billed and, for a crash, how many of its commands
  * were running, which decides whether its home is carried on (`inExaminerWall`).
  */
-async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Promise<Examined> {
+async function examining(request: Sitting, mode: Mode, walls: Walls | undefined): Promise<Examined> {
   const { log, limits, model, id } = request;
   const began = walls?.began ?? performance.now();
   append(log, `${mode.kind}.started`, {
@@ -285,7 +282,6 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
   // Every tool result ends with what the mode heard since, then its own line.
   const told = (last: boolean, line: string) =>
     [mode.heard?.(last) ?? "", line].filter((part) => part !== "").join("\n\n");
-  // The model's turns, each pushed once its tool results are in (`finishTurn`).
   const turns: AssistantMessage[] = [];
   // The current turn's last call, whose result says what the session has used: told its limits at the
   // opening alone, two of eleven sessions on 14 October were cut at their wall while still proposing.
@@ -303,74 +299,51 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
   // The wall runs from the seat's start (`began`), so the claim, the wall's own probe and the
   // shell's network probe, awaited above, are inside the session's limit.
   const wall = AbortSignal.timeout(Math.max(0, limits.wallSeconds * 1000 - (performance.now() - began)));
-  // `done` closes the model after its gate settles; `spent` stops both when no reserve remains.
-  const [done, spent] = [new AbortController(), new AbortController()];
-  const signal = AbortSignal.any([wall, done.signal, spent.signal, ...(request.kill ? [request.kill] : [])]);
-  const summaries: Usage[] = [];
-  // The session ends at `finish` and when its work is done, even beside another call in the turn.
-  const over = () => said.note !== null || mode.done() !== null;
-  // Under the host's own scratch, which every wall closes (`wall-policy.ts`): the Examiner's
-  // Claude Code keeps its session here, the checks and hidden values it wrote or read included.
-  const state = hostScratch("claude-cli-examiner-");
-  let crash: string | null = null;
+  const spent = new AbortController();
   let running = 0;
-  const trace = traceSink(log, mode.kind, id, () => turns.length);
-  try {
-    await seatLoop({
-      models: request.models(state),
-      id,
-      system: mode.system,
-      opening: mode.opening,
-      tools,
-      config: {
-        model,
-        reasoning: request.effort,
-        toolExecution: "sequential",
-        finishTurn: ({ message }) => {
-          if (message.role === "assistant") turns.push(message);
-          return over() || turns.length >= limits.turns ? { action: "end" } : undefined;
-        },
-        getFollowUpMessages: async () => {
-          await mode.settle?.(false);
-          return over()
-            ? []
-            : [userTurn(told(true, `You have not called finish. ${mode.nudge}, or call finish.`))];
-        },
-      },
-      compact: { log, of: mode.kind, summaries, guard: (compact) => withinBudget(log, spent, compact) },
-      emit: (event) => {
-        if (event.type === "message_end" && event.message.role === "assistant") {
-          lastCall = event.message.content
-            .flatMap((part) =>
-              part.type === "toolCall" && tools.some(({ name }) => name === part.name) ? [part.id] : [],
-            )
-            .at(-1);
-        }
-        if (event.type === "tool_execution_start") running += 1;
-        if (event.type === "tool_execution_end") running -= 1;
-        trace(event);
-      },
-      signal,
-    });
-  } catch (error) {
-    if (!spent.signal.aborted) crash = errorMessage(error);
-  } finally {
+  const sat = await sit({
+    models: request.models,
+    id,
+    model,
+    effort: request.effort,
+    system: mode.system,
+    opening: mode.opening,
+    tools,
+    trace: { log, of: mode.kind },
+    guard: (compact) => withinBudget(log, spent, compact),
+    turns,
+    most: limits.turns,
+    // The session ends at `finish` and when its work is done, even beside another call in the turn.
+    over: () => said.note !== null || mode.done() !== null,
+    next: async () => {
+      await mode.settle?.(false);
+      return said.note !== null || mode.done() !== null
+        ? null
+        : told(true, `You have not called finish. ${mode.nudge}, or call finish.`);
+    },
+    emit: (event) => {
+      if (event.type === "message_end" && event.message.role === "assistant") {
+        lastCall = event.message.content
+          .flatMap((part) =>
+            part.type === "toolCall" && tools.some(({ name }) => name === part.name) ? [part.id] : [],
+          )
+          .at(-1);
+      }
+      if (event.type === "tool_execution_start") running += 1;
+      if (event.type === "tool_execution_end") running -= 1;
+    },
     // A crash leaves the gate under its wall, kill and budget, just as finish does (21 October).
-    await Promise.resolve(mode.settle?.(true)).finally(() => {
-      done.abort();
-      rmSync(state, { recursive: true, force: true });
-    });
-  }
-  const killed = request.kill?.aborted === true;
-  crash ??= wall.aborted || killed || spent.signal.aborted ? null : failedTurn(turns);
+    settle: async () => mode.settle?.(true),
+    stops: [wall, spent.signal, request.kill],
+  });
   const work = mode.done();
   const by = {
     stands: work === "stands",
     finished: said.note !== null,
     supplied: work === "supplied",
-    killed,
+    killed: request.kill?.aborted === true,
     wall: wall.aborted,
-    crashed: crash !== null,
+    crashed: sat.crash !== null,
     turns: turns.length >= limits.turns,
   };
   const ended = ENDINGS.find((reason) => by[reason]) ?? "stopped";
@@ -379,9 +352,9 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
     ended,
     note: said.note,
     ...mode.counted(),
-    crash,
+    crash: sat.crash,
     ...keyIfDefined("running", ended === "crashed" ? running : undefined),
-    ...(await spentBy(model, id, turns, summaries)),
+    ...sat.spent,
     seconds: (performance.now() - began) / 1000,
   });
   return { ended, ...mode.result() };
@@ -401,7 +374,7 @@ export async function examine(request: ExamRequest, wall?: Wall): Promise<Examin
   }
   const reference = wall?.reference === undefined ? "unseen" : "in-home";
   const seated = async (walls?: Walls) =>
-    await sit(
+    await examining(
       request,
       request.mode === "draft"
         ? putting(request, drafting(request))

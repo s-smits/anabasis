@@ -279,7 +279,12 @@ async function make(
     ];
     begin({ session });
     if (decided.move === "draft") {
-      await draftCommand([...flag("name", values.name), ...seat], seats.draft);
+      await draftCommand(
+        [...flag("name", values.name), ...seat, ...sharedOf(turn).setting, ...sharedOf(turn).reviewer],
+        seats.draft,
+        // The campaign's own seat, as an Examiner session's tries take it.
+        seats.probe ?? (seats.draft === undefined ? turn.held : null),
+      );
       return;
     }
     await examineCommand(

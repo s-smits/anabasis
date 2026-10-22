@@ -85,6 +85,10 @@ interface Terms {
   readonly results?: boolean;
 }
 
+/** What the gate reads of one draft: the campaign's contract and log, the session that asks, the
+ *  reference harness's solve, and the answers that passed `try_answer` in the session. */
+type Gate = Pick<Terms, "contract" | "log" | "id" | "probe"> & { readonly planted: ReadonlySet<string> };
+
 /** What a task-writing session's tools share. */
 interface Desk {
   readonly request: Terms;
@@ -197,7 +201,7 @@ function shown(measure: number): string {
  *  their best (`gap`, by `gainOver`), and whether they leave the reference room as a comparison
  *  reads it (`informative`). Each later reading only adds to them, so room once shown stays. */
 async function seenOf(
-  { request: { contract, log } }: Desk,
+  { contract, log }: Gate,
   task: TaskPackage,
   {
     from,
@@ -243,9 +247,9 @@ async function seenOf(
  *  or in a rejection the Referee did not rule earned (`probing`, `tools/d1b/examine.ts`), is no
  *  reading. `stop` is the session's signal, which its wall, its end and a killed run abort, so a
  *  wall that fires mid-try starts no other solve and leaves the draft refused unmeasured. */
-async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal, proof: Proof) {
-  const { contract, log, id, probe } = desk.request;
-  if (carries([task.publicInput, task.hidden], desk.planted)) return { reason: PLANTED, said: "" };
+export async function measured(gate: Gate, task: TaskPackage, stop: AbortSignal, proof: Proof) {
+  const { contract, log, id, probe } = gate;
+  if (carries([task.publicInput, task.hidden], gate.planted)) return { reason: PLANTED, said: "" };
   const packaged = packageGate(contract, task);
   if (packaged.outcome === "refused") return { reason: packaged.reason, said: "" };
   if (probe === null) return { reason: null, said: "" };
@@ -258,7 +262,7 @@ async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal, proof:
     const ending = await probe(task, id, stop);
     ran += 1;
     if (ending.outcome !== "non-result") readings.push(ending);
-    seen = await seenOf(desk, task, { from, readings, proof });
+    seen = await seenOf(gate, task, { from, readings, proof });
   } while (!seen.room && ran < TRIED && !stop.aborted && affords(log, 1));
   const { solves, valid, answers, authored, gap, unsolved } = seen;
   const unread =
@@ -281,7 +285,7 @@ async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal, proof:
   const roomless = `${counted}, ${unsolved ? "and no answer of yours passed try_answer on it" : "which leaves no room"}`;
   return {
     reason: seen.room ? null : solves === TRIED ? roomless : `${counted}, so it is not measured`,
-    said: `; ${counted}`,
+    said: counted,
     reference: {
       valid,
       solves,
@@ -311,7 +315,13 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
           (error: unknown) => ({ kind: "non-result", reason: errorMessage(error) }) as const,
         );
   };
-  const { reason, said, reference } = await measured(desk, task, stop, proof);
+  const { reason, said, reference } = await measured(
+    { ...request, planted: desk.planted },
+    task,
+    stop,
+    proof,
+  );
+  const told = said === "" ? "" : `; ${said}`;
   const outcome = reason === null ? { outcome: "passed" } : { outcome: "refused", reason };
   append(log, GATE, {
     version,
@@ -330,12 +340,12 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
   }
   desk.held.push(version);
   const verdict = await proof();
-  if (verdict === null || answer === undefined) return `${taskId}: held out${said}.`;
+  if (verdict === null || answer === undefined) return `${taskId}: held out${told}.`;
   if (verdict.kind !== "pass") {
-    return `${taskId}: held out${said}. Author proof was not retained under this task id: ${tried(verdict)}`;
+    return `${taskId}: held out${told}. Author proof was not retained under this task id: ${tried(verdict)}`;
   }
   append(log, "task.feasible", { version, session, answer, ...measureOf(request.contract, verdict) });
-  return `${taskId}: held out${said}.`;
+  return `${taskId}: held out${told}.`;
 }
 
 /** Whether the host has the tasks it asked for. */

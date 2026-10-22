@@ -4,9 +4,10 @@
 // session a draft is put in is `examine`'s, held in `test/examiner.test.ts`.
 
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
-import { type Draft, draftFaults, draftOf } from "../src/examiner/draft.ts";
+import { type Draft, draftFaults, draftOf, type Measured } from "../src/examiner/draft.ts";
 import { examine } from "../src/examiner/session.ts";
 import { append, read } from "../src/kernel/log.ts";
+import { examinerSessions } from "../src/kernel/solves.ts";
 import {
   existsSync,
   mkdirSync,
@@ -221,5 +222,66 @@ describe("a draft read without a model", () => {
     expect(await draftReading(join(root, "read"), { ...SOUND, reject: [] }, 2)).toEqual([
       "check check-product has no reject control: an answer that breaks its rule and names it",
     ]);
+  });
+});
+
+describe("a draft measured before it stands", () => {
+  const MEASURED = { budget: { modelTurns: 20, minutes: 30 }, examples: ["seen 0", "seen 1", "seen 2"] };
+  const REVISED: Draft = { ...SOUND, domain: "Fixture products, revised" };
+
+  /** A drafting session over `puts` whose measure is `measure`, counting the drafts it measures. */
+  async function measuredSession(puts: readonly Draft[], measure: Measured | null, limit = puts.length) {
+    const s = seat("draft", [...puts.map(drafted), finish]);
+    const asked: Draft[] = [];
+    const examined = await examine({
+      ...s.request,
+      limits: { ...s.request.limits, puts: limit },
+      measure: async (draft: Draft) => {
+        asked.push(draft);
+        return measure;
+      },
+    });
+    return { examined, asked, said: s.of("draft.call").map(({ text }) => text), log: s.log };
+  }
+
+  it("tells the measure of a draft with no fault, and stands the same draft put again", async () => {
+    const { examined, asked, said, log } = await measuredSession([SOUND, SOUND], MEASURED, 3);
+    expect(examined).toMatchObject({ ended: "stands", puts: 2 });
+    expect(asked).toEqual([SOUND]);
+    // The budget and one line an example, and the draft is not yet the exam.
+    expect(said[0]).toContain("20 turns");
+    expect(said[0]).toContain("30 minutes");
+    for (const line of MEASURED.examples) expect(said[0]).toContain(line);
+    expect(said[0]).toContain("2 more drafts");
+    expect(draftOf(read(log))).toEqual(SOUND);
+  });
+
+  it("measures a revised draft in turn, and stands the last put unmeasured", async () => {
+    const { examined, asked, log } = await measuredSession([SOUND, REVISED, SOUND], MEASURED);
+    expect(examined).toMatchObject({ ended: "stands", puts: 3 });
+    expect(asked).toEqual([SOUND, REVISED]);
+    expect(draftOf(read(log))).toEqual(SOUND);
+  });
+
+  it("stands a draft whose measure was cut short", async () => {
+    const { examined, asked, log } = await measuredSession([SOUND], null, 3);
+    expect(examined).toMatchObject({ ended: "stands", puts: 1 });
+    expect(asked).toEqual([SOUND]);
+    expect(draftOf(read(log))).toEqual(SOUND);
+  });
+
+  it("counts the solves a drafting session asks for as the Examiner's, as a writing session's", () => {
+    const log = join(root, "sessions.jsonl");
+    append(log, "draft.started", { session: "d-1" });
+    append(log, "exam.started", { session: "x-1" });
+    append(log, "build.started", { session: "b-1" });
+    expect(examinerSessions(read(log))).toEqual(new Set(["d-1", "x-1"]));
+  });
+
+  it("measures nothing of a draft with a fault", async () => {
+    const lone: Draft = { ...SOUND, accept: SOUND.accept.slice(1), reject: [] };
+    const { examined, asked } = await measuredSession([lone, SOUND, SOUND], MEASURED);
+    expect(examined).toMatchObject({ ended: "stands", puts: 3 });
+    expect(asked).toEqual([SOUND]);
   });
 });

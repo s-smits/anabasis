@@ -29,7 +29,7 @@ import { backends, compactionMode } from "#src/backends/models.ts";
 import { type Practised, practised } from "#src/builder/session.ts";
 import { namesOf } from "#src/builder/names.ts";
 import { type Opening, openingOf } from "#src/builder/opening.ts";
-import { draftOf } from "#src/examiner/draft.ts";
+import { type Draft, draftOf } from "#src/examiner/draft.ts";
 import { departure } from "#src/kernel/acceptance.ts";
 import {
   type Condition,
@@ -106,6 +106,10 @@ interface CampaignArgs {
    *  of a handed-over harness (`close.ts --solve`), which the campaign's readings never count. The
    *  exam, the tasks and the checker are read from the campaign's log all the same. */
   readonly trial?: string | undefined;
+  /** A drafted exam the log does not hold yet, which the campaign opens over in place of the one
+   *  its log drafted: the draft whose examples the drafting session's measure solves
+   *  (`tools/d1b/draft.ts`). */
+  readonly draft?: Draft | undefined;
 }
 
 /** A harness as a solve is handed it. */
@@ -235,7 +239,7 @@ function packOpened(dir: string, log: string, args: CampaignArgs) {
     return { bundle, checks, format: recordedAnswerFormat(row), solver: () => stored };
   }
   const events = read(log);
-  const draft = draftOf(events);
+  const draft = args.draft ?? draftOf(events);
   if (draft === null) throw new Error(`${log} holds no drafted exam, and no stored pack was named`);
   const named = openingOf(events)?.solver ?? null;
   return {

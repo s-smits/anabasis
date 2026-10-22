@@ -90,14 +90,22 @@ export function solvesIn(events: readonly LogEvent[]): Solve[] {
   return [...solves.values()];
 }
 
-/** Every solve a log holds but those an Examiner session asked for to try a draft task
- *  (`try_task`, `src/examiner/write.ts`), whose starts name the session where a comparison's name
- *  the comparison. Those are the Examiner's: never scored, and no part of a task's record, its
- *  answers, a share or a tally. */
-export function countedSolves(events: readonly LogEvent[]): Solve[] {
-  const sessions = new Set(
-    events.flatMap(({ kind, data }) => (kind === "exam.started" ? [data.session] : [])),
+/** The Examiner sessions a log holds, writing tasks or drafting the exam: a solve whose start
+ *  names one was made at its asking, to try a draft task (`try_task`, `src/examiner/write.ts`) or
+ *  a drafted exam's example (`drafting`, `src/examiner/draft.ts`). */
+export function examinerSessions(events: readonly LogEvent[]): Set<JsonValue | undefined> {
+  return new Set(
+    events.flatMap(({ kind, data }) =>
+      kind === "exam.started" || kind === "draft.started" ? [data.session] : [],
+    ),
   );
+}
+
+/** Every solve a log holds but those an Examiner session asked for (`examinerSessions`), whose
+ *  starts name the session where a comparison's name the comparison. Those are the Examiner's:
+ *  never scored, and no part of a task's record, its answers, a share or a tally. */
+export function countedSolves(events: readonly LogEvent[]): Solve[] {
+  const sessions = examinerSessions(events);
   return solvesIn(events).filter(({ start }) => !sessions.has(start.comparison));
 }
 

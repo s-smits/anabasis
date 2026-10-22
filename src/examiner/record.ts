@@ -43,7 +43,7 @@ import {
   type Standing,
 } from "../kernel/reports.ts";
 import { conditionsOf } from "../kernel/condition.ts";
-import { solvesIn, verdictsOf } from "../kernel/solves.ts";
+import { examinerSessions, solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { heldAtGate, taskStates } from "../kernel/task.ts";
 import type { Task } from "../kernel/verify.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
@@ -251,9 +251,7 @@ export function gateAnswers(
   events: readonly LogEvent[],
   from: number,
 ): Map<string, { readonly turns: number | null; readonly measure: number | null }[]> {
-  const sessions = new Set(
-    events.flatMap(({ kind, data }) => (kind === "exam.started" ? [data.session] : [])),
-  );
+  const sessions = examinerSessions(events);
   const conditions = conditionsOf(events);
   const verdicts = verdictsOf(events);
   const answers = new Map<string, { readonly turns: number | null; readonly measure: number | null }[]>();

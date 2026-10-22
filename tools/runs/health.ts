@@ -63,21 +63,19 @@ function sizesHere(main: string, controllers: string): Record<string, number | n
       paths: worktrees(main).filter((tree) => tree !== main && !tree.startsWith(`${controllers}/`)),
     },
   ];
-  const paths = areas.flatMap((area) => area.paths).filter(existsSync);
-  const output = paths.length === 0 ? "" : probe(["du", "-sk", ...paths]);
-  const sizes = new Map(
-    (output ?? "").split("\n").flatMap((line) => {
-      const match = /^(\d+)\s+(.+)$/.exec(line);
-      return match === null ? [] : [[match[2] ?? "", Number(match[1])] as const];
-    }),
-  );
+  // One `du` an area: on a machine of 198 worktrees (22 October) the worktrees alone took 39 s,
+  // past the probe's 20 s, and one call for every area left every size unavailable.
   return Object.fromEntries(
-    areas.map((area) => [
-      area.name,
-      output === null
-        ? null
-        : area.paths.filter(existsSync).reduce((sum, path) => sum + (sizes.get(path) ?? 0), 0),
-    ]),
+    areas.map((area) => {
+      const paths = area.paths.filter(existsSync);
+      const output = paths.length === 0 ? "" : probe(["du", "-sk", ...paths]);
+      return [
+        area.name,
+        output === null
+          ? null
+          : output.split("\n").reduce((sum, line) => sum + Number(/^(\d+)\s/.exec(line)?.[1] ?? 0), 0),
+      ];
+    }),
   );
 }
 
@@ -141,7 +139,8 @@ function healthHere(): Health {
     cores: availableParallelism(),
     performanceCores:
       performanceCores !== null && /^\d+$/.test(performanceCores) ? Number(performanceCores) : null,
-    charger: power ?? "not reported by this OS",
+    // `pmset -g ac` also prints the adapter's serial number, which a pasted reading would carry.
+    charger: power === null ? "not reported by this OS" : (/Wattage = \S+/.exec(power)?.[0] ?? "no charger"),
     freeGiB: (disk.bavail * disk.bsize) / 2 ** 30,
     freePct: (100 * disk.bavail) / Math.max(1, disk.blocks),
     sizes: sizesHere(main, controllers),

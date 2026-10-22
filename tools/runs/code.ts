@@ -18,9 +18,10 @@ import { quoted, shellPath, sshScript } from "./host-command.ts";
 const PREPARE_MS = 300_000;
 const warned = new Set<string>();
 
-/** Only old, idle controllers are disposable. Failure to inspect processes preserves them. */
+/** Only old, idle controllers are disposable. Failure to inspect processes preserves them.
+ *  The process list is `running`: zsh, a macOS login shell, reserves `commands` (22 October). */
 const PRUNE = `
-if commands="$(ps -axww -o args=)"; then
+if running="$(ps -axww -o args=)"; then
   if command -v lsof >/dev/null 2>&1; then
     cwds="$(lsof -a -d cwd -Fn 2>/dev/null)" || cwds=unknown
   elif test -d /proc/self; then
@@ -34,7 +35,7 @@ if commands="$(ps -axww -o args=)"; then
       candidate="\${marker%.ready}"
       test "$candidate" != "$tree" || continue
       test ! -d "$candidate.lock" || continue
-      case "$commands
+      case "$running
 $cwds" in *"$candidate"*) continue;; esac
       if git worktree remove "$candidate"; then rm -f "$marker"; fi
     done

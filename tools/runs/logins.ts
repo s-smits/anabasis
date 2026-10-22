@@ -37,6 +37,8 @@
  * carries is then the lower of its cap and the runs its week left fits until its reset, each run
  * active 16 of 24 hours (`fitOf`), and a login with more live runs than that reads oversubscribed
  * (`carried`): a cap of two read 0/2 on a login at 92% of its week with 11 hours of it left.
+ * Until that rate is measured, a login with live runs reads its own week's pace shared over them
+ * (`perRunHour`).
  *
  * `ANA_LOGINS` in the environment, such as `2,3,4`, names the logins a run may take (`allowedLogins`),
  * every login the environment holds where it is unset. Until 15 October this was a script of the
@@ -393,7 +395,7 @@ function poolLines(
   now: number,
 ): string[] {
   const perDay = (rate: number) => `~${String(Math.round(rate * 24))}%/day`;
-  const weekRate = (week: Week) => week.pct / Math.max(12, (now - (week.reset - WEEK)) / HOUR);
+  const weekRate = (week: Week) => paceOf(week, now);
   // The oldest reading 2 to 24 hours back in the same window (resets agree within an hour).
   const recents = weeks.map((week) => {
     const then = history.find(({ at, weeks: read }) => {
@@ -447,11 +449,23 @@ export function perRunRate(history: readonly Snapshot[]): number | null {
   return runHours < LEAST_RUN_HOURS ? null : spans.reduce((sum, span) => sum + span.used, 0) / runHours;
 }
 
-/** How many runs `week` carries to its reset at `rate` a run-hour, each active `ACTIVE_SHARE` of
- *  the time; null without a rate. */
-export function fitOf(week: Week, rate: number | null, now: number): number | null {
-  if (rate === null) return null;
-  const need = rate * ACTIVE_SHARE * Math.max(0, (week.reset - now) / HOUR);
+/** The share of its week `week` has spent an hour since it opened, floored at 12 hours so a window
+ *  minutes old does not extrapolate. */
+const paceOf = (week: Week, now: number) => week.pct / Math.max(12, (now - (week.reset - WEEK)) / HOUR);
+
+/** What one of `on` live runs on `week` spends an hour of the clock: the measured rate, active
+ *  `ACTIVE_SHARE` of the time, or before there is one the week's own pace shared over its runs, so
+ *  70% in 4 days with two runs left on it reads about 0.36% a run an hour. Null with neither. */
+export function perRunHour(week: Week, on: number, rate: number | null, now: number): number | null {
+  if (rate !== null) return rate * ACTIVE_SHARE;
+  return on > 0 ? paceOf(week, now) / on : null;
+}
+
+/** How many runs `week` carries to its reset, each spending `perHour` of it an hour; null without
+ *  a rate. */
+export function fitOf(week: Week, perHour: number | null, now: number): number | null {
+  if (perHour === null) return null;
+  const need = perHour * Math.max(0, (week.reset - now) / HOUR);
   return need <= 0 ? Number.POSITIVE_INFINITY : Math.floor(Math.max(0, 100 - week.pct) / need);
 }
 
@@ -550,7 +564,8 @@ export async function logins(args: readonly string[]): Promise<void> {
   if (values.json) console.log(capturedJsonStringify(readings, null, 2));
   for (const reading of values.json ? [] : readings) {
     const week = weeks.find(({ login }) => login === reading.login);
-    const fit = week === undefined ? null : fitOf(week, rate, now);
+    const fit =
+      week === undefined ? null : fitOf(week, perRunHour(week, onEach(reading.login), rate, now), now);
     const runsOn =
       counted === null
         ? ""
@@ -567,7 +582,7 @@ export async function logins(args: readonly string[]): Promise<void> {
     console.log(poolLines(weeks, kept, held.length - weeks.length, now).join("\n"));
     console.log(
       rate === null
-        ? `  a run       no rate yet: under ${String(LEAST_RUN_HOURS)} run-hours between readings that counted live runs`
+        ? `  a run       no measured rate yet (under ${String(LEAST_RUN_HOURS)} run-hours): each login's week pace over its live runs`
         : `  a run       ~${rate.toFixed(2)}% of a login's week an hour, active ${String(Math.round(ACTIVE_SHARE * 24))} of 24h: the most each login carries to its reset`,
     );
   }

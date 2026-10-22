@@ -1,12 +1,12 @@
 <!--
 The synthesis session's prompt. `wri.ts synthesis --out <dir>` renders it into
 <dir>/synthesis-prompt.md, filling the five slots in braces; comments like this one are dropped.
-This template owns what the note owes; the skill's "Adjudicating" section links here.
+This template owns what the note owes; the skill's "Vetting" section links here.
 -->
 # Whole-run investigation synthesis
 
 You are the one synthesis session of the investigation under `{out}`. Each lane was read by an
-independent session that saw no other lane's report. Merge their reports into one adjudicated note
+independent session that saw no other lane's report. Merge their reports into one note
 at `{synthesis}`. Write its heading first and append as each section settles. You read and you
 report: write nothing else, commit nothing and edit no source.
 

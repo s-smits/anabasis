@@ -6,7 +6,7 @@ description: "Investigate one Anabasis v2 campaign, or several as equals, from t
 # Whole-Run Investigation
 
 A whole-run investigation (WRI) reads one campaign, or several as equals: each one's log, the check
-program staged beside it and the harness states it kept, against the question the operator asked. It ends in one adjudicated
+program staged beside it and the harness states it kept, against the question the operator asked. It ends in one vetted
 synthesis that says whether each reading may be believed, what limited it, and which owner each next
 change belongs to. It reads and proposes. It starts no solve, no session and no round, it appends to
 no log, and the host's verifier stays the one owner of every verdict.
@@ -75,7 +75,7 @@ holds.
    *Check:* `collect` exits 0. It exits 1 while a report is missing or invalid, or no report is
    expected. Review the evidence too: a valid shape does not establish a sound finding.
 6. **Synthesise.** `wri.ts synthesis --out <dir>` renders `<dir>/synthesis-prompt.md`; one session
-   writes `<dir>/synthesis.md`, and the primary adjudicates it ("Adjudicating" below).
+   writes `<dir>/synthesis.md`, and the primary vets it ("Vetting" below).
    *Check:* every consequential claim is marked as checked against the log or as resting on one
    report.
 
@@ -183,11 +183,22 @@ and deleting a heading drops its section on purpose.
 A lane told what to find finds it. An earlier diagnosis goes under the prior state as a hypothesis,
 never under the orientation as a premise.
 
-## Adjudicating
+## Vetting
 
 [The synthesis template](references/synthesis.template.md) owns what the note owes: the four links
 for each reading, the binding constraint, one findings table, conflicts, a build plan, operator
-decisions and predictions. The primary then treats the note as research.
+decisions and predictions. The primary then treats the note as research, in two acts kept apart:
+
+- **Triage** sorts each finding by kind and owner (host defect, pack, operator decision,
+  prediction, already changed at the head) and checks nothing.
+- **Vetting** checks a finding against the logs, the source at the head and, where it names them,
+  the kept harnesses and the check program, then rules it **confirmed** (recounted or read here),
+  **plausible** (resting on one lane's report) or **refuted**.
+
+Vet every finding, and above all every one that would change code or a decision. Write the result
+as `<dir>/vetting.md`, one row a finding with its verdict and what was checked, and never report a
+finding that was only triaged as vetted. On 22 October eight of thirteen findings were first
+reported as adjudicated after triage alone.
 
 - **Start from the operator's decision.** Usually one of: believe this step, run another round,
   repair the checker, run the Examiner again. Order the synthesis by that.

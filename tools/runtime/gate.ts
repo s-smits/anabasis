@@ -2,7 +2,7 @@
  * The gate: what CI runs, as one command over the tree it is run in, and the same gate run over each
  * commit a push or a landing would publish, in a checkout of its own.
  *
- *   bun run gate                 install, the UI's own gate, format, typecheck, strict lint, the suite
+ *   bun run gate                 install, the UI's own gate as far as it is due, format, typecheck, strict lint, the suite
  *   bun run gate -- --static     the same, with the suite replaced by the tests near what HEAD changed
  *
  * The steps are `ci.yml`'s two Darwin jobs, cheapest first, so a format slip fails in a second
@@ -16,7 +16,8 @@
  * three imports, three commits of 11-17 files each selected 62-70 per cent of the suite's recorded
  * time against 14-19 at one, and the top then ran the whole suite again. A test is near when the
  * commit changed it, when it imports a changed file directly, or, for a changed file no test
- * imports (a fixture, or a command a test spawns by its path), when its text names the file.
+ * imports (a fixture, or a command a test spawns by its path), when its text names the file. The UI's
+ * tests are chosen by the same rule at three imports (`NEAR`, `uiStep`).
  *
  * `proveCommits` runs this gate over a list of commits for `.githooks/pre-push` and `bun run land`:
  * in scratch worktrees made for the run, its output in a log under the Git directory, a pulse while
@@ -25,7 +26,7 @@
  * commit that passed is not run again from any worktree. A pass is remembered by content
  * (`contentKey`): a whole pass by the commit's tree, a static one by its tree and its parent's, both
  * with the checker and the Bun version. The checker is this gate and what it imports, read from the
- * caller's checkout (`checkerDigest`), since it runs from there over every target: a changed gate
+ * caller's checkout (`proveCommits`), since it runs from there over every target: a changed gate
  * runs again on trees it passed before. Until 19 October a pass was remembered by commit id, and a
  * restack, which rewrites every id, kept nothing: that day a restack of 13 pull requests onto main,
  * under which only PR #205 had changed a skill script and its test, ran the whole gate again on the
@@ -49,7 +50,7 @@ import { sha256, sha256OfFile } from "../../src/meta/digest.ts";
 import { isString } from "../../src/meta/json-shape.ts";
 import { keysIf } from "../../src/meta/optional-key.ts";
 import { availableParallelism, tmpdir } from "../../src/meta/os.ts";
-import { basename, dirname, join, relative } from "../../src/meta/path.ts";
+import { basename, dirname, isAbsolute, join, relative } from "../../src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "../../src/meta/process.ts";
 import { runSync, runTextSyncOrThrow } from "../../src/meta/subprocess.ts";
 
@@ -89,14 +90,41 @@ const DOCUMENTATION = [
 /** The UI's own gate, in a tree that holds the UI: `packages/ui` keeps its own lock, compiler
  *  settings and tests, which the root's typecheck and suite do not reach, and the lint leaves it
  *  out until its dependencies are installed (`tools/runtime/lint.ts`). A commit from before the UI
- *  came back has no such step to run. A static pass over a commit that leaves `packages/ui` alone
- *  runs the UI's gate without its browser files (`uiStatic`): of the 35 gate logs in this clone on
- *  18 October, the UI step's 16 failing cases were all in browser files, in 5 static passes of
- *  `bun run land` over commits that changed nothing under `packages/ui`. A whole pass, and a static
- *  pass over a commit that touches the UI, run every UI file. */
+ *  came back has no such step to run. What the step runs follows what changed since the pass's base,
+ *  a static pass's parent or the commit where a whole pass's tree left `origin/main`, which
+ *  `bun run land` merges only once `ci.yml`'s `darwin-ui` job has run every UI file (`uiStep`):
+ *
+ *  - `packages/ui` itself, or what installs, runs and lints it (`UI_SETUP`): the whole UI gate, as
+ *    where no base is known;
+ *  - root source that a UI file imports at any depth: the UI's dependencies, its build, which
+ *    typechecks it, and its test files within three imports of the change;
+ *  - nothing the UI reads: no UI step.
+ *
+ *  The UI's tests reach the root's folds through the server's handlers and the fixture campaign,
+ *  two imports in. Over the 126 root files the UI read on 22 October, a change to one selected on
+ *  average 4.2 of its 20 test files at three imports, 0.4 at one and 17.9 with every import
+ *  followed; a central fold, `src/kernel/log.ts`, still selects 18. Until then a whole pass ran the
+ *  UI's install, build and browser tests over every push, and a static pass every UI test file but
+ *  the browser's over every commit. A static pass leaves out the browser files (`BROWSER_FILE`): of
+ *  the 35 gate logs in this clone on 18 October, the UI step's 16 failing cases were all in browser
+ *  files, in 5 static passes of `bun run land` over commits that changed nothing under `packages/ui`. */
 const UI_PACKAGE = "packages/ui/package.json";
 const UI_ROOT = "packages/ui";
+const UI_SETUP = [
+  "package.json",
+  "bun.lock",
+  "tsconfig.json",
+  ".oxlintrc.json",
+  "tools/oxlint",
+  "tools/runtime",
+];
+const UI_TEST = /^packages\/ui\/test\/[^/]+\.test\.tsx?$/u;
 const BROWSER_FILE = /^packages\/ui\/test\/browser-[^/]+\.test\.ts$/u;
+/** What each file imports, read once a gate (`importsOf`). */
+const IMPORTS = new Map<string, string[]>();
+const TRANSPILERS = { ts: new Bun.Transpiler({ loader: "ts" }), tsx: new Bun.Transpiler({ loader: "tsx" }) };
+/** How many imports a test file may stand from a changed file and be near it (head comment). */
+const NEAR = { root: 1, ui: 3 } as const;
 const STEPS = [
   ["install", ["install", "--frozen-lockfile"]],
   ["ui", ["run", "ui:gate"]],
@@ -161,30 +189,6 @@ function parentOf(root: string, commit: string): string {
     : git(root, ["hash-object", "-t", "tree", "/dev/null"]);
 }
 
-/** The checker that runs every pass, as one digest: this gate and the files its imports reach, read
- *  from the caller's checkout as it stands, since `GATE` runs from there over each target. Its
- *  steps run `bun run …` in the target's checkout (`step`), so the lint plugins and configs, the
- *  test wrapper, `package.json` and `bun.lock` they use are the target's, which its tree keys. Until
- *  20 October the digest took every file of `tools/runtime` and `src/meta`, so a caller whose lint
- *  or `src/meta/git.ts` had changed proved again what an equal gate had passed: along the chain of
- *  #267 to #288 it took four values where the gate's own files took two, and the chain's bottom
- *  commits were proved three times. */
-function checkerDigest(): string {
-  const transpiler = new Bun.Transpiler({ loader: "ts" });
-  const reached = new Set<string>();
-  const reach = (file: string): void => {
-    if (reached.has(file)) return;
-    reached.add(file);
-    for (const { path } of transpiler.scanImports(readFileSync(file, "utf8"))) {
-      if (path.startsWith(".")) reach(Bun.resolveSync(path, dirname(file)));
-    }
-  };
-  reach(GATE);
-  const top = join(import.meta.dir, "..", "..");
-  const digests = [...reached].toSorted().map((file) => `${relative(top, file)} ${sha256OfFile(file)}`);
-  return sha256(digests.join("\n")).slice(0, 16);
-}
-
 /** The record's key for a pass, by content: the commit's tree, which holds the lockfile, and for a
  *  static pass its first parent's tree too, since the diff between them chooses its tests; with
  *  the checker and the Bun the gate ran under. */
@@ -222,63 +226,106 @@ export function addedLine(
   return line;
 }
 
-/** Every repository-relative file a test imports directly, resolved as Bun resolves it. */
-function importsOf(root: string, test: string, text: string): string[] {
-  let found: { path: string }[];
+/** Every repository file `file` imports, relative to `root`, resolved as Bun resolves it, outside
+ *  `node_modules` and leaving out a runtime's own module (`node:fs`, `bun:test`). A stylesheet or another file no transpiler reads imports nothing. */
+function importsOf(root: string, file: string): string[] {
+  const known = IMPORTS.get(join(root, file));
+  if (known !== undefined) return known;
+  const loader = /\.[cm]?[jt]sx$/u.test(file) ? "tsx" : /\.[cm]?[jt]s$/u.test(file) ? "ts" : null;
+  let found: { path: string }[] = [];
   try {
-    found = new Bun.Transpiler({ loader: "ts" }).scanImports(text);
+    if (loader !== null) found = TRANSPILERS[loader].scanImports(readFileSync(join(root, file), "utf8"));
   } catch {
-    return [];
+    found = [];
   }
-  return found.flatMap(({ path: specifier }) => {
+  const inside = found.flatMap(({ path: specifier }) => {
     try {
-      const inside = relative(root, Bun.resolveSync(specifier, dirname(join(root, test))));
-      return inside.startsWith("..") || inside.includes("node_modules/") ? [] : [inside];
+      const resolved = Bun.resolveSync(specifier, dirname(join(root, file)));
+      const path = relative(root, resolved);
+      return !isAbsolute(resolved) || path.startsWith("..") || path.includes("node_modules/") ? [] : [path];
     } catch {
       return [];
     }
   });
+  IMPORTS.set(join(root, file), inside);
+  return inside;
 }
 
-/** The test files near what HEAD changed, by the rule in the head comment. */
-async function nearbyTests(root: string): Promise<string[]> {
-  const changed = new Set(
-    lines(
-      git(root, ["show", "--first-parent", "--format=", "--name-only", "HEAD", "--", ".", ...DOCUMENTATION]),
-    ),
-  );
-  const tests = lines(git(root, ["ls-files", "test"])).filter((file) => TEST_FILE.test(file));
-  const texts = new Map(
-    await Promise.all(tests.map(async (test) => [test, await Bun.file(join(root, test)).text()] as const)),
-  );
-  const near = new Set(tests.filter((test) => changed.has(test)));
-  const imported = new Set<string>();
-  for (const [test, text] of texts) {
-    for (const file of importsOf(root, test, text)) {
-      imported.add(file);
-      if (changed.has(file)) near.add(test);
-    }
+/** The files `start` reaches within `depth` imports, itself among them. */
+function within(root: string, start: string, depth: number): Set<string> {
+  const reached = new Set([start]);
+  let layer = [start];
+  for (let hop = 0; hop < depth && layer.length > 0; hop += 1) {
+    layer = layer.flatMap((file) => importsOf(root, file)).filter((file) => !reached.has(file));
+    for (const file of layer) reached.add(file);
   }
+  return reached;
+}
+
+/** The files the working tree changed since `base`, beyond the documentation set: a commit's own
+ *  in a pass's checkout, and its uncommitted and untracked ones too where the gate is run by hand. */
+const changedSince = (root: string, base: string): Set<string> =>
+  new Set([
+    ...lines(git(root, ["diff", "--name-only", base, "--", ".", ...DOCUMENTATION])),
+    ...lines(git(root, ["ls-files", "--others", "--exclude-standard", "--", ".", ...DOCUMENTATION])),
+  ]);
+
+/** The test files among `tests` near `changed`, by the rule in the head comment, at `depth` imports. */
+function nearbyTests(
+  root: string,
+  changed: ReadonlySet<string>,
+  tests: readonly string[],
+  depth: number,
+): string[] {
+  const reaches = new Map(tests.map((test) => [test, within(root, test, depth)] as const));
+  const near = new Set(
+    tests.filter((test) => [...(reaches.get(test) ?? [])].some((file) => changed.has(file))),
+  );
+  const reached = new Set([...reaches.values()].flatMap((files) => [...files]));
   for (const file of changed) {
-    if (imported.has(file) || TEST_FILE.test(file)) continue;
-    for (const [test, text] of texts) {
+    if (reached.has(file) || TEST_FILE.test(file) || UI_TEST.test(file)) continue;
+    for (const test of tests) {
+      const text = readFileSync(join(root, test), "utf8");
       if (text.includes(file) || text.includes(basename(file))) near.add(test);
     }
   }
   return [...near].toSorted();
 }
 
-/** The UI's gate for a static pass: the whole of it where HEAD changed `packages/ui`, and else its
- *  dependencies, its build and every test file but the browser's (`BROWSER_FILE`). */
-function uiStatic(root: string): number {
-  if (!diffFromParentSays(root, "HEAD", ["--quiet"], [UI_ROOT])) return step(root, "ui", ["run", "ui:gate"]);
-  const tests = lines(git(root, ["ls-files", `${UI_ROOT}/test`])).filter(
-    (file) => /\.test\.tsx?$/u.test(file) && !BROWSER_FILE.test(file),
+/** The UI's step of a pass, by the rule in `UI_PACKAGE`'s comment; its exit code. */
+function uiStep(root: string, pass: Pass): number {
+  const merged = runSync(["git", "merge-base", "HEAD", "origin/main"], { cwd: root });
+  const base =
+    pass === "static"
+      ? parentOf(root, "HEAD")
+      : merged.exitCode === 0
+        ? new TextDecoder().decode(merged.stdout).trim()
+        : null;
+  const changed = base === null ? null : changedSince(root, base);
+  if (
+    changed === null ||
+    [...changed].some((file) =>
+      [UI_ROOT, ...UI_SETUP].some((path) => file === path || file.startsWith(`${path}/`)),
+    )
+  ) {
+    return step(root, "ui", ["run", "ui:gate"]);
+  }
+  const files = lines(git(root, ["ls-files", UI_ROOT])).filter((file) => /\.tsx?$/u.test(file));
+  const read = new Set(files.flatMap((file) => [...within(root, file, Infinity)]));
+  if (![...changed].some((file) => read.has(file))) {
+    console.log(`gate: step ui skipped: nothing it reads changed since ${short(base ?? "")}`);
+    return 0;
+  }
+  const tests = nearbyTests(
+    root,
+    changed,
+    files.filter((file) => UI_TEST.test(file) && (pass === "whole" || !BROWSER_FILE.test(file))),
+    NEAR.ui,
   );
   for (const args of [
     ["run", "ui:deps"],
     ["run", "ui:build"],
-    ["run", "test", "--", ...tests],
+    ...(tests.length > 0 ? [["run", "test", "--", ...tests]] : []),
   ]) {
     const code = step(root, "ui", args);
     if (code !== 0) return code;
@@ -298,11 +345,12 @@ async function gate(argv: readonly string[]): Promise<number> {
   const root = git(runtimeProcess.cwd(), ["rev-parse", "--show-toplevel"]);
   for (const [name, args] of STEPS) {
     if (name === "ui" && !existsSync(join(root, UI_PACKAGE))) continue;
-    const code = name === "ui" && values.static ? uiStatic(root) : step(root, name, args);
+    const code = name === "ui" ? uiStep(root, values.static ? "static" : "whole") : step(root, name, args);
     if (code !== 0) return code;
   }
   if (!values.static) return step(root, "test", ["run", "test"]);
-  const near = await nearbyTests(root);
+  const tests = lines(git(root, ["ls-files", "test"])).filter((file) => TEST_FILE.test(file));
+  const near = nearbyTests(root, changedSince(root, parentOf(root, "HEAD")), tests, NEAR.root);
   if (near.length > 0) return step(root, "test", ["run", "test", "--", ...near]);
   console.log("gate: no test file is near what HEAD changed.");
   return 0;
@@ -346,7 +394,21 @@ export async function proveCommits(
   const logs = git(root, ["rev-parse", "--path-format=absolute", "--git-path", "ana-gate"]);
   mkdirSync(logs, { recursive: true });
   runSync(["find", logs, "-name", "*.log", "-mtime", `+${String(LOG_DAYS)}`, "-delete"]);
-  const checker = checkerDigest();
+  // The checker that runs every pass, as one digest: this gate and the files its imports reach, read
+  // from the caller's checkout as it stands, since `GATE` runs from there over each target. Its
+  // steps run `bun run …` in the target's checkout (`step`), so the lint plugins and configs, the
+  // test wrapper, `package.json` and `bun.lock` they use are the target's, which its tree keys. Until
+  // 20 October the digest took every file of `tools/runtime` and `src/meta`, so a caller whose lint
+  // or `src/meta/git.ts` had changed proved again what an equal gate had passed: along the chain of
+  // #267 to #288 it took four values where the gate's own files took two, and the chain's bottom
+  // commits were proved three times.
+  const top = join(import.meta.dir, "..", "..");
+  const checker = sha256(
+    [...within(top, relative(top, GATE), Infinity)]
+      .toSorted()
+      .map((file) => `${file} ${sha256OfFile(join(top, file))}`)
+      .join("\n"),
+  ).slice(0, 16);
   const passed = new Set(
     runtimeProcess.env.ANA_GATE_FRESH === "1"
       ? []

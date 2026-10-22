@@ -175,7 +175,7 @@ describe("a solve's walled commands", () => {
         await expect(run(wall, `set -m; ${beating("cut")} & wait`)).rejects.toThrow("timeout:1");
         expect(await stillBeats(join(dirs.home, "cut"))).toBe(false);
       } finally {
-        await release();
+        release();
         rmSync(dirs.host, { recursive: true, force: true });
         rmSync(repoRoot, { recursive: true, force: true });
         rmSync(reader, { recursive: true, force: true });
@@ -213,7 +213,7 @@ describe("a solve's walled commands", () => {
         "repo-refused\nsibling-refused\nkept-refused\nlink-refused\nremoval-refused\nown-canary\n",
       );
     } finally {
-      await release();
+      release();
       rmSync(dirs.host, { recursive: true, force: true });
       rmSync(repoRoot, { recursive: true, force: true });
       rmSync(sibling, { recursive: true, force: true });
@@ -241,7 +241,7 @@ describe("a solve's walled commands", () => {
       expect(outside.exitCode).toBeNull();
     } finally {
       outside.kill();
-      await release();
+      release();
       rmSync(dirs.host, { recursive: true, force: true });
     }
   }, 60_000);
@@ -269,7 +269,7 @@ describe("a solve's walled commands", () => {
       // whole temporary directory.
       if (runtimeProcess.platform === "darwin") expect(await readUnder([])).toBe("pack-canary\n");
     } finally {
-      await release();
+      release();
       rmSync(dirs.host, { recursive: true, force: true });
       rmSync(repoRoot, { recursive: true, force: true });
       rmSync(pack, { recursive: true, force: true });
@@ -308,7 +308,7 @@ describe("a solve's walled commands", () => {
         expect(existsSync("/tmp/left")).toBe(false);
         expect(readFileSync(canary, "utf8")).toBe("left by the host");
       } finally {
-        await release();
+        release();
         rmSync(canary, { force: true });
         rmSync(dirs.host, { recursive: true, force: true });
         rmSync(repoRoot, { recursive: true, force: true });
@@ -372,7 +372,7 @@ describe("a solve's walled commands", () => {
         expect(made).toMatch(/^\/(?!tmp\/|private\/tmp\/)/);
         expect(python).toContain(join(basename(dirs.root), "tmp"));
       } finally {
-        await release();
+        release();
         rmSync(canary, { force: true });
         rmSync(program, { force: true });
         rmSync(kept, { force: true });
@@ -410,7 +410,7 @@ describe("a solve's walled commands", () => {
         );
         expect(built.output).toBe("built\n");
       } finally {
-        await release();
+        release();
         rmSync(dirs.host, { recursive: true, force: true });
         rmSync(repoRoot, { recursive: true, force: true });
       }
@@ -472,7 +472,7 @@ console.log(JSON.stringify({ probe: process.argv.at(-1), said: process.env.TMPDI
         const named = (await run(wall, "command -v bun")).output.trim();
         expect(realpathSync.native(named)).toBe(realpathSync.native(runtimeProcess.execPath));
       } finally {
-        await release();
+        release();
         rmSync(dirs.host, { recursive: true, force: true });
         rmSync(repoRoot, { recursive: true, force: true });
       }

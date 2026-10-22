@@ -665,7 +665,7 @@ export async function build(request: BuildRequest): Promise<Built> {
     const network = await networkReach(wall);
     return await session(request, dirs, (bench) => walledTools(bench, wall, network));
   } finally {
-    await release();
+    release();
     rmSync(dirs.host, { recursive: true, force: true });
   }
 }

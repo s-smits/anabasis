@@ -136,7 +136,7 @@ export async function inExaminerWall<T>(
     };
     return await run({ shell, pinned, began });
   } finally {
-    await release();
+    release();
     rmSync(dirs.host, { recursive: true, force: true });
   }
 }

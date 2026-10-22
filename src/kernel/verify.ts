@@ -51,6 +51,7 @@ import { isSafePathSegment } from "../meta/path-segment.ts";
 import { capturedExecPath, capturedSpawn } from "../meta/process.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
+import { pooled } from "../meta/pool.ts";
 import { killProcessGroupId, terminateAndReapProcessGroupId } from "../meta/subprocess.ts";
 import {
   commandIsolationPolicy,
@@ -171,6 +172,15 @@ const REPO = resolve(import.meta.dir, "..", "..");
 
 /** v1's ceiling on one tool run, `DEFAULT_TOOL_TIMEOUT_MS` in its src/verify/host.ts. */
 const TOOL_CEILING_MS = 300_000;
+
+/**
+ * The cells a verdict runs at once. Each check's cell is its own walled process, and one after
+ * another the 14 checks of an esp32 exam took 658 ms of a verdict on the operator's macOS host at a
+ * load of 9 (22 October): 208 ms four at a time, 138 ms eight at a time, and no less fourteen at
+ * a time. Four keeps what one verdict starts at once within the Linux runner's four cores, where
+ * several solves are judged together.
+ */
+const CELLS = 4;
 
 /** One check's whole run, its tools included. */
 const CHECK_WALL_MS = 2 * TOOL_CEILING_MS;
@@ -381,8 +391,13 @@ export function openVerifier(given: VerifierTree & Closed): Verifier {
     if (signal?.aborted === true) return { kind: "non-result", reason: "the verifier was cancelled" };
     const blocking: string[] = [];
     const request = { publicTask: task, artifact: answer, hidden: task.hidden };
-    for (const check of applicableTruthChecks(brief, task)) {
-      const result = await runCheck(wall, check, request, signal);
+    // Every check runs, and the first that cannot decide or is faulty, in the brief's order,
+    // decides the verdict, as it did when they ran one at a time.
+    const ran = await pooled(applicableTruthChecks(brief, task), CELLS, async (check) => ({
+      check,
+      result: await runCheck(wall, check, request, signal),
+    }));
+    for (const { check, result } of ran) {
       if ("nonResult" in result) return { kind: "non-result", reason: `${check.id}: ${result.nonResult}` };
       if ("faulty" in result) return { kind: "faulty", check: check.id, reason: result.faulty };
       if ("value" in result) {

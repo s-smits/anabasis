@@ -2,7 +2,8 @@
  * The one place a solve launches a command: the solver's bash calls and the harness's own tool calls
  * both come through `runWalled`, under the command wall v1's Built shell ran under
  * (`stageCommandIsolation`), on pi's local shell backend, which kills the command's process group on
- * a timeout or an abort. Whatever else the command left working in the seat's root is ended here.
+ * a timeout or an abort. Whatever else the command left in its group, below it or working in the
+ * seat's root is ended here.
  *
  * A seat (a solve, a Builder's session, an Examiner's) owns two directories under the shared
  * scratch parent, which the command wall closes to every seat but its own:
@@ -21,7 +22,14 @@
  */
 import { createLocalBashOperations } from "../../vendor/pi-coding-agent/core/tools/bash.ts";
 import type { Limits } from "../kernel/condition.ts";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "../meta/filesystem.ts";
 import { join, resolve } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { endHolders } from "../verify/seat-root.ts";
@@ -304,6 +312,10 @@ export async function runWalled(
   // A solver may remove its own home or its `TMPDIR`, and the next command still has both.
   for (const dir of [dirs.home, dirs.temp]) mkdirSync(dir, { recursive: true });
   let into: string | null = null;
+  // pi's shell leads the command's group, and writes its pid here, where no command can write,
+  // before it becomes the command.
+  const leader = join(dirs.host, "leader");
+  rmSync(leader, { force: true });
   try {
     if (options.stage !== undefined) {
       into = mkdtempSync(join(dirs.kept, "in-"));
@@ -320,20 +332,19 @@ export async function runWalled(
       into === null
         ? command
         : `w=$(mktemp -d "$TMPDIR/in.XXXXXX") || exit\ncp -R ${shellQuote(into)}/. "$w" && cd "$w" && {\n${command}\n}\ns=$?\ncd / && rm -rf "$w"\nexit $s`;
-    // The shell pi starts leads the group and waits here on a subshell, so the launch is its child
-    // and the leader is its parent; the exit code is the subshell's. One seat's commands run one at
-    // a time, so they share one profile file.
-    const staged = stageCommandIsolation(policy, join(dirs.host, "command.sb"), line, "$PPID");
-    return await SHELL.exec(`(\n${staged}\n)`, dirs.home, {
+    // One seat's commands run one at a time, so they share one profile file and one leader file.
+    const staged = stageCommandIsolation(policy, join(dirs.host, "command.sb"), line);
+    return await SHELL.exec(`echo $$ > ${shellQuote(leader)}\n${staged}`, dirs.home, {
       onData: options.onData,
       signal: options.signal,
       timeout: heldSeconds(options.timeout, wall).seconds,
       env: policy.environment,
     });
   } finally {
-    // What left the command's group is out of its exit trap's reach, and a command the host killed
-    // never ran that trap. Both still work in the seat's root, where one command runs at a time.
-    endHolders(dirs.root);
+    // The group outlives its leader while a member lives, and a command pi killed on a timeout or an
+    // abort is ended the same way. One whose shell never started names no group, and a pid cut
+    // short reads as NaN, which names none either.
+    endHolders(dirs.root, existsSync(leader) ? Number.parseInt(readFileSync(leader, "utf8"), 10) : undefined);
     if (into !== null) rmSync(into, { recursive: true, force: true });
   }
 }

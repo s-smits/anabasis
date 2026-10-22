@@ -20,15 +20,12 @@
  * - A failed model turn ends the attempt as the provider's non-result, which `solve` runs again whole;
  *   v1 nudged once more into the same session unless the failure repeated.
  */
-import { type AgentMessage, runAgentLoop, type StreamFn } from "@earendil-works/pi-agent-core";
 import {
   type Api,
   type AssistantMessage,
-  createInitialSystemMessage,
   type Model,
   type Models,
   type ThinkingLevel,
-  toToolDeclaration,
   type Usage,
 } from "@earendil-works/pi-ai";
 import { resetOf } from "../backends/claude.ts";
@@ -63,7 +60,7 @@ import {
 import { type Harness, harnessTools, openHarness, pathsUnder } from "./harness.ts";
 import { installedPrograms } from "./programs.ts";
 import { firstTurn, NUDGE, type PublicTask, seedHome, systemPrompt } from "./prompt.ts";
-import { loopCompaction, spentBy, traceSink } from "./seat.ts";
+import { seatLoop, spentBy, traceSink, userTurn } from "./seat.ts";
 
 export interface SolveRequest {
   /** Names the solve in the log; each attempt is `<id>-<attempt>`. */
@@ -278,22 +275,19 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
     });
     const used = { clock, turns: () => turns.length, modelTurns: limits.modelTurns };
     const tools = wrapToolDefinitions(defined.map((tool) => timed(tool, used)));
-    const system = createInitialSystemMessage(prompt, tools.map(toToolDeclaration));
-    const models = request.models(join(dirs.host, "model"));
-    const stream: StreamFn = (model, context, options) => models.streamSimple(model, context, options);
-    const user = (content: string): AgentMessage => ({ role: "user", content, timestamp: Date.now() });
     prompts = 1;
     // The wall is the solver's time, so it starts with the first turn rather than the setup.
     clock.started = performance.now();
     timer = setTimeout(() => wall.abort(), limits.wallSeconds * 1000);
-    await runAgentLoop(
-      [user(firstTurn(request.task))],
-      { messages: system === undefined ? [] : [system], tools },
-      {
+    await seatLoop({
+      models: request.models(join(dirs.host, "model")),
+      id,
+      system: prompt,
+      opening: firstTurn(request.task),
+      tools,
+      config: {
         model: request.model,
         reasoning: request.effort,
-        sessionId: id,
-        convertToLlm: (messages) => messages,
         toolExecution: "sequential",
         // After a turn's tool calls have run, so an answer submitted in the last turn is held. An
         // accepted submit ends the solve here as its description says, and not only through its
@@ -308,14 +302,13 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
             return [];
           }
           prompts += 1;
-          return [user(NUDGE)];
+          return [userTurn(NUDGE)];
         },
-        prepareRequest: loopCompaction(request.log, "solve", id, stream, summaries),
       },
-      traceSink(request.log, "solve", id, () => turns.length),
+      compact: { log: request.log, of: "solve", summaries },
+      emit: traceSink(request.log, "solve", id, () => turns.length),
       signal,
-      stream,
-    );
+    });
   } catch (error) {
     if (error instanceof BrokenHarness) broken = error.message;
     else crash = errorMessage(error);

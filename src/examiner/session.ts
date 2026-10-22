@@ -13,20 +13,13 @@
  * What the Examiner is never given, in any mode: a harness, a solver's trace or answer. Its
  * shell, where it has one, is a walled home of its own, closed to the repository.
  */
-import {
-  type AgentMessage,
-  type AgentTool,
-  runAgentLoop,
-  type StreamFn,
-} from "@earendil-works/pi-agent-core";
+import type { AgentTool, PrepareRequest } from "@earendil-works/pi-agent-core";
 import {
   type Api,
   type AssistantMessage,
-  createInitialSystemMessage,
   type Model,
   type Models,
   type ThinkingLevel,
-  toToolDeclaration,
   type Usage,
 } from "@earendil-works/pi-ai";
 import { type Static, type TSchema, Type } from "typebox";
@@ -41,7 +34,7 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
 import { text, tool } from "../solve/answer.ts";
-import { failedTurn, loopCompaction, spentBy, traceSink } from "../solve/seat.ts";
+import { failedTurn, seatLoop, spentBy, traceSink, userTurn } from "../solve/seat.ts";
 import { hostScratch } from "../verify/wall-policy.ts";
 import { drafting } from "./draft.ts";
 import { examinerShell, inExaminerWall, type Wall, type Walls } from "./shell.ts";
@@ -234,11 +227,7 @@ function putting<Parameters extends TSchema, Thing>({ limits }: Sitting, of: Put
  * (`billedAll`), so a session inside a live Builder's conversation is held as the Builder is. A log
  * with no opening, or an opening with no budget, holds nothing.
  */
-function withinBudget(
-  log: string,
-  spent: AbortController,
-  compact: ReturnType<typeof loopCompaction>,
-): ReturnType<typeof loopCompaction> {
+function withinBudget(log: string, spent: AbortController, compact: PrepareRequest): PrepareRequest {
   const afforded = () => {
     const events = read(log);
     const budget = openingOf(events)?.budget;
@@ -327,8 +316,6 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
   const kill = request.kill ? [request.kill] : [];
   const signal = AbortSignal.any([wall.signal, done.signal, spent.signal, ...kill]);
   const summaries: Usage[] = [];
-  const user = (content: string): AgentMessage => ({ role: "user", content, timestamp: Date.now() });
-  const system = createInitialSystemMessage(mode.system, tools.map(toToolDeclaration));
   // The session ends at `finish` and when its work is done, even beside another call in the turn.
   const over = () => said.note !== null || mode.done() !== null;
   // Under the host's own scratch, which every wall closes (`wall-policy.ts`): the Examiner's
@@ -340,16 +327,15 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
   let running = 0;
   const trace = traceSink(log, kind, id, () => turns.length);
   try {
-    const models = request.models(state);
-    const stream: StreamFn = (asked, context, options) => models.streamSimple(asked, context, options);
-    await runAgentLoop(
-      [user(mode.opening)],
-      { messages: system === undefined ? [] : [system], tools },
-      {
+    await seatLoop({
+      models: request.models(state),
+      id,
+      system: mode.system,
+      opening: mode.opening,
+      tools,
+      config: {
         model,
         reasoning: request.effort,
-        sessionId: id,
-        convertToLlm: (messages) => messages,
         toolExecution: "sequential",
         finishTurn: ({ message }) => {
           if (message.role === "assistant") turns.push(message);
@@ -359,11 +345,11 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
           await mode.settle?.(false);
           return over()
             ? []
-            : [user(told(true, `You have not called finish. ${mode.nudge}, or call finish.`))];
+            : [userTurn(told(true, `You have not called finish. ${mode.nudge}, or call finish.`))];
         },
-        prepareRequest: withinBudget(log, spent, loopCompaction(log, kind, id, stream, summaries)),
       },
-      (event) => {
+      compact: { log, of: kind, summaries, guard: (compact) => withinBudget(log, spent, compact) },
+      emit: (event) => {
         if (event.type === "message_end" && event.message.role === "assistant") {
           calls = event.message.content.flatMap((part) =>
             part.type === "toolCall" && tools.some(({ name }) => name === part.name) ? [part.id] : [],
@@ -374,8 +360,7 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
         trace(event);
       },
       signal,
-      stream,
-    );
+    });
   } catch (error) {
     if (!spent.signal.aborted) crash = errorMessage(error);
   } finally {

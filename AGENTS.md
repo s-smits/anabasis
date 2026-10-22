@@ -1377,7 +1377,7 @@ index is an open row in the plan (`docs/plan.md`, "Tuning", the row "Network in 
 
 ### Runtime and commands
 
-Bun 1.4.3 only, as `package.json` pins it, for every task including one-off inspection. No Node,
+Bun 1.4.4 only, as `package.json` pins it, for every task including one-off inspection. No Node,
 npm or npx. `src/meta` wraps the few Node surfaces Bun lacks (`tools/oxlint/HABITS.md`, 12.8).
 
 | Command | What it does |

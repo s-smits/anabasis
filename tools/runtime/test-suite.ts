@@ -57,7 +57,12 @@ import { availableParallelism, loadavg, tmpdir } from "../../src/meta/os.ts";
 import { join, resolve } from "../../src/meta/path.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
 import { compareCodeUnits } from "../../src/meta/stable-json.ts";
-import { interruptAndReapProcessGroup, killProcessGroup } from "../../src/meta/subprocess.ts";
+import {
+  decodeOutput,
+  interruptAndReapProcessGroup,
+  killProcessGroup,
+  runSync,
+} from "../../src/meta/subprocess.ts";
 
 const REPO_ROOT = join(import.meta.dir, "../..");
 // Absolute, so a focused `--cwd` request still reads and refreshes the repository file.
@@ -405,6 +410,22 @@ async function killStrays(pids: number[]): Promise<void> {
   if (survivors.length > 0) console.error(`idle-wall: descendants survived SIGKILL: ${survivors.join(", ")}`);
 }
 
+/** End every process whose command line names the suite's root, before the root goes. A test may
+ *  start one in a process group of its own, as the UI's browser tests start `serve.ts`, and the
+ *  group kill does not reach it: on 21 October the Linux runner held 15 such servers, 1.9 GB, from
+ *  suites ended since 19 October, each naming a root long removed. */
+function endNaming(roots: readonly string[]): void {
+  for (const row of decodeOutput(runSync(["ps", "-axo", "pid=,args="]).stdout).split("\n")) {
+    const [, pid = "", args = ""] = /^\s*(\d+)\s+(.*)$/.exec(row) ?? [];
+    if (Number(pid) === runtimeProcess.pid || !roots.some((root) => args.includes(root))) continue;
+    try {
+      runtimeProcess.kill(Number(pid), "SIGKILL");
+    } catch {
+      // it may have exited since the scan
+    }
+  }
+}
+
 /** The group under the wall right now, so an interrupt reaching the suite ends it too. */
 let active: Bun.Subprocess | null = null;
 
@@ -617,6 +638,8 @@ async function main(): Promise<number> {
   // parent under the host temp root without replacing TMPDIR: Darwin's compiler ignores TMPDIR,
   // while the isolation profiles use its original value to admit the real compiler scratch.
   const temporaryRoot = mkdtempSync(join(tmpdir(), "ana-test-suite-"));
+  // A test may name the root by either spelling: Darwin's `/var` is a link to `/private/var`.
+  const roots = [temporaryRoot, realpathSync(temporaryRoot)];
   const idleSeconds = positiveInteger(
     "ANA_TEST_IDLE_SECONDS",
     Bun.env.ANA_TEST_IDLE_SECONDS,
@@ -626,6 +649,7 @@ async function main(): Promise<number> {
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
     runtimeProcess.once(signal, () => {
       if (active !== null) killProcessGroup(active, signal);
+      endNaming(roots);
       rmSync(temporaryRoot, { recursive: true, force: true });
       runtimeProcess.exit(130);
     });
@@ -712,6 +736,7 @@ async function main(): Promise<number> {
     );
     return whole.exitCode ?? 1;
   } finally {
+    endNaming(roots);
     // A test the idle wall ended can leave something under the root its removal fails on: on
     // 15 October a disk image still attached threw over a rerun of 179 passes and no failure, and
     // the suite exited 1. Disk images went on 19 October; a process still writing remains.

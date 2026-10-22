@@ -20,8 +20,7 @@
 import { unadmitted } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { poolOf, roomOf } from "../kernel/reports.ts";
-import { practiceRan } from "../kernel/solves.ts";
+import { poolOf, practiceFailures, roomOf } from "../kernel/reports.ts";
 import { heldAtGate, taskSets } from "../kernel/task.ts";
 import { isNumber, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -649,9 +648,7 @@ function unshown(ground: Ground, named: Move): Move | null {
   const began = events.findLastIndex(
     (event, index) => index < at && event.kind === "build.started" && event.data.session === last.session,
   );
-  const shown = practiceRan(events).some(
-    ({ started, ending }) => started > began && started < at && ending?.outcome === "fail",
-  );
+  const shown = practiceFailures(events).some(({ started }) => started > began && started < at);
   // Tasks held out since the session ended are what it lacked: the next rows read them, by a
   // release for practice or a comparison, and not another Examiner session. A simulated climb that
   // asked again here wrote four tasks the starter failed, then three sessions more, and ended

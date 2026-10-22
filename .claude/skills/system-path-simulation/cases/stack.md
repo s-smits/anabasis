@@ -37,7 +37,8 @@ Write every simulation's predictions in one file before the first one starts (ru
 its seed and the one line of difference. The source run's own recording of the same position is
 the arm at the old code: seed from the newest run whose log stood there (rule 2), cut right before
 the session or the ruling in question, and name every other difference from it, such as the effort
-or the login the operator asked for.
+or the login the operator asked for. Where no run's recording stands at the commit beneath the
+change, the before arm is a fork of that commit ([before-after](before-after.md)).
 
 ## 4. Seat them one after the other
 

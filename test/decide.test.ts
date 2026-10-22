@@ -8,11 +8,13 @@ import type { Plan } from "../src/builder/ground.ts";
 import { pendingWords } from "../src/builder/word.ts";
 import { sweepOf } from "../src/kernel/compare.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
-import { releaseOrder } from "../src/kernel/reports.ts";
+import { releaseOrder, stopRule } from "../src/kernel/reports.ts";
+import { conditionId } from "../src/kernel/condition.ts";
 import { taskSets } from "../src/kernel/task.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
+import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { tallied } from "./helpers/tally.ts";
-import { roundSolves } from "./helpers/logged-round.ts";
+import { conditionOf, roundSolves } from "./helpers/logged-round.ts";
 
 /** Tasks by how many of their two solves were valid: none, one, both. */
 type Valid = readonly [number, number, number];
@@ -870,6 +872,23 @@ describe("a hold on the move a row named", () => {
     });
     // Tasks held out since the session ended are what it lacked, and the Builder builds on them.
     expect(move([...unchanged, ...heldOut("v13")])).toMatchObject({ move: "build" });
+  });
+
+  it("unshown and the stop rule agree that only an established practice failure was shown", () => {
+    const condition = conditionOf("p1", "start");
+    for (const ruling of [null, "unclear", "check-defect", "earned"]) {
+      const log = [
+        ...SET_UP,
+        event("build.started", { session: "b-1" }),
+        event("condition.recorded", { id: conditionId(condition), condition: requireJsonValue(condition) }),
+        event("solve.started", { solve: "practice", condition: conditionId(condition) }),
+        event("solve.finished", { solve: "practice", ending: { outcome: "fail", kind: "rejected" } }),
+        event("referee.finding", { solve: "practice", ruling }),
+        built("b-1", "start", { changed: false }),
+      ];
+      expect(stopRule(log).checkpoints).toBe(ruling === "earned" ? 1 : 0);
+      expect(decide(log, PLAN).code).toBe(ruling === "earned" ? "build" : "unshown");
+    }
   });
 });
 

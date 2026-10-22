@@ -221,7 +221,7 @@ export const TRIGGERS = {
   "AFTER THE PROMOTION": 31,
   "SHARED TEMPORARY FOLDER": 31,
   "SAFEGUARD-8 PROMOTION ON AUTHOR ROOM": 7,
-  "SAFEGUARD-9 PROMOTION BY THE OBJECTIVE ALONE": 9,
+  "SAFEGUARD-9 PROMOTION BEYOND VALIDITY": 9,
 } as const;
 
 export const text = (value: JsonValue | undefined): string => (isString(value) ? value : "");

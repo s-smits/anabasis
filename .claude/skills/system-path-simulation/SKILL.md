@@ -25,6 +25,7 @@ reads its later tasks and answers from there (`draftedSource`, `tools/runs/rehea
 | Rehearsal | whether commands join, and what a position of this size can read | no model; time depends on the solves and limits | [rehearsal](cases/rehearsal.md) |
 | Live seat | what a real model does from a recorded position | a session's or a solve's dollars | [live-seat](cases/live-seat.md), `scripts/live-seat.ts` |
 | The real run | everything a script cannot say | hours, tens of dollars | run-management, then `bun run runs pulse` |
+| Before and after | whether a change moves what its pull request says, and nothing else, against the commit without it | twice the case it wraps | [before-after](cases/before-after.md) |
 | The open stack | which of a stack's changes hold with a real model before it lands, while its other fixes go on | one live seat a change, one after the other | [stack](cases/stack.md), `scripts/referee-seat.ts` |
 
 A cheaper case that answers the question cancels every dearer one. Say which case you stopped at,
@@ -45,7 +46,8 @@ and why the next was not needed.
    cut earlier and run the real command with other flags.
 4. **Write only to a seed.** `rehearse` and `scripts/live-seat.ts start` require `seed.json`.
    Production move commands have no such guard: use `sim-<what>` only for seeds.
-5. **One variable.** Two rehearsals compare when one flag moved between them.
+5. **One variable.** Two rehearsals compare when one flag moved between them. Two commits compare
+   on the same input, and the commit is then the variable ([before-after](cases/before-after.md)).
 6. **Change the position, never the prompt.** A live seat is seated by the production command with
    the production prompt, and nothing tells the model what the simulation hopes for. If a prompt is
    what you are testing, that edit is the one variable.
@@ -166,7 +168,8 @@ live Builder and scripted solves; its Builder script runs no practice solve and 
 End with these, in this order.
 
 1. The question, and the case you stopped at.
-2. The position: the seed, its source, where it was cut, and the one line of difference.
+2. The position: the seed, its source, where it was cut, and the one line of difference. For a
+   change, the commits before and after it, and what moved between the two arms.
 3. Each prediction beside its reading.
 4. What was not run.
 5. Each condition as `blocking`, `cleared` or `accepted-risk`. A blocking one names its owner and

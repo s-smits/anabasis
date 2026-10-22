@@ -88,6 +88,10 @@ export function receipts(log: string): (Receipt & { readonly session: string })[
     );
 }
 
+/** The receipt of the last run of the campaign command beside `log`, if one kept one. */
+export const lastLaunch = (log: string) =>
+  receipts(log).findLast(({ session }) => session.startsWith("run-"));
+
 /** The session the next run of the campaign command beside `log` keeps its receipt under. */
 export function nextRun(log: string): string {
   const kept = receipts(log).filter(({ session }) => session.startsWith("run-")).length;

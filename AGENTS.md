@@ -827,7 +827,7 @@ The other verbs over a campaign's log:
 bun run runs rehearse [--no-comparison] <the flags of tools/d2/round.ts that name no model>
 bun run runs rehearse --campaign <the flags of tools/d2/harness-builder.ts that name no model>
 bun run runs view <name> [--level N] [--target N] [--practice N] [--past-stop "<why>"]
-bun run runs fresh | launch | continue | keep | pause | copy | fetch | retire | stop <name> | source <name> | status | logins | pulse | replay | seed | zip
+bun run runs fresh | launch | continue | keep | pause | copy | fetch | retire | stop <name> | source <name> | status | usage | active | pulse | replay | seed | zip
 ```
 
 ### Defaults
@@ -1012,7 +1012,7 @@ reading at a shorter budget would describe a solver that was told the longer one
 Beside every comparison of four solves per side stands the reference read against itself, on
 halves of its own solves mirrored in time. It should read no step; its tie share is the noise every
 comparison has to beat, and its flip rate is how often two solves of a task disagree. The
-A/A is read two-sided at the comparison's level, since which half is which is arbitrary. Every A/A
+A/A is read either way, each half at the comparison's level, since which half is which is arbitrary. Every A/A
 stands as a reading and ends nothing: the climb counts it beside the false-promotion estimate
 (section 1, factor 2). An older log may end `control`, an ending no command writes now.
 
@@ -1211,12 +1211,12 @@ Cite a rule by its number in a pull request or a review.
     out of credit or reaching its session limit is part of the development process, like a host
     restart. Keep what was recorded, classify the affected work from its events, and continue from
     the log at the run's own commit once the login has room again, or under another login (section
-    10, item 9). A named reset is waited out in code (`waitOut`, `tools/d2/host.ts`); a crash
-    without a named reset counts towards the crash rule (`crashedRun`) and ends a campaign on its
-    environment, which is a pause and not a result. Such an ending is not a failure of any
-    mechanism: do not patch, triage or report it as one, do not count it against a change, and do
-    not spend a pull request on waiting it out. A generic 429, a timeout or a crash that does not
-    name a limit is a different matter: investigate the failure itself.
+    10, item 9). A named reset is waited out in code, inside the solve it ended (`waitOut`,
+    `src/solve/run.ts`); a crash without a named reset counts towards the crash rule (`crashedRun`)
+    and ends a campaign on its environment, which is a pause and not a result. Such an ending is not
+    a failure of any mechanism: do not patch, triage or report it as one, do not count it against a
+    change, and do not spend a pull request on waiting it out. A generic 429, a timeout or a crash
+    that does not name a limit is a different matter: investigate the failure itself.
 
 ## 9. Status, evidence and claims
 
@@ -1391,7 +1391,7 @@ npm or npx. `src/meta` wraps the few Node surfaces Bun lacks (`tools/oxlint/HABI
 | `bun run hooks:install` | Points this clone's `core.hooksPath` at `.githooks`, once; every worktree shares it |
 | `bun run commit:check` | What the pre-commit hook runs, also by hand: author email, format and lint of staged files, the slop report, the secret scan |
 | `bun run secrets` | The secret scan |
-| `bun run runs <verb>` | `fresh`, `launch`, `continue`, `keep`, `pause`, `copy`, `fetch`, `retire`, `stop`, `source`, `status`, `logins` (or `usage`), `on`, `hosts`, `pulse`, `rehearse`, `seed`, `replay`, `zip`, `view`. A verb that names a run goes to the machine that holds it |
+| `bun run runs <verb>` | `fresh`, `launch`, `continue`, `keep`, `pause`, `copy`, `fetch`, `retire`, `stop`, `source`, `status`, `usage`, `active`, `on`, `hosts`, `pulse`, `rehearse`, `seed`, `replay`, `zip`, `view`. A verb that names a run goes to the machine that holds it |
 | `bun run ui:dev` | The page that shows a campaign as its log reads, on the loopback with a token (`packages/ui/README.md`). `-- --exam-side` adds the exam side's content: start that only where no Builder or solver runs |
 | `bun run ui:gate` | The UI's own gate: its dependencies, its typecheck and build, and its tests under `packages/ui/test` |
 | `bun .claude/skills/stack-pr/scripts/stack.ts` | The open stack: every edge, and the top |
@@ -1648,6 +1648,12 @@ read the conversation.
 | Condition | Everything that could change a solve's result, as one record with an id |
 | Session | One bounded stretch of an agent's work: a Builder's ends with a frozen harness version |
 | Trace | The record of one solve: every model turn and every tool call with its result |
+
+To **sed** something from a source is to copy it verbatim: its code, names, constants and messages,
+with the upstream path and commit cited beside the copy. Change only what this repository forces (a
+lint rule, a primitive the tree already owns, a colliding name) and list each change, so nobody has to
+diff against upstream. Rewriting the idea yourself, or adding the upstream package as a dependency, is
+not a sed.
 
 ### Map
 

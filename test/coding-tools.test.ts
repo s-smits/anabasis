@@ -166,6 +166,26 @@ describe("the file tools, through walled commands", () => {
     }
   });
 
+  // Each command is a sandboxed process: a read cost three and a write two until 22 October.
+  it("wall one command for what a call reads and one for what it writes, and read afresh each call", async () => {
+    const { commands, call, done } = plainHome();
+    const counted = async (name: string, params: JsonObject) => {
+      const before = commands.length;
+      const result = await call(name, params);
+      return { ran: commands.length - before, said: text(result) };
+    };
+    try {
+      expect((await counted("write", { path: "new/dir/a.txt", content: "one\n" })).ran).toBe(1);
+      expect(await counted("read", { path: "new/dir/a.txt" })).toEqual({ ran: 1, said: "one\n" });
+      expect(
+        (await counted("edit", { path: "new/dir/a.txt", edits: [{ oldText: "one", newText: "two" }] })).ran,
+      ).toBe(2);
+      expect(await counted("read", { path: "new/dir/a.txt" })).toEqual({ ran: 1, said: "two\n" });
+    } finally {
+      done();
+    }
+  });
+
   it("carry a file's bytes beside the command and never in it", async () => {
     const { root, home, commands, call, done } = plainHome();
     try {

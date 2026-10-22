@@ -186,6 +186,10 @@ function commandIsolationEnvironment(dirs: CommandDirectories): CommandIsolation
     HOME: dirs.home,
     TMPDIR: dirs.temp,
     LANG: "en_US.UTF-8",
+    // Homebrew's Python marks itself as managed by its package manager (PEP 668), and its pip then
+    // refuses every install, `--user` among them. The wall refuses a write to Homebrew's folders
+    // anyway, so pip installs into the seat's own home and nothing on the host changes.
+    PIP_BREAK_SYSTEM_PACKAGES: "1",
   };
 }
 

@@ -27,7 +27,8 @@ import {
 import { claimRoot } from "../src/wall/seat-root.ts";
 import { toolchainTemp } from "./helpers/toolchain-temp.ts";
 import { solveIsolationPolicy } from "../src/wall/base.ts";
-import { hostScratch } from "../src/wall/policy.ts";
+import { hostScratch, toolchainPathDirs } from "../src/wall/policy.ts";
+import { activeDeveloperBinDirs } from "../src/meta/host-tool.ts";
 import { commandSearchPath } from "../src/wall/isolation.ts";
 import { osIsolationSupport } from "../src/wall/os-isolation.ts";
 import { CLOSED } from "./helpers/wall.ts";
@@ -425,6 +426,31 @@ describe("a solve's walled commands", () => {
     60_000,
   );
 
+  it.skipIf(
+    !osIsolationSupport().ok || Bun.which("python", { PATH: toolchainPathDirs().join(":") }) === null,
+  )(
+    "give a seat the bare python its host's Python installs",
+    async () => {
+      const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-python-")));
+      const dirs = solveDirs(`python-${String(runtimeProcess.pid)}-${String(Date.now())}`);
+      const release = claimRoot(dirs.root);
+      try {
+        makeSeatDirs(dirs);
+        const base = solveIsolationPolicy({ repoRoot });
+        if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
+        const wall = walled(base, dirs);
+        // Homebrew and zerobrew put it in each Python's `libexec`, behind a link the wall follows.
+        const bare = await run(wall, "python -c 'import sys; print(sys.version_info[0])'");
+        expect(bare).toEqual({ exitCode: 0, output: "3\n" });
+      } finally {
+        await release();
+        rmSync(dirs.host, { recursive: true, force: true });
+        rmSync(repoRoot, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+
   it.skipIf(!osIsolationSupport().ok)(
     "give the seat's TMPDIR to every Bun a command starts, by script, by -e, from a shell and from another Bun, and let each write there",
     async () => {
@@ -489,6 +515,16 @@ console.log(JSON.stringify({ probe: process.argv.at(-1), said: process.env.TMPDI
 });
 
 describe("the search path a walled command is given", () => {
+  it("names what the host's user installed before what the operating system ships", () => {
+    // Until 22 October the system's folders came first, and a bare `python3` was Apple's 3.9.6.
+    const system = new Set([...activeDeveloperBinDirs(), "/usr/bin", "/bin", "/usr/sbin", "/sbin"]);
+    const dirs = toolchainPathDirs();
+    const first = dirs.findIndex((dir) => system.has(dir));
+    expect(first).toBeGreaterThan(-1);
+    expect(dirs.slice(first).filter((dir) => !system.has(dir))).toEqual([]);
+    if (existsSync("/usr/local/bin")) expect(dirs.indexOf("/usr/local/bin")).toBeLessThan(first);
+  });
+
   it("names the executable the host runs on before any other bun the host's fixed list holds", () => {
     // Until 19 October the runtime's folder came from the read grants, which leave out a prefix
     // under /usr or /opt, so a host Bun there lost to an older one earlier on the fixed list.

@@ -32,7 +32,8 @@ archived campaign; `copy <name> --to <worktree>` brings this machine's back to g
 | `move <name> --to <host\|here> [--from <host\|here>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]` | pauses a campaign at a clean point, takes its folder whole to a new worktree on the other machine at the same commit, sets the source aside and continues it there on its kept flags | `move.ts` |
 | `stop <name> ... [--yes]` | ends the process that writes each log, and its keeper, and releases what its unfinished solves and sessions held | `stop.ts` |
 | `status [--all]` | one row a run: the live ones and those whose log moved in a day, with tree, commit, login, open comparison, comparisons reported, promotions and ending, and on a closed row the hours until it leaves; under the rows, the closed runs it leaves out and the archive's newest campaigns; then each host `ANA_HOSTS` lists, all asked at once and each printed as it answers, within 30 s | `pulse.ts` |
-| `logins [N ...] [--json]` (also `usage`) | each login's five-hour and weekly use; without numbers or `--json`, also the pool forecast | `logins.ts` |
+| `usage [N ...] [--json]` | each login's five-hour and weekly use and, without `--json`, how many runs and simulation seats are live on it on every host (`1/2 active`, out of the most `ANA_LOGIN_RUNS` lets it carry, such as `2,N:4`); without numbers or `--json`, also the pool forecast | `logins.ts` |
+| `active` | the runs and simulation seats live on each login by name, on this machine and every host, asking no provider | `logins.ts` |
 | `fetch <name> [--from <host>]` | a copy of a campaign another machine holds, to read here, into the archive as `data/runs/<host>/<name>/` | `move.ts` |
 | `retire [--days 1] [--yes]` | moves each campaign no process writes or keeps, idle for `--days`, into the archive whole (a seed, `seed.json` beside its log, is deleted instead, the archive's too), and deletes each worktree nothing has used for a week (two for one with uncommitted work); then the same on every host, whose archive comes here. A daily job runs it with `--yes`; nothing else in an archive is deleted | `retire.ts` |
 | `on <host> <verb ...>`, `hosts [--all]` | any verb on another host over ssh; `status` on each other host alone. A verb that names a run goes to its host by itself | `hosts.ts` |
@@ -212,13 +213,18 @@ A change of login on one machine needs no move: `continue --after <event> --logi
 ## Logins and other hosts
 
 ```sh
-bun --env-file=<file> --env-file=.env.runs run runs logins [N ...] [--json]
+bun run runs usage [N ...] [--json]   # `bun run runs` loads .env and .env.runs itself
 bun --env-file=<file> --env-file=.env.runs run runs status [--all]
 bun --env-file=<file> --env-file=.env.runs run runs on <host> status
 bun --env-file=<file> --env-file=.env.runs run runs hosts [--all]
 ```
 
-`logins` reads each login's five-hour and weekly window from the provider's usage endpoint, or
+`active` names the runs a process writes on each login, on this machine and on each host (each asked
+`active --here` at once), by the login each run's last launch named. Every login `ANA_LOGINS` names
+gets a line, runs that name none get one, and so do hosts that did not answer; a host whose tree
+predates `active` is one. Count it before a launch, a continue or a move.
+
+`usage` reads each login's five-hour and weekly window from the provider's usage endpoint, or
 from the rate-limit headers of a one-token request where that is refused, and keeps a snapshot
 in `.ana/logins-history.jsonl` of the main worktree after each call with a usable weekly reading,
 keeping eight days. With no numbers or `--json`, it forecasts when the pool runs out at the

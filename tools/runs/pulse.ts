@@ -31,7 +31,7 @@ import { parseArgs } from "#src/meta/process.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import { hosts, hostsOf } from "./hosts.ts";
-import { receipts } from "./receipt.ts";
+import { lastLaunch } from "./receipt.ts";
 import {
   ARCHIVE,
   archived,
@@ -304,7 +304,7 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
       continue;
     }
     const log = logEvents(run.path);
-    const kept = receipts(run.path).findLast(({ session }) => session.startsWith("run-"));
+    const kept = lastLaunch(run.path);
     const ended = log.at(-1)?.kind === "campaign.ended" ? `ended ${word(log.at(-1)?.data.ending)}` : "";
     const comparing = openComparisons(log);
     const [steps, reads] = [count(log, "harness.promoted"), count(log, REPORTED)];

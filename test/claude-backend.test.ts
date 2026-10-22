@@ -102,9 +102,11 @@ function launched(): Launch {
   return launch;
 }
 
+/** A flag's value, given as `--name value` or, as the SDK has spelled it since 0.3.306, `--name=value`. */
 function flag(launch: Launch, name: string): string | undefined {
   const at = launch.argv.indexOf(name);
-  return at < 0 ? undefined : launch.argv[at + 1];
+  if (at >= 0) return launch.argv[at + 1];
+  return launch.argv.find((arg) => arg.startsWith(`${name}=`))?.slice(name.length + 1);
 }
 
 function turn(

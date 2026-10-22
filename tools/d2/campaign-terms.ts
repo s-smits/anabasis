@@ -25,7 +25,7 @@ import { sameJsonValue } from "#src/meta/stable-json.ts";
 import { projectOf } from "./campaign.ts";
 import type { Host } from "./host.ts";
 import { PRACTICE } from "./prepare.ts";
-import { type Campaign, COMPARISON_OPTIONS, capRead, SESSION_OPTIONS, type Seated } from "./round.ts";
+import { type Campaign, COMPARISON_OPTIONS, capRead, SESSION_OPTIONS, type Seated, solved } from "./round.ts";
 import { recordedSetting, SETTING_OPTIONS } from "./setting.ts";
 
 /** Who sits in a campaign's model seats: a session's and a comparison's, and an Examiner's. */
@@ -112,7 +112,7 @@ const OPTIONS = {
 } as const;
 /** What a campaign runs by where neither a flag nor its record says: the reserve of one solve in
  *  dollars, the Builder sessions before a comparison, and a seat's effort. */
-export const DEFAULTS = { reserve: "10", sessions: SESSIONS, effort: "high" } as const;
+const DEFAULTS = { reserve: "10", sessions: SESSIONS, effort: "high" } as const;
 /**
  * Every flag of the campaign command with what it does: the one list of them, printed by
  * `--help` (`flagsHelp`). Typed by `OPTIONS`, so no flag is added without its line. A term the
@@ -179,7 +179,7 @@ export const IDLE = 3;
 const STARTED = "comparison.started";
 /** A model a backend serves, named where a rehearsal's script sits in the Examiner's seat: the
  *  command wants a name, and the script is what is asked. */
-export const SCRIPTED = "claude/claude-opus-5-5";
+const SCRIPTED = "claude/claude-opus-5-5";
 
 export const flag = (name: string, value: string | undefined): string[] =>
   value === undefined ? [] : [`--${name}`, value];
@@ -450,6 +450,49 @@ export function sharedOf({ events, plan, opening, values, seats }: Turn) {
         : ["--cap", plan.left.dollars.toFixed(2), "--reserve", String(plan.left.reserve)],
     reviewer: reviewer === null ? [] : ["--reviewer", reviewer.model, "--reviewer-effort", reviewer.effort],
     pastStop: flag("past-stop", values["past-stop"]),
+  };
+}
+
+/** How the campaign runs Examiner session `session`, with `stand` in the seat (`examine`, or a
+ *  rehearsal's script): its flags, for `draft.ts` where it drafts the exam and `examine.ts` where it
+ *  writes tasks; the count of tasks a writing session is asked for; and the seat that solves its
+ *  drafts, which is the campaign's own, so the tries wait on the load and share the reserve
+ *  (14 October), and none beside a script unless a test seats one. */
+export function examinerRun(turn: Turn, session: string, stand: unknown, kind: "draft" | "write") {
+  const { opening, values, seats } = turn;
+  const { examiner } = opening.seats;
+  if (seats.seated === solved && examiner === null) {
+    throw new Error("name --examiner: the campaign needs an Examiner session");
+  }
+  const { setting, reviewer } = sharedOf(turn);
+  const seat = [
+    "--session",
+    session,
+    "--examiner",
+    examiner?.model ?? SCRIPTED,
+    "--examiner-effort",
+    examiner?.effort ?? DEFAULTS.effort,
+    // The campaign's setting before one is recorded: the Examiner's budget, and its solves'.
+    ...setting,
+    ...reviewer,
+  ];
+  const tasks = values["exam-tasks"] ?? examTasks(turn);
+  return {
+    args:
+      kind === "draft"
+        ? [...flag("name", values.name), ...seat]
+        : [
+            ...packOf(values),
+            ...seat,
+            ...flag("tasks", tasks),
+            ...flag("proposals", values["exam-proposals"]),
+            ...flag("minutes", values["exam-minutes"]),
+            ...flag("turns", values["exam-turns"]),
+            ...flag("reference-home", values["exam-reference"]),
+            ...flag("results", values["exam-results"]),
+          ],
+    tasks,
+    probe: seats.probe ?? (stand === undefined ? turn.held : null),
   };
 }
 

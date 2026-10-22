@@ -26,6 +26,7 @@ import { type Static, type TSchema, Type } from "typebox";
 import { openingOf } from "../builder/opening.ts";
 import { endingWith, openingTool } from "../builder/tools.ts";
 import { append, read } from "../kernel/log.ts";
+import { examinerSessions } from "../kernel/solves.ts";
 import { priceKey } from "../kernel/meter.ts";
 import { billedAll } from "../kernel/reports.ts";
 import { rmSync } from "../meta/filesystem.ts";
@@ -251,27 +252,11 @@ function withinBudget(log: string, spent: AbortController, compact: PrepareReque
   };
 }
 
-/**
- * One session of `mode`: the Examiner works with the mode's tools until its work is done, it calls
- * `finish`, or a limit ends it. Everything it does is in the log under the mode's kind: its start,
- * its turns and calls, and its end with what it billed.
- */
-async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Promise<Examined> {
-  const { log, limits, model, id } = request;
-  const { kind } = mode;
-  const began = walls?.began ?? performance.now();
-  if (read(log).some((event) => event.kind === `${kind}.started` && event.data.session === id)) {
-    throw new Error(`session ${id} is in the log already; a session's id names one session`);
-  }
-  const home = walls?.shell.dirs.home;
-  if (home !== undefined) mode.enter?.(home);
-  append(log, `${kind}.started`, {
-    session: id,
-    model: priceKey(model),
-    effort: request.effort,
-    ...mode.started,
-  });
-  request.opened?.();
+/** The session's `finish`, with what it leaves the loop (`said`) and how every tool result of the
+ *  session ends (`told`): what the mode heard since, then the line. The work still running is waited
+ *  for and told first, so that the session's end reads it, and a first `finish` is declined once
+ *  where the mode declines one and its work is not done. */
+function finishing(mode: Mode) {
   const said: Said = { note: null, declined: false };
   const told = (last: boolean, line: string) =>
     [mode.heard?.(last) ?? "", line].filter((part) => part !== "").join("\n\n");
@@ -282,7 +267,6 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
     parameters: Type.Object({ note: Type.String({ minLength: 1, maxLength: 700 }) }),
     executionMode: "sequential",
     execute: async (_id, args) => {
-      // The work still running is waited for and told first, so that the session's end reads it.
       await mode.settle?.(true);
       if (mode.declined !== null && !said.declined && mode.done() === null) {
         said.declined = true;
@@ -292,6 +276,28 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
       return { ...text(told(true, "Finished.")), terminate: true };
     },
   });
+  return { said, told, finish };
+}
+
+/**
+ * One session of `mode`: the Examiner works with the mode's tools until its work is done, it calls
+ * `finish`, or a limit ends it. Everything it does is in the log under the mode's kind: its start,
+ * its turns and calls, and its end with what it billed.
+ */
+async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Promise<Examined> {
+  const { log, limits, model, id } = request;
+  const { kind } = mode;
+  const began = walls?.began ?? performance.now();
+  const home = walls?.shell.dirs.home;
+  if (home !== undefined) mode.enter?.(home);
+  append(log, `${kind}.started`, {
+    session: id,
+    model: priceKey(model),
+    effort: request.effort,
+    ...mode.started,
+  });
+  request.opened?.();
+  const { said, told, finish } = finishing(mode);
   const shell = await examinerShell(walls?.shell, mode.enters, mode.home, mode.checked);
   // The model's turns so far, each pushed once its tool results are in (`finishTurn`).
   const turns: AssistantMessage[] = [];
@@ -411,10 +417,14 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
  * One Examiner session in the mode its request names. With a `wall` it has a shell under the
  * solver's command wall (`shell.ts`), with the engines its campaign's checks run where the wall
  * names them, and its time is counted from before its root is claimed; without one it has no shell
- * and computes nothing. A run killed before the session began claims nothing and starts nothing.
+ * and computes nothing. A run killed before the session began, and an id a drafting or writing
+ * session of the log already took, claim nothing and start nothing.
  */
 export async function examine(request: ExamRequest, wall?: Wall): Promise<Examined> {
   if (request.kill?.aborted === true) throw new Error(`session ${request.id} was stopped before it began`);
+  if (examinerSessions(read(request.log)).has(request.id)) {
+    throw new Error(`session ${request.id} is in the log already; a session's id names one session`);
+  }
   const seated = (walls: Walls | undefined) => {
     const pinned = walls?.pinned ?? [];
     switch (request.mode) {

@@ -559,6 +559,19 @@ function gatedTasks(events: readonly LogEvent[]): Task[] {
   );
 }
 
+/** What the home of a writing session holds where the campaign keeps one: the last session's, or
+ *  that of one whose turn the provider failed with no command running, which is kept (`leave`); and
+ *  the copy of the reference harness where the wall names one. */
+function homeOf(before: readonly LogEvent[], reference: string | undefined): string {
+  const cut = before.findLast(({ kind }) => kind === "exam.finished")?.data;
+  const kept = cut?.ended === "crashed" && cut.running === 0 && isString(cut.session) ? cut.session : null;
+  const left =
+    kept === null
+      ? "holds what the last Examiner session of this campaign left in it, or nothing at the campaign's first"
+      : `holds what Examiner session ${kept} of this campaign left in it when the provider failed one of its turns, before it finished`;
+  return `${left}${reference === undefined ? "" : `, and ${REFERENCE_HOME}/, a copy of the reference harness laid afresh for this session`}`;
+}
+
 /**
  * The mode that writes tasks: the exam's own tools, `try_answer` where the host verifies, the home
  * carried from the campaign's last session where the wall keeps one (`keep`), and in it a copy of
@@ -596,9 +609,6 @@ export function writing(
   // that one failed: main0_5_1's x-6 and buffer-159-opus's x-8 opened on one (16 October).
   const epoch = before.slice(before.findLastIndex(({ kind }) => kind === "harness.promoted") + 1);
   const note = epoch.findLast(({ kind, data }) => kind === "exam.finished" && isString(data.note))?.data.note;
-  // The last session, where the provider failed its turn with no command running: its home is kept.
-  const cut = before.findLast(({ kind }) => kind === "exam.finished")?.data;
-  const kept = cut?.ended === "crashed" && cut.running === 0 && isString(cut.session) ? cut.session : null;
   return {
     kind: "exam" as const,
     system: systemPrompt(attempts, reference === undefined ? "unseen" : "in-home"),
@@ -638,14 +648,7 @@ export function writing(
           ]),
     ],
     enters: `a task enters it through ${gate} alone`,
-    home:
-      keep === undefined
-        ? undefined
-        : `${
-            kept === null
-              ? "holds what the last Examiner session of this campaign left in it, or nothing at the campaign's first"
-              : `holds what Examiner session ${kept} of this campaign left in it when the provider failed one of its turns, before it finished`
-          }${reference === undefined ? "" : `, and ${REFERENCE_HOME}/, a copy of the reference harness laid afresh for this session`}`,
+    home: keep === undefined ? undefined : homeOf(before, reference),
     checked: undefined,
     nudge: "Propose further tasks",
     finish:

@@ -135,8 +135,7 @@ import { campaignLog, openCampaign, packNamed, REPO } from "./campaign.ts";
 import { type CampaignContext, campaignTools } from "./campaign-actions.ts";
 import {
   comparisonOf,
-  DEFAULTS,
-  examTasks,
+  examinerRun,
   flag,
   flagsOf,
   IDLE,
@@ -146,7 +145,6 @@ import {
   opened,
   packed,
   packOf,
-  SCRIPTED,
   type Seats,
   sharedOf,
   type Turn,
@@ -224,7 +222,7 @@ async function make(
 ): Promise<void> {
   const { events, opening, values, seats } = turn;
   const pack = packOf(values);
-  const { builder, examiner } = opening.seats;
+  const { builder } = opening.seats;
   if (decided.move === "accept") {
     const admits = turn.plan.admits.length === 0 ? undefined : turn.plan.admits;
     begin(keyIfDefined("admitted", admits && [...admits]));
@@ -262,49 +260,15 @@ async function make(
   }
   if (decided.move === "draft" || decided.move === "examine") {
     const stand = decided.move === "draft" ? seats.draft : seats.examine;
-    if (seats.seated === solved && examiner === null) {
-      throw new Error(`name --examiner: ${decided.why}, and an Examiner session does that`);
-    }
     if (seats.seated !== solved && stand === undefined) {
       throw new Error(`a rehearsal seats no Examiner, and the campaign needs one: ${decided.why}`);
     }
     const session = nextId(events, decided.move === "draft" ? "d" : "x");
-    const seat = [
-      "--session",
-      session,
-      "--examiner",
-      examiner?.model ?? SCRIPTED,
-      "--examiner-effort",
-      examiner?.effort ?? DEFAULTS.effort,
-    ];
+    const { args, probe } = examinerRun(turn, session, stand, decided.move === "draft" ? "draft" : "write");
     begin({ session });
-    if (decided.move === "draft") {
-      await draftCommand(
-        [...flag("name", values.name), ...seat, ...sharedOf(turn).setting, ...sharedOf(turn).reviewer],
-        seats.draft,
-        // The campaign's own seat, as an Examiner session's tries take it.
-        seats.probe ?? (seats.draft === undefined ? turn.held : null),
-      );
-      return;
-    }
-    await examineCommand(
-      [
-        ...pack,
-        ...seat,
-        ...flag("tasks", values["exam-tasks"] ?? examTasks(turn)),
-        // The campaign's setting before one is recorded: the Examiner's budget, and `try_task`'s.
-        ...sharedOf(turn).setting,
-        ...sharedOf(turn).reviewer,
-        ...flag("proposals", values["exam-proposals"]),
-        ...flag("minutes", values["exam-minutes"]),
-        ...flag("turns", values["exam-turns"]),
-        ...flag("reference-home", values["exam-reference"]),
-        ...flag("results", values["exam-results"]),
-      ],
-      seats.examine,
-      // The campaign's own seat, so the tries wait on the load and share the reserve (14 October).
-      seats.probe ?? (seats.examine === undefined ? turn.held : null),
-    );
+    await (decided.move === "draft"
+      ? draftCommand(args, seats.draft, probe)
+      : examineCommand(args, seats.examine, probe));
     return;
   }
   const { setting, cap, reviewer, pastStop } = sharedOf(turn);

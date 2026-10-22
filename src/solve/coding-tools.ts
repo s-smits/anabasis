@@ -138,27 +138,38 @@ export function fileTools(home: string, exec: WallExec): SolverTool[] {
  * and never in it: a write stages them for the command, which starts beside a copy of them
  * (`runWalled`), and a read is the command's output. Absolute paths only, as pi resolves them
  * before it calls.
+ *
+ * The operations serve one call (`fileTools`), and a call walls one command for what it reads and
+ * one for what it writes. pi's read asks whether the file is there, then for its first bytes to
+ * tell an image, then for the file, and its write makes the folder before it writes: until 22
+ * October each ask was a command of its own, and a command behind the wall starts a sandboxed
+ * process, so a `read` cost three of them, 113 ms at its p10 on a macOS runner, where a `bash` call
+ * cost 74 ms.
  */
 function fileOperations(exec: WallExec) {
   const said = (output: Buffer, otherwise: string) => output.toString("utf8").trim() || otherwise;
   // pi's tools pass a missing file's error on as Node gave it, and pi's edit prints its code.
   const refused = (code: string, what: string, path: string) =>
     Object.assign(new Error(`${code}: ${what}, access '${path}'`), { code });
-  const access = (writable: boolean) => async (path: string) => {
+  // The file as one command read it, after the checks pi's `access` makes, held for the call.
+  const held = new Map<string, Promise<Buffer>>();
+  const load = (path: string, writable = false) => {
     const file = shellQuote(path);
-    const { exitCode } = await exec(
-      `[ -e ${file} ] || exit ${String(MISSING)}; [ -r ${file} ]${writable ? ` && [ -w ${file} ]` : ""} || exit ${String(DENIED)}`,
-    );
-    if (exitCode === MISSING) throw refused("ENOENT", "no such file or directory", path);
-    if (exitCode !== 0) throw refused("EACCES", "permission denied", path);
-  };
-  const head = async (path: string, bytes: number) => {
-    const { exitCode, output } = await exec(`head -c ${String(bytes)} ${shellQuote(path)}`);
-    if (exitCode !== 0) throw new Error(said(output, `${path} could not be read`));
-    return output;
+    const read = async () => {
+      const { exitCode, output } = await exec(
+        `[ -e ${file} ] || exit ${String(MISSING)}; [ -r ${file} ]${writable ? ` && [ -w ${file} ]` : ""} || exit ${String(DENIED)}; head -c ${String(READ_MAX_BYTES + 1)} ${file}`,
+      );
+      if (exitCode === MISSING) throw refused("ENOENT", "no such file or directory", path);
+      if (exitCode === DENIED) throw refused("EACCES", "permission denied", path);
+      if (exitCode !== 0) throw new Error(said(output, `${path} could not be read`));
+      return output;
+    };
+    const bytes = held.get(path) ?? read();
+    held.set(path, bytes);
+    return bytes;
   };
   const readFile = async (path: string) => {
-    const bytes = await head(path, READ_MAX_BYTES + 1);
+    const bytes = await load(path);
     if (bytes.length > READ_MAX_BYTES) {
       throw new Error(
         `${path} is larger than 16 MiB, the most the file tools read: read part of it with bash (head, tail, sed -n)`,
@@ -166,25 +177,28 @@ function fileOperations(exec: WallExec) {
     }
     return bytes;
   };
+  // pi's write makes the folder first; the write's own command makes it.
+  let folder: string | undefined;
   const writeFile = async (path: string, content: string) => {
-    const { exitCode, output } = await exec(`cat content > ${shellQuote(path)}`, {
+    held.delete(path);
+    const made = folder === undefined ? "" : `mkdir -p ${shellQuote(folder)} && `;
+    const { exitCode, output } = await exec(`${made}cat content > ${shellQuote(path)}`, {
       stage: (into) => writeFileSync(join(into, "content"), content, "utf8"),
     });
     if (exitCode !== 0) throw new Error(said(output, `${path} could not be written`));
   };
   return {
     read: {
-      access: access(false),
+      access: async (path: string) => void (await load(path)),
       readFile,
       detectImageMimeType: async (path: string) =>
-        detectSupportedImageMimeType(await head(path, SNIFF_BYTES)),
+        detectSupportedImageMimeType((await load(path)).subarray(0, SNIFF_BYTES)),
     },
-    edit: { access: access(true), readFile, writeFile },
+    edit: { access: async (path: string) => void (await load(path, true)), readFile, writeFile },
     write: {
       writeFile,
       mkdir: async (dir: string) => {
-        const { exitCode, output } = await exec(`mkdir -p ${shellQuote(dir)}`);
-        if (exitCode !== 0) throw new Error(said(output, `${dir} could not be made`));
+        folder = dir;
       },
     },
   };

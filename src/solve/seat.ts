@@ -7,8 +7,25 @@
  * Examiner's sessions imported for them, and the Referee's reader summed its spend for itself. A
  * solve, a Builder session, an Examiner session and a Referee ruling now meter the same way.
  */
-import type { AgentEvent, AgentToolResult, PrepareRequest, StreamFn } from "@earendil-works/pi-agent-core";
-import type { Api, AssistantMessage, Model, Usage } from "@earendil-works/pi-ai";
+import {
+  type AgentEvent,
+  type AgentEventSink,
+  type AgentLoopConfig,
+  type AgentMessage,
+  type AgentTool,
+  type AgentToolResult,
+  type PrepareRequest,
+  runAgentLoop,
+  type StreamFn,
+} from "@earendil-works/pi-agent-core";
+import {
+  type Api,
+  type AssistantMessage,
+  createInitialSystemMessage,
+  type Model,
+  toToolDeclaration,
+  type Usage,
+} from "@earendil-works/pi-ai";
 import { CLAUDE_COMPACTED, reportedCost } from "../backends/claude.ts";
 import { CALL_RETRIED } from "../backends/models.ts";
 import { type Compacted, compactBeforeRequest } from "../backends/pi-compaction.ts";
@@ -107,24 +124,65 @@ export async function spentBy(
   };
 }
 
-/** The `prepareRequest` that compacts pi's own loop through `stream` (`pi-compaction.ts`): each
- *  compaction into the log as `<of>.compacted`, between the turns it came between, and its
- *  summary's usage into `summaries`, which the session's spend counts. */
-export function loopCompaction(
-  log: string,
-  of: Traced,
-  id: string,
-  stream: StreamFn,
-  summaries: Usage[],
-): PrepareRequest {
-  return compactBeforeRequest(stream, ({ usages, ...compacted }: Compacted) => {
-    summaries.push(...usages);
-    append(log, traceKind(of, "compacted"), {
-      [whose(of)]: id,
-      ...compacted,
-      usages: usages.map((usage) => ({ ...usage })),
+/** A user message, as a seat's loop opens on one and prompts it again. */
+export function userTurn(content: string): AgentMessage {
+  return { role: "user", content, timestamp: Date.now() };
+}
+
+/**
+ * One seat's model loop on the backends it was handed: its system prompt with its tools declared,
+ * its opening message, and the transcript sent as it stands. `id` keys the backend's live state (a
+ * Claude Code query, a Codex WebSocket and its prompt cache) and the seat's compactions in the log.
+ * A seat that compacts names its trace, and `guard` holds each request to the seat's own bounds
+ * around its compaction. Until 22 October a solve, a Builder session, an Examiner session and a
+ * Referee ruling each spelled this wiring for itself.
+ */
+export async function seatLoop(seat: {
+  readonly models: { readonly streamSimple: StreamFn };
+  readonly id: string;
+  readonly system: string;
+  readonly opening: string;
+  readonly tools: readonly AgentTool[];
+  readonly config: Omit<AgentLoopConfig, "convertToLlm" | "prepareRequest" | "sessionId">;
+  readonly compact?: {
+    readonly log: string;
+    readonly of: Traced;
+    readonly summaries: Usage[];
+    readonly guard?: (compact: PrepareRequest) => PrepareRequest;
+  };
+  readonly emit: AgentEventSink;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  const { models, id, compact } = seat;
+  const head = createInitialSystemMessage(seat.system, seat.tools.map(toToolDeclaration));
+  // Bound, since pi's `Models` reads its providers through `this`.
+  const stream = models.streamSimple.bind(models);
+  // Each compaction of pi's own loop (`pi-compaction.ts`) goes into the log as `<of>.compacted`,
+  // between the turns it came between, and its summary's usage into `summaries`, which the seat's
+  // spend counts.
+  const prepare =
+    compact &&
+    compactBeforeRequest(stream, ({ usages, ...compacted }: Compacted) => {
+      compact.summaries.push(...usages);
+      append(compact.log, traceKind(compact.of, "compacted"), {
+        [whose(compact.of)]: id,
+        ...compacted,
+        usages: usages.map((usage) => ({ ...usage })),
+      });
     });
-  });
+  await runAgentLoop(
+    [userTurn(seat.opening)],
+    { messages: head === undefined ? [] : [head], tools: [...seat.tools] },
+    {
+      ...seat.config,
+      sessionId: id,
+      convertToLlm: (messages) => messages,
+      ...(prepare && { prepareRequest: compact?.guard?.(prepare) ?? prepare }),
+    },
+    seat.emit,
+    seat.signal,
+    stream,
+  );
 }
 
 function traceText(content: readonly { type: string; text?: string }[]): string {

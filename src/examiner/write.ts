@@ -321,7 +321,7 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
     stop,
     proof,
   );
-  const told = said === "" ? "" : `; ${said}`;
+  const held = `${taskId}: held out${said === "" ? "" : `; ${said}`}.`;
   const outcome = reason === null ? { outcome: "passed" } : { outcome: "refused", reason };
   append(log, GATE, {
     version,
@@ -340,12 +340,12 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
   }
   desk.held.push(version);
   const verdict = await proof();
-  if (verdict === null || answer === undefined) return `${taskId}: held out${told}.`;
+  if (verdict === null || answer === undefined) return held;
   if (verdict.kind !== "pass") {
-    return `${taskId}: held out${told}. Author proof was not retained under this task id: ${tried(verdict)}`;
+    return `${held} Author proof was not retained under this task id: ${tried(verdict)}`;
   }
   append(log, "task.feasible", { version, session, answer, ...measureOf(request.contract, verdict) });
-  return `${taskId}: held out${told}.`;
+  return held;
 }
 
 /** Whether the host has the tasks it asked for. */
@@ -559,19 +559,6 @@ function gatedTasks(events: readonly LogEvent[]): Task[] {
   );
 }
 
-/** What the home of a writing session holds where the campaign keeps one: the last session's, or
- *  that of one whose turn the provider failed with no command running, which is kept (`leave`); and
- *  the copy of the reference harness where the wall names one. */
-function homeOf(before: readonly LogEvent[], reference: string | undefined): string {
-  const cut = before.findLast(({ kind }) => kind === "exam.finished")?.data;
-  const kept = cut?.ended === "crashed" && cut.running === 0 && isString(cut.session) ? cut.session : null;
-  const left =
-    kept === null
-      ? "holds what the last Examiner session of this campaign left in it, or nothing at the campaign's first"
-      : `holds what Examiner session ${kept} of this campaign left in it when the provider failed one of its turns, before it finished`;
-  return `${left}${reference === undefined ? "" : `, and ${REFERENCE_HOME}/, a copy of the reference harness laid afresh for this session`}`;
-}
-
 /**
  * The mode that writes tasks: the exam's own tools, `try_answer` where the host verifies, the home
  * carried from the campaign's last session where the wall keeps one (`keep`), and in it a copy of
@@ -648,7 +635,6 @@ export function writing(
           ]),
     ],
     enters: `a task enters it through ${gate} alone`,
-    home: keep === undefined ? undefined : homeOf(before, reference),
     checked: undefined,
     nudge: "Propose further tasks",
     finish:
@@ -680,7 +666,7 @@ export function writing(
     // crashed session's home replaced the kept one, and on buffer the next session opened in the
     // working files of one whose turn the provider failed, under an earlier session's note; from
     // then until 14 October none did, and a crashed Examiner's work was lost to the provider. A
-    // crash in a model request is now kept, and the next session is told whose home it is (`home`).
+    // crash in a model request is now kept.
     leave: (home: string, ended: string, running: number) => {
       if (keep === undefined || (ended === "crashed" && running > 0)) return;
       rmSync(keep, { recursive: true, force: true });

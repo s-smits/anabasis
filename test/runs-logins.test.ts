@@ -3,7 +3,7 @@
 import { describe, expect, it } from "bun:test";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { liveOf, seatsIn } from "../tools/runs/live.ts";
-import { activeLines, capOf, carried, fitOf, perRunRate } from "../tools/runs/logins.ts";
+import { activeLines, capOf, carried, fitOf, perRunHour, perRunRate } from "../tools/runs/logins.ts";
 
 const live = [
   { name: "a", login: "2", host: "here" },
@@ -95,9 +95,19 @@ describe("how many runs a login's week carries", () => {
 
   it("fits as many runs as the week left carries to its reset, active 16 of 24 hours", () => {
     const now = 0;
-    expect(fitOf({ login: "3", pct: 92, reset: 42 * HOUR }, 1, now)).toBe(0);
-    expect(fitOf({ login: "2", pct: 33, reset: 9 * HOUR }, 1, now)).toBe(11);
+    const active = perRunHour({ login: "2", pct: 0, reset: 0 }, 1, 1, now);
+    expect(fitOf({ login: "3", pct: 92, reset: 42 * HOUR }, active, now)).toBe(0);
+    expect(fitOf({ login: "2", pct: 33, reset: 9 * HOUR }, active, now)).toBe(11);
     expect(fitOf({ login: "2", pct: 33, reset: 9 * HOUR }, null, now)).toBeNull();
+  });
+
+  it("reads a week's own pace over its live runs until a rate is measured", () => {
+    // 70% in the first 4 days, 3 days left: two runs need about 52%, one about 26%, of the 30% left.
+    const week = { login: "2", pct: 70, reset: 72 * HOUR };
+    const now = 0;
+    expect(fitOf(week, perRunHour(week, 2, null, now), now)).toBe(1);
+    expect(perRunHour(week, 0, null, now)).toBeNull();
+    expect(perRunHour(week, 2, 1, now)).toBeCloseTo(16 / 24);
   });
 
   it("shows the lower of the cap and the fit, and marks more live runs than the week fits", () => {

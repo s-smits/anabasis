@@ -23,12 +23,12 @@
  * a release, a comparison, a promotion (`campaign-actions.ts`). The table's move is its advice,
  * and every condition above stays the host's at each action. A conversation that ends at its own
  * limits is followed by another on the Builder's notes, and so is one the Builder ends with
- * `finish`, until three in a row have made no campaign move (`finished`). A lack
- * of room is advice to ask the Examiner while a conversation lives, and the campaign's ending
- * once one has ended with the table still naming it. Without the term the command makes every
- * move itself, a Builder session among them, as it did before 13 October, and nothing a Builder
- * reads differs from then (`SAID`, `src/builder/prompt.ts`). A campaign on record without the
- * term runs so.
+ * `finish`, until three in a row have made no campaign move (`finished`). Every ending the table
+ * names ends a live conversation too, a lack of room among them: until 22 October that one was
+ * advice while a conversation lived, and a Builder bought an Examiner session past its patience.
+ * Without the term the command makes every move itself, a Builder session among them, as it did
+ * before 13 October, and nothing a Builder reads differs from then (`SAID`,
+ * `src/builder/prompt.ts`). A campaign on record without the term runs so.
  *
  * **A campaign opens over a stored pack, which four flags name, or from a prompt** (row F53).
  * The prompt and who solves are then part of what it runs by, its first move is the Examiner's
@@ -429,7 +429,10 @@ function beginning(log: string, decided: Exclude<Decided, { move: "end" }>) {
  * operator would run, and is on record as it begins, as every move is. Its own tool calls count
  * against `--moves`, and it does not.
  */
-async function converse(context: CampaignContext, named: Decided): Promise<Decided | null> {
+async function converse(
+  context: CampaignContext,
+  named: Exclude<Decided, { move: "end" }>,
+): Promise<Decided | null> {
   const { log, values, seats } = context;
   const turn = turnOf(context);
   const { setting, cap, reviewer, pastStop } = sharedOf(turn);
@@ -438,7 +441,7 @@ async function converse(context: CampaignContext, named: Decided): Promise<Decid
   append(log, MOVED, {
     move: "build",
     code: "led",
-    why: `the Builder's campaign conversation, where the table named ${named.move === "end" ? named.ending : named.move}`,
+    why: `the Builder's campaign conversation, where the table named ${named.move}`,
     session,
   });
   try {
@@ -495,7 +498,10 @@ async function converse(context: CampaignContext, named: Decided): Promise<Decid
  * what it left: a provider's limit waited out where the campaign goes on, and otherwise the line
  * of what comes next, with the ending on record and the campaign handed over where it ended.
  */
-async function lead(context: CampaignContext, named: Decided): Promise<Decided | null> {
+async function lead(
+  context: CampaignContext,
+  named: Exclude<Decided, { move: "end" }>,
+): Promise<Decided | null> {
   const { log, values, seats } = context;
   const left = await converse(context, named);
   if (left === null) {
@@ -511,14 +517,6 @@ async function lead(context: CampaignContext, named: Decided): Promise<Decided |
     await closeCommand([...packOf(values), "--to", values.handover]);
   }
   return left;
-}
-
-/** Whether a conversation that began where the log held `from` events ended other than crashed:
- *  one the provider failed has not answered a lack of room, and the next one may. */
-function closed(log: string, from: number): boolean {
-  return read(log)
-    .slice(from)
-    .some(({ kind, data }) => kind === "build.finished" && data.ended !== "crashed");
 }
 
 /**
@@ -599,9 +597,6 @@ export async function harnessBuilder(
   const held = gated({ ...seats, loaded: values.loaded }, log);
   /** The move this run made last: an exam read here printed its faults as it was read. */
   let last: Decided["move"] | null = null;
-  /** Whether a Builder conversation of this run has ended: a lack of room is its advice before
-   *  one, and the campaign's ending after. */
-  let talked = false;
   for (let made = 0; ; ) {
     // A total the operator left as a word rules from this move on: the newest stands, and the record
     // answers every one (until 11 October the newest alone, and an older one applied at the next move).
@@ -622,13 +617,9 @@ export async function harnessBuilder(
       }
     }
     const decided = decide(events, plan);
-    // Led by its Builder, every move but set-up and what the host owes (`hostOwed`) is the
-    // conversation's, and so is a lack of room until one conversation of this run has ended on it.
-    const led =
-      opening.led &&
-      !SETUP.has(decided.move) &&
-      !hostOwed(decided) &&
-      (decided.move !== "end" || (decided.ending === "no-room" && !talked));
+    // Led by its Builder, every move but set-up, an ending and what the host owes (`hostOwed`) is
+    // the conversation's.
+    const led = opening.led && !SETUP.has(decided.move) && !hostOwed(decided) && decided.move !== "end";
     console.log(
       `\n${made < most && !values["dry-run"] ? `move ${String(made + 1)}` : "next"} · ${decidedLine(decided)}`,
     );
@@ -638,8 +629,7 @@ export async function harnessBuilder(
       const turns = { maxMoves: most, used: made, failed: null };
       const context: CampaignContext = { log, values, opening, seats, held, campaign, paid, ...turns };
       const left = await lead(context, decided);
-      const answered: boolean = talked || left !== null || closed(log, events.length);
-      [made, talked, { opening }] = [context.used, answered, context];
+      [made, { opening }] = [context.used, context];
       if (left !== null) return left;
       continue;
     }

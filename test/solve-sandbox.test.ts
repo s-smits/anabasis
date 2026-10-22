@@ -90,7 +90,7 @@ async function inSeat(
     };
     await fn(wall, run);
   } finally {
-    await release();
+    release();
     rmSync(dirs.host, { recursive: true, force: true });
   }
 }

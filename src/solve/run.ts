@@ -324,7 +324,7 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
     done.abort();
     // Read apart from the loop, before the root goes: a walk that fails voids no solve.
     homeBytes = bytesUnder(dirs.home);
-    await release?.();
+    release?.();
     rmSync(dirs.host, { recursive: true, force: true });
   }
   return {

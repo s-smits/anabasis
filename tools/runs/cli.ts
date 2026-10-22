@@ -18,7 +18,8 @@
  */
 import { runtimeProcess } from "#src/meta/process.ts";
 import { fresh } from "./fresh.ts";
-import { holds, hosts, on, routed, verbOn } from "./hosts.ts";
+import { holds, on, routed, verbOn } from "./hosts.ts";
+import { hostsHealth } from "./health.ts";
 import { keep } from "./keep.ts";
 import { active, logins } from "./logins.ts";
 import { continueRun, copy, launch, pause } from "./manage.ts";
@@ -32,6 +33,8 @@ import { seed } from "./seed.ts";
 import { stop } from "./stop.ts";
 import { view } from "./view.ts";
 import { zipRuns } from "./zip.ts";
+import { catalogue } from "./snapshots.ts";
+import { continueOn } from "./continuation.ts";
 
 const VERBS = {
   pulse: watch,
@@ -55,8 +58,9 @@ const VERBS = {
   fetch,
   retire,
   on,
-  hosts,
+  hosts: hostsHealth,
   holds,
+  catalogue,
 };
 const [verb, ...args] = Bun.argv.slice(2);
 const run = Object.entries(VERBS).find(([name]) => name === verb)?.[1];
@@ -68,7 +72,7 @@ if (run === undefined) {
 } else {
   const { here, away } = await routed(verb ?? "", args);
   for (const [host, words] of away) {
-    const code = await verbOn(host, words);
+    const code = await (verb === "continue" ? continueOn(host, words) : verbOn(host, words));
     if (code !== 0) runtimeProcess.exitCode = code;
   }
   if (here !== null) await run(here);

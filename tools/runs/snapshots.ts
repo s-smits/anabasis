@@ -1,0 +1,211 @@
+/**
+ * Read remote campaigns through the local readers (22 October 2026). One catalogue lists each
+ * machine's originals, including its archive. One transfer owner refreshes copies in the existing
+ * archive. Copies never become runnable campaigns. Fetch, WRI, view, source and replay used to
+ * disagree on discovery, and an old fetched copy could silently stand for a growing remote log.
+ * A failed transfer leaves the previous copy intact and refuses the read. Only whole log lines
+ * are published. No credential file is copied and rsync never follows a link.
+ */
+import { LOG_FILE } from "#src/kernel/log.ts";
+import { openingOf } from "#src/builder/opening.ts";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "#src/meta/filesystem.ts";
+import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
+import { asRecord, isString, isBoolean } from "#src/meta/json-shape.ts";
+import { dirname, isAbsolute, join } from "#src/meta/path.ts";
+import { isSafePathSegment } from "#src/meta/path-segment.ts";
+import { runtimeProcess } from "#src/meta/process.ts";
+import { asked } from "./hosts.ts";
+import { type Host, hostsOf } from "./host-config.ts";
+import { quoted, rsync } from "./host-command.ts";
+import {
+  archiveOf,
+  archived,
+  HERE,
+  isCampaign,
+  readable,
+  readNamed,
+  runs,
+  wholeLines,
+  logEvents,
+  processes,
+  writers,
+  type Run,
+} from "./registry.ts";
+import { keepObservation, stderrTail } from "./diagnosis.ts";
+
+interface RemoteRun {
+  readonly name: string;
+  readonly path: string;
+  readonly project: string | null;
+  readonly open: boolean;
+  readonly stderr: string | null;
+}
+
+type Depth = "record" | "whole";
+const EXCLUDED = ["--exclude=.env", "--exclude=.env.*", "--exclude=*.env", "--exclude=auth.json"];
+const RECORD = ["--include=/log.jsonl", "--include=/launch-*.json", "--exclude=/*"];
+
+/** Only originals are advertised: a fetched copy cannot claim another machine's campaign. */
+export async function catalogue(): Promise<void> {
+  const running = processes();
+  const originals = [...runs(), ...archived().filter((run) => run.archived === HERE)].filter(isCampaign);
+  const records = await Promise.all(
+    localCatalogue().map(async (run) => ({
+      ...run,
+      open: originals.some((original) => original.path === run.path && writers(original, running).length > 0),
+      stderr: await stderrTail(run.path),
+    })),
+  );
+  console.log(capturedJsonStringify(records));
+}
+
+/** Original campaign identities and projects, shared with fresh placement. */
+export function localCatalogue(): { name: string; path: string; project: string | null }[] {
+  const all = [...runs(), ...archived().filter((run) => run.archived === HERE)].filter(isCampaign);
+  return all.map(({ name, path }) => ({ name, path, project: openingOf(logEvents(path))?.project ?? null }));
+}
+
+/** Validate before a remote record can name a transfer source or local destination. */
+export function remoteRuns(lines: readonly string[] | null, host: Host): RemoteRun[] {
+  if (lines === null) throw new Error(`${host.name}: no campaign catalogue; copies were not refreshed`);
+  const value = capturedJsonParse(lines.join("\n"));
+  if (!Array.isArray(value)) throw new Error(`${host.name}: campaign catalogue is not a list`);
+  return value.map((entry) => {
+    const run = asRecord(entry);
+    if (
+      run === null ||
+      !isString(run.name) ||
+      !isSafePathSegment(run.name) ||
+      !isString(run.path) ||
+      !isAbsolute(run.path)
+    ) {
+      throw new Error(`${host.name}: invalid campaign catalogue entry`);
+    }
+    if (!run.path.endsWith(`/${run.name}/${LOG_FILE}`) || run.path.includes("\n")) {
+      throw new Error(`${host.name}: campaign path does not name its log`);
+    }
+    if (run.project !== undefined && run.project !== null && !isString(run.project)) {
+      throw new Error(`${host.name}: invalid campaign project`);
+    }
+    if (!isBoolean(run.open) || !(run.stderr === null || isString(run.stderr))) {
+      throw new Error(`${host.name}: invalid campaign observation`);
+    }
+    return {
+      name: run.name,
+      path: run.path,
+      project: isString(run.project) ? run.project : null,
+      open: run.open,
+      stderr: run.stderr,
+    };
+  });
+}
+
+/** Stage a refresh and restore the previous copy if publishing the new one fails. */
+async function bring(run: RemoteRun, host: Host, repo: string, depth: Depth): Promise<string> {
+  const into = archiveOf(repo, host.name, run.name);
+  mkdirSync(dirname(into), { recursive: true });
+  const lock = join(dirname(into), `.fetch-${run.name}.lock`);
+  mkdirSync(lock);
+  const stage = mkdtempSync(join(dirname(into), ".fetch-"));
+  const folder = join(stage, "campaign");
+  const previous = join(stage, "previous");
+  let published = false;
+  try {
+    mkdirSync(folder);
+    const reused = existsSync(into) ? [`--link-dest=${into}`] : [];
+    // A record refresh keeps any previously fetched artefacts. A whole refresh replaces them.
+    if (depth === "record" && existsSync(into)) rsync(`${into}/`, `${folder}/`, ...reused, ...EXCLUDED);
+    rsync(
+      `${host.ssh}:${quoted(dirname(run.path))}/`,
+      `${folder}/`,
+      ...reused,
+      ...EXCLUDED,
+      ...(depth === "record" ? RECORD : []),
+    );
+    const log = join(folder, LOG_FILE);
+    if (!lstatSync(log).isFile()) throw new Error(`${run.name}: the copied log is not a regular file`);
+    // link-dest may have linked an unchanged log to the previous copy. Replace its inode.
+    const whole = join(stage, "whole-log");
+    await Bun.write(whole, wholeLines(log));
+    renameSync(whole, log);
+    await keepObservation(folder, { open: run.open, stderr: run.stderr });
+    if (existsSync(into)) renameSync(into, previous);
+    try {
+      renameSync(folder, into);
+      published = true;
+    } catch (error) {
+      if (existsSync(previous)) renameSync(previous, into);
+      throw error;
+    }
+    return join(into, LOG_FILE);
+  } finally {
+    if (published || !existsSync(previous)) rmSync(stage, { recursive: true, force: true });
+    else console.error(`${run.name}: the previous copy is kept in ${previous}`);
+    rmSync(lock, { recursive: true });
+  }
+}
+
+/** Refresh matching remote campaigns. Exact discovery is used by one-run readers; collections
+ *  use the CLI's substring matching. A missing host or ambiguous original refuses the read. */
+export async function syncRuns(
+  names: readonly string[],
+  options: {
+    readonly match?: "exact" | "part";
+    readonly from?: string;
+    readonly repo?: string;
+    readonly depth?: Depth;
+  } = {},
+): Promise<string[]> {
+  const known = hostsOf();
+  if (options.from !== undefined && !known.some((host) => host.name === options.from)) {
+    throw new Error(`no configured host ${options.from}`);
+  }
+  const repo = options.repo ?? runtimeProcess.cwd();
+  const local = [...runs(repo), ...archived(repo).filter((run) => run.archived === HERE)].filter(isCampaign);
+  const answers = await asked(["catalogue"]);
+  const selected = answers.filter(({ host }) => options.from === undefined || options.from === host.name);
+  const matches = (name: string) =>
+    names.length === 0 ||
+    names.some((part) => (options.match === "exact" ? name === part : name.includes(part)));
+  const remote = selected.flatMap(({ host, lines }) =>
+    remoteRuns(lines, host)
+      .filter((run) => matches(run.name))
+      .map((run) => ({ host, run })),
+  );
+  const owners = new Set(local.map((run) => run.name));
+  for (const { host, run } of remote) {
+    if (owners.has(run.name)) {
+      throw new Error(`${run.name}: more than one original campaign, including ${host.name}`);
+    }
+    owners.add(run.name);
+  }
+  const logs: string[] = [];
+  for (const { host, run } of remote) logs.push(await bring(run, host, repo, options.depth ?? "whole"));
+  return logs;
+}
+
+/** Resolve a path as given, or refresh a named campaign before reading its existing archive copy. */
+export async function readAcross(name: string, depth: Depth = "record"): Promise<Run> {
+  const repo = runtimeProcess.cwd();
+  const refreshed = await syncRuns([name], { match: "exact", repo, depth });
+  const run = readNamed(name, repo);
+  if (run.archived !== undefined && run.archived !== HERE && !refreshed.includes(run.path)) {
+    throw new Error(`${name}: its host no longer lists the campaign; the old copy was left intact`);
+  }
+  return run;
+}
+
+/** A collection reads refreshed copies, leaving an old copy out once its host stops listing it. */
+export async function readableAcross(names: readonly string[] = [], depth: Depth = "record"): Promise<Run[]> {
+  const refreshed = await syncRuns(names, { depth });
+  return readable().filter(
+    (run) =>
+      (names.length === 0 || names.some((name) => run.name.includes(name))) &&
+      (run.archived === undefined || run.archived === HERE || refreshed.includes(run.path)),
+  );
+}
+
+/** Shared by WRI and skill scripts: explicit paths stay explicit; campaign names reach all hosts. */
+export async function logAcross(named: string): Promise<string> {
+  return existsSync(named) ? named : (await readAcross(named, "whole")).path;
+}

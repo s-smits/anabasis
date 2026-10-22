@@ -39,8 +39,11 @@ bun .claude/skills/promotion-tuner/scripts/replay.ts --tree <worktree> \
 - `--tree` names the worktree whose kernel scores the record, as an absolute path. The totals name
   its commit and whether `src/` has uncommitted changes. A tree from before 21 October, which
   scores no weighted measures, is refused.
-- The logs are `<logs>/<worktree>/.ana/d2/<name>/log.jsonl`. By default `--logs` is the parent of
-  the repository's main checkout. The largest copy of each campaign name is read. Seeds with
+- By default the shared run registry discovers campaigns in every worktree and archive, and
+  refreshes remote logs and receipts through `ANA_HOSTS`. Load the host environment with
+  `bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/replay.ts ...`.
+  Explicit `--logs` selects the offline layout `<logs>/<worktree>/.ana/d2/<name>/log.jsonl`, taking
+  the largest copy of each campaign name there. Seeds with
   `seed.json`, names beginning `sim-`, `rh-` or `test-`, and rehearsals with a `faux/` seat or
   solver are left out (`campaignLogs`, `rehearsed` in `scripts/tree.ts`). A campaign on another
   host is read from a copy laid out the same way: `<dir>/<any>/.ana/d2/<name>/log.jsonl`.
@@ -97,8 +100,9 @@ evidence (`AGENTS.md`, factor 2). Where only one score supports a promotion, nam
 
 ## Tuning the score
 
-1. Run the baseline on `main`'s tree, whole and with `--totals`, into the scratchpad. Copy the logs
-   of every live host's campaigns into the layout above, so the replay reads every run.
+1. Run the baseline on `main`'s tree, whole and with `--totals`, into the scratchpad, with the host
+   environment loaded. Default discovery refreshes every host's records; use the same explicit
+   offline `--logs` input for both trees when a frozen comparison is needed.
 2. Sweep `--weights` and `--level` first where they answer the question. Keep each set of weights
    in steps of five.
 3. For a floor or the test, make a candidate worktree from `origin/main`, following

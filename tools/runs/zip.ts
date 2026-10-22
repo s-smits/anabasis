@@ -57,8 +57,11 @@ import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import { receipts } from "./receipt.ts";
-import { hostNamed, quoted, rsync, sshScript, verbOn } from "./hosts.ts";
-import { isCampaign, logEvents, type Run, readable, standing, wholeLines } from "./registry.ts";
+import { hostNamed } from "./host-config.ts";
+import { quoted, rsync, sshScript } from "./host-command.ts";
+import { verbOn } from "./hosts.ts";
+import { isCampaign, logEvents, type Run, standing, wholeLines } from "./registry.ts";
+import { readableAcross } from "./snapshots.ts";
 
 const LEVELS = ["light", "medium", "verbose"] as const;
 const CAMPAIGN_ENDED = "campaign.ended";
@@ -357,15 +360,11 @@ export async function zipRuns(args: readonly string[]): Promise<void> {
     console.log(`${out}  from ${host.name}`);
     return;
   }
-  const made = zip(
-    readable().filter((run) => names.length === 0 || names.some((name) => run.name.includes(name))),
-    level,
-    {
-      out,
-      maxBytes: megabytes === undefined ? null : Number(megabytes) * 1024 * 1024,
-      note: values.note ?? null,
-    },
-  );
+  const made = zip(await readableAcross(names, "whole"), level, {
+    out,
+    maxBytes: megabytes === undefined ? null : Number(megabytes) * 1024 * 1024,
+    note: values.note ?? null,
+  });
   console.log(`${made.out}  ${kilobytes(made.bytes)} · ${plural(made.runs.length, "run")} · ${level}`);
   for (const { name, here } of sizes(level, made.files)) console.log(`  ${name.padEnd(10)} ${here}`);
   console.log(`  left where it was: ${String(made.left.length)} (MANIFEST.json, \`left\`)`);

@@ -38,14 +38,14 @@ import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { median } from "#src/meta/tally.ts";
 import { epochLines } from "./time.ts";
-import { type Found, type Tree, campaignLogs, loadTree, rehearsed, worktreesHome } from "./tree.ts";
+import { type Found, type Tree, campaignLogs, loadTree, rehearsed } from "./tree.ts";
 
 const USAGE = `usage:
   bun .claude/skills/promotion-tuner/scripts/replay.ts --tree <worktree>
     [--logs <dir>] [--since <date>] [--name <campaign>]... [--weights v,o,b] [--level <n>] [--totals]
 
 --tree     the worktree whose src/kernel scores the record (main's, or a candidate's)
---logs     the folder whose worktrees hold campaigns; the parent of the repository's main checkout
+--logs     an explicit offline folder of campaign worktrees; default: the registry and every configured host
 --since    campaigns whose last event is at or after this date; five days back by default
 --name     these campaigns only, whenever they ran (repeatable)
 --weights  weigh validity, the objective and the bill thus, in place of the tree's WEIGHTS (60,30,10)
@@ -447,7 +447,7 @@ async function main(args: CommandArgs): Promise<number> {
   const own = MEASURES.every((measure) => Math.abs(scale[measure] - 1) < 1e-9);
   const score = { tree, scale, own, level: numberOption(args, "level") };
   const since = args.value("since") ?? new Date(Date.now() - DAYS_BACK * DAY_MS).toISOString();
-  const logs = campaignLogs(args.value("logs") ?? worktreesHome(tree.path), args.list("name"), since);
+  const logs = await campaignLogs(args.value("logs"), args.list("name"), since);
   const totals = emptyTotals();
   for (const found of logs) {
     const lines = campaignLines(score, found, totals);

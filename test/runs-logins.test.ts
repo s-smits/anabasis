@@ -1,7 +1,7 @@
 // What `runs active` prints: each login's live runs across machines, the runs that name no login,
 // and the hosts that went uncounted.
 import { describe, expect, it } from "bun:test";
-import { liveOf, seatsIn } from "../tools/runs/hosts.ts";
+import { liveOf, seatsIn } from "../tools/runs/live.ts";
 import { activeLines, capOf } from "../tools/runs/logins.ts";
 
 const live = [

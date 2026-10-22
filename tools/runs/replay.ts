@@ -21,7 +21,8 @@ import { taskSets } from "#src/kernel/task.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { askedIn, ranWith } from "./receipt.ts";
-import { isCampaign, readable } from "./registry.ts";
+import { isCampaign } from "./registry.ts";
+import { readableAcross } from "./snapshots.ts";
 
 /** What this tree's readers make of the log at `path`, in a line. */
 export function replayed(path: string): string {
@@ -37,10 +38,10 @@ export function replayed(path: string): string {
 }
 
 /** `bun run runs replay`. */
-export function replay(args: readonly string[]): void {
+export async function replay(args: readonly string[]): Promise<void> {
   const { asked, names } = askedIn(args);
   const asks = asked.holds.length + asked.has.length > 0;
-  const logs = readable().filter(
+  const logs = (await readableAcross(names)).filter(
     (run) =>
       isCampaign(run) &&
       (names.length === 0 || names.some((name) => run.name.includes(name))) &&

@@ -532,7 +532,7 @@ async function runCheck(
     if (timer !== null) clearTimeout(timer);
     if (signal !== undefined && abort !== null) signal.removeEventListener("abort", abort);
     if (child !== null) await terminateAndReapProcessGroupId(child.pid);
-    releaseRoot(root);
+    await releaseRoot(root);
     if (captured !== null) await captured.catch(() => undefined);
     rmSync(dirs.host, { recursive: true, force: true });
   }

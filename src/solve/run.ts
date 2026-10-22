@@ -205,7 +205,8 @@ async function attemptSolve(request: SolveRequest, id: string): Promise<Ending> 
     ...keyIfDefined("comparison", request.comparison),
   });
   const played = await play(request, id);
-  const ending = await judge(request, id, played);
+  // The root goes while the verdict is read: neither needs the other.
+  const [ending] = await Promise.all([judge(request, id, played), played.released]);
   append(log, "solve.finished", {
     solve: id,
     ending,
@@ -233,7 +234,7 @@ const brokenHarness = (error: unknown): never => {
 
 /** Mount, seed, run the loop, tear down. Anything that throws on the way is the sandbox's crash,
  *  except the harness's opening and listing, which are its own. */
-async function play(request: SolveRequest, id: string): Promise<Played> {
+async function play(request: SolveRequest, id: string): Promise<Played & { released: Promise<void> }> {
   const { limits } = request;
   const dirs = solveDirs(id);
   const wall = new AbortController();
@@ -246,6 +247,7 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let release: ReleaseRoot | null = null;
   let homeBytes: number | null;
+  let released: Promise<void> = Promise.resolve();
   let crash: string | null = null;
   let broken: string | null = null;
   let digest: string | null = null;
@@ -317,7 +319,7 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
     done.abort();
     // Read apart from the loop, before the root goes: a walk that fails voids no solve.
     homeBytes = bytesUnder(dirs.home);
-    release?.();
+    if (release !== null) released = release();
     rmSync(dirs.host, { recursive: true, force: true });
   }
   return {
@@ -333,6 +335,7 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
     turnsEnded: spent(turns, limits),
     moved: treeStamp(request.harness) !== before,
     homeBytes,
+    released,
   };
 }
 

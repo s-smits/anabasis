@@ -44,6 +44,7 @@ import { capturedExecPath, capturedSpawn, runtimeProcess } from "#src/meta/proce
 import { processGroupExists, terminateAndReapProcessGroupId } from "#src/meta/subprocess.ts";
 import { SEED_FILE } from "#tools/runs/registry.ts";
 import { loginEnv } from "#tools/runs/manage.ts";
+import { logAcross } from "#tools/runs/snapshots.ts";
 
 const USAGE = `usage:
   live-seat.ts start --tree <worktree> --name sim-<what> --out <prefix> --cap <dollars> --minutes <n>
@@ -327,8 +328,10 @@ function due(args: CommandArgs, seats: readonly string[]): number {
   return 2;
 }
 
-function readCommand(args: CommandArgs): number {
-  const { log, from } = stretchOf(args);
+async function readCommand(args: CommandArgs): Promise<number> {
+  const stretch = stretchOf(args);
+  const log = await logAcross(stretch.log);
+  const { from } = stretch;
   if (!existsSync(log)) args.die(`${log} does not exist`);
   const result = readingOf(read(log), from, args.list("mention"));
   console.log(args.flag("json") ? capturedJsonStringify(result, null, 2) : told(result).join("\n"));

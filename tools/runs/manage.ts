@@ -46,10 +46,10 @@
 import { unfinished } from "#src/kernel/reports.ts";
 import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
 import { cpSync, existsSync, mkdirSync, openSync, renameSync, statSync } from "#src/meta/filesystem.ts";
-import { gitText, worktrees } from "#src/meta/git.ts";
+import { worktrees } from "#src/meta/git.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
-import { decodeOutput, processGroupExists, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
+import { decodeOutput, processGroupExists, runSync } from "#src/meta/subprocess.ts";
 import { lastLaunch, nextRun } from "./receipt.ts";
 import {
   BUILDER,
@@ -69,6 +69,7 @@ import {
   writers,
 } from "./registry.ts";
 import { stop } from "./stop.ts";
+import { installAt, publishedAt } from "./code.ts";
 
 /** The events a pause waits for one more of, by the word that names it. */
 const AFTER = {
@@ -161,10 +162,7 @@ export async function start(
   }
   const { commit, dirty } = standing(run.tree);
   if (dirty) throw new Error(`${run.tree} holds a change no commit names: a run's commit states its source`);
-  const target = at === undefined ? commit : gitText(run.tree, "rev-parse", "--verify", `${at}^{commit}`);
-  if (gitText(run.tree, "branch", "-r", "--contains", target) === "") {
-    throw new Error(`${target.slice(0, 9)} is on no remote branch`);
-  }
+  const target = publishedAt(run.tree, at ?? commit);
   if (target !== commit) {
     const open = openComparisons(logEvents(run.path));
     if (open.length > 0) {
@@ -172,11 +170,8 @@ export async function start(
         `comparison ${open.join(", ")} began and has not reported: it goes on at ${commit.slice(0, 9)}`,
       );
     }
-    gitText(run.tree, "checkout", "-q", "--detach", target);
   }
-  runTextSyncOrThrow(["nice", "-n", "10", capturedExecPath, "install", "--frozen-lockfile"], {
-    cwd: run.tree,
-  });
+  installAt(run.tree, target);
   const command = [capturedExecPath, BUILDER, "--name", run.name, ...flags];
   const dry = runSync([...command, "--dry-run"], { cwd: run.tree, env });
   console.log(decodeOutput(dry.stdout).trim().split("\n").slice(-4).join("\n"));
@@ -264,8 +259,9 @@ export async function continueRun(args: readonly string[]): Promise<void> {
     const after = values.after === undefined ? "" : `after its next ${values.after}, `;
     return said(run, `would go on ${after}at ${values.at ?? "its commit"} on ${flags.join(" ")}`);
   }
+  const target = values.at === undefined ? undefined : publishedAt(run.tree, values.at);
   if (values.after !== undefined) await pauseAt(run, values.after);
-  await start(run, flags, values.login, values.at);
+  await start(run, flags, values.login, target);
 }
 
 /** `bun run runs pause`. */

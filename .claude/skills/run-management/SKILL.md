@@ -13,17 +13,17 @@ every move the host makes as the table names it; the opening keeps the term eith
 
 Use the verbs of one CLI for a run's life on the host, `bun run runs`
 (`tools/runs/cli.ts`), over every run log in the repository's worktrees (`tools/runs/registry.ts`).
-`continue`, `pause`, `keep`, `copy`, `move`, `stop` and `source` take a campaign's whole name,
-and refuse one no worktree holds and one two worktrees hold. `view` reads the named campaign in
-the current worktree, or the archive's where no worktree holds it; `pulse` matches parts of names
-across worktrees, and `zip` and `replay` also across the archive. The archive is `data/runs/` of
+`continue`, `pause`, `keep`, `copy` and `stop` route a whole campaign name to its machine. A missing
+host or more than one original refuses the route. `view` and `source` read through this checkout,
+refreshing remote records first; `replay` and `zip` discover matching campaigns on every machine.
+`pulse` polls every machine without copying logs. The archive is `data/runs/` of
 the main worktree, which git ignores: `here/<name>/` for this machine's campaigns that `retire`
 moved out of their worktrees, and `<host>/<name>/` for copies of a host's. No verb acts on an
 archived campaign; `copy <name> --to <worktree>` brings this machine's back to go on with.
 
 | verb | what it does | file |
 | --- | --- | --- |
-| `fresh <pack> [--model opus\|sonnet\|gpt\|<provider>/<id>] [--effort hhmm] [--login N] [--budget 800] [--as <suffix>] [--at <c>] [--host <host>] [--yes] [-- <flags>]` | names a campaign from a blank project, makes its worktree at a published commit and launches it there | `fresh.ts` |
+| `fresh <pack> [<pack> ...] [--logins <allowed-list>] [--model opus\|sonnet\|gpt\|<provider>/<id>] [--effort hhmm] [--login N] [--budget 800] [--as <suffix>] [--at <c>] [--host <host>] [--yes] [-- <flags>]` | names a campaign from a blank project, makes its worktree at a published commit and launches it there | `fresh.ts` |
 | `launch <name> [--login N] [--yes] -- <flags>` | starts the campaign command under a new name, in this worktree | `manage.ts` |
 | `continue <name> [--at <c>] [--login N] [--budget N] [--after <event>] [--yes] [-- <flags>]` | runs a campaign again from its log, on its kept flags or their replacement after `--` | `manage.ts` |
 | `pause <name> --after <event> [--yes]` | stops a campaign once its log gains one more of the event and nothing but its Builder's conversation is open | `manage.ts` |
@@ -31,7 +31,7 @@ archived campaign; `copy <name> --to <worktree>` brings this machine's back to g
 | `copy <name> --to <worktree> [--yes]` | copies a stopped campaign whole to another worktree, from a worktree or the archive, and sets the source aside | `manage.ts` |
 | `move <name> --to <host\|here> [--from <host\|here>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]` | pauses a campaign at a clean point, takes its folder whole to a new worktree on the other machine at the same commit, sets the source aside and continues it there on its kept flags | `move.ts` |
 | `stop <name> ... [--yes]` | ends the process that writes each log, and its keeper, and releases what its unfinished solves and sessions held | `stop.ts` |
-| `status [--all]` | one row a run: the live ones and those whose log moved in a day, with tree, commit, login, open comparison, comparisons reported, promotions and ending, and on a closed row the hours until it leaves; under the rows, the closed runs it leaves out and the archive's newest campaigns; then each host `ANA_HOSTS` lists, all asked at once and each printed as it answers, within 30 s | `pulse.ts` |
+| `status [--all]` | one row a run: the live ones and those whose log moved in a day, with tree, commit, login, open comparison, comparisons reported, promotions and ending, and on a closed row the hours until it leaves; under the rows, the closed runs it leaves out and the archive's newest campaigns; then each host `ANA_HOSTS` lists, all asked at once and each printed as it answers, within 30 s after cold preparation | `pulse.ts` |
 | `usage [N ...] [--json]` | each login's five-hour and weekly use and, without `--json`, how many runs and simulation seats are live on it on every host (`1/2 active`, out of the most `ANA_LOGIN_RUNS` lets it carry, such as `2,N:4`); without numbers or `--json`, also the pool forecast | `logins.ts` |
 | `active` | the runs and simulation seats live on each login by name, on this machine and every host, asking no provider | `logins.ts` |
 | `fetch <name> [--from <host>]` | a copy of a campaign another machine holds, to read here, into the archive as `data/runs/<host>/<name>/` | `move.ts` |
@@ -68,9 +68,42 @@ and any other model a backend serves goes as its `<provider>/<id>`, at `hhhh` an
 The solve defaults are the campaign's: 20 model turns and 30 minutes (`LIMITS`,
 `tools/d2/campaign.ts`).
 
-`--host` runs it on a host `ANA_HOSTS` lists, at `--at` or this checkout's commit, using the
-host's name as the suffix unless `--as` names one. That host's tree must have the `fresh` verb.
+Without `--host`, `fresh` prefers a machine whose catalogue already holds a campaign of project
+`<pack>-fresh`, among machines below their capacity. It then chooses the fewest live campaigns
+and simulation seats. This machine's cap is `ANA_RUN_CAP`; each peer's is its `capacity` in
+`ANA_HOSTS`, both 2 where unset. A missing count or catalogue refuses placement. Ties follow
+configuration order, with this machine first. `--host here` selects this machine explicitly;
+`--host <host>` selects a peer, using its name as the suffix unless `--as` names one.
+An explicit host selects the destination; a remote receiver rechecks its cap before launching.
+Counts are observations, so launch
+sequentially; they reserve no slot against another launcher.
+
+A peer's controller is prepared automatically at `--at` or this checkout's commit: fetch, a
+detached worktree under Git's `ana-code/`, then a frozen install. Its configured checkout stays
+in place. Without `--yes`, a remote fresh prints its plan and prepares no launch controller.
+Read controllers can be prepared while checking placement.
 Flags after `--` go to the campaign command. Write the prediction ledger before `--yes`.
+
+For Claude Code seats, `fresh` takes `--login` or chooses from `allowedLogins` using the same
+`readLogins` and `room` as the keeper: a usable window, the week that resets soonest first, and
+room under `ANA_LOGIN_RUNS` across the fleet. An explicit login at its cap is refused too.
+The count uses each configured checkout's existing `active --here` before preparing any source;
+a missing answer refuses the launch. Before remote launch preparation, `active --here --login N`
+answers only whether that environment holds the numbered key. A missing key refuses with a
+request to carry the login first. Use the operator's own credential procedure; no value is
+printed or carried by these commands. Seats billed through another provider need no Claude login.
+
+Several packs before `--` make one ordered batch. `fresh <pack> <pack> ... --logins <allowed-list>`
+prints the complete host and login plan without launching; repeat with `--yes` to execute it.
+The planner reserves each earlier entry in its own counts and affinity catalogue, so repeated
+packs stay together where room remains. It reads provider usage once, checks every selected
+remote login before the first launch, pins one published commit and launches sequentially through
+single-run admission. Any failed launch exit stops the remainder. The configured capacities and
+login caps must allow the requested total; the plan reserves nothing against another session.
+An explicit `--host` belongs to a single pack. Campaign flags belong after `--`.
+
+Use the operator's authorised carriage procedure to pipe only the selected numbered token line
+into the destination's environment without printing it, then retry the same command.
 
 `launch` is the step under it, also available when the campaign needs explicit flags:
 
@@ -101,7 +134,7 @@ remote branch holds. It then installs (`bun install --frozen-lockfile`), runs th
   `ANTHROPIC_API_KEY`: two providers, so a solver on one is another setting than on the other.
 - **What the operator's machines hold is environment, too.** `ANA_LOGINS` names the logins a run
   may take (`2,3,4`; every login the environment holds where unset), and `ANA_HOSTS` the other
-  hosts, a JSON list of `{name, ssh, tree, bun, envFiles}`. Copy `.env.runs.example` to
+  hosts, a JSON list of `{name, ssh, tree, bun, envFiles, capacity}`. Copy `.env.runs.example` to
   `.env.runs`, which Git ignores; `.env.runs.example` stays tracked. Fill in your own and
   pass it with a second `--env-file`.
 - **One or two campaigns at a time on one host.** A solve's wall counts the clock. The command
@@ -202,7 +235,7 @@ bun --env-file=.env.runs run runs move <name> --from <host> --to here [--login N
 ```
 
 One end is this machine and the other a host `ANA_HOSTS` lists. The verb checks first that the
-destination has no worktree `anabasis-<name>`, then pauses the run at its next `--after` event
+destination has no worktree `anabasis-<name>`, prepares its code, then pauses the run at its next `--after` event
 (`finished` by default), makes that worktree beside the destination's repository at the commit the
 source stands at, takes the folder over with rsync, checks the log's size, sets the source aside
 under `.ana/moved/` and runs `continue` there on the kept flags, a path under the folder of the
@@ -234,15 +267,48 @@ for a move when its week is under 90%, its five hours under 100%, and neither wi
 `status` hides stopped seeds and stopped runs whose logs have not changed for a day unless `--all`;
 a stopped row says how many hours it has left, and the lines under the rows count the hidden runs
 and name the archive's three newest campaigns, so an agent reading `status` alone knows they ran.
-Below this machine's rows it shows each host `ANA_HOSTS` lists. A verb that names a run (`stop`,
-`continue`, `pause`, `keep`, `view`, `source`, `copy`) goes to wherever the run is: a name no
-worktree here holds is asked of every host at once, and the verb runs on the one that holds it, so
-`runs stop a b c --yes` stops runs on three machines. `view` runs in the worktree that holds its
-campaign, since the move it names is that tree's code. A host's tree needs a commit that has this,
-as `fresh --host` needs one that has `fresh`. `on` runs any verb in a host's worktree under a login
-shell there, with that host's env files and `ANA_HOSTS` empty, which Bun keeps over an env file's: a
-verb run on another host reaches no further one, and two machines that list each other do not loop.
-`hosts` is the other hosts' `status` alone.
+Below this machine's rows it shows each host `ANA_HOSTS` lists. Mutating named verbs ask every
+host for the name before acting, so a duplicate or a host that does not answer refuses the
+operation. `runs stop a b c --yes` routes all three names itself. `view`, `source`, `replay` and
+the tuner use fresh log and receipt copies; WRI, harness audit, seed and zip fetch artefacts too.
+Copies live under `data/runs/<host>/<name>/`, and a failed refresh leaves the previous copy intact
+and refuses the read. Explicit log paths select an offline copy. The view's table is this
+checkout's code, so compare the launch receipt before treating it as a running campaign's advice.
+
+Remote reads and ordinary routed verbs use a clean detached controller at the nearest published
+ancestor of this checkout's HEAD, using all remote tips in `git merge-base`. When that differs
+from HEAD, stderr says so once. `fresh`, `move` and `continue --at` require their exact published
+commit. A cold controller gets five minutes for fetch, detached worktree creation and a frozen
+install, before fan-out starts each request's 30-second deadline. Ready controllers reuse their
+install. A preparation lock is reclaimed when older than five minutes or its holder has gone.
+After an install, prune controllers beyond the newest three by readiness time; process arguments
+and working directories protect live controllers. Failed process inspection preserves them.
+`continue --at` resolves that revision here, and uses its launcher on the peer.
+Environment files stay on their own machine and relative names remain relative to the configured
+checkout. A login shell supplies its tools; `ANA_HOSTS=[]` prevents recursive fan-out. `on` remains
+an explicit override. `hosts` shows peer statuses; `hosts --health` includes this machine and
+every peer in one reading. The shared `scriptOn` and
+`askedScript` in `tools/runs/hosts.ts` provide the same boundary to skill scripts.
+
+`hosts --health` reports load against cores, performance cores where reported, the charger,
+disk free, sizes of run data, archive, controllers and other worktrees, Bun and controller
+readiness, live campaigns and seats, and the three busiest processes with their owning run.
+It marks a disk below 10% free and load above cores. Unknown OS facts are labelled; an unavailable
+machine is not an empty one. Use `stop <name> --yes` for an attributed campaign. Leave termination
+of unassigned processes manual because their owner is unknown. Cache eviction and power settings
+remain manual because they can affect work outside a campaign.
+
+Transport reuses private temporary SSH control sockets for five minutes, with a 20-second
+connection deadline and 15-second keepalives. Fan-out reports elapsed time, including preparation,
+and a timed-out peer refuses admission rather than contributing an empty count.
+
+`view <name>` and `pulse` explain the last provider reset or load wait. A dead run without an
+ending, or a quiet live one, includes a bounded tail of its newest regular launch stderr.
+Remote record snapshots carry that tail and the remote liveness observation; a local pid never
+stands for a remote process. Pulse labels this machine separately from its peers.
+
+Direct skill and WRI commands need the host environment too: use
+`bun --env-file=.env.runs <script> ...`, or export `ANA_HOSTS`. No script opens that file itself.
 
 ## What is refused, and where
 
@@ -273,7 +339,10 @@ The pulse says what each run gained since the last look; it reports session star
 (`build.started`, `exam.started`) and a process gone before its expected ending. Read the
 launch's `.err` when a process disappears. The view prints the campaign as its log
 reads, and its last line is the move the table names for this log (`decide`), which the Builder
-may decline. `view` reads the campaign in the current worktree. Neither starts anything.
+may decline. `view` uses this checkout's reader on a fresh copy where needed. `pulse --here`
+limits a poll to this machine. Each observer has its own remote cursors under the main worktree,
+so they survive controller changes; a local `--state` path is never sent to a peer. A failed peer
+prints a warning and gives exit 1. Neither starts a run.
 
 ## Stop
 

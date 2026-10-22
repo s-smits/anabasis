@@ -29,11 +29,16 @@ import { type Called, calledBy, namesOf } from "#src/builder/names.ts";
 import { openingOf, planOf } from "#src/builder/opening.ts";
 import { type Campaign, campaignOf, type Handover, openSteps } from "#src/builder/handover.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { parseArgs } from "#src/meta/process.ts";
+import { gitText } from "#src/meta/git.ts";
+import { resolve } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";
 import { PRACTICE } from "../d2/prepare.ts";
 import { COMPARISON_OPTIONS } from "../d2/round.ts";
-import { CLI, logEvents, readNamed } from "./registry.ts";
+import { logEvents, processes, writers } from "./registry.ts";
+import { readAcross } from "./snapshots.ts";
+import { lastLaunch } from "./receipt.ts";
+import { runReason } from "./diagnosis.ts";
 
 /** The flags the table is asked with: the campaign command's, with the same names. */
 const VIEW_OPTIONS = {
@@ -179,7 +184,7 @@ export function decidedOn(events: readonly LogEvent[], values: Asked = {}): Deci
   );
 }
 
-/** `bun run runs view`, in the worktree that holds the campaign, whose code its table's move is. */
+/** `bun run runs view` uses this checkout's reader, refreshing a named remote record first. */
 export async function view(args: readonly string[]): Promise<void> {
   const { values, positionals } = parseArgs({
     args: [...args],
@@ -192,13 +197,14 @@ export async function view(args: readonly string[]): Promise<void> {
       'usage: bun run runs view <name> [--level N] [--target N] [--practice N] [--past-stop "<why>"]',
     );
   }
-  const run = readNamed(name);
-  if (run.tree !== runtimeProcess.cwd()) {
-    const io = { cwd: run.tree, stdin: "inherit", stdout: "inherit", stderr: "inherit" } as const;
-    runtimeProcess.exitCode = await capturedSpawn([capturedExecPath, CLI, "view", ...args], io).exited;
-    return;
-  }
+  const run = await readAcross(name);
+  const reader = gitText(resolve(import.meta.dir, "../.."), "rev-parse", "--short=9", "HEAD");
+  const launched = lastLaunch(run.path)?.commit.slice(0, 9) ?? "no receipt";
+  console.log(`reader ${reader}; last launch ${launched}; the table below uses this checkout's code`);
   const events = logEvents(run.path);
+  for (const line of await runReason(run, events, writers(run, processes()).length > 0 ? "open" : "closed")) {
+    console.log(line);
+  }
   const campaign = campaignOf(events);
   const called = calledBy(namesOf(events));
   const lines = viewLines(name, campaign, Date.now(), called);

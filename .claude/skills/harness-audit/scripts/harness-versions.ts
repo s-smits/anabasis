@@ -38,7 +38,8 @@ import { dirname, join } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { openHarness, pathsUnder, treeContent } from "#src/solve/harness.ts";
 import { writeStarter } from "#src/solve/starter.ts";
-import { campaignLog, keptAs } from "#tools/d2/campaign.ts";
+import { keptAs } from "#tools/d2/campaign.ts";
+import { logAcross } from "#tools/runs/snapshots.ts";
 
 const USAGE = `usage:
   bun .claude/skills/harness-audit/scripts/harness-versions.ts --name <campaign> [--json]
@@ -322,7 +323,7 @@ async function main(args: CommandArgs): Promise<number> {
   const name = args.value("name");
   const given = args.value("log");
   if (name !== null && given !== null) args.die("name the campaign or its log, not both");
-  const log = given ?? (name === null ? args.die("--name or --log is required") : campaignLog(name));
+  const log = await logAcross(given ?? name ?? args.die("--name or --log is required"));
   const keeping = { log, states: join(dirname(log), "states") };
   if (!existsSync(log)) args.die(`${log} does not exist`);
   const versions = await versionsOf(keeping);

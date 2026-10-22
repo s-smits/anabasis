@@ -44,7 +44,9 @@ import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
-import { asked, type Live, liveHere, liveOf } from "./hosts.ts";
+import { asked } from "./hosts.ts";
+import { hostsOf } from "./host-config.ts";
+import { type Live, liveHere, liveOf } from "./live.ts";
 
 interface Window {
   readonly pct: number | null;
@@ -416,8 +418,10 @@ function poolLines(
  *  did not. Each host answers `active --here` with one JSON list; any other answer leaves it
  *  uncounted, since on 22 October a tree that predates the verb answered with nothing and exit 0,
  *  which as lines would have read as no run live. */
-async function liveEverywhere(): Promise<{ live: Live[]; unasked: string[] }> {
-  const answers = (await asked(["active", "--here"])).map(({ host, lines }) => ({
+export async function liveEverywhere(
+  mode: "prepared" | "configured" = "prepared",
+): Promise<{ live: Live[]; unasked: string[] }> {
+  const answers = (await asked(["active", "--here"], hostsOf(), mode)).map(({ host, lines }) => ({
     host: host.name,
     live: liveOf(host.name, lines),
   }));
@@ -453,9 +457,19 @@ export function activeLines(
 /** `bun run runs active [--here]`: the live runs on each login, on every host; with `--here` this
  *  machine's alone, as one JSON list, which is what each host is asked. */
 export async function active(args: readonly string[]): Promise<void> {
-  const { values } = parseArgs({ args: [...args], options: { here: { type: "boolean", default: false } } });
+  const { values } = parseArgs({
+    args: [...args],
+    options: {
+      here: { type: "boolean", default: false },
+      login: { type: "string" },
+    },
+  });
   if (values.here) {
-    console.log(capturedJsonStringify(liveHere()));
+    console.log(
+      capturedJsonStringify(
+        values.login === undefined ? liveHere() : loginsIn(runtimeProcess.env).includes(values.login),
+      ),
+    );
     return;
   }
   const { live, unasked } = await liveEverywhere();

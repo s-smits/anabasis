@@ -23,10 +23,11 @@ import { LOG_FILE, read } from "#src/kernel/log.ts";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
-import { join, resolve } from "#src/meta/path.ts";
+import { dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { CAMPAIGNS, SEED_FILE } from "./registry.ts";
+import { logAcross } from "./snapshots.ts";
 
 const SESSION_STARTS = new Set<unknown>(["build.started", "exam.started"]);
 
@@ -120,7 +121,8 @@ export async function seed(args: readonly string[]): Promise<void> {
     );
   }
   const to = join(resolve(import.meta.dir, "..", ".."), CAMPAIGNS, name);
-  const { sets, ...made } = seedCampaign(from, to, { before, events });
+  const source = existsSync(from) ? from : dirname(await logAcross(from));
+  const { sets, ...made } = seedCampaign(source, to, { before, events });
   console.log(
     `seeded ${name} from ${made.from}: ${String(made.events)} of ${String(made.of)} events${made.before === null ? "" : `, cut before session ${made.before}`}`,
   );

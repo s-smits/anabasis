@@ -89,9 +89,13 @@ describe("retiring", () => {
   });
 
   it("deletes a tree nothing used for a week, and keeps one with a change no commit names", () => {
+    // A host's controller is a worktree too, and only its own prune removes it.
+    const controller = join(main, ".git", "ana-code", "c".repeat(40));
+    git(main, "worktree", "add", "-q", "--detach", controller, "HEAD");
     retireTrees(sweep(8, true), new Set());
     expect(existsSync(tree)).toBe(false);
     expect(existsSync(dirty)).toBe(true);
+    expect(existsSync(controller)).toBe(true);
     expect(git(main, "worktree", "list")).not.toContain(tree);
   });
 

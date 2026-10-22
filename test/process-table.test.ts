@@ -1,6 +1,6 @@
 // Darwin's process table as libproc reads it (`src/meta/process-table.ts`): a process's working
 // directory and its program, by their real paths, as `lsof -d cwd,txt` named them for a seat's
-// release; and a program whose file was removed after it started, which `proc_pidpath` no longer
+// release, with its parent and process group; and a program whose file was removed after it started, which `proc_pidpath` no longer
 // names, still named by its first mapped region.
 import { describe, expect, it } from "bun:test";
 import {
@@ -14,7 +14,7 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { processPaths } from "../src/meta/process-table.ts";
+import { processTable } from "../src/meta/process-table.ts";
 
 const onDarwin = runtimeProcess.platform === "darwin";
 
@@ -27,7 +27,7 @@ function sleeper() {
   copyFileSync("/bin/sleep", program);
   chmodSync(program, 0o755);
   const child = Bun.spawn([program, "60"], { cwd: works, stdio: ["ignore", "ignore", "ignore"] });
-  const row = () => processPaths().find(({ pid }) => pid === child.pid);
+  const row = () => processTable().find(({ pid }) => pid === child.pid);
   const end = async () => {
     child.kill("SIGKILL");
     await child.exited;
@@ -40,8 +40,18 @@ describe("the process table", () => {
   it.skipIf(!onDarwin)("reads a process's working directory and program by their real paths", async () => {
     const { works, program, row, end } = sleeper();
     try {
-      expect(row()).toEqual({ pid: expect.any(Number), cwd: works, program });
-      expect(processPaths().find(({ pid }) => pid === runtimeProcess.pid)?.cwd).toBe(
+      // The child stays in this process's group, as `ps` reads it.
+      const group = Number(
+        Bun.spawnSync(["/bin/ps", "-o", "pgid=", "-p", String(runtimeProcess.pid)]).stdout.toString(),
+      );
+      expect(row()).toEqual({
+        pid: expect.any(Number),
+        ppid: runtimeProcess.pid,
+        pgid: group,
+        cwd: works,
+        program,
+      });
+      expect(processTable().find(({ pid }) => pid === runtimeProcess.pid)?.cwd).toBe(
         realpathSync.native(runtimeProcess.cwd()),
       );
     } finally {

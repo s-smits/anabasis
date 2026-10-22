@@ -225,13 +225,12 @@ describe("a session of any mode", () => {
       expect(existsSync(outside)).toBe(false);
       // The host's folder of the capped root goes with the session.
       expect(existsSync(examinerDirs(s.log, s.request.id).host)).toBe(false);
-      // It is told what the shell is, what its home holds, what the probe found of the network
-      // and how the exam is entered; and nothing about what to do with it.
+      // It is told what the shell is, what the probe found of the network and how the exam is
+      // entered; and nothing about what to do with it.
       const told = s.sent[0] ?? "";
       expect(told).toContain("but no repository or private data");
       expect(told).toMatch(/It has (no )?network access: a package index (was|could not be) reached/);
       expect(told).toContain(`Nothing in your home enters the exam: ${ENTERS[mode]}.`);
-      expect(told).toContain("empty at its start");
       if (mode === "draft") expect(told).not.toMatch(/research/i);
     }
   });
@@ -1491,17 +1490,10 @@ describe("a session that writes tasks", () => {
     expect(s.of("exam.finished")).toMatchObject([{ ended: "crashed", running: 0 }]);
     expect(readdirSync(keep).sort()).toEqual(["half.txt", "kept.txt", "stale.txt"]);
     expect((await examine({ ...s.request, id: "x-2" }, wall)).ended).toBe("finished");
-    // The next session found what was kept, and was told whose it is; its home replaced the kept
-    // copy, and what it deleted stays deleted.
+    // The next session found what was kept; its home replaced the kept copy, and what it deleted
+    // stays deleted.
     expect(s.of(CALLED)[1]?.text).toBe("half.txt\nkept.txt\nstale.txt");
     expect(readdirSync(keep).sort()).toEqual(["half.txt", "kept.txt", "whole.txt"]);
-    expect(s.sent[0]).toContain(
-      "holds what the last Examiner session of this campaign left in it, or nothing at the campaign's first",
-    );
-    // The first session's two requests, then the second session's first.
-    expect(s.sent[2]).toContain(
-      `holds what Examiner session ${s.request.id} of this campaign left in it when the provider failed one of its turns, before it finished`,
-    );
   });
 
   it("lays the reference harness in the home where the term is on, and keeps no copy of it", async () => {
@@ -1523,7 +1515,6 @@ describe("a session that writes tasks", () => {
     expect(s.of(CALLED)[0]?.text).toBe("# Guide\nran");
     expect(s.of("exam.started")).toMatchObject([{ referenceHome: true }]);
     expect(s.sent[0]).toContain("A copy of the reference harness is in your home under reference-harness/");
-    expect(s.sent[0]).toContain("a copy of the reference harness laid afresh for this session");
     expect(existsSync(join(keep, "reference-harness"))).toBe(false);
     // Off, the next session opens on what the last one wrote and on no reference.
     await examine({ ...s.request, id: "x-2" }, { ...WALL, keep });

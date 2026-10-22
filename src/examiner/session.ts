@@ -101,10 +101,9 @@ interface Mode {
   readonly started: JsonObject;
   /** Its own tools, before the shell's and `finish`. */
   readonly tools: readonly AgentTool[];
-  /** How its shell is described (`examinerShell`): how something enters the exam, what the home
-   *  holds at its start, and through which tool the host runs the checks. */
+  /** How its shell is described (`examinerShell`): how something enters the exam and through which
+   *  tool the host runs the checks. */
   readonly enters: string;
-  readonly home: string | undefined;
   readonly checked: string | undefined;
   /** What a turn with no call is told the session can still do, before `finish`. */
   readonly nudge: string;
@@ -154,7 +153,6 @@ interface Put<Parameters extends TSchema, Thing> {
   readonly finish: string;
   /** The tools it reads with beside its shell. */
   readonly reads: readonly AgentTool[];
-  readonly home?: string;
   readonly checked?: string;
   readonly enter?: (home: string) => void;
 }
@@ -213,7 +211,6 @@ function putting<Parameters extends TSchema, Thing>({ limits }: Sitting, of: Put
     },
     tools: [put, ...of.reads],
     enters: `a ${kind} enters it through ${of.put.name} alone`,
-    home: of.home,
     checked: of.checked,
     nudge: `Put a ${kind} with ${of.put.name}`,
     finish: of.finish,
@@ -298,7 +295,7 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
   });
   request.opened?.();
   const { said, told, finish } = finishing(mode);
-  const shell = await examinerShell(walls?.shell, mode.enters, mode.home, mode.checked);
+  const shell = await examinerShell(walls?.shell, mode.enters, mode.checked);
   // The model's turns so far, each pushed once its tool results are in (`finishTurn`).
   const turns: AssistantMessage[] = [];
   // The ids of the current turn's calls. The result of its last says what the session has used, once

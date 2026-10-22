@@ -26,7 +26,6 @@ import {
   type Model,
   type Models,
   type ThinkingLevel,
-  type Usage,
 } from "@earendil-works/pi-ai";
 import { resetOf } from "../backends/claude.ts";
 import type { Limits } from "../kernel/condition.ts";
@@ -42,6 +41,7 @@ import { availableParallelism, loadavg } from "../meta/os.ts";
 import { join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
+import { type Sat, sit, spentBy } from "../seat/session.ts";
 import { claimRoot, type ReleaseRoot } from "../verify/seat-root.ts";
 import {
   createToolDefinitionFromAgentTool,
@@ -60,7 +60,6 @@ import {
 import { type Harness, harnessTools, openHarness, pathsUnder } from "./harness.ts";
 import { installedPrograms } from "./programs.ts";
 import { firstTurn, NUDGE, type PublicTask, seedHome, systemPrompt } from "./prompt.ts";
-import { seatLoop, spentBy, traceSink, userTurn } from "./seat.ts";
 
 export interface SolveRequest {
   /** Names the solve in the log; each attempt is `<id>-<attempt>`. */
@@ -113,8 +112,6 @@ export interface Played {
    *  counts (`Limits.turns`), where `turns` holds the model's own turns, of which one prompt may
    *  take many. */
   readonly prompts: number;
-  /** What each compaction's summary spent (`pi-compaction.ts`). */
-  readonly summaries: readonly Usage[];
   readonly submitted: JsonValue | undefined;
   readonly flagged: string | undefined;
   readonly wallEnded: boolean;
@@ -210,7 +207,7 @@ async function attemptSolve(request: SolveRequest, id: string): Promise<Ending> 
   append(log, "solve.finished", {
     solve: id,
     ending,
-    ...(await spentBy(model, id, played.turns, played.summaries)),
+    ...played.spent,
     prompts: played.prompts,
     responseModels: [...new Set(played.turns.flatMap((turn) => turn.responseModel ?? []))],
     harness: played.harness,
@@ -234,16 +231,17 @@ const brokenHarness = (error: unknown): never => {
 
 /** Mount, seed, run the loop, tear down. Anything that throws on the way is the sandbox's crash,
  *  except the harness's opening and listing, which are its own. */
-async function play(request: SolveRequest, id: string): Promise<Played & { released: Promise<void> }> {
+async function play(
+  request: SolveRequest,
+  id: string,
+): Promise<Played & { readonly spent: Sat["spent"]; readonly released: Promise<void> }> {
   const { limits } = request;
   const dirs = solveDirs(id);
   const wall = new AbortController();
-  const done = new AbortController();
-  const signal = AbortSignal.any([wall.signal, done.signal, ...(request.kill ? [request.kill] : [])]);
-  const turns: AssistantMessage[] = [];
-  const summaries: Usage[] = [];
   const desk = openDesk();
   const before = treeStamp(request.harness);
+  const turns: AssistantMessage[] = [];
+  let spentOn: Sat["spent"] | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let release: ReleaseRoot | null = null;
   let homeBytes: number | null;
@@ -281,42 +279,39 @@ async function play(request: SolveRequest, id: string): Promise<Played & { relea
     // The wall is the solver's time, so it starts with the first turn rather than the setup.
     clock.started = performance.now();
     timer = setTimeout(() => wall.abort(), limits.wallSeconds * 1000);
-    await seatLoop({
-      models: request.models(join(dirs.host, "model")),
+    const sat = await sit({
+      models: request.models,
+      home: join(dirs.host, "model"),
       id,
+      model: request.model,
+      effort: request.effort,
       system: prompt,
       opening: firstTurn(request.task),
       tools,
-      config: {
-        model: request.model,
-        reasoning: request.effort,
-        toolExecution: "sequential",
-        // After a turn's tool calls have run, so an answer submitted in the last turn is held. An
-        // accepted submit ends the solve here as its description says, and not only through its
-        // `terminate`, which pi heeds when every call of the turn returns it: on esp32 (12 October)
-        // 3 of 238 turns sent a submit beside a shell call, and the model was asked on.
-        finishTurn: ({ message }) => {
-          if (message.role === "assistant") turns.push(message);
-          return spent(turns, limits) || desk.submitted !== undefined ? { action: "end" } : undefined;
-        },
-        getFollowUpMessages: async () => {
-          if (desk.submitted !== undefined || desk.flagged !== undefined || prompts >= limits.turns) {
-            return [];
-          }
-          prompts += 1;
-          return [userTurn(NUDGE)];
-        },
+      trace: { log: request.log, of: "solve" },
+      turns,
+      most: limits.modelTurns,
+      // After a turn's tool calls have run, so an answer submitted in the last turn is held. An
+      // accepted submit ends the solve here as its description says, and not only through its
+      // `terminate`, which pi heeds when every call of the turn returns it: on esp32 (12 October)
+      // 3 of 238 turns sent a submit beside a shell call, and the model was asked on.
+      over: () => desk.submitted !== undefined,
+      next: async () => {
+        if (desk.submitted !== undefined || desk.flagged !== undefined || prompts >= limits.turns) {
+          return null;
+        }
+        prompts += 1;
+        return NUDGE;
       },
-      compact: { log: request.log, of: "solve", summaries },
-      emit: traceSink(request.log, "solve", id, () => turns.length),
-      signal,
+      stops: [wall.signal, request.kill],
     });
+    crash = sat.thrown;
+    spentOn = sat.spent;
   } catch (error) {
     if (error instanceof BrokenHarness) broken = error.message;
     else crash = errorMessage(error);
   } finally {
     clearTimeout(timer);
-    done.abort();
     // Read apart from the loop, before the root goes: a walk that fails voids no solve.
     homeBytes = bytesUnder(dirs.home);
     if (release !== null) released = release();
@@ -328,11 +323,11 @@ async function play(request: SolveRequest, id: string): Promise<Played & { relea
     harness: digest,
     turns,
     prompts,
-    summaries,
+    spent: spentOn ?? (await spentBy(request.model, id, [], [])),
     submitted: desk.submitted,
     flagged: desk.flagged,
     wallEnded: wall.signal.aborted,
-    turnsEnded: spent(turns, limits),
+    turnsEnded: limits.modelTurns !== undefined && turns.length >= limits.modelTurns,
     moved: treeStamp(request.harness) !== before,
     homeBytes,
     released,
@@ -343,11 +338,6 @@ async function play(request: SolveRequest, id: string): Promise<Played & { relea
 export function clockText(seconds: number): string {
   const whole = Math.max(0, Math.floor(seconds));
   return `${String(Math.floor(whole / 60))}:${String(whole % 60).padStart(2, "0")}`;
-}
-
-/** Whether the model has used every turn the condition gives it; never, where it names no number. */
-function spent(turns: readonly AssistantMessage[], { modelTurns }: Pick<Limits, "modelTurns">): boolean {
-  return modelTurns !== undefined && turns.length >= modelTurns;
 }
 
 /**

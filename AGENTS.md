@@ -1661,6 +1661,7 @@ not a sed.
 ```text
 src/kernel/     the log, tasks, conditions, traces, the verifier's contract, the comparison, the reports
 src/solve/      one solve: the starter, the prompt, the command wall's tools, the answer file
+src/seat/       one model session of any seat: the loop, its turns and stops, its trace and spend
 src/builder/    a Builder session, its tools, prompt, notes and what it is told of the past; the round,
                 and what the log holds of a comparison (comparison); whether a comparison may start
                 (admission); the one reading of a campaign (handover);

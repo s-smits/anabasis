@@ -46,7 +46,6 @@ import {
   type Model,
   type Models,
   type ThinkingLevel,
-  type Usage,
 } from "@earendil-works/pi-ai";
 import { conditionsOf, type Limits } from "../kernel/condition.ts";
 import type { Contract } from "../kernel/contract.ts";
@@ -68,7 +67,7 @@ import { openHarness } from "../solve/harness.ts";
 import { type PublicTask, publicView } from "../solve/prompt.ts";
 import { HARNESS_ACCOUNT } from "../solve/starter.ts";
 import { type SolveRequest, solve } from "../solve/run.ts";
-import { failedTurn, seatLoop, spentBy, traceSink, userTurn } from "../solve/seat.ts";
+import { sit } from "../seat/session.ts";
 import { claimRoot } from "../verify/seat-root.ts";
 import { campaignOf } from "./handover.ts";
 import { copyHarness, seedKept } from "./kept.ts";
@@ -320,9 +319,10 @@ export async function session(
   const ownSeconds = () => (performance.now() - began - aside) / 1000;
   // One timer at a time: until 14 October the opening's `within` armed one that the session's own
   // arming overwrote, and it cut main0_5_1's Builder four hours on, a comparison in flight.
+  let closed = false;
   const arm = () => {
     clearTimeout(timer);
-    if (done.signal.aborted) return;
+    if (closed) return;
     timer = setTimeout(() => wall.abort(), (limits.wallSeconds - ownSeconds()) * 1000);
   };
   const bench: Bench = {
@@ -413,16 +413,6 @@ export async function session(
     finishTool(bench, campaign?.unmeasured),
     ...(campaign?.tools ?? []),
   ].map((each) => endingWith(each, footer));
-  // Aborted when the loop returns, whatever returned it, so the model's own process is closed.
-  const done = new AbortController();
-  const signal = AbortSignal.any([
-    wall.signal,
-    done.signal,
-    bench.halt.signal,
-    ...(request.kill ? [request.kill] : []),
-  ]);
-  const summaries: Usage[] = [];
-  const trace = traceSink(log, "build", request.id, () => turns.length);
   const halted = () => {
     campaign?.halts?.();
     if (
@@ -434,81 +424,58 @@ export async function session(
     }
     if (bench.halt.signal.aborted) throw new Error("The session has ended at a bound.");
   };
-  let crash: string | null = null;
   const started = (await campaign?.start?.()) ?? "";
   arm();
-  try {
-    await seatLoop({
-      models: request.models(join(dirs.host, "model")),
-      id: request.id,
-      system: systemPrompt(bench.said),
-      opening: [first, started, campaign?.hook() ?? ""].filter((part) => part !== "").join("\n\n"),
-      tools,
-      config: {
-        model,
-        reasoning: request.effort,
-        toolExecution: "sequential",
-        finishTurn: ({ message }) => {
-          if (campaign === undefined && message.role === "assistant") turns.push(message);
-          // `finish` ends the session even beside another call in its turn, where pi would go on.
-          return bench.note !== null || turns.length >= limits.turns ? { action: "end" } : undefined;
-        },
-        // v1's continuation carried the same notice: a file over its limit is cut on the next read.
-        getFollowUpMessages: async () =>
-          bench.note === null
-            ? [
-                userTurn(
-                  [
-                    continuation(used(), limits, await harnessNow(bench), bench.said),
-                    memoryOverCapNotice(dirs.home) ?? "",
-                    campaign?.hook() ?? "",
-                  ]
-                    .filter((part) => part !== "")
-                    .join("\n\n"),
-                ),
-              ]
-            : [],
-      },
-      // A led session's bounds are the campaign's, asked of the table (`halts`), and a session the
-      // host ran is held to its dollar cap, before a request and again after a compaction, which
-      // bills too. Until 19 October the cap held practice alone: a session the host ran opened on
-      // what was left of a campaign's total and could bill turns past it until its finish, its
-      // turns or its wall, as two reviews of the host-led loop found (#202, closed). A led
-      // session's cap is what was left when it opened, and the operator's word can raise the
-      // total after: the table's reading of the budget is the one that holds it, as `practiceLeft`
-      // already has it.
-      compact: {
-        log,
-        of: "build",
-        summaries,
-        guard: (compact) => async (context, kill) => {
-          halted();
-          const update = await compact(context, kill);
-          halted();
-          return update ?? undefined;
-        },
-      },
-      emit: (event) => {
-        if (event.type === "message_end" && event.message.role === "assistant") told = false;
-        // Meter a campaign's model turn before its tool can spend on another seat.
-        if (campaign !== undefined && event.type === "message_end" && event.message.role === "assistant") {
-          turns.push(event.message);
-          trace({ type: "turn_end", message: event.message, toolResults: [] });
-        } else if (campaign === undefined || event.type !== "turn_end") {
-          trace(event);
-        }
-      },
-      signal,
-    });
-  } catch (error) {
-    if (!signal.aborted) crash = errorMessage(error);
-  } finally {
-    clearTimeout(timer);
-    done.abort();
-  }
+  const sat = await sit({
+    models: request.models,
+    home: join(dirs.host, "model"),
+    id: request.id,
+    model,
+    effort: request.effort,
+    system: systemPrompt(bench.said),
+    opening: [first, started, campaign?.hook() ?? ""].filter((part) => part !== "").join("\n\n"),
+    tools,
+    trace: { log, of: "build" },
+    // A led session's bounds are the campaign's, asked of the table (`halts`), and a session the
+    // host ran is held to its dollar cap, before a request and again after a compaction, which
+    // bills too. Until 19 October the cap held practice alone: a session the host ran opened on
+    // what was left of a campaign's total and could bill turns past it until its finish, its
+    // turns or its wall, as two reviews of the host-led loop found (#202, closed). A led
+    // session's cap is what was left when it opened, and the operator's word can raise the
+    // total after: the table's reading of the budget is the one that holds it, as `practiceLeft`
+    // already has it.
+    guard: (compact) => async (context, kill) => {
+      halted();
+      const update = await compact(context, kill);
+      halted();
+      return update ?? undefined;
+    },
+    turns,
+    most: limits.turns,
+    // `finish` ends the session even beside another call in its turn, where pi would go on.
+    over: () => bench.note !== null,
+    // v1's continuation carried the same notice: a file over its limit is cut on the next read.
+    next: async () =>
+      bench.note === null
+        ? [
+            continuation(used(), limits, await harnessNow(bench), bench.said),
+            memoryOverCapNotice(dirs.home) ?? "",
+            campaign?.hook() ?? "",
+          ]
+            .filter((part) => part !== "")
+            .join("\n\n")
+        : null,
+    // Meter a campaign's model turn before its tool can spend on another seat.
+    early: campaign !== undefined,
+    emit: (event) => {
+      if (event.type === "message_end" && event.message.role === "assistant") told = false;
+    },
+    stops: [wall.signal, bench.halt.signal, request.kill],
+  });
+  closed = true;
+  clearTimeout(timer);
   await campaign?.closing?.();
-  const cut = wall.signal.aborted || bench.halt.signal.aborted || request.kill?.aborted === true;
-  crash ??= bench.fatal?.message ?? (cut ? null : failedTurn(turns));
+  const crash = (sat.cut ? null : sat.thrown) ?? bench.fatal?.message ?? sat.crash;
   // Whatever ended the session, what `harness/` holds is frozen: a session cut at its wall still
   // made its edits, and the comparison is what says whether they count.
   //
@@ -555,7 +522,7 @@ export async function session(
     changed,
     broken,
     crash,
-    ...(await spentBy(model, request.id, turns, summaries)),
+    ...sat.spent,
     practiceSolves: bench.spent,
     disputed: [...bench.disputed],
     faultyChecks: [...bench.faulty],

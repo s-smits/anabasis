@@ -126,7 +126,7 @@ async function release(run: Run, yes: boolean): Promise<number> {
   let kept = 0;
   for (const { root, host } of left) {
     try {
-      releaseRoot(root);
+      await releaseRoot(root);
       rmSync(host, { recursive: true, force: true });
     } catch (error) {
       kept++;

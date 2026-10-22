@@ -49,7 +49,7 @@ async function withWall(body: (wall: CommandWall) => Promise<void>, toolTree: st
       limits: { shellDefaultSeconds: 60, shellMaxSeconds: 60 },
     });
   } finally {
-    release();
+    await release();
     rmSync(dirs.host, { recursive: true, force: true });
     rmSync(repoRoot, { recursive: true, force: true });
   }

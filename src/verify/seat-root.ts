@@ -13,13 +13,13 @@
  * arbitration for the whole host (11 October), and images a stopped run left attached. So both
  * platforms now run as Linux did, a seat bounded by its wall, its turns and the campaign's dollars.
  */
-import { chmodSync, existsSync, mkdirSync, readdirSync, realpathSync, rmSync } from "../meta/filesystem.ts";
+import { chmodSync, existsSync, mkdirSync, readdirSync, realpathSync, rm } from "../meta/filesystem.ts";
 import { dirname, join, resolve } from "../meta/path.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { processTable } from "../meta/process-table.ts";
 
 /** Undo `claimRoot`: `releaseRoot` on its root. */
-export type ReleaseRoot = () => void;
+export type ReleaseRoot = () => Promise<void>;
 
 /**
  * Create the seat's root, and return its release, which the caller runs once the solve or session
@@ -40,10 +40,15 @@ export function claimRoot(root: string): ReleaseRoot {
  * when it ends; one that was stopped or killed never does, and a stop of its run does it from the
  * root's name in the log (`tools/runs/stop.ts`). A process a seat left behind is ended here, where
  * the root it works in goes: on 9 October one ran on at 80 forks a second after its solve.
+ *
+ * The holders end before this returns its promise, and the removal runs off this thread, so a
+ * solve reads its verdict beside it (`attemptSolve`): a home of 7,372 entries and 205 MB, as an
+ * esp32 solver leaves with a solver library in a virtual environment, took 356 to 416 ms to remove
+ * on the operator's macOS host (22 October).
  */
-export function releaseRoot(root: string): void {
+export async function releaseRoot(root: string): Promise<void> {
   endHolders(root);
-  removeWhole(root);
+  await removeWhole(root);
 }
 
 /**
@@ -53,9 +58,9 @@ export function releaseRoot(root: string): void {
  * Bubblewrap). Each folder is opened to its owner again, a link never followed, and the removal
  * tried once more.
  */
-function removeWhole(root: string): void {
+async function removeWhole(root: string): Promise<void> {
   try {
-    rmSync(root, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
     return;
   } catch {
     const open = (dir: string): void => {
@@ -66,7 +71,7 @@ function removeWhole(root: string): void {
     };
     open(root);
   }
-  rmSync(root, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
 }
 
 /**

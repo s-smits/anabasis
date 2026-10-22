@@ -212,7 +212,7 @@ it predicts. Quiet between milestones is read against the limits of the work in 
 | Milestone | Event | Read | Prediction it settles | Investigation |
 | --- | --- | --- | --- | --- |
 | M0 opened | receipt and `campaign.opened` | `runs source`: one commit, clean; fresh opening under section 10, item 9 | ledger written before the first solve | none |
-| M1 exam | `exam.drafted`, `checker.read`, `contract.frozen` | faults by kind, `doNothing`, `admitted`; within twenty minutes of M0 | frozen before `build.started` | none; assign an `exam` ending from its faults |
+| M1 exam | `exam.drafted`, `checker.read`, `contract.frozen` | faults by kind, `doNothing`, `admitted`, read when `contract.frozen` lands; a draft still open an hour after M0 is a lead to read, not a fault | frozen before `build.started` | none; assign an `exam` ending from its faults |
 | M2 supply | first Examiner sessions' `task.gate` | held and refused by reason, objective room, missing readings, dry run | held out of drafted, a range | none |
 | M3 first reading | first `comparison.reported` | `valid.informative.old`, tested untied and tied, `scored.detectable`, A/A, load | reading and untied count | only if a `read` trigger fires |
 | M4 step | `comparison.reported` with `reading: step` against the reference | tested margins, the retained tally apart, A/A | untied count and A/A result | none |
@@ -362,7 +362,7 @@ description; say so.
 bun run runs pulse --once [<name>]
 ```
 
-Read at each milestone, at the timer's predicted moment, and within twenty minutes of launch for M1.
+Read at each milestone and at the timer's predicted moment.
 
 - A missing terminal event alone shows no stall. Solves can record `solve.turn` and `solve.call`
   before their verdict. Read quiet against the solve's wall and the session's `--minutes`.

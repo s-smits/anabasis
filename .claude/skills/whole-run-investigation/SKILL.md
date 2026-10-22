@@ -44,10 +44,13 @@ holds.
    as equals. Every lane reads every campaign, opens where a trigger fired on any of them, and
    triages each finding against the others on its `Seen in:` line; lane 31 is also given their
    climbs side by side. The logs are read again when the lanes are built.
-   A campaign another machine holds is read from a copy: `bun --env-file=.env.runs run runs fetch
-   <name>` takes its folder whole to `.ana/fetched/<host>/<name>/` and prints the log to give
-   `--log`. Lanes read the copy with this checkout's tree, so check out the commit the receipt
-   names where the host line says the code differs.
+   With `bun --env-file=.env.runs tools/wri/wri.ts ... --log <name>`, a campaign on another machine
+   is fetched automatically into `data/runs/<host>/<name>/`. Explicit log paths select an offline
+   snapshot. `runs fetch <name>` remains available to refresh a copy explicitly. Lanes read the
+   copy with this checkout's tree, so check out the commit the receipt
+   names where the host line says the code differs. `lanes` rereads the paths stored by `start`;
+   it does not refresh a live remote campaign behind the investigation's back. Start another
+   investigation to take a new snapshot.
    *Check:* read the `host-code digest` line. Use the matching campaign tree it names, where one
    exists; otherwise say beside each source claim that it concerns another tree. The digest is
    not a commit: the launch receipt supplies the commit separately. Settle rows A to F from the log.

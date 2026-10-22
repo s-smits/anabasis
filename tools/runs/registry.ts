@@ -157,6 +157,12 @@ export function archived(repo = runtimeProcess.cwd()): Run[] {
     .flatMap((from) => campaignsIn(join(root, from), main).map((run) => ({ ...run, archived: from })));
 }
 
+/** This machine's original campaigns: its worktrees' and its own archive's, never a copy of a host's.
+ *  A catalogue lists these to the other machines, and a refresh refuses a host's campaign that
+ *  shares a name with one. */
+export const originals = (repo = runtimeProcess.cwd()): Run[] =>
+  [...runs(repo), ...archived(repo).filter((run) => run.archived === HERE)].filter(isCampaign);
+
 /** Every run a name can be taken by: the worktrees' and the archive's. */
 export const everyRun = (repo = runtimeProcess.cwd()): Run[] => [...runs(repo), ...archived(repo)];
 

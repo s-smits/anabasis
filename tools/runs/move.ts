@@ -40,13 +40,18 @@
  * host read copies made by hand; until then a copy went to `.ana/fetched/`, which no reader read.
  */
 import { LOG_FILE } from "#src/kernel/log.ts";
-import { mkdirSync } from "#src/meta/filesystem.ts";
 import { dirname, join } from "#src/meta/path.ts";
-import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { parseArgs } from "#src/meta/process.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
+import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
-import { type Host, holders, hostNamed, quoted, rsync, sshScript, verbOn, worktreesIn } from "./hosts.ts";
-import { archiveOf, CAMPAIGNS, campaignOf, HERE } from "./registry.ts";
+import { type Host, hostNamed } from "./host-config.ts";
+import { quoted, rsync, shellPath, sshScript, worktreesIn } from "./host-command.ts";
+import { verbOn } from "./hosts.ts";
+import { CAMPAIGNS, campaignOf, HERE } from "./registry.ts";
+import { syncRuns } from "./snapshots.ts";
 import { asideOf, continueRun, lastRun, pause, setAside } from "./manage.ts";
+import { preparedHost, publishedAt } from "./code.ts";
 
 /** One end of a move: this machine or a host, with the folder its worktrees sit in. */
 interface End {
@@ -84,7 +89,7 @@ function endOf(name: string): End {
   // A host's tree is written as `ANA_HOSTS` holds it, so that `~` names the home there.
   return {
     ...end,
-    repo: at(end, `cd ${host === undefined ? "." : host.tree} && git rev-parse --show-toplevel`),
+    repo: at(end, `cd ${host === undefined ? "." : shellPath(host.tree)} && git rev-parse --show-toplevel`),
   };
 }
 
@@ -103,7 +108,7 @@ function treeOf(end: End, name: string): string {
 }
 
 /** The rsync side of `path` at `end`. */
-const side = (end: End, path: string) => (end.host === undefined ? path : `${end.host.ssh}:${path}`);
+const side = (end: End, path: string) => (end.host === undefined ? path : `${end.host.ssh}:${quoted(path)}`);
 
 /** `bun run runs move`. */
 export async function move(args: readonly string[]): Promise<void> {
@@ -120,7 +125,14 @@ export async function move(args: readonly string[]): Promise<void> {
     },
   });
   const [name, ...given] = positionals;
-  if (name === undefined || values.to === undefined || values.to === values.from) throw new Error(USAGE);
+  if (
+    name === undefined ||
+    !isSafePathSegment(name) ||
+    values.to === undefined ||
+    values.to === values.from
+  ) {
+    throw new Error(USAGE);
+  }
   if (values.to !== HERE && values.from !== HERE) {
     throw new Error(
       `one end of a move is this machine: --from ${values.from} --to ${values.to} names two hosts`,
@@ -144,12 +156,15 @@ export async function move(args: readonly string[]): Promise<void> {
     console.log("nothing is done without --yes");
     return;
   }
+  // Prepare before the pause: a missing commit or failed install must leave the source running.
+  const controller = to.host === undefined ? undefined : preparedHost(to.host, commit);
+  if (to.host === undefined) publishedAt(to.repo, commit);
   const paused = ["pause", name, "--after", values.after, "--yes"];
   if (from.host === undefined) await pause(paused.slice(1));
   else if ((await verbOn(from.host, paused)) !== 0) throw new Error(`${name} did not pause at ${from.name}`);
   at(
     to,
-    `git -C ${quoted(to.repo)} fetch -q origin && git -C ${quoted(to.repo)} worktree add -q --detach ${quoted(tree)} ${commit} && mkdir -p ${quoted(folder(tree))}`,
+    `git -C ${quoted(to.repo)} worktree add -q --detach ${quoted(tree)} ${quoted(commit)} && mkdir -p ${quoted(folder(tree))}`,
   );
   rsync(`${side(from, folder(source))}/`, `${side(to, folder(tree))}/`);
   const size = (end: End, root: string) => at(end, `wc -c < ${quoted(join(folder(root), LOG_FILE))}`);
@@ -175,7 +190,9 @@ export async function move(args: readonly string[]): Promise<void> {
     return;
   }
   if (to.host === undefined) await continueRun(going.slice(1));
-  else if ((await verbOn(to.host, going)) !== 0) throw new Error(`${name} did not go on at ${to.name}`);
+  else if (controller !== undefined && (await verbOn(controller, going)) !== 0) {
+    throw new Error(`${name} did not go on at ${to.name}`);
+  }
 }
 
 /** `bun run runs fetch`. */
@@ -187,11 +204,7 @@ export async function fetch(args: readonly string[]): Promise<void> {
   });
   const [name] = positionals;
   if (name === undefined) throw new Error("usage: bun run runs fetch <name> [--from <host>]");
-  const host = values.from === undefined ? (await holders([name])).get(name) : hostNamed(values.from);
-  if (host === undefined) throw new Error(`no host ANA_HOSTS lists holds a campaign ${name}`);
-  const from = endOf(host.name);
-  const into = archiveOf(runtimeProcess.cwd(), host.name, name);
-  mkdirSync(into, { recursive: true });
-  rsync(`${side(from, join(treeOf(from, name), CAMPAIGNS, name))}/`, `${into}/`, "--delete");
-  console.log(`${name} from ${host.name}: ${join(into, LOG_FILE)}`);
+  const copies = await syncRuns([name], { match: "exact", ...keyIfDefined("from", values.from) });
+  if (copies.length === 0) throw new Error(`no host ANA_HOSTS lists holds a campaign ${name}`);
+  for (const log of copies) console.log(log);
 }

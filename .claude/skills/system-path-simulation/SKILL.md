@@ -33,6 +33,11 @@ and why the next was not needed.
 
 ## Rules for every case
 
+Readers accept campaign names across `ANA_HOSTS`: `live-seat.ts read --log <name> --from <event>`
+refreshes a copy when the host environment is loaded. `runs seed --from <name>` also resolves and
+fetches its source. Starting a seat still names its seed's execution tree; `watch` and `due` read
+that machine's seat records and process ids. Never interpret a remote pid as local.
+
 1. **Write the prediction first.** Before a simulation runs, write what it will read and why, in a
    file. Resolve each line after. A miss is the finding: the product does something you did not
    know, or your picture of it is stale. On 8 October 2026 one prediction missed because a round

@@ -25,14 +25,18 @@
  * a dry run would delete 32 worktrees, every one idle less than two days). Where
  * no branch holds its commit, a local tag `retired/<sha9>` keeps it reachable (the repository is
  * public, so the tag is not pushed). Its node_modules, toolchains and the copies `.ana/moved/` set
- * aside go with it: what `copy` and `move` set aside goes on elsewhere, whole.
+ * aside go with it: what `copy` and `move` set aside goes on elsewhere, whole. The controllers a
+ * host prepares are worktrees too, and pruning them is `code.ts`'s alone (`controllersOf`).
  *
- * Then every host `ANA_HOSTS` lists does the same over ssh, and its archive of its own campaigns
- * comes here under `data/runs/<host>/`, beside the copies `runs fetch` takes, less the toolchains
- * its kept states link to (`states/tree-*`), which stay whole on the host for `zip --from`: a Linux
- * pyenv holds `terminfo/n` beside `terminfo/N`, which a case-insensitive Mac cannot, and on 21
- * October rsync stopped there after 1.2 of the Linux host's 2.0 GB. Nothing else in an
- * archive is deleted. Without `--yes` it says what it would do, here and on each host, and does nothing.
+ * Only the repository's worktrees are swept, so a separate clone is never read: on 22 October the
+ * thirteen `anabasis-v2` trees here, from before v2 took this repository over, held 64 campaign
+ * logs that no verb lists.
+ *
+ * Every configured host then sweeps its own originals. Since 22 October its records are refreshed
+ * through snapshots.ts instead of a separate archive transfer. Readers fetch artefacts when
+ * needed; originals remain whole on their owning machine. Record-only transfers avoid the
+ * case-sensitive toolchain names a Mac cannot hold. Without --yes it describes both local and
+ * remote retirement and moves no campaign.
  *
  * Until 20 October this was an operator's script outside the repository, run once a day: it moved a
  * retired tree's campaigns into the main worktree's `.ana/d2`, where every verb took them for runs
@@ -45,8 +49,11 @@ import { basename, dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
-import { type Host, hostsOf, quoted, rsync, sshScript, verbOn, worktreesIn } from "./hosts.ts";
-import { ARCHIVE, archived, archiveOf, HERE, keepers, processes, runs, writers } from "./registry.ts";
+import { controllersOf } from "./code.ts";
+import { hostsOf } from "./host-config.ts";
+import { verbOn } from "./hosts.ts";
+import { syncRuns } from "./snapshots.ts";
+import { archived, archiveOf, HERE, keepers, processes, runs, writers } from "./registry.ts";
 
 /** What one sweep is asked: the main worktree, how long idle is, the time, and whether to act. */
 export interface Sweep {
@@ -127,9 +134,10 @@ function keepCommit(sweep: Sweep, tree: string): void {
  *  run log in `archiving` counts as gone. */
 export function retireTrees(sweep: Sweep, archiving: ReadonlySet<string>): void {
   const logs = runs(sweep.main).filter((run) => !archiving.has(run.path));
+  const controllers = controllersOf(sweep.main);
   const trees = worktrees(sweep.main)
     .slice(1)
-    .filter((tree) => existsSync(tree))
+    .filter((tree) => existsSync(tree) && dirname(tree) !== controllers)
     .toSorted((a, b) => b.length - a.length);
   for (const tree of trees) {
     // Idle since its last commit and since any of its top entries changed.
@@ -155,23 +163,6 @@ export function retireTrees(sweep: Sweep, archiving: ReadonlySet<string>): void 
   if (sweep.yes) gitText(sweep.main, "worktree", "prune");
 }
 
-/** `host`'s archive of its own campaigns brought into this one, under the host's name. */
-function bringHome(sweep: Sweep, host: Host): void {
-  const found = runTextSyncOrThrow(
-    sshScript(
-      host,
-      // The tree unquoted, as `ANA_HOSTS` writes it, so that `~` names the home there.
-      `d="$(${worktreesIn(host.tree)} | head -1)/${ARCHIVE}/${HERE}"; test -d "$d" && echo "$d"; true`,
-    ),
-  ).trim();
-  const into = archiveOf(sweep.main, host.name);
-  if (found === "") return console.log(`${host.name}: no archive yet`);
-  say(sweep, `${host.name}:${found} -> ${into}`);
-  if (!sweep.yes) return;
-  mkdirSync(into, { recursive: true });
-  rsync(`${host.ssh}:${quoted(found)}/`, `${into}/`, "--exclude=/*/states/tree-*/");
-}
-
 /** `bun run runs retire`. */
 export async function retire(args: readonly string[]): Promise<void> {
   const { values } = parseArgs({
@@ -190,7 +181,8 @@ export async function retire(args: readonly string[]): Promise<void> {
     try {
       const code = await verbOn(host, ["retire", "--days", values.days, ...(sweep.yes ? ["--yes"] : [])]);
       if (code !== 0) throw new Error(`retire there ended with exit ${String(code)}`);
-      bringHome(sweep, host);
+      say(sweep, `${host.name}: its campaigns' records refreshed into ${archiveOf(sweep.main, host.name)}`);
+      if (sweep.yes) await syncRuns([], { from: host.name, depth: "record" });
     } catch (error) {
       // One host that does not answer holds up no other.
       console.error(`${host.name}: ${errorMessage(error)}`);

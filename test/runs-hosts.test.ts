@@ -1,6 +1,7 @@
 // Where a verb of `bun run runs` runs: here, or on the host that holds the run it names.
 import { describe, expect, it } from "bun:test";
-import { type Host, routesOf } from "../tools/runs/hosts.ts";
+import { routesOf } from "../tools/runs/hosts.ts";
+import type { Host } from "../tools/runs/host-config.ts";
 
 const host = (name: string): Host => ({ name, ssh: `me@${name}`, tree: "~/anabasis", bun: "bun" });
 const runner = host("runner");
@@ -13,13 +14,14 @@ describe("a verb's routes", () => {
       here: null,
       away: [[runner, ["continue", "r3", "--login", "3", "--yes"]]],
     });
-    expect(routesOf("view", ["r3"], held).away).toEqual([[runner, ["view", "r3"]]]);
+    expect(routesOf("view", ["r3"], held)).toEqual({ here: ["r3"], away: [] });
+    expect(routesOf("source", ["r3"], held)).toEqual({ here: ["r3"], away: [] });
   });
 
   it("finds the run among a verb's options, and keeps an option's value that spells a run's name", () => {
     const held = new Map([["r3", runner]]);
-    expect(routesOf("view", ["--level", "0.02", "r3"], held).away).toEqual([
-      [runner, ["view", "r3", "--level", "0.02"]],
+    expect(routesOf("continue", ["--budget", "100", "r3"], held).away).toEqual([
+      [runner, ["continue", "r3", "--budget", "100"]],
     ]);
     expect(routesOf("continue", ["finished", "--after", "finished", "--yes"], new Map())).toEqual({
       here: ["finished", "--after", "finished", "--yes"],

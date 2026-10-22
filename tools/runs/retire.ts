@@ -25,7 +25,12 @@
  * a dry run would delete 32 worktrees, every one idle less than two days). Where
  * no branch holds its commit, a local tag `retired/<sha9>` keeps it reachable (the repository is
  * public, so the tag is not pushed). Its node_modules, toolchains and the copies `.ana/moved/` set
- * aside go with it: what `copy` and `move` set aside goes on elsewhere, whole.
+ * aside go with it: what `copy` and `move` set aside goes on elsewhere, whole. The controllers a
+ * host prepares are worktrees too, and pruning them is `code.ts`'s alone (`controllersOf`).
+ *
+ * Only the repository's worktrees are swept, so a separate clone is never read: on 22 October the
+ * thirteen `anabasis-v2` trees here, from before v2 took this repository over, held 64 campaign
+ * logs that no verb lists.
  *
  * Every configured host then sweeps its own originals. Since 22 October its records are refreshed
  * through snapshots.ts instead of a separate archive transfer. Readers fetch artefacts when
@@ -44,6 +49,7 @@ import { basename, dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
+import { controllersOf } from "./code.ts";
 import { hostsOf } from "./host-config.ts";
 import { verbOn } from "./hosts.ts";
 import { syncRuns } from "./snapshots.ts";
@@ -128,9 +134,10 @@ function keepCommit(sweep: Sweep, tree: string): void {
  *  run log in `archiving` counts as gone. */
 export function retireTrees(sweep: Sweep, archiving: ReadonlySet<string>): void {
   const logs = runs(sweep.main).filter((run) => !archiving.has(run.path));
+  const controllers = controllersOf(sweep.main);
   const trees = worktrees(sweep.main)
     .slice(1)
-    .filter((tree) => existsSync(tree))
+    .filter((tree) => existsSync(tree) && dirname(tree) !== controllers)
     .toSorted((a, b) => b.length - a.length);
   for (const tree of trees) {
     // Idle since its last commit and since any of its top entries changed.
@@ -174,6 +181,7 @@ export async function retire(args: readonly string[]): Promise<void> {
     try {
       const code = await verbOn(host, ["retire", "--days", values.days, ...(sweep.yes ? ["--yes"] : [])]);
       if (code !== 0) throw new Error(`retire there ended with exit ${String(code)}`);
+      say(sweep, `${host.name}: its campaigns' records refreshed into ${archiveOf(sweep.main, host.name)}`);
       if (sweep.yes) await syncRuns([], { from: host.name, depth: "record" });
     } catch (error) {
       // One host that does not answer holds up no other.

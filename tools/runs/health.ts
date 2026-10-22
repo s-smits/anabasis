@@ -9,6 +9,7 @@ import { basename, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
+import { controllersOf } from "./code.ts";
 import { asked, hosts } from "./hosts.ts";
 import { liveHere, seatsIn } from "./live.ts";
 import { ARCHIVE, processes, runs, writers } from "./registry.ts";
@@ -126,10 +127,7 @@ function busiestHere(): Health["busiest"] {
 
 function healthHere(): Health {
   const main = mainTree(runtimeProcess.cwd());
-  const controllers = join(
-    gitText(main, "rev-parse", "--path-format=absolute", "--git-common-dir"),
-    "ana-code",
-  );
+  const controllers = controllersOf(main);
   const disk = statfsSync(main);
   const commit = gitText(runtimeProcess.cwd(), "rev-parse", "HEAD");
   const power = probe(["pmset", "-g", "ac"]);

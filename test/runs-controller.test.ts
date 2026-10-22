@@ -106,6 +106,30 @@ it("prunes old controllers by readiness time and preserves active paths and work
   ).toEqual([trees[4]]);
 });
 
+it("prunes an old controller behind a dead holder's lock and keeps one a live holder has", () => {
+  const made = fixture();
+  const root = join(made.root, "git", "ana-code");
+  const trees = ["b", "c", "d", "e", "f"].map((letter, index) => {
+    const tree = join(root, letter.repeat(40));
+    mkdirSync(join(tree, "node_modules"), { recursive: true });
+    writeFileSync(`${tree}.ready`, "");
+    utimesSync(`${tree}.ready`, 100 - index, 100 - index);
+    return tree;
+  });
+  for (const [tree, holder] of [
+    [trees[3]!, String(process.pid)],
+    [trees[4]!, "99999999"],
+  ] as const) {
+    mkdirSync(`${tree}.lock`);
+    writeFileSync(join(`${tree}.lock`, "pid"), holder);
+  }
+  expect(
+    made.run(PREPARE, { FAKE_EXECUTE: "1", FAKE_PS: `bun ${trees[2]}/tools/runs/cli.ts keep` }).code,
+  ).toBe(0);
+  expect([trees[3], `${trees[3]}.lock`].map((path) => existsSync(path!))).toEqual([true, true]);
+  expect([trees[4], `${trees[4]}.lock`].map((path) => existsSync(path!))).toEqual([false, false]);
+});
+
 it("preserves old controllers when process inspection fails", () => {
   const made = fixture();
   const root = join(made.root, "git", "ana-code");

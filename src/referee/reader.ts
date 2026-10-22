@@ -26,7 +26,7 @@ export interface Reader {
   readonly model: Model<Api>;
   readonly effort: ThinkingLevel;
   /** The backends, built for one session on the home its model process keeps its state in. */
-  readonly models: (home: string) => Models;
+  readonly models: (home: string, shutdown: AbortSignal) => Models;
   /** Seconds one session may run; `WALL_SECONDS` when the caller names none. */
   readonly wallSeconds?: number;
   /** Aborts when the run is killed. */

@@ -402,7 +402,7 @@ export async function openCampaign(args: CampaignArgs) {
       model: by.model,
       effort: by.effort,
       limits,
-      models: by.models ?? ((home) => backends(sweepOptions(home, by.window))),
+      models: by.models ?? ((home, shutdown) => backends(sweepOptions(home, by.window, shutdown))),
       verify,
       log: written,
       repoRoot: REPO,
@@ -588,7 +588,8 @@ export function awaitingLines(campaign: {
  * more. A reviewer's ruling takes minutes, so its cache lives five.
  */
 function hostSession(seat: { readonly webSearch: boolean; readonly cacheTtl: "5m" | "1h" }) {
-  return (home: string) => backends({ claude: { ...sweepOptions(home).claude, ...seat } });
+  return (home: string, shutdown: AbortSignal) =>
+    backends({ claude: { ...sweepOptions(home, undefined, shutdown).claude, ...seat } });
 }
 
 /** An Examiner's backends, for the session that drafts an exam before there is a campaign to

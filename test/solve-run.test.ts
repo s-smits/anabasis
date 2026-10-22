@@ -592,7 +592,7 @@ describe.skipIf(!walled)("a solve end to end", () => {
       toolUse,
     );
     const { request, finished } = setup([written, submit]);
-    const models = request.models("");
+    const models = request.models("", new AbortController().signal);
     const stream = models.streamSimple.bind(models);
     let requests = 0;
     models.streamSimple = (model, context, options) => {

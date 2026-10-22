@@ -151,32 +151,34 @@ export function userTempRules() {
  * second list being edited.
  *
  * `shims` is here for pyenv and rbenv, which put no binaries in `bin` at all.
+ *
+ * What the host's user installed goes ahead of what the operating system ships, as it does in that
+ * user's own shell. Until 22 October the system's folders came first, so a bare `python3` was
+ * Apple's 3.9.6 from the Command Line Tools on macOS and Ubuntu's 3.10 on Linux, while the 3.13 and
+ * 3.14 installed through Homebrew, zerobrew and `/usr/local` were reachable only by their versioned
+ * names; Apple's 3.9 no longer receives security fixes, and its pip 21.2.4 cannot install much of
+ * what a solver asks it for. Homebrew and zerobrew keep each Python's bare `python` in its `libexec`.
  */
 export function toolchainPathDirs(): string[] {
   // Both /opt entries are readable under the open read default, so neither needs a read rule of its
   // own. This host may have its only system Node under zerobrew, so the derived toolchain owner has
   // to retain that executable directory rather than assume /usr/bin holds one.
+  const user = ["/usr/local/bin", "/opt/homebrew/bin", "/opt/zerobrew/bin"];
+  const installed = darwinToolchainInstallRoots().flatMap((root) => [join(root, "bin"), join(root, "shims")]);
   // The active developer directory goes ahead of /usr/bin, where Darwin keeps `python3`, `make`,
   // `git` and `cc` as xcrun shims. A shim starts its tool with TMPDIR reset to the user temporary
   // directory, so a command's own TMPDIR never reached a Python it started: every temp folder of
   // every solve landed in that one shared directory, outside the solve's capped volume, and stayed
   // when the command was gone. On 2026-10-10 one host held 1.56 million of them, 121 GB, from three
-  // days of campaigns. Started by its own path a tool keeps the TMPDIR it is given.
-  const system = [
-    ...activeDeveloperBinDirs(),
-    "/usr/bin",
-    "/bin",
-    "/usr/sbin",
-    "/sbin",
-    "/usr/local/bin",
-    "/opt/homebrew/bin",
-    "/opt/zerobrew/bin",
-  ];
-  const installed = darwinToolchainInstallRoots().flatMap((root) => [join(root, "bin"), join(root, "shims")]);
-  // Every entry is checked for existence, the fixed ones included: /opt/homebrew/bin exists on this
-  // Darwin host and not in the Linux VM, so an unchecked list would put a directory that is not
-  // there on PATH.
-  return [...new Set([...system, ...installed])].filter(existsSync);
+  // days of campaigns. Started by its own path a tool keeps the TMPDIR it is given, and a program
+  // the user installed is never such a shim, so the user's folders may go first.
+  const system = [...activeDeveloperBinDirs(), "/usr/bin", "/bin", "/usr/sbin", "/sbin"];
+  // Every entry is checked for existence, as /opt/homebrew/bin is on Darwin and not on Linux, where
+  // /opt itself may not be listable, so each Python's `libexec` is looked for from its own prefix.
+  const scan = { onlyFiles: false, absolute: true, followSymlinks: true };
+  const glob = (cwd: string) => [...new Bun.Glob("opt/python*/libexec/bin").scanSync({ ...scan, cwd })];
+  const brewed = user.map(dirname).filter(existsSync).flatMap(glob).sort(compareCodeUnits);
+  return [...new Set([...user, ...brewed.toReversed(), ...installed, ...system])].filter(existsSync);
 }
 
 /**

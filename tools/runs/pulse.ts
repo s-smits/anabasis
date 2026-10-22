@@ -13,9 +13,8 @@
  * is a warning and exit 1. No local state path is sent to another machine.
  */
 import { type EventKind, type LogEvent } from "#src/kernel/log.ts";
-import { billedAll } from "#src/kernel/reports.ts";
+import { billedAll, traceKind, tracesIn } from "#src/kernel/trace.ts";
 import { type Solve, solvesIn } from "#src/kernel/solves.ts";
-import { traceKind, tracesIn } from "#src/kernel/trace.ts";
 import {
   existsSync,
   mkdirSync,

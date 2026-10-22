@@ -6,7 +6,8 @@ import { reported, toLabel } from "../../../src/campaign/comparison.ts";
 import { campaignOf } from "../../../src/campaign/handover.ts";
 import { differenceOf } from "../../../src/kernel/compare.ts";
 import { LOG_FILE, read } from "../../../src/kernel/log.ts";
-import { billedAll, billedParts, lastReports } from "../../../src/kernel/reports.ts";
+import { lastReports } from "../../../src/kernel/reports.ts";
+import { billedAll, billedParts } from "../../../src/kernel/trace.ts";
 import {
   appendFileSync,
   cpSync,

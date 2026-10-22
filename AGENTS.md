@@ -1446,8 +1446,7 @@ request as failures that occur without the change, and do not call the suite gre
 - A pack, a check program or a kept harness, by rule 2.
 - `.env` and any credential. Never copy one from another checkout to make a command
   start.
-- `vendor/`: `pi-coding-agent` and `pi-claude-bridge` are copies of upstream, brought in by a
-  **sed**. The upstream files at a cited path and commit are copied over the local ones whole.
+- `vendor/`: `pi-claude-bridge` is a copy of upstream, brought in by a **sed**. The upstream files at a cited path and commit are copied over the local ones whole.
   The result is then compared with what the local copy held, and only the most important missing
   parts are added back, each marked in place as a local change and kept small. Porting by hand,
   merging upstream into the local file and adding the package as a dependency are no sed. Biome
@@ -1700,7 +1699,7 @@ tools/loc/      the size and unused-export policy
 packages/ui/    the page over a campaign's log: a server on the loopback that renders the folds
                 above and reads nothing for itself (src/server), and four panes, Campaign, Moves,
                 Tasks and Log (src/views). It writes nothing. Its design rules are in its DESIGN.md
-vendor/         pi-coding-agent and pi-claude-bridge, copied
+vendor/         pi-claude-bridge, copied
 docs/           the plan, the transfer ledger, the account of v1, the helper prompts
 studies/        measurements outside a campaign's reading, one folder each: its protocol, predictions,
                 adapters and patches; shared/ holds what several use, runs/ the records each keeps,

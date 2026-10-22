@@ -40,7 +40,7 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  turns and calls, and how it ended (`src/builder/session.ts`). `build.checkpoint` keeps a
  *  frozen harness inside a live Builder conversation, before a comparison. `solve.compacted`,
  *  `build.compacted` and `exam.compacted` are a compaction in pi's own loop, and what its summary
- *  spent (`src/agent/backends/pi-compaction.ts`). The `exam.*` kinds are an Examiner session's: the same
+ *  spent (`src/agent/backends/compaction.ts`). The `exam.*` kinds are an Examiner session's: the same
  *  four (`src/examiner/session.ts`). `checker.read` is what a campaign's check program was seen to
  *  do, by the version it was read at (`acceptance.ts`); `contract.frozen` is the operator's word
  *  that the contract and that version stand, and a campaign whose own differ from it does not open.
@@ -123,6 +123,9 @@ const EVENT_KINDS = [
   "solve.compacted",
   "solve.finished",
   "verdict",
+  "referee.turn",
+  "referee.call",
+  "referee.compacted",
   "referee.finding",
   "referee.refused",
   "diagnosis.recorded",

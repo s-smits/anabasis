@@ -6,14 +6,14 @@
  * `play()` cannot run there: it is bound to a campaign's log, to Seatbelt or Bubblewrap and to a
  * claimed seat root, and the container is itself the sandbox. So this is the same loop over the
  * same parts, with the command wall taken out:
- * - pi's coding tools as the harness's presets select them (`selectedCodingTools`), on pi's local
+ * - durable's coding tools as the harness's presets select them (`selectedCodingTools`), on its local
  *   operations in the container's working directory, with the harness's `.toolchain` first on PATH
  *   in the order a solve's shell has it (`toolTreeSearchDirs`);
- * - pi's system prompt from pi's builder, with the harness's guide as project context under the
+ * - the study's system prompt, with the harness's guide as project context under the
  *   sentence a campaign's solver reads, and a duty that names the benchmark's deliverable;
  * - the solve wall and the model-turn cap, told on every tool result by `timed`, the nudge after a
- *   turn that stops without `submit`, pi's compaction, and OpenRouter as the backends serve it,
- *   retried (`openrouter`, `src/agent/backends/models.ts`);
+ *   turn that stops without `submit`, durable's compaction and retries, and OpenRouter as the
+ *   backends serve it (`openrouter`, `src/agent/backends/models.ts`);
  * - the trace as `solve.turn`, `solve.call` and `solve.compacted` events in a log of its own,
  *   written by `sit` (`src/agent/session.ts`) and read by `src/kernel/trace.ts`, and the spend
  *   as `sit` sums a campaign's solve, so a change to the log's format has one owner to change;
@@ -32,17 +32,16 @@
  * A harness that declares its own tools (`agent/tools.ts`) is refused: no harness kept on record
  * declared one on 21 October 2026 (0 of 193), and serving them would need the harness shim.
  */
-import type { StreamFn } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, ThinkingLevel } from "@earendil-works/pi-ai";
+import { type AssistantMessage, createModels, type ThinkingLevel } from "@earendil-works/pi-ai";
+import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
+import {
+  createBashTool,
+  createEditTool,
+  createReadTool,
+  createWriteTool,
+} from "@earendil-works/pi-durable/tools";
 import { Type } from "typebox";
-import type { ToolDefinition } from "../../vendor/pi-coding-agent/core/extensions/types.ts";
-import { buildSystemPrompt } from "../../vendor/pi-coding-agent/core/system-prompt.ts";
-import { createBashToolDefinition } from "../../vendor/pi-coding-agent/core/tools/bash.ts";
-import { createEditToolDefinition } from "../../vendor/pi-coding-agent/core/tools/edit.ts";
-import { createReadToolDefinition } from "../../vendor/pi-coding-agent/core/tools/read.ts";
-import { wrapToolDefinitions } from "../../vendor/pi-coding-agent/core/tools/tool-definition-wrapper.ts";
-import { createWriteToolDefinition } from "../../vendor/pi-coding-agent/core/tools/write.ts";
-import { openrouter, retried } from "#src/agent/backends/models.ts";
+import { openrouter } from "#src/agent/backends/models.ts";
 import { trajectoryOf } from "#src/kernel/atif.ts";
 import { read } from "#src/kernel/log.ts";
 import { unanswered } from "#src/kernel/solve.ts";
@@ -54,12 +53,13 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 import { selectedCodingTools } from "#src/tools/coding.ts";
+import { ending, text, tool } from "#src/tools/answer.ts";
 import type { SolveClock } from "#src/tools/command.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { installedPrograms } from "#src/harness/programs.ts";
 import { NUDGE } from "#src/solver/prompt.ts";
 import { timed } from "#src/solver/run.ts";
-import { sit } from "#src/agent/session.ts";
+import { type SeatTool, sit } from "#src/agent/session.ts";
 import { shellQuote, toolTreeSearchDirs } from "#src/wall/isolation.ts";
 
 /** The file names the Harbor agent reads back from the trial's log folder (`harbor/pi_agent.py`). */
@@ -141,19 +141,16 @@ function duty(ask: Asked, guide: string | null): string {
   ].join(" ");
 }
 
-function submitTool(said: { submitted: boolean }): ToolDefinition {
-  return {
+function submitTool(said: { submitted: boolean }): SeatTool {
+  return tool({
     name: "submit",
-    label: "Submit",
     description: "End the task: the working directory and the files the task names are graded as they stand.",
-    promptSnippet: "End the task once the work is complete",
     parameters: Type.Object({}),
-    executionMode: "sequential",
     execute: async () => {
       said.submitted = true;
-      return { content: [{ type: "text", text: "Submitted." }], details: null, terminate: true };
+      return ending(text("Submitted."));
     },
-  };
+  });
 }
 
 async function solve(ask: Asked) {
@@ -167,59 +164,62 @@ async function solve(ask: Asked) {
   const path = harness.toolTree === null ? [] : toolTreeSearchDirs(harness.toolTree);
   const prefix = path.length === 0 ? undefined : `export PATH=${shellQuote(path.join(":"))}:"$PATH"`;
   const coding = {
-    read: createReadToolDefinition(cwd),
-    bash: createBashToolDefinition(cwd, prefix === undefined ? {} : { commandPrefix: prefix }),
-    edit: createEditToolDefinition(cwd),
-    write: createWriteToolDefinition(cwd),
-  } satisfies Record<string, ToolDefinition>;
+    read: createReadTool(),
+    bash: createBashTool(prefix === undefined ? {} : { commandPrefix: prefix }),
+    edit: createEditTool(),
+    write: createWriteTool(),
+  } satisfies Record<string, SeatTool>;
   const said = { submitted: false };
   const defined = [
     ...selectedCodingTools(harness.presets).flatMap((name) => coding[name] ?? []),
     submitTool(said),
   ];
   const programs = installedPrograms(harness.toolTree);
-  const prompt = buildSystemPrompt({
-    cwd,
-    selectedTools: defined.map(({ name }) => name),
-    toolSnippets: Object.fromEntries(defined.map(({ name, promptSnippet }) => [name, promptSnippet ?? ""])),
-    toolGuidelines: Object.fromEntries(
-      defined.map(({ name, promptGuidelines }) => [name, [...(promptGuidelines ?? [])]]),
-    ),
-    appendSystemPrompt: duty(ask, harness.guide),
-    contextFiles: harness.guide === null ? [] : [{ path: GUIDE_FILE, content: harness.guide }],
-    sections:
-      programs.length === 0
-        ? {}
-        : { environment: `- Programs this harness installed run by name: ${programs.join(", ")}.` },
-  });
-  const provider = retried(openrouter());
+  const prompt = [
+    duty(ask, harness.guide),
+    `Working directory: ${cwd}`,
+    ...(programs.length === 0
+      ? []
+      : [`Programs this harness installed run by name: ${programs.join(", ")}.`]),
+    ...(harness.guide === null
+      ? []
+      : [`Project-specific instructions and guidelines (${GUIDE_FILE}):\n${harness.guide}`]),
+  ].join("\n\n");
+  const provider = openrouter();
   const listed = provider.getModels().find(({ id }) => id === ask.model);
   if (listed === undefined) throw new Error(`OpenRouter as the backends serve it has no ${ask.model}`);
   if (ask.dryRun) {
     return { ending: "dry-run", harness: harness.digest, prompt, found: resolved(prefix, programs) };
   }
   const model = { ...listed, baseUrl: ask.baseUrl };
-  // The loop and its compaction ask for the one model they were given, so the stream sends that.
-  const streamSimple: StreamFn = (_asking, context, options) =>
-    provider.streamSimple(model, context, { ...options, apiKey: ask.key });
+  const models = createModels({
+    authContext: {
+      env: async (name) => (name === "OPENROUTER_API_KEY" ? ask.key : undefined),
+      fileExists: async () => false,
+    },
+  });
+  // sit resolves the model by provider and id, including for compaction; keep the proxy URL there.
+  models.setProvider({ ...provider, getModels: () => [model], getAllModels: () => [model] });
   const turns: AssistantMessage[] = [];
   const started = performance.now();
   const clock: SolveClock = { started, seconds: ask.wallSeconds };
-  const tools = wrapToolDefinitions(
-    defined.map((tool) => timed(tool, { clock, turns: () => turns.length, modelTurns: ask.modelTurns })),
+  const tools = defined.map((entry) =>
+    timed(entry, { clock, turns: () => turns.length, modelTurns: ask.modelTurns }),
   );
   const log = join(ask.logs, TRACE_FILE);
   const wall = new AbortController();
   const timer = setTimeout(() => wall.abort(), ask.wallSeconds * 1000);
   let prompts = 1;
   const { thrown: crash, spent } = await sit({
-    models: () => ({ streamSimple }),
+    models: () => models,
     id: "pi-solve",
     model,
     effort: ask.effort,
     system: prompt,
     opening: ask.instruction,
     tools,
+    // The benchmark's container is this seat's wall; this adapter runs only inside that container.
+    env: new NodeExecutionEnv({ cwd }),
     trace: { log, of: "solve" },
     turns,
     most: ask.modelTurns,

@@ -9,8 +9,8 @@
  * review found that whole-answer swaps could manufacture defect evidence: object and array roots
  * stay fixed, and a coupled probe has at most three paths that one refusing check reads together.
  */
-import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
+import type { SeatTool } from "../agent/session.ts";
 import type { Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { jsonPathTokens, resolveJsonPath } from "../meta/json-evidence.ts";
 import { capturedJsonParse, capturedStructuredClone } from "../meta/json-runtime.ts";
@@ -205,11 +205,10 @@ export function probeTool(
   answer: JsonValue,
   rows: ProbeRow[],
   readTogether: readonly (readonly string[])[] = [],
-): AgentTool {
+): SeatTool {
   let original: Promise<Verdict> | null = null;
   return tool({
     name: "probe_check",
-    label: "Probe the checks",
     description: `Run the task's checks over the answer under review and a copy with at most three changes applied together. Choose changes the public rules decide, and read which checks moved. Each change replaces an existing field or its parent with \`value\`, or rewrites one text passage with \`find\` and \`replace\`. Coupled changes must all reach fields one refusing check reads together. Only a scalar root can be replaced. No check moving does not prove the fields are unread. Every path must exist, each change must change it, and the complete answer must change. A review runs at most ${String(PROBE_BUDGET)} probes; each result says how many are left. Cite the probe numbers when recording the ruling.`,
     parameters: Type.Object({
       changes: Type.Array(
@@ -238,7 +237,7 @@ export function probeTool(
       ),
     }),
     executionMode: "sequential",
-    execute: async (_id, args, signal) => {
+    execute: async (args, _api, context) => {
       if (rows.length >= PROBE_BUDGET) {
         throw new Error(`a review runs at most ${String(PROBE_BUDGET)} probes`);
       }
@@ -254,8 +253,8 @@ export function probeTool(
       ) {
         throw new Error("coupled changes name paths one refusing check reads together, or their parents");
       }
-      original ??= verify(task, answer, signal);
-      const [before, after] = [await original, await verify(task, changed, signal)];
+      original ??= verify(task, answer, context.abortSignal);
+      const [before, after] = [await original, await verify(task, changed, context.abortSignal)];
       const row = {
         id: rows.length + 1,
         changes,

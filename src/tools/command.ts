@@ -1,7 +1,7 @@
 /**
  * The one place a solve launches a command: the solver's bash calls and the harness's own tool calls
  * both come through `runWalled`, under the command wall v1's Built shell ran under
- * (`stageCommandIsolation`), on pi's local shell backend, which kills the command's process group on
+ * (`stageCommandIsolation`), on durable's local shell backend, which kills the command's process group on
  * a timeout or an abort. Whatever else the command left in its group, below it or working in the
  * seat's root is ended here.
  *
@@ -9,9 +9,8 @@
  * scratch parent, which the command wall closes to every seat but its own:
  * - `root`, claimed for the seat (`claimRoot`), which its commands write whole: `home`, kept between
  *   commands and never read back, and `tmp`, their `TMPDIR` for the seat's whole life. The one part
- *   they may not write is `kept`, where the host writes what must not follow a link a command made:
- *   pi's long output, written while the command runs, and what a command brings, staged before it
- *   starts.
+ *   they may not write is `kept`, where the host stages what a command brings before it starts,
+ *   without following a link a command made. Long shell output is written under the wall in home.
  * - `host`, beside it, which no command can read: the staged profile and the
  *   model backend's own state, such as Claude Code's configuration and transcripts.
  *
@@ -20,7 +19,8 @@
  * solves of six campaigns, `docs/transfer.md`). A command that brings files, a harness's tool call
  * or a file tool's write, starts in a folder of its own beside a copy of them (`runWalled`).
  */
-import { createLocalBashOperations } from "../../vendor/pi-coding-agent/core/tools/bash.ts";
+import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
+import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import type { Limits } from "../kernel/condition.ts";
 import {
   existsSync,
@@ -123,7 +123,7 @@ interface WalledOptions {
   readonly stage?: ((into: string) => void) | undefined;
 }
 
-const SHELL = createLocalBashOperations({ shellPath: "/bin/sh" });
+const SHELL = new NodeExecutionEnv({ cwd: "/", shellPath: "/bin/sh", shellEnv: {} });
 
 /** The solve's reserve for command results: a minute, and an eighth of a solve shorter than eight. */
 export function reserveSeconds(wallSeconds: number): number {
@@ -330,12 +330,25 @@ export async function runWalled(
         : `w=$(mktemp -d "$TMPDIR/in.XXXXXX") || exit\ncp -R ${shellQuote(into)}/. "$w" && cd "$w" && {\n${command}\n}\ns=$?\ncd / && rm -rf "$w"\nexit $s`;
     // One seat's commands run one at a time, so they share one profile file and one leader file.
     const staged = stageCommandIsolation(policy, join(dirs.host, "command.sb"), line);
-    return await SHELL.exec(`echo $$ > ${shellQuote(leader)}\n${staged}`, dirs.home, {
-      onData: options.onData,
-      signal: options.signal,
-      timeout: heldSeconds(options.timeout, wall).seconds,
-      env: policy.environment,
-    });
+    const seconds = heldSeconds(options.timeout, wall).seconds;
+    const result = await SHELL.exec(
+      `echo $$ > ${shellQuote(leader)}\n${staged}`,
+      {
+        cwd: dirs.home,
+        onOutput: (text) => options.onData(Buffer.from(text)),
+        timeout: seconds,
+        env: policy.environment,
+        inheritEnv: false,
+      },
+      options.signal === undefined ? BACKGROUND_CONTEXT : withAbortSignal(options.signal, BACKGROUND_CONTEXT),
+    );
+    if (!result.ok) {
+      if (result.error.code === "timeout") {
+        throw new Error(`timeout:${String(seconds)}`, { cause: result.error });
+      }
+      throw result.error;
+    }
+    return { exitCode: result.value.exitCode };
   } finally {
     // The group outlives its leader while a member lives, and a command pi killed on a timeout or an
     // abort is ended the same way. One whose shell never started names no group, and a pid cut

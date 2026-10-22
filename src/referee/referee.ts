@@ -69,7 +69,7 @@ import { isString, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined, keyIfNotNull, keysIf } from "../meta/optional-key.ts";
 import { join } from "../meta/path.ts";
 import { sameJsonValue } from "../meta/stable-json.ts";
-import { text, tool } from "../tools/answer.ts";
+import { ending, text, tool } from "../tools/answer.ts";
 import { conclusive, probeAnswer, type ProbeRow, probeTool, reaches } from "./probe.ts";
 import { type Reader, readOnce } from "./reader.ts";
 
@@ -215,7 +215,6 @@ function packet(fail: RefereeCase, verdict: LoggedVerdict, accepted: JsonValue |
 function readProgramTool(checks: string) {
   return tool({
     name: "read_check_program",
-    label: "Read the check program",
     description:
       "With no path, list the check program's files. With a path from that list, return up to 12000 characters of it starting at `from`.",
     parameters: Type.Object({
@@ -224,8 +223,8 @@ function readProgramTool(checks: string) {
         Type.Number({ minimum: 0, description: "The first character to return; 0 by default." }),
       ),
     }),
-    executionMode: "parallel",
-    execute: async (_id, args) => {
+    executionMode: "sequential",
+    execute: async (args) => {
       const files = checkProgramFiles(checks);
       if (args.path === undefined) return text(files.join("\n"));
       if (!files.includes(args.path)) throw new Error(`${args.path} is not a file of the check program`);
@@ -316,12 +315,11 @@ function rulingTool(
 ) {
   return tool({
     name: "record_ruling",
-    label: "Record the ruling",
     description:
       "Record whether this fail counts. earned: the answer breaks a rule a refusing check enforces; name the rule and the field of the answer that breaks it, and cite the probe that changed that field and moved a check that cites the rule off its refusal. check-defect: a refusing check is wrong; name it and cite the probes that show it. unclear: the rules or the evidence leave it open; say what would settle it.",
     parameters: RULING_PARAMETERS,
     executionMode: "sequential",
-    execute: async (_id, args) => {
+    execute: async (args) => {
       const why = refusal(refusing, answers, rows, args);
       if (why !== null) {
         refused(args, why);
@@ -336,7 +334,7 @@ function rulingTool(
         reason: args.reason.trim(),
         probes: [...new Set(args.probes)].sort((a, b) => a - b),
       });
-      return { ...text("Recorded."), terminate: true };
+      return ending(text("Recorded."));
     },
   });
 }
@@ -372,32 +370,38 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
   );
   const meter =
     host === null
-      ? await readOnce(reader, SYSTEM_PROMPT, packet(fail, verdict, accepted.at(-1)), [
-          readProgramTool(fail.checks),
-          probeTool(
-            async (task, answer, signal) =>
-              replay !== null && answer === verdict.answer ? replay : fail.verify(task, answer, signal),
-            fail.task,
-            verdict.answer,
-            rows,
-            [...refusing.values()].map(({ fields }) => fields),
-          ),
-          rulingTool(refusing, { answer: verdict.answer, accepted }, rows, found, (asked, why) =>
-            append(fail.log, "referee.refused", {
-              solve: fail.solve,
-              task: fail.task.taskId,
-              asked: {
-                ruling: asked.ruling,
-                ...keyIfDefined("check", asked.check),
-                ...keyIfDefined("rule", asked.rule),
-                ...keyIfDefined("field", asked.field),
-                reason: asked.reason,
-                probes: asked.probes,
-              },
-              why,
-            }),
-          ),
-        ])
+      ? await readOnce(
+          reader,
+          SYSTEM_PROMPT,
+          packet(fail, verdict, accepted.at(-1)),
+          [
+            readProgramTool(fail.checks),
+            probeTool(
+              async (task, answer, signal) =>
+                replay !== null && answer === verdict.answer ? replay : fail.verify(task, answer, signal),
+              fail.task,
+              verdict.answer,
+              rows,
+              [...refusing.values()].map(({ fields }) => fields),
+            ),
+            rulingTool(refusing, { answer: verdict.answer, accepted }, rows, found, (asked, why) =>
+              append(fail.log, "referee.refused", {
+                solve: fail.solve,
+                task: fail.task.taskId,
+                asked: {
+                  ruling: asked.ruling,
+                  ...keyIfDefined("check", asked.check),
+                  ...keyIfDefined("rule", asked.rule),
+                  ...keyIfDefined("field", asked.field),
+                  reason: asked.reason,
+                  probes: asked.probes,
+                },
+                why,
+              }),
+            ),
+          ],
+          { log: fail.log, over: () => found.length > 0 },
+        )
       : null;
   const finding = host ??
     found.at(-1) ?? {

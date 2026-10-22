@@ -33,7 +33,6 @@
 import { proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import {
-  BILLED,
   type History,
   lastReports,
   type Outcome,
@@ -42,6 +41,7 @@ import {
   referenceOf,
   type Standing,
 } from "../kernel/reports.ts";
+import { BILLED } from "../kernel/trace.ts";
 import { conditionsOf } from "../kernel/condition.ts";
 import { examinerSessions, solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { heldAtGate, taskStates } from "../kernel/task.ts";

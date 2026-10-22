@@ -20,13 +20,14 @@
  * answer is no tool's: a state need declare no artifact-writer, and one that does has it listed
  * and not served (`harnessTools`, `src/tools/answer.ts`).
  */
-import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { TSchema } from "@earendil-works/pi-ai";
+import type { JsonValue } from "@earendil-works/chord";
+import type { SeatTool } from "../agent/session.ts";
 import { AGENT_DIR, GENERATED_TOOLS_FILE, GUIDE_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 import { sha256OfFile } from "../meta/digest.ts";
 import { existsSync, lstatSync, readlinkSync, realpathSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
-import { type JsonValue, asRecord, isRecord, isString } from "../meta/json-shape.ts";
+import { asRecord, isRecord, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
@@ -34,6 +35,7 @@ import { capturedExecPath } from "../meta/process.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { shellQuote } from "../wall/isolation.ts";
 import { CODING_TOOLS } from "../tools/coding.ts";
+import { text, tool } from "../tools/answer.ts";
 import { type CommandWall, runWalled } from "../tools/command.ts";
 import { DRAFT_TOOL } from "./shim.ts";
 import { type PublicTask, publicView } from "../solver/prompt.ts";
@@ -126,7 +128,7 @@ const BUNDLED_PATH = /^\/\/ .+\.(?:[cm]?[jt]sx?|json)$/gm;
 function located(module: string, dir: string): string {
   const places = [...new Set([realpathSync(dir), resolve(dir)])].sort((a, b) => b.length - a.length);
   return places
-    .reduce((text, place) => text.replaceAll(place, "<harness>"), module)
+    .reduce((source, place) => source.replaceAll(place, "<harness>"), module)
     .replace(BUNDLED_PATH, "");
 }
 
@@ -301,7 +303,7 @@ export async function harnessTools(
   harness: Harness,
   task: PublicTask,
   wall: CommandWall,
-): Promise<AgentTool[]> {
+): Promise<SeatTool[]> {
   const view = publicView(task);
   const call = <T>(name: string | null, params: unknown, signal?: AbortSignal) =>
     callHarness<T>({ harness, wall, input: { task: view, name, params }, signal });
@@ -316,21 +318,21 @@ export async function harnessTools(
   return rows
     .filter(({ name }) => harness.kinds.get(name) !== "artifact-writer")
     .map(
-      (row): AgentTool => ({
-        name: row.name,
-        label: row.label,
-        description: row.description,
-        parameters: row.parameters,
-        ...keyIfDefined("executionMode", row.executionMode),
-        execute: async (_toolCallId, params, signal) => {
-          const { result } = await call<{ result: Evidence }>(row.name, params, signal);
-          return {
-            content: [{ type: "text", text: result.text }],
-            details: result.details ?? null,
-            ...keyIfDefined("terminate", result.terminate),
-          } satisfies AgentToolResult<JsonValue>;
-        },
-      }),
+      (row): SeatTool =>
+        tool({
+          name: row.name,
+          description: row.description,
+          parameters: row.parameters,
+          executionMode: "sequential",
+          execute: async (params, _api, context) => {
+            const { result } = await call<{ result: Evidence }>(row.name, params, context.abortSignal);
+            return {
+              ...text(result.text),
+              details: result.details ?? null,
+              ...keyIfDefined("control", result.terminate === true ? { terminate: true } : undefined),
+            };
+          },
+        }),
     );
 }
 
@@ -357,13 +359,13 @@ async function callHarness<T>(run: {
       writeFileSync(join(into, "input.json"), capturedJsonStringify(run.input));
     },
   });
-  const text = Buffer.concat(chunks).toString("utf8");
-  const at = text.lastIndexOf(`\n${MARKER}`);
-  const line = at < 0 ? null : (text.slice(at + MARKER.length + 1).split("\n")[0] ?? "");
+  const output = Buffer.concat(chunks).toString("utf8");
+  const at = output.lastIndexOf(`\n${MARKER}`);
+  const line = at < 0 ? null : (output.slice(at + MARKER.length + 1).split("\n")[0] ?? "");
   const reply = line === null ? null : parseJsonAs<T & { error?: JsonValue }>(line);
   if (reply !== null && isString(reply.error)) throw new Error(reply.error);
   if (reply === null || exitCode !== 0) {
-    throw new Error(`harness call exited ${String(exitCode)} without a result: ${text.slice(-2000)}`);
+    throw new Error(`harness call exited ${String(exitCode)} without a result: ${output.slice(-2000)}`);
   }
   return reply;
 }

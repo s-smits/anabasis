@@ -20,8 +20,7 @@
 import { short } from "#src/campaign/move.ts";
 import { flipP } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { billedBetween } from "#src/kernel/reports.ts";
-import type { Call, Seat } from "#src/kernel/trace.ts";
+import { billedBetween, type Call, type Seat } from "#src/kernel/trace.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy, median } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";

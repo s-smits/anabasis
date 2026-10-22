@@ -1,5 +1,4 @@
 import { afterAll, describe, expect, it } from "bun:test";
-import type { AgentTool } from "@earendil-works/pi-agent-core";
 import {
   createModels,
   fauxAssistantMessage,
@@ -14,7 +13,7 @@ import { existsSync, mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { type Seat, sit } from "../src/agent/session.ts";
-import { text, tool } from "../src/tools/answer.ts";
+import { ending, text, tool } from "../src/tools/answer.ts";
 
 const scratch = mkdtempSync(join(tmpdir(), "ana-seat-"));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
@@ -24,8 +23,9 @@ const look = fauxAssistantMessage([fauxToolCall("look", {})], TOOL_USE);
 
 /** A seat on the faux provider that answers `responses` in order, with one tool, `look`, whose
  *  every call is pushed to `looked` with the signal it ran under; `sent` holds each context. */
-function seated(responses: readonly FauxResponseStep[], over: Partial<Seat> = {}) {
+function seated(responses: readonly FauxResponseStep[], over: Partial<Seat> = {}, provider = "faux") {
   const faux = fauxProvider({
+    provider,
     models: [
       {
         id: "faux-seat",
@@ -50,19 +50,21 @@ function seated(responses: readonly FauxResponseStep[], over: Partial<Seat> = {}
   models.setProvider(faux.provider);
   const looked: AbortSignal[] = [];
   const homes: string[] = [];
-  const looking: AgentTool = tool({
+  const shutdowns: AbortSignal[] = [];
+  const looking = tool({
     name: "look",
-    label: "Look",
     description: "Look.",
     parameters: Type.Object({}),
     executionMode: "sequential",
-    execute: async (_id, _args, signal = new AbortController().signal) => {
+    execute: async (_args, _api, context) => {
+      const signal = context.abortSignal ?? new AbortController().signal;
       looked.push(signal);
       return text("seen");
     },
   });
   const seat: Seat = {
-    models: (home) => {
+    models: (home, shutdown) => {
+      shutdowns.push(shutdown);
       homes.push(home);
       return models;
     },
@@ -76,13 +78,13 @@ function seated(responses: readonly FauxResponseStep[], over: Partial<Seat> = {}
     stops: [],
     ...over,
   };
-  return { seat, sent, looked, homes };
+  return { seat, sent, looked, homes, shutdowns, faux };
 }
 
 describe("a seat's session", () => {
   it("ends when its work is over, at its turn cap, or when a stop fires, and a cut one has no crash", async () => {
-    let calls = 0;
-    const done = seated([look, look, look], { over: () => ++calls >= 2 });
+    const done = seated([look, look, look]);
+    Object.assign(done.seat, { over: () => done.seat.turns.length >= 2 });
     const ended = await sit(done.seat);
     expect([done.seat.turns.length, ended.cut, ended.crash]).toEqual([2, false, null]);
     expect(ended.spent.turns).toBe(2);
@@ -131,12 +133,12 @@ describe("a seat's session", () => {
     let open: boolean[] = [];
     const s = seated([look, fauxAssistantMessage("Done.")], {
       settle: async () => {
-        open = s.looked.map((signal) => !signal.aborted);
+        open = s.shutdowns.map((signal) => !signal.aborted);
       },
     });
     await sit(s.seat);
     expect(open).toEqual([true]);
-    expect(s.looked.every((signal) => signal.aborted)).toBe(true);
+    expect(s.shutdowns.every((signal) => signal.aborted)).toBe(true);
     expect(s.homes.map(existsSync)).toEqual([false]);
 
     const own = join(scratch, "own-home");
@@ -144,16 +146,274 @@ describe("a seat's session", () => {
     await sit(kept.seat);
     expect(kept.homes).toEqual([own]);
   });
+});
 
-  it("traces its turns and calls under its kind, metering a turn before its tools run where it meters early", async () => {
-    for (const early of [false, true]) {
-      const log = join(scratch, `trace-${String(early)}.jsonl`);
-      const s = seated([look, fauxAssistantMessage("Done.")], { trace: { log, of: "build" }, early });
-      await sit(s.seat);
-      const kinds = read(log).map(({ kind }) => kind);
-      expect(kinds).toEqual(
-        early ? ["build.turn", "build.call", "build.turn"] : ["build.call", "build.turn", "build.turn"],
-      );
+describe("durable session boundaries", () => {
+  it("traces and meters each turn before its tools read the log", async () => {
+    const log = join(scratch, "before-tools.jsonl");
+    let observed = false;
+    const reader = tool({
+      name: "look",
+      description: "Look.",
+      parameters: Type.Object({}),
+      execute: async () => {
+        const events = read(log);
+        expect(events.at(-1)?.kind).toBe("build.turn");
+        expect(events.at(-1)?.data.usage).toBeDefined();
+        observed = true;
+        return text("seen");
+      },
+    });
+    const s = seated([look, fauxAssistantMessage("Done.")], { trace: { log, of: "build" }, tools: [reader] });
+    await sit(s.seat);
+    expect(observed).toBe(true);
+    expect(read(log).map(({ kind }) => kind)).toEqual(["build.turn", "build.call", "build.turn"]);
+  });
+
+  it("ends after a round with submit and another call, without another request", async () => {
+    let submitted = false;
+    const submit = tool({
+      name: "submit",
+      description: "Submit.",
+      parameters: Type.Object({}),
+      execute: async () => {
+        submitted = true;
+        return ending(text("submitted"));
+      },
+    });
+    const s = seated([
+      fauxAssistantMessage([fauxToolCall("submit", {}), fauxToolCall("look", {})], TOOL_USE),
+      look,
+    ]);
+    Object.assign(s.seat, { tools: [submit, ...s.seat.tools], over: () => submitted });
+    expect(await sit(s.seat)).toMatchObject({ crash: null });
+    expect(s.looked).toHaveLength(1);
+    expect(s.faux.state.callCount).toBe(1);
+  });
+
+  it("makes no request beyond most, including a zero cap", async () => {
+    for (const most of [0, 1, 3]) {
+      const s = seated([look, look, look, look], { most });
+      expect(await sit(s.seat)).toMatchObject({ crash: null });
+      expect(s.faux.state.callCount).toBe(most);
+    }
+  });
+
+  it("ends with thrown when before throws, before a provider or tool runs", async () => {
+    const s = seated([look], {
+      before: () => {
+        throw new Error("seat cap");
+      },
+    });
+    expect(await sit(s.seat)).toMatchObject({ thrown: "seat cap", crash: "seat cap" });
+    expect(s.faux.state.callCount).toBe(0);
+    expect(s.looked).toEqual([]);
+  });
+
+  it("keeps the seat id as the provider session id and the whole untagged system prompt", async () => {
+    let sessionId: string | undefined;
+    const s = seated([
+      (_context, options) => {
+        sessionId = options?.sessionId;
+        expect(_context.messages.find((message) => message.role === "system")?.content).toBe("A seat.");
+        return fauxAssistantMessage("Done.");
+      },
+    ]);
+    await sit(s.seat);
+    expect(sessionId).toBe(s.seat.id);
+  });
+  it("bills a retried attempt on the following turn without counting it as a turn", async () => {
+    const log = join(scratch, "retry.jsonl");
+    const failed = fauxAssistantMessage("charged partial", {
+      stopReason: "error",
+      errorMessage: "WebSocket closed 1000",
+    });
+    const s = seated(
+      [failed, fauxAssistantMessage("Done.")],
+      { trace: { log, of: "solve" } },
+      "openai-codex",
+    );
+    const sat = await sit(s.seat);
+    expect(sat.crash).toBeNull();
+    expect(s.faux.state.callCount).toBe(2);
+    expect(sat.spent.turns).toBe(1);
+    const events = read(log).filter((event) => event.kind === "solve.turn");
+    expect(events).toHaveLength(1);
+    expect(events[0]?.data.retried).toEqual(["WebSocket closed 1000"]);
+    expect(sat.spent.tokens.input).toBeGreaterThan(s.seat.turns[0]?.usage.input ?? 0);
+    expect(sat.spent.billed).toBeCloseTo(s.seat.turns[0]?.usage.cost.total ?? 0, 10);
+  });
+
+  it("retries a failed attempt on the last turn most allows", async () => {
+    const s = seated(
+      [fauxAssistantMessage("", { stopReason: "error", errorMessage: "WebSocket closed 1000" }), look],
+      { most: 1 },
+      "openai-codex",
+    );
+    expect(await sit(s.seat)).toMatchObject({ crash: null });
+    expect(s.faux.state.callCount).toBe(2);
+    expect(s.seat.turns).toHaveLength(1);
+  });
+});
+
+describe("refused durable tool calls", () => {
+  it("traces unavailable tools and invalid arguments even though durable bypasses their hooks", async () => {
+    const log = join(scratch, "refused-calls.jsonl");
+    const phases: string[] = [];
+    const required = tool({
+      name: "look",
+      description: "Look.",
+      parameters: Type.Object({ key: Type.String() }),
+      execute: async () => {
+        throw new Error("invalid arguments reached the tool");
+      },
+    });
+    const s = seated(
+      [fauxAssistantMessage([fauxToolCall("absent", {}), fauxToolCall("look", {})], TOOL_USE)],
+      {
+        tools: [required],
+        most: 1,
+        trace: { log, of: "solve" },
+        onTool: (phase, _id, name) => {
+          phases.push(`${phase} ${name}`);
+        },
+      },
+    );
+    expect(await sit(s.seat)).toMatchObject({ crash: null });
+    const calls = read(log).filter(({ kind }) => kind === "solve.call");
+    expect(calls.map(({ data }) => [data.tool, data.isError])).toEqual([
+      ["absent", true],
+      ["look", true],
+    ]);
+    expect(phases).toEqual(["start absent", "end absent", "start look", "end look"]);
+    expect(s.faux.state.callCount).toBe(1);
+  });
+});
+
+describe("durable's loop under a seat", () => {
+  it("ends on a failure durable does not retry, as the provider's crash", async () => {
+    const refused = fauxAssistantMessage("", {
+      stopReason: "error",
+      errorMessage: "invalid request: bad schema",
+    });
+    const s = seated([refused, look], {}, "openai-codex");
+    expect(await sit(s.seat)).toMatchObject({
+      crash: "invalid request: bad schema",
+      thrown: null,
+      cut: false,
+    });
+    expect(s.faux.state.callCount).toBe(1);
+    expect(s.looked).toEqual([]);
+  });
+
+  it("runs a round's calls one at a time, in the order the model wrote them", async () => {
+    const order: string[] = [];
+    const slow = tool({
+      name: "slow",
+      description: "Slow.",
+      parameters: Type.Object({ n: Type.Number() }),
+      execute: async ({ n }) => {
+        order.push(`start ${String(n)}`);
+        await Bun.sleep(30 - n * 10);
+        order.push(`end ${String(n)}`);
+        return text(String(n));
+      },
+    });
+    const s = seated(
+      [
+        fauxAssistantMessage(
+          [0, 1, 2].map((n) => fauxToolCall("slow", { n })),
+          TOOL_USE,
+        ),
+        fauxAssistantMessage("Done."),
+      ],
+      { tools: [slow] },
+    );
+    await sit(s.seat);
+    expect(order).toEqual(["start 0", "end 0", "start 1", "end 1", "start 2", "end 2"]);
+  });
+
+  it("gives the model a tool's throw as an error result and goes on", async () => {
+    const log = join(scratch, "tool-threw.jsonl");
+    const broken = tool({
+      name: "look",
+      description: "Look.",
+      parameters: Type.Object({}),
+      execute: async () => {
+        throw new Error("disk on fire");
+      },
+    });
+    const s = seated([look, fauxAssistantMessage("Done.")], { tools: [broken], trace: { log, of: "build" } });
+    expect(await sit(s.seat)).toMatchObject({ crash: null, thrown: null });
+    expect(s.faux.state.callCount).toBe(2);
+    expect(s.sent[1]).toContain("disk on fire");
+    const call = read(log).find(({ kind }) => kind === "build.call");
+    expect(call?.data).toMatchObject({ tool: "look", isError: true });
+    expect(call?.data.text).toContain("disk on fire");
+  });
+});
+
+describe("a seat's stops and its neighbours under durable", () => {
+  it("aborts a running tool when a stop fires, makes no further request, and reads as cut", async () => {
+    const stop = new AbortController();
+    let aborted = false;
+    const hang = tool({
+      name: "look",
+      description: "Look.",
+      parameters: Type.Object({}),
+      execute: async (_args, _api, context) => {
+        setTimeout(() => stop.abort(), 20);
+        await new Promise<void>((resolve) => context.abortSignal?.addEventListener("abort", () => resolve()));
+        aborted = true;
+        return text("stopped");
+      },
+    });
+    const s = seated([look, look], { tools: [hang], stops: [stop.signal] });
+    expect(await sit(s.seat)).toMatchObject({ cut: true, crash: null });
+    expect(aborted).toBe(true);
+    expect(s.faux.state.callCount).toBe(1);
+    expect(s.shutdowns[0]?.aborted).toBe(true);
+  });
+
+  it("makes no request once a tool has spent the seat's work, whatever the round's other calls", async () => {
+    let spent = false;
+    const spend = tool({
+      name: "spend",
+      description: "Spend.",
+      parameters: Type.Object({}),
+      execute: async () => {
+        spent = true;
+        return text("spent");
+      },
+    });
+    const s = seated([
+      fauxAssistantMessage([fauxToolCall("spend", {}), fauxToolCall("look", {})], TOOL_USE),
+      look,
+    ]);
+    Object.assign(s.seat, { tools: [spend, ...s.seat.tools], over: () => spent });
+    expect(await sit(s.seat)).toMatchObject({ crash: null, cut: false });
+    expect(s.faux.state.callCount).toBe(1);
+  });
+
+  it("keeps two seats sitting at once apart: their own session ids, tools and turns", async () => {
+    const ids: string[][] = [[], []];
+    const pair = [0, 1].map((n) =>
+      seated([
+        (_context, options) => {
+          ids[n]?.push(options?.sessionId ?? "");
+          return look;
+        },
+        (_context, options) => {
+          ids[n]?.push(options?.sessionId ?? "");
+          return fauxAssistantMessage("Done.");
+        },
+      ]),
+    );
+    await Promise.all(pair.map(({ seat }) => sit(seat)));
+    for (const [n, { seat, looked }] of pair.entries()) {
+      expect(ids[n]).toEqual([seat.id, seat.id]);
+      expect(seat.turns).toHaveLength(2);
+      expect(looked).toHaveLength(1);
     }
   });
 });

@@ -215,6 +215,12 @@ describe("a campaign run by its live Builder", () => {
       ["examine", "x-2"],
     ]);
     expect(of(name, "exam.started")).toMatchObject([{ limits: { tasks: 4 } }, { limits: { tasks: 4 } }]);
+    const logged = read(join(REPO, ".ana", "d2", name, LOG_FILE));
+    const turn = logged.findIndex(({ kind }) => kind === "build.turn");
+    const examiner = logged.findIndex(({ kind }) => kind === "exam.started");
+    expect(turn).toBeGreaterThan(-1);
+    expect(turn).toBeLessThan(examiner);
+    expect(logged[turn]?.data.usage).toBeDefined();
     expect(of(name, FINISHED)).toMatchObject([
       { session: "b-1", ended: "finished" },
       { session: "b-2", ended: "finished" },

@@ -370,7 +370,6 @@ export function drafting(terms: {
     started: { prompt: terms.prompt },
     put: {
       name: "draft_exam",
-      label: "Draft the exam",
       description:
         "Put a whole draft of the exam to the host's reading, which uses no model. It returns the faults it found, or that the draft stands. A draft that stands is the campaign's exam.",
       parameters: DRAFT_PARAMETERS,

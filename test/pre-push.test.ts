@@ -282,12 +282,7 @@ describe("pre-push", () => {
   it("runs a tree again once a file the gate imports changed, and not for a neighbour it never imports", () => {
     // A copy of the checker as a caller's checkout holds it: the hook, the gate and what it imports.
     const checker = join(fixture, "checker");
-    const parts = [
-      ".githooks/pre-push",
-      "tools/runtime",
-      "src/meta",
-      "vendor/pi-coding-agent/core/tools/truncate.ts",
-    ];
+    const parts = [".githooks/pre-push", "tools/runtime", "src/meta"];
     for (const part of parts) {
       cpSync(join(import.meta.dir, "..", part), join(checker, part), { recursive: true });
     }

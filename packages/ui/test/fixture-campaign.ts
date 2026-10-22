@@ -144,7 +144,7 @@ const CONDITION = {
   model: MODEL,
   effort: "high",
   prices: { [MODEL]: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
-  runtime: { "pi-coding-agent": "0.0.0-fixture" },
+  runtime: { "@earendil-works/pi-durable": "0.0.0-fixture" },
   compaction: "off",
   solverTools: sha256("fixture solver tools"),
   verifierTools: sha256("fixture verifier tools"),

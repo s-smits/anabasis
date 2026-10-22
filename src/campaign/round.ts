@@ -102,7 +102,8 @@
  */
 import { draw, type ObjectiveRule } from "../kernel/compare.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
-import { billedFor, type Cap, capHolds, poolOf } from "../kernel/reports.ts";
+import { type Cap, capHolds, poolOf } from "../kernel/reports.ts";
+import { billedFor } from "../kernel/trace.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { ranUnder, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";

@@ -30,8 +30,7 @@
  * `try_task` where the reference harness solves a draft task), and its answers are ruled on by
  * `try_answer` alone.
  */
-import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { wrapToolDefinitions } from "../../vendor/pi-coding-agent/core/tools/tool-definition-wrapper.ts";
+import type { SeatTool } from "../agent/session.ts";
 import { type Engine, pinnedEngines, type VerifierTree } from "../kernel/verify.ts";
 import { read } from "../kernel/log.ts";
 import { chmodSync, cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
@@ -87,13 +86,12 @@ export const examinerDirs = (log: string, id: string): SolveDirs =>
  * found it (`networkReach`), the engines it runs by name where it has them (`inExaminerWall`), and
  * `enters`, how something of the session does enter the exam.
  */
-export async function examinerShell(shell: CommandWall | undefined, enters: string): Promise<AgentTool[]> {
+export async function examinerShell(shell: CommandWall | undefined, enters: string): Promise<SeatTool[]> {
   if (shell === undefined) return [];
   const network = await networkReach(shell);
   const engines = installedPrograms(shell.toolTree);
   const walls = ` The command runs in your home directory, which is yours for the session. It can write there and $TMPDIR, which is kept for the whole session; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. It can read the host's own toolchains and public runtime roots, but no repository or private data. ${network === "reached" ? "It has network access: a package index was reached from inside the wall when this process started." : "It has no network access: a package index could not be reached from inside the wall when this process started, so nothing can be installed."}${engines.length === 0 ? "" : ` The engines the exam's checks run are installed, and run by name: ${engines.join(", ")}. They compute; try_answer alone runs the checks on an answer.`} A command has a default time limit and may name a longer timeout. Nothing a command starts runs on after it returns. Nothing in your home enters the exam: ${enters}.`;
-  // SAFETY: pi's wrapper types its tools' parameters `any`; each is one of pi's definitions.
-  return (wrapToolDefinitions(codingTools(shell, ["bash", "read", "write"])) as AgentTool[]).map((each) =>
+  return codingTools(shell, ["bash", "read", "write"]).map((each) =>
     each.name === "bash" ? { ...each, description: `${each.description}${walls}` } : each,
   );
 }

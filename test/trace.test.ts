@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { append, read } from "../src/kernel/log.ts";
-import { callList, callText, closingOf, traceOf, tracesIn } from "../src/kernel/trace.ts";
+import { callList, callText, closingOf, traceOf, tracesIn, unfinished } from "../src/kernel/trace.ts";
 import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
@@ -22,16 +22,16 @@ function written(name: string): string {
       ["c-1", "listing", false],
       ["c-2", "", true],
     ] as const) {
-      sink({
-        type: "tool_execution_start",
-        toolCallId: call,
-        toolName: "bash",
-        args: { command: `ls ${id}` },
-      });
-      const content = result === "" ? [] : [{ type: "text" as const, text: result }];
-      sink({ type: "tool_execution_end", toolCallId: call, toolName: "bash", result: { content }, isError });
+      const invocation = {
+        type: "toolCall" as const,
+        id: call,
+        name: "bash",
+        arguments: { command: `ls ${id}` },
+      };
+      sink.beforeTool(invocation);
+      sink.afterTool(invocation, { output: [{ type: "text", text: result }], isError });
     }
-    sink({ type: "turn_end", message: fauxAssistantMessage(`done ${id}`), toolResults: [] });
+    sink.turn(fauxAssistantMessage(`done ${id}`));
   }
   append(log, "build.compacted", {
     session: "b-1",
@@ -76,5 +76,15 @@ describe("a trace", () => {
     expect(callText(calls, 1, 3)).toContain("result: ting");
     expect(callText(calls, 2, 0)).toContain("(no result recorded)");
     expect(() => callText(calls, 3, 0)).toThrow("the solve recorded 2 tool calls");
+  });
+  it("reads and bills Referee traces until their finding ends the same reading", () => {
+    const log = join(home, "referee.jsonl");
+    const sink = traceSink(log, "referee", "r-1", () => 1);
+    sink.turn(fauxAssistantMessage("A ruling."));
+    append(log, "referee.compacted", { reader: "r-1", usages: [{ cost: { total: 0.5 } }] });
+    expect(traceOf(read(log), "referee", "r-1").turns).toHaveLength(1);
+    expect(unfinished(read(log))).toMatchObject([{ of: "referee", id: "r-1", turns: 1, dollars: 0.5 }]);
+    append(log, "referee.finding", { reader: "r-1", session: "b-1", solve: "s-1", ruling: "earned" });
+    expect(unfinished(read(log))).toEqual([]);
   });
 });

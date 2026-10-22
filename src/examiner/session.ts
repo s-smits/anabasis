@@ -15,7 +15,6 @@
  * What the Examiner is never given, in any mode: a harness, a solver's trace or answer. Its
  * shell, where it has one, is a walled home of its own, closed to the repository.
  */
-import type { AgentTool, PrepareRequest } from "@earendil-works/pi-agent-core";
 import {
   type Api,
   type AssistantMessage,
@@ -23,18 +22,20 @@ import {
   type Models,
   type ThinkingLevel,
 } from "@earendil-works/pi-ai";
+import type { ToolRegistration } from "@earendil-works/pi-durable";
 import { type Static, type TSchema, Type } from "typebox";
 import { openingOf } from "../campaign/opening.ts";
 import { endingWith, openingTool } from "../builder/tools.ts";
 import { append, read } from "../kernel/log.ts";
 import { examinerSessions } from "../kernel/solves.ts";
 import { priceKey } from "../kernel/meter.ts";
-import { billedAll } from "../kernel/reports.ts";
+import { billedAll } from "../kernel/trace.ts";
 import type { JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { plural } from "../meta/text.ts";
-import { sit } from "../agent/session.ts";
-import { text, tool } from "../tools/answer.ts";
+import { type SeatTool, sit } from "../agent/session.ts";
+import { ending, text, tool } from "../tools/answer.ts";
+import { walledEnv } from "../tools/env.ts";
 import { drafting } from "./draft.ts";
 import { examinerShell, inExaminerWall, type Wall, type Walls } from "./shell.ts";
 import { writing } from "./write.ts";
@@ -98,7 +99,7 @@ interface Mode {
    *  the log's own words for them, and the mode's facts. */
   readonly started: JsonObject;
   /** Its own tools, before the shell's and `finish`. */
-  readonly tools: readonly AgentTool[];
+  readonly tools: readonly SeatTool[];
   /** How something of the session enters the exam, as its shell is told (`examinerShell`). */
   readonly enters: string;
   /** What a turn with no call is told the session can still do, before `finish`. */
@@ -128,7 +129,7 @@ interface Put<Parameters extends TSchema, Thing> {
   readonly opening: string;
   readonly started: JsonObject;
   /** The tool that puts the thing, and the thing the tool's arguments carry. */
-  readonly put: Pick<AgentTool<Parameters>, "name" | "label" | "description" | "parameters">;
+  readonly put: Pick<ToolRegistration<Parameters>, "name" | "description" | "parameters">;
   readonly thing: (args: Static<Parameters>) => Thing;
   /** What the host says of the thing before anything runs, and then, of one whose shape holds,
    *  what the caller's reading says: one sentence a fault, none where it stands. */
@@ -144,7 +145,7 @@ interface Put<Parameters extends TSchema, Thing> {
   readonly measure?: ((thing: Thing, stop: AbortSignal) => Promise<string | null>) | undefined;
   readonly finish: string;
   /** The tools it reads with beside its shell. */
-  readonly reads: readonly AgentTool[];
+  readonly reads: readonly SeatTool[];
 }
 
 /** What `finish` leaves the loop: the note, and whether a first `finish` was declined. */
@@ -169,7 +170,8 @@ function putting<Parameters extends TSchema, Thing>({ limits }: Sitting, of: Put
   const put = tool({
     ...of.put,
     executionMode: "sequential",
-    execute: async (_id, args, signal = new AbortController().signal) => {
+    execute: async (args, _api, context) => {
+      const signal = context.abortSignal ?? new AbortController().signal;
       if (desk.tries >= limits.puts) throw new Error(none);
       desk.tries += 1;
       const thing = of.thing(args);
@@ -182,7 +184,7 @@ function putting<Parameters extends TSchema, Thing>({ limits }: Sitting, of: Put
       if (faults.length === 0) {
         of.stood(thing);
         desk.stands = true;
-        return { ...text(`${of.stands} The session ends here.`), terminate: true };
+        return ending(text(`${of.stands} The session ends here.`));
       }
       return text(
         [
@@ -217,47 +219,38 @@ function putting<Parameters extends TSchema, Thing>({ limits }: Sitting, of: Put
 }
 
 /**
- * `compact` held to the campaign's whole budget, which is read before each request and again after
- * a compaction, which bills too: where it holds no reserve for one more, `spent` is aborted and the
+ * The campaign's whole budget, read before each request and each compaction, which bills too:
+ * where it holds no reserve for one more, `spent` is aborted and the
  * request is refused. The log's sum counts this session's own turns while it is unfinished
  * (`billedAll`), so a session inside a live Builder's conversation is held as the Builder is. A log
  * with no opening, or an opening with no budget, holds nothing.
  */
-function withinBudget(log: string, spent: AbortController, compact: PrepareRequest): PrepareRequest {
-  const afforded = () => {
-    const events = read(log);
-    const budget = openingOf(events)?.budget;
-    if (budget === null || budget === undefined) return;
-    if (budget.dollars - billedAll(events) >= budget.reserve) return;
-    spent.abort();
-    throw new Error("the campaign budget has no reserve left");
-  };
-  return async (context, cut) => {
-    afforded();
-    const update = await compact(context, cut);
-    afforded();
-    return update ?? undefined;
-  };
+function withinBudget(log: string, spent: AbortController): void {
+  const events = read(log);
+  const budget = openingOf(events)?.budget;
+  if (budget === null || budget === undefined) return;
+  if (budget.dollars - billedAll(events) >= budget.reserve) return;
+  spent.abort();
+  throw new Error("the campaign budget has no reserve left");
 }
 
 /** The session's `finish`: the work still running is waited for and told first, so that the
  *  session's end reads it, and a first `finish` is declined once where the mode declines one and
  *  its work is not done. */
-function finishTool(mode: Mode, said: Said, told: (last: boolean, line: string) => string): AgentTool {
+function finishTool(mode: Mode, said: Said, told: (last: boolean, line: string) => string): SeatTool {
   return tool({
     name: "finish",
-    label: "Finish",
     description: mode.finish,
     parameters: Type.Object({ note: Type.String({ minLength: 1, maxLength: 700 }) }),
     executionMode: "sequential",
-    execute: async (_id, args) => {
+    execute: async (args) => {
       await mode.settle?.(true);
       if (mode.declined !== null && !said.declined && mode.done() === null) {
         said.declined = true;
         return text(told(true, mode.declined));
       }
       said.note = args.note.trim();
-      return { ...text(told(true, "Finished.")), terminate: true };
+      return ending(text(told(true, "Finished.")));
     },
   });
 }
@@ -268,9 +261,18 @@ function finishTool(mode: Mode, said: Said, told: (last: boolean, line: string) 
  * its turns and calls, and its end with what it billed and, for a crash, how many of its commands
  * were running, which decides whether its home is carried on (`inExaminerWall`).
  */
-async function examining(request: Sitting, mode: Mode, walls: Walls | undefined): Promise<Examined> {
+async function examining(
+  request: Sitting,
+  modeOf: (stop: AbortSignal) => Mode,
+  walls: Walls | undefined,
+): Promise<Examined> {
   const { log, limits, model, id } = request;
   const began = walls?.began ?? performance.now();
+  // The root claim and shell probes count towards the wall, as every request and gate solve does.
+  const wall = AbortSignal.timeout(Math.max(0, limits.wallSeconds * 1000 - (performance.now() - began)));
+  const spent = new AbortController();
+  const stops = [wall, spent.signal, request.kill];
+  const mode = modeOf(AbortSignal.any(stops.filter((stop) => stop !== undefined)));
   append(log, `${mode.kind}.started`, {
     session: id,
     model: priceKey(model),
@@ -288,7 +290,7 @@ async function examining(request: Sitting, mode: Mode, walls: Walls | undefined)
   let lastCall: string | undefined;
   const used = (call: string) => {
     const minutes = `${String(Math.floor((performance.now() - began) / 60_000))} of ${plural(Math.round(limits.wallSeconds / 60), "minute")}`;
-    const line = `Turn ${String(turns.length + 1)} of ${String(limits.turns)}; ${minutes} used.`;
+    const line = `Turn ${String(turns.length)} of ${String(limits.turns)}; ${minutes} used.`;
     return call === lastCall ? told(true, line) : told(false, "");
   };
   const shell = await examinerShell(walls?.shell, mode.enters);
@@ -296,10 +298,6 @@ async function examining(request: Sitting, mode: Mode, walls: Walls | undefined)
     ...[...mode.tools, ...shell, openingTool(mode.opening, REREAD)].map((each) => endingWith(each, used)),
     finishTool(mode, said, told),
   ];
-  // The wall runs from the seat's start (`began`), so the claim, the wall's own probe and the
-  // shell's network probe, awaited above, are inside the session's limit.
-  const wall = AbortSignal.timeout(Math.max(0, limits.wallSeconds * 1000 - (performance.now() - began)));
-  const spent = new AbortController();
   let running = 0;
   const sat = await sit({
     models: request.models,
@@ -309,8 +307,9 @@ async function examining(request: Sitting, mode: Mode, walls: Walls | undefined)
     system: mode.system,
     opening: mode.opening,
     tools,
+    ...keyIfDefined("env", walls === undefined ? undefined : walledEnv(walls.shell)),
     trace: { log, of: mode.kind },
-    guard: (compact) => withinBudget(log, spent, compact),
+    before: () => withinBudget(log, spent),
     turns,
     most: limits.turns,
     // The session ends at `finish` and when its work is done, even beside another call in the turn.
@@ -321,20 +320,19 @@ async function examining(request: Sitting, mode: Mode, walls: Walls | undefined)
         ? null
         : told(true, `You have not called finish. ${mode.nudge}, or call finish.`);
     },
-    emit: (event) => {
-      if (event.type === "message_end" && event.message.role === "assistant") {
-        lastCall = event.message.content
-          .flatMap((part) =>
-            part.type === "toolCall" && tools.some(({ name }) => name === part.name) ? [part.id] : [],
-          )
-          .at(-1);
-      }
-      if (event.type === "tool_execution_start") running += 1;
-      if (event.type === "tool_execution_end") running -= 1;
+    onTurn: (message) => {
+      lastCall = message.content
+        .flatMap((part) =>
+          part.type === "toolCall" && tools.some(({ name }) => name === part.name) ? [part.id] : [],
+        )
+        .at(-1);
+    },
+    onTool: (phase) => {
+      running += phase === "start" ? 1 : -1;
     },
     // A crash leaves the gate under its wall, kill and budget, just as finish does (21 October).
     settle: async () => mode.settle?.(true),
-    stops: [wall, spent.signal, request.kill],
+    stops,
   });
   const work = mode.done();
   const by = {
@@ -376,9 +374,10 @@ export async function examine(request: ExamRequest, wall?: Wall): Promise<Examin
   const seated = async (walls?: Walls) =>
     await examining(
       request,
-      request.mode === "draft"
-        ? putting(request, drafting(request))
-        : writing(request, walls?.pinned ?? [], reference),
+      (stop) =>
+        request.mode === "draft"
+          ? putting(request, drafting(request))
+          : writing(request, walls?.pinned ?? [], reference, stop),
       walls,
     );
   if (wall === undefined) return await seated();

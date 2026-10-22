@@ -6,9 +6,6 @@ import { describe, expect, it } from "bun:test";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import {
-  billedAll,
-  billedBetween,
-  billedFor,
   comparedAs,
   lastReports,
   latestBuilt,
@@ -20,6 +17,7 @@ import {
   roomOf,
   stopRule as stopOf,
 } from "../src/kernel/reports.ts";
+import { billedAll, billedBetween, billedFor } from "../src/kernel/trace.ts";
 import { taskSets } from "../src/kernel/task.ts";
 import { asRecord, type JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";

@@ -20,7 +20,7 @@
 import { EXAMINE } from "#src/campaign/admission.ts";
 import { sessionDirs, spent } from "#src/builder/session.ts";
 import { examinerDirs } from "#src/examiner/shell.ts";
-import { unfinished } from "#src/kernel/reports.ts";
+import { unfinished } from "#src/kernel/trace.ts";
 import { existsSync, rmSync } from "#src/meta/filesystem.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { dirname } from "#src/meta/path.ts";

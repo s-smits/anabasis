@@ -522,7 +522,8 @@ under each campaign tool's result, and when a turn ends without a call; an edit 
 ends only at the session's limits. The Builder may ignore an advised build, comparison or
 task-writing move, apart from the Examiner session that follows a promotion, which the host starts
 beside it (section 7, row `no-room`). Running out of budget, the stop rule, an operator stop, a
-faulty exam and a failed environment still end the run in code. Every tool goes through the same
+faulty exam, a failed environment and a patience of readings with no room (`roomless`) still end
+the run in code, inside a live conversation as between conversations. Every tool goes through the same
 admissions and commands as a move the operator launches. The controller's private reasons
 (`campaign.move`, `campaign.ended`) never reach a seat's message.
 
@@ -679,8 +680,8 @@ nothing and reads `not-scored`.
 - `finished` (three Builder conversations in a row made no campaign move, the last ending by
   `finish` or at its limits).
 
-Lack of room is advice to request other tasks while a conversation is alive, and becomes the
-campaign's ending once that conversation has ended at its limits. A Builder's `finish` ends one
+A reading with no room is advice to request other tasks, and a patience of them in a row is the
+campaign's ending, whether or not a conversation is alive (`roomless`). A Builder's `finish` ends one
 conversation and never the campaign. Between conversations the host makes whatever move the table
 names that needs nothing from a Builder, as a campaign move like any other: any comparison, and a
 promotion (`hostOwed`, `tools/d2/harness-builder.ts`). Any Examiner session the table names starts

@@ -161,16 +161,16 @@ function actionTurn(context: CampaignContext) {
   return { turn, decided: decide(turn.events, turn.plan) };
 }
 
-/** The tool that makes the table's move: a release for practice is `release_practice`, and a
- *  lack of room is advice to ask the Examiner while the conversation lives. */
+/** The tool that makes the table's move: a release for practice is `release_practice`. */
 function toolOf(decided: Decided): string {
-  if (decided.move === "end") return decided.ending === "no-room" ? "examine" : "end";
   return decided.move === "prepare" ? RELEASE : decided.move;
 }
 
 /**
  * One campaign tool. Before anything runs: the run's moves, the host's stop, an ending the table
- * names (a lack of room excepted, which is advice here), and the operator's word for other tasks.
+ * names, and the operator's word for other tasks. A lack of room ends the campaign here as between
+ * conversations: until 22 October it was advice while a conversation lived, and the job campaign of
+ * 22 October started a seventh empty Examiner session after its patience of six (x-9, $3.03).
  * A comparison that began goes on under its own cap whatever is left of the total: the budget's
  * ending is the table's, read above.
  * `run` is handed `begin`, which writes the move's event (`campaign.move`): the table's code and
@@ -223,7 +223,7 @@ function actionTool(
       }
       if (context.failed !== null) return text("The campaign has been stopped by the host.");
       const { turn, decided } = actionTurn(context);
-      if (decided.move === "end" && decided.ending !== "no-room") {
+      if (decided.move === "end") {
         return halt(`The campaign is at its ${decided.ending} gate; no action may start.`);
       }
       // A word is the operator's and reaches no seat: the Builder is told what the campaign waits for.
@@ -659,12 +659,7 @@ function namedLine(decided: Decided, size: string): string {
 function halted(context: CampaignContext, bench: Bench) {
   const reading = actionTurn(context);
   const { decided } = reading;
-  if (
-    context.used >= context.maxMoves ||
-    (decided.move === "end" && decided.ending !== "no-room" && decided.ending !== "finished")
-  ) {
-    bench.halt.abort();
-  }
+  if (context.used >= context.maxMoves || decided.move === "end") bench.halt.abort();
   return reading;
 }
 
@@ -676,7 +671,6 @@ function halted(context: CampaignContext, bench: Bench) {
  */
 function campaignStatus(context: CampaignContext, bench: Bench): string {
   const { turn, decided } = halted(context, bench);
-  const noRoom = decided.move === "end" && decided.ending === "no-room";
   // The counts are of what was written and released, which no outcome of a held-out task moves:
   // the scorable, exhausted and waiting counts follow which tasks were answered (rule 3).
   const sets = taskSets(turn.events);
@@ -705,12 +699,7 @@ function campaignStatus(context: CampaignContext, bench: Bench): string {
             : `The ${String(idle)} conversations before this one made no campaign move.`,
         ]),
     ...(writing === undefined
-      ? [
-          `Suggested action: ${toolOf(decided)}.`,
-          noRoom
-            ? "The tasks read so far leave the reference nothing to gain: none it fails in some solve, or none either harness answers. examine asks the Examiner for others."
-            : namedLine(decided, sizeLine(turn)),
-        ]
+      ? [`Suggested action: ${toolOf(decided)}.`, namedLine(decided, sizeLine(turn))]
       : []),
   ].join("\n");
 }

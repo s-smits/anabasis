@@ -376,44 +376,22 @@ export function shellQuote(value: string): string {
  * the outer shell, so nothing of the controller's process survives into the command beyond the file
  * descriptors pi opened to capture its output.
  *
- * `leader` is the pid that leads the command's process group, as the launched shell names it: `$$`
- * where this line is all pi's shell runs, `$PPID` where that shell runs it in a subshell and waits.
+ * Seatbelt has no namespace to end what a command leaves behind, so the host ends the command's
+ * process group and its descendants after it (`endHolders`, `src/verify/seat-root.ts`).
  */
 export function stageCommandIsolation(
   policy: CommandIsolationPolicy,
   profileFile: string,
   command: string,
-  leader: "$$" | "$PPID",
 ): string {
   // Every argument is quoted, so a scratch path with a space cannot split into two.
-  if (policy.profile === null) {
-    return `exec ${isolatedArgv(policy, profileFile, ["/bin/sh", "-c", command]).map(shellQuote).join(" ")}`;
-  }
-  // Seatbelt has no namespace to end what a command leaves behind, and pi kills the process group
-  // only on timeout, so a command that backgrounds work and returns — `nohup python3 r.py & sleep
-  // 100` — leaves that work running at full CPU long past its case. So on exit the shell SIGKILLs
-  // its own group and every live descendant, which is what Linux gets for free from bwrap's pid
-  // namespace: the group as Codex's `kill_process_group` does it, the descendants as Bun's
-  // `--no-orphans` walks them from every group member, which is what catches a child that left the
-  // group with `setsid` even after its parent was orphaned. Both lists are taken before the first
-  // kill, because killing changes what the next `pgrep` can see. Both `exec`s keep the pid, and the
-  // shell spares itself and the leader so the command's exit code still reports. Read by `$$` under
-  // a leader that is not this shell, the group is empty and nothing is reaped: a solver's loop ran
-  // on for over 20 minutes after its command and into its solve's release (2026-10-09). The
-  // command runs in a subshell so that its own `exec` replaces that child rather than the shell
-  // owning the trap — `sleep 30 & exec /bin/true` in the trap's shell leaves the sleep running. A
-  // subshell keeps `$$` and the group, so the group kill still reaches a child the replaced process
-  // orphaned. One that left the group and was reparented to launchd is `runWalled`'s to end.
-
-  const reaped = `trap 'd(){ for c in $(pgrep -P "$1"); do echo "$c"; d "$c"; done; }; g=$(pgrep -g ${leader}); for p in $g $(for q in $g; do d "$q"; done); do [ "$p" != "$$" ] && [ "$p" != "${leader}" ] && kill -9 "$p" 2>/dev/null; done' EXIT\n(\n${command}\n)`;
-  return `exec ${isolatedArgv(policy, profileFile, ["/bin/sh", "-c", reaped]).map(shellQuote).join(" ")}`;
+  return `exec ${isolatedArgv(policy, profileFile, ["/bin/sh", "-c", command]).map(shellQuote).join(" ")}`;
 }
 
 /**
  * The argv that runs `argv` under these rules, with Darwin's profile staged at `profileFile`. A
- * seat's command takes it through the shell above, which reaps what the command leaves. A check
- * takes it bare (`src/kernel/verify.ts`): the verifier ends the check's process group itself, and a
- * shell and its trap would start with every check.
+ * seat's command takes it through the line above, and a check takes it bare (`src/kernel/verify.ts`),
+ * where the verifier ends the check's process group itself.
  */
 export function isolatedArgv(
   policy: CommandIsolationPolicy,

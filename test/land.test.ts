@@ -297,8 +297,22 @@ describe("bun run land", () => {
     expect(gatesRun(gateLog)).toEqual([]);
   });
 
-  it("merges a lone pull request in no stack through its own merge, pinned to its gated head", () => {
+  it("refuses to merge a pull request beside another open chain on main, before gating anything", () => {
     const result = runLand(["13", "--merge"], { ANA_FAKE_STACK: "", ANA_FAKE_STACK_SHA: beside });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "land: #11 (a) starts another chain on main, which this merge would leave short of main's new head",
+    );
+    expect(gatesRun(gateLog)).toEqual([]);
+    expect(writes()).toEqual([]);
+  });
+
+  it("merges a lone pull request in no stack through its own merge, pinned to its gated head", () => {
+    const result = runLand(["13", "--merge"], {
+      ANA_FAKE_PULLS: JSON.stringify([pull(11, "a", "main", lowerDocs), pull(13, "beside", "main", beside)]),
+      ANA_FAKE_STACK: "",
+      ANA_FAKE_STACK_SHA: beside,
+    });
     expect(result.status).toBe(0);
     expect(result.stdout).toContain(
       `land: #13 merged into main as #13, at ${short(beside)}: ${short(beside)}.`,

@@ -39,20 +39,13 @@
  * solve's whole wall later. A practice solve that throws is the verifier failing to decide, which
  * stops a run: the session writes its record, freezes what it has, and throws it again.
  */
-import {
-  type AgentMessage,
-  type AgentTool,
-  runAgentLoop,
-  type StreamFn,
-} from "@earendil-works/pi-agent-core";
+import type { AgentTool } from "@earendil-works/pi-agent-core";
 import {
   type Api,
   type AssistantMessage,
-  createInitialSystemMessage,
   type Model,
   type Models,
   type ThinkingLevel,
-  toToolDeclaration,
   type Usage,
 } from "@earendil-works/pi-ai";
 import { conditionsOf, type Limits } from "../kernel/condition.ts";
@@ -75,7 +68,7 @@ import { openHarness } from "../solve/harness.ts";
 import { type PublicTask, publicView } from "../solve/prompt.ts";
 import { HARNESS_ACCOUNT } from "../solve/starter.ts";
 import { type SolveRequest, solve } from "../solve/run.ts";
-import { failedTurn, loopCompaction, spentBy, traceSink } from "../solve/seat.ts";
+import { failedTurn, seatLoop, spentBy, traceSink, userTurn } from "../solve/seat.ts";
 import { claimRoot } from "../verify/seat-root.ts";
 import { campaignOf } from "./handover.ts";
 import { copyHarness, seedKept } from "./kept.ts";
@@ -429,11 +422,6 @@ export async function session(
     ...(request.kill ? [request.kill] : []),
   ]);
   const summaries: Usage[] = [];
-  const user = (content: string): AgentMessage => ({ role: "user", content, timestamp: Date.now() });
-  const system = createInitialSystemMessage(systemPrompt(bench.said), tools.map(toToolDeclaration));
-  const models = request.models(join(dirs.host, "model"));
-  const stream: StreamFn = (asked, context, options) => models.streamSimple(asked, context, options);
-  const compact = loopCompaction(log, "build", request.id, stream, summaries);
   const trace = traceSink(log, "build", request.id, () => turns.length);
   const halted = () => {
     campaign?.halts?.();
@@ -450,14 +438,15 @@ export async function session(
   const started = (await campaign?.start?.()) ?? "";
   arm();
   try {
-    await runAgentLoop(
-      [user([first, started, campaign?.hook() ?? ""].filter((part) => part !== "").join("\n\n"))],
-      { messages: system === undefined ? [] : [system], tools },
-      {
+    await seatLoop({
+      models: request.models(join(dirs.host, "model")),
+      id: request.id,
+      system: systemPrompt(bench.said),
+      opening: [first, started, campaign?.hook() ?? ""].filter((part) => part !== "").join("\n\n"),
+      tools,
+      config: {
         model,
         reasoning: request.effort,
-        sessionId: request.id,
-        convertToLlm: (messages) => messages,
         toolExecution: "sequential",
         finishTurn: ({ message }) => {
           if (campaign === undefined && message.role === "assistant") turns.push(message);
@@ -468,7 +457,7 @@ export async function session(
         getFollowUpMessages: async () =>
           bench.note === null
             ? [
-                user(
+                userTurn(
                   [
                     continuation(used(), limits, await harnessNow(bench), bench.said),
                     memoryOverCapNotice(dirs.home) ?? "",
@@ -479,22 +468,27 @@ export async function session(
                 ),
               ]
             : [],
-        // A led session's bounds are the campaign's, asked of the table (`halts`), and a session the
-        // host ran is held to its dollar cap, before a request and again after a compaction, which
-        // bills too. Until 19 October the cap held practice alone: a session the host ran opened on
-        // what was left of a campaign's total and could bill turns past it until its finish, its
-        // turns or its wall, as two reviews of the host-led loop found (#202, closed). A led
-        // session's cap is what was left when it opened, and the operator's word can raise the
-        // total after: the table's reading of the budget is the one that holds it, as `practiceLeft`
-        // already has it.
-        prepareRequest: async (context, kill) => {
+      },
+      // A led session's bounds are the campaign's, asked of the table (`halts`), and a session the
+      // host ran is held to its dollar cap, before a request and again after a compaction, which
+      // bills too. Until 19 October the cap held practice alone: a session the host ran opened on
+      // what was left of a campaign's total and could bill turns past it until its finish, its
+      // turns or its wall, as two reviews of the host-led loop found (#202, closed). A led
+      // session's cap is what was left when it opened, and the operator's word can raise the
+      // total after: the table's reading of the budget is the one that holds it, as `practiceLeft`
+      // already has it.
+      compact: {
+        log,
+        of: "build",
+        summaries,
+        guard: (compact) => async (context, kill) => {
           halted();
           const update = await compact(context, kill);
           halted();
           return update ?? undefined;
         },
       },
-      (event) => {
+      emit: (event) => {
         if (event.type === "message_end" && event.message.role === "assistant") told = false;
         // Meter a campaign's model turn before its tool can spend on another seat.
         if (campaign !== undefined && event.type === "message_end" && event.message.role === "assistant") {
@@ -505,8 +499,7 @@ export async function session(
         }
       },
       signal,
-      stream,
-    );
+    });
   } catch (error) {
     if (!signal.aborted) crash = errorMessage(error);
   } finally {

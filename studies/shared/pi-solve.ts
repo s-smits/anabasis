@@ -15,7 +15,7 @@
  *   turn that stops without `submit`, pi's compaction, and OpenRouter as the backends serve it,
  *   retried (`openrouter`, `src/backends/models.ts`);
  * - the trace as `solve.turn`, `solve.call` and `solve.compacted` events in a log of its own,
- *   written by `traceSink` and `loopCompaction` and read by `src/kernel/trace.ts`, and the spend
+ *   written by `traceSink` and `seatLoop` and read by `src/kernel/trace.ts`, and the spend
  *   as `spentBy` sums a campaign's solve, so a change to the log's format has one owner to change;
  *   the same trace as Harbor's ATIF trajectory (`trajectoryOf`, `src/kernel/atif.ts`), where the
  *   benchmark's tools look for an agent's run, and the ending of a solve that left no answer as a
@@ -32,14 +32,8 @@
  * A harness that declares its own tools (`agent/tools.ts`) is refused: no harness kept on record
  * declared one on 21 October 2026 (0 of 193), and serving them would need the harness shim.
  */
-import { type AgentMessage, runAgentLoop, type StreamFn } from "@earendil-works/pi-agent-core";
-import {
-  type AssistantMessage,
-  createInitialSystemMessage,
-  type ThinkingLevel,
-  toToolDeclaration,
-  type Usage,
-} from "@earendil-works/pi-ai";
+import type { StreamFn } from "@earendil-works/pi-agent-core";
+import type { AssistantMessage, ThinkingLevel, Usage } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import type { ToolDefinition } from "../../vendor/pi-coding-agent/core/extensions/types.ts";
 import { buildSystemPrompt } from "../../vendor/pi-coding-agent/core/system-prompt.ts";
@@ -65,7 +59,7 @@ import { openHarness } from "#src/solve/harness.ts";
 import { installedPrograms } from "#src/solve/programs.ts";
 import { NUDGE } from "#src/solve/prompt.ts";
 import { timed } from "#src/solve/run.ts";
-import { loopCompaction, spentBy, traceSink } from "#src/solve/seat.ts";
+import { seatLoop, spentBy, traceSink, userTurn } from "#src/solve/seat.ts";
 import { shellQuote, toolTreeSearchDirs } from "#src/verify/solve-command-isolation.ts";
 
 /** The file names the Harbor agent reads back from the trial's log folder (`harbor/pi_agent.py`). */
@@ -206,7 +200,7 @@ async function solve(ask: Asked) {
   }
   const model = { ...listed, baseUrl: ask.baseUrl };
   // The loop and its compaction ask for the one model they were given, so the stream sends that.
-  const stream: StreamFn = (_asking, context, options) =>
+  const streamSimple: StreamFn = (_asking, context, options) =>
     provider.streamSimple(model, context, { ...options, apiKey: ask.key });
   const turns: AssistantMessage[] = [];
   const summaries: Usage[] = [];
@@ -215,22 +209,21 @@ async function solve(ask: Asked) {
   const tools = wrapToolDefinitions(
     defined.map((tool) => timed(tool, { clock, turns: () => turns.length, modelTurns: ask.modelTurns })),
   );
-  const system = createInitialSystemMessage(prompt, tools.map(toToolDeclaration));
   const log = join(ask.logs, TRACE_FILE);
   const wall = new AbortController();
   const timer = setTimeout(() => wall.abort(), ask.wallSeconds * 1000);
-  const user = (content: string): AgentMessage => ({ role: "user", content, timestamp: Date.now() });
   let prompts = 1;
   let crash: string | null = null;
   try {
-    await runAgentLoop(
-      [user(ask.instruction)],
-      { messages: system === undefined ? [] : [system], tools },
-      {
+    await seatLoop({
+      models: { streamSimple },
+      id: "pi-solve",
+      system: prompt,
+      opening: ask.instruction,
+      tools,
+      config: {
         model,
         reasoning: ask.effort,
-        sessionId: "pi-solve",
-        convertToLlm: (messages) => messages,
         toolExecution: "sequential",
         finishTurn: ({ message }) => {
           if (message.role === "assistant") turns.push(message);
@@ -239,14 +232,13 @@ async function solve(ask: Asked) {
         getFollowUpMessages: async () => {
           if (said.submitted || prompts >= ask.prompts) return [];
           prompts += 1;
-          return [user(NUDGE)];
+          return [userTurn(NUDGE)];
         },
-        prepareRequest: loopCompaction(log, "solve", "pi-solve", stream, summaries),
       },
-      traceSink(log, "solve", "pi-solve", () => turns.length),
-      wall.signal,
-      stream,
-    );
+      compact: { log, of: "solve", summaries },
+      emit: traceSink(log, "solve", "pi-solve", () => turns.length),
+      signal: wall.signal,
+    });
   } catch (error) {
     crash = errorMessage(error);
   } finally {

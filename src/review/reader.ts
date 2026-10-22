@@ -15,20 +15,12 @@
  * could stop the model loop while an executing probe kept verifier work open; that signal now also
  * reaches each tool, so a Referee probe can cancel the verifier and its check cell with the session.
  */
-import { type AgentTool, runAgentLoop } from "@earendil-works/pi-agent-core";
-import {
-  type Api,
-  type AssistantMessage,
-  createInitialSystemMessage,
-  type Model,
-  type Models,
-  type ThinkingLevel,
-  toToolDeclaration,
-} from "@earendil-works/pi-ai";
+import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { priceKey } from "../kernel/meter.ts";
 import { rmSync } from "../meta/filesystem.ts";
 import type { JsonObject } from "../meta/json-shape.ts";
-import { spentBy } from "../solve/seat.ts";
+import { seatLoop, spentBy } from "../solve/seat.ts";
 import { hostScratch } from "../verify/wall-policy.ts";
 
 /** Who reads, and on what. */
@@ -70,25 +62,23 @@ export async function readOnce(
   const session = `reader-${crypto.randomUUID()}`;
   const timer = setTimeout(() => wall.abort(), (reader.wallSeconds ?? WALL_SECONDS) * 1000);
   try {
-    const models = reader.models(home);
-    const head = createInitialSystemMessage(system, tools.map(toToolDeclaration));
-    await runAgentLoop(
-      [{ role: "user", content: packet, timestamp: Date.now() }],
-      { messages: head === undefined ? [] : [head], tools: [...tools] },
-      {
+    await seatLoop({
+      models: reader.models(home),
+      id: session,
+      system,
+      opening: packet,
+      tools,
+      config: {
         model: reader.model,
         reasoning: reader.effort,
-        sessionId: session,
-        convertToLlm: (messages) => messages,
         finishTurn: ({ message }) => {
           if (message.role === "assistant") turns.push(message);
           return turns.length >= TURN_CAP ? { action: "end" } : undefined;
         },
       },
-      () => {},
-      AbortSignal.any([wall.signal, done.signal, ...(reader.kill ? [reader.kill] : [])]),
-      (model, context, options) => models.streamSimple(model, context, options),
-    );
+      emit: () => {},
+      signal: AbortSignal.any([wall.signal, done.signal, ...(reader.kill ? [reader.kill] : [])]),
+    });
   } finally {
     clearTimeout(timer);
     done.abort();

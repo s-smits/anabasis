@@ -8,8 +8,8 @@ import type { Contract } from "../src/kernel/contract.ts";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { type Desk, openDesk, publicResource, submitTool } from "../src/solve/answer.ts";
-import type { WallExec } from "../src/solve/coding-tools.ts";
+import { type Desk, openDesk, publicResource, submitTool } from "../src/tools/answer.ts";
+import type { WallExec } from "../src/tools/coding.ts";
 
 const CONTRACT: Contract = {
   answerFormat: {

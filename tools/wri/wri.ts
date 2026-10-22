@@ -29,7 +29,7 @@
  * - `grade` puts one answer to the campaign's own checker and prints the verdict in one line. It
  *   writes nothing and logs nothing. It needs the pack and its tool tree, and the Mac's verifier wall.
  *   An answer outside a drafted exam's answer format is refused first, as `judge` refuses a
- *   solver's, and no check reads it (`src/solve/run.ts`). The format is the draft's, which the
+ *   solver's, and no check reads it (`src/solver/run.ts`). The format is the draft's, which the
  *   campaign's contract holds (`packOpened`, `tools/d2/campaign.ts`). Until 20 October grade put
  *   every answer to the checks alone, and a lane of buffer-fresh-opus-forkedPR223_v0_5_4-r3's
  *   investigation, probing through it, read the evaluator's leniency on keys the format refuses as

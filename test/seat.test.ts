@@ -13,8 +13,8 @@ import { isFunction } from "../src/meta/json-shape.ts";
 import { existsSync, mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { type Seat, sit } from "../src/seat/session.ts";
-import { text, tool } from "../src/solve/answer.ts";
+import { type Seat, sit } from "../src/agent/session.ts";
+import { text, tool } from "../src/tools/answer.ts";
 
 const scratch = mkdtempSync(join(tmpdir(), "ana-seat-"));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));

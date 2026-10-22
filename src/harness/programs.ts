@@ -18,7 +18,7 @@ import { closeSync, openSync, readdirSync, readSync, realpathSync, statSync } fr
 import { containsPath } from "../meta/path-containment.ts";
 import { dirname, join } from "../meta/path.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
-import { toolTreeSearchDirs } from "../verify/solve-command-isolation.ts";
+import { toolTreeSearchDirs } from "../wall/isolation.ts";
 
 /** The bytes of a program read for its account. */
 const HEAD_BYTES = 4096;

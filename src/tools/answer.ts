@@ -32,8 +32,8 @@ import type { JsonObject, JsonValue } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { canonicalJson, hashJsonValue } from "../meta/stable-json.ts";
-import { shellQuote } from "../verify/solve-command-isolation.ts";
-import type { SolverTool, WallExec } from "./coding-tools.ts";
+import { shellQuote } from "../wall/isolation.ts";
+import type { SolverTool, WallExec } from "./coding.ts";
 
 /** One of the domain's public resources, as a file in the solver's home holds it. */
 export interface PublicResource {

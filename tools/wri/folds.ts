@@ -26,7 +26,7 @@ import { type Judged, refusedBy, solvesIn, verdictsOf } from "#src/kernel/solves
 import { heldAtGate, taskSets } from "#src/kernel/task.ts";
 import { type Traced, traced, tracesIn } from "#src/kernel/trace.ts";
 import { OBJECTIVE } from "#src/kernel/verify.ts";
-import { short } from "#src/builder/move.ts";
+import { short } from "#src/campaign/move.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
@@ -352,7 +352,7 @@ export function indexOf(events: readonly LogEvent[]): Index {
 
 /**
  * Every comparison a log reported, with the solves it could count: the ones whose start names it
- * (`src/builder/round.ts`). A report written before 2026-10-09 names no setting; its solves are
+ * (`src/campaign/round.ts`). A report written before 2026-10-09 names no setting; its solves are
  * read from its round's own window of the log, as that round counted them.
  */
 function comparedOf(events: readonly LogEvent[], log: Pick<Index, "solves" | "builds">): Compared[] {

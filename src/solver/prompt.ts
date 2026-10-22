@@ -17,7 +17,7 @@
  *   under one sentence on what a guide cannot override (v1's `BUILT_GUIDE_PREAMBLE`).
  *
  * Nothing here says how to reach an answer, which is the harness's to say. Under the Claude backend
- * too a solver reads this prompt alone, with no other in front of it (`src/backends/claude.ts`).
+ * too a solver reads this prompt alone, with no other in front of it (`src/agent/backends/claude.ts`).
  */
 import type { ToolDefinition } from "../../vendor/pi-coding-agent/core/extensions/types.ts";
 import { buildSystemPrompt } from "../../vendor/pi-coding-agent/core/system-prompt.ts";
@@ -28,9 +28,9 @@ import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
 import { plural } from "../meta/text.ts";
-import type { NetworkReach } from "./command.ts";
-import { ANSWER_FILE, ANSWER_FORMAT_FILE, type PublicResource } from "./answer.ts";
-import { reserveSeconds } from "./command.ts";
+import type { NetworkReach } from "../tools/command.ts";
+import { ANSWER_FILE, ANSWER_FORMAT_FILE, type PublicResource } from "../tools/answer.ts";
+import { reserveSeconds } from "../tools/command.ts";
 
 export interface PublicTask {
   readonly taskId: string;

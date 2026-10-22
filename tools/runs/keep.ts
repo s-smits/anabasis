@@ -20,7 +20,7 @@
  * and ends: one keeper a run, and `runs stop`, `pause` or `continue --after` of the run end it. Until
  * 15 October this was three shell loops of the operator's and a wrapper a login, each moving one run.
  */
-import { openingOf } from "#src/builder/opening.ts";
+import { openingOf } from "#src/campaign/opening.ts";
 import { type LogEvent } from "#src/kernel/log.ts";
 import { openSync, statSync } from "#src/meta/filesystem.ts";
 import { isString } from "#src/meta/json-shape.ts";

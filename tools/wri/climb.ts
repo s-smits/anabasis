@@ -9,7 +9,7 @@
  * hours before, and only the two logs together show it. `wri.ts climb` prints this, and the
  * lane 31 prompt carries it beside the peers' overviews.
  */
-import { short } from "#src/builder/move.ts";
+import { short } from "#src/campaign/move.ts";
 import { gateAnswers } from "#src/examiner/record.ts";
 import { flipP, informative, type Measures, type Paired, pointsOf } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";

@@ -20,12 +20,12 @@ import {
 } from "@earendil-works/pi-ai";
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
-import { existsSync, readFileSync } from "../meta/filesystem.ts";
-import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
-import { capturedJsonParse } from "../meta/json-runtime.ts";
-import { homedir } from "../meta/os.ts";
-import { join } from "../meta/path.ts";
-import { errorMessage } from "../meta/runtime-values.ts";
+import { existsSync, readFileSync } from "../../meta/filesystem.ts";
+import { asRecord, isNumber, isString } from "../../meta/json-shape.ts";
+import { capturedJsonParse } from "../../meta/json-runtime.ts";
+import { homedir } from "../../meta/os.ts";
+import { join } from "../../meta/path.ts";
+import { errorMessage } from "../../meta/runtime-values.ts";
 import {
   CLAUDE_API_PROVIDER,
   type ClaudeOptions,

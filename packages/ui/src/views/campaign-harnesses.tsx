@@ -3,7 +3,7 @@ import { Badge, Button, HashValue } from "../components/primitives.tsx";
 import { detailsOf, type Of, useHarness } from "../live.ts";
 import type { CampaignReading, HarnessCard } from "../models.ts";
 import type { Navigation, PaneProps } from "../route.ts";
-import { short } from "../../../../src/builder/move.ts";
+import { short } from "../../../../src/campaign/move.ts";
 import {
   AGENT_DIR,
   GENERATED_TOOLS_FILE,

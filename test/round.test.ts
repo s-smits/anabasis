@@ -10,7 +10,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { type PassLabel, passesIn, predicted, swapped, toLabel } from "../src/builder/comparison.ts";
+import { type PassLabel, passesIn, predicted, swapped, toLabel } from "../src/campaign/comparison.ts";
 import {
   type CheckpointRequest,
   checkpoint,
@@ -19,7 +19,7 @@ import {
   round,
   scoredSet,
   settleReading,
-} from "../src/builder/round.ts";
+} from "../src/campaign/round.ts";
 import {
   type BuildRequest,
   type Built,
@@ -50,9 +50,9 @@ import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
-import type { RefereeFinding, Ruling } from "../src/review/referee.ts";
-import { text, tool } from "../src/solve/answer.ts";
-import { openHarness } from "../src/solve/harness.ts";
+import type { RefereeFinding, Ruling } from "../src/referee/referee.ts";
+import { text, tool } from "../src/tools/answer.ts";
+import { openHarness } from "../src/harness/open.ts";
 import { roundSolves } from "./helpers/logged-round.ts";
 import { tallied } from "./helpers/tally.ts";
 
@@ -329,7 +329,7 @@ const stoppedAtFirst = (asked: readonly { readonly version: string }[]) => {
   return asked.filter(({ version }) => version === last).length === 1;
 };
 
-/** A Referee that logs its rulings as `src/review/referee.ts` does: `ruled` names the tasks it
+/** A Referee that logs its rulings as `src/referee/referee.ts` does: `ruled` names the tasks it
  *  rules otherwise than earned. */
 const referee =
   (log: string, ruled: Readonly<Record<string, Ruling>> = {}) =>
@@ -733,7 +733,7 @@ describe("a round", () => {
   it("puts a rejection the Referee gave no answer on to it again, and stops before the report while one has none", async () => {
     // buffer-a's g-5 (12 October): a Referee call the provider's session limit cut was logged
     // unclear, set a won task aside in the report, and no later run put it again.
-    /** A Referee that gives no answer, logged as `src/review/referee.ts` logs one. */
+    /** A Referee that gives no answer, logged as `src/referee/referee.ts` logs one. */
     const silent =
       (log: string) =>
       async (solve: string): Promise<RefereeFinding> => {

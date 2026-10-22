@@ -27,7 +27,7 @@ import {
   type Models,
   type ThinkingLevel,
 } from "@earendil-works/pi-ai";
-import { resetOf } from "../backends/claude.ts";
+import { resetOf } from "../agent/backends/claude.ts";
 import type { Limits } from "../kernel/condition.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { append } from "../kernel/log.ts";
@@ -41,14 +41,14 @@ import { availableParallelism, loadavg } from "../meta/os.ts";
 import { join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
-import { type Sat, sit, spentBy } from "../seat/session.ts";
-import { claimRoot, type ReleaseRoot } from "../verify/seat-root.ts";
+import { type Sat, sit, spentBy } from "../agent/session.ts";
+import { claimRoot, type ReleaseRoot } from "../wall/seat-root.ts";
 import {
   createToolDefinitionFromAgentTool,
   wrapToolDefinitions,
 } from "../../vendor/pi-coding-agent/core/tools/tool-definition-wrapper.ts";
-import { type Desk, openDesk, type PublicResource, submitTool } from "./answer.ts";
-import { codingTools, selectedCodingTools, type SolverTool, wallExec } from "./coding-tools.ts";
+import { type Desk, openDesk, type PublicResource, submitTool } from "../tools/answer.ts";
+import { codingTools, selectedCodingTools, type SolverTool, wallExec } from "../tools/coding.ts";
 import {
   type CommandWall,
   networkReach,
@@ -56,9 +56,9 @@ import {
   solveDirs,
   usedSeconds,
   walledBase,
-} from "./command.ts";
-import { type Harness, harnessTools, openHarness, pathsUnder } from "./harness.ts";
-import { installedPrograms } from "./programs.ts";
+} from "../tools/command.ts";
+import { type Harness, harnessTools, openHarness, pathsUnder } from "../harness/open.ts";
+import { installedPrograms } from "../harness/programs.ts";
 import { firstTurn, NUDGE, type PublicTask, seedHome, systemPrompt } from "./prompt.ts";
 
 export interface SolveRequest {
@@ -68,7 +68,7 @@ export interface SolveRequest {
   readonly condition: string;
   readonly task: Task;
   readonly contract: Contract;
-  /** The harness state's directory, v1's format (`harness.ts`). */
+  /** The harness state's directory, v1's format (`src/harness/open.ts`). */
   readonly harness: string;
   readonly resources: readonly PublicResource[];
   readonly model: Model<Api>;

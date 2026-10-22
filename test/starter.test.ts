@@ -14,13 +14,19 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
-import { CODING_TOOLS, codingTools, selectedCodingTools } from "../src/solve/coding-tools.ts";
-import { type CommandWall, makeSeatDirs, solveDirs } from "../src/solve/command.ts";
-import { harnessTools, openHarness } from "../src/solve/harness.ts";
-import { installedPrograms } from "../src/solve/programs.ts";
-import { EXAMPLE, HARNESS_ACCOUNT, WITHOUT_SHELL, writeHarness, writeStarter } from "../src/solve/starter.ts";
-import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
-import { osIsolationSupport } from "../src/verify/os-isolation.ts";
+import { CODING_TOOLS, codingTools, selectedCodingTools } from "../src/tools/coding.ts";
+import { type CommandWall, makeSeatDirs, solveDirs } from "../src/tools/command.ts";
+import { harnessTools, openHarness } from "../src/harness/open.ts";
+import { installedPrograms } from "../src/harness/programs.ts";
+import {
+  EXAMPLE,
+  HARNESS_ACCOUNT,
+  WITHOUT_SHELL,
+  writeHarness,
+  writeStarter,
+} from "../src/harness/starter.ts";
+import { solveIsolationPolicy } from "../src/wall/base.ts";
+import { osIsolationSupport } from "../src/wall/os-isolation.ts";
 
 const TASK = {
   taskId: "t-1",

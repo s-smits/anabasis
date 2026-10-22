@@ -25,8 +25,8 @@ functions in a neighbouring module that exist only to serve it. Three of v2's, a
 - **what the Builder is told of the past**: the failed practice solves and each comparison's tally
   (`src/builder/past.ts`, `src/builder/prompt.ts`, `test/builder.test.ts`);
 - **which tasks a comparison scores**: the frontier draw and the retained tasks beside it
-  (`scoredSet` in `src/builder/round.ts`, `poolOf` in `src/kernel/reports.ts`, `test/round.test.ts`);
-- **the move that follows a reading** (`decide` in `src/builder/decide.ts`, `test/decide.test.ts`).
+  (`scoredSet` in `src/campaign/round.ts`, `poolOf` in `src/kernel/reports.ts`, `test/round.test.ts`);
+- **the move that follows a reading** (`decide` in `src/campaign/decide.ts`, `test/decide.test.ts`).
 
 Each compartment gets a **hypothesis**, written before any test: what should change, why a path
 with about half the machinery probably reaches the same outcome or nearly all of it, and what it

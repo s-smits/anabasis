@@ -47,7 +47,7 @@
  * | fail, `rejected`, and the rejection stands | not valid. It loses to a valid answer and is even with another that is not |
  * | fail, `wall-ended`, `turns-ended`, `context-ended`, `no-answer` | not valid. There is no answer to recompute, so no ruling is needed |
  * | fail, `broken-harness` | not valid: the harness is the thing compared, and one that cannot list its tools answers nothing |
- * | fail, `rejected`, ruled a check defect or unclear, or waiting for a person | the task is set aside and left out of the test for both harnesses (`src/builder/round.ts`) |
+ * | fail, `rejected`, ruled a check defect or unclear, or waiting for a person | the task is set aside and left out of the test for both harnesses (`src/campaign/round.ts`) |
  * | non-result of any kind | no measurement. It was solved again, and is in no pair; a task left short of its solves is in no tally |
  *
  * Validity is the measure that weighs most, and it is read alone where one answer of a pairing is

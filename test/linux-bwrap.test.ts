@@ -9,7 +9,7 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
-import { bwrapOpenReadArgs, linuxBwrapSupport, nodeRuntimeReadRoots } from "../src/verify/linux-bwrap.ts";
+import { bwrapOpenReadArgs, linuxBwrapSupport, nodeRuntimeReadRoots } from "../src/wall/linux-bwrap.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 
 const dirs: string[] = [];

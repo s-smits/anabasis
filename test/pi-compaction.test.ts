@@ -13,7 +13,7 @@ import {
   fauxProvider,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
-import { type Compacted, compactBeforeRequest } from "../src/backends/pi-compaction.ts";
+import { type Compacted, compactBeforeRequest } from "../src/agent/backends/pi-compaction.ts";
 
 /** A solve's shape: one prompt, then `rounds` shell calls whose results are 2,000 tokens each. */
 function transcript(rounds: number): AgentMessage[] {

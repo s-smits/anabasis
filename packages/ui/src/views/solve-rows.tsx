@@ -10,7 +10,7 @@ import {
 } from "../models.ts";
 import { EndingBadge, harnessLabel, sideLabel } from "./drill.tsx";
 import { money, seconds } from "./format.ts";
-import type { Ruling } from "../../../../src/review/referee.ts";
+import type { Ruling } from "../../../../src/referee/referee.ts";
 import { plural } from "../../../../src/meta/text.ts";
 
 /*

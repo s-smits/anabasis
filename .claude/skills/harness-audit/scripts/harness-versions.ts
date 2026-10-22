@@ -15,12 +15,12 @@
  * v1's final-harness-audit joined each workspace commit to its iteration, its battery and its claim
  * through four scripts of 1,246 lines. v2 writes those joins as events, `harness.version`,
  * `harness.imported`, `harness.promoted` and the comparisons' own, and `campaignOf`
- * (`src/builder/handover.ts`) folds them. This lists the states, opens each as a solve would
+ * (`src/campaign/handover.ts`) folds them. This lists the states, opens each as a solve would
  * (`openHarness`), counts its parts, and leaves the joining to the fold. Whole-run-investigation's
  * lane 13 diffs a parent and a child part by part; `--diff` is that count, and quotes no line.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { type Handover, campaignOf } from "#src/builder/handover.ts";
+import { type Handover, campaignOf } from "#src/campaign/handover.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { AGENT_DIR, GENERATED_TOOLS_FILE, GUIDE_FILE, TOOLS_SPEC_FILE } from "#src/meta/bundle-layout.ts";
 import {
@@ -36,8 +36,8 @@ import { type JsonValue, asRecord, isString } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { openHarness, pathsUnder, treeContent } from "#src/solve/harness.ts";
-import { writeStarter } from "#src/solve/starter.ts";
+import { openHarness, pathsUnder, treeContent } from "#src/harness/open.ts";
+import { writeStarter } from "#src/harness/starter.ts";
 import { keptAs } from "#tools/d2/campaign.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 

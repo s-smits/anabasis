@@ -10,7 +10,7 @@ import {
   type Supply,
   supplyOf,
   type Wanted,
-} from "../src/builder/admission.ts";
+} from "../src/campaign/admission.ts";
 import { append, type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import { sizeLines } from "../src/kernel/size.ts";
 import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";

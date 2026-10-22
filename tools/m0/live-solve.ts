@@ -9,7 +9,7 @@
  * would read: its system prompt whole and its tools by name, built on a mounted wall as a solve
  * builds them. Until 2026-10-09 both were held to what the stored solve read, row by row, which was
  * milestone 0's parity with v1's sweep. A v2 solver is pi's coding agent and no longer v1's Built
- * shell (`src/solve/coding-tools.ts`, `src/solve/prompt.ts`), so its tools and its prompt part from
+ * shell (`src/tools/coding.ts`, `src/solver/prompt.ts`), so its tools and its prompt part from
  * the sweep's by design, and only what still is v1's is held to it: the first turn's template, the
  * nudge and the turn cap, against the digests and `maxTurns` v1 recorded. With `--live` the solve runs, and
  * its log is read back: the ending, the meter's billed dollars against Claude Code's reported cost
@@ -25,7 +25,7 @@
  * since the policy names each solve's own directories.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
-import { backends, compactionMode } from "#src/backends/models.ts";
+import { backends, compactionMode } from "#src/agent/backends/models.ts";
 import { type Condition, conditionId, type Limits, recordCondition } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
@@ -40,14 +40,14 @@ import { join, resolve } from "#src/meta/path.ts";
 import { capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { countBy } from "#src/meta/tally.ts";
-import { openDesk } from "#src/solve/answer.ts";
-import { networkReach, solveDirs, walledBase } from "#src/solve/command.ts";
-import { type Harness, openHarness, treeContent } from "#src/solve/harness.ts";
-import { installedPrograms } from "#src/solve/programs.ts";
-import { firstTurn, NUDGE, seedHome, systemPrompt } from "#src/solve/prompt.ts";
-import { type SolveRequest, solve, solverTools } from "#src/solve/run.ts";
-import { claimRoot } from "#src/verify/seat-root.ts";
-import { HOST_SOLVE_ISOLATION_PROFILE_ID } from "#src/verify/solve-sandbox.ts";
+import { openDesk } from "#src/tools/answer.ts";
+import { networkReach, solveDirs, walledBase } from "#src/tools/command.ts";
+import { type Harness, openHarness, treeContent } from "#src/harness/open.ts";
+import { installedPrograms } from "#src/harness/programs.ts";
+import { firstTurn, NUDGE, seedHome, systemPrompt } from "#src/solver/prompt.ts";
+import { type SolveRequest, solve, solverTools } from "#src/solver/run.ts";
+import { claimRoot } from "#src/wall/seat-root.ts";
+import { HOST_SOLVE_ISOLATION_PROFILE_ID } from "#src/wall/base.ts";
 import { codeOf, worktreesOf } from "../d2/campaign.ts";
 import {
   checkProgram,

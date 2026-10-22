@@ -30,7 +30,7 @@ import { foldsEvent, taskStates } from "./task.ts";
 /** The kinds of event a log holds. A kind that no command writes any more stays in the list where a
  *  log may hold it, since a log is evidence and has to read; a kind no log holds is none.
  *  `comparison.started` fixes a comparison's terms before its first solve: the harnesses, the
- *  setting and the scored tasks (`src/builder/round.ts`). `anchor.drawn`, `anchor.scored` and
+ *  setting and the scored tasks (`src/campaign/round.ts`). `anchor.drawn`, `anchor.scored` and
  *  `exam.word` are written by no command since 9 October and are kinds still, so that a log
  *  written before then reads: the anchor's draw and its test, and the word an Examiner was told of
  *  a task. `solve.turn` and `solve.call` are a solve's trace, one per model turn and one per tool
@@ -40,7 +40,7 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  turns and calls, and how it ended (`src/builder/session.ts`). `build.checkpoint` keeps a
  *  frozen harness inside a live Builder conversation, before a comparison. `solve.compacted`,
  *  `build.compacted` and `exam.compacted` are a compaction in pi's own loop, and what its summary
- *  spent (`src/backends/pi-compaction.ts`). The `exam.*` kinds are an Examiner session's: the same
+ *  spent (`src/agent/backends/pi-compaction.ts`). The `exam.*` kinds are an Examiner session's: the same
  *  four (`src/examiner/session.ts`). `checker.read` is what a campaign's check program was seen to
  *  do, by the version it was read at (`acceptance.ts`); `contract.frozen` is the operator's word
  *  that the contract and that version stand, and a campaign whose own differ from it does not open.
@@ -50,11 +50,11 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  there on (`tools/d2/promote.ts`), and `harness.imported` the operator's word that a harness
  *  built elsewhere is one the campaign keeps, with where it came from (`tools/d2/import.ts`).
  *  `stop.overridden` is the operator's reason for a comparison begun after the plan's stop rule
- *  had stopped the campaign (`src/builder/admission.ts`).
+ *  had stopped the campaign (`src/campaign/admission.ts`).
  *  The four `campaign.*` kinds beside the setting are the Harness Builder's
  *  (`tools/d2/harness-builder.ts`): `campaign.opened` is what a campaign runs by, its total budget
  *  and its seats; `campaign.move` is a move it made, written as the move began, with the code of
- *  the row of its decision table that chose it and its reason (`src/builder/decide.ts`), the host's load; and
+ *  the row of its decision table that chose it and its reason (`src/campaign/decide.ts`), the host's load; and
  *  `campaign.ended` is how the campaign ended, which is its last event. `campaign.word` is a word
  *  the operator left for a running campaign (`tools/d2/word.ts`): to stop, to have other tasks
  *  written, another total budget or the cause of an A/A that read a step. It is read at the next
@@ -75,7 +75,7 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  optional `objective` holds the contract's quantity, its direction and the answer's measure: the
  *  Examiner's two paths write it where the contract declares an objective (since 19 October,
  *  `measureOf`, `src/examiner/write.ts`), and `prepare.ts` never does. `referee.refused` is a
- *  ruling the host refused the Referee for want of its evidence, with why (`src/review/referee.ts`),
+ *  ruling the host refused the Referee for want of its evidence, with why (`src/referee/referee.ts`),
  *  written since 19 October. */
 const EVENT_KINDS = [
   "campaign.opened",

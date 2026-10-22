@@ -103,7 +103,7 @@ function solve(task: string, harness: string, outcome: "pass" | "rejected" | "la
   return id;
 }
 
-/** A comparison's start and where it stands, as `src/builder/round.ts` writes one. */
+/** A comparison's start and where it stands, as `src/campaign/round.ts` writes one. */
 function started(session: string, old: string, fresh: string) {
   const terms = { old, fresh, starter: "hbase", setting: SETTING, solves: 1, level: 0.1 };
   comparison = session;

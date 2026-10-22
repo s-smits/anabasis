@@ -365,7 +365,7 @@ describe("the simplify ownership catchers", () => {
       LIFETIME,
       "src/run/fixture.ts",
     );
-    expect(message).toContain("`stageCommandIsolation` (src/verify/solve-command-isolation.ts)");
+    expect(message).toContain("`stageCommandIsolation` (src/wall/isolation.ts)");
     expect(message).toContain(
       "`killProcessGroup` or `terminateAndReapProcessGroupId` (src/meta/subprocess.ts)",
     );
@@ -373,12 +373,7 @@ describe("the simplify ownership catchers", () => {
 
   it("says nothing about the launch owner, its reader, a bare spawn, a liveness probe, or a reaper of found pids", async () => {
     expect(
-      await reportedLines(
-        "ana",
-        "no-lifetime-outside-owner",
-        LIFETIME,
-        "src/verify/solve-command-isolation.ts",
-      ),
+      await reportedLines("ana", "no-lifetime-outside-owner", LIFETIME, "src/wall/isolation.ts"),
     ).toStrictEqual([]);
     expect(
       await reportedLines("ana", "no-lifetime-outside-owner", LIFETIME, "src/meta/subprocess.ts"),

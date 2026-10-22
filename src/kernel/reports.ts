@@ -4,7 +4,7 @@
  * the tasks a release takes first (`releaseOrder`), and what the log holds of billed dollars.
  *
  * A comparison ends in a `comparison.reported` event under an id, a round's session id or a
- * checkpoint's own (`src/builder/round.ts`). A person's settling writes the same id's report once
+ * checkpoint's own (`src/campaign/round.ts`). A person's settling writes the same id's report once
  * more, so a comparison is read by its last report, and it stands in the log where its first one
  * does: a settling made weeks later moves no comparison behind the ones run since. Every fold here
  * starts from those. A comparison's solves are the ones whose start names it (`compare.ts`).
@@ -458,7 +458,7 @@ function taskRecords(events: readonly LogEvent[]) {
    * 19 October, it kept a task no solve answers in the draw for good: in the rehearsals sim-turns
    * and sim-turns2, 706 of 1,144 scripted solves ended so, and each such task was scored again as a
    * tie of two fails. `turns-ended` arises only where the condition names a number (`spent`,
-   * `src/solve/run.ts`), so a campaign without one reads as before. One whose last recorded turn
+   * `src/solver/run.ts`), so a campaign without one reads as before. One whose last recorded turn
    * the window ended (`windowEnded`), or the provider failed (`providerFailed`), stays a cut: a log
    * written before 19 October, or 14 October, holds such solves as `turns-ended`, and they read as
    * they did.
@@ -834,7 +834,7 @@ function lastRead({ tallied, asideAt }: TaskRecord): TalliedIn | "aside" | null 
  * is not this one's, so a comparison gone on from its log after others ran is held to its own
  * spend. A solve of the comparison with no end on record, killed or still running, is counted by
  * what its turns and compactions have metered so far (`unfinished`); a solve still running is held
- * besides at a cap's reserve, which is what its sum may come to (`src/builder/round.ts`). A live
+ * besides at a cap's reserve, which is what its sum may come to (`src/campaign/round.ts`). A live
  * Builder's turns are counted as they are metered, then replaced by its final sum.
  */
 export function billedFor(events: readonly LogEvent[], id: string): number {
@@ -872,7 +872,7 @@ export function billedBetween(events: readonly LogEvent[], from: number, to = ev
  * decimals on every session and solve of one campaign of 10 October; a Builder session of another,
  * killed at its seventh turn the same day, had metered 0.12 dollars that nothing summed. A
  * compaction of pi's loop is billed in the end's sum too, and its summary's price is on its
- * `*.compacted` event (`sit`, `src/seat/session.ts`); a stop and a pause read it too (`tools/runs`).
+ * `*.compacted` event (`sit`, `src/agent/session.ts`); a stop and a pause read it too (`tools/runs`).
  */
 export function unfinished(events: readonly LogEvent[]): Unfinished[] {
   return METERED.flatMap(({ of, id }) => {
@@ -950,7 +950,7 @@ export function ownedBy(events: readonly LogEvent[], id: string, owners = owners
 /**
  * The same sum in its two parts: what the Builder session under `id` billed of its own
  * (`ownedBy`), and what the comparison under it did. A reader of a round tells them apart
- * (`src/builder/handover.ts`). A solve with no end on record whose start names the comparison is in
+ * (`src/campaign/handover.ts`). A solve with no end on record whose start names the comparison is in
  * the second part (`unfinished`). Until 19 October the first part was everything billed in the
  * session's span, which in a campaign its Builder leads is every move it made, counted again on the
  * moves' own lines: on 19 October buffer-fresh-opus's view put $123.34 on b-4, whose own turns and

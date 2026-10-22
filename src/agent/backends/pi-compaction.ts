@@ -24,8 +24,8 @@ import {
   estimateTokens,
   prepareCompaction,
   shouldCompact,
-} from "../../vendor/pi-coding-agent/core/compaction/compaction.ts";
-import { errorMessage } from "../meta/runtime-values.ts";
+} from "../../../vendor/pi-coding-agent/core/compaction/compaction.ts";
+import { errorMessage } from "../../meta/runtime-values.ts";
 import { SWEEP_COMPACT_WINDOW, servedByClaude } from "./claude.ts";
 
 /** One compaction, as the log records it: `error` is the summary's failure, when it failed. */

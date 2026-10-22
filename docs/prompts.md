@@ -72,17 +72,17 @@ today, or state that none exists. Then say whether a session could print it
 from one log with the readers in the tree, or whether it is a hand count.
 
 B1. Supply. "The reference valid on some solves and not all, or on none while
-    another harness was." Is this the same as roomOf (src/builder/decide.ts)?
+    another harness was." Is this the same as roomOf (src/campaign/decide.ts)?
     Is it the same as what prepare.ts and the Examiner's "room" session read?
     Where two readers decide it, name both (rule 12). Does the bar "at least
     4 before each comparison" have an owner, and would admission
-    (src/builder/admission.ts) refuse a comparison below it today?
+    (src/campaign/admission.ts) refuse a comparison below it today?
 B2. Climb. Where are promotions counted (harness.promoted)? Where are "pairs
     the starter loses per epoch" computed, and what is an epoch in the
     source? Can the second be read for every promotion on record from its
     log, or only for some?
-B3. Honesty. Read src/builder/round.ts (the slots), src/kernel/compare.ts
-    (halves) and src/builder/comparison.ts (noise in the report). Confirm or
+B3. Honesty. Read src/campaign/round.ts (the slots), src/kernel/compare.ts
+    (halves) and src/campaign/comparison.ts (noise in the report). Confirm or
     refute each sentence of AGENTS.md's factor 3: the reference solved twice
     as often; earlier solves one side and later the other; tallied and
     tested as a comparison is; "a step there is a false positive by
@@ -91,8 +91,8 @@ B3. Honesty. Read src/builder/round.ts (the slots), src/kernel/compare.ts
     Then: is there any fold that counts controls and their readings across
     campaigns, or is "6" a hand count? Where does the decision table ask for
     a control (noiseRead), and under what condition does it stop asking?
-B4. Verdicts. Read src/review/referee.ts, src/review/agreement.ts,
-    tools/d2/settle.ts, src/review/rejections.ts. Confirm or refute each
+B4. Verdicts. Read src/referee/referee.ts, src/referee/agreement.ts,
+    tools/d2/settle.ts, src/referee/rejections.ts. Confirm or refute each
     sentence of factor 4: when the Referee runs (every rejection inside a
     comparison; never a pass, a cut solve or a crash); the host's replay
     before any reading; the inputs listed; the exclusions listed; the
@@ -126,8 +126,8 @@ C3. Does the plan's "It works when" sentence agree with the five-row table
 PART D. Is the text true to the source?
 
 D1. Every path, symbol and flag named in the section: confirm it exists at
-    <commit> (src/builder/round.ts, src/review/referee.ts,
-    src/review/agreement.ts, tools/d2/settle.ts, referee.finding,
+    <commit> (src/campaign/round.ts, src/referee/referee.ts,
+    src/referee/agreement.ts, tools/d2/settle.ts, referee.finding,
     roomOf). List any that does not.
 D2. Every number: "36 of 47 rehearsal misses", "0.10", "one time in ten",
     "six on record", "3 in 4", "1 in 10", "10 labels a kind", "2 to 4 untied

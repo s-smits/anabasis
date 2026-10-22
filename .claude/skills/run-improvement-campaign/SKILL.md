@@ -257,7 +257,7 @@ Links 1, 2 and 6 limit what the reading can establish.
 | 7 | promotion | 2 | comparison against reference reads `step` | `step` row, `harness.promoted`, `noise` |
 | 8 | next epoch | 1 | Examiner writes for the new reference and the tasks leave room | `harness.promoted`, subsequent `task.gate` and comparisons |
 
-Read room by `informative`, rather than a target pass share. `noRoom` in `src/builder/decide.ts`
+Read room by `informative`, rather than a target pass share. `noRoom` in `src/campaign/decide.ts`
 requests an Examiner session after promotion even where the promotion's comparison leaves room.
 Lane 25 of [whole-run-investigation](../whole-run-investigation/SKILL.md) reads a campaign's chain;
 this walk chooses what to do about it.
@@ -268,7 +268,7 @@ this walk chooses what to do about it.
    `systemPrompt` and `firstMessage` in `src/examiner/prompt.ts`, `heard` in
    `src/examiner/record.ts`, `try_task` in `src/examiner/write.ts`, or `--exam-tasks`.
 2. **Instrument:** an `exam` ending, checker faults, check-defect stops or tasks set aside.
-   Owners: `planOf` in `src/builder/opening.ts` and `readChecker` in `src/kernel/acceptance.ts`
+   Owners: `planOf` in `src/campaign/opening.ts` and `readChecker` in `src/kernel/acceptance.ts`
    for a host fault; otherwise the check program's author. Follow `AGENTS.md`, section 3, for admissions and labels.
 3. **Room:** row or ending `no-room`, zero `valid.informative.old`. Owners: tasks through link 1,
    with `roomOf` in `src/kernel/reports.ts` deciding the reading. A campaign has one budget.
@@ -289,7 +289,7 @@ this walk chooses what to do about it.
    `unmeasured`.
 8. **Next epoch:** refused drafts, idle conversations or few frontier tasks after promotion.
    Owners: `heard`, `campaignStatus`, `hostOwed` in `tools/d2/harness-builder.ts`, and `ROWS` and
-   `HOLDS` in `src/builder/decide.ts`.
+   `HOLDS` in `src/campaign/decide.ts`.
 
 ## 1. Choose one change, aimed at the next promotion
 
@@ -372,7 +372,7 @@ Read at each milestone and at the timer's predicted moment.
   "working" hours after its last event is usually a `campaign.waited` naming its reset. An
   `environment` ending under a live keeper is a pause, not an end. On 20 October both were misread:
   a weekly limit as a stall, and three paused runs as finished.
-- `waitOut` in `src/solve/run.ts` waits for a named provider reset, inside the solve it ended and
+- `waitOut` in `src/solver/run.ts` waits for a named provider reset, inside the solve it ended and
   after a session crash (`tools/d2/host.ts`). After an interruption, continue
   at the run's own commit; counted solves stand. Apply `AGENTS.md`, rule 15, to provider limits.
 - A keeper moves only among the logins it was given. With one login it waits out a weekly limit,
@@ -427,7 +427,7 @@ First say what happened to the link:
 - **held:** the link moved but the chain did not. Walk again from that link with the new counts.
 - **unreached:** the change never moved its link. Repair its path and containment before choosing another.
 
-Choose one move. `decide` in `src/builder/decide.ts` advises accept, prepare, examine, build,
+Choose one move. `decide` in `src/campaign/decide.ts` advises accept, prepare, examine, build,
 compare, promote or end. A led Builder chooses its tools; code keeps admissions and scoring, and
 `hostOwed` makes comparisons and promotions between conversations.
 

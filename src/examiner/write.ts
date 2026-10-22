@@ -22,7 +22,7 @@
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
-import { affords, openingOf } from "../builder/opening.ts";
+import { affords, openingOf } from "../campaign/opening.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { acceptedAnswers, proposalsOf, writtenTasks } from "../kernel/history.ts";
 import { poolOf } from "../kernel/reports.ts";
@@ -38,7 +38,7 @@ import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import { waitTool } from "../builder/tools.ts";
-import { text, tool } from "../solve/answer.ts";
+import { text, tool } from "../tools/answer.ts";
 import { type CheckRow, firstMessage, systemPrompt } from "./prompt.ts";
 import { gapSaid, gateAnswers, gateBilled, heard, measuredGate, TRIED, UNAFFORDED } from "./record.ts";
 

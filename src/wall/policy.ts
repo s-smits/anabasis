@@ -1,9 +1,9 @@
 /**
  * Shared protected paths and toolchain locations for the command wall, which a seat's commands and
- * a check both run under (`solve-command-isolation.ts`). A check runs there with the network
+ * a check both run under (`isolation.ts`). A check runs there with the network
  * closed, and reads open by default with the protected paths denied.
  */
-import type { OptionalEnvValues } from "../backends/scrub-env.ts";
+import type { OptionalEnvValues } from "../agent/backends/scrub-env.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync } from "../meta/filesystem.ts";
 import { activeDeveloperBinDirs } from "../meta/host-tool.ts";

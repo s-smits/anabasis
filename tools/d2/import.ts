@@ -28,7 +28,7 @@ import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { parentToolTree, stagedState } from "#src/builder/tools.ts";
-import { openHarness } from "#src/solve/harness.ts";
+import { openHarness } from "#src/harness/open.ts";
 import { campaignLog } from "./campaign.ts";
 
 const OPTIONS = {

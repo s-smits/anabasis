@@ -12,12 +12,12 @@
  *
  * The six-campaign whole-run investigations on 20 October 2026 found private seat paths and
  * denied calls counted as possible shared use. Only successful calls outside the seats' parent
- * (`BUILT_COMMAND_SCRATCH_ROOT`, `src/verify/wall-policy.ts`) count here.
+ * (`BUILT_COMMAND_SCRATCH_ROOT`, `src/wall/policy.ts`) count here.
  *
  * Split from `read.ts`, which stands near the size policy's ceiling, as `time.ts` and `folds.ts`
  * were. Nothing here reads a file beside the log.
  */
-import { short } from "#src/builder/move.ts";
+import { short } from "#src/campaign/move.ts";
 import { flipP } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { billedBetween } from "#src/kernel/reports.ts";
@@ -279,7 +279,7 @@ function afterTrigger(log: Index, { at, until, data }: Epoch, starter: string): 
       return `${build.session} from ${build.parent === promoted ? "the promoted harness" : short(build.parent)}, practising ${String(practised.size)} (${String(fresh)} written since the promotion)`;
     });
   // After a promotion the table reads the budget rule again on the promoted harness's own solves
-  // (`noRoom`, `src/builder/decide.ts`): a setting here is that rule's move.
+  // (`noRoom`, `src/campaign/decide.ts`): a setting here is that rule's move.
   const settings = log.events.flatMap(({ kind, data: setting }, index) =>
     within(index) && kind === "campaign.setting" ? [`model turns ${String(count(setting.modelTurns))}`] : [],
   );

@@ -3,8 +3,8 @@
 // keeps a person's labels blind.
 import { describe, expect, it } from "bun:test";
 import type { LogEvent } from "../src/kernel/log.ts";
-import { RULINGS } from "../src/review/agreement.ts";
-import { drawn, labelled, rejections, repairReading } from "../src/review/rejections.ts";
+import { RULINGS } from "../src/referee/agreement.ts";
+import { drawn, labelled, rejections, repairReading } from "../src/referee/rejections.ts";
 
 const at = "2026-10-08T00:00:00.000Z";
 const refused = (solve: string, ...blocking: string[]): LogEvent => ({

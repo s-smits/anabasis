@@ -7,7 +7,7 @@
  * The Builder keeps one conversation and one working copy while it asks a separate Examiner for
  * tasks (`examine`), has the host release practice tasks (`release_practice`), freezes its harness
  * and has it compared (`compare`), and has an eligible harness made the reference (`promote`).
- * The decision table says which move follows from the log (`decide`, `src/builder/decide.ts`), and
+ * The decision table says which move follows from the log (`decide`, `src/campaign/decide.ts`), and
  * the Builder is told it as advice, with the campaign's public counts (`campaign_status`, and under
  * each action's result). It may choose another. What it cannot do is go past a condition of the
  * host's: each action runs the command an operator would run, with that command's admission and
@@ -22,20 +22,20 @@
  *
  * An action that threw after it began ends the campaign on its environment
  * (`CampaignContext.failed`), unless what it threw was a provider's limit with a reset the
- * campaign waits out (`waitOut`, `src/solve/run.ts`): the Builder is then told to call the tool again.
+ * campaign waits out (`waitOut`, `src/solver/run.ts`): the Builder is then told to call the tool again.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
-import { Refused, supplyOf } from "#src/builder/admission.ts";
-import { CRASHES, decide, epochReleased, heldAfter, practiceOwed, unpromoted } from "#src/builder/decide.ts";
-import { comparisonsOf, crashedRun } from "#src/builder/ground.ts";
-import { campaignOf } from "#src/builder/handover.ts";
-import { type Decided, short } from "#src/builder/move.ts";
-import { type Opening } from "#src/builder/opening.ts";
+import { Refused, supplyOf } from "#src/campaign/admission.ts";
+import { CRASHES, decide, epochReleased, heldAfter, practiceOwed, unpromoted } from "#src/campaign/decide.ts";
+import { comparisonsOf, crashedRun } from "#src/campaign/ground.ts";
+import { campaignOf } from "#src/campaign/handover.ts";
+import { type Decided, short } from "#src/campaign/move.ts";
+import { type Opening } from "#src/campaign/opening.ts";
 import { comparisonsTold } from "#src/builder/past.ts";
 import type { BuildRequest } from "#src/builder/session.ts";
 import { type Bench, endingWith, snapshot, waitTool } from "#src/builder/tools.ts";
-import { pendingWords } from "#src/builder/word.ts";
+import { pendingWords } from "#src/campaign/word.ts";
 import { examine } from "#src/examiner/session.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import {
@@ -55,9 +55,9 @@ import { keyIfDefined, keysIf } from "#src/meta/optional-key.ts";
 import { join } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { plural } from "#src/meta/text.ts";
-import { text, tool } from "#src/solve/answer.ts";
-import { publicView } from "#src/solve/prompt.ts";
-import { waitOut } from "#src/solve/run.ts";
+import { text, tool } from "#src/tools/answer.ts";
+import { publicView } from "#src/solver/prompt.ts";
+import { waitOut } from "#src/solver/run.ts";
 import { examineCommand } from "../d1b/examine.ts";
 import { keptAs, openCampaign, PROMOTED, packNamed } from "./campaign.ts";
 import {

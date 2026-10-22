@@ -1,7 +1,7 @@
 /**
  * Darwin's process table, read through libproc: each process's working directory, the program it
  * runs, its parent and its process group, the facts a seat's release reads to end what its commands
- * left behind (`endHolders`, `src/verify/seat-root.ts`).
+ * left behind (`endHolders`, `src/wall/seat-root.ts`).
  *
  * Until 22 October the release asked `lsof -d cwd,txt` for them. On the operator's macOS host that
  * listing took 240 ms over 770 processes, and a solve asked it after each of its commands, at its

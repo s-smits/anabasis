@@ -24,7 +24,7 @@
  * the field for a campaign yet. The acceptance reading lists each such check as a fault until the
  * operator admits it by name (`tools/c/accept.ts --admit`), so a drafted exam is frozen on the
  * operator's word and never by this session (`AGENTS.md`, rule 10). A campaign launched without
- * `--hitl` is that word for every check of its draft (`planOf`, `src/builder/opening.ts`; the
+ * `--hitl` is that word for every check of its draft (`planOf`, `src/campaign/opening.ts`; the
  * operator, 16 October).
  *
  * The Examiner is told the prompt, its limits and what the host found in each draft. It is told

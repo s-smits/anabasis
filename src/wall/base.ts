@@ -1,8 +1,8 @@
 // The policy part of v1's `src/verify/solve-sandbox.ts`. v2 runs the loop in the host process and
 // every command under the command wall, which is probed through the launch in use (`walledBase`,
-// `src/solve/command.ts`).
+// `src/tools/command.ts`).
 /** Host-owned OS isolation for a seat's commands: the base every command wall is built on
- *  (`commandIsolationPolicy`, `solve-command-isolation.ts`).
+ *  (`commandIsolationPolicy`, `isolation.ts`).
  *
  * The solver reaches its provider over the network and its commands reach the host's programs, so
  * this wall cannot work by closing the machine and reopening a list of allowed paths. It allows by
@@ -21,7 +21,7 @@ import { hashJsonBytes } from "../meta/json-runtime.ts";
 import { nodeRuntimeReadRoots } from "./linux-bwrap.ts";
 import { type OsIsolationRuntime, osIsolationSupport } from "./os-isolation.ts";
 import { covers } from "./seatbelt-path-guard.ts";
-import { canonicalRoots } from "./wall-policy.ts";
+import { canonicalRoots } from "./policy.ts";
 
 /** The profile a condition's `sandbox` names (`tools/d2/campaign.ts`). */
 export const HOST_SOLVE_ISOLATION_PROFILE_ID = "harness-host-solve-isolated";

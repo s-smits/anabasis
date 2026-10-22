@@ -35,7 +35,7 @@ import { detectSupportedImageMimeType } from "../../vendor/pi-coding-agent/utils
 import { existsSync, readdirSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import { asError } from "../meta/runtime-values.ts";
-import { shellQuote } from "../verify/solve-command-isolation.ts";
+import { shellQuote } from "../wall/isolation.ts";
 import { type CommandWall, heldSeconds, runWalled } from "./command.ts";
 
 /** pi's coding tools, in the order pi lists them. */

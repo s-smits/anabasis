@@ -18,8 +18,8 @@ import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { join } from "#src/meta/path.ts";
 import { capturedExecPath } from "#src/meta/process.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
-import { openHarness } from "#src/solve/harness.ts";
-import { writeStarter } from "#src/solve/starter.ts";
+import { openHarness } from "#src/harness/open.ts";
+import { writeStarter } from "#src/harness/starter.ts";
 
 /** The solver's executable, the harness and the record, as the Harbor agent names them inside the
  *  mount (`harbor/pi_agent.py`). */

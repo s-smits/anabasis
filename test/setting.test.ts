@@ -2,7 +2,7 @@
 // drawn. It is recorded once in the log, a command that names nothing runs under the record, and
 // a command that names another is refused until the operator says the campaign's setting changes.
 import { afterAll, describe, expect, it } from "bun:test";
-import { compactionMode } from "../src/backends/models.ts";
+import { compactionMode } from "../src/agent/backends/models.ts";
 import { type LogEvent, read } from "../src/kernel/log.ts";
 import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";

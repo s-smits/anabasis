@@ -4,7 +4,7 @@
  *
  * 1. Path form. `/var/folders/...` and `/private/var/folders/...` are the same directory, and the kernel
  *    matches the canonical one. A denial naming only the symlink form can miss the protected
- *    read. `canonicalForms` in `wall-policy.ts` returns both.
+ *    read. `canonicalForms` in `policy.ts` returns both.
  * 2. Location. A confined process that can rename an ancestor of a denied path moves the protected
  *    bytes to a path no rule mentions. `moveBlockingRules` denies those renames.
  *
@@ -19,7 +19,7 @@
  * returns the canary at exit 0. These rules refuse that last rename.
  *
  * The hole belongs to the allow-by-default posture the command wall needs, so that a command
- * reaches the network and the host's programs (`solve-command-isolation.ts`).
+ * reaches the network and the host's programs (`isolation.ts`).
  *
  * Two deliberate departures from upstream:
  * - No `(with message ...)` log tag. Upstream tags its rules so a log stream can attribute
@@ -30,7 +30,7 @@
  *   spelling nothing emits.
  */
 import { posixContainsPath } from "../meta/path-containment.ts";
-import { ancestorDirectories } from "./wall-policy.ts";
+import { ancestorDirectories } from "./policy.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 
 /** Whether a deny rooted at `root` reaches `target`. SBPL paths are always "/"-separated. */

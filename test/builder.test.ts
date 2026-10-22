@@ -11,7 +11,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { crashedRun } from "../src/builder/ground.ts";
+import { crashedRun } from "../src/campaign/ground.ts";
 import { SAID, systemPrompt } from "../src/builder/prompt.ts";
 import { type BuildRequest, build, type PracticeTask, session } from "../src/builder/session.ts";
 import { type Bench, HOME_TOOL_TREE, practiceLeft, record } from "../src/builder/tools.ts";
@@ -40,12 +40,12 @@ import { isFunction, isString, type JsonObject } from "../src/meta/json-shape.ts
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import type { RefereeFinding } from "../src/review/referee.ts";
-import { publicResource, text, tool } from "../src/solve/answer.ts";
-import { openHarness } from "../src/solve/harness.ts";
-import { osIsolationSupport } from "../src/verify/os-isolation.ts";
+import type { RefereeFinding } from "../src/referee/referee.ts";
+import { publicResource, text, tool } from "../src/tools/answer.ts";
+import { openHarness } from "../src/harness/open.ts";
+import { osIsolationSupport } from "../src/wall/os-isolation.ts";
 import { CLOSED } from "./helpers/wall.ts";
-import { BUILT_COMMAND_SCRATCH_ROOT } from "../src/verify/wall-policy.ts";
+import { BUILT_COMMAND_SCRATCH_ROOT } from "../src/wall/policy.ts";
 import { keptAs } from "../tools/d2/campaign.ts";
 import { endCut } from "../tools/d2/harness-builder.ts";
 

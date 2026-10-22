@@ -14,8 +14,8 @@
  * that could merely be labelled one day with `settle.ts --all` is not withheld: with no label on
  * record that would hide every ruling for good, and whether it should is the operator's question.
  */
-import { reported, toLabel } from "../../../../src/builder/comparison.ts";
-import type { Handover } from "../../../../src/builder/handover.ts";
+import { reported, toLabel } from "../../../../src/campaign/comparison.ts";
+import type { Handover } from "../../../../src/campaign/handover.ts";
 import { isString } from "../../../../src/meta/json-shape.ts";
 import type { Rulings, Withheld } from "../models.ts";
 import { awaitingIn, type Log, once, ranIn, reportsIn, solvedIn } from "./folds.ts";

@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import type { Decided } from "../../../../src/builder/move.ts";
+import type { Decided } from "../../../../src/campaign/move.ts";
 import { plural } from "../../../../src/meta/text.ts";
 import { ComparisonsChart } from "../components/charts/comparisons.tsx";
 import { ShareKey, SpendChart, ValidShareChart } from "../components/charts/small.tsx";

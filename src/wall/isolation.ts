@@ -29,9 +29,9 @@ import {
   bwrapWriteBinds,
   nodeRuntimeReadRoots,
 } from "./linux-bwrap.ts";
-import type { EnvValues } from "../backends/scrub-env.ts";
+import type { EnvValues } from "../agent/backends/scrub-env.ts";
 import { covers, moveBlockingRules, sbRule } from "./seatbelt-path-guard.ts";
-import type { SolveIsolationPolicy } from "./solve-sandbox.ts";
+import type { SolveIsolationPolicy } from "./base.ts";
 import {
   ancestorDirectories,
   canonicalForms,
@@ -42,13 +42,13 @@ import {
   traversalMetadataRules,
   hostRoots,
   userTempRules,
-} from "./wall-policy.ts";
+} from "./policy.ts";
 
 /**
  * The whole environment a command receives, built from fixed settings, scratch paths and the host
  * toolchain locations below. It is built rather than filtered: the host's environment holds the
  * provider's credential, `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`
- * (`src/backends/claude.ts`), so a command that inherited the parent environment could simply print
+ * (`src/agent/backends/claude.ts`), so a command that inherited the parent environment could simply print
  * it. No credential-removal filter is trusted to stand between the two.
  *
  * `HOME` points at the session home rather than at the work tree, because the write deny is
@@ -377,7 +377,7 @@ export function shellQuote(value: string): string {
  * descriptors pi opened to capture its output.
  *
  * Seatbelt has no namespace to end what a command leaves behind, so the host ends the command's
- * process group and its descendants after it (`endHolders`, `src/verify/seat-root.ts`).
+ * process group and its descendants after it (`endHolders`, `src/wall/seat-root.ts`).
  */
 export function stageCommandIsolation(
   policy: CommandIsolationPolicy,

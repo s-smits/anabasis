@@ -3,7 +3,7 @@
  * for a name.
  *
  * `getText` returns source, so a rule looking for a binding by spelling is also reading prose.
- * `ana/prefer-const-conditional`'s one two-arm site, `solve-sandbox.ts`, builds a Seatbelt
+ * `ana/prefer-const-conditional`'s one two-arm site, `base.ts`, builds a Seatbelt
  * profile whose array carries the comment *where that bypass is measured against this profile
  * without these lines* — the word `profile` in a sentence, suppressing the finding about the
  * binding called `profile`. `ana/no-renaming-temporary` needs the same answer to place a fix

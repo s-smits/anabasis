@@ -11,8 +11,8 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
-import { openHarness } from "../src/solve/harness.ts";
-import { EXAMPLE, writeHarness, writeStarter } from "../src/solve/starter.ts";
+import { openHarness } from "../src/harness/open.ts";
+import { EXAMPLE, writeHarness, writeStarter } from "../src/harness/starter.ts";
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-harness-versions-test-")));
 afterAll(() => rmSync(root, { recursive: true, force: true }));

@@ -7,7 +7,7 @@
  * Run so, with no model, it puts each of the sweep's rejected answers into the campaign's log as the
  * verdict this verifier gives it today, beside one answer the checks accept for the same task (a
  * stored pass, or the pack's accept control), and prints the reading so far
- * (`src/review/rejections.ts`). Then, in this order:
+ * (`src/referee/rejections.ts`). Then, in this order:
  *
  *   ... --draw 20                            a sample for a person to label, blind
  *   ... --referee claude/claude-opus-5-5     the Referee's ruling of every refused answer
@@ -39,8 +39,8 @@ import { dirname, join } from "#src/meta/path.ts";
 import { pooled } from "#src/meta/pool.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
-import { agreement, clears, RULINGS } from "#src/review/agreement.ts";
-import { drawn, labelled, rejections } from "#src/review/rejections.ts";
+import { agreement, clears, RULINGS } from "#src/referee/agreement.ts";
+import { drawn, labelled, rejections } from "#src/referee/rejections.ts";
 import { openCampaign, stayAwake } from "../d2/campaign.ts";
 import type { Campaign } from "../d2/round.ts";
 import { modelNamed, packControls, type Row, storedAnswer, sweepRows } from "../m0/stored-sweep.ts";

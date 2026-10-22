@@ -5,7 +5,7 @@
  *
  * A mode is what a session is told, the tools it works with and when its work is done (`Mode`);
  * everything else is one loop (`examining`) in the frame every seat's session has (`sit`,
- * `src/seat/session.ts`): its start event, its `finish`, its shell where it has one, the turns and
+ * `src/agent/session.ts`): its start event, its `finish`, its shell where it has one, the turns and
  * calls in the log under the mode's kind, and its end event with what it billed. A
  * turn of its own the provider failed ends it crashed, with what the provider said. A drafting
  * session puts one whole draft to the host's reading until one stands (`putting`); a writing
@@ -24,7 +24,7 @@ import {
   type ThinkingLevel,
 } from "@earendil-works/pi-ai";
 import { type Static, type TSchema, Type } from "typebox";
-import { openingOf } from "../builder/opening.ts";
+import { openingOf } from "../campaign/opening.ts";
 import { endingWith, openingTool } from "../builder/tools.ts";
 import { append, read } from "../kernel/log.ts";
 import { examinerSessions } from "../kernel/solves.ts";
@@ -33,8 +33,8 @@ import { billedAll } from "../kernel/reports.ts";
 import type { JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { plural } from "../meta/text.ts";
-import { sit } from "../seat/session.ts";
-import { text, tool } from "../solve/answer.ts";
+import { sit } from "../agent/session.ts";
+import { text, tool } from "../tools/answer.ts";
 import { drafting } from "./draft.ts";
 import { examinerShell, inExaminerWall, type Wall, type Walls } from "./shell.ts";
 import { writing } from "./write.ts";

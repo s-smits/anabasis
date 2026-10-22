@@ -1,6 +1,6 @@
 // A seat's root, executed: claimed once, refused to a second claim, and released with whatever its
 // commands left working in it. On Linux a seat's leftovers end with its pid namespace, so only the
-// claim and the removal are read there (`src/verify/seat-root.ts`).
+// claim and the removal are read there (`src/wall/seat-root.ts`).
 import { describe, expect, it } from "bun:test";
 import {
   chmodSync,
@@ -14,7 +14,7 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { claimRoot, endHolders, releaseRoot } from "../src/verify/seat-root.ts";
+import { claimRoot, endHolders, releaseRoot } from "../src/wall/seat-root.ts";
 
 const onDarwin = runtimeProcess.platform === "darwin";
 

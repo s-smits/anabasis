@@ -1,6 +1,6 @@
 /**
  * The Builder's tools. It is a coding agent on a harness's files, so it has what a solver has: pi's
- * own `read`, `bash`, `edit` and `write` on the command wall (`src/solve/coding-tools.ts`), in one
+ * own `read`, `bash`, `edit` and `write` on the command wall (`src/tools/coding.ts`), in one
  * working directory, its home. On top of them are the tools that are a Builder's alone. Two ask
  * the host about `harness/` as it stands and run on the same wall: `check_harness` and
  * `preview_harness`. Four are the host's: `practice`, `read_trace`, `read_opening` and `finish`.
@@ -74,15 +74,15 @@ import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { pooled } from "../meta/pool.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
-import { openDesk, text, tool } from "../solve/answer.ts";
-import { CODING_TOOLS, codingTools, selectedCodingTools } from "../solve/coding-tools.ts";
-import { type CommandWall, type NetworkReach, networkReach } from "../solve/command.ts";
-import { type Harness, harnessTools, openHarness, pathsUnder, toolTreeStamp } from "../solve/harness.ts";
-import { installedPrograms } from "../solve/programs.ts";
-import { systemPrompt } from "../solve/prompt.ts";
-import { clockText, solverTools } from "../solve/run.ts";
+import { openDesk, text, tool } from "../tools/answer.ts";
+import { CODING_TOOLS, codingTools, selectedCodingTools } from "../tools/coding.ts";
+import { type CommandWall, type NetworkReach, networkReach } from "../tools/command.ts";
+import { type Harness, harnessTools, openHarness, pathsUnder, toolTreeStamp } from "../harness/open.ts";
+import { installedPrograms } from "../harness/programs.ts";
+import { systemPrompt } from "../solver/prompt.ts";
+import { clockText, solverTools } from "../solver/run.ts";
 import { memoryOverCapNotice } from "./memory.ts";
-import { openingOf } from "./opening.ts";
+import { openingOf } from "../campaign/opening.ts";
 import { type Said, shellWalls } from "./prompt.ts";
 import type { BuildRequest, PracticeTask } from "./session.ts";
 
@@ -363,7 +363,7 @@ async function practise(bench: Bench, task: PracticeTask, kept: Snapshot, kill: 
     lines.push("The task's own check could not run on this answer: the task leaves this session's practice.");
   }
   // Only a rejected answer has anything to recompute: a solve its limits ended, or one that gave no
-  // answer, is not valid with no ruling (`src/builder/round.ts`). Until 15 October each went to the
+  // answer, is not valid with no ruling (`src/campaign/round.ts`). Until 15 October each went to the
   // Referee and was logged earned, unread: seven of them in three campaigns.
   if (ending.outcome === "fail" && ending.kind === "rejected" && request.referee !== undefined) {
     try {

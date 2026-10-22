@@ -6,9 +6,9 @@
  * 11 October holds it (decision 7: one reader a fact, `AGENTS.md` section 5, habit 2). A log read
  * again after it changed is another `Log`, and the folds kept for the old one go with it.
  */
-import { epochsOf } from "../../../../src/builder/climb.ts";
-import { campaignOf } from "../../../../src/builder/handover.ts";
-import { openingOf } from "../../../../src/builder/opening.ts";
+import { epochsOf } from "../../../../src/campaign/climb.ts";
+import { campaignOf } from "../../../../src/campaign/handover.ts";
+import { openingOf } from "../../../../src/campaign/opening.ts";
 import { conditionsOf } from "../../../../src/kernel/condition.ts";
 import { proposalsOf } from "../../../../src/kernel/history.ts";
 import type { LogEvent } from "../../../../src/kernel/log.ts";
@@ -55,7 +55,7 @@ export const callsIn = once(({ events }) =>
 );
 /** The one place each held-out task has (`poolOf`): the tasks waiting for a person's label and
  *  the exhausted ones are read off it, as the supply counts them (`supplyOf`,
- *  `src/builder/admission.ts`). */
+ *  `src/campaign/admission.ts`). */
 const poolIn = once(({ events }) => poolOf(events));
 export const awaitingIn = once((log) => new Set(poolIn(log).awaiting));
 export const exhaustedIn = once((log) => new Set(poolIn(log).exhausted));

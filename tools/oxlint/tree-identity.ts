@@ -195,7 +195,7 @@ function unaliased(specifier: string): string {
  * `const ISOLATION_FIXTURES = […] as const` beside `type IsolationFixture = (typeof ISOLATION_FIXTURES)[number]`
  * makes the union the compiler's, and `{…} satisfies Record<IsolationFixture, …>` makes every key checked
  * against it. That the check reaches another file was measured rather than assumed: mistyping
- * `host-seatbelt-read-deny/v1` in `src/verify/solve-sandbox.ts`, which declares its own constant four
+ * `host-seatbelt-read-deny/v1` in `src/wall/base.ts`, which declares its own constant four
  * files away from the array, fails the build in four places.
  *
  * `as const` alone is not enough, and reading it that way silenced three true findings. The eight

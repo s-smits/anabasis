@@ -18,7 +18,7 @@
  * The sets are the log's (`prepare.ts`): the released tasks are the Builder's practice. The scored
  * set is `--target` of the held-out tasks, the newest epoch's first and within an epoch drawn by
  * the contract's hash alone. It is fixed before any solve, so that no harness's results choose it
- * (`src/builder/round.ts`, `scoredSet`).
+ * (`src/campaign/round.ts`, `scoredSet`).
  *
  * The defaults are the plan's (`SIZE`, `src/kernel/size.ts`): 24 scored tasks, four solves a
  * harness, the paired sign-flip test at 0.10, and a stop past three check defects. At those a
@@ -53,7 +53,7 @@
  * own.
  *
  * Before its first event a round asks whether its comparison may start
- * (`src/builder/admission.ts`): on a checker nobody has read, with too few tasks left to untie, or
+ * (`src/campaign/admission.ts`): on a checker nobody has read, with too few tasks left to untie, or
  * after the plan's stop rule has stopped the campaign, it starts nothing. `--past-stop "<why>"`
  * goes on past the stop rule, and the reason is logged.
  *
@@ -66,10 +66,10 @@
  * Not run here: see `campaign.ts`.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
-import { admitComparison, type Wanted } from "#src/builder/admission.ts";
-import { worthLine } from "#src/builder/climb.ts";
-import { predicted, type Report } from "#src/builder/comparison.ts";
-import { refuseTerms, type RoundRequest, round, scoredSet } from "#src/builder/round.ts";
+import { admitComparison, type Wanted } from "#src/campaign/admission.ts";
+import { worthLine } from "#src/campaign/climb.ts";
+import { predicted, type Report } from "#src/campaign/comparison.ts";
+import { refuseTerms, type RoundRequest, round, scoredSet } from "#src/campaign/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
 import { type ObjectiveRule, WEIGHTS } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";

@@ -1,4 +1,4 @@
-import type { OptionalEnvValues } from "../../src/backends/scrub-env.ts";
+import type { OptionalEnvValues } from "../../src/agent/backends/scrub-env.ts";
 import { isString } from "../../src/meta/json-shape.ts";
 import { asError } from "../../src/meta/runtime-values.ts";
 

@@ -3,7 +3,7 @@
 // surface: the results that clear a level are read off them. The power itself is the test's own
 // arithmetic (`test/compare.test.ts`).
 import { describe, expect, it } from "bun:test";
-import { planOf } from "../src/builder/opening.ts";
+import { planOf } from "../src/campaign/opening.ts";
 import { sweepOf } from "../src/kernel/compare.ts";
 import { SIZE, sizeLines } from "../src/kernel/size.ts";
 import { COMPARISON_OPTIONS, ROUND_OPTIONS } from "../tools/d2/round.ts";

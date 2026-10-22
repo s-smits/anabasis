@@ -32,14 +32,10 @@ import {
 } from "../meta/filesystem.ts";
 import { join, resolve } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import { endHolders } from "../verify/seat-root.ts";
-import {
-  commandIsolationPolicy,
-  shellQuote,
-  stageCommandIsolation,
-} from "../verify/solve-command-isolation.ts";
-import { BUILT_COMMAND_SCRATCH_ROOT } from "../verify/wall-policy.ts";
-import { type SolveIsolationPolicy, solveIsolationPolicy } from "../verify/solve-sandbox.ts";
+import { endHolders } from "../wall/seat-root.ts";
+import { commandIsolationPolicy, shellQuote, stageCommandIsolation } from "../wall/isolation.ts";
+import { BUILT_COMMAND_SCRATCH_ROOT } from "../wall/policy.ts";
+import { type SolveIsolationPolicy, solveIsolationPolicy } from "../wall/base.ts";
 
 export interface SolveDirs {
   /** The seat's own folder, which its commands write but for `kept`. */

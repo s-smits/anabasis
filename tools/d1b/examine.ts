@@ -57,7 +57,7 @@
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { examine, type Session } from "#src/examiner/session.ts";
-import { openingOf } from "#src/builder/opening.ts";
+import { openingOf } from "#src/campaign/opening.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { taskSets, taskStates } from "#src/kernel/task.ts";
 import { readBrief } from "#src/kernel/verify.ts";

@@ -164,6 +164,13 @@ describe("a solve's walled commands", () => {
         // their command returned (2026-10-09). It still works in the solve's root.
         await run(wall, `set -m; ${beating("apart")} >/dev/null 2>&1 &`);
         expect(await stillBeats(join(dirs.home, "apart"))).toBe(false);
+        // Work that leaves the root is out of reach of what ends the root's holders, so the command's
+        // group and every descendant of it are ended by pid: a job left in the group, and one in a
+        // group of its own under a parent that waits in it.
+        await run(wall, `cd / && nohup ${beating("away")} >/dev/null 2>&1 &`);
+        expect(await stillBeats(join(dirs.home, "away"))).toBe(false);
+        await run(wall, `cd / && (set -m; ${beating("below")} >/dev/null 2>&1 & wait) >/dev/null 2>&1 &`);
+        expect(await stillBeats(join(dirs.home, "below"))).toBe(false);
 
         // Every command is held to the condition's shell limits here, whoever launched it: one that
         // names no timeout runs for the default, and one that names too long a timeout for the maximum.

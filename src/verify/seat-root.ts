@@ -16,7 +16,7 @@
 import { chmodSync, existsSync, mkdirSync, readdirSync, realpathSync, rmSync } from "../meta/filesystem.ts";
 import { dirname, join, resolve } from "../meta/path.ts";
 import { runtimeProcess } from "../meta/process.ts";
-import { processPaths } from "../meta/process-table.ts";
+import { processTable } from "../meta/process-table.ts";
 
 /** Undo `claimRoot`: `releaseRoot` on its root. */
 export type ReleaseRoot = () => void;
@@ -71,15 +71,19 @@ function removeWhole(root: string): void {
 
 /**
  * Darwin's, as Linux ends a pid namespace: kill every process working in `root` or running a
- * program from it, for a few passes while one that forks leaves another. Each walled command's end
- * calls this too (`runWalled`), for what left the command's group or outran its exit trap.
+ * program from it, every process of `group` where a walled command's end names its process group
+ * (`runWalled`), and every live descendant of those, for a few passes while one that forks leaves
+ * another. A descendant is found by its parent, as Bun's `--no-orphans` walks them, which catches
+ * one that left the group with `setsid` while its parent lives; one that left both the group and
+ * the root after its parent ended is out of reach. Each pass kills from one listing, since a kill
+ * changes what the next listing shows.
  */
-export function endHolders(root: string): void {
+export function endHolders(root: string, group?: number): void {
   if (runtimeProcess.platform !== "darwin" || !existsSync(root)) return;
   // libproc names a file by its real path, and a root under /var is /private/var to it.
   const real = realpathSync.native(root);
   for (let pass = 0; pass < 5; pass++) {
-    const holders = holdersOf(real);
+    const holders = holdersOf(real, group);
     if (holders.length === 0) return;
     for (const pid of holders) {
       try {
@@ -92,12 +96,17 @@ export function endHolders(root: string): void {
 }
 
 /** The pids, but this process's and launchd's, whose working directory or program lies in `root`
- *  (`processPaths`, libproc, which reads them as lsof named them: by their real paths). */
-function holdersOf(root: string): number[] {
+ *  (`processTable`, libproc, which reads them as lsof named them: by their real paths), or whose
+ *  process group is `group`, with every descendant of theirs. */
+function holdersOf(root: string, group: number | undefined): number[] {
   const inRoot = (path: string | null) => path !== null && (path === root || path.startsWith(`${root}/`));
-  return processPaths()
-    .filter(
-      ({ pid, cwd, program }) => pid > 1 && pid !== runtimeProcess.pid && (inRoot(cwd) || inRoot(program)),
-    )
-    .map(({ pid }) => pid);
+  const table = processTable().filter(({ pid }) => pid > 1 && pid !== runtimeProcess.pid);
+  const held = new Set(
+    table.filter((row) => row.pgid === group || inRoot(row.cwd) || inRoot(row.program)).map(({ pid }) => pid),
+  );
+  for (let size = -1; size !== held.size; ) {
+    size = held.size;
+    for (const { pid, ppid } of table) if (held.has(ppid)) held.add(pid);
+  }
+  return [...held];
 }

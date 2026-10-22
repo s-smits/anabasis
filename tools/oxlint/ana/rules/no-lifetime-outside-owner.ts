@@ -5,9 +5,9 @@ import { isOneOf, isTestFile } from "../shared/file-role.ts";
 /**
  * Process lifetime has one launch owner in this repository, `stageCommandIsolation` in
  * `src/verify/solve-command-isolation.ts`, which stages every solve command behind the OS wall
- * and, under Seatbelt, has the shell reap its own group on exit, and one reader of it,
- * `src/meta/subprocess.ts`, whose `killProcessGroup` and `terminateAndReapProcessGroupId` signal
- * a group and wait for it to go. A file that spawns a child and then kills it has written a
+ * and leaves what a command leaves under Seatbelt to the seat's release (`endHolders`), and one
+ * reader of it, `src/meta/subprocess.ts`, whose `killProcessGroup` and
+ * `terminateAndReapProcessGroupId` signal a group and wait for it to go. A file that spawns a child and then kills it has written a
  * second owner.
  *
  * The rule was written in v1, where a second launch owner stood beside `stageCommandIsolation`
@@ -36,7 +36,7 @@ import { isOneOf, isTestFile } from "../shared/file-role.ts";
  *
  * A signal sent through the process object is not that shape. `process.kill(pid, signal)` ends
  * an identity the file was handed, which is what `src/meta/subprocess.ts` itself does, what
- * `src/verify/seat-root.ts` does to the pids `lsof` lists in a seat's root, and what the test runner
+ * `src/verify/seat-root.ts` does to the pids libproc lists in a seat's root, and what the test runner
  * does to the descendants a group kill could not reach — they left their session, so the runner
  * finds them in `ps` and signals each one. A second launch owner is a file that kills the child
  * it holds, and that is written `child.kill()`.

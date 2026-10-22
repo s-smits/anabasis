@@ -7,16 +7,31 @@
  * checks its exact commit again. Ordinary requests reuse a successful install while checking its clean source.
  */
 import { gitText } from "#src/meta/git.ts";
-import { isAbsolute } from "#src/meta/path.ts";
+import { isAbsolute, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { type Host, configuredRuntime } from "./host-config.ts";
 import { quoted, shellPath, sshScript } from "./host-command.ts";
 
+/** The folder in the common Git directory that holds one controller a commit. `PRUNE` keeps the
+ *  newest three, and `runs retire` leaves every tree in it to that. */
+const CONTROLLERS = "ana-code";
 /** A cold Linux controller can need several minutes for its frozen install. */
 const PREPARE_MS = 300_000;
 const warned = new Set<string>();
+
+/** The shell function that says whether the lock folder `$1` is stale: older than a preparation
+ *  may take, or held by a process that is gone. A preparation takes a stale lock of its own commit
+ *  over, and `PRUNE` removes a controller behind one: on 22 October a preparation on the M1 left
+ *  `c5e16d7f.lock`, which kept that controller from pruning for good. */
+const STALE = `stale() {
+  stamp="$(stat -c %Y "$1" 2>/dev/null || stat -f %m "$1")"
+  test "$(($(date +%s) - stamp))" -le ${String(PREPARE_MS / 1000)} || return 0
+  holder="$(cat "$1/pid" 2>/dev/null || true)"
+  case "$holder" in ''|*[!0-9]*) return 1;; esac
+  ! kill -0 "$holder" 2>/dev/null
+}`;
 
 /** Only old, idle controllers are disposable. Failure to inspect processes preserves them.
  *  The process list is `running`: zsh, a macOS login shell, reserves `commands` (22 October). */
@@ -34,13 +49,17 @@ if running="$(ps -axww -o args=)"; then
       test "$count" -gt 3 || continue
       candidate="\${marker%.ready}"
       test "$candidate" != "$tree" || continue
-      test ! -d "$candidate.lock" || continue
+      if test -d "$candidate.lock" && ! stale "$candidate.lock"; then continue; fi
       case "$running
 $cwds" in *"$candidate"*) continue;; esac
-      if git worktree remove "$candidate"; then rm -f "$marker"; fi
+      if git worktree remove "$candidate"; then rm -rf "$marker" "$candidate.lock"; fi
     done
   fi
 fi`;
+
+/** Where the repository `repo` lies in keeps its controllers. */
+export const controllersOf = (repo: string) =>
+  join(gitText(repo, "rev-parse", "--path-format=absolute", "--git-common-dir"), CONTROLLERS);
 
 /** Read at the nearest published ancestor, even from an unpublished caller worktree. */
 function readCommit(): string {
@@ -84,8 +103,9 @@ export function installAt(tree: string, commit: string): void {
 function preparation(host: Host, commit: string, mode: "cached" | "install"): string {
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error("host preparation needs a whole commit id");
   return `set -eu
+${STALE}
 cd ${shellPath(host.tree)}
-root="$(git rev-parse --path-format=absolute --git-common-dir)/ana-code"
+root="$(git rev-parse --path-format=absolute --git-common-dir)/${CONTROLLERS}"
 tree="$root/${commit}"
 if ${mode === "install" ? "true" : `! test -f "$root/${commit}.ready" || ! test -d "$tree/node_modules"`}; then
 git fetch -q origin
@@ -95,16 +115,9 @@ fi
 if ! test -f "$root/${commit}.ready" || ! test -d "$tree/node_modules"; then
 mkdir -p "$root"
 lock="$root/${commit}.lock"
-if test -d "$lock"; then
-  stamp="$(stat -c %Y "$lock" 2>/dev/null || stat -f %m "$lock")"
-  pid="$(cat "$lock/pid" 2>/dev/null || true)"
-  stale=no
-  test "$(($(date +%s) - stamp))" -le ${String(PREPARE_MS / 1000)} || stale=yes
-  case "$pid" in ''|*[!0-9]*) ;; *) kill -0 "$pid" 2>/dev/null || stale=yes;; esac
-  if test "$stale" = yes; then
-    mv "$lock" "$lock.stale.$$"
-    rm -rf "$lock.stale.$$"
-  fi
+if test -d "$lock" && stale "$lock"; then
+  mv "$lock" "$lock.stale.$$"
+  rm -rf "$lock.stale.$$"
 fi
 mkdir "$lock" || { echo 'code preparation is already in progress' >&2; exit 1; }
 echo "$$" > "$lock/pid"

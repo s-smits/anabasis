@@ -15,16 +15,14 @@ import { dirname, isAbsolute, join } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { asked } from "./hosts.ts";
-import { type Host, hostsOf } from "./host-config.ts";
+import { type Host, hostNamed, hostsOf } from "./host-config.ts";
 import { quoted, rsync } from "./host-command.ts";
 import {
   archiveOf,
-  archived,
   HERE,
-  isCampaign,
+  originals,
   readable,
   readNamed,
-  runs,
   wholeLines,
   logEvents,
   processes,
@@ -45,14 +43,18 @@ type Depth = "record" | "whole";
 const EXCLUDED = ["--exclude=.env", "--exclude=.env.*", "--exclude=*.env", "--exclude=auth.json"];
 const RECORD = ["--include=/log.jsonl", "--include=/launch-*.json", "--exclude=/*"];
 
+/** One original campaign's identity and project, as a catalogue lists it. */
+function entryOf({ name, path }: Run): { name: string; path: string; project: string | null } {
+  return { name, path, project: openingOf(logEvents(path))?.project ?? null };
+}
+
 /** Only originals are advertised: a fetched copy cannot claim another machine's campaign. */
 export async function catalogue(): Promise<void> {
   const running = processes();
-  const originals = [...runs(), ...archived().filter((run) => run.archived === HERE)].filter(isCampaign);
   const records = await Promise.all(
-    localCatalogue().map(async (run) => ({
-      ...run,
-      open: originals.some((original) => original.path === run.path && writers(original, running).length > 0),
+    originals().map(async (run) => ({
+      ...entryOf(run),
+      open: writers(run, running).length > 0,
       stderr: await stderrTail(run.path),
     })),
   );
@@ -60,10 +62,7 @@ export async function catalogue(): Promise<void> {
 }
 
 /** Original campaign identities and projects, shared with fresh placement. */
-export function localCatalogue(): { name: string; path: string; project: string | null }[] {
-  const all = [...runs(), ...archived().filter((run) => run.archived === HERE)].filter(isCampaign);
-  return all.map(({ name, path }) => ({ name, path, project: openingOf(logEvents(path))?.project ?? null }));
-}
+export const localCatalogue = () => originals().map(entryOf);
 
 /** Validate before a remote record can name a transfer source or local destination. */
 export function remoteRuns(lines: readonly string[] | null, host: Host): RemoteRun[] {
@@ -156,14 +155,13 @@ export async function syncRuns(
     readonly depth?: Depth;
   } = {},
 ): Promise<string[]> {
-  const known = hostsOf();
-  if (options.from !== undefined && !known.some((host) => host.name === options.from)) {
-    throw new Error(`no configured host ${options.from}`);
-  }
   const repo = options.repo ?? runtimeProcess.cwd();
-  const local = [...runs(repo), ...archived(repo).filter((run) => run.archived === HERE)].filter(isCampaign);
-  const answers = await asked(["catalogue"]);
-  const selected = answers.filter(({ host }) => options.from === undefined || options.from === host.name);
+  const local = originals(repo);
+  // Only the host named is asked: another host's catalogue would be read and then dropped.
+  const selected = await asked(
+    ["catalogue"],
+    options.from === undefined ? hostsOf() : [hostNamed(options.from)],
+  );
   const matches = (name: string) =>
     names.length === 0 ||
     names.some((part) => (options.match === "exact" ? name === part : name.includes(part)));

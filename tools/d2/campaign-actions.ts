@@ -62,17 +62,14 @@ import { examineCommand } from "../d1b/examine.ts";
 import { keptAs, openCampaign, PROMOTED, packNamed } from "./campaign.ts";
 import {
   comparisonOf,
-  DEFAULTS,
-  examTasks,
+  examinerRun,
   flag,
   idleOf,
   MOVED,
   nextId,
   opened,
   packOf,
-  SCRIPTED,
   type Seats,
-  sharedOf,
   type Turn,
   turnOf,
   type Values,
@@ -284,16 +281,12 @@ function actionTool(
 
 const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
   actionTool(context, bench, "examine", async (turn, decided, begin) => {
-    const { seats, values } = context;
+    const { seats } = context;
     if (seats.seated !== solved && seats.examine === undefined) {
       return { refused: "This campaign has no Examiner seat, so the host cannot write more tasks." };
     }
-    const { examiner } = turn.opening.seats;
-    if (seats.seated === solved && examiner === null) {
-      throw new Error("name --examiner: the campaign needs an Examiner");
-    }
     const session = nextId(turn.events, "x");
-    const tasks = values["exam-tasks"] ?? examTasks(turn);
+    const { args, tasks, probe } = examinerRun(turn, session, seats.examine, "write");
     begin({
       session,
       ...keyIfDefined(
@@ -305,27 +298,9 @@ const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
     const { promise: onRecord, resolve } = Promise.withResolvers<void>();
     const sitting = seats.examine ?? examine;
     const work = examineCommand(
-      [
-        ...packOf(values),
-        "--session",
-        session,
-        "--examiner",
-        examiner?.model ?? SCRIPTED,
-        "--examiner-effort",
-        examiner?.effort ?? DEFAULTS.effort,
-        ...flag("tasks", tasks),
-        // The campaign's setting before one is recorded: the Examiner's budget, and `try_task`'s.
-        ...sharedOf(turn).setting,
-        ...sharedOf(turn).reviewer,
-        ...flag("proposals", values["exam-proposals"]),
-        ...flag("minutes", values["exam-minutes"]),
-        ...flag("turns", values["exam-turns"]),
-        ...flag("reference-home", values["exam-reference"]),
-        ...flag("results", values["exam-results"]),
-      ],
+      args,
       (request, wall) => sitting({ ...request, opened: resolve }, wall),
-      // The campaign's own seat, so the tries wait on the load and share the reserve (14 October).
-      seats.probe ?? (seats.examine === undefined ? context.held : null),
+      probe,
       // The host's halt, on its bounds or an ending, and the run's kill stop it; the
       // conversation's own end is neither.
       AbortSignal.any([bench.halt.signal, ...(bench.request.kill === undefined ? [] : [bench.request.kill])]),

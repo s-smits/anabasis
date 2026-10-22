@@ -24,7 +24,8 @@
  * 24 practice solves, and nothing said so.
  */
 import { type LogEvent, read } from "../kernel/log.ts";
-import { billedAll, type Cap, patienceOf } from "../kernel/reports.ts";
+import { type Cap, patienceOf } from "../kernel/reports.ts";
+import { billedAll } from "../kernel/trace.ts";
 import { SIZE } from "../kernel/size.ts";
 import { unadmitted } from "../kernel/acceptance.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";

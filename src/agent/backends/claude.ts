@@ -674,7 +674,7 @@ async function costAtClose(session: Session): Promise<number | null> {
   }
 }
 
-export function emptyTurn(model: Model<Api>): AssistantMessage {
+function emptyTurn(model: Model<Api>): AssistantMessage {
   return {
     role: "assistant",
     content: [],

@@ -23,7 +23,8 @@
  * returns no verdict and reads nothing hidden, so a refused submit tells a solver nothing but what
  * is wrong with its file, and none is counted.
  */
-import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
+import { copyJson } from "@earendil-works/chord";
+import { defineTool, type ToolExecutionResult, type ToolRegistration } from "@earendil-works/pi-durable";
 import { type TSchema, Type } from "typebox";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { sha256 } from "../meta/digest.ts";
@@ -32,8 +33,9 @@ import type { JsonObject, JsonValue } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { canonicalJson, hashJsonValue } from "../meta/stable-json.ts";
+import type { SeatTool } from "../agent/session.ts";
 import { shellQuote } from "../wall/isolation.ts";
-import type { SolverTool, WallExec } from "./coding.ts";
+import type { WallExec } from "./coding.ts";
 
 /** One of the domain's public resources, as a file in the solver's home holds it. */
 export interface PublicResource {
@@ -97,23 +99,20 @@ function answerIn(bytes: Buffer, contract: Contract): { answer: JsonValue } | { 
  * (`src/kernel/solve.ts`) and reads no file. It is an outcome the solver may choose, and tells it
  * nothing of the task.
  */
-export function submitTool(desk: Desk, contract: Contract, home: string, exec: WallExec) {
+export function submitTool(desk: Desk, contract: Contract, home: string, exec: WallExec): SeatTool {
   const file = shellQuote(join(home, ANSWER_FILE));
-  return {
+  return tool({
     name: "submit",
-    label: "Submit",
     description: `Send ${ANSWER_FILE} from your working directory as your answer. It holds the answer as JSON, in the format ${ANSWER_FORMAT_FILE} gives. A file that does not is refused with the reason, and you may submit again. An accepted submit ends the task and returns no verdict. If you judge the task malformed, so that no answer could meet it as posed, give malformed instead, saying why: that ends the task with no answer read.`,
-    promptSnippet: `Send ${ANSWER_FILE} as your answer, which ends the task`,
     parameters: SUBMIT_PARAMETERS,
-    executionMode: "sequential",
-    execute: async (_id, { malformed }, signal) => {
-      if (desk.submitted !== undefined) return { ...text("Submitted."), terminate: true };
+    execute: async ({ malformed }, _api, context) => {
+      if (desk.submitted !== undefined) return ending(text("Submitted."));
       const why = malformed?.trim() ?? "";
       desk.flagged ??= why === "" ? undefined : why;
-      if (desk.flagged !== undefined) return { ...text("Flagged."), terminate: true };
+      if (desk.flagged !== undefined) return ending(text("Flagged."));
       const { exitCode, output } = await exec(
         `[ -f ${file} ] || exit ${String(MISSING)}; head -c ${String(ANSWER_MAX_BYTES + 1)} ${file}`,
-        { signal },
+        { signal: context.abortSignal },
       );
       if (exitCode === MISSING) {
         return text(
@@ -126,16 +125,22 @@ export function submitTool(desk: Desk, contract: Contract, home: string, exec: W
       const read = answerIn(output, contract);
       if ("fault" in read) return text(`Submit blocked: ${ANSWER_FILE} ${read.fault}`);
       desk.submitted = read.answer;
-      return { ...text("Submitted.", { answerDigest: hashJsonValue(read.answer) }), terminate: true };
+      return ending(text("Submitted.", { answerDigest: hashJsonValue(read.answer) }));
     },
-  } satisfies SolverTool<typeof SUBMIT_PARAMETERS>;
+  });
 }
 
-/** A tool whose arguments are typed by its own parameters, in a list of any tools. */
-export function tool<Parameters extends TSchema>(definition: AgentTool<Parameters>): AgentTool {
-  return definition;
+/** A seat tool, typed by its schema and always sequential on the shared command wall. */
+export function tool<Parameters extends TSchema>(definition: ToolRegistration<Parameters>): SeatTool {
+  return defineTool({ ...definition, executionMode: "sequential" });
 }
 
-export function text(value: string, details: JsonObject | null = null): AgentToolResult<JsonObject | null> {
-  return { content: [{ type: "text", text: value }], details };
+/** A result the model reads as `value`, with `details` for the trace and the host. */
+export function text(value: string, details: JsonObject | null = null): ToolExecutionResult {
+  return { output: [{ type: "text", text: value }], details: copyJson(details) };
+}
+
+/** `result`, asking that the run end after this round (`control.terminate`). */
+export function ending<Result extends ToolExecutionResult>(result: Result): Result {
+  return { ...result, control: { terminate: true } };
 }

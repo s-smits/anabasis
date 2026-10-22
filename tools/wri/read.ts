@@ -24,7 +24,8 @@ import { campaignOf as handoverOf, type Handover, nextBound, openSteps } from "#
 import { differenceOf, flipP, readsStepEitherWay, sweepOf } from "#src/kernel/compare.ts";
 import type { Condition } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { billedAll, pairsReported } from "#src/kernel/reports.ts";
+import { pairsReported } from "#src/kernel/reports.ts";
+import { billedAll } from "#src/kernel/trace.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";

@@ -1,18 +1,13 @@
-// The solver's coding tools are pi's own four: their definitions as pi released them, the presets
-// that select them, and the file tools' work done by walled commands, here over a plain shell in
-// place of the wall. Then, on the real command wall: one working directory for every tool, the
-// three timeout clauses, a failing exit, and a cut command's output kept in the home.
+// Durable registrations run against the real OS wall. The fake invocation API only records
+// output and diagnostics; every file and shell operation uses the seat's walled environment.
 import { describe, expect, it } from "bun:test";
-import type { AgentToolResult } from "@earendil-works/pi-agent-core";
-import { createBashToolDefinition } from "../vendor/pi-coding-agent/core/tools/bash.ts";
-import { createEditToolDefinition } from "../vendor/pi-coding-agent/core/tools/edit.ts";
-import { createReadToolDefinition } from "../vendor/pi-coding-agent/core/tools/read.ts";
-import { createWriteToolDefinition } from "../vendor/pi-coding-agent/core/tools/write.ts";
+import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
+import type { ToolDiagnostic, ToolExecutionApi } from "@earendil-works/pi-durable";
+import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
+import { createEditTool, createReadTool, createWriteTool } from "@earendil-works/pi-durable/tools";
 import {
   existsSync,
-  mkdirSync,
   mkdtempSync,
-  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -21,315 +16,235 @@ import {
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { runtimeProcess } from "../src/meta/process.ts";
-import { codingTools, fileTools, selectedCodingTools, type WallExec } from "../src/tools/coding.ts";
-import { type CommandWall, makeSeatDirs, solveDirs } from "../src/tools/command.ts";
-import { solveIsolationPolicy } from "../src/wall/base.ts";
+import { CODING_TOOLS, codingTools, selectedCodingTools } from "../src/tools/coding.ts";
+import { type CommandWall, solveDirs, walledBase } from "../src/tools/command.ts";
+import { walledEnv } from "../src/tools/env.ts";
 import { osIsolationSupport } from "../src/wall/os-isolation.ts";
+import { claimRoot } from "../src/wall/seat-root.ts";
 
-const LIMITS = { shellDefaultSeconds: 300, shellMaxSeconds: 900 };
-
-/** A scratch home and what stands in for the wall here: each command by a plain `/bin/sh` in a
- *  fresh folder of its own, its staged files written there first, as `runWalled` gives a command. */
-function plainHome() {
-  const root = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-coding-tools-")));
-  const home = join(root, "home");
-  mkdirSync(home);
-  const commands: string[] = [];
-  let runs = 0;
-  const exec: WallExec = async (command, options = {}) => {
-    commands.push(command);
-    const work = join(root, `run-${String(runs++)}`);
-    mkdirSync(work);
-    options.stage?.(work);
-    const child = Bun.spawn(["/bin/sh", "-c", command], { cwd: work, stdout: "pipe", stderr: "pipe" });
-    const [out, err] = await Promise.all([
-      new Response(child.stdout).arrayBuffer(),
-      new Response(child.stderr).arrayBuffer(),
-    ]);
-    return { exitCode: await child.exited, output: Buffer.concat([Buffer.from(out), Buffer.from(err)]) };
+function caller(wall: CommandWall, env: ExecutionEnv) {
+  const tools = new Map(codingTools(wall, CODING_TOOLS).map((each) => [each.name, each]));
+  return async (name: string, args: JsonObject, signal?: AbortSignal) => {
+    const each = tools.get(name);
+    if (each === undefined) throw new Error(`Missing tool ${name}`);
+    let streamed = "";
+    const diagnostics: ToolDiagnostic[] = [];
+    const api: Pick<
+      ToolExecutionApi,
+      "env" | "callId" | "output" | "retainedOutput" | "diagnostic" | "agent"
+    > = {
+      env,
+      callId: "call",
+      output: (chunk: string | Uint8Array) => {
+        streamed += chunk instanceof Uint8Array ? new TextDecoder().decode(chunk) : chunk;
+      },
+      retainedOutput: () => ({ text: streamed, truncated: false }),
+      diagnostic: (note) => {
+        diagnostics.push(note);
+      },
+      agent: async () => ({
+        thinkingLevel: "off",
+        extensions: [],
+        tools: [],
+        callable: [],
+        deferred: [],
+        sections: [],
+      }),
+    };
+    const context = signal === undefined ? BACKGROUND_CONTEXT : withAbortSignal(signal, BACKGROUND_CONTEXT);
+    // SAFETY: these tools use only the API subset above; the image lookup returns no model.
+    const result = await each.execute(args, api as ToolExecutionApi, context);
+    const output =
+      result.output?.map((part) => (part.type === "text" ? part.text : `<${part.type}>`)).join("") ??
+      streamed;
+    return { ...result, text: output, diagnostics: [...diagnostics, ...(result.diagnostics ?? [])] };
   };
-  const tools = new Map(fileTools(home, exec).map((tool) => [tool.name, tool]));
-  const call = (name: string, params: JsonObject) => {
-    const tool = tools.get(name);
-    if (tool === undefined) throw new Error(`no tool ${name}`);
-    // SAFETY: each test passes the arguments its tool declares.
-    return tool.execute("call", params, undefined, undefined, undefined as never);
-  };
-  return { root, home, commands, call, done: () => rmSync(root, { recursive: true, force: true }) };
 }
 
-function text(result: AgentToolResult<unknown>): string {
-  return result.content.map((part) => (part.type === "text" ? part.text : `<${part.type}>`)).join("");
-}
-
-describe("the solver's coding tools", () => {
-  it("are pi's read, edit and write, by pi's own definitions", () => {
-    const { home, done } = plainHome();
-    try {
-      const ours = fileTools(home, async () => ({ exitCode: 0, output: Buffer.alloc(0) }));
-      const pis = [
-        createReadToolDefinition(home),
-        createEditToolDefinition(home),
-        createWriteToolDefinition(home),
-      ];
-      expect(ours.map(({ name }) => name)).toEqual(["read", "edit", "write"]);
-      for (const [index, pi] of pis.entries()) {
-        const { name, label, description, parameters, promptSnippet, promptGuidelines } = ours[index] ?? pi;
-        expect({ name, label, description, promptSnippet, promptGuidelines }).toEqual({
-          name: pi.name,
-          label: pi.label,
-          description: pi.description,
-          promptSnippet: pi.promptSnippet,
-          promptGuidelines: pi.promptGuidelines,
-        });
-        expect(JSON.stringify(parameters)).toBe(JSON.stringify(pi.parameters));
-      }
-    } finally {
-      done();
-    }
-  });
-
-  it("are pi's bash, but for the timeout the host holds a command to", () => {
-    const dirs = solveDirs("coding-tools-bash");
+async function withSeat(
+  run: (wall: CommandWall, call: ReturnType<typeof caller>, repo: string) => Promise<void>,
+  clock?: CommandWall["clock"],
+) {
+  const repo = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-coding-repo-")));
+  const dirs = solveDirs(`coding-${crypto.randomUUID()}`);
+  const release = claimRoot(dirs.root);
+  let env: ExecutionEnv | undefined;
+  try {
+    const base = await walledBase(dirs, { repoRoot: repo }, "the coding tool test");
     const wall: CommandWall = {
-      // SAFETY: no command runs in this test, so the policy is never read.
-      base: undefined as never,
+      base,
       dirs,
       toolTree: null,
-      limits: LIMITS,
+      limits: { shellDefaultSeconds: 1, shellMaxSeconds: 2 },
+      clock,
     };
-    const [ours] = codingTools(wall, ["bash"]);
-    if (ours === undefined) throw new Error("the coding tools serve bash");
-    const pi = createBashToolDefinition(dirs.home);
-    expect(ours.name).toBe("bash");
-    expect(ours.label).toBe(pi.label);
-    // The whole of what the tool says of itself is pi's: what the wall allows is the prompt's to say.
-    expect(ours.description).toBe(
-      "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
-    );
-    expect(ours.description).toBe(pi.description);
-    expect(ours.promptSnippet).toBe("Execute bash commands (ls, grep, find, etc.)");
-    // pi's schema says "no default timeout", which is not so on this host.
-    expect(JSON.parse(JSON.stringify(ours.parameters))).toEqual({
-      ...JSON.parse(JSON.stringify(pi.parameters)),
-      properties: {
-        command: { type: "string", description: "Shell command to execute" },
-        timeout: {
-          type: "number",
-          description:
-            "Timeout in seconds: 300 when omitted, at most 900; a value outside that range runs at the nearest end of it",
-        },
-      },
-    });
-    // Every tool a harness selects, in pi's order whatever order the harness names them in.
-    expect(codingTools(wall, ["write", "bash", "read"]).map(({ name }) => name)).toEqual([
-      "read",
-      "bash",
-      "write",
-    ]);
+    env = walledEnv(wall);
+    await run(wall, caller(wall, env), repo);
+  } finally {
+    await env?.cleanup(BACKGROUND_CONTEXT);
+    await release();
+    rmSync(dirs.host, { recursive: true, force: true });
+    rmSync(repo, { recursive: true, force: true });
+  }
+}
+
+async function stopped(path: string) {
+  const before = readFileSync(path, "utf8");
+  const deadline = performance.now() + 200;
+  while (performance.now() < deadline) {
+    expect(readFileSync(path, "utf8")).toBe(before);
+    await Bun.sleep(10);
+  }
+}
+
+describe("the solver's durable coding tools", () => {
+  it("keeps durable's file schemas and descriptions and makes every call sequential", () => {
+    const wall: CommandWall = {
+      // SAFETY: making registrations never reads the policy or starts a command.
+      base: undefined as never,
+      dirs: solveDirs("definitions"),
+      toolTree: null,
+      limits: { shellDefaultSeconds: 1, shellMaxSeconds: 2 },
+    };
+    const ours = codingTools(wall, ["read", "edit", "write"]);
+    const images = { prepare: async () => undefined };
+    for (const [index, pi] of [createReadTool({ images }), createEditTool(), createWriteTool()].entries()) {
+      expect(ours[index]?.name).toBe(pi.name);
+      expect(ours[index]?.description).toBe(pi.description);
+      expect(ours[index]?.parameters).toEqual(pi.parameters);
+      expect(ours[index]?.executionMode).toBe("sequential");
+    }
   });
 
-  it("are selected by a harness's presets, which name them as pi does", () => {
-    expect(selectedCodingTools(["read", "bash", "edit", "write"])).toEqual(["read", "bash", "edit", "write"]);
-    expect(selectedCodingTools(["write", "read", "read"])).toEqual(["read", "write"]);
+  it("selects the declared presets in pi's order", () => {
+    expect(selectedCodingTools(["write", "read", "read", "shell"])).toEqual(["read", "bash", "write"]);
     expect(selectedCodingTools([])).toEqual([]);
-    // What a harness kept before pi's names were the presets asked for: the shell alone.
-    expect(selectedCodingTools(["shell"])).toEqual(["bash"]);
-    expect(() => selectedCodingTools(["bash", "python", "files"])).toThrow(
-      "a solve serves pi's coding tools as presets (read, bash, edit, write), not python, files",
-    );
+    expect(() => selectedCodingTools(["python"])).toThrow("not python");
   });
 });
 
-describe("the file tools, through walled commands", () => {
-  it("write, read and edit one file, by a relative path, an absolute one and ~", async () => {
-    const { home, call, done } = plainHome();
-    try {
-      expect(text(await call("write", { path: "src/a.py", content: "x = 1\ny = 2\n" }))).toBe(
-        "Successfully wrote to src/a.py",
-      );
-      expect(readFileSync(join(home, "src", "a.py"), "utf8")).toBe("x = 1\ny = 2\n");
-      expect(text(await call("read", { path: join(home, "src", "a.py") }))).toBe("x = 1\ny = 2\n");
-      // `~` is the solver's home, as its shell has it, and not the home of the host's own user.
-      expect(text(await call("read", { path: "~/src/a.py", offset: 2 }))).toBe("y = 2\n");
-      await call("edit", { path: "~/src/a.py", edits: [{ oldText: "y = 2", newText: "y = 3" }] });
-      expect(readFileSync(join(home, "src", "a.py"), "utf8")).toBe("x = 1\ny = 3\n");
-      await call("write", { path: "~", content: "" }).then(
-        () => {
-          throw new Error("a write over the home directory was taken");
+describe.skipIf(!osIsolationSupport().ok)("the coding tools on the OS wall", () => {
+  it("shares the home across tools and resolves ~ to the seat rather than the host", async () => {
+    await withSeat(async (wall, call) => {
+      const tools = codingTools(wall, ["write", "bash", "read"]);
+      expect(tools.map((each) => each.name)).toEqual(["read", "bash", "write"]);
+      expect(tools.every((each) => each.executionMode === "sequential")).toBe(true);
+      expect(tools.find((each) => each.name === "bash")?.parameters).toMatchObject({
+        properties: {
+          timeout: { description: expect.stringContaining("1 when omitted, at most 2") },
         },
-        (error: Error) => expect(error.message).toContain("irectory"),
+      });
+      expect((await call("bash", { command: "pwd -P" })).text.trim()).toBe(
+        realpathSync.native(wall.dirs.home),
       );
-    } finally {
-      done();
-    }
+      await call("write", { path: "~/nested/a", content: "one\ntwo\n" });
+      expect((await call("read", { path: "nested/a", offset: 2 })).text).toBe("two\n");
+      await call("edit", { path: "nested/a", edits: [{ oldText: "two", newText: "three" }] });
+      expect((await call("bash", { command: "cat ~/nested/a" })).text).toBe("one\nthree\n");
+    });
   });
 
-  // Each command is a sandboxed process: a read cost three and a write two until 22 October.
-  it("wall one command for what a call reads and one for what it writes, and read afresh each call", async () => {
-    const { commands, call, done } = plainHome();
-    const counted = async (name: string, params: JsonObject) => {
-      const before = commands.length;
-      const result = await call(name, params);
-      return { ran: commands.length - before, said: text(result) };
-    };
-    try {
-      expect((await counted("write", { path: "new/dir/a.txt", content: "one\n" })).ran).toBe(1);
-      expect(await counted("read", { path: "new/dir/a.txt" })).toEqual({ ran: 1, said: "one\n" });
-      expect(
-        (await counted("edit", { path: "new/dir/a.txt", edits: [{ oldText: "one", newText: "two" }] })).ran,
-      ).toBe(2);
-      expect(await counted("read", { path: "new/dir/a.txt" })).toEqual({ ran: 1, said: "two\n" });
-    } finally {
-      done();
-    }
+  it("refuses a denied read through read and bash and a write outside the home", async () => {
+    await withSeat(async (_wall, call, repo) => {
+      const secret = join(repo, "canary");
+      writeFileSync(secret, "hidden-canary");
+      await expect(call("read", { path: secret })).rejects.toThrow();
+      const shell = await call("bash", { command: `cat '${secret}'` });
+      expect(shell.isError).toBe(true);
+      expect(shell.text).not.toContain("hidden-canary");
+      await expect(call("write", { path: join(repo, "escape"), content: "bad" })).rejects.toThrow();
+      expect(existsSync(join(repo, "escape"))).toBe(false);
+    });
   });
 
-  it("carry a file's bytes beside the command and never in it", async () => {
-    const { root, home, commands, call, done } = plainHome();
-    try {
-      const content = `'; touch "${join(root, "ran")}"; echo '$(touch ${join(root, "ran")})\n\`id\`\n`;
+  it("carries literal content without shell evaluation and refuses missing or oversized files", async () => {
+    await withSeat(async (wall, call) => {
+      const content = "$(touch escaped)\n`id`\n'; echo injected";
       await call("write", { path: "odd name's.txt", content });
-      expect(readFileSync(join(home, "odd name's.txt"), "utf8")).toBe(content);
-      expect(text(await call("read", { path: "odd name's.txt" }))).toBe(content);
-      expect(existsSync(join(root, "ran"))).toBe(false);
-      expect(commands.some((command) => command.includes("touch"))).toBe(false);
-    } finally {
-      done();
-    }
+      expect((await call("read", { path: "odd name's.txt" })).text).toBe(content);
+      expect(existsSync(join(wall.dirs.home, "escaped"))).toBe(false);
+      await expect(call("read", { path: "absent" })).rejects.toMatchObject({ code: "not_found" });
+      await expect(call("edit", { path: "absent", edits: [{ oldText: "a", newText: "b" }] })).rejects.toThrow(
+        "not_found",
+      );
+      writeFileSync(join(wall.dirs.home, "large"), Buffer.alloc(16 * 1024 * 1024 + 1));
+      await expect(call("read", { path: "large" })).rejects.toThrow("16 MiB");
+    });
   });
 
-  it("answer a missing file as pi's own tools do, and refuse one too large to read whole", async () => {
-    const { home, call, done } = plainHome();
-    try {
-      await expect(call("read", { path: "absent.txt" })).rejects.toThrow(
-        `ENOENT: no such file or directory, access '${join(home, "absent.txt")}'`,
+  it("reads an image attachment through the environment, converting a BMP to PNG", async () => {
+    await withSeat(async (wall, call) => {
+      writeFileSync(
+        join(wall.dirs.home, "dot.png"),
+        Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+          "base64",
+        ),
       );
-      await expect(
-        call("edit", { path: "absent.txt", edits: [{ oldText: "a", newText: "b" }] }),
-      ).rejects.toThrow("Could not edit file: absent.txt. Error code: ENOENT.");
-      // 16 MiB and one byte: read whole it would sit in the host's memory, outside every wall.
-      Bun.spawnSync(
-        ["/bin/sh", "-c", `dd if=/dev/zero of=big.bin bs=1048576 count=16 2>/dev/null; printf x >> big.bin`],
-        {
-          cwd: home,
-        },
+      expect((await call("read", { path: "dot.png" })).output?.map((part) => part.type)).toEqual(["image"]);
+      writeFileSync(
+        join(wall.dirs.home, "dot.bmp"),
+        Buffer.from(
+          "424d3a000000000000003600000028000000010000000100000001001800000000000400000000000000000000000000000000000000" +
+            "0000ff00",
+          "hex",
+        ),
       );
-      await expect(call("read", { path: "big.bin" })).rejects.toThrow(
-        "big.bin is larger than 16 MiB, the most the file tools read: read part of it with bash (head, tail, sed -n)",
-      );
-    } finally {
-      done();
-    }
+      const bmp = (await call("read", { path: "dot.bmp" })).output ?? [];
+      expect(bmp.map((part) => (part.type === "image" ? part.mimeType : part.type))).toEqual(["image/png"]);
+    });
   });
 
-  it("read an image as an attachment, as pi's read does", async () => {
-    const { home, call, done } = plainHome();
-    try {
-      // A 1x1 PNG.
-      const png = Buffer.from(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
-        "base64",
+  it("names the host's default, maximum and oversized request on timeout", async () => {
+    await withSeat(async (_wall, call) => {
+      await expect(call("bash", { command: "sleep 5" })).rejects.toThrow("The host allows 2 s");
+      await expect(call("bash", { command: "sleep 5", timeout: 9 })).rejects.toThrow(
+        "Your 9 s is above the 2 s",
       );
-      writeFileSync(join(home, "dot.png"), png);
-      const result = await call("read", { path: "dot.png" });
-      expect(result.content.map(({ type }) => type)).toEqual(["text", "image"]);
-      expect(text(result)).toStartWith("Read image file [image/png]");
-    } finally {
-      done();
-    }
+      await expect(call("bash", { command: "sleep 5", timeout: 2 })).rejects.toThrow("That is the whole 2 s");
+    });
+  }, 15_000);
+
+  it("names the solve's reserve when it shortens a command's timeout", async () => {
+    const clock: NonNullable<CommandWall["clock"]> = { started: null, seconds: 30 };
+    await withSeat(async (_wall, call) => {
+      clock.started = performance.now() - 25_000;
+      await expect(call("bash", { command: "sleep 5", timeout: 2 })).rejects.toThrow(
+        "solve's time is nearly up",
+      );
+    }, clock);
   });
-});
 
-describe("the coding tools on the command wall", () => {
-  it.skipIf(!osIsolationSupport().ok)(
-    "share one working directory, name what the wall allowed on a cut, and keep the cut output",
-    async () => {
-      const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-coding-repo-")));
-      const dirs = solveDirs(`coding-${String(runtimeProcess.pid)}-${String(Date.now())}`);
-      try {
-        makeSeatDirs(dirs);
-        const base = solveIsolationPolicy({ repoRoot });
-        if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
-        const limits = { shellDefaultSeconds: 1, shellMaxSeconds: 2 };
-        const wall: CommandWall = { base, dirs, toolTree: null, limits };
-        const tools = new Map(
-          codingTools(wall, ["read", "bash", "edit", "write"]).map((tool) => [tool.name, tool]),
-        );
-        const call = (name: string, params: JsonObject) => {
-          const tool = tools.get(name);
-          if (tool === undefined) throw new Error(`no tool ${name}`);
-          // SAFETY: each call passes the arguments its tool declares.
-          return tool.execute("call", params, undefined, undefined, undefined as never);
-        };
-        const bash = (command: string, timeout?: number) =>
-          call("bash", timeout === undefined ? { command } : { command, timeout });
+  it("keeps full output readable in the seat's TMPDIR after a later command times out", async () => {
+    await withSeat(async (wall, call) => {
+      const result = await call("bash", { command: "seq 1 3000" });
+      const full = result.diagnostics
+        .find((note) => note.code === "full_output")
+        ?.message.slice("Full output: ".length);
+      expect(full?.startsWith(`${wall.dirs.temp}/`)).toBe(true);
+      if (full === undefined) throw new Error("Missing output file");
+      expect(readFileSync(full, "utf8").split("\n")).toHaveLength(3001);
+      // The separate environment test checks the spill path carried by a timeout error.
+      await expect(call("bash", { command: "seq 1 3000; sleep 5" })).rejects.toThrow("timed out");
+      expect((await call("read", { path: full, offset: 2999 })).text).toContain("3000");
+    });
+  });
 
-        // One working directory, the home, for a command and for a file tool alike: what one
-        // writes by a relative path the other reads by the same.
-        expect(text(await bash("pwd -P")).trim()).toBe(realpathSync.native(dirs.home));
-        expect(text(await bash("echo kept > note && echo wrote"))).toBe("wrote\n");
-        expect(text(await call("read", { path: "note" }))).toBe("kept\n");
-        await call("write", { path: "lib/run.sh", content: "echo from-write\n" });
-        expect(text(await bash("sh lib/run.sh"))).toBe("from-write\n");
-        await call("edit", { path: "lib/run.sh", edits: [{ oldText: "from-write", newText: "from-edit" }] });
-        expect(text(await bash("sh ~/lib/run.sh"))).toBe("from-edit\n");
-        // The wall decides what a file tool reaches, as it decides for a command: the read is refused
-        // where it asks after the file, and the write names the folder the wall keeps it out of.
-        const hidden = join(repoRoot, "hidden.txt");
-        writeFileSync(hidden, "hidden\n");
-        await expect(call("read", { path: hidden })).rejects.toThrow(`access '${hidden}'`);
-        await expect(call("write", { path: join(repoRoot, "made.txt"), content: "x" })).rejects.toThrow(
-          repoRoot,
-        );
-        expect(existsSync(join(repoRoot, "made.txt"))).toBe(false);
-
-        const sleep = "echo started; sleep 5";
-        await expect(bash(sleep)).rejects.toThrow(
-          "started\n\n\nCommand timed out after 1 seconds\n\nThe host allows 2 s for one command, and 1 s when you pass none, so there is more time to ask for.",
-        );
-        await expect(bash(sleep, 9)).rejects.toThrow(
-          "Command timed out after 2 seconds\n\nYour 9 s is above the 2 s the host allows one command, so it ran as 2 s, the most there is.",
-        );
-        await expect(bash(sleep, 2)).rejects.toThrow(
-          "Command timed out after 2 seconds\n\nThat is the whole 2 s the host allows one command.",
-        );
-
-        const failed = await bash("echo partial; exit 3");
-        expect(failed.isError).toBe(true);
-        expect(text(failed)).toBe("partial\n\n\nCommand exited with code 3");
-
-        // A cut command's full output stays in this wall's home, where the solver can read it back.
-        const cut = text(await bash("seq 1 3000"));
-        const full = /Full output: (\S+)\]$/.exec(cut)?.[1] ?? "";
-        expect(full.startsWith(join(dirs.home, ".shell-output", "pi-bash-"))).toBe(true);
-        expect(text(await bash(`wc -l < ${full}`)).trim()).toBe("3000");
-        // The host writes that file itself, so it never writes where a solver's link points: with
-        // the folder made a link to the repository, the output is handed in by a walled command,
-        // and the repository holds nothing new.
-        await bash(`rm -rf ~/.shell-output && ln -s '${repoRoot}' ~/.shell-output`);
-        await bash("seq 1 3000");
-        expect(readdirSync(repoRoot)).toEqual(["hidden.txt"]);
-        expect(readdirSync(dirs.kept)).toEqual(["long-output"]);
-        expect(readdirSync(join(dirs.kept, "long-output"))).toEqual([]);
-        // The host's folder is the host's: a command can neither write in it nor put a link there.
-        const kept = join(dirs.kept, "long-output");
-        await bash(
-          `rm -rf '${kept}'; ln -s '${repoRoot}' '${dirs.kept}/elsewhere'; echo x > '${kept}/made'; true`,
-        );
-        expect(readdirSync(dirs.kept)).toEqual(["long-output"]);
-        expect(readdirSync(kept)).toEqual([]);
-
-        // A solver that removes its own home still has one for the next command.
-        await bash("cd / && rm -rf ~");
-        expect(text(await bash("pwd -P")).trim()).toBe(realpathSync.native(dirs.home));
-      } finally {
-        rmSync(dirs.root, { recursive: true, force: true });
-        rmSync(dirs.host, { recursive: true, force: true });
-        rmSync(repoRoot, { recursive: true, force: true });
-      }
-    },
-    90_000,
-  );
+  it("ends commands and their children on timeout and abort", async () => {
+    await withSeat(async (wall, call) => {
+      const command = 'i=0; while :; do i=$((i+1)); echo $i > "$HOME/beat"; echo ready; sleep 0.01; done';
+      await expect(call("bash", { command })).rejects.toThrow("timed out");
+      await stopped(join(wall.dirs.home, "beat"));
+      const abort = new AbortController();
+      // A marker proves the command began before the abort.
+      const running = call("bash", { command: command.replaceAll("beat", "abort-beat") }, abort.signal);
+      const marker = join(wall.dirs.home, "abort-beat");
+      const deadline = performance.now() + 1000;
+      while (!existsSync(marker) && performance.now() < deadline) await Bun.sleep(10);
+      expect(existsSync(marker)).toBe(true);
+      abort.abort();
+      await expect(running).rejects.toMatchObject({ code: "aborted" });
+      await stopped(marker);
+    });
+  });
 });

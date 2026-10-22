@@ -43,7 +43,7 @@
  * went on 11 October (`7f0add79:docs/simplify.md`, D2) asked a move's admissions a second time; these verbs
  * ask none, and the command refuses what it refuses.
  */
-import { unfinished } from "#src/kernel/reports.ts";
+import { unfinished } from "#src/kernel/trace.ts";
 import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
 import { cpSync, existsSync, mkdirSync, openSync, renameSync, statSync } from "#src/meta/filesystem.ts";
 import { worktrees } from "#src/meta/git.ts";

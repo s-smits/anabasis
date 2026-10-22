@@ -31,9 +31,8 @@
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { gateAnswers, measuredGate } from "#src/examiner/record.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
-import { billedBetween } from "#src/kernel/reports.ts";
+import { billedBetween, tracesIn } from "#src/kernel/trace.ts";
 import { heldAtGate } from "#src/kernel/task.ts";
-import { tracesIn } from "#src/kernel/trace.ts";
 import { existsSync, openSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { gitText } from "#src/meta/git.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";

@@ -2,25 +2,23 @@
  * What a solver reads before its first call: the system prompt, the opening message, and the public
  * files seeded into its home.
  *
- * The system prompt is pi coding-agent's, built by pi's own builder
- * (`vendor/pi-coding-agent/core/system-prompt.ts`) from the tools' own lines: pi's opening sentence,
- * its tool list, its rules and the working directory. v2 speaks in the three places pi leaves to
- * whoever runs it:
- * - pi's addendum holds what a solver cannot find out for itself and no harness may change: what it
+ * The host renders the role, each durable tool's own name and description, the coding rules and the
+ * working directory. On 22 October the durable migration removed the vendor prompt builder; the
+ * duty, environment and guide keep the same facts and sections:
+ * - The addendum holds what a solver cannot find out for itself and no harness may change: what it
  *   must deliver, where the published requirements are, which file is its answer, the solve wall
  *   and what the wall does. The duty and the minutes are v1's `BUILT_SOLVE_DUTY` and `solveTime`;
  *   the wall's last sentence is this host's, which ends a solve as a fail and submits
  *   nothing.
  * - A section of its own, `environment`, holds the wall's facts: what a command may write and
  *   reach, the volume, the command limits, and the programs the harness installed.
- * - pi's project context holds the harness's guide, as pi gives a project's own instructions,
+ * - The project context holds the harness's guide as a project's own instructions,
  *   under one sentence on what a guide cannot override (v1's `BUILT_GUIDE_PREAMBLE`).
  *
  * Nothing here says how to reach an answer, which is the harness's to say. Under the Claude backend
  * too a solver reads this prompt alone, with no other in front of it (`src/agent/backends/claude.ts`).
  */
-import type { ToolDefinition } from "../../vendor/pi-coding-agent/core/extensions/types.ts";
-import { buildSystemPrompt } from "../../vendor/pi-coding-agent/core/system-prompt.ts";
+import type { SeatTool } from "../agent/session.ts";
 import type { Limits } from "../kernel/condition.ts";
 import { GUIDE_FILE } from "../meta/bundle-layout.ts";
 import { mkdirSync, writeFileSync } from "../meta/filesystem.ts";
@@ -41,7 +39,7 @@ export interface PublicTask {
 /** What a solve's system prompt is built from. */
 export interface Told {
   /** The solver's tools, in the order it is given them. */
-  readonly tools: readonly ToolDefinition[];
+  readonly tools: readonly SeatTool[];
   /** The solve's home, the working directory of every tool. */
   readonly home: string;
   /** The harness's guide as written, or null. */
@@ -61,6 +59,21 @@ export const NUDGE = "Finish the task with the available tools, then submit your
 
 /** Installed program names the prompt lists before it elides the rest, as v1 had it. */
 const LISTED_PROGRAMS = 20;
+/** The coding rules retain the facts of the former prompt, selected with their tools. */
+const TOOL_RULES = new Map<string, readonly string[]>([
+  ["bash", ["Use bash for file operations like ls, rg, find"]],
+  ["read", ["Use read to examine files instead of cat or sed."]],
+  [
+    "edit",
+    [
+      "Use edit for precise changes (edits[].oldText must match exactly)",
+      "When changing multiple separate locations in one file, use one edit call with multiple entries in edits[] instead of multiple edit calls",
+      "Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.",
+      "Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.",
+    ],
+  ],
+  ["write", ["Use write only for new files or complete rewrites."]],
+]);
 
 /** What the solver must deliver and under what wall, with where the requirements are. */
 function duty({ wallSeconds, limits, resources, guide }: Told): string {
@@ -108,21 +121,30 @@ function environment({ limits, programs, wallSeconds, network }: Told): string {
     .join("\n");
 }
 
-/** pi's system prompt for these tools, with v2's addendum, environment and guide (see above). A
- *  tool is listed by the line it gives itself, as pi lists one, and adds its own rules. */
+/** The solver's whole system prompt, with each tool listed by its registered description. */
 export function systemPrompt(told: Told): string {
-  const said = told.tools.filter(({ promptSnippet }) => promptSnippet !== undefined);
-  return buildSystemPrompt({
-    cwd: told.home,
-    selectedTools: told.tools.map(({ name }) => name),
-    toolSnippets: Object.fromEntries(said.map(({ name, promptSnippet }) => [name, promptSnippet ?? ""])),
-    toolGuidelines: Object.fromEntries(
-      told.tools.map(({ name, promptGuidelines }) => [name, [...(promptGuidelines ?? [])]]),
-    ),
-    appendSystemPrompt: duty(told),
-    contextFiles: told.guide === null ? [] : [{ path: GUIDE_FILE, content: told.guide }],
-    sections: { environment: environment(told) },
-  });
+  const tools = told.tools.map(
+    ({ name, description }) => `- ${name}: ${description.replace(/\s+/g, " ").trim()}`,
+  );
+  const rules = [
+    ...(told.tools.some(({ name }) => name === "bash") ? (TOOL_RULES.get("bash") ?? []) : []),
+    ...told.tools.flatMap(({ name }) => (name === "bash" ? [] : (TOOL_RULES.get(name) ?? []))),
+    "Be concise in your responses",
+    "Show file paths clearly when working with files",
+  ];
+  return [
+    "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+    `<tools>\n${tools.length === 0 ? "(none)" : tools.join("\n")}\n</tools>`,
+    `<rules>\n${rules.map((rule) => `- ${rule}`).join("\n")}\n</rules>`,
+    `<addendum>\n${duty(told)}\n</addendum>`,
+    ...(told.guide === null
+      ? []
+      : [
+          `<project_context>\nProject-specific instructions and guidelines:\n\n<project_instructions path="${GUIDE_FILE}">\n${told.guide}\n</project_instructions>\n</project_context>`,
+        ]),
+    `<cwd>\n${told.home.replace(/\\/g, "/")}\n</cwd>`,
+    `<environment>\n${environment(told)}\n</environment>`,
+  ].join("\n\n");
 }
 
 /** The task as the solver may see it. A task carries its hidden part beside these fields, and

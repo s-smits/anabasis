@@ -1,6 +1,6 @@
 /**
  * One solve, start to ending: a home seeded with the public task, pi's coding tools on the
- * command wall with the harness's tools and `submit` beside them, pi's agent loop under the host's
+ * command wall with the harness's tools and `submit` beside them, pi-durable under the host's
  * wall and turn cap, then the ending typed and logged with the trace and the meter. A non-result from the solve's side is run
  * again, up to three times with backoff; named provider resets are waited out here without using a
  * rerun. On 21 October, 128 gate solves refused 43 of 1,396 drafts in 30 campaigns at such resets.
@@ -41,14 +41,11 @@ import { availableParallelism, loadavg } from "../meta/os.ts";
 import { join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
-import { type Sat, sit, spentBy } from "../agent/session.ts";
+import { type Sat, type SeatTool, sit, spentBy } from "../agent/session.ts";
 import { claimRoot, type ReleaseRoot } from "../wall/seat-root.ts";
-import {
-  createToolDefinitionFromAgentTool,
-  wrapToolDefinitions,
-} from "../../vendor/pi-coding-agent/core/tools/tool-definition-wrapper.ts";
 import { type Desk, openDesk, type PublicResource, submitTool } from "../tools/answer.ts";
-import { codingTools, selectedCodingTools, type SolverTool, wallExec } from "../tools/coding.ts";
+import { codingTools, selectedCodingTools, wallExec } from "../tools/coding.ts";
+import { walledEnv } from "../tools/env.ts";
 import {
   type CommandWall,
   networkReach,
@@ -94,7 +91,7 @@ export interface SolveRequest {
 /** What a solve has used of its limits, as its tools are told to say it. */
 export interface Used {
   readonly clock: SolveClock;
-  /** The model's turns that have ended. A tool call runs inside the turn after them. */
+  /** The model's turns already recorded, including the one whose tools are running. */
   readonly turns: () => number;
   /** The turns the solve is given; undefined where they are not limited. */
   readonly modelTurns: number | undefined;
@@ -274,7 +271,7 @@ async function play(
       network: await networkReach(commandWall),
     });
     const used = { clock, turns: () => turns.length, modelTurns: limits.modelTurns };
-    const tools = wrapToolDefinitions(defined.map((tool) => timed(tool, used)));
+    const tools = defined.map((tool) => timed(tool, used));
     prompts = 1;
     // The wall is the solver's time, so it starts with the first turn rather than the setup.
     clock.started = performance.now();
@@ -288,6 +285,7 @@ async function play(
       system: prompt,
       opening: firstTurn(request.task),
       tools,
+      env: walledEnv(commandWall),
       trace: { log: request.log, of: "solve" },
       turns,
       most: limits.modelTurns,
@@ -295,7 +293,7 @@ async function play(
       // accepted submit ends the solve here as its description says, and not only through its
       // `terminate`, which pi heeds when every call of the turn returns it: on esp32 (12 October)
       // 3 of 238 turns sent a submit beside a shell call, and the model was asked on.
-      over: () => desk.submitted !== undefined,
+      over: () => desk.submitted !== undefined || desk.flagged !== undefined,
       next: async () => {
         if (desk.submitted !== undefined || desk.flagged !== undefined || prompts >= limits.turns) {
           return null;
@@ -348,19 +346,26 @@ export function clockText(seconds: number): string {
  * (`docs/transfer.md`). What a solver does with its time is its own to decide; this says what the
  * time is.
  */
-export function timed(tool: SolverTool, { clock, turns, modelTurns }: Used): SolverTool {
+export function timed(tool: SeatTool, { clock, turns, modelTurns }: Used): SeatTool {
   const line = () =>
     `[Solve time used: ${clockText(usedSeconds(clock) ?? 0)} of ${clockText(clock.seconds)}${
-      modelTurns === undefined ? "" : `. Turn ${String(turns() + 1)} of ${String(modelTurns)}`
+      modelTurns === undefined ? "" : `. Turn ${String(turns())} of ${String(modelTurns)}`
     }]`;
   return {
     ...tool,
-    execute: async (...call) => {
+    execute: async (args, api, context) => {
       try {
-        const result = await tool.execute(...call);
-        return { ...result, content: [...result.content, { type: "text", text: line() }] };
+        const result = await tool.execute(args, api, context);
+        if (result.output === undefined) {
+          api.output(`\n${line()}`);
+          return result;
+        }
+        return { ...result, output: [...result.output, { type: "text", text: line() }] };
       } catch (error) {
-        throw new Error(`${errorMessage(error)}\n\n${line()}`, { cause: error });
+        // Durable gives the model a throw's reason as a diagnostic after the output, so the
+        // output carries only the clock.
+        api.output(`\n${line()}`);
+        throw error;
       }
     },
   };
@@ -377,9 +382,9 @@ export async function solverTools(
   harness: Harness,
   wall: CommandWall,
   desk: Desk,
-): Promise<SolverTool[]> {
+): Promise<SeatTool[]> {
   const coding = codingTools(wall, selectedCodingTools(harness.presets));
-  const domain = (await harnessTools(harness, request.task, wall)).map(createToolDefinitionFromAgentTool);
+  const domain = await harnessTools(harness, request.task, wall);
   return [...coding, ...domain, submitTool(desk, request.contract, wall.dirs.home, wallExec(wall))];
 }
 

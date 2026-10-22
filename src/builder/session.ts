@@ -39,7 +39,7 @@
  * solve's whole wall later. A practice solve that throws is the verifier failing to decide, which
  * stops a run: the session writes its record, freezes what it has, and throws it again.
  */
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import {
   type Api,
   type AssistantMessage,
@@ -52,22 +52,25 @@ import type { Contract } from "../kernel/contract.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { priceKey } from "../kernel/meter.ts";
 import type { Ending } from "../kernel/solve.ts";
-import { billedParts, type Cap, ownedBy } from "../kernel/reports.ts";
+import { type Cap } from "../kernel/reports.ts";
+import { billedParts, ownedBy } from "../kernel/trace.ts";
 import { ended as endedSolves, practiceRan, solvesIn } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import { mkdirSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { isString } from "../meta/json-shape.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import { basename, dirname, join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import type { RefereeFinding } from "../referee/referee.ts";
 import { type CommandWall, networkReach, type SolveDirs, solveDirs, walledBase } from "../tools/command.ts";
 import type { PublicResource } from "../tools/answer.ts";
+import { walledEnv } from "../tools/env.ts";
 import { openHarness } from "../harness/open.ts";
 import { type PublicTask, publicView } from "../solver/prompt.ts";
 import { HARNESS_ACCOUNT } from "../harness/starter.ts";
 import { type SolveRequest, solve } from "../solver/run.ts";
-import { sit } from "../agent/session.ts";
+import { type Sat, type SeatTool, sit } from "../agent/session.ts";
 import { claimRoot } from "../wall/seat-root.ts";
 import { campaignOf } from "../campaign/handover.ts";
 import { copyHarness, seedKept } from "./kept.ts";
@@ -118,6 +121,14 @@ export interface Practised {
  *  prompts. `concurrency` is how many practice solves run at once. */
 interface BuildLimits extends Limits {
   readonly practiceSolves: number;
+}
+
+interface BuildClock {
+  readonly began: number;
+  readonly signal: AbortSignal;
+  readonly seconds: () => number;
+  readonly arm: () => void;
+  readonly close: () => void;
 }
 
 export interface BuildRequest {
@@ -172,13 +183,13 @@ export interface BuildRequest {
   /** The dollar cap the session's spend is held to, where its solves are paid for: a round's own,
    *  or the session's where it runs with no comparison after it. No practice solve starts that a
    *  reserve for it would take past the cap (`practiceTool`), and no request of the Builder's own
-   *  once what the session billed has reached it (`prepareRequest`). */
+   *  once what the session billed has reached it (`before`). */
   readonly cap?: Cap | undefined;
   /** Aborts when the run is killed. */
   readonly kill?: AbortSignal;
   /** Campaign tools and advice, supplied by the host. The Builder remains the only build-side agent. */
   readonly campaign?: (bench: Bench) => {
-    readonly tools: AgentTool[];
+    readonly tools: SeatTool[];
     readonly hook: () => string;
     /** Halts the conversation where the campaign has ended, as `hook` does, and renders nothing:
      *  before each model request, where a status would be discarded (plan item 6.4, 14 October). */
@@ -270,7 +281,8 @@ export async function keepPractised(log: string, id: string, states: string): Pr
 export async function session(
   request: BuildRequest,
   dirs: Pick<SolveDirs, "home" | "host">,
-  walled: (bench: Bench) => AgentTool[],
+  walled: (bench: Bench) => SeatTool[],
+  env?: ExecutionEnv,
 ): Promise<Built> {
   const { log, limits, model } = request;
   const began = performance.now();
@@ -354,44 +366,76 @@ export async function session(
       }
     },
   };
-  const opening = () => {
-    const recorded = read(log);
-    const campaign = campaignOf(recorded);
-    return firstMessage(
-      request.contract,
-      bench.tasks.map(({ version, task }) => ({
-        taskId: task.taskId,
-        family: task.family,
-        ...record(recorded, version, parent.digest),
-      })),
-      // The count it opens with is the one `practice` holds it to (`practiceLeft`).
-      {
-        ...limits,
-        practiceSolves: practiceLeft(bench, recorded),
-        solver: request.solver,
-        solve: request.solve,
+  return await converse(
+    bench,
+    dirs.host,
+    {
+      began,
+      signal: wall.signal,
+      seconds: ownSeconds,
+      arm,
+      close: () => {
+        closed = true;
+        clearTimeout(timer);
       },
-      {
-        start: startTold(campaign, parent.digest, request.id),
-        fails: failsTold(
-          campaign.fails,
-          new Map(bench.tasks.map(({ version, task }) => [version, task.taskId])),
-        ),
-        comparisons: comparisonsTold(campaign.steps),
-        memory: builderMemoryBlock(dirs.home),
-      },
-    );
-  };
+    },
+    walled,
+    env,
+  );
+}
+
+/** Rebuilt from public facts, including tasks released while the conversation stays open. */
+function openingFor(bench: Bench): string {
+  const { request } = bench;
+  const recorded = read(request.log);
+  const campaign = campaignOf(recorded);
+  return firstMessage(
+    request.contract,
+    bench.tasks.map(({ version, task }) => ({
+      taskId: task.taskId,
+      family: task.family,
+      ...record(recorded, version, bench.parent),
+    })),
+    // The count it opens with is the one `practice` holds it to (`practiceLeft`).
+    {
+      ...request.limits,
+      practiceSolves: practiceLeft(bench, recorded),
+      solver: request.solver,
+      solve: request.solve,
+    },
+    {
+      start: startTold(campaign, bench.parent, request.id),
+      fails: failsTold(
+        campaign.fails,
+        new Map(bench.tasks.map(({ version, task }) => [version, task.taskId])),
+      ),
+      comparisons: comparisonsTold(campaign.steps),
+      memory: builderMemoryBlock(bench.home),
+    },
+  );
+}
+
+/** The live conversation; its clock pauses while a campaign action owns the host. */
+async function converse(
+  bench: Bench,
+  host: string,
+  clock: BuildClock,
+  walled: (bench: Bench) => SeatTool[],
+  env: ExecutionEnv | undefined,
+): Promise<Built> {
+  const { request } = bench;
+  const { log, limits, model } = request;
+  const opening = () => openingFor(bench);
   const campaign = request.campaign?.(bench);
   const first = opening();
   const turns: AssistantMessage[] = [];
   // What the session has used of its limits, as every turn's tool results and every continuation
-  // say it. A session under a cap reads what its practice solves billed from the log. A campaign's
-  // session counts a turn as its message ends, before its tools run (below), so while they run its
-  // count holds the turn they belong to: until 14 October a led Builder was told the next turn.
+  // say it. A session under a cap reads what its practice solves billed from the log. Every
+  // session counts a turn before its tools run, so while they run its count holds the turn they
+  // belong to. `usedLine` adds one to the completed-turn count it is given.
   const used = (during = false): Used => ({
-    turns: turns.length - (during && campaign !== undefined ? 1 : 0),
-    seconds: ownSeconds(),
+    turns: turns.length - (during ? 1 : 0),
+    seconds: clock.seconds(),
     practiceLeft: practiceLeft(bench, request.cap === undefined && campaign === undefined ? [] : read(log)),
     practised: bench.opened?.harness.digest ?? null,
   });
@@ -425,16 +469,17 @@ export async function session(
     if (bench.halt.signal.aborted) throw new Error("The session has ended at a bound.");
   };
   const started = (await campaign?.start?.()) ?? "";
-  arm();
+  clock.arm();
   const sat = await sit({
     models: request.models,
-    home: join(dirs.host, "model"),
+    home: join(host, "model"),
     id: request.id,
     model,
     effort: request.effort,
     system: systemPrompt(bench.said),
     opening: [first, started, campaign?.hook() ?? ""].filter((part) => part !== "").join("\n\n"),
     tools,
+    ...keyIfDefined("env", env),
     trace: { log, of: "build" },
     // A led session's bounds are the campaign's, asked of the table (`halts`), and a session the
     // host ran is held to its dollar cap, before a request and again after a compaction, which
@@ -444,37 +489,36 @@ export async function session(
     // session's cap is what was left when it opened, and the operator's word can raise the
     // total after: the table's reading of the budget is the one that holds it, as `practiceLeft`
     // already has it.
-    guard: (compact) => async (context, kill) => {
-      halted();
-      const update = await compact(context, kill);
-      halted();
-      return update ?? undefined;
-    },
+    before: halted,
     turns,
     most: limits.turns,
-    // `finish` ends the session even beside another call in its turn, where pi would go on.
-    over: () => bench.note !== null,
+    // A finish or a host fault ends after the round, even beside another call in that round.
+    over: () => bench.note !== null || bench.fatal !== null,
     // v1's continuation carried the same notice: a file over its limit is cut on the next read.
     next: async () =>
       bench.note === null
         ? [
             continuation(used(), limits, await harnessNow(bench), bench.said),
-            memoryOverCapNotice(dirs.home) ?? "",
+            memoryOverCapNotice(bench.home) ?? "",
             campaign?.hook() ?? "",
           ]
             .filter((part) => part !== "")
             .join("\n\n")
         : null,
-    // Meter a campaign's model turn before its tool can spend on another seat.
-    early: campaign !== undefined,
-    emit: (event) => {
-      if (event.type === "message_end" && event.message.role === "assistant") told = false;
+    onTurn: () => {
+      told = false;
     },
-    stops: [wall.signal, bench.halt.signal, request.kill],
+    stops: [clock.signal, bench.halt.signal, request.kill],
   });
-  closed = true;
-  clearTimeout(timer);
+  clock.close();
   await campaign?.closing?.();
+  return await finishSession(bench, sat, clock, turns.length);
+}
+
+/** Freeze and record whatever the bounded session left, including its last usable practice state. */
+async function finishSession(bench: Bench, sat: Sat, clock: BuildClock, turns: number): Promise<Built> {
+  const { request } = bench;
+  const { log, limits } = request;
   const crash = (sat.cut ? null : sat.thrown) ?? bench.fatal?.message ?? sat.crash;
   // Whatever ended the session, what `harness/` holds is frozen: a session cut at its wall still
   // made its edits, and the comparison is what says whether they count.
@@ -493,11 +537,11 @@ export async function session(
     broken = errorMessage(error);
     frozen = bench.opened;
   }
-  const changed = frozen !== null && frozen.harness.digest !== parent.digest;
+  const changed = frozen !== null && frozen.harness.digest !== bench.parent;
   if (frozen !== null && changed) {
     append(log, "harness.version", {
       version: frozen.harness.digest,
-      parent: parent.digest,
+      parent: bench.parent,
       session: request.id,
       note: bench.note,
     });
@@ -507,14 +551,14 @@ export async function session(
       ? endedBy({
           finished: bench.note !== null,
           killed: request.kill?.aborted === true,
-          wall: wall.signal.aborted,
+          wall: clock.signal.aborted,
           crashed: crash !== null,
-          turns: turns.length >= limits.turns,
+          turns: turns >= limits.turns,
         })
       : "crashed";
   if (ended === "crashed" || ended === "killed") await keepPractised(log, request.id, request.states);
   // Kept before the session is recorded as ended, so a session on record as ended has its notes.
-  keepMemory(dirs.home, request.memory, request.id);
+  keepMemory(bench.home, request.memory, request.id);
   append(log, "build.finished", {
     session: request.id,
     ended,
@@ -527,7 +571,7 @@ export async function session(
     disputed: [...bench.disputed],
     faultyChecks: [...bench.faulty],
     reviewFaults: bench.faults,
-    seconds: (performance.now() - began) / 1000,
+    seconds: (performance.now() - clock.began) / 1000,
   });
   if (bench.fatal !== null) throw bench.fatal;
   return {
@@ -623,7 +667,7 @@ export async function build(request: BuildRequest): Promise<Built> {
       limits: request.limits,
     };
     const network = await networkReach(wall);
-    return await session(request, dirs, (bench) => walledTools(bench, wall, network));
+    return await session(request, dirs, (bench) => walledTools(bench, wall, network), walledEnv(wall));
   } finally {
     await release();
     rmSync(dirs.host, { recursive: true, force: true });

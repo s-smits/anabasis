@@ -41,17 +41,15 @@
  * error can name a check, so it is kept for the host and the Builder is told only that the session
  * ends.
  */
-import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
-import { wrapToolDefinitions } from "../../vendor/pi-coding-agent/core/tools/tool-definition-wrapper.ts";
+import type { SeatTool } from "../agent/session.ts";
 import { type LogEvent, read } from "../kernel/log.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { limitsIn } from "../kernel/condition.ts";
 import type { Contract } from "../kernel/contract.ts";
-import { billedAll, billedParts } from "../kernel/reports.ts";
+import { billedAll, billedParts, callList, callText, closingOf, traceOf } from "../kernel/trace.ts";
 import { ended, passed, practiceRan, rejectionAside, solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
-import { callList, callText, closingOf, traceOf } from "../kernel/trace.ts";
 import {
   cpSync,
   existsSync,
@@ -74,7 +72,7 @@ import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { pooled } from "../meta/pool.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
-import { openDesk, text, tool } from "../tools/answer.ts";
+import { ending as endSession, openDesk, text, tool } from "../tools/answer.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../tools/coding.ts";
 import { type CommandWall, type NetworkReach, networkReach } from "../tools/command.ts";
 import { type Harness, harnessTools, openHarness, pathsUnder, toolTreeStamp } from "../harness/open.ts";
@@ -122,7 +120,7 @@ export interface Bench {
   /** Lists a harness's tools for a practice task as a solve would, under the command wall; null
    *  until the walled tools are made, and for a session with no wall or no practice task. */
   lists: ((harness: Harness) => Promise<string[] | null>) | null;
-  /** Aborted when a practice solve could not be run, which ends the session. */
+  /** Aborted when the host stops the session at a bound or a campaign action fails. */
   readonly halt: AbortController;
   /** Runs a campaign action, whose time is the host's: the session's wall stops while one runs.
    *  Until 13 October it counted them, and a led Builder had 45 of its 240 minutes to build and
@@ -404,11 +402,10 @@ const UNDER = {
   reference: " under the reference harness",
 } as const;
 
-export function practiceTool(bench: Bench): AgentTool {
+export function practiceTool(bench: Bench): SeatTool {
   const { request } = bench;
   return tool({
     name: "practice",
-    label: "Practise",
     description:
       'Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host\'s limits. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, the time, the model turns and the tokens it took, the task\'s record under this harness and under the one you started from, the solve\'s id for read_trace and, for a fail, what the Referee read. It never says which check refused an answer. A harness that does not open spends no solve. With `under: "parent"` the tasks are solved under the harness you started from instead, and with `under: "reference"` under the reference harness, the one yours is compared with; each costs the same solves and shows what your change is measured against.',
     parameters: Type.Object({
@@ -424,7 +421,7 @@ export function practiceTool(bench: Bench): AgentTool {
       ),
     }),
     executionMode: "sequential",
-    execute: async (_id, args, signal) => {
+    execute: async (args, _api, context) => {
       const offered = new Map(bench.tasks.map((task) => [task.task.taskId, task]));
       const unknown = args.tasks.find((id) => !offered.has(id));
       if (unknown !== undefined) {
@@ -446,9 +443,10 @@ export function practiceTool(bench: Bench): AgentTool {
           `only ${plural(left, "practice solve")} left, and this asks for ${String(chosen.length)}`,
         );
       }
-      // The session's wall, its kill and its halt all reach a solve through the loop's signal, so a
-      // practice in flight ends with the session and not a solve's whole wall after it.
-      const kill = signal ?? bench.halt.signal;
+      // Stop sibling solves on a host fault, then let this tool record its refusal before the
+      // session ends through `over`. Aborting the seat here loses durable's unfinished call.
+      const failed = new AbortController();
+      const kill = AbortSignal.any([context.abortSignal ?? bench.halt.signal, failed.signal]);
       // Under the parent, the solve runs the harness the session started from, as kept outside the
       // home, and harness/ as it stands need not open: without it a Builder reads its change only
       // against the parent's comparison record, which a campaign's first session does not have.
@@ -469,7 +467,7 @@ export function practiceTool(bench: Bench): AgentTool {
           return [await practise(bench, task, ran, kill)];
         } catch (error) {
           bench.fatal ??= asError(error);
-          bench.halt.abort();
+          failed.abort();
           return [];
         }
       });
@@ -506,10 +504,9 @@ export function practiceTool(bench: Bench): AgentTool {
 
 /** The paged trace of a practice solve. Which task version a solve ran is read from its logged
  *  condition, so a solve of any other task is refused whatever id is asked for. */
-export function traceTool(bench: Bench): AgentTool {
+export function traceTool(bench: Bench): SeatTool {
   return tool({
     name: "read_trace",
-    label: "Read a trace",
     description:
       "Read a solve of one of your practice tasks: the ones the opening message lists and the ones practice returns. With no call, return its ending, the answer it submitted, its closing text and every tool call by number. With a call number, return that call whole: its arguments and up to 4000 characters of its result starting at `from`.",
     parameters: Type.Object({
@@ -522,8 +519,8 @@ export function traceTool(bench: Bench): AgentTool {
         }),
       ),
     }),
-    executionMode: "parallel",
-    execute: async (_id, args) => {
+    executionMode: "sequential",
+    execute: async (args) => {
       const versions = new Set(bench.tasks.map(({ version }) => version));
       const events = read(bench.request.log);
       const ran = practiceRan(events).find(({ id }) => id === args.solve);
@@ -608,10 +605,9 @@ export async function harnessNow(bench: Bench): Promise<string | Error> {
  * opening holds the record of every task, and since 21 October it is served the same way: 65
  * Examiner sessions on record compacted, and the summary kept what the model chose of that record.
  */
-export function openingTool(opening: string | (() => string), description: string): AgentTool {
+export function openingTool(opening: string | (() => string), description: string): SeatTool {
   return tool({
     name: "read_opening",
-    label: "Read the opening",
     description,
     parameters: Type.Object({}),
     executionMode: "sequential",
@@ -627,10 +623,9 @@ export function openingTool(opening: string | (() => string), description: strin
  * 21 October a live Examiner still slept 190 s past its gate's word at a head whose turn with no call
  * waited for it.
  */
-export function waitTool(description: string, next: () => Promise<string>): AgentTool {
+export function waitTool(description: string, next: () => Promise<string>): SeatTool {
   return tool({
     name: "wait",
-    label: "Wait",
     description,
     parameters: Type.Object({}),
     executionMode: "sequential",
@@ -641,18 +636,18 @@ export function waitTool(description: string, next: () => Promise<string>): Agen
 /** A Builder's tool with a line of the host's, given the call's id, as the last of whatever it
  *  returns, a result or an error, where the line is not empty: what the session has used of its
  *  limits (`usedLine`, `prompt.ts`). */
-export function endingWith(each: AgentTool, line: (id: string) => string): AgentTool {
+export function endingWith(each: SeatTool, line: (id: string) => string): SeatTool {
   return {
     ...each,
-    execute: async (...call) => {
+    execute: async (args, api, context) => {
       try {
-        const result = await each.execute(...call);
-        const said = line(call[0]);
-        return said === ""
-          ? result
-          : { ...result, content: [...result.content, { type: "text", text: said }] };
+        const result = await each.execute(args, api, context);
+        const said = line(api.callId);
+        if (said === "") return result;
+        const output = result.output ?? [{ type: "text" as const, text: api.retainedOutput().text }];
+        return { ...result, output: [...output, { type: "text", text: said }] };
       } catch (error) {
-        const said = line(call[0]);
+        const said = line(api.callId);
         throw new Error(said === "" ? errorMessage(error) : `${errorMessage(error)}\n\n${said}`, {
           cause: error,
         });
@@ -661,14 +656,13 @@ export function endingWith(each: AgentTool, line: (id: string) => string): Agent
   };
 }
 
-export function finishTool(bench: Bench, unmeasured?: Unmeasured): AgentTool {
+export function finishTool(bench: Bench, unmeasured?: Unmeasured): SeatTool {
   return tool({
     name: "finish",
-    label: "Finish",
     description: bench.said.finish,
     parameters: Type.Object({ note: Type.String({ minLength: 1, maxLength: 700 }) }),
     executionMode: "sequential",
-    execute: async (_id, args) => {
+    execute: async (args) => {
       // `finish` ends the session at this turn, so a notice on the next turn would reach nobody:
       // the call itself carries it, as v1's submit did (`src/gate/submit-tool.ts` at 3f93d06).
       const notes = memoryOverCapNotice(bench.home);
@@ -676,7 +670,7 @@ export function finishTool(bench: Bench, unmeasured?: Unmeasured): AgentTool {
       const stands = await standing(bench, unmeasured);
       if (stands !== null) throw new Error(`Not finished. ${stands}`);
       bench.note = args.note.trim();
-      return { ...text("Finished."), terminate: true };
+      return endSession(text("Finished."));
     },
   });
 }
@@ -702,10 +696,9 @@ function opens(harness: Harness, tools: readonly string[]): string {
 
 /** Open the harness and list what a solver gets from it, with no model call: a harness that does
  *  not open fails every task, and this finds that before a practice solve is spent on it. */
-function checkTool(bench: Bench): AgentTool {
+function checkTool(bench: Bench): SeatTool {
   return tool({
     name: "check_harness",
-    label: "Check the harness",
     description:
       "Open harness/ as a solve would, for one practice task. Reports pi's tools it selects, its programs by name, the guide's length and its own tools, or the error a solve would stop on. Spends no practice solve.",
     parameters: Type.Object({}),
@@ -725,14 +718,13 @@ function checkTool(bench: Bench): AgentTool {
 /**
  * What a solver would read under `harness/` as it stands, for the session's first practice task:
  * its system prompt whole and its tools as they are declared to it. A Builder wrote a guide and a
- * tool list without seeing where either lands; the prompt is pi's, in sections, and the guide is
+ * tool list without seeing where either lands; the solver's prompt has sections, and the guide is
  * one of them. The solve's own home is not known here, so the prompt names it by a placeholder.
  */
-function previewTool(bench: Bench, wall: CommandWall): AgentTool {
+function previewTool(bench: Bench, wall: CommandWall): SeatTool {
   const { request } = bench;
   return tool({
     name: "preview_harness",
-    label: "Preview the harness",
     description:
       "Show what a solver would read under harness/ as it stands, for one practice task: its system prompt whole, with your guide where the solver finds it, and each of its tools by name and description. Spends no practice solve.",
     parameters: Type.Object({}),
@@ -773,17 +765,15 @@ function previewTool(bench: Bench, wall: CommandWall): AgentTool {
 /** The tools that run on the command wall: pi's four, with what the Builder's shell is told of its
  *  wall, and the two that ask the host about `harness/`. Making them also gives a freeze its
  *  listing: every harness frozen from here on is asked for its tools under this wall. */
-export function walledTools(bench: Bench, wall: CommandWall, network: NetworkReach): AgentTool[] {
+export function walledTools(bench: Bench, wall: CommandWall, network: NetworkReach): SeatTool[] {
   bench.lists = async (harness) => {
     const sample = bench.tasks[0];
     return sample === undefined
       ? null
       : (await harnessTools(harness, sample.task, wall)).map(({ name }) => name);
   };
-  // SAFETY: pi's wrapper types its tools' parameters `any`; each is one of pi's four definitions.
-  const coding = wrapToolDefinitions(codingTools(wall, CODING_TOOLS)) as AgentTool[];
   return [
-    ...coding.map((each) =>
+    ...codingTools(wall, CODING_TOOLS).map((each) =>
       each.name === "bash" ? { ...each, description: `${each.description}${shellWalls(network)}` } : each,
     ),
     checkTool(bench),

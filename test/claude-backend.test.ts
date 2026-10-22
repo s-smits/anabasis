@@ -360,7 +360,7 @@ describe("the Claude backend", () => {
     const types = message.diagnostics?.map((entry) => entry.type);
     expect(types).toEqual([CLAUDE_COMPACTED, REPORTED_COST]);
     const log = join(home, "trace.jsonl");
-    traceSink(log, "solve", "s-1", () => 1)({ type: "turn_end", message, toolResults: [] });
+    traceSink(log, "solve", "s-1", () => 1).turn(message);
     const compacted = readLog(log).find(({ kind }) => kind === "solve.compacted");
     expect(compacted?.data).toEqual({
       solve: "s-1",

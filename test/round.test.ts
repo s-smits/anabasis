@@ -242,10 +242,9 @@ async function setup(responses: FauxResponseStep[], table: Table) {
   const walled = (bench: Bench) => [
     tool({
       name: "write",
-      label: "write",
       description: "Writes a file in the home.",
       parameters: Type.Object({ path: Type.String(), content: Type.String() }),
-      execute: async (_id, args) => {
+      execute: async (args) => {
         const file = join(bench.home, args.path);
         mkdirSync(dirname(file), { recursive: true });
         writeFileSync(file, args.content);

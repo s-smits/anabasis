@@ -17,7 +17,8 @@ import { writing } from "../src/examiner/write.ts";
 import { conditionId, settingId } from "../src/kernel/condition.ts";
 import { writtenTasks } from "../src/kernel/history.ts";
 import { append, type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
-import { billedAll, billedParts, poolOf } from "../src/kernel/reports.ts";
+import { poolOf } from "../src/kernel/reports.ts";
+import { billedAll, billedParts } from "../src/kernel/trace.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import { ranUnder, solvesIn } from "../src/kernel/solves.ts";
 import { type TaskPackage, taskSets, taskStates, taskVersion } from "../src/kernel/task.ts";
@@ -35,6 +36,7 @@ import {
   failed,
   finish,
   instance,
+  invoke,
   KIND,
   MODES,
   NOTE,
@@ -80,7 +82,7 @@ const triedExample = call("try_answer", {
 setDefaultTimeout(120_000);
 afterAll(sweep);
 
-/** A collection whose turns each bill `cost` dollars, since the faux provider bills nothing. */
+/** A collection whose output tokens alone bill `cost` dollars at the model's frozen price. */
 function billing(models: ReturnType<ReturnType<typeof seat>["request"]["models"]>, cost: number) {
   // SAFETY: the inherited instance supplies every method; streamSimple alone is replaced.
   const metered = Object.create(models) as typeof models;
@@ -88,12 +90,23 @@ function billing(models: ReturnType<ReturnType<typeof seat>["request"]["models"]
     const streamed = createAssistantMessageEventStream();
     void (async () => {
       for await (const event of models.streamSimple(...asked)) {
-        const total = { input: 0, output: cost, cacheRead: 0, cacheWrite: 0, total: cost };
-        streamed.push(
-          event.type === "done"
-            ? { ...event, message: { ...event.message, usage: { ...event.message.usage, cost: total } } }
-            : event,
-        );
+        if (event.type !== "done") {
+          streamed.push(event);
+          continue;
+        }
+        const output = Math.ceil((cost * 1_000_000) / asked[0].cost.output);
+        const usage = event.message.usage;
+        streamed.push({
+          ...event,
+          message: {
+            ...event.message,
+            usage: {
+              ...usage,
+              output,
+              totalTokens: usage.totalTokens - usage.output + output,
+            },
+          },
+        });
       }
     })().catch(() => undefined);
     return streamed;
@@ -102,6 +115,41 @@ function billing(models: ReturnType<ReturnType<typeof seat>["request"]["models"]
 }
 
 describe("a session of any mode", () => {
+  it("records and bills its first turn before its draft reader or admission probe runs", async () => {
+    for (const mode of MODES) {
+      const put = mode === "draft" ? PUT.draft : call(TRY, { tasks: [instance(7)] });
+      const s = seat(mode, [put, finish, finish]);
+      const observed: JsonObject[] = [];
+      const record = () => {
+        if (observed.length > 0) return;
+        observed.push({
+          turn: s.of(`${KIND[mode]}.turn`).at(-1)?.turn ?? null,
+          billed: billedAll(read(s.log)),
+        });
+      };
+      const request =
+        s.request.mode === "draft"
+          ? {
+              ...s.request,
+              reading: async () => {
+                record();
+                return [];
+              },
+            }
+          : {
+              ...s.request,
+              probe: async () => {
+                record();
+                return PASS;
+              },
+            };
+      await examine(request);
+      expect(observed).toHaveLength(1);
+      expect(observed[0]?.turn).toBe(1);
+      expect(observed[0]?.billed).toBeGreaterThan(0);
+    }
+  });
+
   it("ends at finish, or at its turns, its wall, a kill, a failed turn or a spent budget, and its result and last event say which", async () => {
     for (const mode of MODES) {
       const finished = seat(mode, [finish, finish]);
@@ -195,6 +243,8 @@ describe("a session of any mode", () => {
         // The hostile cases: the repository's own file, and a write beside it.
         bash(`cat ${join(REPO, "package.json")} >/dev/null 2>&1 && echo read || echo refused`),
         bash(`(echo x > ${outside}) 2>/dev/null && echo written || echo refused`),
+        call("read", { path: join(REPO, "package.json") }),
+        call("write", { path: outside, content: "x" }),
         PUT[mode],
         finish,
         finish,
@@ -205,6 +255,10 @@ describe("a session of any mode", () => {
         ["bash", "read", "bash", "bash"].map((tool) => [tool, false]),
       );
       expect(calls.slice(1, 4).map(({ text }) => text)).toEqual(["noted", "refused", "refused"]);
+      expect(calls.slice(4, 6).map(({ tool, isError }) => [tool, isError])).toEqual([
+        ["read", true],
+        ["write", true],
+      ]);
       expect(existsSync(outside)).toBe(false);
       expect(existsSync(examinerDirs(s.log, s.request.id).host)).toBe(false);
       // It is told what the shell is and how the exam is entered, and nothing about what to do with it.
@@ -299,7 +353,7 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
 
     const drafted = seat("draft", [bash("ls"), PUT.draft, finish]);
     await examine(drafted.request, { ...WALL, keep, reference: keep });
-    expect(drafted.of("draft.call")[0]?.text).toBe("(no output)");
+    expect(drafted.of("draft.call")[0]?.text).toBe("");
     expect(readdirSync(keep)).toEqual(["half.txt"]);
   });
 });
@@ -955,14 +1009,14 @@ describe("a session that writes tasks", () => {
     };
     // Call the writing owner directly so the model's own budget cannot end the session first.
     const mode = writing({ ...s.request, probe }, [], "unseen");
-    await mode.tools[0]!.execute("put", { tasks: [instance(2)] });
+    await invoke(mode.tools[0]!, "put", { tasks: [instance(2)] });
     await mode.settle(true);
     expect(asked).toBe(1);
     expect(mode.result().refused).toEqual([s.versionOf("x-1-001", 2)]);
     expect(s.of(GATE)).toMatchObject([{ outcome: "refused", reference: { solves: 1, ran: 1 } }]);
     expect(s.of(GATE).filter(measuredGate)).toEqual([]);
     // Below one reserve the next draft starts nothing.
-    await mode.tools[0]!.execute("put-again", { tasks: [instance(3)] });
+    await invoke(mode.tools[0]!, "put-again", { tasks: [instance(3)] });
     await mode.settle(true);
     expect(asked).toBe(1);
     // Two drafts need two reserves. The first solve in flight must not be counted again as ahead.
@@ -983,7 +1037,7 @@ describe("a session that writes tasks", () => {
       [],
       "unseen",
     );
-    await batch.tools[0]!.execute("batch", { tasks: [instance(2), instance(3)] });
+    await invoke(batch.tools[0]!, "batch", { tasks: [instance(2), instance(3)] });
     try {
       expect(together).toBe(2);
     } finally {
@@ -1020,12 +1074,12 @@ describe("a session that writes tasks", () => {
       const put = mode.tools.find(({ name }) => name === TRY)!;
       const answer = mode.tools.find(({ name }) => name === "try_answer")!;
       if (alreadyProved) {
-        await answer.execute("earlier", { ...instance(7), answer: { ...GOOD, answer: "9.95" } });
+        await invoke(answer, "earlier", { ...instance(7), answer: { ...GOOD, answer: "9.95" } });
       }
-      await put.execute("put", { tasks: [instance(7)] });
+      await invoke(put, "put", { tasks: [instance(7)] });
       await first.promise;
       const better = { ...GOOD, answer: "9" };
-      await answer.execute("proof", { ...instance(7), answer: better });
+      await invoke(answer, "proof", { ...instance(7), answer: better });
       later.resolve();
       await mode.settle(true);
       expect(s.of(GATE)).toMatchObject([{ outcome: "passed" }]);
@@ -1054,23 +1108,24 @@ describe("a session that writes tasks", () => {
       "unseen",
     );
     const put = mode.tools[0]!;
-    await put.execute("first", { tasks: [instance(7)] });
+    await invoke(put, "first", { tasks: [instance(7)] });
     await mode.settle(true);
-    await put.execute("retry", { tasks: [instance(7), instance(7)] });
+    await invoke(put, "retry", { tasks: [instance(7), instance(7)] });
     expect(mode.result().puts).toBe(2);
     release.resolve();
     await mode.settle(true);
-    await put.execute("measured", { tasks: [instance(7)] });
+    await invoke(put, "measured", { tasks: [instance(7)] });
     expect(mode.result().puts).toBe(2);
     expect(s.of(GATE).map(measuredGate)).toEqual([false, true]);
     // A held draft also stays a duplicate.
     const proved = writing({ ...s.request, id: "x-2", verify, probe: async () => REJECTED }, [], "unseen");
-    await proved.tools
-      .find(({ name }) => name === "try_answer")!
-      .execute("proof", { ...instance(8), answer: GOOD });
-    await proved.tools[0]!.execute("held", { tasks: [instance(8)] });
+    await invoke(proved.tools.find(({ name }) => name === "try_answer")!, "proof", {
+      ...instance(8),
+      answer: GOOD,
+    });
+    await invoke(proved.tools[0]!, "held", { tasks: [instance(8)] });
     await proved.settle(true);
-    await proved.tools[0]!.execute("duplicate", { tasks: [instance(8)] });
+    await invoke(proved.tools[0]!, "duplicate", { tasks: [instance(8)] });
     expect(proved.result().held).toHaveLength(1);
     expect(proved.result().puts).toBe(1);
   });
@@ -1425,7 +1480,9 @@ describe("a session that writes tasks", () => {
     // to one is answered as a tool the session does not have.
     const unprobed = seat("write", [call("wait", {}), finish, finish]);
     await examine(unprobed.request);
-    expect(unprobed.of(CALLED)[0]).toMatchObject({ tool: "wait", isError: true });
+    // Durable refuses unavailable calls before its execution hooks; the model still reads the error.
+    expect(unprobed.sent[1]).toContain('"toolName":"wait"');
+    expect(unprobed.sent[1]).toContain('"isError":true');
     expect(waited).toMatchObject({ tool: "wait", isError: false });
   });
 

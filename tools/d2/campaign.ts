@@ -179,7 +179,7 @@ export const REPO = resolve(import.meta.dir, "..", "..");
 /** The flags that name a stored pack together. */
 const PACK_FLAGS = 4;
 /** The agent runtime's packages, pinned in `package.json`; the SDK pins the Claude Code binary. */
-const RUNTIME = ["@anthropic-ai/claude-agent-sdk", "@earendil-works/pi-agent-core", "@earendil-works/pi-ai"];
+const RUNTIME = ["@anthropic-ai/claude-agent-sdk", "@earendil-works/pi-ai", "@earendil-works/pi-durable"];
 
 /**
  * The repository's other worktrees, which every wall of this command denies with the one it runs

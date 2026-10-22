@@ -215,10 +215,9 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
   const walled = (bench: Bench) => [
     tool({
       name: WRITE_FILE,
-      label: "write",
       description: "Writes a file in the home.",
       parameters: Type.Object({ path: Type.String(), content: Type.String() }),
-      execute: async (_id, args) => {
+      execute: async (args) => {
         const file = join(bench.home, args.path);
         mkdirSync(dirname(file), { recursive: true });
         writeFileSync(file, args.content);
@@ -301,7 +300,6 @@ describe("the Builder running its campaign", () => {
           tools: [
             tool({
               name: "examine",
-              label: "Examine",
               description: "Run another seat and return its counts.",
               parameters: Type.Object({}),
               execute: async () => {
@@ -382,9 +380,9 @@ describe("the Builder running its campaign", () => {
       s,
       s.walled,
     );
-    // The status is rendered once, for the opening message; each of the three requests checks twice.
+    // The status is rendered once, for the opening; durable checks once before each request.
     expect(s.sent).toHaveLength(3);
-    expect(counted).toEqual({ hook: 1, halts: 6 });
+    expect(counted).toEqual({ hook: 1, halts: 3 });
   });
 
   it("counts its wall on the Builder's own time, and cuts an action outside one", async () => {
@@ -404,17 +402,18 @@ describe("the Builder running its campaign", () => {
             tools: [
               tool({
                 name: "long_action",
-                label: "Long action",
                 description: "An action that outlasts the session's wall.",
                 parameters: Type.Object({}),
-                execute: async (_id, _args, signal) => {
+                execute: async (_args, _api, context) => {
                   const action = async () => {
                     // Until the wall cuts it, or well past where the wall fell.
                     await Promise.race([
                       Bun.sleep(250),
-                      new Promise((resolve) => signal?.addEventListener("abort", resolve, { once: true })),
+                      new Promise((resolve) =>
+                        context.abortSignal?.addEventListener("abort", resolve, { once: true }),
+                      ),
                     ]);
-                    cut = signal?.aborted === true;
+                    cut = context.abortSignal?.aborted === true;
                     return text("The action ended.");
                   };
                   return held === "within" ? bench.within(action) : action();
@@ -1340,6 +1339,29 @@ describe("a Builder session", () => {
     );
   });
 
+  it("keeps streamed tool output beside its turn footer after the turn is metered", async () => {
+    const s = await setup([call("streamed", {}), finish]);
+    await session(s.request, s, () => [
+      tool({
+        name: "streamed",
+        description: "Returns its output through durable's stream.",
+        parameters: Type.Object({}),
+        execute: async (_args, api) => {
+          expect(api.callId).not.toBe("");
+          expect(s.of("build.turn")).toHaveLength(1);
+          expect(s.of("build.turn")[0]?.usage).toBeDefined();
+          api.output("The streamed result.");
+          return { details: null };
+        },
+      }),
+    ]);
+    expect(s.of(BUILD_CALL)[0]).toMatchObject({
+      tool: "streamed",
+      isError: false,
+      text: expect.stringMatching(/^The streamed result\.\n\[Session: turn 1 of 12, /),
+    });
+  });
+
   // Fix row F18: a session whose opening was compacted away had its facts in no other place.
   it("serves its opening message again, as it was sent", async () => {
     const s = await setup([edit, call("read_opening", {}), finish]);
@@ -1648,7 +1670,6 @@ describe.skipIf(!osIsolationSupport().ok)("a Builder session under the command w
         tools: [
           tool({
             name: "release_fixture",
-            label: "Release fixture",
             description: "Release a public practice task.",
             parameters: Type.Object({}),
             execute: async () => {

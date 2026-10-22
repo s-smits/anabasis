@@ -21,7 +21,7 @@ describe("a compatibility path", () => {
   });
 
   it("is not reported in a vendored upstream or a test", () => {
-    expect(reported("vendor/pi-coding-agent/utils/shell.ts")).toEqual([]);
+    expect(reported("vendor/pi-claude-bridge/compact-summary.ts")).toEqual([]);
     expect(reported("test/read.test.ts")).toEqual([]);
   });
 });

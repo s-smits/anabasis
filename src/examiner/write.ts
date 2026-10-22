@@ -31,8 +31,6 @@ import { gainOver, informative, type Paired } from "../kernel/compare.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { packageGate, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
 import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
-import { cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
-import { join } from "../meta/path.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
 import { isNumber, isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -45,7 +43,6 @@ import { type CheckRow, firstMessage, systemPrompt } from "./prompt.ts";
 import { gapSaid, gateAnswers, gateBilled, heard, measuredGate, TRIED, UNAFFORDED } from "./record.ts";
 
 /** The home's copy of the reference harness, where the campaign's term lays one there. */
-const REFERENCE_HOME = "reference-harness";
 
 /** The author's current answer checked under the draft's own id when needed (`gated`). */
 type Proof = () => Promise<Verdict | null>;
@@ -560,20 +557,14 @@ function gatedTasks(events: readonly LogEvent[]): Task[] {
 }
 
 /**
- * The mode that writes tasks: the exam's own tools, `try_answer` where the host verifies, the home
- * carried from the campaign's last session where the wall keeps one (`keep`), and in it a copy of
- * the reference harness where the wall names one (`reference`): the reference's alone, laid afresh
- * each session and left out of the kept home. Blind to it, esp32-fresh-opus's Examiner held 0 of 49
+ * The mode that writes tasks: the exam's own tools, `try_answer` where the host verifies, and the
+ * system prompt that says whether a copy of the reference harness is in its home (`reference`),
+ * which the wall lays there and leaves out of the home it keeps (`inExaminerWall`). Blind to it, esp32-fresh-opus's Examiner held 0 of 49
  * drafts under its first promoted reference; in the supply ablation of 19 October on the buffer
  * domain, 1 of 8 drafts held blind and 4 of 8 with the copy. It is the operator's term
  * (`exam-reference`), on unless a campaign names it off.
  */
-export function writing(
-  request: Terms,
-  pinned: readonly Engine[],
-  keep: string | undefined,
-  reference: string | undefined,
-) {
+export function writing(request: Terms, pinned: readonly Engine[], reference: "unseen" | "in-home") {
   const { limits, verify, wanted } = request;
   const before = read(request.log);
   const desk: Desk = {
@@ -598,7 +589,7 @@ export function writing(
   const note = epoch.findLast(({ kind, data }) => kind === "exam.finished" && isString(data.note))?.data.note;
   return {
     kind: "exam" as const,
-    system: systemPrompt(attempts, reference === undefined ? "unseen" : "in-home"),
+    system: systemPrompt(attempts, reference),
     opening: firstMessage(
       request.contract,
       request.checks,
@@ -616,7 +607,7 @@ export function writing(
       examples: request.tasks.map(({ taskId }) => taskId),
       engines: pinned.map(({ name, sha256 }) => ({ name, sha256 })),
       ...keyIfDefined("tried", attempts),
-      referenceHome: reference !== undefined,
+      referenceHome: reference === "in-home",
     },
     tools: [
       proposeTool(desk, gate),
@@ -635,7 +626,6 @@ export function writing(
           ]),
     ],
     enters: `a task enters it through ${gate} alone`,
-    checked: undefined,
     nudge: "Propose further tasks",
     finish:
       "End the session. Say in one or two sentences what kinds of task you wrote and what you would try next.",
@@ -651,28 +641,5 @@ export function writing(
     settle: async (all: boolean) => await settled(desk, all ? "all" : "next"),
     counted: () => ({ proposed: desk.proposed, held: desk.held, refused: desk.refused }),
     result: () => ({ puts: desk.proposed, held: desk.held, refused: desk.refused }),
-    // The next session's home is seeded with what the campaign keeps of the last one's.
-    enter: (home: string) => {
-      if (keep !== undefined && existsSync(keep)) cpSync(keep, home, { recursive: true });
-      // A kept state names its programs by a link to the campaign's store, which the wall closes.
-      if (reference !== undefined) {
-        cpSync(reference, join(home, REFERENCE_HOME), { recursive: true, dereference: true });
-      }
-    },
-    // The campaign's copy of a session's home, made whole when the session ends and replacing the
-    // one before: it is the exam side's, under the campaign's folder beside the log, which every
-    // wall closes. No link is followed, as the Builder's carry follows none. Not a session that
-    // crashed with a command running, whose home is as no command left it. Until 12 October every
-    // crashed session's home replaced the kept one, and on buffer the next session opened in the
-    // working files of one whose turn the provider failed, under an earlier session's note; from
-    // then until 14 October none did, and a crashed Examiner's work was lost to the provider. A
-    // crash in a model request is now kept.
-    leave: (home: string, ended: string, running: number) => {
-      if (keep === undefined || (ended === "crashed" && running > 0)) return;
-      rmSync(keep, { recursive: true, force: true });
-      if (existsSync(home)) cpSync(home, keep, { recursive: true });
-      // The copy is the session's own, so a session with the term off never opens on one.
-      rmSync(join(keep, REFERENCE_HOME), { recursive: true, force: true });
-    },
   };
 }

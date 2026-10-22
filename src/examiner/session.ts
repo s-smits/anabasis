@@ -4,11 +4,12 @@
  * repairs a check (`AGENTS.md` rule 2). A log of before keeps its `repair.*` events.
  *
  * A mode is what a session is told, the tools it works with and when its work is done (`Mode`);
- * everything else is one loop (`sit`): the id it claims, its start event, its wall, its `finish`,
- * its shell where it has one (`shell.ts`), the turns and calls in the log under the mode's kind,
- * and its end event with what it billed. A turn of its own the provider failed ends it crashed,
- * with what the provider said. A drafting session puts one whole draft to the host's reading until
- * one stands (`putting`); a writing session proposes many tasks.
+ * everything else is one loop (`sit`): its start event, its `finish`, its shell where it has one,
+ * the turns and calls in the log under the mode's kind, and its end event with what it billed. A
+ * turn of its own the provider failed ends it crashed, with what the provider said. A drafting
+ * session puts one whole draft to the host's reading until one stands (`putting`); a writing
+ * session proposes many tasks. The id, the root and the home are the wall's (`inExaminerWall`,
+ * `shell.ts`), which seeds a writing session's home and carries it on.
  *
  * What the Examiner is never given, in any mode: a harness, a solver's trace or answer. Its
  * shell, where it has one, is a walled home of its own, closed to the repository.
@@ -101,10 +102,8 @@ interface Mode {
   readonly started: JsonObject;
   /** Its own tools, before the shell's and `finish`. */
   readonly tools: readonly AgentTool[];
-  /** How its shell is described (`examinerShell`): how something enters the exam and through which
-   *  tool the host runs the checks. */
+  /** How something of the session enters the exam, as its shell is told (`examinerShell`). */
   readonly enters: string;
-  readonly checked: string | undefined;
   /** What a turn with no call is told the session can still do, before `finish`. */
   readonly nudge: string;
   /** What `finish` is described as. */
@@ -122,10 +121,6 @@ interface Mode {
   /** What its end event holds of its work, under the log's own words. */
   readonly counted: () => JsonObject;
   readonly result: () => Omit<Examined, "ended">;
-  /** What is laid in the shell's home before the session, and what is kept of it after. */
-  readonly enter: ((home: string) => void) | undefined;
-  /** `running` is how many of its commands were running as the session ended. */
-  readonly leave: ((home: string, ended: Examined["ended"], running: number) => void) | undefined;
 }
 
 /** What one kind of session that puts a whole thing is told and puts (`putting`). */
@@ -153,8 +148,6 @@ interface Put<Parameters extends TSchema, Thing> {
   readonly finish: string;
   /** The tools it reads with beside its shell. */
   readonly reads: readonly AgentTool[];
-  readonly checked?: string;
-  readonly enter?: (home: string) => void;
 }
 
 /** What `finish` leaves the loop: the note, and whether a first `finish` was declined. */
@@ -162,6 +155,10 @@ interface Said {
   note: string | null;
   declined: boolean;
 }
+
+/** What `read_opening` says it serves. */
+const REREAD =
+  "The session's opening message again, as it was sent: the record of the campaign's tasks and drafts it began with. Read it after your context was compacted.";
 
 /** The first of these that holds names a session's ending; none, and it `stopped`. */
 const ENDINGS = ["stands", "finished", "supplied", "killed", "wall", "crashed", "turns"] as const;
@@ -211,7 +208,6 @@ function putting<Parameters extends TSchema, Thing>({ limits }: Sitting, of: Put
     },
     tools: [put, ...of.reads],
     enters: `a ${kind} enters it through ${of.put.name} alone`,
-    checked: of.checked,
     nudge: `Put a ${kind} with ${of.put.name}`,
     finish: of.finish,
     declined: null,
@@ -220,8 +216,6 @@ function putting<Parameters extends TSchema, Thing>({ limits }: Sitting, of: Put
     settle: undefined,
     counted: () => ({ ...desk }),
     result: () => ({ puts: desk.tries, held: [], refused: [] }),
-    enter: of.enter,
-    leave: undefined,
   };
 }
 
@@ -249,15 +243,11 @@ function withinBudget(log: string, spent: AbortController, compact: PrepareReque
   };
 }
 
-/** The session's `finish`, with what it leaves the loop (`said`) and how every tool result of the
- *  session ends (`told`): what the mode heard since, then the line. The work still running is waited
- *  for and told first, so that the session's end reads it, and a first `finish` is declined once
- *  where the mode declines one and its work is not done. */
-function finishing(mode: Mode) {
-  const said: Said = { note: null, declined: false };
-  const told = (last: boolean, line: string) =>
-    [mode.heard?.(last) ?? "", line].filter((part) => part !== "").join("\n\n");
-  const finish = tool({
+/** The session's `finish`: the work still running is waited for and told first, so that the
+ *  session's end reads it, and a first `finish` is declined once where the mode declines one and
+ *  its work is not done. */
+function finishTool(mode: Mode, said: Said, told: (last: boolean, line: string) => string): AgentTool {
+  return tool({
     name: "finish",
     label: "Finish",
     description: mode.finish,
@@ -273,58 +263,49 @@ function finishing(mode: Mode) {
       return { ...text(told(true, "Finished.")), terminate: true };
     },
   });
-  return { said, told, finish };
 }
 
 /**
  * One session of `mode`: the Examiner works with the mode's tools until its work is done, it calls
  * `finish`, or a limit ends it. Everything it does is in the log under the mode's kind: its start,
- * its turns and calls, and its end with what it billed.
+ * its turns and calls, and its end with what it billed and, for a crash, how many of its commands
+ * were running, which decides whether its home is carried on (`inExaminerWall`).
  */
 async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Promise<Examined> {
   const { log, limits, model, id } = request;
-  const { kind } = mode;
   const began = walls?.began ?? performance.now();
-  const home = walls?.shell.dirs.home;
-  if (home !== undefined) mode.enter?.(home);
-  append(log, `${kind}.started`, {
+  append(log, `${mode.kind}.started`, {
     session: id,
     model: priceKey(model),
     effort: request.effort,
     ...mode.started,
   });
   request.opened?.();
-  const { said, told, finish } = finishing(mode);
-  const shell = await examinerShell(walls?.shell, mode.enters, mode.checked);
-  // The model's turns so far, each pushed once its tool results are in (`finishTurn`).
+  const said: Said = { note: null, declined: false };
+  // Every tool result ends with what the mode heard since, then its own line.
+  const told = (last: boolean, line: string) =>
+    [mode.heard?.(last) ?? "", line].filter((part) => part !== "").join("\n\n");
+  // The model's turns, each pushed once its tool results are in (`finishTurn`).
   const turns: AssistantMessage[] = [];
-  // The ids of the current turn's calls. The result of its last says what the session has used, once
-  // a turn: the limits were told at the opening alone, and on the six logs read on 14 October two of
-  // eleven sessions were cut at their wall while still proposing, one in a command of 207 s.
-  let calls: string[] = [];
+  // The current turn's last call, whose result says what the session has used: told its limits at the
+  // opening alone, two of eleven sessions on 14 October were cut at their wall while still proposing.
+  let lastCall: string | undefined;
   const used = (call: string) => {
-    const last = call === calls.at(-1);
-    const turn = last
-      ? `Turn ${String(turns.length + 1)} of ${String(limits.turns)}; ${String(Math.floor((performance.now() - began) / 60_000))} of ${plural(Math.round(limits.wallSeconds / 60), "minute")} used.`
-      : "";
-    return told(last, turn);
+    const minutes = `${String(Math.floor((performance.now() - began) / 60_000))} of ${plural(Math.round(limits.wallSeconds / 60), "minute")}`;
+    const line = `Turn ${String(turns.length + 1)} of ${String(limits.turns)}; ${minutes} used.`;
+    return call === lastCall ? told(true, line) : told(false, "");
   };
-  const reread = openingTool(
-    mode.opening,
-    "The session's opening message again, as it was sent: the record of the campaign's tasks and drafts it began with. Read it after your context was compacted.",
-  );
-  const tools = [...[...mode.tools, ...shell, reread].map((each) => endingWith(each, used)), finish];
+  const shell = await examinerShell(walls?.shell, mode.enters);
+  const tools = [
+    ...[...mode.tools, ...shell, openingTool(mode.opening, REREAD)].map((each) => endingWith(each, used)),
+    finishTool(mode, said, told),
+  ];
   // The wall runs from the seat's start (`began`), so the claim, the wall's own probe and the
   // shell's network probe, awaited above, are inside the session's limit.
-  const wall = new AbortController();
-  const timer = setTimeout(
-    () => wall.abort(),
-    Math.max(0, limits.wallSeconds * 1000 - (performance.now() - began)),
-  );
+  const wall = AbortSignal.timeout(Math.max(0, limits.wallSeconds * 1000 - (performance.now() - began)));
   // `done` closes the model after its gate settles; `spent` stops both when no reserve remains.
   const [done, spent] = [new AbortController(), new AbortController()];
-  const kill = request.kill ? [request.kill] : [];
-  const signal = AbortSignal.any([wall.signal, done.signal, spent.signal, ...kill]);
+  const signal = AbortSignal.any([wall, done.signal, spent.signal, ...(request.kill ? [request.kill] : [])]);
   const summaries: Usage[] = [];
   // The session ends at `finish` and when its work is done, even beside another call in the turn.
   const over = () => said.note !== null || mode.done() !== null;
@@ -332,10 +313,8 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
   // Claude Code keeps its session here, the checks and hidden values it wrote or read included.
   const state = hostScratch("claude-cli-examiner-");
   let crash: string | null = null;
-  // The commands running as the session ends: a crash in a model request leaves the home as its
-  // last command left it, and one in a command does not (`leave`).
   let running = 0;
-  const trace = traceSink(log, kind, id, () => turns.length);
+  const trace = traceSink(log, mode.kind, id, () => turns.length);
   try {
     await seatLoop({
       models: request.models(state),
@@ -358,12 +337,14 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
             : [userTurn(told(true, `You have not called finish. ${mode.nudge}, or call finish.`))];
         },
       },
-      compact: { log, of: kind, summaries, guard: (compact) => withinBudget(log, spent, compact) },
+      compact: { log, of: mode.kind, summaries, guard: (compact) => withinBudget(log, spent, compact) },
       emit: (event) => {
         if (event.type === "message_end" && event.message.role === "assistant") {
-          calls = event.message.content.flatMap((part) =>
-            part.type === "toolCall" && tools.some(({ name }) => name === part.name) ? [part.id] : [],
-          );
+          lastCall = event.message.content
+            .flatMap((part) =>
+              part.type === "toolCall" && tools.some(({ name }) => name === part.name) ? [part.id] : [],
+            )
+            .at(-1);
         }
         if (event.type === "tool_execution_start") running += 1;
         if (event.type === "tool_execution_end") running -= 1;
@@ -374,29 +355,26 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
   } catch (error) {
     if (!spent.signal.aborted) crash = errorMessage(error);
   } finally {
-    try {
-      // A crash leaves the gate under its wall, kill and budget, just as finish does (21 October).
-      await mode.settle?.(true);
-    } finally {
-      clearTimeout(timer);
+    // A crash leaves the gate under its wall, kill and budget, just as finish does (21 October).
+    await Promise.resolve(mode.settle?.(true)).finally(() => {
       done.abort();
       rmSync(state, { recursive: true, force: true });
-    }
+    });
   }
   const killed = request.kill?.aborted === true;
-  crash ??= wall.signal.aborted || killed || spent.signal.aborted ? null : failedTurn(turns);
+  crash ??= wall.aborted || killed || spent.signal.aborted ? null : failedTurn(turns);
   const work = mode.done();
   const by = {
     stands: work === "stands",
     finished: said.note !== null,
     supplied: work === "supplied",
     killed,
-    wall: wall.signal.aborted,
+    wall: wall.aborted,
     crashed: crash !== null,
     turns: turns.length >= limits.turns,
   };
   const ended = ENDINGS.find((reason) => by[reason]) ?? "stopped";
-  append(log, `${kind}.finished`, {
+  append(log, `${mode.kind}.finished`, {
     session: id,
     ended,
     note: said.note,
@@ -406,32 +384,32 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
     ...(await spentBy(model, id, turns, summaries)),
     seconds: (performance.now() - began) / 1000,
   });
-  if (home !== undefined) mode.leave?.(home, ended, running);
   return { ended, ...mode.result() };
 }
 
 /**
  * One Examiner session in the mode its request names. With a `wall` it has a shell under the
- * solver's command wall (`shell.ts`), with the engines its campaign's checks run where the wall
- * names them, and its time is counted from before its root is claimed; without one it has no shell
- * and computes nothing. A run killed before the session began, and an id a drafting or writing
- * session of the log already took, claim nothing and start nothing.
+ * solver's command wall (`shell.ts`), and its time is counted from before its root is claimed;
+ * without one it has no shell and computes nothing. A drafting session is given no engines, no kept
+ * home and no reference harness: nothing is drafted yet that names one. A run killed before the
+ * session began, and an id a session of the log already took, claim nothing and start nothing.
  */
 export async function examine(request: ExamRequest, wall?: Wall): Promise<Examined> {
   if (request.kill?.aborted === true) throw new Error(`session ${request.id} was stopped before it began`);
   if (examinerSessions(read(request.log)).has(request.id)) {
     throw new Error(`session ${request.id} is in the log already; a session's id names one session`);
   }
-  const seated = (walls: Walls | undefined) => {
-    const pinned = walls?.pinned ?? [];
-    switch (request.mode) {
-      case "draft":
-        return sit(request, putting(request, drafting(request)), walls);
-      case "write":
-        return sit(request, writing(request, pinned, wall?.keep, wall?.reference), walls);
-    }
-  };
-  if (wall === undefined) return await seated(undefined);
-  const engines = request.mode === "draft" ? undefined : wall.engines;
-  return await inExaminerWall(request, { ...wall, engines }, seated);
+  const reference = wall?.reference === undefined ? "unseen" : "in-home";
+  const seated = async (walls?: Walls) =>
+    await sit(
+      request,
+      request.mode === "draft"
+        ? putting(request, drafting(request))
+        : writing(request, walls?.pinned ?? [], reference),
+      walls,
+    );
+  if (wall === undefined) return await seated();
+  const walled =
+    request.mode === "draft" ? { ...wall, engines: undefined, keep: undefined, reference: undefined } : wall;
+  return await inExaminerWall(request, walled, seated);
 }

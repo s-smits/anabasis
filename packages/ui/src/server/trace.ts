@@ -9,13 +9,13 @@
  * Turns and calls are the kernel's reading of the trace events (`traceOf`, `src/kernel/trace.ts`),
  * the one the Builder's `read_trace` pages, with a call's result cut for the default tier.
  */
-import { reported, UNSETTLED } from "../../../../src/builder/comparison.ts";
+import { reported, UNSETTLED } from "../../../../src/campaign/comparison.ts";
 import type { Ending } from "../../../../src/kernel/solve.ts";
 import type { Solve } from "../../../../src/kernel/solves.ts";
 import { type Seat, traceOf } from "../../../../src/kernel/trace.ts";
 import { isNumber, isString, type JsonObject } from "../../../../src/meta/json-shape.ts";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
-import type { Ruling } from "../../../../src/review/referee.ts";
+import type { Ruling } from "../../../../src/referee/referee.ts";
 import type { SolveRow, Tier, ToolCall, Turn } from "../models.ts";
 import { callsIn, conditionsIn, type Log, once, practiceIn, reportsIn } from "./folds.ts";
 import { movesIn } from "./moves.ts";
@@ -81,7 +81,7 @@ export function rulingOf(
   const ruling = RULINGS.find((each) => each === finding?.ruling);
   if (finding === undefined || ruling === undefined) return null;
   // The host rules what needs no reading and meters nothing; a reader's finding carries its probes'
-  // rows and what it billed (`referee`, `src/review/referee.ts`).
+  // rows and what it billed (`referee`, `src/referee/referee.ts`).
   return {
     ruling,
     by: Object.hasOwn(finding, "probeRows") ? "referee" : "host",

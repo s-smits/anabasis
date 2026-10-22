@@ -90,7 +90,7 @@ several causes. So stage 1 practises and scores under the same runtime: pi with 
 unchanged (guide, programs and tools), the same solver model through the same provider, inside
 WorkBuddy's container through a Harbor agent that runs pi. The starter is scored the same way, so
 the three arms differ only in the harness. The solver is Gemini 3.5 Flash through the OpenRouter
-backend (`src/backends/models.ts`), in the campaigns and in the container alike. pi's catalogue
+backend (`src/agent/backends/models.ts`), in the campaigns and in the container alike. pi's catalogue
 prices it ($1.50 in, $9 out per million tokens) with a context of 1,048,576 tokens, so the meter
 and the default solver window both accept it. GLM-5 is listed with a 198,000-token context and
 would need a `--solver-window` below that. Harness²'s WorkBuddy runner gives its solver the effort
@@ -126,7 +126,7 @@ patience. A campaign
 that ends on its budget and one that ends on its patience are both read at their ending.
 
 **Network.** Every Anabasis seat can reach the network (`AGENTS.md`, section 10). A seat's wall can
-only open or close the network as a whole (`network`, `src/verify/solve-sandbox.ts`), so for D and U
+only open or close the network as a whole (`network`, `src/wall/base.ts`), so for D and U
 the host blocks `huggingface.co`, `hf.co`, `*.hf.co` and the benchmark's GitHub repositories by DNS
 or an egress rule, as Harness² advises for its own executor, and the container is blocked the same
 way in every arm. In Harness²'s own validation a Codex rollout on JobBench downloaded its task's

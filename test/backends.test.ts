@@ -1,12 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { fauxAssistantMessage, fauxProvider, normalizeContext } from "@earendil-works/pi-ai";
-import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "../src/backends/claude.ts";
-import { type BackendOptions, backends, compactionMode, retried } from "../src/backends/models.ts";
+import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "../src/agent/backends/claude.ts";
+import { type BackendOptions, backends, compactionMode, retried } from "../src/agent/backends/models.ts";
 import { read } from "../src/kernel/log.ts";
 import { mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { traceSink } from "../src/seat/session.ts";
+import { traceSink } from "../src/agent/session.ts";
 
 const HOUR_S = 60 * 60;
 const home = mkdtempSync(join(tmpdir(), "ana-backends-"));

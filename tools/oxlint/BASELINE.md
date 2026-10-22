@@ -399,7 +399,7 @@ worth keeping. Bisecting with a synthetic shape beside a verbatim copy of the re
 cause in the guard the rule had been running with since it shipped: a value built from the name it
 replaces is a refinement rather than a decision, and the guard tested that by searching
 `context.sourceCode.getText(right)` for the name. `getText` returns source, comments included. The
-Seatbelt array in `src/verify/solve-sandbox.ts` carries the comment *where that bypass is measured
+Seatbelt array in `src/wall/base.ts` carries the comment *where that bypass is measured
 against this profile without these lines* — the word `profile` in a sentence — and it suppressed the
 finding about the binding called `profile`. Comments and single- and double-quoted strings are
 stripped before the test now; a template literal is left intact, because `${name}` inside one is a

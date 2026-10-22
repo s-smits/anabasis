@@ -4,8 +4,8 @@
 // The paid run keeps a Receipt beside its log; these tests use scripted seats and inspect the log.
 
 import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
-import { crashedRun } from "../src/builder/ground.ts";
-import { pendingWords } from "../src/builder/word.ts";
+import { crashedRun } from "../src/campaign/ground.ts";
+import { pendingWords } from "../src/campaign/word.ts";
 import { examine } from "../src/examiner/session.ts";
 import { LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
 import { taskSets } from "../src/kernel/task.ts";

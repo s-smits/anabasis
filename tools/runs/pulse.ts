@@ -97,7 +97,7 @@ const cost = (data: JsonObject) =>
 
 /** What a comparison's report earns: one that scored nothing, one its cap cut, or one with tasks set
  *  aside on rejections nobody has settled is one to look at before it is believed
- *  (`src/builder/round.ts`). */
+ *  (`src/campaign/round.ts`). */
 function reportLine(data: JsonObject): string {
   const settled = asRecord(data.settled);
   if (settled !== null) {

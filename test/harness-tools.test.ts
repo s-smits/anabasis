@@ -22,11 +22,11 @@ import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { type CommandWall, makeSeatDirs, solveDirs } from "../src/solve/command.ts";
-import { harnessTools, openHarness } from "../src/solve/harness.ts";
-import { claimRoot } from "../src/verify/seat-root.ts";
-import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
-import { osIsolationSupport } from "../src/verify/os-isolation.ts";
+import { type CommandWall, makeSeatDirs, solveDirs } from "../src/tools/command.ts";
+import { harnessTools, openHarness } from "../src/harness/open.ts";
+import { claimRoot } from "../src/wall/seat-root.ts";
+import { solveIsolationPolicy } from "../src/wall/base.ts";
+import { osIsolationSupport } from "../src/wall/os-isolation.ts";
 import { CLOSED_CODE } from "./helpers/wall.ts";
 
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;

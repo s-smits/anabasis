@@ -20,7 +20,7 @@ import {
   REPORTED_COST,
   reportedCost,
   SWEEP_COMPACT_WINDOW,
-} from "../src/backends/claude.ts";
+} from "../src/agent/backends/claude.ts";
 import { read as readLog } from "../src/kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../src/kernel/meter.ts";
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
@@ -30,7 +30,7 @@ import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { traceSink } from "../src/seat/session.ts";
+import { traceSink } from "../src/agent/session.ts";
 
 /** What one launch of the CLI saw: its arguments, its environment and the SDK's lines to it. */
 interface Launch {

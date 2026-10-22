@@ -19,8 +19,8 @@
  * overview. The climb's lane (31) is `promotion.ts`. The lanes that read the clock (26 and 28) and
  * row A's hours are `time.ts`, split from here on the same day for the same ceiling.
  */
-import { short } from "#src/builder/move.ts";
-import { campaignOf as handoverOf, type Handover, nextBound, openSteps } from "#src/builder/handover.ts";
+import { short } from "#src/campaign/move.ts";
+import { campaignOf as handoverOf, type Handover, nextBound, openSteps } from "#src/campaign/handover.ts";
 import { differenceOf, flipP, readsStepEitherWay, sweepOf } from "#src/kernel/compare.ts";
 import type { Condition } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";

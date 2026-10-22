@@ -27,7 +27,7 @@
  * later comparison read against it (`7f0add79:docs/plan.md`, What we will not do).
  *
  * The Starter Built Harness is the reference harness until a step is promoted
- * (`src/solve/starter.ts`). Once the operator has promoted another reference, the starter is the
+ * (`src/harness/starter.ts`). Once the operator has promoted another reference, the starter is the
  * control the table reads the tasks with after a promotion (`decide.ts`), and no side of a
  * comparison between two others.
  *
@@ -110,7 +110,7 @@ import { asRecord, isString, type JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { sameJsonValue } from "../meta/stable-json.ts";
-import type { RefereeFinding, Ruling } from "../review/referee.ts";
+import type { RefereeFinding, Ruling } from "../referee/referee.ts";
 import { tasksByEpoch } from "./climb.ts";
 import {
   compared,
@@ -133,7 +133,7 @@ import {
   UNSETTLED,
   wrongAsFailed,
 } from "./comparison.ts";
-import { type BuildRequest, type Built, type Practised, sessionOnce } from "./session.ts";
+import { type BuildRequest, type Built, type Practised, sessionOnce } from "../builder/session.ts";
 
 /** A harness as a solve is handed it. */
 interface Kept {

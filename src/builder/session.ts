@@ -23,7 +23,7 @@
  * - The installed programs are the session's own copy of the parent's, and nothing it installs
  *   reaches the parent. A harness in which a link or a script names the home is not frozen
  *   (`tools.ts`), since it runs from elsewhere.
- * - What the Builder reads of a solve is the paged trace (`src/review/trace.ts`) and an ending's
+ * - What the Builder reads of a solve is the paged trace (`src/kernel/trace.ts`) and an ending's
  *   outcome and kind. A verdict's checks and the Referee's reasons never reach a tool result.
  * - The log records what the session saw: `build.started` lists the practice task versions, and
  *   every practice solve runs under a recorded condition, so "never saw" can be checked afterwards.
@@ -60,16 +60,16 @@ import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { isString } from "../meta/json-shape.ts";
 import { basename, dirname, join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import type { RefereeFinding } from "../review/referee.ts";
-import { type CommandWall, networkReach, type SolveDirs, solveDirs, walledBase } from "../solve/command.ts";
-import type { PublicResource } from "../solve/answer.ts";
-import { openHarness } from "../solve/harness.ts";
-import { type PublicTask, publicView } from "../solve/prompt.ts";
-import { HARNESS_ACCOUNT } from "../solve/starter.ts";
-import { type SolveRequest, solve } from "../solve/run.ts";
-import { sit } from "../seat/session.ts";
-import { claimRoot } from "../verify/seat-root.ts";
-import { campaignOf } from "./handover.ts";
+import type { RefereeFinding } from "../referee/referee.ts";
+import { type CommandWall, networkReach, type SolveDirs, solveDirs, walledBase } from "../tools/command.ts";
+import type { PublicResource } from "../tools/answer.ts";
+import { openHarness } from "../harness/open.ts";
+import { type PublicTask, publicView } from "../solver/prompt.ts";
+import { HARNESS_ACCOUNT } from "../harness/starter.ts";
+import { type SolveRequest, solve } from "../solver/run.ts";
+import { sit } from "../agent/session.ts";
+import { claimRoot } from "../wall/seat-root.ts";
+import { campaignOf } from "../campaign/handover.ts";
 import { copyHarness, seedKept } from "./kept.ts";
 import { builderMemoryBlock, keepMemory, lastKept, memoryOverCapNotice, seedMemory } from "./memory.ts";
 import { comparisonsTold, failsTold, startTold } from "./past.ts";
@@ -123,7 +123,7 @@ interface BuildLimits extends Limits {
 export interface BuildRequest {
   /** Names the session in the log. */
   readonly id: string;
-  /** The harness state the session starts from, v1's format (`src/solve/harness.ts`). */
+  /** The harness state the session starts from, v1's format (`src/harness/open.ts`). */
   readonly parent: string;
   /** The reference harness's kept state: what the harness the session leaves is compared with,
    *  and what a practice solve may run under on request. */

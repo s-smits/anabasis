@@ -26,12 +26,12 @@
  * after a control whose A/A reading the later sample lost 0 to 4.
  *
  * The reports are the comparison's own reading of its solves (`compared`,
- * `src/builder/comparison.ts`) and the settling is `settleReading`'s, so nothing in a report is
+ * `src/campaign/comparison.ts`) and the settling is `settleReading`'s, so nothing in a report is
  * typed by hand. Each event is stamped by a clock this file moves, so the moves take minutes.
  */
 import { setSystemTime } from "bun:test";
-import { compared, fixedIn, NO_LABELS } from "../../../src/builder/comparison.ts";
-import { settleReading } from "../../../src/builder/round.ts";
+import { compared, fixedIn, NO_LABELS } from "../../../src/campaign/comparison.ts";
+import { settleReading } from "../../../src/campaign/round.ts";
 import { recordCondition, settingId } from "../../../src/kernel/condition.ts";
 import { append, type EventKind, LOG_FILE, read } from "../../../src/kernel/log.ts";
 import { comparedAs } from "../../../src/kernel/reports.ts";
@@ -40,7 +40,7 @@ import { mkdirSync, writeFileSync } from "../../../src/meta/filesystem.ts";
 import { asRecord, type JsonObject, type JsonValue } from "../../../src/meta/json-shape.ts";
 import { keyIfDefined } from "../../../src/meta/optional-key.ts";
 import { join, resolve } from "../../../src/meta/path.ts";
-import type { Ruling } from "../../../src/review/referee.ts";
+import type { Ruling } from "../../../src/referee/referee.ts";
 import type { Query, Tier } from "../src/models.ts";
 import { campaignAnswer } from "../src/server/campaign.ts";
 import { campaignsAnswer } from "../src/server/campaigns.ts";
@@ -271,7 +271,7 @@ function writer(log: string, t0: string, starter: string) {
       seconds: 160,
       load: [2, 1.8, 1.5],
     });
-    // A non-result is solved again, as the runner solves it again (`solve`, src/solve/run.ts).
+    // A non-result is solved again, as the runner solves it again (`solve`, src/solver/run.ts).
     return ends === "provider" || ends === "faulty" ? solve({ ...asked, ends: "pass" }, attempt + 1) : id;
   };
   /** The Referee's finding on a rejection: a reader's, with what it billed and its probes' rows. */

@@ -23,11 +23,11 @@
  * AGAINST ITSELF"), since a step either way between two samples of one harness is a false one. The
  * report's own `p` is one-sided.
  */
-import { type Decided, decidedLine, type Ending } from "../../../../src/builder/move.ts";
-import { barsOf } from "../../../../src/builder/climb.ts";
-import { openSteps } from "../../../../src/builder/handover.ts";
-import { reported } from "../../../../src/builder/comparison.ts";
-import { namesOf } from "../../../../src/builder/names.ts";
+import { type Decided, decidedLine, type Ending } from "../../../../src/campaign/move.ts";
+import { barsOf } from "../../../../src/campaign/climb.ts";
+import { openSteps } from "../../../../src/campaign/handover.ts";
+import { reported } from "../../../../src/campaign/comparison.ts";
+import { namesOf } from "../../../../src/campaign/names.ts";
 import { readsStepEitherWay } from "../../../../src/kernel/compare.ts";
 import { billedAll, billedParts, patienceOf } from "../../../../src/kernel/reports.ts";
 import { isString } from "../../../../src/meta/json-shape.ts";

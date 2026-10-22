@@ -99,7 +99,7 @@ For each site, climb the ladder and stop at the first rung that holds:
    `owner → live reader → decision it changes → evidence → hostile test`, and drop it when a link is
    missing.
 2. **Does a higher layer already do it?** A campaign move's admission belongs in
-   `src/builder/admission.ts`; the launcher in `tools/runs/manage.ts` only starts the command.
+   `src/campaign/admission.ts`; the launcher in `tools/runs/manage.ts` only starts the command.
 3. **Is it already in this repository?** (H2, and `measure.py`'s repeats.)
 4. **Does the platform, Bun or an installed dependency do it?** (H8.)
 5. **Can it be one expression?** Two arms that differ in one term are one arm

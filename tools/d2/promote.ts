@@ -19,7 +19,7 @@
  * on, so that a reader of the log sees what the operator saw.
  *
  * The plan promotes a harness a comparison against the reference read as a step (`7f0add79:docs/plan.md`,
- * row F28; until 19 October once that step was read again on fresh solves). That rule is move 7's (`unpromoted`, `src/builder/decide.ts`),
+ * row F28; until 19 October once that step was read again on fresh solves). That rule is move 7's (`unpromoted`, `src/campaign/decide.ts`),
  * and it is asked here: a harness it would not promote now is refused, with the reason. The
  * choice stays the operator's: `--despite "<why>"` promotes all the same, and the event keeps the
  * reason. Returning the campaign to the starter is asked nothing. Until 2026-10-09 nothing held a
@@ -27,14 +27,14 @@
  *
  * It starts no solve and calls no model.
  */
-import { unpromoted } from "#src/builder/decide.ts";
-import { openingOf, planOf } from "#src/builder/opening.ts";
+import { unpromoted } from "#src/campaign/decide.ts";
+import { openingOf, planOf } from "#src/campaign/opening.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { comparedAs, promoted } from "#src/kernel/reports.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
-import { namesOf } from "#src/builder/names.ts";
+import { namesOf } from "#src/campaign/names.ts";
 import { campaignLog, keptAs, starter } from "./campaign.ts";
 import { COMPARISON_OPTIONS } from "./round.ts";
 

@@ -9,7 +9,7 @@ log before repeating it.
 **Choose a level by the question.** Light answers what a run did and how it was read, and is the one
 to hand a reviewing model under a size cap. Medium adds the checker and what a harness installed,
 for why one answer was refused. Verbose adds the source each worktree ran at its commit, for what a
-model was told: the prompts are rendered by `src/builder/prompt.ts` and `src/solve/prompt.ts` and are
+model was told: the prompts are rendered by `src/builder/prompt.ts` and `src/solver/prompt.ts` and are
 not in the log.
 
 **Read in this order.**

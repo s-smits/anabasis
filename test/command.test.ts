@@ -23,13 +23,13 @@ import {
   reserveSeconds,
   runWalled,
   solveDirs,
-} from "../src/solve/command.ts";
-import { claimRoot } from "../src/verify/seat-root.ts";
+} from "../src/tools/command.ts";
+import { claimRoot } from "../src/wall/seat-root.ts";
 import { toolchainTemp } from "./helpers/toolchain-temp.ts";
-import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
-import { hostScratch } from "../src/verify/wall-policy.ts";
-import { commandSearchPath } from "../src/verify/solve-command-isolation.ts";
-import { osIsolationSupport } from "../src/verify/os-isolation.ts";
+import { solveIsolationPolicy } from "../src/wall/base.ts";
+import { hostScratch } from "../src/wall/policy.ts";
+import { commandSearchPath } from "../src/wall/isolation.ts";
+import { osIsolationSupport } from "../src/wall/os-isolation.ts";
 import { CLOSED } from "./helpers/wall.ts";
 
 /** A wall over a claimed seat, with no tool tree and 30 seconds a command. */

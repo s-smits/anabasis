@@ -6,7 +6,7 @@
  * carried one (`proposalsOf`): a pack's task is proposed by its id, and its text is in the pack,
  * which this server does not read.
  */
-import { fixedIn, reported } from "../../../../src/builder/comparison.ts";
+import { fixedIn, reported } from "../../../../src/campaign/comparison.ts";
 import { passed } from "../../../../src/kernel/solves.ts";
 import { isString } from "../../../../src/meta/json-shape.ts";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";

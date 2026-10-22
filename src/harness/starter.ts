@@ -12,7 +12,7 @@
  * first session, since a session copies the harness it starts from whole. It is the first
  * reference harness: a new harness is compared with it until a step is promoted. And it stays the
  * control after that: once another harness is promoted, the tasks written for it are read by the
- * starter against it (`src/builder/decide.ts`). How the starter does by
+ * starter against it (`src/campaign/decide.ts`). How the starter does by
  * itself, read from the first comparison, is what says whether the tasks leave a harness room to
  * add anything.
  *
@@ -34,7 +34,7 @@ import { mkdirSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { JsonObject } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
-import { CODING_TOOLS } from "./coding-tools.ts";
+import { CODING_TOOLS } from "../tools/coding.ts";
 
 /**
  * The Starter's two files. Its tools file is the place a harness adds tools of its own, and says

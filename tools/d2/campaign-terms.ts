@@ -6,11 +6,11 @@
  * rejections in the recent logs predate gate review, but source triage found a campaign could
  * still omit its reviewer and silently leave every admission rejection unmeasured.
  */
-import { shortOf } from "#src/builder/decide.ts";
-import { cutShort, type Plan } from "#src/builder/ground.ts";
-import type { Decided } from "#src/builder/move.ts";
-import { type Opening, openingOf, planOf, SEATS, SESSIONS, type Seat, TERMS } from "#src/builder/opening.ts";
-import { type Word } from "#src/builder/word.ts";
+import { shortOf } from "#src/campaign/decide.ts";
+import { cutShort, type Plan } from "#src/campaign/ground.ts";
+import type { Decided } from "#src/campaign/move.ts";
+import { type Opening, openingOf, planOf, SEATS, SESSIONS, type Seat, TERMS } from "#src/campaign/opening.ts";
+import { type Word } from "#src/campaign/word.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import type { Session } from "#src/examiner/session.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
@@ -116,7 +116,7 @@ const DEFAULTS = { reserve: "10", sessions: SESSIONS, effort: "high" } as const;
 /**
  * Every flag of the campaign command with what it does: the one list of them, printed by
  * `--help` (`flagsHelp`). Typed by `OPTIONS`, so no flag is added without its line. A term the
- * opening keeps (`TERMS`, `src/builder/opening.ts`) holds for the campaign once named, and a later
+ * opening keeps (`TERMS`, `src/campaign/opening.ts`) holds for the campaign once named, and a later
  * run that names nothing runs by the record.
  */
 const EXPLAINED: Readonly<Record<keyof typeof OPTIONS, string>> = {

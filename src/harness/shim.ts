@@ -1,5 +1,5 @@
 /**
- * What a v1 harness's `agent/tools.ts` imports, as `harness.ts` bundles it: both
+ * What a v1 harness's `agent/tools.ts` imports, as `open.ts` bundles it: both
  * `@ana/agent-bundle` and `@earendil-works/pi-ai` resolve to this one file, so the bundle carries
  * TypeBox and nothing of pi, and runs inside the command wall without pi installed there.
  *

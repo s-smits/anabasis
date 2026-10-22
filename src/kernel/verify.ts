@@ -53,14 +53,10 @@ import { errorMessage } from "../meta/runtime-values.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { pooled } from "../meta/pool.ts";
 import { killProcessGroupId, terminateAndReapProcessGroupId } from "../meta/subprocess.ts";
-import {
-  commandIsolationPolicy,
-  isolatedArgv,
-  toolTreeSearchDirs,
-} from "../verify/solve-command-isolation.ts";
-import { releaseRoot } from "../verify/seat-root.ts";
-import { type SolveIsolationPolicy, solveIsolationPolicy } from "../verify/solve-sandbox.ts";
-import { hostScratch } from "../verify/wall-policy.ts";
+import { commandIsolationPolicy, isolatedArgv, toolTreeSearchDirs } from "../wall/isolation.ts";
+import { releaseRoot } from "../wall/seat-root.ts";
+import { type SolveIsolationPolicy, solveIsolationPolicy } from "../wall/base.ts";
+import { hostScratch } from "../wall/policy.ts";
 import type { CheckChildInput, CheckChildResult } from "./check-child.ts";
 import type { Objective } from "./contract.ts";
 
@@ -122,7 +118,7 @@ export interface Engine {
 }
 
 /** What a check's wall closes beside the repository and the home, as a seat's does (`Walled`,
- *  `src/solve/command.ts`): the repository's other worktrees, and the stored pack's root and bundle,
+ *  `src/tools/command.ts`): the repository's other worktrees, and the stored pack's root and bundle,
  *  which hold every task's hidden values. */
 interface Closed {
   readonly otherTrees?: readonly string[] | undefined;

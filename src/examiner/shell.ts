@@ -3,7 +3,7 @@
  * session of any mode (`examine`, `session.ts`).
  *
  * The home is in a root of its own as a Builder's is, under the solver's command wall (`walledBase`,
- * `src/solve/command.ts`): the repository, its other worktrees and a stored pack are closed to it,
+ * `src/tools/command.ts`): the repository, its other worktrees and a stored pack are closed to it,
  * and the wall is probed before its first command. Nothing in the home enters the exam: a session
  * puts a task or a draft through its own tool, and the host reads that alone.
  *
@@ -43,11 +43,11 @@ import {
   solveDirs,
   type Walled,
   walledBase,
-} from "../solve/command.ts";
-import { codingTools } from "../solve/coding-tools.ts";
-import { installedPrograms } from "../solve/programs.ts";
-import { claimRoot } from "../verify/seat-root.ts";
-import { shellQuote } from "../verify/solve-command-isolation.ts";
+} from "../tools/command.ts";
+import { codingTools } from "../tools/coding.ts";
+import { installedPrograms } from "../harness/programs.ts";
+import { claimRoot } from "../wall/seat-root.ts";
+import { shellQuote } from "../wall/isolation.ts";
 
 /** Where an Examiner session's shell runs: what the wall denies, and what only a
  *  session with a campaign's exam before it is given. Without a wall a session has no shell. */

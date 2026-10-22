@@ -13,7 +13,7 @@
  *   holds no reserve for it (`affords`); until 14 October each kind of solve held its own.
  * - **A provider's named reset.** A usage limit that names when it lifts is slept out, not a crash:
  *   on 12 October one login's limit, an hour and forty minutes from its reset, ended five campaigns
- *   on two hosts at once (`waitOut`, `src/solve/run.ts`, which a solve also calls).
+ *   on two hosts at once (`waitOut`, `src/solver/run.ts`, which a solve also calls).
  * - **A network that failed a session**, a minute after the first crash and five after the second:
  *   in buffer-149 on 13 October, Builder session b-2 began 2 s after b-1 crashed on a failed DNS
  *   lookup (`waitCrashed`).
@@ -21,13 +21,13 @@
  * Every wait but the reserve's is on record as `campaign.waited`, so a reader tells the solver's
  * time from the host's, and a provider's starts the crash rule's count again (`crashedRun`).
  */
-import { CRASHES } from "#src/builder/decide.ts";
-import { crashedRun } from "#src/builder/ground.ts";
-import { affords, flying, inFlight } from "#src/builder/opening.ts";
+import { CRASHES } from "#src/campaign/decide.ts";
+import { crashedRun } from "#src/campaign/ground.ts";
+import { affords, flying, inFlight } from "#src/campaign/opening.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
-import { waitOut } from "#src/solve/run.ts";
+import { waitOut } from "#src/solver/run.ts";
 import { type Seated, solved } from "./round.ts";
 
 /** A host as the waits read it: its one-minute load, its cores, how long a look waits, and how it

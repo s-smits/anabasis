@@ -17,7 +17,7 @@ import { capturedJsonParse, capturedStructuredClone } from "../meta/json-runtime
 import { isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
-import { text, tool } from "../solve/answer.ts";
+import { text, tool } from "../tools/answer.ts";
 
 /** review-probe.ts:57: each probe runs every applicable check, so eight keep a review from becoming
  *  a second battery. */

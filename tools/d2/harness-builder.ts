@@ -12,7 +12,7 @@
  * A campaign is a loop of moves over one log (`7f0add79:docs/plan.md`, "The process"). Until 2026-10-09 a
  * session carried each one by hand: it read the view, chose a move by a skill's walk, and typed
  * the command with its flags. This command does that. It reads the log, asks move 7 for the one
- * move that follows (`decide`, `src/builder/decide.ts`), prints it with its reason, makes it by
+ * move that follows (`decide`, `src/campaign/decide.ts`), prints it with its reason, makes it by
  * the command an operator would run, and reads the log again, until the campaign ends or `--moves`
  * are made. It chooses nothing of its own: the table chooses, and every refusal is the command's.
  *
@@ -59,7 +59,7 @@
  * to gain, it bears in a row before it ends, six by default while the system is
  * built, since every campaign of 9 and 10 October ended on the plan's three before its tasks were
  * measured), who sits in each seat, and the terms of its moves as a command last named them
- * (`TERMS`, `src/builder/opening.ts`): a session's limits, a comparison's size, the practice tasks.
+ * (`TERMS`, `src/campaign/opening.ts`): a session's limits, a comparison's size, the practice tasks.
  * A later run that names nothing runs by the record, and one that names another records it again:
  * these are the operator's conditions, and a comparison logs its own terms at its start. The
  * setting is the log's own record (`campaign.setting`), and every command refuses another.
@@ -105,12 +105,12 @@
  *
  * Not run here: see `campaign.ts`.
  */
-import { backends } from "#src/backends/models.ts";
-import { decide } from "#src/builder/decide.ts";
-import { sessionEnded } from "#src/builder/ground.ts";
-import { type Decided, decidedLine } from "#src/builder/move.ts";
-import { type Opening, SEATS } from "#src/builder/opening.ts";
-import { pendingWords } from "#src/builder/word.ts";
+import { backends } from "#src/agent/backends/models.ts";
+import { decide } from "#src/campaign/decide.ts";
+import { sessionEnded } from "#src/campaign/ground.ts";
+import { type Decided, decidedLine } from "#src/campaign/move.ts";
+import { type Opening, SEATS } from "#src/campaign/opening.ts";
+import { pendingWords } from "#src/campaign/word.ts";
 import { keepPractised } from "#src/builder/session.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { unadmitted } from "#src/kernel/acceptance.ts";
@@ -124,7 +124,7 @@ import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { waitOut } from "#src/solve/run.ts";
+import { waitOut } from "#src/solver/run.ts";
 import { acceptCommand } from "../c/accept.ts";
 import { modelNamed, sweepOptions } from "../m0/stored-sweep.ts";
 import { draftCommand } from "../d1b/draft.ts";
@@ -181,7 +181,7 @@ const AGAIN: ReadonlySet<unknown> = new Set(["wall", "turns", "crashed"]);
  * finished ended the campaign with the table naming its comparison (truss-151-m1 b-1,
  * buffer-151-haiku b-1 and buffer-pr169-opus b-1 finished on a harness no comparison read). The
  * host makes a comparison that began under other code as its first move, and its terms refuse it
- * with the campaign's environment ending (`begin`, `src/builder/round.ts`), where the Builder's
+ * with the campaign's environment ending (`begin`, `src/campaign/round.ts`), where the Builder's
  * tool was refused it again and again (main0_5_1, three times at 8e0371c58). Every other Examiner
  * session the table names starts as the next conversation opens, beside it (`campaignTools`).
  * Until 16 October only the campaign's first did, and tasks for want of room were the host's once

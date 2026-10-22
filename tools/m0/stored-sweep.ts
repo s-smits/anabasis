@@ -9,8 +9,8 @@
  * no split, since it charges the classes alike.
  */
 import type { Api, Model, ThinkingLevel } from "@earendil-works/pi-ai";
-import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "#src/backends/claude.ts";
-import { type BackendOptions, backends } from "#src/backends/models.ts";
+import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "#src/agent/backends/claude.ts";
+import { type BackendOptions, backends } from "#src/agent/backends/models.ts";
 import type { Control } from "#src/kernel/acceptance.ts";
 import { type Contract, type Objective, objectiveLine } from "#src/kernel/contract.ts";
 import { dollars, freezePrices, type PriceTable } from "#src/kernel/meter.ts";
@@ -24,8 +24,8 @@ import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { homedir } from "#src/meta/os.ts";
 import { basename, join } from "#src/meta/path.ts";
-import { type PublicResource, publicResource } from "#src/solve/answer.ts";
-import { toolTreeSearchDirs } from "#src/verify/solve-command-isolation.ts";
+import { type PublicResource, publicResource } from "#src/tools/answer.ts";
+import { toolTreeSearchDirs } from "#src/wall/isolation.ts";
 
 /** The fields of v1's `cycle-solve/v1` result read here. */
 interface StoredSolve {

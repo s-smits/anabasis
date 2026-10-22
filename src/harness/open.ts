@@ -13,12 +13,12 @@
  * module in the command's own folder, which is removed when it ends, so stdout is the only channel
  * back. A call names no timeout, so it runs for the condition's shell default, where v1 gave a
  * request 30 s. What the bundle sees in place of `@ana/agent-bundle` and pi-ai, and the departures
- * there, are in `harness-shim.ts`.
+ * there, are in `shim.ts`.
  *
  * Two more departures. `presets` names pi's coding tools, any of `read`, `bash`,
- * `edit` and `write`, where v1's named its own `files` and `shell` (`coding-tools.ts`). And the
+ * `edit` and `write`, where v1's named its own `files` and `shell` (`src/tools/coding.ts`). And the
  * answer is no tool's: a state need declare no artifact-writer, and one that does has it listed
- * and not served (`harnessTools`, `answer.ts`).
+ * and not served (`harnessTools`, `src/tools/answer.ts`).
  */
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { TSchema } from "@earendil-works/pi-ai";
@@ -32,11 +32,11 @@ import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { capturedExecPath } from "../meta/process.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
-import { shellQuote } from "../verify/solve-command-isolation.ts";
-import { CODING_TOOLS } from "./coding-tools.ts";
-import { type CommandWall, runWalled } from "./command.ts";
-import { DRAFT_TOOL } from "./harness-shim.ts";
-import { type PublicTask, publicView } from "./prompt.ts";
+import { shellQuote } from "../wall/isolation.ts";
+import { CODING_TOOLS } from "../tools/coding.ts";
+import { type CommandWall, runWalled } from "../tools/command.ts";
+import { DRAFT_TOOL } from "./shim.ts";
+import { type PublicTask, publicView } from "../solver/prompt.ts";
 
 type ToolKind = "reader" | "advisor" | "artifact-writer";
 
@@ -48,7 +48,7 @@ export interface Harness {
   readonly kinds: ReadonlyMap<string, ToolKind>;
   /** `.toolchain`, for the wall's `toolTree`; null when the state has none. */
   readonly toolTree: string | null;
-  /** `agent/tools.ts` bundled into one self-contained ESM module over `harness-shim.ts`. */
+  /** `agent/tools.ts` bundled into one self-contained ESM module over `shim.ts`. */
   readonly module: string;
   /** sha256 over everything the solver-visible tools depend on: module, spec, guide and the tool
    *  tree's files, so a tool tree changed under an unchanged module changes it. */
@@ -75,7 +75,7 @@ interface ToolRow {
 const KINDS: ReadonlySet<string> = new Set(["reader", "advisor", "artifact-writer"]);
 /** The names a solver's tools already hold, whatever the harness: pi's coding tools and `submit`. */
 const HOST_TOOLS: readonly string[] = [...CODING_TOOLS, "submit"];
-const SHIM = Bun.fileURLToPath(new URL("./harness-shim.ts", import.meta.url));
+const SHIM = Bun.fileURLToPath(new URL("./shim.ts", import.meta.url));
 /** The host's own source and installed packages, which the shim imports from. */
 const HOST_ROOTS = [dirname(dirname(SHIM)), join(dirname(dirname(dirname(SHIM))), "node_modules")];
 const MARKER = "@@ana-harness-result@@";

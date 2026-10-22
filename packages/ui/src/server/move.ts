@@ -11,7 +11,7 @@
  * log (`Move.index`). An id is taken where it names exactly one move; one that names two is refused
  * with the places of both.
  */
-import { fixedIn, predicted, type Report, reported } from "../../../../src/builder/comparison.ts";
+import { fixedIn, predicted, type Report, reported } from "../../../../src/campaign/comparison.ts";
 import { passed, type Ran } from "../../../../src/kernel/solves.ts";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
 import type { Move, MoveDetail, Outcome, Query, ScoredTask, Sensitivity, SolveRow, Tier } from "../models.ts";

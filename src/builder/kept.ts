@@ -23,8 +23,8 @@ import type { LogEvent } from "../kernel/log.ts";
 import { CORRECTNESS_MODEL_DIR, TOOL_TREE_DIR } from "../meta/bundle-layout.ts";
 import { cpSync, existsSync, mkdirSync } from "../meta/filesystem.ts";
 import { basename, join, resolve } from "../meta/path.ts";
-import { short } from "./move.ts";
-import { namesOf } from "./names.ts";
+import { short } from "../campaign/move.ts";
+import { namesOf } from "../campaign/names.ts";
 import { parentToolTree } from "./tools.ts";
 
 /** Copy the kept state `state` to `into`, its programs as files and its correctness model left out. */

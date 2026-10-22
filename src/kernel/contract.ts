@@ -57,7 +57,7 @@ export function contractHash(contract: Contract): string {
 /**
  * Why an answer does not follow a contract's answer format, or null when it does. `submit` asks
  * it of a solver's answer file and refuses the file with what this returns, and the runner asks it
- * again of what was submitted (`src/solve/answer.ts`, `src/solve/run.ts`). The validator is pi-ai's
+ * again of what was submitted (`src/tools/answer.ts`, `src/solver/run.ts`). The validator is pi-ai's
  * own, the one pi runs on a tool's arguments. That validator coerces: it reads `"1"` as `1` where
  * the format wants a number and drops a null the format does not allow. It coerces a clone, never
  * the caller's value, and an answer that follows only once coerced does not follow here, since what

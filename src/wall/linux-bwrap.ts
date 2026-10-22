@@ -13,13 +13,13 @@
 import { existsSync, lstatSync, realpathSync, statSync } from "../meta/filesystem.ts";
 import { dirname, isAbsolute, join } from "../meta/path.ts";
 import { posixContainsPath } from "../meta/path-containment.ts";
-import type { OptionalEnvValues } from "../backends/scrub-env.ts";
+import type { OptionalEnvValues } from "../agent/backends/scrub-env.ts";
 import type { RuntimePlatform } from "../meta/runtime-values.ts";
 import { sha256OfFile } from "../meta/digest.ts";
 import { runtimeProcess, capturedExecPath } from "../meta/process.ts";
 import { asError } from "../meta/runtime-values.ts";
 import { boundText } from "../meta/bounded-text.ts";
-import { surroundingSandbox } from "./wall-policy.ts";
+import { surroundingSandbox } from "./policy.ts";
 
 export const LINUX_BWRAP_ID = "linux-bwrap/v1" as const;
 
@@ -313,7 +313,7 @@ export function bwrapWriteBinds(paths: readonly string[]): string[] {
 export function bwrapTmpfsDenies(paths: readonly string[]): string[] {
   // A file-shaped path takes `/dev/null` read-only instead, which denies read and write with EACCES
   // and leaves the host file untouched, where an empty tmpfs file would read as empty rather than
-  // refuse. The wall's probe (`probeWall`, `src/solve/command.ts`) requires an observable refusal,
+  // refuse. The wall's probe (`probeWall`, `src/tools/command.ts`) requires an observable refusal,
   // because an isolation returning "" instead of an error cannot be told apart from one that is not
   // running.
   //

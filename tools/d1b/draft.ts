@@ -36,7 +36,7 @@
  * login.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
-import { openingOf } from "#src/builder/opening.ts";
+import { openingOf } from "#src/campaign/opening.ts";
 import type { Draft, Measured } from "#src/examiner/draft.ts";
 import { type Examined, examine, type Session } from "#src/examiner/session.ts";
 import { measured } from "#src/examiner/write.ts";

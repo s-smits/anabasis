@@ -7,7 +7,7 @@
  * are published. No credential file is copied and rsync never follows a link.
  */
 import { LOG_FILE } from "#src/kernel/log.ts";
-import { openingOf } from "#src/builder/opening.ts";
+import { openingOf } from "#src/campaign/opening.ts";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isString, isBoolean } from "#src/meta/json-shape.ts";

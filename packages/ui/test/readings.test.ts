@@ -1,9 +1,9 @@
 // The server's readings of a real log: held to the folds they pass through, to `bun run runs view`,
 // and to the wall between the two tiers (the brief of 11 October, sections 7 and 8).
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { epochsOf } from "../../../src/builder/climb.ts";
-import { reported, toLabel } from "../../../src/builder/comparison.ts";
-import { campaignOf } from "../../../src/builder/handover.ts";
+import { epochsOf } from "../../../src/campaign/climb.ts";
+import { reported, toLabel } from "../../../src/campaign/comparison.ts";
+import { campaignOf } from "../../../src/campaign/handover.ts";
 import { differenceOf } from "../../../src/kernel/compare.ts";
 import { LOG_FILE, read } from "../../../src/kernel/log.ts";
 import { billedAll, billedParts, lastReports } from "../../../src/kernel/reports.ts";

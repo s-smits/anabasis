@@ -137,7 +137,7 @@ SOFTWARE.
 ## sandbox-runtime
 
 - Source: https://github.com/anthropic-experimental/sandbox-runtime, at commit 295f0e1
-- Copy: `generateMoveBlockingRules` in `src/verify/seatbelt-path-guard.ts`, changed as that file's
+- Copy: `generateMoveBlockingRules` in `src/wall/seatbelt-path-guard.ts`, changed as that file's
   header states
 
 ```text

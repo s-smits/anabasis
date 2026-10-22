@@ -3,7 +3,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import { sha256 } from "../src/meta/digest.ts";
-import { darwinSeatbeltSupport } from "../src/verify/darwin-seatbelt.ts";
+import { darwinSeatbeltSupport } from "../src/wall/darwin-seatbelt.ts";
 
 const dirs: string[] = [];
 

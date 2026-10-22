@@ -32,9 +32,9 @@ import {
   toToolDeclaration,
   type Usage,
 } from "@earendil-works/pi-ai";
-import { CLAUDE_COMPACTED, reportedCost } from "../backends/claude.ts";
-import { CALL_RETRIED } from "../backends/models.ts";
-import { type Compacted, compactBeforeRequest } from "../backends/pi-compaction.ts";
+import { CLAUDE_COMPACTED, reportedCost } from "./backends/claude.ts";
+import { CALL_RETRIED } from "./backends/models.ts";
+import { type Compacted, compactBeforeRequest } from "./backends/pi-compaction.ts";
 import { append } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import { type Seat as SeatKind, traceKind, whose } from "../kernel/trace.ts";
@@ -42,14 +42,14 @@ import { boundText } from "../meta/bounded-text.ts";
 import { rmSync } from "../meta/filesystem.ts";
 import type { JsonObject, JsonValue } from "../meta/json-shape.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import { hostScratch } from "../verify/wall-policy.ts";
+import { hostScratch } from "../wall/policy.ts";
 
 /** What a seat hands `sit`. */
 export interface Seat {
   /** The backends, built on the home the model's process keeps its state in. */
   readonly models: (home: string) => { readonly streamSimple: StreamFn };
   /** That home, where the seat has one; a scratch of the host's own is made and removed otherwise,
-   *  which every wall closes (`wall-policy.ts`), since the model's process keeps what it was sent. */
+   *  which every wall closes (`policy.ts`), since the model's process keeps what it was sent. */
   readonly home?: string;
   /** Keys the backend's live state (a Claude Code query, a Codex WebSocket and its prompt cache)
    *  and the seat's trace. */

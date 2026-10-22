@@ -50,7 +50,7 @@ import { isTestFile } from "../shared/file-role.ts";
  *
  * Measured over `src`, `tools`, `vendor`, `starters`, `test`, `packages` and `.claude` on
  * 2026-09-20, five sites outside tests: `path-record.ts`'s seven required row keys,
- * `gpt-sessions.ts`'s five quick-launch option names, `wall-policy.ts`'s three run-data
+ * `gpt-sessions.ts`'s five quick-launch option names, `policy.ts`'s three run-data
  * directory names, `prose-classify.ts`'s three case kinds and `archive-scaffold.ts`'s
  * lane-state lookup. Each of those five files already carried module constants of exactly this
  * shape — `BACKENDS`, `EFFECT_STATES` — so the rule found the exception

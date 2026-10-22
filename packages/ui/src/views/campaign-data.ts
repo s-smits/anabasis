@@ -1,6 +1,6 @@
-import type { Share } from "../../../../src/builder/climb.ts";
+import type { Share } from "../../../../src/campaign/climb.ts";
 import type { Tally } from "../../../../src/kernel/compare.ts";
-import { short } from "../../../../src/builder/move.ts";
+import { short } from "../../../../src/campaign/move.ts";
 import type { ComparisonBar, Outcome, Outcomes } from "../models.ts";
 import { OUTCOMES } from "./outcome.ts";
 
@@ -100,7 +100,7 @@ export function shareOf(share: Share): number | null {
 }
 
 /** A harness as the view, the closing report and promote.ts name it (`calledBy`,
- *  `src/builder/names.ts`): the Starter "Starter A", any other its letter with its digest's head,
+ *  `src/campaign/names.ts`): the Starter "Starter A", any other its letter with its digest's head,
  *  "B (f94de8ab)", and a digest the log has not named its head alone. Null is the Starter before
  *  any event names its digest. */
 export function digestText(digest: string | null, names: Readonly<Record<string, string>>): string {

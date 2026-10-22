@@ -10,7 +10,7 @@
  *
  * A session also ends at a wall and at the run's kill. The turn cap bounds spend and not time, and a
  * session that hangs would hang the run that waits on it. The seat's frame aborts the loop's signal
- * when the session ends for any reason (`sit`, `src/seat/session.ts`), because that is what closes a
+ * when the session ends for any reason (`sit`, `src/agent/session.ts`), because that is what closes a
  * backend's own process: a Claude Code query stays open until its signal fires. On 20 October triage found that the wall
  * could stop the model loop while an executing probe kept verifier work open; that signal now also
  * reaches each tool, so a Referee probe can cancel the verifier and its check cell with the session.
@@ -19,7 +19,7 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { priceKey } from "../kernel/meter.ts";
 import type { JsonObject } from "../meta/json-shape.ts";
-import { sit } from "../seat/session.ts";
+import { sit } from "../agent/session.ts";
 
 /** Who reads, and on what. */
 export interface Reader {

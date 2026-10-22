@@ -25,7 +25,7 @@
  * itself; one that reaches no verdict leaves the fail unruled for the caller to retry. Nothing else
  * runs a check twice on one answer, so a rejected answer is where a check that does not repeat first
  * shows. On 20 October source triage found that calling a replay non-result `unclear` made rule 7's
- * retryable non-result a permanent set-aside: `src/builder/round.ts:410-418` retries only null rulings.
+ * retryable non-result a permanent set-aside: `src/campaign/round.ts:410-418` retries only null rulings.
  *
  * The packet carries the whole public contract and an accepted answer, from a solve or the author's
  * proof. The review of 20 October found scope, answer format and objective missing, and 36 recent
@@ -69,7 +69,7 @@ import { isString, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined, keyIfNotNull, keysIf } from "../meta/optional-key.ts";
 import { join } from "../meta/path.ts";
 import { sameJsonValue } from "../meta/stable-json.ts";
-import { text, tool } from "../solve/answer.ts";
+import { text, tool } from "../tools/answer.ts";
 import { conclusive, probeAnswer, type ProbeRow, probeTool, reaches } from "./probe.ts";
 import { type Reader, readOnce } from "./reader.ts";
 
@@ -348,7 +348,7 @@ function rulingTool(
  *  its task.
  *
  *  A solve with no answer on record is refused before anything is written: a ruling is a reading
- *  of a rejected answer, and the Referee is asked of no other solve (`src/builder/round.ts`,
+ *  of a rejected answer, and the Referee is asked of no other solve (`src/campaign/round.ts`,
  *  `src/builder/tools.ts`, `tools/d1b/examine.ts`). Until 15 October such a solve was ruled
  *  `earned` with "no answer reached a check", a finding with no evidence behind it: ten
  *  `turns-ended` practice solves in five campaigns read so, through a caller that sent every

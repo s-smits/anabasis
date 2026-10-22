@@ -9,7 +9,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { draftOf } from "../src/examiner/draft.ts";
-import { flying } from "../src/builder/opening.ts";
+import { flying } from "../src/campaign/opening.ts";
 import { heard, measuredGate } from "../src/examiner/record.ts";
 import { examine } from "../src/examiner/session.ts";
 import { examinerDirs, inExaminerWall } from "../src/examiner/shell.ts";

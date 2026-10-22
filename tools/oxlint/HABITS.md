@@ -221,7 +221,7 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
   guarded assignment after it.
 - `no-hand-rolled-sleep`: no `setTimeout` promise. Wait on the condition, or `Bun.sleep`.
 - `no-lifetime-outside-owner`: a file that spawns a child and kills it is a second owner of
-  process lifetime beside `stageCommandIsolation` (`src/verify/solve-command-isolation.ts`).
+  process lifetime beside `stageCommandIsolation` (`src/wall/isolation.ts`).
   Signal through `killProcessGroup` or `terminateAndReapProcessGroupId`
   (`src/meta/subprocess.ts`). Tests are exempt.
 - `no-react-effect`: no `useEffect`, `useLayoutEffect` or `useInsertionEffect`, in a component
@@ -332,7 +332,7 @@ campaign under `.ana/d2/<name>` (15 October):
 | --- | --- | --- |
 | `no-hand-read-argv` | `.claude/skills/main/cli.ts` | Present. A skill script declares a `runCommand` spec, or passes its arguments to `parseOrDie` or `parseCommandOrDie`. The commands under `tools/` are outside the rule and parse with `parseArgs` from `#src/meta/process.ts` |
 | `no-hand-spelled-git` | `src/meta/git.ts` (`gitOutput`, `gitText`, `gitMaybe`), from skills, `src`, `tools/runs` and `tools/d2` | Present. Until 15 October the owner was `.claude/skills/main/git.ts`, which production cannot import, and `tools/runs` and `tools/d2` spelled git at five sites. The landing and gate commands of `tools/runtime`, and tests, are outside the rule: they read exit codes and feed input |
-| `no-lifetime-outside-owner` | `stageCommandIsolation` (`src/verify/solve-command-isolation.ts`), `killProcessGroup` and `terminateAndReapProcessGroupId` (`src/meta/subprocess.ts`) | Present. The owner and its reader are the two files the rule exempts |
+| `no-lifetime-outside-owner` | `stageCommandIsolation` (`src/wall/isolation.ts`), `killProcessGroup` and `terminateAndReapProcessGroupId` (`src/meta/subprocess.ts`) | Present. The owner and its reader are the two files the rule exempts |
 
 If a rule reports on your code and names an owner that is absent, do not obey a remedy that
 does not exist. Retune the rule's source to v2's owner with a fixture for each side, in the same

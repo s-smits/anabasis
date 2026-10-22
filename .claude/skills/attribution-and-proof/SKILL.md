@@ -69,7 +69,7 @@ Answer these from the log before using the word step in a sentence of your own:
   reading holds the step, say it is one draw at its level. Until 19 October promotion required a repeat.
 - **What does the reference do against itself?** Read `noise` on the same tallied tasks, with
   halves of the reference's solves mirrored in time. It is available at four or more even solves
-  per side (`compared`, `src/builder/comparison.ts`). Every A/A is a reading and ends nothing: one
+  per side (`compared`, `src/campaign/comparison.ts`). Every A/A is a reading and ends nothing: one
   with either one-sided p at or below half the comparison's level says the two halves of one
   harness's solves were not interchangeable, so say so beside the step it stands with.
 - **How thin?** At `--level 0.02`, six untied tasks all won is the least that reads a step
@@ -83,7 +83,7 @@ Answer these from the log before using the word step in a sentence of your own:
   `frontier` in a report written before 20 October).
   The latter is at most the level under the test's null. `sizeLines` assumes no ties and equal
   margins before a run (`src/kernel/size.ts`); the level is a per-comparison level.
-  Give the campaign estimate from `riskLines` in `src/builder/climb.ts`: it sums attempt rates,
+  Give the campaign estimate from `riskLines` in `src/campaign/climb.ts`: it sums attempt rates,
   capped at one, across epochs. It is an estimate, not a measured bound. Its A/A error count is
   one-sided at the comparison's level, and counts only the controls that could read a step.
 - **Which measure?** Give `points` beside the untied count: the points validity, the objective and the bill gave the tallied tasks, so a step the bill carried is named as one. A report begun before 21 October holds `objective.decided` instead.
@@ -106,7 +106,7 @@ rests on.
   rejection that reached a check; a person's labels where `tools/d2/settle.ts` draws them,
   including its blind sample of passes. No model seat reviews a pass. An authored check stands
   on the operator's admission, by `--admit` or `--admit-authored`; a campaign launch without
-  `--hitl` supplies the latter (`planOf`, `src/builder/opening.ts`). State this coverage.
+  `--hitl` supplies the latter (`planOf`, `src/campaign/opening.ts`). State this coverage.
 - **Exploitation**: `observed`, `not observed in the traces read`, or `unobservable`. `observed`
   needs a trace that joins something the solver was given to the accepted answer through the
   gap. Keep four things apart: an ordinary efficient solution, a checker with a gap, a way past

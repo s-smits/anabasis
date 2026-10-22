@@ -26,7 +26,7 @@
  *
  * A rehearsal is exempt from all of it, by name and here: its seats are scripts, which are paid
  * nothing, and it has to be able to walk any path a seed can be cut to. The refusals a comparison
- * makes of its own terms still hold it (`src/builder/round.ts`): a task that is no held-out task,
+ * makes of its own terms still hold it (`src/campaign/round.ts`): a task that is no held-out task,
  * a practice task among the scored, a task that waits for a label.
  *
  * A Builder session run with no comparison after it (`tools/d2/session.ts`) is asked the same way

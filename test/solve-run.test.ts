@@ -21,10 +21,10 @@ import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { NUDGE } from "../src/solve/prompt.ts";
-import { judge, type Played, solve, type SolveRequest } from "../src/solve/run.ts";
-import { writeStarter } from "../src/solve/starter.ts";
-import { osIsolationSupport } from "../src/verify/os-isolation.ts";
+import { NUDGE } from "../src/solver/prompt.ts";
+import { judge, type Played, solve, type SolveRequest } from "../src/solver/run.ts";
+import { writeStarter } from "../src/harness/starter.ts";
+import { osIsolationSupport } from "../src/wall/os-isolation.ts";
 
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
 const CANARY = "hidden-canary-7f3a";

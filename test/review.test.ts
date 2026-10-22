@@ -17,10 +17,10 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/files
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { agreement, clears, unclearReport } from "../src/review/agreement.ts";
-import { type ProbeRow, probeTool } from "../src/review/probe.ts";
-import type { Reader } from "../src/review/reader.ts";
-import { referee } from "../src/review/referee.ts";
+import { agreement, clears, unclearReport } from "../src/referee/agreement.ts";
+import { type ProbeRow, probeTool } from "../src/referee/probe.ts";
+import type { Reader } from "../src/referee/reader.ts";
+import { referee } from "../src/referee/referee.ts";
 
 const CANARY = "hidden-canary-r7";
 const TASK: Task = { taskId: "t-1", family: "beam", publicInput: { load: 5 }, hidden: { limit: CANARY } };

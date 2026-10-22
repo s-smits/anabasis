@@ -1,9 +1,9 @@
 /** Darwin's mechanism for the command wall: whether `sandbox-exec` can wall a command here, and
- *  the wrapper's digest, which a seat's policy hash carries (`solve-sandbox.ts`). */
+ *  the wrapper's digest, which a seat's policy hash carries (`base.ts`). */
 import { realpathSync, statSync } from "../meta/filesystem.ts";
 import type { RuntimePlatform } from "../meta/runtime-values.ts";
 import { sha256OfFile } from "../meta/digest.ts";
-import { surroundingSandbox } from "./wall-policy.ts";
+import { surroundingSandbox } from "./policy.ts";
 import { runtimeProcess } from "../meta/process.ts";
 
 export const DARWIN_SEATBELT_ID = "darwin-seatbelt/v1" as const;

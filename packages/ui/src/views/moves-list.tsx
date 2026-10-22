@@ -9,7 +9,7 @@ import { plural } from "../../../../src/meta/text.ts";
 
 /*
  * Every move of a campaign in the order it started, one row each, with what it handed over in the
- * handover's own fields (`Handover`, `src/builder/handover.ts`): what it is, how it stands, what it
+ * handover's own fields (`Handover`, `src/campaign/handover.ts`): what it is, how it stands, what it
  * left, its cost and how long it ran. A promotion is no move, but the reference changes there, so
  * it stands between the rows as a divider, as it does between the Campaign pane's bars.
  */

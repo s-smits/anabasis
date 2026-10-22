@@ -15,8 +15,8 @@ import { tmpdir } from "../src/meta/os.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { join, relative } from "../src/meta/path.ts";
 import { killProcessGroupId } from "../src/meta/subprocess.ts";
-import { osIsolationSupport } from "../src/verify/os-isolation.ts";
-import { hostScratch } from "../src/verify/wall-policy.ts";
+import { osIsolationSupport } from "../src/wall/os-isolation.ts";
+import { hostScratch } from "../src/wall/policy.ts";
 
 const DETACHED_MARKER = `ana-verifier-deadline-child-${crypto.randomUUID()}`;
 

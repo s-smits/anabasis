@@ -23,7 +23,7 @@ import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { parseArgs } from "../src/meta/process.ts";
-import { decide } from "../src/builder/decide.ts";
+import { decide } from "../src/campaign/decide.ts";
 import { starter } from "../tools/d2/campaign.ts";
 import type { Campaign } from "../tools/d2/round.ts";
 import {

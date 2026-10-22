@@ -1,6 +1,6 @@
 /**
  * One solve of a benchmark task by an Anabasis harness, inside the benchmark's own container: the
- * study's counterpart of `play()` (`src/solve/run.ts`), for a benchmark that grades the container's
+ * study's counterpart of `play()` (`src/solver/run.ts`), for a benchmark that grades the container's
  * state after the agent exits instead of an `answer.json` checked by a contract.
  *
  * `play()` cannot run there: it is bound to a campaign's log, to Seatbelt or Bubblewrap and to a
@@ -13,9 +13,9 @@
  *   sentence a campaign's solver reads, and a duty that names the benchmark's deliverable;
  * - the solve wall and the model-turn cap, told on every tool result by `timed`, the nudge after a
  *   turn that stops without `submit`, pi's compaction, and OpenRouter as the backends serve it,
- *   retried (`openrouter`, `src/backends/models.ts`);
+ *   retried (`openrouter`, `src/agent/backends/models.ts`);
  * - the trace as `solve.turn`, `solve.call` and `solve.compacted` events in a log of its own,
- *   written by `sit` (`src/seat/session.ts`) and read by `src/kernel/trace.ts`, and the spend
+ *   written by `sit` (`src/agent/session.ts`) and read by `src/kernel/trace.ts`, and the spend
  *   as `sit` sums a campaign's solve, so a change to the log's format has one owner to change;
  *   the same trace as Harbor's ATIF trajectory (`trajectoryOf`, `src/kernel/atif.ts`), where the
  *   benchmark's tools look for an agent's run, and the ending of a solve that left no answer as a
@@ -42,7 +42,7 @@ import { createEditToolDefinition } from "../../vendor/pi-coding-agent/core/tool
 import { createReadToolDefinition } from "../../vendor/pi-coding-agent/core/tools/read.ts";
 import { wrapToolDefinitions } from "../../vendor/pi-coding-agent/core/tools/tool-definition-wrapper.ts";
 import { createWriteToolDefinition } from "../../vendor/pi-coding-agent/core/tools/write.ts";
-import { openrouter, retried } from "#src/backends/models.ts";
+import { openrouter, retried } from "#src/agent/backends/models.ts";
 import { trajectoryOf } from "#src/kernel/atif.ts";
 import { read } from "#src/kernel/log.ts";
 import { unanswered } from "#src/kernel/solve.ts";
@@ -53,14 +53,14 @@ import { join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
-import { selectedCodingTools } from "#src/solve/coding-tools.ts";
-import type { SolveClock } from "#src/solve/command.ts";
-import { openHarness } from "#src/solve/harness.ts";
-import { installedPrograms } from "#src/solve/programs.ts";
-import { NUDGE } from "#src/solve/prompt.ts";
-import { timed } from "#src/solve/run.ts";
-import { sit } from "#src/seat/session.ts";
-import { shellQuote, toolTreeSearchDirs } from "#src/verify/solve-command-isolation.ts";
+import { selectedCodingTools } from "#src/tools/coding.ts";
+import type { SolveClock } from "#src/tools/command.ts";
+import { openHarness } from "#src/harness/open.ts";
+import { installedPrograms } from "#src/harness/programs.ts";
+import { NUDGE } from "#src/solver/prompt.ts";
+import { timed } from "#src/solver/run.ts";
+import { sit } from "#src/agent/session.ts";
+import { shellQuote, toolTreeSearchDirs } from "#src/wall/isolation.ts";
 
 /** The file names the Harbor agent reads back from the trial's log folder (`harbor/pi_agent.py`). */
 export const TRACE_FILE = "pi-log.jsonl";
@@ -126,7 +126,7 @@ function asked(args: readonly string[]): Asked {
 }
 
 /** The benchmark's deliverable and the solve's limits, in the words a campaign's solver reads them
- *  where they are the same (`duty`, `src/solve/prompt.ts`). */
+ *  where they are the same (`duty`, `src/solver/prompt.ts`). */
 function duty(ask: Asked, guide: string | null): string {
   return [
     "Complete the task the first message gives with the available tools; the method is yours to choose.",

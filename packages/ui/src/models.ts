@@ -4,7 +4,7 @@
  *
  * v2 keeps one log a campaign, and every number here is a fold of it (`AGENTS.md`, section 5). Where
  * a fold's own type is plain data it is imported from the repository and passed through, never
- * declared again: a handover is `Handover` (`src/builder/handover.ts`), the set-up is `Supply`, a
+ * declared again: a handover is `Handover` (`src/campaign/handover.ts`), the set-up is `Supply`, a
  * tally is `Tally`. A field the page needs and no fold returns names, in its comment, the fold it is
  * computed from.
  *
@@ -23,11 +23,11 @@
  * Every answer carries its tier and its issues: a refused or unreadable path is an issue the page
  * shows, never a silent empty list.
  */
-import type { Supply } from "../../../src/builder/admission.ts";
-import type { Share, Worth } from "../../../src/builder/climb.ts";
-import type { Handover } from "../../../src/builder/handover.ts";
-import type { Decided, Ending as CampaignEnding } from "../../../src/builder/move.ts";
-import type { Seat, Terms } from "../../../src/builder/opening.ts";
+import type { Supply } from "../../../src/campaign/admission.ts";
+import type { Share, Worth } from "../../../src/campaign/climb.ts";
+import type { Handover } from "../../../src/campaign/handover.ts";
+import type { Decided, Ending as CampaignEnding } from "../../../src/campaign/move.ts";
+import type { Seat, Terms } from "../../../src/campaign/opening.ts";
 import type { Tally } from "../../../src/kernel/compare.ts";
 
 export type { Tally };
@@ -37,7 +37,7 @@ import type { Ending as SolveEnding } from "../../../src/kernel/solve.ts";
 import type { taskStates } from "../../../src/kernel/task.ts";
 import type { Call as TracedCall, Turn as TracedTurn } from "../../../src/kernel/trace.ts";
 import type { JsonObject, JsonValue } from "../../../src/meta/json-shape.ts";
-import type { Ruling } from "../../../src/review/referee.ts";
+import type { Ruling } from "../../../src/referee/referee.ts";
 import { hasText } from "../../../src/meta/text.ts";
 
 export type Tone = "good" | "bad" | "warn" | "info" | "neutral";
@@ -343,7 +343,7 @@ export interface CampaignReading extends Answer {
    *  False where the host makes every move the table names. */
   readonly led: boolean;
   /** The bar a promotion's cost is read against, as the opening sets it or by default
-   *  (`barsOf`, `src/builder/climb.ts`): read and printed, gating nothing. */
+   *  (`barsOf`, `src/campaign/climb.ts`): read and printed, gating nothing. */
   readonly bars: Worth["bars"];
   readonly supply: Supply;
   /** Digests: the harness last promoted, and the starter as the comparisons name it. Null where the
@@ -351,7 +351,7 @@ export interface CampaignReading extends Answer {
   readonly reference: string | null;
   readonly starter: string | null;
   /** Each harness the log names, by digest, with its letter: the Starter A, the rest B on in the
-   *  order the log first names them (`namesOf`, `src/builder/names.ts`). */
+   *  order the log first names them (`namesOf`, `src/campaign/names.ts`). */
   readonly names: Readonly<Record<string, string>>;
   /** Null where the table could not be asked; an issue says why. */
   readonly nextMove: NextMove | null;

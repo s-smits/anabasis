@@ -17,7 +17,7 @@
  * that was killed, or stopped before this was done, is cleaned up by stopping it again. A keeper
  * of the run (`runs keep`) ends with it, but for the one that asked for the stop.
  */
-import { EXAMINE } from "#src/builder/admission.ts";
+import { EXAMINE } from "#src/campaign/admission.ts";
 import { sessionDirs, spent } from "#src/builder/session.ts";
 import { examinerDirs } from "#src/examiner/shell.ts";
 import { unfinished } from "#src/kernel/reports.ts";
@@ -27,8 +27,8 @@ import { dirname } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { runTextSyncOrThrow, terminateAndReapProcessGroupId } from "#src/meta/subprocess.ts";
-import { type SolveDirs, solveDirs } from "#src/solve/command.ts";
-import { releaseRoot } from "#src/verify/seat-root.ts";
+import { type SolveDirs, solveDirs } from "#src/tools/command.ts";
+import { releaseRoot } from "#src/wall/seat-root.ts";
 import {
   BUILDER,
   DRAFT,

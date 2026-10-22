@@ -4,7 +4,7 @@ import { isOneOf, isTestFile } from "../shared/file-role.ts";
 
 /**
  * Process lifetime has one launch owner in this repository, `stageCommandIsolation` in
- * `src/verify/solve-command-isolation.ts`, which stages every solve command behind the OS wall
+ * `src/wall/isolation.ts`, which stages every solve command behind the OS wall
  * and leaves what a command leaves under Seatbelt to the seat's release (`endHolders`), and one
  * reader of it, `src/meta/subprocess.ts`, whose `killProcessGroup` and
  * `terminateAndReapProcessGroupId` signal a group and wait for it to go. A file that spawns a child and then kills it has written a
@@ -36,7 +36,7 @@ import { isOneOf, isTestFile } from "../shared/file-role.ts";
  *
  * A signal sent through the process object is not that shape. `process.kill(pid, signal)` ends
  * an identity the file was handed, which is what `src/meta/subprocess.ts` itself does, what
- * `src/verify/seat-root.ts` does to the pids libproc lists in a seat's root, and what the test runner
+ * `src/wall/seat-root.ts` does to the pids libproc lists in a seat's root, and what the test runner
  * does to the descendants a group kill could not reach — they left their session, so the runner
  * finds them in `ps` and signals each one. A second launch owner is a file that kills the child
  * it holds, and that is written `child.kill()`.
@@ -57,7 +57,7 @@ import { isOneOf, isTestFile } from "../shared/file-role.ts";
 const BY_PID = /^(?:runtimeProcess|process)\.kill$/u;
 
 /** The two modules that are allowed to end a process: the launch owner and its reader. */
-const LIFETIME_OWNERS = ["src/verify/solve-command-isolation.ts", "src/meta/subprocess.ts"];
+const LIFETIME_OWNERS = ["src/wall/isolation.ts", "src/meta/subprocess.ts"];
 
 /** Whether the call is a liveness probe, `kill(pid, 0)`, rather than a signal that ends anything. */
 function zeroSignal(node: ESTree.CallExpression): boolean {
@@ -87,7 +87,7 @@ export const noLifetimeOutsideOwnerRule = defineRule({
     },
     messages: {
       secondOwner:
-        "This file spawns a child and kills it, which makes it a second owner of process lifetime beside `stageCommandIsolation` (src/verify/solve-command-isolation.ts). Settle the teardown there, or signal the group through `killProcessGroup` or `terminateAndReapProcessGroupId` (src/meta/subprocess.ts): a kill here races the owner's own, signals one process rather than its group, and reads as proof the child is gone.",
+        "This file spawns a child and kills it, which makes it a second owner of process lifetime beside `stageCommandIsolation` (src/wall/isolation.ts). Settle the teardown there, or signal the group through `killProcessGroup` or `terminateAndReapProcessGroupId` (src/meta/subprocess.ts): a kill here races the owner's own, signals one process rather than its group, and reads as proof the child is gone.",
     },
   },
   createOnce(context) {

@@ -19,7 +19,7 @@
  * harness's appended. That prompt is a coding assistant's, about a repository and Claude Code's own
  * tools, none of which a session here has: every tool is pi's, served through the MCP server. So
  * every session, a solver's, a Builder's, an Examiner's and a reviewer's alike, is sent its own
- * prompt and nothing before it. A solver's is pi coding-agent's (`src/solve/prompt.ts`).
+ * prompt and nothing before it. A solver's is pi coding-agent's (`src/solver/prompt.ts`).
  *
  * One difference is left, and it reaches no model: v1 ran Claude Code in an empty environment; here
  * HOME, the solve's own, PATH and TMPDIR are set as well.
@@ -50,20 +50,23 @@ import {
   type UserMessage,
 } from "@earendil-works/pi-ai";
 import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
-import { extractAllToolResults, type McpResult } from "../../vendor/pi-claude-bridge/extract-tool-results.ts";
-import { createToolServer } from "../../vendor/pi-claude-bridge/mcp-server.ts";
+import {
+  extractAllToolResults,
+  type McpResult,
+} from "../../../vendor/pi-claude-bridge/extract-tool-results.ts";
+import { createToolServer } from "../../../vendor/pi-claude-bridge/mcp-server.ts";
 import {
   makePromptStream,
   type PromptStream,
   userMessage,
-} from "../../vendor/pi-claude-bridge/prompt-stream.ts";
-import { updateUsage } from "../../vendor/pi-claude-bridge/usage.ts";
-import { existsSync, mkdirSync } from "../meta/filesystem.ts";
-import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
-import { keyIfDefined } from "../meta/optional-key.ts";
-import { dirname, join } from "../meta/path.ts";
-import { runtimeProcess } from "../meta/process.ts";
-import { errorMessage } from "../meta/runtime-values.ts";
+} from "../../../vendor/pi-claude-bridge/prompt-stream.ts";
+import { updateUsage } from "../../../vendor/pi-claude-bridge/usage.ts";
+import { existsSync, mkdirSync } from "../../meta/filesystem.ts";
+import { asRecord, isNumber, isString } from "../../meta/json-shape.ts";
+import { keyIfDefined } from "../../meta/optional-key.ts";
+import { dirname, join } from "../../meta/path.ts";
+import { runtimeProcess } from "../../meta/process.ts";
+import { errorMessage } from "../../meta/runtime-values.ts";
 
 const CLAUDE_PROVIDER = "claude";
 /**

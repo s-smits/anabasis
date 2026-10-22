@@ -8,10 +8,10 @@ import type { Contract } from "../src/kernel/contract.ts";
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { openDesk, publicResource, submitTool } from "../src/solve/answer.ts";
-import { codingTools, fileTools } from "../src/solve/coding-tools.ts";
-import { type CommandWall, heldSeconds, solveDirs } from "../src/solve/command.ts";
-import { firstTurn, seedHome, systemPrompt, type Told } from "../src/solve/prompt.ts";
+import { openDesk, publicResource, submitTool } from "../src/tools/answer.ts";
+import { codingTools, fileTools } from "../src/tools/coding.ts";
+import { type CommandWall, heldSeconds, solveDirs } from "../src/tools/command.ts";
+import { firstTurn, seedHome, systemPrompt, type Told } from "../src/solver/prompt.ts";
 
 const CONTRACT: Contract = {
   answerFormat: { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] },

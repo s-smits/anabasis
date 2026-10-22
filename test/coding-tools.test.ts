@@ -22,10 +22,10 @@ import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { codingTools, fileTools, selectedCodingTools, type WallExec } from "../src/solve/coding-tools.ts";
-import { type CommandWall, makeSeatDirs, solveDirs } from "../src/solve/command.ts";
-import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
-import { osIsolationSupport } from "../src/verify/os-isolation.ts";
+import { codingTools, fileTools, selectedCodingTools, type WallExec } from "../src/tools/coding.ts";
+import { type CommandWall, makeSeatDirs, solveDirs } from "../src/tools/command.ts";
+import { solveIsolationPolicy } from "../src/wall/base.ts";
+import { osIsolationSupport } from "../src/wall/os-isolation.ts";
 
 const LIMITS = { shellDefaultSeconds: 300, shellMaxSeconds: 900 };
 

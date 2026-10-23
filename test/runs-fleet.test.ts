@@ -10,6 +10,8 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
+import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
+import { quoted, treeBun } from "../tools/runs/host-command.ts";
 import { leastOccupied } from "../tools/runs/placement.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
@@ -101,6 +103,25 @@ describe("host execution", () => {
       `--env-file=${envFile}`,
     );
     expect(existsSync(join(made.main, "forbidden"))).toBe(false);
+  });
+
+  it("runs a host's tree under the Bun it pins where that host holds the release", () => {
+    const made = fixture();
+    const tree = join(made.root, "pinned tree");
+    mkdirSync(tree);
+    writeFileSync(join(tree, "package.json"), '{ "packageManager": "bun@9.9.9" }');
+    const home = join(made.root, "home");
+    const chosen = () =>
+      decodeOutput(
+        runSync(["sh", "-c", `cd ${quoted(tree)} && echo ${treeBun("/configured bun")}`], {
+          env: { HOME: home, PATH: "/usr/bin:/bin" },
+        }).stdout,
+      ).trim();
+    expect(chosen()).toBe("/configured bun");
+    const release = join(home, ".bun", "releases", "9.9.9", "bin");
+    mkdirSync(release, { recursive: true });
+    symlinkSync(join(made.root, "bin", "host-bun"), join(release, "bun"));
+    expect(chosen()).toBe(join(release, "bun"));
   });
 
   it("lets a skill ask every host through the bounded shared transport", () => {

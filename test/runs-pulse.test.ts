@@ -53,6 +53,21 @@ describe("the runs pulse", () => {
     ]);
   });
 
+  it("says a flagged solve as its side's fail, with the solver's reason", () => {
+    const flagged = [
+      ...built,
+      event(5, "solve.finished", {
+        solve: "s1",
+        ending: { outcome: "flagged", reason: "the pins exceed the header" },
+        billed: 0.09,
+        seconds: 60,
+      }),
+    ];
+    const seen = pulse(round, built, "open", undefined, START + 5 * 60_000).seen;
+    const look = pulse(round, flagged, "open", seen, START + 6 * 60_000);
+    expect(look.said).toEqual(["· mass-03 flagged as malformed: the pins exceed the header in 1m, $0.09"]);
+  });
+
   it("says a quiet once when it starts and once when it ends", () => {
     const later = START + 30 * 60_000;
     const quiet = pulse(round, built, "open", { lines: 5, open: true, quiet: false }, later);
@@ -63,6 +78,15 @@ describe("the runs pulse", () => {
       event(30, "build.turn", { session: "r1-b", turn: 2, error: null, usage: usage(0.5) }),
     ];
     expect(pulse(round, woken, "open", quiet.seen, later).said).toEqual(["· not quiet any more"]);
+    // A wait for a named reset is no quiet until the reset has passed.
+    const reset = new Date(START + 60 * 60_000).toISOString();
+    const waiting = [...built, event(5, "campaign.waited", { for: "provider", until: reset, ms: 3_300_000 })];
+    expect(pulse(round, waiting, "open", { lines: 6, open: true, quiet: false }, later).seen.quiet).toBe(
+      false,
+    );
+    expect(
+      pulse(round, waiting, "open", { lines: 6, open: true, quiet: false }, START + 61 * 60_000).said,
+    ).toEqual(["⚠ quiet for 56m"]);
   });
 
   it("says a process gone before its report, and not one that reported", () => {

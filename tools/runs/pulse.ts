@@ -130,6 +130,10 @@ const SAID: Partial<
     const ending = asRecord(data.ending);
     if (ending?.outcome === "pass") return `◆ ${task(data.solve)} passed${cost(data)}`;
     if (ending?.outcome === "fail") return `· ${task(data.solve)} failed${cost(data)}`;
+    // A flag is its side's own fail (AGENTS.md rule 7): until 23 October it read as a non-result of kind "?".
+    if (ending?.outcome === "flagged") {
+      return `· ${task(data.solve)} flagged as malformed: ${short(ending.reason)}${cost(data)}`;
+    }
     return `⚠ ${task(data.solve)} ended without a result, ${word(ending?.kind)}: ${short(ending?.reason)}${cost(data)}`;
   },
   // A campaign's ending, and a wait for the provider or the network: until 15 October the pulse
@@ -214,7 +218,10 @@ export function pulse(
     lines.push(`⚠ ${plural(errors.length, "failed turn")}: ${[...new Set(errors)].map(short).join("; ")}`);
   }
   const last = log.at(-1);
-  const quiet = open && last !== undefined && now - Date.parse(last.at) > QUIET_MS;
+  // A run waiting out a named reset is silent by design: until 23 October it was also called quiet.
+  const until =
+    last?.kind === "campaign.waited" && isString(last.data.until) ? Date.parse(last.data.until) : 0;
+  const quiet = open && last !== undefined && now - Date.parse(last.at) > QUIET_MS && now >= until;
   if (quiet && before?.quiet !== true) lines.push(`⚠ quiet for ${minutes(now - Date.parse(last.at))}`);
   if (!quiet && before?.quiet === true) lines.push("· not quiet any more");
   // A run's end is that of the last thing it started: an Examiner session writes no report, and

@@ -12,7 +12,7 @@ import { capturedExecPath, capturedSpawn } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { type Host, configuredRuntime } from "./host-config.ts";
-import { quoted, shellPath, sshScript } from "./host-command.ts";
+import { quoted, shellPath, sshScript, treeBun } from "./host-command.ts";
 
 /** The folder in the common Git directory that holds one controller a commit. `PRUNE` keeps the
  *  newest three, and `runs retire` leaves every tree in it to that. */
@@ -127,7 +127,7 @@ if ! test -e "$tree"; then git worktree add -q --detach "$tree" ${quoted(commit)
 cd "$tree"
 test "$(git rev-parse HEAD)" = ${quoted(commit)}
 test -z "$(git status --porcelain)" || { echo 'control tree has uncommitted changes' >&2; exit 1; }
-${shellPath(configuredRuntime(host).bun)} install --frozen-lockfile >&2
+${treeBun(configuredRuntime(host).bun)} install --frozen-lockfile >&2
 touch "$root/${commit}.ready"
 ${PRUNE}
 rm -f "$lock/pid"

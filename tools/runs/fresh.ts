@@ -14,7 +14,9 @@
  * the Referee and the solver. The worktree is `anabasis-<name>` beside the checkout, at `--at`, by
  * default this checkout's commit. Without `--host`, placement prefers a pack's prior machine below
  * its configured cap, then the fewest live campaigns and simulation seats (22 October 2026). An explicit
- * `--host here` or peer overrides placement. Remote source is prepared by `code.ts` before launch.
+ * `--host here` or peer overrides placement. Remote source is prepared by `code.ts` before launch,
+ * and the peer's own `fresh` is told `--host here`: without it the peer placed the run again over
+ * itself alone, and on 23 October refused a named host that held its cap of two live runs.
  *
  * Until 16 October each fresh launch was typed by hand: a worktree, a prompt file, eight seat
  * flags and a name, and one launch that left out `--login` ended on its environment.
@@ -192,6 +194,8 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
       values.budget,
       "--as",
       values.as ?? host.name,
+      "--host",
+      "here",
       ...(values.effort === undefined ? [] : ["--effort", values.effort]),
       ...(login === undefined ? [] : ["--login", login]),
       "--yes",

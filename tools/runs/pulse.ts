@@ -218,7 +218,10 @@ export function pulse(
     lines.push(`⚠ ${plural(errors.length, "failed turn")}: ${[...new Set(errors)].map(short).join("; ")}`);
   }
   const last = log.at(-1);
-  const quiet = open && last !== undefined && now - Date.parse(last.at) > QUIET_MS;
+  // A run waiting out a named reset is silent by design: until 23 October it was also called quiet.
+  const until =
+    last?.kind === "campaign.waited" && isString(last.data.until) ? Date.parse(last.data.until) : 0;
+  const quiet = open && last !== undefined && now - Date.parse(last.at) > QUIET_MS && now >= until;
   if (quiet && before?.quiet !== true) lines.push(`⚠ quiet for ${minutes(now - Date.parse(last.at))}`);
   if (!quiet && before?.quiet === true) lines.push("· not quiet any more");
   // A run's end is that of the last thing it started: an Examiner session writes no report, and

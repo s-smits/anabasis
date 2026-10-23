@@ -27,7 +27,7 @@
  */
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { type Host, hostsOf, hostNamed, configuredRuntime } from "./host-config.ts";
-import { quoted, shellPath, sshScript } from "./host-command.ts";
+import { quoted, shellPath, sshScript, treeBun } from "./host-command.ts";
 import { readControllers } from "./code.ts";
 import { CLI, runs } from "./registry.ts";
 
@@ -58,7 +58,7 @@ function scriptCommand(host: Host, script: string, args: readonly string[]): str
   const env = (runtime.envFiles ?? []).map((file) => ` --env-file=${shellPath(file)}`).join("");
   return sshScript(
     host,
-    `cd ${shellPath(host.tree)}\nANA_HOSTS='[]' ANA_RUN_CAP=${quoted(String(host.capacity ?? 2))} ${shellPath(runtime.bun)}${env} ${quoted(script)} ${args.map(quoted).join(" ")}`,
+    `cd ${shellPath(host.tree)}\nANA_HOSTS='[]' ANA_RUN_CAP=${quoted(String(host.capacity ?? 2))} ${treeBun(runtime.bun)}${env} ${quoted(script)} ${args.map(quoted).join(" ")}`,
   );
 }
 

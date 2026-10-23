@@ -26,6 +26,16 @@ export const quoted = (word: string) => `'${word.replaceAll("'", `'\\''`)}'`;
 export const shellPath = (path: string) =>
   path.startsWith("~/") ? `"$HOME"/${quoted(path.slice(2))}` : quoted(path);
 
+/**
+ * The Bun that runs a tree's code on a host, as shell text evaluated in that tree: the release its
+ * `package.json` pins where the host holds it under `~/.bun/releases`, as the check runner picks
+ * one, else the configured Bun. A campaign runs under the Bun of the verb that launched it, and on
+ * 23 October a fork made through `fresh --host` on the Linux runner ran its verb on that host's
+ * default Bun, 1.4.3, while its tree pinned 1.4.4.
+ */
+export const treeBun = (configured: string) =>
+  `"$(p=$(grep -o '"packageManager": *"bun@[^"]*"' package.json 2>/dev/null | sed 's/.*bun@//; s/"$//'); if test -n "$p" && test -x "$HOME/.bun/releases/$p/bin/bun"; then echo "$HOME/.bun/releases/$p/bin/bun"; else echo ${shellPath(configured)}; fi)"`;
+
 /** The ssh command that runs the shell text `script` on `host`, under a login shell there. */
 export function sshScript(host: Host, script: string): string[] {
   return ["ssh", ...sshOptions(host.ssh), host.ssh, `exec "$SHELL" -lc ${quoted(script)}`];

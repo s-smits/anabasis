@@ -130,6 +130,10 @@ const SAID: Partial<
     const ending = asRecord(data.ending);
     if (ending?.outcome === "pass") return `◆ ${task(data.solve)} passed${cost(data)}`;
     if (ending?.outcome === "fail") return `· ${task(data.solve)} failed${cost(data)}`;
+    // A flag is its side's own fail (AGENTS.md rule 7): until 23 October it read as a non-result of kind "?".
+    if (ending?.outcome === "flagged") {
+      return `· ${task(data.solve)} flagged as malformed: ${short(ending.reason)}${cost(data)}`;
+    }
     return `⚠ ${task(data.solve)} ended without a result, ${word(ending?.kind)}: ${short(ending?.reason)}${cost(data)}`;
   },
   // A campaign's ending, and a wait for the provider or the network: until 15 October the pulse

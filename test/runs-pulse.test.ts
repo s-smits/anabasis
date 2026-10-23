@@ -53,6 +53,21 @@ describe("the runs pulse", () => {
     ]);
   });
 
+  it("says a flagged solve as its side's fail, with the solver's reason", () => {
+    const flagged = [
+      ...built,
+      event(5, "solve.finished", {
+        solve: "s1",
+        ending: { outcome: "flagged", reason: "the pins exceed the header" },
+        billed: 0.09,
+        seconds: 60,
+      }),
+    ];
+    const seen = pulse(round, built, "open", undefined, START + 5 * 60_000).seen;
+    const look = pulse(round, flagged, "open", seen, START + 6 * 60_000);
+    expect(look.said).toEqual(["· mass-03 flagged as malformed: the pins exceed the header in 1m, $0.09"]);
+  });
+
   it("says a quiet once when it starts and once when it ends", () => {
     const later = START + 30 * 60_000;
     const quiet = pulse(round, built, "open", { lines: 5, open: true, quiet: false }, later);

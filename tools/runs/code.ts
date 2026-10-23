@@ -77,12 +77,18 @@ function readCommit(): string {
   return commit;
 }
 
-/** Resolve a requested revision after fetching, and refuse a commit on no remote branch. */
+/** Resolve a requested revision after fetching, and refuse a commit no remote branch holds and no
+ *  remote ref names. A campaign's commit may be held by its pushed run tag alone: on 23 October a
+ *  move was refused for one whose branch had been rewritten. */
 export function publishedAt(tree: string, revision: string): string {
   gitText(tree, "fetch", "-q", "origin");
   const commit = gitText(tree, "rev-parse", "--verify", `${revision}^{commit}`);
-  if (gitText(tree, "branch", "-r", "--contains", commit) === "") {
-    throw new Error(`${commit.slice(0, 9)} is on no remote branch`);
+  const named = () =>
+    gitText(tree, "ls-remote", "origin")
+      .split("\n")
+      .some((ref) => ref.startsWith(`${commit}\t`));
+  if (gitText(tree, "branch", "-r", "--contains", commit) === "" && !named()) {
+    throw new Error(`${commit.slice(0, 9)} is on no remote branch or tag`);
   }
   return commit;
 }
@@ -109,8 +115,9 @@ root="$(git rev-parse --path-format=absolute --git-common-dir)/${CONTROLLERS}"
 tree="$root/${commit}"
 if ${mode === "install" ? "true" : `! test -f "$root/${commit}.ready" || ! test -d "$tree/node_modules"`}; then
 git fetch -q origin
+git cat-file -e ${quoted(`${commit}^{commit}`)} 2>/dev/null || git fetch -q origin ${quoted(commit)}
 test "$(git rev-parse --verify ${quoted(`${commit}^{commit}`)})" = ${quoted(commit)}
-test -n "$(git branch -r --contains ${quoted(commit)})" || { echo 'commit is on no remote branch' >&2; exit 1; }
+test -n "$(git branch -r --contains ${quoted(commit)})" || git ls-remote origin | grep -q ${quoted(`^${commit}	`)} || { echo 'commit is on no remote branch or tag' >&2; exit 1; }
 fi
 if ! test -f "$root/${commit}.ready" || ! test -d "$tree/node_modules"; then
 mkdir -p "$root"

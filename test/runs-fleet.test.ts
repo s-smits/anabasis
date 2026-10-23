@@ -203,7 +203,7 @@ describe("code preparation", () => {
     expect(existsSync(join(made.main, ".ana", "moved"))).toBe(false);
   });
 
-  it("prepares remote fresh only with authority and preserves campaign flags after --", () => {
+  it("prepares remote fresh only with authority, pins the host, and preserves campaign flags after --", () => {
     const made = fixture();
     const dry = made.run(
       'import { fresh } from "REPOSITORY/tools/runs/fresh.ts"; await fresh(["sample", "--model", "gpt", "--host", "runner"]);',
@@ -221,7 +221,7 @@ describe("code preparation", () => {
         ?.args.at(-1) ?? "";
     expect(command).toContain("campaign-value");
     expect(command).toContain("prepared");
-    expect(command).not.toContain("--host");
+    expect(command).toMatch(/--host\W+here\W+--yes/);
     expect(command).toContain("ANA_RUN_CAP");
   });
 

@@ -3,13 +3,15 @@
 // holds it to the contract's answer format, and refuses with the reason a file that is missing, is
 // not JSON, does not follow the format or is too large.
 import { afterAll, describe, expect, it } from "bun:test";
-import type { AgentToolResult } from "@earendil-works/pi-agent-core";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { ToolExecutionApi } from "@earendil-works/pi-durable";
 import type { Contract } from "../src/kernel/contract.ts";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { type Desk, openDesk, publicResource, submitTool } from "../src/solve/answer.ts";
-import type { WallExec } from "../src/solve/coding-tools.ts";
+import { hashJsonValue } from "../src/meta/stable-json.ts";
+import { type Desk, openDesk, publicResource, submitTool } from "../src/tools/answer.ts";
+import type { WallExec } from "../src/tools/coding.ts";
 
 const CONTRACT: Contract = {
   answerFormat: {
@@ -44,19 +46,31 @@ function solving(desk: Desk = openDesk()) {
   };
   const tool = submitTool(desk, CONTRACT, home, exec);
   const submit = async (params: { malformed?: string } = {}) => {
-    const result: AgentToolResult<unknown> = await tool.execute("call", params, undefined);
-    const [first] = result.content;
-    return { text: first?.type === "text" ? first.text : "", terminate: result.terminate === true };
+    // SAFETY: submit uses no API services; its bounded file read is the injected WallExec.
+    const api = { callId: "call" } as ToolExecutionApi;
+    const result = await tool.execute(params, api, BACKGROUND_CONTEXT);
+    const first = result.output?.[0];
+    return { text: first?.type === "text" ? first.text : "", terminate: result.control?.terminate === true };
   };
   const answer = (content: string) => writeFileSync(join(home, "answer.json"), content);
   return { home, desk, commands, tool, submit, answer };
 }
 
 describe("submit", () => {
+  it("keeps the accepted answer's digest in durable details and ends the round", async () => {
+    const { answer, desk, tool } = solving();
+    answer('{"span":4}');
+    // SAFETY: submit uses no API services; its file read is the injected WallExec.
+    const api = { callId: "accepted" } as ToolExecutionApi;
+    const result = await tool.execute({}, api, BACKGROUND_CONTEXT);
+    expect(result.details).toEqual({ answerDigest: hashJsonValue({ span: 4 }) });
+    expect(result.control).toEqual({ terminate: true });
+    expect(desk.submitted).toEqual({ span: 4 });
+  });
+
   it("sends answer.json from the working directory, and the answer once sent stays the answer", async () => {
     const { desk, tool, submit, answer } = solving();
     expect(tool.name).toBe("submit");
-    expect(tool.promptSnippet).toBe("Send answer.json as your answer, which ends the task");
     expect(tool.description).toBe(
       "Send answer.json from your working directory as your answer. It holds the answer as JSON, in the format public/answer-format.json gives. A file that does not is refused with the reason, and you may submit again. An accepted submit ends the task and returns no verdict. If you judge the task malformed, so that no answer could meet it as posed, give malformed instead, saying why: that ends the task with no answer read.",
     );

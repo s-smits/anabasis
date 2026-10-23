@@ -15,8 +15,8 @@ import { tmpdir } from "../src/meta/os.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { join, relative } from "../src/meta/path.ts";
 import { killProcessGroupId } from "../src/meta/subprocess.ts";
-import { osIsolationSupport } from "../src/verify/os-isolation.ts";
-import { hostScratch } from "../src/verify/wall-policy.ts";
+import { osIsolationSupport } from "../src/wall/os-isolation.ts";
+import { hostScratch } from "../src/wall/policy.ts";
 
 const DETACHED_MARKER = `ana-verifier-deadline-child-${crypto.randomUUID()}`;
 
@@ -47,6 +47,13 @@ export const checks = {
     await runtime.tools.run({ toolId: "sleeper", args: [], timeoutMs: 100 });
     return true;
   },
+  late: async () => {
+    await Bun.sleep(500);
+    throw new Error("decided late");
+  },
+  early: () => "no",
+  first: async () => (await Bun.sleep(1000), true),
+  second: async () => (await Bun.sleep(1000), true),
   ran: async (req) => (await req.runtime.tools.run({ toolId: req.publicTask.publicInput.tool })).exitCode === 0,
   deadline: async () => {
     const child = Bun.spawn(
@@ -118,6 +125,10 @@ const BRIEF = {
     { id: "lapses", execution: execution(["lapses"], [], [], ["sleeper"]) },
     { id: "slow", execution: execution(["slow"], [], [], ["sleeper"]) },
     { id: "host", execution: execution(["host"], [], [], ["sh"]) },
+    { id: "late", execution: execution(["order"], [], []) },
+    { id: "early", execution: execution(["order"], [], []) },
+    { id: "first", execution: execution(["pair"], [], []) },
+    { id: "second", execution: execution(["pair"], [], []) },
     {
       id: "ran",
       execution: execution(
@@ -250,6 +261,19 @@ describe.skipIf(!osIsolationSupport().ok)("the verifier", () => {
       kind: "faulty",
       check: "answers",
       reason: "the check returned string",
+    });
+  });
+
+  it("runs a verdict's checks at once, and lets the first in the brief's order decide", async () => {
+    // Two checks of a second each, one after the other, took two seconds.
+    const started = performance.now();
+    expect(await verify(task("pair"), {})).toEqual({ kind: "pass" });
+    expect(performance.now() - started).toBeLessThan(1800);
+    // The later check is faulty first, and the earlier one still names the verdict.
+    expect(await verify(task("order"), {})).toEqual({
+      kind: "faulty",
+      check: "late",
+      reason: "the check threw: decided late",
     });
   });
 

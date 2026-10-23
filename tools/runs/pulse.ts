@@ -13,9 +13,8 @@
  * is a warning and exit 1. No local state path is sent to another machine.
  */
 import { type EventKind, type LogEvent } from "#src/kernel/log.ts";
-import { billedAll } from "#src/kernel/reports.ts";
+import { billedAll, traceKind, tracesIn } from "#src/kernel/trace.ts";
 import { type Solve, solvesIn } from "#src/kernel/solves.ts";
-import { traceKind, tracesIn } from "#src/kernel/trace.ts";
 import {
   existsSync,
   mkdirSync,
@@ -97,7 +96,7 @@ const cost = (data: JsonObject) =>
 
 /** What a comparison's report earns: one that scored nothing, one its cap cut, or one with tasks set
  *  aside on rejections nobody has settled is one to look at before it is believed
- *  (`src/builder/round.ts`). */
+ *  (`src/campaign/round.ts`). */
 function reportLine(data: JsonObject): string {
   const settled = asRecord(data.settled);
   if (settled !== null) {

@@ -180,38 +180,77 @@ describe("pre-push", () => {
     ]);
   });
 
-  it("runs the UI's browser files in a static pass only over a commit that touches the UI", () => {
-    const tree = (rows: string): string => execTextSync("git", ["mktree"], { cwd: work, stdin: rows }).trim();
-    const tests = tree(
-      `100644 blob ${blob("\n")}\tbrowser-page.test.ts\n100644 blob ${blob("\n")}\tpanes.test.tsx\n`,
-    );
-    const ui = tree(`100644 blob ${blob("{}\n")}\tpackage.json\n040000 tree ${tests}\ttest\n`);
-    const packages = tree(`040000 tree ${ui}\tui\n`);
+  it("runs the UI's whole gate over the UI, its tests within three imports over what it imports, and nothing over the rest", () => {
+    const tree = (rows: readonly string[]): string =>
+      execTextSync("git", ["mktree"], { cwd: work, stdin: `${rows.join("\n")}\n` }).trim();
+    const file = (name: string, text: string): string => `100644 blob ${blob(text)}\t${name}`;
+    const lines = (text: string): string[] => text.split("\n").filter((row) => row !== "");
+    const into = (from: string, name: string, sub: string): string =>
+      tree([
+        ...lines(git("ls-tree", from)).filter((row) => !row.endsWith(`\t${name}`)),
+        `040000 tree ${sub}\t${name}`,
+      ]);
+    // Three imports from `deep.test.ts` to `src/b.ts`, four from `far.test.ts`, one from the browser's.
+    const tests = tree([
+      file("browser-page.test.ts", 'import "../../../src/b.ts";\n'),
+      file("deep.test.ts", 'import "./h1.ts";\n'),
+      file("h1.ts", 'import "./h2.ts";\n'),
+      file("h2.ts", 'import "../../../src/b.ts";\n'),
+      file("far.test.ts", 'import "./f1.ts";\n'),
+      file("f1.ts", 'import "./f2.ts";\n'),
+      file("f2.ts", 'import "./f3.ts";\n'),
+      file("f3.ts", 'import "../../../src/b.ts";\n'),
+    ]);
+    const ui = tree([file("package.json", "{}\n"), `040000 tree ${tests}\ttest`]);
     const held = git(
       "commit-tree",
-      tree(`${git("ls-tree", second)}\n040000 tree ${packages}\tpackages\n`),
+      into(second, "packages", tree([`040000 tree ${ui}\tui`])),
       "-p",
       second,
       "-m",
       "the UI",
     );
     const away = git("commit-tree", withFile(held, "c.ts"), "-p", held, "-m", "away from the UI");
-    const head = git("commit-tree", withFile(away, "d.ts"), "-p", away, "-m", "head");
-    expect(push([update(head, second)]).status).toBe(0);
+    const src = tree([
+      ...lines(git("ls-tree", `${away}:src`)).filter((row) => !row.endsWith("\tb.ts")),
+      file("b.ts", "export const b = 3;\n"),
+    ]);
+    const imported = git("commit-tree", into(away, "src", src), "-p", away, "-m", "what the UI imports");
+    const head = git("commit-tree", withFile(imported, "d.ts"), "-p", imported, "-m", "head");
     const ran = (sha: string): string[] =>
       readFileSync(log, "utf8")
         .split("\n")
-        .filter((line) => line.startsWith(sha))
-        .map((line) => line.split("\t")[1] ?? "");
-    // The commit that brings the UI, and the head, run all of its gate; the one between, its own
-    // gate without the browser's files.
-    expect(ran(held)[1]).toBe("run ui:gate");
-    expect(ran(head)[1]).toBe("run ui:gate");
-    expect(ran(away).slice(1, 4)).toEqual([
+        .filter((row) => row.startsWith(sha))
+        .map((row) => row.split("\t")[1] ?? "");
+    const near = (...names: string[]): string[] => [
       "run ui:deps",
       "run ui:build",
-      "run test -- packages/ui/test/panes.test.tsx",
-    ]);
+      `run test -- ${names.map((name) => `packages/ui/test/${name}`).join(" ")}`,
+    ];
+    try {
+      // Main before the UI: the commit that brings it and the head run its whole gate; a static
+      // pass over a change to what it imports runs the tests near it but the browser's; a commit
+      // that changes nothing it reads runs no UI step.
+      expect(push([update(head, second)]).status).toBe(0);
+      expect(ran(held)[1]).toBe("run ui:gate");
+      expect(ran(away)[1]).toBe("run format:check");
+      expect(ran(imported).slice(1, 4)).toEqual(near("deep.test.ts"));
+      expect(ran(head)[1]).toBe("run ui:gate");
+      // Main holding the UI: a whole pass over the same change runs the browser's file too.
+      git("update-ref", "refs/remotes/origin/main", away);
+      rmSync(log, { force: true });
+      forgetPasses();
+      expect(push([update(head, away)]).status).toBe(0);
+      expect(ran(head).slice(1, 4)).toEqual(near("browser-page.test.ts", "deep.test.ts"));
+      // Main holding the change: a whole pass over a head that leaves what the UI reads alone.
+      git("update-ref", "refs/remotes/origin/main", imported);
+      rmSync(log, { force: true });
+      forgetPasses();
+      expect(push([update(head, imported)]).status).toBe(0);
+      expect(ran(head)[1]).toBe("run format:check");
+    } finally {
+      git("update-ref", "refs/remotes/origin/main", base);
+    }
   });
 
   it("runs nothing again that passed on these exact bytes", () => {
@@ -243,12 +282,7 @@ describe("pre-push", () => {
   it("runs a tree again once a file the gate imports changed, and not for a neighbour it never imports", () => {
     // A copy of the checker as a caller's checkout holds it: the hook, the gate and what it imports.
     const checker = join(fixture, "checker");
-    const parts = [
-      ".githooks/pre-push",
-      "tools/runtime",
-      "src/meta",
-      "vendor/pi-coding-agent/core/tools/truncate.ts",
-    ];
+    const parts = [".githooks/pre-push", "tools/runtime", "src/meta"];
     for (const part of parts) {
       cpSync(join(import.meta.dir, "..", part), join(checker, part), { recursive: true });
     }

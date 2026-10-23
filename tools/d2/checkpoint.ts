@@ -35,7 +35,7 @@
  * waits for a person and sets its task aside until `tools/d2/settle.ts` has its labels.
  *
  * Before its first event it asks whether the comparison may start, as a round does
- * (`src/builder/admission.ts`). `--past-stop "<why>"` goes on past the plan's
+ * (`src/campaign/admission.ts`). `--past-stop "<why>"` goes on past the plan's
  * stop rule, and the reason is logged.
  *
  * Run again with the same `--id`, it goes on from its log, and once it has reported it says what
@@ -43,9 +43,9 @@
  *
  * Not run here: see `campaign.ts`.
  */
-import { admitComparison } from "#src/builder/admission.ts";
-import type { Report } from "#src/builder/comparison.ts";
-import { type CheckpointRequest, checkpoint, refuseTerms, scoredSet } from "#src/builder/round.ts";
+import { admitComparison } from "#src/campaign/admission.ts";
+import type { Report } from "#src/campaign/comparison.ts";
+import { type CheckpointRequest, checkpoint, refuseTerms, scoredSet } from "#src/campaign/round.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
 import { stopRule } from "#src/kernel/reports.ts";

@@ -1,13 +1,13 @@
 // A campaign has one reading: each step's handover, folded once from its log. The operator's view
 // prints it whole, and the Builder's opening message is the same rows through the Builder's filter.
 import { afterAll, describe, expect, it } from "bun:test";
-import { supplyOf } from "../src/builder/admission.ts";
-import { campaignOf, type Handover, openSteps } from "../src/builder/handover.ts";
-import { calledBy, namesOf } from "../src/builder/names.ts";
+import { supplyOf } from "../src/campaign/admission.ts";
+import { campaignOf, type Handover, openSteps } from "../src/campaign/handover.ts";
+import { calledBy, namesOf } from "../src/campaign/names.ts";
 import { comparisonsTold, failsTold, startTold } from "../src/builder/past.ts";
 import { type Condition, recordCondition } from "../src/kernel/condition.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
-import { billedAll, billedFor } from "../src/kernel/reports.ts";
+import { billedAll, billedFor } from "../src/kernel/trace.ts";
 import { mkdtempSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";

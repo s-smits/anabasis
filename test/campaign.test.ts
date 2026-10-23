@@ -27,7 +27,7 @@ import { dirname, join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { errorMessage } from "../src/meta/runtime-values.ts";
-import { openHarness } from "../src/solve/harness.ts";
+import { openHarness } from "../src/harness/open.ts";
 import { codeOf, starter, keptAs, LIMITS, openCampaign, packNamed } from "../tools/d2/campaign.ts";
 import { importCommand } from "../tools/d2/import.ts";
 import { settingNamed } from "../tools/d2/setting.ts";

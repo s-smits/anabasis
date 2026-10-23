@@ -63,6 +63,12 @@ export function systemPrompt(tried: number | undefined, reference: "in-home" | "
   ].join("\n\n");
 }
 
+/** The budget every solve is held to, as a fact for an Examiner: a drafting session's measure of
+ *  its examples (`draft.ts`) and a writing session's opening. */
+export function budgetLine(budget: { readonly modelTurns: number | null; readonly minutes: number }): string {
+  return `Every solve of a task is held to ${budget.modelTurns === null ? "no fixed number of the solver's own turns" : `${plural(budget.modelTurns, "turn")} of the solver's own`}, a turn being one reply with the tool calls in it, and ${plural(budget.minutes, "minute")}. This is the budget, and it may change as the campaign goes on; it is no target of yours.`;
+}
+
 /** The opening message: the operator's brief where the campaign opened from one, the domain's
  *  public contract, its checks by id and assertion, and every task the campaign holds with its one
  *  outcome, a line a task, with the counts by family or in a total beside them, as `record.ts`
@@ -100,11 +106,7 @@ ${brief}`,
     `A solver's answer follows this schema: ${capturedJsonStringify(contract.answerFormat)}`,
     // The budget as a fact: a task that tells two harnesses apart is one a better method answers
     // within it and a worse one does not, which nobody can write without knowing it.
-    ...(budget === null
-      ? []
-      : [
-          `Every solve of a task is held to ${budget.modelTurns === null ? "no fixed number of the solver's own turns" : `${plural(budget.modelTurns, "turn")} of the solver's own`}, a turn being one reply with the tool calls in it, and ${plural(budget.minutes, "minute")}. This is the budget, and it may change as the campaign goes on; it is no target of yours.`,
-        ]),
+    ...(budget === null ? [] : [budgetLine(budget)]),
     `The checks, by id:\n${checks.map((row) => `- ${row.id} (${families(row)}): ${row.assertion}`).join("\n") || "(none)"}`,
     `${tasks.legend}\n${tasks.lines.map((line) => `- ${line}`).join("\n") || "(none)"}`,
     ...(tasks.refused.length === 0

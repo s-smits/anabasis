@@ -1,11 +1,11 @@
-// Move 7 of a campaign over hand-built logs (`src/builder/decide.ts`): one case a row of the table,
+// Move 7 of a campaign over hand-built logs (`src/campaign/decide.ts`): one case a row of the table,
 // one a hold, the order the rows are asked in, the one count that ends a campaign for want of room
 // or of tasks, and the rule a promotion by hand is held to.
 
 import { describe, expect, it } from "bun:test";
-import { decide, epochReleased, practiceRoom, unpromoted } from "../src/builder/decide.ts";
-import type { Plan } from "../src/builder/ground.ts";
-import { pendingWords } from "../src/builder/word.ts";
+import { decide, epochReleased, practiceRoom, unpromoted } from "../src/campaign/decide.ts";
+import type { Plan } from "../src/campaign/ground.ts";
+import { pendingWords } from "../src/campaign/word.ts";
 import { sweepOf } from "../src/kernel/compare.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import { releaseOrder, stopRule } from "../src/kernel/reports.ts";

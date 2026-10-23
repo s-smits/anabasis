@@ -31,7 +31,7 @@
  * same file is not read.
  *
  * A program under `.toolchain/bin/` is listed with its own account of itself, the comment at its
- * head (`src/solve/programs.ts`): the page shows the solver's toolset by those, since the guide only
+ * head (`src/harness/programs.ts`): the page shows the solver's toolset by those, since the guide only
  * names them.
  */
 import { createTwoFilesPatch } from "diff";
@@ -51,7 +51,7 @@ import { containsPath } from "../../../../src/meta/path-containment.ts";
 import { isSafePathSegment } from "../../../../src/meta/path-segment.ts";
 import { dirname, extname, join, relative } from "../../../../src/meta/path.ts";
 import { errorMessage } from "../../../../src/meta/runtime-values.ts";
-import { programsOf } from "../../../../src/solve/programs.ts";
+import { programsOf } from "../../../../src/harness/programs.ts";
 import type { FileContent, HarnessDiff, HarnessFile, HarnessFiles, Issue, Query } from "../models.ts";
 import type { Reading } from "./context.ts";
 import type { Log } from "./folds.ts";

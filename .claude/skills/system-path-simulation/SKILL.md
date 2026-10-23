@@ -115,7 +115,7 @@ It adds no third arm to a comparison.
 The table uses four frontier tasks, two solves per side, `--level 0.10`, no retained tasks and
 answers with no objective difference. These are the stand-in conditions in `test/round.test.ts`,
 not the command defaults. `valid` lists task counts at zero, one and two valid solves, in that
-order (`Valid`, `src/builder/comparison.ts`). At the default level of 0.02 four wins read
+order (`Valid`, `src/campaign/comparison.ts`). At the default level of 0.02 four wins read
 `no-step`; six untied tasks, all won, are needed (`sweepOf`, `src/kernel/compare.ts`).
 
 | script | reading | why |
@@ -150,11 +150,11 @@ What the product did:
 - **A kill left roots behind, and session ids collided across campaigns.**
   `bun run runs stop <name> --yes` releases roots left by unfinished solves and sessions (`leftOpen`, `releaseRoot`),
   and `sessionDirs` names a Builder's root by its campaign too. Until 19 October roots on macOS
-  held disk images; they are ordinary folders now (`src/verify/seat-root.ts`).
+  held disk images; they are ordinary folders now (`src/wall/seat-root.ts`).
 - **Claude Code went on after its solve closed.** On 8 October 2026, 14 of 35 solve records held
   a call after the one that ended the solve. A live probe traced this to an abort closing stdin
   while a turn was parked on `submit`. `close` now interrupts before aborting
-  (`src/backends/claude.ts`); `test/claude-backend.test.ts` checks that join.
+  (`src/agent/backends/claude.ts`); `test/claude-backend.test.ts` checks that join.
 - **The pulse read a seed as a paid run**, with its source's dollars and its source's solves in
   flight. It now says `(a seed)`.
 - **A reader caught a planted contradiction.** Two rehearsed rounds made one harness pass a task

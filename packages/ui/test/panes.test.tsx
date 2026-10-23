@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { reported } from "../../../src/builder/comparison.ts";
+import { reported } from "../../../src/campaign/comparison.ts";
 import { read as readLog } from "../../../src/kernel/log.ts";
 import { mkdtempSync, realpathSync, rmSync } from "../../../src/meta/filesystem.ts";
 import { tmpdir } from "../../../src/meta/os.ts";

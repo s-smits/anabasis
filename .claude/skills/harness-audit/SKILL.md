@@ -50,7 +50,7 @@ keeps, the starter first:
   `agent/config.yaml` is ignored; a module may import other files under the harness.
 - **what measured it**: each session that started from it, with its practice solves and counted
   fails, and each comparison it stood in, on which side, against what, and how it read, with its
-  tally. The fold is `campaignOf` (`src/builder/handover.ts`), the one the view and the campaign
+  tally. The fold is `campaignOf` (`src/campaign/handover.ts`), the one the view and the campaign
   command read.
 
 `--diff` counts what moved, part by part, against the parent the log records or `--against`:
@@ -135,12 +135,12 @@ which waits for the operator's word ([run-improvement-campaign](../run-improveme
 
 | What | Owner | What holds it |
 | --- | --- | --- |
-| what opens as a harness, and its digest | `src/solve/harness.ts`, `openHarness` | `test/harness-tools.test.ts` |
-| the Starter, and the generated `HARNESS.md` a Builder is handed | `writeStarter`, `HARNESS_ACCOUNT` in `src/solve/starter.ts`; written by `src/builder/session.ts` | `test/starter.test.ts`: the worked harness opens as printed |
-| installed program names and their accounts | `installedPrograms`, `programsOf` in `src/solve/programs.ts` | `test/programs.test.ts` |
+| what opens as a harness, and its digest | `src/harness/open.ts`, `openHarness` | `test/harness-tools.test.ts` |
+| the Starter, and the generated `HARNESS.md` a Builder is handed | `writeStarter`, `HARNESS_ACCOUNT` in `src/harness/starter.ts`; written by `src/builder/session.ts` | `test/starter.test.ts`: the worked harness opens as printed |
+| installed program names and their accounts | `installedPrograms`, `programsOf` in `src/harness/programs.ts` | `test/programs.test.ts` |
 | what a Builder is told | `src/builder/prompt.ts` | `test/builder.test.ts`, "what crosses to the Builder" |
-| what a solver is told | `src/solve/prompt.ts` | `test/solver-prompt.test.ts` |
-| what the Examiner and the Referee are told | `src/examiner/prompt.ts`, `src/review/referee.ts` | `test/examiner.test.ts`, `test/review.test.ts` |
+| what a solver is told | `src/solver/prompt.ts` | `test/solver-prompt.test.ts` |
+| what the Examiner and the Referee are told | `src/examiner/prompt.ts`, `src/referee/referee.ts` | `test/examiner.test.ts`, `test/review.test.ts` |
 
 `HARNESS.md` is generated in the Builder's home, not a repository file. Its four parts are
 `agent/tools-spec.json`, `.toolchain/`, `agent/BUILT_AGENTS.md` and `agent/tools.ts`. Read their

@@ -29,18 +29,18 @@ import {
   runWalled,
   solveDirs,
   walledBase,
-} from "../src/solve/command.ts";
-import { claimRoot } from "../src/verify/seat-root.ts";
-import { LINUX_BWRAP_ID } from "../src/verify/linux-bwrap.ts";
-import { moveBlockingRules } from "../src/verify/seatbelt-path-guard.ts";
-import { commandIsolationPolicy } from "../src/verify/solve-command-isolation.ts";
-import { userTempRules } from "../src/verify/wall-policy.ts";
+} from "../src/tools/command.ts";
+import { claimRoot } from "../src/wall/seat-root.ts";
+import { LINUX_BWRAP_ID } from "../src/wall/linux-bwrap.ts";
+import { moveBlockingRules } from "../src/wall/seatbelt-path-guard.ts";
+import { commandIsolationPolicy } from "../src/wall/isolation.ts";
+import { userTempRules } from "../src/wall/policy.ts";
 import { toolchainTemp } from "./helpers/toolchain-temp.ts";
 import {
   HOST_SOLVE_ISOLATION_PROFILE_ID,
   type SolveIsolationPolicy,
   solveIsolationPolicy,
-} from "../src/verify/solve-sandbox.ts";
+} from "../src/wall/base.ts";
 import { CLOSED } from "./helpers/wall.ts";
 
 const onDarwin = runtimeProcess.platform === "darwin";

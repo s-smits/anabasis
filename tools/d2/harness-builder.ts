@@ -12,7 +12,7 @@
  * A campaign is a loop of moves over one log (`7f0add79:docs/plan.md`, "The process"). Until 2026-10-09 a
  * session carried each one by hand: it read the view, chose a move by a skill's walk, and typed
  * the command with its flags. This command does that. It reads the log, asks move 7 for the one
- * move that follows (`decide`, `src/builder/decide.ts`), prints it with its reason, makes it by
+ * move that follows (`decide`, `src/campaign/decide.ts`), prints it with its reason, makes it by
  * the command an operator would run, and reads the log again, until the campaign ends or `--moves`
  * are made. It chooses nothing of its own: the table chooses, and every refusal is the command's.
  *
@@ -23,12 +23,12 @@
  * a release, a comparison, a promotion (`campaign-actions.ts`). The table's move is its advice,
  * and every condition above stays the host's at each action. A conversation that ends at its own
  * limits is followed by another on the Builder's notes, and so is one the Builder ends with
- * `finish`, until three in a row have made no campaign move (`finished`). A lack
- * of room is advice to ask the Examiner while a conversation lives, and the campaign's ending
- * once one has ended with the table still naming it. Without the term the command makes every
- * move itself, a Builder session among them, as it did before 13 October, and nothing a Builder
- * reads differs from then (`SAID`, `src/builder/prompt.ts`). A campaign on record without the
- * term runs so.
+ * `finish`, until three in a row have made no campaign move (`finished`). Every ending the table
+ * names ends a live conversation too, a lack of room among them: until 22 October that one was
+ * advice while a conversation lived, and a Builder bought an Examiner session past its patience.
+ * Without the term the command makes every move itself, a Builder session among them, as it did
+ * before 13 October, and nothing a Builder reads differs from then (`SAID`,
+ * `src/builder/prompt.ts`). A campaign on record without the term runs so.
  *
  * **A campaign opens over a stored pack, which four flags name, or from a prompt** (row F53).
  * The prompt and who solves are then part of what it runs by, its first move is the Examiner's
@@ -59,7 +59,7 @@
  * to gain, it bears in a row before it ends, six by default while the system is
  * built, since every campaign of 9 and 10 October ended on the plan's three before its tasks were
  * measured), who sits in each seat, and the terms of its moves as a command last named them
- * (`TERMS`, `src/builder/opening.ts`): a session's limits, a comparison's size, the practice tasks.
+ * (`TERMS`, `src/campaign/opening.ts`): a session's limits, a comparison's size, the practice tasks.
  * A later run that names nothing runs by the record, and one that names another records it again:
  * these are the operator's conditions, and a comparison logs its own terms at its start. The
  * setting is the log's own record (`campaign.setting`), and every command refuses another.
@@ -105,18 +105,19 @@
  *
  * Not run here: see `campaign.ts`.
  */
-import { backends } from "#src/backends/models.ts";
-import { decide } from "#src/builder/decide.ts";
-import { sessionEnded } from "#src/builder/ground.ts";
-import { type Decided, decidedLine } from "#src/builder/move.ts";
-import { type Opening, SEATS } from "#src/builder/opening.ts";
-import { pendingWords } from "#src/builder/word.ts";
+import { backends } from "#src/agent/backends/models.ts";
+import { decide } from "#src/campaign/decide.ts";
+import { sessionEnded } from "#src/campaign/ground.ts";
+import { type Decided, decidedLine } from "#src/campaign/move.ts";
+import { type Opening, SEATS } from "#src/campaign/opening.ts";
+import { pendingWords } from "#src/campaign/word.ts";
 import { keepPractised } from "#src/builder/session.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { unadmitted } from "#src/kernel/acceptance.ts";
 import { sweepOf } from "#src/kernel/compare.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
-import { cutSessions, latestBuilt, promoted } from "#src/kernel/reports.ts";
+import { latestBuilt, promoted } from "#src/kernel/reports.ts";
+import { cutSessions } from "#src/kernel/trace.ts";
 import { sizeLines } from "#src/kernel/size.ts";
 import { existsSync, mkdirSync } from "#src/meta/filesystem.ts";
 import { isString, type JsonObject } from "#src/meta/json-shape.ts";
@@ -124,7 +125,7 @@ import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { waitOut } from "#src/solve/run.ts";
+import { waitOut } from "#src/solver/run.ts";
 import { acceptCommand } from "../c/accept.ts";
 import { modelNamed, sweepOptions } from "../m0/stored-sweep.ts";
 import { draftCommand } from "../d1b/draft.ts";
@@ -135,8 +136,7 @@ import { campaignLog, openCampaign, packNamed, REPO } from "./campaign.ts";
 import { type CampaignContext, campaignTools } from "./campaign-actions.ts";
 import {
   comparisonOf,
-  DEFAULTS,
-  examTasks,
+  examinerRun,
   flag,
   flagsOf,
   IDLE,
@@ -146,7 +146,6 @@ import {
   opened,
   packed,
   packOf,
-  SCRIPTED,
   type Seats,
   sharedOf,
   type Turn,
@@ -183,7 +182,7 @@ const AGAIN: ReadonlySet<unknown> = new Set(["wall", "turns", "crashed"]);
  * finished ended the campaign with the table naming its comparison (truss-151-m1 b-1,
  * buffer-151-haiku b-1 and buffer-pr169-opus b-1 finished on a harness no comparison read). The
  * host makes a comparison that began under other code as its first move, and its terms refuse it
- * with the campaign's environment ending (`begin`, `src/builder/round.ts`), where the Builder's
+ * with the campaign's environment ending (`begin`, `src/campaign/round.ts`), where the Builder's
  * tool was refused it again and again (main0_5_1, three times at 8e0371c58). Every other Examiner
  * session the table names starts as the next conversation opens, beside it (`campaignTools`).
  * Until 16 October only the campaign's first did, and tasks for want of room were the host's once
@@ -224,7 +223,7 @@ async function make(
 ): Promise<void> {
   const { events, opening, values, seats } = turn;
   const pack = packOf(values);
-  const { builder, examiner } = opening.seats;
+  const { builder } = opening.seats;
   if (decided.move === "accept") {
     const admits = turn.plan.admits.length === 0 ? undefined : turn.plan.admits;
     begin(keyIfDefined("admitted", admits && [...admits]));
@@ -262,44 +261,15 @@ async function make(
   }
   if (decided.move === "draft" || decided.move === "examine") {
     const stand = decided.move === "draft" ? seats.draft : seats.examine;
-    if (seats.seated === solved && examiner === null) {
-      throw new Error(`name --examiner: ${decided.why}, and an Examiner session does that`);
-    }
     if (seats.seated !== solved && stand === undefined) {
       throw new Error(`a rehearsal seats no Examiner, and the campaign needs one: ${decided.why}`);
     }
     const session = nextId(events, decided.move === "draft" ? "d" : "x");
-    const seat = [
-      "--session",
-      session,
-      "--examiner",
-      examiner?.model ?? SCRIPTED,
-      "--examiner-effort",
-      examiner?.effort ?? DEFAULTS.effort,
-    ];
+    const { args, probe } = examinerRun(turn, session, stand, decided.move === "draft" ? "draft" : "write");
     begin({ session });
-    if (decided.move === "draft") {
-      await draftCommand([...flag("name", values.name), ...seat], seats.draft);
-      return;
-    }
-    await examineCommand(
-      [
-        ...pack,
-        ...seat,
-        ...flag("tasks", values["exam-tasks"] ?? examTasks(turn)),
-        // The campaign's setting before one is recorded: the Examiner's budget, and `try_task`'s.
-        ...sharedOf(turn).setting,
-        ...sharedOf(turn).reviewer,
-        ...flag("proposals", values["exam-proposals"]),
-        ...flag("minutes", values["exam-minutes"]),
-        ...flag("turns", values["exam-turns"]),
-        ...flag("reference-home", values["exam-reference"]),
-        ...flag("results", values["exam-results"]),
-      ],
-      seats.examine,
-      // The campaign's own seat, so the tries wait on the load and share the reserve (14 October).
-      seats.probe ?? (seats.examine === undefined ? turn.held : null),
-    );
+    await (decided.move === "draft"
+      ? draftCommand(args, seats.draft, probe)
+      : examineCommand(args, seats.examine, probe));
     return;
   }
   const { setting, cap, reviewer, pastStop } = sharedOf(turn);
@@ -429,7 +399,10 @@ function beginning(log: string, decided: Exclude<Decided, { move: "end" }>) {
  * operator would run, and is on record as it begins, as every move is. Its own tool calls count
  * against `--moves`, and it does not.
  */
-async function converse(context: CampaignContext, named: Decided): Promise<Decided | null> {
+async function converse(
+  context: CampaignContext,
+  named: Exclude<Decided, { move: "end" }>,
+): Promise<Decided | null> {
   const { log, values, seats } = context;
   const turn = turnOf(context);
   const { setting, cap, reviewer, pastStop } = sharedOf(turn);
@@ -438,7 +411,7 @@ async function converse(context: CampaignContext, named: Decided): Promise<Decid
   append(log, MOVED, {
     move: "build",
     code: "led",
-    why: `the Builder's campaign conversation, where the table named ${named.move === "end" ? named.ending : named.move}`,
+    why: `the Builder's campaign conversation, where the table named ${named.move}`,
     session,
   });
   try {
@@ -495,7 +468,10 @@ async function converse(context: CampaignContext, named: Decided): Promise<Decid
  * what it left: a provider's limit waited out where the campaign goes on, and otherwise the line
  * of what comes next, with the ending on record and the campaign handed over where it ended.
  */
-async function lead(context: CampaignContext, named: Decided): Promise<Decided | null> {
+async function lead(
+  context: CampaignContext,
+  named: Exclude<Decided, { move: "end" }>,
+): Promise<Decided | null> {
   const { log, values, seats } = context;
   const left = await converse(context, named);
   if (left === null) {
@@ -511,14 +487,6 @@ async function lead(context: CampaignContext, named: Decided): Promise<Decided |
     await closeCommand([...packOf(values), "--to", values.handover]);
   }
   return left;
-}
-
-/** Whether a conversation that began where the log held `from` events ended other than crashed:
- *  one the provider failed has not answered a lack of room, and the next one may. */
-function closed(log: string, from: number): boolean {
-  return read(log)
-    .slice(from)
-    .some(({ kind, data }) => kind === "build.finished" && data.ended !== "crashed");
 }
 
 /**
@@ -599,9 +567,6 @@ export async function harnessBuilder(
   const held = gated({ ...seats, loaded: values.loaded }, log);
   /** The move this run made last: an exam read here printed its faults as it was read. */
   let last: Decided["move"] | null = null;
-  /** Whether a Builder conversation of this run has ended: a lack of room is its advice before
-   *  one, and the campaign's ending after. */
-  let talked = false;
   for (let made = 0; ; ) {
     // A total the operator left as a word rules from this move on: the newest stands, and the record
     // answers every one (until 11 October the newest alone, and an older one applied at the next move).
@@ -622,13 +587,9 @@ export async function harnessBuilder(
       }
     }
     const decided = decide(events, plan);
-    // Led by its Builder, every move but set-up and what the host owes (`hostOwed`) is the
-    // conversation's, and so is a lack of room until one conversation of this run has ended on it.
-    const led =
-      opening.led &&
-      !SETUP.has(decided.move) &&
-      !hostOwed(decided) &&
-      (decided.move !== "end" || (decided.ending === "no-room" && !talked));
+    // Led by its Builder, every move but set-up, an ending and what the host owes (`hostOwed`) is
+    // the conversation's.
+    const led = opening.led && !SETUP.has(decided.move) && !hostOwed(decided) && decided.move !== "end";
     console.log(
       `\n${made < most && !values["dry-run"] ? `move ${String(made + 1)}` : "next"} · ${decidedLine(decided)}`,
     );
@@ -638,8 +599,7 @@ export async function harnessBuilder(
       const turns = { maxMoves: most, used: made, failed: null };
       const context: CampaignContext = { log, values, opening, seats, held, campaign, paid, ...turns };
       const left = await lead(context, decided);
-      const answered: boolean = talked || left !== null || closed(log, events.length);
-      [made, talked, { opening }] = [context.used, answered, context];
+      [made, { opening }] = [context.used, context];
       if (left !== null) return left;
       continue;
     }

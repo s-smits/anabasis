@@ -9,8 +9,8 @@
  * no split, since it charges the classes alike.
  */
 import type { Api, Model, ThinkingLevel } from "@earendil-works/pi-ai";
-import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "#src/backends/claude.ts";
-import { type BackendOptions, backends } from "#src/backends/models.ts";
+import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "#src/agent/backends/claude.ts";
+import { type BackendOptions, backends } from "#src/agent/backends/models.ts";
 import type { Control } from "#src/kernel/acceptance.ts";
 import { type Contract, type Objective, objectiveLine } from "#src/kernel/contract.ts";
 import { dollars, freezePrices, type PriceTable } from "#src/kernel/meter.ts";
@@ -24,8 +24,8 @@ import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { homedir } from "#src/meta/os.ts";
 import { basename, join } from "#src/meta/path.ts";
-import { type PublicResource, publicResource } from "#src/solve/answer.ts";
-import { toolTreeSearchDirs } from "#src/verify/solve-command-isolation.ts";
+import { type PublicResource, publicResource } from "#src/tools/answer.ts";
+import { toolTreeSearchDirs } from "#src/wall/isolation.ts";
 
 /** The fields of v1's `cycle-solve/v1` result read here. */
 interface StoredSolve {
@@ -240,8 +240,14 @@ export function storedAnswer(row: Row): JsonValue | undefined {
  *  cache lives five minutes: over 110,009 recorded solver turns, 0.9% came more than five minutes
  *  after the one before, and the hour-long writes a login gets by default billed 13% more than
  *  five-minute writes would have (20 October). */
-export function sweepOptions(home = homedir(), window = SWEEP_COMPACT_WINDOW): BackendOptions {
-  return { claude: { executable: claudeExecutable(), compaction: { window }, home, cacheTtl: "5m" } };
+export function sweepOptions(
+  home = homedir(),
+  window = SWEEP_COMPACT_WINDOW,
+  shutdown?: AbortSignal,
+): BackendOptions {
+  return {
+    claude: { executable: claudeExecutable(), compaction: { window }, home, cacheTtl: "5m", shutdown },
+  };
 }
 
 /** The model a row ran, from the backends this system runs on. */

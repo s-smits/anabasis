@@ -1,12 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { fauxAssistantMessage, fauxProvider, normalizeContext } from "@earendil-works/pi-ai";
-import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "../src/backends/claude.ts";
-import { type BackendOptions, backends, compactionMode, retried } from "../src/backends/models.ts";
-import { read } from "../src/kernel/log.ts";
+import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "../src/agent/backends/claude.ts";
+import { type BackendOptions, backends, compactionMode, retryPolicy } from "../src/agent/backends/models.ts";
 import { mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { traceSink } from "../src/solve/seat.ts";
 
 const HOUR_S = 60 * 60;
 const home = mkdtempSync(join(tmpdir(), "ana-backends-"));
@@ -38,7 +35,7 @@ afterAll(() => {
 describe("the three backends", () => {
   it("serve Codex, OpenRouter and Claude Code from pi's catalogs", () => {
     const models = backends(options);
-    expect(models.getModel("openai-codex", "gpt-5.5")?.api).toBe("openai-codex-responses");
+    expect(models.getModel("openai-codex", "gpt-6.1-sol")?.api).toBe("openai-codex-responses");
     expect(models.getModel("openrouter", "anthropic/claude-opus-5")).toBeDefined();
     expect(models.getModel("claude", "claude-opus-5")?.api).toBe("claude-agent-sdk");
     // The same backend on an API key is a provider of its own, with the same catalog and prices,
@@ -91,10 +88,14 @@ describe("the three backends", () => {
     const claude = (id: string) => ({ provider: "claude", id, contextWindow: 1_000_000 });
     expect(compactionMode(claude("claude-opus-5"), sweep)).toBe("autoCompactWindow=300000");
     expect(compactionMode(claude("claude-opus-5-5"), options)).toBe("off");
-    const codex = { provider: "openai-codex", id: "gpt-5.5", contextWindow: 400_000 };
-    expect(compactionMode(codex, sweep)).toBe("pi window=300000 reserve=16384 keep=20000");
+    const codex = { provider: "openai-codex", id: "gpt-6.1-sol", contextWindow: 400_000 };
+    expect(compactionMode(codex, sweep)).toBe(
+      "durable window=300000 reserve=16384 keep=20000 summaryReserve=116384 background=off",
+    );
     const glm = { provider: "openrouter", id: "z-ai/glm-5", contextWindow: 200_000 };
-    expect(compactionMode(glm, options)).toBe("pi window=200000 reserve=16384 keep=20000");
+    expect(compactionMode(glm, options)).toBe(
+      "durable window=200000 reserve=16384 keep=20000 summaryReserve=16384 background=off",
+    );
   });
 
   // The CLI clamps the window to the context it serves the id, without a word: a bare id gets 200K.
@@ -114,34 +115,9 @@ describe("the three backends", () => {
   });
 });
 
-describe("a pi-served provider's calls", () => {
-  const context = normalizeContext({
-    messages: [{ role: "user", content: "Solve the task.", timestamp: 0 }],
-  });
-  const failed = (errorMessage: string) => fauxAssistantMessage("", { stopReason: "error", errorMessage });
-
-  it("are tried again in place when the transport drops, and answer with the last attempt", async () => {
-    const faux = fauxProvider();
-    faux.setResponses([failed("WebSocket closed 1000"), fauxAssistantMessage("Done.")]);
-    const message = await retried(faux.provider).streamSimple(faux.getModel(), context).result();
-    expect(message.stopReason).toBe("stop");
-    expect(faux.state.callCount).toBe(2);
-
-    // The turn's line in the log says what the attempt before it said; a call made once says nothing.
-    const log = join(home, "retried.jsonl");
-    const sink = traceSink(log, "solve", "s-1", () => 1);
-    sink({ type: "turn_end", message, toolResults: [] });
-    sink({ type: "turn_end", message: fauxAssistantMessage("Done."), toolResults: [] });
-    const [again, once] = read(log).map(({ data }) => data);
-    expect(again?.retried).toEqual(["WebSocket closed 1000"]);
-    expect(once).not.toHaveProperty("retried");
-  });
-
-  it("are not tried again on a failure no retry would mend", async () => {
-    const faux = fauxProvider();
-    faux.setResponses([failed("invalid_request_error: unknown parameter")]);
-    const message = await retried(faux.provider).streamSimple(faux.getModel(), context).result();
-    expect(message.errorMessage).toContain("unknown parameter");
-    expect(faux.state.callCount).toBe(1);
-  });
+it("lets durable retry Codex and OpenRouter at the previous attempts and backoff, and leaves Claude alone", () => {
+  for (const provider of ["openai-codex", "openrouter"]) {
+    expect(retryPolicy(provider)).toEqual({ enabled: true, maxRetries: 3, baseDelayMs: 2000 });
+  }
+  for (const provider of ["claude", "claude-api", "faux"]) expect(retryPolicy(provider).enabled).toBe(false);
 });

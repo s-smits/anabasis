@@ -1,22 +1,22 @@
 /**
  * One solve of a benchmark task by an Anabasis harness, inside the benchmark's own container: the
- * study's counterpart of `play()` (`src/solve/run.ts`), for a benchmark that grades the container's
+ * study's counterpart of `play()` (`src/solver/run.ts`), for a benchmark that grades the container's
  * state after the agent exits instead of an `answer.json` checked by a contract.
  *
  * `play()` cannot run there: it is bound to a campaign's log, to Seatbelt or Bubblewrap and to a
  * claimed seat root, and the container is itself the sandbox. So this is the same loop over the
  * same parts, with the command wall taken out:
- * - pi's coding tools as the harness's presets select them (`selectedCodingTools`), on pi's local
+ * - durable's coding tools as the harness's presets select them (`selectedCodingTools`), on its local
  *   operations in the container's working directory, with the harness's `.toolchain` first on PATH
  *   in the order a solve's shell has it (`toolTreeSearchDirs`);
- * - pi's system prompt from pi's builder, with the harness's guide as project context under the
+ * - the study's system prompt, with the harness's guide as project context under the
  *   sentence a campaign's solver reads, and a duty that names the benchmark's deliverable;
  * - the solve wall and the model-turn cap, told on every tool result by `timed`, the nudge after a
- *   turn that stops without `submit`, pi's compaction, and OpenRouter as the backends serve it,
- *   retried (`openrouter`, `src/backends/models.ts`);
+ *   turn that stops without `submit`, durable's compaction and retries, and OpenRouter as the
+ *   backends serve it (`openrouter`, `src/agent/backends/models.ts`);
  * - the trace as `solve.turn`, `solve.call` and `solve.compacted` events in a log of its own,
- *   written by `traceSink` and `loopCompaction` and read by `src/kernel/trace.ts`, and the spend
- *   as `spentBy` sums a campaign's solve, so a change to the log's format has one owner to change;
+ *   written by `sit` (`src/agent/session.ts`) and read by `src/kernel/trace.ts`, and the spend
+ *   as `sit` sums a campaign's solve, so a change to the log's format has one owner to change;
  *   the same trace as Harbor's ATIF trajectory (`trajectoryOf`, `src/kernel/atif.ts`), where the
  *   benchmark's tools look for an agent's run, and the ending of a solve that left no answer as a
  *   campaign's solve is read (`unanswered`, `src/kernel/solve.ts`).
@@ -32,23 +32,16 @@
  * A harness that declares its own tools (`agent/tools.ts`) is refused: no harness kept on record
  * declared one on 21 October 2026 (0 of 193), and serving them would need the harness shim.
  */
-import { type AgentMessage, runAgentLoop, type StreamFn } from "@earendil-works/pi-agent-core";
+import { type AssistantMessage, createModels, type ThinkingLevel } from "@earendil-works/pi-ai";
+import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import {
-  type AssistantMessage,
-  createInitialSystemMessage,
-  type ThinkingLevel,
-  toToolDeclaration,
-  type Usage,
-} from "@earendil-works/pi-ai";
+  createBashTool,
+  createEditTool,
+  createReadTool,
+  createWriteTool,
+} from "@earendil-works/pi-durable/tools";
 import { Type } from "typebox";
-import type { ToolDefinition } from "../../vendor/pi-coding-agent/core/extensions/types.ts";
-import { buildSystemPrompt } from "../../vendor/pi-coding-agent/core/system-prompt.ts";
-import { createBashToolDefinition } from "../../vendor/pi-coding-agent/core/tools/bash.ts";
-import { createEditToolDefinition } from "../../vendor/pi-coding-agent/core/tools/edit.ts";
-import { createReadToolDefinition } from "../../vendor/pi-coding-agent/core/tools/read.ts";
-import { wrapToolDefinitions } from "../../vendor/pi-coding-agent/core/tools/tool-definition-wrapper.ts";
-import { createWriteToolDefinition } from "../../vendor/pi-coding-agent/core/tools/write.ts";
-import { openrouter, retried } from "#src/backends/models.ts";
+import { openrouter } from "#src/agent/backends/models.ts";
 import { trajectoryOf } from "#src/kernel/atif.ts";
 import { read } from "#src/kernel/log.ts";
 import { unanswered } from "#src/kernel/solve.ts";
@@ -59,14 +52,15 @@ import { join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
-import { selectedCodingTools } from "#src/solve/coding-tools.ts";
-import type { SolveClock } from "#src/solve/command.ts";
-import { openHarness } from "#src/solve/harness.ts";
-import { installedPrograms } from "#src/solve/programs.ts";
-import { NUDGE } from "#src/solve/prompt.ts";
-import { timed } from "#src/solve/run.ts";
-import { loopCompaction, spentBy, traceSink } from "#src/solve/seat.ts";
-import { shellQuote, toolTreeSearchDirs } from "#src/verify/solve-command-isolation.ts";
+import { selectedCodingTools } from "#src/tools/coding.ts";
+import { ending, text, tool } from "#src/tools/answer.ts";
+import type { SolveClock } from "#src/tools/command.ts";
+import { openHarness } from "#src/harness/open.ts";
+import { installedPrograms } from "#src/harness/programs.ts";
+import { NUDGE } from "#src/solver/prompt.ts";
+import { timed } from "#src/solver/run.ts";
+import { type SeatTool, sit } from "#src/agent/session.ts";
+import { shellQuote, toolTreeSearchDirs } from "#src/wall/isolation.ts";
 
 /** The file names the Harbor agent reads back from the trial's log folder (`harbor/pi_agent.py`). */
 export const TRACE_FILE = "pi-log.jsonl";
@@ -132,7 +126,7 @@ function asked(args: readonly string[]): Asked {
 }
 
 /** The benchmark's deliverable and the solve's limits, in the words a campaign's solver reads them
- *  where they are the same (`duty`, `src/solve/prompt.ts`). */
+ *  where they are the same (`duty`, `src/solver/prompt.ts`). */
 function duty(ask: Asked, guide: string | null): string {
   return [
     "Complete the task the first message gives with the available tools; the method is yours to choose.",
@@ -147,19 +141,16 @@ function duty(ask: Asked, guide: string | null): string {
   ].join(" ");
 }
 
-function submitTool(said: { submitted: boolean }): ToolDefinition {
-  return {
+function submitTool(said: { submitted: boolean }): SeatTool {
+  return tool({
     name: "submit",
-    label: "Submit",
     description: "End the task: the working directory and the files the task names are graded as they stand.",
-    promptSnippet: "End the task once the work is complete",
     parameters: Type.Object({}),
-    executionMode: "sequential",
     execute: async () => {
       said.submitted = true;
-      return { content: [{ type: "text", text: "Submitted." }], details: null, terminate: true };
+      return ending(text("Submitted."));
     },
-  };
+  });
 }
 
 async function solve(ask: Asked) {
@@ -173,85 +164,74 @@ async function solve(ask: Asked) {
   const path = harness.toolTree === null ? [] : toolTreeSearchDirs(harness.toolTree);
   const prefix = path.length === 0 ? undefined : `export PATH=${shellQuote(path.join(":"))}:"$PATH"`;
   const coding = {
-    read: createReadToolDefinition(cwd),
-    bash: createBashToolDefinition(cwd, prefix === undefined ? {} : { commandPrefix: prefix }),
-    edit: createEditToolDefinition(cwd),
-    write: createWriteToolDefinition(cwd),
-  } satisfies Record<string, ToolDefinition>;
+    read: createReadTool(),
+    bash: createBashTool(prefix === undefined ? {} : { commandPrefix: prefix }),
+    edit: createEditTool(),
+    write: createWriteTool(),
+  } satisfies Record<string, SeatTool>;
   const said = { submitted: false };
   const defined = [
     ...selectedCodingTools(harness.presets).flatMap((name) => coding[name] ?? []),
     submitTool(said),
   ];
   const programs = installedPrograms(harness.toolTree);
-  const prompt = buildSystemPrompt({
-    cwd,
-    selectedTools: defined.map(({ name }) => name),
-    toolSnippets: Object.fromEntries(defined.map(({ name, promptSnippet }) => [name, promptSnippet ?? ""])),
-    toolGuidelines: Object.fromEntries(
-      defined.map(({ name, promptGuidelines }) => [name, [...(promptGuidelines ?? [])]]),
-    ),
-    appendSystemPrompt: duty(ask, harness.guide),
-    contextFiles: harness.guide === null ? [] : [{ path: GUIDE_FILE, content: harness.guide }],
-    sections:
-      programs.length === 0
-        ? {}
-        : { environment: `- Programs this harness installed run by name: ${programs.join(", ")}.` },
-  });
-  const provider = retried(openrouter());
+  const prompt = [
+    duty(ask, harness.guide),
+    `Working directory: ${cwd}`,
+    ...(programs.length === 0
+      ? []
+      : [`Programs this harness installed run by name: ${programs.join(", ")}.`]),
+    ...(harness.guide === null
+      ? []
+      : [`Project-specific instructions and guidelines (${GUIDE_FILE}):\n${harness.guide}`]),
+  ].join("\n\n");
+  const provider = openrouter();
   const listed = provider.getModels().find(({ id }) => id === ask.model);
   if (listed === undefined) throw new Error(`OpenRouter as the backends serve it has no ${ask.model}`);
   if (ask.dryRun) {
     return { ending: "dry-run", harness: harness.digest, prompt, found: resolved(prefix, programs) };
   }
   const model = { ...listed, baseUrl: ask.baseUrl };
-  // The loop and its compaction ask for the one model they were given, so the stream sends that.
-  const stream: StreamFn = (_asking, context, options) =>
-    provider.streamSimple(model, context, { ...options, apiKey: ask.key });
+  const models = createModels({
+    authContext: {
+      env: async (name) => (name === "OPENROUTER_API_KEY" ? ask.key : undefined),
+      fileExists: async () => false,
+    },
+  });
+  // sit resolves the model by provider and id, including for compaction; keep the proxy URL there.
+  models.setProvider({ ...provider, getModels: () => [model], getAllModels: () => [model] });
   const turns: AssistantMessage[] = [];
-  const summaries: Usage[] = [];
   const started = performance.now();
   const clock: SolveClock = { started, seconds: ask.wallSeconds };
-  const tools = wrapToolDefinitions(
-    defined.map((tool) => timed(tool, { clock, turns: () => turns.length, modelTurns: ask.modelTurns })),
+  const tools = defined.map((entry) =>
+    timed(entry, { clock, turns: () => turns.length, modelTurns: ask.modelTurns }),
   );
-  const system = createInitialSystemMessage(prompt, tools.map(toToolDeclaration));
   const log = join(ask.logs, TRACE_FILE);
   const wall = new AbortController();
   const timer = setTimeout(() => wall.abort(), ask.wallSeconds * 1000);
-  const user = (content: string): AgentMessage => ({ role: "user", content, timestamp: Date.now() });
   let prompts = 1;
-  let crash: string | null = null;
-  try {
-    await runAgentLoop(
-      [user(ask.instruction)],
-      { messages: system === undefined ? [] : [system], tools },
-      {
-        model,
-        reasoning: ask.effort,
-        sessionId: "pi-solve",
-        convertToLlm: (messages) => messages,
-        toolExecution: "sequential",
-        finishTurn: ({ message }) => {
-          if (message.role === "assistant") turns.push(message);
-          return turns.length >= ask.modelTurns || said.submitted ? { action: "end" } : undefined;
-        },
-        getFollowUpMessages: async () => {
-          if (said.submitted || prompts >= ask.prompts) return [];
-          prompts += 1;
-          return [user(NUDGE)];
-        },
-        prepareRequest: loopCompaction(log, "solve", "pi-solve", stream, summaries),
-      },
-      traceSink(log, "solve", "pi-solve", () => turns.length),
-      wall.signal,
-      stream,
-    );
-  } catch (error) {
-    crash = errorMessage(error);
-  } finally {
-    clearTimeout(timer);
-  }
+  const { thrown: crash, spent } = await sit({
+    models: () => models,
+    id: "pi-solve",
+    model,
+    effort: ask.effort,
+    system: prompt,
+    opening: ask.instruction,
+    tools,
+    // The benchmark's container is this seat's wall; this adapter runs only inside that container.
+    env: new NodeExecutionEnv({ cwd }),
+    trace: { log, of: "solve" },
+    turns,
+    most: ask.modelTurns,
+    over: () => said.submitted,
+    next: async () => {
+      if (said.submitted || prompts >= ask.prompts) return null;
+      prompts += 1;
+      return NUDGE;
+    },
+    stops: [wall.signal],
+  });
+  clearTimeout(timer);
   // Harbor's viewer and `harbor analyze` read an agent's run from `agent/trajectory.json`.
   const trajectory = trajectoryOf(read(log), "solve", "pi-solve", {
     name: "anabasis",
@@ -267,7 +247,7 @@ async function solve(ask: Asked) {
     effort: ask.effort,
     prompts,
     seconds: (performance.now() - started) / 1000,
-    ...(await spentBy(model, "pi-solve", turns, summaries)),
+    ...spent,
   };
 }
 

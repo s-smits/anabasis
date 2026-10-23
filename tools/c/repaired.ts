@@ -12,7 +12,7 @@
  * - Every answer the log holds a checker's verdict for is graded again under the repaired checker
  *   (`regraded` in `src/kernel/acceptance.ts`), and each verdict that moved is printed.
  * - The moved verdicts are set against what was ruled of the old ones (`repairReading` in
- *   `src/review/rejections.ts`): the Referee's rulings in the log, and a person's labels with
+ *   `src/referee/rejections.ts`): the Referee's rulings in the log, and a person's labels with
  *   `--labels`, which stand over them. A refusal may be withdrawn only from an answer ruled a check
  *   defect. One withdrawn from an answer ruled earned, or from one nobody read, and an accepted
  *   answer newly refused, each count against the repair.
@@ -38,8 +38,8 @@ import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { plural } from "#src/meta/text.ts";
-import { RULINGS } from "#src/review/agreement.ts";
-import { labelled, repairReading } from "#src/review/rejections.ts";
+import { RULINGS } from "#src/referee/agreement.ts";
+import { labelled, repairReading } from "#src/referee/rejections.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { checkProgram, packControls, readPack } from "../m0/stored-sweep.ts";
 

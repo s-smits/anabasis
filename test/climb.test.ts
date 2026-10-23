@@ -25,7 +25,7 @@ import {
   riskLines,
   worthLine,
   worthOf,
-} from "../src/builder/climb.ts";
+} from "../src/campaign/climb.ts";
 import { examine } from "../src/examiner/session.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import { type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
@@ -45,7 +45,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
-import { ANSWER_FILE } from "../src/solve/answer.ts";
+import { ANSWER_FILE } from "../src/tools/answer.ts";
 import type { Seats } from "../tools/d2/campaign-terms.ts";
 import { harnessBuilder } from "../tools/d2/harness-builder.ts";
 import { fixtureTasks, layOutPack, scriptedModel } from "./helpers/fixture-pack.ts";

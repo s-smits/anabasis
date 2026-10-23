@@ -12,7 +12,7 @@ import {
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { installedPrograms, programsOf } from "../src/solve/programs.ts";
+import { installedPrograms, programsOf } from "../src/harness/programs.ts";
 
 const made: string[] = [];
 afterEach(() => {

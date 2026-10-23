@@ -23,7 +23,7 @@
  * verdict of a regrade into one.
  *
  * A flag is the solver's word that the task is malformed, given in `submit`'s place of an answer
- * (`src/solve/answer.ts`), with why. It is its own outcome, reported apart, and in every tally the
+ * (`src/tools/answer.ts`), with why. It is its own outcome, reported apart, and in every tally the
  * flagging side's own fail (`passed`, `src/kernel/solves.ts`), for rule 7's reason for a broken
  * harness: counted nowhere, a flag would take a task its harness was losing out of the tally. So a
  * task that really is malformed costs nothing, both sides flag it and it ties, and a harness that
@@ -57,7 +57,7 @@ interface LastTurn {
 /**
  * Whether the model's window ended a solve's last turn: a reply cut at its length, or a context
  * that outgrew the model, which the provider reports as an error. The one reading of it: `judge`
- * (`src/solve/run.ts`) asks it of the last turn it holds, and the pool (`taskRecords`,
+ * (`src/solver/run.ts`) asks it of the last turn it holds, and the pool (`taskRecords`,
  * `src/kernel/reports.ts`) of the last `solve.turn` the log records, its `stopReason` and its
  * `error`. A solve the window ended is cut, whatever its turns: the solver is told its turns and
  * never its window. Until 19 October `judge` read spent turns first and wrote `turns-ended` for a
@@ -77,7 +77,7 @@ export function windowEnded(last: LastTurn): boolean {
  * Whether the provider failed a solve's last turn: an error that is not the window's. `judge` ends
  * such a solve a non-result (`provider`), and the pool reads one a log holds as `turns-ended` as a
  * cut: until 14 October `judge` wrote `turns-ended` for a provider failure on the last allowed
- * turn (`src/solve/run.ts`), and a log of before must read as it did.
+ * turn (`src/solver/run.ts`), and a log of before must read as it did.
  */
 export function providerFailed(last: LastTurn): boolean {
   return last.stopReason === "error" && !windowEnded(last);
@@ -86,7 +86,7 @@ export function providerFailed(last: LastTurn): boolean {
 /**
  * How a solve that left no answer ended: the wall's, its last turn's (the provider's failure or the
  * window's), its spent turns', or no answer. The one reading of it, which `judge`
- * (`src/solve/run.ts`) asks once an answer, a flag, a crash and a broken harness are ruled out, and
+ * (`src/solver/run.ts`) asks once an answer, a flag, a crash and a broken harness are ruled out, and
  * which any other runner of a solve asks of the solve it ran, so that both read one ending alike.
  */
 export function unanswered(stopped: {

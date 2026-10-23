@@ -4,16 +4,16 @@
  * session. Every wait sleeps through the host, so a test stands in one that only counts.
  */
 import { describe, expect, it } from "bun:test";
-import { resetOf } from "../src/backends/claude.ts";
-import { crashedRun } from "../src/builder/ground.ts";
-import { affords, flying } from "../src/builder/opening.ts";
+import { resetOf } from "../src/agent/backends/claude.ts";
+import { crashedRun } from "../src/campaign/ground.ts";
+import { affords, flying } from "../src/campaign/opening.ts";
 import { append, type LogEvent, read } from "../src/kernel/log.ts";
 import type { TaskPackage } from "../src/kernel/task.ts";
 import { mkdtempSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import type { Kept } from "../tools/d2/campaign.ts";
-import { waitOut } from "../src/solve/run.ts";
+import { waitOut } from "../src/solver/run.ts";
 import { gated, type Host, waitCrashed } from "../tools/d2/host.ts";
 import type { Campaign, Seats } from "../tools/d2/round.ts";
 import { EXAMPLE } from "./helpers/examiner-seat.ts";

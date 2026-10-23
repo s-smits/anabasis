@@ -8,8 +8,10 @@
  * It is a view of `src/kernel/trace.ts` and reads nothing else. One step is one model turn: the
  * text it said, the calls it made, each call's result as an observation linked by the call's id,
  * and its tokens as Harbor's pi agent counts them (prompt is every input token, cache reads and
- * writes among them; cached is the reads). pi ends a turn after its calls have run, so the calls
- * logged since the previous turn are the calls of the turn logged next. A compaction is a system
+ * writes among them; cached is the reads). A call names the turn it belongs to, which a log of
+ * before 22 October writes after the call and a durable seat's before it, so a call joins the turn
+ * logged last where their numbers match and the turn logged next otherwise; a call that names no
+ * turn joins the next, as the older order had it. A compaction is a system
  * step, its summaries' dollars in `extra`, since ATIF gives metrics to agent steps alone. Calls
  * that no turn ended, where a solve was cut mid-turn, close the trajectory as an agent step
  * without metrics.
@@ -102,22 +104,29 @@ function stepOf(calls: readonly Call[], turn: Turn | null, stepId: number): Json
 /** Seat `seat`'s solve or session `id` in `events`, as one ATIF trajectory. */
 export function trajectoryOf(events: readonly LogEvent[], seat: Seat, id: string, agent: Agent): JsonObject {
   const steps: JsonObject[] = [];
-  let calls: Call[] = [];
+  let pending: Call[] = [];
+  let last: { readonly turn: Turn; readonly calls: Call[] } | null = null;
   let compacted = 0;
   const next = () => steps.length + 1;
+  const flush = () => {
+    if (last !== null) steps.push(stepOf(last.calls, last.turn, next()));
+    last = null;
+  };
   for (const part of tracesIn(events)) {
     if (part.seat !== seat || part.id !== id) continue;
     if (part.part === "call") {
-      calls.push(part);
+      if (last !== null && part.turn !== null && part.turn === last.turn.turn) last.calls.push(part);
+      else pending.push(part);
       continue;
     }
+    flush();
     if (part.part === "turn") {
-      steps.push(stepOf(calls, part, next()));
-      calls = [];
+      last = { turn: part, calls: pending };
+      pending = [];
       continue;
     }
-    if (calls.length > 0) steps.push(stepOf(calls, null, next()));
-    calls = [];
+    if (pending.length > 0) steps.push(stepOf(pending, null, next()));
+    pending = [];
     compacted += part.billed;
     steps.push({
       step_id: next(),
@@ -127,7 +136,8 @@ export function trajectoryOf(events: readonly LogEvent[], seat: Seat, id: string
       extra: { compaction_cost_usd: part.billed },
     });
   }
-  if (calls.length > 0) steps.push(stepOf(calls, null, next()));
+  flush();
+  if (pending.length > 0) steps.push(stepOf(pending, null, next()));
   const metrics = steps.flatMap((step) => {
     const own = asRecord(step.metrics);
     return own === null ? [] : [own];

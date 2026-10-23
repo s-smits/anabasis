@@ -76,7 +76,7 @@ command takes one (`--reference-home on|off`, on by default since 19 October). R
 ## Smaller than a solve
 
 A backend can be seated with no campaign at all: its own provider (`claudeProvider` in
-`src/backends/claude.ts`), one prompt, one tool and the small model, in a script kept outside the
+`src/agent/backends/claude.ts`), one prompt, one tool and the small model, in a script kept outside the
 tree. It answers what the backend's child does around one turn. On 8 October 2026 such
 a probe closed a query on a parked `submit` and counted the child's calls and its lifetime, on the
 tree before a fix and on the tree after. What it proves goes into the backend's test

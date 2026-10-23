@@ -103,12 +103,8 @@ SOFTWARE.
 ## pi-mono
 
 - Source: https://github.com/badlogic/pi-mono, now https://github.com/earendil-works/pi
-- `vendor/pi-coding-agent/` copies the read, write, edit and bash tools and their helpers, the
-  compaction, the system prompt and the extension types the tools read, from pi coding-agent
-  v1.1.0 (abe508e1), and carries its own copy of this licence. Each file's header names its
-  departures.
-- `test/pi-truncate.test.ts` copies pi-mono's `packages/agent/test/harness/truncate.test.ts` at
-  086c32e74, run against the truncate.ts in `vendor/pi-coding-agent/`.
+- The seats run on pi's own packages, `@earendil-works/pi-ai`, `pi-agent-core` and `pi-durable`,
+  installed as dependencies; nothing of pi is copied into this repository.
 
 ```text
 MIT License
@@ -137,7 +133,7 @@ SOFTWARE.
 ## sandbox-runtime
 
 - Source: https://github.com/anthropic-experimental/sandbox-runtime, at commit 295f0e1
-- Copy: `generateMoveBlockingRules` in `src/verify/seatbelt-path-guard.ts`, changed as that file's
+- Copy: `generateMoveBlockingRules` in `src/wall/seatbelt-path-guard.ts`, changed as that file's
   header states
 
 ```text

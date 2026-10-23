@@ -1,8 +1,8 @@
-// What a campaign runs by (`src/builder/opening.ts`): its opening as the log records it, and the
+// What a campaign runs by (`src/campaign/opening.ts`): its opening as the log records it, and the
 // plan move 7 reads beside the log.
 
 import { describe, expect, it } from "bun:test";
-import { openingOf, planOf } from "../src/builder/opening.ts";
+import { openingOf, planOf } from "../src/campaign/opening.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 

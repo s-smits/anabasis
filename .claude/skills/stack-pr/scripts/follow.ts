@@ -18,8 +18,9 @@
  *
  * The branch is reset to the top: what matters is on GitHub, so a commit made on it is not kept.
  * Changes to tracked files are stashed and popped back on the new top, by the stash's own commit,
- * so that a stash another worktree pushed meanwhile is never the one popped. A switch git refuses,
- * as it refuses `main` while another worktree has it checked out, pops them back where they were.
+ * so that a stash another worktree pushed meanwhile is never the one popped. A switch git refuses
+ * pops them back where they were. A branch another worktree has checked out is refused before
+ * anything moves: git before 2.42, as on the Linux runner (2.34), resets it under that worktree.
  */
 import { CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { gitMaybe, gitText } from "#src/meta/git.ts";
@@ -81,6 +82,14 @@ export function follow(root: string, top: Top | undefined): string[] {
   const was = gitMaybe(root, "symbolic-ref", "--short", "-q", "HEAD");
   const from = gitText(root, "rev-parse", "HEAD");
   const to = gitText(root, "rev-parse", upstream);
+  const here = gitText(root, "rev-parse", "--show-toplevel");
+  const held = gitText(root, "worktree", "list", "--porcelain")
+    .split("\n\n")
+    .map((entry) => entry.split("\n"))
+    .find((lines) => lines.includes(`branch refs/heads/${name}`) && lines[0] !== `worktree ${here}`);
+  if (held !== undefined) {
+    throw new CommandFailure(`${name} is checked out in ${held[0]?.slice(9) ?? "another worktree"}`);
+  }
   const stashes = (): string[] => gitText(root, "stash", "list", "--format=%H").split("\n");
   const before = stashes();
   gitText(root, "stash", "push", "-q", "-m", `follow: ${was ?? from.slice(0, 7)} to ${name}`);

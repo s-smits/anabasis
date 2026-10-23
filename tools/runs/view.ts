@@ -2,13 +2,13 @@
  * `bun run runs view <name> [--level N] [--target N] [--practice N] [--past-stop "<why>"]`
  *
  * A campaign as its log reads: the set-up, what each step handed over, the climb, and the move
- * that comes next. It is the one reading of `src/builder/handover.ts`, printed whole for the
+ * that comes next. It is the one reading of `src/campaign/handover.ts`, printed whole for the
  * campaign's owner. Nothing here reads the log for itself, and nothing is launched.
  *
  * Its last line is the one move the plan's decision table names on this log (`decide`,
- * `src/builder/decide.ts`), with its reason: what `tools/d2/harness-builder.ts` would make next.
+ * `src/campaign/decide.ts`), with its reason: what `tools/d2/harness-builder.ts` would make next.
  * The table is asked with the four flags of the campaign command that bear on it, and with the
- * terms its opening keeps for those it does not name (`campaign.opened`, `src/builder/opening.ts`),
+ * terms its opening keeps for those it does not name (`campaign.opened`, `src/campaign/opening.ts`),
  * so that the view and `tools/d2/harness-builder.ts` name one move on one log. Until 11 October
  * the view also listed every move a launch would be admitted for, and that list named a promotion
  * on one step where the table waits for its repeat; the table's move is the one it prints. The
@@ -17,17 +17,17 @@
  * over a pack: that the pack's tasks are taken in first.
  *
  * A step's line holds counts, harnesses, a tally, a reading and a cost. A harness is named by its
- * letter beside its digest's head (`namesOf`, `src/builder/names.ts`; 14 October), since a run of
+ * letter beside its digest's head (`namesOf`, `src/campaign/names.ts`; 14 October), since a run of
  * eight hex characters a line was what an operator had to match by eye across the view and the
  * closing report. It names no task, and it is for the operator and the session that stands in for
  * the campaign's owner: what a Builder is told of the same rows is `src/builder/past.ts`.
  */
-import { epochLine, epochsOf } from "#src/builder/climb.ts";
-import { decide } from "#src/builder/decide.ts";
-import { type Decided, decidedLine, short } from "#src/builder/move.ts";
-import { type Called, calledBy, namesOf } from "#src/builder/names.ts";
-import { openingOf, planOf } from "#src/builder/opening.ts";
-import { type Campaign, campaignOf, type Handover, openSteps } from "#src/builder/handover.ts";
+import { epochLine, epochsOf } from "#src/campaign/climb.ts";
+import { decide } from "#src/campaign/decide.ts";
+import { type Decided, decidedLine, short } from "#src/campaign/move.ts";
+import { type Called, calledBy, namesOf } from "#src/campaign/names.ts";
+import { openingOf, planOf } from "#src/campaign/opening.ts";
+import { type Campaign, campaignOf, type Handover, openSteps } from "#src/campaign/handover.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { gitText } from "#src/meta/git.ts";

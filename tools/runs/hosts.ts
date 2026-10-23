@@ -27,7 +27,7 @@
  */
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { type Host, hostsOf, hostNamed, configuredRuntime } from "./host-config.ts";
-import { quoted, shellPath, sshScript, treeBun } from "./host-command.ts";
+import { passedOn, quoted, remoteEnd, shellPath, sshScript, treeBun } from "./host-command.ts";
 import { readControllers } from "./code.ts";
 import { CLI, runs } from "./registry.ts";
 
@@ -69,10 +69,10 @@ export async function verbOn(host: Host, args: readonly string[]): Promise<numbe
 
 /** Run a repository script through the same login shell and recursion boundary as a runs verb. */
 export async function scriptOn(host: Host, script: string, args: readonly string[]): Promise<number> {
-  const io = { stdin: "inherit", stdout: "inherit", stderr: "inherit" } as const;
+  const io = { stdin: "inherit", stdout: "inherit", stderr: "pipe" } as const;
   const ready = host.prepared === true ? host : (await readControllers([host]))[0];
   if (ready === null || ready === undefined) return 1;
-  return await capturedSpawn(scriptCommand(ready, script, args), io).exited;
+  return await passedOn(capturedSpawn(scriptCommand(ready, script, args), io));
 }
 
 /** `bun run runs on`. */
@@ -98,11 +98,12 @@ export async function hosts(args: readonly string[]): Promise<void> {
       }
       const io = { stdin: "ignore", stdout: "pipe", stderr: "pipe", timeout: HOST_MS } as const;
       const child = capturedSpawn(scriptCommand(controller, CLI, ["status", ...args]), io);
-      const [rows, errors, code] = await Promise.all([
+      const [rows, said, exited] = await Promise.all([
         new Response(child.stdout).text(),
         new Response(child.stderr).text(),
         child.exited,
       ]);
+      const { code, stderr: errors } = remoteEnd(exited, said);
       const late =
         child.signalCode === null
           ? `answered with exit ${String(code)}`
@@ -172,9 +173,14 @@ export async function askedScript(
       if (controller === null || controller === undefined) {
         return { host, lines: null, elapsedMs: Math.round(performance.now() - started) };
       }
-      const io = { stdin: "ignore", stdout: "pipe", stderr: "ignore", timeout: HOST_MS } as const;
+      const io = { stdin: "ignore", stdout: "pipe", stderr: "pipe", timeout: HOST_MS } as const;
       const child = capturedSpawn(scriptCommand(controller, script, args), io);
-      const [said, code] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+      const [said, errors, exited] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ]);
+      const { code } = remoteEnd(exited, errors);
       const elapsedMs = Math.round(performance.now() - started);
       if (code !== 0) {
         console.error(

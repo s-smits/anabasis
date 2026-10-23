@@ -46,7 +46,7 @@ import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { type Host, hostNamed } from "./host-config.ts";
-import { quoted, rsync, shellPath, sshScript, worktreesIn } from "./host-command.ts";
+import { quoted, remoteText, rsync, shellPath, worktreesIn } from "./host-command.ts";
 import { verbOn } from "./hosts.ts";
 import { CAMPAIGNS, campaignOf, HERE } from "./registry.ts";
 import { syncRuns } from "./snapshots.ts";
@@ -78,8 +78,9 @@ export function rehomed(flags: readonly string[], from: string, to: string): str
 
 /** The shell text `script` run at `end`, its output trimmed. */
 function at(end: End, script: string): string {
-  const command = end.host === undefined ? ["sh", "-c", script] : sshScript(end.host, script);
-  return runTextSyncOrThrow(command).trim();
+  return (
+    end.host === undefined ? runTextSyncOrThrow(["sh", "-c", script]) : remoteText(end.host, script)
+  ).trim();
 }
 
 /** The end `name` names: this machine, or a host `ANA_HOSTS` lists. */

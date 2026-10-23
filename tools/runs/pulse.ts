@@ -8,9 +8,9 @@
  *
  * With no names a look covers the open runs and those open at the last look, so a run's ending is
  * said once; a name matches every run whose name holds it. Quiet, no event for 20 minutes in an
- * open run, is said when it starts and when it ends. Since 22 October each look also polls every
- * configured host once, with a cursor for this observer, unless --here is named. A missing peer
- * is a warning and exit 1. No local state path is sent to another machine.
+ * open run, counted from a named reset it waits out where that is later, is said when it starts and
+ * when it ends. Since 22 October each look also polls every configured host once, with a cursor for
+ * this observer, unless --here is named. A missing peer is a warning and exit 1. No local state path is sent to another machine.
  */
 import { type EventKind, type LogEvent } from "#src/kernel/log.ts";
 import { billedAll, traceKind, tracesIn } from "#src/kernel/trace.ts";
@@ -218,8 +218,14 @@ export function pulse(
     lines.push(`⚠ ${plural(errors.length, "failed turn")}: ${[...new Set(errors)].map(short).join("; ")}`);
   }
   const last = log.at(-1);
-  const quiet = open && last !== undefined && now - Date.parse(last.at) > QUIET_MS;
-  if (quiet && before?.quiet !== true) lines.push(`⚠ quiet for ${minutes(now - Date.parse(last.at))}`);
+  // A run waiting out a named reset is silent by design, so its quiet is counted from the reset:
+  // until 23 October such a run was called quiet, and until 25 October it was again for the minute
+  // between the reset and its next event, or while other seats wrote after the wait.
+  const waited = ({ kind, data }: LogEvent) => kind === "campaign.waited" && isString(data.until);
+  const until = log.findLast(waited)?.data.until;
+  const since = Math.max(Date.parse(last?.at ?? ""), isString(until) ? Date.parse(until) : 0);
+  const quiet = open && last !== undefined && now - since > QUIET_MS;
+  if (quiet && before?.quiet !== true) lines.push(`⚠ quiet for ${minutes(now - since)}`);
   if (!quiet && before?.quiet === true) lines.push("· not quiet any more");
   // A run's end is that of the last thing it started: an Examiner session writes no report, and
   // the second on exam-1 (2026-10-08) ended whole and was said to be gone before one. A checkpoint

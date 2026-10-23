@@ -78,6 +78,17 @@ describe("the runs pulse", () => {
       event(30, "build.turn", { session: "r1-b", turn: 2, error: null, usage: usage(0.5) }),
     ];
     expect(pulse(round, woken, "open", quiet.seen, later).said).toEqual(["· not quiet any more"]);
+    // A wait for a named reset is no quiet: the quiet is counted from the reset, also where another
+    // seat wrote after the wait, and the minute a run takes to wake after the reset is not one.
+    const waiting = [
+      ...built,
+      event(5, "campaign.waited", { for: "provider", until: at(60), ms: 3_300_000 }),
+      event(10, "exam.finished", { session: "x-1" }),
+    ];
+    const seen = { lines: 7, open: true, quiet: false };
+    expect(pulse(round, waiting, "open", seen, later).seen.quiet).toBe(false);
+    expect(pulse(round, waiting, "open", seen, START + 61 * 60_000).seen.quiet).toBe(false);
+    expect(pulse(round, waiting, "open", seen, START + 81 * 60_000).said).toEqual(["⚠ quiet for 21m"]);
   });
 
   it("says a process gone before its report, and not one that reported", () => {

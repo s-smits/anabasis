@@ -78,6 +78,15 @@ describe("the runs pulse", () => {
       event(30, "build.turn", { session: "r1-b", turn: 2, error: null, usage: usage(0.5) }),
     ];
     expect(pulse(round, woken, "open", quiet.seen, later).said).toEqual(["· not quiet any more"]);
+    // A wait for a named reset is no quiet until the reset has passed.
+    const reset = new Date(START + 60 * 60_000).toISOString();
+    const waiting = [...built, event(5, "campaign.waited", { for: "provider", until: reset, ms: 3_300_000 })];
+    expect(pulse(round, waiting, "open", { lines: 6, open: true, quiet: false }, later).seen.quiet).toBe(
+      false,
+    );
+    expect(
+      pulse(round, waiting, "open", { lines: 6, open: true, quiet: false }, START + 61 * 60_000).said,
+    ).toEqual(["⚠ quiet for 56m"]);
   });
 
   it("says a process gone before its report, and not one that reported", () => {

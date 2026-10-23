@@ -21,7 +21,7 @@
  *                over the whole campaign (`riskLines`), which checks their author's own computation
  *                decides (`unadmitted`), what the Referee ruled and what a person's labels
  *                settled, and what was billed. It names each harness by its letter beside its
- *                digest's head (`namesOf`, `src/builder/names.ts`).
+ *                digest's head (`namesOf`, `src/campaign/names.ts`).
  *
  * Until 20 October the report said the checker was read and frozen, and not what decides it: in
  * buffer-fresh-opus-forkedPR223_v0_5_4-r3 every one of the 7 checks, the objective among them, was
@@ -41,18 +41,19 @@
  * counts; the command prints how it ended. A released task is the one to name: a held-out task
  * is solved for nothing a Builder could learn from, but its answer then lies in that log.
  */
-import { promotionsWorth, riskLines, worthLine } from "#src/builder/climb.ts";
-import { UNSETTLED } from "#src/builder/comparison.ts";
-import { campaignOf, type Handover } from "#src/builder/handover.ts";
-import { short } from "#src/builder/move.ts";
-import { type Called, calledBy, namesOf } from "#src/builder/names.ts";
+import { promotionsWorth, riskLines, worthLine } from "#src/campaign/climb.ts";
+import { UNSETTLED } from "#src/campaign/comparison.ts";
+import { campaignOf, type Handover } from "#src/campaign/handover.ts";
+import { short } from "#src/campaign/move.ts";
+import { type Called, calledBy, namesOf } from "#src/campaign/names.ts";
 import { parentToolTree } from "#src/builder/tools.ts";
-import { openingOf } from "#src/builder/opening.ts";
+import { openingOf } from "#src/campaign/opening.ts";
 import { frozenChecker, unadmitted } from "#src/kernel/acceptance.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
-import { comparisonsOf } from "#src/builder/ground.ts";
-import { billedAll, billedParts, promoted } from "#src/kernel/reports.ts";
+import { comparisonsOf } from "#src/campaign/ground.ts";
+import { promoted } from "#src/kernel/reports.ts";
+import { billedAll, billedParts } from "#src/kernel/trace.ts";
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
@@ -60,7 +61,7 @@ import { containsPath } from "#src/meta/path-containment.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
-import { openHarness } from "#src/solve/harness.ts";
+import { openHarness } from "#src/harness/open.ts";
 import { keptAs, openCampaign, PROMOTED, packNamed } from "./campaign.ts";
 import { type Seated, solved } from "./round.ts";
 import { recordedSetting } from "./setting.ts";

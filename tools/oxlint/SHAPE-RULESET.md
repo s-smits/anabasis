@@ -251,7 +251,7 @@ repository. A rule whose count is in the thousands has stopped describing anythi
 would have. Three of its four sites are `if (c) await A(); else await B();` inside tests, where the
 ternary — `await (c ? A() : B())` — reads worse than the two statements it replaces, and the rule
 cannot see the difference. The fourth was real: `let profile: string;` followed by an `if`/`else`
-assigning it in both arms, in `src/verify/solve-sandbox.ts`. That shape had no owner. It belongs to
+assigning it in both arms, in `src/wall/base.ts`. That shape had no owner. It belongs to
 the declaration rather than to the `if`, so it went into `ana/prefer-const-conditional`, which
 already owned the one-arm spelling with a default, instead of arriving as a fifth built-in with
 three sites nobody would fix. A declaration with a default *and* an `else` is left alone, because
@@ -445,7 +445,7 @@ the twenty pairs, and let the lists only shrink, exactly as `BASELINE.md` says.
 ### File size by export count
 
 66 of 510 files export more than eight symbols; `src/solve/built-starter.ts` exports 30,
-`src/verify/wall-policy.ts` 24. `tools/loc/source-policy.ts` already holds files at 600 lines,
+`src/wall/policy.ts` 24. `tools/loc/source-policy.ts` already holds files at 600 lines,
 which is the measure that matters, and an export count is a worse proxy for the same thing. No rule.
 
 ## Part 4 — the order, and the stop condition
@@ -1182,7 +1182,7 @@ at it silenced true findings. `const ISOLATION_FIXTURES = […] as const` beside
 `type IsolationFixture = (typeof ISOLATION_FIXTURES)[number]` hands the union to the compiler, and
 `{…} satisfies Record<IsolationFixture, …>` checks every key against it — but whether that check
 reaches *another* file is the whole question, so it was tested rather than assumed: mistyping
-`host-seatbelt-read-deny/v1` in `src/verify/solve-sandbox.ts`, which declares its own constant four
+`host-seatbelt-read-deny/v1` in `src/wall/base.ts`, which declares its own constant four
 files from the array, fails the build in four places, two of them in tests. Three rows went that
 way. Reading `as const` on its own, though, took the tail to 34 and took three *true* findings with
 it: nothing derives a type from `EXECUTABLE_ROOTS` in `src/run/source-identity.ts`, so
@@ -1475,7 +1475,7 @@ that writes it, and every reader now imports that name: `OPENING_FILE` and `TERM
 went), `BATTERY_FILE`, `CASE_ARTIFACT_FILE` and `CASE_JUDGE_FILE` in `src/correctness-bundle/battery-record.ts`
 beside `batteryPath`, `ITERATION_FILE` in `src/builder/campaign-iterations.ts` (the private copy in
 `campaign-memory.ts` went), `CENSUS_FILE` in `src/run/census-gate.ts`, `BACKENDS_FILE` in
-`src/run/model-preflight.ts`, `SEATBELT_BASELINE` in `src/verify/wall-policy.ts` and
+`src/run/model-preflight.ts`, `SEATBELT_BASELINE` in `src/wall/policy.ts` and
 `CODEX_AUTH_FILE` in `src/backends/login-state.ts`. The bundle names already had owners in
 `src/meta/bundle-layout.ts`; six readers spelled them again after `modelDir()` or under
 `correctness-model/`, and `basename(TASKS_FILE)` answers those. Two rows were not names to own:

@@ -27,7 +27,7 @@
  * This reads and decides nothing: a fault is a sentence for the checker's owner, and what share of
  * faults a checker may carry is the operator's. One thing is not read here. A control tests the
  * faults its author thought of, so controls cannot show that the answers a check refused were
- * wrong; that takes a reading of the refused answers themselves (`src/review/rejections.ts`).
+ * wrong; that takes a reading of the refused answers themselves (`src/referee/rejections.ts`).
  */
 import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";

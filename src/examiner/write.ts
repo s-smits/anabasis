@@ -20,9 +20,9 @@
  * Unmeasured drafts may return in the same session (5 retry signatures in 30 logs), and the
  * reserve holds the next solve alone (2 reserve refusals of 1,396 drafts).
  */
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { SeatTool } from "../agent/session.ts";
 import { Type } from "typebox";
-import { affords, openingOf } from "../builder/opening.ts";
+import { affords, openingOf } from "../campaign/opening.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { acceptedAnswers, proposalsOf, writtenTasks } from "../kernel/history.ts";
 import { poolOf } from "../kernel/reports.ts";
@@ -31,8 +31,6 @@ import { gainOver, informative, type Paired } from "../kernel/compare.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { packageGate, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
 import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
-import { cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
-import { join } from "../meta/path.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
 import { isNumber, isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -40,12 +38,11 @@ import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import { waitTool } from "../builder/tools.ts";
-import { text, tool } from "../solve/answer.ts";
+import { ending, text, tool } from "../tools/answer.ts";
 import { type CheckRow, firstMessage, systemPrompt } from "./prompt.ts";
 import { gapSaid, gateAnswers, gateBilled, heard, measuredGate, TRIED, UNAFFORDED } from "./record.ts";
 
 /** The home's copy of the reference harness, where the campaign's term lays one there. */
-const REFERENCE_HOME = "reference-harness";
 
 /** The author's current answer checked under the draft's own id when needed (`gated`). */
 type Proof = () => Promise<Verdict | null>;
@@ -85,9 +82,15 @@ interface Terms {
   readonly results?: boolean;
 }
 
+/** What the gate reads of one draft: the campaign's contract and log, the session that asks, the
+ *  reference harness's solve, and the answers that passed `try_answer` in the session. */
+type Gate = Pick<Terms, "contract" | "log" | "id" | "probe"> & { readonly planted: ReadonlySet<string> };
+
 /** What a task-writing session's tools share. */
 interface Desk {
   readonly request: Terms;
+  /** Admission outlives its tool call; durable ends that call's context as soon as it returns. */
+  readonly stop: AbortSignal;
   proposed: number;
   /** Content held, refused on a reading or still at the gate, in this or an earlier session. */
   readonly seen: Map<string, "now" | "earlier">;
@@ -113,12 +116,10 @@ const GATE = "task.gate";
  *  and the reference harness's solves of it. */
 const GATES = {
   propose_tasks: {
-    label: "Propose tasks",
     description:
       "Put task instances to the host's gate, as the system prompt's section on the gate says. Each instance is a family, a public input and hidden values, in the shape of the existing tasks.",
   },
   try_task: {
-    label: "Try tasks",
     description: `Put task instances to the host's gate and return at once: the shape of each package, then up to ${String(TRIED)} solves of it by the reference harness, one at a time, as the system prompt's section on the gate says. What the gate says of each comes with a later tool result, and wait returns with it. Each instance is a family, a public input and hidden values, in the shape of the existing tasks.`,
   },
 } as const;
@@ -197,7 +198,7 @@ function shown(measure: number): string {
  *  their best (`gap`, by `gainOver`), and whether they leave the reference room as a comparison
  *  reads it (`informative`). Each later reading only adds to them, so room once shown stays. */
 async function seenOf(
-  { request: { contract, log } }: Desk,
+  { contract, log }: Gate,
   task: TaskPackage,
   {
     from,
@@ -243,9 +244,9 @@ async function seenOf(
  *  or in a rejection the Referee did not rule earned (`probing`, `tools/d1b/examine.ts`), is no
  *  reading. `stop` is the session's signal, which its wall, its end and a killed run abort, so a
  *  wall that fires mid-try starts no other solve and leaves the draft refused unmeasured. */
-async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal, proof: Proof) {
-  const { contract, log, id, probe } = desk.request;
-  if (carries([task.publicInput, task.hidden], desk.planted)) return { reason: PLANTED, said: "" };
+export async function measured(gate: Gate, task: TaskPackage, stop: AbortSignal, proof: Proof) {
+  const { contract, log, id, probe } = gate;
+  if (carries([task.publicInput, task.hidden], gate.planted)) return { reason: PLANTED, said: "" };
   const packaged = packageGate(contract, task);
   if (packaged.outcome === "refused") return { reason: packaged.reason, said: "" };
   if (probe === null) return { reason: null, said: "" };
@@ -255,10 +256,10 @@ async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal, proof:
   let ran = 0;
   let seen: Awaited<ReturnType<typeof seenOf>>;
   do {
-    const ending = await probe(task, id, stop);
+    const solved = await probe(task, id, stop);
     ran += 1;
-    if (ending.outcome !== "non-result") readings.push(ending);
-    seen = await seenOf(desk, task, { from, readings, proof });
+    if (solved.outcome !== "non-result") readings.push(solved);
+    seen = await seenOf(gate, task, { from, readings, proof });
   } while (!seen.room && ran < TRIED && !stop.aborted && affords(log, 1));
   const { solves, valid, answers, authored, gap, unsolved } = seen;
   const unread =
@@ -281,7 +282,7 @@ async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal, proof:
   const roomless = `${counted}, ${unsolved ? "and no answer of yours passed try_answer on it" : "which leaves no room"}`;
   return {
     reason: seen.room ? null : solves === TRIED ? roomless : `${counted}, so it is not measured`,
-    said: `; ${counted}`,
+    said: counted,
     reference: {
       valid,
       solves,
@@ -311,7 +312,13 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
           (error: unknown) => ({ kind: "non-result", reason: errorMessage(error) }) as const,
         );
   };
-  const { reason, said, reference } = await measured(desk, task, stop, proof);
+  const { reason, said, reference } = await measured(
+    { ...request, planted: desk.planted },
+    task,
+    stop,
+    proof,
+  );
+  const held = `${taskId}: held out${said === "" ? "" : `; ${said}`}.`;
   const outcome = reason === null ? { outcome: "passed" } : { outcome: "refused", reason };
   append(log, GATE, {
     version,
@@ -330,12 +337,12 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
   }
   desk.held.push(version);
   const verdict = await proof();
-  if (verdict === null || answer === undefined) return `${taskId}: held out${said}.`;
+  if (verdict === null || answer === undefined) return held;
   if (verdict.kind !== "pass") {
-    return `${taskId}: held out${said}. Author proof was not retained under this task id: ${tried(verdict)}`;
+    return `${held} Author proof was not retained under this task id: ${tried(verdict)}`;
   }
   append(log, "task.feasible", { version, session, answer, ...measureOf(request.contract, verdict) });
-  return `${taskId}: held out${said}.`;
+  return held;
 }
 
 /** Whether the host has the tasks it asked for. */
@@ -380,7 +387,7 @@ function putAside(
 }
 
 /** The tool that holds tasks out, under the name the session's gate has. */
-function proposeTool(desk: Desk, name: keyof typeof GATES): AgentTool {
+function proposeTool(desk: Desk, name: keyof typeof GATES): SeatTool {
   const { id, limits } = desk.request;
   const spent = () => desk.proposed >= limits.puts;
   /** One instance of a batch: why it was not taken, or the instance under its task id. */
@@ -413,7 +420,9 @@ function proposeTool(desk: Desk, name: keyof typeof GATES): AgentTool {
     }),
     executionMode: "sequential",
     // The session's signal, which its wall, its end and a killed run abort (`measured`).
-    execute: async (_id, args, signal = new AbortController().signal) => {
+    execute: async (args, _api, context) => {
+      context.abortSignal?.throwIfAborted();
+      const signal = desk.stop;
       if (supplied(desk)) throw new Error(SUPPLIED);
       if (spent()) throw new Error("This session can propose no further task. Call finish.");
       // Take the call's instances before their gates start, so a batch may exceed what is wanted.
@@ -426,25 +435,22 @@ function proposeTool(desk: Desk, name: keyof typeof GATES): AgentTool {
           isString(instance) ? instance : await gated(desk, instance, signal),
         ),
       );
-      return {
-        ...text(`${lines.join("\n")}${supplied(desk) ? `\n\n${SUPPLIED}` : ""}`),
-        terminate: supplied(desk),
-      };
+      const result = text(`${lines.join("\n")}${supplied(desk) ? `\n\n${SUPPLIED}` : ""}`);
+      return supplied(desk) ? ending(result) : result;
     },
   });
 }
 
-function exampleTool(tasks: readonly Task[]): AgentTool {
+function exampleTool(tasks: readonly Task[]): SeatTool {
   const examples = new Map(tasks.map((task) => [task.taskId, task]));
   return tool({
     name: "read_example",
-    label: "Read an example",
     description: "Return one task of the exam whole: its family, its public input and its hidden values.",
     parameters: Type.Object({
       task: Type.String({ description: "A task's id, from the opening message." }),
     }),
-    executionMode: "parallel",
-    execute: async (_id, args) => {
+    executionMode: "sequential",
+    execute: async (args) => {
       const example = examples.get(args.task);
       if (example === undefined) {
         throw new Error(`${args.task} is not one of the tasks: ${[...examples.keys()].join(", ")}`);
@@ -468,7 +474,7 @@ function exampleTool(tasks: readonly Task[]): AgentTool {
  *  An answer is held to the format first, as a solver's is (`answerFormatFault`): one the checks
  *  passed though the format refused it would mark its instance feasible on an answer no solver
  *  could submit (`poolOf`). */
-function tryTool(desk: Desk, verify: Verifier): AgentTool {
+function tryTool(desk: Desk, verify: Verifier): SeatTool {
   const { request } = desk;
   const { log, contract } = request;
   /** Puts on record that a held task has a valid answer, where the log does not say so yet or the
@@ -491,7 +497,6 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
   };
   return tool({
     name: "try_answer",
-    label: "Try an answer",
     description:
       "Run the checks on an instance with an answer of yours, and say which checks refuse it, or that none does. A try enters no task in the exam. Where the checks pass, the host holds the answer for a task proposed with that content before or after the try. While its gate is still reading, the proof can decide admission; once held, it is kept on the exam side for the Referee. A refused task stays refused. The gate's reading of the instance's package comes first, where it would refuse it.",
     parameters: Type.Object({
@@ -500,8 +505,8 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
       hidden: HIDDEN,
       answer: Type.Unknown({ description: "An answer in the domain's answer format." }),
     }),
-    executionMode: "parallel",
-    execute: async (_id, args, signal) => {
+    executionMode: "sequential",
+    execute: async (args, _api, context) => {
       const candidate = instanceOf("try", args);
       // SAFETY: a tool's arguments are JSON the provider parsed.
       const answer = args.answer as JsonValue;
@@ -512,7 +517,7 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
       const packaged = packageGate(contract, request.pack(instance));
       const gate =
         packaged.outcome === "passed" ? "" : `The gate would refuse this instance: ${packaged.reason}\n`;
-      if (signal?.aborted === true) throw new Error("The session has ended.");
+      if (context.abortSignal?.aborted === true) throw new Error("The session has ended.");
       const unformed = answerFormatFault(contract.answerFormat, answer);
       if (unformed !== null) {
         return text(
@@ -550,10 +555,9 @@ function gatedTasks(events: readonly LogEvent[]): Task[] {
 }
 
 /**
- * The mode that writes tasks: the exam's own tools, `try_answer` where the host verifies, the home
- * carried from the campaign's last session where the wall keeps one (`keep`), and in it a copy of
- * the reference harness where the wall names one (`reference`): the reference's alone, laid afresh
- * each session and left out of the kept home. Blind to it, esp32-fresh-opus's Examiner held 0 of 49
+ * The mode that writes tasks: the exam's own tools, `try_answer` where the host verifies, and the
+ * system prompt that says whether a copy of the reference harness is in its home (`reference`),
+ * which the wall lays there and leaves out of the home it keeps (`inExaminerWall`). Blind to it, esp32-fresh-opus's Examiner held 0 of 49
  * drafts under its first promoted reference; in the supply ablation of 19 October on the buffer
  * domain, 1 of 8 drafts held blind and 4 of 8 with the copy. It is the operator's term
  * (`exam-reference`), on unless a campaign names it off.
@@ -561,13 +565,14 @@ function gatedTasks(events: readonly LogEvent[]): Task[] {
 export function writing(
   request: Terms,
   pinned: readonly Engine[],
-  keep: string | undefined,
-  reference: string | undefined,
+  reference: "unseen" | "in-home",
+  stop = new AbortController().signal,
 ) {
   const { limits, verify, wanted } = request;
   const before = read(request.log);
   const desk: Desk = {
     request,
+    stop,
     proposed: 0,
     seen: new Map(gatedTasks(before).map((task) => [contentOf(task), "earlier"] as const)),
     answered: new Map(),
@@ -586,12 +591,9 @@ export function writing(
   // that one failed: main0_5_1's x-6 and buffer-159-opus's x-8 opened on one (16 October).
   const epoch = before.slice(before.findLastIndex(({ kind }) => kind === "harness.promoted") + 1);
   const note = epoch.findLast(({ kind, data }) => kind === "exam.finished" && isString(data.note))?.data.note;
-  // The last session, where the provider failed its turn with no command running: its home is kept.
-  const cut = before.findLast(({ kind }) => kind === "exam.finished")?.data;
-  const kept = cut?.ended === "crashed" && cut.running === 0 && isString(cut.session) ? cut.session : null;
   return {
     kind: "exam" as const,
-    system: systemPrompt(attempts, reference === undefined ? "unseen" : "in-home"),
+    system: systemPrompt(attempts, reference),
     opening: firstMessage(
       request.contract,
       request.checks,
@@ -609,7 +611,7 @@ export function writing(
       examples: request.tasks.map(({ taskId }) => taskId),
       engines: pinned.map(({ name, sha256 }) => ({ name, sha256 })),
       ...keyIfDefined("tried", attempts),
-      referenceHome: reference !== undefined,
+      referenceHome: reference === "in-home",
     },
     tools: [
       proposeTool(desk, gate),
@@ -628,15 +630,6 @@ export function writing(
           ]),
     ],
     enters: `a task enters it through ${gate} alone`,
-    home:
-      keep === undefined
-        ? undefined
-        : `${
-            kept === null
-              ? "holds what the last Examiner session of this campaign left in it, or nothing at the campaign's first"
-              : `holds what Examiner session ${kept} of this campaign left in it when the provider failed one of its turns, before it finished`
-          }${reference === undefined ? "" : `, and ${REFERENCE_HOME}/, a copy of the reference harness laid afresh for this session`}`,
-    checked: undefined,
     nudge: "Propose further tasks",
     finish:
       "End the session. Say in one or two sentences what kinds of task you wrote and what you would try next.",
@@ -652,28 +645,5 @@ export function writing(
     settle: async (all: boolean) => await settled(desk, all ? "all" : "next"),
     counted: () => ({ proposed: desk.proposed, held: desk.held, refused: desk.refused }),
     result: () => ({ puts: desk.proposed, held: desk.held, refused: desk.refused }),
-    // The next session's home is seeded with what the campaign keeps of the last one's.
-    enter: (home: string) => {
-      if (keep !== undefined && existsSync(keep)) cpSync(keep, home, { recursive: true });
-      // A kept state names its programs by a link to the campaign's store, which the wall closes.
-      if (reference !== undefined) {
-        cpSync(reference, join(home, REFERENCE_HOME), { recursive: true, dereference: true });
-      }
-    },
-    // The campaign's copy of a session's home, made whole when the session ends and replacing the
-    // one before: it is the exam side's, under the campaign's folder beside the log, which every
-    // wall closes. No link is followed, as the Builder's carry follows none. Not a session that
-    // crashed with a command running, whose home is as no command left it. Until 12 October every
-    // crashed session's home replaced the kept one, and on buffer the next session opened in the
-    // working files of one whose turn the provider failed, under an earlier session's note; from
-    // then until 14 October none did, and a crashed Examiner's work was lost to the provider. A
-    // crash in a model request is now kept, and the next session is told whose home it is (`home`).
-    leave: (home: string, ended: string, running: number) => {
-      if (keep === undefined || (ended === "crashed" && running > 0)) return;
-      rmSync(keep, { recursive: true, force: true });
-      if (existsSync(home)) cpSync(home, keep, { recursive: true });
-      // The copy is the session's own, so a session with the term off never opens on one.
-      rmSync(join(keep, REFERENCE_HOME), { recursive: true, force: true });
-    },
   };
 }

@@ -109,7 +109,7 @@ undefined without it.
 **1. Climb: how much ability has accumulated?** The one quantity the system exists to move is the
 reference harness. A promotion is one step of descent: a harness that beats the reference on
 held-out tasks by more than chance allows, in one comparison on fresh solves. A climb is several
-of them, read as promotions within one campaign (`src/builder/climb.ts`); promotions added up
+of them, read as promotions within one campaign (`src/campaign/climb.ts`); promotions added up
 across campaigns are no climb. Every draft that the reference answered in none of its admission
 solves, but whose author's own answer passes on it (`task.feasible`), is held out like any other
 task (`try_task`, `gated` in `src/examiner/write.ts`). A task the reference never answers while a
@@ -139,7 +139,7 @@ crown a winner between two equal harnesses about one time in ten. That design va
 until it is measured on the real solver, whose variance is unknown: the same harness fails a task
 once and passes it the next time. The measurement is an A/A test, built the same way as the test:
 the reference's solves of a task are split into two halves mirrored in time, then tallied and
-tested as a comparison is (`src/builder/comparison.ts`). At four solves a side every comparison
+tested as a comparison is (`src/campaign/comparison.ts`). At four solves a side every comparison
 carries one, on the solves its test reads, two against two; at fewer solves there is none. A step
 in an A/A test is a false positive by construction. How often two of its solves of a task disagree
 is the flip rate. Bar: no step in the ten controls after the six on record. Ten controls still only
@@ -149,13 +149,13 @@ beat before its wins mean anything.
 A campaign makes many promotion attempts under one reference. An attempt is one reading, and the
 exact test reads a step between equal harnesses at most as often as its level: at 0.02, 1.1% of
 the time on 24 untied tasks, and at 0.10, 7.6% (`falseRate`, the test's `power` at one half,
-`src/builder/comparison.ts`). Every reading prints that rate at its own margins, and a campaign's
+`src/campaign/comparison.ts`). Every reading prints that rate at its own margins, and a campaign's
 opening prints it at its target (`sizeLines`, `src/kernel/size.ts`). The level is a per-comparison
 level: nothing holds a campaign's attempts together to it, and no opening is refused on their
 sum. The climb adds up
 what the attempts risk together as they come: each reading of a harness against the reference is
 one attempt, at its own rate, and the sum is an estimate and no bound. The A/A controls that read a
-step, one-sided at the level, are counted beside it (`falsePromotion`, `src/builder/climb.ts`). A
+step, one-sided at the level, are counted beside it (`falsePromotion`, `src/campaign/climb.ts`). A
 control with too few untied tasks to reach the level cannot read a step, so it tests nothing about
 that rate: the climb counts only the controls that could have, and reports the others apart as too
 small to read one (`incapable`).
@@ -163,7 +163,7 @@ small to read one (`incapable`).
 **3. Verdicts: are the labels correct?** Validity is decided by a check program nobody has audited
 against the field, and a check that rejects a right answer is label noise: in v1, 36 of 47
 rehearsal misses came from a faulty check or instrument. The Referee is the noise filter
-(`src/review/referee.ts`). It runs once for each answer a check rejects inside a comparison, a
+(`src/referee/referee.ts`). It runs once for each answer a check rejects inside a comparison, a
 Builder's practice or an Examiner admission probe, before the rejection counts. It never runs on a
 pass, on a solve a limit cut short, or on a crash. First the host replays the checks on the logged
 answer, and a verdict that does not repeat is ruled a check defect by the host. The Referee reads
@@ -182,7 +182,7 @@ without its evidence is refused, and each refusal is recorded with the ruling as
 set the task aside for both harnesses, so a broken check scores against nobody.
 
 The Referee is a model, and it is measured by how well it agrees with a person who labels the same
-rejections blind (`tools/d2/settle.ts`, `src/review/agreement.ts`): a three-by-three table of label
+rejections blind (`tools/d2/settle.ts`, `src/referee/agreement.ts`): a three-by-three table of label
 against ruling, read as two rates, with each kind's agreement and PABAK reported beside kappa, and
 never kappa alone. Once a packet is settled, `settle.ts` prints them over every settled packet, and
 reads each settled comparison again with the labels in place of the verdicts they overturn
@@ -202,7 +202,7 @@ billed; what the Examiner billed per task it held out, admission solves included
 billed per task they scored; and how many of the comparisons that began actually reported, since
 one cut short before its report bought nothing it can show. There is one bar, a term of the opening
 the operator may set, which is read and printed and gates nothing (`worthOf`,
-`src/builder/climb.ts`; revised plan W): at most 3 promotion attempts per epoch after set-up, with
+`src/campaign/climb.ts`; revised plan W): at most 3 promotion attempts per epoch after set-up, with
 its Builder sessions and billed dollars beside it, which a step's report carries.
 
 Left out on purpose:
@@ -244,7 +244,7 @@ states this as a rule.
 v1 is this repository's history before v2 took it over on 11 October 2026. Its last tree is
 `5bc9988`, and `git show 5bc9988:<path>` reads a v1 file. v1 was itself built in a private
 repository, harness-builder-v4, and published here as a squashed history, so a v1 commit cited in
-`docs/transfer.md`, such as `7af7315`, is missing from this one. Much of `src/meta`, `src/verify`,
+`docs/transfer.md`, such as `7af7315`, is missing from this one. Much of `src/meta`, `src/wall`,
 `tools/loc` and `tools/oxlint` was copied from v1 at `3f93d06`, so v1's wording still appears in
 comments there. A comment that cites "AGENTS.md rule N" means v1's file, whose rules were numbered
 differently. The design around the copied code is different: the Examiner writes the tasks and
@@ -254,7 +254,7 @@ host sets, and one log holds a campaign. `docs/transfer.md` keeps the part-by-pa
 Some v1 words mean nothing here: battery, band, witness, F2, census, submit gate, adoption, veto.
 Keep them out of new text. Three v1 words have their own v2 meaning: a **climb** is factor 1 of
 section 1, an **epoch** is the stretch of a campaign under one reference harness
-(`src/builder/climb.ts`), and the **level** is the step test's (`--level`). Two survive with a
+(`src/campaign/climb.ts`), and the **level** is the step test's (`--level`). Two survive with a
 narrow meaning: a **cycle** and a **sweep** name a stored v1 run that a campaign takes its pack
 from (`--sweep`, `--cycle`), and **bundle** names that pack's directory (`--bundle`).
 
@@ -317,7 +317,7 @@ Six consequences guide a change:
    (`7f0add79:docs/plan.md`, rows B10, B12 and B17). Narrow a grant only where two would collide, as two
    solves writing one path in a shared `/tmp` did, or where the wider grant would open one of the
    three protected things. A seat's commands write one root, except for the host's own folder
-   inside it (`SolveDirs`, `src/solve/command.ts`), and each policy is probed once per process by
+   inside it (`SolveDirs`, `src/tools/command.ts`), and each policy is probed once per process by
    one command run exactly as every command of a seat is run (`walledBase`, `probeWall`).
 
 ## 3. The seats
@@ -329,9 +329,9 @@ wall keeps from it.
 | --- | --- | --- | --- | --- |
 | **Examiner** (model) | Writes task instances against a fixed contract and check program. For a campaign that opens from a prompt, it first drafts that exam: the rules with their sources, the answer format, one check per rule, examples and controls | Listed below the table | Listed below the table | `src/examiner/` |
 | **Builder** (model) | Edits `harness/`, chooses campaign tools in the same conversation, and ends with a frozen harness version | The public rules and the objective, practice tasks, practice results with their measures and traces, each comparison's tally, its own notes, and a copy of the other harnesses its campaign kept (`kept/`) | A held-out task or its trace, a check, a hidden value, which checks refused an answer | `src/builder/` |
-| **Solver** (model) | Answers one task from inside a harness, as one system with it: pi's coding agent with `read`, `bash`, `edit`, `write` and `submit`, plus whatever the harness adds | The task's public part, the public rules, the harness's guide and programs, its limits and how much it has used | The checks and the hidden values | `src/solve/` |
-| **Verifier** (code) | Runs every applicable check on one answer, each in a fresh cell inside the OS wall | The answer, the task, the check program, the installed engines | n/a | `src/kernel/verify.ts`, `src/verify/` |
-| **Referee** (model) | Rules each rejection `earned`, `check-defect` or `unclear` before it counts | Only the verifier's side: the task with hidden values, the rules, the answer, the refusing checks, the check program | The harness, the solver's trace, the Builder | `src/review/referee.ts` |
+| **Solver** (model) | Answers one task from inside a harness, as one system with it: pi's coding agent with `read`, `bash`, `edit`, `write` and `submit`, plus whatever the harness adds | The task's public part, the public rules, the harness's guide and programs, its limits and how much it has used | The checks and the hidden values | `src/solver/`, `src/harness/`, `src/tools/` |
+| **Verifier** (code) | Runs every applicable check on one answer, each in a fresh cell inside the OS wall | The answer, the task, the check program, the installed engines | n/a | `src/kernel/verify.ts`, `src/wall/` |
+| **Referee** (model) | Rules each rejection `earned`, `check-defect` or `unclear` before it counts | Only the verifier's side: the task with hidden values, the rules, the answer, the refusing checks, the check program | The harness, the solver's trace, the Builder | `src/referee/referee.ts` |
 | **Host** (code) | Everything in the first column of section 2 | The log | n/a | `src/kernel/`, `tools/` |
 | **Operator** (person) | See below | Every report and refusal | n/a | n/a |
 
@@ -438,7 +438,7 @@ unattended to a typed ending, the way a goal runs until it is met (`docs/plan.md
 Launching it is also the word that admits every check decided by its author's own computation, the
 declared objective among them, in a drafted exam or a stored pack. The campaign command reads the
 exam with `accept.ts --freeze --admit-authored` (`make`, `tools/d2/harness-builder.ts`), and reads
-again a reading taken under `--hitl` that left some unadmitted (`planOf`, `src/builder/opening.ts`).
+again a reading taken under `--hitl` that left some unadmitted (`planOf`, `src/campaign/opening.ts`).
 `--hitl` (the operator in the loop) hands all three back to the operator for one campaign, which
 keeps that setting until `--no-hitl`; there a check is admitted by name (`--admit`). Freezing an
 exam whose reading shows any other fault, and going on past the stop rule, need the operator's word
@@ -461,7 +461,7 @@ alongside it, shows the shapes with a worked example):
 
 A harness is named by its digest, so changing any part makes a different harness, and solves under
 the old one do not count for the new one. The **Starter Built Harness** is pi's coding agent as pi
-releases it, with no guide and no domain program (`src/solve/starter.ts`). Every campaign starts
+releases it, with no guide and no domain program (`src/harness/starter.ts`). Every campaign starts
 from it, it is the first reference harness, and it stays the fixed lower reference after a
 promotion.
 
@@ -508,7 +508,7 @@ Where the table names more than the action itself, the tool does what the table 
   compared again when the table names it: a second draw of the same pair is a second chance at a
   step (section 1, factor 2).
 - `promote` names the harness the rule names, which is not always the last one frozen (`step`,
-  `src/builder/decide.ts`).
+  `src/campaign/decide.ts`).
 
 An action the host refuses before it begins, or one that produces nothing, counts as no move and
 writes no `campaign.move`. An Examiner session and a comparison are recorded as they begin, like
@@ -517,12 +517,13 @@ the move the table named, and `asked` with what the table named where it made a 
 its command then refuses it, the record stays, as a host's would, and counts against `--moves`.
 The conversation itself is a `build` move with the code `led`.
 
-`decide` (`src/builder/decide.ts`) is the one table over the log. It gives advice at the opening,
+`decide` (`src/campaign/decide.ts`) is the one table over the log. It gives advice at the opening,
 under each campaign tool's result, and when a turn ends without a call; an edit or a practice solve
 ends only at the session's limits. The Builder may ignore an advised build, comparison or
 task-writing move, apart from the Examiner session that follows a promotion, which the host starts
 beside it (section 7, row `no-room`). Running out of budget, the stop rule, an operator stop, a
-faulty exam and a failed environment still end the run in code. Every tool goes through the same
+faulty exam, a failed environment and a patience of readings with no room (`roomless`) still end
+the run in code, inside a live conversation as between conversations. Every tool goes through the same
 admissions and commands as a move the operator launches. The controller's private reasons
 (`campaign.move`, `campaign.ended`) never reach a seat's message.
 
@@ -548,7 +549,7 @@ the term, the host makes every move the table names, a Builder session among the
 differ only in the branch that opens the conversation (`converse`, `tools/d2/harness-builder.ts`),
 the tools and advice it is given (`tools/d2/campaign-actions.ts`), the table of texts a Builder
 reads (`SAID`, `src/builder/prompt.ts`), and the span the readers give a session (`soFar`,
-`src/builder/handover.ts`). The conversation is valued for its continuity: a simpler controller
+`src/campaign/handover.ts`). The conversation is valued for its continuity: a simpler controller
 that drops it is a regression. `test/builder-led.test.ts` proves the mode without a model; whether
 it improves a real campaign is unclaimed until an ablation reads it.
 
@@ -616,7 +617,7 @@ its manual and lists its flags.
 | 4 | `bun tools/d2/session.ts ... --session b-2 --builder <model>` | A Builder session without a comparison after it, under its own dollar cap. The plan's checkpoint is several of these followed by one comparison |
 | 4 | `bun tools/d2/checkpoint.ts ... --id g2` | One comparison of two harnesses the campaign keeps, without a Builder session |
 | 5 | `bun tools/d2/settle.ts ... --session b-1` | The comparison's packet: every rejected answer ruled a check defect or unclear, or left unruled, plus three rejections ruled earned and three answers that passed, drawn uniformly by id, blind to ruling and harness. Once answered: the person's labels and the report again; a pass labelled wrong counts as its side's fail, as an earned rejection does. Until it is answered the report says `unsettled`, and no promotion waits for it |
-| 6 | `bun tools/d2/promote.ts --name <name> --harness <digest> --yes` | The operator's word that a kept harness is the reference harness from then on (`harness.promoted`). Without `--yes` it shows what the log holds of that harness and records nothing. A harness the rule would not promote needs `--despite "<why>"`. `--harness` takes a kept digest, or the letter the view and the closing report print beside it: A for the starter, then B, C and on, in the order the log first names each harness (`namesOf`, `src/builder/names.ts`). The letter is a name; the digest stays the identity |
+| 6 | `bun tools/d2/promote.ts --name <name> --harness <digest> --yes` | The operator's word that a kept harness is the reference harness from then on (`harness.promoted`). Without `--yes` it shows what the log holds of that harness and records nothing. A harness the rule would not promote needs `--despite "<why>"`. `--harness` takes a kept digest, or the letter the view and the closing report print beside it: A for the starter, then B, C and on, in the order the log first names each harness (`namesOf`, `src/campaign/names.ts`). The letter is a name; the digest stays the identity |
 | 6 | `bun tools/d2/import.ts --name <name> --harness <dir> [--note "<why>"]` | The operator's word that a harness built elsewhere (another campaign's handover, or one written by hand) is kept by this campaign (`harness.imported`). It is kept under its digest the way a session keeps one, after which `--parent`, `--reference` and `promote.ts` can name it. It is not a session, so `latest` does not move |
 | 7 | `bun tools/d2/close.ts ... --to <dir>` | Nothing. It writes what the campaign hands over, outside the repository: the reference harness as a self-contained directory, the public rules, and the closing report |
 | all | `bun tools/d2/harness-builder.ts ... --budget <dollars> --builder <model> --examiner <model> --reviewer <model>` | The opening (`campaign.opened`), the Builder's requested moves (`campaign.move`), frozen versions inside its conversation (`build.checkpoint`) and its ending (`campaign.ended`) |
@@ -679,8 +680,8 @@ nothing and reads `not-scored`.
 - `finished` (three Builder conversations in a row made no campaign move, the last ending by
   `finish` or at its limits).
 
-Lack of room is advice to request other tasks while a conversation is alive, and becomes the
-campaign's ending once that conversation has ended at its limits. A Builder's `finish` ends one
+A reading with no room is advice to request other tasks, and a patience of them in a row is the
+campaign's ending, whether or not a conversation is alive (`roomless`). A Builder's `finish` ends one
 conversation and never the campaign. Between conversations the host makes whatever move the table
 names that needs nothing from a Builder, as a campaign move like any other: any comparison, and a
 promotion (`hostOwed`, `tools/d2/harness-builder.ts`). Any Examiner session the table names starts
@@ -703,7 +704,7 @@ the operator's stop.
 A move that threw after it began ends the campaign on its environment, except one whose session is
 recorded as crashed, from which the campaign continues (`goesOn`, `tools/d2/harness-builder.ts`).
 Three Builder or Examiner sessions in a row that the provider failed before they held out a task
-or changed a harness also end it on its environment (`crashedRun`, `src/builder/ground.ts`). Such a
+or changed a harness also end it on its environment (`crashedRun`, `src/campaign/ground.ts`). Such a
 session held out nothing because it was refused a turn, while the domain may well have had tasks to
 give, so it does not count as idle for the patience; one that held a task out and then crashed did
 move the campaign. Run again by its name, the campaign continues from its log, and the count starts
@@ -725,7 +726,7 @@ event in its log (`campaign.word`):
 - `--budget <dollars>` sets its total from then on.
 
 The command reads a word at the next move's boundary, never inside a move (`pendingWords`,
-`src/builder/word.ts`), and never waits for one. The event that acts on a word names it
+`src/campaign/word.ts`), and never waits for one. The event that acts on a word names it
 (`answers`), so each takes effect once. A stop followed by the same command is a pause. No seat
 sees a word: no Builder, Examiner, solver or reviewer reads it or its reason. `bun run runs stop`
 is the abrupt form: it ends the process that writes the log, so no ending is written, and
@@ -742,7 +743,7 @@ continue by name alone:
 - the Builder sessions the table counts before it advises a comparison (`--sessions`, 2);
 - the patience (`--patience`, 6);
 - who sits in each seat;
-- the terms of its moves as a command last named them (`TERMS`, `src/builder/opening.ts`): a
+- the terms of its moves as a command last named them (`TERMS`, `src/campaign/opening.ts`): a
   session's limits, a comparison's size, the practice tasks and an Examiner session's terms.
 
 A term no command named takes its move's default. A later run that names nothing runs by the
@@ -777,7 +778,7 @@ control that read room (section 7) it releases as many again. Inside a Builder's
 which spans epochs, the host releases what the epoch is still owed as each Examiner session beside
 it ends (`releaseOwed`, `tools/d2/campaign-actions.ts`). `--practice` is a per-epoch count,
 and once practice exists a release never leaves fewer frontier tasks than a sweep at the level needs
-(`practiceRoom`, `src/builder/decide.ts`). Each release is one task fewer to compare.
+(`practiceRoom`, `src/campaign/decide.ts`). Each release is one task fewer to compare.
 
 A release takes, in this order:
 
@@ -800,7 +801,7 @@ writes more first.
 
 ### What refuses a move
 
-One function decides whether a comparison may start (`admission`, `src/builder/admission.ts`), and
+One function decides whether a comparison may start (`admission`, `src/campaign/admission.ts`), and
 a round or a checkpoint asks it before writing its first event, whether the campaign command made
 it or someone started it by hand. Among other things it refuses:
 
@@ -853,7 +854,7 @@ bun run runs fresh | launch | continue | keep | pause | copy | fetch | retire | 
 An Examiner session ends when the Examiner calls `finish` a second time, or a first time once the
 host has the tasks it asked for, or at the end of a turn once it has them. Those are what the
 campaign is short of for a comparison's target and its practice (`shortOf`,
-`src/builder/decide.ts`), or `--exam-tasks` where the operator names a count. `finish` and the
+`src/campaign/decide.ts`), or `--exam-tasks` where the operator names a count. `finish` and the
 session's end first wait for every instance still at the gate, so each reads the whole count, and a
 session can hold out more than it asked for. A first `finish` that falls short is declined once,
 with the need and without a count, because an Examiner left alone proposes one small batch and
@@ -868,7 +869,7 @@ commands and flags replaced is in `7f0add79:docs/simplify.md` and `7f0add79:docs
 
 ## 7. How a comparison is read
 
-`src/kernel/compare.ts`, `src/builder/round.ts` and `src/builder/comparison.ts` own this, and their
+`src/kernel/compare.ts`, `src/campaign/round.ts` and `src/campaign/comparison.ts` own this, and their
 head comments give the full account. Here is the short version.
 
 **Terms first.** Before its first solve a comparison writes `comparison.started`: its two
@@ -972,7 +973,7 @@ is read by its own rule whatever the tree's default is, and a trigger an older o
 read past. Two other ways to read a tally are in the plan ("Statistical power
 and cost"); neither is built.
 
-**The reading** is one of these words (`Reading`, `src/builder/comparison.ts`):
+**The reading** is one of these words (`Reading`, `src/campaign/comparison.ts`):
 
 | Reading | Meaning |
 | --- | --- |
@@ -988,7 +989,7 @@ no comparison writes now and none of which promotes.
 
 **Rejections.** A rejected answer counts as not valid only once the Referee has ruled it `earned`,
 which it can only do on a probe that moved a refusing check off its refusal
-(`src/review/referee.ts`). A ruling of `check-defect` or `unclear`, or no ruling at all, sets the
+(`src/referee/referee.ts`). A ruling of `check-defect` or `unclear`, or no ruling at all, sets the
 task aside for both harnesses. A person's labels then settle it (`settle.ts`), and a label
 overrides a ruling. Once more than `--defects` tasks have a check defect or a check that could not
 run, the comparison stops, because the check program then needs its owner before more is spent.
@@ -1070,7 +1071,7 @@ outside `--hitl` (section 3), and otherwise the operator's `promote.ts --yes` do
 that names no `--reference` is made against the harness last promoted, and one that names a digest
 is made against that harness and promotes nothing.
 
-**What follows a reading** is move 7's decision (`decide`, `src/builder/decide.ts`), and the view
+**What follows a reading** is move 7's decision (`decide`, `src/campaign/decide.ts`), and the view
 prints it as its last line. The table has ten rows, asked in order (`ROWS`); the first that names
 a move chooses it, and the decision carries that row's code:
 
@@ -1098,7 +1099,7 @@ a move chooses it, and the decision carries that row's code:
    the action that promoted returns, since the comparison a harness is promoted on reads room on
    it by construction.
 8. `short`: the gate would refuse the next comparison for lack of tasks (`refusals`,
-   `src/builder/admission.ts`), or the pair's last comparison tallied none. The Examiner writes
+   `src/campaign/admission.ts`), or the pair's last comparison tallied none. The Examiner writes
    tasks first, since a changed harness can only tie again on tasks the reference closed.
 9. `unread`: something no comparison has read yet is compared: a harness whose sessions have run,
    and the tasks held out since the last reading (`programs-of:` remains a checkpoint name for an
@@ -1212,7 +1213,7 @@ Cite a rule by its number in a pull request or a review.
     restart. Keep what was recorded, classify the affected work from its events, and continue from
     the log at the run's own commit once the login has room again, or under another login (section
     10, item 9). A named reset is waited out in code, inside the solve it ended (`waitOut`,
-    `src/solve/run.ts`); a crash without a named reset counts towards the crash rule (`crashedRun`)
+    `src/solver/run.ts`); a crash without a named reset counts towards the crash rule (`crashedRun`)
     and ends a campaign on its environment, which is a pause and not a result. Such an ending is not
     a failure of any mechanism: do not patch, triage or report it as one, do not count it against a
     change, and do not spend a pull request on waiting it out. A generic 429, a timeout or a crash
@@ -1355,19 +1356,19 @@ What holds in all of them:
 A solve and a Builder session run on either host, behind Seatbelt on macOS and Bubblewrap on Linux.
 Nothing caps the disk of a solve, a Builder session or an Examiner session on either host: each runs
 its commands under the command wall in a root of its own on the host's disk, which is removed with
-whatever still works in it when the seat ends (`src/verify/seat-root.ts`). When the required wall is
+whatever still works in it when the seat ends (`src/wall/seat-root.ts`). When the required wall is
 unavailable, the result is a typed non-result, never an unconfined run.
 
 Each seat's wall (a solve's, a Builder's or an Examiner's) is probed once per process before its
 first use, by one command launched the way a seat's commands are (`runWalled`). The probe checks
 that a canary in the repository and the `package.json` of its first other worktree, which the
 probe never writes, are refused, and that a file written in the seat's own folder reads back. A
-probe that fails refuses the start and prints its lines (`walledBase`, `src/solve/command.ts`). The
+probe that fails refuses the start and prints its lines (`walledBase`, `src/tools/command.ts`). The
 verifier's cells share that base, are launched without the seat's shell, and are not probed; the
 suite tests them (`test/verify.test.ts`).
 
 Every seat's commands can reach the network: a solver and a Builder install what a task needs and
-can look things up, under both harnesses alike (`network`, `src/verify/solve-sandbox.ts`). Only
+can look things up, under both harnesses alike (`network`, `src/wall/base.ts`). Only
 the verifier's cells run with the network closed. The condition does not record it separately,
 since it does not vary between the two sides of a comparison; whether to narrow it to a package
 index is an open row in the plan (`docs/plan.md`, "Tuning", the row "Network in a solve").
@@ -1376,7 +1377,7 @@ index is an open row in the plan (`docs/plan.md`, "Tuning", the row "Network in 
 
 ### Runtime and commands
 
-Bun 1.4.3 only, as `package.json` pins it, for every task including one-off inspection. No Node,
+Bun 1.4.4 only, as `package.json` pins it, for every task including one-off inspection. No Node,
 npm or npx. `src/meta` wraps the few Node surfaces Bun lacks (`tools/oxlint/HABITS.md`, 12.8).
 
 | Command | What it does |
@@ -1445,8 +1446,7 @@ request as failures that occur without the change, and do not call the suite gre
 - A pack, a check program or a kept harness, by rule 2.
 - `.env` and any credential. Never copy one from another checkout to make a command
   start.
-- `vendor/`: `pi-coding-agent` and `pi-claude-bridge` are copies of upstream, brought in by a
-  **sed**. The upstream files at a cited path and commit are copied over the local ones whole.
+- `vendor/`: `pi-claude-bridge` is a copy of upstream, brought in by a **sed**. The upstream files at a cited path and commit are copied over the local ones whole.
   The result is then compared with what the local copy held, and only the most important missing
   parts are added back, each marked in place as a local change and kept small. Porting by hand,
   merging upstream into the local file and adding the package as a dependency are no sed. Biome
@@ -1658,21 +1658,27 @@ not a sed.
 ### Map
 
 ```text
+src/meta/       the owners of every runtime surface (`tools/oxlint/HABITS.md`, 12.8)
 src/kernel/     the log, tasks, conditions, traces, the verifier's contract, the comparison, the reports
-src/solve/      one solve: the starter, the prompt, the command wall's tools, the answer file
-src/builder/    a Builder session, its tools, prompt, notes and what it is told of the past; the round,
-                and what the log holds of a comparison (comparison); whether a comparison may start
-                (admission); the one reading of a campaign (handover);
-                the move that follows from a log (decide) and the reading of the log it is asked
-                of (ground), what a campaign runs by (opening), the words the operator left it
-                (word), and the letters people read for its harnesses (names)
+src/wall/       the OS wall: Seatbelt, Bubblewrap, a seat's root, what each actor may read
+src/agent/      one model session of any seat over pi's loop: its turns and stops, its trace and
+                spend (session); the three model backends as one pi collection, and compaction
+                (backends/)
+src/tools/      the tools seats share, each run under the wall: the one place a command is
+                launched (command), pi's coding tools (coding), the answer file and `submit` (answer)
+src/harness/    the Built Harness: the starter, a kept state opened as a solver's guide and tools
+                (open, shim), and the programs it installs (programs)
+src/solver/     one solve: its prompt, and the solve from its condition to its ending (run)
+src/builder/    a Builder session, its tools, prompt, notes and what it is told of the past
 src/examiner/   an Examiner session, its prompt, and the outcomes and counts it is told; the
                 session that drafts an exam from a prompt (draft); the walled home both
                 sessions have (shell)
-src/review/     the Referee, the probe, agreement with hand labels
-src/verify/     the OS wall: Seatbelt, Bubblewrap, a seat's root, what each actor may read
-src/backends/   the three model backends as one pi collection, and compaction
-src/meta/       the owners of every runtime surface (`tools/oxlint/HABITS.md`, 12.8)
+src/referee/    the Referee, the probe, agreement with hand labels
+src/campaign/   the round, and what the log holds of a comparison (comparison); whether a
+                comparison may start (admission); the one reading of a campaign (handover);
+                the move that follows from a log (decide) and the reading of the log it is asked
+                of (ground), what a campaign runs by (opening), the words the operator left it
+                (word), and the letters people read for its harnesses (names)
 tools/c/        the check program: accept, carry, rejections, repaired
 tools/d1b/      examine, draft
 tools/d2/       campaign, setting, prepare, round, session, checkpoint, settle, promote, import; exam,
@@ -1693,7 +1699,7 @@ tools/loc/      the size and unused-export policy
 packages/ui/    the page over a campaign's log: a server on the loopback that renders the folds
                 above and reads nothing for itself (src/server), and four panes, Campaign, Moves,
                 Tasks and Log (src/views). It writes nothing. Its design rules are in its DESIGN.md
-vendor/         pi-coding-agent and pi-claude-bridge, copied
+vendor/         pi-claude-bridge, copied
 docs/           the plan, the transfer ledger, the account of v1, the helper prompts
 studies/        measurements outside a campaign's reading, one folder each: its protocol, predictions,
                 adapters and patches; shared/ holds what several use, runs/ the records each keeps,

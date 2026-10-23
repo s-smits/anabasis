@@ -4,7 +4,7 @@
 // the solver reads, a solve under the Starter with pi's own file tools, the host's limits over the
 // harness's, the wall, no answer, the reruns of a provider's failed turn and of moved files, and
 // the run stopping on the verifier's non-result.
-import { afterAll, describe, expect, it } from "bun:test";
+import { afterAll, expect, it } from "bun:test";
 import {
   createModels,
   fauxAssistantMessage,
@@ -21,10 +21,10 @@ import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { NUDGE } from "../src/solve/prompt.ts";
-import { judge, type Played, solve, type SolveRequest } from "../src/solve/run.ts";
-import { writeStarter } from "../src/solve/starter.ts";
-import { osIsolationSupport } from "../src/verify/os-isolation.ts";
+import { NUDGE } from "../src/solver/prompt.ts";
+import { judge, type Played, solve, type SolveRequest } from "../src/solver/run.ts";
+import { writeStarter } from "../src/harness/starter.ts";
+import { osIsolationSupport } from "../src/wall/os-isolation.ts";
 
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
 const CANARY = "hidden-canary-7f3a";
@@ -49,6 +49,27 @@ const LIMITS = {
 const walled = osIsolationSupport().ok;
 const toolUse = { stopReason: "toolUse" } as const;
 const scratches: string[] = [];
+
+const PLAYED: Played = {
+  crash: null,
+  broken: null,
+  harness: null,
+  turns: [],
+  prompts: 1,
+  submitted: undefined,
+  flagged: undefined,
+  wallEnded: false,
+  turnsEnded: false,
+  moved: false,
+  homeBytes: 0,
+};
+const providerStop = (text: string, errorMessage?: string) =>
+  fauxAssistantMessage(text, errorMessage === undefined ? {} : { stopReason: "error", errorMessage });
+
+function attemptEnding(played: Partial<Played>, overrides: Partial<SolveRequest> = {}) {
+  const { request, events } = setup([], overrides);
+  return { ending: judge(request, "t-1-1", { ...PLAYED, ...played }), events };
+}
 
 const noWait = async () => {};
 afterAll(() => {
@@ -125,152 +146,138 @@ const searchHome = fauxAssistantMessage(
   toolUse,
 );
 
-describe("an attempt's ending", () => {
-  const PLAYED: Played = {
-    crash: null,
-    broken: null,
-    harness: null,
-    turns: [],
-    prompts: 1,
-    submitted: undefined,
-    flagged: undefined,
-    wallEnded: false,
-    turnsEnded: false,
-    moved: false,
-    homeBytes: 0,
-    summaries: [],
+it("is a kill, then moved files, then a held answer, before the sandbox's crash", async () => {
+  const kill = AbortSignal.abort();
+  const all = { crash: "the model process died", moved: true, submitted: { answer: "42" } };
+  expect(await attemptEnding(all, { kill }).ending).toMatchObject({ kind: "killed" });
+  expect(await attemptEnding(all).ending).toMatchObject({ kind: "moved-files" });
+  // Once the host holds the answer, what failed after it is cleanup and voids nothing.
+  expect(await attemptEnding({ ...all, moved: false }).ending).toEqual({ outcome: "pass" });
+  expect(await attemptEnding({ ...all, moved: false, submitted: undefined }).ending).toEqual({
+    outcome: "non-result",
+    kind: "sandbox-crash",
+    reason: "the model process died",
+  });
+});
+
+it("is flagged where the solver said the task is malformed, after an answer and before a crash", async () => {
+  const flagged = { flagged: "the span is given twice, as 4 m and 5 m", crash: "the model process died" };
+  expect(await attemptEnding(flagged).ending).toEqual({ outcome: "flagged", reason: flagged.flagged });
+  expect(await attemptEnding({ ...flagged, submitted: { answer: "42" } }).ending).toEqual({
+    outcome: "pass",
+  });
+  // Its own outcome, and in every tally the flagging side's fail.
+  expect(passed({ ending: { outcome: "flagged", reason: flagged.flagged } })).toBe(false);
+});
+
+it("judges a submitted answer even when the wall fell after it, and logs the verdict", async () => {
+  const { ending: settled, events } = attemptEnding({ submitted: { answer: "41" }, wallEnded: true });
+  expect(await settled).toEqual({ outcome: "fail", kind: "rejected" });
+  expect(events().map(({ kind, data }) => [kind, data.kind])).toEqual([["verdict", "fail"]]);
+  expect(await attemptEnding({ submitted: { answer: "42" } }).ending).toEqual({ outcome: "pass" });
+});
+
+it("rejects an answer off the contract's format without running a check", async () => {
+  let checked = false;
+  const verify = async (): Promise<Verdict> => {
+    checked = true;
+    return { kind: "pass" };
   };
-  const stop = (text: string, errorMessage?: string) =>
-    fauxAssistantMessage(text, errorMessage === undefined ? {} : { stopReason: "error", errorMessage });
+  const { ending: settled, events } = attemptEnding({ submitted: { answer: 42 } }, { verify });
+  expect(await settled).toEqual({ outcome: "fail", kind: "rejected" });
+  expect(checked).toBe(false);
+  expect(events()[0]?.data.fault).toBeString();
+});
 
-  function ending(played: Partial<Played>, overrides: Partial<SolveRequest> = {}) {
-    const { request, events } = setup([], overrides);
-    return { ending: judge(request, "t-1-1", { ...PLAYED, ...played }), events };
-  }
-
-  it("is a kill, then moved files, then a held answer, before the sandbox's crash", async () => {
-    const kill = AbortSignal.abort();
-    const all = { crash: "the model process died", moved: true, submitted: { answer: "42" } };
-    expect(await ending(all, { kill }).ending).toMatchObject({ kind: "killed" });
-    expect(await ending(all).ending).toMatchObject({ kind: "moved-files" });
-    // Once the host holds the answer, what failed after it is cleanup and voids nothing.
-    expect(await ending({ ...all, moved: false }).ending).toEqual({ outcome: "pass" });
-    expect(await ending({ ...all, moved: false, submitted: undefined }).ending).toEqual({
-      outcome: "non-result",
-      kind: "sandbox-crash",
-      reason: "the model process died",
-    });
+it("is the verifier's non-result when the checks cannot decide, and the check's when one is faulty", async () => {
+  const lost = async (): Promise<Verdict> => ({ kind: "non-result", reason: "value: the wall broke" });
+  expect(await attemptEnding({ submitted: { answer: "42" } }, { verify: lost }).ending).toEqual({
+    outcome: "non-result",
+    kind: "verifier",
+    reason: "value: the wall broke",
   });
-
-  it("is flagged where the solver said the task is malformed, after an answer and before a crash", async () => {
-    const flagged = { flagged: "the span is given twice, as 4 m and 5 m", crash: "the model process died" };
-    expect(await ending(flagged).ending).toEqual({ outcome: "flagged", reason: flagged.flagged });
-    expect(await ending({ ...flagged, submitted: { answer: "42" } }).ending).toEqual({ outcome: "pass" });
-    // Its own outcome, and in every tally the flagging side's fail.
-    expect(passed({ ending: { outcome: "flagged", reason: flagged.flagged } })).toBe(false);
+  const faulty = async (): Promise<Verdict> => ({
+    kind: "faulty",
+    check: "value",
+    reason: "the check threw: x",
   });
-
-  it("judges a submitted answer even when the wall fell after it, and logs the verdict", async () => {
-    const { ending: settled, events } = ending({ submitted: { answer: "41" }, wallEnded: true });
-    expect(await settled).toEqual({ outcome: "fail", kind: "rejected" });
-    expect(events().map(({ kind, data }) => [kind, data.kind])).toEqual([["verdict", "fail"]]);
-    expect(await ending({ submitted: { answer: "42" } }).ending).toEqual({ outcome: "pass" });
+  expect(await attemptEnding({ submitted: { answer: "42" } }, { verify: faulty }).ending).toEqual({
+    outcome: "non-result",
+    kind: "check",
+    reason: "value: the check threw: x",
   });
+});
 
-  it("rejects an answer off the contract's format without running a check", async () => {
-    let checked = false;
-    const verify = async (): Promise<Verdict> => {
-      checked = true;
-      return { kind: "pass" };
-    };
-    const { ending: settled, events } = ending({ submitted: { answer: 42 } }, { verify });
-    expect(await settled).toEqual({ outcome: "fail", kind: "rejected" });
-    expect(checked).toBe(false);
-    expect(events()[0]?.data.fault).toBeString();
+it("without an answer: the wall, the model's turns, the context, a provider failure, else no answer", async () => {
+  const overflow = providerStop("", "prompt is too long: 213462 tokens > 200000 maximum");
+  expect(await attemptEnding({ wallEnded: true, turns: [overflow] }).ending).toMatchObject({
+    kind: "wall-ended",
   });
-
-  it("is the verifier's non-result when the checks cannot decide, and the check's when one is faulty", async () => {
-    const lost = async (): Promise<Verdict> => ({ kind: "non-result", reason: "value: the wall broke" });
-    expect(await ending({ submitted: { answer: "42" } }, { verify: lost }).ending).toEqual({
-      outcome: "non-result",
-      kind: "verifier",
-      reason: "value: the wall broke",
-    });
-    const faulty = async (): Promise<Verdict> => ({
-      kind: "faulty",
-      check: "value",
-      reason: "the check threw: x",
-    });
-    expect(await ending({ submitted: { answer: "42" } }, { verify: faulty }).ending).toEqual({
-      outcome: "non-result",
-      kind: "check",
-      reason: "value: the check threw: x",
-    });
+  // A solve given a number of model turns that used them all ended there, unless the provider
+  // or the window ended its last turn (below); one that submitted in its last turn is judged on
+  // the answer.
+  expect(await attemptEnding({ turnsEnded: true, turns: [providerStop("I am done.")] }).ending).toEqual({
+    outcome: "fail",
+    kind: "turns-ended",
   });
-
-  it("without an answer: the wall, the model's turns, the context, a provider failure, else no answer", async () => {
-    const overflow = stop("", "prompt is too long: 213462 tokens > 200000 maximum");
-    expect(await ending({ wallEnded: true, turns: [overflow] }).ending).toMatchObject({ kind: "wall-ended" });
-    // A solve given a number of model turns that used them all ended there, unless the provider
-    // or the window ended its last turn (below); one that submitted in its last turn is judged on
-    // the answer.
-    expect(await ending({ turnsEnded: true, turns: [stop("I am done.")] }).ending).toEqual({
-      outcome: "fail",
-      kind: "turns-ended",
-    });
-    expect(await ending({ turnsEnded: true, wallEnded: true }).ending).toMatchObject({ kind: "wall-ended" });
-    // A last allowed turn the provider failed is the provider's, and no loss of the solver's.
-    expect(await ending({ turnsEnded: true, turns: [stop("", "API Error: 529 overloaded")] }).ending).toEqual(
-      {
-        outcome: "non-result",
-        kind: "provider",
-        reason: "API Error: 529 overloaded",
-      },
-    );
-    expect(await ending({ turnsEnded: true, submitted: { answer: "42" } }).ending).toEqual({
-      outcome: "pass",
-    });
-    expect(await ending({ turns: [overflow] }).ending).toEqual({ outcome: "fail", kind: "context-ended" });
-    const length = fauxAssistantMessage("", { stopReason: "length" });
-    expect(await ending({ turns: [length] }).ending).toMatchObject({ kind: "context-ended" });
-    // A window filled, or a reply cut, on the last allowed turn is the window's and no spent budget:
-    // the pool reads `turns-ended` as the budget's verdict and `context-ended` as a cut.
-    expect(await ending({ turnsEnded: true, turns: [overflow] }).ending).toEqual({
-      outcome: "fail",
-      kind: "context-ended",
-    });
-    expect(await ending({ turnsEnded: true, turns: [length] }).ending).toMatchObject({
-      kind: "context-ended",
-    });
-    expect(await ending({ turns: [stop("", "overloaded_error")] }).ending).toEqual({
-      outcome: "non-result",
-      kind: "provider",
-      reason: "overloaded_error",
-    });
-    expect(await ending({ turns: [stop("I am done.")] }).ending).toEqual({
-      outcome: "fail",
-      kind: "no-answer",
-    });
+  expect(await attemptEnding({ turnsEnded: true, wallEnded: true }).ending).toMatchObject({
+    kind: "wall-ended",
   });
+  // A last allowed turn the provider failed is the provider's, and no loss of the solver's.
+  expect(
+    await attemptEnding({ turnsEnded: true, turns: [providerStop("", "API Error: 529 overloaded")] }).ending,
+  ).toEqual({
+    outcome: "non-result",
+    kind: "provider",
+    reason: "API Error: 529 overloaded",
+  });
+  expect(await attemptEnding({ turnsEnded: true, submitted: { answer: "42" } }).ending).toEqual({
+    outcome: "pass",
+  });
+  expect(await attemptEnding({ turns: [overflow] }).ending).toEqual({
+    outcome: "fail",
+    kind: "context-ended",
+  });
+  const length = fauxAssistantMessage("", { stopReason: "length" });
+  expect(await attemptEnding({ turns: [length] }).ending).toMatchObject({ kind: "context-ended" });
+  // A window filled, or a reply cut, on the last allowed turn is the window's and no spent budget:
+  // the pool reads `turns-ended` as the budget's verdict and `context-ended` as a cut.
+  expect(await attemptEnding({ turnsEnded: true, turns: [overflow] }).ending).toEqual({
+    outcome: "fail",
+    kind: "context-ended",
+  });
+  expect(await attemptEnding({ turnsEnded: true, turns: [length] }).ending).toMatchObject({
+    kind: "context-ended",
+  });
+  expect(await attemptEnding({ turns: [providerStop("", "overloaded_error")] }).ending).toEqual({
+    outcome: "non-result",
+    kind: "provider",
+    reason: "overloaded_error",
+  });
+  expect(await attemptEnding({ turns: [providerStop("I am done.")] }).ending).toEqual({
+    outcome: "fail",
+    kind: "no-answer",
+  });
+});
 
-  it("is the harness's own fail when its tools could not be bundled or listed", async () => {
-    expect(await ending({ broken: "harness bundle failed", wallEnded: true }).ending).toEqual({
-      outcome: "fail",
-      kind: "broken-harness",
-      reason: "harness bundle failed",
-    });
+it("is the harness's own fail when its tools could not be bundled or listed", async () => {
+  expect(await attemptEnding({ broken: "harness bundle failed", wallEnded: true }).ending).toEqual({
+    outcome: "fail",
+    kind: "broken-harness",
+    reason: "harness bundle failed",
   });
 });
 
 // Each of these runs the real wall, Seatbelt or Bubblewrap, and on macOS mounts a disk image, so
 // they run side by side.
-describe.skipIf(!walled)("a solve end to end", () => {
-  it.concurrent("passes on a written, submitted answer, its trace and meter read back from the log", async () => {
+it.skipIf(!walled).concurrent(
+  "passes on a written, submitted answer, its trace and meter read back from the log",
+  async () => {
     const { sent, request, events, finished } = setup([searchHome, ...answer]);
     expect(await solve(request, noWait)).toEqual({ outcome: "pass" });
     expect(events().map(({ kind }) => kind)).toEqual([
       "solve.started",
-      ...Array.from({ length: 5 }, () => ["solve.call", "solve.turn"] as const).flat(),
+      ...Array.from({ length: 5 }, () => ["solve.turn", "solve.call"] as const).flat(),
       "verdict",
       "solve.finished",
     ]);
@@ -314,12 +321,16 @@ describe.skipIf(!walled)("a solve end to end", () => {
     expect(sent[0]).not.toContain("Records the answer.");
     expect(sent[0]).toContain("Send answer.json from your working directory as your answer.");
     // The fixture selects the shell alone, so pi's file tools and their rules are not in its prompt.
-    expect(sent[0]).toContain(
-      String.raw`<tools>\n- bash: Execute bash commands (ls, grep, find, etc.)\n- submit: `,
-    );
-  }, 120_000);
+    expect(sent[0]).toContain(String.raw`<tools>\n- bash: Execute a bash command`);
+    expect(sent[0]).toContain("- scale_base: Returns the task's base multiplied by a factor.");
+    expect(sent[0]).not.toContain("Use read");
+  },
+  120_000,
+);
 
-  it.concurrent("solves under the Starter with pi's file tools, in one working directory", async () => {
+it.skipIf(!walled).concurrent(
+  "solves under the Starter with pi's file tools, in one working directory",
+  async () => {
     const call = (name: string, args: JsonObject) => fauxAssistantMessage(fauxToolCall(name, args), toolUse);
     const { scratch, sent, request, events } = setup(
       [
@@ -355,24 +366,32 @@ describe.skipIf(!walled)("a solve end to end", () => {
     expect(calls[4]?.text).toMatch(/\/home\n+\[Solve time used: 0:\d\d of 10:00\]$/);
     // The Starter adds nothing to pi: its four tools and submit, and pi's prompt with the host's part.
     expect(sent[0]).toContain("You are an expert coding assistant operating inside pi");
-    expect(sent[0]).toContain("- submit: Send answer.json as your answer, which ends the task");
+    expect(sent[0]).toContain("- submit: Send answer.json from your working directory as your answer.");
     expect(sent[0]).toContain("in the 1 file under public/resources/; read both before you build.");
     expect(sent[0]).toContain(
       "- A command runs for at most 30 seconds unless it names a longer timeout, and 60 seconds is the longest it may name.",
     );
     expect(sent[0]).not.toContain("<project_context>");
-  }, 120_000);
+  },
+  120_000,
+);
 
-  it.concurrent("ends no-answer at one prompt, with no nudge", async () => {
+it.skipIf(!walled).concurrent(
+  "ends no-answer at one prompt, with no nudge",
+  async () => {
     const { request, sent, finished } = setup([fauxAssistantMessage("I am done.")], {
       limits: { ...LIMITS, turns: 1 },
     });
     expect(await solve(request, noWait)).toEqual({ outcome: "fail", kind: "no-answer" });
     expect(finished()[0]?.data).toMatchObject({ turns: 1, prompts: 1 });
     expect(sent).toHaveLength(1);
-  }, 120_000);
+  },
+  120_000,
+);
 
-  it.concurrent("nudges a model that stops, up to the host's prompts whatever the harness asks", async () => {
+it.skipIf(!walled).concurrent(
+  "nudges a model that stops, up to the host's prompts whatever the harness asks",
+  async () => {
     // The cap counts prompts, as v1's maxTurns did: the opening one and one nudge here, each
     // answered by a turn that calls a tool and then stops without submitting.
     const scale = fauxAssistantMessage(fauxToolCall("scale_base", { factor: 1 }), toolUse);
@@ -394,20 +413,32 @@ describe.skipIf(!walled)("a solve end to end", () => {
     expect(sent[0]).toContain("The case has 5 minutes of solve time, and every tool result ends with");
     expect(sent[1]).not.toContain(NUDGE);
     expect(sent[2]).toContain(JSON.stringify(NUDGE));
-  }, 120_000);
+  },
+  120_000,
+);
 
-  it.concurrent("ends flagged once, with no verdict, where the solver says the task is malformed", async () => {
+it.skipIf(!walled).concurrent(
+  "ends flagged once, with no verdict, where the solver says the task is malformed",
+  async () => {
     const reason = "The span is given twice, as 4 m and 5 m.";
-    const { events, finished, request } = setup([
-      fauxAssistantMessage(fauxToolCall("submit", { malformed: reason }), toolUse),
+    const { events, finished, request, sent } = setup([
+      fauxAssistantMessage(
+        [fauxToolCall("submit", { malformed: reason }), fauxToolCall("bash", { command: "true" })],
+        toolUse,
+      ),
     ]);
     expect(await solve(request, noWait)).toEqual({ outcome: "flagged", reason });
     // Not run again as a non-result is, and judged by no check.
     expect(finished()).toHaveLength(1);
+    expect(sent).toHaveLength(1);
     expect(events().some(({ kind }) => kind === "verdict")).toBe(false);
-  }, 120_000);
+  },
+  120_000,
+);
 
-  it.concurrent("ends at the model's turns where it is given a number of them, and says each turn", async () => {
+it.skipIf(!walled).concurrent(
+  "ends at the model's turns where it is given a number of them, and says each turn",
+  async () => {
     const scale = fauxAssistantMessage(fauxToolCall("scale_base", { factor: 1 }), toolUse);
     const limits = { ...LIMITS, modelTurns: 3 };
     const spent = setup([scale, scale, scale, scale, scale], { limits });
@@ -439,9 +470,13 @@ describe.skipIf(!walled)("a solve end to end", () => {
     });
     expect(await solve(last.request, noWait)).toEqual({ outcome: "pass" });
     expect(last.finished()[0]?.data).toMatchObject({ turns: 3 });
-  }, 120_000);
+  },
+  120_000,
+);
 
-  it.concurrent("ends on a submit sent in the same turn as a shell call", async () => {
+it.skipIf(!walled).concurrent(
+  "ends on a submit sent in the same turn as a shell call",
+  async () => {
     // pi ends its loop on a turn only where every call returned `terminate`, which a shell call never
     // does: until 12 October the model was asked again after its answer was in.
     const both = fauxAssistantMessage(
@@ -456,9 +491,13 @@ describe.skipIf(!walled)("a solve end to end", () => {
     expect(await solve(request, noWait)).toEqual({ outcome: "pass" });
     expect(finished()[0]?.data).toMatchObject({ turns: 1, prompts: 1 });
     expect(sent).toHaveLength(1);
-  }, 120_000);
+  },
+  120_000,
+);
 
-  it.concurrent("ends wall-ended when the wall falls mid-command", async () => {
+it.skipIf(!walled).concurrent(
+  "ends wall-ended when the wall falls mid-command",
+  async () => {
     const sleep = fauxAssistantMessage(fauxToolCall("bash", { command: "sleep 20" }), toolUse);
     const { request, events } = setup([sleep, sleep], { limits: { ...LIMITS, wallSeconds: 3 } });
     expect(await solve(request, noWait)).toEqual({ outcome: "fail", kind: "wall-ended" });
@@ -466,9 +505,13 @@ describe.skipIf(!walled)("a solve end to end", () => {
     const call = events().find(({ kind }) => kind === "solve.call");
     expect(call?.data).toMatchObject({ tool: "bash", isError: true });
     expect(call?.data.ms).toBeLessThan(15_000);
-  }, 120_000);
+  },
+  120_000,
+);
 
-  it.concurrent("cuts a command before the solve's end, so the solver can still answer", async () => {
+it.skipIf(!walled).concurrent(
+  "cuts a command before the solve's end, so the solver can still answer",
+  async () => {
     // Forty seconds of solve, of which the last five are kept back: a command that asked for a
     // minute is handed back with them in hand, and the answer written after it is judged.
     const long = fauxAssistantMessage(
@@ -480,12 +523,17 @@ describe.skipIf(!walled)("a solve end to end", () => {
     expect(await solve(request, noWait)).toEqual({ outcome: "pass" });
     const [cut] = events().flatMap(({ kind, data }) => (kind === "solve.call" ? [data] : []));
     expect(cut).toMatchObject({ tool: "bash", isError: true });
-    expect(cut?.text).toMatch(
-      /^began\n\n\nCommand timed out after 3\d seconds\n\nThe command was cut because the solve's time is nearly up, so that its result reaches you while you can still act on it\.\n\n\[Solve time used: 0:3\d of 0:40\]$/,
-    );
-  }, 120_000);
+    expect(cut?.text).toContain("began");
+    expect(cut?.text).toMatch(/Command timed out after 3\d seconds/);
+    expect(cut?.text).toContain("The command was cut because the solve's time is nearly up");
+    expect(cut?.text).toMatch(/\[Solve time used: 0:3\d of 0:40\]/);
+  },
+  120_000,
+);
 
-  it.concurrent("reruns a failed provider turn three times, then reports it as the provider's non-result", async () => {
+it.skipIf(!walled).concurrent(
+  "reruns a failed provider turn three times, then reports it as the provider's non-result",
+  async () => {
     const closed = fauxAssistantMessage("", { stopReason: "error", errorMessage: "WebSocket closed 1000" });
     const { request, finished } = setup([closed, closed, closed, closed]);
     const waits: number[] = [];
@@ -495,9 +543,13 @@ describe.skipIf(!walled)("a solve end to end", () => {
     expect(ending).toEqual({ outcome: "non-result", kind: "provider", reason: "WebSocket closed 1000" });
     expect(waits).toEqual([30_000, 60_000, 120_000]);
     expect(finished()).toHaveLength(4);
-  }, 120_000);
+  },
+  120_000,
+);
 
-  it.concurrent("waits out repeated named resets without spending a rerun, between ordinary provider failures", async () => {
+it.skipIf(!walled).concurrent(
+  "waits out repeated named resets without spending a rerun, between ordinary provider failures",
+  async () => {
     const until = Math.ceil(Date.now() / 1000) + 3600;
     const limited = fauxAssistantMessage("", {
       stopReason: "error",
@@ -530,9 +582,13 @@ describe.skipIf(!walled)("a solve end to end", () => {
     expect(waits.filter((ms) => ms > 120_000).every((ms) => ms > 3_500_000 && ms <= 3_661_000)).toBe(true);
     expect(finished()).toHaveLength(8);
     expect(new Set(finished().map(({ data }) => data.solve)).size).toBe(8);
-  }, 120_000);
+  },
+  120_000,
+);
 
-  it.concurrent("returns the ending when killed in a named-reset wait even when the stub sleep never finishes", async () => {
+it.skipIf(!walled).concurrent(
+  "returns the ending when killed in a named-reset wait even when the stub sleep never finishes",
+  async () => {
     const limited = fauxAssistantMessage("", {
       stopReason: "error",
       errorMessage: `limit reached|${String(Math.ceil(Date.now() / 1000) + 3600)}`,
@@ -546,9 +602,13 @@ describe.skipIf(!walled)("a solve end to end", () => {
     expect(ending).toMatchObject({ outcome: "non-result", kind: "provider" });
     expect(events().filter(({ kind }) => kind === "campaign.waited")).toHaveLength(1);
     expect(finished()).toHaveLength(1);
-  }, 120_000);
+  },
+  120_000,
+);
 
-  it.concurrent("starts no rerun once the solve is killed during its wait", async () => {
+it.skipIf(!walled).concurrent(
+  "starts no rerun once the solve is killed during its wait",
+  async () => {
     const closed = fauxAssistantMessage("", { stopReason: "error", errorMessage: "WebSocket closed 1000" });
     const kill = new AbortController();
     const { request, finished } = setup([closed, closed]);
@@ -557,9 +617,13 @@ describe.skipIf(!walled)("a solve end to end", () => {
     });
     expect(ending).toMatchObject({ outcome: "non-result", kind: "provider" });
     expect(finished()).toHaveLength(1);
-  }, 120_000);
+  },
+  120_000,
+);
 
-  it.concurrent("reruns a solve whose harness files moved, and the rerun counts", async () => {
+it.skipIf(!walled).concurrent(
+  "reruns a solve whose harness files moved, and the rerun counts",
+  async () => {
     // The first attempt's model writes into the harness mid-solve; the second finds it settled.
     let harness = "";
     const move: FauxResponseStep = () => {
@@ -573,9 +637,13 @@ describe.skipIf(!walled)("a solve end to end", () => {
       { outcome: "non-result", kind: "moved-files", reason: `${harness} changed during the solve` },
       { outcome: "pass" },
     ]);
-  }, 120_000);
+  },
+  120_000,
+);
 
-  it.concurrent("stops the run on the verifier's non-result, once the solve is logged", async () => {
+it.skipIf(!walled).concurrent(
+  "stops the run on the verifier's non-result, once the solve is logged",
+  async () => {
     const { request, finished } = setup(answer, {
       verify: async () => ({ kind: "non-result", reason: "value: the wall broke" }),
     });
@@ -583,9 +651,13 @@ describe.skipIf(!walled)("a solve end to end", () => {
       "the verifier could not decide t-1, so the run stops: value: the wall broke",
     );
     expect(finished().at(-1)?.data.ending).toMatchObject({ outcome: "non-result", kind: "verifier" });
-  }, 120_000);
+  },
+  120_000,
+);
 
-  it.concurrent("judges an answer held before the model process crashed", async () => {
+it.skipIf(!walled).concurrent(
+  "judges an answer held before the model process crashed",
+  async () => {
     // Submit beside a call that does not end the batch, so the loop asks for one more turn, and the
     // model process dies on it.
     const submit = fauxAssistantMessage(
@@ -593,7 +665,7 @@ describe.skipIf(!walled)("a solve end to end", () => {
       toolUse,
     );
     const { request, finished } = setup([written, submit]);
-    const models = request.models("");
+    const models = request.models("", new AbortController().signal);
     const stream = models.streamSimple.bind(models);
     let requests = 0;
     models.streamSimple = (model, context, options) => {
@@ -603,9 +675,13 @@ describe.skipIf(!walled)("a solve end to end", () => {
     };
     expect(await solve(request, noWait)).toEqual({ outcome: "pass" });
     expect(finished()).toHaveLength(1);
-  }, 120_000);
+  },
+  120_000,
+);
 
-  it.concurrent("judges an answer whose home cannot be walked, its size unknown", async () => {
+it.skipIf(!walled).concurrent(
+  "judges an answer whose home cannot be walked, its size unknown",
+  async () => {
     const lock = fauxAssistantMessage(
       fauxToolCall("bash", { command: 'mkdir -p "$HOME/locked/x" && chmod 0 "$HOME/locked"' }),
       toolUse,
@@ -613,20 +689,29 @@ describe.skipIf(!walled)("a solve end to end", () => {
     const { request, finished } = setup([lock, ...answer]);
     expect(await solve(request, noWait)).toEqual({ outcome: "pass" });
     expect(finished().map(({ data }) => data.homeBytes)).toEqual([null]);
-  }, 120_000);
+  },
+  120_000,
+);
 
-  it.concurrent("fails a harness whose tools do not bundle once, with no rerun", async () => {
+it.skipIf(!walled).concurrent(
+  "fails a harness whose tools do not bundle once, with no rerun",
+  async () => {
     const { request, finished } = setup([]);
     writeFileSync(join(request.harness, "agent", "tools.ts"), "export const = ;\n");
     expect(await solve(request, noWait)).toMatchObject({ outcome: "fail", kind: "broken-harness" });
     expect(finished().map(({ data }) => data.harness)).toEqual([null]);
-  }, 120_000);
+  },
+  120_000,
+);
 
-  it.concurrent("returns a faulty check's ending once, neither rerun nor stopping the run", async () => {
+it.skipIf(!walled).concurrent(
+  "returns a faulty check's ending once, neither rerun nor stopping the run",
+  async () => {
     const { request, finished } = setup(answer, {
       verify: async () => ({ kind: "faulty", check: "value", reason: "the check threw: x" }),
     });
     expect(await solve(request, noWait)).toMatchObject({ outcome: "non-result", kind: "check" });
     expect(finished()).toHaveLength(1);
-  }, 120_000);
-});
+  },
+  120_000,
+);

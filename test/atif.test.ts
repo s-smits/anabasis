@@ -5,7 +5,8 @@ import { append, read } from "../src/kernel/log.ts";
 import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { traceSink } from "../src/solve/seat.ts";
+import { isString } from "../src/meta/json-shape.ts";
+import { traceSink } from "../src/agent/session.ts";
 
 const AGENT = { name: "anabasis", version: "abc123", model: "faux-model" };
 const USAGE = {
@@ -21,27 +22,42 @@ const USAGE = {
 const home = mkdtempSync(join(tmpdir(), "ana-atif-"));
 afterAll(() => rmSync(home, { recursive: true, force: true }));
 
-/** A solve of two turns with a compaction between them, a call no turn ended, and a Builder's turn. */
+/** A solve of two turns with a compaction between them, the first's calls logged before it as
+ *  before 22 October and the second's after it as a durable seat logs them, a call no turn ended,
+ *  and a Builder's turn. */
 function written(): string {
   const log = join(home, "log.jsonl");
-  const solve = traceSink(log, "solve", "s-1", () => 1);
+  let turn = 1;
+  const solve = traceSink(log, "solve", "s-1", () => turn);
   const call = (id: string, args: string | { command: string }, isError: boolean) => {
-    solve({ type: "tool_execution_start", toolCallId: id, toolName: "bash", args });
+    if (isString(args)) {
+      append(log, "solve.call", {
+        solve: "s-1",
+        toolCallId: id,
+        turn,
+        tool: "bash",
+        args,
+        isError,
+        text: `ran ${id}`,
+        ms: 0,
+      });
+      return;
+    }
+    const invocation = { type: "toolCall" as const, id, name: "bash", arguments: args };
+    solve.beforeTool(invocation);
     const content = [{ type: "text" as const, text: `ran ${id}` }];
-    solve({ type: "tool_execution_end", toolCallId: id, toolName: "bash", result: { content }, isError });
+    solve.afterTool(invocation, { output: content, isError });
   };
   call("c-1", { command: "ls" }, false);
   call("c-2", "not an object", true);
-  solve({ type: "turn_end", message: { ...fauxAssistantMessage("first"), usage: USAGE }, toolResults: [] });
+  solve.turn({ ...fauxAssistantMessage("first"), usage: USAGE });
   append(log, "solve.compacted", { solve: "s-1", usages: [{ cost: { total: 0.5 } }] });
-  solve({ type: "turn_end", message: { ...fauxAssistantMessage("second"), usage: USAGE }, toolResults: [] });
+  turn = 2;
+  solve.turn({ ...fauxAssistantMessage("second"), usage: USAGE });
   call("c-3", { command: "pwd" }, false);
-  traceSink(
-    log,
-    "build",
-    "b-1",
-    () => 1,
-  )({ type: "turn_end", message: fauxAssistantMessage("built"), toolResults: [] });
+  turn = 3;
+  call("c-4", { command: "date" }, false);
+  traceSink(log, "build", "b-1", () => 1).turn(fauxAssistantMessage("built"));
   return log;
 }
 
@@ -59,7 +75,7 @@ describe("a trace as an ATIF trajectory", () => {
     extra?: object;
   }[];
 
-  it("numbers its steps from one and gives each turn the calls logged before it", () => {
+  it("numbers its steps from one and gives each turn the calls that name it, before or after it", () => {
     expect(trajectory.schema_version).toBe("ATIF-v1.8");
     expect(steps.map(({ step_id, source, message }) => [step_id, source, message])).toEqual([
       [1, "agent", "first"],
@@ -72,7 +88,8 @@ describe("a trace as an ATIF trajectory", () => {
       "c-1",
       "c-2",
     ]);
-    expect(steps[2]?.tool_calls).toBeUndefined();
+    expect(steps[2]?.tool_calls?.map(({ tool_call_id }) => tool_call_id)).toEqual(["c-3"]);
+    expect(steps[3]?.tool_calls?.map(({ tool_call_id }) => tool_call_id)).toEqual(["c-4"]);
   });
 
   it("keeps an argument that is no object, a failed call and a cut turn in extra", () => {

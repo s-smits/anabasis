@@ -18,18 +18,18 @@
  * with the answer format the sweep's record tool took, and the limits are the sweep's `config.yaml`
  * without its disk cap. The test condition's model and effort are the stored cycle's. The cycle's own
  * harness is not used: it comes from v1's runs, and a campaign starts from the Starter Built
- * Harness, which is also its first reference harness (`src/solve/starter.ts`, `7f0add79:docs/plan.md`,
+ * Harness, which is also its first reference harness (`src/harness/starter.ts`, `7f0add79:docs/plan.md`,
  * Phase 0). Until 2026-10-09 the stored harness was both.
  *
  * It first ran against a model on 8 October, in a round with a Claude Builder (issue #1). It needs
  * the Mac's command wall, the pack and the sweep on disk, and a model login.
  */
 import type { Api, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
-import { backends, compactionMode } from "#src/backends/models.ts";
+import { backends, compactionMode } from "#src/agent/backends/models.ts";
 import { type Practised, practised } from "#src/builder/session.ts";
-import { namesOf } from "#src/builder/names.ts";
-import { type Opening, openingOf } from "#src/builder/opening.ts";
-import { draftOf } from "#src/examiner/draft.ts";
+import { namesOf } from "#src/campaign/names.ts";
+import { type Opening, openingOf } from "#src/campaign/opening.ts";
+import { type Draft, draftOf } from "#src/examiner/draft.ts";
 import { departure } from "#src/kernel/acceptance.ts";
 import {
   type Condition,
@@ -66,13 +66,13 @@ import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { worktrees } from "#src/meta/git.ts";
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
-import type { Reader } from "#src/review/reader.ts";
-import { referee } from "#src/review/referee.ts";
-import { writeStarter } from "#src/solve/starter.ts";
+import type { Reader } from "#src/referee/reader.ts";
+import { referee } from "#src/referee/referee.ts";
+import { writeStarter } from "#src/harness/starter.ts";
 import { stageExam } from "./exam.ts";
 import type { NamedSolver } from "./setting.ts";
-import { openHarness, treeContent } from "#src/solve/harness.ts";
-import { HOST_SOLVE_ISOLATION_PROFILE_ID } from "#src/verify/solve-sandbox.ts";
+import { openHarness, treeContent } from "#src/harness/open.ts";
+import { HOST_SOLVE_ISOLATION_PROFILE_ID } from "#src/wall/base.ts";
 import {
   checkProgram,
   contractOf,
@@ -106,6 +106,10 @@ interface CampaignArgs {
    *  of a handed-over harness (`close.ts --solve`), which the campaign's readings never count. The
    *  exam, the tasks and the checker are read from the campaign's log all the same. */
   readonly trial?: string | undefined;
+  /** A drafted exam the log does not hold yet, which the campaign opens over in place of the one
+   *  its log drafted: the draft whose examples the drafting session's measure solves
+   *  (`tools/d1b/draft.ts`). */
+  readonly draft?: Draft | undefined;
 }
 
 /** A harness as a solve is handed it. */
@@ -175,7 +179,7 @@ export const REPO = resolve(import.meta.dir, "..", "..");
 /** The flags that name a stored pack together. */
 const PACK_FLAGS = 4;
 /** The agent runtime's packages, pinned in `package.json`; the SDK pins the Claude Code binary. */
-const RUNTIME = ["@anthropic-ai/claude-agent-sdk", "@earendil-works/pi-agent-core", "@earendil-works/pi-ai"];
+const RUNTIME = ["@anthropic-ai/claude-agent-sdk", "@earendil-works/pi-ai", "@earendil-works/pi-durable"];
 
 /**
  * The repository's other worktrees, which every wall of this command denies with the one it runs
@@ -235,7 +239,7 @@ function packOpened(dir: string, log: string, args: CampaignArgs) {
     return { bundle, checks, format: recordedAnswerFormat(row), solver: () => stored };
   }
   const events = read(log);
-  const draft = draftOf(events);
+  const draft = args.draft ?? draftOf(events);
   if (draft === null) throw new Error(`${log} holds no drafted exam, and no stored pack was named`);
   const named = openingOf(events)?.solver ?? null;
   return {
@@ -398,7 +402,7 @@ export async function openCampaign(args: CampaignArgs) {
       model: by.model,
       effort: by.effort,
       limits,
-      models: by.models ?? ((home) => backends(sweepOptions(home, by.window))),
+      models: by.models ?? ((home, shutdown) => backends(sweepOptions(home, by.window, shutdown))),
       verify,
       log: written,
       repoRoot: REPO,
@@ -458,7 +462,7 @@ export async function openCampaign(args: CampaignArgs) {
 
 /**
  * The Starter Built Harness, as a solve and a Builder session are handed it
- * (`src/solve/starter.ts`): written once and kept under its digest among the campaign's states,
+ * (`src/harness/starter.ts`): written once and kept under its digest among the campaign's states,
  * like a harness a session froze.
  */
 export async function starter(campaign: { readonly states: string }): Promise<Kept> {
@@ -584,7 +588,8 @@ export function awaitingLines(campaign: {
  * more. A reviewer's ruling takes minutes, so its cache lives five.
  */
 function hostSession(seat: { readonly webSearch: boolean; readonly cacheTtl: "5m" | "1h" }) {
-  return (home: string) => backends({ claude: { ...sweepOptions(home).claude, ...seat } });
+  return (home: string, shutdown: AbortSignal) =>
+    backends({ claude: { ...sweepOptions(home, undefined, shutdown).claude, ...seat } });
 }
 
 /** An Examiner's backends, for the session that drafts an exam before there is a campaign to

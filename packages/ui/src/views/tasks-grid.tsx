@@ -5,7 +5,7 @@ import type { LeftOut, Outcome, TaskCell, TaskGrid, TaskLeftOut, TaskRow } from 
 import { shortHash } from "../models.ts";
 import { Filters, Search, Select } from "./controls.tsx";
 import { OUTCOMES } from "./outcome.ts";
-import type { Share } from "../../../../src/builder/climb.ts";
+import type { Share } from "../../../../src/campaign/climb.ts";
 
 /*
  * Every task version against every comparison: one row a task, one column a comparison in the order

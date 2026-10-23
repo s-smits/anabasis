@@ -8,7 +8,7 @@
  * overhaul plan's M3, 12 October). Until it is answered the comparison's report says `unsettled`,
  * and no promotion waits for it: a campaign runs unattended (the operator, 12 October). A rejected
  * answer one the Referee ruled a check defect or unclear, and one nobody ruled on, sets its task
- * aside, out of every tally of the comparison (`src/builder/round.ts`), and the packet is how a
+ * aside, out of every tally of the comparison (`src/campaign/round.ts`), and the packet is how a
  * person decides those. `--session` is the comparison's id: a round's session, or a checkpoint's
  * `--id`.
  *
@@ -65,8 +65,8 @@ import {
   swapped,
   toLabel,
   UNSETTLED,
-} from "#src/builder/comparison.ts";
-import { settleReading } from "#src/builder/round.ts";
+} from "#src/campaign/comparison.ts";
+import { settleReading } from "#src/campaign/round.ts";
 import { draw } from "#src/kernel/compare.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
@@ -78,8 +78,8 @@ import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
-import { agreement, RULINGS, unclearReport } from "#src/review/agreement.ts";
-import { labelled } from "#src/review/rejections.ts";
+import { agreement, RULINGS, unclearReport } from "#src/referee/agreement.ts";
+import { labelled } from "#src/referee/rejections.ts";
 import { openCampaign, packNamed } from "./campaign.ts";
 import { type Campaign, reportLines } from "./round.ts";
 

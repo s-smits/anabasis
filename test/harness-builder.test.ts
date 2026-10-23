@@ -6,6 +6,7 @@
 import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
 import { examine } from "../src/examiner/session.ts";
 import { append, LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
+import { countedSolves, solvesIn } from "../src/kernel/solves.ts";
 import {
   cpSync,
   existsSync,
@@ -63,6 +64,34 @@ afterAll(() => {
   rmSync(root, { recursive: true, force: true });
   for (const name of names) rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
 });
+
+/** A drafted exam over `tasks` as `draft_exam` takes it, six times a base, and its accepted answers
+ *  as a scripted solver reads them. */
+function draftedOf(tasks: typeof TASKS) {
+  const exam = {
+    domain: "Fixture products",
+    scope: "A task gives a base and asks for six times it.",
+    conventions: "The answer is a decimal string without a sign.",
+    rules: [
+      { id: "R1", statement: "The answer is the base times six.", source: "A fixture: no field states it." },
+    ],
+    answer_format: FORMAT,
+    checks: [{ id: "check-product", rule: "R1", assertion: "The answer is six times the base." }],
+    evaluator: `export const checks = {\n  "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6),\n};\n`,
+    tasks: tasks.map(({ family, publicInput, hidden }) => ({ family, public_input: publicInput, hidden })),
+    accept_controls: tasks.map(({ publicInput }, task) => ({
+      task,
+      answer: { answer: String(publicInput.base * 6) },
+    })),
+    reject_controls: [{ task: 0, answer: { answer: "13" }, check: "check-product" }],
+  };
+  const examples = tasks.map(({ publicInput }, index) => ({
+    taskId: `ex-${String(index + 1).padStart(3, "0")}`,
+    answer: { answer: String(publicInput.base * 6) },
+    refusedBy: null,
+  }));
+  return { exam, examples };
+}
 
 /** A campaign's folder marked as a seed, which is where a scripted solve may be written, and the
  *  flags that name it. */
@@ -915,6 +944,61 @@ describe("a campaign run by its log", () => {
     );
     expect(strayed).toEqual([]);
   });
+  it("measures a drafted exam's examples with the reference harness before the draft stands, as solves that are the Examiner's", async () => {
+    const name = `${STEM}-measured`;
+    names.push(name);
+    const folder = join(REPO, ".ana", "d2", name);
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, "seed.json"), `${JSON.stringify({ from: null, events: 0 })}\n`);
+    const strayed: string[] = [];
+    const { exam, examples } = draftedOf(TASKS.slice(0, 3));
+    const solving = scriptedSeats(
+      { held: { old: "pass", fresh: "pass" }, starter: "pass" },
+      examples,
+      strayed,
+    );
+    const seats: Seats = {
+      seated: solving,
+      probe: solving,
+      draft: (request) =>
+        examine({
+          ...request,
+          ...scripted([
+            ["draft_exam", exam],
+            ["draft_exam", exam],
+          ]),
+        }),
+    };
+    const flags = [
+      "--name",
+      name,
+      "--project",
+      PROJECT,
+      "--solver",
+      "claude/claude-opus-5-5",
+      "--solve-minutes",
+      "8",
+    ];
+    await harnessBuilder([...flags, "--prompt", "Six times a base.", "--hitl"], seats);
+    // The first put is measured and told, and the same draft put again stands.
+    const said = of(name, "draft.call").map(({ text }) => (isString(text) ? text : ""));
+    expect(said).toHaveLength(2);
+    for (const index of [0, 1, 2]) {
+      expect(said[0]).toContain(
+        `- example ${String(index)}: the reference harness answered it validly in 3 of 3 solves`,
+      );
+    }
+    expect(said[1]).toStartWith("The draft stands");
+    expect(of(name, "exam.drafted")).toHaveLength(1);
+    // Nine solves, each named by the drafting session, under the setting the first recorded; none
+    // is on a task's record.
+    const events = read(join(folder, LOG_FILE));
+    expect(solvesIn(events).map(({ start }) => start.comparison)).toEqual(Array(9).fill("d-1"));
+    expect(countedSolves(events)).toEqual([]);
+    expect(of(name, "campaign.setting")).toMatchObject([{ minutes: 8 }]);
+    expect(strayed).toEqual([]);
+  });
+
   it("opens from a prompt: drafts its exam, waits under --hitl for the operator's word on its checks, takes its launch as that word without it, and reaches a comparison with no file written by hand", async () => {
     const name = `${STEM}-prompt`;
     names.push(name);
@@ -926,38 +1010,13 @@ describe("a campaign run by its log", () => {
     const terms = ["--practice", "2", "--solves", "1", "--solve-minutes", "8", "--practice-solves", "5"];
     const size = ["--target", "6", "--patience", "2"];
     const flags = ["--name", name, "--project", PROJECT, ...solver, ...terms, ...size];
-    const exam = {
-      domain: "Fixture products",
-      scope: "A task gives a base and asks for six times it.",
-      conventions: "The answer is a decimal string without a sign.",
-      rules: [
-        {
-          id: "R1",
-          statement: "The answer is the base times six.",
-          source: "A fixture: no field states it.",
-        },
-      ],
-      answer_format: FORMAT,
-      checks: [{ id: "check-product", rule: "R1", assertion: "The answer is six times the base." }],
-      evaluator: `export const checks = {\n  "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6),\n};\n`,
-      tasks: TASKS.map(({ family, publicInput, hidden }) => ({ family, public_input: publicInput, hidden })),
-      accept_controls: TASKS.map(({ publicInput }, task) => ({
-        task,
-        answer: { answer: String(publicInput.base * 6) },
-      })),
-      reject_controls: [{ task: 0, answer: { answer: "13" }, check: "check-product" }],
-    };
+    const { exam, examples } = draftedOf(TASKS);
     // The first draft's reject control is the right answer, which no check refuses.
     const wrong = {
       ...exam,
       reject_controls: [{ task: 0, answer: { answer: "12" }, check: "check-product" }],
     };
     const strayed: string[] = [];
-    const examples = TASKS.map(({ publicInput }, index) => ({
-      taskId: `ex-${String(index + 1).padStart(3, "0")}`,
-      answer: { answer: String(publicInput.base * 6) },
-      refusedBy: null,
-    }));
     const seats: Seats = {
       seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, examples, strayed),
       draft: (request) =>

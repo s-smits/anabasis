@@ -1,8 +1,8 @@
-// The names people read for a campaign's harnesses (`src/builder/names.ts`): the Starter A by role,
+// The names people read for a campaign's harnesses (`src/campaign/names.ts`): the Starter A by role,
 // the rest a letter each in the order the log first names them, kept whatever is appended after.
 
 import { describe, expect, it } from "bun:test";
-import { calledBy, letters, namesOf } from "../src/builder/names.ts";
+import { calledBy, letters, namesOf } from "../src/campaign/names.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 

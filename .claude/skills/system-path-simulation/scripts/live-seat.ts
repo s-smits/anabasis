@@ -17,7 +17,9 @@
  *
  * Run `start` under `bun --env-file=<file>` and as one background command: it ends when the seat
  * does, so its end is the one notice to wait for, and the 30-minute monitor a watcher re-arms is not
- * needed. `<prefix>.json` keeps where the seat began, `<prefix>.out` and `.err` its command's output.
+ * needed. `<prefix>.json` keeps where the seat began, `<prefix>.out` and `.err` its command's output,
+ * each emptied at a start: on 22 October a relaunch under one prefix wrote nothing to stderr, and
+ * its `.err` still held the error that ended the launch before it.
  * `--mention` counts the Examiner's calls whose arguments name the text, such as a folder of its home.
  *
  * The supply ablation of 18 October ran its two arms on a Python reader, a shell watcher and a
@@ -31,9 +33,8 @@
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { gateAnswers, measuredGate } from "#src/examiner/record.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
-import { billedBetween } from "#src/kernel/reports.ts";
+import { billedBetween, tracesIn } from "#src/kernel/trace.ts";
 import { heldAtGate } from "#src/kernel/task.ts";
-import { tracesIn } from "#src/kernel/trace.ts";
 import { existsSync, openSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { gitText } from "#src/meta/git.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
@@ -229,8 +230,8 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
     env,
     detached: true,
     stdin: "ignore",
-    stdout: openSync(`${out}.out`, "a"),
-    stderr: openSync(`${out}.err`, "a"),
+    stdout: openSync(`${out}.out`, "w"),
+    stderr: openSync(`${out}.err`, "w"),
   });
   child.unref();
   const commit = gitText(tree, "rev-parse", "--short=9", "HEAD");

@@ -8,6 +8,9 @@ import {
   fauxProvider,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { ToolExecutionApi } from "@earendil-works/pi-durable";
+import type { SeatTool } from "../../src/agent/session.ts";
 import type { Draft } from "../../src/examiner/draft.ts";
 import type { ExamRequest } from "../../src/examiner/session.ts";
 import type { Wall } from "../../src/examiner/shell.ts";
@@ -33,7 +36,7 @@ export const NOTE = "Stacked two requirements.";
 /** The repository this suite runs in, which the wall closes to an Examiner's commands. */
 export const REPO = resolve(import.meta.dir, "..", "..");
 /** The line an Examiner session ends each turn's last tool result with (`sit`, `session.ts`). */
-export const USED = /\s*\nTurn \d+ of \d+; \d+ of \d+ minutes? used\.$/;
+export const USED = /(?:^|\s*\n)Turn \d+ of \d+; \d+ of \d+ minutes? used\.$/;
 export const WALL: Wall = { repoRoot: REPO, packRoots: [] };
 export const CONTRACT: Contract = {
   answerFormat: {
@@ -135,6 +138,21 @@ export const condition = (task: string, harness: string): Condition => ({
   host: "h",
   side: "test",
 });
+
+/** Call only the Examiner's host tools: no Harness operations, and a gate may outlive this call. */
+export function invoke(tool: SeatTool, callId: string, args: JsonObject) {
+  // SAFETY: these host tools use no API operations. Refuse any accidental access beyond callId.
+  const api = new Proxy(
+    { callId },
+    {
+      get: (target, key) => {
+        if (key === "callId") return target.callId;
+        throw new Error(`the Examiner host tool unexpectedly read api.${String(key)}`);
+      },
+    },
+  ) as ToolExecutionApi;
+  return tool.execute(args, api, BACKGROUND_CONTEXT);
+}
 
 /** Removes every scratch campaign a suite seated; each suite calls it once, after its cases. */
 export function sweep(): void {

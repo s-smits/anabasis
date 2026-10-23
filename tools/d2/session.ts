@@ -23,7 +23,7 @@
  * starts once the session has billed it (19 October).
  *
  * Before its first event the session asks whether it may start (`admitSession`,
- * `src/builder/admission.ts`): on a checker nobody has read, or after the plan's stop rule has
+ * `src/campaign/admission.ts`): on a checker nobody has read, or after the plan's stop rule has
  * stopped the campaign, it starts nothing. `--past-stop "<why>"` goes on past the stop rule.
  *
  * Run again with the same `--session`, it says what the session left, from the log.
@@ -33,7 +33,7 @@
  *
  * Not run here: see `campaign.ts`.
  */
-import { admitSession } from "#src/builder/admission.ts";
+import { admitSession } from "#src/campaign/admission.ts";
 import { sessionOnce, type BuildRequest } from "#src/builder/session.ts";
 import { read } from "#src/kernel/log.ts";
 import { solverLast } from "#src/kernel/solves.ts";

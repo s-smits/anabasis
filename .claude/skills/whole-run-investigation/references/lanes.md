@@ -428,7 +428,7 @@ read what each call printed before counting it a tool that failed. A tool no sol
 once and abandon promised something its reply did not give. Compare the guide's account of how
 the tools combine with the sequences solves actually ran. A guide is appended to the solver's
 prompt on every task, so a line that is true of the practice tasks and false of the domain costs
-on every scored one. The round's prompt is the host's, in `src/solve/prompt.ts`, and its wall
+on every scored one. The round's prompt is the host's, in `src/solver/prompt.ts`, and its wall
 sentence is the host's claim: check it against the condition's limits. Do not judge the solving
 method. The decision it changes is whether a failed solve failed the task or was misled; it
 routes to `harness/guide` and `harness/tools`, and to `host` for a sentence of the solver's
@@ -516,7 +516,7 @@ task id, a passage of a task, a value that is an answer. The Builder is told suc
 nothing that is measured, which is true of honest tasks and false of a leak. `read_trace` serves
 practice solves only; confirm no refused call tried another. The decision it changes is whether
 the round's reading is admitted at all; it routes to `host` (`src/builder/tools.ts`,
-`src/solve/command.ts`) for a path the wall left open and `harness/guide` or `harness/tools` for
+`src/tools/command.ts`) for a path the wall left open and `harness/guide` or `harness/tools` for
 task content in the harness.
 
 **19. Trace challenge.**
@@ -560,7 +560,7 @@ else. A condition is a content address: the contract, the harness, the task vers
 and its effort, frozen prices, the runtime's pinned packages, the compaction mode, the solver's
 and the verifier's tool trees, the sandbox, the limits, the host's code and the side. A
 comparison counts a solve under one of its harnesses and its own setting, started after its
-`comparison.started` event, and no solve made before (`src/builder/round.ts`). Confirm it from
+`comparison.started` event, and no solve made before (`src/campaign/round.ts`). Confirm it from
 the log all the same: for the counted solves of each comparison, list the distinct values of
 every field but the harness and its `solverTools`, which may change with it. Then read what a
 condition does not hold: load, recorded at solve start and finish, which `gated` in `tools/d2/host.ts` gates at
@@ -571,7 +571,7 @@ the order of `solve.started` within the comparison. Where the host's code moved 
 campaign, name the commits between the two hashes if this checkout has them. A campaign command
 that ran names its commit, and whether the tree was dirty, in `launch-run-<n>.json` beside the
 log. The decision it changes is whether a difference between the sides is the harness's; it
-routes to `host` (`src/kernel/condition.ts`, `src/builder/round.ts`) for a field a condition
+routes to `host` (`src/kernel/condition.ts`, `src/campaign/round.ts`) for a field a condition
 should hold and does not, and `environment` for load.
 
 **21. The scored set and what left it.**
@@ -594,7 +594,7 @@ for again on other terms under the same id is refused; confirm no second `compar
 carries the id. Until 2026-10-09 a round screened candidates and admitted the ones a harness
 failed; a log from before then holds those admissions, and their tallies are of a selected set.
 The decision it changes is whether the tally is of the set that was fixed; it routes to `host`
-(`src/builder/round.ts`) and to `operator` for the labels that would return a task.
+(`src/campaign/round.ts`) and to `operator` for the labels that would return a task.
 
 **22. Paired sign-flip test, ties and power.**
 
@@ -632,7 +632,7 @@ Starts from `VALID BY HARNESS (lane 23)`.
 
 The question is whether the tasks leave a harness room to add anything to the starter. The
 Starter Built Harness is pi's coding agent with nothing added: pi's four coding tools, no guide
-and no domain tool (`src/solve/starter.ts`). Before 2026-10-09 it was the solver with a shell and an
+and no domain tool (`src/harness/starter.ts`). Before 2026-10-09 it was the solver with a shell and an
 answer writer, and a log of that time holds its solves under another digest. The Builder forks it
 in its first session, and it is the reference harness until a step is promoted, so the plan's first
 round compares a built harness with it. `VALID BY HARNESS` gives each harness by itself, as the tasks by how many of their
@@ -756,7 +756,7 @@ spent, and what it proposed before the cut is in the log and held out. Both trig
 open at the log's end apart: it may be running or stopped, and `bun run runs stop` writes no
 ending, and `bun run runs pulse` says whether its process is alive. A fail of kind `broken-harness` fails every task alike. For a session that crashed, name the turn and whether
 its round was refused as the rule says. The decision it changes is whether a count is trusted as
-written; it routes to `host` (`src/solve/run.ts`, `src/kernel/solve.ts`) for a kind that hides a
+written; it routes to `host` (`src/solver/run.ts`, `src/kernel/solve.ts`) for a kind that hides a
 cause, `environment` for a provider or the machine, and `harness/tools` for a harness that does
 not open.
 
@@ -798,7 +798,7 @@ earned fail and whether it was the side that failed. Until 11 October a Diagnose
 for each earned fail, the harness, the public rules or the solver, and a log of before holds
 its readings beside the rulings; 20 of 20 named the solver, and the seat went
 (`7f0add79:docs/simplify.md`, E1). The decision it changes is whether the next change goes to the harness
-or to the exam's owner; it routes to `reviewer-prompt` (`src/review/referee.ts`) for a ruling
+or to the exam's owner; it routes to `reviewer-prompt` (`src/referee/referee.ts`) for a ruling
 that cannot be right, `pack/evaluator` for a check that does not repeat, and `harness/guide` or
 `harness/tools` for a repair on the wrong side.
 
@@ -829,7 +829,7 @@ written once more with `settled` saying what the labels did.
 packets or from the rulings, and whether a task disputed for a check's fault was taken to the
 checker's owner: a dispute removes a task and repairs nothing. The Referee's agreement with a
 person is unmeasured until its rulings are set against labels made before it read
-(`src/review/agreement.ts`); on the record of 9 October, which is not this run's, it ruled all 64
+(`src/referee/agreement.ts`); on the record of 9 October, which is not this run's, it ruled all 64
 rejections then stored a true fail with no label to compare. Count this run's rulings from its log,
 its earned rulings as a reviewer's, and those made without a probe as restating
 the check. Read `referee.refused` events separately where present: no trigger currently counts
@@ -924,7 +924,7 @@ much as two trees do say the difference is the campaign's variance. A campaign t
 promoted yet is read at the same move, not at the same hour. The decision it changes is whether a
 promotion is reported as an improvement, whether the campaign is kept running toward a second
 one, and what the host must fix before the next promotion can be believed; it routes to
-`operator` for the report and the keep or stop, `host` (`src/builder/decide.ts`) for a move
+`operator` for the report and the keep or stop, `host` (`src/campaign/decide.ts`) for a move
 after a promotion the rule did not make, `examiner-prompt` (`src/examiner/prompt.ts`) for room
 written where there is none, and `environment` for the shared temporary folder and the load.
 

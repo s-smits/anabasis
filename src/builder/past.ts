@@ -31,8 +31,8 @@
  *   "on all 5 comparisons so far", of which the log held one.
  */
 import { plural } from "../meta/text.ts";
-import type { Campaign, Handover, PracticeFail } from "./handover.ts";
-import { short } from "./move.ts";
+import type { Campaign, Handover, PracticeFail } from "../campaign/handover.ts";
+import { short } from "../campaign/move.ts";
 
 /** A comparison's reading as a Builder is told it. A reading that tallied nothing has none. The
  *  last two are readings a comparison made before 11 October, which an older log holds. */

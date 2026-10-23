@@ -4,8 +4,8 @@
 // The paid run keeps a Receipt beside its log; these tests use scripted seats and inspect the log.
 
 import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
-import { crashedRun } from "../src/builder/ground.ts";
-import { pendingWords } from "../src/builder/word.ts";
+import { crashedRun } from "../src/campaign/ground.ts";
+import { pendingWords } from "../src/campaign/word.ts";
 import { examine } from "../src/examiner/session.ts";
 import { LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
 import { taskSets } from "../src/kernel/task.ts";
@@ -215,6 +215,12 @@ describe("a campaign run by its live Builder", () => {
       ["examine", "x-2"],
     ]);
     expect(of(name, "exam.started")).toMatchObject([{ limits: { tasks: 4 } }, { limits: { tasks: 4 } }]);
+    const logged = read(join(REPO, ".ana", "d2", name, LOG_FILE));
+    const turn = logged.findIndex(({ kind }) => kind === "build.turn");
+    const examiner = logged.findIndex(({ kind }) => kind === "exam.started");
+    expect(turn).toBeGreaterThan(-1);
+    expect(turn).toBeLessThan(examiner);
+    expect(logged[turn]?.data.usage).toBeDefined();
     expect(of(name, FINISHED)).toMatchObject([
       { session: "b-1", ended: "finished" },
       { session: "b-2", ended: "finished" },
@@ -1184,6 +1190,30 @@ describe("a campaign's endings", () => {
       const id = of(name, "task.proposed").find((task) => task.version === version)?.taskId;
       return ["practice", { tasks: [isString(id) ? id : ""] }];
     },
+  });
+
+  it("ends on its patience of readings with no room inside a live conversation", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
+    const name = `${STEM}-roomless-live`;
+    const asking: Step[] = [
+      ["examine", {}],
+      ["wait", {}],
+    ];
+    const seats: Seats = {
+      seated: builderScript(passing(), [CHANGE_GUIDE, ["compare", {}], ...asking, ...asking, ...asking]),
+      examine: unwritten,
+    };
+    // g-1 closes every task it reads, and two Examiner sessions that hold out none spend a patience
+    // of two: the conversation that asked for them is halted there. Until 22 October that ending
+    // was advice while a conversation lived, and the conversation bought a third session (the job
+    // campaign of 22 October started x-9 after six).
+    expect(await harnessBuilder([...seeded(name), ...FLAGS, "--patience", "2"], seats)).toMatchObject({
+      move: "end",
+      ending: "no-room",
+    });
+    expect(of(name, EXAMINED)).toMatchObject([{ held: [] }, { held: [] }]);
+    expect(of(name, MOVED).filter(({ move }) => move === "examine")).toHaveLength(2);
+    expect(of(name, "campaign.ended")).toMatchObject([{ ending: "no-room" }]);
   });
 
   it("opens a new conversation where one ended at its turns, and goes on to a typed ending", async () => {

@@ -29,7 +29,7 @@
  * such runs. Any other member — `$PPID`, with its dollar — is matched line by line instead, and
  * until 10 October that path applied the declaring file's skip window to every reader, so a
  * producer standing above the declaration's line number in its own file was not seen: `$PPID`,
- * passed at src/solve/command.ts:196 to a union declared at line 460 of another file, was reported
+ * passed at src/tools/command.ts:196 to a union declared at line 460 of another file, was reported
  * as produced nowhere. The window is the declaring file's alone.
  */
 import type { TreeFinding } from "./tree-findings.ts";

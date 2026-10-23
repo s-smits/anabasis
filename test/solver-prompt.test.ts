@@ -1,17 +1,14 @@
-// What a solver reads before its first call. The system prompt is pi's own, section by section:
-// pi's opening line, its tool list and its rules, built from the tools' own lines. v2 speaks in the
-// places pi leaves to its host: the duty, the answer file and the solve time as pi's addendum, the
-// wall's facts as a section of their own, the harness's guide as pi's project context. Then the
-// opening message and the public files the home is seeded with.
+// The solver's role, durable tool descriptions, rules, duty, environment and guide, then the public
+// opening and files. The assertions hold the facts and the wall, rather than a vendor prompt copy.
 import { describe, expect, it } from "bun:test";
 import type { Contract } from "../src/kernel/contract.ts";
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { openDesk, publicResource, submitTool } from "../src/solve/answer.ts";
-import { codingTools, fileTools } from "../src/solve/coding-tools.ts";
-import { type CommandWall, heldSeconds, solveDirs } from "../src/solve/command.ts";
-import { firstTurn, seedHome, systemPrompt, type Told } from "../src/solve/prompt.ts";
+import { openDesk, publicResource, submitTool } from "../src/tools/answer.ts";
+import { codingTools } from "../src/tools/coding.ts";
+import { type CommandWall, heldSeconds, solveDirs } from "../src/tools/command.ts";
+import { firstTurn, seedHome, systemPrompt, type Told } from "../src/solver/prompt.ts";
 
 const CONTRACT: Contract = {
   answerFormat: { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] },
@@ -20,30 +17,6 @@ const CONTRACT: Contract = {
   scope: "Fixture.",
 };
 const HOME = "/scratch/solve-s1/home";
-
-const PI = `You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
-
-<tools>
-- read: Read file contents
-- bash: Execute bash commands (ls, grep, find, etc.)
-- edit: Make precise file edits with exact text replacement, including multiple disjoint edits in one call
-- write: Create or overwrite files
-- submit: Send answer.json as your answer, which ends the task
-
-In addition to the tools above, you may have access to other custom tools depending on the project.
-</tools>
-
-<rules>
-- Use bash for file operations like ls, rg, find
-- Use read to examine files instead of cat or sed.
-- Use edit for precise changes (edits[].oldText must match exactly)
-- When changing multiple separate locations in one file, use one edit call with multiple entries in edits[] instead of multiple edit calls
-- Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.
-- Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.
-- Use write only for new files or complete rewrites.
-- Be concise in your responses
-- Show file paths clearly when working with files
-</rules>`;
 
 const DUTY =
   "Complete the task with the available tools and submit one answer that meets every published requirement; the method is yours to choose. For source code or files, write complete working files, not fragments or descriptions.";
@@ -69,12 +42,10 @@ function starterTools() {
     limits: { shellDefaultSeconds: 300, shellMaxSeconds: 900 },
   };
   const exec = async () => ({ exitCode: 0, output: Buffer.alloc(0) });
-  const [read, edit, write] = fileTools(HOME, exec);
-  const [shell] = codingTools(wall, ["bash"]);
-  if (read === undefined || shell === undefined || edit === undefined || write === undefined) {
-    throw new Error("four coding tools");
-  }
-  return [read, shell, edit, write, submitTool(openDesk(), CONTRACT, HOME, exec)];
+  return [
+    ...codingTools(wall, ["read", "bash", "edit", "write"]),
+    submitTool(openDesk(), CONTRACT, HOME, exec),
+  ];
 }
 
 const TOLD: Told = {
@@ -110,15 +81,21 @@ describe("the solver's system prompt", () => {
     expect(unreached).not.toContain("can be installed into the home directory");
   });
 
-  it("is pi's under the Starter, with the duty, the working directory and the wall's facts", () => {
-    expect(systemPrompt(TOLD)).toBe(
-      [
-        PI,
-        `<addendum>\n${DUTY} The published requirements are the public input, which public/task.json holds, together with the domain's public rules in the 4 files under public/resources/; read both before you build. ${ANSWER} ${TIME}\n</addendum>`,
-        `<cwd>\n${HOME}\n</cwd>`,
-        `<environment>\n${ENVIRONMENT.join("\n")}\n</environment>`,
-      ].join("\n\n"),
-    );
+  it("states the role, tools, duty, working directory and wall facts under the Starter", () => {
+    const prompt = systemPrompt(TOLD);
+    expect(prompt).toContain("coding assistant operating inside pi");
+    expect(prompt).toContain(DUTY);
+    expect(prompt).toContain(ANSWER);
+    expect(prompt).toContain(TIME);
+    expect(prompt).toContain("public/task.json");
+    expect(prompt).toContain("4 files under public/resources/");
+    expect(prompt).toContain(`<cwd>\n${HOME}\n</cwd>`);
+    for (const fact of ENVIRONMENT) expect(prompt).toContain(fact);
+    for (const { name, description } of TOLD.tools) expect(prompt).toContain(`- ${name}: ${description}`);
+    expect(prompt).toContain("edits[].oldText must match exactly");
+    expect(prompt).toContain("matched against the original file");
+    expect(prompt).toContain("Do not emit overlapping or nested edits");
+    expect(prompt).toContain("Use write only for new files or complete rewrites");
   });
 
   it("tells the model's turns where the solve is given a number of them", () => {
@@ -143,26 +120,29 @@ describe("the solver's system prompt", () => {
     );
   });
 
-  it("lists a tool by the line it gives itself, and leaves one that gives none to its declaration", () => {
+  it("lists every tool by its own description in one line and selects the rules with the tools", () => {
     const [read, bash, , , submit] = TOLD.tools;
     if (read === undefined || bash === undefined || submit === undefined) {
       throw new Error("the starter's tools");
     }
-    const advisor = { ...read, name: "screen_design", promptSnippet: undefined, promptGuidelines: undefined };
+    const advisor = { ...read, name: "screen_design", description: "Screen a design." };
     const lister = {
       ...advisor,
       name: "list_staff",
-      promptSnippet: "List this task's staff",
-      promptGuidelines: ["Call list_staff once."],
+      description: "List this task's staff.\nInclude their hours.",
     };
     const prompt = systemPrompt({ ...TOLD, tools: [bash, advisor, lister, submit] });
-    expect(prompt).toContain(
-      "<tools>\n- bash: Execute bash commands (ls, grep, find, etc.)\n- list_staff: List this task's staff\n- submit: Send answer.json as your answer, which ends the task\n\nIn addition",
-    );
-    // Without the file tools their rules go too; pi's own two close the list.
-    expect(prompt).toContain(
-      "<rules>\n- Use bash for file operations like ls, rg, find\n- Call list_staff once.\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
-    );
+    expect(prompt).toContain(`- bash: ${bash.description}`);
+    expect(prompt).toContain("- screen_design: Screen a design.");
+    expect(prompt).toContain("- list_staff: List this task's staff. Include their hours.");
+    expect(prompt).toContain(`- submit: ${submit.description}`);
+    expect(prompt).toContain("Use bash for file operations");
+    expect(prompt).toContain("Be concise");
+    expect(prompt).toContain("Show file paths");
+    expect(prompt).not.toContain("Use read");
+    expect(prompt).not.toContain("edits[].oldText");
+    expect(prompt).not.toContain("Use write");
+    expect(systemPrompt({ ...TOLD, tools: [] })).not.toContain("Use bash");
   });
 
   it("states the command limits and the installed programs as the host has them", () => {
@@ -203,6 +183,8 @@ describe("what a solve opens with", () => {
 
   it("is the task's public part, as the first message and as files in the home with the answer's format", () => {
     expect(firstTurn(task)).toBe('Task t-1 (family fixture).\n\nPublic input:\n{\n  "base": 7\n}');
+    const changed = { ...task, hidden: { answer: "different" } };
+    expect(firstTurn(changed)).toBe(firstTurn(task));
     const home = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-prompt-home-")));
     try {
       const rules = publicResource("public rules", [{ id: "r1" }]);

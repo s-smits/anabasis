@@ -64,7 +64,7 @@ import {
 import type { Control } from "#src/kernel/acceptance.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { proposalsOf } from "#src/kernel/history.ts";
-import { verdictsOf } from "#src/kernel/solves.ts";
+import { examinerSessions, verdictsOf } from "#src/kernel/solves.ts";
 import type { Task } from "#src/kernel/verify.ts";
 import { examine, type Session } from "#src/examiner/session.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
@@ -74,10 +74,10 @@ import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
-import { ANSWER_FILE } from "#src/solve/answer.ts";
-import { selectedCodingTools } from "#src/solve/coding-tools.ts";
-import { openHarness } from "#src/solve/harness.ts";
-import { shellQuote } from "#src/verify/solve-command-isolation.ts";
+import { ANSWER_FILE } from "#src/tools/answer.ts";
+import { selectedCodingTools } from "#src/tools/coding.ts";
+import { openHarness } from "#src/harness/open.ts";
+import { shellQuote } from "#src/wall/isolation.ts";
 import { campaignLog, starter } from "../d2/campaign.ts";
 import { stagedExamOf } from "../d2/exam.ts";
 import { checkpointCommand } from "../d2/checkpoint.ts";
@@ -263,9 +263,7 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
       setting: campaign.setting({ ...campaign.test, ...scripted([], 0) }),
       solve: async (task, harness, kill, comparison) => {
         const side = await sideOf(harness.dir);
-        const admission = read(campaign.log).some(
-          ({ kind, data }) => kind === "exam.started" && data.session === comparison,
-        );
+        const admission = examinerSessions(read(campaign.log)).has(comparison);
         const wanted = admission
           ? script.held.old
           : { old: script.held.old, new: script.held.fresh, starter: script.starter }[side];

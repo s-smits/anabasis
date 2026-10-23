@@ -38,5 +38,26 @@ describe("boundText", () => {
 
   it("applies a line bound as well as a byte bound", () => {
     expect(boundText("one\ntwo\nthree", 1000, "head", 2).text).toBe("one\ntwo");
+    expect(boundText("one\ntwo\nthree", 1000, "tail", 2).text).toBe("two\nthree");
+  });
+
+  it("keeps a whole code point at either edge of an oversized line", () => {
+    expect(boundText("prefix\n🙂é終", 6, "tail").text).toBe("é終");
+    expect(boundText("🙂é終\nsuffix", 6).text).toBe("🙂é");
+    expect(boundText("🙂", 0).shown).toBe("[…4 bytes omitted]");
+    expect(boundText("🙂", 0, "tail").shown).toBe("[…4 bytes omitted]");
+  });
+
+  it("never exceeds the byte bound or breaks Unicode at either edge", () => {
+    const source = "a🙂é\n終\n🙂last";
+    for (const keep of ["head", "tail"] as const) {
+      for (let bytes = 0; bytes <= 24; bytes++) {
+        const cut = boundText(source, bytes, keep);
+        expect(new TextEncoder().encode(cut.text).byteLength).toBeLessThanOrEqual(bytes);
+        expect(cut.text).not.toContain("�");
+        expect(cut.text).toBe(cut.text.trim());
+        expect(keep === "head" ? source.startsWith(cut.text) : source.endsWith(cut.text)).toBe(true);
+      }
+    }
   });
 });

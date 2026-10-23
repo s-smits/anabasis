@@ -158,7 +158,7 @@ export function Pending<Value>({ live, what }: { live: Live<Value>; what: string
 export function endingOf(ending: SolveEnding | null): Toned {
   if (ending === null) return { label: "open", tone: "info" };
   if (ending.outcome === "pass") return { label: "valid", tone: "good" };
-  // A flag counts as the flagging side's fail (`submit`, `src/solve/answer.ts`).
+  // A flag counts as the flagging side's fail (`submit`, `src/tools/answer.ts`).
   if (ending.outcome === "flagged") return { label: "flagged", tone: "bad" };
   return { label: ending.kind, tone: ending.outcome === "fail" ? "bad" : "warn" };
 }

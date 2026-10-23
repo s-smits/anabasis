@@ -13,9 +13,9 @@
  * the tasks it fixed from the lists the report names them in (`aside`, `disputed`, `short`,
  * `withdrawn`), so that the parts sum to the tasks it fixed.
  */
-import { nextBound } from "../../../../src/builder/handover.ts";
-import { fixedIn, type Report, reported } from "../../../../src/builder/comparison.ts";
-import type { Share } from "../../../../src/builder/climb.ts";
+import { nextBound } from "../../../../src/campaign/handover.ts";
+import { fixedIn, type Report, reported } from "../../../../src/campaign/comparison.ts";
+import type { Share } from "../../../../src/campaign/climb.ts";
 import { differenceOf, type Paired } from "../../../../src/kernel/compare.ts";
 import { pairsReported } from "../../../../src/kernel/reports.ts";
 import { isNumber, isString } from "../../../../src/meta/json-shape.ts";

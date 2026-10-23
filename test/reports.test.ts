@@ -6,9 +6,6 @@ import { describe, expect, it } from "bun:test";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import {
-  billedAll,
-  billedBetween,
-  billedFor,
   comparedAs,
   lastReports,
   latestBuilt,
@@ -20,6 +17,7 @@ import {
   roomOf,
   stopRule as stopOf,
 } from "../src/kernel/reports.ts";
+import { billedAll, billedBetween, billedFor } from "../src/kernel/trace.ts";
 import { taskSets } from "../src/kernel/task.ts";
 import { asRecord, type JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
@@ -740,7 +738,7 @@ describe("the tasks that go to a person as possibly infeasible", () => {
 
   it("do not count a comparison that cut a solve of the task at a limit", () => {
     // `turns-ended` under a condition that names no number of model turns, which no solve writes
-    // (`spent`, src/solve/run.ts), reads as a cut, so a campaign without a bound reads as before.
+    // (`spent`, src/solver/run.ts), reads as a cut, so a campaign without a bound reads as before.
     for (const kind of ["wall-ended", "turns-ended", "context-ended"]) {
       const cut = compared(compared(start, "b-1", "h2", kind), "b-2", "h3", kind);
       expect(awaiting(cut)).toEqual([]);

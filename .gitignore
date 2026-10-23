@@ -12,7 +12,7 @@ __pycache__/
 # A test fixture's scratch inside the checkout, at any depth (v1's tests named theirs this way).
 **/.ana-scratch-*/
 # The wall probe's canary folder, which the probe removes and a killed process may leave
-# (`probeWall`, `src/solve/command.ts`).
+# (`probeWall`, `src/tools/command.ts`).
 /.ana-wall-probe-*/
 # The archive of campaigns that left their worktrees, and of copies from other hosts
 # (`ARCHIVE`, `tools/runs/registry.ts`). Their logs hold hidden values: they stay on the exam side.

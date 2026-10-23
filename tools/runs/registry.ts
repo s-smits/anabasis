@@ -19,7 +19,7 @@
  * `readNamed`): until 20 October a retired campaign went to the main worktree's `.ana/d2`, where
  * every verb took it for a run, and was deleted 14 days after it closed.
  */
-import { EXAMINE } from "#src/builder/admission.ts";
+import { EXAMINE } from "#src/campaign/admission.ts";
 import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
 import { lastReports } from "#src/kernel/reports.ts";
 import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";

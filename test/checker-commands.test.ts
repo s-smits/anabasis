@@ -21,7 +21,7 @@ import { isString } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
-import { osIsolationSupport } from "../src/verify/os-isolation.ts";
+import { osIsolationSupport } from "../src/wall/os-isolation.ts";
 
 const REPO = resolve(import.meta.dir, "..");
 /** A campaign's log, by its name in the campaign's folder. */

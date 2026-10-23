@@ -7,7 +7,7 @@
  * (`src/author/builder-start-prompt.ts`, `INTENT_CLAUSE`), the ceiling on what a solver's tools may
  * do (`NO_GRADER_IN_REACH`), and the three files' contracts in brief
  * (`starters/pi-built-harness/starter-pack/contract.md`, the agent sections). Their shapes in full,
- * with a worked example, are `HARNESS.md` in the session's home (`src/solve/starter.ts`).
+ * with a worked example, are `HARNESS.md` in the session's home (`src/harness/starter.ts`).
  *
  * Each part of a harness is given one purpose, here as there: the presets select pi's tools, the
  * programs and the tools of the harness's own compute, and the guide is words about them. v1's
@@ -62,7 +62,7 @@ import { type Contract, objectiveLine } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { plural } from "../meta/text.ts";
 import type { Limits } from "../kernel/condition.ts";
-import type { NetworkReach } from "../solve/command.ts";
+import type { NetworkReach } from "../tools/command.ts";
 import { MEMORY_FILE, SCRATCH_DIR, SCRATCH_LIMITS, SCRATCHPAD_FILE } from "./memory.ts";
 
 /** A practice task as the opening message lists it. */
@@ -204,7 +204,7 @@ function tried(practised: string | null, harness: string | Error): string {
 
 /** What the Builder's shell is told about its wall, after pi's own description. The command wall
  *  is the solver's, and the facts are the ones a solver's prompt gives of it
- *  (`src/solve/prompt.ts`, `environment`), the network as the wall's probe found it
+ *  (`src/solver/prompt.ts`, `environment`), the network as the wall's probe found it
  *  (`networkReach`): the shell is the solver's `bash`, started in the home. */
 export const shellWalls = (network: NetworkReach): string =>
   ` The command runs in your home directory, where harness/, practice/, resources.json, HARNESS.md and your notes are, and kept/, which holds a copy of every other harness this campaign has kept, each under the head of its digest; only harness/ is frozen. ${network === "reached" ? "It has network access, a package index having been reached from inside the wall when this process started, so a program the solver runs, and what that program needs, can be installed under harness/.toolchain." : "It has no network access: a package index could not be reached from inside the wall when this process started, so nothing can be fetched, and a program the solver runs is one written here or already on the host."} It can write your home directory and $TMPDIR, which is kept for the whole session; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. It can read the host's own toolchains and public runtime roots, but no repository or private data. A command has a default time limit and may name a longer timeout. Nothing a command starts runs on after it returns: wait for a background job in the command that started it.`;
@@ -227,7 +227,7 @@ export function systemPrompt(said: Said): string {
 /**
  * The last line of every tool result a Builder reads: the turn it is in, the session time used, the
  * practice solves left, and, until one has run, that none has. A solver has the same of its own
- * limits (`timed`, `src/solve/run.ts`). The facts ride on tool results because that is where a
+ * limits (`timed`, `src/solver/run.ts`). The facts ride on tool results because that is where a
  * Builder reads: in the seven sessions on record on 9 October, 365 turns in all, every turn ended
  * in a tool call, so a message sent only between turns was never sent once.
  *

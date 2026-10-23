@@ -30,7 +30,9 @@ if (peer.freshExit && script.includes("ANA_HOSTS") && script.includes("fresh")) 
 if (process.env.FAKE_EXECUTE === "1" || peer.execute || (process.env.FAKE_PREPARE_EXECUTE === "1" && !script.includes("ANA_HOSTS"))) {
   const env = {...process.env, ...(peer.env ?? {})};
   const child = Bun.spawn(["sh", "-c", script], {env, stdin:"ignore", stdout:"inherit", stderr:"inherit"});
-  process.exit(await child.exited);
+  const code = await child.exited;
+  // Tailscale SSH on a macOS host reports every command as exiting 0.
+  process.exit(process.env.FAKE_STATUS_LOST === "1" ? 0 : code);
 }
 if (script.includes("--health")) console.log(JSON.stringify(peer.health ?? JSON.parse(process.env.FAKE_HEALTH ?? "null")));
 else if (script.includes("catalogue")) console.log(JSON.stringify((peer.catalogue ?? JSON.parse(process.env.FAKE_CATALOGUE ?? "[]")).map((run) => ({open:false,stderr:null,...run}))));
@@ -57,6 +59,7 @@ if (args.includes("merge-base") || args.includes("for-each-ref")) console.log(pr
 else if (args.includes("rev-parse")) console.log(args.includes("--git-common-dir") ? process.env.FAKE_GIT : args.includes("--show-toplevel") ? process.env.FAKE_MAIN : args.includes("-C") ? process.env.FAKE_COMMIT : process.env.FAKE_REMOTE_COMMIT ?? process.env.FAKE_COMMIT);
 else if (args.includes("status")) console.log(process.env.FAKE_DIRTY ?? "");
 else if (args.includes("branch")) console.log(process.env.FAKE_UNPUBLISHED === "1" ? "" : "origin/main");
+else if (args.includes("ls-remote")) console.log(process.env.FAKE_TAGGED === "1" ? process.env.FAKE_COMMIT + "\\trefs/tags/run/r/1" : "");
 else if (args.includes("worktree") && args.includes("list")) console.log("worktree " + process.env.FAKE_MAIN);
 else if (args.includes("worktree") && args.includes("add")) mkdirSync(args.at(-2), {recursive: true});
 else if (args.includes("worktree") && args.includes("remove")) rmSync(args.at(-1), {recursive: true, force: true});`,

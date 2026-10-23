@@ -58,7 +58,7 @@ import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import { receipts } from "./receipt.ts";
 import { hostNamed } from "./host-config.ts";
-import { quoted, rsync, sshScript } from "./host-command.ts";
+import { quoted, remoteText, rsync } from "./host-command.ts";
 import { verbOn } from "./hosts.ts";
 import { isCampaign, logEvents, type Run, standing, wholeLines } from "./registry.ts";
 import { readableAcross } from "./snapshots.ts";
@@ -348,14 +348,14 @@ export async function zipRuns(args: readonly string[]): Promise<void> {
     const scratch = `/tmp/ana-runs-zip-${String(Date.now())}`;
     const there = `${scratch}/${basename(out)}`;
     const mb = megabytes === undefined ? [] : ["--max-mb", megabytes];
-    runTextSyncOrThrow(sshScript(host, `mkdir ${scratch}`));
+    remoteText(host, `mkdir ${scratch}`);
     try {
       if ((await verbOn(host, ["zip", ...names, `--${level}`, "--out", there, ...mb])) !== 0) {
         throw new Error(`the zip was not made on ${host.name}`);
       }
       rsync(`${host.ssh}:${quoted(there)}`, out);
     } finally {
-      runTextSyncOrThrow(sshScript(host, `rm -rf ${scratch}`));
+      remoteText(host, `rm -rf ${scratch}`);
     }
     console.log(`${out}  from ${host.name}`);
     return;

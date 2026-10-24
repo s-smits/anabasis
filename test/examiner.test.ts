@@ -1,6 +1,8 @@
 // The Examiner's one session, `examine`, in its two modes on the faux provider: what both modes
 // share (an id, a wall, a shell, an ending, a bill), what a drafting session that puts one whole
 // draft is told, what a writing session's gate and tools hold, and what a task's author hears of it.
+// Admission queued at the host leaves at the session's wall and durably refuses each draft
+// unmeasured, preserving earlier usable readings without starting another solve.
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import {
   createAssistantMessageEventStream,
@@ -28,6 +30,10 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { asRecord, isString, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
+import { probing } from "../tools/d1b/examine.ts";
+import { gated as hostGated, type Host } from "../tools/d2/host.ts";
+import type { Campaign, Seated } from "../tools/d2/round.ts";
+import { settingAsked } from "../tools/d2/setting.ts";
 import {
   bash,
   call,
@@ -55,6 +61,7 @@ const CALLED = "exam.call";
 const TRY = "try_task";
 const GATE = "task.gate";
 const PROPOSED = "task.proposed";
+const STARTED = "solve.started";
 /** A solver-side secret no Examiner may be shown: the text of a measured solve's answer. */
 const SOLVER = "solver-canary-7f3a";
 const PASS: Ending = { outcome: "pass" };
@@ -418,11 +425,23 @@ function measuredProbe(log: string, measure: (task: TaskPackage, nth: number) =>
     const solve = `s-${String(solved.length)}`;
     const ran = condition(taskVersion(task), "h-reference");
     append(log, "condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
-    append(log, "solve.started", { solve, condition: conditionId(ran), comparison: session });
+    append(log, STARTED, { solve, condition: conditionId(ran), comparison: session });
     append(log, "verdict", { solve, answer: GOOD, kind: "pass", objective: objective ?? null });
     append(log, "solve.finished", { solve, ending: PASS, billed: 0 });
     return PASS;
   };
+}
+
+/** The admission boundary with a scratch kept starter and a scripted solving seat. Only the
+ *  log, kept states and solver identity are read from the campaign when no reviewer is named. */
+async function admission(s: ReturnType<typeof seat<"write">>, seated: Seated) {
+  // SAFETY: probing reads only these campaign fields with a supplied seat and no reviewer.
+  const campaign = {
+    log: s.log,
+    states: join(dirname(s.log), "states"),
+    test: { model: s.request.model, effort: s.request.effort },
+  } as Campaign;
+  return await probing(campaign, seated, settingAsked({}, null), { "reviewer-effort": "high" });
 }
 
 /** What a gate told of each draft: its id, held out or refused, and how many of the reference
@@ -551,7 +570,7 @@ describe("a session that writes tasks", () => {
     ]);
     expect(taskSets(read(s.log))).toMatchObject({ held: [held], released: [] });
     expect(taskStates(read(s.log)).get(refused)).toBe("refused");
-    expect(s.of("solve.started")).toEqual([]);
+    expect(s.of(STARTED)).toEqual([]);
     // The instance is in the log whole, so a later solve of it needs nothing else.
     expect(s.of(PROPOSED)[0]).toMatchObject({
       version: held,
@@ -1162,7 +1181,7 @@ describe("a session that writes tasks", () => {
       const solve = `s-${String(asked.length)}`;
       const ran = condition(taskVersion(task), "h-reference");
       append(s.log, "condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
-      append(s.log, "solve.started", { solve, condition: conditionId(ran), comparison: session });
+      append(s.log, STARTED, { solve, condition: conditionId(ran), comparison: session });
       append(s.log, "verdict", { solve, answer: { answer: SOLVER, unit: "N" } });
       append(s.log, "solve.finished", { solve, ending, billed: 0.5 });
       return ending;
@@ -1377,9 +1396,9 @@ describe("a session that writes tasks", () => {
     // stops it first; the launcher records its end either way.
     const probe = (task: TaskPackage, session: string, kill: AbortSignal) =>
       new Promise<Ending>((settle) => {
-        const solve = `w-${String(s.of("solve.started").length + 1)}`;
+        const solve = `w-${String(s.of(STARTED).length + 1)}`;
         running.add(solve);
-        append(s.log, "solve.started", { solve, task: task.taskId, comparison: session });
+        append(s.log, STARTED, { solve, task: task.taskId, comparison: session });
         const end = (ending: Ending) => {
           if (!running.delete(solve)) return;
           clearTimeout(late);
@@ -1407,6 +1426,96 @@ describe("a session that writes tasks", () => {
     // Refused unmeasured, so a later session may take either again (`measuredGate`).
     expect(s.of(PROPOSED)).toHaveLength(2);
     expect(s.of(GATE).filter(measuredGate)).toEqual([]);
+  });
+
+  it("cancels two admission probes queued at the host at its wall and retains each earlier reading", async () => {
+    const queued = Promise.withResolvers<void>();
+    const sleeping = Promise.withResolvers<void>();
+    const s = seat("write", [
+      call(TRY, { tasks: [instance(2), instance(3)] }),
+      async () => {
+        await queued.promise;
+        return fauxAssistantMessage("Waiting for the queued admissions.");
+      },
+      finish,
+    ]);
+    const measured = measuredProbe(s.log, () => undefined);
+    const seen = new Set<string>();
+    let waitsAtHost = 0;
+    const host: Host = {
+      load: () => (seen.size < 2 ? 0 : 99),
+      cores: 4,
+      waitMs: 30_000,
+      sleep: () => {
+        waitsAtHost += 1;
+        if (waitsAtHost === 2) queued.resolve();
+        return sleeping.promise;
+      },
+    };
+    const probe = await admission(
+      s,
+      hostGated(
+        {
+          host,
+          loaded: false,
+          seated: () => ({
+            builder: null,
+            setting: "s",
+            solve: async (task, _harness, _kill, session) => {
+              seen.add(task.taskId);
+              const ending = await measured(task, session ?? "x-1");
+              return { solve: `s-${String(s.of(STARTED).length)}`, ending };
+            },
+          }),
+        },
+        s.log,
+      ),
+    );
+    const examined = await examine({
+      ...s.request,
+      limits: { ...s.request.limits, wallSeconds: 0.2 },
+      probe,
+    });
+    expect(examined.ended).toBe("wall");
+    expect(waitsAtHost).toBe(2);
+    expect(s.of(STARTED)).toHaveLength(2);
+    expect(s.of("solve.finished")).toHaveLength(2);
+    expect(s.of(GATE)).toMatchObject(
+      Array(2).fill({
+        outcome: "refused",
+        reference: { valid: 1, solves: 1, ran: 2 },
+      }),
+    );
+    expect(s.of(GATE).filter(measuredGate)).toEqual([]);
+    expect(s.of("task.state")).toMatchObject(Array(2).fill({ state: "refused", session: "x-1" }));
+    expect(examined.refused).toHaveLength(2);
+    const kinds = read(s.log).map(({ kind }) => kind);
+    expect(kinds.lastIndexOf(GATE)).toBeLessThan(kinds.indexOf("exam.finished"));
+    expect(s.of("campaign.waited")).toHaveLength(2);
+  }, 2000);
+
+  it("turns only the launcher's cancellation reason into a killed admission ending", async () => {
+    const s = seat("write", []);
+    const kill = new AbortController();
+    const reason = new Error("the Examiner ended");
+    const unrelated = new Error("the launcher failed");
+    let thrown = reason;
+    const probe = await admission(s, () => ({
+      builder: null,
+      setting: "s",
+      solve: async () => {
+        throw thrown;
+      },
+    }));
+    const task = s.request.pack(EXAMPLE);
+    // The same error before cancellation is still a launcher failure.
+    await expect(probe(task, "x-1", kill.signal)).rejects.toBe(reason);
+    kill.abort(reason);
+    expect(await probe(task, "x-1", kill.signal)).toMatchObject({ outcome: "non-result", kind: "killed" });
+    thrown = unrelated;
+    await expect(probe(task, "x-1", kill.signal)).rejects.toBe(unrelated);
+    expect(s.of(STARTED)).toEqual([]);
+    expect(s.of("referee.finding")).toEqual([]);
   });
 
   it("returns a try_task call before its gate does, and tells what the gate said with a later tool result", async () => {
@@ -1497,11 +1606,11 @@ describe("a session that writes tasks", () => {
     const ended: number[] = [];
     const probe = async (task: TaskPackage, session: string) => {
       const base = Number(asRecord(task.publicInput)?.base);
-      const solve = `t-${String(s.of("solve.started").length + 1)}`;
+      const solve = `t-${String(s.of(STARTED).length + 1)}`;
       const ran = condition(taskVersion(task), "h-reference");
       append(s.log, "condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
-      append(s.log, "solve.started", { solve, condition: conditionId(ran), comparison: session });
-      if (s.of("solve.started").length === 2) release();
+      append(s.log, STARTED, { solve, condition: conditionId(ran), comparison: session });
+      if (s.of(STARTED).length === 2) release();
       await together;
       const ending = base === 2 && ended.includes(base) ? WALLED : PASS;
       ended.push(base);

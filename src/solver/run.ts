@@ -5,6 +5,7 @@
  * again, up to three times with backoff; named provider resets are waited out here without using a
  * rerun. On 21 October, 128 gate solves refused 43 of 1,396 drafts in 30 campaigns at such resets.
  * A task's check non-result returns to its caller; a verifier non-result stops the run.
+ * `waiting` ends sleeps at cancellation, including injected host sleeps before a solve starts.
  *
  * The loop runs in this process and so does the model's own process: under the Claude backend,
  * Claude Code runs on the host with a home of its own outside the command wall. v1 confined the
@@ -119,8 +120,8 @@ export interface Played {
 }
 
 const RERUNS = 3;
-/** Sleep, including an injected sleep, ends at the request's kill. */
-async function waiting(ms: number, kill?: AbortSignal, wait?: (ms: number) => Promise<void>) {
+/** Sleep, including an injected host sleep, ends at the kill and releases its abort listener. */
+export async function waiting(ms: number, kill?: AbortSignal, wait?: (ms: number) => Promise<void>) {
   if (kill?.aborted === true) return;
   const stopped = Promise.withResolvers<void>();
   const abort = () => stopped.resolve();

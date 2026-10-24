@@ -1,9 +1,10 @@
 /**
  * What a campaign waits for (`tools/d2/host.ts`): the host's load before a solve, the campaign's
  * reserve beside the solves in flight, a provider's named reset and a network that failed a
- * session. Every wait sleeps through the host, so a test stands in one that only counts.
+ * session. Queued solves leave on cancellation, even while the host's sleep remains unresolved;
+ * only load waits record their elapsed time. Tests inject the host's sleeps and clock.
  */
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import { resetOf } from "../src/agent/backends/claude.ts";
 import { crashedRun } from "../src/campaign/ground.ts";
 import { affords, flying } from "../src/campaign/opening.ts";
@@ -44,26 +45,34 @@ function hostOf(load: () => number, cores = 4, slept: (count: number) => void = 
 
 /** The gate on a seat that passes each solve, as a campaign's solves meet it. */
 function gate(log: string, host: Host, loaded = false) {
+  const calls: string[] = [];
   const seat: Seats = {
     builder: null,
     setting: "s",
-    solve: async () => ({ solve: "s-1", ending: { outcome: "pass" } }),
+    solve: async (task) => {
+      calls.push(task.taskId);
+      return { solve: "s-1", ending: { outcome: "pass" } };
+    },
   };
   // SAFETY: the gate hands the campaign to the seat it wraps and reads nothing of it, and the
   // seat above reads none of its arguments, so an empty one stands in.
-  return gated({ seated: () => seat, loaded, host }, log)({} as Campaign, {
+  const seats = gated({ seated: () => seat, loaded, host }, log)({} as Campaign, {
     builder: undefined,
     reference: "h1",
   });
+  return { ...seats, calls };
 }
 
 describe("the gate at a solve's start", () => {
   it("starts a solve at once on a host at or under its cores, and under --loaded on any", async () => {
     const log = logIn("idle");
     const idle = hostOf(() => 4);
-    await gate(log, idle).solve(TASK, HARNESS, undefined);
+    const idleSeat = gate(log, idle);
+    await idleSeat.solve(TASK, HARNESS, undefined);
     const busy = hostOf(() => 99);
-    await gate(log, busy, true).solve(TASK, HARNESS, undefined);
+    const busySeat = gate(log, busy, true);
+    await busySeat.solve(TASK, HARNESS, undefined);
+    expect([idleSeat.calls, busySeat.calls]).toEqual([[TASK.taskId], [TASK.taskId]]);
     expect([idle.slept, busy.slept]).toEqual([[], []]);
     expect(waits(log)).toEqual([]);
   });
@@ -95,18 +104,105 @@ describe("the gate at a solve's start", () => {
     const log = logIn("reserve");
     append(log, "campaign.opened", { budget: { dollars: 0.7, reserve: 0.4 } });
     const kill = new AbortController();
+    const reason = new Error("the reserve wait was cancelled");
     const host = hostOf(
       () => 0,
       4,
-      (count) => count === 3 && kill.abort(),
+      (count) => count === 3 && kill.abort(reason),
     );
     const held = gate(log, host);
-    await flying(log, () => held.solve(TASK, HARNESS, kill.signal));
+    await expect(flying(log, () => held.solve(TASK, HARNESS, kill.signal))).rejects.toBe(reason);
     expect(host.slept).toHaveLength(3);
+    expect(held.calls).toEqual([]);
     // With nothing in flight the solve starts at once.
-    await held.solve(TASK, HARNESS, kill.signal);
+    await held.solve(TASK, HARNESS, new AbortController().signal);
+    expect(held.calls).toEqual([TASK.taskId]);
     expect(host.slept).toHaveLength(3);
     expect(waits(log)).toEqual([]);
+  });
+
+  it("leaves a load or reserve wait on cancellation without releasing the host's sleep", async () => {
+    for (const queued of ["load", "reserve"]) {
+      const log = logIn(queued);
+      const kill = new AbortController();
+      const reason = new Error("the queued solve was cancelled");
+      const sleeping = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const host: Host = {
+        load: () => (queued === "load" ? 99 : 0),
+        cores: 4,
+        waitMs: 30_000,
+        sleep: () => {
+          sleeping.resolve();
+          return release.promise;
+        },
+      };
+      if (queued === "reserve") append(log, "campaign.opened", { budget: { dollars: 0.7, reserve: 0.4 } });
+      const held = gate(log, host);
+      let now = 1000;
+      const clock = spyOn(Date, "now").mockImplementation(() => now);
+      try {
+        const pending =
+          queued === "load"
+            ? held.solve(TASK, HARNESS, kill.signal, "x-1")
+            : flying(log, () => held.solve(TASK, HARNESS, kill.signal));
+        const deadline = AbortSignal.timeout(200);
+        const bounded = Promise.race([
+          pending.then(
+            () => false,
+            (error: Error) => error === reason,
+          ),
+          new Promise<boolean>((resolve) => {
+            deadline.addEventListener("abort", () => resolve(false), {
+              once: true,
+            });
+          }),
+        ]);
+        await sleeping.promise;
+        now += 1234;
+        kill.abort(reason);
+        expect(await bounded).toBe(true);
+        expect(held.calls).toEqual([]);
+        expect(waits(log).map(({ data }) => data)).toEqual(
+          queued === "load"
+            ? [
+                {
+                  task: TASK.taskId,
+                  harness: HARNESS.digest,
+                  comparison: "x-1",
+                  load: 99,
+                  cores: 4,
+                  ms: 1234,
+                },
+              ]
+            : [],
+        );
+      } finally {
+        clock.mockRestore();
+      }
+    }
+  }, 1000);
+
+  it("starts no cancelled solve when load falls at wake or when an idle or --loaded host is already cancelled", async () => {
+    for (const mode of ["falls", "idle", "loaded"]) {
+      const log = logIn(mode);
+      const kill = new AbortController();
+      let load = mode === "idle" ? 0 : 99;
+      const host = hostOf(
+        () => load,
+        4,
+        () => {
+          load = 0;
+          kill.abort();
+        },
+      );
+      if (mode !== "falls") kill.abort();
+      const held = gate(log, host, mode === "loaded");
+      await expect(held.solve(TASK, HARNESS, kill.signal)).rejects.toBe(kill.signal.reason);
+      expect(held.calls).toEqual([]);
+      expect(host.slept).toHaveLength(mode === "falls" ? 1 : 0);
+      expect(waits(log)).toHaveLength(mode === "falls" ? 1 : 0);
+    }
   });
 
   it("counts the reserve over the solves in flight in this process, whoever started them", async () => {

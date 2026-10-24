@@ -638,7 +638,9 @@ session, a comparison or an Examiner session's gate starts once the one-minute l
 the core count, or after half an hour. It says so while it waits, and the wait is recorded
 (`campaign.waited`, `tools/d2/host.ts`); `--loaded` starts them regardless. A solve also waits, off
 the record, while others are in flight and what is left of the budget holds no reserve for it
-(`affords`). Each run of the command keeps a receipt beside the log, `launch-run-<n>.json`
+(`affords`). Both waits end on cancellation before a solve starts; a cancelled load wait records
+its elapsed time, and a cancelled admission probe leaves the draft refused unmeasured without a
+solve id. Each run of the command keeps a receipt beside the log, `launch-run-<n>.json`
 (`tools/runs/receipt.ts`): its flags, the commit, whether the tree was dirty, the load it started
 under, the Bun version, and the login it ran as where one was named. The log holds the host's code
 by content, without a commit, so the receipt fills that gap.

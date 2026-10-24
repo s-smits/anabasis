@@ -8,9 +8,16 @@ import { type Condition, conditionId, settingId } from "../src/kernel/condition.
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined, keyIfNotNull } from "../src/meta/optional-key.ts";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { tmpdir } from "../src/meta/os.ts";
+import { join, resolve } from "../src/meta/path.ts";
+import { capturedExecPath } from "../src/meta/process.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { TRIGGERS } from "../tools/wri/folds.ts";
 import { overview, rendered } from "../tools/wri/read.ts";
+import { execTextSync } from "./helpers/bun-spawn-sync.ts";
+
+const REPO = resolve(import.meta.dir, "..");
 
 const START = Date.parse("2026-10-09T12:00:00Z");
 const REPORTED = "comparison.reported";
@@ -192,6 +199,26 @@ function practisedAgain(): LogEvent[] {
     );
 }
 
+/** The campaign as a led Builder leaves it: b-1 froze hc for its comparison, g-1, inside a
+ *  conversation that never ended, after practising hb. */
+function frozenInConversation(): LogEvent[] {
+  return events.flatMap((event): LogEvent[] => {
+    if (event.kind === BUILD_FINISHED) return [];
+    const data =
+      event.data.session === "b-1" && event.kind.startsWith("comparison.")
+        ? { ...event.data, session: "g-1" }
+        : event.data.comparison === "b-1"
+          ? { ...event.data, comparison: "g-1" }
+          : event.data;
+    const frozen = {
+      at: event.at,
+      kind: "build.checkpoint",
+      data: { session: "b-1", harness: "hc" },
+    } as const;
+    return event.kind === COMPARISON_STARTED ? [frozen, { ...event, data }] : [{ ...event, data }];
+  });
+}
+
 describe("the whole-run investigation's reader", () => {
   it("settles the six rows from the log alone", () => {
     expect(seen.rows.map((row) => row.id)).toEqual(["A", "B", "C", "D", "E", "F"]);
@@ -368,27 +395,43 @@ describe("the whole-run investigation's reader", () => {
   it("reads a harness a led Builder froze for a comparison inside a conversation that never ended", () => {
     // v061 on 21 October: b-1 froze 03a5eb57 for g-2 after its last practice and was still open
     // when the run stopped, and the reader, reading only the end record, said nothing of it.
-    const led = events.flatMap((event): LogEvent[] => {
-      if (event.kind === BUILD_FINISHED) return [];
-      const data =
-        event.data.session === "b-1" && event.kind.startsWith("comparison.")
-          ? { ...event.data, session: "g-1" }
-          : event.data.comparison === "b-1"
-            ? { ...event.data, comparison: "g-1" }
-            : event.data;
-      const frozen = {
-        at: event.at,
-        kind: "build.checkpoint",
-        data: { session: "b-1", harness: "hc" },
-      } as const;
-      return event.kind === COMPARISON_STARTED ? [frozen, { ...event, data }] : [{ ...event, data }];
-    });
+    const led = frozenInConversation();
     const { triggers } = overview(led);
     expect(triggers.find(({ name }) => name === "FINAL BYTES NEVER PRACTISED")?.detail).toBe(
       "b-1: no practice solve ran under hc, a harness measured; the last ran under hb",
     );
     // Its practice task was released before the comparison began and is not among the scored ones.
     expect(triggers.map(({ name }) => name)).not.toContain("PRACTISED TASK MEASURED");
+  });
+
+  it("reads two kept states that differ only in bytecode a practice run left as one harness", () => {
+    // v065-b on 24 October: two lines named states that differed from the one practised by a
+    // `__pycache__` alone, which running its Python programs had written.
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "ana-wri-states-")));
+    const log = join(dir, "log.jsonl");
+    writeFileSync(
+      log,
+      frozenInConversation()
+        .map((event) => `${JSON.stringify(event)}\n`)
+        .join(""),
+    );
+    for (const state of ["hb", "hc"]) {
+      mkdirSync(join(dir, "states", state, "agent"), { recursive: true });
+      writeFileSync(join(dir, "states", state, "agent", "BUILT_AGENTS.md"), "a guide\n");
+    }
+    mkdirSync(join(dir, "states", "hc", "agent", "__pycache__"));
+    writeFileSync(join(dir, "states", "hc", "agent", "__pycache__", "lib.cpython-312.pyc"), "bytecode");
+    const fired = () =>
+      execTextSync(capturedExecPath, ["tools/wri/wri.ts", "read", "--log", log], { cwd: REPO }).includes(
+        "FINAL BYTES NEVER PRACTISED",
+      );
+    try {
+      expect(fired()).toBe(false);
+      writeFileSync(join(dir, "states", "hc", "agent", "BUILT_AGENTS.md"), "another guide\n");
+      expect(fired()).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("says an erred call is a non-zero exit, which a test reporting what is unmet gives by design", () => {

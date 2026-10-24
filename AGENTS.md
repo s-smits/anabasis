@@ -561,6 +561,8 @@ Repeat the standing facts where the agent reads, so a compaction needs no signal
 result of each Builder turn ends with the turn number, the session time used and the practice
 solves left (`usedLine`, `src/builder/prompt.ts`), a turn that ends without a call is answered with
 the goal and the same facts (`continuation`), and `read_opening` serves the opening message again.
+At finish and in a continuation, counted practice on offered tasks establishes whether the exact
+current harness has been practised, including a restored state; freezing a snapshot alone does not.
 A Builder ends nearly every turn in a tool call, so a message sent only between turns goes unseen.
 
 ## 5. The log

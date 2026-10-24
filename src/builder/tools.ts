@@ -40,6 +40,8 @@
  * that could not be run at all, the verifier failing to decide for one, ends the session: its
  * error can name a check, so it is kept for the host and the Builder is told only that the session
  * ends.
+ * Finish reads counted practice for the exact current digest, including restored states; a frozen
+ * snapshot alone supplies no practice evidence. The same record supplies continuation facts.
  */
 import { Type } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
@@ -80,6 +82,7 @@ import { installedPrograms } from "../harness/programs.ts";
 import { systemPrompt } from "../solver/prompt.ts";
 import { clockText, solverTools } from "../solver/run.ts";
 import { memoryOverCapNotice } from "./memory.ts";
+import { STARTED as COMPARISON_STARTED } from "../campaign/comparison.ts";
 import { openingOf } from "../campaign/opening.ts";
 import { type Said, shellWalls } from "./prompt.ts";
 import type { BuildRequest, PracticeTask } from "./session.ts";
@@ -106,8 +109,8 @@ export interface Bench {
   readonly parent: string;
   /** The last copy kept of `harness/.toolchain`, and the stamp the tree had when it was copied. */
   tree: { readonly stamp: string; readonly dir: string } | null;
-  /** The last state of `harness/` this session kept, which is one a solve could open: what its last
-   *  practice ran with. Null until a state is kept. */
+  /** The last state of `harness/` this session kept, which a solve could open, including a
+   *  comparison snapshot. Null until a state is kept; freezing establishes no practice result. */
   opened: Snapshot | null;
   /** Practice solves spent. */
   spent: number;
@@ -175,6 +178,22 @@ export function record(events: readonly LogEvent[], version: string, harness: st
     return pass === null ? [] : [{ solve: solve.id, pass }];
   });
   return { solves: counted.map(({ solve }) => solve), passed: counted.filter(({ pass }) => pass).length };
+}
+
+/** Counted practice on an offered task under this exact digest, whether passed or failed. */
+export function hasPractice(
+  bench: Pick<Bench, "tasks">,
+  events: readonly LogEvent[],
+  harness: string,
+): boolean {
+  return bench.tasks.some(({ version }) => record(events, version, harness).solves.length > 0);
+}
+
+/** A comparison has run this exact digest, as either of its harnesses. */
+function compared(events: readonly LogEvent[], harness: string): boolean {
+  return events.some(
+    ({ kind, data }) => kind === COMPARISON_STARTED && (data.old === harness || data.fresh === harness),
+  );
 }
 
 /** The parent's tool tree, where it really is; null when the parent has none. */
@@ -574,8 +593,10 @@ async function standing(bench: Bench, unmeasured?: Unmeasured): Promise<string |
     const { unpractised, practised } = bench.said.broken;
     return `${errorMessage(now)}. Left so, ${bench.opened === null ? unpractised : practised}. Mend it and call finish again, ${again}.`;
   }
-  const left = practiceLeft(bench, read(request.log));
-  const tried = bench.opened === null || now === bench.opened.harness.digest || now === bench.parent;
+  const events = read(request.log);
+  const left = practiceLeft(bench, events);
+  const tried =
+    bench.opened === null || now === bench.parent || hasPractice(bench, events, now) || compared(events, now);
   const untried = !tried && left > 0 && !told.has("untried");
   const unread = told.has("unread") ? null : ((await unmeasured?.(now)) ?? null);
   if (untried) told.add("untried");

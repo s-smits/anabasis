@@ -897,11 +897,14 @@ A scored set takes one retained task for every three frontier tasks, on top of t
 (`scoredSet`). The step's one test reads the retained tasks with the frontier, and the report
 gives their tally apart (see "The test" below).
 
-**Fresh solves.** Each scored task is solved under each harness, afresh. A task's solves run
-together, the tasks run in an order drawn by a hash of each, and within a task the harness that
-goes first is mirrored, so anything that drifts over a comparison's hours falls between tasks,
-where the test does not look. A solve counts only when its start names the comparison. No earlier
-solve of either harness is reused: a condition names the host's code, which changes between
+**Fresh solves.** Each scored task is solved under each harness, afresh. Workers take whole tasks
+in an order drawn by a hash of each, running different tasks concurrently. Within a task the
+harness that goes first is mirrored, and each solve call, including its waits, retries and ruling,
+returns before the next slot starts. One outer retry runs at the same slot; if it too gives a
+non-result, the task stays short. Counted starts form a prefix of the mirror, which guarantees
+neither equal start times nor equal load or cache exposure. A solve counts only when its start
+names the comparison. No earlier solve of either harness is reused: a condition names the host's
+code, which changes between
 comparisons, and one frozen draw of the reference's solves would bias every later reading.
 
 **How a solve ends** (`src/kernel/solve.ts`), and its part in a pair:

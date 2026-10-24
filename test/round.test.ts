@@ -2,6 +2,7 @@
 // one, and solves that end as a table says. What is under test is the order of a round, which
 // solves it counts and which it makes, what it leaves out of a comparison, its cap, and its reading.
 // An unfinished comparison refuses a setting changed only by the executing Bun version.
+// Deferred load and provider waits test counted start order while other tasks keep advancing.
 import { afterAll, describe, expect, it } from "bun:test";
 import {
   createModels,
@@ -31,12 +32,12 @@ import {
 } from "../src/builder/session.ts";
 import type { Bench } from "../src/builder/tools.ts";
 import { type Condition, recordCondition, settingId } from "../src/kernel/condition.ts";
-import { WEIGHTS } from "../src/kernel/compare.ts";
+import { draw, pairsOf, WEIGHTS } from "../src/kernel/compare.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import { latestBuilt, poolOf, stopRule } from "../src/kernel/reports.ts";
 import type { Ending } from "../src/kernel/solve.ts";
-import { ranUnder } from "../src/kernel/solves.ts";
+import { passed, ranUnder } from "../src/kernel/solves.ts";
 import { taskStates } from "../src/kernel/task.ts";
 import {
   cpSync,
@@ -346,6 +347,220 @@ const referee =
     };
   };
 
+/** Counted starts, in log order, including a short task's prefix. */
+function countedStarts(request: CheckpointRequest, task: string) {
+  return ranUnder(read(request.log)).filter(
+    (solve) => solve.start.comparison === request.id && solve.under.task === task && passed(solve) !== null,
+  );
+}
+
+/** The actual starts selected by the comparison reader must preserve every task's drawn mirror. */
+function expectMirrored(request: CheckpointRequest) {
+  const events = read(request.log);
+  const { pairs, short } = pairsOf(
+    events,
+    request.tasks,
+    { ...request, old: request.old.digest, fresh: request.fresh.digest, comparison: request.id },
+    request.solves,
+  );
+  expect(short).toEqual([]);
+  expect(pairs).toHaveLength(request.tasks.length);
+  const order = draw(request.tasks, request.tasks.length, request.id);
+  for (const pair of pairs) {
+    if (pair.solves === undefined) throw new Error("the pair has no counted solve ids");
+    const selected = new Set([...pair.solves.old, ...pair.solves.fresh]);
+    const actual = countedStarts(request, pair.task)
+      .filter(({ id }) => selected.has(id))
+      .map(({ under }) => under.harness);
+    const expected = Array.from({ length: request.solves }, (_, at) =>
+      (order.indexOf(pair.task) + at) % 2 === 0
+        ? [request.old.digest, request.fresh.digest]
+        : [request.fresh.digest, request.old.digest],
+    ).flat();
+    expect(actual).toEqual(expected);
+  }
+}
+
+describe("a task's ordered solves", () => {
+  it.each(["load", "backoff", "reset"])(
+    "holds a task through a deferred %s while other tasks advance",
+    async (wait) => {
+      const release = Promise.withResolvers<void>();
+      const advanced = Promise.withResolvers<void>();
+      const order = draw(HELD, HELD.length, "g-order");
+      const first = order[0] ?? "";
+      let failed = false;
+      const s = await setup([], (version) => {
+        if (version !== first || wait === "load" || failed) return PASS;
+        failed = true;
+        return {
+          outcome: "non-result",
+          kind: "provider",
+          reason: wait === "reset" ? "limit reached|1792886400" : "connection lost",
+        };
+      });
+      const calls = new Map<string, number>();
+      const active = new Map<string, number>();
+      let running = 0;
+      let peak = 0;
+      let taskPeak = 0;
+      const request = s.compare("g-order", {
+        solves: 4,
+        concurrency: 4,
+        solve: async (version, harness, comparison) => {
+          running += 1;
+          peak = Math.max(peak, running);
+          active.set(version, (active.get(version) ?? 0) + 1);
+          taskPeak = Math.max(taskPeak, active.get(version) ?? 0);
+          const nth = calls.get(version) ?? 0;
+          calls.set(version, nth + 1);
+          try {
+            if (version === first && nth === 0) {
+              if (wait !== "load") {
+                // One whole solve call owns both attempts, as run.ts does during either wait.
+                await s.solve(version, harness.digest, comparison);
+              }
+              await release.promise;
+            }
+            const result = await s.solve(version, harness.digest, comparison);
+            if (version !== first && nth === 7) advanced.resolve();
+            return result;
+          } finally {
+            running -= 1;
+            active.set(version, (active.get(version) ?? 0) - 1);
+          }
+        },
+      });
+      const work = checkpoint(request);
+      try {
+        await advanced.promise;
+        expect(countedStarts(request, first)).toEqual([]);
+      } finally {
+        release.resolve();
+        await work;
+      }
+      expect(peak).toBeGreaterThan(1);
+      expect(peak).toBeLessThanOrEqual(4);
+      expect(taskPeak).toBe(1);
+      expectMirrored(request);
+      expect(s.of("solve.started")).toHaveLength(wait === "load" ? 32 : 33);
+    },
+  );
+
+  it.each([1, 2])(
+    "retries a non-result at its slot and stops the task after %s refusals",
+    async (failures) => {
+      const first = draw(HELD, HELD.length, "g-outer")[0] ?? "";
+      let calls = 0;
+      const s = await setup([], (version) => {
+        if (version !== first) return PASS;
+        calls += 1;
+        return calls > 1 && calls <= 1 + failures
+          ? { outcome: "non-result", kind: "provider", reason: "connection lost" }
+          : PASS;
+      });
+      const request = s.compare("g-outer", { solves: 4, concurrency: 4 });
+      const report = await checkpoint(request);
+      if (failures === 1) {
+        expect(report.short).toEqual([]);
+        expectMirrored(request);
+      } else {
+        expect(report.short).toEqual([first]);
+        expect(calls).toBe(3);
+        expect(countedStarts(request, first).map(({ under }) => under.harness)).toEqual([s.old]);
+      }
+    },
+  );
+
+  it.each(["kill", "withdraw", "reserve"])("rechecks %s before retrying a partial task", async (stop) => {
+    const kill = new AbortController();
+    const first = draw(HELD, HELD.length, "g-partial")[0] ?? "";
+    let calls = 0;
+    const s = await setup([], (version) => {
+      if (version !== first) return PASS;
+      calls += 1;
+      if (calls !== 2) return PASS;
+      if (stop === "kill") kill.abort();
+      if (stop === "withdraw") append(s.log, TASK_STATE, { version, state: "released" });
+      return { outcome: "non-result", kind: "provider", reason: "connection lost" };
+    });
+    const request = s.compare("g-partial", {
+      solves: 4,
+      kill: kill.signal,
+      ...keyIfDefined("cap", stop === "reserve" ? { dollars: 5, reserve: 3 } : undefined),
+    });
+    const work = checkpoint(request);
+    if (stop === "kill") await expect(work).rejects.toThrow("the comparison was killed");
+    else expect(await work).toMatchObject(stop === "reserve" ? { capped: true } : { withdrawn: [first] });
+    expect(calls).toBe(2);
+    expect(countedStarts(request, first).map(({ under }) => under.harness)).toEqual([s.old]);
+  });
+
+  it("returns a partial task for another worker when reserve is temporarily held", async () => {
+    const s = await setup([], () => PASS);
+    const release = Promise.withResolvers<void>();
+    const progressed = Promise.withResolvers<void>();
+    const first = draw(HELD, HELD.length, "g-reserve")[0] ?? "";
+    let calls = 0;
+    let held = false;
+    const request = s.compare("g-reserve", {
+      solves: 4,
+      concurrency: 4,
+      cap: { dollars: 70, reserve: 20 },
+      solve: async (version, harness, comparison) => {
+        if (version === first && !held) {
+          held = true;
+          await release.promise;
+        }
+        const result = await s.solve(version, harness.digest, comparison);
+        calls += 1;
+        if (calls === 16) progressed.resolve();
+        return result;
+      },
+    });
+    const work = checkpoint(request);
+    try {
+      await progressed.promise;
+      expect(countedStarts(request, first)).toEqual([]);
+    } finally {
+      release.resolve();
+      await work;
+    }
+    // Reserves constrain concurrent calls; the last reserve no longer fits after $52 billed.
+    expect(s.asked).toHaveLength(26);
+    for (const task of HELD) {
+      const starts = countedStarts(request, task);
+      const at = draw(HELD, HELD.length, request.id).indexOf(task);
+      const mirror = Array.from({ length: 4 }, (_, slot) =>
+        (at + slot) % 2 === 0 ? [s.old, s.starter.digest] : [s.starter.digest, s.old],
+      ).flat();
+      expect(starts.map(({ under }) => under.harness)).toEqual(mirror.slice(0, starts.length));
+    }
+  });
+
+  it.each(["throw", "exhaust"])("continues an unequal counted prefix left by %s", async (stop) => {
+    const first = draw(HELD, HELD.length, "g-continue")[0] ?? "";
+    let calls = 0;
+    let stopping = true;
+    const s = await setup([], (version) => {
+      if (!stopping) return PASS;
+      // An exhausted task stays short; the next task's crash stops before the report is written.
+      if (version !== first) throw new Error(STOPS);
+      calls += 1;
+      if (calls === 1) return PASS;
+      if (stop === "throw") throw new Error(STOPS);
+      return { outcome: "non-result", kind: "provider", reason: "connection lost" };
+    });
+    const request = s.compare("g-continue", { solves: 4 });
+    await expect(checkpoint(request)).rejects.toThrow(STOPS);
+    expect(countedStarts(request, first).map(({ under }) => under.harness)).toEqual([s.old]);
+    expect(calls).toBe(stop === "throw" ? 2 : 3);
+    stopping = false;
+    expect(await checkpoint(request)).toMatchObject({ short: [] });
+    expectMirrored(request);
+  });
+});
+
 describe("a round", () => {
   it("runs the session, then solves the reference and the new harness in turn on every task, and reports what it compared", async () => {
     const s = await setup([edit, finish], step);
@@ -413,9 +628,8 @@ describe("a round", () => {
         },
       },
     ]);
-    // Four tasks, two harnesses, two solves. A task's solves run together, so that what drifts
-    // over the comparison's hours falls between tasks, which the test does not read; within a
-    // task the harness that goes first is mirrored, and from one task to the next. The starter is
+    // Four tasks, two harnesses, two solves. A worker runs each task's mirror in order,
+    // and the next task's mirror starts the other way round. The starter is
     // solved on none: until 2026-10-11 a step was held to it on the tallied tasks.
     expect(s.asked.map(({ side }) => side)).toEqual(Array(2).fill(MIRRORED).flat());
     const runs = Array.from({ length: 4 }, (_, at) => s.asked.slice(4 * at, 4 * at + 4));
@@ -1106,10 +1320,10 @@ describe("a round", () => {
         "no solve of 3 tasks in a row ran, so the comparison stops: the wall does not hold on this host",
       );
       expect(s.of(COMPARISON_REPORTED)).toEqual([]);
-      // Task by task, each solve asked for once more: two tasks' solves and the third's first.
+      // Each task stops after its first slot and its retry fail: two tasks, then the third's first.
       expect(stoppedAtFirst(s.asked)).toBe(true);
       expect(new Set(s.asked.map(({ version }) => version)).size).toBe(3);
-      expect(s.asked).toHaveLength(17);
+      expect(s.asked).toHaveLength(5);
     }
   });
 
@@ -1142,12 +1356,11 @@ describe("a round", () => {
       short: ["s4"],
       reading: NO_STEP,
     });
-    // Each of s4's two solves under the new harness is asked for again once, at once and in its
-    // own place, so the task's solves stay together: none waits for the end of the comparison.
+    // s4's first slot and its retry fail, so no later slot of that task is started.
     const ran = s.asked.flatMap(({ version }, at) => (version === "s4" ? [at] : []));
-    expect(ran).toHaveLength(6);
-    expect((ran.at(-1) ?? 0) - (ran[0] ?? 0)).toBe(5);
-    expect(s.asked.filter(({ version, side }) => version === "s4" && side === "fresh")).toHaveLength(4);
+    expect(ran).toHaveLength(2);
+    expect((ran.at(-1) ?? 0) - (ran[0] ?? 0)).toBe(1);
+    expect(s.asked.filter(({ version, side }) => version === "s4" && side === "fresh")).toHaveLength(2);
   });
 
   it("leaves out and names a task a person released or refused while the comparison ran or was stopped, and disputes no task a person refused", async () => {

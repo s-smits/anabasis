@@ -176,6 +176,8 @@ export async function start(
   const dry = runSync([...command, "--dry-run"], { cwd: run.tree, env });
   console.log(decodeOutput(dry.stdout).trim().split("\n").slice(-4).join("\n"));
   if (dry.exitCode !== 0) {
+    // The campaign command's own refusal, such as a Bun its tree does not pin, is the reason.
+    console.error(decodeOutput(dry.stderr).trimEnd());
     throw new Error(`the dry run at ${target.slice(0, 9)} refused: nothing was started`);
   }
   mkdirSync(dirname(run.path), { recursive: true });

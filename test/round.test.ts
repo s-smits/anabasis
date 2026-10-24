@@ -1,6 +1,7 @@
 // One round on stand-ins: the real session on the faux provider with a host write for the walled
 // one, and solves that end as a table says. What is under test is the order of a round, which
 // solves it counts and which it makes, what it leaves out of a comparison, its cap, and its reading.
+// An unfinished comparison refuses a setting changed only by the executing Bun version.
 import { afterAll, describe, expect, it } from "bun:test";
 import {
   createModels,
@@ -151,7 +152,7 @@ async function setup(responses: FauxResponseStep[], table: Table) {
   }
   record(TASK_STATE, { version: "p1", state: "released" });
   /** The host's code as a condition names it, which an edit between two rounds moves. */
-  const code = { value: "h1" };
+  const code = { value: "h1", bun: Bun.version };
   const old = (await openHarness(parent)).digest;
   const starter = { dir: lesser, digest: (await openHarness(lesser)).digest };
   const condition = (task: string, harness: string): Condition => ({
@@ -161,7 +162,7 @@ async function setup(responses: FauxResponseStep[], table: Table) {
     model: "faux/faux-solver",
     effort: "medium",
     prices: { "faux/faux-solver": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
-    runtime: {},
+    runtime: { bun: code.bun },
     compaction: "off",
     solverTools: harness,
     verifierTools: "t1",
@@ -603,6 +604,22 @@ describe("a round", () => {
       );
       expect(s.asked).toEqual([]);
     }
+  });
+
+  it("refuses an unfinished comparison under a Bun-only changed setting before another solve or append", async () => {
+    let left = 10;
+    const s = await setup([edit, finish], (version, side, nth, digest) => {
+      left -= 1;
+      if (left === 0) throw new Error(STOPS);
+      return step(version, side, nth, digest);
+    });
+    await expect(round(s.request)).rejects.toThrow(STOPS);
+    const before = readFileSync(s.log, "utf8");
+    const solves = s.asked.length;
+    s.code.bun = "0.0.1";
+    await expect(round(s.request)).rejects.toThrow("other terms (setting)");
+    expect(readFileSync(s.log, "utf8")).toBe(before);
+    expect(s.asked).toHaveLength(solves);
   });
 
   it("goes on from its log with the tasks and the terms it began with: no second session, only the solves it lacks, and other terms refused under its id", async () => {

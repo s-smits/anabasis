@@ -575,7 +575,7 @@ as truth.
   waiting for a label (`src/kernel/reports.ts`), and the dollars billed.
 - A **condition** is everything that could change a solve's result, as one content-addressed record
   (`src/kernel/condition.ts`): the contract, the harness, the task version, the model and its
-  effort, the price table, the runtime's packages, the compaction mode, the tool trees and the
+  effort, the price table, the runtime's packages and the Bun that runs them, the compaction mode, the tool trees and the
   sandbox, which it names by the isolation profile and the platform (`tools/d2/campaign.ts`). Two
   solves are comparable only when their conditions differ in the one thing being compared.
 - A solve's trace is in the log (`solve.turn`, `solve.call`), and so are the turns and calls of
@@ -1382,6 +1382,9 @@ index is an open row in the plan (`docs/plan.md`, "Tuning", the row "Network in 
 
 Bun 1.4.4 only, as `package.json` pins it, for every task including one-off inspection. No Node,
 npm or npx. `src/meta` wraps the few Node surfaces Bun lacks (`tools/oxlint/HABITS.md`, 12.8).
+The campaign command refuses launches, dry runs and continuations unless its executing Bun matches
+the source tree's exact `packageManager` pin and `engines.bun` agrees, before any opening, receipt
+or recovery write (`pinFault`, `tools/d2/harness-builder.ts`).
 
 | Command | What it does |
 | --- | --- |

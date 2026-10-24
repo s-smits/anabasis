@@ -1,4 +1,6 @@
 /**
+ * Continuations read counted practice for the current exact digest, so restoring an earlier state
+ * keeps its evidence; the latest frozen snapshot alone cannot establish that it was practised.
  * What a Builder reads before its first call: the system prompt, the opening message, and its
  * shell's description.
  *
@@ -187,19 +189,15 @@ export interface Used {
   readonly seconds: number;
   /** The practice solves the session may still start (`practiceLeft`, `tools.ts`). */
   readonly practiceLeft: number;
-  /** The harness the session's last practice solve ran, or null before one (`bench.opened`, `tools.ts`). */
+  /** The session's latest frozen snapshot, or null before one (`bench.opened`, `tools.ts`). */
   readonly practised: string | null;
 }
 
-/** Where `harness/` stands against the session's practice, as a continuation says it: no solve has
- *  run in this session, the harness is as the last solve ran it, it has changed since, or it does
- *  not open. `practised` is what the last solve ran (`bench.opened`), `harness` what it holds now. */
-function tried(practised: string | null, harness: string | Error): string {
-  if (practised === null) return "No practice solve has run in this session.";
+/** Counted practice comes from the log, independently of which snapshot was frozen last. */
+function tried(harness: string | Error, practice: "counted" | "uncounted"): string {
   if (harness instanceof Error) return "harness/ does not open as it stands: check_harness says why.";
-  return harness === practised
-    ? "harness/ is as your last practice solve ran it."
-    : "harness/ has changed since your last practice solve, so no solve has run it as it stands.";
+  if (practice === "counted") return "harness/ has counted practice results under its exact current digest.";
+  return "harness/ has no counted practice result as it stands.";
 }
 
 /** What the Builder's shell is told about its wall, after pi's own description. The command wall
@@ -262,12 +260,13 @@ export function continuation(
   limits: Pick<Told, "wallSeconds" | "turns">,
   harness: string | Error,
   said: Said,
+  practice: "counted" | "uncounted",
 ): string {
   const minutes = (seconds: number) => String(Math.floor(seconds / 60));
   return [
     `You have not called finish, and the session goes on: ending a turn does not end it. It ends when you call finish or at its limits, and what harness/ holds then is ${said.frozen}.`,
     `The goal, unchanged: ${GOAL}`,
-    `This session so far: ${String(used.turns)} of ${plural(limits.turns, "turn")} and ${minutes(used.seconds)} of ${plural(Number(minutes(limits.wallSeconds)), "minute")} used, ${plural(used.practiceLeft, "practice solve")} left. ${tried(used.practised, harness)}`,
+    `This session so far: ${String(used.turns)} of ${plural(limits.turns, "turn")} and ${minutes(used.seconds)} of ${plural(Number(minutes(limits.wallSeconds)), "minute")} used, ${plural(used.practiceLeft, "practice solve")} left. ${tried(harness, practice)}`,
     "read_opening returns the opening message again: the public rules, the practice tasks, the failed practice solves and the comparisons so far.",
   ].join("\n\n");
 }

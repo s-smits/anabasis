@@ -1,12 +1,26 @@
 // Going on with a campaign: the flags it runs again on, the login it runs as, and the point a pause
 // waits for.
-import { describe, expect, it } from "bun:test";
-import { type EventKind, LOG_FILE, type LogEvent } from "../src/kernel/log.ts";
-import { mkdirSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+// Launch and continuation dry runs reach the real campaign runtime guard before detaching.
+import { afterAll, describe, expect, it } from "bun:test";
+import { append, type EventKind, LOG_FILE, type LogEvent } from "../src/kernel/log.ts";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { launch, loginEnv, rerun, restsAfter } from "../tools/runs/manage.ts";
+import { campaignRuntime, PROMPT_FLAGS } from "./helpers/campaign-runtime.ts";
+
+const fixtures: ReturnType<typeof campaignRuntime>[] = [];
+afterAll(() => {
+  for (const made of fixtures) rmSync(made.root, { recursive: true, force: true });
+});
 
 const event = (kind: EventKind, data: JsonObject): LogEvent => ({
   at: "2026-10-15T12:00:00.000Z",
@@ -76,6 +90,44 @@ describe("going on with a campaign", () => {
 });
 
 describe("starting a campaign", () => {
+  it("refuses local launch and continuation at the campaign dry run before any detached campaign starts", () => {
+    for (const verb of ["launch", "continueRun"]) {
+      const made = campaignRuntime();
+      fixtures.push(made);
+      made.pin({ packageManager: "bun@0.0.1", engines: { bun: "0.0.1" } });
+      const log = join(made.folder, LOG_FILE);
+      if (verb === "continueRun") {
+        made.seed();
+        append(log, "comparison.started", { session: "g-1" });
+        writeFileSync(
+          join(made.folder, "launch-run-1.json"),
+          JSON.stringify({ flags: PROMPT_FLAGS, commit: made.commit, dirty: false }),
+        );
+      }
+      const before = existsSync(made.folder)
+        ? readdirSync(made.folder).map((file) => [file, readFileSync(join(made.folder, file), "utf8")])
+        : [];
+      const result = made.run(
+        `
+        import { ${verb} } from "CAMPAIGN/tools/runs/manage.ts";
+        await ${verb}(${JSON.stringify(["runtime", "--yes", "--", ...PROMPT_FLAGS])});
+      `,
+        { CLAUDE_CODE_OAUTH_TOKEN: "fixture" },
+      );
+      expect(result.code).toBe(1);
+      expect(result.err).toContain("dry run");
+      expect(result.err).toContain("nothing was started");
+      const after = existsSync(made.folder)
+        ? readdirSync(made.folder).map((file) => [file, readFileSync(join(made.folder, file), "utf8")])
+        : [];
+      expect(after).toEqual(before);
+      expect(made.recorded().filter(({ tool, args }) => tool === "nice" && args.includes("19"))).toEqual([]);
+      expect(made.recorded().some(({ tool, args }) => tool === "nice" && args.includes("install"))).toBe(
+        true,
+      );
+    }
+  });
+
   it("refuses a name that differs from a held campaign's only by case, which macOS reads as one folder", async () => {
     const name = `hunt-alias-${String(runtimeProcess.pid)}`;
     const folder = join(resolve(import.meta.dir, ".."), ".ana", "d2", name);

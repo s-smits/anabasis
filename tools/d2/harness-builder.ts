@@ -1,5 +1,7 @@
 /**
  * The Harness Builder's controller: one campaign run by its log, move after move.
+ * Launches, dry runs and continuations require the executing Bun to match this tree's exact
+ * packageManager pin and engines.bun, before opening a campaign, keeping a receipt or recovery.
  *
  *   bun tools/d2/harness-builder.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
  *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss \
@@ -119,8 +121,9 @@ import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { latestBuilt, promoted } from "#src/kernel/reports.ts";
 import { cutSessions } from "#src/kernel/trace.ts";
 import { sizeLines } from "#src/kernel/size.ts";
-import { existsSync, mkdirSync } from "#src/meta/filesystem.ts";
-import { isString, type JsonObject } from "#src/meta/json-shape.ts";
+import { existsSync, mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
+import { capturedJsonParse } from "#src/meta/json-runtime.ts";
+import { asRecord, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
@@ -536,6 +539,25 @@ async function served(opening: Opening, paid: "paid" | "scripted", named?: strin
   return opening;
 }
 
+/** Refuse runtime drift before any opening, receipt or recovery can write to the campaign. */
+function runtimePinned(): void {
+  const path = join(REPO, "package.json");
+  const manifest = asRecord(capturedJsonParse(readFileSync(path, "utf8")));
+  const manager = manifest?.packageManager;
+  const expected = isString(manager)
+    ? /^bun@(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/.exec(manager)?.[1]
+    : undefined;
+  if (expected === undefined) {
+    throw new Error(`${path}: packageManager must pin an exact Bun version (bun@<version>)`);
+  }
+  if (asRecord(manifest?.engines)?.bun !== expected) {
+    throw new Error(`${path}: engines.bun must agree with packageManager's exact Bun pin ${expected}`);
+  }
+  if (Bun.version !== expected) {
+    throw new Error(`${path}: expected Bun ${expected}, executing Bun ${Bun.version}`);
+  }
+}
+
 /**
  * `bun tools/d2/harness-builder.ts`, and under a rehearsal's seats the same loop with a script in
  * each model seat. It returns the last thing move 7 said: the campaign's ending, or the move that
@@ -545,6 +567,7 @@ export async function harnessBuilder(
   args: readonly string[],
   seats: Seats = { seated: solved },
 ): Promise<Decided> {
+  runtimePinned();
   const given = flagsOf(args);
   const { name } = given;
   if (name === undefined) throw new Error("name --name, the campaign");

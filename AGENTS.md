@@ -1379,6 +1379,9 @@ index is an open row in the plan (`docs/plan.md`, "Tuning", the row "Network in 
 
 Bun 1.4.4 only, as `package.json` pins it, for every task including one-off inspection. No Node,
 npm or npx. `src/meta` wraps the few Node surfaces Bun lacks (`tools/oxlint/HABITS.md`, 12.8).
+The campaign command refuses launches, dry runs and continuations unless its executing Bun matches
+the source tree's exact `packageManager` pin and `engines.bun` agrees, before any opening, receipt
+or recovery write (`runtimePinned`, `tools/d2/harness-builder.ts`).
 
 | Command | What it does |
 | --- | --- |

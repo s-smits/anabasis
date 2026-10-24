@@ -1,4 +1,5 @@
 // The fleet boundary through executable command fakes, with a hostile case beside each behaviour.
+// A configured fallback remains selectable; campaign entry checks its actual running version.
 import { afterAll, describe, expect, it } from "bun:test";
 import { append } from "../src/kernel/log.ts";
 import {
@@ -14,6 +15,7 @@ import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
 import { quoted, treeBun } from "../tools/runs/host-command.ts";
 import { leastOccupied } from "../tools/runs/placement.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
+import { campaignRuntime, PROMPT_FLAGS } from "./helpers/campaign-runtime.ts";
 
 const fixtures: string[] = [];
 const prepare =
@@ -52,6 +54,36 @@ function campaign(made: ReturnType<typeof fakeHosts>) {
 }
 
 describe("host execution", () => {
+  it("refuses an SSH configured fallback and a controller/campaign pin difference at real campaign entry", () => {
+    for (const controllerPin of ["0.0.1", Bun.version]) {
+      const made = campaignRuntime();
+      fixtures.push(made.root);
+      made.pin({ packageManager: "bun@0.0.1", engines: { bun: "0.0.1" } });
+      const controller = join(made.root, "controller");
+      mkdirSync(controller);
+      writeFileSync(
+        join(controller, "package.json"),
+        JSON.stringify({ packageManager: `bun@${controllerPin}`, engines: { bun: controllerPin } }),
+      );
+      const command = `cd ${quoted(controller)} && ${treeBun(Bun.argv[0] ?? "bun")} ${quoted(join(made.main, "tools/d2/harness-builder.ts"))} --name runtime ${PROMPT_FLAGS.map(quoted).join(" ")} --dry-run`;
+      const result = made.run(
+        `
+        import { runSync, decodeOutput } from "REPOSITORY/src/meta/subprocess.ts";
+        const result = runSync(["ssh", "fake-runner", ${JSON.stringify(command)}]);
+        console.error(decodeOutput(result.stderr));
+        process.exit(result.exitCode);
+      `,
+        { FAKE_EXECUTE: "1", HOME: made.root, CLAUDE_CODE_OAUTH_TOKEN: "fixture" },
+      );
+      expect(result.code).toBe(1);
+      expect(result.err).toContain(join(made.main, "package.json"));
+      expect(result.err).toContain("0.0.1");
+      expect(result.err).toContain(Bun.version);
+      expect(made.recorded().filter(({ tool }) => tool === "ssh")).toHaveLength(1);
+      expect(existsSync(made.folder)).toBe(false);
+    }
+  });
+
   it("keeps paths and arguments literal and clears the peer list for any repository script", () => {
     const made = fixture();
     const result = made.run(

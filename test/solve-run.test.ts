@@ -410,7 +410,9 @@ it.skipIf(!walled).concurrent(
     // Each attempt's start names the comparison the solve was made for.
     expect(events().find(({ kind }) => kind === "solve.started")?.data.comparison).toBe("g0");
     expect(sent).toHaveLength(4);
-    expect(sent[0]).toContain("The case has 5 minutes of solve time, and every tool result ends with");
+    expect(sent[0]).toContain(
+      "The case has 5 minutes of solve time. The host appends how much of it is used",
+    );
     expect(sent[1]).not.toContain(NUDGE);
     expect(sent[2]).toContain(JSON.stringify(NUDGE));
   },
@@ -447,7 +449,7 @@ it.skipIf(!walled).concurrent(
     expect(spent.finished()[0]?.data).toMatchObject({ turns: 3, prompts: 1 });
     expect(spent.sent).toHaveLength(3);
     expect(spent.sent[0]).toContain(
-      "The case has 10 minutes of solve time and 3 turns of yours, a turn being one reply of yours with the tool calls in it. Every tool result ends with how much of both is used. Nothing is submitted for you when either runs out: an answer you have not submitted by then is lost.",
+      "The case has 10 minutes of solve time and 3 turns of yours, a turn being one reply of yours with the tool calls in it. The host appends how much of both is used to results of tools that execute; argument refusals and unavailable tools carry no reminder. Nothing is submitted for you when either runs out: an answer you have not submitted by then is lost.",
     );
     const said = spent
       .events()

@@ -1008,8 +1008,9 @@ overrides a ruling. Once more than `--defects` tasks have a check defect or a ch
 run, the comparison stops, because the check program then needs its owner before more is spent.
 
 **The budget.** A campaign runs at one budget, the one its setting names. The binding units are the
-model's own turns, told to the solver on every tool result and enforced (`--solve-model-turns`; a
-solve that uses them all without an answer ends `turns-ended`), and the wall of a solve
+model's own turns, appended to results of tools that execute and enforced (`--solve-model-turns`; a
+solve that uses them all without an answer ends `turns-ended`); argument refusals and unavailable
+tools carry no reminder. The other binding unit is the wall of a solve
 (`--solve-minutes`). A time limit on each command bounds a turn. The prompts a solver gets before a
 solve stops without an answer are the same for every solve (`LIMITS.turns`, 24), and no solve on
 record has hit that bound. A comparison is read at the single budget its solves were told: a

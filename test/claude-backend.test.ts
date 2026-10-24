@@ -522,6 +522,21 @@ describe("the Claude backend", () => {
     expect(refused.errorMessage).toContain("holds this conversation");
   });
 
+  // On 24 October a Builder's Claude Code sent nothing after its tool results for 22 hours, and only
+  // the session's wall, which stops while host actions run, would have ended the turn.
+  it("fails a turn whose Claude Code falls silent for the quiet bound, and closes its query", async () => {
+    replay(TEXT, (text) => `${text.trim().split("\n").slice(0, -1).join("\n")}\n`);
+    sweep = claudeProvider({ executable, compaction: "off", home, shutdown: shutdown.signal, quiet: 300 });
+    const silent = await turn([opening]);
+    expect(silent.stopReason).toBe("error");
+    expect(silent.errorMessage).toContain("sent nothing");
+    replay(TEXT);
+    const nudge: Message = { role: "user", content: "Again.", timestamp: 0 };
+    const refused = await turn([opening, silent, nudge]);
+    expect(refused.stopReason).toBe("error");
+    expect(refused.errorMessage).toContain("holds this conversation");
+  });
+
   it("asks for v1's effort: the model's own map, then the bridge's table", async () => {
     const opus = sweep.getModels().find((entry) => entry.id === "claude-opus-5");
     if (opus === undefined) throw new Error("pi's Anthropic catalog has no claude-opus-5");

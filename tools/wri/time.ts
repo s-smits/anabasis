@@ -1,6 +1,9 @@
 /**
  * The lanes of a whole-run investigation that read the clock: the solver's walls, limits and load
  * (lane 26), and where the campaign's hours, dollars and silences went (lane 28).
+ * Role hours are elapsed open spans and can overlap. Recorded provider wait windows have their
+ * own union, clipped at the next campaign ending or the log boundary. Their scheduled durations
+ * include the reset's grace minute; they measure neither CPU time nor every seat's inactivity.
  *
  * Split from `read.ts` on 10 October, when that file stood at 794 nonblank lines against the size
  * policy's ceiling of 800 (`tools/loc/source-policy.ts`) and these lanes had three readings to add.
@@ -267,27 +270,41 @@ function spansOf(log: Index): Span[] {
   return spans;
 }
 
-/** Row A's hours by role, beside its billed dollars: v2 counted the dollars by role and no time.
- *  What no session or comparison holds is between moves: the campaign's own decisions, and a stop
- *  before a resume. */
+/** The union of intervals, so concurrent sessions or provider waits count their overlap once. */
+function unionMs(windows: readonly { readonly from: number; readonly until: number }[]): number {
+  let [held, reached] = [0, -Infinity];
+  for (const { from, until } of windows.toSorted((a, b) => a.from - b.from)) {
+    held += Math.max(0, until - Math.max(from, reached));
+    reached = Math.max(reached, until);
+  }
+  return held;
+}
+
+/** Row A's overlapping elapsed spans beside its billed dollars. Provider windows are recorded at
+ *  their start, unlike load waits, and stop at the first subsequent ending even after a resume.
+ *  Their union stays beside the spans: another seat can work while one waits. */
 export function hoursLine(log: Index): string {
   const spans = spansOf(log);
   const [first, last] = [Date.parse(log.events[0]?.at ?? ""), Date.parse(log.events.at(-1)?.at ?? "")];
   const whole = Number.isNaN(first) ? 0 : last - first;
   const parts = new Map<string, number>();
   for (const { part, from, until } of spans) parts.set(part, (parts.get(part) ?? 0) + until - from);
-  // The union of the spans, so that a session running beside a comparison is not counted twice.
-  let [held, reached] = [0, first];
-  for (const { from, until } of spans.toSorted((a, b) => a.from - b.from)) {
-    held += Math.max(0, until - Math.max(from, reached));
-    reached = Math.max(reached, until);
+  const waits: { from: number; until: number; ms: number }[] = [];
+  let boundary = last;
+  for (const { at, kind, data } of log.events.toReversed()) {
+    const from = Date.parse(at);
+    if (kind === "campaign.ended") boundary = from;
+    if (kind === "campaign.waited" && data.for === "provider" && isNumber(data.ms)) {
+      waits.push({ from, until: Math.min(from + data.ms, boundary), ms: data.ms });
+    }
   }
   const hours = (ms: number) => (ms / HOUR_MS).toFixed(1);
   const named = [...parts]
     .toSorted(([, a], [, b]) => b - a)
-    .concat([[BETWEEN_MOVES, whole - held]])
+    .concat([[BETWEEN_MOVES, whole - unionMs(spans)]])
     .map(([part, ms]) => `${part} ${hours(ms)} (${whole > 0 ? ((ms / whole) * 100).toFixed(0) : "0"}%)`);
-  return `hours: ${named.join(", ")}, of ${hours(whole)}`;
+  const largest = waits.reduce((most, wait) => Math.max(most, wait.ms), 0);
+  return `hours: elapsed open spans (overlapping), ${named.join(", ")}, of ${hours(whole)}; recorded provider wait windows (overlapping open spans): ${hours(unionMs(waits))} h union, ${plural(waits.length, "event")}, largest scheduled ${hours(largest)} h; not measured CPU or seat inactivity`;
 }
 
 /** What ran through the gap that ends at event `index`: the command whose time covers most of it,

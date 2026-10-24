@@ -1,5 +1,7 @@
 /**
  * One Builder session: the agent that changes a Built Harness, and the host around it.
+ * Continuations share finish's counted practice evidence for the current exact digest, including
+ * states restored after a different snapshot was frozen.
  *
  * The plan's D2 is "one Builder session scored on tasks it never saw". A session is given a copy of
  * the harness it starts from, a walled shell over that copy, practice solves on released tasks,
@@ -90,6 +92,7 @@ import {
   endingWith,
   finishTool,
   harnessNow,
+  hasPractice,
   HOME_TOOL_TREE,
   openingTool,
   practiceLeft,
@@ -495,16 +498,18 @@ async function converse(
     // A finish or a host fault ends after the round, even beside another call in that round.
     over: () => bench.note !== null || bench.fatal !== null,
     // v1's continuation carried the same notice: a file over its limit is cut on the next read.
-    next: async () =>
-      bench.note === null
-        ? [
-            continuation(used(), limits, await harnessNow(bench), bench.said),
-            memoryOverCapNotice(bench.home) ?? "",
-            campaign?.hook() ?? "",
-          ]
-            .filter((part) => part !== "")
-            .join("\n\n")
-        : null,
+    next: async () => {
+      if (bench.note !== null) return null;
+      const harness = await harnessNow(bench);
+      const practice = isString(harness) && hasPractice(bench, read(log), harness) ? "counted" : "uncounted";
+      return [
+        continuation(used(), limits, harness, bench.said, practice),
+        memoryOverCapNotice(bench.home) ?? "",
+        campaign?.hook() ?? "",
+      ]
+        .filter((part) => part !== "")
+        .join("\n\n");
+    },
     onTurn: () => {
       told = false;
     },

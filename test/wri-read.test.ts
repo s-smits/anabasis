@@ -5,6 +5,7 @@
 // and are settled by hand.
 // Clock cases keep overlapping elapsed spans beside the union of recorded provider waits,
 // clipped at a campaign ending or the log boundary rather than read as seat inactivity.
+// Practice gaps retain the boundary and origin of frozen and compared states.
 import { describe, expect, it } from "bun:test";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
@@ -338,7 +339,7 @@ describe("the whole-run investigation's reader", () => {
       "b-2: agent/tools.mjs, .toolchain",
     ]);
     expect(detail("FINAL BYTES NEVER PRACTISED")).toBe(
-      "b-1: no practice solve ran under hc, a harness measured; the last ran under hb",
+      "b-1: no practice solve ran under hc, reported comparison b-1; the last ran under hb",
     );
     expect(detail("PRACTICE FAILS")).toBe(
       "b-1: 1 fail, 0 ruled earned; the same task passed later under changed bytes 0, under the same bytes 0",
@@ -394,10 +395,50 @@ describe("the whole-run investigation's reader", () => {
     const led = frozenInConversation();
     const { triggers } = overview(led);
     expect(triggers.find(({ name }) => name === "FINAL BYTES NEVER PRACTISED")?.detail).toBe(
-      "b-1: no practice solve ran under hc, a harness measured; the last ran under hb",
+      "b-1: no practice solve ran under hc, reported comparison g-1; the last ran under hb",
     );
     // Its practice task was released before the comparison began and is not among the scored ones.
     expect(triggers.map(({ name }) => name)).not.toContain("PRACTISED TASK MEASURED");
+  });
+
+  it("describes an unused child as frozen and a begun comparison by its report status", () => {
+    const log = events.map((event) =>
+      event.kind.startsWith("comparison.") ? { ...event, data: { ...event.data, fresh: "hb" } } : event,
+    );
+    const frozen = overview(log).triggers.filter(({ name }) => name === "FINAL BYTES NEVER PRACTISED");
+    expect(frozen).toHaveLength(1);
+    expect(frozen[0]?.detail).toContain("hc");
+    expect(frozen[0]?.detail).toContain("frozen at session end");
+    expect(frozen[0]?.detail).toContain("no comparison");
+    expect(frozen[0]?.detail).not.toContain("measured");
+    const add = appendTo(log);
+    add(COMPARISON_STARTED, { session: "g-2", old: "hp", fresh: "hc", setting: SETTING });
+    const ran = condition("t1", "hc");
+    add(CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) });
+    add(SOLVE_STARTED, { solve: "late-practice", condition: conditionId(ran) });
+    add(SOLVE_FINISHED, { solve: "late-practice", ending: { outcome: "pass" } });
+    const gaps = () => overview(log).triggers.filter(({ name }) => name === "FINAL BYTES NEVER PRACTISED");
+    expect(gaps()).toHaveLength(1);
+    expect(gaps()[0]?.detail).toContain("g-2");
+    expect(gaps()[0]?.detail).toContain("begun without a report");
+    expect(gaps()[0]?.detail).toContain("last ran under hb");
+    add(REPORTED, { ...REPORT, session: "g-2", old: "hp", fresh: "hc", setting: SETTING });
+    expect(gaps()).toHaveLength(1);
+    expect(gaps()[0]?.detail).toContain("reported comparison g-2");
+    expect(gaps()[0]?.detail).toContain("last ran under hb");
+  });
+
+  it("reads an unreported comparison before later practice of its frozen checkpoint", () => {
+    const log = frozenInConversation().filter(({ kind }) => kind !== REPORTED);
+    const add = appendTo(log);
+    const ran = condition("t1", "hc");
+    add(CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) });
+    add(SOLVE_STARTED, { solve: "after-start", condition: conditionId(ran) });
+    add(SOLVE_FINISHED, { solve: "after-start", ending: { outcome: "pass" } });
+    const gaps = overview(log).triggers.filter(({ name }) => name === "FINAL BYTES NEVER PRACTISED");
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0]?.detail).toContain("comparison g-1 begun without a report");
+    expect(gaps[0]?.detail).toContain("last ran under hb");
   });
 
   it("says an erred call is a non-zero exit, which a test reporting what is unmet gives by design", () => {

@@ -3,6 +3,8 @@
 // a round whose comparison sets two tasks aside on rejections, a ruling of a check defect, an edit
 // made after the last practice, and then comparisons that tie, find no valid answer, meet their cap
 // and are settled by hand.
+// Clock cases keep overlapping elapsed spans beside the union of recorded provider waits,
+// clipped at a campaign ending or the log boundary rather than read as seat inactivity.
 import { describe, expect, it } from "bun:test";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
@@ -23,6 +25,7 @@ const CONDITION_RECORDED = "condition.recorded";
 const COMPARISON_STARTED = "comparison.started";
 const GATE = "task.gate";
 const EXAM_STARTED = "exam.started";
+const WAITED = "campaign.waited";
 const HELD = ["v1", "v2", "v3", "v4"];
 const TESTED = { wins: 0, losses: 0, ties: 0, p: 1 };
 /** A report's fields where a case names none: a comparison that tallied nothing and stopped nowhere. */
@@ -1068,6 +1071,20 @@ describe("the reader of the campaign's clock", () => {
   /** A log whose events stand at the minutes their rows give, from noon on 9 October. */
   const timed = (rows: readonly (readonly [number, EventKind, JsonObject])[]): LogEvent[] =>
     rows.map(([minute, kind, data]) => ({ at: new Date(START + minute * 60_000).toISOString(), kind, data }));
+  const hoursOf = (log: readonly LogEvent[]) =>
+    overview(log).rows[0]?.lines.find((line) => line.startsWith("hours:")) ?? "";
+  /** The facts the hours line states of the recorded waits: their union, each kind's, and the
+   *  hours a promotion with and without them where one was promoted. */
+  const waitsOf = (line: string) => {
+    const [, tail = ""] = line.split("recorded waits ");
+    const [all, ...rest] = tail.split("; ");
+    const kinds = [...(all ?? "").matchAll(/(\w+) (\d+\.\d)(?!\d)/g)].map(([, kind, hours]) => [kind, hours]);
+    return {
+      all: (all ?? "").match(/^\d+\.\d/)?.[0],
+      ...Object.fromEntries(kinds),
+      promotion: rest.length > 0 ? rest.join("").match(/\d+\.\d/g) : undefined,
+    };
+  };
   /** A Builder session with a command of 29.5 minutes, then nothing open for 20, then an Examiner
    *  turn of 28; its practice solves each took `seconds`. */
   const silences = (seconds: number, stretch = 1) => {
@@ -1141,9 +1158,100 @@ describe("the reader of the campaign's clock", () => {
       [190, "exam.finished", { session: "x-1", ended: "finished" }],
       [210, REPORTED, { ...REPORT, session: "g-1", old: "hp", fresh: "hc", reading: "no-step" }],
     ]);
-    expect(overview(log).rows[0]?.lines).toContain(
-      "hours: builder 2.0 (57%), comparisons 1.0 (29%), examiner 0.5 (14%), between moves 0.5 (14%), of 3.5",
+    expect(hoursOf(log)).toContain(
+      "builder 2.0 (57%), comparisons 1.0 (29%), examiner 0.5 (14%), between moves 0.5 (14%), of 3.5",
     );
+  });
+
+  it("keeps a long provider wait beside the Builder's overlapping elapsed span", () => {
+    const log = timed([
+      [0, BUILD_STARTED, { session: "b-1" }],
+      // `ms` includes the grace minute, which `until` leaves out.
+      [
+        60,
+        WAITED,
+        {
+          for: "provider",
+          ms: 35 * 3_600_000,
+          until: new Date(START + (36 * 60 - 1) * 60_000).toISOString(),
+        },
+      ],
+      [37 * 60, BUILD_FINISHED, { session: "b-1", billed: 3 }],
+    ]);
+    const line = hoursOf(log);
+    expect(line).toContain("builder 37.0 (100%)");
+    expect(line).toContain("of 37.0");
+    expect(waitsOf(line)).toEqual({ all: "35.0", provider: "35.0" });
+    expect(overview(log).rows[0]?.lines).toContain("billed dollars: builder 3.00");
+  });
+
+  it("merges concurrent provider windows while retaining Examiner and comparison spans", () => {
+    const log = timed([
+      [0, BUILD_STARTED, { session: "b-1" }],
+      [60, WAITED, { for: "provider", ms: 35 * 3_600_000 }],
+      [120, WAITED, { for: "provider", ms: 34 * 3_600_000 }],
+      [180, EXAM_STARTED, { session: "x-1" }],
+      [240, "exam.finished", { session: "x-1", billed: 2 }],
+      [300, COMPARISON_STARTED, { session: "g-1", old: "hp", fresh: "hc", tasks: [] }],
+      [420, REPORTED, { ...REPORT, session: "g-1", old: "hp", fresh: "hc", reading: "no-step" }],
+      [37 * 60, BUILD_FINISHED, { session: "b-1", billed: 3 }],
+    ]);
+    const line = hoursOf(log);
+    expect(line).toContain("examiner 1.0 (3%)");
+    expect(line).toContain("comparisons 2.0 (5%)");
+    expect(line).toContain("between moves 0.0 (0%), of 37.0");
+    expect(waitsOf(line)).toEqual({ all: "35.0", provider: "35.0" });
+  });
+
+  it("clips a forward wait at the last recorded event, and at the first ending even when the campaign resumes", () => {
+    const clipped = hoursOf(
+      timed([
+        [0, BUILD_STARTED, { session: "b-1" }],
+        [60, WAITED, { for: "network", ms: 35 * 3_600_000 }],
+        [600, "build.turn", { session: "b-1" }],
+      ]),
+    );
+    expect(waitsOf(clipped)).toEqual({ all: "9.0", network: "9.0" });
+    const resumed = hoursOf(
+      timed([
+        [0, BUILD_STARTED, { session: "b-1" }],
+        [60, WAITED, { for: "provider", ms: 35 * 3_600_000 }],
+        [600, "campaign.ended", { ending: "operator" }],
+        [1200, BUILD_STARTED, { session: "b-2" }],
+        [37 * 60, "campaign.ended", { ending: "operator" }],
+      ]),
+    );
+    expect(waitsOf(resumed)).toEqual({ all: "9.0", provider: "9.0" });
+  });
+
+  it("takes every recorded wait into one union, load waits back from their admission, and the hours a promotion with and without it", () => {
+    const line = hoursOf(
+      timed([
+        [0, BUILD_STARTED, { session: "b-1" }],
+        [60, WAITED, { for: "provider", ms: 2 * 3_600_000 }],
+        // A load wait is recorded when the host admits the solve: this one began an hour into the
+        // provider's window above, and the next overlaps it by an hour.
+        [240, WAITED, { load: 13, cores: 12, ms: 2 * 3_600_000 }],
+        [300, WAITED, { load: 13, cores: 12, ms: 2 * 3_600_000 }],
+        [300, "harness.promoted", { harness: "hc" }],
+        [480, "harness.promoted", { harness: "hd" }],
+        // A kind nothing writes is no wait.
+        [500, WAITED, { for: "reserve", ms: 3_600_000 }],
+        [600, "build.turn", { session: "b-1" }],
+      ]),
+    );
+    expect(waitsOf(line)).toEqual({ all: "4.0", provider: "2.0", load: "3.0", promotion: ["5.0", "3.0"] });
+  });
+
+  it("includes the grace minute in the provider window instead of ending at the named reset", () => {
+    const line = hoursOf(
+      timed([
+        [0, BUILD_STARTED, { session: "b-1" }],
+        [60, WAITED, { for: "provider", ms: 3 * 60_000, until: new Date(START + 62 * 60_000).toISOString() }],
+        [63, BUILD_FINISHED, { session: "b-1" }],
+      ]),
+    );
+    expect(waitsOf(line)).toEqual({ all: "0.1", provider: "0.1" });
   });
 
   it("counts a comparison a stop cut from its start to the stop, and again from the resume to its report", () => {
@@ -1155,9 +1263,7 @@ describe("the reader of the campaign's clock", () => {
       [90, SOLVE_STARTED, { solve: "s1", comparison: "g-1", limits: { wallSeconds: 900 } }],
       [120, REPORTED, { ...REPORT, session: "g-1", old: "hp", fresh: "hc", reading: "no-step" }],
     ]);
-    expect(overview(log).rows[0]?.lines).toContain(
-      "hours: comparisons 1.0 (50%), between moves 1.0 (50%), of 2.0",
-    );
+    expect(hoursOf(log)).toContain("comparisons 1.0 (50%), between moves 1.0 (50%), of 2.0");
   });
 
   it("counts a drafting session's dollars as the Examiner's, as the host's budget does", () => {

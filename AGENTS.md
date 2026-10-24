@@ -460,7 +460,8 @@ alongside it, shows the shapes with a worked example):
 | `agent/tools.ts` | The harness's own tools, which the solver has beside pi's tools; each call runs alone under the wall. Whether a computation is a program, a tool or both is the Builder's choice, and it is told what each costs a solve. An empty `tools.ts` is no empty harness: the programs live in `.toolchain/` |
 
 A harness is named by its digest, so changing any part makes a different harness, and solves under
-the old one do not count for the new one. The **Starter Built Harness** is pi's coding agent as pi
+the old one do not count for the new one. The bytecode caches Python writes beside a program it runs
+(`__pycache__`) are no part of it (`BYTECODE`, `src/harness/open.ts`). The **Starter Built Harness** is pi's coding agent as pi
 releases it, with no guide and no domain program (`src/harness/starter.ts`). Every campaign starts
 from it, it is the first reference harness, and it stays the fixed lower reference after a
 promotion.

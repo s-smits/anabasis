@@ -192,6 +192,26 @@ function practisedAgain(): LogEvent[] {
     );
 }
 
+/** The campaign as a led Builder leaves it: b-1 froze hc for its comparison, g-1, inside a
+ *  conversation that never ended, after practising hb. */
+function frozenInConversation(): LogEvent[] {
+  return events.flatMap((event): LogEvent[] => {
+    if (event.kind === BUILD_FINISHED) return [];
+    const data =
+      event.data.session === "b-1" && event.kind.startsWith("comparison.")
+        ? { ...event.data, session: "g-1" }
+        : event.data.comparison === "b-1"
+          ? { ...event.data, comparison: "g-1" }
+          : event.data;
+    const frozen = {
+      at: event.at,
+      kind: "build.checkpoint",
+      data: { session: "b-1", harness: "hc" },
+    } as const;
+    return event.kind === COMPARISON_STARTED ? [frozen, { ...event, data }] : [{ ...event, data }];
+  });
+}
+
 describe("the whole-run investigation's reader", () => {
   it("settles the six rows from the log alone", () => {
     expect(seen.rows.map((row) => row.id)).toEqual(["A", "B", "C", "D", "E", "F"]);
@@ -368,21 +388,7 @@ describe("the whole-run investigation's reader", () => {
   it("reads a harness a led Builder froze for a comparison inside a conversation that never ended", () => {
     // v061 on 21 October: b-1 froze 03a5eb57 for g-2 after its last practice and was still open
     // when the run stopped, and the reader, reading only the end record, said nothing of it.
-    const led = events.flatMap((event): LogEvent[] => {
-      if (event.kind === BUILD_FINISHED) return [];
-      const data =
-        event.data.session === "b-1" && event.kind.startsWith("comparison.")
-          ? { ...event.data, session: "g-1" }
-          : event.data.comparison === "b-1"
-            ? { ...event.data, comparison: "g-1" }
-            : event.data;
-      const frozen = {
-        at: event.at,
-        kind: "build.checkpoint",
-        data: { session: "b-1", harness: "hc" },
-      } as const;
-      return event.kind === COMPARISON_STARTED ? [frozen, { ...event, data }] : [{ ...event, data }];
-    });
+    const led = frozenInConversation();
     const { triggers } = overview(led);
     expect(triggers.find(({ name }) => name === "FINAL BYTES NEVER PRACTISED")?.detail).toBe(
       "b-1: no practice solve ran under hc, a harness measured; the last ran under hb",

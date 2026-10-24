@@ -1218,6 +1218,10 @@ Cite a rule by its number in a pull request or a review.
     a failure of any mechanism: do not patch, triage or report it as one, do not count it against a
     change, and do not spend a pull request on waiting it out. A generic 429, a timeout or a crash
     that does not name a limit is a different matter: investigate the failure itself.
+    The whole-run hours reader labels role hours as overlapping elapsed open spans and gives the
+    union of recorded provider wait windows beside them, clipped at the next campaign ending or
+    log boundary, with the event count and largest scheduled wait. Those windows measure neither
+    CPU time nor every seat's inactivity (`hoursLine`, `tools/wri/time.ts`).
 
 ## 9. Status, evidence and claims
 

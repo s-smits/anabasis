@@ -276,10 +276,13 @@ export function scoredSet(events: readonly LogEvent[], target: number, contract:
 /**
  * The solves still to run, task by task in an order drawn by a hash of each task and the comparison
  * (`draw`), so that what drifts over the comparison's hours falls between tasks, which the test
- * does not read, and no slot's solves gather at one end. Within a task its slots run in turn and
- * the harness that goes first is mirrored, slot by slot and from one task to the next: the
- * reference then the new harness, the new then the reference. `had` says how many counted solves
- * a task has under a harness; a comparison gone on from its log runs the slots' solves it lacks.
+ * does not read, and no slot's solves gather at one end. Within a task its slots are queued in
+ * turn and the harness that goes first is mirrored, slot by slot and from one task to the next: the
+ * reference then the new harness, the new then the reference. The queue orders the starts and does
+ * not hold them: the workers take it independently and each solve waits for the load and a named
+ * reset on its own, so a side can start late (`STARTS OUT OF TURN`, `tools/wri/time.ts`). `had`
+ * says how many counted solves a task has under a harness; a comparison gone on from its log runs
+ * the slots' solves it lacks.
  */
 function unsolvedJobs(
   request: Pick<CheckpointRequest, "id" | "old" | "fresh" | "solves">,

@@ -553,7 +553,7 @@ or `host`, by where the value came from.
 
 **20. Pair identity and source reach.**
 
-Starts from `HOST CODE MOVED (lane 20)`.
+Starts from `HOST CODE MOVED (lane 20)` and `STARTS OUT OF TURN (lane 20)`.
 
 The question is whether the two sides of each comparison differ in the harness and in nothing
 else. A condition is a content address: the contract, the harness, the task version, the model
@@ -565,9 +565,11 @@ the log all the same: for the counted solves of each comparison, list the distin
 every field but the harness and its `solverTools`, which may change with it. Then read what a
 condition does not hold: load, recorded at solve start and finish, which `gated` in `tools/d2/host.ts` gates at
 the start unless `--loaded` is named; the hour; the provider's
-served model, which `responseModels` names or leaves empty; how many solves ran at once. The two
-harnesses take the first place in turn, task by task, so neither has the quieter hours: check
-the order of `solve.started` within the comparison. Where the host's code moved inside the
+served model, which `responseModels` names or leaves empty; how many solves ran at once. The round
+queues the two harnesses to take the first place in turn, task by task, so that neither has the
+quieter hours, and each solve then waits for the load and a named reset on its own.
+`STARTS OUT OF TURN` counts the tasks whose counted solves did not start balanced between the
+sides; read which side started late and what it waited for (`campaign.waited`). Where the host's code moved inside the
 campaign, name the commits between the two hashes if this checkout has them. A campaign command
 that ran names its commit, and whether the tree was dirty, in `launch-run-<n>.json` beside the
 log. The decision it changes is whether a difference between the sides is the harness's; it

@@ -16,6 +16,9 @@
  * logged whole with its proposal, hidden values too, so a later solve needs the log alone; no tool
  * here returns a line of the log. An author's accepted answer is kept for the Referee
  * (`task.feasible`).
+ * The opening carries interrupted gate statuses from the log, and read_example also serves the
+ * author's earlier drafts, so recovery needs no carried shell file. Only admitted tasks count
+ * towards supply; retrieval changes neither duplicate eligibility nor how a retry is solved.
  * On 21 October, 23 passing tries followed a proposal in 30 logs; the proof is read when needed.
  * Unmeasured drafts may return in the same session (5 retry signatures in 30 logs), and the
  * reserve holds the next solve alone (2 reserve refusals of 1,396 drafts).
@@ -615,7 +618,7 @@ export function writing(
     },
     tools: [
       proposeTool(desk, gate),
-      exampleTool(request.tasks),
+      exampleTool([...writtenTasks(before), ...request.tasks]),
       ...(verify === null ? [] : [tryTool(desk, verify)]),
       ...(request.probe === null
         ? []

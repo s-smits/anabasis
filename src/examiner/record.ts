@@ -22,11 +22,13 @@
  *   already spend.
  * - The drafts a gate refused after reading them, by reason (`refusedLines`), and the gates read on
  *   a replaced reference as one count (`earlierLine`).
+ * - Interrupted gates by draft (`interruptedLines`), including those whose final tool result the
+ *   author never received. Their status survives a promotion; old reference numbers do not.
  * On 21 October, 2 of 1,396 drafts in 30 logs were refused for three reserved solves; the gate
  * reserves only its next solve. An unmeasured refusal may return within the same session too.
  *
- * Everything is told by epoch: on 16 October a session after a promotion read the starter's gate
- * counts as the new reference's. Nothing here names a harness, a check or a target, and no count
+ * Reference measurements are told by epoch: on 16 October a session after a promotion read the
+ * starter's gate counts as the new reference's. Nothing here names a harness, a check or a target, and no count
  * carries a band or a number to reach (the operator's decision of 11 October; whether counts move
  * an author as a target did is `7f0add79:docs/plan.md`, row F60).
  */
@@ -58,6 +60,8 @@ interface Heard {
   readonly lines: string[];
   /** The drafts a gate refused having read them, a line a reason (`refusedLines`). */
   readonly refused: string[];
+  /** Gates that did not decide room, retained across reference changes (`interruptedLines`). */
+  readonly interrupted: string[];
   readonly counts: string | null;
   /** The turns the reference harness's valid answers took, by family, or null where none is on
    *  record (`turnsOf`). */
@@ -223,10 +227,38 @@ export function heard(
     legend: legendOf(results),
     lines: practice.length === 0 ? lines : [...lines, `${PRACTICE} ${practice.join(", ")}.`],
     refused: refusedLines(events, gates),
+    interrupted: interruptedLines(events, last, since),
     counts: counts(families, results),
     turns: turnsOf(turns),
     earlier: earlierLine([...last.values()].flatMap(({ data, at }) => (at < since ? [data] : []))),
   };
+}
+
+/** Each proposed version's last unmeasured refusal, whether or not its author received the tool
+ *  result. A replaced reference leaves only the draft's identity and incomplete status; current
+ *  gates retain their safe counts and gate-level reason, never a solver answer or review packet. */
+function interruptedLines(
+  events: readonly LogEvent[],
+  gates: ReadonlyMap<string, { readonly data: JsonObject; readonly at: number }>,
+  since: number,
+): string[] {
+  const tasks = new Map(proposalsOf(events).map(({ version, task }) => [version, task]));
+  return [...gates].flatMap(([version, gate]) => {
+    const task = tasks.get(version);
+    if (task === undefined || task === null || gate.data.outcome !== "refused" || measuredGate(gate.data)) {
+      return [];
+    }
+    const status = `${task.taskId} (${task.family}): gate not measured`;
+    if (gate.at < since) return [`${status}; used a replaced reference`];
+    const { valid, solves, ran } = asRecord(gate.data.reference) ?? {};
+    const measured =
+      isNumber(valid) && isNumber(solves)
+        ? `; ${String(valid)} of ${String(solves)} measured solves valid`
+        : "";
+    const attempted = isNumber(ran) ? `; ${String(ran)} attempted` : "";
+    const reason = isString(gate.data.reason) ? `; ${gate.data.reason}` : "";
+    return [`${status}${measured}${attempted}${reason}`];
+  });
 }
 
 /** The gates read on a reference harness a promotion has replaced, as one count, or null where

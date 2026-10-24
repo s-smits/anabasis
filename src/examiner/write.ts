@@ -1,6 +1,7 @@
 /**
  * The Examiner's task-writing mode: the agent that writes tasks, and the host that holds each one
- * out (`writing`, which `examine` seats, `session.ts`).
+ * out (`writing`, which `examine` seats, `session.ts`). Gate settlement goes through the session's
+ * host-wait callback, so only blocked waits pause its author clock, including finish and shutdown.
  *
  * The session is given the public contract, its checks by id and assertion, and every task the
  * campaign holds with its outcome so far (`record.ts`). Each instance it proposes goes to the gate:
@@ -352,10 +353,17 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
 /** Whether the host has the tasks it asked for. */
 const supplied = (desk: Desk): boolean => desk.held.length >= desk.request.wanted;
 
-/** All of the gate, or its next word: the wall ends both, as the solves run on the session's signal. */
-async function settled(desk: Desk, until: "all" | "next"): Promise<void> {
+/** All of the gate, or its next word, under the session's cancellation signal. */
+async function settled(
+  desk: Desk,
+  until: "all" | "next",
+  hostWait: (action: () => Promise<void>) => Promise<void>,
+): Promise<void> {
   const waiting = () => desk.pending.size > 0 && (until === "all" || desk.arrived.length === 0);
-  while (waiting()) await Promise.race(desk.pending);
+  if (!waiting()) return;
+  await hostWait(async () => {
+    while (waiting()) await Promise.race(desk.pending);
+  });
 }
 
 /**
@@ -578,6 +586,7 @@ export function writing(
     | undefined,
   reference: "unseen" | "in-home",
   stop = new AbortController().signal,
+  hostWait: (action: () => Promise<void>) => Promise<void> = async (action) => await action(),
 ) {
   const { limits, verify, wanted } = request;
   const before = read(request.log);
@@ -634,7 +643,7 @@ export function writing(
             waitTool(
               "Wait for the gate's next word on the instances still at it, and return with it; at once where it has said something you have not been told, or nothing is at the gate.",
               async () => {
-                await settled(desk, "next");
+                await settled(desk, "next", hostWait);
                 return desk.arrived.length === 0 ? "Nothing is at the gate." : "The gate said:";
               },
             ),
@@ -653,7 +662,7 @@ export function writing(
         last && desk.pending.size > 0 ? `${plural(desk.pending.size, "instance")} still at the gate.` : "";
       return [...desk.arrived.splice(0), waiting].filter((line) => line !== "").join("\n");
     },
-    settle: async (all: boolean) => await settled(desk, all ? "all" : "next"),
+    settle: async (all: boolean) => await settled(desk, all ? "all" : "next", hostWait),
     counted: () => ({ proposed: desk.proposed, held: desk.held, refused: desk.refused }),
     result: () => ({ puts: desk.proposed, held: desk.held, refused: desk.refused }),
   };

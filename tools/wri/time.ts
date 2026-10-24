@@ -185,6 +185,40 @@ export function wallTriggers(log: Index): Trigger[] {
         ]
       : [],
   );
+  // The tasks whose solves started out of turn. The round mirrors which harness goes first, task by
+  // task, so that what drifts over a comparison's hours falls between tasks; a wait for the load or
+  // a provider's reset on one side starts that side's solves later. A task is in turn where the
+  // first solves of each side, as many as the fewer side holds, hold equal sums of their places by
+  // start, or one apart where the slots are odd and the mirror leaves its last slot's first place
+  // to one side. Six campaigns' 17 comparisons on 24 October held 68 of 373 tasks out of turn so;
+  // lane 20, holding each task to its exact mirrored order, counted 76.
+  const outOfTurn = results.flatMap(({ session, own, scoring }) => {
+    const tasks = Map.groupBy(
+      scoring.toSorted((one, other) => one.index - other.index),
+      (solve) => solve.version,
+    );
+    const late = [...tasks.values()].filter((solves) => {
+      const sides = [own.old, own.fresh].map((harness) =>
+        solves.filter((solve) => solve.harness === harness),
+      );
+      const slots = Math.min(...sides.map(({ length }) => length));
+      const first = new Set(sides.flatMap((side) => side.slice(0, slots)));
+      const places = solves.filter((solve) => first.has(solve));
+      const apart = places.reduce(
+        (sum, solve, place) => sum + (solve.harness === own.old ? place : -place),
+        0,
+      );
+      return Math.abs(apart) > slots % 2;
+    }).length;
+    return late > 0 && own.old !== own.fresh
+      ? [
+          fired(
+            "STARTS OUT OF TURN",
+            `${session}: ${share(late, tasks.size)} tasks started their harnesses' solves out of turn`,
+          ),
+        ]
+      : [];
+  });
   const middles = loads.flatMap(({ halves }) => halves);
   const [calmest, busiest] = [Math.min(...middles), Math.max(...middles)];
   const moved = busiest >= LOAD_WORTH_A_LINE && busiest >= calmest * LOAD_MOVED;
@@ -192,6 +226,7 @@ export function wallTriggers(log: Index): Trigger[] {
     ...limitTriggers(log),
     ...wallShares,
     ...loaded,
+    ...outOfTurn,
     ...(moved
       ? [
           fired(

@@ -71,10 +71,11 @@ const AT = '{"at":"';
  *  weighted measures. */
 export async function loadTree(path: string): Promise<Tree> {
   const kernel = (file: string) => import(join(path, "src", "kernel", file));
-  const [log, reports, compare] = await Promise.all([
+  const [log, reports, compare, trace] = await Promise.all([
     kernel("log.ts"),
     kernel("reports.ts"),
     kernel("compare.ts"),
+    kernel("trace.ts"),
   ]);
   if (!isFunction(compare.pointsOf) || asRecord(compare.WEIGHTS) === null) {
     throw new Error(`${path} scores no weighted measures (pointsOf, WEIGHTS): a tree from before 21 October`);
@@ -92,8 +93,8 @@ export async function loadTree(path: string): Promise<Tree> {
     flipP: (differences) => compare.flipP(differences),
     readsStepEitherWay: (differences, level) => compare.readsStepEitherWay(differences, level),
     measures: (value) => compare.measuresIn(value),
-    billedBetween: (events, from, to) => reports.billedBetween(events, from, to),
-    billed: reports.BILLED,
+    billedBetween: (events, from, to) => trace.billedBetween(events, from, to),
+    billed: trace.BILLED,
   };
 }
 

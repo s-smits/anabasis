@@ -105,6 +105,7 @@ function practiceTriggers(
   // A practice solve's condition names the state it ran under, so the log says by digest whether
   // the harness that was measured is one the Builder tried: an edit made with the shell leaves no
   // call to count, and a digest misses none. Practice after its comparison began counts for none.
+  // A digest leaves out Python's bytecode caches (`BYTECODE`, `src/harness/open.ts`).
   const lastPractice = round.practice.at(-1);
   const unpractised = read.flatMap(([harness, began]) =>
     harness === "" || round.practice.some((solve) => solve.harness === harness && solve.index < began)

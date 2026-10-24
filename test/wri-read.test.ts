@@ -2,11 +2,13 @@
 // lanes. This campaign is small enough to count by hand: one practice task and four held-out ones,
 // a round whose comparison sets two tasks aside on rejections, a ruling of a check defect, an edit
 // made after the last practice, and then comparisons that tie, find no valid answer, meet their cap
-// and are settled by hand.
+// and are settled by hand. No-step reports retain their tally and power facts without a diagnosis
+// of sweep dependence from reversing one win.
 // Clock cases keep overlapping elapsed spans beside the union of recorded provider waits,
 // clipped at a campaign ending or the log boundary rather than read as seat inactivity.
 // Practice gaps retain the boundary and origin of frozen and compared states.
 import { describe, expect, it } from "bun:test";
+import { detectable, flipP, power } from "../src/kernel/compare.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
@@ -24,7 +26,8 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
-import { TRIGGERS } from "../tools/wri/folds.ts";
+import { indexOf, TRIGGERS } from "../tools/wri/folds.ts";
+import { testedOf } from "../tools/wri/promotion.ts";
 import { overview, rendered } from "../tools/wri/read.ts";
 import { execTextSync } from "./helpers/bun-spawn-sync.ts";
 
@@ -275,9 +278,7 @@ describe("the whole-run investigation's reader", () => {
       "b-1: 2-0 without the 2 tasks set aside, 4-0 were their rejections to stand, and only one of the two clears its level",
     );
     expect(detail("SCORED SET MOVED")).toBe("b-1: 2 of 4 tasks it began with are not in its tally");
-    expect(detail("FEW INFORMATIVE PAIRS")).toBe(
-      "b-1: 2 of 2 tasks tell the harnesses apart; at level 0.1 the least sweep that clears is 4-0, and the reading with its least win lost would not",
-    );
+    expect(seen.triggers.map(({ name }) => name)).not.toContain("FEW INFORMATIVE PAIRS");
     expect(detail("CHAIN")).toBe("b-1 hp>hc no-step");
   });
 
@@ -639,24 +640,49 @@ describe("the whole-run investigation's reader", () => {
     );
   });
 
-  it("reads a sweep as fragile on the frontier's own margins, not on one pair a task", () => {
-    // buffer-149 (14 October): 8-0 at level 0.02, where the margins let a 7-1 clear.
-    const fragile = (session: string, differences: number[]) => {
-      record(REPORTED, {
-        ...REPORT,
-        ...started(session, "hp", "hf"),
-        level: 0.02,
-        scored: { ...TESTED, wins: 8, losses: 0, ties: 0, p: 0.004, unsolved: 0 },
-        frontier: { differences },
-        versions: HELD,
-        reading: "step",
-      });
-      return overview(events).triggers.some(
-        (trigger) => trigger.name === "FEW INFORMATIVE PAIRS" && trigger.detail.startsWith(`${session}:`),
-      );
+  it.each([
+    ["buffer-g6", [-16, -9, 2, -9, 150, 119, 0, 19]],
+    [
+      "v070-g4",
+      [
+        -100, 200, 42, 125, 35, 125, -26, -10, -25, 202, -25, 333, 125, 52, 200, 143, 8, 200, 136, 55, 200,
+        -63, -45, 39, -250, -339, -63, -94, -100, -333, -109, -106,
+      ],
+    ],
+  ])("keeps %s's no-step and power facts without diagnosing sweep dependence", (session, differences) => {
+    const level = 0.02;
+    const tested = {
+      wins: differences.filter((value) => value > 0).length,
+      losses: differences.filter((value) => value < 0).length,
+      ties: differences.filter((value) => value === 0).length,
+      p: flipP(differences),
+      detectable: detectable(differences, level),
+      falseRate: power(differences, 0.5, level),
+      unsolved: 0,
     };
-    expect(fragile("g-8", [16, 16, 16, 16, 16, 16, 16, 1])).toBe(false);
-    expect(fragile("g-9", [1, 1, 1, 1, 1, 1, 1, 1])).toBe(true);
+    record(REPORTED, {
+      ...REPORT,
+      ...started(session, "hp", "hf"),
+      level,
+      scored: tested,
+      frontier: { differences },
+      retained: { differences: [] },
+      versions: HELD,
+      reading: "no-step",
+    });
+    const last = indexOf(events).compared.find((each) => each.session === session)?.last;
+    expect(last).toMatchObject({ reading: "no-step", scored: tested });
+    expect(testedOf(last ?? {}).differences).toEqual(differences);
+    expect(tested.p).toBeGreaterThan(level);
+    const read = overview(events);
+    expect(read.triggers.find(({ name }) => name === "CHAIN")?.detail).toContain(`${session} hp>hf no-step`);
+    expect(
+      read.triggers.some(
+        (trigger) =>
+          trigger.detail.startsWith(`${session}:`) &&
+          /FEW INFORMATIVE PAIRS|sweep/i.test(`${trigger.name} ${trigger.detail}`),
+      ),
+    ).toBe(false);
   });
 
   it("says what a person's labels settled, beside what the comparison's own report read", () => {

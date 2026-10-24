@@ -566,10 +566,14 @@ every field but the harness and its `solverTools`, which may change with it. The
 condition does not hold: load, recorded at solve start and finish, which `gated` in `tools/d2/host.ts` gates at
 the start unless `--loaded` is named; the hour; the provider's
 served model, which `responseModels` names or leaves empty; how many solves ran at once. The round
-queues the two harnesses to take the first place in turn, task by task, so that neither has the
-quieter hours, and each solve then waits for the load and a named reset on its own.
+mirrors which harness takes the first place, slot by slot and task by task, so that neither has the
+quieter hours. One worker runs a task's slots in that order: each solve call, with its load wait,
+its provider reruns or reset and its one outer retry, returns before the next slot starts
+(`drain`, `src/campaign/round.ts`). A round that ran before that hold queued each solve on its own,
+so a load wait or a provider's rerun on one side let the other side's later slots start first.
 `STARTS OUT OF TURN` counts the tasks whose counted solves did not start balanced between the
-sides; read which side started late and what it waited for (`campaign.waited`). Where the host's code moved inside the
+sides. In a comparison run with the hold it is a defect of the round; in an older one, read which
+side started late and what it waited for (`campaign.waited`). Where the host's code moved inside the
 campaign, name the commits between the two hashes if this checkout has them. A campaign command
 that ran names its commit, and whether the tree was dirty, in `launch-run-<n>.json` beside the
 log. The decision it changes is whether a difference between the sides is the harness's; it

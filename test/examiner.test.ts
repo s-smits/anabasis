@@ -4,6 +4,7 @@
 // including incomplete gates carried to a later session from the log alone.
 // Admission queued at the host leaves at the session's wall and durably refuses each draft
 // unmeasured, preserving earlier usable readings without starting another solve.
+// Gate settlement pauses author time; background probes, cancellation and resumed work retain their limits.
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import {
   createAssistantMessageEventStream,
@@ -63,6 +64,7 @@ const TRY = "try_task";
 const GATE = "task.gate";
 const PROPOSED = "task.proposed";
 const TASK_STATE = "task.state";
+const EXAM_FINISHED = "exam.finished";
 const STARTED = "solve.started";
 /** A solver-side secret no Examiner may be shown: the text of a measured solve's answer. */
 const SOLVER = "solver-canary-7f3a";
@@ -316,7 +318,7 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
       const { home } = shell.dirs;
       const seen = readdirSync(home).sort();
       writeFileSync(join(home, "wrote.txt"), "wrote\n");
-      append(s.log, "exam.finished", { session: s.request.id, ended, running });
+      append(s.log, EXAM_FINISHED, { session: s.request.id, ended, running });
       return seen;
     });
     return { found, kept: readdirSync(keep).sort() };
@@ -534,7 +536,7 @@ describe("a session that writes tasks", () => {
       },
     ]);
     expect(s.of("exam.started")[0]?.tried).toBeUndefined();
-    expect(s.of("exam.finished")).toMatchObject([{ proposed: 0, held: [], refused: [] }]);
+    expect(s.of(EXAM_FINISHED)).toMatchObject([{ proposed: 0, held: [], refused: [] }]);
 
     // The budget every solve is held to, as a fact and no target; and the next session opens with
     // what the last one said at its finish, in its own words.
@@ -581,7 +583,7 @@ describe("a session that writes tasks", () => {
       task: { family: "fixture", publicInput: { base: 7 }, hidden: { seed: 1 } },
     });
     expect(writtenTasks(read(s.log)).map(({ taskId }) => taskId)).toEqual(["x-1-001", "x-1-002"]);
-    expect(s.of("exam.finished")).toMatchObject([{ proposed: 2, held: [held], refused: [refused] }]);
+    expect(s.of(EXAM_FINISHED)).toMatchObject([{ proposed: 2, held: [held], refused: [refused] }]);
   });
 
   it("takes no instance past its puts, nor one an earlier session wrote, and keeps what it held when its turn fails", async () => {
@@ -1198,7 +1200,7 @@ describe("a session that writes tasks", () => {
         stop.abort();
         release.resolve();
         await first.settle(true);
-        append(s.log, "exam.finished", { session: "x-1", ended: "wall" });
+        append(s.log, EXAM_FINISHED, { session: "x-1", ended: "wall" });
         expect(s.of(CALLED)).toEqual([]);
         expect(s.of(GATE)).toMatchObject([
           { outcome: "refused", reference: { valid: 1, solves: 1, ran: 2 } },
@@ -1446,10 +1448,139 @@ describe("a session that writes tasks", () => {
     expect(asRecord(gate?.reference)?.gap).toBeCloseTo(0.005, 9);
   });
 
+  it("charges only author work across explicit wait, continuation, finish and crash settlement", async () => {
+    for (const path of ["wait", "continuation", "finish", "final finish", "crash"] as const) {
+      const release = Promise.withResolvers<void>();
+      const waiting = Promise.withResolvers<void>();
+      const s = seat("write", [
+        ...(path === "final finish" ? [finish] : []),
+        call(TRY, { tasks: [instance(2)] }),
+        () => {
+          waiting.resolve();
+          if (path === "crash") throw new Error("provider stopped");
+          if (path === "continuation") return fauxAssistantMessage("Awaiting admission.");
+          return path === "wait" ? call("wait", {}) : finish;
+        },
+        finish,
+        finish,
+      ]);
+      let ran = 0;
+      const running = examine({
+        ...s.request,
+        limits: { ...s.request.limits, wallSeconds: 0.1 },
+        probe: async (_task, _session, signal) => {
+          ran += 1;
+          signal.addEventListener("abort", () => release.resolve(), { once: true });
+          await release.promise;
+          return signal.aborted ? { outcome: "non-result", kind: "killed", reason: "cut" } : REJECTED;
+        },
+      });
+      await waiting.promise;
+      const until = performance.now() + 200;
+      while (performance.now() < until) await Bun.sleep(1);
+      release.resolve();
+      const examined = await running;
+      expect(examined.ended).toBe(path === "crash" ? "crashed" : "finished");
+      expect(ran).toBe(3);
+      const event = s.of(EXAM_FINISHED)[0];
+      expect(event?.hostSeconds).toBeGreaterThanOrEqual(0.19);
+      expect(Number(event?.seconds) - Number(event?.hostSeconds)).toBeLessThan(0.1);
+      expect(Number(event?.hostSeconds)).toBeLessThanOrEqual(Number(event?.seconds));
+    }
+  });
+
+  it("keeps operator kill and campaign budget live during an explicit gate wait", async () => {
+    for (const stop of ["kill", "budget"] as const) {
+      const waiting = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const kill = new AbortController();
+      const s = seat("write", [
+        call(TRY, { tasks: [instance(2)] }),
+        () => {
+          waiting.resolve();
+          return call("wait", {});
+        },
+        finish,
+      ]);
+      let ran = 0;
+      const running = examine({
+        ...s.request,
+        kill: kill.signal,
+        limits: { ...s.request.limits, wallSeconds: 0.1 },
+        probe: async (_task, _session, signal) => {
+          ran += 1;
+          await release.promise;
+          return signal.aborted ? { outcome: "non-result", kind: "killed", reason: "cut" } : PASS;
+        },
+      });
+      await waiting.promise;
+      const until = performance.now() + 200;
+      while (performance.now() < until) await Bun.sleep(1);
+      if (stop === "kill") {
+        kill.abort();
+        // Leave the gate pending while shutdown also settles the interrupted wait.
+        const settledAt = performance.now() + 100;
+        while (performance.now() < settledAt) await Bun.sleep(1);
+        release.resolve();
+      } else {
+        append(s.log, "campaign.opened", { budget: { dollars: 0, reserve: 1 } });
+        release.resolve();
+      }
+      expect((await running).ended).toBe(stop === "kill" ? "killed" : "stopped");
+      expect(ran).toBe(1);
+      expect(s.of("exam.turn")).toHaveLength(2);
+      const event = s.of(EXAM_FINISHED)[0];
+      expect(event?.hostSeconds).toBeGreaterThanOrEqual(0.19);
+      expect(Number(event?.hostSeconds)).toBeLessThanOrEqual(Number(event?.seconds));
+    }
+  });
+
+  it("resumes its author allowance after waiting and cancels a later background probe at the wall", async () => {
+    const release = Promise.withResolvers<void>();
+    const waiting = Promise.withResolvers<void>();
+    const s = seat("write", [
+      call(TRY, { tasks: [instance(2)] }),
+      () => {
+        waiting.resolve();
+        return call("wait", {});
+      },
+      call(TRY, { tasks: [instance(3)] }),
+      async () => {
+        const until = performance.now() + 200;
+        while (performance.now() < until) await Bun.sleep(1);
+        return finish;
+      },
+    ]);
+    let cancelled = 0;
+    const running = examine({
+      ...s.request,
+      limits: { ...s.request.limits, wallSeconds: 0.1 },
+      probe: async (task, _session, signal) => {
+        if (asRecord(task.publicInput)?.base === 2) {
+          await release.promise;
+          return REJECTED;
+        }
+        await new Promise<void>((resolve) =>
+          signal.addEventListener("abort", () => resolve(), { once: true }),
+        );
+        cancelled += 1;
+        return { outcome: "non-result", kind: "killed", reason: "cut" };
+      },
+    });
+    await waiting.promise;
+    const until = performance.now() + 200;
+    while (performance.now() < until) await Bun.sleep(1);
+    release.resolve();
+    expect((await running).ended).toBe("wall");
+    expect(cancelled).toBe(1);
+    const event = s.of(EXAM_FINISHED)[0];
+    expect(event?.hostSeconds).toBeGreaterThanOrEqual(0.19);
+    expect(Number(event?.seconds) - Number(event?.hostSeconds)).toBeGreaterThanOrEqual(0.1);
+  });
+
   it("settles a gate after a thrown model crash under the wall, kill and budget, then closes the model", async () => {
     for (const [stop, ended] of [
       ["none", "crashed"],
-      ["wall", "wall"],
       ["kill", "killed"],
       ["spent", "stopped"],
     ] as const) {
@@ -1476,7 +1607,7 @@ describe("a session that writes tasks", () => {
         ...s.request,
         models: () => crashing,
         kill: kill.signal,
-        limits: { ...s.request.limits, wallSeconds: stop === "wall" ? 0.1 : 600 },
+        limits: { ...s.request.limits, wallSeconds: 600 },
         probe: async (_task, _session, signal) => {
           ran += 1;
           signal.addEventListener("abort", () => release.resolve(), { once: true });
@@ -1491,13 +1622,20 @@ describe("a session that writes tasks", () => {
       expect(s.of(GATE)).toMatchObject([{ outcome: stop === "none" ? "passed" : "refused" }]);
       expect(ran).toBe(stop === "none" ? 2 : 1);
       const kinds = read(s.log).map(({ kind }) => kind);
-      expect(kinds.indexOf(GATE)).toBeLessThan(kinds.indexOf("exam.finished"));
+      expect(kinds.indexOf(GATE)).toBeLessThan(kinds.indexOf(EXAM_FINISHED));
     }
   });
 
   it("ends at its wall with no solve of the reference harness left running, and starts none after it", async () => {
     // Both instances of the call are gated together, a solve at a time, so the wall finds two running.
-    const s = seat("write", [call(TRY, { tasks: [instance(2), instance(3)] }), finish, finish]);
+    const s = seat("write", [
+      call(TRY, { tasks: [instance(2), instance(3)] }),
+      async () => {
+        const until = performance.now() + 1_000;
+        while (performance.now() < until) await Bun.sleep(1);
+        return finish;
+      },
+    ]);
     const running = new Set<string>();
     // Each solve would pass long after the wall, unless the kill a comparison's solves take
     // stops it first; the launcher records its end either way.
@@ -1542,6 +1680,9 @@ describe("a session that writes tasks", () => {
       call(TRY, { tasks: [instance(2), instance(3)] }),
       async () => {
         await queued.promise;
+        // The wall counts author time only, so the session spends its allowance here.
+        const until = performance.now() + 300;
+        while (performance.now() < until) await Bun.sleep(1);
         return fauxAssistantMessage("Waiting for the queued admissions.");
       },
       finish,
@@ -1597,7 +1738,7 @@ describe("a session that writes tasks", () => {
     expect(s.of(TASK_STATE)).toMatchObject(Array(2).fill({ state: "refused", session: "x-1" }));
     expect(examined.refused).toHaveLength(2);
     const kinds = read(s.log).map(({ kind }) => kind);
-    expect(kinds.lastIndexOf(GATE)).toBeLessThan(kinds.indexOf("exam.finished"));
+    expect(kinds.lastIndexOf(GATE)).toBeLessThan(kinds.indexOf(EXAM_FINISHED));
     expect(s.of("campaign.waited")).toHaveLength(2);
   }, 2000);
 
@@ -1653,7 +1794,7 @@ describe("a session that writes tasks", () => {
     expect(examined.refused).toEqual([s.versionOf("x-1-001", 2)]);
     // The gate's event is on record before the session's end.
     const kinds = read(s.log).map(({ kind }) => kind);
-    expect(kinds.indexOf(GATE)).toBeLessThan(kinds.indexOf("exam.finished"));
+    expect(kinds.indexOf(GATE)).toBeLessThan(kinds.indexOf(EXAM_FINISHED));
   });
 
   it("waits for the gate's next word at a turn that ends with no call, and not with nothing at the gate", async () => {

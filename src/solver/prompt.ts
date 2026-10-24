@@ -10,6 +10,8 @@
  *   and what the wall does. The duty and the minutes are v1's `BUILT_SOLVE_DUTY` and `solveTime`;
  *   the wall's last sentence is this host's, which ends a solve as a fail and submits
  *   nothing.
+ *   Limit reminders are appended by executed tools; argument refusals and unavailable tools
+ *   bypass execution and carry none. Diagnostics may follow the reminder.
  * - A section of its own, `environment`, holds the wall's facts: what a command may write and
  *   reach, the volume, the command limits, and the programs the harness installed.
  * - The project context holds the harness's guide as a project's own instructions,
@@ -40,7 +42,7 @@ export interface PublicTask {
 export interface Told {
   /** The solver's tools, in the order it is given them. */
   readonly tools: readonly SeatTool[];
-  /** The solve's home, the working directory of every tool. */
+  /** The solve's home, the working directory of commands and pi's file tools. */
   readonly home: string;
   /** The harness's guide as written, or null. */
   readonly guide: string | null;
@@ -80,8 +82,8 @@ function duty({ wallSeconds, limits, resources, guide }: Told): string {
   const minutes = `${String(Math.round(wallSeconds / 60))} minutes of solve time`;
   const given =
     limits.modelTurns === undefined
-      ? `The case has ${minutes}, and every tool result ends with how much of it is used. Nothing is submitted for you when it runs out`
-      : `The case has ${minutes} and ${plural(limits.modelTurns, "turn")} of yours, a turn being one reply of yours with the tool calls in it. Every tool result ends with how much of both is used. Nothing is submitted for you when either runs out`;
+      ? `The case has ${minutes}. The host appends how much of it is used to results of tools that execute; argument refusals and unavailable tools carry no reminder. Nothing is submitted for you when it runs out`
+      : `The case has ${minutes} and ${plural(limits.modelTurns, "turn")} of yours, a turn being one reply of yours with the tool calls in it. The host appends how much of both is used to results of tools that execute; argument refusals and unavailable tools carry no reminder. Nothing is submitted for you when either runs out`;
   const rules =
     resources === 0
       ? ""

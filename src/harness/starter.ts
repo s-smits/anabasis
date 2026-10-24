@@ -28,6 +28,8 @@
  * names (9 October). The account is the host's and not the harness's: a session is
  * handed it afresh in its home (`src/builder/session.ts`), so it describes the host that will open
  * the harness, whichever harness the session forks.
+ * It distinguishes the temporary working directory of each custom tool call from the solver's
+ * persistent home, and limits the reminder promise to tools that execute.
  */
 import { AGENT_DIR, GENERATED_TOOLS_FILE, GUIDE_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 import { mkdirSync, writeFileSync } from "../meta/filesystem.ts";
@@ -252,8 +254,9 @@ The operating guide. The solver reads it whole in its system prompt, as its proj
 under one sentence saying that it cannot override the public task, tool authority, runtime limits
 or submission rules. Without the file the solver reads no guide, and the harness you start from may
 have none. It is words: code the solver would copy out and run is a program. It says nothing of
-time or turns: the host tells the solver its limits, and every tool result ends with how much of
-them is used. Keep to this outline, with one entry a program or a tool, so that one harness's
+time or turns: the host tells the solver its limits and appends how much of them is used to results
+of tools that execute; argument refusals and unavailable tools carry no reminder. Keep to this
+outline, with one entry a program or a tool, so that one harness's
 guide can be read against another's:
 
 \`\`\`markdown
@@ -287,9 +290,10 @@ ${WITHOUT_SHELL.tools.trimEnd()}
 - run(params) returns { text, details? }. text is all the solver reads, at most 64 KB. details
   reaches the trace only. The solver's arguments are checked against parameters before run is called.
 - Every call runs alone: a fresh process behind the solver's own command wall, held to a command's
-  default time limit, with .toolchain/bin first on PATH. Nothing is kept between calls, neither
-  module state nor a file beside the module, and run's second argument is not available. What must
-  last is passed as arguments or kept as files in the solver's working directory.
+  default time limit, with .toolchain/bin first on PATH. Its working directory is a temporary
+  directory, not the solver's home. Nothing is kept between calls, neither module state nor a file
+  beside the module, and run's second argument is not available. What must last is passed as
+  arguments or kept as files using the absolute path to the solver's home, available as HOME.
 - A name holds at most 128 characters, a label 256 and a description 4,000. No tool takes the name
   of one of the host's: ${CODING_TOOLS.join(", ")} or submit.
 

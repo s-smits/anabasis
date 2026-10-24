@@ -2,6 +2,7 @@
 // campaign run from set-up to an ending on one command (`tools/d2/harness-builder.ts`). The exam's
 // reading, the task sets, each Builder session's wall and freeze, each solve's wall and the
 // comparison are the real ones; the seats are scripts, which are paid nothing.
+// An isolated manifest also holds the runtime refusal before any campaign write or seat call.
 
 import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
 import { examine } from "../src/examiner/session.ts";
@@ -26,7 +27,8 @@ import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
-import { runtimeProcess } from "../src/meta/process.ts";
+import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
+import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
 import type { Seats } from "../tools/d2/campaign-terms.ts";
 import { closeCommand } from "../tools/d2/close.ts";
 import { harnessBuilder as command } from "../tools/d2/harness-builder.ts";
@@ -37,6 +39,7 @@ import { packetOf, settleCommand } from "../tools/d2/settle.ts";
 import { wordCommand } from "../tools/d2/word.ts";
 import { scriptedSeats } from "../tools/runs/rehearse.ts";
 import { FORMAT, fixtureTasks, gradedOf, layOutPack, scriptedModel } from "./helpers/fixture-pack.ts";
+import { campaignRuntime, PROMPT_FLAGS } from "./helpers/campaign-runtime.ts";
 
 const REPO = resolve(import.meta.dir, "..");
 const FIXTURE = join(REPO, "test", "fixtures", "harness-min");
@@ -57,12 +60,158 @@ const GRADED = gradedOf(TASKS);
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-hb-")));
 const bundle = join(root, "bundle");
 const names: string[] = [];
+const runtimes: ReturnType<typeof campaignRuntime>[] = [];
 
 setDefaultTimeout(600_000);
 
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });
   for (const name of names) rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
+  for (const made of runtimes) rmSync(made.root, { recursive: true, force: true });
+});
+
+describe("the campaign's executing Bun", () => {
+  const fixture = () => {
+    const made = campaignRuntime();
+    runtimes.push(made);
+    return made;
+  };
+  const invoke = (made: ReturnType<typeof campaignRuntime>, args: string[]) =>
+    made.run(`
+    import { harnessBuilder } from "CAMPAIGN/tools/d2/harness-builder.ts";
+    let calls = 0;
+    const seat = async () => { calls++; throw new Error("seat invoked"); };
+    try {
+      console.log(JSON.stringify({next: await harnessBuilder(${JSON.stringify(args)}, {seated:seat,draft:seat,examine:seat}), calls}));
+    } catch (error) {
+      console.log(JSON.stringify({error:error.message,calls}));
+    }
+  `);
+  const facts = (result: ReturnType<typeof invoke>) => {
+    expect({ code: result.code, err: result.err }).toEqual({ code: 0, err: "" });
+    return parseJsonAs<{ error?: string; calls: number; next?: { move: string } }>(
+      result.out.trim().split("\n").at(-1) ?? "",
+    );
+  };
+
+  it("refuses either direction of pin mismatch before opening a fresh prompt campaign, including a dry run", () => {
+    const made = fixture();
+    for (const expected of ["0.0.1", "99.0.0"]) {
+      made.pin({ packageManager: `bun@${expected}`, engines: { bun: expected } });
+      for (const dry of [[], ["--dry-run"]]) {
+        const result = facts(invoke(made, ["--name", "runtime", ...PROMPT_FLAGS, ...dry]));
+        expect(result.calls).toBe(0);
+        expect(result.error).toContain(join(made.main, "package.json"));
+        expect(result.error).toContain(expected);
+        expect(result.error).toContain(Bun.version);
+        expect(existsSync(made.folder)).toBe(false);
+      }
+    }
+  });
+
+  it("refuses missing, ranged and inconsistent pins without a default or campaign writes", () => {
+    const made = fixture();
+    for (const fields of [
+      { packageManager: null },
+      { packageManager: `bun@^${Bun.version}` },
+      { packageManager: "npm@1.0.0" },
+      { engines: null },
+      { engines: { bun: `>=${Bun.version}` } },
+      { engines: { bun: "0.0.1" } },
+    ]) {
+      made.pin(fields);
+      const result = facts(invoke(made, ["--name", "runtime", ...PROMPT_FLAGS, "--dry-run"]));
+      expect(result.calls).toBe(0);
+      expect(result.error).toContain(join(made.main, "package.json"));
+      expect(existsSync(made.folder)).toBe(false);
+    }
+  });
+
+  it("refuses a mismatched runtime before staging a valid stored pack", () => {
+    const made = fixture();
+    const pack = join(made.root, "pack");
+    layOutPack(made.root, pack, TASKS, FIXTURE);
+    made.pin({ packageManager: "bun@0.0.1", engines: { bun: "0.0.1" } });
+    const args = [
+      "--name",
+      "runtime",
+      "--project",
+      PROJECT,
+      "--root",
+      made.root,
+      "--sweep",
+      "s",
+      "--cycle",
+      "c01",
+      "--bundle",
+      pack,
+    ];
+    for (const dry of [[], ["--dry-run"]]) {
+      const result = facts(invoke(made, [...args, ...dry]));
+      expect(result.calls).toBe(0);
+      expect(result.error).toContain("0.0.1");
+      expect(result.error).toContain(Bun.version);
+      expect(existsSync(made.folder)).toBe(false);
+    }
+  });
+
+  it("leaves an unfinished comparison, cut session and receipts byte-identical on a refused continuation", () => {
+    const made = fixture();
+    made.seed();
+    expect(facts(invoke(made, ["--name", "runtime", ...PROMPT_FLAGS, "--moves", "0"])).next?.move).toBe(
+      "draft",
+    );
+    const log = join(made.folder, LOG_FILE);
+    append(log, "comparison.started", { session: "g-1", setting: "recorded" });
+    append(log, "exam.started", { session: "x-1" });
+    const receipt = join(made.folder, "launch-run-1.json");
+    writeFileSync(receipt, JSON.stringify({ bun: Bun.version, flags: PROMPT_FLAGS }));
+    const before = [readFileSync(log, "utf8"), readFileSync(receipt, "utf8"), readdirSync(made.folder)];
+    made.pin({ packageManager: "bun@0.0.1", engines: { bun: "0.0.1" } });
+    for (const dry of [[], ["--dry-run"]]) {
+      const result = facts(invoke(made, ["--name", "runtime", "--budget", "200", ...dry]));
+      expect(result).toMatchObject({ calls: 0 });
+      expect(result.error).toContain("0.0.1");
+      expect(result.error).toContain(Bun.version);
+      expect([readFileSync(log, "utf8"), readFileSync(receipt, "utf8"), readdirSync(made.folder)]).toEqual(
+        before,
+      );
+    }
+  });
+
+  it("reaches the requested move at the matching pin, and runs a seat only when the move is made", () => {
+    const made = fixture();
+    const args = ["--name", "runtime", ...PROMPT_FLAGS];
+    expect(facts(invoke(made, [...args, "--dry-run"]))).toMatchObject({ calls: 0, next: { move: "draft" } });
+    expect(existsSync(made.folder)).toBe(false);
+    made.seed();
+    expect(facts(invoke(made, args))).toMatchObject({ calls: 1, error: "seat invoked" });
+  });
+
+  it("refuses direct entry under a minimal launchd-like environment before writing a receipt or log", () => {
+    const made = fixture();
+    made.pin({ packageManager: "bun@0.0.1", engines: { bun: "0.0.1" } });
+    // An unrelated working directory must not supply the manifest.
+    const result = runSync(
+      [
+        capturedExecPath,
+        join(made.main, "tools/d2/harness-builder.ts"),
+        "--name",
+        "runtime",
+        ...PROMPT_FLAGS,
+      ],
+      {
+        cwd: made.root,
+        env: { PATH: "/usr/bin:/bin", HOME: made.root, CLAUDE_CODE_OAUTH_TOKEN: "fixture" },
+      },
+    );
+    expect(result.exitCode).toBe(1);
+    const error = decodeOutput(result.stderr);
+    expect(error).toContain(join(made.main, "package.json"));
+    expect(error).toContain("0.0.1");
+    expect(error).toContain(Bun.version);
+    expect(existsSync(made.folder)).toBe(false);
+  });
 });
 
 /** A drafted exam over `tasks` as `draft_exam` takes it, six times a base, and its accepted answers

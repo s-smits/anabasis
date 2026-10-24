@@ -7,10 +7,12 @@
  *    harnesses, all of it afresh. The scored set is the caller's, fixed before any solve
  *    (`scoredSet`), so no result of this comparison chooses it, though the reference harness's
  *    results in earlier ones do (`poolOf`, `reports.ts`); so are its two sets, retained and
- *    frontier. A task's solves run together, the tasks in an order a hash of each draws, and
- *    within a task the harness that goes first is mirrored (`unsolvedJobs`): what drifts over the
- *    hours falls between tasks, which the test does not read, and neither harness has the quieter
- *    hours or the warmer cache.
+ *    frontier. Workers take whole tasks in an order a hash draws. Within each task the harness
+ *    that goes first is mirrored (`unsolvedJobs`), and each solve call, including its load waits,
+ *    provider retries and ruling, returns before the next slot starts. One outer retry runs at
+ *    the same slot; a second non-result leaves the task short. Counted starts therefore form a
+ *    prefix of the mirror. Different tasks run concurrently; mirroring guarantees neither equal
+ *    start times nor equal load or cache exposure.
  * 2. The comparison (`src/kernel/compare.ts`): every solve of the new harness paired with every
  *    solve of the reference one, a valid answer over one that is not, each task counted once, and
  *    the paired sign-flip test over the tasks' scores.
@@ -274,23 +276,19 @@ export function scoredSet(events: readonly LogEvent[], target: number, contract:
 }
 
 /**
- * The solves still to run, task by task in an order drawn by a hash of each task and the comparison
- * (`draw`), so that what drifts over the comparison's hours falls between tasks, which the test
- * does not read, and no slot's solves gather at one end. Within a task its slots are queued in
- * turn and the harness that goes first is mirrored, slot by slot and from one task to the next: the
- * reference then the new harness, the new then the reference. The queue orders the starts and does
- * not hold them: the workers take it independently and each solve waits for the load and a named
- * reset on its own, so a side can start late (`STARTS OUT OF TURN`, `tools/wri/time.ts`). `had`
- * says how many counted solves a task has under a harness; a comparison gone on from its log runs
- * the slots' solves it lacks.
+ * Each task's ordered solves still to run, with tasks drawn by their hash and the comparison
+ * (`draw`). A worker owns a whole sequence, including retries, before taking another task.
+ * Within it the harness that goes first is mirrored, slot by slot and from one task to the next:
+ * the reference then the new harness, the new then the reference. `had` counts a task's completed
+ * solves under each harness, so continuation omits the counted prefix and runs what it lacks.
  */
 function unsolvedJobs(
   request: Pick<CheckpointRequest, "id" | "old" | "fresh" | "solves">,
   tasks: readonly string[],
   had: (task: string, digest: string) => number,
-): Job[] {
+): Job[][] {
   const { old, fresh, solves } = request;
-  return draw(tasks, new Set(tasks).size, request.id).flatMap((task, index) => {
+  return draw(tasks, new Set(tasks).size, request.id).map((task, index) => {
     const left = new Map([old, fresh].map(({ digest }) => [digest, had(task, digest)]));
     return Array.from({ length: solves }, (_, at) => ((index + at) % 2 === 0 ? [old, fresh] : [fresh, old]))
       .flat()
@@ -474,32 +472,39 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
     if (ending.outcome === "fail" && ending.kind === "rejected") await rule(solve, task);
     return ending;
   };
-  /** Run `jobs`, `concurrency` at a time, until they are done or the comparison is no longer going.
-   *  A non-result that outlasts its re-runs inside `solve` is asked for once more, in its place. */
-  const drain = async (jobs: Job[]): Promise<void> => {
-    const worker = async (): Promise<void> => {
-      for (let job = jobs.shift(); job !== undefined && going(); job = jobs.shift()) {
+  /** Run whole task sequences concurrently, holding each through every wait and retry.
+   *  Reserve unavailable while another solve runs returns the remaining sequence to the pool. */
+  const drain = async (tasks: Job[][]): Promise<void> => {
+    const sequence = async (jobs: Job[]): Promise<"reserve" | void> => {
+      for (let job = jobs[0]; job !== undefined && going(); job = jobs[0]) {
         const events = read(log);
         // A task this comparison disputed, or a person released or refused since, is solved no more.
-        if (!taskSets(events).held.includes(job.task)) continue;
+        if (!taskSets(events).held.includes(job.task)) return;
         if (cap !== undefined && billedFor(events, id) + (running + 1) * cap.reserve > cap.dollars) {
-          // The job is left for a lane that can afford it. With solves in flight the reserve held
+          // The task is left for a lane that can afford it. With solves in flight the reserve held
           // for each may come back in part, so this lane steps aside; with none in flight nothing
           // more will, and the cap is reached.
-          jobs.unshift(job);
+          tasks.unshift(jobs);
           capped = running === 0;
-          return;
+          return "reserve";
         }
         running += 1;
         try {
           const { outcome } = await run(job);
-          if (outcome === "non-result" && !job.again) jobs.unshift({ ...job, again: true });
+          if (outcome === "non-result" && job.again) return;
+          if (outcome === "non-result") jobs[0] = { ...job, again: true };
+          else jobs.shift();
         } catch (error) {
           thrown ??= asError(error);
           halt.abort();
         } finally {
           running -= 1;
         }
+      }
+    };
+    const worker = async (): Promise<void> => {
+      for (let jobs = tasks.shift(); jobs !== undefined && going(); jobs = tasks.shift()) {
+        if ((await sequence(jobs)) === "reserve") return;
       }
     };
     await Promise.all(Array.from({ length: Math.max(1, request.concurrency) }, worker));

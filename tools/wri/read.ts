@@ -70,6 +70,9 @@ export interface Overview {
   readonly triggers: readonly Trigger[];
 }
 
+/** Whether two harnesses, by digest, are one harness for the lanes that read practice. */
+type Same = (a: string, b: string) => boolean;
+
 const FEW_CALLS = 3;
 /** The Builder tools that write one named file: pi's two, and the one tool sessions had before them. */
 const FILE_WRITERS: ReadonlySet<string> = new Set(["write", "edit", "write_file"]);
@@ -100,14 +103,16 @@ interface PractisedSession {
 function practiceTriggers(
   log: Index,
   { build, changed, child, read, reference, round }: PractisedSession,
+  alike: Same,
 ): Trigger[] {
   const { session, finished, calls } = build;
   // A practice solve's condition names the state it ran under, so the log says by digest whether
   // the harness that was measured is one the Builder tried: an edit made with the shell leaves no
   // call to count, and a digest misses none. Practice after its comparison began counts for none.
+  // Two digests whose states differ only in bytecode a practice run left are one harness (`alike`).
   const lastPractice = round.practice.at(-1);
   const unpractised = read.flatMap(([harness, began]) =>
-    harness === "" || round.practice.some((solve) => solve.harness === harness && solve.index < began)
+    harness === "" || round.practice.some((solve) => alike(solve.harness, harness) && solve.index < began)
       ? []
       : [harness],
   );
@@ -254,7 +259,7 @@ function programTriggers(log: Index): Trigger[] {
 }
 
 /** Lanes 13 to 19: the harness, which is the Builder's. */
-function harnessTriggers(log: Index): Trigger[] {
+function harnessTriggers(log: Index, alike: Same): Trigger[] {
   return log.builds.flatMap((build) => {
     const { session, finished, parent, calls } = build;
     // Every comparison of the harness this session left: recode measured b-1's twice (2026-10-10).
@@ -328,19 +333,23 @@ function harnessTriggers(log: Index): Trigger[] {
           ]
         : []),
       ...(toolFiles.length > 0 ? [fired("TOOLS EDITED", `${session}: ${toolFiles.join(", ")}`)] : []),
-      ...practiceTriggers(log, {
-        build,
-        changed: edited,
-        child,
-        // v061's b-1 froze 03a5eb57 for g-2 after its last practice and never ended, and the
-        // trigger, reading only the end record, said nothing (21 October).
-        read: [
-          [child, Number.POSITIVE_INFINITY],
-          ...compared.map(({ own, began }) => [text(own.fresh), began] as const),
-        ],
-        reference: text(compared[0]?.own.old) || parent,
-        round,
-      }),
+      ...practiceTriggers(
+        log,
+        {
+          build,
+          changed: edited,
+          child,
+          // v061's b-1 froze 03a5eb57 for g-2 after its last practice and never ended, and the
+          // trigger, reading only the end record, said nothing (21 October).
+          read: [
+            [child, Number.POSITIVE_INFINITY],
+            ...compared.map(({ own, began }) => [text(own.fresh), began] as const),
+          ],
+          reference: text(compared[0]?.own.old) || parent,
+          round,
+        },
+        alike,
+      ),
     ];
   });
 }
@@ -741,8 +750,9 @@ function rowsOf(log: Index, steps: readonly Handover[]): Row[] {
   ];
 }
 
-/** The rows and the triggers of one log. */
-export function overview(events: readonly LogEvent[]): Overview {
+/** The rows and the triggers of one log. Two harnesses are the same by digest, unless the caller
+ *  can read their kept states (`alike`). */
+export function overview(events: readonly LogEvent[], alike: Same = (a, b) => a === b): Overview {
   const log = indexOf(events);
   const { steps } = handoverOf(events);
   return {
@@ -750,7 +760,7 @@ export function overview(events: readonly LogEvent[]): Overview {
     triggers: [
       ...instrumentTriggers(log),
       ...taskTriggers(log),
-      ...harnessTriggers(log),
+      ...harnessTriggers(log, alike),
       ...comparisonTriggers(log),
       ...solveTriggers(log, steps),
       ...winTriggers(log),

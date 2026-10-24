@@ -21,7 +21,8 @@
  *                over the whole campaign (`riskLines`), which checks their author's own computation
  *                decides (`unadmitted`), what the Referee ruled and what a person's labels
  *                settled, and what was billed. It names each harness by its letter beside its
- *                digest's head (`namesOf`, `src/campaign/names.ts`).
+ *                digest's head (`namesOf`, `src/campaign/names.ts`). Builder cache tokens sum
+ *                recorded turns once, including unfinished sessions, without finish aggregates.
  *
  * Until 20 October the report said the checker was read and frozen, and not what decides it: in
  * buffer-fresh-opus-forkedPR223_v0_5_4-r3 every one of the 7 checks, the objective among them, was
@@ -53,7 +54,7 @@ import { writtenTasks } from "#src/kernel/history.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { comparisonsOf } from "#src/campaign/ground.ts";
 import { promoted } from "#src/kernel/reports.ts";
-import { billedAll, billedParts } from "#src/kernel/trace.ts";
+import { billedAll, billedParts, tracesIn } from "#src/kernel/trace.ts";
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
@@ -212,6 +213,7 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
  * What each measured thing cost, from the log alone: the Examiner's dollars a task it held out,
  * its own turns and its admission solves together; a comparison's a task it scored; and how many of the
  * comparisons that began reported, since one cut before its report bought nothing it can show.
+ * Builder cache totals cover recorded turns, including unfinished sessions, once each.
  */
 function economyLines(events: readonly LogEvent[]): string[] {
   const per = (dollars: number, count: number, what: string) =>
@@ -234,12 +236,20 @@ function economyLines(events: readonly LogEvent[]): string[] {
   const promotions = events.filter(({ kind }) => kind === "harness.promoted").length;
   const hours = (Date.parse(events.at(-1)?.at ?? "") - Date.parse(events[0]?.at ?? "")) / 3_600_000;
   const spent = billedAll(events);
+  const cache = { write: 0, read: 0 };
+  for (const part of tracesIn(events)) {
+    if (part.seat !== "build" || part.part !== "turn") continue;
+    const { cacheWrite, cacheRead } = part.usage ?? {};
+    cache.write += isNumber(cacheWrite) ? cacheWrite : 0;
+    cache.read += isNumber(cacheRead) ? cacheRead : 0;
+  }
   return [
     promotions > 0
       ? `- The climb: $${(spent / promotions).toFixed(2)} and ${(hours / promotions).toFixed(1)} hours a promotion (${String(promotions)}).`
       : `- The climb: no promotion over $${spent.toFixed(2)} and ${hours.toFixed(1)} hours.`,
     `- The Examiner: ${per(examined, held, "task held out")}.`,
     `- Comparisons: ${per(compared, scored, "task scored")}; ${String(reported.length)} of the ${plural(all.length, "comparison")} that began reported.`,
+    `- Builder cache: ${String(cache.write)} cache-write tokens and ${String(cache.read)} cache-read tokens over recorded Builder turns only (unfinished sessions included; excludes SDK-internal compaction usage not exposed in those turns).`,
   ];
 }
 

@@ -16,6 +16,10 @@
  * logged whole with its proposal, hidden values too, so a later solve needs the log alone; no tool
  * here returns a line of the log. An author's accepted answer is kept for the Referee
  * (`task.feasible`).
+ * The opening carries interrupted gate statuses from the log, and read_example also serves the
+ * author's earlier drafts, so recovery needs no carried shell file; one longer than a result is
+ * written whole into the seat's TMPDIR (`spilled`). Only admitted tasks count
+ * towards supply; retrieval changes neither duplicate eligibility nor how a retry is solved.
  * On 21 October, 23 passing tries followed a proposal in 30 logs; the proof is read when needed.
  * Unmeasured drafts may return in the same session (5 retry signatures in 30 logs), and the
  * reserve holds the next solve alone (2 reserve refusals of 1,396 drafts).
@@ -30,16 +34,18 @@ import { append, type LogEvent, read } from "../kernel/log.ts";
 import { gainOver, informative, type Paired } from "../kernel/compare.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { packageGate, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
-import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
+import type { Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
 import { isNumber, isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
+import { join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import { waitTool } from "../builder/tools.ts";
-import { ending, text, tool } from "../tools/answer.ts";
+import { ending, spilled, text, tool } from "../tools/answer.ts";
 import { type CheckRow, firstMessage, systemPrompt } from "./prompt.ts";
+import type { Walls } from "./shell.ts";
 import { gapSaid, gateAnswers, gateBilled, heard, measuredGate, TRIED, UNAFFORDED } from "./record.ts";
 
 /** The home's copy of the reference harness, where the campaign's term lays one there. */
@@ -108,8 +114,6 @@ interface Desk {
   readonly arrived: string[];
 }
 
-/** The most of an example one result shows. */
-const SHOWN_CHARS = 20_000;
 /** The event a gate writes of each draft (`gated`). */
 const GATE = "task.gate";
 /** The tool a task is held out by, as the Examiner is told it: on its package's shape, or on that
@@ -441,11 +445,12 @@ function proposeTool(desk: Desk, name: keyof typeof GATES): SeatTool {
   });
 }
 
-function exampleTool(tasks: readonly Task[]): SeatTool {
+function exampleTool(tasks: readonly Task[], spill: string | undefined): SeatTool {
   const examples = new Map(tasks.map((task) => [task.taskId, task]));
   return tool({
     name: "read_example",
-    description: "Return one task of the exam whole: its family, its public input and its hidden values.",
+    description:
+      "Return one task whole: its family, its public input and its hidden values. It serves the exam's tasks and every instance proposed in an earlier session, those its gate refused or left unmeasured among them.",
     parameters: Type.Object({
       task: Type.String({ description: "A task's id, from the opening message." }),
     }),
@@ -456,8 +461,11 @@ function exampleTool(tasks: readonly Task[]): SeatTool {
         throw new Error(`${args.task} is not one of the tasks: ${[...examples.keys()].join(", ")}`);
       }
       const { taskId, family, publicInput, hidden } = example;
-      return text(
-        capturedJsonStringify({ taskId, family, publicInput, hidden }, null, 2).slice(0, SHOWN_CHARS),
+      return await spilled(
+        capturedJsonStringify({ taskId, family, publicInput, hidden }, null, 2),
+        spill === undefined
+          ? undefined
+          : join(spill, `read_example-${taskId.replaceAll(/[^\w.-]/g, "_")}.json`),
       );
     },
   });
@@ -564,7 +572,10 @@ function gatedTasks(events: readonly LogEvent[]): Task[] {
  */
 export function writing(
   request: Terms,
-  pinned: readonly Engine[],
+  // The engines installed in its shell, and its TMPDIR, where a long example is written whole.
+  walls:
+    | (Pick<Walls, "pinned"> & { readonly shell: { readonly dirs: { readonly temp: string } } })
+    | undefined,
   reference: "unseen" | "in-home",
   stop = new AbortController().signal,
 ) {
@@ -609,13 +620,13 @@ export function writing(
       limits: { wallSeconds: limits.wallSeconds, turns: limits.turns, proposals: limits.puts, tasks: wanted },
       checks: request.checks.map(({ id }) => id),
       examples: request.tasks.map(({ taskId }) => taskId),
-      engines: pinned.map(({ name, sha256 }) => ({ name, sha256 })),
+      engines: (walls?.pinned ?? []).map(({ name, sha256 }) => ({ name, sha256 })),
       ...keyIfDefined("tried", attempts),
       referenceHome: reference === "in-home",
     },
     tools: [
       proposeTool(desk, gate),
-      exampleTool(request.tasks),
+      exampleTool([...writtenTasks(before), ...request.tasks], walls?.shell.dirs.temp),
       ...(verify === null ? [] : [tryTool(desk, verify)]),
       ...(request.probe === null
         ? []

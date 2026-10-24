@@ -22,6 +22,8 @@
  * refuses a task that carries it (`write.ts`).
  *
  * Each fact is stated once, in the section that owns it (17 October, #191: 1,088 words to 793).
+ * The opening separates interrupted gates from measured refusals: incomplete admission leaves
+ * room undecided, and its draft can be recovered and proposed afresh unless a later gate read it.
  */
 import { ROOM } from "../kernel/compare.ts";
 import { type Contract, objectiveLine } from "../kernel/contract.ts";
@@ -115,6 +117,11 @@ ${brief}`,
           `The drafts the gate refused after reading them, by its reason. None is a task of the exam, and an instance an earlier session wrote is not taken again:\n${tasks.refused.map((line) => `- ${line}`).join("\n")}`,
         ]),
     ...(tasks.earlier === null ? [] : [tasks.earlier]),
+    ...(tasks.interrupted.length === 0
+      ? []
+      : [
+          `The drafts whose gates ended without a measurement. These gates did not decide room. read_example returns each original instance whole. Its content can be proposed afresh unless a later gate has already read it; these are historical gate statuses:\n${tasks.interrupted.map((line) => `- ${line}`).join("\n")}`,
+        ]),
     ...(tasks.counts === null ? [] : [tasks.counts]),
     ...(tasks.turns === null ? [] : [tasks.turns]),
     ...(lastNote === null

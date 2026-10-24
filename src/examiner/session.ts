@@ -377,7 +377,7 @@ export async function examine(request: ExamRequest, wall?: Wall): Promise<Examin
       (stop) =>
         request.mode === "draft"
           ? putting(request, drafting(request))
-          : writing(request, walls?.pinned ?? [], reference, stop),
+          : writing(request, walls, reference, stop),
       walls,
     );
   if (wall === undefined) return await seated();

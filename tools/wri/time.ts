@@ -48,6 +48,10 @@ const WALL_BOUND_SHARE = 0.95;
  *  median of 105 s under a load of 31 and of 40 s under a load of 6. */
 const LOAD_MOVED = 2;
 const LOAD_WORTH_A_LINE = 4;
+/** A task's two mirrored orders of slots, `o` for the reference harness and `f` for the new one,
+ *  repeated: the round puts the reference first in one slot and the new harness in the next, and
+ *  starts every other task the other way (`unsolvedJobs`, `src/campaign/round.ts`). */
+const MIRRORS = ["offo", "foof"] as const;
 /** A silence is a gap between two events longer than this many of the campaign's median finished
  *  solve, and never shorter than the floor. A gap that long is no solve's ordinary pace. The floor
  *  holds a pack of quick solves to gaps a person would ask about: on 10 October buffer had 34 gaps
@@ -185,6 +189,29 @@ export function wallTriggers(log: Index): Trigger[] {
         ]
       : [],
   );
+  // The tasks whose counted solves started out of their mirrored order. Since 24 October a worker
+  // runs a task's slots one after another and retries a non-result at its own slot, so a task's
+  // counted starts are a prefix of one mirror (`MIRRORS`). On host code from then a task off it is a
+  // defect of the round; before it, the queue ordered starts without holding them, and a wait for
+  // the load or a provider's reset on one side moved them.
+  const outOfTurn = results.flatMap(({ session, own, scoring }) => {
+    const tasks = Map.groupBy(
+      scoring.toSorted((one, other) => one.index - other.index),
+      (solve) => solve.version,
+    );
+    const late = [...tasks.values()].filter((solves) => {
+      const order = solves.map((solve) => (solve.harness === own.old ? "o" : "f")).join("");
+      return !MIRRORS.some((mirror) => mirror.repeat(order.length).startsWith(order));
+    }).length;
+    return late > 0 && own.old !== own.fresh
+      ? [
+          fired(
+            "STARTS OUT OF TURN",
+            `${session}: ${share(late, tasks.size)} tasks started their harnesses' solves out of turn`,
+          ),
+        ]
+      : [];
+  });
   const middles = loads.flatMap(({ halves }) => halves);
   const [calmest, busiest] = [Math.min(...middles), Math.max(...middles)];
   const moved = busiest >= LOAD_WORTH_A_LINE && busiest >= calmest * LOAD_MOVED;
@@ -192,6 +219,7 @@ export function wallTriggers(log: Index): Trigger[] {
     ...limitTriggers(log),
     ...wallShares,
     ...loaded,
+    ...outOfTurn,
     ...(moved
       ? [
           fired(

@@ -789,17 +789,18 @@ describe("the reader of what each Examiner session's tasks came to", () => {
 
 describe("the reader of the load a comparison's solves started under", () => {
   /** A log of one comparison a row: its id, the one-minute load each of its solves started under,
-   *  and the host's cores where the log holds them. */
-  const read = (rows: readonly (readonly [string, readonly number[], number?])[]) => {
+   *  the host's cores where the log holds them, and the order its harnesses started in, `o` for the
+   *  reference and `n` for the new, mirrored as the round orders them where none is given. */
+  const read = (rows: readonly (readonly [string, readonly number[], number?, string?])[]) => {
     const log: LogEvent[] = [];
     const put = appendTo(log);
     put("task.proposed", { version: "v1" });
     put(GATE, { version: "v1", gate: 1, outcome: "passed" });
-    for (const [session, loads, cores] of rows) {
+    for (const [session, loads, cores, order] of rows) {
       const terms = { session, old: "hbase", fresh: "hy", starter: "hbase", setting: SETTING };
       put(COMPARISON_STARTED, { ...terms, solves: 1, level: 0.1, tasks: ["v1"] });
       for (const [index, load] of loads.entries()) {
-        const ran = condition("v1", index % 2 === 0 ? "hbase" : "hy");
+        const ran = condition("v1", (order?.[index] ?? "onno"[index % 4]) === "o" ? "hbase" : "hy");
         const id = `${session}-${String(index)}`;
         put(CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) });
         put(SOLVE_STARTED, {
@@ -866,6 +867,22 @@ describe("the reader of the load a comparison's solves started under", () => {
     ]);
     expect(idle("LOAD MOVED")).toEqual([]);
     expect(read([["b-1", [30, 34]]])("LOAD MOVED")).toEqual([]);
+  });
+
+  it("names a comparison whose task's counted solves started off its mirrored order", () => {
+    // buffer-v070's g-1 on 24 October: one side's solves waited for a provider's reset. g-5's
+    // places sum alike on both sides, which the balance test before 25 October let pass.
+    const said = read([
+      ["g-1", [1, 1, 1, 1, 1, 1, 1, 1], 4, "onoonnno"],
+      ["g-2", [1, 1, 1, 1, 1, 1, 1, 1], 4, "onnoonno"],
+      ["g-3", [1, 1, 1, 1, 1], 4, "onnoo"],
+      ["g-4", [1, 1, 1, 1, 1, 1, 1, 1], 4, "noonnoon"],
+      ["g-5", [1, 1, 1, 1, 1, 1, 1, 1], 4, "onnonoon"],
+    ]);
+    expect(said("STARTS OUT OF TURN")).toEqual([
+      "g-1: 1 of 1 tasks started their harnesses' solves out of turn",
+      "g-5: 1 of 1 tasks started their harnesses' solves out of turn",
+    ]);
   });
 
   it("reads the wall and the load on the solves a comparison measured, not on the non-results it reran", () => {

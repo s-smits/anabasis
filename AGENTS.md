@@ -200,7 +200,9 @@ economy from the log alone and runs no extra solve (`tools/d2/close.ts`, "Work a
 gives, in order: the climb's velocity (the log's dollars and hours per promotion); the dollars
 billed; what the Examiner billed per task it held out, admission solves included; what comparisons
 billed per task they scored; and how many of the comparisons that began actually reported, since
-one cut short before its report bought nothing it can show. There is one bar, a term of the opening
+one cut short before its report bought nothing it can show. It also totals Builder cache-write and
+cache-read tokens over recorded turns once each, including unfinished sessions, excluding usage
+not exposed in those turns. There is one bar, a term of the opening
 the operator may set, which is read and printed and gates nothing (`worthOf`,
 `src/campaign/climb.ts`; revised plan W): at most 3 promotion attempts per epoch after set-up, with
 its Builder sessions and billed dollars beside it, which a step's report carries.

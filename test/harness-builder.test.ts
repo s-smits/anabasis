@@ -3,8 +3,10 @@
 // reading, the task sets, each Builder session's wall and freeze, each solve's wall and the
 // comparison are the real ones; the seats are scripts, which are paid nothing.
 // An isolated manifest also holds the runtime refusal before any campaign write or seat call.
+// Closing reports also read recorded Builder cache usage across finished and unfinished sessions.
 
 import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
+import { REPORTED } from "../src/campaign/comparison.ts";
 import { examine } from "../src/examiner/session.ts";
 import { append, LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
 import { countedSolves, solvesIn } from "../src/kernel/solves.ts";
@@ -887,6 +889,78 @@ describe("a campaign run by its log", () => {
     ]);
     expect(read(join(REPO, ".ana", "d2", name, LOG_FILE))).toHaveLength(before);
     expect(strayed).toEqual([]);
+  });
+
+  it("reports Builder cache tokens once across finished and unfinished sessions", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
+    const name = `${STEM}-cache`;
+    const pack = seeded(name).slice(0, -4);
+    const log = join(REPO, ".ana", "d2", name, LOG_FILE);
+    const usage = (cacheWrite: number, cacheRead: number, total: number) => ({
+      cacheWrite,
+      cacheRead,
+      cost: { total },
+    });
+    const finished = "cache-finished";
+    const open = "cache-open";
+    append(log, "build.started", { session: finished });
+    append(log, "build.turn", { session: finished, turn: 1, usage: usage(20, 40, 1) });
+    append(log, "exam.started", { session: "cache-exam" });
+    append(log, "exam.turn", { session: "cache-exam", usage: usage(900_000, 800_000, 10) });
+    append(log, "comparison.started", { session: "cache-comparison", old: "a", fresh: "b", tasks: [] });
+    append(log, "solve.started", { solve: "cache-solve", comparison: "cache-comparison" });
+    append(log, "solve.turn", { solve: "cache-solve", usage: usage(700_000, 600_000, 20) });
+    append(log, "solve.finished", { solve: "cache-solve", billed: 20 });
+    append(log, "campaign.waited", { for: "provider", ms: 7_200_000 });
+    append(log, "build.turn", {
+      session: finished,
+      turn: 2,
+      usage: { ...usage(90_000, 0, 2), cacheWrite1h: 90_000 },
+    });
+    append(log, "build.compacted", { session: finished, usages: [usage(300_000, 400_000, 3)] });
+    append(log, "build.turn", { session: finished, turn: 3, usage: usage(0, 60_000, 4) });
+    append(log, "exam.finished", { session: "cache-exam", billed: 10 });
+    append(log, "build.finished", {
+      session: finished,
+      billed: 10,
+      tokens: { cacheWrite: 390_020, cacheRead: 460_040 },
+    });
+    append(log, REPORTED, {
+      session: "cache-comparison",
+      tasks: 1,
+      reading: "no-step",
+      scored: { wins: 0, losses: 1, ties: 0 },
+    });
+    append(log, "build.started", { session: open });
+    append(log, "build.turn", { session: open, turn: 1, usage: usage(0, 10_000, 5) });
+    append(log, "build.turn", { session: open, turn: 2, error: "provider error", usage: usage(0, 0, 0) });
+    append(log, "build.started", { session: "cache-no-usage" });
+    append(log, "build.turn", { session: "cache-no-usage", turn: 1 });
+    const before = read(log);
+    const to = join(root, "handover-cache");
+    await closeCommand([...pack, "--to", to]);
+    const report = readFileSync(join(to, "REPORT.md"), "utf8");
+    const cache = report.split("\n").find((line) => line.startsWith("- Builder cache:"));
+    expect(cache).toMatch(/90020 cache-write tokens.*70040 cache-read tokens/);
+    expect(cache).toContain("recorded Builder turns");
+    expect(cache).toContain("unfinished sessions included");
+    expect(cache).toContain("SDK-internal compaction usage");
+    expect(report).toContain("Billed $45.00");
+    expect(report).toContain("| no-step | 0-1-0 |");
+    expect(read(log)).toEqual(before);
+
+    // Finishing an open session adds no turn and must leave both token totals and billing alone.
+    append(log, "build.finished", {
+      session: open,
+      billed: 5,
+      tokens: { cacheWrite: 0, cacheRead: 10_000 },
+    });
+    const after = join(root, "handover-cache-finished");
+    await closeCommand([...pack, "--to", after]);
+    const closed = readFileSync(join(after, "REPORT.md"), "utf8");
+    expect(closed.split("\n").find((line) => line.startsWith("- Builder cache:"))).toBe(cache);
+    expect(closed).toContain("Billed $45.00");
+    expect(closed).toContain("| no-step | 0-1-0 |");
   });
 
   it("reads a word the operator left during a comparison at the next move, and changes nothing in the comparison", async () => {

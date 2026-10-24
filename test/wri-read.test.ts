@@ -5,12 +5,21 @@
 // and are settled by hand.
 // Clock cases keep overlapping elapsed spans beside the union of recorded provider waits,
 // clipped at a campaign ending or the log boundary rather than read as seat inactivity.
+// Practice gaps retain the boundary and origin of frozen and compared states.
 import { describe, expect, it } from "bun:test";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined, keyIfNotNull } from "../src/meta/optional-key.ts";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
@@ -345,7 +354,7 @@ describe("the whole-run investigation's reader", () => {
       "b-2: agent/tools.mjs, .toolchain",
     ]);
     expect(detail("FINAL BYTES NEVER PRACTISED")).toBe(
-      "b-1: no practice solve ran under hc, a harness measured; the last ran under hb",
+      "b-1: no practice solve ran under hc, reported comparison b-1; the last ran under hb",
     );
     expect(detail("PRACTICE FAILS")).toBe(
       "b-1: 1 fail, 0 ruled earned; the same task passed later under changed bytes 0, under the same bytes 0",
@@ -401,10 +410,50 @@ describe("the whole-run investigation's reader", () => {
     const led = frozenInConversation();
     const { triggers } = overview(led);
     expect(triggers.find(({ name }) => name === "FINAL BYTES NEVER PRACTISED")?.detail).toBe(
-      "b-1: no practice solve ran under hc, a harness measured; the last ran under hb",
+      "b-1: no practice solve ran under hc, reported comparison g-1; the last ran under hb",
     );
     // Its practice task was released before the comparison began and is not among the scored ones.
     expect(triggers.map(({ name }) => name)).not.toContain("PRACTISED TASK MEASURED");
+  });
+
+  it("describes an unused child as frozen and a begun comparison by its report status", () => {
+    const log = events.map((event) =>
+      event.kind.startsWith("comparison.") ? { ...event, data: { ...event.data, fresh: "hb" } } : event,
+    );
+    const frozen = overview(log).triggers.filter(({ name }) => name === "FINAL BYTES NEVER PRACTISED");
+    expect(frozen).toHaveLength(1);
+    expect(frozen[0]?.detail).toContain("hc");
+    expect(frozen[0]?.detail).toContain("frozen at session end");
+    expect(frozen[0]?.detail).toContain("no comparison");
+    expect(frozen[0]?.detail).not.toContain("measured");
+    const add = appendTo(log);
+    add(COMPARISON_STARTED, { session: "g-2", old: "hp", fresh: "hc", setting: SETTING });
+    const ran = condition("t1", "hc");
+    add(CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) });
+    add(SOLVE_STARTED, { solve: "late-practice", condition: conditionId(ran) });
+    add(SOLVE_FINISHED, { solve: "late-practice", ending: { outcome: "pass" } });
+    const gaps = () => overview(log).triggers.filter(({ name }) => name === "FINAL BYTES NEVER PRACTISED");
+    expect(gaps()).toHaveLength(1);
+    expect(gaps()[0]?.detail).toContain("g-2");
+    expect(gaps()[0]?.detail).toContain("begun without a report");
+    expect(gaps()[0]?.detail).toContain("last ran under hb");
+    add(REPORTED, { ...REPORT, session: "g-2", old: "hp", fresh: "hc", setting: SETTING });
+    expect(gaps()).toHaveLength(1);
+    expect(gaps()[0]?.detail).toContain("reported comparison g-2");
+    expect(gaps()[0]?.detail).toContain("last ran under hb");
+  });
+
+  it("reads an unreported comparison before later practice of its frozen checkpoint", () => {
+    const log = frozenInConversation().filter(({ kind }) => kind !== REPORTED);
+    const add = appendTo(log);
+    const ran = condition("t1", "hc");
+    add(CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) });
+    add(SOLVE_STARTED, { solve: "after-start", condition: conditionId(ran) });
+    add(SOLVE_FINISHED, { solve: "after-start", ending: { outcome: "pass" } });
+    const gaps = overview(log).triggers.filter(({ name }) => name === "FINAL BYTES NEVER PRACTISED");
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0]?.detail).toContain("comparison g-1 begun without a report");
+    expect(gaps[0]?.detail).toContain("last ran under hb");
   });
 
   it("reads two kept states that differ only in bytecode a practice run left as one harness", () => {
@@ -421,6 +470,16 @@ describe("the whole-run investigation's reader", () => {
     for (const state of ["hb", "hc"]) {
       mkdirSync(join(dir, "states", state, "agent"), { recursive: true });
       writeFileSync(join(dir, "states", state, "agent", "BUILT_AGENTS.md"), "a guide\n");
+      const tree = join(dir, `tools-${state}`);
+      mkdirSync(join(tree, "lib"), { recursive: true });
+      writeFileSync(join(tree, "lib", "method.py"), "print(1)\n");
+      symlinkSync("method.py", join(tree, "lib", "entry.py"));
+      symlinkSync(tree, join(dir, "states", state, ".toolchain"));
+    }
+    const cache = join(dir, "tools-hb", "lib", "__pycache__");
+    mkdirSync(cache);
+    for (const name of ["buffer_model", "indep_model", "simplex"]) {
+      writeFileSync(join(cache, `${name}.cpython-310.pyc`), "bytecode");
     }
     mkdirSync(join(dir, "states", "hc", "agent", "__pycache__"));
     writeFileSync(join(dir, "states", "hc", "agent", "__pycache__", "lib.cpython-312.pyc"), "bytecode");
@@ -430,7 +489,24 @@ describe("the whole-run investigation's reader", () => {
       );
     try {
       expect(fired()).toBe(false);
+      const source = join(dir, "tools-hc", "lib", "method.py");
+      writeFileSync(source, "print(2)\n");
+      expect(fired()).toBe(true);
+      writeFileSync(source, "print(1)\n");
+      chmodSync(source, 0o755);
+      expect(fired()).toBe(true);
+      chmodSync(source, 0o644);
+      const link = join(dir, "tools-hc", "lib", "entry.py");
+      rmSync(link);
+      symlinkSync("another.py", link);
+      expect(fired()).toBe(true);
+      rmSync(link);
+      symlinkSync("method.py", link);
       writeFileSync(join(dir, "states", "hc", "agent", "BUILT_AGENTS.md"), "another guide\n");
+      expect(fired()).toBe(true);
+      writeFileSync(join(dir, "states", "hc", "agent", "BUILT_AGENTS.md"), "a guide\n");
+      expect(fired()).toBe(false);
+      rmSync(join(dir, "states", "hb"), { recursive: true });
       expect(fired()).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });

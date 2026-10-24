@@ -20,6 +20,8 @@
  *
  * Every wait but the reserve's is on record as `campaign.waited`, so a reader tells the solver's
  * time from the host's, and a provider's starts the crash rule's count again (`crashedRun`).
+ * A queued solve leaves on its kill signal without invoking the solving seat. Load and reserve
+ * sleeps are interruptible; a load wait records its elapsed time even when cancellation ends it.
  */
 import { CRASHES } from "#src/campaign/decide.ts";
 import { crashedRun } from "#src/campaign/ground.ts";
@@ -27,7 +29,7 @@ import { affords, flying, inFlight } from "#src/campaign/opening.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
-import { waitOut } from "#src/solver/run.ts";
+import { waiting, waitOut } from "#src/solver/run.ts";
 import { type Seated, solved } from "./round.ts";
 
 /** A host as the waits read it: its one-minute load, its cores, how long a look waits, and how it
@@ -75,6 +77,7 @@ export function gated(
     return {
       ...seats,
       solve: async (task, harness, kill, comparison) => {
+        kill?.throwIfAborted();
         const [since, load] = [Date.now(), host.load()];
         if (!loaded && load > host.cores) {
           console.log(
@@ -82,8 +85,9 @@ export function gated(
           );
           let looks = 0;
           do {
-            await host.sleep(host.waitMs);
+            await waiting(host.waitMs, kill, host.sleep);
             looks += 1;
+            if (kill?.aborted === true) break;
           } while (looks < LOOKS && host.load() > host.cores);
           append(log, WAITED, {
             task: task.taskId,
@@ -102,8 +106,9 @@ export function gated(
         }
         while (inFlight(log) > 0 && !affords(log, 1)) {
           if (kill?.aborted === true) break;
-          await host.sleep(host.waitMs);
+          await waiting(host.waitMs, kill, host.sleep);
         }
+        kill?.throwIfAborted();
         return flying(log, () => seats.solve(task, harness, kill, comparison));
       },
     };

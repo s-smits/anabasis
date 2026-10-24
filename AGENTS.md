@@ -386,7 +386,10 @@ The tools of each model seat, as its source names them:
   made no call, wait for that word where the gate has said nothing new (`settled`), and `finish`
   and the session's end wait
   for every instance still at the gate (`putAside`, `src/examiner/write.ts`), so a session goes on
-  writing while its drafts are solved.
+  writing while its drafts are solved. The writing session's four-hour clock pauses only while it
+  awaits gate settlement, including `wait`, the no-call reminder, `finish` and shutdown; background
+  gate work leaves it running. Kill and campaign budget remain live, and `exam.finished` records
+  elapsed `seconds` and aggregate `hostSeconds`.
   `propose_tasks` runs no solve and answers in its own result.
   `try_answer` runs the checks on an instance with an answer of the Examiner's own. Where the checks
   pass, the session holds the answer in memory until the task has its final id. A task proposed with

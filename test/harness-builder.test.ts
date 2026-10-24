@@ -2,6 +2,7 @@
 // campaign run from set-up to an ending on one command (`tools/d2/harness-builder.ts`). The exam's
 // reading, the task sets, each Builder session's wall and freeze, each solve's wall and the
 // comparison are the real ones; the seats are scripts, which are paid nothing.
+// An isolated manifest also holds the runtime refusal before any campaign write or seat call.
 
 import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
 import { examine } from "../src/examiner/session.ts";
@@ -26,10 +27,11 @@ import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
-import { runtimeProcess } from "../src/meta/process.ts";
+import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
+import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
 import type { Seats } from "../tools/d2/campaign-terms.ts";
 import { closeCommand } from "../tools/d2/close.ts";
-import { harnessBuilder as command } from "../tools/d2/harness-builder.ts";
+import { harnessBuilder as command, pinFault } from "../tools/d2/harness-builder.ts";
 import { HOST } from "../tools/d2/host.ts";
 import { importCommand } from "../tools/d2/import.ts";
 import * as prepare from "../tools/d2/prepare.ts";
@@ -63,6 +65,54 @@ setDefaultTimeout(600_000);
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });
   for (const name of names) rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
+});
+
+describe("the campaign's executing Bun", () => {
+  it("names a fault in every pin but the executing Bun's exact one", () => {
+    const v = Bun.version;
+    expect(pinFault({ packageManager: `bun@${v}`, engines: { bun: v } }, v)).toBeNull();
+    for (const manifest of [
+      { packageManager: "bun@0.0.1", engines: { bun: "0.0.1" } },
+      { packageManager: "bun@99.0.0", engines: { bun: "99.0.0" } },
+      { engines: { bun: v } },
+      { packageManager: `bun@^${v}`, engines: { bun: v } },
+      { packageManager: `npm@${v}`, engines: { bun: v } },
+      { packageManager: `bun@${v}` },
+      { packageManager: `bun@${v}`, engines: { bun: `>=${v}` } },
+      { packageManager: `bun@${v}`, engines: { bun: "0.0.1" } },
+      null,
+    ]) {
+      expect(pinFault(manifest, v)).toContain(`executing Bun ${v}`);
+    }
+    expect(pinFault({ packageManager: "bun@0.0.1", engines: { bun: "0.0.1" } }, v)).toContain("bun@0.0.1");
+  });
+
+  // The pin is read from the entry module's tree, so the case copies `tools` beside the real
+  // sources and runs the command from another directory, as launchd or ssh starts it.
+  it("refuses at the command's entry from its own tree's manifest, before writing a campaign", () => {
+    const tree = join(root, "pinned");
+    mkdirSync(tree);
+    cpSync(join(REPO, "tools"), join(tree, "tools"), { recursive: true });
+    for (const part of ["src", "vendor", "node_modules"]) symlinkSync(join(REPO, part), join(tree, part));
+    const manifest = parseJsonAs<JsonObject>(readFileSync(join(REPO, "package.json"), "utf8"));
+    const pinned = { ...manifest, packageManager: "bun@0.0.1", engines: { bun: "0.0.1" } };
+    writeFileSync(join(tree, "package.json"), JSON.stringify(pinned));
+    // At the matching pin these flags open the campaign's log and stop before a seat is called.
+    const opening = ["--project", PROJECT, "--prompt", "Multiply a base by six.", "--budget", "100"];
+    const seats = ["builder", "examiner", "reviewer", "solver"].flatMap((seat) => [
+      `--${seat}`,
+      "claude/claude-opus-5-5",
+    ]);
+    const flags = ["--name", "pinned", ...opening, ...seats, "--no-builder-led", "--moves", "0"];
+    const result = runSync([capturedExecPath, join(tree, "tools/d2/harness-builder.ts"), ...flags], {
+      cwd: root,
+      env: { PATH: "/usr/bin:/bin", HOME: root, CLAUDE_CODE_OAUTH_TOKEN: "fixture" },
+    });
+    expect(result.exitCode).toBe(1);
+    expect(decodeOutput(result.stderr)).toContain(`${join(tree, "package.json")}: `);
+    expect(decodeOutput(result.stderr)).toContain(`executing Bun ${Bun.version}`);
+    expect(existsSync(join(tree, ".ana"))).toBe(false);
+  });
 });
 
 /** A drafted exam over `tasks` as `draft_exam` takes it, six times a base, and its accepted answers

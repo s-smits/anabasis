@@ -604,8 +604,8 @@ The decision it changes is whether the tally is of the set that was fixed; it ro
 
 **22. Paired sign-flip test, ties and power.**
 
-Starts from `NOTHING SCORED (lane 22)`, `CUT BY ITS CAP (lane 22)`,
-`FEW INFORMATIVE PAIRS (lane 22)` and `SET SHORT (lane 22)`, and is standing.
+Starts from `NOTHING SCORED (lane 22)`, `CUT BY ITS CAP (lane 22)` and
+`SET SHORT (lane 22)`, and is standing.
 
 The question is what the comparison's test could and could not have shown at its size. The paired
 sign-flip test reads each task's score; a tie carries nothing. It reduces to the
@@ -615,11 +615,10 @@ contested. Read `scored` with its `differences`, p, `detectable`, `falseRate`, t
 unanswered tasks, which the step tested since 20 October, and the frontier and retained tallies
 apart (before 20 October the step, `detectable` and `falseRate` were the frontier's). Say
 how many untied tasks there were and what the smallest result is that would have cleared the
-level on those margins. `FEW INFORMATIVE PAIRS` fires when reversing the smallest positive
-tested difference makes the reading miss its level; it also names `sweepOf(level)`.
-It does not test every possible result containing a loss. A
-comparison that tallied no task tested nothing and reads `not-scored`; before the report learned
-to say so it read `no-step`, as the eight truss rounds of 8 October did. `CUT BY ITS CAP` names
+level on those margins. Reversing one observed win establishes neither a small sample nor a
+requirement to win every task. A comparison that tallied no task tested nothing and reads
+`not-scored`; before the report learned to say so it read `no-step`, as the eight truss rounds
+of 8 October did. `CUT BY ITS CAP` names
 one its dollar cap ended: it is finished, reads `not-scored`, and its solves are in no tally. A
 `no-step` at four untied tasks is no evidence of no gain, and a `step` at five rests on five
 tasks: say both plainly. One comparison of equal harnesses reads a step at most as often as its

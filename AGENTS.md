@@ -940,9 +940,11 @@ weighed by fixed weights (`pointsOf`, `WEIGHTS`, `src/kernel/compare.ts`):
 - **the bill**, 0.1: between two valid answers, the base-2 logarithm of the reference's bill over
   the new one's, counted from a fifth less (`CHEAPER`) and taking the whole weight at half.
 
-A task's score is their weighted sum, read in thousandths: positive is a win, negative a loss, zero
-a tie. Ties leave the test. A pairing with an answer that is not valid reads neither the objective
-nor the bill, so a refused answer is never the better one, and one that fails fast is never
+A task's score is their weighted sum, rounded to whole thousandths with half points away from
+zero and zero normalised (`wholePoints`, which also rounds the report's `points` and the
+promotion tuner's replay): positive is a win, negative a loss, zero a tie. Exchanging the sides
+negates the score. Ties leave the test. A pairing with an answer that is not valid reads neither
+the objective nor the bill, so a refused answer is never the better one, and one that fails fast is never
 cheaper. The measures trade against each other: a harness valid in 3 solves of 4 against 4 of 4
 wins the task where its valid answers measure a fifth better and bill half. The weights are the
 operator's, in steps of five, and constants of the host, as the floors are. A comparison continued

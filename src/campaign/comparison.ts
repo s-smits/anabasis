@@ -28,6 +28,7 @@ import {
   UNMEASURED,
   unsolved,
   informative,
+  wholePoints,
 } from "../kernel/compare.ts";
 import { conditionsOf, settingId } from "../kernel/condition.ts";
 import { proposalsOf } from "../kernel/history.ts";
@@ -468,11 +469,11 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
   };
 }
 
-/** The points each measure gave `pairs` together (`pointsOf`), to the whole point. */
+/** The points each measure gave `pairs` together (`pointsOf`), to the whole point (`wholePoints`). */
 function pointsIn(pairs: readonly Paired[]): Measures {
   const each = pairs.map(pointsOf);
   const sum = (measure: keyof Measures) =>
-    Math.round(each.reduce((total, points) => total + points[measure], 0));
+    wholePoints(each.reduce((total, points) => total + points[measure], 0));
   return { validity: sum("validity"), objective: sum("objective"), bill: sum("bill") };
 }
 

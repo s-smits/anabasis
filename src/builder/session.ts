@@ -38,8 +38,10 @@
  * could not be run at all. A solve's turn cap counts prompts, as v1's did; here it counts the model's turns, since a
  * Builder that never stops calling tools would otherwise have no cap but its wall. The wall, the
  * kill and the halt reach a practice solve in flight, so the session ends when they fall and not a
- * solve's whole wall later. A practice solve that throws is the verifier failing to decide, which
- * stops a run: the session writes its record, freezes what it has, and throws it again.
+ * solve's whole wall later; one still queued at the host's gate leaves on them unstarted, which is
+ * the session's end and no host fault. A practice solve that throws anything else is the verifier
+ * failing to decide, which stops a run: the session writes its record, freezes what it has, and
+ * throws it again.
  */
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import {

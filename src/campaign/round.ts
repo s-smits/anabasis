@@ -421,7 +421,8 @@ function unruledOf(events: readonly LogEvent[], fixed: Fixed) {
 /**
  * What runs a comparison's solves: the jobs' pool, the Referee's part, and the reasons it stops
  * taking jobs. A solve that throws ends the pool and is thrown again by `settle` once every solve
- * in flight has returned.
+ * in flight has returned; the kill's own reason, from a solve queued at the host's gate, is said as
+ * the kill.
  */
 function floor(request: CheckpointRequest, fixed: Fixed) {
   const { log, id, cap } = request;
@@ -495,7 +496,7 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
           if (outcome === "non-result") jobs[0] = { ...job, again: true };
           else jobs.shift();
         } catch (error) {
-          thrown ??= asError(error);
+          if (!kill.aborted || error !== kill.reason) thrown ??= asError(error);
           halt.abort();
         } finally {
           running -= 1;

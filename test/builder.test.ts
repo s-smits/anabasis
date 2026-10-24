@@ -1336,6 +1336,30 @@ describe("a Builder session", () => {
     expect(Number(s.of(BUILD_FINISHED)[0]?.seconds)).toBeLessThan(4);
   });
 
+  it("ends at its wall, and blames no host, when the wall reaches a practice solve queued at the host", async () => {
+    const s = await setup([call("practice", { tasks: ["t-1", "t-2"] }), finish]);
+    const built = await session(
+      {
+        ...s.request,
+        limits: { ...LIMITS, wallSeconds: 1 },
+        // t-1 is in flight and ends killed; t-2 waits at the host's gate, which leaves on the kill
+        // with its reason before any solve starts (`gated`, `tools/d2/host.ts`).
+        practise: async (task, _dir, _digest, kill) => {
+          if (!kill.aborted) {
+            await new Promise((resolve) => kill.addEventListener("abort", resolve, { once: true }));
+          }
+          if (task.version === "v2") kill.throwIfAborted();
+          return { solve: "s-killed", ending: { outcome: "non-result", kind: "killed", reason: "killed" } };
+        },
+      },
+      s,
+      s.walled,
+    );
+    expect(built).toMatchObject({ ended: "wall", changed: false });
+    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "wall", crash: null, practiceSolves: 1 });
+    expect(JSON.stringify(s.of(BUILD_CALL))).not.toContain("the host's fault");
+  });
+
   it("takes a task out of practice when its own check could not run", async () => {
     const s = await setup(
       [call("practice", { tasks: ["t-2"] }), call("practice", { tasks: ["t-2"] }), finish],

@@ -1344,6 +1344,22 @@ describe("a round", () => {
     expect(s.of(COMPARISON_REPORTED)).toEqual([]);
   });
 
+  it("keeps a kill as the reason when it reaches a solve queued at the host's gate", async () => {
+    const kill = new AbortController();
+    const s = await setup([], () => PASS);
+    const request = s.compare("g-queued", {
+      kill: kill.signal,
+      // The gate's own leaving (`gated`, `tools/d2/host.ts`): the kill's reason, before any solve.
+      solve: async (_version, _harness, _comparison, signal) => {
+        kill.abort();
+        signal.throwIfAborted();
+        throw new Error("the gate let a killed solve start");
+      },
+    });
+    await expect(checkpoint(request)).rejects.toThrow("the comparison was killed");
+    expect(s.of(COMPARISON_REPORTED)).toEqual([]);
+  });
+
   it("reports a task short when its solves end in nothing countable, and tallies the rest", async () => {
     const s = await setup([edit, finish], (version, side, nth, digest) =>
       version === "s4" && side === "fresh"

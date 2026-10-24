@@ -480,11 +480,17 @@ export function practiceTool(bench: Bench): SeatTool {
           : { dir: other, harness: await openHarness(other), listed: null };
       if (kill.aborted) throw new Error("The session has ended.");
       bench.spent += chosen.length;
+      let unstarted = 0;
       const solved = await pooled(chosen, request.limits.concurrency, async (task) => {
         if (bench.fatal !== null) return [];
         try {
           return [await practise(bench, task, ran, kill)];
         } catch (error) {
+          // The session's end reaches a solve still queued at the host's gate: no fault of anyone's.
+          if (kill.aborted && error === kill.reason) {
+            unstarted += 1;
+            return [];
+          }
           bench.fatal ??= asError(error);
           failed.abort();
           return [];
@@ -494,6 +500,10 @@ export function practiceTool(bench: Bench): SeatTool {
         throw new Error(
           "A practice solve could not be run, which is the host's fault and not the harness's. The session ends here.",
         );
+      }
+      if (unstarted > 0) {
+        bench.spent -= unstarted;
+        throw new Error("The session has ended.");
       }
       const events = read(request.log);
       const said = solved.flat().map(({ task, solve, ending, lines }) => {

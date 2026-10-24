@@ -46,10 +46,11 @@
  * or a round, and none appends to a log.
  */
 import { draftOf } from "#src/examiner/draft.ts";
+import { treeContent } from "#src/harness/open.ts";
 import { answerFormatFault } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
 import { openVerifier, spelled } from "#src/kernel/verify.ts";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
@@ -85,6 +86,9 @@ interface Investigation {
 const REPO = resolve(import.meta.dir, "..", "..");
 const SHARED = "shared-instructions.md";
 const USAGE = "usage: bun tools/wri/wri.ts read | climb | start | lanes | collect | synthesis | grade";
+/** Bytecode that running a harness's programs leaves beside them: a kept state with it differs in
+ *  digest and in nothing the solver reads. */
+const CACHE = /(^|\/)__pycache__(\/|$)|\.pyc$/;
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -117,6 +121,24 @@ function needed(name: "log" | "out" | "bundle" | "task" | "answer"): string {
   const value = values[name];
   if (value === undefined) throw new Error(`name --${name}`);
   return value;
+}
+
+/**
+ * Whether two harnesses are one, read from the kept states beside `log`: equal digests, or two states
+ * whose guides and tool trees, links followed, differ only in bytecode caches. On 24 October three
+ * "FINAL BYTES NEVER PRACTISED" lines of one buffer campaign named a state that differed from the
+ * one practised by a `__pycache__` alone. A state that is not on disk is told apart by its digest.
+ */
+function sameBytes(log: string) {
+  const states = join(dirname(log), "states");
+  const material = (digest: string) =>
+    ["agent", ".toolchain"].map((part) => {
+      const dir = join(states, digest, part);
+      return existsSync(dir) ? treeContent(realpathSync(dir)).filter(({ path }) => !CACHE.test(path)) : null;
+    });
+  return (a: string, b: string) =>
+    a === b ||
+    (existsSync(join(states, a)) && existsSync(join(states, b)) && Bun.deepEquals(material(a), material(b)));
 }
 
 /** The host's code as a condition names it (`codeOf`), for a tree that holds it. */
@@ -157,7 +179,7 @@ function hostLine(log: string): string {
 }
 
 function overviewText(log: string): string {
-  return `${rendered(overview(read(log)))}\n\n${hostLine(log)}\n`;
+  return `${rendered(overview(read(log), sameBytes(log)))}\n\n${hostLine(log)}\n`;
 }
 
 function start(): number {
@@ -199,7 +221,11 @@ function start(): number {
 function opened(): Investigation {
   const out = resolve(needed("out"));
   const { logs } = parseJsonAs<{ logs: string[] }>(readFileSync(join(out, "investigation.json"), "utf8"));
-  const campaigns = logs.map((log) => ({ name: nameOf(log), log, overview: overview(read(log)) }));
+  const campaigns = logs.map((log) => ({
+    name: nameOf(log),
+    log,
+    overview: overview(read(log), sameBytes(log)),
+  }));
   return { out, shared: readFileSync(join(out, SHARED), "utf8"), campaigns };
 }
 

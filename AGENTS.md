@@ -1221,6 +1221,11 @@ Cite a rule by its number in a pull request or a review.
     a failure of any mechanism: do not patch, triage or report it as one, do not count it against a
     change, and do not spend a pull request on waiting it out. A generic 429, a timeout or a crash
     that does not name a limit is a different matter: investigate the failure itself.
+    The whole-run hours reader (`hoursLine`, `tools/wri/time.ts`) gives role hours as overlapping
+    elapsed spans, the union of every recorded wait (provider, network and load), and the hours a
+    promotion with and without that union. A provider or network wait runs from its event to the
+    next campaign ending; a load wait ends at its event. The load half is an indicator, since other
+    solves run while one waits.
 
 ## 9. Status, evidence and claims
 

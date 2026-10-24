@@ -170,6 +170,12 @@ describe("the code a solve's condition records", () => {
     writeFileSync(join(tree, "docs", "plan.md"), "a row\n");
     expect(codeOf(tree).host).toBe(host);
   });
+
+  // The verifier runs every check under the command's own Bun, so a comparison continued under
+  // another Bun is continued under other code.
+  it("names the Bun that runs it beside the runtime's pins", () => {
+    expect(codeOf(tree).runtime.bun).toBe(Bun.version);
+  });
 });
 
 describe("a campaign", () => {

@@ -12,6 +12,8 @@
  * something to read and never what the answer is: a lane that contradicts its trigger from the
  * bytes has done its job. A trigger that did not fire says this arithmetic found nothing, and not
  * that the property is absent. No trigger carries an answer, a task's text or a hidden value.
+ * Lane 22 reads the recorded tally and power at its margins. Reversing one win establishes
+ * neither a small sample nor dependence on winning every task, so it starts no trigger.
  *
  * The folds of the log, the catalogue of triggers and the lanes of the exam side (1 to 12) are
  * `folds.ts` since 10 October, when this file was over the size policy's ceiling. This file keeps
@@ -24,7 +26,7 @@
 import { comparisonsOf } from "#src/campaign/ground.ts";
 import { short } from "#src/campaign/move.ts";
 import { campaignOf as handoverOf, type Handover, nextBound, openSteps } from "#src/campaign/handover.ts";
-import { differenceOf, flipP, readsStepEitherWay, sweepOf } from "#src/kernel/compare.ts";
+import { differenceOf, readsStepEitherWay } from "#src/kernel/compare.ts";
 import type { Condition } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { pairsReported } from "#src/kernel/reports.ts";
@@ -385,29 +387,11 @@ function practiceCandidates(
   return read;
 }
 
-/** Lanes 22 and 23, from a comparison's last report alone: whether it scored a task, what its cap
- *  cut, how many of its pairs tell the harnesses apart, what it is short of, and how its new harness
- *  stands against the starter. */
+/** Lane 22, from a comparison's last report alone: whether it scored a task, what its cap
+ *  cut, and what it is short of. */
 function testTriggers(session: string, last: JsonObject): Trigger[] {
   const scored = asRecord(last.scored);
-  const informative = count(scored?.wins) + count(scored?.losses);
-  const tasks = informative + count(scored?.ties);
-  const level = count(last.level);
-  // The least clean sweep that clears the report's level, by the report's own test.
-  const sweep = level > 0 ? sweepOf(level) : undefined;
-  // The reading with its least win lost does not clear: it rests on a sweep. Read on the margins
-  // its step tested where the report holds them (`testedOf`); on a margin of one pair a task until
-  // 14 October, which said no result with a loss clears on eight tasks where buffer-149's margins
-  // let 7-1 clear 0.02.
-  const held = testedOf(last).differences;
-  const margins =
-    held.length > 0 ? held.filter((each) => each !== 0) : Array.from({ length: informative }, () => 1);
-  const least = margins.reduce(
-    (low, each) => (each > 0 && each < low ? each : low),
-    Number.POSITIVE_INFINITY,
-  );
-  const fragile =
-    Number.isFinite(least) && flipP([...margins.toSpliced(margins.indexOf(least), 1), -least]) > level;
+  const tasks = count(scored?.wins) + count(scored?.losses) + count(scored?.ties);
   const asked = last.tasks;
   const lacking = items(last.short).length;
   return [
@@ -426,14 +410,6 @@ function testTriggers(session: string, last: JsonObject): Trigger[] {
             scored === null
               ? `${session}: the dollar cap ended it before it was read`
               : `${session}: the dollar cap ended the starter's solves; its test stands, unread against the starter`,
-          ),
-        ]
-      : []),
-    ...(scored !== null && tasks > 0 && level > 0 && fragile
-      ? [
-          fired(
-            "FEW INFORMATIVE PAIRS",
-            `${session}: ${share(informative, tasks)} tasks tell the harnesses apart; at level ${String(level)} the least sweep that clears is ${String(sweep ?? 0)}-0, and the reading with its least win lost would not`,
           ),
         ]
       : []),

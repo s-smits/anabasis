@@ -4,7 +4,8 @@
  *
  * The folds (`indexOf`) read the log once into what the lanes ask of it: each solve with what it
  * ran under and how it ended, each Builder session with the window of the log that is its round,
- * each comparison with the solves it could count, and the last verdict and ruling of each solve. `TRIGGERS` names every trigger a reader can print and the lane it starts, and
+ * each comparison with the solves it could count, and the last verdict and ruling of each solve.
+ * `TRIGGERS` names only the triggers a live reader can print and the lane each starts, and
  * `fired` makes one. Lanes 1 to 6 read the exam's instrument, which is the pack author's, and
  * lanes 7 to 12 the tasks, which are the Examiner's and the pack's; both sit here, below the
  * lanes of the build side and the host, which `read.ts` keeps with the rows and the overview, and
@@ -190,7 +191,6 @@ export const TRIGGERS = {
   "SCORED SET MOVED": 21,
   "NOTHING SCORED": 22,
   "CUT BY ITS CAP": 22,
-  "FEW INFORMATIVE PAIRS": 22,
   "SET SHORT": 22,
   "VALID BY HARNESS": 23,
   "FLIPS": 24,

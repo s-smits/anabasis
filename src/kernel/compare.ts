@@ -5,7 +5,9 @@
  * counts once. Every solve of the new harness is paired with every solve of the reference one, and
  * each task is scored by three weighted measures over its pairings (`pointsOf`, `WEIGHTS`): validity,
  * and between two valid answers the objective and the bill. A task with a positive score is won, a
- * negative one lost, and one at zero tied (`tally`).
+ * negative one lost, and one at zero tied (`tally`). The weighted sum is rounded to whole points
+ * by its magnitude, with half points away from zero and zero normalised, so exchanging sides
+ * negates the score (`differenceOf`).
  *
  * The test is a paired sign-flip test on each task's score (`flipP`, since
  * 12 October): were the two harnesses interchangeable, each untied task would be as likely won as
@@ -460,10 +462,12 @@ export function pointsOf(pair: Paired): Measures {
 }
 
 /** One task's difference: its points by every measure together (`pointsOf`), to the whole point,
- *  positive where the new harness won it. */
+ *  half points away from zero, positive where the new harness won it. */
 export function differenceOf(pair: Paired): number {
   const { validity, objective, bill } = pointsOf(pair);
-  return Math.round(validity + objective + bill);
+  const sum = validity + objective + bill;
+  const magnitude = Math.round(Math.abs(sum));
+  return magnitude === 0 ? 0 : Math.sign(sum) * magnitude;
 }
 
 /** Whether the harness on `side` closed the task: valid in every counted solve, and not

@@ -361,6 +361,10 @@ What the **Examiner** reads:
   reading them, with the reason, each with how far its author's answer stood from the reference's
   best by the objective (`reference.gap` of `task.gate`): those read on the current reference counted alone, and those
   read on a replaced reference as one count;
+- interrupted gates separately by draft, including across a promotion, since they did
+  not decide room. Only a gate under the current reference carries its counts and gate-level
+  reason. `read_example` also returns earlier authored drafts from the log; their content may be
+  proposed afresh unless a later gate has read it;
 - the checks, through `try_answer`, on an instance with an answer of its own;
 - when it drafts an exam: the operator's prompt, what the host's reading found in each draft, and
   a walled home of its own, empty when it starts.

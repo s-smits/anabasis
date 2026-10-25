@@ -123,16 +123,17 @@ prove the public input is enough to derive that answer, so a held task no refere
 may be hard or may be underspecified, and no reading can tell which until a person reads it.
 
 A small movement is read against the solver's measured variation before it is called a gain.
-Milestone: twelve confirmed promotions in one real campaign, then the same in a second domain. This
-is the operator's milestone for observation, and it is no quota, promotion rule or stop: no prompt,
-table row or tool names a count of promotions, and the campaign keeps its own endings. The stop
-rule's patience marks a possible plateau, which is evidence that progress stalled and no proof that
-no step is left. A campaign that ended before twelve because of its budget, its environment or as
-`finished` (three Builder conversations in a row made no campaign move) reads "reached N promotions;
-further improvement unresolved". One ended by its patience reads differently. Its false-promotion
-risk is reported across the whole campaign, over every comparison that could have promoted, because
-the opening's estimate over one patience's attempts restarts with each promotion and so covers one
-window at most.
+Milestone: six confirmed promotions in one real campaign, then the same in a second domain. This is
+the operator's milestone for observation, and it is no quota, promotion rule or stop: no seat's
+prompt or tool and no row of the move table names a count of promotions, and the campaign keeps its
+own endings. The release cycle stops its runs at the milestone from outside
+(run-improvement-campaign). The stop rule's patience marks a possible plateau, which is evidence
+that progress stalled and no proof that no step is left. A campaign that ended before six because
+of its budget, its environment or as `finished` (three Builder conversations in a row made no
+campaign move) reads "reached N promotions; further improvement unresolved". One ended by its
+patience reads differently. Its false-promotion risk is reported across the whole campaign, over
+every comparison that could have promoted, because the opening's estimate over one patience's
+attempts restarts with each promotion and so covers one window at most.
 
 **2. Honesty: could the measured gains be chance or drift?** A test at level 0.10 is designed to
 crown a winner between two equal harnesses about one time in ten. That design value stays a claim

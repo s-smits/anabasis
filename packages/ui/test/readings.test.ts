@@ -37,6 +37,7 @@ import {
 } from "../src/models.ts";
 import { handleApiRequest } from "../src/server/api.ts";
 import { campaignsFound, loaded } from "../src/server/logs.ts";
+import { campaignReading, campaignRow } from "../src/server/reading.ts";
 import { type Fixture, MARKERS, writeFixtureCampaign } from "./fixture-campaign.ts";
 
 /** A copy of the fixture's root, and its campaign's folder. */
@@ -387,6 +388,35 @@ describe("what a comparison came to", () => {
       true,
     ]);
     expect([reading.counters.controls, reading.counters.controlSteps]).toEqual([1, 1]);
+  });
+
+  test("counts no A/A step where the unbilled test falls short or clears in the opposite direction", () => {
+    const found = campaignsFound({ repo: fixture.root, trees: "directory" }).found.find(
+      ({ name }) => name === fixture.units,
+    );
+    if (found === undefined) throw new Error("the units campaign exists");
+    const events = read(found.path);
+    for (const unbilled of [
+      [0, 0, 0, 0],
+      [1, 1, 1, -1],
+      [1, 1, 1, 1],
+      [-1, -1, -1, -1],
+    ]) {
+      const log = {
+        events: events.map((event) => {
+          const noise = asRecord(event.data.noise);
+          return event.kind === "comparison.reported" && noise !== null
+            ? { ...event, data: { ...event.data, noise: { ...noise, unbilled } } }
+            : event;
+        }),
+      };
+      const row = campaignRow(found, log, { process: null, tier: "default" });
+      const reading = campaignReading(found, log, { row, tier: "default", issues: [] });
+      expect([reading.counters.controls, reading.counters.controlSteps]).toEqual([
+        1,
+        unbilled.every((one) => one < 0) ? 1 : 0,
+      ]);
+    }
   });
 
   test("says apart the two things that wait for a person's label: tasks, and set-aside rejections of unsettled comparisons", async () => {

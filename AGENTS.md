@@ -993,13 +993,19 @@ tasks can offset a loss on old ones. The report gives the two sets' tallies apar
 retained tasks shows; an empty retained set reads `unmeasured`, never "no loss". Each family's
 tallies stand beside both, from the same rows; they show concentration, and prove no independence.
 
-One reading decides (`stepOf`): a test at or under the level (0.02 by default: 6 to 0, 8 to 1,
-10 to 2, 12 to 3; at 0.10: 4 to 0, 6 to 1, 7 to 2, 9 to 3) reads `step` and promotes. The
-null hypothesis is the fixed-task one, in which each drawn task is as likely won as lost on fresh
-solves. Every reading prints its untied count, the smallest share of those tasks it detects four
-times in five (`detectable`), and the chance that one reading at its margins reads a step between
-equal harnesses (`falseRate`), never more than the level. A reading of `step` counts for the stop
-rule as a move that showed a gain. The level is recorded in the campaign's opening, so a campaign
+One reading decides (`stepOf`): the test at or under the level (0.02 by default: 6 to 0, 8 to 1,
+10 to 2, 12 to 3; at 0.10: 4 to 0, 6 to 1, 7 to 2, 9 to 3) on each task's score, and again on the
+same tasks' scores with the bill's points taken out (`unbilled` in each set of the report), reads
+`step` and promotes. A step has to stand without the bill (the operator, 25 October): the bill
+still weighs a tenth of a task's score between two valid answers, but a promotion it carries, alone
+or by moving the margins past the level, is no step. The second test can only take a step away,
+since a step still needs the first. The null hypothesis is the fixed-task one, in which each drawn
+task is as likely won as lost on fresh solves. Every reading prints its untied count, the smallest
+share of those tasks it detects four times in five (`detectable`), and the chance that one reading
+at its margins reads a step between equal harnesses (`falseRate`), never more than the level. All
+three describe the test on the scores as they stand, so for the rule that needs both tests the
+false rate is an upper bound; the tally and p without the bill are printed beside them. A reading
+of `step` counts for the stop rule as a move that showed a gain. The level is recorded in the campaign's opening, so a campaign
 is read by its own rule whatever the tree's default is, and a trigger an older opening holds is
 read past. Two other ways to read a tally are in the plan ("Statistical power
 and cost"); neither is built.
@@ -1040,12 +1046,16 @@ reading at a shorter budget would describe a solver that was told the longer one
   valid);
 - which tasks entered each of its two sets;
 - its overlap with the previous comparison of the same two harnesses;
-- the points each measure gave, which the closing report prints beside each promotion's tally.
+- the points each measure gave, which the closing report prints beside each promotion's readings:
+  as scored, on validity alone and without the bill, each a tally and its p, which the view's
+  epoch line prints too (`promotionReadings`, `src/campaign/comparison.ts`).
 
 Beside every comparison of four solves per side stands the reference read against itself, on
 halves of its own solves mirrored in time. It should read no step; its tie share is the noise every
-comparison has to beat, and its flip rate is how often two solves of a task disagree. The
-A/A is read either way, each half at the comparison's level, since which half is which is arbitrary. Every A/A
+comparison has to beat, and its flip rate is how often two solves of a task disagree. The A/A is
+read either way, each half at the comparison's level by the step's own rule, both tests clearing in
+the same direction (`readsStepEitherWay`), since which half is which is arbitrary; a report written
+before 26 October holds no scores without the bill and keeps its scored-only reading. Every A/A
 stands as a reading and ends nothing: the climb counts it beside the false-promotion estimate
 (section 1, factor 2). An older log may end `control`, an ending no command writes now.
 

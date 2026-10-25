@@ -16,6 +16,8 @@ import {
   pairsOf,
   pointsOf,
   power,
+  readingsOf,
+  readsStepEitherWay,
   roomLeft,
   scored,
   stepOf,
@@ -52,14 +54,15 @@ const units = (wins: number, losses: number, by = 1, ties = 0): number[] => [
   ...Array.from({ length: ties }, () => 0),
 ];
 /** A comparison's report as the log holds what its step reads: each frontier task's difference; the
- *  retained tasks', or `unmeasured` where none was tallied; and each family's tallies on the two. */
+ *  retained tasks', or `unmeasured` where none was tallied; and each family's tallies on the two.
+ *  Each task's score without the bill is its score, as where no bill differed. */
 const report = (
   frontier: readonly number[],
   retained: readonly number[] | null = null,
   families: JsonObject = {},
 ): JsonObject => ({
-  frontier: { differences: [...frontier] },
-  retained: retained === null ? "unmeasured" : { differences: [...retained] },
+  frontier: { differences: [...frontier], unbilled: [...frontier] },
+  retained: retained === null ? "unmeasured" : { differences: [...retained], unbilled: [...retained] },
   families,
 });
 /** Each family's frontier tally, from its wins and losses, as a report holds it: `tied` families
@@ -209,6 +212,7 @@ describe("the paired sign-flip test", () => {
       ties: 17,
       p: 0.0625,
       differences: units(6, 1, 200, 17),
+      unbilled: units(6, 1, 200, 17),
     });
     expect(scored(pairs(5, 1, 18)).p).toBe(0.109375);
     expect(() => tally([{ task: "t", old: [P, P, P], fresh: [P, P] }])).toThrow(
@@ -327,6 +331,74 @@ describe("one reading", () => {
     // reading is a fault of the caller's, and is refused rather than read as no step.
     const bare = { frontier: { differences: units(2, 0, 16) }, families: {} };
     expect(() => stepOf(bare, LEVEL)).toThrow("a reading needs a frontier and a retained set");
+  });
+
+  it("reads no step where the bill alone carries the test, and a step where validity and the objective clear it too", () => {
+    const billed = (...each: number[]) => each.map((one) => ({ billed: one }));
+    const lower = { direction: "lower" } as const;
+    // Six tasks every solve of both sides answers alike, the new harness at half the bill: as
+    // scored each is won by the bill's whole 100 points, 6-0 at p 1/64; without the bill all six
+    // tie, and nothing is tested. v065-a's aecc1c92 was promoted so, 25-3 as scored and 0-10
+    // without the bill (25 October).
+    const cheaper = Array.from({ length: 6 }, (_, at) => ({
+      task: `c${String(at)}`,
+      old: [P, P],
+      fresh: [P, P],
+      objective: { ...lower, old: [10, 10], fresh: [10, 10] },
+      used: { old: billed(0.2, 0.2), fresh: billed(0.1, 0.1) },
+    }));
+    const onCost = scored(cheaper);
+    expect(onCost.differences).toEqual(units(6, 0, 100));
+    expect(onCost.unbilled).toEqual(units(0, 0, 0, 6));
+    expect(onCost.p).toBeLessThanOrEqual(STRICT);
+    expect(stepOf({ frontier: onCost, retained: "unmeasured" }, STRICT)).toBe("no-step");
+    // A person reads the promotion three ways (`readingsOf`): as scored, without the bill and on
+    // validity alone, each a tally and its p.
+    expect(readingsOf(cheaper)).toEqual({
+      scored: { wins: 6, losses: 0, ties: 0, p: 1 / 64 },
+      unbilled: { wins: 0, losses: 0, ties: 6, p: 1 },
+      validity: { wins: 0, losses: 0, ties: 6, p: 1 },
+    });
+    // The same six a fifth better by the objective as well: both tests clear, and the bill adds
+    // its points to a step the other measures carry.
+    const better = cheaper.map((pair) => ({
+      ...pair,
+      objective: { ...lower, old: [10, 10], fresh: [8, 8] },
+    }));
+    const both = scored(better);
+    expect(both.differences).toEqual(units(6, 0, 400));
+    expect(both.unbilled).toEqual(units(6, 0, 300));
+    expect(stepOf({ frontier: both, retained: "unmeasured" }, STRICT)).toBe("step");
+    expect(readingsOf(better).validity).toEqual({ wins: 0, losses: 0, ties: 6, p: 1 });
+    // A retained loss by the objective that the bill outweighs as scored still counts against the
+    // step without the bill: 7-0 as scored at p 1/128, 6-1 without the bill at p 1/16.
+    expect(
+      stepOf(
+        {
+          frontier: { differences: units(6, 0, 4), unbilled: units(6, 0, 4) },
+          retained: { differences: [4], unbilled: [-4] },
+        },
+        STRICT,
+      ),
+    ).toBe("no-step");
+    // A report written before 26 October holds no score without the bill, and is refused.
+    expect(() => stepOf({ frontier: { differences: units(6, 0) }, retained: "unmeasured" }, STRICT)).toThrow(
+      "each with its unbilled",
+    );
+  });
+
+  it("requires scored and unbilled A/A tests to clear in the same direction, retaining old scored-only reports", () => {
+    const wins = units(6, 0);
+    const losses = units(0, 6);
+    expect(flipP(wins)).toBe(1 / 64);
+    expect(readsStepEitherWay(wins, STRICT, units(0, 0, 0, 6))).toBe(false);
+    expect(readsStepEitherWay(wins, STRICT, units(5, 1))).toBe(false);
+    expect(readsStepEitherWay(wins, STRICT, losses)).toBe(false);
+    expect(readsStepEitherWay(losses, STRICT, wins)).toBe(false);
+    expect(readsStepEitherWay(wins, STRICT, wins)).toBe(true);
+    expect(readsStepEitherWay(losses, STRICT, losses)).toBe(true);
+    expect(readsStepEitherWay(wins, STRICT)).toBe(true);
+    expect(readsStepEitherWay(losses, STRICT)).toBe(true);
   });
 
   it("reads a step whose untied frontier tasks all fall in one family of the two the sets hold as any other", () => {

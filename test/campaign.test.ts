@@ -575,9 +575,9 @@ describe("a campaign", () => {
     const valid = { old: [8, 0, 0], fresh: [4, 0, 4], informative: { old: 0, fresh: 0 } };
     const frontier = { ...scored, tasks: ["v1", "v2", "v3", "v4", "v5", "v6", "v7"], aside: [] };
     expect(reportLines({ valid, objective: null, scored, frontier, noise: null }).slice(0, 2)).toEqual([
-      "the step is read on 8 tallied tasks, 4 of them untied: one reading at the comparison's level detects four times in five a harness that wins 95% of them",
+      "the test on the full score is read on 8 tallied tasks, 4 of them untied: one reading at the comparison's level detects four times in five a harness that wins 95% of them",
       // Beside the level, the test's own rate at the report's margins.
-      "one reading at these margins reads a step between equal harnesses 2% of the time, never more than the level",
+      "the test on the full score at these margins clears the level between equal harnesses 2% of the time, never more than the level: an upper bound for the rule requiring both tests",
     ]);
     // A report written before 20 October read its step, and these two, on its frontier alone.
     expect(reportLines({ valid, objective: null, frontier, noise: null }).at(0)).toContain(
@@ -617,11 +617,11 @@ describe("a campaign", () => {
       "the reference against itself, on halves of its own solves mirrored in time (the A/A), over the 8 tallied tasks, 2 of them untied:",
       "  tie share 75%: the share of tasks two equal harnesses tied at half the comparison's solves a side, where equal harnesses tie more often than at the comparison's own, so no floor for its ties",
       "  flip rate 13%: how often two of its solves of one task disagree on validity",
-      "  least detectable shift: none, too few of its tasks are untied for any shift between its halves to read as a step, so its reading no step shows little",
+      "  least detectable shift on the full score alone: none, too few of its tasks are untied for any shift between its halves to clear the level, so its reading no step shows little",
       "of the 8 tasks the comparison drew, 6 were tallied and 1 set aside on a rejection not ruled a true fail, 1 disputed: the columns below, room and the test are read over the tallied ones",
     ]);
     expect(lines(0.9)[3]).toBe(
-      "  least detectable shift: one reading of it, either half read at the level, detects four times in five a half that wins 90% of its untied tasks",
+      "  least detectable shift on the full score alone: one reading of it, either half read at the level, detects four times in five a half that wins 90% of its untied tasks",
     );
     expect(ROUND_OPTIONS).not.toHaveProperty("budget");
     // Where the report carries points, the points each measure gave are said beside.

@@ -17,10 +17,11 @@
  *                folder written to leave the host.
  *   RULES.md     the domain's public contract: its scope, conventions, rules and answer format.
  *   REPORT.md    the closing report: how the campaign ended, each promotion and the comparisons
- *                behind it, every comparison's tally and reading, the chance of a false promotion
- *                over the whole campaign (`riskLines`), which checks their author's own computation
- *                decides (`unadmitted`), what the Referee ruled and what a person's labels
- *                settled, and what was billed. It names each harness by its letter beside its
+ *                behind it, the one it rests on read as scored, on validity alone and without
+ *                the bill (`promotionReadings`), every comparison's tally and reading, the chance
+ *                of a false promotion over the whole campaign (`riskLines`), which checks their
+ *                author's own computation decides (`unadmitted`), what the Referee ruled and what
+ *                a person's labels settled, and what was billed. It names each harness by its letter beside its
  *                digest's head (`namesOf`, `src/campaign/names.ts`).
  *                Calculated spend stays the economy numerator; backend totals carry coverage and
  *                a residual on matching closed records, with open backend costs unknown.
@@ -45,8 +46,8 @@
  * counts; the command prints how it ended. A released task is the one to name: a held-out task
  * is solved for nothing a Builder could learn from, but its answer then lies in that log.
  */
-import { promotionsWorth, riskLines, worthLine } from "#src/campaign/climb.ts";
-import { UNSETTLED } from "#src/campaign/comparison.ts";
+import { promotionsWorth, readingsLine, riskLines, worthLine } from "#src/campaign/climb.ts";
+import { promotionReadings, UNSETTLED } from "#src/campaign/comparison.ts";
 import { campaignOf, type Handover } from "#src/campaign/handover.ts";
 import { short } from "#src/campaign/move.ts";
 import { type Called, calledBy, namesOf } from "#src/campaign/names.ts";
@@ -246,8 +247,10 @@ function economyLines(events: readonly LogEvent[], steps: readonly Handover[]): 
   ];
 }
 
-/** A promotion a line: the comparisons that read its step, its last tally and score against the
- *  reference it was promoted over, and whether it is set-up (epoch 0) or a rung of the climb. */
+/** A promotion a line: the comparisons that read its step, the comparison it rests on against the
+ *  reference it was promoted over (`promotionReadings`), read as scored, on validity alone and
+ *  without the bill, with the points each measure gave, and whether it is set-up (epoch 0) or a
+ *  rung of the climb. */
 function promotionLines(
   events: readonly LogEvent[],
   comparisons: readonly Compared[],
@@ -262,6 +265,7 @@ function promotionLines(
     ),
   );
   const worths = promotionsWorth(events);
+  const rested = promotionReadings(events);
   return events.flatMap(({ kind, at, data }, index) => {
     if (kind !== "harness.promoted" || !isString(data.harness)) return [];
     // The first over the Starter is set-up, epoch 0, and the climb counts from it.
@@ -272,13 +276,12 @@ function promotionLines(
     const origin = from === undefined ? "" : `. Imported from ${from}, built by no session of this campaign`;
     const stepped = comparisons.filter((each) => each.fresh === data.harness && each.reading === "step");
     // Read against the reference it was promoted over: a reading it owed after is not its step.
-    const last = comparisons.findLast(
-      (each) => each.fresh === data.harness && each.old === data.from && each.tally !== null,
-    );
+    const rest = rested.get(index);
+    const points = comparisons.find((each) => each.id === rest?.comparison)?.points ?? null;
     const held =
-      last?.tally === null || last === undefined
+      rest === undefined
         ? ". No comparison of it tallied a task"
-        : `. In ${last.id} it won ${String(last.tally.wins)}, lost ${String(last.tally.losses)} and tied ${String(last.tally.ties)}${last.points === null ? "" : `, the score giving it ${String(last.points.validity)} points by validity, ${String(last.points.objective)} by the objective and ${String(last.points.bill)} by the bill`}`;
+        : `. In ${rest.comparison} its tasks read ${readingsLine(rest)}${points === null ? "" : `, the score giving it ${String(points.validity)} points by validity, ${String(points.objective)} by the objective and ${String(points.bill)} by the bill`}`;
     return [
       `- ${at.slice(0, 10)}: harness ${called(data.harness)}, ${rung}, read by ${stepped.map((each) => each.id).join(" and ") || "no comparison on record"}${held}${isString(data.despite) ? `. Promoted on the operator's reason, where the rule did not name it: ${data.despite}` : ""}${origin}${worth === undefined ? "" : `. Its ${worthLine(worth)}`}`,
     ];

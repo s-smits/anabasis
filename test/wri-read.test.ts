@@ -834,6 +834,33 @@ describe("the reader of a round compared with another harness than its session s
       "r-1: 0 won, 4 lost and 0 tied between two samples of the reference harness, which reads a step where none can be",
     );
   });
+
+  it("does not diagnose an A/A step carried by the bill", () => {
+    const withUnbilled = (unbilled: readonly number[]) =>
+      overview(
+        log.map((each) =>
+          each.kind === REPORTED
+            ? {
+                ...each,
+                data: {
+                  ...each.data,
+                  noise: {
+                    wins: 0,
+                    losses: 4,
+                    ties: 0,
+                    p: 1,
+                    differences: [-2, -2, -2, -2],
+                    unbilled: [...unbilled],
+                  },
+                },
+              }
+            : each,
+        ),
+      ).triggers.find(({ name }) => name === "REFERENCE AGAINST ITSELF")?.detail;
+    // Same tally and p; only whether the unbilled test supports the false step changes.
+    expect(withUnbilled([0, 0, 0, 0])).not.toBe(withUnbilled([-2, -2, -2, -2]));
+    expect(withUnbilled([-2, -2, -2, -2])).toBe(said("REFERENCE AGAINST ITSELF"));
+  });
 });
 
 describe("the reader of what each Examiner session's tasks came to", () => {

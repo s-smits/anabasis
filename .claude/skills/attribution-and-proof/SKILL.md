@@ -20,7 +20,8 @@ A v2 claim rests on a comparison: two harnesses, the same held-out tasks, solves
 interleaved, a one-sided paired sign-flip test over each task's score (`flipP`,
 `src/kernel/compare.ts`). Validity weighs most; a declared objective and the bill compare two valid
 answers. The null treats each untied task's sign as equally likely and independent, at its fixed margin.
-`step` means one test over the frontier and the retained tasks together cleared its level (`stepOf`).
+`step` means one test over the frontier and the retained tasks together cleared its level, on the
+tasks' scores and again on their scores without the bill (`stepOf`, since 26 October).
 It does not say:
 
 - **that the harness is better under another condition.** Another wall, budget, solver, effort

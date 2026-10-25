@@ -443,6 +443,7 @@ function comparisonTriggers(log: Index): Trigger[] {
     const flips = [...seen.values()].filter((outcomes) => outcomes.size > 1).length;
     const noise = asRecord(last.noise);
     const apart = items(noise?.differences).filter(isNumber);
+    const unbilled = Array.isArray(noise?.unbilled) ? noise.unbilled.filter(isNumber) : undefined;
     return [
       ...(moved > 0
         ? [
@@ -474,7 +475,7 @@ function comparisonTriggers(log: Index): Trigger[] {
         : [
             fired(
               "REFERENCE AGAINST ITSELF",
-              `${session}: ${String(count(noise.wins))} won, ${String(count(noise.losses))} lost and ${String(count(noise.ties))} tied between two samples of the reference harness${readsStepEitherWay(apart, level) ? ", which reads a step where none can be" : ""}`,
+              `${session}: ${String(count(noise.wins))} won, ${String(count(noise.losses))} lost and ${String(count(noise.ties))} tied between two samples of the reference harness${readsStepEitherWay(apart, level, unbilled) ? ", which reads a step where none can be" : ""}`,
             ),
           ]),
     ];

@@ -1,8 +1,9 @@
 /**
  * Durable's coding tools, on the seat's ExecutionEnv (`walledEnv`). The environment owns every
  * file and command operation; registrations keep pi's descriptions and schemas except bash's
- * timeout, which states the host's default and maximum. All calls are sequential because ending
- * a command ends the work still running in the seat's root.
+ * shell contract, which states /bin/sh and POSIX syntax, and its timeout, which states the host's
+ * default and maximum. All calls are sequential because ending a command ends the work still
+ * running in the seat's root.
  *
  * The wall keeps two departures from pi's local environment: ~ names the seat's home, and a
  * whole-file read is capped at 16 MiB. Durable asks the environment to spill long shell output;
@@ -98,8 +99,14 @@ function bashTool(wall: CommandWall): SeatTool {
   const pi = createBashTool();
   return {
     ...pi,
+    // pi's own sentence names bash; the worker runs /bin/sh, so the language clause is replaced and
+    // pi's output and truncation facts are kept as pi computes them.
+    description: pi.description.replace(
+      "Execute a bash command in the current working directory.",
+      "Execute a command using /bin/sh in the current working directory. Use POSIX shell syntax; Bash extensions are not guaranteed.",
+    ),
     parameters: Type.Object({
-      command: pi.parameters.properties.command,
+      command: Type.String({ description: "Command to execute with /bin/sh (POSIX shell syntax)" }),
       timeout: Type.Optional(
         Type.Number({
           description: `Timeout in seconds: ${String(wall.limits.shellDefaultSeconds)} when omitted, at most ${String(wall.limits.shellMaxSeconds)}; a value outside that range runs at the nearest end of it`,

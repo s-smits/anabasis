@@ -15,7 +15,7 @@
  * log), a name that starts `sim-`, `rh-` or `test-`, and a rehearsal, whose seats are
  * `faux/script`.
  */
-import type { Measures, Paired } from "#src/kernel/compare.ts";
+import { type Measures, type Paired, UNMEASURED } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import type { Reported } from "#src/kernel/reports.ts";
 import { closeSync, existsSync, openSync, readdirSync, readSync, statSync } from "#src/meta/filesystem.ts";
@@ -48,8 +48,11 @@ export interface Tree {
   /** A task's points by measure under the tree's weights (`pointsOf`). */
   points(pair: Paired): Measures;
   flipP(differences: readonly number[]): number;
+  /** Whether the tree's own step rule (`stepOf`) reads a step on these scores, with `unbilled`
+   *  null where a set's scores without the bill cannot be read again. */
+  readsStep(differences: readonly number[], unbilled: readonly number[] | null, level: number): boolean;
   /** Whether a reading of a harness against itself reads a step either way at `level`. */
-  readsStepEitherWay(differences: readonly number[], level: number): boolean;
+  readsStepEitherWay(differences: readonly number[], level: number, unbilled: readonly number[]): boolean;
   /** The points a report holds by measure, or undefined in a report from before the weights. */
   measures(value: JsonValue | undefined): Measures | undefined;
   billedBetween(events: readonly LogEvent[], from: number, to: number): number;
@@ -91,7 +94,15 @@ export async function loadTree(path: string): Promise<Tree> {
     pairsOf: (events, versions, sides, solves) => compare.pairsOf(events, versions, sides, solves).pairs,
     points: (pair) => compare.pointsOf(pair),
     flipP: (differences) => compare.flipP(differences),
-    readsStepEitherWay: (differences, level) => compare.readsStepEitherWay(differences, level),
+    // The tree's own rule, whatever it exports beside it: #392's tree read the bill-free test
+    // inside `stepOf` before `readsStep` existed, and a tree before it reads its scores alone. Scores
+    // that cannot be read without the bill stand as an empty test, which a rule needing them never
+    // reads as a step.
+    readsStep: (differences, unbilled, level) =>
+      compare.stepOf({ frontier: { differences, unbilled: unbilled ?? [] }, retained: UNMEASURED }, level) ===
+      "step",
+    readsStepEitherWay: (differences, level, unbilled) =>
+      compare.readsStepEitherWay(differences, level, unbilled),
     measures: (value) => compare.measuresIn(value),
     billedBetween: (events, from, to) => trace.billedBetween(events, from, to),
     billed: trace.BILLED,

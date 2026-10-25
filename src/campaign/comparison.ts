@@ -23,6 +23,7 @@ import {
   pointsOf,
   type Paired,
   pairsOf,
+  readingsOf,
   scored,
   stepOf,
   type Tally,
@@ -35,17 +36,17 @@ import {
 import { conditionsOf, settingId } from "../kernel/condition.ts";
 import { proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { poolOf } from "../kernel/reports.ts";
+import { lastReports, pairsReported, poolOf } from "../kernel/reports.ts";
 import { passed, ranUnder, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
-import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { median } from "../meta/tally.ts";
 import type { Ruling } from "../referee/referee.ts";
-import { type Worth, worthOf } from "./climb.ts";
+import { type Rested, type Worth, worthOf } from "./climb.ts";
 
 /**
  * How the plan's rules read a comparison. A step is the new harness's test against the reference
- * one clearing its level. A comparison that tallied no task is named apart: it tested nothing,
+ * one clearing its level, on the tasks' scores and on their scores without the bill. A comparison that tallied no task is named apart: it tested nothing,
  * and `no-step` would say a test was made and found no gain. Eight rounds of 8 October scored no
  * task and read `no-step` eight times. `check-defects` is the comparison stopped on its check
  * defects, and `no-change` a session that left nothing new to compare. `regressed` is a report's
@@ -56,11 +57,14 @@ import { type Worth, worthOf } from "./climb.ts";
  * control after a promotion (`decide.ts`).
  */
 type Reading = "step" | "no-step" | "regressed" | "narrow" | "not-scored" | "check-defects" | "no-change";
-/** One test's tally, each task's score, and its p. */
-type Tested = ReturnType<typeof scored>;
+/** One test's tally, each task's score, and its p; and each task's score without the bill, which a
+ *  report from before 26 October holds none of. */
+type Tested = Omit<ReturnType<typeof scored>, "unbilled"> & { readonly unbilled?: readonly number[] };
 /** One of the two sets a comparison fixes at its start (`retained`, `Fixed`): the tasks that
  *  entered it, which are its denominator, those of them set aside, and its tally and test. */
-/** `of` names the task of each difference; a report from before 14 October holds none. */
+/** `of` names the task of each difference; a report from before 14 October holds none. `unbilled`
+ *  holds each task's score without the bill in the same order, which the step clears as well
+ *  (`stepOf`). */
 type Entered = Tested & {
   readonly tasks: readonly string[];
   readonly aside: readonly string[];
@@ -115,11 +119,13 @@ export interface Report {
   readonly overlap: { readonly with: string; readonly tasks: readonly string[] } | null;
   /** The reference harness against itself on halves of its own solves mirrored in time, the A/A,
    *  where it holds four or more of a task: how often two of its solves of a task
-   *  disagree (`flips`), the least share of its untied tasks one half has to win for a reading of it
-   *  either way at the level (`readsStepEitherWay`) to detect it four times in five (`detectable`), which says how much its
+   *  disagree (`flips`), the least share of its untied tasks one half has to win for the scored
+   *  test at the level to detect it four times in five (`detectable`), which says how much its
    *  reading no step can show. A report of 12 to 18 October also holds the objective's margin its
    *  own spread set, which the next comparison read by until one margin stood for all, and none
-   *  since 19 October (`SAME`, `compare.ts`). */
+   *  since 19 October (`SAME`, `compare.ts`). The step needs both scored and unbilled tests in
+   *  the same direction; `detectable` describes the scored test alone. Older reports without
+   *  unbilled scores retain their scored-only A/A reading. */
   readonly noise:
     | (Tested & {
         readonly flips: number | null;
@@ -486,7 +492,7 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
         : {
             ...aa,
             flips: flipsOf(mirrored),
-            // Either half may win, each read at the level, as `readsStepEitherWay` reads the A/A.
+            // Power of the scored test alone; the A/A step also needs the unbilled test.
             detectable: detectable(aa.differences, fixed.level),
           },
     counted: pairs.length === first.length ? null : scored(first),
@@ -561,7 +567,7 @@ function overlapOf(events: readonly LogEvent[], fixed: Fixed) {
 export function wrongAsFailed(
   events: readonly LogEvent[],
   labels: ReadonlyMap<string, Ruling>,
-  passes: Readonly<Record<string, PassLabel>>,
+  passes: Readonly<Record<string, JsonValue>>,
 ): { events: LogEvent[]; labels: Map<string, Ruling> } {
   const wrong = new Set(Object.keys(passes).filter((solve) => passes[solve] === "wrong"));
   const ending = { outcome: "fail", kind: "rejected", reason: "a person labelled the pass wrong" };
@@ -613,6 +619,33 @@ export function swapped(
   const { labels } = failed;
   const found = compared(swappedIn, fixed, labels);
   return { decided, swapped: found.reading, scored: found.scored };
+}
+
+/**
+ * What each promotion rests on (`Rested`, `climb.ts`), by the promotion's place in the log: the last
+ * comparison reported before it of the promoted harness against the reference it was promoted over
+ * that tallied a task, its tallied tasks read as scored, on validity alone and without the bill
+ * (`readingsOf`) from their pairs in the log (`pairsReported`), an answer that passed and a person
+ * labelled wrong read as its side's fail, as the settled tally reads it (`wrongAsFailed`). Pairs
+ * are what every report can be read again by, those that hold no score without the bill among
+ * them, and this tree scores them, as it does every comparison it reads again. A promotion no such
+ * comparison read, as one the operator made despite the rule may be, has none.
+ */
+export function promotionReadings(events: readonly LogEvent[]): ReadonlyMap<number, Rested> {
+  const reports = lastReports(events);
+  return new Map(
+    events.flatMap(({ kind, data }, at) => {
+      if (kind !== "harness.promoted" || !isString(data.harness)) return [];
+      const rest = reports.findLast(
+        ({ index, data: report }) =>
+          index < at && report.fresh === data.harness && report.old === data.from && report.scored !== null,
+      );
+      if (rest === undefined) return [];
+      const passes = asRecord(asRecord(rest.data.settled)?.passes) ?? {};
+      const settled = wrongAsFailed(events, NO_LABELS, passes).events;
+      return [[at, { comparison: rest.session, readings: readingsOf(pairsReported(settled, rest)) }]];
+    }),
+  );
 }
 
 /** What the operator predicted of comparison `id` before its first solve, or null where they

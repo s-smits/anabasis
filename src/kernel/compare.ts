@@ -29,10 +29,18 @@
  * set with no task tallied is `unmeasured`, never no loss. Until 16 October a step whose untied
  * tasks all fell in one family read `narrow`; in 1,598 recorded readings it never fired.
  *
- * One comparison's reading, `step`, is that test at or under the level, 0.02 by default,
- * and a step against the reference promotes (`stepOf`; `decide.ts`). The level is the caller's and
- * recorded with the campaign's opening, so a campaign reads by its own rule whatever the tree's
- * default (`7f0add79:docs/plan.md`, Statistical power and cost). From 10 to 19 October the step was read in
+ * One comparison's reading, `step`, is that test at or under the level, 0.02 by default, made twice
+ * over the same tasks: on each task's score as it stands, and on its score with the bill's points
+ * taken out (`KEPT`, `unbilled`). Both have to clear the level, and a step against the reference
+ * promotes (`stepOf`; `decide.ts`). The operator chose this on 25 October, after v065-a's aecc1c92
+ * was promoted on 25-3 as scored where the same tasks read 0-10 without the bill, a harness worse
+ * by the objective promoted on its cost. The bill still weighs a tenth of a task's score between
+ * two valid answers, but a step it carries, alone or by moving the margins past the level, is no
+ * step. The second test can only take a step away, since a step still needs the first: replayed
+ * by the promotion tuner on 26 October over the 84 readings of 40 campaigns since 21 October, 7 of
+ * the 46 promotions the scored test still reads lose their step, and none is added.
+ * The level is the caller's and recorded with the campaign's opening, so a campaign reads by its
+ * own rule whatever the tree's default (`7f0add79:docs/plan.md`, Statistical power and cost). From 10 to 19 October the step was read in
  * two stages: a first reading at or under a trigger, 0.25, bought a repeat on fresh solves, and the
  * two read together had to clear the level. Of 24 readings in 56 campaigns that cleared the level by
  * themselves, 11 were read again and 11 of 11 won at least as many tasks as they lost; the repeat
@@ -76,7 +84,7 @@
  * comparison asked for the first started are taken, since the order solves ended in would take the
  * quick ones; a task with fewer on a side is in no pair, and named (`short`).
  *
- * Nothing here decides a step; it reports the tally and its test.
+ * The step rule, tally and test live here; the campaign applies the reading.
  */
 import { sha256 } from "../meta/digest.ts";
 import { asRecord, isNumber, type JsonObject } from "../meta/json-shape.ts";
@@ -127,6 +135,12 @@ export interface Tally {
   readonly losses: number;
   readonly ties: number;
 }
+
+/** A reading of a task's score by the measures it keeps (`KEPT`). */
+export type Kept = keyof typeof KEPT;
+
+/** One test: its tally and its p for the new harness (`flipP`). */
+export type Test = Tally & { readonly p: number };
 
 /** What a comparison is made between: the two harnesses by digest, and the setting every counted
  *  solve ran under (`settingId`). */
@@ -208,6 +222,15 @@ export const FULL = 0.1;
 export const CHEAPER = 1.25;
 /** A task's score in whole points: thousandths, since the test's convolution is over whole numbers. */
 const POINTS = 1000;
+/** The measures each reading of a task's score keeps (`differenceOf`), each at its weight: every one
+ *  as the comparison scores a task; validity and the objective, the bill's points taken out, which a
+ *  step has to clear as well (`stepOf`); and validity alone, which a person reads a promotion by
+ *  beside the other two (`readingsOf`). */
+const KEPT = {
+  scored: ["validity", "objective", "bill"],
+  unbilled: ["validity", "objective"],
+  validity: ["validity"],
+} as const satisfies Readonly<Record<string, readonly (keyof Measures)[]>>;
 
 /**
  * The chance of each total of `sizes` taken with a plus sign, where each is taken so with chance
@@ -269,13 +292,34 @@ export function flipP(differences: readonly number[]): number {
   return Math.min(1, above(signed(sizes, 0.5), Math.ceil((total(differences) + total(sizes)) / 2)));
 }
 
-/** Whether a reading of one harness against itself reads a step either way at `level`: the
- *  smaller of its two one-sided tests at or under it, as a comparison would read a step whichever
+/** Whether both the scored and unbilled tests clear `level` for the new harness. */
+export function readsStep(
+  differences: readonly number[],
+  unbilled: readonly number[],
+  level: number,
+): boolean {
+  return flipP(differences) <= level && flipP(unbilled) <= level;
+}
+
+/** Whether a reading of one harness against itself reads a step either way at `level`: both
+ *  tests must clear in the same direction, as a comparison would read a step whichever
  *  sample it took for the new harness. Its two sides are interchangeable by construction, so such
  *  a step says the comparison moved, not a harness. The whole-run reader and the UI count it so,
- *  and no move waits on it: until 20 October the table ended a campaign on its epoch's first. */
-export function readsStepEitherWay(differences: readonly number[], level: number): boolean {
-  return Math.min(flipP(differences), flipP(differences.map((one) => -one))) <= level;
+ *  and no move waits on it: until 20 October the table ended a campaign on its epoch's first.
+ *  An old report without unbilled scores retains its scored-only reading. */
+export function readsStepEitherWay(
+  differences: readonly number[],
+  level: number,
+  unbilled: readonly number[] = differences,
+): boolean {
+  return (
+    readsStep(differences, unbilled, level) ||
+    readsStep(
+      differences.map((one) => -one),
+      unbilled.map((one) => -one),
+      level,
+    )
+  );
 }
 
 /** The chance that a reading at `level` of untied tasks with the margins of `differences` reads a
@@ -301,21 +345,33 @@ export function sweepOf(level: number): number {
   return sweep;
 }
 
-/** One comparison's reading of its report at `level`: `step` where the one test over its frontier
- *  and retained tasks' scores together clears it, and `no-step` otherwise. A
- *  step against the reference promotes (`decide.ts`). A report written before 12 October holds a
- *  pooled tally alone, with no frontier and retained set, and is refused. */
+/**
+ * One comparison's reading of its report at `level`: `step` where the one test over its frontier
+ * and retained tasks clears it on their scores (`differences`) and again on their scores without
+ * the bill (`unbilled`), and `no-step` otherwise. A step against the reference promotes
+ * (`decide.ts`).
+ *
+ * It reads only sets this tree has just scored (`compared`, `comparison.ts`), so a report without
+ * a set's scores is a fault of the caller's and is refused: one written before 12 October holds a
+ * pooled tally alone, and one written before 26 October holds no `unbilled`. A report on record
+ * keeps the reading it wrote, and a reader that shows a recorded promotion without the bill scores
+ * its pairs again from the log (`readingsOf`, `promotionReadings` in `climb.ts`), which every report
+ * can be read by, rather than reading a field older reports lack.
+ */
 export function stepOf(report: JsonObject, level: number): "step" | "no-step" {
-  const differences = (held: unknown) => {
-    const found = asRecord(held)?.differences;
-    return Array.isArray(found) && found.every(isNumber) ? found : null;
+  const together = (key: "differences" | "unbilled") => {
+    const scores = (held: unknown) => {
+      const found = asRecord(held)?.[key];
+      return Array.isArray(found) && found.every(isNumber) ? found : null;
+    };
+    const frontier = scores(report.frontier);
+    const retained = report.retained === UNMEASURED ? [] : scores(report.retained);
+    if (frontier === null || retained === null) {
+      throw new Error(`a reading needs a frontier and a retained set, each with its ${key}`);
+    }
+    return [...frontier, ...retained];
   };
-  const frontier = differences(report.frontier);
-  const retained = report.retained === UNMEASURED ? [] : differences(report.retained);
-  if (frontier === null || retained === null) {
-    throw new Error("a reading needs a frontier and a retained set");
-  }
-  return flipP([...frontier, ...retained]) <= level ? "step" : "no-step";
+  return readsStep(together("differences"), together("unbilled"), level) ? "step" : "no-step";
 }
 
 /** The objective rule a comparison's start, or its report, carries, or undefined where it fixed
@@ -468,11 +524,12 @@ export function wholePoints(points: number): number {
   return magnitude === 0 ? 0 : Math.sign(points) * magnitude;
 }
 
-/** One task's difference: its points by every measure together (`pointsOf`), to the whole point
- *  (`wholePoints`), positive where the new harness won it. */
-export function differenceOf(pair: Paired): number {
-  const { validity, objective, bill } = pointsOf(pair);
-  return wholePoints(validity + objective + bill);
+/** One task's difference on the measures `kept` names (`KEPT`): their points together (`pointsOf`),
+ *  to the whole point (`wholePoints`), positive where the new harness won it. As scored, every
+ *  measure counts. */
+export function differenceOf(pair: Paired, kept: Kept = "scored"): number {
+  const points = pointsOf(pair);
+  return wholePoints(KEPT[kept].reduce((sum, measure) => sum + points[measure], 0));
 }
 
 /** Whether the harness on `side` closed the task: valid in every counted solve, and not
@@ -488,10 +545,10 @@ export function unsolved({ old, fresh }: Paired): boolean {
   return ![...old, ...fresh].some(Boolean);
 }
 
-/** Each task's difference (`differenceOf`), the new harness's less the reference's. A task solved more
- *  often under one harness than the other is refused, since the harness with more solves has more
- *  chances. */
-function differencesOf(pairs: readonly Paired[]): number[] {
+/** Each task's difference on the measures `kept` names (`differenceOf`), the new harness's less the
+ *  reference's. A task solved more often under one harness than the other is refused, since the
+ *  harness with more solves has more chances. */
+function differencesOf(pairs: readonly Paired[], kept: Kept = "scored"): number[] {
   return pairs.map((pair) => {
     const { task, old, fresh } = pair;
     if (old.length === 0 || old.length !== fresh.length) {
@@ -499,21 +556,38 @@ function differencesOf(pairs: readonly Paired[]): number[] {
         `task ${task} has ${String(old.length)} solve(s) under the old harness and ${String(fresh.length)} under the new; a comparison needs as many of each`,
       );
     }
-    return differenceOf(pair);
+    return differenceOf(pair, kept);
   });
 }
 
-/** The scored set's reading: each task once, won by the harness its score favours and
- *  tied otherwise, each task's score (`differenceOf`), and the test's p for the new harness. */
+/** The test of `differences`: each task won by the harness its score favours and tied otherwise,
+ *  and the test's p for the new harness. */
+export function testOf(differences: readonly number[]): Test {
+  const count = (sign: number) => differences.filter((one) => Math.sign(one) === sign).length;
+  return { wins: count(1), losses: count(-1), ties: count(0), p: flipP(differences) };
+}
+
+/** The scored set's reading: its test (`testOf`), each task's score (`differenceOf`), and each
+ *  task's score without the bill (`unbilled`), in the same order, which a step clears as well
+ *  (`stepOf`). */
 export function scored(pairs: readonly Paired[]) {
   const differences = differencesOf(pairs);
-  const count = (sign: number) => differences.filter((one) => Math.sign(one) === sign).length;
-  return { wins: count(1), losses: count(-1), ties: count(0), p: flipP(differences), differences };
+  return { ...testOf(differences), differences, unbilled: differencesOf(pairs, "unbilled") };
+}
+
+/** The test of `pairs` on each reading of a task's score (`KEPT`): as scored, without the bill, and
+ *  on validity alone, the three a promotion is reported by. */
+export function readingsOf(pairs: readonly Paired[]): Readonly<Record<Kept, Test>> {
+  return {
+    scored: testOf(differencesOf(pairs)),
+    unbilled: testOf(differencesOf(pairs, "unbilled")),
+    validity: testOf(differencesOf(pairs, "validity")),
+  };
 }
 
 /** The tally of `scored` alone. */
 export function tally(pairs: readonly Paired[]): Tally {
-  const { wins, losses, ties } = scored(pairs);
+  const { wins, losses, ties } = testOf(differencesOf(pairs));
   return { wins, losses, ties };
 }
 

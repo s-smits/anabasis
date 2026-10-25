@@ -291,7 +291,7 @@ this walk chooses what to do about it.
    blaming the harness. Owner: the number of campaigns on that host; use the launch load rule.
 7. **Promotion:** `no-step` near the level, a retained loss, or an A/A step. Owners: supply and
    size first. One `step` promotes (`stepOf`), its one test over the frontier and the retained
-   tasks together; until 19 October a first reading could buy a repeat, and until 20 October the
+   tasks together, cleared on the scores and on the scores without the bill; until 19 October a first reading could buy a repeat, and until 20 October the
    retained tasks were a second test that could read `regressed`. No retained task tallied is
    `unmeasured`.
 8. **Next epoch:** refused drafts, idle conversations or few frontier tasks after promotion.

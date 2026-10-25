@@ -71,7 +71,7 @@ import { worthLine } from "#src/campaign/climb.ts";
 import { predicted, type Report } from "#src/campaign/comparison.ts";
 import { refuseTerms, type RoundRequest, round, scoredSet } from "#src/campaign/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
-import { type ObjectiveRule, WEIGHTS } from "#src/kernel/compare.ts";
+import { type ObjectiveRule, testOf, WEIGHTS } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
@@ -404,7 +404,8 @@ export function refereeNamed(
  * A report in lines, printed with every reading: the tasks its step was read on (`scored`, or the
  * frontier before 20 October), with their untied tasks,
  * the least share of them one reading detects four times in five (`detectable`) and the chance
- * it reads a step between equal harnesses (`falseRate`), and its p with what the test weighs; the
+ * it reads a step between equal harnesses (`falseRate`), and its p with what the test weighs, and
+ * the same tasks without the bill, which a step clears as well (`stepOf`); the
  * reference against itself where the comparison carries it (`aaLines`); the tasks it drew, by what
  * became of each (`accounted`); and `valid`,
  * each harness by itself, as the tasks by how many of their solves were valid, which is what the
@@ -432,6 +433,8 @@ export function reportLines({
   const test = scored?.falseRate === undefined ? frontier : scored;
   const share = test?.detectable ?? null;
   const untied = test === null ? 0 : test.wins + test.losses;
+  // Each task's score without the bill, which a report from before 26 October holds none of.
+  const unbilled = test?.unbilled === undefined ? null : testOf(test.unbilled);
   return [
     ...(test?.falseRate === undefined
       ? []
@@ -440,6 +443,11 @@ export function reportLines({
           `one reading at these margins reads a step between equal harnesses ${String(Math.round(1000 * test.falseRate) / 10)}% of the time, never more than the level`,
           // The test weighs margins, but a sweep's p is its count's alone (the plan's 7.5).
           `its p is ${rounded(test.p)}: the test weighs each untied task by its score${test.losses === 0 && untied > 0 ? `, and where every untied task is won p is one half to the power of their count whatever the margins: ${String(untied)} won read ${rounded(0.5 ** untied)}` : ""}`,
+          ...(unbilled === null
+            ? []
+            : [
+                `without the bill's points the same tasks read ${String(unbilled.wins)}-${String(unbilled.losses)}-${String(unbilled.ties)}, p ${rounded(unbilled.p)}: a step clears the level on both`,
+              ]),
         ]),
     ...(noise === null ? [] : aaLines(noise)),
     ...accounted(apart),

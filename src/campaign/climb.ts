@@ -10,8 +10,16 @@
  * Written when the operator asked for the climb to be read as such: ten campaigns
  * had promoted once each and none twice, and no view said at which epoch a campaign stood or what
  * its tasks had done since the promotion. `runs view` prints the rows.
+ *
+ * Each promotion is read three ways where a person reads it, the view's epoch line and the closing
+ * report's promotion line (`promotionReadings`, `comparison.ts`): as scored, on validity alone, and without the bill,
+ * each a tally and its p, by this tree's score from the comparison's pairs in the log, so a report
+ * written before the step needed the second test reads by the same rule as one written after. On
+ * 25 October the whole-run reader's SAFEGUARD-9 alone printed the last two, and a person reading a
+ * promotion in the view or the handover saw only the first, while 7 of the 46 promotions since
+ * 21 October read no step without the bill (`stepOf`, `compare.ts`).
  */
-import { flipP } from "../kernel/compare.ts";
+import { type Kept, readsStep, type Test } from "../kernel/compare.ts";
 import { conditionsOf } from "../kernel/condition.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, type Reported } from "../kernel/reports.ts";
@@ -34,14 +42,16 @@ interface FalsePromotion {
    *  unsuccessful ones included. Until 19 October a step and the repeat it bought were one. */
   readonly attempts: number;
   /** The A/A controls on record, each read as an attempt between equal harnesses is, one-sided at
-   *  its comparison's level, and those that read a step: a count beside the estimate, which sets
+   *  its comparison's level on its scores and on its scores without the bill (`readsStep`), and
+   *  those that read a step: a count beside the estimate, which sets
    *  none of it. Until 19 October the controls were read in pairs as a step and its repeat, and
    *  until then too a 95% bound off the pairs replaced the design's rate once one pair was on
    *  record: esp32-fresh-opus's closing report read "at most 100%" where its attempts' own rates
    *  were 1.8%. Only a control that could read a step counts: one with too few untied tasks to
-   *  reach the level, where every task won reads none, tests nothing about the rate, and is
+   *  reach the level in both tests, where every task won reads none, tests nothing about the rate, and is
    *  counted apart (`incapable`). Until 20 October it counted as a control that read no step,
-   *  and 30 of the 49 recorded controls were such. */
+   *  and 30 of the 49 recorded controls were such. An older report without unbilled scores keeps
+   *  its scored-only reading. */
   readonly errors: number;
   readonly controls: number;
   readonly incapable: number;
@@ -81,6 +91,13 @@ export interface Epoch {
   readonly reference_share: Share | null;
   readonly starter_share: Share | null;
   readonly falsePromotion: FalsePromotion;
+}
+
+/** What a promotion rests on (`promotionReadings`, `comparison.ts`): the comparison against the
+ *  reference it was promoted over, and its tasks read three ways (`readingsOf`). */
+export interface Rested {
+  readonly comparison: string;
+  readonly readings: Readonly<Record<Kept, Test>>;
 }
 
 const PROMOTED = "harness.promoted";
@@ -218,11 +235,25 @@ function falsePromotionOf(
     return isNumber(rate) ? rate : levelOf(attempt);
   };
   const read = reports.flatMap((each) => {
-    const apart = asRecord(each.data.noise)?.differences;
-    return Array.isArray(apart) ? [{ each, apart: apart.filter(isNumber) }] : [];
+    const noise = asRecord(each.data.noise);
+    const apart = noise?.differences;
+    const unbilled = noise?.unbilled;
+    return Array.isArray(apart)
+      ? [
+          {
+            each,
+            apart: apart.filter(isNumber),
+            unbilled: Array.isArray(unbilled) ? unbilled.filter(isNumber) : undefined,
+          },
+        ]
+      : [];
   });
-  const controls = read.filter(({ each, apart }) => flipP(apart.map(Math.abs)) <= levelOf(each));
-  const errors = controls.filter(({ each, apart }) => flipP(apart) <= levelOf(each)).length;
+  const controls = read.filter(({ each, apart, unbilled }) =>
+    readsStep(apart.map(Math.abs), (unbilled ?? apart).map(Math.abs), levelOf(each)),
+  );
+  const errors = controls.filter(({ each, apart, unbilled }) =>
+    readsStep(apart, unbilled ?? apart, levelOf(each)),
+  ).length;
   const rates = attempts.map(rateOf);
   return {
     attempts: attempts.length,
@@ -237,15 +268,32 @@ function falsePromotionOf(
   };
 }
 
-/** One line an epoch, as the view prints them, each harness `called` as the view names it. */
-export function epochLine(epoch: Epoch, called: Called = short): string {
+/** A test's p as a reading prints it: to three places, and in powers of ten under a thousandth. */
+export const pSaid = (p: number) => (p < 0.001 ? p.toExponential(1) : p.toFixed(3));
+
+/** A promotion's three readings (`Rested`) as one clause: each a tally, won-lost-tied, and its p. */
+export function readingsLine({ readings }: Rested): string {
+  const said = ({ wins, losses, ties, p }: Test) =>
+    `${String(wins)}-${String(losses)}-${String(ties)} p ${pSaid(p)}`;
+  return `as scored ${said(readings.scored)}, on validity alone ${said(readings.validity)}, without the bill ${said(readings.unbilled)}`;
+}
+
+/** One line an epoch, as the view prints them, each harness `called` as the view names it, and the
+ *  promotion that ends it with what it rests on (`promotionReadings`) where `rested` holds it. */
+export function epochLine(
+  epoch: Epoch,
+  called: Called = short,
+  rested: ReadonlyMap<number, Rested> = new Map(),
+): string {
   const share = (named: string, found: Share | null) =>
     found === null ? `${named} unread` : `${named} valid ${String(found.valid)} of ${String(found.solves)}`;
   const reference = epoch.reference === "starter" ? "the starter" : called(epoch.reference);
   const readings = epoch.comparisons.map(({ id, reading }) => `${id} ${reading}`).join(", ") || "none";
   // The first harness promoted over the Starter is set-up, epoch 0, and the climb counts from it.
   const rung = epoch.nth === 1 ? "as set-up (epoch 0)" : `as rung ${String(epoch.nth - 1)} of the climb`;
-  const end = epoch.promoted === null ? "open" : `promoted ${called(epoch.promoted)} ${rung}`;
+  const rest = epoch.to === null ? undefined : rested.get(epoch.to);
+  const on = rest === undefined ? "" : ` on ${rest.comparison}, ${readingsLine(rest)}`;
+  const end = epoch.promoted === null ? "open" : `promoted ${called(epoch.promoted)} ${rung}${on}`;
   const risk = epoch.falsePromotion;
   return `epoch ${String(epoch.nth)}: reference ${reference}; ${String(epoch.tasks.length)} tasks held out; ${String(epoch.sessions)} sessions (${String(epoch.changed)} changed); comparisons ${readings}; ${share("reference", epoch.reference_share)}${epoch.reference === "starter" ? "" : `, ${share("starter", epoch.starter_share)}`} on them; ${plural(risk.attempts, "promotion attempt")} under this reference, a false promotion among them estimated at ${percent(risk.union)}: ${sourceOf(risk)}; ${end}`;
 }

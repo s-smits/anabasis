@@ -4,7 +4,7 @@
  * on whichever host holds it, and prints a row a run and then the step, with the commands that take
  * it. It stops, launches and writes nothing: the session or the timer that runs it takes the step.
  *
- *   bun .claude/skills/run-improvement-campaign/scripts/cycle.ts <run> ... [--keep <run>]... [--threshold 3]
+ *   bun .claude/skills/run-improvement-campaign/scripts/cycle.ts <run> ... [--keep <run>]... [--threshold 6]
  *
  * The steps follow the cycle's fixed order (the skill's "The release cycle"):
  *
@@ -32,7 +32,7 @@ import { askedScript } from "#tools/runs/hosts.ts";
 import { isCampaign, logEvents, processes, runs, writers } from "#tools/runs/registry.ts";
 
 const SCRIPT = ".claude/skills/run-improvement-campaign/scripts/cycle.ts";
-const USAGE = `usage: bun ${SCRIPT} <run> ... [--keep <run>]... [--threshold 3]`;
+const USAGE = `usage: bun ${SCRIPT} <run> ... [--keep <run>]... [--threshold 6]`;
 const OPTIONS = { keep: "list", threshold: "int", here: "flag" } as const;
 const HOUR_MS = 3_600_000;
 
@@ -136,7 +136,7 @@ async function main(args: CommandArgs): Promise<number> {
     console.log(`step: unread · not found on any host that answered: ${missing.join(", ")}`);
     return 1;
   }
-  for (const said of stepOf(rows, kept, args.int("threshold") ?? 3)) console.log(said);
+  for (const said of stepOf(rows, kept, args.int("threshold") ?? 6)) console.log(said);
   return 0;
 }
 

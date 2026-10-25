@@ -123,11 +123,11 @@ prove the public input is enough to derive that answer, so a held task no refere
 may be hard or may be underspecified, and no reading can tell which until a person reads it.
 
 A small movement is read against the solver's measured variation before it is called a gain.
-Milestone: twelve confirmed promotions in one real campaign, then the same in a second domain. This
-is the operator's milestone for observation, and it is no quota, promotion rule or stop: no prompt,
+Milestone: six confirmed promotions in one real campaign, then the same in a second domain (the
+operator, 25 October; twelve until then). This is the operator's milestone for observation, and it is no quota, promotion rule or stop: no prompt,
 table row or tool names a count of promotions, and the campaign keeps its own endings. The stop
 rule's patience marks a possible plateau, which is evidence that progress stalled and no proof that
-no step is left. A campaign that ended before twelve because of its budget, its environment or as
+no step is left. A campaign that ended before six because of its budget, its environment or as
 `finished` (three Builder conversations in a row made no campaign move) reads "reached N promotions;
 further improvement unresolved". One ended by its patience reads differently. Its false-promotion
 risk is reported across the whole campaign, over every comparison that could have promoted, because

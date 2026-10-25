@@ -6,7 +6,7 @@ description: "Run the Anabasis v2 improvement loop, the Super Loop, and the rele
 # Run improvement campaign (the Super Loop)
 
 Two loops, one inside the other. The **release cycle** runs fresh campaigns at a release until
-each has three promotions, then stops them, investigates them, patches what the
+each has six promotions, then stops them, investigates them, patches what the
 investigation and the predictions found, and lands the patches as the next release, which the next
 cycle's campaigns run. Inside it, each **pass** is **score → walk → choose → prove → predict →
 launch → watch → read → decide**: it asks what stands between a campaign and its next promotion,
@@ -31,7 +31,7 @@ that file first.
 **The order is fixed, and nothing moves a step ahead of the one before it:**
 
 ```text
-run (3 promotions a run) → stop → investigate → vet → plan → implement → consolidate → land and release → fork → run
+run (6 promotions a run) → stop → investigate → vet → plan → implement → consolidate → land and release → fork → run
 ```
 
 A run is evidence about the code it ran (`AGENTS.md`, section 9), so a run left going while its
@@ -42,7 +42,7 @@ read; the operator stopped five of the six 20 minutes later, and the investigati
 became v0.6.5. A deadline does not reorder the steps: where the investigation cannot be read in
 time, tell the operator and ask, rather than land first.
 
-### The running window, until three promotions a run
+### The running window, until six promotions a run
 
 1. **Fork at the release.** Take the commit the last release merged (`git tag` of `main`), or the
    top of the stack where the operator names it. A pull request above it that changes code a
@@ -105,10 +105,11 @@ time, tell the operator and ask, rather than land first.
    **Validation and limits** with the land counts, the CI run and what the stopped runs showed. Where the proof fails, do not land: report the commit and step.
 11. **Fork** the next cycle at the release's merge commit: step 1 again.
 
-**The threshold.** The running window ends when every run the cycle stops has **three
-promotions** or has ended (operator, 22 October), never at a time on the clock. The #306 forks
+**The threshold.** The running window ends when every run the cycle stops has **six
+promotions** or has ended (operator, 25 October, matching the milestone; three from 22 October),
+never at a time on the clock. The #306 forks
 reached their first promotion at 11.9 and 14.4 hours after their opening and their third at 17.8
-and 19.1 hours (`wri.ts start`, lane 31), so a window takes about a day. The A/A of every promoting
+and 19.1 hours (`wri.ts start`, lane 31), so a window of six takes about two days. The A/A of every promoting
 reading should read no step; the release says where one did. No seat is told the threshold and no
 campaign stops at it (`AGENTS.md`, factor 1): the cycle stops the runs.
 
@@ -119,7 +120,7 @@ the runs by hand to decide the step:
 
 ```sh
 bun --env-file=.env.runs .claude/skills/run-improvement-campaign/scripts/cycle.ts \
-  <run> ... [--keep <run>]... [--threshold 3]
+  <run> ... [--keep <run>]... [--threshold 6]
 ```
 
 It finds each named run on this machine or on a host `ANA_HOSTS` lists, and prints one row a run

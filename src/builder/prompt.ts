@@ -141,7 +141,7 @@ export interface Said {
  * stands (`session.ts`), and its practice is held to the campaign's total (`practiceLeft`,
  * `tools.ts`). A led Builder is told each fact once, where it is owned: what its tools do in their
  * descriptions, and here what a tool result ends with and what ends the campaign. A promotion ends
- * nothing: the operator's milestone of twelve is no rule (`AGENTS.md`, "Climb"), and `finish` ends
+ * nothing: the operator's milestone is no rule (`AGENTS.md`, "Climb"), and `finish` ends
  * the campaign only after three conversations in a row made no campaign move (`harness-builder.ts`).
  */
 export const SAID: Readonly<Record<"host" | "builder", Said>> = {

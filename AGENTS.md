@@ -661,7 +661,11 @@ by content, without a commit, so the receipt fills that gap.
 **It opens a campaign over a stored pack, or from a prompt** (`--prompt "<text>"` or
 `--prompt-file <path>`, with `--solver`). From a prompt, the opening holds the prompt, and the
 first move is the draft of row 0. A draft stands once the host's reading, without a model, finds
-no fault in it. That reading checks:
+no fault in it. Acceptance does not require completed reference measurement: `draft.finished`
+records the accepted draft's measurement as complete, interrupted with its first cancellation
+source, or not-run. Killed solve endings record that source as `session-wall`, `campaign-budget`,
+`caller` or `invocation`; an unlabelled external abort is `caller`. Older events without these
+fields remain unknown, and abrupt process termination promises no ending. That reading checks:
 
 - its shape;
 - a source on every rule;

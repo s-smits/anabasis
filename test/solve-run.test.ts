@@ -1,9 +1,9 @@
 // A solve's ending, read from what an attempt left behind, in every order the runner settles it;
 // then the plan's kill tests end to end on the faux provider, under the real command wall and disk
 // cap: a pass whose trace and meter read back from the log and whose hidden value reaches nothing
-// the solver reads, a solve under the Starter with pi's own file tools, the host's limits over the
-// harness's, the wall, no answer, the reruns of a provider's failed turn and of moved files, and
-// the run stopping on the verifier's non-result.
+// the solver reads, the declared /bin/sh contract, a solve under the Starter with pi's own file tools,
+// the host's limits over the harness's, the wall, no answer, the reruns of a provider's failed turn
+// and of moved files, and the run stopping on the verifier's non-result.
 import { afterAll, expect, it } from "bun:test";
 import {
   createModels,
@@ -321,7 +321,8 @@ it.skipIf(!walled).concurrent(
     expect(sent[0]).not.toContain("Records the answer.");
     expect(sent[0]).toContain("Send answer.json from your working directory as your answer.");
     // The fixture selects the shell alone, so pi's file tools and their rules are not in its prompt.
-    expect(sent[0]).toContain(String.raw`<tools>\n- bash: Execute a bash command`);
+    expect(sent[0]).toContain(String.raw`<tools>\n- bash: `);
+    expect(sent[0]).toMatch(/- bash: .*\/bin\/sh.*POSIX.*syntax/);
     expect(sent[0]).toContain("- scale_base: Returns the task's base multiplied by a factor.");
     expect(sent[0]).not.toContain("Use read");
   },

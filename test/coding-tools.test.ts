@@ -1,5 +1,6 @@
-// Durable registrations run against the real OS wall. The fake invocation API only records
-// output and diagnostics; every file and shell operation uses the seat's walled environment.
+// Registrations state the seat's shell contract even without OS isolation. Execution cases use
+// the real wall, comparing shell behaviour with native /bin/sh. The fake invocation API only
+// records output and diagnostics; every file and shell operation uses the walled environment.
 import { describe, expect, it } from "bun:test";
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
 import type { ToolDiagnostic, ToolExecutionApi } from "@earendil-works/pi-durable";
@@ -16,11 +17,20 @@ import {
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { CODING_TOOLS, codingTools, selectedCodingTools } from "../src/tools/coding.ts";
+import { CODING_TOOLS, codingTools, selectedCodingTools, wallExec } from "../src/tools/coding.ts";
 import { type CommandWall, solveDirs, walledBase } from "../src/tools/command.ts";
 import { walledEnv } from "../src/tools/env.ts";
+import { shellQuote } from "../src/wall/isolation.ts";
 import { osIsolationSupport } from "../src/wall/os-isolation.ts";
 import { claimRoot } from "../src/wall/seat-root.ts";
+
+const REGISTRATION_WALL: CommandWall = {
+  // SAFETY: making registrations never reads the policy or starts a command.
+  base: undefined as never,
+  dirs: solveDirs("definitions"),
+  toolTree: null,
+  limits: { shellDefaultSeconds: 1, shellMaxSeconds: 2 },
+};
 
 function caller(wall: CommandWall, env: ExecutionEnv) {
   const tools = new Map(codingTools(wall, CODING_TOOLS).map((each) => [each.name, each]));
@@ -99,14 +109,7 @@ async function stopped(path: string) {
 
 describe("the solver's durable coding tools", () => {
   it("keeps durable's file schemas and descriptions and makes every call sequential", () => {
-    const wall: CommandWall = {
-      // SAFETY: making registrations never reads the policy or starts a command.
-      base: undefined as never,
-      dirs: solveDirs("definitions"),
-      toolTree: null,
-      limits: { shellDefaultSeconds: 1, shellMaxSeconds: 2 },
-    };
-    const ours = codingTools(wall, ["read", "edit", "write"]);
+    const ours = codingTools(REGISTRATION_WALL, ["read", "edit", "write"]);
     const images = { prepare: async () => undefined };
     for (const [index, pi] of [createReadTool({ images }), createEditTool(), createWriteTool()].entries()) {
       expect(ours[index]?.name).toBe(pi.name);
@@ -114,6 +117,25 @@ describe("the solver's durable coding tools", () => {
       expect(ours[index]?.parameters).toEqual(pi.parameters);
       expect(ours[index]?.executionMode).toBe("sequential");
     }
+  });
+
+  it("declares /bin/sh and POSIX syntax in the bash description", () => {
+    const [bash] = codingTools(REGISTRATION_WALL, ["bash"]);
+    expect(bash?.name).toBe("bash");
+    expect(bash?.description).toContain("/bin/sh");
+    expect(bash?.description).toMatch(/POSIX.*syntax/i);
+  });
+
+  it("declares /bin/sh and POSIX syntax in the command parameter", () => {
+    const [bash] = codingTools(REGISTRATION_WALL, ["bash"]);
+    expect(bash?.parameters).toMatchObject({
+      properties: {
+        command: {
+          type: "string",
+          description: expect.stringMatching(/\/bin\/sh.*POSIX.*syntax/i),
+        },
+      },
+    });
   });
 
   it("selects the declared presets in pi's order", () => {
@@ -124,6 +146,24 @@ describe("the solver's durable coding tools", () => {
 });
 
 describe.skipIf(!osIsolationSupport().ok)("the coding tools on the OS wall", () => {
+  it("matches native /bin/sh for POSIX syntax and process substitution", async () => {
+    await withSeat(async (wall, call) => {
+      for (const command of [String.raw`printf '%s\n' sh-ok`, String.raw`cat <(printf '%s\n' bash-ok)`]) {
+        const control = await wallExec(wall)(`/bin/sh -c ${shellQuote(command)}`);
+        const result = await call("bash", { command });
+        expect(result.structuredOutput).toMatchObject({
+          exitCode: control.exitCode,
+          output: control.output.toString("utf8"),
+        });
+        expect(result.isError === true).toBe(control.exitCode !== 0);
+        if (command.startsWith("printf")) {
+          expect(control.exitCode).toBe(0);
+          expect(result.text).toBe("sh-ok\n");
+        }
+      }
+    });
+  });
+
   it("shares the home across tools and resolves ~ to the seat rather than the host", async () => {
     await withSeat(async (wall, call) => {
       const tools = codingTools(wall, ["write", "bash", "read"]);

@@ -1,26 +1,18 @@
 /**
  * `.githooks/pre-push` run as Git runs it, over real commits in a fixture repository, with Bun
  * replaced only at the gate's steps (`test/helpers/fake-bun.ts`). The hook, `tools/runtime/pre-push.ts`
- * and the gate's choice of steps and nearby tests are the real ones, so a case reads which commits
- * were gated, with which pass, and what each pass's test step ran. Nothing is pushed anywhere: the
- * hook is handed the ref lines Git would hand it.
+ * and the gate's choice of steps are the real ones, so a case reads which heads were checked and
+ * with which steps. Nothing is pushed anywhere: the hook is handed the ref lines Git would hand it.
+ * What a pass runs beyond the hook's checks is `test/gate.test.ts`'s.
  */
-import {
-  appendFileSync,
-  cpSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "../src/meta/filesystem.ts";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 
 import { afterAll, beforeEach, describe, expect, it } from "bun:test";
 
 import { execTextSync, spawnTextSync } from "./helpers/bun-spawn-sync.ts";
-import { fakeBun, gatesRun } from "./helpers/fake-bun.ts";
+import { fakeBun, gatesRun, logLines } from "./helpers/fake-bun.ts";
 
 const hook = join(import.meta.dir, "..", ".githooks", "pre-push");
 const fixture = mkdtempSync(join(tmpdir(), "ana-pre-push-"));
@@ -29,6 +21,13 @@ const bin = join(fixture, "bin");
 const log = join(fixture, "gates.log");
 const fake = (mkdirSync(bin), fakeBun(bin, log));
 const absent = "0".repeat(40);
+const CHECKS = [
+  "install --frozen-lockfile",
+  "run format:check",
+  "run typecheck",
+  "run lint -- --strict",
+  "run simplify",
+];
 
 const git = (...args: string[]): string => execTextSync("git", args, { cwd: work }).trim();
 function commit(file: string, text: string, message: string): string {
@@ -46,6 +45,12 @@ const withFile = (from: string, name: string, text = name): string =>
     stdin: `${[git("ls-tree", from), `100644 blob ${blob(text)}\t${name}`].filter((row) => row !== "").join("\n")}\n`,
   }).trim();
 const short = (sha: string): string => sha.slice(0, 9);
+/** The steps the fake saw run over one commit's checkout. */
+const stepsOver = (sha: string): string[] =>
+  logLines(log).flatMap((row) => {
+    const [at = "", args = ""] = row.split("\t");
+    return at === sha ? [args] : [];
+  });
 
 mkdirSync(join(work, "src"), { recursive: true });
 mkdirSync(join(work, "test"));
@@ -67,8 +72,8 @@ git("update-ref", "refs/remotes/origin/main", base);
 
 afterAll(() => rmSync(fixture, { recursive: true, force: true }));
 
-function push(updates: readonly string[], env: Record<string, string> = {}, by = hook) {
-  return spawnTextSync("sh", [by, "origin", "fixture-remote"], {
+function push(updates: readonly string[], env: Record<string, string> = {}) {
+  return spawnTextSync("sh", [hook, "origin", "fixture-remote"], {
     cwd: work,
     stdin: `${updates.join("\n")}\n`,
     env: { ...Bun.env, ANA_GATE_FRESH: "", ...fake, ...env },
@@ -76,22 +81,6 @@ function push(updates: readonly string[], env: Record<string, string> = {}, by =
 }
 const update = (local: string, remote: string, branch = "topic"): string =>
   `refs/heads/${branch} ${local} refs/heads/${branch} ${remote}`;
-const forgetPasses = (): void => rmSync(join(work, ".git", "ana-gate-passed"), { force: true });
-/**
- * Another push under way, which publishes `head` as `below` once this push's hook has begun to wait
- * for it: the hook writes its own lock file, and reads the held one at once. Until 20 October it
- * published after a fixed two seconds, and a hook slower than that to start found it gone.
- * Detached, so that the host reaps it as it would a finished `git push`, and no zombie of it stays.
- */
-const otherPush = (head: string): string =>
-  execTextSync(
-    "sh",
-    [
-      "-c",
-      `(i=0; until ls .git/ana-pre-push.lock.* || [ $i -ge 400 ]; do i=$((i+1)); sleep 0.05; done; sleep 0.3; git update-ref refs/remotes/origin/below ${head}) >/dev/null 2>&1 & echo $!`,
-    ],
-    { cwd: work },
-  ).trim();
 
 /** The same patches as `source` and `second`, on a trunk that has since changed: what a rebase replaced. */
 function oldCopies() {
@@ -102,25 +91,24 @@ function oldCopies() {
   return { oldSource, oldSecond };
 }
 
-/** A line with no history in common with this one: what another repository's commits look like. */
+/** A line with no history in common with this one, its middle commit's file ending in a space. */
 function foreignLine(): string[] {
   const first = git("commit-tree", withFile(git("mktree"), "v2-a.txt"), "-m", "v2 a");
-  const middle = git("commit-tree", withFile(first, "v2-b.txt"), "-p", first, "-m", "v2 b");
+  const middle = git("commit-tree", withFile(first, "v2-b.txt", "spaced \n"), "-p", first, "-m", "v2 b");
   return [first, middle, git("commit-tree", withFile(middle, "v2-c.txt"), "-p", middle, "-m", "v2 c")];
 }
 
 beforeEach(() => {
   rmSync(log, { force: true });
-  rmSync(join(work, ".git", "ana-pre-push.lock"), { force: true });
-  forgetPasses();
+  rmSync(join(work, ".git", "ana-gate-passed"), { force: true });
 });
 
 describe("pre-push", () => {
-  it("checks a documentation-only update with git diff --check and runs no gate", () => {
+  it("checks a documentation-only update with git diff --check and runs no gate step", () => {
     const result = push([update(docs, base)]);
     expect(result.status).toBe(0);
     expect(result.stderr).toContain(
-      "documentation only: git diff --check passed on 1 commit, and no gate runs.",
+      "documentation only: git diff --check and the secret scan passed on 1 commit.",
     );
     expect(gatesRun(log)).toEqual([]);
   });
@@ -141,192 +129,70 @@ describe("pre-push", () => {
     expect(gatesRun(log)).toEqual([]);
   });
 
-  it("gives each earlier new commit its static steps and nearby tests, and the pushed head the whole gate", () => {
+  it("refuses a source push whose diff check fails below the head, before any step runs", () => {
+    const unclean = git("commit-tree", withFile(docs, "spaced.ts", "x \n"), "-p", docs, "-m", "spaced");
+    const head = git("commit-tree", withFile(unclean, "c.ts"), "-p", unclean, "-m", "head");
+    const result = push([update(head, docs)]);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(`git diff --check fails on ${short(unclean)}. Nothing was pushed.`);
+    expect(gatesRun(log)).toEqual([]);
+  });
+
+  it("refuses a push that adds a credential-shaped literal, documentation included, before any step runs", () => {
+    const key = ["AKIA", "5J3KLMNOPQRSTUVW"].join("");
+    const leaked = git(
+      "commit-tree",
+      withFile(docs, "NOTES.md", `aws: "${key}"\n`),
+      "-p",
+      docs,
+      "-m",
+      "notes",
+    );
+    const head = git("commit-tree", withFile(leaked, "c.ts"), "-p", leaked, "-m", "head");
+    const result = push([update(head, docs)]);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("NOTES.md:1: ");
+    expect(result.stderr).toContain(
+      "the secret scan found a credential-shaped literal in what this push adds.",
+    );
+    expect(gatesRun(log)).toEqual([]);
+  });
+
+  it("gives the pushed head every step but the tests over its own checkout, and prints the census count", () => {
     const result = push([update(second, docs)]);
     expect(result.status).toBe(0);
-    expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`, `${second} suite`]);
-    const steps = readFileSync(log, "utf8")
-      .split("\n")
-      .filter((line) => line.startsWith(source));
-    expect(steps.map((line) => line.split("\t")[1])).toEqual([
-      "install --frozen-lockfile",
-      "run format:check",
-      "run typecheck",
-      "run lint -- --strict",
-      "run test -- test/owner.test.ts",
-    ]);
+    expect(result.stderr).toContain(`pre-push: ${short(second)}: simplify census: no count printed;`);
+    expect(gatesRun(log)).toEqual([`${second} -`]);
+    expect(stepsOver(second)).toEqual(CHECKS);
+    expect(stepsOver(source)).toEqual([]);
   });
 
-  it("runs the UI's own gate after the install in a tree that holds the UI", () => {
-    const tree = (rows: string): string => execTextSync("git", ["mktree"], { cwd: work, stdin: rows }).trim();
-    const ui = tree(`100644 blob ${blob("{}\n")}\tpackage.json\n`);
-    const packages = tree(`040000 tree ${ui}\tui\n`);
-    const held = git(
-      "commit-tree",
-      tree(`${git("ls-tree", second)}\n040000 tree ${packages}\tpackages\n`),
-      "-p",
-      second,
-      "-m",
-      "the UI",
-    );
-    const result = push([update(held, second)]);
-    expect(result.status).toBe(0);
-    const steps = readFileSync(log, "utf8")
-      .split("\n")
-      .filter((line) => line.startsWith(held));
-    expect(steps.map((line) => line.split("\t")[1]).slice(0, 2)).toEqual([
-      "install --frozen-lockfile",
-      "run ui:gate",
-    ]);
-  });
-
-  it("runs the UI's whole gate over the UI, its tests within three imports over what it imports, and nothing over the rest", () => {
-    const tree = (rows: readonly string[]): string =>
-      execTextSync("git", ["mktree"], { cwd: work, stdin: `${rows.join("\n")}\n` }).trim();
-    const file = (name: string, text: string): string => `100644 blob ${blob(text)}\t${name}`;
-    const lines = (text: string): string[] => text.split("\n").filter((row) => row !== "");
-    const into = (from: string, name: string, sub: string): string =>
-      tree([
-        ...lines(git("ls-tree", from)).filter((row) => !row.endsWith(`\t${name}`)),
-        `040000 tree ${sub}\t${name}`,
-      ]);
-    // Three imports from `deep.test.ts` to `src/b.ts`, four from `far.test.ts`, one from the browser's.
-    const tests = tree([
-      file("browser-page.test.ts", 'import "../../../src/b.ts";\n'),
-      file("deep.test.ts", 'import "./h1.ts";\n'),
-      file("h1.ts", 'import "./h2.ts";\n'),
-      file("h2.ts", 'import "../../../src/b.ts";\n'),
-      file("far.test.ts", 'import "./f1.ts";\n'),
-      file("f1.ts", 'import "./f2.ts";\n'),
-      file("f2.ts", 'import "./f3.ts";\n'),
-      file("f3.ts", 'import "../../../src/b.ts";\n'),
-    ]);
-    const ui = tree([file("package.json", "{}\n"), `040000 tree ${tests}\ttest`]);
-    const held = git(
-      "commit-tree",
-      into(second, "packages", tree([`040000 tree ${ui}\tui`])),
-      "-p",
-      second,
-      "-m",
-      "the UI",
-    );
-    const away = git("commit-tree", withFile(held, "c.ts"), "-p", held, "-m", "away from the UI");
-    const src = tree([
-      ...lines(git("ls-tree", `${away}:src`)).filter((row) => !row.endsWith("\tb.ts")),
-      file("b.ts", "export const b = 3;\n"),
-    ]);
-    const imported = git("commit-tree", into(away, "src", src), "-p", away, "-m", "what the UI imports");
-    const head = git("commit-tree", withFile(imported, "d.ts"), "-p", imported, "-m", "head");
-    const ran = (sha: string): string[] =>
-      readFileSync(log, "utf8")
-        .split("\n")
-        .filter((row) => row.startsWith(sha))
-        .map((row) => row.split("\t")[1] ?? "");
-    const near = (...names: string[]): string[] => [
-      "run ui:deps",
-      "run ui:build",
-      `run test -- ${names.map((name) => `packages/ui/test/${name}`).join(" ")}`,
-    ];
-    try {
-      // Main before the UI: the commit that brings it and the head run its whole gate; a static
-      // pass over a change to what it imports runs the tests near it but the browser's; a commit
-      // that changes nothing it reads runs no UI step.
-      expect(push([update(head, second)]).status).toBe(0);
-      expect(ran(held)[1]).toBe("run ui:gate");
-      expect(ran(away)[1]).toBe("run format:check");
-      expect(ran(imported).slice(1, 4)).toEqual(near("deep.test.ts"));
-      expect(ran(head)[1]).toBe("run ui:gate");
-      // Main holding the UI: a whole pass over the same change runs the browser's file too.
-      git("update-ref", "refs/remotes/origin/main", away);
-      rmSync(log, { force: true });
-      forgetPasses();
-      expect(push([update(head, away)]).status).toBe(0);
-      expect(ran(head).slice(1, 4)).toEqual(near("browser-page.test.ts", "deep.test.ts"));
-      // Main holding the change: a whole pass over a head that leaves what the UI reads alone.
-      git("update-ref", "refs/remotes/origin/main", imported);
-      rmSync(log, { force: true });
-      forgetPasses();
-      expect(push([update(head, imported)]).status).toBe(0);
-      expect(ran(head)[1]).toBe("run format:check");
-    } finally {
-      git("update-ref", "refs/remotes/origin/main", base);
-    }
-  });
-
-  it("runs nothing again that passed on these exact bytes", () => {
-    push([update(second, docs)]);
-    rmSync(log, { force: true });
-    const again = push([update(second, docs)]);
-    expect(again.status).toBe(0);
-    expect(again.stderr.match(/passed earlier on these exact bytes/gu)).toHaveLength(2);
-    expect(gatesRun(log)).toEqual([]);
-  });
-
-  it("runs nothing again over a restack that kept each tree and its parent's, and runs a commit whose parent's tree moved", () => {
-    push([update(second, docs)]);
-    rmSync(log, { force: true });
-    const tree = (at: string): string => git("rev-parse", `${at}^{tree}`);
-    // A restack: new ids and messages over the same bytes.
-    const sourceAgain = git("commit-tree", tree(source), "-p", docs, "-m", "source, restacked");
-    const secondAgain = git("commit-tree", tree(second), "-p", sourceAgain, "-m", "second, restacked");
-    expect(push([update(secondAgain, docs)]).status).toBe(0);
-    expect(gatesRun(log)).toEqual([]);
-    // The same tree over a parent whose tree moved: its static pass reads another diff.
-    const moved = git("commit-tree", withFile(docs, "moved.txt"), "-p", docs, "-m", "moved");
-    const sourceMoved = git("commit-tree", tree(source), "-p", moved, "-m", "source over moved");
-    const secondMoved = git("commit-tree", tree(second), "-p", sourceMoved, "-m", "second over moved");
-    expect(push([update(secondMoved, docs)]).status).toBe(0);
-    expect(gatesRun(log)).toEqual([`${moved} -`, `${sourceMoved} test/owner.test.ts`]);
-  });
-
-  it("runs a tree again once a file the gate imports changed, and not for a neighbour it never imports", () => {
-    // A copy of the checker as a caller's checkout holds it: the hook, the gate and what it imports.
-    const checker = join(fixture, "checker");
-    const parts = [".githooks/pre-push", "tools/runtime", "src/meta"];
-    for (const part of parts) {
-      cpSync(join(import.meta.dir, "..", part), join(checker, part), { recursive: true });
-    }
-    const by = join(checker, ".githooks", "pre-push");
-    expect(push([update(second, docs)], {}, by).status).toBe(0);
-    rmSync(log, { force: true });
-    expect(push([update(second, docs)], {}, by).status).toBe(0);
-    expect(gatesRun(log)).toEqual([]);
-    appendFileSync(join(checker, "tools", "runtime", "lint.ts"), "\n// a step the target runs as its own\n");
-    expect(push([update(second, docs)], {}, by).status).toBe(0);
-    expect(gatesRun(log)).toEqual([]);
-    appendFileSync(join(checker, "src", "meta", "subprocess.ts"), "\n// the gate's import, changed\n");
-    expect(push([update(second, docs)], {}, by).status).toBe(0);
-    expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`, `${second} suite`]);
-  });
-
-  it("reads no pass recorded by commit id, which names no gate", () => {
-    writeFileSync(join(work, ".git", "ana-gate-passed"), `${source} whole\n${second} whole\n`);
-    expect(push([update(second, docs)]).status).toBe(0);
-    expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`, `${second} suite`]);
-  });
-
-  it("runs every commit again under ANA_GATE_FRESH=1, whatever passed before", () => {
-    push([update(second, docs)]);
-    rmSync(log, { force: true });
-    expect(push([update(second, docs)], { ANA_GATE_FRESH: "1" }).status).toBe(0);
-    expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`, `${second} suite`]);
-  });
-
-  it("stops at the commit that fails, prints where its fix goes, and ends on the failing step", () => {
-    const result = push([update(second, docs)], { ANA_FAKE_FAIL: `${source} lint` });
+  it("refuses a push whose head fails the strict lint, and names the step and its log", () => {
+    const result = push([update(second, docs)], { ANA_FAKE_FAIL: `${second} lint` });
     expect(result.status).toBe(1);
-    expect(gatesRun(log)).toEqual([`${source} -`]);
-    expect(result.stderr).toContain(`git commit --fixup=${short(source)}`);
     const last = result.stderr.trimEnd().split("\n").at(-1) ?? "";
-    expect(last).toStartWith(`pre-push: ${short(source)} FAILS lint ON ITS OWN. Nothing was pushed. Log: `);
+    expect(last).toStartWith(`pre-push: ${short(second)} FAILS lint. Nothing was pushed. Log: `);
     expect(readFileSync(last.slice(last.indexOf("Log: ") + 5), "utf8")).toContain(
       "gate: step lint failed (exit 1)",
     );
-    // The commits beneath a fix keep their passes; this one has none to keep.
-    expect(push([update(second, docs)]).stderr).not.toContain("passed earlier");
   });
 
-  it("publishes a push that only deletes without a gate", () => {
+  it("publishes a push whose head would fail a test, since no test runs", () => {
+    const result = push([update(second, docs)], { ANA_FAKE_FAIL: `${second} test` });
+    expect(result.status).toBe(0);
+    expect(stepsOver(second).some((args) => args.startsWith("run test"))).toBe(false);
+  });
+
+  it("runs nothing again over a tree whose checks passed", () => {
+    expect(push([update(second, docs)]).status).toBe(0);
+    rmSync(log, { force: true });
+    const again = push([update(second, docs)]);
+    expect(again.status).toBe(0);
+    expect(again.stderr).toContain("passed earlier on these exact bytes");
+    expect(gatesRun(log)).toEqual([]);
+  });
+
+  it("publishes a push that only deletes without a check", () => {
     const result = push([`(delete) ${absent} refs/heads/topic ${second}`]);
     expect(result.status).toBe(0);
     expect(result.stderr).toContain("every update is a deletion");
@@ -335,73 +201,39 @@ describe("pre-push", () => {
   it("reads a new branch against what the clone's remote-tracking refs already hold", () => {
     const result = push([update(second, absent, "fresh")]);
     expect(result.status).toBe(0);
-    expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`, `${second} suite`]);
+    expect(result.stderr).toContain("git diff --check and the secret scan passed on 3 commits");
+    expect(gatesRun(log)).toEqual([`${second} -`]);
   });
 
-  // The other push is a process that publishes `source` as it ends, as `git push` updates its refs.
-  it("waits for a push under way, then gates only what that push did not publish", () => {
-    const lock = join(work, ".git", "ana-pre-push.lock");
-    const other = otherPush(source);
-    const started = execTextSync("ps", ["-o", "lstart=", "-p", other]).trim();
-    writeFileSync(lock, `${other}\n${started}`);
-    const result = push([update(second, absent, "above")]);
-    git("update-ref", "-d", "refs/remotes/origin/below");
-    expect(result.status).toBe(0);
-    expect(result.stderr).toContain(`waiting for the push of process ${other}`);
-    expect(gatesRun(log)).toEqual([`${second} suite`]);
-  });
-
-  // The other push replaces `below`'s head `source` with a rewritten copy, as a fixup and force-push do.
-  it("refuses a push stacked on a head the push before it replaced, with the line that restacks it", () => {
-    const rewritten = git("commit-tree", withFile(source, "fixup.txt"), "-p", docs, "-m", "source, amended");
-    const other = otherPush(rewritten);
-    const started = execTextSync("ps", ["-o", "lstart=", "-p", other]).trim();
-    writeFileSync(
-      join(work, ".git", "ana-pre-push.lock"),
-      `${other}\n${started}\nrefs/heads/below ${rewritten} refs/heads/below ${source}`,
-    );
-    const result = push([update(second, absent, "above")]);
-    git("update-ref", "-d", "refs/remotes/origin/below");
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain(`is stacked on refs/heads/below at ${short(source)}`);
-    expect(result.stderr).toContain(`git rebase --onto ${rewritten} ${source}`);
-    expect(gatesRun(log)).toEqual([]);
-  });
-
-  it("takes over a lock whose process is gone, or whose id another process now holds", () => {
-    const lock = join(work, ".git", "ana-pre-push.lock");
-    for (const held of [
-      "999999\nThu Jan  1 00:00:00 1970",
-      `${String(process.ppid)}\nThu Jan  1 00:00:00 1970`,
-    ]) {
-      writeFileSync(lock, held);
-      const result = push([update(second, absent, "fresh")]);
+  it("checks nothing for a push of what the remote already holds", () => {
+    git("update-ref", "refs/remotes/origin/topic", second);
+    try {
+      const result = push([update(second, absent)]);
       expect(result.status).toBe(0);
-      expect(result.stderr).not.toContain("waiting for the push");
+      expect(result.stderr).toContain("nothing this push adds is new to the remote");
+      expect(gatesRun(log)).toEqual([]);
+    } finally {
+      git("update-ref", "-d", "refs/remotes/origin/topic");
     }
   });
 
-  it("runs no gate for a push that only replays what the remote held", () => {
-    const result = push([update(second, oldCopies().oldSecond)]);
-    expect(result.status).toBe(0);
-    expect(result.stderr).toContain("replays of commits the remote already held: 3.");
-    expect(result.stderr).toContain("nothing this push adds is new work, so no gate runs.");
-    expect(gatesRun(log)).toEqual([]);
-  });
-
-  // An edit to the lower pull request changes its commit's patch and replays the one above it.
-  it("gives the whole gate to the pushed head holding the newest edit, and none to the replays above", () => {
+  // A restack pushes every moved head at once; the lower heads' trees are the land proof's.
+  it("checks only the pushed heads no other pushed head holds", () => {
     const { oldSource, oldSecond } = oldCopies();
     const edited = git("commit-tree", withFile(source, "extra.ts"), "-p", docs, "-m", "source");
     const replayed = git("commit-tree", withFile(second, "extra.ts"), "-p", edited, "-m", "second");
-    const result = push([update(edited, oldSource, "parent"), update(replayed, oldSecond)]);
+    const beside = git("commit-tree", withFile(source, "beside.ts"), "-p", source, "-m", "beside");
+    const result = push([
+      update(edited, oldSource, "parent"),
+      update(replayed, oldSecond),
+      update(beside, absent, "beside"),
+    ]);
     expect(result.status).toBe(0);
-    expect(result.stderr).toContain("replays of commits the remote already held: 2.");
-    expect(gatesRun(log)).toEqual([`${edited} suite`]);
+    expect(gatesRun(log)).toEqual([`${replayed} -`, `${beside} -`]);
   });
 
   // PR #141 brought v2's 393 commits in through one merge; v1's hook gated each of them.
-  it("gates the first-parent line of a merge that brings in another history, and none of that history", () => {
+  it("checks the first-parent line of a merge that brings in another history, and none of that history", () => {
     const [, , last = ""] = foreignLine();
     const merged = git(
       "commit-tree",
@@ -416,7 +248,7 @@ describe("pre-push", () => {
     const result = push([update(merged, absent, "v2")]);
     expect(result.status).toBe(0);
     expect(result.stderr).toContain("from a line made elsewhere: 3. The merge is gated; they are not.");
-    expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`, `${second} -`, `${merged} suite`]);
+    expect(gatesRun(log)).toEqual([`${merged} -`]);
   });
 
   it("leaves out a history another remote of this clone already holds", () => {
@@ -426,36 +258,9 @@ describe("pre-push", () => {
       const own = git("commit-tree", withFile(last, "own.ts"), "-p", last, "-m", "own");
       const result = push([update(own, absent, "imported")]);
       expect(result.status).toBe(0);
-      expect(gatesRun(log)).toEqual([`${own} suite`]);
+      expect(gatesRun(log)).toEqual([`${own} -`]);
     } finally {
       git("update-ref", "-d", "refs/remotes/v2/main");
     }
   });
-
-  // The wrapper prints its host-wall lines in colour, so the recorded shape begins with an escape.
-  const red = "\u001b[0m\u001b[31m";
-  const said: [string, string, string][] = [
-    [
-      "a host-wall rerun",
-      `${red}host-wall: 1 test(s) failed on time alone, none on an assertion; running their 1 file(s) again in one fresh process: test/two.test.ts`,
-      "still running after 0 min: 2 tests passed, 1 failed so far; 1 test(s) failed on time alone, none on an assertion, so the failed files are running again in one fresh process and that run decides.",
-    ],
-    [
-      "a host-wall error, which keeps the failures",
-      `${red}host-wall: error: the host reached a load average of 20.0 on 8 cores, but 1 file(s) printed no result at all: test/two.test.ts`,
-      "still running after 0 min: 2 tests passed, 1 failed so far.\n",
-    ],
-  ];
-  for (const [name, wall, pulse] of said) {
-    it(`names each pass's log and pulses what the test wrapper said after ${name}`, () => {
-      const result = push([update(source, docs)], {
-        ANA_FAKE_SUITE: `(pass) one\n(fail) two\n${wall}\n(pass) two`,
-        ANA_GATE_PULSE_SECONDS: "1",
-      });
-      expect(result.status).toBe(0);
-      const named = /Log: (\/\S+\.log)/u.exec(result.stderr)?.[1] ?? "";
-      expect(readFileSync(named, "utf8")).toContain("(pass) two");
-      expect(result.stderr).toContain(`pre-push: ${short(source)} ${pulse}`);
-    }, 20_000);
-  }
 });

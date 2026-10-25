@@ -4,10 +4,12 @@
  *
  *   bun run land -- <pull request> [--sanitize | --merge] [--jobs N]
  *
- * A push gates only what it adds: a commit whose patch the remote already held is a replay, and the
- * pre-push hook leaves it alone. So this is where every commit along the top's first parents above
- * main is proved over its own checkout: the static steps and its nearby tests, and the whole gate on
- * the top's head (`tools/runtime/gate.ts`), each pass already recorded skipped. The stack is read
+ * A push runs no test: the pre-push hook runs every other step of the gate over the pushed head
+ * (`tools/runtime/pre-push.ts`), so a pushed commit is unproved until it lands here. This is where
+ * every commit along the top's first parents above main is proved over its own checkout: the static
+ * steps and its nearby tests, and the whole gate, the full suite among it, on the top's head
+ * (`tools/runtime/gate.ts`), each pass already recorded skipped. `--sanitize` runs that proof when
+ * its author judges the stack ready, without merging. The stack is read
  * from GitHub as v2's stack-pr reads it, each pull request's base the head of the one beneath it, and
  * the bottom must be based on main. Each head must contain the one beneath it and the bottom main's
  * head, so the last merge leaves main at exactly the top's tree, which is the tree the whole gate
@@ -37,6 +39,12 @@
  * them by hand, before it could land. A lone pull request beside the landing is cheap to replay and
  * is left alone.
  *
+ * Every pull request of the landing carries exactly one importance label, `importance:I0` to
+ * `importance:I3`, which the operator ranks the stack by; since 25 October a title carries no "Ix:"
+ * prefix in its place. A landing in which any lacks one or carries two is refused before anything is
+ * gated, in every mode, so `--sanitize` too shows a stack that is not ready, and the refusal names
+ * each such pull request (`checkImportance`).
+ *
  * A failure names the commit and the pull request it sits on. Its fix goes into that commit, the
  * pull requests above it are replayed on it (stack-pr, section 8), and a second landing runs only
  * what the replay moved. `--jobs N` gates up to N commits at once; the top's whole gate runs alone.
@@ -54,6 +62,7 @@ export interface Pull {
   readonly baseRefName: string;
   readonly headRefOid: string;
   readonly isDraft: boolean;
+  readonly labels: readonly { readonly name: string }[];
 }
 
 interface Landing {
@@ -82,6 +91,8 @@ const CI_WAIT_MS = 75 * 60_000;
  *  second. ANA_CI_POLL_MS shortens the poll for the tests as for `ci.yml`. */
 const STACK_POLL_MS = Number(runtimeProcess.env.ANA_CI_POLL_MS) || 2000;
 const STACK_WAIT_MS = 10 * 60_000;
+/** The labels that rank a pull request's importance; each of a landing carries exactly one. */
+const IMPORTANCE = /^importance:I[0-3]$/u;
 const USAGE = "usage: bun run land -- <pull request> [--sanitize | --merge] [--jobs N]";
 
 class Refusal extends Error {}
@@ -117,7 +128,7 @@ export const openPulls = (root: string): Pull[] =>
       "--limit",
       "200",
       "--json",
-      "number,headRefName,baseRefName,headRefOid,isDraft",
+      "number,headRefName,baseRefName,headRefOid,isDraft,labels",
     ]),
   );
 
@@ -157,6 +168,23 @@ function readLanding(root: string, target: number): Landing {
       open.some((above) => above.baseRefName === pull.headRefName),
   );
   return { trunk, trunkSha, pulls, beside };
+}
+
+/** Refuses a landing in which a pull request carries no importance label, or more than one. */
+function checkImportance(landing: Landing): void {
+  const unranked = landing.pulls.flatMap((pull) => {
+    const ranks = pull.labels.map((label) => label.name).filter((name) => IMPORTANCE.test(name));
+    if (ranks.length === 1) return [];
+    return [
+      `#${String(pull.number)} carries ${ranks.length === 0 ? "no importance label" : ranks.join(" and ")}`,
+    ];
+  });
+  if (unranked.length > 0) {
+    throw new Refusal(
+      `${unranked.join("; ")}. Give each pull request exactly one of importance:I0 to importance:I3 ` +
+        `(gh pr edit <number> --add-label importance:I2), and land again.`,
+    );
+  }
 }
 
 /** The last merge has the top's tree only when each head contains the one beneath it, down to the
@@ -436,6 +464,7 @@ async function main(argv: readonly string[]): Promise<number> {
   const root = git(runtimeProcess.cwd(), ["rev-parse", "--show-toplevel"]);
   try {
     const landing = readLanding(root, target);
+    checkImportance(landing);
     checkChain(root, landing);
     // SAFETY: readLanding's chain ends with the named pull request.
     const top = landing.pulls.at(-1) as Pull;

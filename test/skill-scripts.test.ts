@@ -34,6 +34,7 @@ const pull = (number: number, head: string, base: string): Pull => ({
   baseRefName: base,
   headRefOid: String(number).repeat(40).slice(0, 40),
   isDraft: false,
+  labels: [],
 });
 
 describe("the stack", () => {

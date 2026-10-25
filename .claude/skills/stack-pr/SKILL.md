@@ -1,6 +1,6 @@
 ---
 name: stack-pr
-description: "Put a change on the one open stack of Anabasis v2 pull requests: find the real top, keep local work while moving to it, decide between appending and a new pull request, shape commits that each pass alone, run the checks CI runs (by hand where the runners do not), publish through the gating pre-push hook, write the body, repair your own children when a parent moves, and land a stack with `bun run land`. Use when asked to open, append to, stack, restack, rebase, hop to the latest head, sanitize or land a pull request, or when a push, a hook or a base refuses. v1's stack-hop and setup-pr in one."
+description: "Put a change on the one open stack of Anabasis v2 pull requests: find the real top, keep local work while moving to it, decide between appending and a new pull request, shape commits that each pass alone, run the checks CI runs (by hand where the runners do not), publish through the checking pre-push hook, prove the stack with `bun run land -- <top> --sanitize`, write the body, repair your own children when a parent moves, and land a stack with `bun run land`. Use when asked to open, append to, stack, restack, rebase, hop to the latest head, sanitize or land a pull request, or when a push, a hook or a base refuses. v1's stack-hop and setup-pr in one."
 ---
 
 # Stack a pull request
@@ -159,37 +159,37 @@ git push --force-with-lease=refs/heads/<branch>:<old-sha> origin <sha>:refs/head
 ```
 
 Over HTTPS, `git push origin HEAD:refs/heads/<branch>` lets the remote helper resolve `HEAD` again
-after the pre-push hook read it. A commit made in that tree while the gate ran can then go out
-unproved. An explicit commit keeps the published head equal to the one the hook read (20 October).
+after the pre-push hook read it. A commit made in that tree while the checks ran can then go out
+unchecked. An explicit commit keeps the published head equal to the one the hook read (20 October).
 When committing and pushing in one shell command, chain them with `&&`. With `;`, a failed commit
 still pushes the previous head (20 October).
 
 Read a refusal and correct its cause within your authority. Never pass `--no-verify`, and never
 push to `main`.
 
-The pre-push hook gates what the push adds, over a scratch checkout of each commit, so the
-working tree may hold anything. What it adds is the commits along each pushed head's first
-parents that no remote-tracking ref of the clone holds. Of those, a commit whose patch the
-replaced branch held is a replay a rebase carried, and `bun run land` proves it where it sits; a
-commit changing only `AGENTS.md`, `README.md`, `docs/` or a `.md` under `.claude/` is
-documentation; every other gets the static steps and its nearby tests, and the lowest pushed head
-holding the newest of them the whole gate. A push of documentation alone gets `git diff --check`.
-A history brought in through a merge's other parent is counted and left alone, and the merge is
-gated: 444 of v2's commits came into this repository that way on 11 October, and v1's hook, which
+The pre-push hook runs every check but the tests. What a push adds is the commits along each
+pushed head's first parents that no remote-tracking ref of the clone holds; each gets
+`git diff --check`, and what each pushed head that no other pushed head holds adds gets the secret
+scan. Where one of them changes more than `AGENTS.md`, `README.md`, `docs/` or a `.md` under
+`.claude/`, each such head gets `bun run gate -- --checks` over a scratch checkout: the install, the
+UI's install and build, the format check, typecheck, strict lint, and the simplify census, whose
+count it prints and which gates nothing. The working tree may hold anything. A
+history brought in through a merge's other parent is counted and left alone, and the merge is
+checked: 444 of v2's commits came into this repository that way on 11 October, and v1's hook, which
 gated every commit new to the remote, could not pass one of them. To push another repository's
 history as a branch of its own, fetch it as a remote first, so that its commits are already held.
 
-One push of the clone runs at a time (`queue`): push a pull request above one still at its gate,
-and it waits, then gates only its own commits, since the one beneath is the remote's by then. Where
-that push rewrote the branch beneath, yours is refused with the `git rebase --onto` that restacks it.
-A pass is remembered by content in the common Git directory, a whole pass by the commit's tree and a
+**A pushed commit is unproved.** Its tests run when the stack is proved: `bun run land -- <top>
+--sanitize` (section 9) gives every commit its static steps and nearby tests and the top the whole
+gate, the full suite among it, and posts each verdict. Run it when the stack is worth proving, such
+as after a restack or before asking for a merge; `--merge` runs the same proof again. A pass is
+remembered by content in the common Git directory, a whole or checks pass by the commit's tree and a
 static one by its tree and its parent's, so a push its lease refused or a restack that kept every
-tree goes out again without paying twice, and after a failure the commits beneath the fix keep their
-passes. The key also holds the gate that ran and the Bun version, so either changing runs it again.
-`ANA_GATE_FRESH=1` ignores remembered passes for the commits selected for proof; a rebase's replays
-are still left out before that selection.
-A failure ends on one line naming the commit and the step, with its log. The fix goes into that
-commit, and the push goes again:
+tree is not run again, and after a failure the commits beneath the fix keep their passes. The key
+also holds the gate that ran and the Bun version, so either changing runs it again.
+`ANA_GATE_FRESH=1` ignores remembered passes.
+A failure ends on one line naming the commit and the step, with its log. The fix goes into the
+commit that brought it, and the push or the landing goes again:
 
 ```sh
 git commit --fixup=<sha>
@@ -197,8 +197,16 @@ GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <sha>~1
 ```
 
 ```sh
-gh pr create --base <parent branch> --head <branch> --title "<title>" --body-file <file>
+gh pr create --base <parent branch> --head <branch> --title "<title>" --body-file <file> --label importance:I<n>
 ```
+
+Every pull request carries exactly one importance label, defined in the repository's labels:
+`importance:I0` blocks a release or further operation, `I1` protects comparison validity or prevents
+a serious run failure, `I2` is a bounded functional improvement, and `I3` is reporting, wording or
+convenience. The title carries no "Ix:" prefix; the label replaced it on 25 October. `bun run land`
+refuses a stack in which any pull request has no importance label or more than one, naming each,
+before it gates anything, so `--sanitize` shows such a stack as not ready (`gh pr edit <number>
+--add-label importance:I<n>` repairs it).
 
 The operator's title is used word for word. Otherwise, name the changed behaviour in a short
 imperative sentence, such as "Let the host wait for Examiner admission results" or "Reuse gate
@@ -284,10 +292,10 @@ bun run land -- <top> --merge         # and wait for ci.yml, post ana/stack-gate
 It reads the chain of bases from the named pull request down to `main` and refuses a head that
 does not contain the one beneath it, or a bottom that does not contain `main`'s head: only then
 does the last merge leave `main` at exactly the top's tree. Then it proves every commit along the
-top's first parents above `main`, the replays the pre-push left among them, each over its own
-checkout: the static steps and nearby tests, and the whole gate on the top's head. A pass already
-recorded is not run again. `--jobs N` runs up to N static passes at once; the whole gate runs
-alone.
+top's first parents above `main`, each over its own checkout: the static steps and nearby tests,
+and the whole gate, the full suite among it, on the top's head (`land.ts`, where it builds the
+proofs). A pass already recorded is not run again. `--jobs N` runs up to N static passes at once;
+the whole gate runs alone.
 
 A failure names the commit and the pull request it sits on. Fold the fix into that commit, replay
 the pull requests above it (section 8), push them together, and land again: the commits below the

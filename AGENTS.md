@@ -1430,7 +1430,7 @@ or recovery write (`pinFault`, `tools/d2/harness-builder.ts`).
 | `bun run test -- <paths...>` | The suite through its wrapper. Never bare `bun test` |
 | `bun run simplify` | The whole-tree scans, as a census to read |
 | `bun run not-slop` | The ledger of answered findings: status, `-- answer <id> "<why>"`, `-- prune` |
-| `bun run gate` | The gate in one command: a frozen install, the UI's own gate, the format check, typecheck, the strict lint and the suite. `-- --static` runs the tests one import away from what HEAD changed instead of the suite, and the UI's gate without its browser test files unless HEAD changed `packages/ui` |
+| `bun run gate` | The gate in one command: a frozen install, the UI's own gate, the format check, typecheck, the strict lint and the suite. `-- --static` runs the tests one import away from what HEAD changed instead of the suite, and the UI's gate without its browser test files unless HEAD changed `packages/ui`. `-- --checks` runs every step but the tests, the UI's install and build and the simplify census among them, as the pre-push hook does |
 | `bun run hooks:install` | Points this clone's `core.hooksPath` at `.githooks`, once; every worktree shares it |
 | `bun run commit:check` | What the pre-commit hook runs, also by hand: author email, format and lint of staged files, the slop report, the secret scan |
 | `bun run secrets` | The secret scan |
@@ -1443,24 +1443,25 @@ or recovery write (`pinFault`, `tools/d2/harness-builder.ts`).
 | `bun tools/loc/source-policy.ts` | The size and unused-export policy. No package script, CI job or hook runs it (`tools/oxlint/HABITS.md`, 12.10) |
 
 The gate is what CI runs, and `bun run gate` runs it: CI's two Darwin jobs in one command, cheapest
-step first. The strict lint fails on everything a plain one does, so it runs only once. Run it
-before any delivery that a push does not cover.
+step first. The strict lint fails on everything a plain one does, so it runs only once. A push runs
+none of its tests, so run it, or `bun run land -- <top> --sanitize`, before any delivery that
+claims them.
 
-**Keep the hooks enabled.** `bun run hooks:install` sets them up once per clone. Without it a commit
-goes unchecked and a push ungated, silently (`git config core.hooksPath` tells you which). The
-pre-commit hook runs `bun run commit:check`. The pre-push hook gates the work a push adds
-(`tools/runtime/pre-push.ts`): each new commit gets the static steps and its nearby tests over a
-checkout of its own, and the pushed head holding the newest of them gets the whole gate. A push of
-documentation alone gets `git diff --check`. A pass is remembered by content: a whole pass by the
-commit's tree, and a static one by its tree and its parent's, each with the gate that ran and the
-Bun version, so a restack that keeps every tree runs nothing again. Each proof, of the hook and of
-`bun run land`, stops at its first failed test (`ANA_TEST_BAIL`), where CI runs every test to name
-every failure. `ANA_GATE_FRESH=1` ignores
-remembered passes. One push of a clone runs at a time: a push started while another is at its gate
-waits for it, and then gates only what that push did not publish (`queue`); where that push
-replaced the head this one is stacked on, it is refused with the `git rebase --onto` that restacks it
-(`staleBases`). A failure names the commit, the step and the `--fixup` that repairs it; its log is under
-`git rev-parse --git-path ana-gate`.
+**Keep the hooks enabled.** `bun run hooks:install` sets them up once per clone. Without them a commit
+and a push go unchecked, silently (`git config core.hooksPath` tells you which). The
+pre-commit hook runs `bun run commit:check`. The pre-push hook runs no test
+(`tools/runtime/pre-push.ts`): each commit the push adds gets `git diff --check`, what each pushed
+head that no other pushed head holds adds gets the secret scan, and where one of them changes more
+than documentation, each such head gets `bun run gate -- --checks` over a checkout of its own: every
+step but the tests, with the simplify census printed and gating nothing. A pushed commit is therefore
+unproved until `bun run land -- <top> --sanitize` or `--merge` has given every commit of the stack
+its static steps and nearby tests and the top the whole gate, the full suite among it; run
+`--sanitize` whenever the stack is worth proving. A pass is remembered by content: a whole or checks
+pass by the commit's tree, and a static one by its tree and its parent's, each with the gate that
+ran and the Bun version, so a restack that keeps every tree runs nothing again. Each proof stops at
+its first failed test (`ANA_TEST_BAIL`), where CI runs every test to name every failure.
+`ANA_GATE_FRESH=1` ignores remembered passes. A failure names the commit, the step and its log,
+under `git rev-parse --git-path ana-gate`.
 
 Run one full suite at a time on a host; two overlapping suites each take about twice as long, and
 `bun run land -- <top> --jobs N` shares one host's workers between commits instead. While editing,
@@ -1531,12 +1532,14 @@ In practice:
   pushed, by its commit.
 - **Every commit passes alone.** Fold a fix into the unpublished commit it corrects. The pre-commit
   hook runs `bun run commit:check`; run it by hand where the hooks are not installed.
-- **Push your own branch**, never `main`. Push with `--no-verify` only where the operator says so,
-  and then `bun run land -- <top> --sanitize` proves the commits the hook skipped. Rewriting a
-  published branch takes `--force-with-lease` on the head you last saw. The pre-push hook gates the
-  commits along each pushed head's first parents that no remote-tracking ref holds. A commit whose
-  patch the replaced branch held is a rebase's replay, left to `bun run land`. History brought in
-  through a merge's other parent was made elsewhere and is only counted; the merge itself is gated.
+- **Label every pull request** with exactly one of `importance:I0` to `importance:I3`, with no "Ix:"
+  prefix in its title; `bun run land` refuses a stack in which one is missing or doubled.
+- **Push your own branch**, never `main`. Push with `--no-verify` only where the operator says so.
+  Rewriting a published branch takes `--force-with-lease` on the head you last saw. The pre-push
+  hook reads the commits along each pushed head's first parents that no remote-tracking ref holds;
+  history brought in through a merge's other parent was made elsewhere and is only counted, while
+  the merge itself is checked. A push proves nothing about the tests: `bun run land -- <top>
+  --sanitize` does, for every commit of the stack.
 - **Merging is the operator's call**, and so is restacking the whole stack. A stack lands through
   `bun run land -- <top> --merge` (`tools/runtime/land.ts`), never through a local merge pushed to
   `main`, which leaves the pull requests open. It reads the chain of bases down to `main`, requires
@@ -1550,7 +1553,8 @@ In practice:
 - **A restack makes the stack one chain again** (restack, linearize, quench, drain): each pull
   request that left the chain is replayed onto the head beneath it, based there and added to the
   native stack. Resolve conflicts hunk by hunk, never by taking one side's file whole, which drops
-  the other side's hunks, and push each moved branch through the gate with a lease.
+  the other side's hunks, push each moved branch with a lease, and prove the result with
+  `bun run land -- <top> --sanitize`.
 - **The native stack.** Setting a base alone leaves a pull request outside GitHub's stack ("can be
   stacked"). `gh stack link <pr> <pr> ...` (the `gh-stack` extension) makes one, bottom to top, and
   `gh stack link <stack> <pr>` appends above its top; it never removes or reorders a member, and it

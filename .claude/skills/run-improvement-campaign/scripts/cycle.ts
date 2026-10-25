@@ -18,12 +18,18 @@
  * runs before them was still being read: the order was in the skill, and the session read the
  * running window by the clock. This prints the step from the runs' own logs, so a timer's prompt is
  * one line.
+ *
+ * Other hosts are asked through `askedScript` (`tools/runs/hosts.ts`) in its configured mode: in each
+ * host's own tree as before, now with its path quoted, under the Bun that tree pins, within the runs
+ * CLI's deadline, and read by the exit status the host command carries in its stderr. Until 25
+ * October this script spawned its own ssh with no deadline and an unquoted tree, and read ssh's own
+ * exit status, which Tailscale SSH reports as 0 for a failed command.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
-import { capturedSpawn } from "#src/meta/process.ts";
-import { type Host, hostsOf, quoted, sshScript } from "#tools/runs/hosts.ts";
+import { hostsOf } from "#tools/runs/host-config.ts";
+import { askedScript } from "#tools/runs/hosts.ts";
 import { isCampaign, logEvents, processes, runs, writers } from "#tools/runs/registry.ts";
 
 const SCRIPT = ".claude/skills/run-improvement-campaign/scripts/cycle.ts";
@@ -63,18 +69,20 @@ function rowsHere(names: readonly string[], host = "here"): Row[] {
     });
 }
 
-/** The rows `host` holds, from this script run there with `--here`; none where it does not answer. */
-async function rowsOn(host: Host, names: readonly string[]): Promise<Row[]> {
-  const script = `cd ${host.tree} && ${host.bun} ${SCRIPT} --here ${names.map(quoted).join(" ")}`;
-  const child = capturedSpawn(sshScript(host, script), { stdin: "ignore", stdout: "pipe", stderr: "ignore" });
-  const [said, code] = await Promise.all([new Response(child.stdout).text(), child.exited]);
-  try {
-    if (code === 0) return parseJsonAs<Row[]>(said).map((row) => ({ ...row, host: host.name }));
-  } catch {
-    // An answer that is no JSON list is a tree that predates this script, said below.
-  }
-  console.error(`${host.name} did not answer (exit ${String(code)}): its tree may predate ${SCRIPT}`);
-  return [];
+/** The rows the other hosts hold, from this script run with `--here` in each host's configured tree
+ *  through the shared transport. A host that fails or does not answer in time holds none, which
+ *  `askedScript` says on stderr; one whose last line is no list of rows is said here. */
+async function rowsAway(names: readonly string[]): Promise<Row[]> {
+  const answers = await askedScript(SCRIPT, ["--here", ...names], hostsOf(), "configured");
+  return answers.flatMap(({ host, lines }) => {
+    if (lines === null) return [];
+    try {
+      return parseJsonAs<Row[]>(lines.at(-1) ?? "").map((row) => ({ ...row, host: host.name }));
+    } catch {
+      console.error(`${host.name} answered no rows: its tree may predate ${SCRIPT}`);
+      return [];
+    }
+  });
 }
 
 const line = (row: Row, kept: boolean) =>
@@ -121,10 +129,7 @@ async function main(args: CommandArgs): Promise<number> {
     console.log(capturedJsonStringify(rowsHere(names)));
     return 0;
   }
-  const rows = [
-    ...rowsHere(names),
-    ...(await Promise.all(hostsOf().map((host) => rowsOn(host, names)))).flat(),
-  ];
+  const rows = [...rowsHere(names), ...(await rowsAway(names))];
   for (const row of rows) console.log(line(row, kept.includes(row.name)));
   const missing = names.filter((name) => !rows.some((row) => row.name === name));
   if (missing.length > 0) {

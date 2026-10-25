@@ -4,6 +4,9 @@
  * Role hours are elapsed open spans and can overlap. Recorded provider wait windows have their
  * own union, clipped at the next campaign ending or the log boundary. Their scheduled durations
  * include the reset's grace minute; they measure neither CPU time nor every seat's inactivity.
+ * Load-gate waits, recorded when the host admits the solve, have their union too, and the hours
+ * outside it stand beside the hours a promotion: an indicator of how much of the clock went to a
+ * busy host, which overstates the correction, since other solves run while one waits.
  *
  * Split from `read.ts` on 10 October, when that file stood at 794 nonblank lines against the size
  * policy's ceiling of 800 (`tools/loc/source-policy.ts`) and these lanes had three readings to add.
@@ -290,13 +293,17 @@ export function hoursLine(log: Index): string {
   const parts = new Map<string, number>();
   for (const { part, from, until } of spans) parts.set(part, (parts.get(part) ?? 0) + until - from);
   const waits: { from: number; until: number; ms: number }[] = [];
+  const gated: { from: number; until: number }[] = [];
   let boundary = last;
+  let promotions = 0;
   for (const { at, kind, data } of log.events.toReversed()) {
     const from = Date.parse(at);
     if (kind === "campaign.ended") boundary = from;
-    if (kind === "campaign.waited" && data.for === "provider" && isNumber(data.ms)) {
-      waits.push({ from, until: Math.min(from + data.ms, boundary), ms: data.ms });
-    }
+    if (kind === "harness.promoted") promotions += 1;
+    if (kind !== "campaign.waited" || !isNumber(data.ms)) continue;
+    if (data.for === "provider") waits.push({ from, until: Math.min(from + data.ms, boundary), ms: data.ms });
+    // A load wait is recorded when the host admits the solve, so it ends at its event.
+    else gated.push({ from: from - data.ms, until: from });
   }
   const hours = (ms: number) => (ms / HOUR_MS).toFixed(1);
   const named = [...parts]
@@ -304,7 +311,12 @@ export function hoursLine(log: Index): string {
     .concat([[BETWEEN_MOVES, whole - unionMs(spans)]])
     .map(([part, ms]) => `${part} ${hours(ms)} (${whole > 0 ? ((ms / whole) * 100).toFixed(0) : "0"}%)`);
   const largest = waits.reduce((most, wait) => Math.max(most, wait.ms), 0);
-  return `hours: elapsed open spans (overlapping), ${named.join(", ")}, of ${hours(whole)}; recorded provider wait windows (overlapping open spans): ${hours(unionMs(waits))} h union, ${plural(waits.length, "event")}, largest scheduled ${hours(largest)} h; not measured CPU or seat inactivity`;
+  const outside = whole - unionMs(gated);
+  const perPromotion =
+    promotions > 0
+      ? `, ${hours(whole / promotions)} h a promotion, ${hours(outside / promotions)} h a promotion outside them`
+      : "";
+  return `hours: elapsed open spans (overlapping), ${named.join(", ")}, of ${hours(whole)}; recorded provider wait windows (overlapping open spans): ${hours(unionMs(waits))} h union, ${plural(waits.length, "event")}, largest scheduled ${hours(largest)} h; load-gate waits ${hours(unionMs(gated))} h union, ${plural(gated.length, "event")}, ${hours(outside)} h outside them${perPromotion} (an indicator: other solves run while one waits); not measured CPU or seat inactivity`;
 }
 
 /** What ran through the gap that ends at event `index`: the command whose time covers most of it,

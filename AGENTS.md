@@ -1251,7 +1251,11 @@ Cite a rule by its number in a pull request or a review.
     The whole-run hours reader labels role hours as overlapping elapsed open spans and gives the
     union of recorded provider wait windows beside them, clipped at the next campaign ending or
     log boundary, with the event count and largest scheduled wait. Those windows measure neither
-    CPU time nor every seat's inactivity (`hoursLine`, `tools/wri/time.ts`).
+    CPU time nor every seat's inactivity (`hoursLine`, `tools/wri/time.ts`). Beside them it gives the
+    union of load-gate waits, the hours outside it, and the hours a promotion with and without them.
+    That is an indicator of how much of a climb's clock a busy host took, not a measure: other solves
+    run while one waits, so it overstates the correction, and most of a solve is the model's time,
+    which no local CPU count sees.
 
 ## 9. Status, evidence and claims
 

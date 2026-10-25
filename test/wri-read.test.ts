@@ -1386,6 +1386,24 @@ describe("the reader of the campaign's clock", () => {
     expect(line).toMatch(/provider wait windows.*3\.0 h union, 2 events, largest scheduled 2\.0 h/);
   });
 
+  it("puts the load-gate waits' union and the hours outside them beside the hours a promotion", () => {
+    const line = hoursOf(
+      timed([
+        [0, BUILD_STARTED, { session: "b-1" }],
+        // Two load waits overlapping by an hour, recorded when the host admits each solve.
+        [180, WAITED, { ms: 2 * 3_600_000 }],
+        [240, WAITED, { ms: 2 * 3_600_000 }],
+        [300, "harness.promoted", { harness: "hc" }],
+        [480, "harness.promoted", { harness: "hd" }],
+        [600, WAITED, { for: "provider", ms: 3_600_000 }],
+      ]),
+    );
+    expect(line).toContain(
+      "load-gate waits 3.0 h union, 2 events, 7.0 h outside them, 5.0 h a promotion, 3.5 h a promotion outside them",
+    );
+    expect(line).toMatch(/provider wait windows.*0\.0 h union, 1 event/);
+  });
+
   it("reports no provider window for a load-only wait", () => {
     const line = hoursOf(
       timed([

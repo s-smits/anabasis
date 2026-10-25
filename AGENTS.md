@@ -185,9 +185,11 @@ The Referee is a model, and it is measured by how well it agrees with a person w
 rejections blind (`tools/d2/settle.ts`, `src/referee/agreement.ts`): a three-by-three table of label
 against ruling, read as two rates, with each kind's agreement and PABAK reported beside kappa, and
 never kappa alone. Once a packet is settled, `settle.ts` prints them over every settled packet, and
-reads each settled comparison again with the labels in place of the verdicts they overturn
-(`swapped`). A decision that flips means its packet was too small. Both are reports, and so is the
-line it prints when a person labels more than one in four `unclear` rulings as earned. Bar: read on
+reads each settled, scored comparison again with the labels in place of the verdicts they overturn
+(`swapped`). A stopped comparison still has a review packet; its completion facts and absent test
+stand after settlement, with no tally restored. A decision that flips means its packet was too
+small. Both are reports, and so is the line it prints when a person labels more than one in four
+`unclear` rulings as earned. Bar: read on
 at least thirty labels, catching three in four of the rejections a person calls a check defect, and
 voiding at most one in ten of those a person calls earned. A packet holds every rejection that set
 a task aside, plus a blind sample of three rejections ruled earned and three passes, since no seat

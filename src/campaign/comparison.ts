@@ -11,6 +11,8 @@
  * fold over the log has one owner here, and the commands that read a comparison without running
  * one (`tools/d2/round.ts`, `tools/d2/checkpoint.ts`, `tools/d2/settle.ts`) read it through this
  * module.
+ * Coverage is read at the first report, independently of a tally. A stopped comparison can be
+ * reviewed, but its labels cannot turn its completed prefix into a test.
  */
 import {
   detectable,
@@ -163,7 +165,8 @@ export interface Report {
    *  which no promotion waits for (the operator, 12 October); then what the labels settled, in
    *  the report `settleReading` writes after it: how many rejections were labelled, how many of
    *  them a check defect, the tasks those disputed, the tasks the labels restored to the tally, and
-   *  the labels themselves, by solve. Null in a report that compared nothing. */
+   *  the labels themselves, by solve. A stopped comparison has a packet without a test; null
+   *  where no fixed comparison began. */
   readonly settled:
     | typeof UNSETTLED
     | {
@@ -385,15 +388,17 @@ function setsOf(
 }
 
 /**
- * The comparison of `fixed.tasks`, read from the log as comparison `id` found it: the new harness
- * against the reference one over the tasks that have their solves under both and no rejection that
- * sets them aside, and the reference harness against itself where that was asked for, with how
- * the plan reads them.
+ * The fixed draw's completion and review facts at its first report, including observed solves on
+ * short and set-aside tasks. Pairs use the same counted solves as the test, without scoring them.
+ * Later solves and task-state changes cannot alter this descriptive coverage.
  */
-export function compared(all: readonly LogEvent[], fixed: Fixed, labels: ReadonlyMap<string, Ruling>) {
+export function coverageOf(
+  all: readonly LogEvent[],
+  fixed: Fixed,
+  labels: ReadonlyMap<string, Ruling> = NO_LABELS,
+) {
   const events = asReported(all, fixed.id);
-  // A dispute stands whenever it was made: a settling's own come after the comparison's report.
-  const states = taskStates(all);
+  const states = taskStates(events);
   // A task a person released or refused while the comparison ran is no held-out task any more. It
   // is left out and named, since a comparison that could not report would lose every solve it paid.
   const held = new Set(taskSets(events).held);
@@ -410,9 +415,30 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     objective: fixed.objective,
   };
   const first = pairsOf(events, live, sides, fixed.solves);
+  return {
+    tasks: fixed.tasks,
+    completed: first.pairs.map(({ task }) => task),
+    short: first.short,
+    aside: live.filter((task) => open.has(task)),
+    disputed: fixed.tasks.filter((task) => states.get(task) === "disputed"),
+    withdrawn: scorable.filter((task) => !held.has(task)),
+    observed: solvesUnder(events, fixed).filter(({ under }) => fixed.tasks.includes(under.task)),
+    pairs: first.pairs,
+  };
+}
+
+/** Read the test from complete pairs, excluding both set-aside rejections and later disputes. */
+export function compared(all: readonly LogEvent[], fixed: Fixed, labels: ReadonlyMap<string, Ruling>) {
+  const events = asReported(all, fixed.id);
+  const coverage = coverageOf(all, fixed, labels);
+  // A dispute stands whenever it was made: a settling's own come after the comparison's report.
+  const states = taskStates(all);
+  const scorable = (task: string) => states.get(task) !== "disputed";
+  const first = coverage.pairs.filter(({ task }) => scorable(task));
+  const open = new Set(coverage.aside);
   const kept = (pairs: readonly Paired[]) => pairs.filter(({ task }) => !open.has(task));
-  const pairs = kept(first.pairs);
-  const aside = live.filter((task) => open.has(task));
+  const pairs = kept(first);
+  const aside = coverage.aside.filter(scorable);
   const sets = setsOf(all, fixed, pairs, aside);
   /** The reference against itself on halves of the test's own solves (`Sides`, `halves`), over
    *  the tallied tasks and no other: until 14 October it read every live task, so a task short on
@@ -420,7 +446,19 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
   const tallied = pairs.map(({ task }) => task);
   const itself = () =>
     kept(
-      pairsOf(events, tallied, { ...sides, fresh: fixed.old, halves: "mirrored" }, fixed.solves / 2).pairs,
+      pairsOf(
+        events,
+        tallied,
+        {
+          old: fixed.old,
+          fresh: fixed.old,
+          setting: fixed.setting,
+          comparison: fixed.id,
+          objective: fixed.objective,
+          halves: "mirrored",
+        },
+        fixed.solves / 2,
+      ).pairs,
     );
   // The A/A (12 October, the plan's section 4b): where the reference's solves of a task are four
   // or more and even, which halves mirrored in time split two against two at least. At four a
@@ -453,12 +491,12 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
             // Either half may win, each read at the level, as `readsStepEitherWay` reads the A/A.
             detectable: detectable(aa.differences, fixed.level),
           },
-    counted: pairs.length === first.pairs.length ? null : scored(first.pairs),
+    counted: pairs.length === first.length ? null : scored(first),
     versions: pairs.map(({ task }) => task),
     aside,
-    short: live.filter((task) => first.short.includes(task)),
+    short: coverage.short.filter(scorable),
     flagged: flaggedIn(events, pairs),
-    withdrawn: scorable.filter((task) => !held.has(task)),
+    withdrawn: coverage.withdrawn.filter(scorable),
     reading,
     turns: turnsOf(events, pairs),
     // The cost bar, read where a step is (the plan's W): printed, and gating nothing.
@@ -546,6 +584,7 @@ export function wrongAsFailed(
  * and one labelled unclear left aside. It is read as the comparison's own report found it, before
  * its settling disputed anything. Null until it is settled. A decision that flips means its packet
  * was too small to stand on (the overhaul plan's M3, research 06): a report, and no move reads it.
+ * A comparison whose first report has no score has no decided test to swap.
  */
 export function swapped(
   events: readonly LogEvent[],
@@ -554,9 +593,11 @@ export function swapped(
   const own = asReported(events, id);
   const settled = reported(events, id)?.settled;
   const fixed = fixedIn(events, id);
-  const decided = reported(own, id)?.reading;
+  const original = reported(own, id);
+  const decided = original?.reading;
   if (
     fixed === null ||
+    original?.scored === null ||
     decided === undefined ||
     settled === undefined ||
     settled === null ||
@@ -621,12 +662,12 @@ export function passesIn(events: readonly LogEvent[], id: string): string[] {
   );
 }
 
-/** The rejections of comparison `id` a person may label, from its log: none when it has no report
- *  that compared something. */
+/** The rejections of comparison `id` a person may label: a fixed start and a report are required,
+ *  whether or not the comparison reached its test. */
 export function toLabel(events: readonly LogEvent[], id: string): ToLabel {
   const report = reported(events, id);
   const fixed = fixedIn(events, id);
-  if (report === null || fixed === null || report.scored === null) return NOTHING_TO_LABEL;
+  if (report === null || fixed === null) return NOTHING_TO_LABEL;
   const found = asReported(events, id);
   const states = taskStates(found);
   const mine = rejections(found, fixed, NO_LABELS).filter(({ task }) => states.get(task) !== "disputed");

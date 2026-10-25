@@ -30,6 +30,14 @@
  * next session there builds its own again. A `runs keep` that keeps the campaign at its source is
  * not stopped by the move: stop it first.
  *
+ *   bun run runs copy <name> --to <worktree> [--yes]
+ *
+ * `copy` takes a campaign no process writes or keeps, its folder whole, to another worktree of the
+ * repository, from a worktree or from this machine's archive (`runs retire`), and sets the folder it
+ * leaves aside under `.ana/moved/` of the tree it was in, so that one worktree holds the name;
+ * `continue` then goes on with it there. It is the one way a campaign's folder moves on one machine
+ * (operator, 15 October), since a log is never copied by hand.
+ *
  *   bun --env-file=.env.runs run runs fetch <name> [--from <host>]
  *
  * `fetch` takes a copy of a campaign another machine holds, to read here: its folder whole, into
@@ -40,17 +48,19 @@
  * host read copies made by hand; until then a copy went to `.ana/fetched/`, which no reader read.
  */
 import { LOG_FILE } from "#src/kernel/log.ts";
-import { dirname, join } from "#src/meta/path.ts";
-import { parseArgs } from "#src/meta/process.ts";
+import { cpSync, existsSync, mkdirSync, renameSync, statSync } from "#src/meta/filesystem.ts";
+import { worktrees } from "#src/meta/git.ts";
+import { dirname, join, resolve } from "#src/meta/path.ts";
+import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { type Host, hostNamed } from "./host-config.ts";
 import { quoted, rsync, shellPath, sshScript, worktreesIn } from "./host-command.ts";
 import { verbOn } from "./hosts.ts";
-import { CAMPAIGNS, campaignOf, HERE } from "./registry.ts";
+import { CAMPAIGNS, campaignOf, HERE, keepers, processes, readNamed, writers } from "./registry.ts";
 import { syncRuns } from "./snapshots.ts";
-import { asideOf, continueRun, lastRun, pause, setAside } from "./manage.ts";
+import { continueRun, lastRun, pause, said } from "./manage.ts";
 import { preparedHost, publishedAt } from "./code.ts";
 
 /** One end of a move: this machine or a host, with the folder its worktrees sit in. */
@@ -207,4 +217,51 @@ export async function fetch(args: readonly string[]): Promise<void> {
   const copies = await syncRuns([name], { match: "exact", ...keyIfDefined("from", values.from) });
   if (copies.length === 0) throw new Error(`no host ANA_HOSTS lists holds a campaign ${name}`);
   for (const log of copies) console.log(log);
+}
+
+/** `bun run runs copy`. */
+export function copy(args: readonly string[]): void {
+  const { values, positionals } = parseArgs({
+    args: [...args],
+    allowPositionals: true,
+    options: { to: { type: "string" }, yes: { type: "boolean", default: false } },
+  });
+  const [name] = positionals;
+  const trees = worktrees(runtimeProcess.cwd());
+  const to = trees.find((tree) => values.to !== undefined && tree === resolve(values.to));
+  if (name === undefined || to === undefined) {
+    throw new Error(`usage: bun run runs copy <name> --to <a worktree: ${trees.join(", ")}> [--yes]`);
+  }
+  const run = readNamed(name);
+  if (run.archived !== undefined && run.archived !== HERE) {
+    throw new Error(
+      `${name} is a copy of a campaign ${run.archived} holds: runs move takes one to another machine`,
+    );
+  }
+  if (writers(run, processes()).length > 0 || keepers(name).length > 0) {
+    throw new Error(`${name} is being written or kept in ${run.tree}: pause it first`);
+  }
+  const from = dirname(run.path);
+  const into = join(to, CAMPAIGNS, name);
+  if (existsSync(into)) throw new Error(`${into} is there already`);
+  if (!values.yes) return said(run, `would be copied whole to ${into}, and its folder here set aside`);
+  cpSync(from, into, { recursive: true, verbatimSymlinks: true });
+  if (statSync(join(into, LOG_FILE)).size !== statSync(run.path).size) {
+    throw new Error(`the copy of ${run.path} is not whole: ${from} is left as it was`);
+  }
+  const aside = asideOf(run.tree, name);
+  setAside(from, aside);
+  console.log(`${name} is in ${to} now, and its folder was set aside as ${aside}; go on with runs continue`);
+}
+
+/** Where a run's folder is set aside in `tree` once a copy of it went elsewhere: one copy a name,
+ *  which `runNamed` asks, so the folder left is no run any registry reads (`runs copy`, `runs move`). */
+export function asideOf(tree: string, name: string): string {
+  return join(tree, ".ana", "moved", `${name}-${new Date().toISOString().replace(/[:.]/g, "")}`);
+}
+
+/** Moves `folder` to `aside`, making `.ana/moved/` where the tree has none yet. */
+export function setAside(folder: string, aside: string): void {
+  mkdirSync(dirname(aside), { recursive: true });
+  renameSync(folder, aside);
 }

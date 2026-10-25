@@ -188,6 +188,12 @@ export function flagsOf(args: readonly string[]) {
   return parseArgs({ args: [...args], options: OPTIONS, allowNegative: true }).values;
 }
 
+/** The campaign's flags among `args`, read past any flag the campaign command does not take: what
+ *  `fresh` passes after `--` and a launch's receipt carry the `runs` verbs' flags too (`billsLogin`). */
+export function looseFlagsOf(args: readonly string[]) {
+  return parseArgs({ args: [...args], options: OPTIONS, allowNegative: true, strict: false }).values;
+}
+
 /** The flags of the campaign command, a line each, as `--help` prints them. */
 export function flagsHelp(): string {
   const wide = Math.max(...Object.keys(EXPLAINED).map((named) => named.length));

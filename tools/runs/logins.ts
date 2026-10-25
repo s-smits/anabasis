@@ -44,6 +44,8 @@
  * every login the environment holds where it is unset. Until 15 October this was a script of the
  * operator's, which read the checkout's `.env` itself, and a shell loop applied the room rule.
  */
+import { openingOf, SEATS } from "#src/campaign/opening.ts";
+import type { LogEvent } from "#src/kernel/log.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { mainTree } from "#src/meta/git.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
@@ -53,6 +55,8 @@ import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
+import { looseFlagsOf } from "../d2/campaign-terms.ts";
+import { recordedSetting } from "../d2/setting.ts";
 import { asked } from "./hosts.ts";
 import { hostsOf } from "./host-config.ts";
 import { type Live, liveHere, liveOf } from "./live.ts";
@@ -124,6 +128,18 @@ export function allowedLogins(env: Readonly<Record<string, string | undefined>>)
     .map((login) => login.trim())
     .filter((login) => login !== "");
   return named === undefined || named.length === 0 ? loginsIn(env) : named;
+}
+
+/** Whether a run bills a Claude login: whether an effective seat is a `claude/` model. The last
+ *  flag for each seat overrides its opening, with the setting as the solver's fallback. The pickers
+ *  that choose a login (`fresh`, `keep`) ask it; the launcher names only the login it is given. */
+export function billsLogin(events: readonly LogEvent[], flags: readonly string[]): boolean {
+  const values = looseFlagsOf(flags);
+  const opening = openingOf(events);
+  return [
+    ...SEATS.map((seat) => values[seat] ?? opening?.seats[seat]?.model),
+    values.solver ?? opening?.solver?.model ?? recordedSetting(events)?.solver?.model,
+  ].some((model) => isString(model) && model.startsWith("claude/"));
 }
 
 /** The most live runs `login` may carry, from `ANA_LOGIN_RUNS` such as `2,1:4`: a bare number for

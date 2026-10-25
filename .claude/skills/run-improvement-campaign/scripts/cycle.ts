@@ -4,12 +4,12 @@
  * on whichever host holds it, and prints a row a run and then the step, with the commands that take
  * it. It stops, launches and writes nothing: the session or the timer that runs it takes the step.
  *
- *   bun .claude/skills/run-improvement-campaign/scripts/cycle.ts <run> ... [--keep <run>]... [--threshold 3]
+ *   bun .claude/skills/run-improvement-campaign/scripts/cycle.ts <run> ... [--keep <run>]... [--threshold 6]
  *
  * The steps follow the cycle's fixed order (the skill's "The release cycle"):
  *
- * - `run` while a run the cycle stops is live and has fewer promotions than the threshold;
- * - `stop` once every such run has reached it or ended, with the stop that ends the rest;
+ * - `stop` for each live run at or past the threshold, with the stop that ends those runs;
+ * - `run` while the remaining live runs have fewer promotions than the threshold;
  * - `investigate` once none is live, with the fetches and the investigation's start;
  * - `unread`, exiting 1, while a run is found on no host that answered, since it may be live.
  *
@@ -32,7 +32,7 @@ import { askedScript } from "#tools/runs/hosts.ts";
 import { isCampaign, logEvents, processes, runs, writers } from "#tools/runs/registry.ts";
 
 const SCRIPT = ".claude/skills/run-improvement-campaign/scripts/cycle.ts";
-const USAGE = `usage: bun ${SCRIPT} <run> ... [--keep <run>]... [--threshold 3]`;
+const USAGE = `usage: bun ${SCRIPT} <run> ... [--keep <run>]... [--threshold 6]`;
 const OPTIONS = { keep: "list", threshold: "int", here: "flag" } as const;
 const HOUR_MS = 3_600_000;
 
@@ -100,16 +100,16 @@ const line = (row: Row, kept: boolean) =>
 function stepOf(rows: readonly Row[], kept: readonly string[], threshold: number): string[] {
   const stopped = rows.filter((row) => !kept.includes(row.name));
   const live = stopped.filter((row) => row.live);
-  const short = live.filter((row) => row.promotions < threshold);
-  if (short.length > 0) {
+  const reached = live.filter((row) => row.promotions >= threshold);
+  if (reached.length > 0) {
     return [
-      `step: run · ${short.map((row) => `${row.name} ${String(row.promotions)}/${String(threshold)}`).join(", ")}`,
+      `step: stop · ${reached.map((row) => `${row.name} ${String(row.promotions)}/${String(threshold)}`).join(", ")}`,
+      `  bun --env-file=.env.runs run runs stop ${reached.map((row) => row.name).join(" ")} --yes`,
     ];
   }
   if (live.length > 0) {
     return [
-      `step: stop · every run is at ${String(threshold)} promotions or ended`,
-      `  bun --env-file=.env.runs run runs stop ${live.map((row) => row.name).join(" ")} --yes`,
+      `step: run · ${live.map((row) => `${row.name} ${String(row.promotions)}/${String(threshold)}`).join(", ")}`,
     ];
   }
   const away = stopped.filter((row) => row.host !== "here");
@@ -136,7 +136,7 @@ async function main(args: CommandArgs): Promise<number> {
     console.log(`step: unread · not found on any host that answered: ${missing.join(", ")}`);
     return 1;
   }
-  for (const said of stepOf(rows, kept, args.int("threshold") ?? 3)) console.log(said);
+  for (const said of stepOf(rows, kept, args.int("threshold") ?? 6)) console.log(said);
   return 0;
 }
 

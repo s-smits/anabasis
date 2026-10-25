@@ -20,7 +20,7 @@ factors"). The values below are read from the fresh campaigns' logs on the opera
 | # | Factor | Now | Bar |
 | --- | --- | --- | --- |
 | S | Supply | Fresh buffer campaigns hold out tasks after each promotion: r3's Examiner proved 89 author answers (`task.feasible`) over 5 epochs | At least 4 informative tasks before each comparison |
-| M1 | Climb | One campaign with five promotions (buffer r3, 14 comparisons). Six with one each (five buffer, one esp32). Truss: none in 3 | 12 confirmed in one real campaign, observed, no quota; then a second domain |
+| M1 | Climb | One campaign with five promotions (buffer r3, 14 comparisons). Six with one each (five buffer, one esp32). Truss: none in 3 | 6 confirmed in one real campaign, observed, no quota; then a second domain (operator, 25 October; 12 until then) |
 | M2 | Honesty | 0 A/A steps in 31 A/A readings across those campaigns; the count that could have read one at 0.02 is in the PR | 0 in the ten controls after the six on record |
 | M3 | Verdicts | 0 hand labels. r3: 5 Referee rulings in 14 comparisons | 30 labels; 3 in 4 defects caught, at most 1 in 10 earned voided |
 | W | Economy | r3: $401 billed for 5 promotions, 25 active hours | At most 3 promotion attempts an epoch, reported |

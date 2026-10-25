@@ -44,13 +44,12 @@ import { freshFleet, freshLogin, placeFresh, loginPool, loginPresent } from "./p
 import { modelNamed } from "../m0/stored-sweep.ts";
 import { launch } from "./manage.ts";
 import { everyRun } from "./registry.ts";
-import { seatModels } from "./keep.ts";
 import { batchFresh } from "./batch.ts";
-import { readLogins } from "./logins.ts";
+import { billsLogin, readLogins } from "./logins.ts";
 
 interface FreshStart {
   readonly model: ReturnType<typeof modelOf>;
-  readonly effort: string;
+  readonly seated: readonly string[];
   readonly suffix: string | undefined;
   readonly budget: string;
   readonly more: readonly string[];
@@ -138,7 +137,8 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
   }
   const here = runtimeProcess.cwd();
   const model = modelOf(values.model);
-  const billed = seatModels([], [model.id, ...more]).some((id) => id.startsWith("claude/"));
+  const seated = seats(model.id, values.effort ?? model.effort);
+  const billed = billsLogin([], [...seated, ...more]);
   if (positionals.length > 1) {
     if (values.host !== undefined) throw new Error("a batch chooses its hosts automatically");
     return await batchFresh(
@@ -207,7 +207,7 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
   }
   await startFresh(pack, {
     model,
-    effort: values.effort ?? model.effort,
+    seated,
     suffix: values.as,
     budget: values.budget,
     more,
@@ -226,7 +226,6 @@ async function startFresh(pack: string, options: FreshStart): Promise<void> {
     `${pack}-prompt.txt`,
   );
   if (!existsSync(prompt)) throw new Error(`no ${prompt}: a pack's prompt is the operator's to write there`);
-  const seated = seats(options.model.id, options.effort);
   const held = new Set(everyRun().map((run) => run.name));
   const base = [
     pack,
@@ -244,7 +243,7 @@ async function startFresh(pack: string, options: FreshStart): Promise<void> {
     prompt,
     "--budget",
     options.budget,
-    ...seated,
+    ...options.seated,
     ...options.more,
   ];
   if (!options.yes) {

@@ -1,5 +1,6 @@
 // Going on with a campaign: the flags it runs again on, the login it runs as, and the point a pause
-// waits for. A launch whose dry run refuses shows the campaign command's own reason.
+// waits for. The launcher guesses no login: the campaign command's own dry run refuses a seat whose
+// provider holds no credential, and a launch whose dry run refuses shows that reason.
 import { afterAll, describe, expect, it } from "bun:test";
 import { type EventKind, LOG_FILE, type LogEvent } from "../src/kernel/log.ts";
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
@@ -9,6 +10,7 @@ import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import { launch, loginEnv, rerun, restsAfter } from "../tools/runs/manage.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
+const KEY = "CLAUDE_CODE_OAUTH_TOKEN";
 const fixtures: string[] = [];
 afterAll(() => {
   for (const root of fixtures) rmSync(root, { recursive: true, force: true });
@@ -37,22 +39,24 @@ describe("going on with a campaign", () => {
     ]);
   });
 
-  it("runs as the named login alone, and refuses one the environment does not hold", () => {
-    const key = "CLAUDE_CODE_OAUTH_TOKEN";
-    const env = { PATH: "/bin", [key]: "a", [`${key}3`]: "c", [`${key}4`]: "d" };
-    // The numbered keys are the verb's to choose from, and no seat's to read.
-    expect(loginEnv(env, "4")).toEqual({ PATH: "/bin", [key]: "d", ANA_LOGIN: "4" });
-    expect(loginEnv(env, undefined)).toEqual({ PATH: "/bin", [key]: "a" });
-    expect(() => loginEnv(env, "2")).toThrow(`${key}2 is not set`);
-    // A file of one numbered login runs on it; of two, the verb asks which.
-    expect(loginEnv({ PATH: "/bin", [`${key}3`]: "c" }, undefined)).toEqual({
+  it("runs as the named login alone, recorded, and refuses one the environment does not hold", () => {
+    const env = { PATH: "/bin", [KEY]: "a", [`${KEY}3`]: "c", [`${KEY}4`]: "d" };
+    expect(loginEnv(env, "4")).toEqual({ PATH: "/bin", [KEY]: "d", ANA_LOGIN: "4" });
+    expect(() => loginEnv(env, "2")).toThrow(`${KEY}2 is not set`);
+    expect(() => loginEnv({ ...env, [`${KEY}2`]: "" }, "2")).toThrow(`${KEY}2 is not set`);
+  });
+
+  it("names no login where none is named: no numbered key reaches the command, and no login is recorded", () => {
+    // The unnumbered token is the file's own, and goes on as it is.
+    expect(loginEnv({ PATH: "/bin", [KEY]: "a", [`${KEY}3`]: "c" }, undefined)).toEqual({
       PATH: "/bin",
-      [key]: "c",
-      ANA_LOGIN: "3",
+      [KEY]: "a",
     });
-    expect(() => loginEnv({ [`${key}3`]: "c", [`${key}4`]: "d" }, undefined)).toThrow(
-      "name one with --login N",
-    );
+    // One numbered key is no login chosen: a run that needs one is refused by its own dry run.
+    expect(loginEnv({ PATH: "/bin", [`${KEY}3`]: "c" }, undefined)).toEqual({ PATH: "/bin" });
+    expect(loginEnv({ PATH: "/bin", [`${KEY}3`]: "c", [`${KEY}4`]: "d" }, undefined)).toEqual({
+      PATH: "/bin",
+    });
   });
 
   it("pauses past one more of the event, once no comparison, Examiner session or draft is open", () => {
@@ -69,15 +73,13 @@ describe("going on with a campaign", () => {
     // An old ladder's reading left open is no comparison: no move goes on with it.
     const read = [...promoted, event("comparison.started", { session: "l-1", ladder: true })];
     expect(restsAfter(read, "harness.promoted", 0)).toBe(true);
-    expect(
-      restsAfter([...read, event("comparison.started", { session: "g-3" })], "harness.promoted", 0),
-    ).toBe(false);
-    expect(restsAfter([...read, event("exam.started", { session: "x-1" })], "harness.promoted", 0)).toBe(
-      false,
-    );
-    expect(restsAfter([...read, event("draft.started", { session: "d-1" })], "harness.promoted", 0)).toBe(
-      false,
-    );
+    for (const open of [
+      event("comparison.started", { session: "g-3" }),
+      event("exam.started", { session: "x-1" }),
+      event("draft.started", { session: "d-1" }),
+    ]) {
+      expect(restsAfter([...read, open], "harness.promoted", 0)).toBe(false);
+    }
   });
 });
 

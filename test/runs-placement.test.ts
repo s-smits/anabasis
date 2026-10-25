@@ -16,6 +16,15 @@ function fixture() {
   return made;
 }
 
+it("chooses no Claude login after fresh's preset seats are all overridden to GPT", () => {
+  const made = fixture();
+  const result = made.run(`import { fresh, seats } from "REPOSITORY/tools/runs/fresh.ts";
+await fresh(["sample", "--host", "runner", "--model", "opus", "--", ...seats("openai-codex/gpt-6.1-sol", "hhhh")], async () => { throw new Error("login usage must not be read"); });`);
+  expect(result.err).toBe("");
+  expect(result.code).toBe(0);
+  expect(result.out).toContain("nothing is launched without --yes");
+});
+
 it("refuses a fleet-full login before any source preparation, even with an explicit host", () => {
   const made = fixture();
   const result = made.run(

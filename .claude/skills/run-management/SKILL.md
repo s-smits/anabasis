@@ -264,8 +264,9 @@ from the rate-limit headers of a one-token request where that is refused, and ke
 in `.ana/logins-history.jsonl` of the main worktree after each call with a usable weekly reading,
 keeping eight days. With no numbers or `--json`, it forecasts when the pool runs out at the
 week's pace and a recent pace from a reading 2 to 24 hours old (`poolLines`). A login has room
-for a move when its week is under 90%, its five hours under 100%, and neither window is refused
-(`room`), which is what `keep` reads. Each login's head line reads its live runs on every
+for a move when neither its week nor its five hours is used up and neither window is refused, the
+week that resets soonest first, a nearly spent one included (`room`), which is what `keep` and
+`fresh` read. Each login's head line reads its live runs on every
 host out of the most it carries: the lower of its cap in `ANA_LOGIN_RUNS` and the runs its week
 left fits until its reset, each active 16 of 24 hours, at the rate a run spent between earlier
 readings (`fitOf`). More live runs than the week fits reads `oversubscribed`, as `2/1`.

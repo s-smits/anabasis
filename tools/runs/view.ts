@@ -23,6 +23,7 @@
  * the campaign's owner: what a Builder is told of the same rows is `src/builder/past.ts`.
  */
 import { epochLine, epochsOf } from "#src/campaign/climb.ts";
+import { promotionReadings } from "#src/campaign/comparison.ts";
 import { decide } from "#src/campaign/decide.ts";
 import { type Decided, decidedLine, short } from "#src/campaign/move.ts";
 import { type Called, calledBy, namesOf } from "#src/campaign/names.ts";
@@ -212,7 +213,8 @@ export async function view(args: readonly string[]): Promise<void> {
   // read on a log that does not hold its end yet.
   const open = openSteps(campaign.steps);
   const decided = decidedOn(events, values);
-  const climb = epochsOf(events).map((epoch) => `  ${epochLine(epoch, called)}`);
+  const rested = promotionReadings(events);
+  const climb = epochsOf(events).map((epoch) => `  ${epochLine(epoch, called, rested)}`);
   for (const line of [
     ...lines,
     "the climb",

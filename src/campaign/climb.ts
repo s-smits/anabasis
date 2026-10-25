@@ -10,8 +10,16 @@
  * Written when the operator asked for the climb to be read as such: ten campaigns
  * had promoted once each and none twice, and no view said at which epoch a campaign stood or what
  * its tasks had done since the promotion. `runs view` prints the rows.
+ *
+ * Each promotion is read three ways where a person reads it, the view's epoch line and the closing
+ * report's promotion line (`promotionReadings`, `comparison.ts`): as scored, on validity alone, and without the bill,
+ * each a tally and its p, by this tree's score from the comparison's pairs in the log, so a report
+ * written before the step needed the second test reads by the same rule as one written after. On
+ * 25 October the whole-run reader's SAFEGUARD-9 alone printed the last two, and a person reading a
+ * promotion in the view or the handover saw only the first: 7 of 32 promotions on record read no
+ * step without the bill.
  */
-import { flipP } from "../kernel/compare.ts";
+import { flipP, type Kept, type Test } from "../kernel/compare.ts";
 import { conditionsOf } from "../kernel/condition.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, type Reported } from "../kernel/reports.ts";
@@ -81,6 +89,13 @@ export interface Epoch {
   readonly reference_share: Share | null;
   readonly starter_share: Share | null;
   readonly falsePromotion: FalsePromotion;
+}
+
+/** What a promotion rests on (`promotionReadings`, `comparison.ts`): the comparison against the
+ *  reference it was promoted over, and its tasks read three ways (`readingsOf`). */
+export interface Rested {
+  readonly comparison: string;
+  readonly readings: Readonly<Record<Kept, Test>>;
 }
 
 const PROMOTED = "harness.promoted";
@@ -237,15 +252,32 @@ function falsePromotionOf(
   };
 }
 
-/** One line an epoch, as the view prints them, each harness `called` as the view names it. */
-export function epochLine(epoch: Epoch, called: Called = short): string {
+/** A test's p as a reading prints it: to three places, and in powers of ten under a thousandth. */
+export const pSaid = (p: number) => (p < 0.001 ? p.toExponential(1) : p.toFixed(3));
+
+/** A promotion's three readings (`Rested`) as one clause: each a tally, won-lost-tied, and its p. */
+export function readingsLine({ readings }: Rested): string {
+  const said = ({ wins, losses, ties, p }: Test) =>
+    `${String(wins)}-${String(losses)}-${String(ties)} p ${pSaid(p)}`;
+  return `as scored ${said(readings.scored)}, on validity alone ${said(readings.validity)}, without the bill ${said(readings.unbilled)}`;
+}
+
+/** One line an epoch, as the view prints them, each harness `called` as the view names it, and the
+ *  promotion that ends it with what it rests on (`promotionReadings`) where `rested` holds it. */
+export function epochLine(
+  epoch: Epoch,
+  called: Called = short,
+  rested: ReadonlyMap<number, Rested> = new Map(),
+): string {
   const share = (named: string, found: Share | null) =>
     found === null ? `${named} unread` : `${named} valid ${String(found.valid)} of ${String(found.solves)}`;
   const reference = epoch.reference === "starter" ? "the starter" : called(epoch.reference);
   const readings = epoch.comparisons.map(({ id, reading }) => `${id} ${reading}`).join(", ") || "none";
   // The first harness promoted over the Starter is set-up, epoch 0, and the climb counts from it.
   const rung = epoch.nth === 1 ? "as set-up (epoch 0)" : `as rung ${String(epoch.nth - 1)} of the climb`;
-  const end = epoch.promoted === null ? "open" : `promoted ${called(epoch.promoted)} ${rung}`;
+  const rest = epoch.to === null ? undefined : rested.get(epoch.to);
+  const on = rest === undefined ? "" : ` on ${rest.comparison}, ${readingsLine(rest)}`;
+  const end = epoch.promoted === null ? "open" : `promoted ${called(epoch.promoted)} ${rung}${on}`;
   const risk = epoch.falsePromotion;
   return `epoch ${String(epoch.nth)}: reference ${reference}; ${String(epoch.tasks.length)} tasks held out; ${String(epoch.sessions)} sessions (${String(epoch.changed)} changed); comparisons ${readings}; ${share("reference", epoch.reference_share)}${epoch.reference === "starter" ? "" : `, ${share("starter", epoch.starter_share)}`} on them; ${plural(risk.attempts, "promotion attempt")} under this reference, a false promotion among them estimated at ${percent(risk.union)}: ${sourceOf(risk)}; ${end}`;
 }

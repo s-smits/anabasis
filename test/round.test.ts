@@ -586,12 +586,20 @@ describe("a round", () => {
         scored: {
           ...tested,
           differences: [600, 600, 600, 600],
+          unbilled: [600, 600, 600, 600],
           unsolved: 0,
           detectable: 0.95,
           falseRate: 1 / 16,
         },
         // Nothing is exhausted yet, so every task is on the frontier and the retained set is unmeasured.
-        frontier: { ...tested, tasks: HELD, aside: [], differences: [600, 600, 600, 600], of: HELD },
+        frontier: {
+          ...tested,
+          tasks: HELD,
+          aside: [],
+          differences: [600, 600, 600, 600],
+          unbilled: [600, 600, 600, 600],
+          of: HELD,
+        },
         retained: "unmeasured",
         // Each family's tallies, from the same rows, sum to the whole.
         families: {

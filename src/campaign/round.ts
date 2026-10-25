@@ -101,6 +101,8 @@
  * What the log holds of a comparison, and how it is read back, is `comparison.ts`: its start, its
  * counted solves, its rejections, its tallies and its report. This file keeps what runs one and
  * what it writes.
+ * Stopped reports retain completion facts and can be labelled. Settlement preserves their absent
+ * test: the completed prefix never becomes a tally, and the comparison starts no further solves.
  */
 import { draw, type ObjectiveRule } from "../kernel/compare.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
@@ -117,8 +119,8 @@ import type { RefereeFinding, Ruling } from "../referee/referee.ts";
 import { tasksByEpoch } from "./climb.ts";
 import {
   compared,
+  coverageOf,
   DEFECT,
-  EARNED,
   type Fixed,
   fixedIn,
   NO_LABELS,
@@ -634,19 +636,32 @@ export async function checkpoint(request: CheckpointRequest): Promise<Report> {
   return write({ ...request, tasks: fixed.tasks }, told, { broken: null, reviewFaults: work.faults });
 }
 
-/** What a comparison that stopped before its test could be read reports, on its cap or its
- *  defects: nothing compared, and the tasks a rejection had set aside by then, the check defects
- *  among them. */
+/** A stop records completion and review facts, without testing the completed prefix. */
 function stopped(events: readonly LogEvent[], fixed: Fixed, reading: "not-scored" | "check-defects") {
-  const open = new Set(
-    rejections(events, fixed, NO_LABELS).flatMap(({ task, ruling }) => (ruling === EARNED ? [] : [task])),
-  );
+  const { short, aside, disputed, withdrawn } = coverageOf(events, fixed);
   return {
     ...NOTHING,
     objective: fixed.objective === undefined ? null : { ...fixed.objective, decided: 0 },
-    aside: fixed.tasks.filter((task) => open.has(task)),
+    short,
+    aside,
+    disputed,
+    withdrawn,
+    settled: UNSETTLED,
     reading,
-  };
+  } as const;
+}
+
+/** A stopped report's coverage read again under a person's labels: its reading and its absent test
+ *  stand, and a task the labels disputed leaves what it set aside. */
+function restopped(
+  report: Report,
+  events: readonly LogEvent[],
+  fixed: Fixed,
+  labels: ReadonlyMap<string, Ruling>,
+): Report {
+  const { short, aside, withdrawn } = coverageOf(events, fixed, labels);
+  const states = taskStates(events);
+  return { ...report, short, aside: aside.filter((task) => states.get(task) !== "disputed"), withdrawn };
 }
 
 /**
@@ -690,7 +705,8 @@ export async function round(request: RoundRequest): Promise<Report> {
  * what was settled and the labels themselves. Run again with the same labels it returns that
  * report. A comparison is settled once: other labels for one already settled are refused.
  *
- * A settling makes no solve.
+ * A settling makes no solve. A stopped comparison records its labels and completion facts while
+ * retaining its original reading and absent test; no task can be restored to a tally it never had.
  *
  * The comparison is read as its own report found it (`asReported`), so the labels settle the same
  * reading whether they come at once or after later comparisons have solved the same tasks.
@@ -719,7 +735,7 @@ export function settleReading(
     }
     return report;
   }
-  if (report.scored === null || fixed === null) {
+  if (fixed === null) {
     throw new Error(
       `comparison ${id} reads ${report.reading} and compared nothing, so there is nothing to settle`,
     );
@@ -750,7 +766,10 @@ export function settleReading(
     return dispute(log, id, version, { solve, reason }) ? [version] : [];
   });
   const failed = wrongAsFailed(read(log), labels, Object.fromEntries(passes));
-  const found = compared(failed.events, fixed, failed.labels);
+  const found =
+    report.scored === null
+      ? restopped(report, failed.events, fixed, failed.labels)
+      : compared(failed.events, fixed, failed.labels);
   const settled: Report = {
     old: report.old,
     fresh: report.fresh,
@@ -762,7 +781,8 @@ export function settleReading(
       labelled: labels.size,
       defects: defects.length,
       disputed,
-      restored: found.versions.filter((version) => report.aside.includes(version)),
+      restored:
+        report.scored === null ? [] : found.versions.filter((version) => report.aside.includes(version)),
       labels: Object.fromEntries(labels),
       passes: Object.fromEntries(passes),
     },

@@ -4,6 +4,7 @@
 // comparison are the real ones; the seats are scripts, which are paid nothing.
 // An isolated manifest also holds the runtime refusal before any campaign write or seat call.
 // Closing reports also read recorded Builder cache usage across finished and unfinished sessions.
+// Cost displays match backend totals only to covered endings and keep open costs calculated.
 
 import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
 import { REPORTED } from "../src/campaign/comparison.ts";
@@ -859,9 +860,9 @@ describe("a campaign run by its log", () => {
     expect(report).not.toContain("ladder");
     // What each measured thing cost, the climb's velocity first, and how many comparisons that
     // began bought a report.
-    expect(report).toMatch(/- The climb: \$\d+\.\d\d and \d+\.\d hours a promotion \(1\)\./);
+    expect(report).toMatch(/- The climb: calculated \$\d+\.\d\d and \d+\.\d hours a promotion \(1\)\./);
     expect(report).toMatch(
-      /- Comparisons: \$\d+\.\d\d a task scored \(\d+\); 2 of the 2 comparisons that began reported\./,
+      /- Comparisons: calculated \$\d+\.\d\d a task scored \(\d+\); 2 of the 2 comparisons that began reported\./,
     );
     expect(report).toContain("| g-1 |");
     expect(report).not.toContain("Diagnos");
@@ -896,6 +897,11 @@ describe("a campaign run by its log", () => {
     const name = `${STEM}-cache`;
     const pack = seeded(name).slice(0, -4);
     const log = join(REPO, ".ana", "d2", name, LOG_FILE);
+    const unknown = join(root, "handover-cache-unknown");
+    await closeCommand([...pack, "--to", unknown]);
+    const unknownReport = readFileSync(join(unknown, "REPORT.md"), "utf8");
+    expect(unknownReport).toMatch(/Backend.*unknown.*0\/0 closed.*0\/0.*jobs/);
+    expect(unknownReport).toMatch(/Matched residual.*unknown/);
     const usage = (cacheWrite: number, cacheRead: number, total: number) => ({
       cacheWrite,
       cacheRead,
@@ -910,7 +916,7 @@ describe("a campaign run by its log", () => {
     append(log, "comparison.started", { session: "cache-comparison", old: "a", fresh: "b", tasks: [] });
     append(log, "solve.started", { solve: "cache-solve", comparison: "cache-comparison" });
     append(log, "solve.turn", { solve: "cache-solve", usage: usage(700_000, 600_000, 20) });
-    append(log, "solve.finished", { solve: "cache-solve", billed: 20 });
+    append(log, "solve.finished", { solve: "cache-solve", billed: 20, reportedCost: 30 });
     append(log, "campaign.waited", { for: "provider", ms: 7_200_000 });
     append(log, "build.turn", {
       session: finished,
@@ -923,6 +929,7 @@ describe("a campaign run by its log", () => {
     append(log, "build.finished", {
       session: finished,
       billed: 10,
+      reportedCost: 15,
       tokens: { cacheWrite: 390_020, cacheRead: 460_040 },
     });
     append(log, REPORTED, {
@@ -945,7 +952,11 @@ describe("a campaign run by its log", () => {
     expect(cache).toContain("recorded Builder turns");
     expect(cache).toContain("unfinished sessions included");
     expect(cache).toContain("SDK-internal compaction usage");
-    expect(report).toContain("Billed $45.00");
+    expect(report).toMatch(/Calculated spend \$45\.00/);
+    expect(report).toMatch(/Backend known subtotal \$45\.00000000.*partial/);
+    expect(report).toMatch(/2\/3 closed.*2\/5.*jobs/);
+    expect(report).toMatch(/Open calculated.*\$5\.00000000.*backend.*unknown/);
+    expect(report).toMatch(/Matched residual.*\+\$15\.00000000.*\$30\.00000000/);
     expect(report).toContain("| no-step | 0-1-0 |");
     expect(read(log)).toEqual(before);
 
@@ -953,13 +964,17 @@ describe("a campaign run by its log", () => {
     append(log, "build.finished", {
       session: open,
       billed: 5,
+      reportedCost: 6,
       tokens: { cacheWrite: 0, cacheRead: 10_000 },
     });
     const after = join(root, "handover-cache-finished");
     await closeCommand([...pack, "--to", after]);
     const closed = readFileSync(join(after, "REPORT.md"), "utf8");
     expect(closed.split("\n").find((line) => line.startsWith("- Builder cache:"))).toBe(cache);
-    expect(closed).toContain("Billed $45.00");
+    expect(closed).toMatch(/Calculated spend \$45\.00/);
+    expect(closed).toMatch(/Backend known subtotal \$51\.00000000.*partial/);
+    expect(closed).toMatch(/3\/4 closed.*3\/5.*jobs/);
+    expect(closed).toMatch(/Matched residual.*\+\$16\.00000000.*\$35\.00000000/);
     expect(closed).toContain("| no-step | 0-1-0 |");
   });
 

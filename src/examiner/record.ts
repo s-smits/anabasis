@@ -25,7 +25,7 @@
  * - Interrupted gates by draft (`interruptedLines`), including those whose final tool result the
  *   author never received. Their status survives a promotion; old reference numbers do not.
  * On 21 October, 2 of 1,396 drafts in 30 logs were refused for three reserved solves; the gate
- * reserves only its next solve. An unmeasured refusal may return within the same session too.
+ * reserves only the solves it starts next. An unmeasured refusal may return within the same session too.
  *
  * Reference measurements are told by epoch: on 16 October a session after a promotion read the
  * starter's gate counts as the new reference's. Nothing here names a harness, a check or a target, and no count

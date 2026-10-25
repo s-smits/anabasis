@@ -35,7 +35,10 @@
  * passed on as `CLAUDE_CODE_OAUTH_TOKEN`, and no numbered key reaches the command. With none named
  * and no unnumbered login held, the one numbered login is taken, and two or more are refused: on 16
  * October a launch from a file holding one numbered key dropped it, and three drafts ended on a
- * provider not configured. The verb never opens the env file: Bun's own `--env-file` loads it.
+ * provider not configured. A run none of whose seats is a `claude/` model bills no login, so it
+ * starts without one, whatever the file holds: on 25 October a gpt-6.1-sol launch on stijn-linux,
+ * whose file holds four numbered logins and no unnumbered one, was refused twice for want of a
+ * login no seat would use. The verb never opens the env file: Bun's own `--env-file` loads it.
  *
  * Until 15 October this was shell lines in a skill and scripts of the operator's: each continue was
  * typed by hand from the receipt, a pause was a shell loop, and a login went through a wrapper that
@@ -44,9 +47,11 @@
  * ask none, and the command refuses what it refuses.
  */
 import { unfinished } from "#src/kernel/trace.ts";
+import { openingOf } from "#src/campaign/opening.ts";
 import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
 import { cpSync, existsSync, mkdirSync, openSync, renameSync, statSync } from "#src/meta/filesystem.ts";
 import { worktrees } from "#src/meta/git.ts";
+import { isString } from "#src/meta/json-shape.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, processGroupExists, runSync } from "#src/meta/subprocess.ts";
@@ -70,6 +75,7 @@ import {
 } from "./registry.ts";
 import { stop } from "./stop.ts";
 import { installAt, publishedAt } from "./code.ts";
+import { recordedSetting } from "../d2/setting.ts";
 
 /** The events a pause waits for one more of, by the word that names it. */
 const AFTER = {
@@ -94,18 +100,39 @@ export function rerun(flags: readonly string[], budget: string | undefined): str
   return budget === undefined ? kept : [...kept, "--budget", budget];
 }
 
-/** `env` with no numbered login, and with login `login`, or the one numbered login held, as its login. */
-export function loginEnv(env: Readonly<Record<string, string | undefined>>, login: string | undefined) {
+/** The models a run's seats run on: as its kept flags name them, `--seat model` or `--seat=model`,
+ *  and as its opening and setting record them for the seats its flags leave to the record. */
+export function seatModels(events: readonly LogEvent[], flags: readonly string[]): string[] {
+  const opening = openingOf(events);
+  return [
+    ...flags.map((flag) => flag.slice(flag.indexOf("=") + 1)),
+    ...Object.values(opening?.seats ?? {}).map((seat) => seat?.model),
+    opening?.solver?.model,
+    recordedSetting(events)?.solver?.model,
+  ].filter(isString);
+}
+
+/** Whether a run on `models` bills a Claude login: whether any of its seats is a `claude/` model. */
+export const billsLogin = (models: readonly string[]) => models.some((model) => model.startsWith("claude/"));
+
+/** `env` with no numbered login, and with login `login`, or the one numbered login held, as its
+ *  login. A run on `models` that bills no login takes none unless one is named. */
+export function loginEnv(
+  env: Readonly<Record<string, string | undefined>>,
+  login: string | undefined,
+  models: readonly string[],
+) {
   const kept: Record<string, string | undefined> = Object.fromEntries(
     Object.entries(env).filter(([key]) => !NUMBERED.test(key)),
   );
   if (login === undefined) {
+    if (!billsLogin(models)) return kept;
     const held = Object.keys(env).filter((key) => NUMBERED.test(key) && env[key] !== "");
     if ((env[TOKEN] ?? "") !== "" || held.length === 0) return kept;
     if (held.length > 1) {
       throw new Error(`no login named, and ${held.join(", ")} held: name one with --login N`);
     }
-    return loginEnv(env, held[0]?.slice(TOKEN.length));
+    return loginEnv(env, held[0]?.slice(TOKEN.length), models);
   }
   const token = env[`${TOKEN}${login}`];
   if (token === undefined || token === "") {
@@ -156,7 +183,11 @@ export async function start(
   login: string | undefined,
   at: string | undefined,
 ) {
-  const env = loginEnv(runtimeProcess.env, login);
+  const env = loginEnv(
+    runtimeProcess.env,
+    login,
+    seatModels(existsSync(run.path) ? logEvents(run.path) : [], flags),
+  );
   if (writers(run, processes()).length > 0) {
     throw new Error(`${run.name} is already being written in ${run.tree}`);
   }

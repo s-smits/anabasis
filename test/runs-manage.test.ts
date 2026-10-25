@@ -6,7 +6,7 @@ import { chmodSync, mkdirSync, rmSync, writeFileSync } from "../src/meta/filesys
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
-import { launch, loginEnv, rerun, restsAfter } from "../tools/runs/manage.ts";
+import { billsLogin, launch, loginEnv, rerun, restsAfter, seatModels } from "../tools/runs/manage.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
 const fixtures: string[] = [];
@@ -39,20 +39,35 @@ describe("going on with a campaign", () => {
 
   it("runs as the named login alone, and refuses one the environment does not hold", () => {
     const key = "CLAUDE_CODE_OAUTH_TOKEN";
+    const [opus, gpt] = [["claude/claude-opus-5-5"], "openai-codex/gpt-6.1-sol"];
     const env = { PATH: "/bin", [key]: "a", [`${key}3`]: "c", [`${key}4`]: "d" };
     // The numbered keys are the verb's to choose from, and no seat's to read.
-    expect(loginEnv(env, "4")).toEqual({ PATH: "/bin", [key]: "d", ANA_LOGIN: "4" });
-    expect(loginEnv(env, undefined)).toEqual({ PATH: "/bin", [key]: "a" });
-    expect(() => loginEnv(env, "2")).toThrow(`${key}2 is not set`);
+    expect(loginEnv(env, "4", opus)).toEqual({ PATH: "/bin", [key]: "d", ANA_LOGIN: "4" });
+    expect(loginEnv(env, undefined, opus)).toEqual({ PATH: "/bin", [key]: "a" });
+    expect(() => loginEnv(env, "2", opus)).toThrow(`${key}2 is not set`);
     // A file of one numbered login runs on it; of two, the verb asks which.
-    expect(loginEnv({ PATH: "/bin", [`${key}3`]: "c" }, undefined)).toEqual({
+    expect(loginEnv({ PATH: "/bin", [`${key}3`]: "c" }, undefined, opus)).toEqual({
       PATH: "/bin",
       [key]: "c",
       ANA_LOGIN: "3",
     });
-    expect(() => loginEnv({ [`${key}3`]: "c", [`${key}4`]: "d" }, undefined)).toThrow(
+    expect(() => loginEnv({ [`${key}3`]: "c", [`${key}4`]: "d" }, undefined, opus)).toThrow(
       "name one with --login N",
     );
+    // A run whose seats bill no Claude login starts without one, unless one is named.
+    expect(loginEnv({ PATH: "/bin", [`${key}3`]: "c", [`${key}4`]: "d" }, undefined, [gpt])).toEqual({
+      PATH: "/bin",
+    });
+    expect(loginEnv({ [`${key}3`]: "c", [`${key}4`]: "d" }, "4", [gpt])).toEqual({
+      [key]: "d",
+      ANA_LOGIN: "4",
+    });
+  });
+
+  it("bills a login only for a run with a claude seat, as its flags or its log name it", () => {
+    const gpt = "openai-codex/gpt-6.1-sol";
+    expect(billsLogin(seatModels([], ["--builder", gpt, "--solver", gpt, "--budget", "800"]))).toBe(false);
+    expect(billsLogin(seatModels([], ["--builder", gpt, "--solver=claude/claude-opus-5-5"]))).toBe(true);
   });
 
   it("pauses past one more of the event, once no comparison, Examiner session or draft is open", () => {

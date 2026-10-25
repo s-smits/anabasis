@@ -2,7 +2,8 @@
 import { describe, expect, it } from "bun:test";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
-import { nextLogin, seatModels, type Turn, turnOf } from "../tools/runs/keep.ts";
+import { nextLogin, type Turn, turnOf } from "../tools/runs/keep.ts";
+import { seatModels } from "../tools/runs/manage.ts";
 import { allowedLogins, type Reading, room } from "../tools/runs/logins.ts";
 
 const NOW = Date.parse("2026-10-15T12:00:00.000Z");

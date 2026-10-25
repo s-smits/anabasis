@@ -198,7 +198,10 @@ reads an answer that passed.
 **4. Economy: what did each measured gain cost?** A significant step is not necessarily a useful
 one. The budget is a bound the operator sets, and a campaign is judged by how fast it climbs under
 that bound, rather than by what it leaves unspent. The closing report reads
-economy from the log alone and runs no extra solve (`tools/d2/close.ts`, "Work and spend"). It
+economy from the log alone and runs no extra solve (`tools/d2/close.ts`, "Work and spend"). Its
+ratios use calculated spend; `costAccounts` (`src/kernel/trace.ts`) gives backend totals beside it,
+with closed and overall coverage, open calculated usage and a residual on matching closed records.
+Unreported backend costs stay unknown, and the cap and score bills keep their calculated basis. It
 gives, in order: the climb's velocity (the log's dollars and hours per promotion); the dollars
 billed; what the Examiner billed per task it held out, admission solves included; what comparisons
 billed per task they scored; and how many of the comparisons that began actually reported, since

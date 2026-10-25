@@ -23,6 +23,8 @@
  *                settled, and what was billed. It names each harness by its letter beside its
  *                digest's head (`namesOf`, `src/campaign/names.ts`). Builder cache tokens sum
  *                recorded turns once, including unfinished sessions, without finish aggregates.
+ *                Calculated spend stays the economy numerator; backend totals carry coverage and
+ *                a residual on matching closed records, with open backend costs unknown.
  *
  * Until 20 October the report said the checker was read and frozen, and not what decides it: in
  * buffer-fresh-opus-forkedPR223_v0_5_4-r3 every one of the 7 checks, the objective among them, was
@@ -54,7 +56,7 @@ import { writtenTasks } from "#src/kernel/history.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { comparisonsOf } from "#src/campaign/ground.ts";
 import { promoted } from "#src/kernel/reports.ts";
-import { billedAll, billedParts, tracesIn } from "#src/kernel/trace.ts";
+import { billedAll, billedParts, costAccounts, tracesIn } from "#src/kernel/trace.ts";
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
@@ -66,6 +68,7 @@ import { openHarness } from "#src/harness/open.ts";
 import { keptAs, openCampaign, PROMOTED, packNamed } from "./campaign.ts";
 import { type Seated, solved } from "./round.ts";
 import { recordedSetting } from "./setting.ts";
+import { costLines } from "./costs.ts";
 
 type Campaign = Awaited<ReturnType<typeof openCampaign>>;
 type Compared = Extract<Handover, { step: "comparison" }>;
@@ -151,6 +154,7 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
   // The checks of the last reading that no installed instrument decides, the objective among them.
   const authored = unadmitted(events, []);
   const budget = opening?.budget ?? null;
+  const costs = costAccounts(events);
   return [
     `# ${name}: closing report`,
     ended === undefined
@@ -203,7 +207,8 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
         : `- Answers that passed: a person read ${String(passes.read)} in ${plural(passes.comparisons, "comparison")}, drawn uniformly by each comparison's id: ${String(passes.sound)} sound, ${String(passes.wrong)} wrong, ${String(passes.unclear)} unclear. A wrong pass is a check's fault, and its side's fail once settled.`,
     ].join("\n"),
     "## Work and spend",
-    `${plural(sessions, "Builder session")}, ${plural(steps.filter((step) => step.step === "examiner").length, "Examiner session")} and ${plural(comparisons.length, "comparison")}. Billed $${billedAll(events).toFixed(2)}${budget === null ? "" : ` of a total of $${String(budget.dollars)}`}.`,
+    `${plural(sessions, "Builder session")}, ${plural(steps.filter((step) => step.step === "examiner").length, "Examiner session")} and ${plural(comparisons.length, "comparison")}. Calculated spend $${costs.calculated.toFixed(2)}${budget === null ? "" : ` of a total of $${String(budget.dollars)}`}.`,
+    costLines(costs).join("\n"),
     economyLines(events).join("\n"),
     "",
   ].join("\n\n");
@@ -245,10 +250,10 @@ function economyLines(events: readonly LogEvent[]): string[] {
   }
   return [
     promotions > 0
-      ? `- The climb: $${(spent / promotions).toFixed(2)} and ${(hours / promotions).toFixed(1)} hours a promotion (${String(promotions)}).`
-      : `- The climb: no promotion over $${spent.toFixed(2)} and ${hours.toFixed(1)} hours.`,
-    `- The Examiner: ${per(examined, held, "task held out")}.`,
-    `- Comparisons: ${per(compared, scored, "task scored")}; ${String(reported.length)} of the ${plural(all.length, "comparison")} that began reported.`,
+      ? `- The climb: calculated $${(spent / promotions).toFixed(2)} and ${(hours / promotions).toFixed(1)} hours a promotion (${String(promotions)}).`
+      : `- The climb: no promotion over calculated $${spent.toFixed(2)} and ${hours.toFixed(1)} hours.`,
+    `- The Examiner: calculated ${per(examined, held, "task held out")}.`,
+    `- Comparisons: calculated ${per(compared, scored, "task scored")}; ${String(reported.length)} of the ${plural(all.length, "comparison")} that began reported.`,
     `- Builder cache: ${String(cache.write)} cache-write tokens and ${String(cache.read)} cache-read tokens over recorded Builder turns only (unfinished sessions included; excludes SDK-internal compaction usage not exposed in those turns).`,
   ];
 }

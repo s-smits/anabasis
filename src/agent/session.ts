@@ -13,6 +13,8 @@
  * Examiner's sessions imported for them; until 22 October each of the four spelled the loop's
  * wiring for itself; and until 23 October each spelled this frame around it. `src/kernel/trace.ts`
  * reads back what this writes.
+ * Recorded turn costs use the host's prices; terminal backend totals remain separate and may be
+ * absent. Exposed usage need not cover every usage contributing to a terminal sum.
  */
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
@@ -180,8 +182,8 @@ export function traceSink(log: string, of: Traced, id: string, turn: () => numbe
 
 /** What a seat's model turns and its compactions' summaries spent, as its end records it: its
  *  turns, its tokens, their dollars at `model`'s price, and what Claude Code reported for them.
- *  The one sum a solve's, a Builder's and an Examiner's end carry, which the log's own sum over
- *  the turns of a seat that never ended matches (`unfinished`, `src/kernel/reports.ts`). */
+ *  Endings carry the calculated sum and a separate backend total where available. An unfinished
+ *  seat is counted by its recorded calculated usage (`unfinished`, `src/kernel/trace.ts`). */
 export async function spentBy(
   model: Model<Api>,
   id: string,

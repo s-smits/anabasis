@@ -7,6 +7,7 @@
 // Clock cases keep overlapping elapsed spans beside the union of recorded provider waits,
 // clipped at a campaign ending or the log boundary rather than read as seat inactivity.
 // Practice gaps retain the boundary and origin of frozen and compared states.
+// Campaign accounting displays calculated spend beside backend coverage and matched residuals.
 import { describe, expect, it } from "bun:test";
 import { detectable, flipP, power } from "../src/kernel/compare.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
@@ -1572,8 +1573,41 @@ describe("the reader of comparisons the campaign command named apart from its Bu
 
   it("gives the campaign's moves, its endings and its billed dollars against its budget", () => {
     expect(lines).toContain(
-      "campaign: moves build 2, compare 2; ended exam at event 1, then stop at event 51; billed 0.00 of 50 dollars",
+      "campaign: moves build 2, compare 2; ended exam at event 1, then stop at event 51; calculated spend 0.00 of 50 dollars",
     );
+  });
+
+  it("shows backend coverage and residual on matching closed work, with partial and unknown costs", () => {
+    const accountEvents: LogEvent[] = [];
+    const add = appendTo(accountEvents);
+    add("campaign.opened", { budget: { dollars: 800, reserve: 10 } });
+    add(SOLVE_FINISHED, { solve: "s", billed: 93.9648096, reportedCost: 136.81746535 });
+    const accountingText = () =>
+      overview(accountEvents)
+        .rows.flatMap((row) => row.lines)
+        .join("\n");
+    expect(accountingText()).toMatch(/calculated spend 93\.96 of 800/);
+    expect(accountingText()).toMatch(/Backend total \$136\.81746535/);
+    expect(accountingText()).toMatch(/1\/1 closed.*1\/1.*jobs/);
+    expect(accountingText()).toMatch(/Matched residual.*\+\$42\.85265575.*\$93\.96480960/);
+    add(BUILD_STARTED, { session: "b-open" });
+    add("build.turn", { session: "b-open", usage: { cost: { total: 2 } } });
+    add("build.compacted", { session: "b-open", usages: [{ cost: { total: 0.5 } }] });
+    add("exam.finished", { session: "x", billed: 4, reportedCost: null });
+    expect(accountingText()).toMatch(/calculated spend 100\.46 of 800/);
+    expect(accountingText()).toMatch(/Backend known subtotal \$136\.81746535.*partial/);
+    expect(accountingText()).toMatch(/1\/2 closed.*1\/3.*jobs/);
+    expect(accountingText()).toMatch(/Open calculated.*\$2\.50000000.*backend.*unknown/);
+    expect(accountingText()).toMatch(/Missing closed.*1.*\$4\.00000000/);
+    expect(accountingText()).toMatch(/Matched residual.*\+\$42\.85265575/);
+    const unknown = accountEvents.map((each) =>
+      each.kind === SOLVE_FINISHED ? { ...each, data: { ...each.data, reportedCost: null } } : each,
+    );
+    const text = overview(unknown)
+      .rows.flatMap((row) => row.lines)
+      .join("\n");
+    expect(text).toMatch(/Backend.*unknown.*0\/2 closed.*0\/3.*jobs/);
+    expect(text).toMatch(/Matched residual.*unknown/);
   });
 });
 

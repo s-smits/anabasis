@@ -12,7 +12,8 @@
  *
  * The Builder reads a practice solve's calls through `callList` and `callText` and nothing wider;
  * a verdict's checks and the Referee's reasons share the log and never enter a practice trace.
- * The same records bill completed and unfinished sessions.
+ * The same records bill completed and unfinished sessions. `costAccounts` keeps that calculated
+ * account beside backend totals, matching only covered endings and leaving open totals unknown.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import {
@@ -128,7 +129,7 @@ export const BILLED: ReadonlySet<string> = new Set([
 /** The kind seat `seat` logs part `part` under. */
 export const traceKind = (seat: Seat, part: Traced["part"]) => `${seat}.${part}` as const;
 
-/** The backend's price of one usage, `cost.total`, or null where it holds none. */
+/** The recorded calculated dollars of one usage, `cost.total`, or null where it holds none. */
 function costOf(usage: JsonValue | undefined): number | null {
   const total = asRecord(asRecord(usage)?.cost)?.total;
   return isNumber(total) ? total : null;
@@ -253,6 +254,41 @@ export function billedAll(events: readonly LogEvent[]): number {
   return unfinished(events).reduce((sum, { dollars }) => sum + dollars, summed);
 }
 
+/** Calculated spend and backend query totals over the same log. Only numeric terminal bills are
+ *  accounting records; comparison aggregates and turns replaced by endings never add to them.
+ *  A backend total of zero is covered, while absent totals stay unknown. The residual compares
+ *  exactly the covered closed records, never the calculated usage of open or unreported work. */
+export function costAccounts(events: readonly LogEvent[]) {
+  const closed = { count: 0, calculated: 0 };
+  const missing = { count: 0, calculated: 0 };
+  const backend = { count: 0, subtotal: 0, calculated: 0 };
+  for (const { kind, data } of events) {
+    if (!BILLED.has(kind) || !isNumber(data.billed)) continue;
+    closed.count += 1;
+    closed.calculated += data.billed;
+    if (isNumber(data.reportedCost)) {
+      backend.count += 1;
+      backend.subtotal += data.reportedCost;
+      backend.calculated += data.billed;
+    } else {
+      missing.count += 1;
+      missing.calculated += data.billed;
+    }
+  }
+  const open = unfinished(events);
+  return {
+    calculated: billedAll(events),
+    closed,
+    backend: {
+      ...backend,
+      subtotal: backend.count === 0 ? null : backend.subtotal,
+      residual: backend.count === 0 ? null : backend.subtotal - backend.calculated,
+    },
+    missing,
+    open: { count: open.length, calculated: open.reduce((sum, job) => sum + job.dollars, 0) },
+  };
+}
+
 /**
  * The billed dollars of the stretch from event `from` to event `to` (the log's end where none):
  * what the log had billed by `to` less what it had by `from`. A sum over the slice alone billed a
@@ -265,12 +301,11 @@ export function billedBetween(events: readonly LogEvent[], from: number, to = ev
 }
 
 /**
- * Every session and solve that began and never ended on record, with the dollars it metered: the
- * run was killed from outside, so no `finished` event summed them, and the cap and the total read 0
- * for what was spent. A turn's `usage.cost.total` is the backend's price of that turn, and the
- * sum over a session's or a solve's turns is what its end carries as `billed`: equal to five
- * decimals on every session and solve of one campaign of 10 October; a Builder session of another,
- * killed at its seventh turn the same day, had metered 0.12 dollars that nothing summed. A
+ * Every session and solve that began and has no ending, with its recorded calculated usage.
+ * Active work and work cut before a terminal sum count against the cap; once an ending exists,
+ * only its bill counts. A turn's `usage.cost.total` holds host-calculated dollars, including carried
+ * retry cost. The recorded turns give calculated usage, not a backend query total or a guarantee
+ * that every usage contributing to the ending is exposed in the trace. A
  * compaction of pi's loop is billed in the end's sum too, and its summary's price is on its
  * `*.compacted` event (`sit`, `src/agent/session.ts`); a stop and a pause read it too (`tools/runs`).
  */

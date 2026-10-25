@@ -24,6 +24,8 @@
  * that comparison's start boundary and report status. Score readers still use reports alone.
  * Campaign accounting reads calculated spend and backend coverage from `costLine`, with a
  * residual on matching closed work and unknown backend cost for open or unreported work.
+ * A one-program answer lead requires a logged judged answer, including JSON null; flags and
+ * blocked submits remain in the finished-solve denominator without supplying an answer.
  */
 import { comparisonsOf } from "#src/campaign/ground.ts";
 import { short } from "#src/campaign/move.ts";
@@ -231,10 +233,12 @@ function winTriggers(log: Index): Trigger[] {
 
 /**
  * Lane 19's reading of whether a harness answered for its solver, which `src/builder/prompt.ts`
- * forbids a part to do: a solve whose one shell call was followed by its submit, with no write of
- * its own, submitted what one program made. Read per Builder session's practice and per comparison,
- * with the comparison's reference side beside its new one as the control, because a solver can do
- * the whole task in one command of its own.
+ * permits since 20 October so long as nothing in the harness names a task, copies its text or holds
+ * its answer, so the lead is whether the program computes from public input or reaches a check, its
+ * instrument or a verdict: a solve whose one shell call was followed by its submit, with no write of
+ * its own, and a logged judged answer, submitted what one program made. Read per Builder session's
+ * practice and per comparison, with the comparison's reference side beside its new one as the
+ * control, because a solver can do the whole task in one command of its own.
  *
  * The shape is that strict because these solvers do everything through the shell, the answer file
  * included: across the #107 buffer campaign's solves, 1,920 `bash` calls to 7 `write` and no `read`.
@@ -246,6 +250,7 @@ function winTriggers(log: Index): Trigger[] {
 function programTriggers(log: Index): Trigger[] {
   const oneProgram = (solve: Solve) =>
     solve.outcome !== null &&
+    log.verdicts.get(solve.id)?.answer !== undefined &&
     solve.calls.at(-1) === "submit" &&
     solve.calls.at(-2) === "bash" &&
     solve.calls.filter((tool) => tool === "bash").length === 1 &&
@@ -699,7 +704,7 @@ function rowsOf(log: Index, steps: readonly Handover[]): Row[] {
           spendOf(log)
             .map(([role, dollars]) => `${role} ${dollars.toFixed(2)}`)
             .join(", ") || "none"
-        }${admittedCost(log)
+        }${admittedCost(log, steps)
           .map((cost) => `; ${cost}`)
           .join("")}`,
         hoursLine(log),

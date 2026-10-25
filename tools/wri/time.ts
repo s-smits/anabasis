@@ -88,8 +88,8 @@ interface Span {
   readonly until: number;
 }
 
-/** Whether a miss ended at a limit of its own: the kernel's kinds, a call in the last turn its bound
- *  allowed, as 5 of buffer's 17 on 12 October, or past the share of its wall read as bound by it. */
+/** Whether a miss ended at a limit of its own: the kernel's kinds, every turn its bound allowed used
+ *  (`limit`), as 5 of buffer's 17 on 12 October, or past the share of its wall read as bound by it. */
 const atALimit = (solve: Solve) =>
   AT_A_LIMIT.has(solve.kind) ||
   solve.limit !== null ||

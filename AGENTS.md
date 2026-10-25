@@ -205,8 +205,9 @@ score bills read them. Beside the total stand the backend's own totals on the en
 one, and the calculated dollars of the same endings (`costLine`, `src/kernel/trace.ts`). It
 gives, in order: the climb's velocity (the log's dollars and hours per promotion); the dollars
 billed; what the Examiner billed per task it held out, admission solves included; what comparisons
-billed per task they scored; and how many of the comparisons that began actually reported, since
-one cut short before its report bought nothing it can show. There is one bar, a term of the opening
+billed per task in their last reports' scored version lists (with no unit price at zero scored
+tasks); and how many of the comparisons that began actually
+reported, since one cut short before its report bought nothing it can show. There is one bar, a term of the opening
 the operator may set, which is read and printed and gates nothing (`worthOf`,
 `src/campaign/climb.ts`; revised plan W): at most 3 promotion attempts per epoch after set-up, with
 its Builder sessions and billed dollars beside it, which a step's report carries.

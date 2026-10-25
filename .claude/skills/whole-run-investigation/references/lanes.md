@@ -714,7 +714,7 @@ prompts; read the solve's own recorded limits. There is no seat disk cap on eith
 19 October a Mac runner mounted a 2 GiB image per seat. A solve the wall ended is a fail in the count and a truncated
 solve, never a settled failure of capability, and so is one its model turns or its context
 ended. `MISSES AT A LIMIT` counts, for each comparison and each side, the misses that ended at
-one of the three, with a call in the last turn their bound allowed (`last turn`), or past 95% of
+one of the three, with every turn their bound allowed used by the end's count (`last turn`), or past 95% of
 the wall, with their kinds and the turn bound the solves were
 told, and the misses outside any comparison on a line of their own: on 10 October recode ended
 41 of its 58 scored misses on turns, 12 of 18 reference misses and 4 of 4 new in g-2 at 8 turns,

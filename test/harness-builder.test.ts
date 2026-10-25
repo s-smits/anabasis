@@ -4,6 +4,7 @@
 // comparison are the real ones; the seats are scripts, which are paid nothing.
 // An isolated manifest also holds the runtime refusal before any campaign write or seat call.
 // Cost displays match backend totals only to covered endings and keep open costs calculated.
+// Comparison unit costs use scored versions, and no unit price where no task was scored.
 
 import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
 import { REPORTED } from "../src/campaign/comparison.ts";
@@ -791,6 +792,42 @@ describe("a campaign run by its log", () => {
     expect(read(join(REPO, ".ana", "d2", name, LOG_FILE))).toHaveLength(before);
     expect(strayed).toEqual([]);
   });
+
+  it.each([{ versions: [] }, { versions: ["v1", "v2"] }])(
+    "prices scored versions rather than requested tasks: %j",
+    async ({ versions }) => {
+      layOutPack(root, bundle, TASKS, FIXTURE);
+      const name = `${STEM}-scored-${String(versions.length)}`;
+      const pack = seeded(name).slice(0, -4);
+      const log = join(REPO, ".ana", "d2", name, LOG_FILE);
+      const session = "scored-comparison";
+      append(log, "comparison.started", { session, old: "a", fresh: "b", tasks: [] });
+      append(log, "solve.started", { solve: "scored-solve", comparison: session });
+      append(log, "solve.finished", { solve: "scored-solve", billed: 42.495011 });
+      append(log, REPORTED, {
+        session,
+        tasks: 10,
+        versions,
+        valid: null,
+        reading: "check-defects",
+        scored: { wins: 0, losses: 0, ties: 0 },
+      });
+      const to = join(root, `handover-scored-${String(versions.length)}`);
+      await closeCommand([...pack, "--to", to]);
+      const row = readFileSync(join(to, "REPORT.md"), "utf8")
+        .split("\n")
+        .find((line) => line.startsWith("- Comparisons:"));
+      expect(row).toContain("1 of the 1 comparison that began reported");
+      expect(row).not.toContain("$4.25");
+      if (versions.length === 0) {
+        // The stopped report's bill stays in the dollars billed, and no unit price or $0.00 stands here.
+        expect(row).toContain("no task scored");
+        expect(row).not.toMatch(/\$[\d.]+/);
+      } else {
+        expect(row).toContain("$21.25 a task scored (2)");
+      }
+    },
+  );
 
   it("reports backend cost coverage beside calculated spend", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);

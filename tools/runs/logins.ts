@@ -101,8 +101,6 @@ const WEEK = 168 * HOUR;
 const AHEAD = 4 * WEEK;
 const STEP = HOUR / 12;
 const KEPT_MS = 8 * 24 * HOUR;
-/** A login's week past this share has no room for a run moved to it (`room`). */
-const FULL_WEEK = 90;
 /** The share of a day a run is taken to be active when a week is read for how many runs it fits:
  *  16 of 24 hours (operator, 22 October). */
 const ACTIVE_SHARE = 16 / 24;
@@ -290,21 +288,23 @@ const resetOf = (iso: string | null): number | null => {
 };
 
 /** The logins of `readings` a run may move to, the week that resets soonest first: in `allowed`,
- *  not in `spent`, its week under 90% and neither window refused. */
+ *  not in `spent`, neither window used up or refused. A nearly spent week is taken first where it
+ *  resets first, so each login's week is used before it resets, and a run that meets the limit
+ *  waits it out or moves on (operator, 25 October; until then a week past 90% was left). */
 export function room(
   readings: readonly Reading[],
   allowed: readonly string[],
   spent: ReadonlySet<string>,
 ): string[] {
-  const open = (window: Window, below: number) =>
-    (window.status ?? "allowed").startsWith("allowed") && (window.pct ?? 0) < below;
+  const open = (window: Window) =>
+    (window.status ?? "allowed").startsWith("allowed") && (window.pct ?? 0) < 100;
   return readings
     .flatMap((reading) =>
       "error" in reading ||
       !allowed.includes(reading.login) ||
       spent.has(reading.login) ||
-      !open(reading.sevenDay, FULL_WEEK) ||
-      !open(reading.fiveHour, 100)
+      !open(reading.sevenDay) ||
+      !open(reading.fiveHour)
         ? []
         : [{ login: reading.login, reset: resetOf(reading.sevenDay.resetsAt) ?? Number.POSITIVE_INFINITY }],
     )

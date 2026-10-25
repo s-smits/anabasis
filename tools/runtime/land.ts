@@ -48,6 +48,13 @@
  * A failure names the commit and the pull request it sits on. Its fix goes into that commit, the
  * pull requests above it are replayed on it (stack-pr, section 8), and a second landing runs only
  * what the replay moved. `--jobs N` gates up to N commits at once; the top's whole gate runs alone.
+ *
+ * GitHub holds main to this command. Since 25 October the repository allows merge commits only,
+ * and ruleset 25824510 on the default branch, with no bypass actors, refuses deleting main and any
+ * non-fast-forward push to it (an author-identity fix rewrote main's history that day at 14:24Z),
+ * and requires a pull request merged by the merge method with the status `ana/stack-gate`, which
+ * only `--merge` posts (`STACK_CONTEXT`). `gh api repos/s-smits/anabasis/rulesets/25824510` reads
+ * it. The one gap: a token with admin rights can post that status by hand.
  */
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { parseArgs, runtimeProcess } from "../../src/meta/process.ts";

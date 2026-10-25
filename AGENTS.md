@@ -1549,12 +1549,19 @@ In practice:
   `ana/stack-gate` on every head, and merges the top through GitHub's asynchronous merge, pinned to
   its gated head, which merges the native stack beneath it all or nothing; the merge commit's tree
   must match the top's. A landing of several pull requests is refused unless they are one native
-  stack, its members up to the top the chain of bases.
+  stack, its members up to the top the chain of bases. GitHub enforces this route: since 25 October
+  the repository allows merge commits only, and ruleset 25824510 on the default branch ("main lands
+  only through bun run land --merge", no bypass actors) refuses deleting `main` and any
+  non-fast-forward push to it, and requires a pull request merged by the merge method with the
+  status `ana/stack-gate`, which only `land --merge` posts
+  (`gh api repos/s-smits/anabasis/rulesets/25824510` reads it). One gap remains: a token with admin
+  rights can post `ana/stack-gate` by hand.
 - **A restack makes the stack one chain again** (restack, linearize, quench, drain): each pull
   request that left the chain is replayed onto the head beneath it, based there and added to the
   native stack. Resolve conflicts hunk by hunk, never by taking one side's file whole, which drops
   the other side's hunks, push each moved branch with a lease, and prove the result with
-  `bun run land -- <top> --sanitize`.
+  `bun run land -- <top> --sanitize`. A consolidation, which also reviews the stack and regroups its
+  pull requests by subject, follows stack-pr's section 10, "Consolidate the stack".
 - **The native stack.** Setting a base alone leaves a pull request outside GitHub's stack ("can be
   stacked"). `gh stack link <pr> <pr> ...` (the `gh-stack` extension) makes one, bottom to top, and
   `gh stack link <stack> <pr>` appends above its top; it never removes or reorders a member, and it

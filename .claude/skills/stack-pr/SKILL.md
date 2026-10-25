@@ -1,6 +1,6 @@
 ---
 name: stack-pr
-description: "Put a change on the one open stack of Anabasis v2 pull requests: find the real top, keep local work while moving to it, decide between appending and a new pull request, shape commits that each pass alone, run the checks CI runs (by hand where the runners do not), publish through the checking pre-push hook, prove the stack with `bun run land -- <top> --sanitize`, write the body, repair your own children when a parent moves, and land a stack with `bun run land`. Use when asked to open, append to, stack, restack, rebase, hop to the latest head, sanitize or land a pull request, or when a push, a hook or a base refuses. v1's stack-hop and setup-pr in one."
+description: "Put a change on the one open stack of Anabasis v2 pull requests: find the real top, keep local work while moving to it, decide between appending and a new pull request, shape commits that each pass alone, run the checks CI runs (by hand where the runners do not), publish through the checking pre-push hook, prove the stack with `bun run land -- <top> --sanitize`, write the body, repair your own children when a parent moves, consolidate the whole stack by subject (review in groups, fix in lanes, regroup, republish), and land a stack with `bun run land`. Use when asked to open, append to, stack, restack, consolidate or overhaul, rebase, hop to the latest head, sanitize or land a pull request, or when a push, a hook or a base refuses. v1's stack-hop and setup-pr in one."
 ---
 
 # Stack a pull request
@@ -164,8 +164,8 @@ unchecked. An explicit commit keeps the published head equal to the one the hook
 When committing and pushing in one shell command, chain them with `&&`. With `;`, a failed commit
 still pushes the previous head (20 October).
 
-Read a refusal and correct its cause within your authority. Never pass `--no-verify`, and never
-push to `main`.
+Read a refusal and correct its cause within your authority. Pass `--no-verify` only where the
+operator says so, and never push to `main`.
 
 The pre-push hook runs every check but the tests. What a push adds is the commits along each
 pushed head's first parents that no remote-tracking ref of the clone holds; each gets
@@ -275,7 +275,7 @@ pull request lists only its own commits. A child that is another session's is th
 replay: send its owner the exact `git rebase --onto` line and wait.
 
 Restacking the open stack as a whole is a separate operation and needs the operator's word. A
-hop to the top, or a new pull request, never authorises it.
+hop to the top, or a new pull request, never authorises it: section 10 is that operation.
 
 ## 9. Land
 
@@ -289,7 +289,15 @@ bun run land -- <top> --sanitize      # and post each commit's verdict as ana/co
 bun run land -- <top> --merge         # and wait for ci.yml, post ana/stack-gate, and merge
 ```
 
-It reads the chain of bases from the named pull request down to `main` and refuses a head that
+GitHub enforces this. Since 25 October the repository allows merge commits only, with squash,
+rebase and auto-merge off. Ruleset 25824510 on the default branch, "main lands only through bun run
+land --merge", has no bypass actors. It refuses deleting `main` and any non-fast-forward push to it
+(`main` was rewritten on 25 October at 14:24Z), and it requires a pull request merged by the merge
+method with the status `ana/stack-gate`, which only `bun run land -- <top> --merge` posts. Read it
+with `gh api repos/s-smits/anabasis/rulesets/25824510`. One gap remains: a token with admin rights
+can post `ana/stack-gate` by hand.
+
+`land` reads the chain of bases from the named pull request down to `main` and refuses a head that
 does not contain the one beneath it, or a bottom that does not contain `main`'s head: only then
 does the last merge leave `main` at exactly the top's tree. Then it proves every commit along the
 top's first parents above `main`, each over its own checkout: the static steps and nearby tests,
@@ -310,6 +318,27 @@ before the proof, with the `gh stack link` line that makes one. A refused merge 
 `ana/stack-gate` back to pending on every head. An uncertain merge, or one that went into a merge
 queue, leaves the statuses in place and asks for the trunk to be read before another landing. Test `land` against a fake `gh`
 only (`test/land.test.ts`); never against this repository.
+
+## 10. Consolidate the stack
+
+Consolidating turns a stack that grew one fix at a time, in the order the fixes were found, into a
+smaller stack structured by subject. It reviews the whole open stack, folds every fix into the commit it belongs to, makes
+related pull requests one, and publishes the result as one native stack. It rewrites other
+sessions' pull requests, so it needs the operator's word (section 8). The procedure, with the
+reason for each rule, is `references/consolidate.md`: review in groups with a second, independent
+review; restructure in one rebase; fix in lanes that deliver only `fixup!` and `amend!` commits;
+assemble by cherry-pick and autosquash; check that the squashed top's tree equals the pre-squash
+tip and that every commit typechecks where it sits; regroup; publish; prove with
+`bun run land -- <top> --sanitize`.
+
+The publish step is one script, which refuses a stack whose bottom does not hold origin/main's
+head, pushes every moved head atomically with a lease each, closes the absorbed pull requests and
+relinks the native stack:
+
+```sh
+bun .claude/skills/stack-pr/scripts/republish.ts --head <pr>=<sha> ... [--absorb <pr>=<into>] ...
+bun .claude/skills/stack-pr/scripts/republish.ts <the same> --yes [--no-verify]
+```
 
 ## Report
 

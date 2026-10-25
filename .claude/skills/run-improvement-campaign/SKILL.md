@@ -31,7 +31,7 @@ that file first.
 **The order is fixed, and nothing moves a step ahead of the one before it:**
 
 ```text
-run (3 promotions a run) → stop → investigate → vet → plan → implement → land and release → fork → run
+run (3 promotions a run) → stop → investigate → vet → plan → implement → consolidate → land and release → fork → run
 ```
 
 A run is evidence about the code it ran (`AGENTS.md`, section 9), so a run left going while its
@@ -93,12 +93,17 @@ time, tell the operator and ask, rather than land first.
    seed cut from the run that showed the defect, at the smallest layer that shows it. The pull
    request states what moved against what was predicted. A fix is measured by the next cycle's
    runs, never by the runs it was found in.
-9. **Land and release.** `bun run land -- <top>` proves every commit; `--merge` waits for CI and
+9. **Consolidate the open stack** before it lands, from the order its fixes were found into one
+   structured by subject: review it in groups of related pull requests,
+   fix what the reviews confirm in lanes, regroup related pull requests into one, publish, and
+   prove it with `bun run land -- <top> --sanitize`. Its mechanics, and the word it needs, are
+   stack-pr's section 10, "Consolidate the stack".
+10. **Land and release.** `bun run land -- <top>` proves every commit; `--merge` waits for CI and
    merges the native stack. Then `git tag v<x.y.z> <merge>` and `gh release create`, in the form of
    the last release: one sentence on what the release changes, "Includes N PRs from #a to #b,
    merged into `main` at `<sha>`", one paragraph per change with its recorded counts, and
    **Validation and limits** with the land counts, the CI run and what the stopped runs showed. Where the proof fails, do not land: report the commit and step.
-10. **Fork** the next cycle at the release's merge commit: step 1 again.
+11. **Fork** the next cycle at the release's merge commit: step 1 again.
 
 **The threshold.** The running window ends when every run the cycle stops has **three
 promotions** or has ended (operator, 22 October), never at a time on the clock. The #306 forks
@@ -490,7 +495,7 @@ idle, a few minutes off the time it names. So:
 
 | Step | Every pass | When triggered |
 | --- | --- | --- |
-| cycle | the plan file and its log | run-management to fork and stop; whole-run-investigation on the stopped runs; system-path-simulation's before-and-after for each patch; stack-pr and `bun run land` to release |
+| cycle | the plan file and its log | run-management to fork and stop; whole-run-investigation on the stopped runs; system-path-simulation's before-and-after for each patch; stack-pr to implement on the open stack, its section 10 to consolidate it by subject, and `bun run land` to release |
 | score | five points and milestone | none |
 | walk | epoch, pulse, reader, link table | whole-run-investigation lane 25 for a campaign with a chain |
 | choose | link, owner, falsifier | stack-pr for source; simplify over the diff |

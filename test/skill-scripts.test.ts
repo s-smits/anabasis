@@ -1,11 +1,13 @@
-// The scripts the operator's skills share: the stack as its edges and the move to its top, the
-// source a campaign's launches ran, the closing of an Oracle bundle, and the reading of a live seat.
+// The scripts the operator's skills share: the stack as its edges, the move to its top and the
+// republishing of a consolidated stack, the source a campaign's launches ran, the closing of an Oracle
+// bundle, and the reading of a live seat.
 import { afterAll, describe, expect, it } from "bun:test";
 import { CommandFailure } from "#skills/main/cli.ts";
 import { gitText } from "#src/meta/git.ts";
 import { bundle } from "#skills/oracle-handover/scripts/bundle.ts";
 import { follow, type NativeStack, nativeTop } from "#skills/stack-pr/scripts/follow.ts";
 import { newsOf, readingOf, told as seatTold } from "#skills/system-path-simulation/scripts/live-seat.ts";
+import { pairs, planConsolidation, pushArgs, republish } from "#skills/stack-pr/scripts/republish.ts";
 import { chain, told as stackTold } from "#skills/stack-pr/scripts/stack.ts";
 import type { Pull } from "#tools/runtime/land.ts";
 import {
@@ -20,6 +22,7 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "../src/meta/subprocess.ts";
+import { capturedJsonStringify } from "../src/meta/json-runtime.ts";
 import { read } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
@@ -179,6 +182,101 @@ describe("following the stack's top", () => {
     expect(existsSync(join(co, "after.txt"))).toBe(true);
     expect(gitText(co, "stash", "list")).toBe("");
     expect(follow(co, undefined)[0]).toStartWith("main is already at origin/main");
+  });
+});
+
+describe("republishing a consolidated stack", () => {
+  const git = (repo: string, ...args: string[]) =>
+    runTextSyncOrThrow(["git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@t.dev", ...args]);
+  const up = join(root, "over-up");
+  const co = join(root, "over-co");
+  const sha = (repo: string, ref: string) => gitText(repo, "rev-parse", ref);
+  const step = (file: string, text: string) => {
+    writeFileSync(join(co, file), text);
+    git(co, "add", file);
+    git(co, "commit", "-q", "-m", `write ${file}`);
+    return sha(co, "HEAD");
+  };
+  git(root, "init", "-q", "--bare", "-b", "main", up);
+  git(root, "clone", "-q", up, co);
+  step("base.txt", "base\n");
+  git(co, "push", "-q", "origin", "HEAD:refs/heads/main");
+  // The stack before: #1 a on main, #2 b on a, #3 c on b.
+  const a0 = step("a.txt", "a\n");
+  const b0 = step("b.txt", "b\n");
+  const c0 = step("c.txt", "c\n");
+  git(co, "push", "-q", "origin", `${a0}:refs/heads/a`, `${b0}:refs/heads/b`, `${c0}:refs/heads/c`);
+  const pulls: Pull[] = [
+    { ...pull(1, "a", "main"), headRefOid: a0 },
+    { ...pull(2, "b", "a"), headRefOid: b0 },
+    { ...pull(3, "c", "b"), headRefOid: c0 },
+  ];
+  // The consolidation: #1 rewritten, and #3 folded into #2.
+  git(co, "fetch", "-q", "origin");
+  git(co, "switch", "-q", "--detach", "origin/main");
+  const a1 = step("a.txt", "a, reviewed\n");
+  const b1 = step("bc.txt", "b and c\n");
+  const heads = pairs("head", [`1=${a1}`, `#2=${b1}`]);
+  const absorbed = new Map([[3, 2]]);
+
+  it("pushes every moved head with a lease on the head GitHub showed, closes what was absorbed and relinks", () => {
+    const plan = planConsolidation(co, pulls, heads, absorbed);
+    expect(plan.moves.map((move) => [move.pull.number, move.to, move.base])).toStrictEqual([
+      [1, a1, "main"],
+      [2, b1, "a"],
+    ]);
+    expect(pushArgs(plan, "no-verify")).toStrictEqual([
+      "push",
+      "--atomic",
+      "--no-verify",
+      `--force-with-lease=refs/heads/a:${a0}`,
+      `--force-with-lease=refs/heads/b:${b0}`,
+      "origin",
+      `${a1}:refs/heads/a`,
+      `${b1}:refs/heads/b`,
+    ]);
+    expect(pushArgs(plan, "verify")).not.toContain("--no-verify");
+    const asked: string[] = [];
+    const stacks = [
+      { number: 7, open: true, pull_requests: [{ number: 3, state: "open", head: { ref: "c" } }] },
+    ];
+    const said = republish(co, plan, "no-verify", (args) => {
+      asked.push(args.join(" "));
+      return args[0] === "api" ? capturedJsonStringify(stacks) : "";
+    });
+    expect(said).toContain("pushed 2 heads");
+    expect([sha(up, "a"), sha(up, "b"), sha(up, "c")]).toStrictEqual([a1, b1, c0]);
+    expect(asked).toStrictEqual([
+      "api repos/{owner}/{repo}/stacks",
+      "stack unstack 7",
+      `pr close 3 --comment Closed when the stack was consolidated: this change is now part of #2 at ${b1.slice(0, 9)}.`,
+      "stack link 1 2",
+    ]);
+  });
+
+  it("pushes nothing where a lease fails, and refuses a stack off main or out of order", () => {
+    // GitHub still shows the old heads, but the push above moved the remote, so no branch may move.
+    const plan = planConsolidation(co, pulls, pairs("head", [`1=${b0}`, `2=${c0}`]), new Map());
+    expect(() => republish(co, plan, "no-verify", () => "[]")).toThrow();
+    expect([sha(up, "a"), sha(up, "b")]).toStrictEqual([a1, b1]);
+
+    expect(() => planConsolidation(co, pulls, pairs("head", [`1=${b1}`, `2=${a1}`]), new Map())).toThrow(
+      "does not hold #1's",
+    );
+    expect(() => planConsolidation(co, pulls, pairs("head", ["9=HEAD"]), new Map())).toThrow(
+      "not on the open stack",
+    );
+    expect(() => planConsolidation(co, pulls, pairs("head", [`1=${a1}`]), absorbed)).toThrow(
+      "absorbed into #2, which is given no new head",
+    );
+    expect(() => pairs("head", ["1=x", "1=y"])).toThrow("names #1 twice");
+
+    // main is rewritten on the remote, as on 25 October: the same tree under a new commit.
+    git(co, "switch", "-q", "--detach", "origin/main");
+    git(co, "commit", "-q", "--amend", "--allow-empty", "--author", "u <u@u.dev>", "-C", "HEAD");
+    git(co, "push", "-q", "--force", "origin", "HEAD:refs/heads/main");
+    git(co, "fetch", "-q", "origin");
+    expect(() => planConsolidation(co, pulls, heads, absorbed)).toThrow("does not hold origin/main");
   });
 });
 

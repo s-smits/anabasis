@@ -125,23 +125,21 @@ const builderScript = (base: Seated, calls: readonly Step[]): Seated => builderS
 const said = (name: string, tool: string): string[] =>
   of(name, CALLED).flatMap((call) => (call.tool === tool && isString(call.text) ? [call.text] : []));
 
+/** An Examiner's proposal of `count` further instances, each of which the gate holds out. */
+const proposing = (count: number): readonly [string, JsonObject] => [
+  "propose_tasks",
+  {
+    tasks: Array.from({ length: count }, (_, n) => ({
+      family: "fixture",
+      public_input: { base: 2, rehearsal_copy: { of: "t-1", n } },
+      hidden: null,
+    })),
+  },
+];
+
 /** An Examiner that holds out six further instances. */
 const writer: NonNullable<Seats["examine"]> = (request) =>
-  examine({
-    ...request,
-    ...scripted([
-      [
-        "propose_tasks",
-        {
-          tasks: Array.from({ length: 6 }, (_, n) => ({
-            family: "fixture",
-            public_input: { base: 2, rehearsal_copy: { of: "t-1", n } },
-            hidden: null,
-          })),
-        },
-      ],
-    ]),
-  });
+  examine({ ...request, ...scripted([proposing(6)]) });
 
 /** An Examiner that holds out nothing: where the reference is left no room, three conversations
  *  in a row without a move have the host ask for tasks (15 October), and none come. */
@@ -346,6 +344,166 @@ describe("a campaign run by its live Builder", () => {
     expect(first).toContain("Examiner session x-1 is writing");
     expect(second).toContain("Examiner session x-1 is still writing.");
     expect(of(name, "exam.started", true)).toHaveLength(1);
+  });
+
+  describe("releases the epoch's practice as the gate holds tasks", () => {
+    // Seven tasks held, three released for a practice of four: the epoch is owed one, which a sweep
+    // of five at 0.05 leaves room for once the frontier holds six.
+    const flags = ["--practice", "4", "--solves", "1", "--sessions", "1", ...LEVEL];
+    const base = () => scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []);
+    /** Where in the log each kind, or each Builder call by its tool, first stands. */
+    const positions = (name: string) => {
+      const kinds = read(join(REPO, ".ana", "d2", name, LOG_FILE)).map(({ kind, data }) =>
+        kind === CALLED && isString(data.tool) ? `${kind}:${data.tool}` : kind,
+      );
+      return (kind: string) => kinds.indexOf(kind);
+    };
+    /** The releases on record between the Examiner session's start and its end. */
+    const releasedWhileWriting = (name: string) => {
+      const events = read(join(REPO, ".ana", "d2", name, LOG_FILE));
+      const started = events.findIndex(({ kind }) => kind === "exam.started");
+      const ended = events.findIndex(({ kind }) => kind === EXAMINED);
+      return events
+        .slice(started, ended)
+        .filter(({ kind, data }) => kind === "task.state" && data.state === "released").length;
+    };
+
+    it("into the workspace of a Builder in wait, which returns before the session ends", async () => {
+      layOutPack(root, bundle, TASKS, FIXTURE);
+      const name = `${STEM}-on-hold`;
+      // The Examiner proposes once the Builder waits, and finishes once its wait has returned, or at
+      // a deadline, where wait returned only with the session's end and the test then fails.
+      const waiting = Promise.withResolvers<void>();
+      const waited = Promise.withResolvers<void>();
+      const seats: Seats = {
+        seated: builderScript(base(), [
+          {
+            wait: async () => {
+              waiting.resolve();
+              return ["wait", {}];
+            },
+          },
+          {
+            wait: async () => {
+              waited.resolve();
+              return ["finish", { note: "Practice arrived while the Examiner wrote." }];
+            },
+          },
+        ]),
+        examine: (request) =>
+          examine({
+            ...request,
+            ...scripted([
+              {
+                wait: async () => {
+                  await waiting.promise;
+                  return proposing(6);
+                },
+              },
+              {
+                wait: async () => {
+                  await Promise.race([waited.promise, Bun.sleep(20_000)]);
+                  return ["finish", { note: "Nothing to add." }];
+                },
+              },
+              ["finish", { note: "Nothing to add." }],
+            ]),
+          }),
+      };
+      await harnessBuilder([...seeded(name), ...flags, "--target", "5", "--exam-tasks", "7"], seats);
+      const at = positions(name);
+      expect(at(`${CALLED}:wait`)).toBeLessThan(at(EXAMINED));
+      expect(releasedWhileWriting(name)).toBe(1);
+      const [told] = said(name, "wait");
+      expect(told).toContain(
+        "The host released 1 practice task into practice/ while Examiner session x-1 writes",
+      );
+      expect(told).toContain("Campaign facts: 9 held-out tasks, 4 practice tasks.");
+      expect(told).not.toContain("check-product");
+      expect(of(name, MOVED, true).filter(({ code }) => code === "practice")).toMatchObject([
+        {
+          move: "prepare",
+          why: expect.stringContaining("Examiner session x-1 beside the conversation held a task out"),
+        },
+      ]);
+    });
+
+    it("but none that would leave the frontier short of a sweep at the level", async () => {
+      layOutPack(root, bundle, TASKS, FIXTURE);
+      const name = `${STEM}-on-hold-sweep`;
+      const waiting = Promise.withResolvers<void>();
+      const seats: Seats = {
+        seated: builderScript(base(), [
+          {
+            wait: async () => {
+              waiting.resolve();
+              return ["wait", {}];
+            },
+          },
+          ["finish", { note: "Nothing was released." }],
+        ]),
+        // One task held leaves a frontier of five, a sweep's worth and none to spare.
+        examine: (request) =>
+          examine({
+            ...request,
+            ...scripted([
+              {
+                wait: async () => {
+                  await waiting.promise;
+                  return proposing(1);
+                },
+              },
+              ["finish", { note: "Nothing to add." }],
+              ["finish", { note: "Nothing to add." }],
+            ]),
+          }),
+      };
+      await harnessBuilder([...seeded(name), ...flags, "--target", "5", "--exam-tasks", "7"], seats);
+      const at = positions(name);
+      expect(at(`${CALLED}:wait`)).toBeGreaterThan(at(EXAMINED));
+      expect(releasedWhileWriting(name)).toBe(0);
+      expect(said(name, "wait")[0]).not.toContain("The host released");
+      expect(of(name, MOVED, true).filter(({ code }) => code === "practice")).toEqual([]);
+    });
+
+    it("and none of the tasks the session's ask counts towards a comparison's target", async () => {
+      layOutPack(root, bundle, TASKS, FIXTURE);
+      const name = `${STEM}-on-hold-target`;
+      const waiting = Promise.withResolvers<void>();
+      const seats: Seats = {
+        seated: builderScript(base(), [
+          {
+            wait: async () => {
+              waiting.resolve();
+              return ["wait", {}];
+            },
+          },
+          ["finish", { note: "Practice came as the session ended." }],
+        ]),
+        // Two held leave a frontier of six against a target of seven: the release waits for the end.
+        examine: (request) =>
+          examine({
+            ...request,
+            ...scripted([
+              {
+                wait: async () => {
+                  await waiting.promise;
+                  return proposing(2);
+                },
+              },
+            ]),
+          }),
+      };
+      await harnessBuilder([...seeded(name), ...flags, "--target", "7", "--exam-tasks", "2"], seats);
+      expect(releasedWhileWriting(name)).toBe(0);
+      expect(of(name, MOVED, true).filter(({ code }) => code === "practice")).toMatchObject([
+        {
+          move: "prepare",
+          why: expect.stringContaining("an Examiner session beside the conversation ended"),
+        },
+      ]);
+      expect(said(name, "wait")[0]).not.toContain("The host released");
+    });
   });
 
   it("tells a Builder finishing on a harness no comparison read so once, with the Examiner session still writing", async () => {

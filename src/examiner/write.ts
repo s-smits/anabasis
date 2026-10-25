@@ -87,6 +87,9 @@ interface Terms {
   /** Whether each task's line says who won it in its last comparison (`exam-results`, `heard`);
    *  told unless a campaign names the term off. */
   readonly results?: boolean;
+  /** Called as the gate holds a task, with how many more the session is asked for, so that the
+   *  campaign can release practice while the session writes (`releaseOwed`, `campaign-actions.ts`). */
+  readonly held?: (left: number) => void;
 }
 
 /** What the gate reads of one draft: the campaign's contract and log, the session that asks, the
@@ -365,6 +368,7 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
     return `${taskId}: refused: ${reason}`;
   }
   desk.held.push(version);
+  request.held?.(Math.max(0, request.wanted - desk.held.length));
   const verdict = await proof();
   if (verdict === null || answer === undefined) return held;
   if (verdict.kind !== "pass") {

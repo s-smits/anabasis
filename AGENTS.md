@@ -417,7 +417,8 @@ The tools of each model seat, as its source names them:
 - Builder: `read`, `bash`, `edit`, `write`, `practice`, `read_trace`, `read_opening`,
   `check_harness`, `preview_harness` and `finish`. In the campaign command it also has `examine`,
   `release_practice`, `compare`, `promote`, `campaign_status` and `wait`, which returns once the
-  Examiner session beside the conversation ends, on the host's time.
+  Examiner session beside the conversation ends or the host releases practice while it writes, on
+  the host's time.
 - Solver: `read`, `bash`, `edit`, `write` and `submit`. Its answer is the file `answer.json`;
   `submit` with `malformed` is its statement that the task is malformed, given instead of an
   answer.
@@ -504,10 +505,10 @@ one Builder conversation and one workspace open while its campaign tools run.
 An Examiner call runs a separate agent with its own view. The call returns at once and the session
 writes alongside the conversation. A comparison or a promotion waits for it on the host's time, a
 release of practice tasks does not, and the campaign facts under each campaign tool's result say
-what it held out. When the Builder finishes or hits its wall, the end of the conversation waits for
-the Examiner session without stopping it. What does stop it: the host's halt (on the run's moves, an
-ending the table names, or the operator's stop) and a kill of the run. It then ends on record as
-killed.
+what it held out. As its gate holds each task the host releases the practice the epoch is owed.
+When the Builder finishes or hits its wall, the end of the conversation waits for the Examiner
+session without stopping it. What does stop it: the host's halt (on the run's moves, an ending the
+table names, or the operator's stop) and a kill of the run. It then ends on record as killed.
 
 A comparison returns the same aggregate tally and reading the Builder already receives. A
 promotion can only name the harness the existing rule allows. The model cannot choose a checker, a
@@ -803,9 +804,11 @@ so a campaign that opens on a few tasks releases fewer than `--practice` names. 
 session the table releases more where tasks have been held out since the last release, and after a
 control that read room (section 7) it releases as many again. Inside a Builder's conversation,
 which spans epochs, the host releases what the epoch is still owed as each Examiner session beside
-it ends (`releaseOwed`, `tools/d2/campaign-actions.ts`). `--practice` is a per-epoch count,
-and once practice exists a release never leaves fewer frontier tasks than a sweep at the level needs
-(`practiceRoom`, `src/campaign/decide.ts`). Each release is one task fewer to compare.
+it holds a task and as it ends (`releaseOwed`, `tools/d2/campaign-actions.ts`). While the session
+writes, a release also leaves the frontier, with the tasks the session is still asked for, at a
+comparison's target. `--practice` is a per-epoch count, and once practice exists a release never
+leaves fewer frontier tasks than a sweep at the level needs (`practiceRoom`,
+`src/campaign/decide.ts`). Each release is one task fewer to compare.
 
 A release takes, in this order:
 

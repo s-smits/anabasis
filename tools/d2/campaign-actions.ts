@@ -107,8 +107,13 @@ export interface CampaignContext {
   used: number;
   /** The action that threw after it began, with what it threw: the environment's ending. */
   failed: { readonly move: string; readonly why: string } | null;
-  /** The Examiner session writing beside the conversation, which settles and never throws. */
-  examining?: { readonly session: string; readonly done: Promise<void> } | null;
+  /** The Examiner session writing beside the conversation, which settles and never throws, and the
+   *  next practice release the host makes while it writes (`releaseOwed`). */
+  examining?: {
+    readonly session: string;
+    readonly done: Promise<void>;
+    readonly released: () => Promise<void>;
+  } | null;
 }
 
 /** The code a move carries where the Builder made another than the table named. */
@@ -299,9 +304,25 @@ const examineAction =
     // The action returns once the session is on record: a throw before that is the action's.
     const { promise: onRecord, resolve } = Promise.withResolvers<void>();
     const sitting = seats.examine ?? examine;
+    // As the gate holds each task the host releases what the epoch is owed, one release at a time,
+    // and each release settles `next`, on which `wait` returns. A throw is the environment's ending.
+    let releasing = Promise.resolve();
+    let next = Promise.withResolvers<void>();
+    const held = (left: number) => {
+      releasing = releasing
+        .then(async () => {
+          if (!(await releaseOwed(context, bench, { session, left }))) return;
+          next.resolve();
+          next = Promise.withResolvers<void>();
+        })
+        .catch((error: unknown) => {
+          context.failed = { move: "prepare", why: errorMessage(error) };
+          bench.halt.abort();
+        });
+    };
     const work = examineCommand(
       args,
-      (request, wall) => sitting({ ...request, opened: resolve }, wall),
+      (request, wall) => sitting({ ...request, opened: resolve, held }, wall),
       probe,
       // The host's halt, on its bounds or an ending, and the run's kill stop it; the
       // conversation's own end is neither.
@@ -314,6 +335,7 @@ const examineAction =
     // throw after it began is the environment's ending, as an action's is (`actionTool`).
     const done = work
       .then(() => waitCrashed(context.log, context.seats.host))
+      .then(() => releasing)
       .then(() => releaseOwed(context, bench))
       .catch(async (error: unknown) => {
         if (await waitOut(context.log, error, context.seats.host?.sleep)) return;
@@ -323,9 +345,9 @@ const examineAction =
       .then(() => {
         context.examining = null;
       });
-    context.examining = { session, done };
+    context.examining = { session, done, released: () => next.promise };
     return {
-      said: `Examiner session ${session} is writing ${tasks === undefined ? "tasks" : plural(Number(tasks), "task")} beside this conversation: edit, release practice and practise meanwhile. A comparison or a promotion waits for it to end, wait returns when it ends, and campaign_status says how many it has held out.`,
+      said: `Examiner session ${session} is writing ${tasks === undefined ? "tasks" : plural(Number(tasks), "task")} beside this conversation: edit, release practice and practise meanwhile. As it holds tasks the host releases the practice the epoch is owed. A comparison or a promotion waits for it to end, wait returns when it ends or the host releases practice, and campaign_status says how many it has held out.`,
     };
   };
 
@@ -373,19 +395,35 @@ async function releaseTo(context: CampaignContext, bench: Bench, practice: numbe
  * Examiner sessions after a promotion ended with the epoch still owed 1 to 6 practice tasks, and
  * one Opus campaign practised on 2 tasks over three epochs. It is the host's own move, on record
  * with the hold's code, and `--moves` bounds it as any move.
+ *
+ * It is also made as the session's gate holds each task (`writing`, given what the session is
+ * still asked for): until 25 October it waited for the session's end, and in the six campaigns of
+ * v0.7.1 each Builder practised on one released task and then sat in `wait` for 108 to 250
+ * minutes while its first session held tasks. While the session writes, a release also leaves the
+ * session's frontier, with what it is still asked for, at a comparison's target, which its ask
+ * counted towards (`shortOf`). Returns whether it released a task.
  */
-async function releaseOwed(context: CampaignContext, bench: Bench): Promise<void> {
-  if (context.failed !== null || bench.halt.signal.aborted || context.used >= context.maxMoves) return;
+async function releaseOwed(
+  context: CampaignContext,
+  bench: Bench,
+  writing?: { readonly session: string; readonly left: number },
+): Promise<boolean> {
+  if (context.failed !== null || bench.halt.signal.aborted || context.used >= context.maxMoves) return false;
   const { turn } = actionTurn(context);
   const before = taskSets(turn.events).released.length;
-  const owed = owedOf(context, turn);
-  if (owed <= 0 || (await releaseTo(context, bench, before + owed)) === before) return;
+  const spare =
+    writing === undefined
+      ? Number.POSITIVE_INFINITY
+      : supplyOf(turn.events).held + writing.left - turn.plan.wanted.target;
+  const owed = Math.min(owedOf(context, turn), spare);
+  if (owed <= 0 || (await releaseTo(context, bench, before + owed)) === before) return false;
   context.used += 1;
   append(context.log, MOVED, {
     move: "prepare",
     code: "practice",
-    why: `${String(epochReleased(turn.events).epoch)} practice tasks were released since the reference harness was last promoted, and an Examiner session beside the conversation ended: the host releases the epoch's practice`,
+    why: `${String(epochReleased(turn.events).epoch)} practice tasks were released since the reference harness was last promoted, and ${writing === undefined ? "an Examiner session beside the conversation ended" : `Examiner session ${writing.session} beside the conversation held a task out`}: the host releases the epoch's practice`,
   });
+  return true;
 }
 
 /**
@@ -723,11 +761,21 @@ export function campaignTools(
         ].map((made) => endingWith(made, () => campaignStatus(context, bench))),
         // On the host's time, as a comparison's wait for the same session is.
         waitTool(
-          "Wait for the Examiner session writing beside this conversation to end, on the host's time, and return the campaign's facts; at once where none is writing.",
+          "Wait for the Examiner session writing beside this conversation to end, or for the host to release practice tasks while it writes, on the host's time, and return the campaign's facts; at once where none is writing.",
           async () => {
             const writing = context.examining;
-            if (writing != null) await bench.within(() => writing.done);
-            return campaignStatus(context, bench);
+            if (writing == null) return campaignStatus(context, bench);
+            const before = taskSets(read(context.log)).released.length;
+            await bench.within(() => Promise.race([writing.done, writing.released()]));
+            const released = taskSets(read(context.log)).released.length - before;
+            // The count is of what was released, which the facts below count too (rule 3).
+            const beside =
+              context.examining === writing && released > 0
+                ? [
+                    `The host released ${plural(released, "practice task")} into practice/ while Examiner session ${writing.session} writes; wait again to wait for it to end.`,
+                  ]
+                : [];
+            return [...beside, campaignStatus(context, bench)].join("\n");
           },
         ),
         tool({

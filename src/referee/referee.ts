@@ -4,6 +4,9 @@
  * reads only the verifier's side: the task with its hidden values, the contract's public rules, the
  * answer, which checks refused it, and the check program. It never sees the harness, the solver's
  * trace or the Builder, and its reasons go to the log, never to the Builder.
+ * Ruling prose has no length gate: evidence is checked on the submitted arguments before the
+ * finding's reason is bounded to trimmed UTF-8 content plus an omission marker for display.
+ * The call trace retains the full explanation, as does a refusal's record of what was asked.
  *
  * Neither ruling that settles a fail is free. An `earned` ruling must name the public rule the
  * answer breaks, one a refusing check cites, and the field of the answer that breaks it, one such a
@@ -62,6 +65,7 @@ import {
   type Verdict,
   type Verifier,
 } from "../kernel/verify.ts";
+import { boundText } from "../meta/bounded-text.ts";
 import { readFileSync } from "../meta/filesystem.ts";
 import { resolveJsonPath } from "../meta/json-evidence.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
@@ -112,7 +116,7 @@ interface Answers {
   readonly accepted: readonly JsonValue[];
 }
 
-const REASON_MAX_CHARS = 700;
+const REASON_DISPLAY_BYTES = 700;
 /** answer.ts's window: the longest text one read returns. */
 const READ_WINDOW = 12_000;
 
@@ -137,7 +141,7 @@ const RULING_PARAMETERS = Type.Object({
         "For earned: an existing field of the answer or its parent that breaks the rule, including `$` for the whole answer. Spell paths as the checks do: `$.items[0].value`.",
     }),
   ),
-  reason: Type.String({ minLength: 1, maxLength: REASON_MAX_CHARS }),
+  reason: Type.String({ minLength: 1 }),
   probes: Type.Array(Type.Number(), {
     description: "The numbers of the probes the ruling rests on; [] for none.",
   }),
@@ -331,7 +335,7 @@ function rulingTool(
         check: args.ruling === "check-defect" ? (args.check ?? null) : null,
         rule: earned ? (args.rule ?? null) : null,
         field: earned ? (args.field ?? null) : null,
-        reason: args.reason.trim(),
+        reason: boundText(args.reason, REASON_DISPLAY_BYTES).shown,
         probes: [...new Set(args.probes)].sort((a, b) => a - b),
       });
       return ending(text("Recorded."));

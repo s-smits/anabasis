@@ -177,7 +177,9 @@ name the rule broken and the field that breaks it, both cited by a rejecting che
 must cite a probe that decided both sides on a field the check reads, or shows a refusal independent
 of the answer where it declares none. A cited probe that supplies an accepted answer, whole or on
 every field that check reads, is refused as defect evidence; `unclear` covers the rest. A ruling
-without its evidence is refused, and each refusal is recorded with the ruling asked for and why
+without its evidence is refused. Ruling prose has no length gate: the finding keeps up to 700
+UTF-8 bytes of trimmed content plus an omission marker where needed, while the call trace retains
+the full explanation. Each evidence refusal is recorded with the ruling asked for and why
 (`referee.refused`; no report reads them yet). `earned` counts as a loss; the other two
 set the task aside for both harnesses, so a broken check scores against nobody.
 

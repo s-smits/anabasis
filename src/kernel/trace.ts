@@ -12,7 +12,8 @@
  *
  * The Builder reads a practice solve's calls through `callList` and `callText` and nothing wider;
  * a verdict's checks and the Referee's reasons share the log and never enter a practice trace.
- * The same records bill completed and unfinished sessions.
+ * The same records bill completed and unfinished sessions. `costLine` checks that bill against the
+ * backend's own totals on the endings that carry one.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import {
@@ -128,7 +129,7 @@ export const BILLED: ReadonlySet<string> = new Set([
 /** The kind seat `seat` logs part `part` under. */
 export const traceKind = (seat: Seat, part: Traced["part"]) => `${seat}.${part}` as const;
 
-/** The backend's price of one usage, `cost.total`, or null where it holds none. */
+/** The host's price of one usage, `cost.total`, or null where it holds none. */
 function costOf(usage: JsonValue | undefined): number | null {
   const total = asRecord(asRecord(usage)?.cost)?.total;
   return isNumber(total) ? total : null;
@@ -253,6 +254,26 @@ export function billedAll(events: readonly LogEvent[]): number {
   return unfinished(events).reduce((sum, { dollars }) => sum + dollars, summed);
 }
 
+/** The backend's own query totals beside the host's bill on the same ending records, the check
+ *  that the meter prices what the backend charged. An ending without a total, and a session or a
+ *  solve that never ended, are left out of both sides. Recode's three campaigns of October read
+ *  backend totals 46 to 54% over the bill while every turn was priced at the requested model, and
+ *  buffer's 0.6 to 1.9%, whose turns the requested model served. */
+export function costLine(events: readonly LogEvent[]): string {
+  let [records, covered, backend, billed] = [0, 0, 0, 0];
+  for (const { kind, data } of events) {
+    if (!BILLED.has(kind) || !isNumber(data.billed)) continue;
+    records += 1;
+    if (!isNumber(data.reportedCost)) continue;
+    covered += 1;
+    backend += data.reportedCost;
+    billed += data.billed;
+  }
+  const off =
+    billed > 0 ? ` (${backend >= billed ? "+" : ""}${((backend / billed - 1) * 100).toFixed(1)}%)` : "";
+  return `backend $${backend.toFixed(2)} on ${String(covered)} of ${String(records)} ending records, calculated $${billed.toFixed(2)} on the same${off}`;
+}
+
 /**
  * The billed dollars of the stretch from event `from` to event `to` (the log's end where none):
  * what the log had billed by `to` less what it had by `from`. A sum over the slice alone billed a
@@ -267,10 +288,11 @@ export function billedBetween(events: readonly LogEvent[], from: number, to = ev
 /**
  * Every session and solve that began and never ended on record, with the dollars it metered: the
  * run was killed from outside, so no `finished` event summed them, and the cap and the total read 0
- * for what was spent. A turn's `usage.cost.total` is the backend's price of that turn, and the
- * sum over a session's or a solve's turns is what its end carries as `billed`: equal to five
- * decimals on every session and solve of one campaign of 10 October; a Builder session of another,
- * killed at its seventh turn the same day, had metered 0.12 dollars that nothing summed. A
+ * for what was spent. A turn's `usage.cost.total` is the host's price of that turn at the model that
+ * served it, retried attempts included, and the sum over a session's or a solve's turns is what its
+ * end carries as `billed`: equal to five decimals on every session and solve of one campaign of 10
+ * October; a Builder session of another, killed at its seventh turn the same day, had metered 0.12
+ * dollars that nothing summed. A
  * compaction of pi's loop is billed in the end's sum too, and its summary's price is on its
  * `*.compacted` event (`sit`, `src/agent/session.ts`); a stop and a pause read it too (`tools/runs`).
  */

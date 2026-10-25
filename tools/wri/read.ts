@@ -22,6 +22,8 @@
  * row A's hours are `time.ts`, split from here on the same day for the same ceiling.
  * Practice gaps retain whether a state was frozen at session end or entered a comparison, with
  * that comparison's start boundary and report status. Score readers still use reports alone.
+ * Campaign accounting reads calculated spend and backend coverage from `costLine`, with a
+ * residual on matching closed work and unknown backend cost for open or unreported work.
  */
 import { comparisonsOf } from "#src/campaign/ground.ts";
 import { short } from "#src/campaign/move.ts";
@@ -30,7 +32,7 @@ import { differenceOf, readsStepEitherWay } from "#src/kernel/compare.ts";
 import type { Condition } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { pairsReported } from "#src/kernel/reports.ts";
-import { billedAll } from "#src/kernel/trace.ts";
+import { billedAll, costLine } from "#src/kernel/trace.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
@@ -614,9 +616,9 @@ function reviewTriggers(log: Index): Trigger[] {
 
 /**
  * The campaign command's own record, for lane 25's "what runs next": its moves, how it ended, and
- * its billed dollars against the budget it opened with. Lane 25 read the stop rule from the
- * command's output, which the log outlives. An ending before the last event is one the campaign went
- * on from: both #107 campaigns ended `exam` at their fourth event and ran on under the same opening.
+ * its calculated dollars against the budget it opened with, beside the backend's own totals. Lane
+ * 25 read the stop rule from the command's output, which the log outlives. An ending before the
+ * last event is one the campaign went on from: both #107 campaigns ended `exam` at their fourth event and ran on under the same opening.
  * None for a log no campaign command wrote.
  */
 function campaignOf(log: Index): string[] {
@@ -629,7 +631,7 @@ function campaignOf(log: Index): string[] {
   const billed = billedAll(log.events);
   const budget = isNumber(opened?.dollars) ? ` of ${String(opened.dollars)}` : "";
   return [
-    `campaign: moves ${tally(moves)}; ended ${endings.join(", then ") || "never"}; billed ${billed.toFixed(2)}${budget} dollars`,
+    `campaign: moves ${tally(moves)}; ended ${endings.join(", then ") || "never"}; calculated spend ${billed.toFixed(2)}${budget} dollars; ${costLine(log.events)}`,
   ];
 }
 

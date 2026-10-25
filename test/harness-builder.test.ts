@@ -3,8 +3,10 @@
 // reading, the task sets, each Builder session's wall and freeze, each solve's wall and the
 // comparison are the real ones; the seats are scripts, which are paid nothing.
 // An isolated manifest also holds the runtime refusal before any campaign write or seat call.
+// Cost displays match backend totals only to covered endings and keep open costs calculated.
 
 import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
+import { REPORTED } from "../src/campaign/comparison.ts";
 import { examine } from "../src/examiner/session.ts";
 import { append, LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
 import { countedSolves, solvesIn } from "../src/kernel/solves.ts";
@@ -758,9 +760,9 @@ describe("a campaign run by its log", () => {
     expect(report).not.toContain("ladder");
     // What each measured thing cost, the climb's velocity first, and how many comparisons that
     // began bought a report.
-    expect(report).toMatch(/- The climb: \$\d+\.\d\d and \d+\.\d hours a promotion \(1\)\./);
+    expect(report).toMatch(/- The climb: calculated \$\d+\.\d\d and \d+\.\d hours a promotion \(1\)\./);
     expect(report).toMatch(
-      /- Comparisons: \$\d+\.\d\d a task scored \(\d+\); 2 of the 2 comparisons that began reported\./,
+      /- Comparisons: calculated \$\d+\.\d\d a task scored \(\d+\); 2 of the 2 comparisons that began reported\./,
     );
     expect(report).toContain("| g-1 |");
     expect(report).not.toContain("Diagnos");
@@ -788,6 +790,40 @@ describe("a campaign run by its log", () => {
     ]);
     expect(read(join(REPO, ".ana", "d2", name, LOG_FILE))).toHaveLength(before);
     expect(strayed).toEqual([]);
+  });
+
+  it("reports backend cost coverage beside calculated spend", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
+    const name = `${STEM}-cache`;
+    const pack = seeded(name).slice(0, -4);
+    const log = join(REPO, ".ana", "d2", name, LOG_FILE);
+    append(log, "exam.started", { session: "cost-exam" });
+    append(log, "exam.finished", { session: "cost-exam", billed: 10 });
+    append(log, "build.started", { session: "cost-build" });
+    append(log, "build.finished", { session: "cost-build", billed: 20, reportedCost: 25 });
+    append(log, "build.started", { session: "cost-open" });
+    append(log, "build.turn", { session: "cost-open", turn: 1, usage: { cost: { total: 5 } } });
+    // A comparison's report sums its solves' endings, which the check reads instead.
+    append(log, "comparison.started", { session: "cost-g", old: "a", fresh: "b", tasks: [] });
+    append(log, "solve.started", { solve: "cost-solve", comparison: "cost-g" });
+    append(log, "solve.finished", { solve: "cost-solve", billed: 5, reportedCost: 6 });
+    append(log, REPORTED, {
+      session: "cost-g",
+      tasks: 1,
+      billed: 5,
+      reportedCost: 6,
+      reading: "no-step",
+      scored: { wins: 0, losses: 1, ties: 0 },
+    });
+    const before = read(log);
+    const to = join(root, "handover-cache");
+    await closeCommand([...pack, "--to", to]);
+    const spend = readFileSync(join(to, "REPORT.md"), "utf8")
+      .split("\n")
+      .find((line) => line.includes("Calculated spend"));
+    // Calculated $40 in all; the backend's $31 stands beside the $25 of the two endings that have it.
+    expect(spend?.match(/\d+(?:\.\d+)?/g)?.slice(-6)).toEqual(["40.00", "31.00", "2", "3", "25.00", "24.0"]);
+    expect(read(log)).toEqual(before);
   });
 
   it("reads a word the operator left during a comparison at the next move, and changes nothing in the comparison", async () => {

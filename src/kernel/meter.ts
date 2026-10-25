@@ -4,8 +4,8 @@
  *
  * Dollars come two ways from the same tokens, and neither converts to the other: on the truss sweep
  * metered ran 4.49 times billed on one run and 4.97 times on another.
- * - Billed is what the provider charges, cache reads at their discount and cache writes at their
- *   premium. Gates and reports read it.
+ * - Billed is calculated at the list price of the model that served each turn, cache reads at
+ *   their discount and cache writes at their premium. Gates and reports read it.
  * - Metered charges every input token at the full input price, so a solve costs the same whether its
  *   prompt prefix was warm or cold. Reports carry it beside billed.
  */
@@ -69,7 +69,7 @@ export function tokensOf(usages: readonly Usage[]): Tokens {
 /**
  * The billed and metered dollars of `tokens` on `model`. Billed is pi-ai's `calculateCost`
  * (dist/models.js:658) on the summed classes, departing from it only in leaving out the tier, as
- * `freezePrices` does: a sum of turns is the turns' sum while every turn is priced alike.
+ * `freezePrices` does: a session's bill is the sum of its turns', each at its own model's price.
  */
 export function dollars(prices: PriceTable, model: string, tokens: Tokens) {
   const price = prices[model];

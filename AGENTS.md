@@ -198,7 +198,11 @@ reads an answer that passed.
 **4. Economy: what did each measured gain cost?** A significant step is not necessarily a useful
 one. The budget is a bound the operator sets, and a campaign is judged by how fast it climbs under
 that bound, rather than by what it leaves unspent. The closing report reads
-economy from the log alone and runs no extra solve (`tools/d2/close.ts`, "Work and spend"). It
+economy from the log alone and runs no extra solve (`tools/d2/close.ts`, "Work and spend"). Its
+dollars are calculated: each turn at the list price of the model that served it, or of the model
+asked for where the catalogue lists none (`pricedAt`, `src/agent/session.ts`), as the cap and the
+score bills read them. Beside the total stand the backend's own totals on the endings that report
+one, and the calculated dollars of the same endings (`costLine`, `src/kernel/trace.ts`). It
 gives, in order: the climb's velocity (the log's dollars and hours per promotion); the dollars
 billed; what the Examiner billed per task it held out, admission solves included; what comparisons
 billed per task they scored; and how many of the comparisons that began actually reported, since

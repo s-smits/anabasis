@@ -7,6 +7,7 @@
 // Clock cases keep overlapping elapsed spans beside the union of recorded provider waits,
 // clipped at a campaign ending or the log boundary rather than read as seat inactivity.
 // Practice gaps retain the boundary and origin of frozen and compared states.
+// Campaign accounting displays calculated spend beside backend coverage and matched residuals.
 import { describe, expect, it } from "bun:test";
 import { detectable, flipP, power } from "../src/kernel/compare.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
@@ -1498,8 +1499,23 @@ describe("the reader of comparisons the campaign command named apart from its Bu
 
   it("gives the campaign's moves, its endings and its billed dollars against its budget", () => {
     expect(lines).toContain(
-      "campaign: moves build 2, compare 2; ended exam at event 1, then stop at event 51; billed 0.00 of 50 dollars",
+      "campaign: moves build 2, compare 2; ended exam at event 1, then stop at event 51; calculated spend 0.00 of 50 dollars; backend $0.00 on 0 of 0 ending records, calculated $0.00 on the same",
     );
+  });
+
+  it("shows backend coverage and residual on matching closed work, with partial and unknown costs", () => {
+    const accountEvents: LogEvent[] = [];
+    const add = appendTo(accountEvents);
+    add("campaign.opened", { budget: { dollars: 800, reserve: 10 } });
+    add(SOLVE_FINISHED, { solve: "s", billed: 93.9648096, reportedCost: 136.81746535 });
+    add(BUILD_STARTED, { session: "b-open" });
+    add("build.turn", { session: "b-open", usage: { cost: { total: 2 } } });
+    add("exam.finished", { session: "x", billed: 4, reportedCost: null });
+    const line = overview(accountEvents)
+      .rows.flatMap((row) => row.lines)
+      .find((each) => each.startsWith("campaign:"));
+    // Calculated 99.96 of 800 in all; the backend's total stands beside the one ending that has it.
+    expect(line?.match(/\d+(?:\.\d+)?/g)).toEqual(["99.96", "800", "136.82", "1", "2", "93.96", "45.6"]);
   });
 });
 

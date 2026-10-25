@@ -25,6 +25,8 @@
  *
  * One difference is left, and it reaches no model: v1 ran Claude Code in an empty environment; here
  * HOME, the solve's own, PATH and TMPDIR are set as well.
+ * Backend cost is the query's closing or last diagnostic total, taken once; it neither replaces
+ * nor constrains the host's calculated billing, and is null where no total was reported.
  */
 import {
   type EffortLevel,
@@ -687,7 +689,7 @@ function close(key: string, session: Session): void {
 }
 
 /**
- * What Claude Code reported session `key`'s query cost, which the meter's billed dollars are held to,
+ * What Claude Code reported session `key`'s query cost, separate from the meter's calculated dollars,
  * or null where it reported none, as a provider other than Claude Code reports none. A session that
  * ended on a call of its own, `finish` or `submit`, leaves Claude Code waiting on that call's result,
  * and the query's `result` comes only after the host's close interrupts it: this waits on that close.

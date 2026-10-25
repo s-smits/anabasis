@@ -22,6 +22,8 @@
  *                decides (`unadmitted`), what the Referee ruled and what a person's labels
  *                settled, and what was billed. It names each harness by its letter beside its
  *                digest's head (`namesOf`, `src/campaign/names.ts`).
+ *                Calculated spend stays the economy numerator; backend totals carry coverage and
+ *                a residual on matching closed records, with open backend costs unknown.
  *
  * Until 20 October the report said the checker was read and frozen, and not what decides it: in
  * buffer-fresh-opus-forkedPR223_v0_5_4-r3 every one of the 7 checks, the objective among them, was
@@ -53,7 +55,7 @@ import { writtenTasks } from "#src/kernel/history.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { comparisonsOf } from "#src/campaign/ground.ts";
 import { promoted } from "#src/kernel/reports.ts";
-import { billedAll, billedParts } from "#src/kernel/trace.ts";
+import { billedAll, billedParts, costLine } from "#src/kernel/trace.ts";
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
@@ -202,7 +204,7 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
         : `- Answers that passed: a person read ${String(passes.read)} in ${plural(passes.comparisons, "comparison")}, drawn uniformly by each comparison's id: ${String(passes.sound)} sound, ${String(passes.wrong)} wrong, ${String(passes.unclear)} unclear. A wrong pass is a check's fault, and its side's fail once settled.`,
     ].join("\n"),
     "## Work and spend",
-    `${plural(sessions, "Builder session")}, ${plural(steps.filter((step) => step.step === "examiner").length, "Examiner session")} and ${plural(comparisons.length, "comparison")}. Billed $${billedAll(events).toFixed(2)}${budget === null ? "" : ` of a total of $${String(budget.dollars)}`}.`,
+    `${plural(sessions, "Builder session")}, ${plural(steps.filter((step) => step.step === "examiner").length, "Examiner session")} and ${plural(comparisons.length, "comparison")}. Calculated spend $${billedAll(events).toFixed(2)}${budget === null ? "" : ` of a total of $${String(budget.dollars)}`}; ${costLine(events)}.`,
     economyLines(events).join("\n"),
     "",
   ].join("\n\n");
@@ -236,10 +238,10 @@ function economyLines(events: readonly LogEvent[]): string[] {
   const spent = billedAll(events);
   return [
     promotions > 0
-      ? `- The climb: $${(spent / promotions).toFixed(2)} and ${(hours / promotions).toFixed(1)} hours a promotion (${String(promotions)}).`
-      : `- The climb: no promotion over $${spent.toFixed(2)} and ${hours.toFixed(1)} hours.`,
-    `- The Examiner: ${per(examined, held, "task held out")}.`,
-    `- Comparisons: ${per(compared, scored, "task scored")}; ${String(reported.length)} of the ${plural(all.length, "comparison")} that began reported.`,
+      ? `- The climb: calculated $${(spent / promotions).toFixed(2)} and ${(hours / promotions).toFixed(1)} hours a promotion (${String(promotions)}).`
+      : `- The climb: no promotion over calculated $${spent.toFixed(2)} and ${hours.toFixed(1)} hours.`,
+    `- The Examiner: calculated ${per(examined, held, "task held out")}.`,
+    `- Comparisons: calculated ${per(compared, scored, "task scored")}; ${String(reported.length)} of the ${plural(all.length, "comparison")} that began reported.`,
   ];
 }
 

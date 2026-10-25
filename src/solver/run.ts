@@ -324,7 +324,7 @@ async function play(
     harness: digest,
     turns,
     prompts,
-    spent: spentOn ?? (await spentBy(request.model, id, [], [])),
+    spent: spentOn ?? (await spentBy(id, [], [])),
     submitted: desk.submitted,
     flagged: desk.flagged,
     wallEnded: wall.signal.aborted,

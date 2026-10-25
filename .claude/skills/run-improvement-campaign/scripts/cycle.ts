@@ -23,7 +23,8 @@ import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { capturedSpawn } from "#src/meta/process.ts";
-import { type Host, hostsOf, quoted, sshScript } from "#tools/runs/hosts.ts";
+import { quoted, sshScript } from "#tools/runs/host-command.ts";
+import { type Host, hostsOf } from "#tools/runs/host-config.ts";
 import { isCampaign, logEvents, processes, runs, writers } from "#tools/runs/registry.ts";
 
 const SCRIPT = ".claude/skills/run-improvement-campaign/scripts/cycle.ts";

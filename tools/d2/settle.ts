@@ -43,6 +43,8 @@
  * name, so a mistyped label is not read as no label; an empty one is still to be read, and nothing
  * is recorded until none is. A comparison is settled once: run again with the same file it says
  * what it said, and with other labels it is refused. A packet with nothing in it settles at once.
+ * A fixed comparison that stopped before its test still supplies a packet. Its labels enter the
+ * agreement report and may dispute tasks, while its reading and absent test stand unchanged.
  *
  * Until 12 October the command drew every rejection that set a task aside, and read the passes
  * apart; until 13 October it drew up to ten rejections, ruled earned or not, and three passes. Until 11 October it read a Diagnoser's accounts of practice fails; the seat went

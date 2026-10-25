@@ -15,12 +15,16 @@
  *
  * A non-result is an ending the solver does not own: the provider failed the turn (it refused, was
  * overloaded or closed the connection, as a Sol solve's did on 8 October with "WebSocket closed
- * 1000"), the sandbox crashed, the run was killed, files or tools moved during the solve, the task's own check failed on the answer
- * (it threw or returned no verdict), or the verifier could not decide. It is never counted as a pass
+ * 1000"), the sandbox crashed, its caller cancelled it, files or tools moved during the solve, the
+ * task's own check failed on the answer (it threw or returned no verdict), or the verifier could
+ * not decide. It is never counted as a pass
  * or a fail. One from the solve's side is run again, up to three times with backoff. A faulty check
  * is the task's defect: the task is dropped and the run goes on. One from the verifier stops the
  * run, since a broken verifier makes one of every check: a relative tree path once turned every
  * verdict of a regrade into one.
+ *
+ * A killed ending carries the first host cancellation origin when recorded. The typed abort
+ * reason travels with the existing signal; an unlabelled caller abort remains caller cancellation.
  *
  * A flag is the solver's word that the task is malformed, given in `submit`'s place of an answer
  * (`src/tools/answer.ts`), with why. It is its own outcome, reported apart, and in every tally the
@@ -34,6 +38,8 @@
 import { type AssistantMessage, isContextOverflow } from "@earendil-works/pi-ai";
 import { isString, type JsonValue } from "../meta/json-shape.ts";
 
+export type CancellationOrigin = "session-wall" | "campaign-budget" | "caller" | "invocation";
+
 export type Ending =
   | { readonly outcome: "pass" }
   | {
@@ -44,14 +50,27 @@ export type Ending =
   | { readonly outcome: "flagged"; readonly reason: string }
   | {
       readonly outcome: "non-result";
-      readonly kind: "provider" | "sandbox-crash" | "killed" | "moved-files" | "check" | "verifier";
+      readonly kind: "provider" | "sandbox-crash" | "moved-files" | "check" | "verifier";
       readonly reason: string;
+    }
+  | {
+      readonly outcome: "non-result";
+      readonly kind: "killed";
+      readonly reason: string;
+      readonly cancelledBy?: CancellationOrigin;
     };
 
 /** A solve's last turn, as the agent holds it or as its `solve.turn` event records it. */
 interface LastTurn {
   readonly stopReason?: JsonValue | undefined;
   readonly errorMessage?: JsonValue | undefined;
+}
+
+/** The host's first cancellation source, carried through parent and invocation signals. */
+export class Cancellation extends Error {
+  constructor(readonly cancelledBy: CancellationOrigin) {
+    super(`work cancelled by ${cancelledBy}`);
+  }
 }
 
 /**

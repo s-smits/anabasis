@@ -16,6 +16,10 @@
  * draft again. A draft with no fault stands: it goes into the log whole, as `exam.drafted`, and the
  * session ends. The campaign reads its exam from that event (`draftOf`).
  *
+ * The last measured draft and its status share one identity record. An identical resubmission
+ * reuses a complete measure; acceptance records that status, an interruption with its first
+ * cancellation source, or not-run when the accepted draft has no matching measure.
+ *
  * What the readings cannot say is whether a rule is the field's and its source real. The source
  * is on record beside the rule for a person to look up, and the host holds a draft only to
  * naming one (row F33).
@@ -43,6 +47,7 @@
  */
 import { type Static, Type } from "typebox";
 import { answerFormatFault, type Objective } from "../kernel/contract.ts";
+import { Cancellation, type CancellationOrigin } from "../kernel/solve.ts";
 import { append, type LogEvent } from "../kernel/log.ts";
 import { capturedJsonStringify, decodedJsonText, parseJsonAs } from "../meta/json-runtime.ts";
 import { asRecord, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
@@ -50,6 +55,12 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { plural } from "../meta/text.ts";
 import { budgetLine } from "./prompt.ts";
 import { TRIED } from "./record.ts";
+
+/** Measurement of the accepted draft, independent of whether the draft stands. */
+export type Measurement =
+  | { readonly status: "complete" }
+  | { readonly status: "interrupted"; readonly cancelledBy: CancellationOrigin }
+  | { readonly status: "not-run" };
 
 /** A rule of the contract as its author states it: the requirement, and where the field states it. */
 interface DraftedRule {
@@ -361,8 +372,8 @@ export function drafting(terms: {
   readonly measure?: ((draft: Draft, stop: AbortSignal) => Promise<Measured | null>) | undefined;
 }) {
   const { measure } = terms;
-  // The draft the session was last told the measure of, which stands when it is put again.
-  let told: string | null = null;
+  // Only the same draft can reuse the last complete measure.
+  let told: { readonly draft: string; readonly measurement: Measurement } | null = null;
   return {
     kind: "draft",
     system: systemPrompt(measure === undefined ? PUT.read : PUT.measured),
@@ -377,20 +388,30 @@ export function drafting(terms: {
     thing: draftedFrom,
     unformed: draftFaults,
     reading: terms.reading,
-    stood: (draft: Draft) =>
+    stood: (draft: Draft): Measurement => {
       append(terms.log, "exam.drafted", {
         session: terms.id,
         draft: parseJsonAs<JsonObject>(capturedJsonStringify(draft)),
-      }),
+      });
+      return told?.draft === capturedJsonStringify(draft) ? told.measurement : { status: "not-run" };
+    },
     stands: "The draft stands: it is the campaign's exam.",
     measure:
       measure &&
       (async (draft: Draft, stop: AbortSignal) => {
         const seen = capturedJsonStringify(draft);
-        if (seen === told) return null;
+        if (seen === told?.draft && told.measurement.status === "complete") return null;
         const solved = await measure(draft, stop);
+        const reason: unknown = stop.reason;
+        const measurement: Measurement =
+          solved === null
+            ? {
+                status: "interrupted",
+                cancelledBy: reason instanceof Cancellation ? reason.cancelledBy : "invocation",
+              }
+            : { status: "complete" };
+        told = { draft: seen, measurement };
         if (solved === null) return null;
-        told = seen;
         return [
           `The draft has no fault. The reference harness solved its examples afresh. ${budgetLine(solved.budget)}`,
           ...solved.examples.map((line, index) => `- example ${String(index)}: ${line}`),

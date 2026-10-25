@@ -17,7 +17,9 @@
  *
  * The session clock charges setup and author work. Only explicit gate settlement pauses its one
  * timer; background admission still consumes author time. Nested waits share one host interval,
- * and kill and budget signals remain independent. The end records elapsed and host seconds.
+ * and kill and budget signals remain independent. Typed abort reasons latch the first parent
+ * source before the agent loop aborts an invocation. A draft's end records the accepted draft's
+ * measurement independently of acceptance, beside elapsed and host seconds.
  */
 import {
   type Api,
@@ -32,6 +34,7 @@ import { openingOf } from "../campaign/opening.ts";
 import { endingWith, openingTool } from "../builder/tools.ts";
 import { append, read } from "../kernel/log.ts";
 import { examinerSessions } from "../kernel/solves.ts";
+import { Cancellation } from "../kernel/solve.ts";
 import { priceKey } from "../kernel/meter.ts";
 import { billedAll } from "../kernel/trace.ts";
 import type { JsonObject } from "../meta/json-shape.ts";
@@ -40,7 +43,7 @@ import { plural } from "../meta/text.ts";
 import { type SeatTool, sit } from "../agent/session.ts";
 import { ending, text, tool } from "../tools/answer.ts";
 import { walledEnv } from "../tools/env.ts";
-import { drafting } from "./draft.ts";
+import { drafting, type Measurement } from "./draft.ts";
 import { examinerShell, inExaminerWall, type Wall, type Walls } from "./shell.ts";
 import { writing } from "./write.ts";
 
@@ -61,7 +64,7 @@ interface Sitting {
   /** The backends, built on the home the Examiner's model process keeps its state in. */
   readonly models: (home: string, shutdown: AbortSignal) => Models;
   readonly log: string;
-  /** Aborts when the run is killed. */
+  /** Cancels the session; an unlabelled reason is recorded as caller cancellation. */
   readonly kill?: AbortSignal;
   /** Called once the session is on record, so a caller can let it run on beside other work. */
   readonly opened?: () => void;
@@ -139,8 +142,8 @@ interface Put<Parameters extends TSchema, Thing> {
    *  what the caller's reading says: one sentence a fault, none where it stands. */
   readonly unformed: (thing: Thing) => readonly string[];
   readonly reading: (thing: Thing) => Promise<readonly string[]>;
-  /** What the host keeps of the thing that stood, before the session ends. */
-  readonly stood: (thing: Thing) => void;
+  /** Keeps the accepted draft and returns its matching measurement status. */
+  readonly stood: (thing: Thing) => Measurement;
   /** What the session is told when one stands, before it is told that it ends. */
   readonly stands: string;
   /** What the host measured of a thing with no fault that it has not yet told the session of, which
@@ -167,38 +170,54 @@ const ENDINGS = ["stands", "finished", "supplied", "killed", "wall", "crashed", 
 /** The mode that puts one whole thing of `of`'s kind to the host until one stands: each put is
  *  one of the session's, read for its shape and then by the caller, and answered with the faults
  *  or with the session's end. */
-function putting<Parameters extends TSchema, Thing>({ limits }: Sitting, of: Put<Parameters, Thing>): Mode {
+function putting<Parameters extends TSchema, Thing>(
+  { limits }: Sitting,
+  of: Put<Parameters, Thing>,
+  stop: AbortSignal,
+): Mode {
   const { kind } = of;
-  const desk = { tries: 0, stands: false };
+  const desk: { tries: number; stands: boolean; measurement?: Measurement } = { tries: 0, stands: false };
   const none = `This session can put no further ${kind}. Call finish.`;
   const put = tool({
     ...of.put,
     executionMode: "sequential",
     execute: async (args, _api, context) => {
-      const signal = context.abortSignal ?? new AbortController().signal;
-      if (desk.tries >= limits.puts) throw new Error(none);
-      desk.tries += 1;
-      const thing = of.thing(args);
-      const unformed = of.unformed(thing);
-      const faults = unformed.length > 0 ? unformed : await of.reading(thing);
-      const left = limits.puts - desk.tries;
-      // The last put stands without a measure, so a session told one always has a put to answer it.
-      const told = faults.length > 0 || left === 0 ? null : ((await of.measure?.(thing, signal)) ?? null);
-      if (told !== null) return text(`${told}\nThis session can put ${plural(left, `more ${kind}`)}.`);
-      if (faults.length === 0) {
-        of.stood(thing);
-        desk.stands = true;
-        return ending(text(`${of.stands} The session ends here.`));
+      const cancelled = new AbortController();
+      const parent = () => cancelled.abort(stop.reason);
+      const invocation = () => cancelled.abort(new Cancellation("invocation"));
+      stop.addEventListener("abort", parent, { once: true });
+      context.abortSignal?.addEventListener("abort", invocation, { once: true });
+      if (stop.aborted) parent();
+      else if (context.abortSignal?.aborted === true) invocation();
+      try {
+        if (desk.tries >= limits.puts) throw new Error(none);
+        desk.tries += 1;
+        const thing = of.thing(args);
+        const unformed = of.unformed(thing);
+        const faults = unformed.length > 0 ? unformed : await of.reading(thing);
+        const left = limits.puts - desk.tries;
+        // The last put stands without a measure, so a session told one always has a put to answer it.
+        const told =
+          faults.length > 0 || left === 0 ? null : ((await of.measure?.(thing, cancelled.signal)) ?? null);
+        if (told !== null) return text(`${told}\nThis session can put ${plural(left, `more ${kind}`)}.`);
+        if (faults.length === 0) {
+          desk.measurement = of.stood(thing);
+          desk.stands = true;
+          return ending(text(`${of.stands} The session ends here.`));
+        }
+        return text(
+          [
+            `The ${kind} does not stand. ${plural(faults.length, "fault")}:`,
+            ...faults.map((fault) => `- ${fault}`),
+            left > 0
+              ? `Mend them and put the whole ${kind} again. This session can put ${plural(left, `more ${kind}`)}.`
+              : none,
+          ].join("\n"),
+        );
+      } finally {
+        stop.removeEventListener("abort", parent);
+        context.abortSignal?.removeEventListener("abort", invocation);
       }
-      return text(
-        [
-          `The ${kind} does not stand. ${plural(faults.length, "fault")}:`,
-          ...faults.map((fault) => `- ${fault}`),
-          left > 0
-            ? `Mend them and put the whole ${kind} again. This session can put ${plural(left, `more ${kind}`)}.`
-            : none,
-        ].join("\n"),
-      );
     },
   });
   return {
@@ -234,7 +253,7 @@ function withinBudget(log: string, spent: AbortController): void {
   const budget = openingOf(events)?.budget;
   if (budget === null || budget === undefined) return;
   if (budget.dollars - billedAll(events) >= budget.reserve) return;
-  spent.abort();
+  spent.abort(new Cancellation("campaign-budget"));
   throw new Error("the campaign budget has no reserve left");
 }
 
@@ -273,7 +292,10 @@ function sessionClock(began: number, seconds: number) {
   const arm = () => {
     clearTimeout(timer);
     if (closed || wall.signal.aborted) return;
-    timer = setTimeout(() => wall.abort(), Math.max(0, (seconds - ownSeconds()) * 1000));
+    timer = setTimeout(
+      () => wall.abort(new Cancellation("session-wall")),
+      Math.max(0, (seconds - ownSeconds()) * 1000),
+    );
   };
   arm();
   return {
@@ -282,7 +304,7 @@ function sessionClock(began: number, seconds: number) {
     hostSeconds: () => hostMilliseconds() / 1000,
     within: async (action: () => Promise<void>) => {
       if (depth === 0) {
-        if (ownSeconds() >= seconds) wall.abort();
+        if (ownSeconds() >= seconds) wall.abort(new Cancellation("session-wall"));
         clearTimeout(timer);
         since = performance.now();
       }
@@ -318,10 +340,17 @@ async function examining(
   const began = walls?.began ?? performance.now();
   const clock = sessionClock(began, request.limits.wallSeconds);
   const { log, limits, model, id } = request;
+  const caller = new AbortController();
+  const cancel = () => {
+    const reason: unknown = request.kill?.reason;
+    caller.abort(reason instanceof Cancellation ? reason : new Cancellation("caller"));
+  };
+  request.kill?.addEventListener("abort", cancel, { once: true });
+  if (request.kill?.aborted === true) cancel();
   try {
     const spent = new AbortController();
-    const stops = [clock.signal, spent.signal, request.kill];
-    const mode = modeOf(AbortSignal.any(stops.filter((stop) => stop !== undefined)), clock.within);
+    const stops = [clock.signal, spent.signal, caller.signal];
+    const mode = modeOf(AbortSignal.any(stops), clock.within);
     append(log, `${mode.kind}.started`, {
       session: id,
       model: priceKey(model),
@@ -408,6 +437,7 @@ async function examining(
     return { ended, ...mode.result() };
   } finally {
     clock.close();
+    request.kill?.removeEventListener("abort", cancel);
   }
 }
 
@@ -429,7 +459,7 @@ export async function examine(request: ExamRequest, wall?: Wall): Promise<Examin
       request,
       (stop, hostWait) =>
         request.mode === "draft"
-          ? putting(request, drafting(request))
+          ? putting(request, drafting(request), stop)
           : writing(request, walls?.pinned ?? [], reference, stop, hostWait),
       walls,
     );

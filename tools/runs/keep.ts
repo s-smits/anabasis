@@ -13,22 +13,21 @@
  *
  * The next login is the one with room whose week resets soonest, of those this keeper has not seen
  * spent (`room`, `logins.ts`), and `--logins` defaults to `ANA_LOGINS`. With none it says so once
- * and waits. A run that goes on three times in a row without its log growing
+ * and waits. A run none of whose seats is a `claude/` model bills no login and goes on without one
+ * (`billsLogin`). A run that goes on three times in a row without its log growing
  * is left: something the keeper cannot mend ends it each time.
  *
  * With `--yes` the verb leaves a keeper running by itself, its output in `keep.out` beside the log,
  * and ends: one keeper a run, and `runs stop`, `pause` or `continue --after` of the run end it. Until
  * 15 October this was three shell loops of the operator's and a wrapper a login, each moving one run.
  */
-import { openingOf } from "#src/campaign/opening.ts";
 import { type LogEvent } from "#src/kernel/log.ts";
 import { openSync, statSync } from "#src/meta/filesystem.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { recordedSetting } from "../d2/setting.ts";
-import { allowedLogins, readLogins, room } from "./logins.ts";
+import { allowedLogins, billsLogin, readLogins, room } from "./logins.ts";
 import { lastRun, rerun, start } from "./manage.ts";
 import { KEEPING, keepers, logEvents, processes, type Run, runNamed, writers } from "./registry.ts";
 import { stop } from "./stop.ts";
@@ -56,38 +55,21 @@ export function turnOf(
   return last.data.ending === "environment" ? "continue" : "done";
 }
 
-/** The models a run's seats run on: as its kept flags name them, `--seat model` or `--seat=model`,
- *  and as its opening and setting record them for the seats its flags leave to the record. */
-export function seatModels(events: readonly LogEvent[], flags: readonly string[]): string[] {
-  const opening = openingOf(events);
-  return [
-    ...flags.map((flag) => flag.slice(flag.indexOf("=") + 1)),
-    ...Object.values(opening?.seats ?? {}).map((seat) => seat?.model),
-    opening?.solver?.model,
-    recordedSetting(events)?.solver?.model,
-  ].filter(isString);
-}
-
 /**
- * The login a run goes on with after `turn`, or null to wait: its own on a continue, unless this
- * keeper saw it spent, else the first of `roomy`, those with room. A run none of whose `models` is
- * a `claude/` one bills no login, so it goes on whatever room they have: on 20 October the two
- * Codex runs kept on the M1 named no login, and would have waited for one of three spent logins
- * none of their seats used.
+ * The login a run goes on with after `turn`: none for a run that bills no login, else its own on a
+ * continue, unless this keeper saw it spent, else the first of `roomy`, those with room, or null to
+ * wait. On 20 October two Codex runs kept on the M1 would have waited for one of three spent logins
+ * none of their seats used; until 26 October such a run went on as a login all the same, and
+ * `runs usage` counted it against that login's most.
  */
 export async function nextLogin(
   turn: Turn,
-  {
-    current,
-    spent,
-    models,
-  }: { current: string | undefined; spent: ReadonlySet<string>; models: readonly string[] },
+  { current, spent, billed }: { current: string | undefined; spent: ReadonlySet<string>; billed: boolean },
   roomy: () => Promise<readonly string[]>,
-  logins: readonly string[],
-): Promise<string | null> {
-  const billed = models.some((model) => model.startsWith("claude/"));
-  if (turn === "continue" && current !== undefined && !(billed && spent.has(current))) return current;
-  return (await roomy())[0] ?? (billed ? null : (logins[0] ?? null));
+): Promise<string | undefined | null> {
+  if (!billed) return undefined;
+  if (turn === "continue" && current !== undefined && !spent.has(current)) return current;
+  return (await roomy())[0] ?? null;
 }
 
 /** Keep `run` going on `logins` until it ends on its own terms. */
@@ -117,9 +99,8 @@ async function keepGoing(run: Run, logins: readonly string[], waitMs: number): P
     const spent = new Set(spentUntil.keys());
     const target = await nextLogin(
       turn,
-      { current, spent, models: seatModels(events, lastRun(run).flags) },
+      { current, spent, billed: billsLogin(events, lastRun(run).flags) },
       async () => room(await readLogins(logins, runtimeProcess.env), logins, spent),
-      logins,
     );
     if (target === null) {
       if (!waiting) console.log(`${run.name}: no login with room; left waiting`);
@@ -135,7 +116,9 @@ async function keepGoing(run: Run, logins: readonly string[], waitMs: number): P
         `${run.name} went on ${String(BARREN)} times and its log did not grow: kept no longer`,
       );
     }
-    console.log(`${new Date(now).toISOString()} ${run.name}: ${turn} on login ${target}`);
+    console.log(
+      `${new Date(now).toISOString()} ${run.name}: ${turn} ${target === undefined ? "without a login" : `on login ${target}`}`,
+    );
     try {
       if (turn === "move") await stop([run.name, "--yes"]);
       await start(run, rerun(lastRun(run).flags, undefined), target, undefined);
@@ -159,12 +142,15 @@ export async function keep(args: readonly string[]): Promise<void> {
   });
   const [name] = positionals;
   const logins = values.logins?.split(",") ?? allowedLogins(runtimeProcess.env);
-  if (name === undefined || logins.length === 0) {
+  if (name === undefined) {
     throw new Error(
       "usage: bun --env-file=<file> run runs keep <name> --logins 2,3,4 [--wait-hours 1] [--yes]",
     );
   }
   const run = runNamed(name);
+  if (logins.length === 0 && billsLogin(logEvents(run.path), lastRun(run).flags)) {
+    throw new Error("no allowed Claude login: name --logins or set ANA_LOGINS");
+  }
   if (values.here) return keepGoing(run, logins, Number(values["wait-hours"]) * HOUR);
   if (keepers(name).length > 0) throw new Error(`${name} is kept already`);
   if (!values.yes) {

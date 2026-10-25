@@ -28,7 +28,7 @@ archived campaign; `copy <name> --to <worktree>` brings this machine's back to g
 | `continue <name> [--at <c>] [--login N] [--budget N] [--after <event>] [--yes] [-- <flags>]` | runs a campaign again from its log, on its kept flags or their replacement after `--` | `manage.ts` |
 | `pause <name> --after <event> [--yes]` | stops a campaign once its log gains one more of the event and nothing but its Builder's conversation is open | `manage.ts` |
 | `keep <name> [--logins 2,3,4] [--wait-hours 1] [--yes]` | keeps a campaign going: moves it off a long provider wait, and continues it after a death or an `environment` ending | `keep.ts` |
-| `copy <name> --to <worktree> [--yes]` | copies a stopped campaign whole to another worktree, from a worktree or the archive, and sets the source aside | `manage.ts` |
+| `copy <name> --to <worktree> [--yes]` | copies a stopped campaign whole to another worktree, from a worktree or the archive, and sets the source aside | `move.ts` |
 | `move <name> --to <host\|here> [--from <host\|here>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]` | pauses a campaign at a clean point, takes its folder whole to a new worktree on the other machine at the same commit, sets the source aside and continues it there on its kept flags | `move.ts` |
 | `stop <name> ... [--yes]` | ends the process that writes each log, and its keeper, and releases what its unfinished solves and sessions held | `stop.ts` |
 | `status [--all]` | one row a run: the live ones and those whose log moved in a day, with tree, commit, login, open comparison, comparisons reported, promotions and ending, and on a closed row the hours until it leaves; under the rows, the closed runs it leaves out and the archive's newest campaigns; then each host `ANA_HOSTS` lists, all asked at once and each printed as it answers, within 30 s after cold preparation | `pulse.ts` |
@@ -129,8 +129,9 @@ remote branch holds. It then installs (`bun install --frozen-lockfile`), runs th
   process, which hands the environment on; these verbs do not open the file. Do not
   print, copy or search for it. `--login N` runs the command on the login the environment holds as
   `CLAUDE_CODE_OAUTH_TOKEN<N>`, passed on as `CLAUDE_CODE_OAUTH_TOKEN`, and no numbered key
-  reaches the command. With no `--login` and no unnumbered login, the one numbered login held is
-  taken, and two or more are refused. `claude/<model>` runs Claude Code on that login and `claude-api/<model>` on
+  reaches the command. With no `--login` the environment goes on less its numbered keys and no
+  login is guessed: the command's dry run refuses a seat whose provider holds no credential, so a
+  run with a `claude/` seat names its login, as `fresh` and `keep` do. `claude/<model>` runs Claude Code on that login and `claude-api/<model>` on
   `ANTHROPIC_API_KEY`: two providers, so a solver on one is another setting than on the other.
 - **What the operator's machines hold is environment, too.** `ANA_LOGINS` names the logins a run
   may take (`2,3,4`; every login the environment holds where unset), and `ANA_HOSTS` the other
@@ -204,7 +205,8 @@ environment (`allowedLogins`). It looks at the run once a minute and takes one o
 continues it on the login with room whose week resets soonest. Where the process is gone and the
 log holds no ending, or the ending `environment`, it continues on the same login where that
 login is recorded and its wait has expired, otherwise on one with room. Any other
-ending is the campaign's own, and the keeper leaves. A login it moved off is not taken again until
+ending is the campaign's own, and the keeper leaves. A run with no `claude/` seat bills no login
+and goes on without one, so no login's count holds it. A login it moved off is not taken again until
 the wait named for it is over; with no login left it says so once and waits. Three continues in a
 row that leave the log as it was end the keeper: something it cannot mend ends the run each time.
 

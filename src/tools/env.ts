@@ -11,6 +11,10 @@
  * descriptor cannot cross the wall; a directory reader lists again for each page, as upstream's
  * reads each entry as it pages. All operations share a queue because runWalled shares the profile
  * and leader files.
+ *
+ * The worker's shell is the one that reads a model's bash call, so it is `/bin/bash`, as the
+ * wall's is (`stageCommandIsolation` says why); with `/bin/sh` here, process substitution still
+ * failed whatever the wall ran.
  */
 import {
   type BinaryReader,
@@ -78,7 +82,7 @@ const send = (frame) => {
   const data = Buffer.from(JSON.stringify(frame) + "\n");
   for (let offset = 0; offset < data.length;) offset += writeSync(1, data, offset, data.length - offset);
 };
-const env = new NodeExecutionEnv({ cwd, shellPath: "/bin/sh" });
+const env = new NodeExecutionEnv({ cwd, shellPath: "/bin/bash" });
 const context = {};
 const tooLarge = { ok: false, error: { code: "invalid", message: "File exceeds the 16 MiB read bound; read parts with exec" } };
 const snapshot = async (path, options) => {

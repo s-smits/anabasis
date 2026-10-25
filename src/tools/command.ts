@@ -123,6 +123,8 @@ interface WalledOptions {
   readonly stage?: ((into: string) => void) | undefined;
 }
 
+/** The host's launcher, outside the wall: it writes the leader's pid and `exec`s the wall, and a
+ *  seat's command reaches it only quoted, to run in `/bin/bash` inside (`stageCommandIsolation`). */
 const SHELL = new NodeExecutionEnv({ cwd: "/", shellPath: "/bin/sh", shellEnv: {} });
 
 /** The solve's reserve for command results: a minute, and an eighth of a solve shorter than eight. */
@@ -247,7 +249,8 @@ export async function probeWall(
         ({ name, path }) =>
           `if cat ${shellQuote(path)} >/dev/null 2>&1; then echo ${shellQuote(`${name}: read`)}; else echo ${shellQuote(`${name}: refused`)}; fi`,
       ),
-      // `true`, not `:`: dash, Linux's `sh`, ends the script where a special builtin's redirection fails.
+      // `true`, not `:`: a POSIX shell such as dash ends the script where a special builtin's
+      // redirection fails, so the probe stays whole whichever shell runs it.
       `if true 2>/dev/null > ${shellQuote(written)}; then echo 'host folder: written'; else echo 'host folder: refused'; fi`,
       "cat brought > own && cat own || echo 'own folder: not written and read back'",
     ].join("\n");

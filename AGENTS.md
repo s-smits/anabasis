@@ -1389,7 +1389,9 @@ What holds in all of them:
    and replays, which prove a path and show no climb.
 
 A solve and a Builder session run on either host, behind Seatbelt on macOS and Bubblewrap on Linux.
-Nothing caps the disk of a solve, a Builder session or an Examiner session on either host: each runs
+Every seat's commands run inside that wall in the system's `/bin/bash`, 3.2.57 on macOS and 5.1 on
+Linux, so pi's tool named bash runs Bash; nothing ships or installs a shell (`stageCommandIsolation`,
+`src/wall/isolation.ts`, and the worker in `src/tools/env.ts`). Nothing caps the disk of a solve, a Builder session or an Examiner session on either host: each runs
 its commands under the command wall in a root of its own on the host's disk, which is removed with
 whatever still works in it when the seat ends (`src/wall/seat-root.ts`). When the required wall is
 unavailable, the result is a typed non-result, never an unconfined run.

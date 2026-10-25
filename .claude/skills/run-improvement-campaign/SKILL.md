@@ -119,7 +119,9 @@ bun --env-file=.env.runs .claude/skills/run-improvement-campaign/scripts/cycle.t
 
 It finds each named run on this machine or on a host `ANA_HOSTS` lists, and prints one row a run
 (host, live or closed with its ending, promotions, comparisons and hours since its opening) and
-then the step, with the commands that take it:
+then the step, with the commands that take it. Other hosts are asked through `askedScript`, in
+each host's configured tree: a host that fails, or does not answer within the runs CLI's deadline,
+leaves its runs `unread`.
 
 | Step | When | Prints |
 | --- | --- | --- |

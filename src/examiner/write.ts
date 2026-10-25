@@ -23,7 +23,7 @@
  * towards supply; retrieval changes neither duplicate eligibility nor how a retry is solved.
  * On 21 October, 23 passing tries followed a proposal in 30 logs; the proof is read when needed.
  * Unmeasured drafts may return in the same session (5 retry signatures in 30 logs), and the
- * reserve holds the next solve alone (2 reserve refusals of 1,396 drafts).
+ * reserve holds the solves a draft starts next (2 reserve refusals of 1,396 drafts).
  */
 import type { SeatTool } from "../agent/session.ts";
 import { Type } from "typebox";
@@ -33,7 +33,7 @@ import { acceptedAnswers, proposalsOf, writtenTasks } from "../kernel/history.ts
 import { poolOf } from "../kernel/reports.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { gainOver, informative, type Paired } from "../kernel/compare.ts";
-import type { Ending } from "../kernel/solve.ts";
+import { Cancellation, type Ending } from "../kernel/solve.ts";
 import { packageGate, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
 import type { Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
@@ -125,7 +125,7 @@ const GATES = {
       "Put task instances to the host's gate, as the system prompt's section on the gate says. Each instance is a family, a public input and hidden values, in the shape of the existing tasks.",
   },
   try_task: {
-    description: `Put task instances to the host's gate and return at once: the shape of each package, then up to ${String(TRIED)} solves of it by the reference harness, one at a time, as the system prompt's section on the gate says. What the gate says of each comes with a later tool result, and wait returns with it. Each instance is a family, a public input and hidden values, in the shape of the existing tasks.`,
+    description: `Put task instances to the host's gate and return at once: the shape of each package, then up to ${String(TRIED)} solves of it by the reference harness, the first alone and the rest together, as the system prompt's section on the gate says. What the gate says of each comes with a later tool result, and wait returns with it. Each instance is a family, a public input and hidden values, in the shape of the existing tasks.`,
   },
 } as const;
 /** What only the checks read of an instance, as each tool that takes one describes it. */
@@ -243,12 +243,24 @@ async function seenOf(
 }
 
 /** What the gate reads of one package: its shape, and under `try_task` the reference harness's
- *  solves of a package whose shape passed, one at a time and at most `TRIED`. The draft is held at
- *  the first reading that leaves the reference room (`seenOf`): replayed, that decided 304 drafts of
- *  five campaigns as all three at once had, on 627 of 912 solves. A solve that ended in no reading,
- *  or in a rejection the Referee did not rule earned (`probing`, `tools/d1b/examine.ts`), is no
- *  reading. `stop` is the session's signal, which its wall, its end and a killed run abort, so a
- *  wall that fires mid-try starts no other solve and leaves the draft refused unmeasured. */
+ *  solves of a package whose shape passed, at most `TRIED`: the first alone and, where it leaves the
+ *  reference no room (`seenOf`), the rest together, as many as the campaign's reserve holds beside
+ *  the solves in flight (`affords`), choosing again after an incomplete batch; each still waits
+ *  for the host (`gated`, `tools/d2/host.ts`).
+ *  The draft is held at the first reading that leaves room, and the solves still running are
+ *  cancelled through their signal: one still queued at the host starts no solve, and work already
+ *  started stays billed. From 20 October they ran one at a time, and every refusal took three.
+ *  A thrown probe cancels and drains its batch before the error leaves the gate (26 October).
+ *  Replayed on 25 October over 800 such gates of 18 campaigns, which spent 6,564 minutes in their
+ *  solves one after another: the other two together save 754 of them on the 273 gates that ran three
+ *  (548 on the 239 refused), and spend one more solve on each of the 87 held at their second, cut
+ *  when that second ends, estimated at most 745 solve minutes with a $23.48 retrospective cost
+ *  proxy, rather than a bound on the extra bill. A solve that ended in no reading, or in a
+ *  rejection the Referee did not rule earned (`probing`, `tools/d1b/examine.ts`),
+ *  is no reading, and a non-result under the gate's own cancellation is not counted, including a
+ *  rejection still with the Referee. `stop` is the session's signal, which its wall, its end and a
+ *  killed run abort, so a wall that fires mid-try starts no other solve and
+ *  leaves the draft refused unmeasured. */
 export async function measured(gate: Gate, task: TaskPackage, stop: AbortSignal, proof: Proof) {
   const { contract, log, id, probe } = gate;
   if (carries([task.publicInput, task.hidden], gate.planted)) return { reason: PLANTED, said: "" };
@@ -259,13 +271,37 @@ export async function measured(gate: Gate, task: TaskPackage, stop: AbortSignal,
   const from = read(log).length - 1;
   const readings: Ending[] = [];
   let ran = 0;
-  let seen: Awaited<ReturnType<typeof seenOf>>;
-  do {
-    const solved = await probe(task, id, stop);
-    ran += 1;
-    if (solved.outcome !== "non-result") readings.push(solved);
-    seen = await seenOf(gate, task, { from, readings, proof });
-  } while (!seen.room && ran < TRIED && !stop.aborted && affords(log, 1));
+  // Each reading is read after the one before, so the last read holds every reading.
+  let reading = seenOf(gate, task, { from, readings, proof });
+  const held = new Cancellation("caller");
+  const cut = new AbortController();
+  const signal = AbortSignal.any([stop, cut.signal]);
+  const together = async (count: number) => {
+    const batch = Array.from({ length: count }, async () => {
+      const solved = await probe(task, id, signal);
+      if (solved.outcome === "non-result" && signal.reason === held) return;
+      ran += 1;
+      if (solved.outcome !== "non-result") readings.push(solved);
+      reading = reading.then(() => seenOf(gate, task, { from, readings, proof }));
+      if ((await reading).room) cut.abort(held);
+    });
+    try {
+      await Promise.all(batch);
+    } catch (error) {
+      cut.abort(held);
+      await Promise.allSettled(batch);
+      throw error;
+    }
+  };
+  await together(1);
+  while (!(await reading).room && !stop.aborted) {
+    if (ran === TRIED) break;
+    let rest = 0;
+    while (rest < TRIED - ran && affords(log, rest + 1)) rest += 1;
+    if (rest === 0) break;
+    await together(rest);
+  }
+  const seen = await reading;
   const { solves, valid, answers, authored, gap, unsolved } = seen;
   const unread =
     solves < ran

@@ -5,6 +5,7 @@
 // An isolated manifest also holds the runtime refusal before any campaign write or seat call.
 // Closing reports also read recorded Builder cache usage across finished and unfinished sessions.
 // Cost displays match backend totals only to covered endings and keep open costs calculated.
+// Comparison unit costs use scored versions, retaining spend when no task was scored.
 
 import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
 import { REPORTED } from "../src/campaign/comparison.ts";
@@ -891,6 +892,42 @@ describe("a campaign run by its log", () => {
     expect(read(join(REPO, ".ana", "d2", name, LOG_FILE))).toHaveLength(before);
     expect(strayed).toEqual([]);
   });
+
+  it.each([{ versions: [] }, { versions: ["v1", "v2"] }])(
+    "prices scored versions rather than requested tasks: %j",
+    async ({ versions }) => {
+      layOutPack(root, bundle, TASKS, FIXTURE);
+      const name = `${STEM}-scored-${String(versions.length)}`;
+      const pack = seeded(name).slice(0, -4);
+      const log = join(REPO, ".ana", "d2", name, LOG_FILE);
+      const session = "scored-comparison";
+      append(log, "comparison.started", { session, old: "a", fresh: "b", tasks: [] });
+      append(log, "solve.started", { solve: "scored-solve", comparison: session });
+      append(log, "solve.finished", { solve: "scored-solve", billed: 42.495011 });
+      append(log, REPORTED, {
+        session,
+        tasks: 10,
+        versions,
+        valid: null,
+        reading: "check-defects",
+        scored: { wins: 0, losses: 0, ties: 0 },
+      });
+      const to = join(root, `handover-scored-${String(versions.length)}`);
+      await closeCommand([...pack, "--to", to]);
+      const row = readFileSync(join(to, "REPORT.md"), "utf8")
+        .split("\n")
+        .find((line) => line.startsWith("- Comparisons:"));
+      expect(row).toContain("1 of the 1 comparison that began reported");
+      expect(row).not.toContain("$4.25");
+      if (versions.length === 0) {
+        expect(row).toContain("no task scored");
+        expect(row).toContain("$42.50 billed");
+        expect(row).not.toMatch(/\$[\d.]+ a task scored/);
+      } else {
+        expect(row).toContain("$21.25 a task scored (2)");
+      }
+    },
+  );
 
   it("reports Builder cache tokens once across finished and unfinished sessions", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);

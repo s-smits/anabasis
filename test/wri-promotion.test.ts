@@ -3,6 +3,7 @@
 // and the campaign moves its budget, holds out two tasks, runs a control and builds from it. One
 // reference solve runs a program another campaign compiled under the host's `/tmp`, and two new
 // solves write one script there.
+// Missing validity profiles stay unmeasured even where raw solves passed.
 import { describe, expect, it } from "bun:test";
 import { type Condition, conditionId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
@@ -227,6 +228,45 @@ function leaning({
 }
 
 describe("lane 31: a promotion and the climb after it", () => {
+  it.each([
+    [null, "unmeasured"],
+    [{}, "unmeasured"],
+    [{ old: [], fresh: [0, 0, 0] }, "unmeasured"],
+    [{ old: [3], fresh: [3] }, "unmeasured"],
+    [{ old: [3, 0, 0, 0, 0], fresh: [3, 0, 0, 0, 0] }, "0%"],
+    [{ old: [0, 0, 0, 0, 3], fresh: [0, 0, 0, 0, 3] }, "100%"],
+  ] as const)("preserves the validity measurement for profile %j", (valid, expected) => {
+    const { log, put, solve, compare } = campaign();
+    for (const version of HELD) {
+      put("task.proposed", { version });
+      put("task.gate", { version, gate: 1, outcome: "passed" });
+    }
+    const first = compare("g-1", "hbase", "hn", { ...STEP, valid });
+    solve("r1", "v1", "hbase", "g-1", []);
+    first();
+    expect(climbTable([{ name: "profile", events: log }])).toContain(`| g-1 ${expected} |`);
+    put("harness.promoted", { harness: "hn", from: "hbase", rests: [{ comparison: "g-1" }] });
+    compare("g-2", "hn", "hm", { ...STEP, valid })();
+    compare("g-3", "hn", "hbase", { ...STEP, valid })();
+    const after = triggered(log)("AFTER THE PROMOTION")[0];
+    expect(after).toContain(`valid ${expected} against ${expected}`);
+    expect(after).toContain(`control g-3: the promoted harness valid on ${expected}`);
+  });
+
+  it("keeps an absent profile unmeasured and missing new-side validity beside a measured bare reference", () => {
+    const { log, put, compare } = campaign();
+    for (const version of HELD) {
+      put("task.proposed", { version });
+      put("task.gate", { version, gate: 1, outcome: "passed" });
+    }
+    const { valid: _valid, ...without } = STEP;
+    compare("absent", "hbase", "hn", without)();
+    expect(climbTable([{ name: "absent", events: log }])).toContain("| absent unmeasured |");
+    compare("bare", "hbase", "hn", { ...STEP, valid: { old: [3, 0, 0] } })();
+    put("harness.promoted", { harness: "hn", from: "hbase", rests: [{ comparison: "bare" }] });
+    expect(triggered(log)("STARTER BARE")[0]).toContain("(0% of solves valid), the new harness unmeasured");
+  });
+
   it("reads a promotion on the differences its step tested: the frontier and the retained tasks since 20 October, the frontier alone before", () => {
     const frontier = { differences: [4, 4], of: ["a", "b"] };
     const retained = { differences: [-4], of: ["c"] };

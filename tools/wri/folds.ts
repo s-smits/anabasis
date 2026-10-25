@@ -5,6 +5,7 @@
  * The folds (`indexOf`) read the log once into what the lanes ask of it: each solve with what it
  * ran under and how it ended, each Builder session with the window of the log that is its round,
  * each comparison with the solves it could count, and the last verdict and ruling of each solve.
+ * A call reaches a solve's turn bound at its logged one-based turn; a missing turn stays unknown.
  * `TRIGGERS` names only the triggers a live reader can print and the lane each starts, and
  * `fired` makes one. Lanes 1 to 6 read the exam's instrument, which is the pack author's, and
  * lanes 7 to 12 the tasks, which are the Examiner's and the pack's; both sit here, below the
@@ -64,7 +65,7 @@ export interface Solve {
   readonly seconds: number;
   readonly calls: string[];
   errors: number;
-  /** A limit a call met that its ending does not name, or null; a call's turn counts from 0. */
+  /** A limit a call met that its ending does not name, or null; a call's turn counts from 1. */
   limit: string | null;
   /** Whether the provider named the model that served it. */
   readonly attested: boolean;
@@ -294,7 +295,7 @@ function solvesOf(
     if (solve === undefined || call.part !== "call") continue;
     solve.calls.push(call.tool);
     solve.errors += call.isError ? 1 : 0;
-    if ((call.turn ?? 0) + 1 === solve.modelTurns) solve.limit = "last turn";
+    if (solve.modelTurns !== null && call.turn === solve.modelTurns) solve.limit = "last turn";
   }
   return [...solves.values()];
 }

@@ -8,6 +8,8 @@
  * reference solve ran the phreeqc buffer-a's Builder had installed under `/tmp/phq-inst` four
  * hours before, and only the two logs together show it. `wri.ts climb` prints this, and the
  * lane 31 prompt carries it beside the peers' overviews.
+ * Reference validity comes from each report's scored profile; an absent denominator reads
+ * unmeasured rather than a measured zero.
  */
 import { short } from "#src/campaign/move.ts";
 import { gateAnswers } from "#src/examiner/record.ts";
@@ -24,7 +26,9 @@ import {
   spentTo,
   testedOf,
   testSaid,
+  untied,
   validOf,
+  validSaid,
 } from "./promotion.ts";
 
 /** One campaign as the climb table names it: its name and its log's events. */
@@ -72,15 +76,6 @@ function ruleOf(log: Index): string {
   return pinned.join(", ") || "default";
 }
 
-/** Of a test record, the tasks that did not tie, of all. */
-function untied(tested: Parameters<typeof asRecord>[0]): string {
-  const record = asRecord(tested);
-  if (record === null) return "-";
-  const [wins, losses, ties] = ["wins", "losses", "ties"].map((key) => count(record[key]));
-  const decided = (wins ?? 0) + (losses ?? 0);
-  return `${String(decided)}/${String(decided + (ties ?? 0))}`;
-}
-
 /** A campaign's row. Before any promotion its comparisons stand where the rests would. */
 function rowOf({ name, events }: Campaign): string[] {
   const log = indexOf(events);
@@ -96,7 +91,7 @@ function rowOf({ name, events }: Campaign): string[] {
       `${session} ${testSaid(last.scored)}, ${untied(last.scored)}, ${untied(last.noise)}`,
   );
   const valid = rests.map(
-    ({ session, last }) => `${session} ${(validOf(asRecord(last.valid)?.old).share * 100).toFixed(0)}%`,
+    ({ session, last }) => `${session} ${validSaid(validOf(asRecord(last.valid)?.old).share)}`,
   );
   const after = epoch === undefined ? [] : log.compared.filter(({ at }) => at > epoch.at);
   const move = log.of("campaign.move").at(-1);

@@ -16,7 +16,7 @@ import {
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { CODING_TOOLS, codingTools, selectedCodingTools } from "../src/tools/coding.ts";
+import { CODING_TOOLS, codingTools, selectedCodingTools, wallExec } from "../src/tools/coding.ts";
 import { type CommandWall, solveDirs, walledBase } from "../src/tools/command.ts";
 import { walledEnv } from "../src/tools/env.ts";
 import { osIsolationSupport } from "../src/wall/os-isolation.ts";
@@ -124,6 +124,20 @@ describe("the solver's durable coding tools", () => {
 });
 
 describe.skipIf(!osIsolationSupport().ok)("the coding tools on the OS wall", () => {
+  it("runs Bash-only syntax in the bash tool and in a command the host launches", async () => {
+    // Process substitution, `[[ ]]` and an indexed array: `/bin/sh` refuses the first on both
+    // hosts, and Linux's dash all three.
+    const command = 'a=(x y); [[ $(cat <(echo "${a[1]}")) == y ]] && echo bash-ok';
+    await withSeat(async (wall, call) => {
+      const result = await call("bash", { command });
+      expect(result.isError === true).toBe(false);
+      expect(result.text).toBe("bash-ok\n");
+      const launched = await wallExec(wall)(command);
+      expect(launched.exitCode).toBe(0);
+      expect(launched.output.toString("utf8")).toBe("bash-ok\n");
+    });
+  });
+
   it("shares the home across tools and resolves ~ to the seat rather than the host", async () => {
     await withSeat(async (wall, call) => {
       const tools = codingTools(wall, ["write", "bash", "read"]);

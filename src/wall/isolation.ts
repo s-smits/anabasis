@@ -364,8 +364,9 @@ export function commandIsolationPolicy(
   };
 }
 
-/** Escapes one argument for a `/bin/sh -c` command line. A single quote ends the literal, so the
- *  quote itself is spliced back in outside it — the standard transformation. */
+/** Escapes one argument for a POSIX shell's command line, which `/bin/bash` reads the same way. A
+ *  single quote ends the literal, so the quote itself is spliced back in outside it — the standard
+ *  transformation. */
 export function shellQuote(value: string): string {
   return `'${value.replaceAll("'", String.raw`'\''`)}'`;
 }
@@ -382,6 +383,12 @@ export function shellQuote(value: string): string {
  *
  * Seatbelt has no namespace to end what a command leaves behind, so the host ends the command's
  * process group and its descendants after it (`endHolders`, `src/wall/seat-root.ts`).
+ *
+ * Inside the wall the command runs in the system's `/bin/bash`, 3.2.57 on macOS and 5.1 on Linux,
+ * as durable's worker does a seat's shell commands (`src/tools/env.ts`): pi names its tool bash and
+ * models write Bash. Under `/bin/sh`, 16 of 29,694 recorded solver commands failed on shell syntax
+ * that Bash parses (7 process substitutions, 4 `time ( … )` under Linux's dash, 5 others). The
+ * operator chose the system's bash on 25 October; nothing is shipped or installed for it.
  */
 export function stageCommandIsolation(
   policy: CommandIsolationPolicy,
@@ -389,7 +396,7 @@ export function stageCommandIsolation(
   command: string,
 ): string {
   // Every argument is quoted, so a scratch path with a space cannot split into two.
-  return `exec ${isolatedArgv(policy, profileFile, ["/bin/sh", "-c", command]).map(shellQuote).join(" ")}`;
+  return `exec ${isolatedArgv(policy, profileFile, ["/bin/bash", "-c", command]).map(shellQuote).join(" ")}`;
 }
 
 /**

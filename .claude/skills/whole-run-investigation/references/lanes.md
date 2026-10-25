@@ -553,7 +553,7 @@ or `host`, by where the value came from.
 
 **20. Pair identity and source reach.**
 
-Starts from `HOST CODE MOVED (lane 20)`.
+Starts from `HOST CODE MOVED (lane 20)` and `STARTS OUT OF TURN (lane 20)`.
 
 The question is whether the two sides of each comparison differ in the harness and in nothing
 else. A condition is a content address: the contract, the harness, the task version, the model
@@ -565,9 +565,15 @@ the log all the same: for the counted solves of each comparison, list the distin
 every field but the harness and its `solverTools`, which may change with it. Then read what a
 condition does not hold: load, recorded at solve start and finish, which `gated` in `tools/d2/host.ts` gates at
 the start unless `--loaded` is named; the hour; the provider's
-served model, which `responseModels` names or leaves empty; how many solves ran at once. The two
-harnesses take the first place in turn, task by task, so neither has the quieter hours: check
-the order of `solve.started` within the comparison. Where the host's code moved inside the
+served model, which `responseModels` names or leaves empty; how many solves ran at once. The round
+mirrors which harness takes the first place, slot by slot and task by task, so that neither has the
+quieter hours. One worker runs a task's slots in that order: each solve call, with its load wait,
+its provider reruns or reset and its one outer retry, returns before the next slot starts
+(`drain`, `src/campaign/round.ts`). A round that ran before that hold queued each solve on its own,
+so a load wait or a provider's rerun on one side let the other side's later slots start first.
+`STARTS OUT OF TURN` counts the tasks whose counted solves did not start balanced between the
+sides. In a comparison run with the hold it is a defect of the round; in an older one, read which
+side started late and what it waited for (`campaign.waited`). Where the host's code moved inside the
 campaign, name the commits between the two hashes if this checkout has them. A campaign command
 that ran names its commit, and whether the tree was dirty, in `launch-run-<n>.json` beside the
 log. The decision it changes is whether a difference between the sides is the harness's; it
@@ -598,8 +604,8 @@ The decision it changes is whether the tally is of the set that was fixed; it ro
 
 **22. Paired sign-flip test, ties and power.**
 
-Starts from `NOTHING SCORED (lane 22)`, `CUT BY ITS CAP (lane 22)`,
-`FEW INFORMATIVE PAIRS (lane 22)` and `SET SHORT (lane 22)`, and is standing.
+Starts from `NOTHING SCORED (lane 22)`, `CUT BY ITS CAP (lane 22)` and
+`SET SHORT (lane 22)`, and is standing.
 
 The question is what the comparison's test could and could not have shown at its size. The paired
 sign-flip test reads each task's score; a tie carries nothing. It reduces to the
@@ -609,11 +615,10 @@ contested. Read `scored` with its `differences`, p, `detectable`, `falseRate`, t
 unanswered tasks, which the step tested since 20 October, and the frontier and retained tallies
 apart (before 20 October the step, `detectable` and `falseRate` were the frontier's). Say
 how many untied tasks there were and what the smallest result is that would have cleared the
-level on those margins. `FEW INFORMATIVE PAIRS` fires when reversing the smallest positive
-tested difference makes the reading miss its level; it also names `sweepOf(level)`.
-It does not test every possible result containing a loss. A
-comparison that tallied no task tested nothing and reads `not-scored`; before the report learned
-to say so it read `no-step`, as the eight truss rounds of 8 October did. `CUT BY ITS CAP` names
+level on those margins. Reversing one observed win establishes neither a small sample nor a
+requirement to win every task. A comparison that tallied no task tested nothing and reads
+`not-scored`; before the report learned to say so it read `no-step`, as the eight truss rounds
+of 8 October did. `CUT BY ITS CAP` names
 one its dollar cap ended: it is finished, reads `not-scored`, and its solves are in no tally. A
 `no-step` at four untied tasks is no evidence of no gain, and a `step` at five rests on five
 tasks: say both plainly. One comparison of equal harnesses reads a step at most as often as its
@@ -709,7 +714,7 @@ prompts; read the solve's own recorded limits. There is no seat disk cap on eith
 19 October a Mac runner mounted a 2 GiB image per seat. A solve the wall ended is a fail in the count and a truncated
 solve, never a settled failure of capability, and so is one its model turns or its context
 ended. `MISSES AT A LIMIT` counts, for each comparison and each side, the misses that ended at
-one of the three, with a call in the last turn their bound allowed (`last turn`), or past 95% of
+one of the three, with every turn their bound allowed used by the end's count (`last turn`), or past 95% of
 the wall, with their kinds and the turn bound the solves were
 told, and the misses outside any comparison on a line of their own: on 10 October recode ended
 41 of its 58 scored misses on turns, 12 of 18 reference misses and 4 of 4 new in g-2 at 8 turns,

@@ -1,6 +1,11 @@
 /**
  * The lanes of a whole-run investigation that read the clock: the solver's walls, limits and load
  * (lane 26), and where the campaign's hours, dollars and silences went (lane 28).
+ * Role hours are elapsed open spans and can overlap. Every recorded wait, a provider's reset
+ * (its grace minute included), a network wait and a load-gate wait, joins one union, and the hours
+ * a promotion stand with and without it. Until 25 October only provider waits were read, then load
+ * waits alone were subtracted: on recode forkedPR345 that left 17.4 h a promotion where every
+ * recorded wait leaves 10.8, provider waits being the larger part on most runs.
  *
  * Split from `read.ts` on 10 October, when that file stood at 794 nonblank lines against the size
  * policy's ceiling of 800 (`tools/loc/source-policy.ts`) and these lanes had three readings to add.
@@ -48,6 +53,10 @@ const WALL_BOUND_SHARE = 0.95;
  *  median of 105 s under a load of 31 and of 40 s under a load of 6. */
 const LOAD_MOVED = 2;
 const LOAD_WORTH_A_LINE = 4;
+/** A task's two mirrored orders of slots, `o` for the reference harness and `f` for the new one,
+ *  repeated: the round puts the reference first in one slot and the new harness in the next, and
+ *  starts every other task the other way (`unsolvedJobs`, `src/campaign/round.ts`). */
+const MIRRORS = ["offo", "foof"] as const;
 /** A silence is a gap between two events longer than this many of the campaign's median finished
  *  solve, and never shorter than the floor. A gap that long is no solve's ordinary pace. The floor
  *  holds a pack of quick solves to gaps a person would ask about: on 10 October buffer had 34 gaps
@@ -68,6 +77,8 @@ const SPANS = [
   ["comparisons", "comparison.started", "comparison.reported"],
 ] as const;
 const BETWEEN_MOVES = "between moves";
+/** The recorded waits by what they waited for, in the order the hours line names them. */
+const WAIT_KINDS = ["provider", "network", "load"] as const;
 const MINUTE_MS = 60_000;
 const HOUR_MS = 3_600_000;
 
@@ -77,8 +88,8 @@ interface Span {
   readonly until: number;
 }
 
-/** Whether a miss ended at a limit of its own: the kernel's kinds, a call in the last turn its bound
- *  allowed, as 5 of buffer's 17 on 12 October, or past the share of its wall read as bound by it. */
+/** Whether a miss ended at a limit of its own: the kernel's kinds, every turn its bound allowed used
+ *  (`limit`), as 5 of buffer's 17 on 12 October, or past the share of its wall read as bound by it. */
 const atALimit = (solve: Solve) =>
   AT_A_LIMIT.has(solve.kind) ||
   solve.limit !== null ||
@@ -185,6 +196,29 @@ export function wallTriggers(log: Index): Trigger[] {
         ]
       : [],
   );
+  // The tasks whose counted solves started out of their mirrored order. Since 24 October a worker
+  // runs a task's slots one after another and retries a non-result at its own slot, so a task's
+  // counted starts are a prefix of one mirror (`MIRRORS`). On host code from then a task off it is a
+  // defect of the round; before it, the queue ordered starts without holding them, and a wait for
+  // the load or a provider's reset on one side moved them.
+  const outOfTurn = results.flatMap(({ session, own, scoring }) => {
+    const tasks = Map.groupBy(
+      scoring.toSorted((one, other) => one.index - other.index),
+      (solve) => solve.version,
+    );
+    const late = [...tasks.values()].filter((solves) => {
+      const order = solves.map((solve) => (solve.harness === own.old ? "o" : "f")).join("");
+      return !MIRRORS.some((mirror) => mirror.repeat(order.length).startsWith(order));
+    }).length;
+    return late > 0 && own.old !== own.fresh
+      ? [
+          fired(
+            "STARTS OUT OF TURN",
+            `${session}: ${share(late, tasks.size)} tasks started their harnesses' solves out of turn`,
+          ),
+        ]
+      : [];
+  });
   const middles = loads.flatMap(({ halves }) => halves);
   const [calmest, busiest] = [Math.min(...middles), Math.max(...middles)];
   const moved = busiest >= LOAD_WORTH_A_LINE && busiest >= calmest * LOAD_MOVED;
@@ -192,6 +226,7 @@ export function wallTriggers(log: Index): Trigger[] {
     ...limitTriggers(log),
     ...wallShares,
     ...loaded,
+    ...outOfTurn,
     ...(moved
       ? [
           fired(
@@ -232,27 +267,55 @@ function spansOf(log: Index): Span[] {
   return spans;
 }
 
-/** Row A's hours by role, beside its billed dollars: v2 counted the dollars by role and no time.
- *  What no session or comparison holds is between moves: the campaign's own decisions, and a stop
- *  before a resume. */
+/** The union of intervals, so concurrent sessions or provider waits count their overlap once. */
+function unionMs(windows: readonly { readonly from: number; readonly until: number }[]): number {
+  let [held, reached] = [0, -Infinity];
+  for (const { from, until } of windows.toSorted((a, b) => a.from - b.from)) {
+    held += Math.max(0, until - Math.max(from, reached));
+    reached = Math.max(reached, until);
+  }
+  return held;
+}
+
+/** Row A's overlapping elapsed spans beside its billed dollars, and the union of every recorded wait
+ *  with the hours a promotion with and without it. A provider's reset and a network wait are
+ *  recorded before their sleep and stop at the first subsequent ending, even after a resume; a
+ *  load wait is recorded when the host admits the solve, so it ends at its event. The load half is
+ *  an indicator: other solves run while one waits for the load. */
 export function hoursLine(log: Index): string {
   const spans = spansOf(log);
   const [first, last] = [Date.parse(log.events[0]?.at ?? ""), Date.parse(log.events.at(-1)?.at ?? "")];
   const whole = Number.isNaN(first) ? 0 : last - first;
   const parts = new Map<string, number>();
   for (const { part, from, until } of spans) parts.set(part, (parts.get(part) ?? 0) + until - from);
-  // The union of the spans, so that a session running beside a comparison is not counted twice.
-  let [held, reached] = [0, first];
-  for (const { from, until } of spans.toSorted((a, b) => a.from - b.from)) {
-    held += Math.max(0, until - Math.max(from, reached));
-    reached = Math.max(reached, until);
+  const waits: { from: number; until: number; kind: string }[] = [];
+  let boundary = last;
+  let promotions = 0;
+  for (const { at, kind, data } of log.events.toReversed()) {
+    const from = Date.parse(at);
+    if (kind === "campaign.ended") boundary = from;
+    if (kind === "harness.promoted") promotions += 1;
+    if (kind !== "campaign.waited" || !isNumber(data.ms)) continue;
+    // The load gate writes no `for`, older logs' included, and records its wait once it is over.
+    if (data.for === undefined) waits.push({ from: from - data.ms, until: from, kind: "load" });
+    else if (data.for === "provider" || data.for === "network") {
+      waits.push({ from, until: Math.min(from + data.ms, boundary), kind: data.for });
+    }
   }
   const hours = (ms: number) => (ms / HOUR_MS).toFixed(1);
   const named = [...parts]
     .toSorted(([, a], [, b]) => b - a)
-    .concat([[BETWEEN_MOVES, whole - held]])
+    .concat([[BETWEEN_MOVES, whole - unionMs(spans)]])
     .map(([part, ms]) => `${part} ${hours(ms)} (${whole > 0 ? ((ms / whole) * 100).toFixed(0) : "0"}%)`);
-  return `hours: ${named.join(", ")}, of ${hours(whole)}`;
+  const waited = unionMs(waits);
+  const kinds = WAIT_KINDS.filter((kind) => waits.some((wait) => wait.kind === kind)).map(
+    (kind) => `${kind} ${hours(unionMs(waits.filter((wait) => wait.kind === kind)))}`,
+  );
+  const perPromotion =
+    promotions > 0
+      ? `; ${hours(whole / promotions)} h a promotion, ${hours((whole - waited) / promotions)} h outside recorded waits`
+      : "";
+  return `hours: elapsed open spans (overlapping), ${named.join(", ")}, of ${hours(whole)}; recorded waits ${hours(waited)} h${kinds.length > 0 ? ` (${kinds.join(", ")})` : ""}${perPromotion}`;
 }
 
 /** What ran through the gap that ends at event `index`: the command whose time covers most of it,

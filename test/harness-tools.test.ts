@@ -138,6 +138,33 @@ it("changes its digest with any file or mode in the tool tree, as with the modul
   }
 });
 
+it("leaves the bytecode caches a run of its Python programs writes out of its digest, and a sourceless .pyc in", async () => {
+  // v065-b on 24 October: running its programs left `__pycache__` in 26 of the 54 states it kept,
+  // and two states that differed from the one practised by those caches alone read as unpractised.
+  const dir = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-harness-bytecode-")));
+  try {
+    cpSync(FIXTURE, dir, { recursive: true });
+    const lib = join(dir, ".toolchain", "lib");
+    mkdirSync(join(lib, "deeper"), { recursive: true });
+    writeFileSync(join(lib, "method.py"), "print(1)\n");
+    writeFileSync(join(lib, "deeper", "other.py"), "print(2)\n");
+    const clean = (await openHarness(dir)).digest;
+    for (const [at, name] of [
+      [lib, "method.cpython-310.pyc"],
+      [join(lib, "deeper"), "other.cpython-312.pyc"],
+    ] as const) {
+      mkdirSync(join(at, "__pycache__"));
+      writeFileSync(join(at, "__pycache__", name), "bytecode");
+    }
+    expect((await openHarness(dir)).digest).toBe(clean);
+    // Python imports a `.pyc` outside `__pycache__` with no source beside it: it is code.
+    writeFileSync(join(lib, "sourceless.pyc"), "bytecode");
+    expect((await openHarness(dir)).digest).not.toBe(clean);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // The shim drops v1's nullable-number rewrite on this behaviour of the pinned pi.
 it("has one digest wherever it sits, though the bundle names where each file was read", async () => {
   const root = mkdtempSync(join(tmpdir(), "ana-harness-place-"));

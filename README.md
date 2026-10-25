@@ -97,8 +97,9 @@ bun tools/d2/close.ts --name your-campaign --to ../my-harness --solve task-id
 ## Contributing
 
 `bun run hooks:install` turns on the repository's commit and push hooks: the commit hook checks
-format and lint on the staged files and scans them for secrets, and the push hook gates what the push adds:
-each new commit gets the static steps and its nearby tests, and the pushed head the whole `bun run gate`.
+format and lint on the staged files and scans them for secrets, and the push hook checks what the push adds
+with `git diff --check` and the secret scan, and the pushed head with every step of `bun run gate` but the tests. It runs no test:
+`bun run land -- <top> --sanitize` proves each commit with its nearby tests and the top with the whole `bun run gate`.
 The two lint plugins, `anti-slop` (copied from dmmulroy/anti-slop) and the repository's own `ana`
 simplify catchers, are optional: their findings are counted on every run and fail only
 `bun run lint -- --strict`, which the gate runs, or a run with `ANA_LINT_STRICT=1` in the environment.

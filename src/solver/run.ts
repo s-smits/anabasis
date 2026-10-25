@@ -5,6 +5,9 @@
  * again, up to three times with backoff; named provider resets are waited out here without using a
  * rerun. On 21 October, 128 gate solves refused 43 of 1,396 drafts in 30 campaigns at such resets.
  * A task's check non-result returns to its caller; a verifier non-result stops the run.
+ * Killed endings retain the first typed host cancellation source, or caller for an unlabelled
+ * external abort. The solve's own wall remains a wall-ended fail.
+ * `waiting` ends sleeps at cancellation, including injected host sleeps before a solve starts.
  *
  * The loop runs in this process and so does the model's own process: under the Claude backend,
  * Claude Code runs on the host with a home of its own outside the command wall. v1 confined the
@@ -32,7 +35,7 @@ import type { Limits } from "../kernel/condition.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { append } from "../kernel/log.ts";
 import { priceKey } from "../kernel/meter.ts";
-import { type Ending, unanswered } from "../kernel/solve.ts";
+import { Cancellation, type Ending, unanswered } from "../kernel/solve.ts";
 import type { Task, Verifier } from "../kernel/verify.ts";
 import { lstatSync, rmSync } from "../meta/filesystem.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
@@ -84,7 +87,7 @@ export interface SolveRequest {
    *  comparison counts the solves that name it and no other (`src/kernel/compare.ts`); a practice
    *  solve names none. */
   readonly comparison?: string;
-  /** Aborts when the run is killed. */
+  /** Cancels the solve; a typed host reason retains its parent cancellation source. */
   readonly kill?: AbortSignal;
 }
 
@@ -119,8 +122,8 @@ export interface Played {
 }
 
 const RERUNS = 3;
-/** Sleep, including an injected sleep, ends at the request's kill. */
-async function waiting(ms: number, kill?: AbortSignal, wait?: (ms: number) => Promise<void>) {
+/** Sleep, including an injected host sleep, ends at the kill and releases its abort listener. */
+export async function waiting(ms: number, kill?: AbortSignal, wait?: (ms: number) => Promise<void>) {
   if (kill?.aborted === true) return;
   const stopped = Promise.withResolvers<void>();
   const abort = () => stopped.resolve();
@@ -321,7 +324,7 @@ async function play(
     harness: digest,
     turns,
     prompts,
-    spent: spentOn ?? (await spentBy(request.model, id, [], [])),
+    spent: spentOn ?? (await spentBy(id, [], [])),
     submitted: desk.submitted,
     flagged: desk.flagged,
     wallEnded: wall.signal.aborted,
@@ -396,7 +399,13 @@ export async function solverTools(
  *  from the log alone. */
 export async function judge(request: SolveRequest, id: string, played: Played): Promise<Ending> {
   if (request.kill?.aborted === true) {
-    return { outcome: "non-result", kind: "killed", reason: "the run was killed" };
+    const reason: unknown = request.kill.reason;
+    return {
+      outcome: "non-result",
+      kind: "killed",
+      reason: "the solve was cancelled",
+      cancelledBy: reason instanceof Cancellation ? reason.cancelledBy : "caller",
+    };
   }
   if (played.moved) {
     return {

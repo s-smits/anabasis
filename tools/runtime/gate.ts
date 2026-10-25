@@ -1,14 +1,22 @@
 /**
  * The gate: what CI runs, as one command over the tree it is run in, and the same gate run over each
- * commit a push or a landing would publish, in a checkout of its own.
+ * commit a landing would publish, or over a pushed head, in a checkout of its own.
  *
  *   bun run gate                 install, the UI's own gate as far as it is due, format, typecheck, strict lint, the suite
  *   bun run gate -- --static     the same, with the suite replaced by the tests near what HEAD changed
+ *   bun run gate -- --checks     install, the UI's install and build, format, typecheck, strict lint and the
+ *                                simplify census, which gates nothing: no test
  *
  * The steps are `ci.yml`'s two Darwin jobs, cheapest first, so a format slip fails in a second
  * rather than after the linter. The strict lint fails on everything a plain one does, so it runs
  * once. Every step fails in one spelling, `gate: step <name> failed (exit <n>)`, which the pre-push
  * hook and `bun run land` repeat without knowing each tool's wording.
+ *
+ * `--checks` is what the pre-push hook runs over a pushed head (`tools/runtime/pre-push.ts`): every
+ * step of the gate but the tests, which `bun run land` runs where the stack is proved. On 25 October
+ * the UI's install took 0.4 s and its build 0.9 s, and with them installed the lint reaches
+ * `packages/ui`; the census took 2.7 s. It prints its count as a note (`NOTE`), which
+ * `proveCommits` repeats once the pass has passed.
  *
  * `--static` is what each commit below the one that gets the whole gate receives: v1's rule of 24
  * September 2026 that every published commit passes alone, because a session reading the history
@@ -19,13 +27,13 @@
  * imports (a fixture, or a command a test spawns by its path), when its text names the file. The UI's
  * tests are chosen by the same rule at three imports (`NEAR`, `uiStep`).
  *
- * `proveCommits` runs this gate over a list of commits for `.githooks/pre-push` and `bun run land`:
+ * `proveCommits` runs this gate over a list of commits for `bun run land` and `.githooks/pre-push`:
  * in scratch worktrees made for the run, its output in a log under the Git directory, a pulse while
  * a pass runs, its tests stopped at the first that fails (`ANA_TEST_BAIL`, `test-suite.ts`) as the
  * gate stops at its first failed step, and each pass remembered in `ana-gate-passed` under the common Git directory, so a
  * commit that passed is not run again from any worktree. A pass is remembered by content
- * (`contentKey`): a whole pass by the commit's tree, a static one by its tree and its parent's, both
- * with the checker and the Bun version. The checker is this gate and what it imports, read from the
+ * (`contentKey`): a whole or checks pass by the commit's tree, a static one by its tree and its
+ * parent's, each with the checker and the Bun version. The checker is this gate and what it imports, read from the
  * caller's checkout (`proveCommits`), since it runs from there over every target: a changed gate
  * runs again on trees it passed before. Until 19 October a pass was remembered by commit id, and a
  * restack, which rewrites every id, kept nothing: that day a restack of 13 pull requests onto main,
@@ -52,9 +60,9 @@ import { keysIf } from "../../src/meta/optional-key.ts";
 import { availableParallelism, tmpdir } from "../../src/meta/os.ts";
 import { basename, dirname, isAbsolute, join, relative } from "../../src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "../../src/meta/process.ts";
-import { runSync, runTextSyncOrThrow } from "../../src/meta/subprocess.ts";
+import { decodeOutput, runSync, runTextSyncOrThrow } from "../../src/meta/subprocess.ts";
 
-type Pass = "static" | "whole";
+type Pass = "checks" | "static" | "whole";
 
 /** One commit and the pass it needs; null for a commit that changes documentation alone, which the
  *  static steps have nothing to read in. */
@@ -71,7 +79,7 @@ interface Failure {
 }
 
 interface Prover {
-  /** `pre-push` or `land`: what each line and each log is named after. */
+  /** `land` or `pre-push`: what each line and each log is named after. */
   readonly who: string;
   readonly jobs: number;
   readonly say: (line: string) => void;
@@ -133,15 +141,29 @@ const STEPS = [
   ["lint", ["run", "lint", "--", "--strict"]],
 ] as const;
 const TEST_FILE = /^test\/[^/]+\.test\.ts$/u;
+/** What a checks pass runs of the UI: its install and build, and none of its tests. */
+const UI_CHECKS = [
+  ["run", "ui:deps"],
+  ["run", "ui:build"],
+] as const;
+/** A line a pass prints for its caller to repeat once the pass has passed (`proveCommits`). */
+const NOTE = "gate: note: ";
+const CENSUS = /^Simplify census — (.*)$/mu;
 const GATE = join(import.meta.dir, "gate.ts");
 const PROVED = {
+  checks: "every step but the tests passed on its own checkout",
   static: "its static steps and nearby tests passed on its own checkout",
   whole: "passed the whole gate on its own checkout",
 } as const satisfies Record<Pass, string>;
 const WHAT = {
+  checks: "every step but the tests",
   static: "the static steps and its nearby tests",
   whole: "the whole gate",
 } as const satisfies Record<Pass, string>;
+const FLAGS = { checks: ["--checks"], static: ["--static"], whole: [] } as const satisfies Record<
+  Pass,
+  readonly string[]
+>;
 /** The test wrapper's two lines that send failed files to a second run, which then decides, in the
  *  words a pulse repeats. A `host-wall: error:` or `idle-wall: error:` line keeps the failures. */
 const RERUNS: readonly (readonly [RegExp, (said: string) => string])[] = [
@@ -182,7 +204,7 @@ export function diffFromParentSays(
 }
 
 /** A commit's first parent, or the empty tree for a root commit. */
-function parentOf(root: string, commit: string): string {
+export function parentOf(root: string, commit: string): string {
   const parent = runSync(["git", "rev-parse", "-q", "--verify", `${commit}^1`], { cwd: root });
   return parent.exitCode === 0
     ? new TextDecoder().decode(parent.stdout).trim()
@@ -194,7 +216,7 @@ function parentOf(root: string, commit: string): string {
  *  the checker and the Bun the gate ran under. */
 function contentKey(root: string, commit: string, pass: Pass, checker: string): string {
   const tree = git(root, ["rev-parse", `${commit}^{tree}`]);
-  const from = pass === "whole" ? "" : `${git(root, ["rev-parse", `${parentOf(root, commit)}^{tree}`])}..`;
+  const from = pass === "static" ? `${git(root, ["rev-parse", `${parentOf(root, commit)}^{tree}`])}..` : "";
   return `tree ${from}${tree} ${pass} checker-${checker} bun-${Bun.version}`;
 }
 
@@ -294,6 +316,13 @@ function nearbyTests(
 
 /** The UI's step of a pass, by the rule in `UI_PACKAGE`'s comment; its exit code. */
 function uiStep(root: string, pass: Pass): number {
+  if (pass === "checks") {
+    for (const args of UI_CHECKS) {
+      const code = step(root, "ui", args);
+      if (code !== 0) return code;
+    }
+    return 0;
+  }
   const merged = runSync(["git", "merge-base", "HEAD", "origin/main"], { cwd: root });
   const base =
     pass === "static"
@@ -341,14 +370,25 @@ function step(root: string, name: string, args: readonly string[]): number {
 }
 
 async function gate(argv: readonly string[]): Promise<number> {
-  const { values } = parseArgs({ args: [...argv], options: { static: { type: "boolean", default: false } } });
+  const { values } = parseArgs({
+    args: [...argv],
+    options: { static: { type: "boolean", default: false }, checks: { type: "boolean", default: false } },
+  });
+  const pass: Pass = values.checks ? "checks" : values.static ? "static" : "whole";
   const root = git(runtimeProcess.cwd(), ["rev-parse", "--show-toplevel"]);
   for (const [name, args] of STEPS) {
     if (name === "ui" && !existsSync(join(root, UI_PACKAGE))) continue;
-    const code = name === "ui" ? uiStep(root, values.static ? "static" : "whole") : step(root, name, args);
+    const code = name === "ui" ? uiStep(root, pass) : step(root, name, args);
     if (code !== 0) return code;
   }
-  if (!values.static) return step(root, "test", ["run", "test"]);
+  if (pass === "checks") {
+    // The census reports and gates nothing, so its exit is not read; its count goes to the caller.
+    const census = decodeOutput(runSync(["bun", "run", "simplify"], { cwd: root }).stdout);
+    const counted = CENSUS.exec(census)?.[1] ?? "no count printed";
+    console.log(`${NOTE}simplify census: ${counted}; bun run simplify lists them, and nothing here gates.`);
+    return 0;
+  }
+  if (pass === "whole") return step(root, "test", ["run", "test"]);
   const tests = lines(git(root, ["ls-files", "test"])).filter((file) => TEST_FILE.test(file));
   const near = nearbyTests(root, changedSince(root, parentOf(root, "HEAD")), tests, NEAR.root);
   if (near.length > 0) return step(root, "test", ["run", "test", "--", ...near]);
@@ -437,7 +477,7 @@ export async function proveCommits(
     const fd = openSync(log, "w");
     const started = Date.now();
     const pulsing = setInterval(() => say(`${short(commit)} ${pulse(log, started)}`), PULSE_MS);
-    const child = Bun.spawn(["bun", GATE, ...(pass === "static" ? ["--static"] : [])], {
+    const child = Bun.spawn(["bun", GATE, ...FLAGS[pass]], {
       cwd: tree,
       env: {
         ...runtimeProcess.env,
@@ -458,6 +498,8 @@ export async function proveCommits(
       appendFileSync(record, `${contentKey(root, commit, pass, checker)}\n`);
       mark(commit, "success", PROVED[pass]);
       say(`${at}: passed.`);
+      const notes = lines(readFileSync(log, "utf8")).filter((line) => line.startsWith(NOTE));
+      for (const note of notes) say(`${short(commit)}: ${note.slice(NOTE.length)}`);
       return;
     }
     const output = lines(readFileSync(log, "utf8"));

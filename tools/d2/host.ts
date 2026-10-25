@@ -20,6 +20,8 @@
  *
  * Every wait but the reserve's is on record as `campaign.waited`, so a reader tells the solver's
  * time from the host's, and a provider's starts the crash rule's count again (`crashedRun`).
+ * A queued solve leaves on its kill signal without invoking the solving seat. Load and reserve
+ * sleeps are interruptible; a load wait records its elapsed time even when cancellation ends it.
  */
 import { CRASHES } from "#src/campaign/decide.ts";
 import { crashedRun } from "#src/campaign/ground.ts";
@@ -27,16 +29,18 @@ import { affords, flying, inFlight } from "#src/campaign/opening.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
-import { waitOut } from "#src/solver/run.ts";
+import { waiting, waitOut } from "#src/solver/run.ts";
 import { type Seated, solved } from "./round.ts";
 
-/** A host as the waits read it: its one-minute load, its cores, how long a look waits, and how it
- *  sleeps. */
+/** A host as the waits read it: its one-minute load, its cores, how long a look waits, and, where a
+ *  test stands one in, how it sleeps. `HOST` sleeps on `waiting`'s own timer, which a cancellation
+ *  clears: until 25 October it slept on `Bun.sleep`, and a cancelled wait held the process until
+ *  that sleep ran out. */
 export interface Host {
   readonly load: () => number;
   readonly cores: number;
   readonly waitMs: number;
-  readonly sleep: (ms: number) => Promise<void>;
+  readonly sleep?: ((ms: number) => Promise<void>) | undefined;
 }
 
 /** What the gate is put on: who solves, the host where a test stands one in, and `--loaded`. */
@@ -51,7 +55,6 @@ export const HOST: Host = {
   load: () => loadavg()[0] ?? 0,
   cores: availableParallelism(),
   waitMs: 30_000,
-  sleep: Bun.sleep,
 };
 
 /** The looks at the load before a solve starts all the same: half an hour on `HOST`. */
@@ -75,6 +78,7 @@ export function gated(
     return {
       ...seats,
       solve: async (task, harness, kill, comparison) => {
+        kill?.throwIfAborted();
         const [since, load] = [Date.now(), host.load()];
         if (!loaded && load > host.cores) {
           console.log(
@@ -82,8 +86,9 @@ export function gated(
           );
           let looks = 0;
           do {
-            await host.sleep(host.waitMs);
+            await waiting(host.waitMs, kill, host.sleep);
             looks += 1;
+            if (kill?.aborted === true) break;
           } while (looks < LOOKS && host.load() > host.cores);
           append(log, WAITED, {
             task: task.taskId,
@@ -102,8 +107,9 @@ export function gated(
         }
         while (inFlight(log) > 0 && !affords(log, 1)) {
           if (kill?.aborted === true) break;
-          await host.sleep(host.waitMs);
+          await waiting(host.waitMs, kill, host.sleep);
         }
+        kill?.throwIfAborted();
         return flying(log, () => seats.solve(task, harness, kill, comparison));
       },
     };
@@ -129,5 +135,5 @@ export async function waitCrashed(log: string, host: Host = HOST): Promise<void>
     `the network failed the last session: the campaign waits ${String(ms / 60_000)} minutes, then goes on`,
   );
   append(log, WAITED, { for: "network", ms });
-  await host.sleep(ms);
+  await waiting(ms, undefined, host.sleep);
 }

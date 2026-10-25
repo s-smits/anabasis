@@ -25,6 +25,8 @@
  *
  * One difference is left, and it reaches no model: v1 ran Claude Code in an empty environment; here
  * HOME, the solve's own, PATH and TMPDIR are set as well.
+ * Backend cost is the query's closing or last diagnostic total, taken once; it neither replaces
+ * nor constrains the host's calculated billing, and is null where no total was reported.
  */
 import {
   type EffortLevel,
@@ -109,6 +111,16 @@ const TOOL_PREFIX = `mcp__${SERVER}__`;
 const CLI_TOOLS = ["WebSearch"];
 /** How long a closing query waits on its interrupt. One answered mid-turn in 16 ms. */
 const INTERRUPT_MS = 1000;
+/**
+ * How long a turn waits for Claude Code's next message before it reads the query as hung. A turn
+ * streams partial messages while the model writes, and Claude Code's own retries and compactions take
+ * minutes at most. On 24 October the Builder b-2 of buffer-fresh-opus-v065-b had its tool results due
+ * at 00:24Z and heard nothing after: its Claude Code idle, with no connection open and nothing queued
+ * on either side of its pipes. Of 558 recorded turns whose calls ran over 10 minutes, it is the one
+ * that never continued, and the session's 24-hour wall, which stops while host actions run, would
+ * have ended it 22 hours later.
+ */
+const QUIET_MS = 30 * 60_000;
 /** The bridge's table, for a level the model's own map does not name. */
 const EFFORTS: Readonly<Partial<Record<ThinkingLevel, EffortLevel>>> = {
   minimal: "low",
@@ -128,6 +140,8 @@ interface Session {
   readonly early: Map<string, McpResult>;
   /** Whether a turn is reading the query, which then takes its result itself. */
   reading: boolean;
+  /** How long a turn waits for the query's next message (`QUIET_MS`). */
+  readonly quiet: number;
 }
 
 /** How one API message can end a pi turn; a failure ends it by throwing. */
@@ -222,6 +236,8 @@ export interface ClaudeOptions {
   readonly cacheTtl?: "5m" | "1h";
   /** The seat's lifetime, independent of the invocation signal pi passes to each request. */
   readonly shutdown?: AbortSignal | undefined;
+  /** How long a turn waits for Claude Code's next message. Left out, `QUIET_MS`. */
+  readonly quiet?: number;
 }
 
 /**
@@ -404,7 +420,15 @@ function open(
       env: claudeEnv(claude, { provider: model.provider, token: options.apiKey }),
     },
   });
-  const session: Session = { query: live, prompt, abort, parked, early, reading: false };
+  const session: Session = {
+    query: live,
+    prompt,
+    abort,
+    parked,
+    early,
+    reading: false,
+    quiet: claude.quiet ?? QUIET_MS,
+  };
   sessions.set(key, session);
   claude.shutdown?.addEventListener("abort", () => close(key, session), {
     once: true,
@@ -526,7 +550,7 @@ async function readMessages(
   // The reset of a limit the provider reported refusing on, said with a refused turn's error.
   let limited = "";
   for (;;) {
-    const next = await session.query.next();
+    const next = await heard(key, session);
     if (next.done === true) throw new Error("Claude Code ended the query without a result");
     const message = next.value;
     if (message.type === "assistant" && message.parent_tool_use_id === null) take(message, model, turn);
@@ -571,6 +595,25 @@ async function readMessages(
       if (message.is_error) throw new Error(`Claude Code: ${message.result}${limited}`);
       throw new Error(`Claude Code: the model stopped on ${apiStop ?? "no stop reason"}`);
     }
+  }
+}
+
+/**
+ * The query's next message, or a throw once Claude Code has sent nothing for the session's quiet
+ * bound. The query is closed first, so its parked handlers are answered and a turn asked of it again
+ * finds none: the seat reads a provider failure, a solve is solved again, and a Builder's
+ * conversation ends crashed while its campaign goes on.
+ */
+async function heard(key: string, session: Session) {
+  const { promise: silent, reject } = Promise.withResolvers<never>();
+  const timer = setTimeout(() => {
+    close(key, session);
+    reject(new Error(`Claude Code sent nothing for ${String(session.quiet / 60_000)} minutes`));
+  }, session.quiet);
+  try {
+    return await Promise.race([session.query.next(), silent]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -646,7 +689,7 @@ function close(key: string, session: Session): void {
 }
 
 /**
- * What Claude Code reported session `key`'s query cost, which the meter's billed dollars are held to,
+ * What Claude Code reported session `key`'s query cost, separate from the meter's calculated dollars,
  * or null where it reported none, as a provider other than Claude Code reports none. A session that
  * ended on a call of its own, `finish` or `submit`, leaves Claude Code waiting on that call's result,
  * and the query's `result` comes only after the host's close interrupts it: this waits on that close.

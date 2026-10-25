@@ -7,10 +7,12 @@
  *    harnesses, all of it afresh. The scored set is the caller's, fixed before any solve
  *    (`scoredSet`), so no result of this comparison chooses it, though the reference harness's
  *    results in earlier ones do (`poolOf`, `reports.ts`); so are its two sets, retained and
- *    frontier. A task's solves run together, the tasks in an order a hash of each draws, and
- *    within a task the harness that goes first is mirrored (`unsolvedJobs`): what drifts over the
- *    hours falls between tasks, which the test does not read, and neither harness has the quieter
- *    hours or the warmer cache.
+ *    frontier. Workers take whole tasks in an order a hash draws. Within each task the harness
+ *    that goes first is mirrored (`unsolvedJobs`), and each solve call, including its load waits,
+ *    provider retries and ruling, returns before the next slot starts. One outer retry runs at
+ *    the same slot; a second non-result leaves the task short. Counted starts therefore form a
+ *    prefix of the mirror. Different tasks run concurrently; mirroring guarantees neither equal
+ *    start times nor equal load or cache exposure.
  * 2. The comparison (`src/kernel/compare.ts`): every solve of the new harness paired with every
  *    solve of the reference one, a valid answer over one that is not, each task counted once, and
  *    the paired sign-flip test over the tasks' scores.
@@ -99,6 +101,8 @@
  * What the log holds of a comparison, and how it is read back, is `comparison.ts`: its start, its
  * counted solves, its rejections, its tallies and its report. This file keeps what runs one and
  * what it writes.
+ * Stopped reports retain completion facts and can be labelled. Settlement preserves their absent
+ * test: the completed prefix never becomes a tally, and the comparison starts no further solves.
  */
 import { draw, type ObjectiveRule } from "../kernel/compare.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
@@ -115,8 +119,8 @@ import type { RefereeFinding, Ruling } from "../referee/referee.ts";
 import { tasksByEpoch } from "./climb.ts";
 import {
   compared,
+  coverageOf,
   DEFECT,
-  EARNED,
   type Fixed,
   fixedIn,
   NO_LABELS,
@@ -274,20 +278,19 @@ export function scoredSet(events: readonly LogEvent[], target: number, contract:
 }
 
 /**
- * The solves still to run, task by task in an order drawn by a hash of each task and the comparison
- * (`draw`), so that what drifts over the comparison's hours falls between tasks, which the test
- * does not read, and no slot's solves gather at one end. Within a task its slots run in turn and
- * the harness that goes first is mirrored, slot by slot and from one task to the next: the
- * reference then the new harness, the new then the reference. `had` says how many counted solves
- * a task has under a harness; a comparison gone on from its log runs the slots' solves it lacks.
+ * Each task's ordered solves still to run, with tasks drawn by their hash and the comparison
+ * (`draw`). A worker owns a whole sequence, including retries, before taking another task.
+ * Within it the harness that goes first is mirrored, slot by slot and from one task to the next:
+ * the reference then the new harness, the new then the reference. `had` counts a task's completed
+ * solves under each harness, so continuation omits the counted prefix and runs what it lacks.
  */
 function unsolvedJobs(
   request: Pick<CheckpointRequest, "id" | "old" | "fresh" | "solves">,
   tasks: readonly string[],
   had: (task: string, digest: string) => number,
-): Job[] {
+): Job[][] {
   const { old, fresh, solves } = request;
-  return draw(tasks, new Set(tasks).size, request.id).flatMap((task, index) => {
+  return draw(tasks, new Set(tasks).size, request.id).map((task, index) => {
     const left = new Map([old, fresh].map(({ digest }) => [digest, had(task, digest)]));
     return Array.from({ length: solves }, (_, at) => ((index + at) % 2 === 0 ? [old, fresh] : [fresh, old]))
       .flat()
@@ -420,7 +423,8 @@ function unruledOf(events: readonly LogEvent[], fixed: Fixed) {
 /**
  * What runs a comparison's solves: the jobs' pool, the Referee's part, and the reasons it stops
  * taking jobs. A solve that throws ends the pool and is thrown again by `settle` once every solve
- * in flight has returned.
+ * in flight has returned; the kill's own reason, from a solve queued at the host's gate, is said as
+ * the kill.
  */
 function floor(request: CheckpointRequest, fixed: Fixed) {
   const { log, id, cap } = request;
@@ -471,32 +475,39 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
     if (ending.outcome === "fail" && ending.kind === "rejected") await rule(solve, task);
     return ending;
   };
-  /** Run `jobs`, `concurrency` at a time, until they are done or the comparison is no longer going.
-   *  A non-result that outlasts its re-runs inside `solve` is asked for once more, in its place. */
-  const drain = async (jobs: Job[]): Promise<void> => {
-    const worker = async (): Promise<void> => {
-      for (let job = jobs.shift(); job !== undefined && going(); job = jobs.shift()) {
+  /** Run whole task sequences concurrently, holding each through every wait and retry.
+   *  Reserve unavailable while another solve runs returns the remaining sequence to the pool. */
+  const drain = async (tasks: Job[][]): Promise<void> => {
+    const sequence = async (jobs: Job[]): Promise<"reserve" | void> => {
+      for (let job = jobs[0]; job !== undefined && going(); job = jobs[0]) {
         const events = read(log);
         // A task this comparison disputed, or a person released or refused since, is solved no more.
-        if (!taskSets(events).held.includes(job.task)) continue;
+        if (!taskSets(events).held.includes(job.task)) return;
         if (cap !== undefined && billedFor(events, id) + (running + 1) * cap.reserve > cap.dollars) {
-          // The job is left for a lane that can afford it. With solves in flight the reserve held
+          // The task is left for a lane that can afford it. With solves in flight the reserve held
           // for each may come back in part, so this lane steps aside; with none in flight nothing
           // more will, and the cap is reached.
-          jobs.unshift(job);
+          tasks.unshift(jobs);
           capped = running === 0;
-          return;
+          return "reserve";
         }
         running += 1;
         try {
           const { outcome } = await run(job);
-          if (outcome === "non-result" && !job.again) jobs.unshift({ ...job, again: true });
+          if (outcome === "non-result" && job.again) return;
+          if (outcome === "non-result") jobs[0] = { ...job, again: true };
+          else jobs.shift();
         } catch (error) {
-          thrown ??= asError(error);
+          if (!kill.aborted || error !== kill.reason) thrown ??= asError(error);
           halt.abort();
         } finally {
           running -= 1;
         }
+      }
+    };
+    const worker = async (): Promise<void> => {
+      for (let jobs = tasks.shift(); jobs !== undefined && going(); jobs = tasks.shift()) {
+        if ((await sequence(jobs)) === "reserve") return;
       }
     };
     await Promise.all(Array.from({ length: Math.max(1, request.concurrency) }, worker));
@@ -625,19 +636,32 @@ export async function checkpoint(request: CheckpointRequest): Promise<Report> {
   return write({ ...request, tasks: fixed.tasks }, told, { broken: null, reviewFaults: work.faults });
 }
 
-/** What a comparison that stopped before its test could be read reports, on its cap or its
- *  defects: nothing compared, and the tasks a rejection had set aside by then, the check defects
- *  among them. */
+/** A stop records completion and review facts, without testing the completed prefix. */
 function stopped(events: readonly LogEvent[], fixed: Fixed, reading: "not-scored" | "check-defects") {
-  const open = new Set(
-    rejections(events, fixed, NO_LABELS).flatMap(({ task, ruling }) => (ruling === EARNED ? [] : [task])),
-  );
+  const { short, aside, disputed, withdrawn } = coverageOf(events, fixed);
   return {
     ...NOTHING,
     objective: fixed.objective === undefined ? null : { ...fixed.objective, decided: 0 },
-    aside: fixed.tasks.filter((task) => open.has(task)),
+    short,
+    aside,
+    disputed,
+    withdrawn,
+    settled: UNSETTLED,
     reading,
-  };
+  } as const;
+}
+
+/** A stopped report's coverage read again under a person's labels: its reading and its absent test
+ *  stand, and a task the labels disputed leaves what it set aside. */
+function restopped(
+  report: Report,
+  events: readonly LogEvent[],
+  fixed: Fixed,
+  labels: ReadonlyMap<string, Ruling>,
+): Report {
+  const { short, aside, withdrawn } = coverageOf(events, fixed, labels);
+  const states = taskStates(events);
+  return { ...report, short, aside: aside.filter((task) => states.get(task) !== "disputed"), withdrawn };
 }
 
 /**
@@ -681,7 +705,8 @@ export async function round(request: RoundRequest): Promise<Report> {
  * what was settled and the labels themselves. Run again with the same labels it returns that
  * report. A comparison is settled once: other labels for one already settled are refused.
  *
- * A settling makes no solve.
+ * A settling makes no solve. A stopped comparison records its labels and completion facts while
+ * retaining its original reading and absent test; no task can be restored to a tally it never had.
  *
  * The comparison is read as its own report found it (`asReported`), so the labels settle the same
  * reading whether they come at once or after later comparisons have solved the same tasks.
@@ -710,7 +735,7 @@ export function settleReading(
     }
     return report;
   }
-  if (report.scored === null || fixed === null) {
+  if (fixed === null) {
     throw new Error(
       `comparison ${id} reads ${report.reading} and compared nothing, so there is nothing to settle`,
     );
@@ -741,7 +766,10 @@ export function settleReading(
     return dispute(log, id, version, { solve, reason }) ? [version] : [];
   });
   const failed = wrongAsFailed(read(log), labels, Object.fromEntries(passes));
-  const found = compared(failed.events, fixed, failed.labels);
+  const found =
+    report.scored === null
+      ? restopped(report, failed.events, fixed, failed.labels)
+      : compared(failed.events, fixed, failed.labels);
   const settled: Report = {
     old: report.old,
     fresh: report.fresh,
@@ -753,7 +781,8 @@ export function settleReading(
       labelled: labels.size,
       defects: defects.length,
       disputed,
-      restored: found.versions.filter((version) => report.aside.includes(version)),
+      restored:
+        report.scored === null ? [] : found.versions.filter((version) => report.aside.includes(version)),
       labels: Object.fromEntries(labels),
       passes: Object.fromEntries(passes),
     },

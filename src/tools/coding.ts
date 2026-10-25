@@ -1,8 +1,10 @@
 /**
  * Durable's coding tools, on the seat's ExecutionEnv (`walledEnv`). The environment owns every
  * file and command operation; registrations keep pi's descriptions and schemas except bash's
- * timeout, which states the host's default and maximum. All calls are sequential because ending
- * a command ends the work still running in the seat's root.
+ * timeout, which states the host's default and maximum. pi's "Execute a bash command" holds as
+ * written, since every seat command runs in the system's `/bin/bash` under the wall
+ * (`src/tools/env.ts`). All calls are sequential because ending a command ends the work still
+ * running in the seat's root.
  *
  * The wall keeps two departures from pi's local environment: ~ names the seat's home, and a
  * whole-file read is capped at 16 MiB. Durable asks the environment to spill long shell output;

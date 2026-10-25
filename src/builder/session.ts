@@ -1,5 +1,7 @@
 /**
  * One Builder session: the agent that changes a Built Harness, and the host around it.
+ * Continuations share finish's counted practice evidence for the current exact digest, including
+ * states restored after a different snapshot was frozen.
  *
  * The plan's D2 is "one Builder session scored on tasks it never saw". A session is given a copy of
  * the harness it starts from, a walled shell over that copy, practice solves on released tasks,
@@ -36,8 +38,10 @@
  * could not be run at all. A solve's turn cap counts prompts, as v1's did; here it counts the model's turns, since a
  * Builder that never stops calling tools would otherwise have no cap but its wall. The wall, the
  * kill and the halt reach a practice solve in flight, so the session ends when they fall and not a
- * solve's whole wall later. A practice solve that throws is the verifier failing to decide, which
- * stops a run: the session writes its record, freezes what it has, and throws it again.
+ * solve's whole wall later; one still queued at the host's gate leaves on them unstarted, which is
+ * the session's end and no host fault. A practice solve that throws anything else is the verifier
+ * failing to decide, which stops a run: the session writes its record, freezes what it has, and
+ * throws it again.
  */
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import {
@@ -90,6 +94,7 @@ import {
   endingWith,
   finishTool,
   harnessNow,
+  hasPractice,
   HOME_TOOL_TREE,
   openingTool,
   practiceLeft,
@@ -495,16 +500,18 @@ async function converse(
     // A finish or a host fault ends after the round, even beside another call in that round.
     over: () => bench.note !== null || bench.fatal !== null,
     // v1's continuation carried the same notice: a file over its limit is cut on the next read.
-    next: async () =>
-      bench.note === null
-        ? [
-            continuation(used(), limits, await harnessNow(bench), bench.said),
-            memoryOverCapNotice(bench.home) ?? "",
-            campaign?.hook() ?? "",
-          ]
-            .filter((part) => part !== "")
-            .join("\n\n")
-        : null,
+    next: async () => {
+      if (bench.note !== null) return null;
+      const harness = await harnessNow(bench);
+      const practice = isString(harness) && hasPractice(bench, read(log), harness) ? "counted" : "uncounted";
+      return [
+        continuation(used(), limits, harness, bench.said, practice),
+        memoryOverCapNotice(bench.home) ?? "",
+        campaign?.hook() ?? "",
+      ]
+        .filter((part) => part !== "")
+        .join("\n\n");
+    },
     onTurn: () => {
       told = false;
     },

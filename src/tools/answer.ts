@@ -27,12 +27,14 @@ import { copyJson } from "@earendil-works/chord";
 import { defineTool, type ToolExecutionResult, type ToolRegistration } from "@earendil-works/pi-durable";
 import { type TSchema, Type } from "typebox";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
+import { boundText } from "../meta/bounded-text.ts";
 import { sha256 } from "../meta/digest.ts";
 import { capturedJsonParse } from "../meta/json-runtime.ts";
 import type { JsonObject, JsonValue } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { canonicalJson, hashJsonValue } from "../meta/stable-json.ts";
+import { plural } from "../meta/text.ts";
 import type { SeatTool } from "../agent/session.ts";
 import { shellQuote } from "../wall/isolation.ts";
 import type { WallExec } from "./coding.ts";
@@ -59,6 +61,9 @@ export const ANSWER_FORMAT_FILE = "public/answer-format.json";
 /** The largest answer, in the file's bytes (v1's draft store held an answer to the same). */
 const ANSWER_MAX_BYTES = 1024 * 1024;
 const MISSING = 44;
+/** What pi keeps of a tool's result, `DEFAULT_MAX_BYTES` and `DEFAULT_MAX_LINES` of pi-durable's
+ *  `truncate.js`, which 1.4.0 keeps private; the shown part leaves room for the notice. */
+const RESULT = { bytes: 50 * 1024 - 512, lines: 2_000 - 2 };
 /** `submit` takes nothing for an answer, which is the file, and `malformed` in place of one. */
 const SUBMIT_PARAMETERS = Type.Object({
   malformed: Type.Optional(
@@ -138,6 +143,24 @@ export function tool<Parameters extends TSchema>(definition: ToolRegistration<Pa
 /** A result the model reads as `value`, with `details` for the trace and the host. */
 export function text(value: string, details: JsonObject | null = null): ToolExecutionResult {
   return { output: [{ type: "text", text: value }], details: copyJson(details) };
+}
+
+/**
+ * `value` as a seat's own tool result, as pi's bash keeps a long output: whole where it fits what
+ * pi keeps of a result, and otherwise its head, with one line that gives its full size and the
+ * file under `spill`, where the whole text is written for the seat's `read`. Until 25 October
+ * `read_example` cut at 20,000 characters, and four recorded drafts of 22,191 to 73,638 came back
+ * as JSON that did not parse. Without a `spill` the notice gives the size alone.
+ */
+export async function spilled(value: string, spill: string | undefined): Promise<ToolExecutionResult> {
+  const bounded = boundText(value, RESULT.bytes, "head", RESULT.lines);
+  if (!bounded.truncated) return text(bounded.text);
+  if (spill !== undefined) await Bun.write(spill, value);
+  const kept = new TextEncoder().encode(bounded.text).byteLength;
+  const where = spill === undefined ? "" : ` The full file is at ${spill}.`;
+  return text(
+    `${bounded.text}\n\nShown: the first ${String(kept)} of ${plural(bounded.totalBytes, "byte")}.${where}`,
+  );
 }
 
 /** `result`, asking that the run end after this round (`control.terminate`). */

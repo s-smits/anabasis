@@ -115,6 +115,12 @@ const pull = (number: number, head: string, base: string, sha: string, isDraft =
   baseRefName: base,
   headRefOid: sha,
   isDraft,
+  labels: [{ name: "importance:I2" }],
+});
+/** A pull request carrying `names` as its labels in place of the one importance label. */
+const labelled = (open: ReturnType<typeof pull>, ...names: string[]) => ({
+  ...open,
+  labels: names.map((name) => ({ name })),
 });
 const stack = (top = upper, ...more: ReturnType<typeof pull>[]): string =>
   JSON.stringify([
@@ -284,6 +290,31 @@ describe("bun run land", () => {
     expect(result.stderr).toContain(
       "#12 (b) is based on a, which is neither main nor an open pull request's head.",
     );
+  });
+
+  it("refuses a landing in which a pull request carries no importance label or two, naming each, before gating anything", () => {
+    const unranked = JSON.stringify([
+      labelled(pull(11, "a", "main", lowerDocs)),
+      labelled(pull(12, "b", "a", upper), "importance:I1", "importance:I3", "bug"),
+      labelled(pull(13, "beside", "main", beside)),
+    ]);
+    for (const flags of [[], ["--sanitize"], ["--merge"]]) {
+      rmSync(ghLog, { force: true });
+      const result = runLand(["12", ...flags], { ANA_FAKE_PULLS: unranked });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        "#11 carries no importance label; #12 carries importance:I1 and importance:I3. Give each pull request exactly one",
+      );
+      expect(result.stderr).not.toContain("#13");
+      expect(gatesRun(gateLog)).toEqual([]);
+      expect(logLines(ghLog).filter((call) => call.startsWith("api -X POST"))).toEqual([]);
+    }
+    // One importance label among others lands.
+    const ranked = JSON.stringify([
+      labelled(pull(11, "a", "main", lowerDocs), "importance:I0", "docs"),
+      pull(12, "b", "a", upper),
+    ]);
+    expect(runLand(["12"], { ANA_FAKE_PULLS: ranked }).status).toBe(0);
   });
 
   it("refuses to merge a landing that holds a draft, before gating anything", () => {

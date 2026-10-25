@@ -1,6 +1,8 @@
 /**
  * Lane 31's triggers: a campaign that promoted a harness, read for what the promotion rested on,
  * what it measured, what touched both sides of it, and what the campaign did after it.
+ * Validity percentages require a profile with a task and solve denominator; missing measurements
+ * read unmeasured, while a nonempty profile of failed solves reads zero.
  *
  * The first live promotion of the climb was abl175-new's on 10 October (c366a2d6, 23:22Z): two
  * comparisons against a starter that answered none of the solves on 9 of 12 tasks, both 10-0-2.
@@ -66,10 +68,10 @@ const MOST_PATHS = 6;
 export const sharedPaths = ({ args }: Call) =>
   [...JSON.stringify(args).matchAll(SHARED_PATH)].map(([, path = ""]) => path);
 
-/** `w-l-t p` of a test record, or "" where there is none. */
+/** `w-l-t p` of a test record, or "not scored" where there is none, as a stopped comparison's. */
 export function testSaid(tested: JsonValue | undefined): string {
   const record = asRecord(tested);
-  if (record === null) return "";
+  if (record === null) return "not scored";
   return `${String(count(record.wins))}-${String(count(record.losses))}-${String(count(record.ties))} p ${pSaid(count(record.p))}`;
 }
 
@@ -120,7 +122,12 @@ export function validOf(side: JsonValue | undefined) {
   const tasks = columns.reduce((sum, value) => sum + value, 0);
   const solves = columns.length - 1;
   const valid = columns.reduce((sum, value, index) => sum + value * index, 0);
-  return { none: columns[0] ?? 0, tasks, share: tasks === 0 || solves < 1 ? 0 : valid / (tasks * solves) };
+  return { none: columns[0] ?? 0, tasks, share: tasks === 0 || solves < 1 ? null : valid / (tasks * solves) };
+}
+
+/** A measured validity share as a percentage, retaining the absence of a measurement. */
+export function validSaid(value: number | null): string {
+  return value === null ? "unmeasured" : `${(value * 100).toFixed(0)}%`;
 }
 
 export function epochsOf(events: readonly LogEvent[]): Epoch[] {
@@ -143,10 +150,12 @@ function ruleOf(log: Index): string {
     : "opened with no level in its terms (the tree's default)";
 }
 
-/** Of a tally, the tasks that did not tie, of all it tallied: `10 of 12`. */
-function untied(tested: JsonValue | undefined): string {
+/** Of a tally, the tasks that did not tie, of all it tallied: `10 of 12`, or "-" where none was
+ *  made, which until 25 October lane 31 read as "0 of 0". */
+export function untied(tested: JsonValue | undefined): string {
   const record = asRecord(tested);
-  const [wins, losses, ties] = ["wins", "losses", "ties"].map((key) => count(record?.[key]));
+  if (record === null) return "-";
+  const [wins, losses, ties] = ["wins", "losses", "ties"].map((key) => count(record[key]));
   return share((wins ?? 0) + (losses ?? 0), (wins ?? 0) + (losses ?? 0) + (ties ?? 0));
 }
 
@@ -224,7 +233,7 @@ function restTriggers(log: Index, { at, until, data }: Epoch): Trigger[] {
     const fresh = validOf(asRecord(last.valid)?.fresh);
     return old.tasks > 0 && old.none / old.tasks > BARE
       ? [
-          `${session}: the reference answered none of its solves on ${share(old.none, old.tasks)} tasks (${(old.share * 100).toFixed(0)}% of solves valid), the new harness ${(fresh.share * 100).toFixed(0)}%`,
+          `${session}: the reference answered none of its solves on ${share(old.none, old.tasks)} tasks (${validSaid(old.share)} of solves valid), the new harness ${validSaid(fresh.share)}`,
         ]
       : [];
   });
@@ -260,8 +269,8 @@ function afterTrigger(log: Index, { at, until, data }: Epoch, starter: string): 
     const old = validOf(asRecord(last.valid)?.old);
     const control = last.fresh === starter && last.old === promoted;
     return control
-      ? `control ${session}: the promoted harness valid on ${(old.share * 100).toFixed(0)}% of its solves of ${plural(old.tasks, "task")}, ${testSaid(last.scored)}`
-      : `${session} ${short(text(last.fresh))} against ${last.old === promoted ? "the promoted harness" : short(text(last.old))} ${testSaid(last.scored)}, ${text(last.reading)}, valid ${(validOf(asRecord(last.valid)?.fresh).share * 100).toFixed(0)}% against ${(old.share * 100).toFixed(0)}%`;
+      ? `control ${session}: the promoted harness valid on ${validSaid(old.share)} of its solves of ${plural(old.tasks, "task")}, ${testSaid(last.scored)}`
+      : `${session} ${short(text(last.fresh))} against ${last.old === promoted ? "the promoted harness" : short(text(last.old))} ${testSaid(last.scored)}, ${text(last.reading)}, valid ${validSaid(validOf(asRecord(last.valid)?.fresh).share)} against ${validSaid(old.share)}`;
   };
   // Every report, a ladder reading of 14 to 16 October among them, which `compared` leaves out.
   const reported = new Set(log.of("comparison.reported").map((report) => text(report.session)));

@@ -23,7 +23,7 @@ const DUTY =
 const ANSWER =
   "Your answer is the file answer.json in the working directory, as JSON in the format public/answer-format.json gives, and submit sends it.";
 const TIME =
-  "The case has 120 minutes of solve time, and every tool result ends with how much of it is used. Nothing is submitted for you when it runs out: an answer you have not submitted by then is lost.";
+  "The case has 120 minutes of solve time. The host appends how much of it is used to results of tools that execute; argument refusals and unavailable tools carry no reminder. Nothing is submitted for you when it runs out: an answer you have not submitted by then is lost.";
 const ENVIRONMENT = [
   "- The working directory is your home directory, $HOME, kept for the whole task. Of what it holds, only answer.json is read as your answer, and only when you submit.",
   "- Commands and the file tools can write the home directory and $TMPDIR, which is kept for the whole task as the home is; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. They can read the host's toolchains and public runtime roots, but no repository or private data.",
@@ -100,7 +100,7 @@ describe("the solver's system prompt", () => {
 
   it("tells the model's turns where the solve is given a number of them", () => {
     expect(systemPrompt({ ...TOLD, limits: { ...TOLD.limits, modelTurns: 40 } })).toContain(
-      `${ANSWER} The case has 120 minutes of solve time and 40 turns of yours, a turn being one reply of yours with the tool calls in it. Every tool result ends with how much of both is used. Nothing is submitted for you when either runs out: an answer you have not submitted by then is lost.\n</addendum>`,
+      `${ANSWER} The case has 120 minutes of solve time and 40 turns of yours, a turn being one reply of yours with the tool calls in it. The host appends how much of both is used to results of tools that execute; argument refusals and unavailable tools carry no reminder. Nothing is submitted for you when either runs out: an answer you have not submitted by then is lost.\n</addendum>`,
     );
   });
 

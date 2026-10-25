@@ -12,20 +12,29 @@
  * something to read and never what the answer is: a lane that contradicts its trigger from the
  * bytes has done its job. A trigger that did not fire says this arithmetic found nothing, and not
  * that the property is absent. No trigger carries an answer, a task's text or a hidden value.
+ * Lane 22 reads the recorded tally and power at its margins. Reversing one win establishes
+ * neither a small sample nor dependence on winning every task, so it starts no trigger.
  *
  * The folds of the log, the catalogue of triggers and the lanes of the exam side (1 to 12) are
  * `folds.ts` since 10 October, when this file was over the size policy's ceiling. This file keeps
  * the lanes of the harness, the comparison, the solve and the review (13 to 30), the rows and the
  * overview. The climb's lane (31) is `promotion.ts`. The lanes that read the clock (26 and 28) and
  * row A's hours are `time.ts`, split from here on the same day for the same ceiling.
+ * Practice gaps retain whether a state was frozen at session end or entered a comparison, with
+ * that comparison's start boundary and report status. Score readers still use reports alone.
+ * Campaign accounting reads calculated spend and backend coverage from `costLine`, with a
+ * residual on matching closed work and unknown backend cost for open or unreported work.
+ * A one-program answer lead requires a logged judged answer, including JSON null; flags and
+ * blocked submits remain in the finished-solve denominator without supplying an answer.
  */
+import { comparisonsOf } from "#src/campaign/ground.ts";
 import { short } from "#src/campaign/move.ts";
 import { campaignOf as handoverOf, type Handover, nextBound, openSteps } from "#src/campaign/handover.ts";
-import { differenceOf, flipP, readsStepEitherWay, sweepOf } from "#src/kernel/compare.ts";
+import { differenceOf, readsStepEitherWay } from "#src/kernel/compare.ts";
 import type { Condition } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { pairsReported } from "#src/kernel/reports.ts";
-import { billedAll } from "#src/kernel/trace.ts";
+import { billedAll, costLine } from "#src/kernel/trace.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
@@ -70,6 +79,11 @@ export interface Overview {
   readonly triggers: readonly Trigger[];
 }
 
+type PracticeCandidate = { readonly harness: string; readonly began: number } & (
+  | { readonly origin: "frozen" }
+  | { readonly origin: "comparison"; readonly id: string; readonly reported: boolean }
+);
+
 const FEW_CALLS = 3;
 /** The Builder tools that write one named file: pi's two, and the one tool sessions had before them. */
 const FILE_WRITERS: ReadonlySet<string> = new Set(["write", "edit", "write_file"]);
@@ -81,9 +95,8 @@ interface PractisedSession {
   readonly changed: boolean;
   /** The digest of the harness the session left, or "" where it finished with none. */
   readonly child: string;
-  /** Every harness of the session a comparison read: the one it left, and each it froze for a
-   *  comparison inside its conversation (`build.checkpoint`), each with where its comparison began. */
-  readonly read: readonly (readonly [string, number])[];
+  /** Frozen and compared states, with the boundary before which practice must have run. */
+  readonly read: readonly PracticeCandidate[];
   /** The reference harness of the comparison, which need not be the one the session started from.
    *  A report written before 2026-10-09 names none: it compared with its parent. */
   readonly reference: string;
@@ -105,12 +118,25 @@ function practiceTriggers(
   // A practice solve's condition names the state it ran under, so the log says by digest whether
   // the harness that was measured is one the Builder tried: an edit made with the shell leaves no
   // call to count, and a digest misses none. Practice after its comparison began counts for none.
+  // A digest leaves out Python's bytecode caches (`BYTECODE`, `src/harness/open.ts`).
   const lastPractice = round.practice.at(-1);
-  const unpractised = read.flatMap(([harness, began]) =>
-    harness === "" || round.practice.some((solve) => solve.harness === harness && solve.index < began)
-      ? []
-      : [harness],
-  );
+  const unpractised = read.flatMap((candidate) => {
+    const prior = round.practice.filter((solve) => solve.index < candidate.began);
+    if (prior.some((solve) => solve.harness === candidate.harness)) return [];
+    const last = prior.at(-1);
+    const origin =
+      candidate.origin === "frozen"
+        ? "frozen at session end; no comparison uses it"
+        : candidate.reported
+          ? `reported comparison ${candidate.id}`
+          : `comparison ${candidate.id} begun without a report`;
+    return [
+      fired(
+        "FINAL BYTES NEVER PRACTISED",
+        `${session}: no practice solve ran under ${short(candidate.harness)}, ${origin}; ${last === undefined ? "no earlier practice solve" : `the last ran under ${short(last.harness)}`}`,
+      ),
+    ];
+  });
   // A session with no end record may still be running when the log is read: it is not finished by
   // the log's last event, which is not the same as a session cut short.
   const ended = finished === null ? "not finished by the log's last event" : text(finished.ended);
@@ -147,14 +173,7 @@ function practiceTriggers(
     ...(changed && lastPractice === undefined
       ? [fired("NO PRACTICE", `${session}: the harness changed and no practice solve ran`)]
       : []),
-    ...(changed && lastPractice !== undefined
-      ? [...new Set(unpractised)].map((harness) =>
-          fired(
-            "FINAL BYTES NEVER PRACTISED",
-            `${session}: no practice solve ran under ${short(harness)}, a harness measured; the last ran under ${short(lastPractice.harness)}`,
-          ),
-        )
-      : []),
+    ...(changed && lastPractice !== undefined ? unpractised : []),
     ...(ended === "finished" ? [] : [fired("SESSION ENDED", `${session}: ${ended}`)]),
     ...(failed.length > 0
       ? [
@@ -214,10 +233,12 @@ function winTriggers(log: Index): Trigger[] {
 
 /**
  * Lane 19's reading of whether a harness answered for its solver, which `src/builder/prompt.ts`
- * forbids a part to do: a solve whose one shell call was followed by its submit, with no write of
- * its own, submitted what one program made. Read per Builder session's practice and per comparison,
- * with the comparison's reference side beside its new one as the control, because a solver can do
- * the whole task in one command of its own.
+ * permits since 20 October so long as nothing in the harness names a task, copies its text or holds
+ * its answer, so the lead is whether the program computes from public input or reaches a check, its
+ * instrument or a verdict: a solve whose one shell call was followed by its submit, with no write of
+ * its own, and a logged judged answer, submitted what one program made. Read per Builder session's
+ * practice and per comparison, with the comparison's reference side beside its new one as the
+ * control, because a solver can do the whole task in one command of its own.
  *
  * The shape is that strict because these solvers do everything through the shell, the answer file
  * included: across the #107 buffer campaign's solves, 1,920 `bash` calls to 7 `write` and no `read`.
@@ -229,6 +250,7 @@ function winTriggers(log: Index): Trigger[] {
 function programTriggers(log: Index): Trigger[] {
   const oneProgram = (solve: Solve) =>
     solve.outcome !== null &&
+    log.verdicts.get(solve.id)?.answer !== undefined &&
     solve.calls.at(-1) === "submit" &&
     solve.calls.at(-2) === "bash" &&
     solve.calls.filter((tool) => tool === "bash").length === 1 &&
@@ -255,6 +277,7 @@ function programTriggers(log: Index): Trigger[] {
 
 /** Lanes 13 to 19: the harness, which is the Builder's. */
 function harnessTriggers(log: Index): Trigger[] {
+  const comparisons = comparisonsOf(log.events);
   return log.builds.flatMap((build) => {
     const { session, finished, parent, calls } = build;
     // Every comparison of the harness this session left: recode measured b-1's twice (2026-10-10).
@@ -332,12 +355,7 @@ function harnessTriggers(log: Index): Trigger[] {
         build,
         changed: edited,
         child,
-        // v061's b-1 froze 03a5eb57 for g-2 after its last practice and never ended, and the
-        // trigger, reading only the end record, said nothing (21 October).
-        read: [
-          [child, Number.POSITIVE_INFINITY],
-          ...compared.map(({ own, began }) => [text(own.fresh), began] as const),
-        ],
+        read: practiceCandidates(log, build, comparisons),
         reference: text(compared[0]?.own.old) || parent,
         round,
       }),
@@ -345,29 +363,34 @@ function harnessTriggers(log: Index): Trigger[] {
   });
 }
 
-/** Lanes 22 and 23, from a comparison's last report alone: whether it scored a task, what its cap
- *  cut, how many of its pairs tell the harnesses apart, what it is short of, and how its new harness
- *  stands against the starter. */
+/** Starts establish comparison use even without a report; a frozen child alone establishes none. */
+function practiceCandidates(
+  log: Index,
+  build: Build,
+  comparisons: ReturnType<typeof comparisonsOf>,
+): PracticeCandidate[] {
+  const child = text(build.finished?.harness);
+  const read: PracticeCandidate[] = comparisons.flatMap(({ id, at, fresh, report }) => {
+    const checkpoint = log.events.some(
+      ({ kind, data }, index) =>
+        kind === "build.checkpoint" && data.session === build.session && data.harness === fresh && index < at,
+    );
+    return build.from < at && (fresh === child || checkpoint)
+      ? [{ harness: fresh, began: at, origin: "comparison", id, reported: report !== null }]
+      : [];
+  });
+  if (child !== "" && !read.some(({ harness }) => harness === child)) {
+    const end = log.events.findIndex(({ kind, data }) => kind === BUILD_END && data === build.finished);
+    read.push({ harness: child, began: end, origin: "frozen" });
+  }
+  return read;
+}
+
+/** Lane 22, from a comparison's last report alone: whether it scored a task, what its cap
+ *  cut, and what it is short of. */
 function testTriggers(session: string, last: JsonObject): Trigger[] {
   const scored = asRecord(last.scored);
-  const informative = count(scored?.wins) + count(scored?.losses);
-  const tasks = informative + count(scored?.ties);
-  const level = count(last.level);
-  // The least clean sweep that clears the report's level, by the report's own test.
-  const sweep = level > 0 ? sweepOf(level) : undefined;
-  // The reading with its least win lost does not clear: it rests on a sweep. Read on the margins
-  // its step tested where the report holds them (`testedOf`); on a margin of one pair a task until
-  // 14 October, which said no result with a loss clears on eight tasks where buffer-149's margins
-  // let 7-1 clear 0.02.
-  const held = testedOf(last).differences;
-  const margins =
-    held.length > 0 ? held.filter((each) => each !== 0) : Array.from({ length: informative }, () => 1);
-  const least = margins.reduce(
-    (low, each) => (each > 0 && each < low ? each : low),
-    Number.POSITIVE_INFINITY,
-  );
-  const fragile =
-    Number.isFinite(least) && flipP([...margins.toSpliced(margins.indexOf(least), 1), -least]) > level;
+  const tasks = count(scored?.wins) + count(scored?.losses) + count(scored?.ties);
   const asked = last.tasks;
   const lacking = items(last.short).length;
   return [
@@ -386,14 +409,6 @@ function testTriggers(session: string, last: JsonObject): Trigger[] {
             scored === null
               ? `${session}: the dollar cap ended it before it was read`
               : `${session}: the dollar cap ended the starter's solves; its test stands, unread against the starter`,
-          ),
-        ]
-      : []),
-    ...(scored !== null && tasks > 0 && level > 0 && fragile
-      ? [
-          fired(
-            "FEW INFORMATIVE PAIRS",
-            `${session}: ${share(informative, tasks)} tasks tell the harnesses apart; at level ${String(level)} the least sweep that clears is ${String(sweep ?? 0)}-0, and the reading with its least win lost would not`,
           ),
         ]
       : []),
@@ -606,9 +621,9 @@ function reviewTriggers(log: Index): Trigger[] {
 
 /**
  * The campaign command's own record, for lane 25's "what runs next": its moves, how it ended, and
- * its billed dollars against the budget it opened with. Lane 25 read the stop rule from the
- * command's output, which the log outlives. An ending before the last event is one the campaign went
- * on from: both #107 campaigns ended `exam` at their fourth event and ran on under the same opening.
+ * its calculated dollars against the budget it opened with, beside the backend's own totals. Lane
+ * 25 read the stop rule from the command's output, which the log outlives. An ending before the
+ * last event is one the campaign went on from: both #107 campaigns ended `exam` at their fourth event and ran on under the same opening.
  * None for a log no campaign command wrote.
  */
 function campaignOf(log: Index): string[] {
@@ -621,7 +636,7 @@ function campaignOf(log: Index): string[] {
   const billed = billedAll(log.events);
   const budget = isNumber(opened?.dollars) ? ` of ${String(opened.dollars)}` : "";
   return [
-    `campaign: moves ${tally(moves)}; ended ${endings.join(", then ") || "never"}; billed ${billed.toFixed(2)}${budget} dollars`,
+    `campaign: moves ${tally(moves)}; ended ${endings.join(", then ") || "never"}; calculated spend ${billed.toFixed(2)}${budget} dollars; ${costLine(log.events)}`,
   ];
 }
 
@@ -689,7 +704,7 @@ function rowsOf(log: Index, steps: readonly Handover[]): Row[] {
           spendOf(log)
             .map(([role, dollars]) => `${role} ${dollars.toFixed(2)}`)
             .join(", ") || "none"
-        }${admittedCost(log)
+        }${admittedCost(log, steps)
           .map((cost) => `; ${cost}`)
           .join("")}`,
         hoursLine(log),

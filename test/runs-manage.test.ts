@@ -1,12 +1,18 @@
 // Going on with a campaign: the flags it runs again on, the login it runs as, and the point a pause
-// waits for.
-import { describe, expect, it } from "bun:test";
+// waits for. A launch whose dry run refuses shows the campaign command's own reason.
+import { afterAll, describe, expect, it } from "bun:test";
 import { type EventKind, LOG_FILE, type LogEvent } from "../src/kernel/log.ts";
-import { mkdirSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { chmodSync, mkdirSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join, resolve } from "../src/meta/path.ts";
-import { runtimeProcess } from "../src/meta/process.ts";
+import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import { launch, loginEnv, rerun, restsAfter } from "../tools/runs/manage.ts";
+import { fakeHosts } from "./helpers/fake-hosts.ts";
+
+const fixtures: string[] = [];
+afterAll(() => {
+  for (const root of fixtures) rmSync(root, { recursive: true, force: true });
+});
 
 const event = (kind: EventKind, data: JsonObject): LogEvent => ({
   at: "2026-10-15T12:00:00.000Z",
@@ -76,6 +82,26 @@ describe("going on with a campaign", () => {
 });
 
 describe("starting a campaign", () => {
+  it("shows the dry run's own refusal, and starts nothing after it", () => {
+    const made = fakeHosts();
+    fixtures.push(made.root);
+    // The install passes and a detached start would leave its call; the fake tree holds no
+    // campaign command, so its dry run refuses with Bun's own words on stderr.
+    const nice = join(made.root, "bin", "nice");
+    writeFileSync(
+      nice,
+      `#!${capturedExecPath}\nimport { appendFileSync } from "node:fs";\nappendFileSync(process.env.FAKE_CALLS, JSON.stringify({tool:"nice",args:process.argv.slice(2)}) + "\\n");\n`,
+    );
+    chmodSync(nice, 0o755);
+    const result = made.run(
+      'import { launch } from "REPOSITORY/tools/runs/manage.ts"; await launch(["refused", "--yes"]);',
+    );
+    expect(result.code).toBe(1);
+    expect(result.err).toContain("tools/d2/harness-builder.ts");
+    expect(result.err).toContain("nothing was started");
+    expect(made.recorded().filter(({ tool, args }) => tool === "nice" && args.includes("19"))).toEqual([]);
+  });
+
   it("refuses a name that differs from a held campaign's only by case, which macOS reads as one folder", async () => {
     const name = `hunt-alias-${String(runtimeProcess.pid)}`;
     const folder = join(resolve(import.meta.dir, ".."), ".ana", "d2", name);

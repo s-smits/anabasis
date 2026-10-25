@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import {
+  type AssistantMessage,
   createModels,
   fauxAssistantMessage,
   type FauxResponseStep,
@@ -8,6 +9,8 @@ import {
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { read } from "../src/kernel/log.ts";
+import { dollars, freezePrices, tokensOf } from "../src/kernel/meter.ts";
+import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { isFunction } from "../src/meta/json-shape.ts";
 import { existsSync, mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -31,6 +34,11 @@ function seated(responses: readonly FauxResponseStep[], over: Partial<Seat> = {}
         id: "faux-seat",
         contextWindow: 200_000,
         cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+      },
+      {
+        id: "faux-served",
+        contextWindow: 200_000,
+        cost: { input: 6, output: 30, cacheRead: 0.6, cacheWrite: 7.5 },
       },
     ],
   });
@@ -242,6 +250,44 @@ describe("durable session boundaries", () => {
     expect(events[0]?.data.retried).toEqual(["WebSocket closed 1000"]);
     expect(sat.spent.tokens.input).toBeGreaterThan(s.seat.turns[0]?.usage.input ?? 0);
     expect(sat.spent.billed).toBeCloseTo(s.seat.turns[0]?.usage.cost.total ?? 0, 10);
+  });
+
+  it("bills each turn at the model that served it, and at the seat's own where the catalogue has no price", async () => {
+    // Recode on 25 October: Claude Code answered claude-opus-5-5's requests as claude-opus-5.
+    const log = join(scratch, "served.jsonl");
+    const served = (responseModel: string | undefined) => (): AssistantMessage => ({
+      ...fauxAssistantMessage([fauxToolCall("look", {})], TOOL_USE),
+      ...keyIfDefined("responseModel", responseModel),
+    });
+    const s = seated(
+      [served("faux-served"), served("faux-unlisted"), served(undefined), fauxAssistantMessage("Done.")],
+      {
+        trace: { log, of: "build" },
+      },
+    );
+    const sat = await sit(s.seat);
+    const prices = freezePrices(s.faux.models);
+    const priced = s.seat.turns.map(
+      ({ responseModel, usage }) =>
+        dollars(
+          prices,
+          responseModel === "faux-served" ? "faux/faux-served" : "faux/faux-seat",
+          tokensOf([usage]),
+        ).billed,
+    );
+    expect(s.seat.turns.map(({ usage }) => usage.cost.total)).toEqual(priced);
+    expect(priced[0]).toBeGreaterThan(0);
+    expect(sat.spent.billed).toBeCloseTo(
+      priced.reduce((sum, each) => sum + each, 0),
+      10,
+    );
+    const turns = read(log).filter((event) => event.kind === "build.turn");
+    expect(turns.map(({ data }) => data.pricedAt)).toEqual([
+      undefined,
+      "faux/faux-seat",
+      undefined,
+      undefined,
+    ]);
   });
 
   it("retries a failed attempt on the last turn most allows", async () => {

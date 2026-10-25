@@ -1,6 +1,7 @@
 // The comparison's arithmetic against the plan's own figures, and its view over the log: the test
 // a reading is made by and what it can detect, one reading's step, which solves count for a
-// held-out task under a harness, and what it refuses to compare. The retained-loss cases answer
+// held-out task under a harness, symmetric score quantisation, and what it refuses to compare.
+// Unequal margins can support a step containing losses. The retained-loss cases answer
 // buffer-pr197-opus-m1's single flagged solve blocking a promotion (18 October 2026).
 import { describe, expect, it } from "bun:test";
 import {
@@ -21,6 +22,7 @@ import {
   sweepOf,
   tally,
   unsolved,
+  wholePoints,
 } from "../src/kernel/compare.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
@@ -280,6 +282,17 @@ describe("what a reading can detect", () => {
 describe("one reading", () => {
   const STRICT = 0.02;
 
+  it("reads losses by their margins rather than requiring every task to be won", () => {
+    const buffer = [-16, -9, 2, -9, 150, 119, 0, 19];
+    // The six largest absolute margins won and the smallest lost: 6-1 clears the level.
+    expect(flipP(buffer.map((margin) => (margin === 2 ? -2 : Math.abs(margin))))).toBe(0.015625);
+    expect(flipP(buffer)).toBe(0.1640625);
+    expect(flipP([20, -16, 37, 33, 91, 44, 158, 87, 13, 70, -70])).toBe(0.0205078125);
+    for (const margins of [units(6, 0), [1, 2, 3, 4, 5, 600]]) {
+      expect(flipP(margins)).toBe(0.015625);
+    }
+  });
+
   it("promotes on its own reading at the level, and reads a 5-0 at 0.02 as no step", () => {
     // Since 19 October one reading is the whole rule: 6-0 clears 0.02 (p 1/64) and 5-0 (p 1/32)
     // reads no step and buys nothing, where it bought a repeat at the trigger before.
@@ -333,6 +346,72 @@ describe("one reading", () => {
 });
 
 describe("a task's pairings", () => {
+  it("rounds a score half points away from zero, so that a negative half rounds down", () => {
+    // The one rounding of a task's difference, a report's measure totals and the tuner's replay.
+    expect([32.5, -32.5, 0.5, -0.5, -32.4].map(wholePoints)).toEqual([33, -33, 1, -1, -32]);
+    expect(Object.is(wholePoints(-0.4), 0)).toBe(true);
+  });
+
+  it.each([
+    [1200, 1187, 33],
+    [1187, 1200, -33],
+  ])("rounds an objective half point away from zero for %s against %s", (old, fresh, expected) => {
+    const measured = (one: number, other: number): Paired => ({
+      task: "half",
+      old: [P],
+      fresh: [P],
+      objective: { ...lowerRule, old: [one], fresh: [other] },
+    });
+    expect(pointsOf(measured(old, fresh)).objective).toBe(Math.sign(expected) * 32.5);
+    expect(differenceOf(measured(old, fresh))).toBe(expected);
+    expect(differenceOf(measured(fresh, old))).toBe(-differenceOf(measured(old, fresh)));
+  });
+
+  it("negates validity and bill scores when exchanged and normalises rounded zeros", () => {
+    const even = { task: "exchange", old: [P], fresh: [P] };
+    const cases: { pair: Paired; expected: number }[] = [
+      { pair: { ...even, old: [F] }, expected: 600 },
+      { pair: { ...even, used: { old: [{ billed: 0.2 }], fresh: [{ billed: 0.1 }] } }, expected: 100 },
+      { pair: even, expected: 0 },
+      {
+        pair: {
+          ...even,
+          objective: { ...lowerRule, old: [1200], fresh: [1187] },
+          used: { old: [{ billed: 0.4 }], fresh: [{ billed: 0.5 }] },
+        },
+        expected: 0,
+      },
+    ];
+    for (const { pair, expected } of cases) {
+      const swapped: Paired = {
+        task: pair.task,
+        old: pair.fresh,
+        fresh: pair.old,
+        ...keyIfDefined(
+          "objective",
+          pair.objective === undefined
+            ? undefined
+            : {
+                direction: pair.objective.direction,
+                old: pair.objective.fresh,
+                fresh: pair.objective.old,
+              },
+        ),
+        ...keyIfDefined(
+          "used",
+          pair.used === undefined
+            ? undefined
+            : {
+                old: pair.used.fresh,
+                fresh: pair.used.old,
+              },
+        ),
+      };
+      expect(differenceOf(pair)).toBe(expected);
+      expect(differenceOf(swapped)).toBe(expected === 0 ? 0 : -expected);
+    }
+  });
+
   it("gives a valid answer the pair over one that is not and leaves two alike even, so a task reads as the harness with more valid answers", () => {
     // Two solves a side: the new harness is valid twice, the reference once, so it wins two of the
     // four pairings on validity: half of validity's 600 points.

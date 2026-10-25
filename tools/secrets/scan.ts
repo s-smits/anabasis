@@ -1,5 +1,6 @@
 // The secret scan before a commit, v1's tools/secrets/scan.ts. Two modes, one vocabulary:
 //   --staged   the lines this commit ADDS (what `bun run commit:check` runs)
+//   the lines a range of commits adds, through `scanAdded` (what the pre-push hook runs)
 //   default    every tracked file (what test/secret-scan.test.ts runs, so CI covers it)
 // The staged mode reads added lines only. A check before a commit cannot repair history, and
 // re-reporting a line that is already committed teaches the operator to skip the check, which is
@@ -19,8 +20,8 @@ const ENV_TEMPLATE = /(^|\/)\.env\.([\w-]+\.)?(example|sample|template|dist)$/;
 /** Skip these generated formats in the content scan; credentials inside them are not detected. */
 const SKIP_CONTENT = [/\.lock$/, /\.min\.js$/, /\.map$/];
 
-/** Added lines from the index, with their real line numbers in the new file. */
-interface ScanStagedResult {
+/** Added lines from the index or a range, with their real line numbers in the new file. */
+interface ScanAddedResult {
   hits: SecretHit[];
   refusedPaths: string[];
 }
@@ -45,10 +46,13 @@ function scannable(path: string): boolean {
   return !SKIP_CONTENT.some((skip) => skip.test(path));
 }
 
-function scanStaged(): ScanStagedResult {
-  const staged = git(["diff", "--cached", "--name-only", "--diff-filter=ACMR"]).split("\n").filter(Boolean);
+/** The lines `git diff <range>` adds: `--cached` for the index, or two commits. */
+export function scanAdded(range: readonly string[]): ScanAddedResult {
+  const staged = git(["diff", ...range, "--name-only", "--diff-filter=ACMR"])
+    .split("\n")
+    .filter(Boolean);
   const refusedPaths = staged.filter(refusedPath);
-  const diff = git(["diff", "--cached", "--unified=0", "--no-color", "--diff-filter=ACMR"]);
+  const diff = git(["diff", ...range, "--unified=0", "--no-color", "--diff-filter=ACMR"]);
   const hits: SecretHit[] = [];
   let path = "";
   let line = 0;
@@ -97,7 +101,7 @@ export function report(hits: SecretHit[], refusedPaths: string[]): string {
 
 function main(): void {
   const staged = Bun.argv.includes("--staged");
-  const { hits, refusedPaths } = staged ? scanStaged() : scanTree();
+  const { hits, refusedPaths } = staged ? scanAdded(["--cached"]) : scanTree();
   const subject = staged ? "the staged change" : "the tracked tree";
   if (hits.length === 0 && refusedPaths.length === 0) {
     console.log(`secret scan: ${subject} carries no credential-shaped literal`);

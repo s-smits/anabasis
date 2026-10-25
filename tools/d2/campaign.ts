@@ -259,10 +259,12 @@ function packOpened(dir: string, log: string, args: CampaignArgs) {
 
 /**
  * The code a solve runs, as its condition records it (`src/kernel/condition.ts`): the agent
- * runtime's pins by name, and the host, `src` and `vendor` of `tree` as they stand with every
- * production package its lockfile resolves. Until 12 October the host was the two trees alone, and
- * a package such as `typebox`, which builds the solver's bash schema, could change under one
- * setting id (the stack review at 658a933b, finding 6).
+ * runtime's pins by name with the Bun that runs this command, and the host, `src` and `vendor` of
+ * `tree` as they stand with every production package its lockfile resolves. Until 12 October the
+ * host was the two trees alone, and a package such as `typebox`, which builds the solver's bash
+ * schema, could change under one setting id (the stack review at 658a933b, finding 6). Until 24
+ * October the Bun was left out, though the verifier runs every check under it: one campaign read
+ * comparison g-1 under Bun 1.4.3 and g-2 under 1.4.4 with one setting id.
  */
 export function codeOf(tree: string) {
   const pins = parseJsonAs<{ dependencies: Record<string, string> }>(
@@ -293,7 +295,10 @@ export function codeOf(tree: string) {
   visit([], named(asRecord(resolved?.workspaces)?.[""]));
   const trees = ["src", "vendor"].map((part) => treeContent(join(tree, part)));
   return {
-    runtime: Object.fromEntries(RUNTIME.map((name) => [name, pins[name] ?? "unpinned"])),
+    runtime: {
+      ...Object.fromEntries(RUNTIME.map((name) => [name, pins[name] ?? "unpinned"])),
+      bun: Bun.version,
+    },
     host: hashJsonValue([...trees, resolved === null ? null : Object.fromEntries(production)]),
   };
 }

@@ -30,7 +30,7 @@
  * and the two-stage rule of older trees, and the rule-by-rule tally, none of which `main` holds.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import type { Measures, Paired } from "#src/kernel/compare.ts";
+import { type Measures, type Paired, wholePoints } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import type { Reported } from "#src/kernel/reports.ts";
 import { type JsonValue, asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
@@ -175,9 +175,10 @@ function pointsOf(score: Score, pair: Paired): Measures {
   };
 }
 
-/** A task's difference, to the whole point, as `differenceOf` rounds it. */
+/** A task's difference, to the whole point as `differenceOf` rounds it (`wholePoints`), by the
+ *  rounding of the worktree this script runs from, whichever tree `--tree` names. */
 function differenceOf(points: Measures): number {
-  return Math.round(points.validity + points.objective + points.bill);
+  return wholePoints(points.validity + points.objective + points.bill);
 }
 
 /** A report's set scored again from `pairs`, in the order it names its tasks, with the points of

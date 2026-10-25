@@ -2,6 +2,7 @@
 // returns and never returns, the reviewers' part, the budget, the freeze and the record it leaves.
 // The three walled tools are stood in for by a host write here; the session under the real command
 // wall is the last block, which runs on Darwin alone.
+// Restores distinguish counted practice, including failure, from snapshots and non-results.
 import { afterAll, describe, expect, it } from "bun:test";
 import {
   createModels,
@@ -14,7 +15,7 @@ import { Type } from "typebox";
 import { crashedRun } from "../src/campaign/ground.ts";
 import { SAID, systemPrompt } from "../src/builder/prompt.ts";
 import { type BuildRequest, build, type PracticeTask, session } from "../src/builder/session.ts";
-import { type Bench, HOME_TOOL_TREE, practiceLeft, record } from "../src/builder/tools.ts";
+import { type Bench, HOME_TOOL_TREE, practiceLeft, record, snapshot } from "../src/builder/tools.ts";
 import { type Condition, recordCondition } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
@@ -925,6 +926,85 @@ describe("a Builder session", () => {
     expect(spent.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "finished", turns: 4, practiceSolves: 3 });
   });
 
+  it.each(["pass", "fail", "non-result", "unpractised"] as const)(
+    "reads counted practice after restoring an earlier exact state: %s",
+    async (outcome) => {
+      const other = call(WRITE_FILE, { path: GUIDE_PATH, content: `${GUIDE}Other method.\n` });
+      const restored =
+        outcome === "unpractised"
+          ? call(WRITE_FILE, { path: GUIDE_PATH, content: `${GUIDE}Untried method.\n` })
+          : edit;
+      const ending: Ending =
+        outcome === "fail"
+          ? { outcome, kind: "no-answer" }
+          : outcome === "non-result"
+            ? { outcome, kind: "killed", reason: "Interrupted" }
+            : { outcome: "pass" };
+      const s = await setup(
+        [
+          edit,
+          call("practice", { tasks: ["t-1"] }),
+          other,
+          call("practice", { tasks: ["t-1"] }),
+          restored,
+          fauxAssistantMessage("Reviewing the restored state."),
+          finish,
+          finish,
+        ],
+        [ending],
+      );
+      const counted = outcome === "pass" || outcome === "fail";
+      const notice = "Next campaign move is available.";
+      const built = await session(
+        {
+          ...s.request,
+          campaign: () => ({
+            tools: [],
+            hook: () => "",
+            unmeasured: async () => notice,
+          }),
+        },
+        s,
+        s.walled,
+      );
+      expect(built).toMatchObject({ ended: "finished" });
+      expect(s.ran).toHaveLength(2);
+      const finishes = s.of(BUILD_CALL).filter(({ tool: name }) => name === "finish");
+      expect(finishes[0]?.text).toContain(notice);
+      const firstNotice = finishes[0]?.text;
+      expect(isString(firstNotice) && firstNotice.includes("no solve has run it as it stands")).toBe(
+        !counted,
+      );
+      const continued = s.sent[6] ?? "";
+      expect(
+        continued.includes("no counted practice result as it stands") ||
+          continued.includes("no solve has run it as it stands"),
+      ).toBe(!counted);
+      if (counted) expect(continued).toContain("counted practice");
+      expect(finishes[1]?.isError).toBe(false);
+    },
+  );
+
+  it("does not take a comparison snapshot as practice", async () => {
+    const s = await setup([edit, call("freeze_for_comparison", {}), finish, finish]);
+    await session(s.request, s, (bench) => [
+      ...s.walled(bench),
+      tool({
+        name: "freeze_for_comparison",
+        description: "Freezes the working harness.",
+        parameters: Type.Object({}),
+        execute: async () => {
+          await snapshot(bench);
+          return text("Frozen.");
+        },
+      }),
+    ]);
+    const finishes = s.of(BUILD_CALL).filter(({ tool: name }) => name === "finish");
+    expect(finishes[0]?.text).toContain("no solve has run it as it stands");
+    expect(finishes[1]?.isError).toBe(false);
+    expect(s.ran).toHaveLength(0);
+  });
+
   it("practises under the harness it started from where asked, which spends the same solves", async () => {
     // The change is read against the parent on the same task: t-10's first session had no parent
     // record to read its change against (10 October).
@@ -1256,6 +1336,30 @@ describe("a Builder session", () => {
     expect(Number(s.of(BUILD_FINISHED)[0]?.seconds)).toBeLessThan(4);
   });
 
+  it("ends at its wall, and blames no host, when the wall reaches a practice solve queued at the host", async () => {
+    const s = await setup([call("practice", { tasks: ["t-1", "t-2"] }), finish]);
+    const built = await session(
+      {
+        ...s.request,
+        limits: { ...LIMITS, wallSeconds: 1 },
+        // t-1 is in flight and ends killed; t-2 waits at the host's gate, which leaves on the kill
+        // with its reason before any solve starts (`gated`, `tools/d2/host.ts`).
+        practise: async (task, _dir, _digest, kill) => {
+          if (!kill.aborted) {
+            await new Promise((resolve) => kill.addEventListener("abort", resolve, { once: true }));
+          }
+          if (task.version === "v2") kill.throwIfAborted();
+          return { solve: "s-killed", ending: { outcome: "non-result", kind: "killed", reason: "killed" } };
+        },
+      },
+      s,
+      s.walled,
+    );
+    expect(built).toMatchObject({ ended: "wall", changed: false });
+    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "wall", crash: null, practiceSolves: 1 });
+    expect(JSON.stringify(s.of(BUILD_CALL))).not.toContain("the host's fault");
+  });
+
   it("takes a task out of practice when its own check could not run", async () => {
     const s = await setup(
       [call("practice", { tasks: ["t-2"] }), call("practice", { tasks: ["t-2"] }), finish],
@@ -1324,19 +1428,17 @@ describe("a Builder session", () => {
       content: [
         `${GOES_ON}, and the session goes on: ending a turn does not end it. It ends when you call finish or at its limits, and what harness/ holds then is frozen and measured.`,
         "The goal, unchanged: Your harness is measured against a reference harness on tasks you are never shown: the same solving model answers each task under each harness, under the same limits.",
-        "This session so far: 4 of 12 turns and 0 of 10 minutes used, 2 practice solves left. harness/ is as your last practice solve ran it.",
+        "This session so far: 4 of 12 turns and 0 of 10 minutes used, 2 practice solves left. harness/ has counted practice results under its exact current digest.",
         "read_opening returns the opening message again: the public rules, the practice tasks, the failed practice solves and the comparisons so far.",
       ].join("\n\n"),
     });
-    // Where harness/ stands is said as it is: unpractised, and changed since the last solve.
+    // The parent's older counted failure is still practice; a genuinely changed state has none.
     const idle = await setup([stop, finish]);
     await session(idle.request, idle, idle.walled);
-    expect(idle.sent[1]).toContain("3 practice solves left. No practice solve has run in this session.");
+    expect(idle.sent[1]).toContain("3 practice solves left. harness/ has counted practice results");
     const moved = await setup([call("practice", { tasks: ["t-1"] }), edit, stop, finish, finish]);
     await session(moved.request, moved, moved.walled);
-    expect(moved.sent[3]).toContain(
-      "harness/ has changed since your last practice solve, so no solve has run it as it stands.",
-    );
+    expect(moved.sent[3]).toContain("harness/ has no counted practice result as it stands.");
   });
 
   it("keeps streamed tool output beside its turn footer after the turn is metered", async () => {

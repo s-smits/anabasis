@@ -177,7 +177,9 @@ name the rule broken and the field that breaks it, both cited by a rejecting che
 must cite a probe that decided both sides on a field the check reads, or shows a refusal independent
 of the answer where it declares none. A cited probe that supplies an accepted answer, whole or on
 every field that check reads, is refused as defect evidence; `unclear` covers the rest. A ruling
-without its evidence is refused, and each refusal is recorded with the ruling asked for and why
+without its evidence is refused. Ruling prose has no length gate: the finding keeps up to 700
+UTF-8 bytes of trimmed content plus an omission marker where needed, while the call trace retains
+the full explanation. Each evidence refusal is recorded with the ruling asked for and why
 (`referee.refused`; no report reads them yet). `earned` counts as a loss; the other two
 set the task aside for both harnesses, so a broken check scores against nobody.
 
@@ -185,9 +187,11 @@ The Referee is a model, and it is measured by how well it agrees with a person w
 rejections blind (`tools/d2/settle.ts`, `src/referee/agreement.ts`): a three-by-three table of label
 against ruling, read as two rates, with each kind's agreement and PABAK reported beside kappa, and
 never kappa alone. Once a packet is settled, `settle.ts` prints them over every settled packet, and
-reads each settled comparison again with the labels in place of the verdicts they overturn
-(`swapped`). A decision that flips means its packet was too small. Both are reports, and so is the
-line it prints when a person labels more than one in four `unclear` rulings as earned. Bar: read on
+reads each settled, scored comparison again with the labels in place of the verdicts they overturn
+(`swapped`). A stopped comparison still has a review packet; its completion facts and absent test
+stand after settlement, with no tally restored. A decision that flips means its packet was too
+small. Both are reports, and so is the line it prints when a person labels more than one in four
+`unclear` rulings as earned. Bar: read on
 at least thirty labels, catching three in four of the rejections a person calls a check defect, and
 voiding at most one in ten of those a person calls earned. A packet holds every rejection that set
 a task aside, plus a blind sample of three rejections ruled earned and three passes, since no seat
@@ -196,11 +200,16 @@ reads an answer that passed.
 **4. Economy: what did each measured gain cost?** A significant step is not necessarily a useful
 one. The budget is a bound the operator sets, and a campaign is judged by how fast it climbs under
 that bound, rather than by what it leaves unspent. The closing report reads
-economy from the log alone and runs no extra solve (`tools/d2/close.ts`, "Work and spend"). It
+economy from the log alone and runs no extra solve (`tools/d2/close.ts`, "Work and spend"). Its
+dollars are calculated: each turn at the list price of the model that served it, or of the model
+asked for where the catalogue lists none (`pricedAt`, `src/agent/session.ts`), as the cap and the
+score bills read them. Beside the total stand the backend's own totals on the endings that report
+one, and the calculated dollars of the same endings (`costLine`, `src/kernel/trace.ts`). It
 gives, in order: the climb's velocity (the log's dollars and hours per promotion); the dollars
 billed; what the Examiner billed per task it held out, admission solves included; what comparisons
-billed per task they scored; and how many of the comparisons that began actually reported, since
-one cut short before its report bought nothing it can show. There is one bar, a term of the opening
+billed per task in their last reports' scored version lists (with no unit price at zero scored
+tasks); and how many of the comparisons that began actually
+reported, since one cut short before its report bought nothing it can show. There is one bar, a term of the opening
 the operator may set, which is read and printed and gates nothing (`worthOf`,
 `src/campaign/climb.ts`; revised plan W): at most 3 promotion attempts per epoch after set-up, with
 its Builder sessions and billed dollars beside it, which a step's report carries.
@@ -361,6 +370,10 @@ What the **Examiner** reads:
   reading them, with the reason, each with how far its author's answer stood from the reference's
   best by the objective (`reference.gap` of `task.gate`): those read on the current reference counted alone, and those
   read on a replaced reference as one count;
+- interrupted gates separately by draft, including across a promotion, since they did
+  not decide room. Only a gate under the current reference carries its counts and gate-level
+  reason. `read_example` also returns earlier authored drafts from the log; their content may be
+  proposed afresh unless a later gate has read it;
 - the checks, through `try_answer`, on an instance with an answer of its own;
 - when it drafts an exam: the operator's prompt, what the host's reading found in each draft, and
   a walled home of its own, empty when it starts.
@@ -382,7 +395,10 @@ The tools of each model seat, as its source names them:
   made no call, wait for that word where the gate has said nothing new (`settled`), and `finish`
   and the session's end wait
   for every instance still at the gate (`putAside`, `src/examiner/write.ts`), so a session goes on
-  writing while its drafts are solved.
+  writing while its drafts are solved. The writing session's four-hour clock pauses only while it
+  awaits gate settlement, including `wait`, the no-call reminder, `finish` and shutdown; background
+  gate work leaves it running. Kill and campaign budget remain live, and `exam.finished` records
+  elapsed `seconds` and aggregate `hostSeconds`.
   `propose_tasks` runs no solve and answers in its own result.
   `try_answer` runs the checks on an instance with an answer of the Examiner's own. Where the checks
   pass, the session holds the answer in memory until the task has its final id. A task proposed with
@@ -460,7 +476,8 @@ alongside it, shows the shapes with a worked example):
 | `agent/tools.ts` | The harness's own tools, which the solver has beside pi's tools; each call runs alone under the wall. Whether a computation is a program, a tool or both is the Builder's choice, and it is told what each costs a solve. An empty `tools.ts` is no empty harness: the programs live in `.toolchain/` |
 
 A harness is named by its digest, so changing any part makes a different harness, and solves under
-the old one do not count for the new one. The **Starter Built Harness** is pi's coding agent as pi
+the old one do not count for the new one. The bytecode caches Python writes beside a program it runs
+(`__pycache__`) are no part of it (`BYTECODE`, `src/harness/open.ts`). The **Starter Built Harness** is pi's coding agent as pi
 releases it, with no guide and no domain program (`src/harness/starter.ts`). Every campaign starts
 from it, it is the first reference harness, and it stays the fixed lower reference after a
 promotion.
@@ -557,6 +574,8 @@ Repeat the standing facts where the agent reads, so a compaction needs no signal
 result of each Builder turn ends with the turn number, the session time used and the practice
 solves left (`usedLine`, `src/builder/prompt.ts`), a turn that ends without a call is answered with
 the goal and the same facts (`continuation`), and `read_opening` serves the opening message again.
+At finish and in a continuation, counted practice on offered tasks establishes whether the exact
+current harness has been practised, including a restored state; freezing a snapshot alone does not.
 A Builder ends nearly every turn in a tool call, so a message sent only between turns goes unseen.
 
 ## 5. The log
@@ -572,7 +591,7 @@ as truth.
   waiting for a label (`src/kernel/reports.ts`), and the dollars billed.
 - A **condition** is everything that could change a solve's result, as one content-addressed record
   (`src/kernel/condition.ts`): the contract, the harness, the task version, the model and its
-  effort, the price table, the runtime's packages, the compaction mode, the tool trees and the
+  effort, the price table, the runtime's packages and the Bun that runs them, the compaction mode, the tool trees and the
   sandbox, which it names by the isolation profile and the platform (`tools/d2/campaign.ts`). Two
   solves are comparable only when their conditions differ in the one thing being compared.
 - A solve's trace is in the log (`solve.turn`, `solve.call`), and so are the turns and calls of
@@ -638,7 +657,10 @@ session, a comparison or an Examiner session's gate starts once the one-minute l
 the core count, or after half an hour. It says so while it waits, and the wait is recorded
 (`campaign.waited`, `tools/d2/host.ts`); `--loaded` starts them regardless. A solve also waits, off
 the record, while others are in flight and what is left of the budget holds no reserve for it
-(`affords`). Each run of the command keeps a receipt beside the log, `launch-run-<n>.json`
+(`affords`). Both waits end on cancellation before a solve starts; a cancelled load wait records
+its elapsed time, and a cancelled admission probe leaves the draft refused unmeasured without a
+solve id. A comparison so cancelled ends as killed, and a practice solve as the end of its
+Builder session. Each run of the command keeps a receipt beside the log, `launch-run-<n>.json`
 (`tools/runs/receipt.ts`): its flags, the commit, whether the tree was dirty, the load it started
 under, the Bun version, and the login it ran as where one was named. The log holds the host's code
 by content, without a commit, so the receipt fills that gap.
@@ -646,7 +668,11 @@ by content, without a commit, so the receipt fills that gap.
 **It opens a campaign over a stored pack, or from a prompt** (`--prompt "<text>"` or
 `--prompt-file <path>`, with `--solver`). From a prompt, the opening holds the prompt, and the
 first move is the draft of row 0. A draft stands once the host's reading, without a model, finds
-no fault in it. That reading checks:
+no fault in it. Acceptance does not require completed reference measurement: `draft.finished`
+records the accepted draft's measurement as complete, interrupted with its first cancellation
+source, or not-run. Killed solve endings record that source as `session-wall`, `campaign-budget`,
+`caller` or `invocation`; an unlabelled external abort is `caller`. Older events without these
+fields remain unknown, and abrupt process termination promises no ending. That reading checks:
 
 - its shape;
 - a source on every rule;
@@ -897,11 +923,14 @@ A scored set takes one retained task for every three frontier tasks, on top of t
 (`scoredSet`). The step's one test reads the retained tasks with the frontier, and the report
 gives their tally apart (see "The test" below).
 
-**Fresh solves.** Each scored task is solved under each harness, afresh. A task's solves run
-together, the tasks run in an order drawn by a hash of each, and within a task the harness that
-goes first is mirrored, so anything that drifts over a comparison's hours falls between tasks,
-where the test does not look. A solve counts only when its start names the comparison. No earlier
-solve of either harness is reused: a condition names the host's code, which changes between
+**Fresh solves.** Each scored task is solved under each harness, afresh. Workers take whole tasks
+in an order drawn by a hash of each, running different tasks concurrently. Within a task the
+harness that goes first is mirrored, and each solve call, including its waits, retries and ruling,
+returns before the next slot starts. One outer retry runs at the same slot; if it too gives a
+non-result, the task stays short. Counted starts form a prefix of the mirror, which guarantees
+neither equal start times nor equal load or cache exposure. A solve counts only when its start
+names the comparison. No earlier solve of either harness is reused: a condition names the host's
+code, which changes between
 comparisons, and one frozen draw of the reference's solves would bias every later reading.
 
 **How a solve ends** (`src/kernel/solve.ts`), and its part in a pair:
@@ -928,9 +957,11 @@ weighed by fixed weights (`pointsOf`, `WEIGHTS`, `src/kernel/compare.ts`):
 - **the bill**, 0.1: between two valid answers, the base-2 logarithm of the reference's bill over
   the new one's, counted from a fifth less (`CHEAPER`) and taking the whole weight at half.
 
-A task's score is their weighted sum, read in thousandths: positive is a win, negative a loss, zero
-a tie. Ties leave the test. A pairing with an answer that is not valid reads neither the objective
-nor the bill, so a refused answer is never the better one, and one that fails fast is never
+A task's score is their weighted sum, rounded to whole thousandths with half points away from
+zero and zero normalised (`wholePoints`, which also rounds the report's `points` and the
+promotion tuner's replay): positive is a win, negative a loss, zero a tie. Exchanging the sides
+negates the score. Ties leave the test. A pairing with an answer that is not valid reads neither
+the objective nor the bill, so a refused answer is never the better one, and one that fails fast is never
 cheaper. The measures trade against each other: a harness valid in 3 solves of 4 against 4 of 4
 wins the task where its valid answers measure a fifth better and bill half. The weights are the
 operator's, in steps of five, and constants of the host, as the floors are. A comparison continued
@@ -995,8 +1026,9 @@ overrides a ruling. Once more than `--defects` tasks have a check defect or a ch
 run, the comparison stops, because the check program then needs its owner before more is spent.
 
 **The budget.** A campaign runs at one budget, the one its setting names. The binding units are the
-model's own turns, told to the solver on every tool result and enforced (`--solve-model-turns`; a
-solve that uses them all without an answer ends `turns-ended`), and the wall of a solve
+model's own turns, appended to results of tools that execute and enforced (`--solve-model-turns`; a
+solve that uses them all without an answer ends `turns-ended`); argument refusals and unavailable
+tools carry no reminder. The other binding unit is the wall of a solve
 (`--solve-minutes`). A time limit on each command bounds a turn. The prompts a solver gets before a
 solve stops without an answer are the same for every solve (`LIMITS.turns`, 24), and no solve on
 record has hit that bound. A comparison is read at the single budget its solves were told: a
@@ -1218,6 +1250,11 @@ Cite a rule by its number in a pull request or a review.
     a failure of any mechanism: do not patch, triage or report it as one, do not count it against a
     change, and do not spend a pull request on waiting it out. A generic 429, a timeout or a crash
     that does not name a limit is a different matter: investigate the failure itself.
+    The whole-run hours reader (`hoursLine`, `tools/wri/time.ts`) gives role hours as overlapping
+    elapsed spans, the union of every recorded wait (provider, network and load), and the hours a
+    promotion with and without that union. A provider or network wait runs from its event to the
+    next campaign ending; a load wait ends at its event. The load half is an indicator, since other
+    solves run while one waits.
 
 ## 9. Status, evidence and claims
 
@@ -1354,7 +1391,9 @@ What holds in all of them:
    and replays, which prove a path and show no climb.
 
 A solve and a Builder session run on either host, behind Seatbelt on macOS and Bubblewrap on Linux.
-Nothing caps the disk of a solve, a Builder session or an Examiner session on either host: each runs
+Every seat's commands run inside that wall in the system's `/bin/bash`, 3.2.57 on macOS and 5.1 on
+Linux, so pi's tool named bash runs Bash; nothing ships or installs a shell (`stageCommandIsolation`,
+`src/wall/isolation.ts`, and the worker in `src/tools/env.ts`). Nothing caps the disk of a solve, a Builder session or an Examiner session on either host: each runs
 its commands under the command wall in a root of its own on the host's disk, which is removed with
 whatever still works in it when the seat ends (`src/wall/seat-root.ts`). When the required wall is
 unavailable, the result is a typed non-result, never an unconfined run.
@@ -1379,6 +1418,9 @@ index is an open row in the plan (`docs/plan.md`, "Tuning", the row "Network in 
 
 Bun 1.4.4 only, as `package.json` pins it, for every task including one-off inspection. No Node,
 npm or npx. `src/meta` wraps the few Node surfaces Bun lacks (`tools/oxlint/HABITS.md`, 12.8).
+The campaign command refuses launches, dry runs and continuations unless its executing Bun matches
+the source tree's exact `packageManager` pin and `engines.bun` agrees, before any opening, receipt
+or recovery write (`pinFault`, `tools/d2/harness-builder.ts`).
 
 | Command | What it does |
 | --- | --- |
@@ -1388,7 +1430,7 @@ npm or npx. `src/meta` wraps the few Node surfaces Bun lacks (`tools/oxlint/HABI
 | `bun run test -- <paths...>` | The suite through its wrapper. Never bare `bun test` |
 | `bun run simplify` | The whole-tree scans, as a census to read |
 | `bun run not-slop` | The ledger of answered findings: status, `-- answer <id> "<why>"`, `-- prune` |
-| `bun run gate` | The gate in one command: a frozen install, the UI's own gate, the format check, typecheck, the strict lint and the suite. `-- --static` runs the tests one import away from what HEAD changed instead of the suite, and the UI's gate without its browser test files unless HEAD changed `packages/ui` |
+| `bun run gate` | The gate in one command: a frozen install, the UI's own gate, the format check, typecheck, the strict lint and the suite. `-- --static` runs the tests one import away from what HEAD changed instead of the suite, and the UI's gate without its browser test files unless HEAD changed `packages/ui`. `-- --checks` runs every step but the tests, the UI's install and build and the simplify census among them, as the pre-push hook does |
 | `bun run hooks:install` | Points this clone's `core.hooksPath` at `.githooks`, once; every worktree shares it |
 | `bun run commit:check` | What the pre-commit hook runs, also by hand: author email, format and lint of staged files, the slop report, the secret scan |
 | `bun run secrets` | The secret scan |
@@ -1401,24 +1443,25 @@ npm or npx. `src/meta` wraps the few Node surfaces Bun lacks (`tools/oxlint/HABI
 | `bun tools/loc/source-policy.ts` | The size and unused-export policy. No package script, CI job or hook runs it (`tools/oxlint/HABITS.md`, 12.10) |
 
 The gate is what CI runs, and `bun run gate` runs it: CI's two Darwin jobs in one command, cheapest
-step first. The strict lint fails on everything a plain one does, so it runs only once. Run it
-before any delivery that a push does not cover.
+step first. The strict lint fails on everything a plain one does, so it runs only once. A push runs
+none of its tests, so run it, or `bun run land -- <top> --sanitize`, before any delivery that
+claims them.
 
-**Keep the hooks enabled.** `bun run hooks:install` sets them up once per clone. Without it a commit
-goes unchecked and a push ungated, silently (`git config core.hooksPath` tells you which). The
-pre-commit hook runs `bun run commit:check`. The pre-push hook gates the work a push adds
-(`tools/runtime/pre-push.ts`): each new commit gets the static steps and its nearby tests over a
-checkout of its own, and the pushed head holding the newest of them gets the whole gate. A push of
-documentation alone gets `git diff --check`. A pass is remembered by content: a whole pass by the
-commit's tree, and a static one by its tree and its parent's, each with the gate that ran and the
-Bun version, so a restack that keeps every tree runs nothing again. Each proof, of the hook and of
-`bun run land`, stops at its first failed test (`ANA_TEST_BAIL`), where CI runs every test to name
-every failure. `ANA_GATE_FRESH=1` ignores
-remembered passes. One push of a clone runs at a time: a push started while another is at its gate
-waits for it, and then gates only what that push did not publish (`queue`); where that push
-replaced the head this one is stacked on, it is refused with the `git rebase --onto` that restacks it
-(`staleBases`). A failure names the commit, the step and the `--fixup` that repairs it; its log is under
-`git rev-parse --git-path ana-gate`.
+**Keep the hooks enabled.** `bun run hooks:install` sets them up once per clone. Without them a commit
+and a push go unchecked, silently (`git config core.hooksPath` tells you which). The
+pre-commit hook runs `bun run commit:check`. The pre-push hook runs no test
+(`tools/runtime/pre-push.ts`): each commit the push adds gets `git diff --check`, what each pushed
+head that no other pushed head holds adds gets the secret scan, and where one of them changes more
+than documentation, each such head gets `bun run gate -- --checks` over a checkout of its own: every
+step but the tests, with the simplify census printed and gating nothing. A pushed commit is therefore
+unproved until `bun run land -- <top> --sanitize` or `--merge` has given every commit of the stack
+its static steps and nearby tests and the top the whole gate, the full suite among it; run
+`--sanitize` whenever the stack is worth proving. A pass is remembered by content: a whole or checks
+pass by the commit's tree, and a static one by its tree and its parent's, each with the gate that
+ran and the Bun version, so a restack that keeps every tree runs nothing again. Each proof stops at
+its first failed test (`ANA_TEST_BAIL`), where CI runs every test to name every failure.
+`ANA_GATE_FRESH=1` ignores remembered passes. A failure names the commit, the step and its log,
+under `git rev-parse --git-path ana-gate`.
 
 Run one full suite at a time on a host; two overlapping suites each take about twice as long, and
 `bun run land -- <top> --jobs N` shares one host's workers between commits instead. While editing,
@@ -1489,12 +1532,14 @@ In practice:
   pushed, by its commit.
 - **Every commit passes alone.** Fold a fix into the unpublished commit it corrects. The pre-commit
   hook runs `bun run commit:check`; run it by hand where the hooks are not installed.
-- **Push your own branch**, never `main`. Push with `--no-verify` only where the operator says so,
-  and then `bun run land -- <top> --sanitize` proves the commits the hook skipped. Rewriting a
-  published branch takes `--force-with-lease` on the head you last saw. The pre-push hook gates the
-  commits along each pushed head's first parents that no remote-tracking ref holds. A commit whose
-  patch the replaced branch held is a rebase's replay, left to `bun run land`. History brought in
-  through a merge's other parent was made elsewhere and is only counted; the merge itself is gated.
+- **Label every pull request** with exactly one of `importance:I0` to `importance:I3`, with no "Ix:"
+  prefix in its title; `bun run land` refuses a stack in which one is missing or doubled.
+- **Push your own branch**, never `main`. Push with `--no-verify` only where the operator says so.
+  Rewriting a published branch takes `--force-with-lease` on the head you last saw. The pre-push
+  hook reads the commits along each pushed head's first parents that no remote-tracking ref holds;
+  history brought in through a merge's other parent was made elsewhere and is only counted, while
+  the merge itself is checked. A push proves nothing about the tests: `bun run land -- <top>
+  --sanitize` does, for every commit of the stack.
 - **Merging is the operator's call**, and so is restacking the whole stack. A stack lands through
   `bun run land -- <top> --merge` (`tools/runtime/land.ts`), never through a local merge pushed to
   `main`, which leaves the pull requests open. It reads the chain of bases down to `main`, requires
@@ -1504,11 +1549,19 @@ In practice:
   `ana/stack-gate` on every head, and merges the top through GitHub's asynchronous merge, pinned to
   its gated head, which merges the native stack beneath it all or nothing; the merge commit's tree
   must match the top's. A landing of several pull requests is refused unless they are one native
-  stack, its members up to the top the chain of bases.
+  stack, its members up to the top the chain of bases. GitHub enforces this route: since 25 October
+  the repository allows merge commits only, and ruleset 25824510 on the default branch ("main lands
+  only through bun run land --merge", no bypass actors) refuses deleting `main` and any
+  non-fast-forward push to it, and requires a pull request merged by the merge method with the
+  status `ana/stack-gate`, which only `land --merge` posts
+  (`gh api repos/s-smits/anabasis/rulesets/25824510` reads it). One gap remains: a token with admin
+  rights can post `ana/stack-gate` by hand.
 - **A restack makes the stack one chain again** (restack, linearize, quench, drain): each pull
   request that left the chain is replayed onto the head beneath it, based there and added to the
   native stack. Resolve conflicts hunk by hunk, never by taking one side's file whole, which drops
-  the other side's hunks, and push each moved branch through the gate with a lease.
+  the other side's hunks, push each moved branch with a lease, and prove the result with
+  `bun run land -- <top> --sanitize`. A consolidation, which also reviews the stack and regroups its
+  pull requests by subject, follows stack-pr's section 10, "Consolidate the stack".
 - **The native stack.** Setting a base alone leaves a pull request outside GitHub's stack ("can be
   stacked"). `gh stack link <pr> <pr> ...` (the `gh-stack` extension) makes one, bottom to top, and
   `gh stack link <stack> <pr>` appends above its top; it never removes or reorders a member, and it

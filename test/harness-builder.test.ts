@@ -2,8 +2,12 @@
 // campaign run from set-up to an ending on one command (`tools/d2/harness-builder.ts`). The exam's
 // reading, the task sets, each Builder session's wall and freeze, each solve's wall and the
 // comparison are the real ones; the seats are scripts, which are paid nothing.
+// An isolated manifest also holds the runtime refusal before any campaign write or seat call.
+// Cost displays match backend totals only to covered endings and keep open costs calculated.
+// Comparison unit costs use scored versions, and no unit price where no task was scored.
 
 import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
+import { REPORTED } from "../src/campaign/comparison.ts";
 import { examine } from "../src/examiner/session.ts";
 import { append, LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
 import { countedSolves, solvesIn } from "../src/kernel/solves.ts";
@@ -26,10 +30,11 @@ import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
-import { runtimeProcess } from "../src/meta/process.ts";
+import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
+import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
 import type { Seats } from "../tools/d2/campaign-terms.ts";
 import { closeCommand } from "../tools/d2/close.ts";
-import { harnessBuilder as command } from "../tools/d2/harness-builder.ts";
+import { harnessBuilder as command, pinFault } from "../tools/d2/harness-builder.ts";
 import { HOST } from "../tools/d2/host.ts";
 import { importCommand } from "../tools/d2/import.ts";
 import * as prepare from "../tools/d2/prepare.ts";
@@ -63,6 +68,54 @@ setDefaultTimeout(600_000);
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });
   for (const name of names) rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
+});
+
+describe("the campaign's executing Bun", () => {
+  it("names a fault in every pin but the executing Bun's exact one", () => {
+    const v = Bun.version;
+    expect(pinFault({ packageManager: `bun@${v}`, engines: { bun: v } }, v)).toBeNull();
+    for (const manifest of [
+      { packageManager: "bun@0.0.1", engines: { bun: "0.0.1" } },
+      { packageManager: "bun@99.0.0", engines: { bun: "99.0.0" } },
+      { engines: { bun: v } },
+      { packageManager: `bun@^${v}`, engines: { bun: v } },
+      { packageManager: `npm@${v}`, engines: { bun: v } },
+      { packageManager: `bun@${v}` },
+      { packageManager: `bun@${v}`, engines: { bun: `>=${v}` } },
+      { packageManager: `bun@${v}`, engines: { bun: "0.0.1" } },
+      null,
+    ]) {
+      expect(pinFault(manifest, v)).toContain(`executing Bun ${v}`);
+    }
+    expect(pinFault({ packageManager: "bun@0.0.1", engines: { bun: "0.0.1" } }, v)).toContain("bun@0.0.1");
+  });
+
+  // The pin is read from the entry module's tree, so the case copies `tools` beside the real
+  // sources and runs the command from another directory, as launchd or ssh starts it.
+  it("refuses at the command's entry from its own tree's manifest, before writing a campaign", () => {
+    const tree = join(root, "pinned");
+    mkdirSync(tree);
+    cpSync(join(REPO, "tools"), join(tree, "tools"), { recursive: true });
+    for (const part of ["src", "vendor", "node_modules"]) symlinkSync(join(REPO, part), join(tree, part));
+    const manifest = parseJsonAs<JsonObject>(readFileSync(join(REPO, "package.json"), "utf8"));
+    const pinned = { ...manifest, packageManager: "bun@0.0.1", engines: { bun: "0.0.1" } };
+    writeFileSync(join(tree, "package.json"), JSON.stringify(pinned));
+    // At the matching pin these flags open the campaign's log and stop before a seat is called.
+    const opening = ["--project", PROJECT, "--prompt", "Multiply a base by six.", "--budget", "100"];
+    const seats = ["builder", "examiner", "reviewer", "solver"].flatMap((seat) => [
+      `--${seat}`,
+      "claude/claude-opus-5-5",
+    ]);
+    const flags = ["--name", "pinned", ...opening, ...seats, "--no-builder-led", "--moves", "0"];
+    const result = runSync([capturedExecPath, join(tree, "tools/d2/harness-builder.ts"), ...flags], {
+      cwd: root,
+      env: { PATH: "/usr/bin:/bin", HOME: root, CLAUDE_CODE_OAUTH_TOKEN: "fixture" },
+    });
+    expect(result.exitCode).toBe(1);
+    expect(decodeOutput(result.stderr)).toContain(`${join(tree, "package.json")}: `);
+    expect(decodeOutput(result.stderr)).toContain(`executing Bun ${Bun.version}`);
+    expect(existsSync(join(tree, ".ana"))).toBe(false);
+  });
 });
 
 /** A drafted exam over `tasks` as `draft_exam` takes it, six times a base, and its accepted answers
@@ -708,9 +761,9 @@ describe("a campaign run by its log", () => {
     expect(report).not.toContain("ladder");
     // What each measured thing cost, the climb's velocity first, and how many comparisons that
     // began bought a report.
-    expect(report).toMatch(/- The climb: \$\d+\.\d\d and \d+\.\d hours a promotion \(1\)\./);
+    expect(report).toMatch(/- The climb: calculated \$\d+\.\d\d and \d+\.\d hours a promotion \(1\)\./);
     expect(report).toMatch(
-      /- Comparisons: \$\d+\.\d\d a task scored \(\d+\); 2 of the 2 comparisons that began reported\./,
+      /- Comparisons: calculated \$\d+\.\d\d a task scored \(\d+\); 2 of the 2 comparisons that began reported\./,
     );
     expect(report).toContain("| g-1 |");
     expect(report).not.toContain("Diagnos");
@@ -738,6 +791,76 @@ describe("a campaign run by its log", () => {
     ]);
     expect(read(join(REPO, ".ana", "d2", name, LOG_FILE))).toHaveLength(before);
     expect(strayed).toEqual([]);
+  });
+
+  it.each([{ versions: [] }, { versions: ["v1", "v2"] }])(
+    "prices scored versions rather than requested tasks: %j",
+    async ({ versions }) => {
+      layOutPack(root, bundle, TASKS, FIXTURE);
+      const name = `${STEM}-scored-${String(versions.length)}`;
+      const pack = seeded(name).slice(0, -4);
+      const log = join(REPO, ".ana", "d2", name, LOG_FILE);
+      const session = "scored-comparison";
+      append(log, "comparison.started", { session, old: "a", fresh: "b", tasks: [] });
+      append(log, "solve.started", { solve: "scored-solve", comparison: session });
+      append(log, "solve.finished", { solve: "scored-solve", billed: 42.495011 });
+      append(log, REPORTED, {
+        session,
+        tasks: 10,
+        versions,
+        valid: null,
+        reading: "check-defects",
+        scored: { wins: 0, losses: 0, ties: 0 },
+      });
+      const to = join(root, `handover-scored-${String(versions.length)}`);
+      await closeCommand([...pack, "--to", to]);
+      const row = readFileSync(join(to, "REPORT.md"), "utf8")
+        .split("\n")
+        .find((line) => line.startsWith("- Comparisons:"));
+      expect(row).toContain("1 of the 1 comparison that began reported");
+      expect(row).not.toContain("$4.25");
+      if (versions.length === 0) {
+        // The stopped report's bill stays in the dollars billed, and no unit price or $0.00 stands here.
+        expect(row).toContain("no task scored");
+        expect(row).not.toMatch(/\$[\d.]+/);
+      } else {
+        expect(row).toContain("$21.25 a task scored (2)");
+      }
+    },
+  );
+
+  it("reports backend cost coverage beside calculated spend", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
+    const name = `${STEM}-cache`;
+    const pack = seeded(name).slice(0, -4);
+    const log = join(REPO, ".ana", "d2", name, LOG_FILE);
+    append(log, "exam.started", { session: "cost-exam" });
+    append(log, "exam.finished", { session: "cost-exam", billed: 10 });
+    append(log, "build.started", { session: "cost-build" });
+    append(log, "build.finished", { session: "cost-build", billed: 20, reportedCost: 25 });
+    append(log, "build.started", { session: "cost-open" });
+    append(log, "build.turn", { session: "cost-open", turn: 1, usage: { cost: { total: 5 } } });
+    // A comparison's report sums its solves' endings, which the check reads instead.
+    append(log, "comparison.started", { session: "cost-g", old: "a", fresh: "b", tasks: [] });
+    append(log, "solve.started", { solve: "cost-solve", comparison: "cost-g" });
+    append(log, "solve.finished", { solve: "cost-solve", billed: 5, reportedCost: 6 });
+    append(log, REPORTED, {
+      session: "cost-g",
+      tasks: 1,
+      billed: 5,
+      reportedCost: 6,
+      reading: "no-step",
+      scored: { wins: 0, losses: 1, ties: 0 },
+    });
+    const before = read(log);
+    const to = join(root, "handover-cache");
+    await closeCommand([...pack, "--to", to]);
+    const spend = readFileSync(join(to, "REPORT.md"), "utf8")
+      .split("\n")
+      .find((line) => line.includes("Calculated spend"));
+    // Calculated $40 in all; the backend's $31 stands beside the $25 of the two endings that have it.
+    expect(spend?.match(/\d+(?:\.\d+)?/g)?.slice(-6)).toEqual(["40.00", "31.00", "2", "3", "25.00", "24.0"]);
+    expect(read(log)).toEqual(before);
   });
 
   it("reads a word the operator left during a comparison at the next move, and changes nothing in the comparison", async () => {

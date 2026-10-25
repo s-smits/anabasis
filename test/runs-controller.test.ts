@@ -48,7 +48,9 @@ it("reads at the published ancestor and warns only once for an unpublished HEAD"
   expect(merge?.args.slice(-2)).toEqual([made.commit, ancestor]);
   const launch = made.run(PREPARE, { FAKE_EXECUTE: "1", FAKE_UNPUBLISHED: "1" });
   expect(launch.code).toBe(1);
-  expect(launch.err).toContain("commit is on no remote branch");
+  expect(launch.err).toContain("commit is on no remote branch or tag");
+  // A commit that a pushed tag names, a campaign's run tag, is published.
+  expect(made.run(PREPARE, { FAKE_EXECUTE: "1", FAKE_UNPUBLISHED: "1", FAKE_TAGGED: "1" }).code).toBe(0);
   const missing = fixture();
   expect(missing.run(ASK, { FAKE_ANCESTOR: "" }).code).toBe(1);
   expect(missing.recorded().some((call) => call.tool === "ssh")).toBe(false);

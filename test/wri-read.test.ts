@@ -2,14 +2,22 @@
 // lanes. This campaign is small enough to count by hand: one practice task and four held-out ones,
 // a round whose comparison sets two tasks aside on rejections, a ruling of a check defect, an edit
 // made after the last practice, and then comparisons that tie, find no valid answer, meet their cap
-// and are settled by hand.
+// and are settled by hand. No-step reports retain their tally and power facts without a diagnosis
+// of sweep dependence from reversing one win.
+// Clock cases keep overlapping elapsed spans beside the union of recorded provider waits,
+// clipped at a campaign ending or the log boundary rather than read as seat inactivity.
+// Practice gaps retain the boundary and origin of frozen and compared states.
+// Campaign accounting displays calculated spend beside backend coverage and matched residuals.
+// Limit calls use logged one-based turns; program leads require a judged answer.
 import { describe, expect, it } from "bun:test";
+import { detectable, flipP, power } from "../src/kernel/compare.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
-import type { JsonObject } from "../src/meta/json-shape.ts";
+import type { JsonObject, JsonValue } from "../src/meta/json-shape.ts";
 import { keyIfDefined, keyIfNotNull } from "../src/meta/optional-key.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
-import { TRIGGERS } from "../tools/wri/folds.ts";
+import { indexOf, TRIGGERS } from "../tools/wri/folds.ts";
+import { testedOf } from "../tools/wri/promotion.ts";
 import { overview, rendered } from "../tools/wri/read.ts";
 
 const START = Date.parse("2026-10-09T12:00:00Z");
@@ -23,6 +31,7 @@ const CONDITION_RECORDED = "condition.recorded";
 const COMPARISON_STARTED = "comparison.started";
 const GATE = "task.gate";
 const EXAM_STARTED = "exam.started";
+const WAITED = "campaign.waited";
 const HELD = ["v1", "v2", "v3", "v4"];
 const TESTED = { wins: 0, losses: 0, ties: 0, p: 1 };
 /** A report's fields where a case names none: a comparison that tallied nothing and stopped nowhere. */
@@ -192,6 +201,26 @@ function practisedAgain(): LogEvent[] {
     );
 }
 
+/** The campaign as a led Builder leaves it: b-1 froze hc for its comparison, g-1, inside a
+ *  conversation that never ended, after practising hb. */
+function frozenInConversation(): LogEvent[] {
+  return events.flatMap((event): LogEvent[] => {
+    if (event.kind === BUILD_FINISHED) return [];
+    const data =
+      event.data.session === "b-1" && event.kind.startsWith("comparison.")
+        ? { ...event.data, session: "g-1" }
+        : event.data.comparison === "b-1"
+          ? { ...event.data, comparison: "g-1" }
+          : event.data;
+    const frozen = {
+      at: event.at,
+      kind: "build.checkpoint",
+      data: { session: "b-1", harness: "hc" },
+    } as const;
+    return event.kind === COMPARISON_STARTED ? [frozen, { ...event, data }] : [{ ...event, data }];
+  });
+}
+
 describe("the whole-run investigation's reader", () => {
   it("settles the six rows from the log alone", () => {
     expect(seen.rows.map((row) => row.id)).toEqual(["A", "B", "C", "D", "E", "F"]);
@@ -236,9 +265,7 @@ describe("the whole-run investigation's reader", () => {
       "b-1: 2-0 without the 2 tasks set aside, 4-0 were their rejections to stand, and only one of the two clears its level",
     );
     expect(detail("SCORED SET MOVED")).toBe("b-1: 2 of 4 tasks it began with are not in its tally");
-    expect(detail("FEW INFORMATIVE PAIRS")).toBe(
-      "b-1: 2 of 2 tasks tell the harnesses apart; at level 0.1 the least sweep that clears is 4-0, and the reading with its least win lost would not",
-    );
+    expect(seen.triggers.map(({ name }) => name)).not.toContain("FEW INFORMATIVE PAIRS");
     expect(detail("CHAIN")).toBe("b-1 hp>hc no-step");
   });
 
@@ -315,7 +342,7 @@ describe("the whole-run investigation's reader", () => {
       "b-2: agent/tools.mjs, .toolchain",
     ]);
     expect(detail("FINAL BYTES NEVER PRACTISED")).toBe(
-      "b-1: no practice solve ran under hc, a harness measured; the last ran under hb",
+      "b-1: no practice solve ran under hc, reported comparison b-1; the last ran under hb",
     );
     expect(detail("PRACTICE FAILS")).toBe(
       "b-1: 1 fail, 0 ruled earned; the same task passed later under changed bytes 0, under the same bytes 0",
@@ -368,27 +395,53 @@ describe("the whole-run investigation's reader", () => {
   it("reads a harness a led Builder froze for a comparison inside a conversation that never ended", () => {
     // v061 on 21 October: b-1 froze 03a5eb57 for g-2 after its last practice and was still open
     // when the run stopped, and the reader, reading only the end record, said nothing of it.
-    const led = events.flatMap((event): LogEvent[] => {
-      if (event.kind === BUILD_FINISHED) return [];
-      const data =
-        event.data.session === "b-1" && event.kind.startsWith("comparison.")
-          ? { ...event.data, session: "g-1" }
-          : event.data.comparison === "b-1"
-            ? { ...event.data, comparison: "g-1" }
-            : event.data;
-      const frozen = {
-        at: event.at,
-        kind: "build.checkpoint",
-        data: { session: "b-1", harness: "hc" },
-      } as const;
-      return event.kind === COMPARISON_STARTED ? [frozen, { ...event, data }] : [{ ...event, data }];
-    });
+    const led = frozenInConversation();
     const { triggers } = overview(led);
     expect(triggers.find(({ name }) => name === "FINAL BYTES NEVER PRACTISED")?.detail).toBe(
-      "b-1: no practice solve ran under hc, a harness measured; the last ran under hb",
+      "b-1: no practice solve ran under hc, reported comparison g-1; the last ran under hb",
     );
     // Its practice task was released before the comparison began and is not among the scored ones.
     expect(triggers.map(({ name }) => name)).not.toContain("PRACTISED TASK MEASURED");
+  });
+
+  it("describes an unused child as frozen and a begun comparison by its report status", () => {
+    const log = events.map((event) =>
+      event.kind.startsWith("comparison.") ? { ...event, data: { ...event.data, fresh: "hb" } } : event,
+    );
+    const frozen = overview(log).triggers.filter(({ name }) => name === "FINAL BYTES NEVER PRACTISED");
+    expect(frozen).toHaveLength(1);
+    expect(frozen[0]?.detail).toContain("hc");
+    expect(frozen[0]?.detail).toContain("frozen at session end");
+    expect(frozen[0]?.detail).toContain("no comparison");
+    expect(frozen[0]?.detail).not.toContain("measured");
+    const add = appendTo(log);
+    add(COMPARISON_STARTED, { session: "g-2", old: "hp", fresh: "hc", setting: SETTING });
+    const ran = condition("t1", "hc");
+    add(CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) });
+    add(SOLVE_STARTED, { solve: "late-practice", condition: conditionId(ran) });
+    add(SOLVE_FINISHED, { solve: "late-practice", ending: { outcome: "pass" } });
+    const gaps = () => overview(log).triggers.filter(({ name }) => name === "FINAL BYTES NEVER PRACTISED");
+    expect(gaps()).toHaveLength(1);
+    expect(gaps()[0]?.detail).toContain("g-2");
+    expect(gaps()[0]?.detail).toContain("begun without a report");
+    expect(gaps()[0]?.detail).toContain("last ran under hb");
+    add(REPORTED, { ...REPORT, session: "g-2", old: "hp", fresh: "hc", setting: SETTING });
+    expect(gaps()).toHaveLength(1);
+    expect(gaps()[0]?.detail).toContain("reported comparison g-2");
+    expect(gaps()[0]?.detail).toContain("last ran under hb");
+  });
+
+  it("reads an unreported comparison before later practice of its frozen checkpoint", () => {
+    const log = frozenInConversation().filter(({ kind }) => kind !== REPORTED);
+    const add = appendTo(log);
+    const ran = condition("t1", "hc");
+    add(CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) });
+    add(SOLVE_STARTED, { solve: "after-start", condition: conditionId(ran) });
+    add(SOLVE_FINISHED, { solve: "after-start", ending: { outcome: "pass" } });
+    const gaps = overview(log).triggers.filter(({ name }) => name === "FINAL BYTES NEVER PRACTISED");
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0]?.detail).toContain("comparison g-1 begun without a report");
+    expect(gaps[0]?.detail).toContain("last ran under hb");
   });
 
   it("says an erred call is a non-zero exit, which a test reporting what is unmet gives by design", () => {
@@ -517,24 +570,49 @@ describe("the whole-run investigation's reader", () => {
     );
   });
 
-  it("reads a sweep as fragile on the frontier's own margins, not on one pair a task", () => {
-    // buffer-149 (14 October): 8-0 at level 0.02, where the margins let a 7-1 clear.
-    const fragile = (session: string, differences: number[]) => {
-      record(REPORTED, {
-        ...REPORT,
-        ...started(session, "hp", "hf"),
-        level: 0.02,
-        scored: { ...TESTED, wins: 8, losses: 0, ties: 0, p: 0.004, unsolved: 0 },
-        frontier: { differences },
-        versions: HELD,
-        reading: "step",
-      });
-      return overview(events).triggers.some(
-        (trigger) => trigger.name === "FEW INFORMATIVE PAIRS" && trigger.detail.startsWith(`${session}:`),
-      );
+  it.each([
+    ["buffer-g6", [-16, -9, 2, -9, 150, 119, 0, 19]],
+    [
+      "v070-g4",
+      [
+        -100, 200, 42, 125, 35, 125, -26, -10, -25, 202, -25, 333, 125, 52, 200, 143, 8, 200, 136, 55, 200,
+        -63, -45, 39, -250, -339, -63, -94, -100, -333, -109, -106,
+      ],
+    ],
+  ])("keeps %s's no-step and power facts without diagnosing sweep dependence", (session, differences) => {
+    const level = 0.02;
+    const tested = {
+      wins: differences.filter((value) => value > 0).length,
+      losses: differences.filter((value) => value < 0).length,
+      ties: differences.filter((value) => value === 0).length,
+      p: flipP(differences),
+      detectable: detectable(differences, level),
+      falseRate: power(differences, 0.5, level),
+      unsolved: 0,
     };
-    expect(fragile("g-8", [16, 16, 16, 16, 16, 16, 16, 1])).toBe(false);
-    expect(fragile("g-9", [1, 1, 1, 1, 1, 1, 1, 1])).toBe(true);
+    record(REPORTED, {
+      ...REPORT,
+      ...started(session, "hp", "hf"),
+      level,
+      scored: tested,
+      frontier: { differences },
+      retained: { differences: [] },
+      versions: HELD,
+      reading: "no-step",
+    });
+    const last = indexOf(events).compared.find((each) => each.session === session)?.last;
+    expect(last).toMatchObject({ reading: "no-step", scored: tested });
+    expect(testedOf(last ?? {}).differences).toEqual(differences);
+    expect(tested.p).toBeGreaterThan(level);
+    const read = overview(events);
+    expect(read.triggers.find(({ name }) => name === "CHAIN")?.detail).toContain(`${session} hp>hf no-step`);
+    expect(
+      read.triggers.some(
+        (trigger) =>
+          trigger.detail.startsWith(`${session}:`) &&
+          /FEW INFORMATIVE PAIRS|sweep/i.test(`${trigger.name} ${trigger.detail}`),
+      ),
+    ).toBe(false);
   });
 
   it("says what a person's labels settled, beside what the comparison's own report read", () => {
@@ -783,17 +861,18 @@ describe("the reader of what each Examiner session's tasks came to", () => {
 
 describe("the reader of the load a comparison's solves started under", () => {
   /** A log of one comparison a row: its id, the one-minute load each of its solves started under,
-   *  and the host's cores where the log holds them. */
-  const read = (rows: readonly (readonly [string, readonly number[], number?])[]) => {
+   *  the host's cores where the log holds them, and the order its harnesses started in, `o` for the
+   *  reference and `n` for the new, mirrored as the round orders them where none is given. */
+  const read = (rows: readonly (readonly [string, readonly number[], number?, string?])[]) => {
     const log: LogEvent[] = [];
     const put = appendTo(log);
     put("task.proposed", { version: "v1" });
     put(GATE, { version: "v1", gate: 1, outcome: "passed" });
-    for (const [session, loads, cores] of rows) {
+    for (const [session, loads, cores, order] of rows) {
       const terms = { session, old: "hbase", fresh: "hy", starter: "hbase", setting: SETTING };
       put(COMPARISON_STARTED, { ...terms, solves: 1, level: 0.1, tasks: ["v1"] });
       for (const [index, load] of loads.entries()) {
-        const ran = condition("v1", index % 2 === 0 ? "hbase" : "hy");
+        const ran = condition("v1", (order?.[index] ?? "onno"[index % 4]) === "o" ? "hbase" : "hy");
         const id = `${session}-${String(index)}`;
         put(CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) });
         put(SOLVE_STARTED, {
@@ -860,6 +939,22 @@ describe("the reader of the load a comparison's solves started under", () => {
     ]);
     expect(idle("LOAD MOVED")).toEqual([]);
     expect(read([["b-1", [30, 34]]])("LOAD MOVED")).toEqual([]);
+  });
+
+  it("names a comparison whose task's counted solves started off its mirrored order", () => {
+    // buffer-v070's g-1 on 24 October: one side's solves waited for a provider's reset. g-5's
+    // places sum alike on both sides, which the balance test before 25 October let pass.
+    const said = read([
+      ["g-1", [1, 1, 1, 1, 1, 1, 1, 1], 4, "onoonnno"],
+      ["g-2", [1, 1, 1, 1, 1, 1, 1, 1], 4, "onnoonno"],
+      ["g-3", [1, 1, 1, 1, 1], 4, "onnoo"],
+      ["g-4", [1, 1, 1, 1, 1, 1, 1, 1], 4, "noonnoon"],
+      ["g-5", [1, 1, 1, 1, 1, 1, 1, 1], 4, "onnonoon"],
+    ]);
+    expect(said("STARTS OUT OF TURN")).toEqual([
+      "g-1: 1 of 1 tasks started their harnesses' solves out of turn",
+      "g-5: 1 of 1 tasks started their harnesses' solves out of turn",
+    ]);
   });
 
   it("reads the wall and the load on the solves a comparison measured, not on the non-results it reran", () => {
@@ -955,26 +1050,35 @@ describe("the reader of a comparison whose solves were told a bound, on a host w
 
 describe("the reader of misses at a limit, by comparison and side", () => {
   /** A log of one comparison, g-1 of hp against hc, whose solves each end as a row says, after a
-   *  submit in the turn it gives. */
-  const read = (endings: readonly (readonly [string, JsonObject, number, number?])[]) => {
+   *  submit in the turn it gives, with the turns its end records (by default that turn). */
+  const read = (
+    endings: readonly (readonly [string, JsonObject, number, number?, number?])[],
+    modelTurns: number | null = 8,
+  ) => {
     const log: LogEvent[] = [];
     const put = appendTo(log);
     put("task.proposed", { version: "v1" });
     put(GATE, { version: "v1", gate: 1, outcome: "passed" });
     const terms = { session: "g-1", old: "hp", fresh: "hc", starter: "hp", setting: SETTING };
     put(COMPARISON_STARTED, { ...terms, solves: 1, level: 0.1, tasks: ["v1"] });
-    for (const [index, [harness, ending, seconds, turn = 0]] of endings.entries()) {
+    for (const [index, [harness, ending, seconds, turn, turns = turn]] of endings.entries()) {
       const ran = condition("v1", harness);
       const id = `m${String(index)}`;
       put(CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) });
       put(SOLVE_STARTED, {
         solve: id,
         condition: conditionId(ran),
-        limits: { wallSeconds: 100, modelTurns: 8 },
+        limits: { wallSeconds: 100, modelTurns },
         comparison: "g-1",
       });
-      put("solve.call", { solve: id, turn, tool: "submit", isError: false });
-      put(SOLVE_FINISHED, { solve: id, ending, seconds, responseModels: ["m-1"] });
+      put("solve.call", { solve: id, ...keyIfDefined("turn", turn), tool: "submit", isError: false });
+      put(SOLVE_FINISHED, {
+        solve: id,
+        ending,
+        seconds,
+        ...keyIfDefined("turns", turns),
+        responseModels: ["m-1"],
+      });
     }
     put(REPORTED, { ...REPORT, ...terms, versions: ["v1"], reading: "no-step" });
     return overview(log).triggers.flatMap((trigger) =>
@@ -1022,12 +1126,23 @@ describe("the reader of misses at a limit, by comparison and side", () => {
     // Buffer on 12 October: 5 of the reference's 17 misses submitted in their 16th turn of 16.
     expect(
       read([
+        ["hp", refused, 40, 8],
         ["hp", refused, 40, 7],
-        ["hp", refused, 40, 6],
-        ["hc", refused, 40, 7],
-        ["hc", { outcome: "pass" }, 40, 7],
+        ["hc", refused, 40, 8],
+        ["hc", { outcome: "pass" }, 40, 8],
       ]),
     ).toEqual(["g-1: 1 of 2 reference misses and 1 of 1 new at a limit (last turn 2; turns 8)"]);
+  });
+
+  it("reads the last turn from the turns the end records, whichever base the calls' turns count from", () => {
+    expect(read([["hp", refused, 40, 19]], 20)).toEqual([]);
+    expect(read([["hp", refused, 40, 20]], 20)[0]).toContain("last turn 1; turns 20");
+    // Up to 22 October a call's turn counted from 0: a submit in the 16th turn of 16 logged 15.
+    expect(read([["hp", refused, 40, 15, 16]], 16)[0]).toContain("last turn 1; turns 16");
+    // A call logged at the bound's number by the old base is not the last turn where the end says so.
+    expect(read([["hp", refused, 40, 16, 16]], 17)).toEqual([]);
+    expect(read([["hp", refused, 40]], 1)).toEqual([]);
+    expect(read([["hp", refused, 40, 1]], null)).toEqual([]);
   });
 
   it("stays quiet on misses a check refused inside the wall, and on a pass that used all of it", () => {
@@ -1045,6 +1160,20 @@ describe("the reader of the campaign's clock", () => {
   /** A log whose events stand at the minutes their rows give, from noon on 9 October. */
   const timed = (rows: readonly (readonly [number, EventKind, JsonObject])[]): LogEvent[] =>
     rows.map(([minute, kind, data]) => ({ at: new Date(START + minute * 60_000).toISOString(), kind, data }));
+  const hoursOf = (log: readonly LogEvent[]) =>
+    overview(log).rows[0]?.lines.find((line) => line.startsWith("hours:")) ?? "";
+  /** The facts the hours line states of the recorded waits: their union, each kind's, and the
+   *  hours a promotion with and without them where one was promoted. */
+  const waitsOf = (line: string) => {
+    const [, tail = ""] = line.split("recorded waits ");
+    const [all, ...rest] = tail.split("; ");
+    const kinds = [...(all ?? "").matchAll(/(\w+) (\d+\.\d)(?!\d)/g)].map(([, kind, hours]) => [kind, hours]);
+    return {
+      all: (all ?? "").match(/^\d+\.\d/)?.[0],
+      ...Object.fromEntries(kinds),
+      promotion: rest.length > 0 ? rest.join("").match(/\d+\.\d/g) : undefined,
+    };
+  };
   /** A Builder session with a command of 29.5 minutes, then nothing open for 20, then an Examiner
    *  turn of 28; its practice solves each took `seconds`. */
   const silences = (seconds: number, stretch = 1) => {
@@ -1118,9 +1247,100 @@ describe("the reader of the campaign's clock", () => {
       [190, "exam.finished", { session: "x-1", ended: "finished" }],
       [210, REPORTED, { ...REPORT, session: "g-1", old: "hp", fresh: "hc", reading: "no-step" }],
     ]);
-    expect(overview(log).rows[0]?.lines).toContain(
-      "hours: builder 2.0 (57%), comparisons 1.0 (29%), examiner 0.5 (14%), between moves 0.5 (14%), of 3.5",
+    expect(hoursOf(log)).toContain(
+      "builder 2.0 (57%), comparisons 1.0 (29%), examiner 0.5 (14%), between moves 0.5 (14%), of 3.5",
     );
+  });
+
+  it("keeps a long provider wait beside the Builder's overlapping elapsed span", () => {
+    const log = timed([
+      [0, BUILD_STARTED, { session: "b-1" }],
+      // `ms` includes the grace minute, which `until` leaves out.
+      [
+        60,
+        WAITED,
+        {
+          for: "provider",
+          ms: 35 * 3_600_000,
+          until: new Date(START + (36 * 60 - 1) * 60_000).toISOString(),
+        },
+      ],
+      [37 * 60, BUILD_FINISHED, { session: "b-1", billed: 3 }],
+    ]);
+    const line = hoursOf(log);
+    expect(line).toContain("builder 37.0 (100%)");
+    expect(line).toContain("of 37.0");
+    expect(waitsOf(line)).toEqual({ all: "35.0", provider: "35.0" });
+    expect(overview(log).rows[0]?.lines).toContain("billed dollars: builder 3.00");
+  });
+
+  it("merges concurrent provider windows while retaining Examiner and comparison spans", () => {
+    const log = timed([
+      [0, BUILD_STARTED, { session: "b-1" }],
+      [60, WAITED, { for: "provider", ms: 35 * 3_600_000 }],
+      [120, WAITED, { for: "provider", ms: 34 * 3_600_000 }],
+      [180, EXAM_STARTED, { session: "x-1" }],
+      [240, "exam.finished", { session: "x-1", billed: 2 }],
+      [300, COMPARISON_STARTED, { session: "g-1", old: "hp", fresh: "hc", tasks: [] }],
+      [420, REPORTED, { ...REPORT, session: "g-1", old: "hp", fresh: "hc", reading: "no-step" }],
+      [37 * 60, BUILD_FINISHED, { session: "b-1", billed: 3 }],
+    ]);
+    const line = hoursOf(log);
+    expect(line).toContain("examiner 1.0 (3%)");
+    expect(line).toContain("comparisons 2.0 (5%)");
+    expect(line).toContain("between moves 0.0 (0%), of 37.0");
+    expect(waitsOf(line)).toEqual({ all: "35.0", provider: "35.0" });
+  });
+
+  it("clips a forward wait at the last recorded event, and at the first ending even when the campaign resumes", () => {
+    const clipped = hoursOf(
+      timed([
+        [0, BUILD_STARTED, { session: "b-1" }],
+        [60, WAITED, { for: "network", ms: 35 * 3_600_000 }],
+        [600, "build.turn", { session: "b-1" }],
+      ]),
+    );
+    expect(waitsOf(clipped)).toEqual({ all: "9.0", network: "9.0" });
+    const resumed = hoursOf(
+      timed([
+        [0, BUILD_STARTED, { session: "b-1" }],
+        [60, WAITED, { for: "provider", ms: 35 * 3_600_000 }],
+        [600, "campaign.ended", { ending: "operator" }],
+        [1200, BUILD_STARTED, { session: "b-2" }],
+        [37 * 60, "campaign.ended", { ending: "operator" }],
+      ]),
+    );
+    expect(waitsOf(resumed)).toEqual({ all: "9.0", provider: "9.0" });
+  });
+
+  it("takes every recorded wait into one union, load waits back from their admission, and the hours a promotion with and without it", () => {
+    const line = hoursOf(
+      timed([
+        [0, BUILD_STARTED, { session: "b-1" }],
+        [60, WAITED, { for: "provider", ms: 2 * 3_600_000 }],
+        // A load wait is recorded when the host admits the solve: this one began an hour into the
+        // provider's window above, and the next overlaps it by an hour.
+        [240, WAITED, { load: 13, cores: 12, ms: 2 * 3_600_000 }],
+        [300, WAITED, { load: 13, cores: 12, ms: 2 * 3_600_000 }],
+        [300, "harness.promoted", { harness: "hc" }],
+        [480, "harness.promoted", { harness: "hd" }],
+        // A kind nothing writes is no wait.
+        [500, WAITED, { for: "reserve", ms: 3_600_000 }],
+        [600, "build.turn", { session: "b-1" }],
+      ]),
+    );
+    expect(waitsOf(line)).toEqual({ all: "4.0", provider: "2.0", load: "3.0", promotion: ["5.0", "3.0"] });
+  });
+
+  it("includes the grace minute in the provider window instead of ending at the named reset", () => {
+    const line = hoursOf(
+      timed([
+        [0, BUILD_STARTED, { session: "b-1" }],
+        [60, WAITED, { for: "provider", ms: 3 * 60_000, until: new Date(START + 62 * 60_000).toISOString() }],
+        [63, BUILD_FINISHED, { session: "b-1" }],
+      ]),
+    );
+    expect(waitsOf(line)).toEqual({ all: "0.1", provider: "0.1" });
   });
 
   it("counts a comparison a stop cut from its start to the stop, and again from the resume to its report", () => {
@@ -1132,9 +1352,7 @@ describe("the reader of the campaign's clock", () => {
       [90, SOLVE_STARTED, { solve: "s1", comparison: "g-1", limits: { wallSeconds: 900 } }],
       [120, REPORTED, { ...REPORT, session: "g-1", old: "hp", fresh: "hc", reading: "no-step" }],
     ]);
-    expect(overview(log).rows[0]?.lines).toContain(
-      "hours: comparisons 1.0 (50%), between moves 1.0 (50%), of 2.0",
-    );
+    expect(hoursOf(log)).toContain("comparisons 1.0 (50%), between moves 1.0 (50%), of 2.0");
   });
 
   it("counts a drafting session's dollars as the Examiner's, as the host's budget does", () => {
@@ -1173,12 +1391,16 @@ describe("the reader of the campaign's clock", () => {
       [3, GATE, { version: "e1", gate: 1, outcome: "passed" }],
       [4, PROPOSED, { session: "x-1", version: "e2", taskId: "x-1-002" }],
       [4, GATE, { version: "e2", gate: 1, outcome: "refused" }],
-      [5, "exam.finished", { session: "x-1", ended: "finished", billed: 1 }],
+      [5, "exam.finished", { session: "x-1", ended: "finished", billed: 1, held: ["e1"], refused: ["e2"] }],
       [6, SOLVE_STARTED, { solve: "s1", comparison: "g-1", limits: { wallSeconds: 900 } }],
       [7, SOLVE_FINISHED, { solve: "s1", ending: { outcome: "pass" }, billed: 1.5 }],
     ]);
-    expect(overview(log).rows[0]?.lines).toContain(
-      "billed dollars: examiner 3.00, solver 1.50; the Examiner's 3.00 over 1 task held out, 3.00 a task",
+    const said = (dollars: string) =>
+      `billed dollars: examiner ${dollars}, solver 1.50; the Examiner's ${dollars} over 1 task its sessions held out, ${dollars} a task`;
+    expect(overview(log).rows[0]?.lines).toContain(said("3.00"));
+    // A session with no end counts by its gated proposals, as the handover does.
+    expect(overview(log.filter(({ kind }) => kind !== "exam.finished")).rows[0]?.lines).toContain(
+      said("2.00"),
     );
   });
 });
@@ -1302,8 +1524,23 @@ describe("the reader of comparisons the campaign command named apart from its Bu
 
   it("gives the campaign's moves, its endings and its billed dollars against its budget", () => {
     expect(lines).toContain(
-      "campaign: moves build 2, compare 2; ended exam at event 1, then stop at event 51; billed 0.00 of 50 dollars",
+      "campaign: moves build 2, compare 2; ended exam at event 1, then stop at event 51; calculated spend 0.00 of 50 dollars; backend $0.00 on 0 of 0 ending records, calculated $0.00 on the same",
     );
+  });
+
+  it("shows backend coverage and residual on matching closed work, with partial and unknown costs", () => {
+    const accountEvents: LogEvent[] = [];
+    const add = appendTo(accountEvents);
+    add("campaign.opened", { budget: { dollars: 800, reserve: 10 } });
+    add(SOLVE_FINISHED, { solve: "s", billed: 93.9648096, reportedCost: 136.81746535 });
+    add(BUILD_STARTED, { session: "b-open" });
+    add("build.turn", { session: "b-open", usage: { cost: { total: 2 } } });
+    add("exam.finished", { session: "x", billed: 4, reportedCost: null });
+    const line = overview(accountEvents)
+      .rows.flatMap((row) => row.lines)
+      .find((each) => each.startsWith("campaign:"));
+    // Calculated 99.96 of 800 in all; the backend's total stands beside the one ending that has it.
+    expect(line?.match(/\d+(?:\.\d+)?/g)).toEqual(["99.96", "800", "136.82", "1", "2", "93.96", "45.6"]);
   });
 });
 
@@ -1314,10 +1551,13 @@ describe("the reader of a harness that answered for its solver", () => {
   const read = (
     practice: readonly (readonly string[])[],
     compared: readonly (readonly [string, readonly string[]])[],
+    evidence: readonly { answer?: JsonValue; ending?: JsonObject; kind?: string }[] = [],
   ) => {
     const log: LogEvent[] = [];
     const put = appendTo(log);
+    let next = 0;
     const made = (task: string, harness: string, calls: readonly string[], measuredIn: string | null) => {
+      const judged: (typeof evidence)[number] = evidence[next++] ?? { answer: {} };
       const ran = condition(task, harness);
       const id = `s${String(log.length)}`;
       put(CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) });
@@ -1330,7 +1570,15 @@ describe("the reader of a harness that answered for its solver", () => {
       for (const [turn, tool] of calls.entries()) {
         put("solve.call", { solve: id, turn, tool, isError: false });
       }
-      put(SOLVE_FINISHED, { solve: id, ending: { outcome: "pass" }, seconds: 50, responseModels: ["m-1"] });
+      if (judged.answer !== undefined) {
+        put("verdict", { solve: id, answer: judged.answer, kind: judged.kind ?? "pass" });
+      }
+      put(SOLVE_FINISHED, {
+        solve: id,
+        ending: judged.ending ?? { outcome: "pass" },
+        seconds: 50,
+        responseModels: ["m-1"],
+      });
     };
     for (const version of ["t1", "v1"]) {
       put("task.proposed", { version });
@@ -1367,6 +1615,31 @@ describe("the reader of a harness that answered for its solver", () => {
         [],
       ),
     ).toBe("one shell call, then submit, in p-1: 1 of 2 practice solves");
+  });
+
+  it("counts submitted null and verifier failures while leaving flags and blocked submits in the denominator", () => {
+    const calls = ["bash", "submit"];
+    const evidence = [
+      { ending: { outcome: "flagged" } },
+      { ending: { outcome: "fail", kind: "no-answer" } },
+      { answer: null },
+      { answer: {}, kind: "non-result", ending: { outcome: "non-result", kind: "verifier" } },
+    ];
+    expect(read([calls, calls, calls, calls], [], evidence)).toBe(
+      "one shell call, then submit, in p-1: 2 of 4 practice solves",
+    );
+    expect(read([calls], [], [evidence[0]!])).toBeUndefined();
+    expect(
+      read(
+        [],
+        [
+          ["hy", calls],
+          ["href", calls],
+          ["href", calls],
+        ],
+        [{ answer: {} }, evidence[0]!, { answer: null }],
+      ),
+    ).toBe("one shell call, then submit, in p-1: 1 of 1 under the new harness, 1 of 2 under the reference");
   });
 
   it("puts each comparison's reference side beside its new one, since a solver can match it alone", () => {

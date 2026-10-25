@@ -53,7 +53,8 @@ export interface Harness {
   /** `agent/tools.ts` bundled into one self-contained ESM module over `shim.ts`. */
   readonly module: string;
   /** sha256 over everything the solver-visible tools depend on: module, spec, guide and the tool
-   *  tree's files, so a tool tree changed under an unchanged module changes it. */
+   *  tree's files but its Python bytecode caches (`BYTECODE`), so a tool tree changed under an
+   *  unchanged module changes it. */
   readonly digest: string;
 }
 
@@ -78,6 +79,14 @@ const KINDS: ReadonlySet<string> = new Set(["reader", "advisor", "artifact-write
 /** The names a solver's tools already hold, whatever the harness: pi's coding tools and `submit`. */
 const HOST_TOOLS: readonly string[] = [...CODING_TOOLS, "submit"];
 const SHIM = Bun.fileURLToPath(new URL("./shim.ts", import.meta.url));
+/** The bytecode caches Python writes beside a program it runs. Python reads a file in one only while
+ *  the source beside it is there, and checks it against that source unless the file was compiled
+ *  as unchecked, so a cache holds nothing the source does not, and a harness whose programs ran
+ *  once is the harness it was before. Running its Python programs left `__pycache__` in 26 of the
+ *  54 states buffer-fresh-opus-v065-b kept, and on 24 October two states that differed from the one
+ *  practised by those caches alone read as never practised. A `.pyc` outside `__pycache__` is code
+ *  Python imports with no source beside it, and stays in. */
+const BYTECODE = /(^|\/)__pycache__(\/|$)/;
 /** The host's own source and installed packages, which the shim imports from. */
 const HOST_ROOTS = [dirname(dirname(SHIM)), join(dirname(dirname(dirname(SHIM))), "node_modules")];
 const MARKER = "@@ana-harness-result@@";
@@ -220,16 +229,16 @@ export function toolTreeStamp(real: string): string {
 }
 
 /**
- * A tool tree's content, read once for as long as its stamp holds. Every solve opens its harness,
- * and a tool tree runs to thousands of files and gigabytes, so hashing it afresh each time was a
- * full read of it per solve.
+ * A tool tree's content as the digest reads it, its bytecode caches left out (`BYTECODE`), read once
+ * for as long as its stamp holds. Every solve opens its harness, and a tool tree runs to thousands
+ * of files and gigabytes, so hashing it afresh each time was a full read of it per solve.
  */
 function keptTreeContent(toolTree: string) {
   const real = realpathSync(toolTree);
   const stamp = toolTreeStamp(real);
   const kept = TREES.get(real);
   if (kept?.stamp === stamp) return kept.content;
-  const content = treeContent(real);
+  const content = treeContent(real).filter(({ path }) => !BYTECODE.test(path));
   TREES.set(real, { stamp, content });
   return content;
 }

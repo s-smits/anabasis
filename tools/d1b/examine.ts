@@ -27,6 +27,8 @@
  * nothing else of them.
  * On 21 October, 128 gate solves across 43 of 1,396 drafts in 30 logs ended at a named reset.
  * `solve` now owns that wait; the gate receives only its settled ending, under the session's signal.
+ * Cancellation before the host launches a queued solve returns a killed non-result without a
+ * solve id or a Referee call, so the gate durably refuses the draft unmeasured.
  * Since 14 October a submitted rejection is ruled by the campaign's Referee before the gate counts
  * it. An unclear, defective or unruled rejection leaves the draft unmeasured; other endings keep
  * their meaning. Neither the answer nor the ruling reaches the Examiner.
@@ -65,6 +67,7 @@ import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { solverLast } from "#src/kernel/solves.ts";
+import { errorMessage } from "#src/meta/runtime-values.ts";
 import type { TaskPackage } from "#src/kernel/task.ts";
 import { campaignLog, keptAs, openCampaign, packNamed, PROMOTED, REPO, stayAwake } from "../d2/campaign.ts";
 import {
@@ -133,7 +136,14 @@ export async function probing(
   const seats = seated(campaign, { builder: undefined, reference: reference.dir });
   const reviewers = reviewersNamed(campaign, values);
   return async (task: TaskPackage, session: string, kill: AbortSignal) => {
-    const { solve, ending } = await seats.solve(task, reference, kill, session);
+    const result = await seats.solve(task, reference, kill, session).catch((error: unknown) => {
+      if (kill.aborted && error === kill.reason) {
+        return { ending: { outcome: "non-result", kind: "killed", reason: errorMessage(error) } } as const;
+      }
+      throw error;
+    });
+    if (!("solve" in result)) return result.ending;
+    const { solve, ending } = result;
     if (ending.outcome !== "fail" || ending.kind !== "rejected") return ending;
     const finding = await reviewers?.referee(solve, task, kill);
     return finding?.ruling === "earned"

@@ -22,6 +22,10 @@
  *                decides (`unadmitted`), what the Referee ruled and what a person's labels
  *                settled, and what was billed. It names each harness by its letter beside its
  *                digest's head (`namesOf`, `src/campaign/names.ts`).
+ *                Calculated spend stays the economy numerator; backend totals carry coverage and
+ *                a residual on matching closed records, with open backend costs unknown.
+ *                Comparison unit costs count scored versions in the last report; a report with
+ *                none retains its bill without a unit price.
  *
  * Until 20 October the report said the checker was read and frozen, and not what decides it: in
  * buffer-fresh-opus-forkedPR223_v0_5_4-r3 every one of the 7 checks, the objective among them, was
@@ -53,10 +57,10 @@ import { writtenTasks } from "#src/kernel/history.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { comparisonsOf } from "#src/campaign/ground.ts";
 import { promoted } from "#src/kernel/reports.ts";
-import { billedAll, billedParts } from "#src/kernel/trace.ts";
+import { billedAll, billedParts, costLine } from "#src/kernel/trace.ts";
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
-import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
+import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { containsPath } from "#src/meta/path-containment.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -202,8 +206,8 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
         : `- Answers that passed: a person read ${String(passes.read)} in ${plural(passes.comparisons, "comparison")}, drawn uniformly by each comparison's id: ${String(passes.sound)} sound, ${String(passes.wrong)} wrong, ${String(passes.unclear)} unclear. A wrong pass is a check's fault, and its side's fail once settled.`,
     ].join("\n"),
     "## Work and spend",
-    `${plural(sessions, "Builder session")}, ${plural(steps.filter((step) => step.step === "examiner").length, "Examiner session")} and ${plural(comparisons.length, "comparison")}. Billed $${billedAll(events).toFixed(2)}${budget === null ? "" : ` of a total of $${String(budget.dollars)}`}.`,
-    economyLines(events).join("\n"),
+    `${plural(sessions, "Builder session")}, ${plural(steps.filter((step) => step.step === "examiner").length, "Examiner session")} and ${plural(comparisons.length, "comparison")}. Calculated spend $${billedAll(events).toFixed(2)}${budget === null ? "" : ` of a total of $${String(budget.dollars)}`}; ${costLine(events)}.`,
+    economyLines(events, steps).join("\n"),
     "",
   ].join("\n\n");
 }
@@ -213,22 +217,21 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
  * its own turns and its admission solves together; a comparison's a task it scored; and how many of the
  * comparisons that began reported, since one cut before its report bought nothing it can show.
  */
-function economyLines(events: readonly LogEvent[]): string[] {
+function economyLines(events: readonly LogEvent[], steps: readonly Handover[]): string[] {
   const per = (dollars: number, count: number, what: string) =>
     count > 0 ? `$${(dollars / count).toFixed(2)} a ${what} (${String(count)})` : `no ${what}`;
-  const exams = events.flatMap(({ kind, data }) =>
-    kind === "exam.finished" && isString(data.session) ? [{ session: data.session, data }] : [],
-  );
-  const examined = exams.reduce(
-    (sum, { session, data }) =>
-      sum + (isNumber(data.billed) ? data.billed : 0) + billedParts(events, session).comparison,
-    0,
-  );
-  const held = exams.reduce((sum, { data }) => sum + (Array.isArray(data.held) ? data.held.length : 0), 0);
+  // The handover's Examiner steps, an open or cut session's by its gated proposals: until 25 October
+  // only ended sessions were read here, and buffer-141 said 2 tasks held out where it held out 7.
+  const exams = steps.flatMap((step) => (step.step === "examiner" ? [step] : []));
+  const examined = exams.reduce((sum, { billed }) => sum + billed, 0);
+  const held = exams.reduce((sum, step) => sum + step.held, 0);
   const all = comparisonsOf(events);
   const reported = all.filter(({ report }) => report !== null);
   const compared = reported.reduce((sum, { id }) => sum + billedParts(events, id).comparison, 0);
-  const scored = reported.reduce((sum, { report }) => sum + (isNumber(report?.tasks) ? report.tasks : 0), 0);
+  const scored = reported.reduce(
+    (sum, { report }) => sum + (Array.isArray(report?.versions) ? report.versions.length : 0),
+    0,
+  );
   // The climb's velocity first: what a promotion cost in dollars and in hours of the log. The
   // total is a bound, and the operator reads a campaign by how fast it climbs under it (14 October).
   const promotions = events.filter(({ kind }) => kind === "harness.promoted").length;
@@ -236,10 +239,10 @@ function economyLines(events: readonly LogEvent[]): string[] {
   const spent = billedAll(events);
   return [
     promotions > 0
-      ? `- The climb: $${(spent / promotions).toFixed(2)} and ${(hours / promotions).toFixed(1)} hours a promotion (${String(promotions)}).`
-      : `- The climb: no promotion over $${spent.toFixed(2)} and ${hours.toFixed(1)} hours.`,
-    `- The Examiner: ${per(examined, held, "task held out")}.`,
-    `- Comparisons: ${per(compared, scored, "task scored")}; ${String(reported.length)} of the ${plural(all.length, "comparison")} that began reported.`,
+      ? `- The climb: calculated $${(spent / promotions).toFixed(2)} and ${(hours / promotions).toFixed(1)} hours a promotion (${String(promotions)}).`
+      : `- The climb: no promotion over calculated $${spent.toFixed(2)} and ${hours.toFixed(1)} hours.`,
+    `- The Examiner: calculated ${per(examined, held, "task held out")}.`,
+    `- Comparisons: calculated ${per(compared, scored, "task scored")}; ${String(reported.length)} of the ${plural(all.length, "comparison")} that began reported.`,
   ];
 }
 

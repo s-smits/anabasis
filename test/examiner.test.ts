@@ -1,6 +1,10 @@
 // The Examiner's one session, `examine`, in its two modes on the faux provider: what both modes
 // share (an id, a wall, a shell, an ending, a bill), what a drafting session that puts one whole
-// draft is told, what a writing session's gate and tools hold, and what a task's author hears of it.
+// draft is told, what a writing session's gate and tools hold, and what a task's author hears of it,
+// including incomplete gates carried to a later session from the log alone.
+// Admission queued at the host leaves at the session's wall and durably refuses each draft
+// unmeasured, preserving earlier usable readings without starting another solve.
+// Gate settlement pauses author time; background probes, cancellation and resumed work retain their limits.
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import {
   createAssistantMessageEventStream,
@@ -28,6 +32,10 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { asRecord, isString, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
+import { probing } from "../tools/d1b/examine.ts";
+import { gated as hostGated, type Host } from "../tools/d2/host.ts";
+import type { Campaign, Seated } from "../tools/d2/round.ts";
+import { settingAsked } from "../tools/d2/setting.ts";
 import {
   bash,
   call,
@@ -55,6 +63,9 @@ const CALLED = "exam.call";
 const TRY = "try_task";
 const GATE = "task.gate";
 const PROPOSED = "task.proposed";
+const TASK_STATE = "task.state";
+const EXAM_FINISHED = "exam.finished";
+const STARTED = "solve.started";
 /** A solver-side secret no Examiner may be shown: the text of a measured solve's answer. */
 const SOLVER = "solver-canary-7f3a";
 const PASS: Ending = { outcome: "pass" };
@@ -307,7 +318,7 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
       const { home } = shell.dirs;
       const seen = readdirSync(home).sort();
       writeFileSync(join(home, "wrote.txt"), "wrote\n");
-      append(s.log, "exam.finished", { session: s.request.id, ended, running });
+      append(s.log, EXAM_FINISHED, { session: s.request.id, ended, running });
       return seen;
     });
     return { found, kept: readdirSync(keep).sort() };
@@ -418,11 +429,23 @@ function measuredProbe(log: string, measure: (task: TaskPackage, nth: number) =>
     const solve = `s-${String(solved.length)}`;
     const ran = condition(taskVersion(task), "h-reference");
     append(log, "condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
-    append(log, "solve.started", { solve, condition: conditionId(ran), comparison: session });
+    append(log, STARTED, { solve, condition: conditionId(ran), comparison: session });
     append(log, "verdict", { solve, answer: GOOD, kind: "pass", objective: objective ?? null });
     append(log, "solve.finished", { solve, ending: PASS, billed: 0 });
     return PASS;
   };
+}
+
+/** The admission boundary with a scratch kept starter and a scripted solving seat. Only the
+ *  log, kept states and solver identity are read from the campaign when no reviewer is named. */
+async function admission(s: ReturnType<typeof seat<"write">>, seated: Seated) {
+  // SAFETY: probing reads only these campaign fields with a supplied seat and no reviewer.
+  const campaign = {
+    log: s.log,
+    states: join(dirname(s.log), "states"),
+    test: { model: s.request.model, effort: s.request.effort },
+  } as Campaign;
+  return await probing(campaign, seated, settingAsked({}, null), { "reviewer-effort": "high" });
 }
 
 /** What a gate told of each draft: its id, held out or refused, and how many of the reference
@@ -513,7 +536,7 @@ describe("a session that writes tasks", () => {
       },
     ]);
     expect(s.of("exam.started")[0]?.tried).toBeUndefined();
-    expect(s.of("exam.finished")).toMatchObject([{ proposed: 0, held: [], refused: [] }]);
+    expect(s.of(EXAM_FINISHED)).toMatchObject([{ proposed: 0, held: [], refused: [] }]);
 
     // The budget every solve is held to, as a fact and no target; and the next session opens with
     // what the last one said at its finish, in its own words.
@@ -551,7 +574,7 @@ describe("a session that writes tasks", () => {
     ]);
     expect(taskSets(read(s.log))).toMatchObject({ held: [held], released: [] });
     expect(taskStates(read(s.log)).get(refused)).toBe("refused");
-    expect(s.of("solve.started")).toEqual([]);
+    expect(s.of(STARTED)).toEqual([]);
     // The instance is in the log whole, so a later solve of it needs nothing else.
     expect(s.of(PROPOSED)[0]).toMatchObject({
       version: held,
@@ -560,7 +583,7 @@ describe("a session that writes tasks", () => {
       task: { family: "fixture", publicInput: { base: 7 }, hidden: { seed: 1 } },
     });
     expect(writtenTasks(read(s.log)).map(({ taskId }) => taskId)).toEqual(["x-1-001", "x-1-002"]);
-    expect(s.of("exam.finished")).toMatchObject([{ proposed: 2, held: [held], refused: [refused] }]);
+    expect(s.of(EXAM_FINISHED)).toMatchObject([{ proposed: 2, held: [held], refused: [refused] }]);
   });
 
   it("takes no instance past its puts, nor one an earlier session wrote, and keeps what it held when its turn fails", async () => {
@@ -830,7 +853,7 @@ describe("a session that writes tasks", () => {
         // The pack's own task is in the log as `prepare.ts` leaves it: by its id, and held out.
         append(s.log, PROPOSED, { version: packed, taskId: EXAMPLE.taskId });
         append(s.log, GATE, { version: packed, gate: 1, outcome: "passed" });
-        if (order.state !== "held") append(s.log, "task.state", { version: packed, state: order.state });
+        if (order.state !== "held") append(s.log, TASK_STATE, { version: packed, state: order.state });
       }
       const checked: string[] = [];
       const examined = await examine({
@@ -1008,7 +1031,7 @@ describe("a session that writes tasks", () => {
       return PASS;
     };
     // Call the writing owner directly so the model's own budget cannot end the session first.
-    const mode = writing({ ...s.request, probe }, [], "unseen");
+    const mode = writing({ ...s.request, probe }, undefined, "unseen");
     await invoke(mode.tools[0]!, "put", { tasks: [instance(2)] });
     await mode.settle(true);
     expect(asked).toBe(1);
@@ -1034,7 +1057,7 @@ describe("a session that writes tasks", () => {
             return PASS;
           }),
       },
-      [],
+      undefined,
       "unseen",
     );
     await invoke(batch.tools[0]!, "batch", { tasks: [instance(2), instance(3)] });
@@ -1068,7 +1091,7 @@ describe("a session that writes tasks", () => {
             return alreadyProved ? await measured(task, session) : REJECTED;
           },
         },
-        [],
+        undefined,
         "unseen",
       );
       const put = mode.tools.find(({ name }) => name === TRY)!;
@@ -1104,7 +1127,7 @@ describe("a session that writes tasks", () => {
           return PASS;
         },
       },
-      [],
+      undefined,
       "unseen",
     );
     const put = mode.tools[0]!;
@@ -1118,7 +1141,11 @@ describe("a session that writes tasks", () => {
     expect(mode.result().puts).toBe(2);
     expect(s.of(GATE).map(measuredGate)).toEqual([false, true]);
     // A held draft also stays a duplicate.
-    const proved = writing({ ...s.request, id: "x-2", verify, probe: async () => REJECTED }, [], "unseen");
+    const proved = writing(
+      { ...s.request, id: "x-2", verify, probe: async () => REJECTED },
+      undefined,
+      "unseen",
+    );
     await invoke(proved.tools.find(({ name }) => name === "try_answer")!, "proof", {
       ...instance(8),
       answer: GOOD,
@@ -1128,6 +1155,143 @@ describe("a session that writes tasks", () => {
     await invoke(proved.tools[0]!, "duplicate", { tasks: [instance(8)] });
     expect(proved.result().held).toHaveLength(1);
     expect(proved.result().puts).toBe(1);
+  });
+
+  for (const interruptedReview of [false, true]) {
+    for (const promoted of [false, true]) {
+      it(`hands an interrupted ${interruptedReview ? "review" : "provider solve"} to the next author ${promoted ? "across a promotion" : "under the same reference"}`, async () => {
+        const s = seat("write", [call("read_opening", {}), finish, finish]);
+        const stop = new AbortController();
+        const waiting = Promise.withResolvers<void>();
+        const release = Promise.withResolvers<void>();
+        let asked = 0;
+        const probe = async (task: TaskPackage, session: string): Promise<Ending> => {
+          asked += 1;
+          const solve = `handoff-${String(asked)}`;
+          const ran = condition(taskVersion(task), "h-reference");
+          append(s.log, "condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
+          append(s.log, STARTED, { solve, condition: conditionId(ran), comparison: session });
+          if (asked === 2) {
+            waiting.resolve();
+            await release.promise;
+          }
+          const ending: Ending =
+            asked === 2
+              ? { outcome: "non-result", kind: "provider", reason: "provider-private-canary" }
+              : PASS;
+          if (asked !== 2 || interruptedReview) {
+            append(s.log, "verdict", {
+              solve,
+              answer: { answer: SOLVER },
+              kind: asked === 2 ? "fail" : "pass",
+            });
+          }
+          if (asked === 2 && interruptedReview) {
+            append(s.log, "referee.finding", {
+              solve,
+              ruling: null,
+              reason: "review-private-canary",
+              probeRows: [{ answer: SOLVER }],
+            });
+          }
+          append(s.log, "solve.finished", { solve, ending, billed: 0 });
+          return ending;
+        };
+        append(s.log, "exam.started", { session: "x-1" });
+        const first = writing({ ...s.request, probe }, undefined, "unseen", stop.signal);
+        await invoke(first.tools[0]!, "first", { tasks: [instance(7)] });
+        await waiting.promise;
+        stop.abort();
+        release.resolve();
+        await first.settle(true);
+        append(s.log, EXAM_FINISHED, { session: "x-1", ended: "wall" });
+        expect(s.of(CALLED)).toEqual([]);
+        expect(s.of(GATE)).toMatchObject([
+          { outcome: "refused", reference: { valid: 1, solves: 1, ran: 2 } },
+        ]);
+        if (promoted) {
+          append(s.log, "harness.promoted", { harness: "h-next", from: "h-reference", rests: [] });
+        }
+        const events = read(s.log);
+        const tasks = writtenTasks(events).filter(
+          (task) => taskStates(events).get(taskVersion(s.request.pack(task))) !== "refused",
+        );
+        expect(tasks).toEqual([]);
+        const request = { ...s.request, id: "x-2", tasks, probe };
+        const next = writing(request, undefined, "unseen");
+        const record = heard(events, tasks);
+        expect(record.interrupted).toHaveLength(1);
+        expect(record.interrupted[0]).toContain("x-1-001 (fixture)");
+        expect(record.interrupted[0]).toContain("not measured");
+        expect(record.refused).toEqual([]);
+        if (promoted) {
+          expect(record.interrupted[0]).toContain("replaced reference");
+          expect(record.interrupted[0]).not.toMatch(/1 of|2 attempted|turn|gap|%/u);
+        } else {
+          expect(record.interrupted[0]).toContain("1 of 1 measured solves valid; 2 attempted");
+          const reason = s.of(GATE)[0]?.reason;
+          if (!isString(reason)) throw new Error("gate reason missing");
+          expect(record.interrupted[0]).toContain(reason);
+        }
+        expect(next.opening).toContain(record.interrupted[0]!);
+        for (const secret of [SOLVER, "review-private-canary", "provider-private-canary"]) {
+          expect(next.opening).not.toContain(secret);
+        }
+        const original = writtenTasks(events)[0]!;
+        const recovered = await invoke(next.tools.find(({ name }) => name === "read_example")!, "recover", {
+          task: original.taskId,
+        });
+        expect(recovered.output).toEqual([{ type: "text", text: JSON.stringify(original, null, 2) }]);
+        expect(writing(request, undefined, "unseen").opening).toBe(next.opening);
+        await examine(request);
+        expect(s.of(CALLED).find(({ tool }) => tool === "read_opening")?.text).toBe(next.opening);
+        await invoke(next.tools[0]!, "retry", { tasks: [instance(7)] });
+        await next.settle(true);
+        expect(asked).toBe(5);
+        expect(s.of(GATE)).toMatchObject([
+          { outcome: "refused", reference: { valid: 1, solves: 1, ran: 2 } },
+          { outcome: "refused", reference: { valid: 3, solves: 3, ran: 3 } },
+        ]);
+        expect(next.result().held).toEqual([]);
+        expect(s.of("referee.finding").map(({ ruling }) => ruling)).toEqual(interruptedReview ? [null] : []);
+        const again = writing({ ...request, id: "x-3" }, undefined, "unseen");
+        await invoke(again.tools[0]!, "duplicate", { tasks: [instance(7)] });
+        expect(again.result().puts).toBe(0);
+        expect(asked).toBe(5);
+      });
+    }
+  }
+
+  it("writes an example longer than a result whole beside the seat, and tells its size and where it is", async () => {
+    const s = seat("write", []);
+    const spill = join(dirname(s.log), "seat-tmp");
+    mkdirSync(spill, { recursive: true });
+    // Past what pi keeps of a result in both bytes and lines; four recorded drafts of 22,191 to
+    // 73,638 characters came back cut at 20,000 as JSON that did not parse.
+    const long = {
+      ...EXAMPLE,
+      taskId: "x-1/long",
+      publicInput: { values: Array.from({ length: 9_000 }, (_, at) => at) },
+    };
+    const short = writing({ ...s.request, tasks: [EXAMPLE, long] }, undefined, "unseen");
+    const walls = { pinned: [], shell: { dirs: { temp: spill } } };
+    const mode = writing({ ...s.request, tasks: [EXAMPLE, long] }, walls, "unseen");
+    const example = (of: typeof mode, task: string) =>
+      invoke(of.tools.find(({ name }) => name === "read_example")!, task, { task });
+    const said = (await example(mode, long.taskId)).output?.[0];
+    const shown = said?.type === "text" ? said.text : "";
+    const whole = JSON.stringify(long, null, 2);
+    const file = join(spill, "read_example-x-1_long.json");
+    expect(shown).toContain(`of ${String(Buffer.byteLength(whole))} bytes. The full file is at ${file}.`);
+    expect(Buffer.byteLength(shown)).toBeLessThanOrEqual(50 * 1024);
+    expect(shown.split("\n").length).toBeLessThanOrEqual(2_000);
+    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual(long);
+    // A short example comes back whole, and without a TMPDIR a long one tells its size alone.
+    expect((await example(mode, EXAMPLE.taskId)).output).toEqual([
+      { type: "text", text: JSON.stringify(EXAMPLE, null, 2) },
+    ]);
+    const bare = (await example(short, long.taskId)).output?.[0];
+    expect(bare?.type === "text" ? bare.text : "").toMatch(/of \d+ bytes\.$/u);
   });
 
   it("holds a task out by try_task at some valid solves of the reference harness and not all, and tells the counts alone", async () => {
@@ -1162,7 +1326,7 @@ describe("a session that writes tasks", () => {
       const solve = `s-${String(asked.length)}`;
       const ran = condition(taskVersion(task), "h-reference");
       append(s.log, "condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
-      append(s.log, "solve.started", { solve, condition: conditionId(ran), comparison: session });
+      append(s.log, STARTED, { solve, condition: conditionId(ran), comparison: session });
       append(s.log, "verdict", { solve, answer: { answer: SOLVER, unit: "N" } });
       append(s.log, "solve.finished", { solve, ending, billed: 0.5 });
       return ending;
@@ -1320,10 +1484,170 @@ describe("a session that writes tasks", () => {
     expect(asRecord(gate?.reference)?.gap).toBeCloseTo(0.005, 9);
   });
 
+  it("charges only author work across explicit wait, continuation, finish and crash settlement", async () => {
+    for (const path of ["wait", "continuation", "finish", "final finish", "crash"] as const) {
+      const release = Promise.withResolvers<void>();
+      const waiting = Promise.withResolvers<void>();
+      const s = seat("write", [
+        ...(path === "final finish" ? [finish] : []),
+        call(TRY, { tasks: [instance(2)] }),
+        () => {
+          waiting.resolve();
+          if (path === "crash") throw new Error("provider stopped");
+          if (path === "continuation") return fauxAssistantMessage("Awaiting admission.");
+          return path === "wait" ? call("wait", {}) : finish;
+        },
+        finish,
+        finish,
+      ]);
+      let ran = 0;
+      const running = examine({
+        ...s.request,
+        limits: { ...s.request.limits, wallSeconds: 0.1 },
+        probe: async (_task, _session, signal) => {
+          ran += 1;
+          signal.addEventListener("abort", () => release.resolve(), { once: true });
+          await release.promise;
+          return signal.aborted ? { outcome: "non-result", kind: "killed", reason: "cut" } : REJECTED;
+        },
+      });
+      await waiting.promise;
+      const until = performance.now() + 200;
+      while (performance.now() < until) await Bun.sleep(1);
+      release.resolve();
+      const examined = await running;
+      expect(examined.ended).toBe(path === "crash" ? "crashed" : "finished");
+      expect(ran).toBe(3);
+      const event = s.of(EXAM_FINISHED)[0];
+      expect(event?.hostSeconds).toBeGreaterThanOrEqual(0.19);
+      expect(Number(event?.seconds) - Number(event?.hostSeconds)).toBeLessThan(0.1);
+      expect(Number(event?.hostSeconds)).toBeLessThanOrEqual(Number(event?.seconds));
+    }
+  });
+
+  it("keeps operator kill and campaign budget live during an explicit gate wait", async () => {
+    for (const stop of ["kill", "budget"] as const) {
+      const waiting = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const kill = new AbortController();
+      const s = seat("write", [
+        call(TRY, { tasks: [instance(2)] }),
+        () => {
+          waiting.resolve();
+          return call("wait", {});
+        },
+        finish,
+      ]);
+      let ran = 0;
+      const running = examine({
+        ...s.request,
+        kill: kill.signal,
+        limits: { ...s.request.limits, wallSeconds: 0.1 },
+        probe: async (_task, _session, signal) => {
+          ran += 1;
+          await release.promise;
+          return signal.aborted ? { outcome: "non-result", kind: "killed", reason: "cut" } : PASS;
+        },
+      });
+      await waiting.promise;
+      const until = performance.now() + 200;
+      while (performance.now() < until) await Bun.sleep(1);
+      if (stop === "kill") {
+        kill.abort();
+        // Leave the gate pending while shutdown also settles the interrupted wait.
+        const settledAt = performance.now() + 100;
+        while (performance.now() < settledAt) await Bun.sleep(1);
+        release.resolve();
+      } else {
+        append(s.log, "campaign.opened", { budget: { dollars: 0, reserve: 1 } });
+        release.resolve();
+      }
+      expect((await running).ended).toBe(stop === "kill" ? "killed" : "stopped");
+      expect(ran).toBe(1);
+      expect(s.of("exam.turn")).toHaveLength(2);
+      const event = s.of(EXAM_FINISHED)[0];
+      expect(event?.hostSeconds).toBeGreaterThanOrEqual(0.19);
+      expect(Number(event?.hostSeconds)).toBeLessThanOrEqual(Number(event?.seconds));
+    }
+  });
+
+  it("ends a gate wait once a peer spends the campaign's budget, without the gate's solves ending first", async () => {
+    const waiting = Promise.withResolvers<void>();
+    const s = seat("write", [
+      call(TRY, { tasks: [instance(2)] }),
+      () => {
+        waiting.resolve();
+        return call("wait", {});
+      },
+      finish,
+    ]);
+    const kill = new AbortController();
+    const running = examine({
+      ...s.request,
+      kill: kill.signal,
+      budgetLookMs: 20,
+      // A gate solve that ends only when its signal falls, as one under its own long wall would.
+      probe: async (_task, _session, signal) => {
+        await new Promise<void>((resolve) =>
+          signal.addEventListener("abort", () => resolve(), { once: true }),
+        );
+        return { outcome: "non-result", kind: "killed", reason: "cut" };
+      },
+    });
+    await waiting.promise;
+    append(s.log, "campaign.opened", { budget: { dollars: 0, reserve: 1 } });
+    const ended = await Promise.race([running.then(({ ended: how }) => how), Bun.sleep(2_000)]);
+    kill.abort();
+    await running;
+    expect(ended).toBe("stopped");
+  });
+
+  it("resumes its author allowance after waiting and cancels a later background probe at the wall", async () => {
+    const release = Promise.withResolvers<void>();
+    const waiting = Promise.withResolvers<void>();
+    const s = seat("write", [
+      call(TRY, { tasks: [instance(2)] }),
+      () => {
+        waiting.resolve();
+        return call("wait", {});
+      },
+      call(TRY, { tasks: [instance(3)] }),
+      async () => {
+        const until = performance.now() + 200;
+        while (performance.now() < until) await Bun.sleep(1);
+        return finish;
+      },
+    ]);
+    let cancelled = 0;
+    const running = examine({
+      ...s.request,
+      limits: { ...s.request.limits, wallSeconds: 0.1 },
+      probe: async (task, _session, signal) => {
+        if (asRecord(task.publicInput)?.base === 2) {
+          await release.promise;
+          return REJECTED;
+        }
+        await new Promise<void>((resolve) =>
+          signal.addEventListener("abort", () => resolve(), { once: true }),
+        );
+        cancelled += 1;
+        return { outcome: "non-result", kind: "killed", reason: "cut" };
+      },
+    });
+    await waiting.promise;
+    const until = performance.now() + 200;
+    while (performance.now() < until) await Bun.sleep(1);
+    release.resolve();
+    expect((await running).ended).toBe("wall");
+    expect(cancelled).toBe(1);
+    const event = s.of(EXAM_FINISHED)[0];
+    expect(event?.hostSeconds).toBeGreaterThanOrEqual(0.19);
+    expect(Number(event?.seconds) - Number(event?.hostSeconds)).toBeGreaterThanOrEqual(0.1);
+  });
+
   it("settles a gate after a thrown model crash under the wall, kill and budget, then closes the model", async () => {
     for (const [stop, ended] of [
       ["none", "crashed"],
-      ["wall", "wall"],
       ["kill", "killed"],
       ["spent", "stopped"],
     ] as const) {
@@ -1350,7 +1674,7 @@ describe("a session that writes tasks", () => {
         ...s.request,
         models: () => crashing,
         kill: kill.signal,
-        limits: { ...s.request.limits, wallSeconds: stop === "wall" ? 0.1 : 600 },
+        limits: { ...s.request.limits, wallSeconds: 600 },
         probe: async (_task, _session, signal) => {
           ran += 1;
           signal.addEventListener("abort", () => release.resolve(), { once: true });
@@ -1365,21 +1689,28 @@ describe("a session that writes tasks", () => {
       expect(s.of(GATE)).toMatchObject([{ outcome: stop === "none" ? "passed" : "refused" }]);
       expect(ran).toBe(stop === "none" ? 2 : 1);
       const kinds = read(s.log).map(({ kind }) => kind);
-      expect(kinds.indexOf(GATE)).toBeLessThan(kinds.indexOf("exam.finished"));
+      expect(kinds.indexOf(GATE)).toBeLessThan(kinds.indexOf(EXAM_FINISHED));
     }
   });
 
   it("ends at its wall with no solve of the reference harness left running, and starts none after it", async () => {
     // Both instances of the call are gated together, a solve at a time, so the wall finds two running.
-    const s = seat("write", [call(TRY, { tasks: [instance(2), instance(3)] }), finish, finish]);
+    const s = seat("write", [
+      call(TRY, { tasks: [instance(2), instance(3)] }),
+      async () => {
+        const until = performance.now() + 1_000;
+        while (performance.now() < until) await Bun.sleep(1);
+        return finish;
+      },
+    ]);
     const running = new Set<string>();
     // Each solve would pass long after the wall, unless the kill a comparison's solves take
     // stops it first; the launcher records its end either way.
     const probe = (task: TaskPackage, session: string, kill: AbortSignal) =>
       new Promise<Ending>((settle) => {
-        const solve = `w-${String(s.of("solve.started").length + 1)}`;
+        const solve = `w-${String(s.of(STARTED).length + 1)}`;
         running.add(solve);
-        append(s.log, "solve.started", { solve, task: task.taskId, comparison: session });
+        append(s.log, STARTED, { solve, task: task.taskId, comparison: session });
         const end = (ending: Ending) => {
           if (!running.delete(solve)) return;
           clearTimeout(late);
@@ -1407,6 +1738,99 @@ describe("a session that writes tasks", () => {
     // Refused unmeasured, so a later session may take either again (`measuredGate`).
     expect(s.of(PROPOSED)).toHaveLength(2);
     expect(s.of(GATE).filter(measuredGate)).toEqual([]);
+  });
+
+  it("cancels two admission probes queued at the host at its wall and retains each earlier reading", async () => {
+    const queued = Promise.withResolvers<void>();
+    const sleeping = Promise.withResolvers<void>();
+    const s = seat("write", [
+      call(TRY, { tasks: [instance(2), instance(3)] }),
+      async () => {
+        await queued.promise;
+        // The wall counts author time only, so the session spends its allowance here.
+        const until = performance.now() + 300;
+        while (performance.now() < until) await Bun.sleep(1);
+        return fauxAssistantMessage("Waiting for the queued admissions.");
+      },
+      finish,
+    ]);
+    const measured = measuredProbe(s.log, () => undefined);
+    const seen = new Set<string>();
+    let waitsAtHost = 0;
+    const host: Host = {
+      load: () => (seen.size < 2 ? 0 : 99),
+      cores: 4,
+      waitMs: 30_000,
+      sleep: () => {
+        waitsAtHost += 1;
+        if (waitsAtHost === 2) queued.resolve();
+        return sleeping.promise;
+      },
+    };
+    const probe = await admission(
+      s,
+      hostGated(
+        {
+          host,
+          loaded: false,
+          seated: () => ({
+            builder: null,
+            setting: "s",
+            solve: async (task, _harness, _kill, session) => {
+              seen.add(task.taskId);
+              const ending = await measured(task, session ?? "x-1");
+              return { solve: `s-${String(s.of(STARTED).length)}`, ending };
+            },
+          }),
+        },
+        s.log,
+      ),
+    );
+    const examined = await examine({
+      ...s.request,
+      limits: { ...s.request.limits, wallSeconds: 0.2 },
+      probe,
+    });
+    expect(examined.ended).toBe("wall");
+    expect(waitsAtHost).toBe(2);
+    expect(s.of(STARTED)).toHaveLength(2);
+    expect(s.of("solve.finished")).toHaveLength(2);
+    expect(s.of(GATE)).toMatchObject(
+      Array(2).fill({
+        outcome: "refused",
+        reference: { valid: 1, solves: 1, ran: 2 },
+      }),
+    );
+    expect(s.of(GATE).filter(measuredGate)).toEqual([]);
+    expect(s.of(TASK_STATE)).toMatchObject(Array(2).fill({ state: "refused", session: "x-1" }));
+    expect(examined.refused).toHaveLength(2);
+    const kinds = read(s.log).map(({ kind }) => kind);
+    expect(kinds.lastIndexOf(GATE)).toBeLessThan(kinds.indexOf(EXAM_FINISHED));
+    expect(s.of("campaign.waited")).toHaveLength(2);
+  }, 2000);
+
+  it("turns only the launcher's cancellation reason into a killed admission ending", async () => {
+    const s = seat("write", []);
+    const kill = new AbortController();
+    const reason = new Error("the Examiner ended");
+    const unrelated = new Error("the launcher failed");
+    let thrown = reason;
+    const probe = await admission(s, () => ({
+      builder: null,
+      setting: "s",
+      solve: async () => {
+        throw thrown;
+      },
+    }));
+    const task = s.request.pack(EXAMPLE);
+    // The same error before cancellation is still a launcher failure.
+    await expect(probe(task, "x-1", kill.signal)).rejects.toBe(reason);
+    kill.abort(reason);
+    expect(await probe(task, "x-1", kill.signal)).toMatchObject({ outcome: "non-result", kind: "killed" });
+    thrown = unrelated;
+    await expect(probe(task, "x-1", kill.signal)).rejects.toBe(unrelated);
+    expect(s.of(STARTED)).toEqual([]);
+    expect(s.of("referee.finding")).toEqual([]);
   });
 
   it("returns a try_task call before its gate does, and tells what the gate said with a later tool result", async () => {
@@ -1437,7 +1861,7 @@ describe("a session that writes tasks", () => {
     expect(examined.refused).toEqual([s.versionOf("x-1-001", 2)]);
     // The gate's event is on record before the session's end.
     const kinds = read(s.log).map(({ kind }) => kind);
-    expect(kinds.indexOf(GATE)).toBeLessThan(kinds.indexOf("exam.finished"));
+    expect(kinds.indexOf(GATE)).toBeLessThan(kinds.indexOf(EXAM_FINISHED));
   });
 
   it("waits for the gate's next word at a turn that ends with no call, and not with nothing at the gate", async () => {
@@ -1497,11 +1921,11 @@ describe("a session that writes tasks", () => {
     const ended: number[] = [];
     const probe = async (task: TaskPackage, session: string) => {
       const base = Number(asRecord(task.publicInput)?.base);
-      const solve = `t-${String(s.of("solve.started").length + 1)}`;
+      const solve = `t-${String(s.of(STARTED).length + 1)}`;
       const ran = condition(taskVersion(task), "h-reference");
       append(s.log, "condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
-      append(s.log, "solve.started", { solve, condition: conditionId(ran), comparison: session });
-      if (s.of("solve.started").length === 2) release();
+      append(s.log, STARTED, { solve, condition: conditionId(ran), comparison: session });
+      if (s.of(STARTED).length === 2) release();
       await together;
       const ending = base === 2 && ended.includes(base) ? WALLED : PASS;
       ended.push(base);
@@ -1599,7 +2023,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
         for (const [nth, pass] of valid.entries()) {
           solves += 1;
           const solve = `t-${String(solves)}`;
-          add("solve.started", { solve, condition: conditionId(ran), comparison });
+          add(STARTED, { solve, condition: conditionId(ran), comparison });
           if (pass !== null) {
             add("verdict", { solve, kind: pass ? "pass" : "fail", answer: { answer: SOLVER } });
           }
@@ -1705,9 +2129,9 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       log.solved("b-1", "unsolved", harness, [false, false]);
     }
     log.reported("b-1", ["h1", "h2"], 2, ["some", "none", "every", "unsolved"], ["aside"]);
-    log.add("task.state", { version: "v-practice", state: "released" });
-    log.add("task.state", { version: "v-faulted", state: "disputed" });
-    log.add("task.state", { version: "v-refused", state: "refused" });
+    log.add(TASK_STATE, { version: "v-practice", state: "released" });
+    log.add(TASK_STATE, { version: "v-faulted", state: "disputed" });
+    log.add(TASK_STATE, { version: "v-refused", state: "refused" });
     const { lines, counts } = heard(log.events, tasks);
     // The reference harness is h1, the comparison's old side: the author hears how it did on each
     // task and nothing of h2. A refused task is no task of the exam, and has no line.
@@ -1753,7 +2177,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
         task: { ...fixture(taskId), publicInput: {}, hidden: null },
       });
       log.add(GATE, { version: `v-${taskId}`, gate: 1, ...gate });
-      if (gate.outcome === "refused") log.add("task.state", { version: `v-${taskId}`, state: "refused" });
+      if (gate.outcome === "refused") log.add(TASK_STATE, { version: `v-${taskId}`, state: "refused" });
     };
     gated("once", { outcome: "passed", reference: { valid: 1, solves: 3, billed: 0 } });
     gated("twice", { outcome: "passed", reference: { valid: 2, solves: 3, billed: 0 } });
@@ -1762,8 +2186,8 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       reason: "answered in 3 of 3",
       reference: { valid: 3, solves: 3, billed: 0 },
     });
-    // A gate refused on two readings may be proposed again, and is no refusal to be told of; one
-    // that held its draft on two readings is told with the solve that gave none.
+    // A gate refused on two readings may be proposed again, and is told apart from measured
+    // refusals; one that held its draft on two readings is told with the solve that gave none.
     gated("cut", {
       outcome: "refused",
       reason: "not measured",
@@ -1784,6 +2208,38 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     // A draft the reference's solves refused is told by their count, the rule being the system
     // prompt's, and drafts refused alike share one line.
     expect(told.refused).toEqual(["the reference harness valid in 3 of 3 solves: every (fixture)"]);
+    expect(told.interrupted).toEqual([
+      "cut (fixture): gate not measured; 2 of 2 measured solves valid; not measured",
+    ]);
+  });
+
+  it("keeps delivered interruptions and reserve refusals apart from measured gates and follows each version's last gate", () => {
+    const log = logged();
+    for (const taskId of ["delivered", "reserve", "measured", "held", "retried"]) {
+      log.add(PROPOSED, {
+        version: `v-${taskId}`,
+        taskId,
+        task: { ...fixture(taskId), publicInput: {}, hidden: null },
+      });
+      const complete = taskId === "measured" || taskId === "held";
+      log.add(GATE, {
+        version: `v-${taskId}`,
+        outcome: taskId === "held" ? "passed" : "refused",
+        reason: taskId === "reserve" ? "no reserve, so it is not measured" : "gate-level reason",
+        reference: taskId === "reserve" ? null : { valid: 0, solves: complete ? 3 : 1, ran: 3, billed: 0 },
+      });
+      if (taskId !== "held") log.add(TASK_STATE, { version: `v-${taskId}`, state: "refused" });
+    }
+    log.add(CALLED, { session: "x-1", tool: "wait", text: "delivered: gate-level reason" });
+    log.add(GATE, { version: "v-retried", outcome: "passed", reference: { valid: 1, solves: 2, ran: 2 } });
+    const told = heard(log.events, [fixture("held")]);
+    expect(told.interrupted).toEqual([
+      "delivered (fixture): gate not measured; 0 of 1 measured solves valid; 3 attempted; gate-level reason",
+      "reserve (fixture): gate not measured; no reserve, so it is not measured",
+    ]);
+    expect(told.refused).toEqual(["the reference harness valid in 0 of 3 solves: measured (fixture)"]);
+    expect(told.lines).toHaveLength(1);
+    expect(told.counts).toBeNull();
   });
 
   it("after a promotion, tells the gates read on the replaced reference as a count, and the new reference's turns at the gate", () => {
@@ -1802,7 +2258,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
         turns,
       );
       log.add(GATE, { version: `v-${taskId}`, gate: 1, ...gate });
-      if (gate.outcome === "refused") log.add("task.state", { version: `v-${taskId}`, state: "refused" });
+      if (gate.outcome === "refused") log.add(TASK_STATE, { version: `v-${taskId}`, state: "refused" });
     };
     log.add("exam.started", { session: "x-1" });
     gated("old", { outcome: "passed", reference: { valid: 1, solves: 3, billed: 0 } }, [9]);
@@ -1811,6 +2267,15 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       reason: "answered in 0 of 3",
       reference: { valid: 0, solves: 3, billed: 0 },
     });
+    gated(
+      "interrupted",
+      {
+        outcome: "refused",
+        reason: "taking 937, 941 turns, measuring 947, yours 37% better, so it is not measured",
+        reference: { valid: 2, solves: 2, ran: 3, billed: 0, gap: 0.37 },
+      },
+      [937, 941],
+    );
     log.add("harness.promoted", { harness: "h2", from: "h1", rests: [] });
     gated(
       "easy",
@@ -1826,6 +2291,8 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       line("new", "not yet compared; gate 2 of 3 valid"),
     ]);
     expect(told.refused).toEqual(["the reference harness valid in 3 of 3 solves: easy (fixture)"]);
+    expect(told.interrupted).toEqual(["interrupted (fixture): gate not measured; used a replaced reference"]);
+    expect(JSON.stringify(told)).not.toMatch(/937|941|947|37%/u);
     expect(told.earlier).toBe(
       "Before the reference harness was last replaced, the gate held out 1 draft and refused 1 draft after reading them. What it read of them was of a harness since replaced, and is not told.",
     );
@@ -1841,7 +2308,14 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
   });
 
   it("says nothing it cannot count: a task the log does not hold, one task alone, no task at all", () => {
-    const uncounted = { legend: heard([], []).legend, counts: null, turns: null, refused: [], earlier: null };
+    const uncounted = {
+      legend: heard([], []).legend,
+      counts: null,
+      turns: null,
+      refused: [],
+      interrupted: [],
+      earlier: null,
+    };
     // A task the log does not hold yet, as a pack's is before `prepare.ts`, is not yet compared.
     expect(heard([], [fixture("e-1")])).toEqual({
       lines: [line("e-1", `not yet compared; ${NONE}`)],
@@ -1985,8 +2459,8 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     log.solved("c-3", "b-1", "h1", [true, true, true], [4, 6, 5]);
     log.solved("c-3", "b-1", "h5", [false, false, false]);
     log.reported("c-3", ["h1", "h5"], 3, ["b-1"]);
-    log.add("task.state", { version: "v-b-3", state: "released" });
-    log.add("task.state", { version: "v-b-4", state: "refused" });
+    log.add(TASK_STATE, { version: "v-b-3", state: "released" });
+    log.add(TASK_STATE, { version: "v-b-4", state: "refused" });
     const said = (taskId: string, family: string, outcome: string) => `${taskId} (${family}): ${outcome}`;
     const { lines, counts, turns } = heard(log.events, tasks);
     expect(lines).toEqual([
@@ -2030,6 +2504,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       legend: heard([], []).legend,
       lines,
       refused: [],
+      interrupted: [],
       counts,
       turns,
       earlier: null,

@@ -4,7 +4,9 @@
  *
  * The folds (`indexOf`) read the log once into what the lanes ask of it: each solve with what it
  * ran under and how it ended, each Builder session with the window of the log that is its round,
- * each comparison with the solves it could count, and the last verdict and ruling of each solve. `TRIGGERS` names every trigger a reader can print and the lane it starts, and
+ * each comparison with the solves it could count, and the last verdict and ruling of each solve.
+ * A solve reached its turn bound where its end records as many turns as its start allowed.
+ * `TRIGGERS` names only the triggers a live reader can print and the lane each starts, and
  * `fired` makes one. Lanes 1 to 6 read the exam's instrument, which is the pack author's, and
  * lanes 7 to 12 the tasks, which are the Examiner's and the pack's; both sit here, below the
  * lanes of the build side and the host, which `read.ts` keeps with the rows and the overview, and
@@ -26,6 +28,7 @@ import { billedAll, type Traced, traced, tracesIn } from "#src/kernel/trace.ts";
 import { type Judged, refusedBy, solvesIn, verdictsOf } from "#src/kernel/solves.ts";
 import { heldAtGate, taskSets } from "#src/kernel/task.ts";
 import { OBJECTIVE } from "#src/kernel/verify.ts";
+import type { Handover } from "#src/campaign/handover.ts";
 import { short } from "#src/campaign/move.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
@@ -63,8 +66,10 @@ export interface Solve {
   readonly seconds: number;
   readonly calls: string[];
   errors: number;
-  /** A limit a call met that its ending does not name, or null; a call's turn counts from 0. */
-  limit: string | null;
+  /** A limit its ending does not name, or null: "last turn" where the turns its end records are
+   *  every turn its start allowed. Read from the end, since a call's turn counted from 0 in logs up
+   *  to 22 October and from 1 after, and the end's count from 1 in both (25 October). */
+  readonly limit: string | null;
   /** Whether the provider named the model that served it. */
   readonly attested: boolean;
 }
@@ -190,12 +195,12 @@ export const TRIGGERS = {
   "SCORED SET MOVED": 21,
   "NOTHING SCORED": 22,
   "CUT BY ITS CAP": 22,
-  "FEW INFORMATIVE PAIRS": 22,
   "SET SHORT": 22,
   "VALID BY HARNESS": 23,
   "FLIPS": 24,
   "REFERENCE AGAINST ITSELF": 24,
   "HOST CODE MOVED": 20,
+  "STARTS OUT OF TURN": 20,
   "CHAIN": 25,
   "NO TASK HELD OUT": 25,
   "WALL SHARE": 26,
@@ -263,6 +268,7 @@ function solvesOf(
       const condition = conditions.get(named);
       const [minute] = items(start.load);
       const limits = asRecord(start.limits);
+      const modelTurns = isNumber(limits?.modelTurns) ? limits.modelTurns : null;
       return [
         id,
         {
@@ -274,7 +280,7 @@ function solvesOf(
           side: condition?.side ?? "",
           comparison: isString(start.comparison) ? start.comparison : null,
           wallSeconds: count(limits?.wallSeconds),
-          modelTurns: isNumber(limits?.modelTurns) ? limits.modelTurns : null,
+          modelTurns,
           load: isNumber(minute) ? minute : null,
           cores: isNumber(start.cores) ? start.cores : null,
           outcome: end === null ? null : text(ending?.outcome),
@@ -282,7 +288,7 @@ function solvesOf(
           seconds: count(end?.seconds),
           calls: [],
           errors: 0,
-          limit: null,
+          limit: modelTurns !== null && count(end?.turns) === modelTurns ? "last turn" : null,
           attested: items(end?.responseModels).length > 0,
         },
       ];
@@ -293,7 +299,6 @@ function solvesOf(
     if (solve === undefined || call.part !== "call") continue;
     solve.calls.push(call.tool);
     solve.errors += call.isError ? 1 : 0;
-    if ((call.turn ?? 0) + 1 === solve.modelTurns) solve.limit = "last turn";
   }
   return [...solves.values()];
 }
@@ -405,7 +410,7 @@ export function spendOf(log: Index): [string, number][] {
   // comparison's names the comparison, and is the Examiner's, as `countedSolves` keeps it out of
   // every tally: about seven reference solves an admitted task at three a draft (the overhaul plan,
   // 4b), which until 12 October read as the solver's.
-  const sessions = examinerSessions(log);
+  const sessions = new Set(log.of(EXAM_START).map(({ session }) => session));
   const tried = new Set(log.solves.flatMap(({ id, comparison }) => (sessions.has(comparison) ? [id] : [])));
   const whose = ({ kind, data }: LogEvent) => {
     const role = roleOf(kind);
@@ -420,28 +425,18 @@ export function spendOf(log: Index): [string, number][] {
 }
 
 /** The Examiner's billed dollars over the tasks its sessions held out, the solves they asked for
- *  included (`spendOf`); none where no task was held out. */
-export function admittedCost(log: Index): string[] {
-  const sessions = examinerSessions(log);
-  const passed = new Set(
-    log.of("task.gate").flatMap((data) => (heldAtGate(data.outcome) ? [data.version] : [])),
-  );
-  const admitted = new Set(
-    log
-      .of("task.proposed")
-      .flatMap(({ session, version }) => (sessions.has(session) && passed.has(version) ? [version] : [])),
-  ).size;
+ *  included (`spendOf`); none where no task was held out. The count is the handover's (`campaignOf`,
+ *  `src/campaign/handover.ts`), an open session's by its gated proposals: until 25 October this
+ *  reader derived it again from the gates. It is every task the Examiner held out, released ones
+ *  among them, where row D says the tasks held out now, the pack's among them. */
+export function admittedCost(log: Index, steps: readonly Handover[]): string[] {
+  const admitted = steps.reduce((sum, step) => sum + (step.step === "examiner" ? step.held : 0), 0);
   const [, dollars = 0] = spendOf(log).find(([role]) => role === "examiner") ?? [];
   return admitted === 0
     ? []
     : [
-        `the Examiner's ${dollars.toFixed(2)} over ${plural(admitted, "task")} held out, ${(dollars / admitted).toFixed(2)} a task`,
+        `the Examiner's ${dollars.toFixed(2)} over ${plural(admitted, "task")} its sessions held out, ${(dollars / admitted).toFixed(2)} a task`,
       ];
-}
-
-/** The sessions of the Examiner's that write tasks, by id. */
-function examinerSessions(log: Index): Set<JsonValue | undefined> {
-  return new Set(log.of(EXAM_START).map(({ session }) => session));
 }
 
 /** The answers some check refused: a format fault reached no check and is none. */

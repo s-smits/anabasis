@@ -381,7 +381,8 @@ What the **Examiner** reads:
 What the **Examiner** never reads: a target, a harness's name, the other harness's result on any one
 task where `exam-results` is `off`, or a count of a task's valid solves beyond every, some or none. The one exception is how many
 of the reference harness's solves of a draft task were valid (`try_task`, and in later sessions; up
-to three, one at a time until they leave room), how many of them gave no reading, the turns each
+to three, the first alone and the other two together where it leaves no room, until they leave
+room), how many of them gave no reading, the turns each
 valid one took and, where the contract declares an objective, their measure and its own answer's.
 Nothing else of those solves reaches it. The Examiner makes none of the exam's solves itself.
 

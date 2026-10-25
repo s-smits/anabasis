@@ -25,6 +25,8 @@
  *                recorded turns once, including unfinished sessions, without finish aggregates.
  *                Calculated spend stays the economy numerator; backend totals carry coverage and
  *                a residual on matching closed records, with open backend costs unknown.
+ *                Comparison unit costs count scored versions in the last report; a report with
+ *                none retains its bill without a unit price.
  *
  * Until 20 October the report said the checker was read and frozen, and not what decides it: in
  * buffer-fresh-opus-forkedPR223_v0_5_4-r3 every one of the 7 checks, the objective among them, was
@@ -235,7 +237,10 @@ function economyLines(events: readonly LogEvent[]): string[] {
   const all = comparisonsOf(events);
   const reported = all.filter(({ report }) => report !== null);
   const compared = reported.reduce((sum, { id }) => sum + billedParts(events, id).comparison, 0);
-  const scored = reported.reduce((sum, { report }) => sum + (isNumber(report?.tasks) ? report.tasks : 0), 0);
+  const scored = reported.reduce(
+    (sum, { report }) => sum + (Array.isArray(report?.versions) ? report.versions.length : 0),
+    0,
+  );
   // The climb's velocity first: what a promotion cost in dollars and in hours of the log. The
   // total is a bound, and the operator reads a campaign by how fast it climbs under it (14 October).
   const promotions = events.filter(({ kind }) => kind === "harness.promoted").length;
@@ -253,7 +258,7 @@ function economyLines(events: readonly LogEvent[]): string[] {
       ? `- The climb: calculated $${(spent / promotions).toFixed(2)} and ${(hours / promotions).toFixed(1)} hours a promotion (${String(promotions)}).`
       : `- The climb: no promotion over calculated $${spent.toFixed(2)} and ${hours.toFixed(1)} hours.`,
     `- The Examiner: calculated ${per(examined, held, "task held out")}.`,
-    `- Comparisons: calculated ${per(compared, scored, "task scored")}; ${String(reported.length)} of the ${plural(all.length, "comparison")} that began reported.`,
+    `- Comparisons: ${scored > 0 ? `calculated ${per(compared, scored, "task scored")}` : `no task scored; calculated $${compared.toFixed(2)} billed`}; ${String(reported.length)} of the ${plural(all.length, "comparison")} that began reported.`,
     `- Builder cache: ${String(cache.write)} cache-write tokens and ${String(cache.read)} cache-read tokens over recorded Builder turns only (unfinished sessions included; excludes SDK-internal compaction usage not exposed in those turns).`,
   ];
 }

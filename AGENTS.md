@@ -204,8 +204,9 @@ with closed and overall coverage, open calculated usage and a residual on matchi
 Unreported backend costs stay unknown, and the cap and score bills keep their calculated basis. It
 gives, in order: the climb's velocity (the log's dollars and hours per promotion); the dollars
 billed; what the Examiner billed per task it held out, admission solves included; what comparisons
-billed per task they scored; and how many of the comparisons that began actually reported, since
-one cut short before its report bought nothing it can show. It also totals Builder cache-write and
+billed per task in their last reports' scored version lists (with no unit price at zero scored
+tasks, and the comparison spend still shown); and how many of the comparisons that began actually
+reported, since one cut short before its report bought nothing it can show. It also totals Builder cache-write and
 cache-read tokens over recorded turns once each, including unfinished sessions, excluding usage
 not exposed in those turns. There is one bar, a term of the opening
 the operator may set, which is read and printed and gates nothing (`worthOf`,

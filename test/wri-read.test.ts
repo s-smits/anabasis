@@ -8,11 +8,12 @@
 // clipped at a campaign ending or the log boundary rather than read as seat inactivity.
 // Practice gaps retain the boundary and origin of frozen and compared states.
 // Campaign accounting displays calculated spend beside backend coverage and matched residuals.
+// Limit calls use logged one-based turns; program leads require a judged answer.
 import { describe, expect, it } from "bun:test";
 import { detectable, flipP, power } from "../src/kernel/compare.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
-import type { JsonObject } from "../src/meta/json-shape.ts";
+import type { JsonObject, JsonValue } from "../src/meta/json-shape.ts";
 import { keyIfDefined, keyIfNotNull } from "../src/meta/optional-key.ts";
 import {
   chmodSync,
@@ -1121,24 +1122,27 @@ describe("the reader of a comparison whose solves were told a bound, on a host w
 describe("the reader of misses at a limit, by comparison and side", () => {
   /** A log of one comparison, g-1 of hp against hc, whose solves each end as a row says, after a
    *  submit in the turn it gives. */
-  const read = (endings: readonly (readonly [string, JsonObject, number, number?])[]) => {
+  const read = (
+    endings: readonly (readonly [string, JsonObject, number, number?])[],
+    modelTurns: number | null = 8,
+  ) => {
     const log: LogEvent[] = [];
     const put = appendTo(log);
     put("task.proposed", { version: "v1" });
     put(GATE, { version: "v1", gate: 1, outcome: "passed" });
     const terms = { session: "g-1", old: "hp", fresh: "hc", starter: "hp", setting: SETTING };
     put(COMPARISON_STARTED, { ...terms, solves: 1, level: 0.1, tasks: ["v1"] });
-    for (const [index, [harness, ending, seconds, turn = 0]] of endings.entries()) {
+    for (const [index, [harness, ending, seconds, turn]] of endings.entries()) {
       const ran = condition("v1", harness);
       const id = `m${String(index)}`;
       put(CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) });
       put(SOLVE_STARTED, {
         solve: id,
         condition: conditionId(ran),
-        limits: { wallSeconds: 100, modelTurns: 8 },
+        limits: { wallSeconds: 100, modelTurns },
         comparison: "g-1",
       });
-      put("solve.call", { solve: id, turn, tool: "submit", isError: false });
+      put("solve.call", { solve: id, ...keyIfDefined("turn", turn), tool: "submit", isError: false });
       put(SOLVE_FINISHED, { solve: id, ending, seconds, responseModels: ["m-1"] });
     }
     put(REPORTED, { ...REPORT, ...terms, versions: ["v1"], reading: "no-step" });
@@ -1187,12 +1191,19 @@ describe("the reader of misses at a limit, by comparison and side", () => {
     // Buffer on 12 October: 5 of the reference's 17 misses submitted in their 16th turn of 16.
     expect(
       read([
+        ["hp", refused, 40, 8],
         ["hp", refused, 40, 7],
-        ["hp", refused, 40, 6],
-        ["hc", refused, 40, 7],
-        ["hc", { outcome: "pass" }, 40, 7],
+        ["hc", refused, 40, 8],
+        ["hc", { outcome: "pass" }, 40, 8],
       ]),
     ).toEqual(["g-1: 1 of 2 reference misses and 1 of 1 new at a limit (last turn 2; turns 8)"]);
+  });
+
+  it("uses the logged final turn and leaves missing turns and bounds unknown", () => {
+    expect(read([["hp", refused, 40, 19]], 20)).toEqual([]);
+    expect(read([["hp", refused, 40, 20]], 20)[0]).toContain("last turn 1; turns 20");
+    expect(read([["hp", refused, 40]], 1)).toEqual([]);
+    expect(read([["hp", refused, 40, 1]], null)).toEqual([]);
   });
 
   it("stays quiet on misses a check refused inside the wall, and on a pass that used all of it", () => {
@@ -1618,10 +1629,13 @@ describe("the reader of a harness that answered for its solver", () => {
   const read = (
     practice: readonly (readonly string[])[],
     compared: readonly (readonly [string, readonly string[]])[],
+    evidence: readonly { answer?: JsonValue; ending?: JsonObject; kind?: string }[] = [],
   ) => {
     const log: LogEvent[] = [];
     const put = appendTo(log);
+    let next = 0;
     const made = (task: string, harness: string, calls: readonly string[], measuredIn: string | null) => {
+      const judged: (typeof evidence)[number] = evidence[next++] ?? { answer: {} };
       const ran = condition(task, harness);
       const id = `s${String(log.length)}`;
       put(CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) });
@@ -1634,7 +1648,15 @@ describe("the reader of a harness that answered for its solver", () => {
       for (const [turn, tool] of calls.entries()) {
         put("solve.call", { solve: id, turn, tool, isError: false });
       }
-      put(SOLVE_FINISHED, { solve: id, ending: { outcome: "pass" }, seconds: 50, responseModels: ["m-1"] });
+      if (judged.answer !== undefined) {
+        put("verdict", { solve: id, answer: judged.answer, kind: judged.kind ?? "pass" });
+      }
+      put(SOLVE_FINISHED, {
+        solve: id,
+        ending: judged.ending ?? { outcome: "pass" },
+        seconds: 50,
+        responseModels: ["m-1"],
+      });
     };
     for (const version of ["t1", "v1"]) {
       put("task.proposed", { version });
@@ -1671,6 +1693,31 @@ describe("the reader of a harness that answered for its solver", () => {
         [],
       ),
     ).toBe("one shell call, then submit, in p-1: 1 of 2 practice solves");
+  });
+
+  it("counts submitted null and verifier failures while leaving flags and blocked submits in the denominator", () => {
+    const calls = ["bash", "submit"];
+    const evidence = [
+      { ending: { outcome: "flagged" } },
+      { ending: { outcome: "fail", kind: "no-answer" } },
+      { answer: null },
+      { answer: {}, kind: "non-result", ending: { outcome: "non-result", kind: "verifier" } },
+    ];
+    expect(read([calls, calls, calls, calls], [], evidence)).toBe(
+      "one shell call, then submit, in p-1: 2 of 4 practice solves",
+    );
+    expect(read([calls], [], [evidence[0]!])).toBeUndefined();
+    expect(
+      read(
+        [],
+        [
+          ["hy", calls],
+          ["href", calls],
+          ["href", calls],
+        ],
+        [{ answer: {} }, evidence[0]!, { answer: null }],
+      ),
+    ).toBe("one shell call, then submit, in p-1: 1 of 1 under the new harness, 1 of 2 under the reference");
   });
 
   it("puts each comparison's reference side beside its new one, since a solver can match it alone", () => {

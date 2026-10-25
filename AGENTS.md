@@ -1249,7 +1249,10 @@ Cite a rule by its number in a pull request or a review.
     and ends a campaign on its environment, which is a pause and not a result. Such an ending is not
     a failure of any mechanism: do not patch, triage or report it as one, do not count it against a
     change, and do not spend a pull request on waiting it out. A generic 429, a timeout or a crash
-    that does not name a limit is a different matter: investigate the failure itself.
+    that does not name a limit is a different matter: investigate the failure itself. Logins are
+    spent in the order their weeks reset, the soonest first, a nearly spent one included (`room`,
+    `tools/runs/logins.ts`): a run that stops on its login's limit near the end of the week costs
+    nothing, so long as each week is used before it resets (operator, 25 October).
     The whole-run hours reader (`hoursLine`, `tools/wri/time.ts`) gives role hours as overlapping
     elapsed spans, the union of every recorded wait (provider, network and load), and the hours a
     promotion with and without that union. A provider or network wait runs from its event to the

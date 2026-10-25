@@ -58,9 +58,19 @@ describe("the login a run moves to", () => {
     expect(room(readings, ["2", "3", "4"], new Set(["4"]))).toEqual(["3", "2"]);
   });
 
-  it("leaves a login whose week is nearly spent, whose five hours are, that is refused, or that could not be read", () => {
+  it("takes a nearly spent week first where it resets first, so the week is used before it resets", () => {
+    expect(
+      room(
+        [read("1", 2, 10, "allowed", 90), read("4", 95, 10, "allowed_warning", 50)],
+        ["1", "4"],
+        new Set(),
+      ),
+    ).toEqual(["4", "1"]);
+  });
+
+  it("leaves a login whose week is spent, whose five hours are, that is refused, or that could not be read", () => {
     const readings: Reading[] = [
-      read("1", 90),
+      read("1", 100),
       read("2", 20, 100),
       read("3", 20, 10, "rejected"),
       { login: "4", plain: false, error: "unauthorized" },

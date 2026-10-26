@@ -11,7 +11,7 @@
  * retained set together with the bill, and the promotion tuner weighs a reading again but tests the
  * two sets together and leaves seeds out (`.claude/skills/promotion-tuner/scripts/tree.ts`), while
  * the study's comparisons run on seeds. Every fact here is a production owner's: the pairs
- * (`pairsReported`), each task's points by measure (`pointsOf`) and their rounding (`wholePoints`),
+ * (`pairsReported`), each task's score with and without the bill (`differenceOf`),
  * the test (`flipP`), the A/A's reading (`readsStepEitherWay`) and the epochs (`tasksByEpoch`).
  * Two comparisons drawn from one log read the same scored set where their `set` digests agree:
  * the digest of the tasks their starts fixed, sorted.
@@ -26,15 +26,8 @@
  * is on the exam side (AGENTS.md, section 5).
  */
 import { tasksByEpoch } from "#src/campaign/climb.ts";
-import {
-  flipP,
-  type Paired,
-  pointsOf,
-  readsStepEitherWay,
-  UNMEASURED,
-  wholePoints,
-} from "#src/kernel/compare.ts";
-import { read } from "#src/kernel/log.ts";
+import { differenceOf, flipP, type Paired, readsStepEitherWay, UNMEASURED } from "#src/kernel/compare.ts";
+import { type LogEvent, read } from "#src/kernel/log.ts";
 import { lastReports, pairsReported } from "#src/kernel/reports.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { parseArgs } from "#src/meta/process.ts";
@@ -75,11 +68,10 @@ function scoredIn(
     if (pair === undefined) {
       throw new Error(`task ${task} is tallied in the report and has no pair in the log`);
     }
-    const { validity, objective, bill } = pointsOf(pair);
     return {
       epoch: epochOf.get(task) ?? 0,
-      bare: wholePoints(validity + objective),
-      billed: wholePoints(validity + objective + bill),
+      bare: differenceOf(pair, "unbilled"),
+      billed: differenceOf(pair),
     };
   });
 }
@@ -92,8 +84,7 @@ function asStored(set: JsonValue | undefined, scored: readonly Scored[]): boolea
 }
 
 /** The lines of one comparison's reading. */
-function readingOf(log: string, id: string): string[] {
-  const events = read(log);
+function readingOf(events: readonly LogEvent[], log: string, id: string): string[] {
   const report = lastReports(events).find(({ session }) => session === id);
   if (report === undefined) throw new Error(`${log} holds no report of comparison ${id}`);
   const { data } = report;
@@ -112,19 +103,21 @@ function readingOf(log: string, id: string): string[] {
     const tasks = asRecord(set)?.tasks;
     return Array.isArray(tasks) ? tasks.filter(isString) : [];
   });
+  const aaStep = Array.isArray(noise) && readsStepEitherWay(noise.filter(isNumber), level);
+  const control = Array.isArray(noise) ? `reads ${aaStep ? "a step" : "no step"} either way` : "none stored";
   const within = (set: readonly Scored[], epoch: number) =>
     set.filter((one) => one.epoch === epoch).map(({ bare }) => bare);
   return [
     `${id}: ${named(data.old).slice(0, SHORT)} (old) against ${named(data.fresh).slice(0, SHORT)} (new), level ${String(level)}, reading as recorded ${named(data.reading)}, set ${hashJsonValue(fixed.toSorted(compareCodeUnits)).slice(0, SHORT)} of ${String(fixed.length)} tasks`,
     `  frontier without the bill  ${tallyLine(frontier.map(({ bare }) => bare))}`,
-    `  retained without the bill  ${tallyLine(retained.map(({ bare }) => bare))}`,
+    `  retained without the bill  ${data.retained === UNMEASURED ? UNMEASURED : tallyLine(retained.map(({ bare }) => bare))}`,
     `  together without the bill  ${tallyLine(both.map(({ bare }) => bare))}`,
     `  frontier with the bill     ${tallyLine(frontier.map(({ billed }) => billed))}`,
     `  together with the bill     ${tallyLine(both.map(({ billed }) => billed))}`,
     `  by epoch, without the bill (frontier | retained): ${epochs
       .map((epoch) => `e${String(epoch)} ${wlt(within(frontier, epoch))} | ${wlt(within(retained, epoch))}`)
       .join(", ")}`,
-    `  A/A as stored, with the bill: ${Array.isArray(noise) && readsStepEitherWay(noise.filter(isNumber), level) ? "reads a step either way" : "reads no step either way"}`,
+    `  A/A as stored, with the bill: ${control}`,
     `  with the bill, as the report stored it: frontier ${asStored(data.frontier, frontier) ? "yes" : "NO"}, retained ${data.retained === UNMEASURED || asStored(data.retained, retained) ? "yes" : "NO"}`,
   ];
 }
@@ -136,4 +129,5 @@ const { values } = parseArgs({
 if (values.log === undefined || values.id === undefined) {
   throw new Error("usage: bun studies/transitivity/read.ts --log <log.jsonl> --id <comparison> [--id ...]");
 }
-for (const id of values.id) console.log(readingOf(values.log, id).join("\n"));
+const events = read(values.log);
+for (const id of values.id) console.log(readingOf(events, values.log, id).join("\n"));

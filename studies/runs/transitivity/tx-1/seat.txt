@@ -1,0 +1,6 @@
+events 15867 to 19363, 202 min, $34.95 billed
+sessions tx-1; ended supplied
+drafts proposed 26, gated every 21, none, proved 4, some 1; held 25
+the gate ran 33 solves over 26 drafts: 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 2, 1, 1, 1, 1, 2, 1, 2, 1
+the reference's valid gate answers took 2 to 11 turns, median 2
+calls bash 136, read_example 2, write 1, try_answer 26, try_task 23, wait 7, finish 1

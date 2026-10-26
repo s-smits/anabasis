@@ -108,8 +108,8 @@ const EXAMINE_OPTIONS = {
   /** `on` lays a copy of the reference harness the gate solves with in the Examiner's home; `off`
    *  keeps it blind. The one owner of the default, which a campaign that names no term reads. */
   "reference-home": { type: "string", default: "on" },
-  /** `on` tells the Examiner who won each task in its last comparison; `off` tells it
-   *  nothing of the other harness (`exam-results`, `heard`, `src/examiner/record.ts`). */
+  /** `on` tells the Examiner who won each task in its last comparison; `off` tells it nothing of
+   *  the other harness but whether a valid answer is on record (`exam-results`, `heard`, `record.ts`). */
   results: { type: "string", default: "on" },
   /** The campaign's setting, as every command that solves takes it: the solver and the limits the
    *  reference harness's solves of a draft task run under (`try_task`), and the budget fact the

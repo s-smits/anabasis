@@ -1516,11 +1516,12 @@ CI (`.github/workflows/ci.yml`) runs on `main` and on the top of a landing, wher
 `bun run land -- <top> --merge` dispatches it; pushing to a pull request starts no run, since only
 the top's run is read. It has three jobs:
 
-- `darwin`, on macOS 15, installs the UI's dependencies so that the lint reaches `packages/ui`,
-  then runs typecheck, lint, the format check and the suite;
+- `darwin`, on macOS 15, installs ripgrep, which `bun run runs search` runs, and the UI's
+  dependencies, so that the lint reaches `packages/ui`, then runs typecheck, lint, the format check
+  and the suite;
 - `darwin-ui`, on a macOS 15 runner of its own, runs the UI's own gate, in three separate steps;
-- `linux`, on an Ubuntu VM, installs Bubblewrap and runs the suite, then the climb simulation,
-  which the suite skips without `ANA_CLIMB` (`ANA_CLIMB=1 bun run test -- test/climb.test.ts`).
+- `linux`, on an Ubuntu VM, installs Bubblewrap and ripgrep and runs the suite, then the climb
+  simulation, which the suite skips without `ANA_CLIMB` (`ANA_CLIMB=1 bun run test -- test/climb.test.ts`).
 
 Every step after the install runs even when an earlier one failed, so one run names every failure.
 In a container without user namespaces the tests that need the wall fail. Name those in the pull

@@ -14,7 +14,8 @@
  * (`hosts.ts`), `fetch` takes a copy of a run another machine holds into the archive, to read here (`move.ts`), and `retire` moves
  * each idle campaign into the archive, deletes each idle seed and the worktrees nothing uses, here and on every host (`retire.ts`). A verb that names a run no worktree here holds runs on the host that holds it
  * (`routed`), and `holds` is what that host is asked. `active` names each login's live runs on every
- * host, which `usage` counts on each login's line (`logins.ts`).
+ * host, which `usage` counts on each login's line (`logins.ts`). `search` finds text across
+ * campaign records and notes on all hosts without copying logs (`search.ts`).
  */
 import { runtimeProcess } from "#src/meta/process.ts";
 import { fresh } from "./fresh.ts";
@@ -35,6 +36,7 @@ import { view } from "./view.ts";
 import { zipRuns } from "./zip.ts";
 import { catalogue } from "./snapshots.ts";
 import { continueOn } from "./continuation.ts";
+import { search } from "./search.ts";
 
 const VERBS = {
   pulse: watch,
@@ -61,6 +63,7 @@ const VERBS = {
   hosts: hostsHealth,
   holds,
   catalogue,
+  search,
 };
 const [verb, ...args] = Bun.argv.slice(2);
 const run = Object.entries(VERBS).find(([name]) => name === verb)?.[1];

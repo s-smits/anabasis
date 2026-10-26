@@ -11,6 +11,10 @@
  * torn last line, and an event the task states read when folding it onto the log so far throws. A
  * reviewer's probe appended a second `task.proposed` and every later read threw. Only those events
  * can break the fold, so solves, verdicts and traces, the frequent ones, skip the read.
+ * On 26 October the two-process transition test reproduced a release validated against held while
+ * a dispute was appended, leaving an unreadable history. One exclusive descriptor lock now covers
+ * validation, the complete line's write and its sync. Closing the descriptor releases it on every
+ * path, and a short write throws instead of reporting an event the log does not hold whole.
  */
 import {
   closeSync,
@@ -18,6 +22,7 @@ import {
   fstatSync,
   fsyncSync,
   ftruncateSync,
+  lockExclusiveSync,
   openSync,
   readFileSync,
   readSync,
@@ -156,15 +161,17 @@ export interface LogEvent {
 
 export function append(path: string, kind: EventKind, data: JsonObject): LogEvent {
   const event: LogEvent = { at: new Date().toISOString(), kind, data };
-  if (foldsEvent(kind)) taskStates([...read(path), event]);
   const fd = openSync(path, "a+");
   try {
+    lockExclusiveSync(fd);
+    if (foldsEvent(kind)) taskStates([...read(path), event]);
     const size = fstatSync(fd).size;
     const last = Buffer.alloc(1);
     if (size > 0 && readSync(fd, last, 0, 1, size - 1) === 1 && last[0] !== NEWLINE) {
       throw new Error(`${path}: the last line is torn, so nothing is appended`);
     }
-    writeSync(fd, `${capturedJsonStringify(event)}\n`);
+    const line = Buffer.from(`${capturedJsonStringify(event)}\n`, "utf8");
+    if (writeSync(fd, line) !== line.length) throw new Error(`${path}: the log line was not written whole`);
     fsyncSync(fd);
   } finally {
     closeSync(fd);

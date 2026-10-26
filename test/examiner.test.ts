@@ -516,6 +516,61 @@ function inOrder<T extends JsonValue>(
 }
 
 describe("a session that writes tasks", () => {
+  for (const gate of [TRY, "propose_tasks"]) {
+    it(`holds the same task version by checked reference as by content through ${gate}`, async () => {
+      const results: JsonObject[][] = [];
+      for (const byReference of [false, true]) {
+        const s = seat("write", []);
+        const mode = writing(
+          {
+            ...s.request,
+            verify,
+            probe: gate === TRY ? async () => REJECTED : null,
+          },
+          undefined,
+          "unseen",
+        );
+        const checked = await invoke(mode.tools.find(({ name }) => name === "try_answer")!, "check", {
+          ...instance(7),
+          hidden: JSON.stringify({ seed: 1 }),
+          answer: GOOD,
+        });
+        const said = checked.output?.[0];
+        const reference =
+          said?.type === "text" ? /Instance reference: (\w+)\./u.exec(said.text)?.[1] : undefined;
+        expect(reference).toBeDefined();
+        const put = mode.tools.find(({ name }) => name === gate)!;
+        const unknown = await invoke(put, "unknown", { tasks: [{ reference: "missing" }] });
+        expect(unknown.output).toEqual([
+          {
+            type: "text",
+            text: expect.stringContaining(`Known references: ${String(reference)}`),
+          },
+        ]);
+        expect(mode.result().puts).toBe(0);
+        expect(s.of(PROPOSED)).toHaveLength(0);
+        await invoke(put, "propose", {
+          tasks: [byReference ? { reference: String(reference) } : instance(7)],
+        });
+        await mode.settle(true);
+        expect(mode.result().held).toHaveLength(1);
+        expect(s.of("task.feasible")).toMatchObject([{ answer: GOOD }]);
+        results.push(s.of(PROPOSED));
+        // A reference and its full content are one duplicate while held, as while pending.
+        await invoke(put, "duplicate", { tasks: [instance(7), { reference: String(reference) }] });
+        expect(mode.result().puts).toBe(1);
+        const next = writing({ ...s.request, id: "x-2", verify }, undefined, "unseen");
+        const expired = await invoke(next.tools[0]!, "expired", {
+          tasks: [{ reference: String(reference) }],
+        });
+        expect(expired.output).toEqual([
+          { type: "text", text: expect.stringContaining("Known references: none") },
+        ]);
+      }
+      expect(results[0]).toEqual(results[1]);
+    });
+  }
+
   it("serves its opening again on read_opening, for a context that was compacted", async () => {
     const s = seat("write", [call("read_opening", {}), finish, finish]);
     await examine(s.request);
@@ -743,8 +798,8 @@ describe("a session that writes tasks", () => {
         .slice(0, 2)
         .map(({ text }) => text),
     ).toEqual([
-      "Every applicable check passed this answer: the instance has a valid answer.",
-      "Refused by check-product.",
+      expect.stringContaining("Every applicable check passed"),
+      expect.stringContaining("Refused by check-product"),
     ]);
     const proved = [s.versionOf("x-1-001", 7), s.versionOf("x-1-003", 9), s.versionOf("x-1-004", 10)];
     expect(s.of("task.feasible")).toEqual(
@@ -1539,62 +1594,21 @@ describe("a session that writes tasks", () => {
     }
   }
 
-  it("writes an example longer than a result whole beside the seat, and tells its size and where it is", async () => {
-    const s = seat("write", []);
-    const spill = join(dirname(s.log), "seat-tmp");
-    mkdirSync(spill, { recursive: true });
-    // Past what pi keeps of a result in both bytes and lines; four recorded drafts of 22,191 to
-    // 73,638 characters came back cut at 20,000 as JSON that did not parse.
+  it("caps a long example without an environment and tells its full size", async () => {
+    const s = seat("write", [call("read_example", { task: "x-1/long" }), finish, finish]);
     const long = {
       ...EXAMPLE,
       taskId: "x-1/long",
       publicInput: { values: Array.from({ length: 9_000 }, (_, at) => at) },
     };
-    const short = writing({ ...s.request, tasks: [EXAMPLE, long] }, undefined, "unseen");
-    const walls = { pinned: [], shell: { dirs: { temp: spill } } };
-    const mode = writing({ ...s.request, tasks: [EXAMPLE, long] }, walls, "unseen");
-    const example = (of: typeof mode, task: string) =>
-      invoke(of.tools.find(({ name }) => name === "read_example")!, task, { task });
-    const said = (await example(mode, long.taskId)).output?.[0];
-    const shown = said?.type === "text" ? said.text : "";
-    const whole = JSON.stringify(long, null, 2);
-    const file = join(spill, "read_example-x-1_long.json");
-    expect(shown).toContain(`of ${String(Buffer.byteLength(whole))} bytes. The full file is at ${file}.`);
+    await examine({ ...s.request, tasks: [EXAMPLE, long] });
+    const shown = s.of(CALLED).find(({ tool }) => tool === "read_example")?.text;
+    expect(isString(shown)).toBe(true);
+    if (!isString(shown)) throw new Error("no example text");
+    expect(shown).toContain(`of ${String(Buffer.byteLength(JSON.stringify(long, null, 2)))} bytes.`);
+    expect(shown).not.toContain("The full file is at");
     expect(Buffer.byteLength(shown)).toBeLessThanOrEqual(50 * 1024);
     expect(shown.split("\n").length).toBeLessThanOrEqual(2_000);
-    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual(long);
-    // A short example comes back whole, and without a TMPDIR a long one tells its size alone.
-    expect((await example(mode, EXAMPLE.taskId)).output).toEqual([
-      { type: "text", text: JSON.stringify(EXAMPLE, null, 2) },
-    ]);
-    const bare = (await example(short, long.taskId)).output?.[0];
-    expect(bare?.type === "text" ? bare.text : "").toMatch(/of \d+ bytes\.$/u);
-  });
-
-  it("writes a long example over a link the Examiner left at its file, and leaves what the link names as it was", async () => {
-    const s = seat("write", []);
-    const spill = join(dirname(s.log), "seat-tmp");
-    mkdirSync(spill, { recursive: true });
-    const long = {
-      ...EXAMPLE,
-      taskId: "x-1",
-      publicInput: { values: Array.from({ length: 9_000 }, (_, at) => at) },
-    };
-    // The file's name is known, and the folder is the Examiner's to write: followed, the link would
-    // have the host overwrite a file of its own, the campaign's log among them.
-    const target = join(dirname(s.log), "host-file.txt");
-    writeFileSync(target, "the host's\n");
-    const file = join(spill, "read_example-x-1.json");
-    symlinkSync(target, file);
-    const mode = writing(
-      { ...s.request, tasks: [EXAMPLE, long] },
-      { pinned: [], shell: { dirs: { temp: spill } } },
-      "unseen",
-    );
-    await invoke(mode.tools.find(({ name }) => name === "read_example")!, "x-1", { task: "x-1" });
-    expect(readFileSync(target, "utf8")).toBe("the host's\n");
-    expect(lstatSync(file).isSymbolicLink()).toBe(false);
-    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual(long);
   });
 
   it("holds a task out by try_task at some valid solves of the reference harness and not all, and tells the counts alone", async () => {

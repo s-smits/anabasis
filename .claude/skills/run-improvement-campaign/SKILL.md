@@ -92,7 +92,13 @@ time, tell the operator and ask, rather than land first.
    `cases/before-after.md`): its commit against the commit beneath it, on the same logs or the same
    seed cut from the run that showed the defect, at the smallest layer that shows it. The pull
    request states what moved against what was predicted. A fix is measured by the next cycle's
-   runs, never by the runs it was found in.
+   runs, never by the runs it was found in. When a Codex swarm implements the rows, the primary
+   commits what its sandbox cannot (no nested verifier wall, no git directories), stacks the patches
+   with `git apply --3way`, folds later fixes into their commits, and runs the composed gate on the
+   top, which found an interaction every commit had passed alone
+   ([references/cycle-ledger.md](references/cycle-ledger.md)). A patch that rewrites the scheduler
+   and changes the counting rule of the runs launched next is deferred, with its reason in the plan,
+   until a recorded reading is shown to flip on it.
 9. **Consolidate the open stack** before it lands, from the order its fixes were found into one
    structured by subject: review it in groups of related pull requests,
    fix what the reviews confirm in lanes, regroup related pull requests into one, publish, and
@@ -460,8 +466,8 @@ local file beside the handover. Timers arrange this procedure; they add no campa
 
 | Timer | When | Does |
 | --- | --- | --- |
-| watch | hourly, off the hour | every run's milestone and possible stall on every host |
-| pass | every three hours | rewrite ranked triage, rehearse its top row, fix the owner, review timer usefulness |
+| watch | hourly, off the hour and the half hour (`13 * * * *`) | every run's milestone and possible stall on every host; one ledger row, silent when nothing moved |
+| pass (the cycle's driver) | every three hours (`17 */3 * * *`) | take the first cycle step not done, close out ended runs, read `runs usage`, review timer usefulness from the ledger alone |
 | milestone | one-shot at the predicted event | read the named milestone and any investigation it owes |
 | cycle checkpoint | one-shot at each step of the release cycle | run `scripts/cycle.ts` over the cycle's runs, take the step it names within the order, log it, and re-arm or delete the cycle's timers |
 | handover | one-shot at the agreed handover time | five points, changes and decisions waiting |
@@ -491,6 +497,16 @@ idle, a few minutes off the time it names. So:
 - When a timer is replaced (an hour moved, a run added), delete the old one by its id. A one-shot
   that a later reading made early is re-armed, not left to fire on stale facts.
 - The handover timer reads the other timers' ledger rows and says which were useful.
+- Review timers from the ledger inside the pass, not with a separate recurring Codex session: on 24
+  October one fired three times in six hours, the first from a ledger 20 minutes stale, the second
+  with no change, and the third found it redundant. A Codex review is for a new kind of timer or
+  three empty firings in a row.
+- Write the time with its UTC offset in the ledger and the prompt (DST ended 25 October 03:00), and
+  keep recurring minutes off :00 and :30.
+
+The ledger's shape, the fixed steps with their done-when, how the loop opens the next cycle by
+itself and where it stops, and what the 24 October cycle taught are in
+[references/cycle-ledger.md](references/cycle-ledger.md).
 
 ## Which skill each step uses
 

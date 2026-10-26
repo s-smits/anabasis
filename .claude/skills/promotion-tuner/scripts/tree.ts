@@ -48,8 +48,9 @@ export interface Tree {
   /** A task's points by measure under the tree's weights (`pointsOf`). */
   points(pair: Paired): Measures;
   flipP(differences: readonly number[]): number;
+  readsStep(differences: readonly number[], unbilled: readonly number[], level: number): boolean;
   /** Whether a reading of a harness against itself reads a step either way at `level`. */
-  readsStepEitherWay(differences: readonly number[], level: number): boolean;
+  readsStepEitherWay(differences: readonly number[], level: number, unbilled: readonly number[]): boolean;
   /** The points a report holds by measure, or undefined in a report from before the weights. */
   measures(value: JsonValue | undefined): Measures | undefined;
   billedBetween(events: readonly LogEvent[], from: number, to: number): number;
@@ -91,7 +92,13 @@ export async function loadTree(path: string): Promise<Tree> {
     pairsOf: (events, versions, sides, solves) => compare.pairsOf(events, versions, sides, solves).pairs,
     points: (pair) => compare.pointsOf(pair),
     flipP: (differences) => compare.flipP(differences),
-    readsStepEitherWay: (differences, level) => compare.readsStepEitherWay(differences, level),
+    // A tree from before 26 October read a step on its scores alone, and is replayed by its own rule.
+    readsStep: (differences, unbilled, level) =>
+      isFunction(compare.readsStep)
+        ? compare.readsStep(differences, unbilled, level)
+        : compare.flipP(differences) <= level,
+    readsStepEitherWay: (differences, level, unbilled) =>
+      compare.readsStepEitherWay(differences, level, unbilled),
     measures: (value) => compare.measuresIn(value),
     billedBetween: (events, from, to) => trace.billedBetween(events, from, to),
     billed: trace.BILLED,

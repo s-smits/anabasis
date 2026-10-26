@@ -84,7 +84,7 @@
  * comparison asked for the first started are taken, since the order solves ended in would take the
  * quick ones; a task with fewer on a side is in no pair, and named (`short`).
  *
- * Nothing here decides a step; it reports the tally and its test.
+ * The step rule, tally and test live here; the campaign applies the reading.
  */
 import { sha256 } from "../meta/digest.ts";
 import { asRecord, isNumber, type JsonObject } from "../meta/json-shape.ts";
@@ -292,13 +292,34 @@ export function flipP(differences: readonly number[]): number {
   return Math.min(1, above(signed(sizes, 0.5), Math.ceil((total(differences) + total(sizes)) / 2)));
 }
 
-/** Whether a reading of one harness against itself reads a step either way at `level`: the
- *  smaller of its two one-sided tests at or under it, as a comparison would read a step whichever
+/** Whether both the scored and unbilled tests clear `level` for the new harness. */
+export function readsStep(
+  differences: readonly number[],
+  unbilled: readonly number[],
+  level: number,
+): boolean {
+  return flipP(differences) <= level && flipP(unbilled) <= level;
+}
+
+/** Whether a reading of one harness against itself reads a step either way at `level`: both
+ *  tests must clear in the same direction, as a comparison would read a step whichever
  *  sample it took for the new harness. Its two sides are interchangeable by construction, so such
  *  a step says the comparison moved, not a harness. The whole-run reader and the UI count it so,
- *  and no move waits on it: until 20 October the table ended a campaign on its epoch's first. */
-export function readsStepEitherWay(differences: readonly number[], level: number): boolean {
-  return Math.min(flipP(differences), flipP(differences.map((one) => -one))) <= level;
+ *  and no move waits on it: until 20 October the table ended a campaign on its epoch's first.
+ *  An old report without unbilled scores retains its scored-only reading. */
+export function readsStepEitherWay(
+  differences: readonly number[],
+  level: number,
+  unbilled: readonly number[] = differences,
+): boolean {
+  return (
+    readsStep(differences, unbilled, level) ||
+    readsStep(
+      differences.map((one) => -one),
+      unbilled.map((one) => -one),
+      level,
+    )
+  );
 }
 
 /** The chance that a reading at `level` of untied tasks with the margins of `differences` reads a
@@ -338,7 +359,7 @@ export function sweepOf(level: number): number {
  * can be read by, rather than reading a field older reports lack.
  */
 export function stepOf(report: JsonObject, level: number): "step" | "no-step" {
-  const clears = (key: "differences" | "unbilled") => {
+  const together = (key: "differences" | "unbilled") => {
     const scores = (held: unknown) => {
       const found = asRecord(held)?.[key];
       return Array.isArray(found) && found.every(isNumber) ? found : null;
@@ -348,10 +369,9 @@ export function stepOf(report: JsonObject, level: number): "step" | "no-step" {
     if (frontier === null || retained === null) {
       throw new Error(`a reading needs a frontier and a retained set, each with its ${key}`);
     }
-    return flipP([...frontier, ...retained]) <= level;
+    return [...frontier, ...retained];
   };
-  const [asScored, withoutBill] = [clears("differences"), clears("unbilled")];
-  return asScored && withoutBill ? "step" : "no-step";
+  return readsStep(together("differences"), together("unbilled"), level) ? "step" : "no-step";
 }
 
 /** The objective rule a comparison's start, or its report, carries, or undefined where it fixed

@@ -17,6 +17,7 @@ import {
   pointsOf,
   power,
   readingsOf,
+  readsStepEitherWay,
   roomLeft,
   scored,
   stepOf,
@@ -384,6 +385,20 @@ describe("one reading", () => {
     expect(() => stepOf({ frontier: { differences: units(6, 0) }, retained: "unmeasured" }, STRICT)).toThrow(
       "each with its unbilled",
     );
+  });
+
+  it("requires scored and unbilled A/A tests to clear in the same direction, retaining old scored-only reports", () => {
+    const wins = units(6, 0);
+    const losses = units(0, 6);
+    expect(flipP(wins)).toBe(1 / 64);
+    expect(readsStepEitherWay(wins, STRICT, units(0, 0, 0, 6))).toBe(false);
+    expect(readsStepEitherWay(wins, STRICT, units(5, 1))).toBe(false);
+    expect(readsStepEitherWay(wins, STRICT, losses)).toBe(false);
+    expect(readsStepEitherWay(losses, STRICT, wins)).toBe(false);
+    expect(readsStepEitherWay(wins, STRICT, wins)).toBe(true);
+    expect(readsStepEitherWay(losses, STRICT, losses)).toBe(true);
+    expect(readsStepEitherWay(wins, STRICT)).toBe(true);
+    expect(readsStepEitherWay(losses, STRICT)).toBe(true);
   });
 
   it("reads a step whose untied frontier tasks all fall in one family of the two the sets hold as any other", () => {

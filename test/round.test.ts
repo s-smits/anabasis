@@ -1667,7 +1667,7 @@ describe("a checkpoint with no session", () => {
       scored: { wins: 0, losses: 4, ties: 0, differences: [-300, -600, -600, -600] },
       // The first and last slot against the two between tie the reference with itself on s1, and
       // two of its four solves of s1 that disagree are four of its six pairs.
-      noise: { wins: 0, losses: 0, ties: 4, p: 1, flips: 1 / 6 },
+      noise: { wins: 0, losses: 0, ties: 4, p: 1, flips: 1 / 6, unbilled: [0, 0, 0, 0] },
     });
     // No solve was made for it: four a side on each of four tasks.
     expect(s.asked.filter(({ side }) => side === "old")).toHaveLength(16);

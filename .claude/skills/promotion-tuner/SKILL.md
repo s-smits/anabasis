@@ -6,7 +6,7 @@ description: "Score recorded comparisons again by a tree's weighted measures, wi
 # Promotion tuner
 
 A comparison scores each task by three weighted measures over the pairings of its solves, and one
-test over those scores at or under the level promotes (`AGENTS.md`, section 7, "The tally" and
+test over those scores and another without the bill must both clear the level to promote (`AGENTS.md`, section 7, "The tally" and
 "The test"). This skill asks whether a tree's score supports the recorded promotions, and how other
 weights, another level or a candidate tree read the same solves. A replay starts no solve, calls no
 model and writes nothing of a campaign's.
@@ -38,7 +38,8 @@ bun .claude/skills/promotion-tuner/scripts/replay.ts --tree <worktree> \
 
 - `--tree` names the worktree whose kernel scores the record, as an absolute path. The totals name
   its commit and whether `src/` has uncommitted changes. A tree from before 21 October, which
-  scores no weighted measures, is refused.
+  scores no weighted measures, is refused. A tree without `readsStep` (before 26 October) reads a
+  step on the scores alone, as it did.
 - By default the shared run registry discovers campaigns in every worktree and archive, and
   refreshes remote logs and receipts through `ANA_HOSTS`. Load the host environment with
   `bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/replay.ts ...`.
@@ -54,7 +55,7 @@ bun .claude/skills/promotion-tuner/scripts/replay.ts --tree <worktree> \
 Live logs grow. Read the baseline and the candidate close together, and record the minute of each.
 
 The script reaches a tree only through its own `read`, `lastReports`, `pairsReported`, `pairsOf`,
-`pointsOf`, `WEIGHTS`, `flipP`, `measuresIn`, `billedBetween` and `BILLED` (`loadTree`).
+`pointsOf`, `WEIGHTS`, `flipP`, `readsStep`, `readsStepEitherWay`, `measuresIn`, `billedBetween` and `BILLED` (`loadTree`).
 
 ## What to read
 
@@ -91,8 +92,11 @@ epochs' hours and dollars.
 
 An A/A is the reference against itself on mirrored halves of its solves (`pairsOf` with
 `halves: "mirrored"`), available at four or more solves a side, an even count. The tree's
-`readsStepEitherWay` reads it, either way at the comparison's level, as the whole-run reader and
-the UI do. An A/A step is false by construction.
+`readsStepEitherWay` reads a step only where both the scored and unbilled tests clear the comparison's
+level in the same direction, as the whole-run reader and the UI do. An A/A step is false by construction.
+Recorded reports without unbilled A/A scores retain their scored-only reading; the replay reconstructs
+both scores from the pairs. A reading with a stored task that has neither a pair nor an unbilled
+score cannot establish a replayed step.
 
 `rightful` means the recorded solves support the promotion under this score. It cannot detect a
 lucky draw; the A/A, the false-promotion estimate and a later reading on fresh solves give other

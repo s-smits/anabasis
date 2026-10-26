@@ -119,11 +119,13 @@ export interface Report {
   readonly overlap: { readonly with: string; readonly tasks: readonly string[] } | null;
   /** The reference harness against itself on halves of its own solves mirrored in time, the A/A,
    *  where it holds four or more of a task: how often two of its solves of a task
-   *  disagree (`flips`), the least share of its untied tasks one half has to win for a reading of it
-   *  either way at the level (`readsStepEitherWay`) to detect it four times in five (`detectable`), which says how much its
+   *  disagree (`flips`), the least share of its untied tasks one half has to win for the scored
+   *  test at the level to detect it four times in five (`detectable`), which says how much its
    *  reading no step can show. A report of 12 to 18 October also holds the objective's margin its
    *  own spread set, which the next comparison read by until one margin stood for all, and none
-   *  since 19 October (`SAME`, `compare.ts`). */
+   *  since 19 October (`SAME`, `compare.ts`). The step needs both scored and unbilled tests in
+   *  the same direction; `detectable` describes the scored test alone. Older reports without
+   *  unbilled scores retain their scored-only A/A reading. */
   readonly noise:
     | (Tested & {
         readonly flips: number | null;
@@ -490,7 +492,7 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
         : {
             ...aa,
             flips: flipsOf(mirrored),
-            // Either half may win, each read at the level, as `readsStepEitherWay` reads the A/A.
+            // Power of the scored test alone; the A/A step also needs the unbilled test.
             detectable: detectable(aa.differences, fixed.level),
           },
     counted: pairs.length === first.length ? null : scored(first),

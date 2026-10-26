@@ -487,6 +487,22 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     );
     expect(epochsOf([started, ...many])[0]?.falsePromotion.union).toBe(1);
   });
+
+  it("counts no false step carried by the bill, and requires both A/A tests to be capable", () => {
+    const aa = (session: string, unbilled: readonly number[]) =>
+      event("comparison.reported", {
+        ...attempt(session, "S", "h2").data,
+        noise: { differences: [1, 1, 1, 1], unbilled: [...unbilled] },
+      });
+    const log = [
+      started,
+      aa("bill-only", [0, 0, 0, 0]),
+      aa("unbilled-short", [1, 1, 1, -1]),
+      aa("opposite", [-1, -1, -1, -1]),
+      aa("both", [1, 1, 1, 1]),
+    ];
+    expect(epochsOf(log)[0]?.falsePromotion).toMatchObject({ errors: 1, controls: 3, incapable: 1 });
+  });
 });
 
 describe("the bar a promotion is read against, beside an old ladder's readings", () => {

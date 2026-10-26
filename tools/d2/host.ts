@@ -11,6 +11,10 @@
  *   `--loaded` is the operator's word that the solves' times will not be compared.
  * - **The reserve, beside the solves in flight.** A solve waits while others fly and the budget
  *   holds no reserve for it (`affords`); until 14 October each kind of solve held its own.
+ * - **The solve slots, shared by every seat.** The same in-flight count holds comparison workers,
+ *   practice and admission probes to the concurrency the condition records. On 26 October,
+ *   buffer-fresh-opus-v072 showed 13 overlapping admission solves at a recorded concurrency of 4:
+ *   each draft and its remaining probes could start together, outside the comparison's workers.
  * - **A provider's named reset.** A usage limit that names when it lifts is slept out, not a crash:
  *   on 12 October one login's limit, an hour and forty minutes from its reset, ended five campaigns
  *   on two hosts at once (`waitOut`, `src/solver/run.ts`, which a solve also calls).
@@ -18,10 +22,11 @@
  *   in buffer-149 on 13 October, Builder session b-2 began 2 s after b-1 crashed on a failed DNS
  *   lookup (`waitCrashed`).
  *
- * Every wait but the reserve's is on record as `campaign.waited`, so a reader tells the solver's
- * time from the host's, and a provider's starts the crash rule's count again (`crashedRun`).
- * A queued solve leaves on its kill signal without invoking the solving seat. Load and reserve
- * sleeps are interruptible; a load wait records its elapsed time even when cancellation ends it.
+ * Every wait but the reserve's and slots' is on record as `campaign.waited`, so a reader tells
+ * the solver's time from the host's, and a provider's starts the crash rule's count again
+ * (`crashedRun`). A queued solve leaves on its kill signal without invoking the solving seat.
+ * Load, reserve and slot waits are interruptible; a load wait records its elapsed time even when
+ * cancellation ends it.
  */
 import { CRASHES } from "#src/campaign/decide.ts";
 import { crashedRun } from "#src/campaign/ground.ts";
@@ -65,7 +70,7 @@ const NETWORK =
 const WAITED = "campaign.waited";
 
 /**
- * `seated` with each solve held at the load and then at the reserve. A rehearsal's scripts, whose
+ * `seated` with each solve held at the load, reserve and shared slots. A rehearsal's scripts, whose
  * times nobody compares and which bill nothing, are seated ungated unless a test stands in a host.
  */
 export function gated(
@@ -105,7 +110,8 @@ export function gated(
             `a solve of ${task.taskId} waits for the campaign's reserve while others are in flight`,
           );
         }
-        while (inFlight(log) > 0 && !affords(log, 1)) {
+        kill?.throwIfAborted();
+        while (inFlight(log) >= campaign.limits.concurrency || (inFlight(log) > 0 && !affords(log, 1))) {
           if (kill?.aborted === true) break;
           await waiting(host.waitMs, kill, host.sleep);
         }

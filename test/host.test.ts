@@ -1,13 +1,14 @@
 /**
  * What a campaign waits for (`tools/d2/host.ts`): the host's load before a solve, the campaign's
- * reserve beside the solves in flight, a provider's named reset and a network that failed a
- * session. Queued solves leave on cancellation, even while the host's sleep remains unresolved;
+ * reserve and shared slots beside the solves in flight, a provider's named reset and a network
+ * that failed a session. Queued solves leave on cancellation while the host's sleep remains unresolved;
  * only load waits record their elapsed time. Tests inject the host's sleeps and clock.
  */
-import { describe, expect, it, spyOn } from "bun:test";
+import { afterAll, describe, expect, it, spyOn } from "bun:test";
 import { resetOf } from "../src/agent/backends/claude.ts";
 import { crashedRun } from "../src/campaign/ground.ts";
 import { affords, flying } from "../src/campaign/opening.ts";
+import { measured } from "../src/examiner/write.ts";
 import { append, type LogEvent, read } from "../src/kernel/log.ts";
 import type { TaskPackage } from "../src/kernel/task.ts";
 import { mkdtempSync } from "../src/meta/filesystem.ts";
@@ -18,12 +19,13 @@ import type { Kept } from "../tools/d2/campaign.ts";
 import { waitOut } from "../src/solver/run.ts";
 import { gated, type Host, waitCrashed } from "../tools/d2/host.ts";
 import type { Campaign, Seats } from "../tools/d2/round.ts";
-import { EXAMPLE } from "./helpers/examiner-seat.ts";
+import { EXAMPLE, seat as examinerSeat, sweep } from "./helpers/examiner-seat.ts";
 
 // 12 October, 12:09Z: 14:09 in Amsterdam.
 const NOW = new Date("2026-10-12T12:09:00Z");
 const TASK: TaskPackage = { ...EXAMPLE, ruleIds: [], checks: "" };
 const HARNESS: Kept = { dir: "", digest: "h1" };
+afterAll(sweep);
 
 const REPO = dirname(import.meta.dir);
 const logIn = (name: string) => join(mkdtempSync(join(tmpdir(), `ana-host-${name}-`)), "campaign.jsonl");
@@ -46,7 +48,7 @@ function hostOf(load: () => number, cores = 4, slept: (count: number) => void = 
 }
 
 /** The gate on a seat that passes each solve, as a campaign's solves meet it. */
-function gate(log: string, host: Host, loaded = false) {
+function gate(log: string, host: Host, loaded = false, concurrency = 4) {
   const calls: string[] = [];
   const seat: Seats = {
     builder: null,
@@ -56,9 +58,9 @@ function gate(log: string, host: Host, loaded = false) {
       return { solve: "s-1", ending: { outcome: "pass" } };
     },
   };
-  // SAFETY: the gate hands the campaign to the seat it wraps and reads nothing of it, and the
-  // seat above reads none of its arguments, so an empty one stands in.
-  const seats = gated({ seated: () => seat, loaded, host }, log)({} as Campaign, {
+  // SAFETY: the host reads only these solve limits; the scripted seat reads no campaign fields.
+  const campaign = { limits: { concurrency } } as Campaign;
+  const seats = gated({ seated: () => seat, loaded, host }, log)(campaign, {
     builder: undefined,
     reference: "h1",
   });
@@ -66,6 +68,72 @@ function gate(log: string, host: Host, loaded = false) {
 }
 
 describe("the gate at a solve's start", () => {
+  it("holds admission probes and comparison solves within the condition's shared concurrency", async () => {
+    const s = examinerSeat("write", []);
+    const log = s.log;
+    const release = Promise.withResolvers<void>();
+    const ready = Promise.withResolvers<void>();
+    let running = 0;
+    let peak = 0;
+    let starts = 0;
+    const held = gated(
+      {
+        loaded: true,
+        host: { load: () => 0, cores: 8, waitMs: 30_000, sleep: () => release.promise },
+        seated: () => ({
+          builder: null,
+          setting: "s",
+          solve: async () => {
+            starts += 1;
+            running += 1;
+            peak = Math.max(peak, running);
+            if (running === 4) ready.resolve();
+            try {
+              await release.promise;
+              return { solve: `s-${String(starts)}`, ending: { outcome: "pass" } };
+            } finally {
+              running -= 1;
+            }
+          },
+        }),
+      },
+      log,
+    );
+    // SAFETY: the scripted seat reads no campaign fields; the host reads only its solve limits.
+    const campaign = { limits: { concurrency: 4 } } as Campaign;
+    const given = { builder: undefined, reference: HARNESS.dir };
+    const comparison = held(campaign, given);
+    const admission = held(campaign, given);
+    const work = Promise.all([
+      comparison.solve(TASK, HARNESS, undefined, "g-1"),
+      ...Array.from({ length: 7 }, (_, index) =>
+        measured(
+          {
+            log,
+            id: "x-1",
+            contract: s.request.contract,
+            planted: new Set<string>(),
+            probe: async (task, session, kill) =>
+              (await admission.solve(task, HARNESS, kill, session)).ending,
+          },
+          s.request.pack({ ...EXAMPLE, taskId: `draft-${String(index)}` }),
+          new AbortController().signal,
+          async () => null,
+        ),
+      ),
+    ]);
+    await ready.promise;
+    try {
+      expect(running).toBe(4);
+    } finally {
+      release.resolve();
+      await work;
+    }
+    expect(starts).toBe(22);
+    expect(peak).toBe(4);
+    expect(running).toBe(0);
+  });
+
   it("starts a solve at once on a host at or under its cores, and under --loaded on any", async () => {
     const log = logIn("idle");
     const idle = hostOf(() => 4);
@@ -123,8 +191,8 @@ describe("the gate at a solve's start", () => {
     expect(waits(log)).toEqual([]);
   });
 
-  it("leaves a load or reserve wait on cancellation without releasing the host's sleep", async () => {
-    for (const queued of ["load", "reserve"]) {
+  it("leaves a load, reserve or slot wait on cancellation without releasing the host's sleep", async () => {
+    for (const queued of ["load", "reserve", "slot"]) {
       const log = logIn(queued);
       const kill = new AbortController();
       const reason = new Error("the queued solve was cancelled");
@@ -140,7 +208,7 @@ describe("the gate at a solve's start", () => {
         },
       };
       if (queued === "reserve") append(log, "campaign.opened", { budget: { dollars: 0.7, reserve: 0.4 } });
-      const held = gate(log, host);
+      const held = gate(log, host, false, queued === "slot" ? 1 : 4);
       let now = 1000;
       const clock = spyOn(Date, "now").mockImplementation(() => now);
       try {
@@ -214,7 +282,7 @@ describe("the gate at a solve's start", () => {
       const { gated, HOST } = await import(${JSON.stringify(join(REPO, "tools/d2/host.ts"))});
       const seat = { builder: null, setting: "s", solve: async () => ({ solve: "s-1", ending: { outcome: "pass" } }) };
       const host = { ...HOST, load: () => 99, cores: 1, waitMs: 5000 };
-      const seats = gated({ seated: () => seat, loaded: false, host }, ${JSON.stringify(logIn("exit"))})({}, {});
+      const seats = gated({ seated: () => seat, loaded: false, host }, ${JSON.stringify(logIn("exit"))})({ limits: { concurrency: 4 } }, {});
       const kill = new AbortController();
       setTimeout(() => kill.abort(), 50);
       await seats.solve({ taskId: "t" }, { dir: "", digest: "h1" }, kill.signal).catch(() => {});

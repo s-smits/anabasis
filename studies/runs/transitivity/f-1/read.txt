@@ -1,0 +1,9 @@
+f-1: bf461326 (old) against 6a42fac4 (new), level 0.02, reading as recorded step, set 6136fffa of 32 tasks
+  frontier without the bill  24-0-0, untied 24, p 0.0000
+  retained without the bill  7-0-1, untied 7, p 0.0078
+  together without the bill  31-0-1, untied 31, p 0.0000
+  frontier with the bill     24-0-0, untied 24, p 0.0000
+  together with the bill     32-0-0, untied 32, p 0.0000
+  by epoch, without the bill (frontier | retained): e1 0-0-0 | 0-0-1, e2 0-0-0 | 2-0-0, e3 0-0-0 | 5-0-0, e5 24-0-0 | 0-0-0
+  A/A as stored, with the bill: reads no step either way
+  with the bill, as the report stored it: frontier yes, retained yes

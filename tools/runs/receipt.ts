@@ -26,6 +26,9 @@
  * place: both #306 runs of 21 October ran an earlier head of #306, which no later head holds. The
  * operator asked on 21 October that runs be compared and triaged only with runs that had the
  * mechanism in question, and a run that lacks it is none of its evidence (AGENTS.md, section 9).
+ * Named runs use the same predicate before printing their details. The selector regression tests
+ * of 26 October showed that this branch ignored `--has` and printed mixed launches for `--holds`.
+ * More than one name is refused: otherwise the first name silently discarded the others.
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { gitMaybe } from "#src/meta/git.ts";
@@ -162,13 +165,17 @@ export function askedIn(args: readonly string[]): { asked: Asked; names: string[
 /** `bun run runs source`. */
 export async function source(args: readonly string[]): Promise<void> {
   const { asked, names } = askedIn(args);
+  if (names.length > 1) throw new Error("source takes at most one run name");
+  const asks = asked.holds.length + asked.has.length > 0;
   const [name] = names;
   if (name !== undefined) {
     const run = await readAcross(name);
-    console.log(sources(run.path, run.tree, asked.holds).join("\n"));
+    if (!asks || ranWith(run.path, run.tree, asked)) {
+      console.log(sources(run.path, run.tree, asked.holds).join("\n"));
+    }
     return;
   }
-  if (asked.holds.length + asked.has.length === 0) {
+  if (!asks) {
     throw new Error("usage: bun run runs source <name> | (--holds <commit> | --has <text>)...");
   }
   for (const run of (await readableAcross()).filter(

@@ -5,9 +5,10 @@ import { afterAll, expect, it, spyOn } from "bun:test";
 import * as comparison from "../src/campaign/comparison.ts";
 import { epochsOf } from "../src/campaign/climb.ts";
 import { checkpoint, settleReading, type CheckpointRequest } from "../src/campaign/round.ts";
+import { scored } from "../src/kernel/compare.ts";
 import { recordCondition, settingId } from "../src/kernel/condition.ts";
 import { append, read } from "../src/kernel/log.ts";
-import { stopRule } from "../src/kernel/reports.ts";
+import { lastReports, stopRule } from "../src/kernel/reports.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import { taskStates } from "../src/kernel/task.ts";
 import {
@@ -318,15 +319,14 @@ it("reads promotion tallies with restored, removed and wrong answers from the se
     expect(settled.scored).not.toEqual(original.scored);
     append(s.log, "harness.promoted", { from: "old", harness: "fresh" });
     const events = read(s.log);
-    const rest = comparison.promotionReadings(events).get(events.length - 1)!;
-    expect(rest.readings.scored).toEqual({
+    const report = lastReports(events)[0]!;
+    const reading = scored(comparison.labelledPairs(events, report));
+    expect(reading).toMatchObject({
       wins: settled.scored!.wins,
       losses: settled.scored!.losses,
       ties: settled.scored!.ties,
       p: settled.scored!.p,
     });
-    expect(rest.readings.validity).toEqual(rest.readings.scored);
-    expect(rest.readings.unbilled).toEqual(rest.readings.scored);
   }
 });
 
@@ -363,9 +363,6 @@ it("uses the promotion reader's settled wrong passes in safeguard nine", async (
     kind: "harness.promoted",
     data: { from: "old", harness: "fresh", rests: [{ comparison: ID }] },
   });
-  const rest = comparison.promotionReadings(events).get(events.length - 1)!;
-  expect(rest.readings.scored).toMatchObject({ wins: 6, losses: 1, ties: 0 });
-  expect(rest.readings.validity).toMatchObject({ wins: 0, losses: 1, ties: 6 });
   const safeguard = safeguardTriggers(indexOf(events)).find(({ name }) => name.startsWith("SAFEGUARD-9"));
   expect(safeguard?.detail).toContain("0-1 p 1.000 on validity alone");
   expect(safeguard?.detail).toContain("0-1 p 1.000 without the bill");

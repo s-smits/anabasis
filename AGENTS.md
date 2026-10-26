@@ -157,8 +157,9 @@ what the attempts risk together as they come: each reading of a harness against 
 one attempt, at its own rate, and the sum is an estimate and no bound. The A/A controls that read a
 step, one-sided at the level, are counted beside it (`falsePromotion`, `src/campaign/climb.ts`). A
 control with too few untied tasks to reach the level cannot read a step, so it tests nothing about
-that rate: the climb counts only the controls that could have, and reports the others apart as too
-small to read one (`incapable`).
+that rate: the climb counts only controls whose individual tests have enough untied tasks to reach the
+level, and reports the others apart as too small (`incapable`). This marginal size check does not
+establish that both tests can pass together.
 
 **3. Verdicts: are the labels correct?** Validity is decided by a check program nobody has audited
 against the field, and a check that rejects a right answer is label noise: in v1, 36 of 47
@@ -1046,9 +1047,7 @@ reading at a shorter budget would describe a solver that was told the longer one
   valid);
 - which tasks entered each of its two sets;
 - its overlap with the previous comparison of the same two harnesses;
-- the points each measure gave, which the closing report prints beside each promotion's readings:
-  as scored, on validity alone and without the bill, each a tally and its p, which the view's
-  epoch line prints too (`promotionReadings`, `src/campaign/comparison.ts`).
+- the points each measure gave, which the closing report prints beside each promotion's tally.
 
 Beside every comparison of four solves per side stands the reference read against itself, on
 halves of its own solves mirrored in time. It should read no step; its tie share is the noise every

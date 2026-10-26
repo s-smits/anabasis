@@ -11,7 +11,6 @@
  * Reference validity comes from each report's scored profile; an absent denominator reads
  * unmeasured rather than a measured zero.
  */
-import { pSaid } from "#src/campaign/climb.ts";
 import { labelledPairs } from "#src/campaign/comparison.ts";
 import { short } from "#src/campaign/move.ts";
 import { gateAnswers } from "#src/examiner/record.ts";
@@ -22,6 +21,7 @@ import { type Compared, count, fired, type Index, indexOf, items, type Trigger, 
 import {
   epochsOf,
   joinedTest,
+  pSaid,
   sharedPaths,
   spentTo,
   testedOf,
@@ -208,7 +208,7 @@ export function safeguardTriggers(log: Index): Trigger[] {
 }
 
 /** Each tested task's score (`testedOf`) on the measures `kept` names, as the step reads it
- *  (`differenceOf`), from the same labelled pairs as `promotionReadings` (`labelledPairs`), summed
+ *  (`differenceOf`), from the settled pairs (`labelledPairs`), summed
  *  over a promotion's two readings as `joined` sums them. Until 25 October
  *  it summed the measures itself, and rounded half points up where the step rounds them away from
  *  zero. */

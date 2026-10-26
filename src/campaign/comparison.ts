@@ -23,7 +23,6 @@ import {
   pointsOf,
   type Paired,
   pairsOf,
-  readingsOf,
   scored,
   stepOf,
   type Tally,
@@ -36,13 +35,13 @@ import {
 import { conditionsOf, settingId } from "../kernel/condition.ts";
 import { proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { lastReports, pairsReported, poolOf, type Reported } from "../kernel/reports.ts";
+import { pairsReported, poolOf, type Reported } from "../kernel/reports.ts";
 import { passed, ranUnder, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { median } from "../meta/tally.ts";
 import type { Ruling } from "../referee/referee.ts";
-import { type Rested, type Worth, worthOf } from "./climb.ts";
+import { type Worth, worthOf } from "./climb.ts";
 
 /**
  * How the plan's rules read a comparison. A step is the new harness's test against the reference
@@ -568,8 +567,9 @@ export function wrongAsFailed(
   events: readonly LogEvent[],
   labels: ReadonlyMap<string, Ruling>,
   passes: Readonly<Record<string, JsonValue>>,
-): { events: LogEvent[]; labels: Map<string, Ruling> } {
+): { events: readonly LogEvent[]; labels: Map<string, Ruling> } {
   const wrong = new Set(Object.keys(passes).filter((solve) => passes[solve] === "wrong"));
+  if (wrong.size === 0) return { events, labels: new Map(labels) };
   const ending = { outcome: "fail", kind: "rejected", reason: "a person labelled the pass wrong" };
   return {
     events: events.map((event) =>
@@ -623,31 +623,6 @@ export function swapped(
   const found = compared(swappedIn, fixed, labels);
   const unlabelled = compared(own, fixed, NO_LABELS).reading;
   return { decided, unlabelled, swapped: found.reading, scored: found.scored };
-}
-
-/**
- * What each promotion rests on (`Rested`, `climb.ts`), by the promotion's place in the log: the last
- * comparison reported before it of the promoted harness against the reference it was promoted over
- * that tallied a task, its tallied tasks read as scored, on validity alone and without the bill
- * (`readingsOf`) from their pairs in the log (`pairsReported`), an answer that passed and a person
- * labelled wrong read as its side's fail, as the settled tally reads it (`wrongAsFailed`). Pairs
- * are what every report can be read again by, those that hold no score without the bill among
- * them, and this tree scores them, as it does every comparison it reads again. A promotion no such
- * comparison read, as one the operator made despite the rule may be, has none.
- */
-export function promotionReadings(events: readonly LogEvent[]): ReadonlyMap<number, Rested> {
-  const reports = lastReports(events);
-  return new Map(
-    events.flatMap(({ kind, data }, at) => {
-      if (kind !== "harness.promoted" || !isString(data.harness)) return [];
-      const rest = reports.findLast(
-        ({ index, data: report }) =>
-          index < at && report.fresh === data.harness && report.old === data.from && report.scored !== null,
-      );
-      if (rest === undefined) return [];
-      return [[at, { comparison: rest.session, readings: readingsOf(labelledPairs(events, rest)) }]];
-    }),
-  );
 }
 
 /** A reported tally's pairs with its wrong-pass labels applied. Its versions already carry the

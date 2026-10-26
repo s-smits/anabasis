@@ -16,7 +16,6 @@ import {
   pairsOf,
   pointsOf,
   power,
-  readingsOf,
   readsStepEitherWay,
   roomLeft,
   scored,
@@ -352,13 +351,6 @@ describe("one reading", () => {
     expect(onCost.unbilled).toEqual(units(0, 0, 0, 6));
     expect(onCost.p).toBeLessThanOrEqual(STRICT);
     expect(stepOf({ frontier: onCost, retained: "unmeasured" }, STRICT)).toBe("no-step");
-    // A person reads the promotion three ways (`readingsOf`): as scored, without the bill and on
-    // validity alone, each a tally and its p.
-    expect(readingsOf(cheaper)).toEqual({
-      scored: { wins: 6, losses: 0, ties: 0, p: 1 / 64 },
-      unbilled: { wins: 0, losses: 0, ties: 6, p: 1 },
-      validity: { wins: 0, losses: 0, ties: 6, p: 1 },
-    });
     // The same six a fifth better by the objective as well: both tests clear, and the bill adds
     // its points to a step the other measures carry.
     const better = cheaper.map((pair) => ({
@@ -369,7 +361,7 @@ describe("one reading", () => {
     expect(both.differences).toEqual(units(6, 0, 400));
     expect(both.unbilled).toEqual(units(6, 0, 300));
     expect(stepOf({ frontier: both, retained: "unmeasured" }, STRICT)).toBe("step");
-    expect(readingsOf(better).validity).toEqual({ wins: 0, losses: 0, ties: 6, p: 1 });
+    expect(better.map((pair) => differenceOf(pair, "validity"))).toEqual(units(0, 0, 0, 6));
     // A retained loss by the objective that the bill outweighs as scored still counts against the
     // step without the bill: 7-0 as scored at p 1/128, 6-1 without the bill at p 1/16.
     expect(

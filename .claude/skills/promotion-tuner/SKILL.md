@@ -38,8 +38,7 @@ bun .claude/skills/promotion-tuner/scripts/replay.ts --tree <worktree> \
 
 - `--tree` names the worktree whose kernel scores the record, as an absolute path. The totals name
   its commit and whether `src/` has uncommitted changes. A tree from before 21 October, which
-  scores no weighted measures, is refused. A tree without `readsStep` (before 26 October) reads a
-  step on the scores alone, as it did.
+  scores no weighted measures, is refused. Replay calls the selected tree's `stepOf`; trees from before the dual rule keep their full-score-only decision.
 - By default the shared run registry discovers campaigns in every worktree and archive, and
   refreshes remote logs and receipts through `ANA_HOSTS`. Load the host environment with
   `bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/replay.ts ...`.
@@ -55,7 +54,7 @@ bun .claude/skills/promotion-tuner/scripts/replay.ts --tree <worktree> \
 Live logs grow. Read the baseline and the candidate close together, and record the minute of each.
 
 The script reaches a tree only through its own `read`, `lastReports`, `pairsReported`, `pairsOf`,
-`pointsOf`, `WEIGHTS`, `flipP`, `readsStep`, `readsStepEitherWay`, `measuresIn`, `billedBetween` and `BILLED` (`loadTree`).
+`pointsOf`, `WEIGHTS`, `flipP`, `stepOf`, `readsStepEitherWay`, `measuresIn`, `billedBetween` and `BILLED` (`loadTree`).
 
 ## What to read
 

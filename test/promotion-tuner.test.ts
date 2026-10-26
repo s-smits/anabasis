@@ -1,9 +1,9 @@
-// The tuner's replay uses the kernel's dual step rule under its requested weights, for both
-// promotions and mirrored A/A controls. Pairs enter through the tree's real interface, without a log file.
+// Replay follows the selected tree's rule, including historical records and weight sweeps.
 import { expect, it } from "bun:test";
 import { campaignLines, emptyTotals } from "#skills/promotion-tuner/scripts/replay.ts";
-import { loadTree } from "#skills/promotion-tuner/scripts/tree.ts";
+import { loadTree, type Tree } from "#skills/promotion-tuner/scripts/tree.ts";
 import { type Paired, scored } from "../src/kernel/compare.ts";
+import type { JsonObject } from "../src/meta/json-shape.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
@@ -11,155 +11,20 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { execTextSync } from "./helpers/bun-spawn-sync.ts";
 
-it("replays no promotion or A/A step where only the scored test clears, and a step where both clear", async () => {
-  const kernel = await loadTree(resolve(import.meta.dir, ".."));
-  const cheap: Paired[] = Array.from({ length: 6 }, (_, at) => ({
-    task: `v${String(at)}`,
-    old: [true, true],
-    fresh: [true, true],
-    used: { old: [{ billed: 2 }, { billed: 2 }], fresh: [{ billed: 1 }, { billed: 1 }] },
-  }));
-  const validity = cheap.map((pair) => ({ ...pair, old: [false, false] }));
-  for (const pairs of [cheap, validity]) {
-    const scores = scored(pairs);
-    const events: LogEvent[] = [
-      {
-        at: "2026-10-26T00:00:00.000Z",
-        kind: "comparison.reported",
-        data: {
-          session: "g-1",
-          old: "reference",
-          fresh: "candidate",
-          setting: "s",
-          solves: 4,
-          versions: pairs.map(({ task }) => task),
-          frontier: { ...scores, of: pairs.map(({ task }) => task) },
-          retained: "unmeasured",
-          scored: scores,
-          noise: scores,
-          level: 0.02,
-          reading: "step",
-          points: { validity: 0, objective: 0, bill: 600 },
-        },
-      },
-      {
-        at: "2026-10-26T00:01:00.000Z",
-        kind: "harness.promoted",
-        data: { from: "reference", harness: "candidate" },
-      },
-    ];
-    const tree = {
-      ...kernel,
-      read: () => events,
-      pairsReported: () => pairs,
-      pairsOf: () => pairs,
-    };
-    const totals = emptyTotals();
-    const lines = campaignLines(
-      { tree, scale: { validity: 1, objective: 1, bill: 1 }, own: true, level: null },
-      { name: "recorded", path: "unused" },
-      totals,
-    );
-    expect(lines.join("\n")).toContain(
-      pairs === cheap
-        ? "g-1 6-0-0 p 0.0156; without the bill 0-0-6 p 1.0000: does not clear both tests at 0.02"
-        : "g-1 6-0-0 p 0.0156; without the bill 6-0-0 p 0.0156: promotes",
-    );
-    expect(kernel.flipP(scores.differences)).toBe(1 / 64);
-    const steps = pairs === cheap ? 0 : 1;
-    expect({
-      promoted: totals.rightful + totals.doubted,
-      rejected: totals.dropped,
-      aa: totals.aaSteps,
-    }).toEqual({ promoted: steps, rejected: 1 - steps, aa: steps });
-    // The replay scales the same points for a weight sweep, then reads both tests again.
-    const scaled = emptyTotals();
-    campaignLines(
-      { tree, scale: { validity: 0, objective: 1, bill: 1 }, own: false, level: null },
-      { name: "recorded", path: "unused" },
-      scaled,
-    );
-    expect([scaled.rightful + scaled.doubted, scaled.aaSteps]).toEqual([0, 0]);
-  }
-});
+const ROOT = resolve(import.meta.dir, "..");
+const CHEAP: Paired[] = Array.from({ length: 6 }, (_, at) => ({
+  task: `v${String(at)}`,
+  old: [true, true],
+  fresh: [true, true],
+  used: { old: [{ billed: 2 }, { billed: 2 }], fresh: [{ billed: 1 }, { billed: 1 }] },
+}));
 
-it("keeps old stored scores readable but requires unbilled evidence before replaying a step", async () => {
-  const kernel = await loadTree(resolve(import.meta.dir, ".."));
-  const differences = [600, 600, 600, 600, 600, 600];
-  for (const of of [undefined, differences.map((_, at) => `v${String(at)}`)]) {
-    for (const unbilled of [undefined, differences]) {
-      const events: LogEvent[] = [
-        {
-          at: "2026-10-26T00:00:00.000Z",
-          kind: "comparison.reported",
-          data: {
-            session: "old",
-            old: "reference",
-            fresh: "candidate",
-            solves: 2,
-            frontier: { differences, ...keyIfDefined("unbilled", unbilled), ...keyIfDefined("of", of) },
-            retained: "unmeasured",
-            level: 0.02,
-            reading: "step",
-          },
-        },
-      ];
-      const tree = { ...kernel, read: () => events, pairsReported: () => [] };
-      const totals = emptyTotals();
-      campaignLines(
-        { tree, scale: { validity: 1, objective: 1, bill: 1 }, own: true, level: null },
-        { name: "old", path: "unused" },
-        totals,
-      );
-      expect(totals.storedTasks).toBe(6);
-      expect(totals.added).toBe(unbilled === undefined ? 0 : 1);
-    }
-  }
-});
-
-it("replays a candidate tree by its own step rule, whether or not it exports readsStep", async () => {
-  // A tree is read through its own `stepOf`: #392's tree read the dual rule there before
-  // `readsStep` existed, and a tree from before it reads the scored test alone.
-  const root = resolve(import.meta.dir, "..");
-  const home = mkdtempSync(join(tmpdir(), "ana-tuner-tree-"));
-  const kernelOf = (rule: string) => {
-    const tree = mkdtempSync(join(home, "tree-"));
-    mkdirSync(join(tree, "src", "kernel"), { recursive: true });
-    for (const file of ["log.ts", "reports.ts", "trace.ts"]) {
-      writeFileSync(
-        join(tree, "src", "kernel", file),
-        `export * from "${join(root, "src", "kernel", file)}";\n`,
-      );
-    }
-    writeFileSync(
-      join(tree, "src", "kernel", "compare.ts"),
-      `import * as real from "${join(root, "src", "kernel", "compare.ts")}";\n` +
-        "export const { WEIGHTS, flipP, measuresIn, pairsOf, pointsOf, readsStepEitherWay } = real;\n" +
-        `export const stepOf = ${rule};\n`,
-    );
-    execTextSync("git", ["-C", tree, "init", "-q"]);
-    execTextSync("git", [
-      "-C",
-      tree,
-      "-c",
-      "user.email=t@t",
-      "-c",
-      "user.name=t",
-      "commit",
-      "-q",
-      "--allow-empty",
-      "-m",
-      "t",
-    ]);
-    return loadTree(tree);
-  };
-  const cheap: Paired[] = Array.from({ length: 6 }, (_, at) => ({
-    task: `v${String(at)}`,
-    old: [true, true],
-    fresh: [true, true],
-    used: { old: [{ billed: 2 }, { billed: 2 }], fresh: [{ billed: 1 }, { billed: 1 }] },
-  }));
-  const scores = scored(cheap);
+function replay(
+  tree: Tree,
+  pairs: readonly Paired[],
+  frontier: JsonObject = { ...scored(pairs), of: pairs.map(({ task }) => task) },
+  scale = { validity: 1, objective: 1, bill: 1 },
+) {
   const events: LogEvent[] = [
     {
       at: "2026-10-26T00:00:00.000Z",
@@ -170,10 +35,10 @@ it("replays a candidate tree by its own step rule, whether or not it exports rea
         fresh: "candidate",
         setting: "s",
         solves: 4,
-        versions: cheap.map(({ task }) => task),
-        frontier: { ...scores, of: cheap.map(({ task }) => task) },
+        versions: pairs.map(({ task }) => task),
+        frontier,
         retained: "unmeasured",
-        scored: scores,
+        scored: scored(pairs),
         level: 0.02,
         reading: "step",
         points: { validity: 0, objective: 0, bill: 600 },
@@ -185,29 +50,88 @@ it("replays a candidate tree by its own step rule, whether or not it exports rea
       data: { from: "reference", harness: "candidate" },
     },
   ];
+  const totals = emptyTotals();
+  campaignLines(
+    {
+      tree: { ...tree, read: () => events, pairsReported: () => [...pairs], pairsOf: () => [...pairs] },
+      scale,
+      own: false,
+      level: null,
+    },
+    { name: "recorded", path: "unused" },
+    totals,
+  );
+  return totals;
+}
+
+it("promotes and diagnoses A/A steps only when both tests pass under the requested weights", async () => {
+  const tree = await loadTree(ROOT);
+  for (const [pairs, steps] of [
+    [CHEAP, 0],
+    [CHEAP.map((pair) => ({ ...pair, old: [false, false] })), 1],
+  ] as const) {
+    const totals = replay(tree, pairs);
+    expect([totals.rightful + totals.doubted, totals.dropped, totals.aaSteps]).toEqual([
+      steps,
+      1 - steps,
+      steps,
+    ]);
+    const scaled = replay(tree, pairs, undefined, { validity: 0, objective: 1, bill: 1 });
+    expect([scaled.rightful + scaled.doubted, scaled.aaSteps]).toEqual([0, 0]);
+  }
+});
+
+it("keeps stored scores but requires complete evidence without cost to replay a step", async () => {
+  const tree = await loadTree(ROOT);
+  const differences = Array<number>(6).fill(600);
+  for (const of of [undefined, CHEAP.map(({ task }) => task)]) {
+    for (const unbilled of [undefined, differences]) {
+      const frontier = { differences, ...keyIfDefined("of", of), ...keyIfDefined("unbilled", unbilled) };
+      const totals = replay(tree, [], frontier);
+      expect(totals.storedTasks).toBe(6);
+      expect(totals.rightful + totals.doubted).toBe(unbilled === undefined ? 0 : 1);
+    }
+  }
+});
+
+it("uses a candidate tree's own stepOf without requiring a readsStep export", async () => {
+  const home = mkdtempSync(join(tmpdir(), "ana-tuner-tree-"));
   try {
-    const promoted = async (rule: string) => {
-      const kernel = await kernelOf(rule);
-      const totals = emptyTotals();
-      campaignLines(
-        {
-          tree: { ...kernel, read: () => events, pairsReported: () => cheap, pairsOf: () => cheap },
-          scale: { validity: 1, objective: 1, bill: 1 },
-          own: false,
-          level: null,
-        },
-        { name: "recorded", path: "unused" },
-        totals,
+    for (const [rule, steps] of [
+      ["real.stepOf", 0],
+      ['(report, level) => real.flipP(report.frontier.differences) <= level ? "step" : "no-step"', 1],
+    ] as const) {
+      const tree = mkdtempSync(join(home, "tree-"));
+      mkdirSync(join(tree, "src", "kernel"), { recursive: true });
+      for (const file of ["log.ts", "reports.ts", "trace.ts"]) {
+        writeFileSync(
+          join(tree, "src", "kernel", file),
+          `export * from "${join(ROOT, "src", "kernel", file)}";\n`,
+        );
+      }
+      writeFileSync(
+        join(tree, "src", "kernel", "compare.ts"),
+        `import * as real from "${join(ROOT, "src", "kernel", "compare.ts")}";\n` +
+          "export const { WEIGHTS, flipP, measuresIn, pairsOf, pointsOf, readsStepEitherWay } = real;\n" +
+          `export const stepOf = ${rule};\n`,
       );
-      return totals.rightful + totals.doubted;
-    };
-    // Six tasks won on the bill alone: a step by the scored test, none by the dual rule.
-    expect(await promoted("real.stepOf")).toBe(0);
-    expect(
-      await promoted(
-        '(report, level) => real.flipP(report.frontier.differences) <= level ? "step" : "no-step"',
-      ),
-    ).toBe(1);
+      execTextSync("git", ["-C", tree, "init", "-q"]);
+      execTextSync("git", [
+        "-C",
+        tree,
+        "-c",
+        "user.email=t@t",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "t",
+      ]);
+      const totals = replay(await loadTree(tree), CHEAP);
+      expect(totals.rightful + totals.doubted).toBe(steps);
+    }
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

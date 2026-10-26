@@ -31,7 +31,7 @@
  *
  * One comparison's reading, `step`, is that test at or under the level, 0.02 by default, made twice
  * over the same tasks: on each task's score as it stands, and on its score with the bill's points
- * taken out (`KEPT`, `unbilled`). Both have to clear the level, and a step against the reference
+ * taken out (`scoresOf`, `unbilled`). Both have to clear the level, and a step against the reference
  * promotes (`stepOf`; `decide.ts`). The operator chose this on 25 October, after v065-a's aecc1c92
  * was promoted on 25-3 as scored where the same tasks read 0-10 without the bill, a harness worse
  * by the objective promoted on its cost. The bill still weighs a tenth of a task's score between
@@ -136,11 +136,8 @@ export interface Tally {
   readonly ties: number;
 }
 
-/** A reading of a task's score by the measures it keeps (`KEPT`). */
-export type Kept = keyof typeof KEPT;
-
-/** One test: its tally and its p for the new harness (`flipP`). */
-export type Test = Tally & { readonly p: number };
+/** The measures retained in a task's score (`scoresOf`). */
+export type Kept = "scored" | "unbilled" | "validity";
 
 /** What a comparison is made between: the two harnesses by digest, and the setting every counted
  *  solve ran under (`settingId`). */
@@ -222,16 +219,6 @@ export const FULL = 0.1;
 export const CHEAPER = 1.25;
 /** A task's score in whole points: thousandths, since the test's convolution is over whole numbers. */
 const POINTS = 1000;
-/** The measures each reading of a task's score keeps (`differenceOf`), each at its weight: every one
- *  as the comparison scores a task; validity and the objective, the bill's points taken out, which a
- *  step has to clear as well (`stepOf`); and validity alone, which a person reads a promotion by
- *  beside the other two (`readingsOf`). */
-const KEPT = {
-  scored: ["validity", "objective", "bill"],
-  unbilled: ["validity", "objective"],
-  validity: ["validity"],
-} as const satisfies Readonly<Record<string, readonly (keyof Measures)[]>>;
-
 /**
  * The chance of each total of `sizes` taken with a plus sign, where each is taken so with chance
  * `share`, independently: entry k is the chance that the sizes signed plus sum to k. The sizes are
@@ -345,32 +332,21 @@ export function sweepOf(level: number): number {
   return sweep;
 }
 
-/**
- * One comparison's reading of its report at `level`: `step` where the one test over its frontier
- * and retained tasks clears it on their scores (`differences`) and again on their scores without
- * the bill (`unbilled`), and `no-step` otherwise. A step against the reference promotes
- * (`decide.ts`).
- *
- * It reads only sets this tree has just scored (`compared`, `comparison.ts`), so a report without
- * a set's scores is a fault of the caller's and is refused: one written before 12 October holds a
- * pooled tally alone, and one written before 26 October holds no `unbilled`. A report on record
- * keeps the reading it wrote, and a reader that shows a recorded promotion without the bill scores
- * its pairs again from the log (`readingsOf`, `promotionReadings` in `climb.ts`), which every report
- * can be read by, rather than reading a field older reports lack.
- */
+/** One comparison's reading at `level`: `step` where its frontier and retained tasks clear it
+ *  both as scored and without the bill (`readsStep`). It reads only sets this tree has just scored,
+ *  so a set without its scores is the caller's fault and is refused: a report before 12 October
+ *  holds a pooled tally alone, and one before 26 October no `unbilled`. A recorded report keeps the
+ *  reading it wrote; the promotion tuner scores its pairs again instead. */
 export function stepOf(report: JsonObject, level: number): "step" | "no-step" {
-  const together = (key: "differences" | "unbilled") => {
-    const scores = (held: unknown) => {
-      const found = asRecord(held)?.[key];
-      return Array.isArray(found) && found.every(isNumber) ? found : null;
-    };
-    const frontier = scores(report.frontier);
-    const retained = report.retained === UNMEASURED ? [] : scores(report.retained);
-    if (frontier === null || retained === null) {
-      throw new Error(`a reading needs a frontier and a retained set, each with its ${key}`);
-    }
-    return [...frontier, ...retained];
-  };
+  const sets = [report.frontier, ...(report.retained === UNMEASURED ? [] : [report.retained])];
+  const together = (key: "differences" | "unbilled") =>
+    sets.flatMap((set) => {
+      const found = asRecord(set)?.[key];
+      if (!Array.isArray(found) || !found.every(isNumber)) {
+        throw new Error(`a reading needs a frontier and a retained set, each with its ${key}`);
+      }
+      return found;
+    });
   return readsStep(together("differences"), together("unbilled"), level) ? "step" : "no-step";
 }
 
@@ -524,12 +500,19 @@ export function wholePoints(points: number): number {
   return magnitude === 0 ? 0 : Math.sign(points) * magnitude;
 }
 
-/** One task's difference on the measures `kept` names (`KEPT`): their points together (`pointsOf`),
- *  to the whole point (`wholePoints`), positive where the new harness won it. As scored, every
- *  measure counts. */
+/** Project one task's weighted components, rounding only after adding the kept measures.
+ * All three readings share this arithmetic, including replay under different weights. */
+export function scoresOf({ validity, objective, bill }: Measures): Readonly<Record<Kept, number>> {
+  return {
+    scored: wholePoints(validity + objective + bill),
+    unbilled: wholePoints(validity + objective),
+    validity: wholePoints(validity),
+  };
+}
+
+/** One task's rounded score on the measures `kept` names. */
 export function differenceOf(pair: Paired, kept: Kept = "scored"): number {
-  const points = pointsOf(pair);
-  return wholePoints(KEPT[kept].reduce((sum, measure) => sum + points[measure], 0));
+  return scoresOf(pointsOf(pair))[kept];
 }
 
 /** Whether the harness on `side` closed the task: valid in every counted solve, and not
@@ -545,10 +528,8 @@ export function unsolved({ old, fresh }: Paired): boolean {
   return ![...old, ...fresh].some(Boolean);
 }
 
-/** Each task's difference on the measures `kept` names (`differenceOf`), the new harness's less the
- *  reference's. A task solved more often under one harness than the other is refused, since the
- *  harness with more solves has more chances. */
-function differencesOf(pairs: readonly Paired[], kept: Kept = "scored"): number[] {
+/** Validate complete, balanced pairs and calculate their score components once. */
+function differencesOf(pairs: readonly Paired[]) {
   return pairs.map((pair) => {
     const { task, old, fresh } = pair;
     if (old.length === 0 || old.length !== fresh.length) {
@@ -556,38 +537,27 @@ function differencesOf(pairs: readonly Paired[], kept: Kept = "scored"): number[
         `task ${task} has ${String(old.length)} solve(s) under the old harness and ${String(fresh.length)} under the new; a comparison needs as many of each`,
       );
     }
-    return differenceOf(pair, kept);
+    return scoresOf(pointsOf(pair));
   });
 }
 
 /** The test of `differences`: each task won by the harness its score favours and tied otherwise,
  *  and the test's p for the new harness. */
-export function testOf(differences: readonly number[]): Test {
+export function testOf(differences: readonly number[]): Tally & { readonly p: number } {
   const count = (sign: number) => differences.filter((one) => Math.sign(one) === sign).length;
   return { wins: count(1), losses: count(-1), ties: count(0), p: flipP(differences) };
 }
 
-/** The scored set's reading: its test (`testOf`), each task's score (`differenceOf`), and each
- *  task's score without the bill (`unbilled`), in the same order, which a step clears as well
- *  (`stepOf`). */
+/** Full and cost-excluded scores of the same tasks, in the same order. */
 export function scored(pairs: readonly Paired[]) {
-  const differences = differencesOf(pairs);
-  return { ...testOf(differences), differences, unbilled: differencesOf(pairs, "unbilled") };
-}
-
-/** The test of `pairs` on each reading of a task's score (`KEPT`): as scored, without the bill, and
- *  on validity alone, the three a promotion is reported by. */
-export function readingsOf(pairs: readonly Paired[]): Readonly<Record<Kept, Test>> {
-  return {
-    scored: testOf(differencesOf(pairs)),
-    unbilled: testOf(differencesOf(pairs, "unbilled")),
-    validity: testOf(differencesOf(pairs, "validity")),
-  };
+  const scores = differencesOf(pairs);
+  const differences = scores.map((one) => one.scored);
+  return { ...testOf(differences), differences, unbilled: scores.map((one) => one.unbilled) };
 }
 
 /** The tally of `scored` alone. */
 export function tally(pairs: readonly Paired[]): Tally {
-  const { wins, losses, ties } = testOf(differencesOf(pairs));
+  const { wins, losses, ties } = testOf(differencesOf(pairs).map((one) => one.scored));
   return { wins, losses, ties };
 }
 

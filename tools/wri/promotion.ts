@@ -19,7 +19,6 @@
  * Split from `read.ts`, which stands near the size policy's ceiling, as `time.ts` and `folds.ts`
  * were. Nothing here reads a file beside the log.
  */
-import { pSaid } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
 import { flipP } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
@@ -75,6 +74,9 @@ export function testSaid(tested: JsonValue | undefined): string {
   if (record === null) return "not scored";
   return `${String(count(record.wins))}-${String(count(record.losses))}-${String(count(record.ties))} p ${pSaid(count(record.p))}`;
 }
+
+/** A test's p as a reading prints it. */
+export const pSaid = (p: number) => (p < 0.001 ? p.toExponential(1) : p.toFixed(3));
 
 /** The differences a report's step was read on, each with its task where named: the frontier's and
  *  the retained tasks' since 20 October, when `scored` holds the test's `falseRate`, else the

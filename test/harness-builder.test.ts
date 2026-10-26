@@ -746,18 +746,17 @@ describe("a campaign run by its log", () => {
     expect(readFileSync(join(to, "RULES.md"), "utf8")).toContain("- R1: The answer is the base times six.");
     const report = readFileSync(join(to, "REPORT.md"), "utf8");
     // The step is named by its letter and digest's head (`namesOf`), with the comparisons that read
-    // it and the one it rests on read three ways beside it, the pass a person labelled wrong a fail
-    // as in the settled tally: here validity carries all of it.
+    // it and the last tally against the reference it was promoted over: here validity carries all of it.
     const letter = /harness ([A-Z]+) \(([0-9a-f]{8})\), set-up \(epoch 0\)/u.exec(report);
     expect(letter?.[2]).toBe(handed.harness.slice(0, 8));
     expect(report).toContain(
-      `harness ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}), set-up (epoch 0), read by g-1. In g-1 its tasks read as scored 6-0-1 p 0.016, on validity alone 6-0-1 p 0.016, without the bill 6-0-1 p 0.016`,
+      `harness ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}), set-up (epoch 0), read by g-1. In g-1 it won 6, lost 0 and tied 1`,
     );
     expect(report).toContain(`| g-1 | ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}) | A (`);
     // The points each measure of the score gave it, all by validity here, and its cost beside
     // them, read against the bar and gating nothing (the plan's W).
     expect(report).toMatch(
-      /without the bill 6-0-1 p 0\.016, the score giving it [1-9]\d* points by validity, 0 by the objective and 0 by the bill\. Its cost, gating nothing: 1 promotion attempt this epoch \(bar 3 after set-up\): met/,
+      /tied 1, the score giving it [1-9]\d* points by validity, 0 by the objective and 0 by the bill\. Its cost, gating nothing: 1 promotion attempt this epoch \(bar 3 after set-up\): met/,
     );
     expect(report).not.toContain("ladder");
     // What each measured thing cost, the climb's velocity first, and how many comparisons that

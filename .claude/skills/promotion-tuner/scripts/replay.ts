@@ -32,7 +32,7 @@
  * and the two-stage rule of older trees, and the rule-by-rule tally, none of which `main` holds.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { type Measures, type Paired, wholePoints } from "#src/kernel/compare.ts";
+import { type Measures, type Paired, scoresOf } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import type { Reported } from "#src/kernel/reports.ts";
 import { type JsonValue, asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
@@ -179,14 +179,8 @@ function pointsOf(score: Score, pair: Paired): Measures {
   };
 }
 
-/** A task's difference, to the whole point as `differenceOf` rounds it (`wholePoints`), by the
- *  rounding of the worktree this script runs from, whichever tree `--tree` names. */
-function differenceOf(points: Measures, kept: "scored" | "unbilled" = "scored"): number {
-  return wholePoints(points.validity + points.objective + (kept === "scored" ? points.bill : 0));
-}
-
-/** A report's set scored again from `pairs`, in the order it names its tasks, with the points of
- *  each task it scored; a task with no pair keeps its stored difference, and is counted. */
+/** Reconstruct named tasks from pairs; retain stored scores where the log lacks a pair.
+ * Missing cost-excluded evidence stays unknown, so the dual rule cannot promote it. */
 function scoredSet(
   score: Score,
   set: JsonValue | undefined,
@@ -195,37 +189,30 @@ function scoredSet(
 ) {
   const record = asRecord(set);
   const stored = numbers(record?.differences);
-  const storedUnbilled = numbers(record?.unbilled);
-  const of = record?.of;
-  if (record === null || !Array.isArray(of) || stored.length !== of.length) {
-    // A report before 14 October names no task, so its differences stand as stored.
-    totals.storedTasks += stored.length;
-    const none: Measures[] = [];
-    return {
-      stored,
-      differences: stored,
-      unbilled: storedUnbilled.length === stored.length ? storedUnbilled : null,
-      points: none,
-    };
-  }
+  // A report before 14 October names no task, so its differences stand as stored.
+  const tasks =
+    Array.isArray(record?.of) && record.of.length === stored.length ? record.of : stored.map(() => null);
+  const without = numbers(record?.unbilled);
+  const unbilled = without.length === stored.length ? without : [];
   const points: Measures[] = [];
-  const unbilled: number[] = [];
-  let complete = true;
-  const differences = of.map((task, at) => {
+  const scores = tasks.map((task, at) => {
     const pair = isString(task) ? pairs.get(task) : undefined;
     if (pair === undefined) {
       totals.storedTasks += 1;
-      const without = storedUnbilled[at];
-      if (without === undefined) complete = false;
-      else unbilled.push(without);
-      return stored[at] ?? 0;
+      return { scored: stored[at] ?? 0, unbilled: unbilled[at] ?? null };
     }
     const one = pointsOf(score, pair);
     points.push(one);
-    unbilled.push(differenceOf(one, "unbilled"));
-    return differenceOf(one);
+    return scoresOf(one);
   });
-  return { stored, differences, unbilled: complete ? unbilled : null, points };
+  return {
+    stored,
+    points,
+    differences: scores.map((one) => one.scored),
+    unbilled: scores.every((one) => one.unbilled !== null)
+      ? scores.flatMap((one) => one.unbilled ?? [])
+      : null,
+  };
 }
 
 /** The reference against itself on halves of its own solves, as the comparison's report reads it
@@ -247,12 +234,12 @@ function aaOf(score: Score, events: readonly LogEvent[], report: Reported): Read
     ...keyIfDefined("objective", rule),
   };
   const tasks = Array.isArray(versions) ? versions.filter(isString) : [];
-  const points = score.tree
+  const scores = score.tree
     .pairsOf(events.slice(0, report.index + 1), tasks, sides, solves / 2)
-    .map((pair) => pointsOf(score, pair));
+    .map((pair) => scoresOf(pointsOf(score, pair)));
   return {
-    differences: points.map((one) => differenceOf(one)),
-    unbilled: points.map((one) => differenceOf(one, "unbilled")),
+    differences: scores.map((one) => one.scored),
+    unbilled: scores.map((one) => one.unbilled),
   };
 }
 
@@ -283,7 +270,7 @@ function readingsOf(score: Score, events: readonly LogEvent[], totals: Totals): 
     const wonBy = { validity: 0, objective: 0, bill: 0 };
     for (const one of sets.flatMap((set) => set.points)) {
       // A won task counts for the first measure that gave it points.
-      if (differenceOf(one) > 0) wonBy[MEASURES.find((measure) => one[measure] > 0) ?? "bill"] += 1;
+      if (scoresOf(one).scored > 0) wonBy[MEASURES.find((measure) => one[measure] > 0) ?? "bill"] += 1;
     }
     return [
       { session: report.session, key: `${old}>${fresh}`, differences, unbilled, level, step, wonBy, aa },

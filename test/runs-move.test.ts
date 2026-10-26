@@ -6,8 +6,7 @@ import { describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { asideOf, setAside } from "../tools/runs/manage.ts";
-import { move, rehomed } from "../tools/runs/move.ts";
+import { asideOf, move, rehomed, setAside } from "../tools/runs/move.ts";
 
 describe("moving a campaign to another machine", () => {
   it("names a kept path under the source's folder under the destination's, whole or after a flag's =", () => {

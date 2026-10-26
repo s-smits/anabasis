@@ -42,10 +42,10 @@ import { verbOn } from "./hosts.ts";
 import { preparedHost, publishedAt } from "./code.ts";
 import { freshFleet, freshLogin, placeFresh, loginPool, loginPresent } from "./placement.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
-import { billsLogin, launch, seatModels } from "./manage.ts";
+import { launch } from "./manage.ts";
 import { everyRun } from "./registry.ts";
 import { batchFresh } from "./batch.ts";
-import { readLogins } from "./logins.ts";
+import { billsLogin, readLogins } from "./logins.ts";
 
 interface FreshStart {
   readonly model: ReturnType<typeof modelOf>;
@@ -137,7 +137,7 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
   }
   const here = runtimeProcess.cwd();
   const model = modelOf(values.model);
-  const billed = billsLogin(seatModels([], [model.id, ...more]));
+  const billed = billsLogin([], [model.id, ...more]);
   if (positionals.length > 1) {
     if (values.host !== undefined) throw new Error("a batch chooses its hosts automatically");
     return await batchFresh(

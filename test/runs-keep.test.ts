@@ -3,8 +3,7 @@ import { describe, expect, it } from "bun:test";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { nextLogin, type Turn, turnOf } from "../tools/runs/keep.ts";
-import { seatModels } from "../tools/runs/manage.ts";
-import { allowedLogins, type Reading, room } from "../tools/runs/logins.ts";
+import { allowedLogins, billsLogin, type Reading, room } from "../tools/runs/logins.ts";
 
 const NOW = Date.parse("2026-10-15T12:00:00.000Z");
 const HOUR = 3_600_000;
@@ -84,33 +83,42 @@ describe("the login a run goes on with", () => {
   const goOn = (
     turn: Turn,
     current: string | undefined,
-    models: readonly string[],
+    flags: readonly string[],
     { spent = [], roomy = [] }: { spent?: readonly string[]; roomy?: readonly string[] } = {},
-  ) => nextLogin(turn, { current, spent: new Set(spent), models }, async () => roomy, ["3", "1", "2"]);
+  ) => nextLogin(turn, { current, spent: new Set(spent), billed: billsLogin([], flags) }, async () => roomy);
 
   it("goes on with a dead run on its own login, and a Claude run waits once its own is spent and none has room", async () => {
     expect(await goOn("continue", "2", claude)).toBe("2");
     expect(await goOn("continue", "2", claude, { spent: ["2"] })).toBeNull();
     expect(await goOn("move", "2", claude, { spent: ["2"], roomy: ["1"] })).toBe("1");
-  });
-
-  it("goes on with a run no Claude seat runs in whatever room the logins have", async () => {
-    expect(await goOn("continue", undefined, codex)).toBe("3");
-    expect(await goOn("continue", "2", codex, { spent: ["2"] })).toBe("2");
     expect(await goOn("continue", undefined, claude)).toBeNull();
   });
 
-  it("reads a Claude seat from a flag joined by its sign, and from the opening the flags leave it to", async () => {
+  it("goes on with a run no Claude seat runs in without a login, so no login counts it", async () => {
+    // On 20 October two Codex runs kept on the M1 would have waited for one of three spent logins
+    // none of their seats used; a login named for them counted against its most.
+    expect(await goOn("continue", undefined, codex)).toBeUndefined();
+    expect(await goOn("continue", "2", codex, { spent: ["2"] })).toBeUndefined();
+    expect(await goOn("move", "2", codex, { roomy: ["1"] })).toBeUndefined();
+  });
+
+  it("bills a login for a Claude seat its flags name, by a space or a sign, or its record names", () => {
     const codexOpening = event("campaign.opened", {
       seats: { builder: { model: "openai-codex/gpt-6.1-sol", effort: "high" } },
     });
     const claudeOpening = event("campaign.opened", {
       seats: { builder: { model: "claude/claude-opus-5-5", effort: "high" } },
     });
-    expect(
-      await goOn("continue", undefined, seatModels([codexOpening], ["--builder=claude/claude-opus-5-5"])),
-    ).toBeNull();
-    expect(await goOn("continue", undefined, seatModels([claudeOpening], ["--budget", "800"]))).toBeNull();
-    expect(await goOn("continue", undefined, seatModels([codexOpening], ["--budget", "800"]))).toBe("3");
+    const claudeSolver = event("campaign.setting", {
+      solver: { model: "claude/claude-opus-5-5", effort: "high" },
+      minutes: 30,
+      modelTurns: 20,
+      target: 24,
+    });
+    expect(billsLogin([], [...codex, "--budget", "800"])).toBe(false);
+    expect(billsLogin([codexOpening], ["--builder=claude/claude-opus-5-5"])).toBe(true);
+    expect(billsLogin([claudeOpening], ["--budget", "800"])).toBe(true);
+    expect(billsLogin([codexOpening], ["--budget", "800"])).toBe(false);
+    expect(billsLogin([codexOpening, claudeSolver], [])).toBe(true);
   });
 });

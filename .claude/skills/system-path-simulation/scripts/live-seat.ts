@@ -44,7 +44,7 @@ import { plural } from "#src/meta/text.ts";
 import { capturedExecPath, capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { processGroupExists, terminateAndReapProcessGroupId } from "#src/meta/subprocess.ts";
 import { SEED_FILE } from "#tools/runs/registry.ts";
-import { loginEnv, seatModels } from "#tools/runs/manage.ts";
+import { loginEnv } from "#tools/runs/manage.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 
 const USAGE = `usage:
@@ -225,7 +225,7 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
   const log = join(folder, LOG_FILE);
   const from = read(log).length;
   const env = {
-    ...loginEnv(runtimeProcess.env, args.value("login") ?? undefined, seatModels([], command)),
+    ...loginEnv(runtimeProcess.env, args.value("login") ?? undefined),
     RUN_REMOTE: "0",
   };
   const child = capturedSpawn(["nice", "-n", "10", capturedExecPath, ...command, "--name", name], {

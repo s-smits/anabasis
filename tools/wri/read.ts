@@ -727,7 +727,7 @@ function rowsOf(log: Index, steps: readonly Handover[]): Row[] {
       lines: [
         `${plural(conditions.length, "condition")}: ${tally(countBy(conditions, (condition) => `${condition.side} ${condition.model}`))}`,
         `host code ${distinct((condition) => condition.host)}, sandbox ${distinct((condition) => condition.sandbox)}, verifier tools ${distinct((condition) => condition.verifierTools)}, harnesses ${distinct((condition) => condition.harness)}`,
-        `${share(done.filter((solve) => !solve.attested).length, done.length)} finished solves name no response model`,
+        `${share(done.filter((solve) => solve.served.length === 0).length, done.length)} finished solves name no response model`,
       ],
     },
     {

@@ -219,6 +219,28 @@ export function wallTriggers(log: Index): Trigger[] {
         ]
       : [];
   });
+  // The solves a model other than their condition's served, a dated name read as its model's: on
+  // 25 October recode's comparisons ran on claude-opus-5 against a setting of claude-opus-5-5 (F19).
+  const asked = (solve: Solve) => solve.model.slice(solve.model.indexOf("/") + 1);
+  const otherModel = results.flatMap(({ session, own, scoring }) => {
+    const other = scoring.filter((solve) =>
+      solve.served.some((model) => model.replace(/-\d{8}$/u, "") !== asked(solve)),
+    );
+    const under = other.filter((solve) => solve.harness === own.old).length;
+    return other.length === 0
+      ? []
+      : [
+          fired(
+            "SERVED ANOTHER MODEL",
+            `${session}: ${share(other.length, scoring.length)} solves, ${String(under)} of them under the reference harness; ${tally(
+              countBy(
+                other.flatMap((solve) => solve.served),
+                (model) => model,
+              ),
+            )}`,
+          ),
+        ];
+  });
   const middles = loads.flatMap(({ halves }) => halves);
   const [calmest, busiest] = [Math.min(...middles), Math.max(...middles)];
   const moved = busiest >= LOAD_WORTH_A_LINE && busiest >= calmest * LOAD_MOVED;
@@ -227,6 +249,7 @@ export function wallTriggers(log: Index): Trigger[] {
     ...wallShares,
     ...loaded,
     ...outOfTurn,
+    ...otherModel,
     ...(moved
       ? [
           fired(

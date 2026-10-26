@@ -237,22 +237,17 @@ function falsePromotionOf(
   const read = reports.flatMap((each) => {
     const noise = asRecord(each.data.noise);
     const apart = noise?.differences;
-    const unbilled = noise?.unbilled;
-    return Array.isArray(apart)
-      ? [
-          {
-            each,
-            apart: apart.filter(isNumber),
-            unbilled: Array.isArray(unbilled) ? unbilled.filter(isNumber) : undefined,
-          },
-        ]
+    // A report written before 26 October holds no `unbilled`, and keeps its scored-only reading.
+    const unbilled = Array.isArray(noise?.unbilled) ? noise.unbilled : apart;
+    return Array.isArray(apart) && Array.isArray(unbilled)
+      ? [{ each, apart: apart.filter(isNumber), unbilled: unbilled.filter(isNumber) }]
       : [];
   });
   const controls = read.filter(({ each, apart, unbilled }) =>
-    readsStep(apart.map(Math.abs), (unbilled ?? apart).map(Math.abs), levelOf(each)),
+    readsStep(apart.map(Math.abs), unbilled.map(Math.abs), levelOf(each)),
   );
   const errors = controls.filter(({ each, apart, unbilled }) =>
-    readsStep(apart, unbilled ?? apart, levelOf(each)),
+    readsStep(apart, unbilled, levelOf(each)),
   ).length;
   const rates = attempts.map(rateOf);
   return {

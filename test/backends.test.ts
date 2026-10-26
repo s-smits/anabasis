@@ -1,6 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "../src/agent/backends/claude.ts";
 import { type BackendOptions, backends, compactionMode, retryPolicy } from "../src/agent/backends/models.ts";
+import { sit } from "../src/agent/session.ts";
+import { read } from "../src/kernel/log.ts";
+import { traceOf } from "../src/kernel/trace.ts";
+import { asRecord, type JsonValue } from "../src/meta/json-shape.ts";
+import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
@@ -13,7 +18,10 @@ const options: BackendOptions = {
 };
 
 function login(expiresInSeconds: number): string {
-  const claims = { exp: Math.floor(Date.now() / 1000) + expiresInSeconds, "https://api.openai.com/auth": {} };
+  const claims = {
+    exp: Math.floor(Date.now() / 1000) + expiresInSeconds,
+    "https://api.openai.com/auth": { chatgpt_account_id: "test-account" },
+  };
   const access = ["e30", Buffer.from(JSON.stringify(claims)).toString("base64url"), "sig"].join(".");
   writeFileSync(
     join(home, "auth.json"),
@@ -79,6 +87,87 @@ describe("the three backends", () => {
   it("refuse to refresh a Codex login that is about to lapse, leaving that to the CLI", async () => {
     login(60);
     await expect(backends(options).getAuth("openai-codex")).rejects.toThrow("Codex CLI");
+  });
+
+  it("records the model Codex serves from its terminal event, leaving an absent model and backend bill unknown", async () => {
+    login(HOUR_S);
+    let served: string | undefined = "gpt-served-snapshot";
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => {
+        const event = {
+          type: "response.completed",
+          response: {
+            id: "resp-test",
+            status: "completed",
+            ...keyIfDefined("model", served),
+            output: [],
+            usage: {
+              input_tokens: 10,
+              input_tokens_details: { cached_tokens: 3 },
+              output_tokens: 4,
+              output_tokens_details: { reasoning_tokens: 2 },
+              total_tokens: 14,
+            },
+          },
+        };
+        return new Response(`data: ${JSON.stringify(event)}\n\n`, {
+          headers: { "Content-Type": "text/event-stream" },
+        });
+      },
+    });
+    try {
+      const models = backends(options);
+      const provider = models.getProvider("openai-codex");
+      const model = models.getModel("openai-codex", "gpt-6.1-sol");
+      if (provider === undefined || model === undefined) throw new Error("the Codex provider is missing");
+      const local = { ...model, baseUrl: server.url.href };
+      const observed: JsonValue[] = [];
+      const full = await models
+        .stream(
+          local,
+          { messages: [] },
+          {
+            transport: "sse",
+            onProviderStreamEvent: (event) => {
+              observed.push(asRecord(asRecord(event)?.response)?.model ?? null);
+            },
+          },
+        )
+        .result();
+      expect(full).toMatchObject({ model: local.id, responseModel: served });
+      expect(observed).toEqual([served]);
+      models.setProvider({
+        ...provider,
+        getModels: () => [local],
+        streamSimple: (asked, context, request) =>
+          provider.streamSimple(asked, context, { ...request, transport: "sse" }),
+      });
+      const log = join(home, "codex.jsonl");
+      for (const id of ["served", "absent"]) {
+        const sat = await sit({
+          models: () => models,
+          id,
+          model: local,
+          effort: "medium",
+          system: "A seat.",
+          opening: "Begin.",
+          tools: [],
+          turns: [],
+          stops: [],
+          trace: { log, of: "solve" },
+        });
+        expect(sat.crash).toBeNull();
+        const [turn] = traceOf(read(log), "solve", id).turns;
+        expect(turn?.model).toBe(served ?? null);
+        expect(turn?.usage).toMatchObject({ input: 7, output: 4, cacheRead: 3, reasoning: 2 });
+        expect(sat.spent.reportedCost).toBeNull();
+        served = undefined;
+      }
+    } finally {
+      await server.stop(true);
+    }
   });
 
   it("name the compaction each runs under: Claude Code's own as the host set it, and pi's in its own loop", () => {

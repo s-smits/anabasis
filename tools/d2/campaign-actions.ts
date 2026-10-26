@@ -33,7 +33,7 @@ import { campaignOf } from "#src/campaign/handover.ts";
 import { type Decided, short } from "#src/campaign/move.ts";
 import { type Opening } from "#src/campaign/opening.ts";
 import { comparisonsTold } from "#src/builder/past.ts";
-import type { BuildRequest } from "#src/builder/session.ts";
+import { type BuildRequest, layPractice } from "#src/builder/session.ts";
 import { type Bench, endingWith, snapshot, waitTool } from "#src/builder/tools.ts";
 import { pendingWords } from "#src/campaign/word.ts";
 import { examine } from "#src/examiner/session.ts";
@@ -43,11 +43,8 @@ import { billedParts } from "#src/kernel/trace.ts";
 import { sizeLines } from "#src/kernel/size.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
 import { taskSets } from "#src/kernel/task.ts";
-import { mkdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
-import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined, keysIf } from "#src/meta/optional-key.ts";
-import { join } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { plural } from "#src/meta/text.ts";
 import { text, tool } from "#src/tools/answer.ts";
@@ -137,15 +134,7 @@ function refreshPractice(bench: Bench, campaign: Campaign): void {
     return task === undefined ? [] : [{ version, task: publicView(task) }];
   });
   bench.tasks = tasks;
-  const folder = join(bench.home, "practice");
-  rmSync(folder, { recursive: true, force: true });
-  mkdirSync(folder, { recursive: true });
-  for (const { task } of tasks) {
-    writeFileSync(
-      join(folder, `${task.taskId.replace(/[^A-Za-z0-9._-]+/g, "-")}.json`),
-      `${capturedJsonStringify(task, null, 2)}\n`,
-    );
-  }
+  layPractice(bench.home, tasks);
 }
 
 /** The campaign opened again, as an action left it: its tasks, its practice and its reference. */

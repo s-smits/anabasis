@@ -1,0 +1,6 @@
+events 6440 to 8246, 19 min, $11.37 billed
+sessions none; ended none yet
+drafts proposed 0, gated none; held 0
+the gate ran 0 solves over 0 drafts
+the reference's valid gate answers took no turns on record
+calls none

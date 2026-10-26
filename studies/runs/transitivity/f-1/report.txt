@@ -1,0 +1,16 @@
+the step is read on 32 tallied tasks, 32 of them untied: one reading at the comparison's level detects four times in five a harness that wins 76% of them
+one reading at these margins reads a step between equal harnesses 2% of the time, never more than the level
+its p is 0: the test weighs each untied task by its score, and where every untied task is won p is one half to the power of their count whatever the margins: 32 won read 0
+the reference against itself, on halves of its own solves mirrored in time (the A/A), over the 32 tallied tasks, 25 of them untied:
+  tie share 22%: the share of tasks two equal harnesses tied at half the comparison's solves a side, where equal harnesses tie more often than at the comparison's own, so no floor for its ties
+  flip rate 14%: how often two of its solves of one task disagree on validity
+  least detectable shift: one reading of it, either half read at the level, detects four times in five a half that wins 89% of its untied tasks
+of the 32 tasks the comparison drew, 32 were tallied: the columns below, room and the test are read over the tallied ones
+each harness by itself, as how many tasks had 0, 1, 2, 3, 4 valid answers in 4 solves (a count of tasks a column, not a share):
+  at its limits: reference 3/4/3/1/21, new 0/0/0/0/32
+the score weighs validity 0.6, the objective 0.3 and the bill 0.1, and over the tallied tasks gave the new harness +4650, +4385 and +1602 points, a task's score running from -1000 to 1000
+the objective: lower is better
+the median turns of a valid answer, over the 29 tasks both answered: reference 4.5, new 2 (reported, in no test)
+cost, gating nothing: 1 promotion attempt this epoch (bar 3 after set-up): met, over 0 Builder sessions and 34.95 dollars billed
+predicted before the first solve: P-B: without the bill 6a42fac4 beats bf461326 on the frontier at p <= 0.02
+read: step

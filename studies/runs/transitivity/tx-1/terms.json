@@ -1,0 +1,31 @@
+{
+  "seed": "sim-tp-bfeb",
+  "commit": "87f0b07ed",
+  "fromEvent": 15867,
+  "startedAt": "2026-10-25T23:09:32.054Z",
+  "command": [
+    "tools/d1b/examine.ts",
+    "--session",
+    "tx-1",
+    "--examiner",
+    "claude/claude-opus-5-5",
+    "--examiner-effort",
+    "high",
+    "--reviewer",
+    "claude/claude-opus-5-5",
+    "--reviewer-effort",
+    "medium",
+    "--tasks",
+    "24",
+    "--proposals",
+    "36",
+    "--minutes",
+    "240",
+    "--turns",
+    "200",
+    "--reference-home",
+    "on",
+    "--results",
+    "on"
+  ]
+}

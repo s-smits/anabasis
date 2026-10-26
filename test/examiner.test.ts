@@ -28,7 +28,15 @@ import { ranUnder, solvesIn } from "../src/kernel/solves.ts";
 import { type TaskPackage, taskSets, taskStates, taskVersion } from "../src/kernel/task.ts";
 import type { Verdict, Verifier } from "../src/kernel/verify.ts";
 import { sha256OfFile } from "../src/meta/digest.ts";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { asRecord, isString, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
@@ -334,6 +342,31 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
     });
     // A failed model request leaves the home as its last command left it, and it is kept.
     expect((await sat("crashed", 0)).kept).toEqual(["kept.txt", "wrote.txt"]);
+  });
+
+  it("lays the reference's programs as files and leaves every other link in it a link", async () => {
+    const s = seat("write", []);
+    const states = join(dirname(s.log), "states");
+    const reference = join(states, "kept-reference");
+    mkdirSync(join(reference, "agent"), { recursive: true });
+    mkdirSync(join(states, "tree-1", "bin"), { recursive: true });
+    writeFileSync(join(states, "tree-1", "bin", "engine"), "#!/bin/sh\necho engine\n");
+    symlinkSync(join("..", "tree-1"), join(reference, ".toolchain"));
+    // A link a Builder left in its harness, to a file the host reads and no seat may: followed by
+    // the host's copy, its bytes would be laid in the Examiner's home.
+    const outside = join(dirname(s.log), "host-only.txt");
+    writeFileSync(outside, "host-only\n");
+    symlinkSync(outside, join(reference, "agent", "notes"));
+    const laid = await inExaminerWall(s.request, { ...WALL, reference }, async ({ shell }) => {
+      const copy = join(shell.dirs.home, "reference-harness");
+      append(s.log, EXAM_FINISHED, { session: s.request.id, ended: "finished", running: 0 });
+      return {
+        engine: readFileSync(join(copy, ".toolchain", "bin", "engine"), "utf8"),
+        tree: lstatSync(join(copy, ".toolchain")).isSymbolicLink(),
+        notes: lstatSync(join(copy, "agent", "notes")).isSymbolicLink(),
+      };
+    });
+    expect(laid).toEqual({ engine: "#!/bin/sh\necho engine\n", tree: false, notes: true });
   });
 
   it("keeps nothing of a home whose session crashed with a command running", async () => {
@@ -1535,6 +1568,32 @@ describe("a session that writes tasks", () => {
     ]);
     const bare = (await example(short, long.taskId)).output?.[0];
     expect(bare?.type === "text" ? bare.text : "").toMatch(/of \d+ bytes\.$/u);
+  });
+
+  it("writes a long example over a link the Examiner left at its file, and leaves what the link names as it was", async () => {
+    const s = seat("write", []);
+    const spill = join(dirname(s.log), "seat-tmp");
+    mkdirSync(spill, { recursive: true });
+    const long = {
+      ...EXAMPLE,
+      taskId: "x-1",
+      publicInput: { values: Array.from({ length: 9_000 }, (_, at) => at) },
+    };
+    // The file's name is known, and the folder is the Examiner's to write: followed, the link would
+    // have the host overwrite a file of its own, the campaign's log among them.
+    const target = join(dirname(s.log), "host-file.txt");
+    writeFileSync(target, "the host's\n");
+    const file = join(spill, "read_example-x-1.json");
+    symlinkSync(target, file);
+    const mode = writing(
+      { ...s.request, tasks: [EXAMPLE, long] },
+      { pinned: [], shell: { dirs: { temp: spill } } },
+      "unseen",
+    );
+    await invoke(mode.tools.find(({ name }) => name === "read_example")!, "x-1", { task: "x-1" });
+    expect(readFileSync(target, "utf8")).toBe("the host's\n");
+    expect(lstatSync(file).isSymbolicLink()).toBe(false);
+    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual(long);
   });
 
   it("holds a task out by try_task at some valid solves of the reference harness and not all, and tells the counts alone", async () => {

@@ -196,10 +196,18 @@ function compared(events: readonly LogEvent[], harness: string): boolean {
   );
 }
 
-/** The parent's tool tree, where it really is; null when the parent has none. */
+/** The parent's tool tree, where it really is; null when the parent has none. Every caller copies
+ *  it as the host, outside every wall, into a seat's home or a handover, so the tree lies in the
+ *  harness or beside it, as a kept state's does. Until 26 October a link to anywhere was followed,
+ *  and an imported harness's `.toolchain` could hand any folder the host reads to the next Builder. */
 export function parentToolTree(parent: string): string | null {
   const tree = join(parent, TOOL_TREE_DIR);
-  return existsSync(tree) ? realpathSync(tree) : null;
+  if (!existsSync(tree)) return null;
+  const real = realpathSync(tree);
+  if (!containsPath(real, realpathSync(dirname(parent)))) {
+    throw new Error(`${parent}: its ${TOOL_TREE_DIR} links outside the folder it lies in`);
+  }
+  return real;
 }
 
 /** Refuses the links and scripts in a copy of `harness/<under>` that name the session's home, where

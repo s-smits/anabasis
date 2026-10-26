@@ -10,6 +10,7 @@ import { priceKey } from "../src/kernel/meter.ts";
 import { latestBuilt, PATIENCE, promoted } from "../src/kernel/reports.ts";
 import { sizeLines } from "../src/kernel/size.ts";
 import { taskSets, taskVersion } from "../src/kernel/task.ts";
+import { TOOL_TREE_DIR } from "../src/meta/bundle-layout.ts";
 import {
   cpSync,
   lstatSync,
@@ -106,7 +107,7 @@ function layOut(): void {
   );
   cpSync(FIXTURE, join(root, "hb-bundles", "s-c01"), { recursive: true });
   mkdirSync(join(bundle, "correctness-model"), { recursive: true });
-  mkdirSync(join(bundle, ".toolchain", "bin"), { recursive: true });
+  mkdirSync(join(bundle, TOOL_TREE_DIR, "bin"), { recursive: true });
   const execution = {
     families: "all",
     artifactPaths: ["$.answer"],
@@ -381,7 +382,7 @@ describe("a campaign", () => {
     // The link is made where the states are, since it names the tree relatively.
     const staged = join(campaign.states, "staged");
     cpSync(made, staged, { recursive: true });
-    symlinkSync(join("..", "tree-one"), join(staged, ".toolchain"));
+    symlinkSync(join("..", "tree-one"), join(staged, TOOL_TREE_DIR));
     const built = await place(staged);
     rmSync(staged, { recursive: true });
 
@@ -390,8 +391,8 @@ describe("a campaign", () => {
     // The programs and nothing else: no guide, no tool, and so neither the starter nor the harness.
     expect(opened.guide).toBeNull();
     expect(opened.kinds.size).toBe(0);
-    expect(opened.toolTree).toBe(join(control.dir, ".toolchain"));
-    expect(readFileSync(join(control.dir, ".toolchain", "bin", "engine"), "utf8")).toContain("echo engine");
+    expect(opened.toolTree).toBe(join(control.dir, TOOL_TREE_DIR));
+    expect(readFileSync(join(control.dir, TOOL_TREE_DIR, "bin", "engine"), "utf8")).toContain("echo engine");
     expect(new Set([control.digest, built.digest, least.digest]).size).toBe(3);
     expect(control.dir).toBe(join(campaign.states, control.digest));
     // Asked for again it is the same harness, and nothing half-made is left among the states.
@@ -414,8 +415,8 @@ describe("a campaign", () => {
     const handed = join(root, "handed", "harness");
     cpSync(least.dir, handed, { recursive: true });
     writeFileSync(join(handed, "agent", "BUILT_AGENTS.md"), "Imported: run the engine, then record.\n");
-    mkdirSync(join(handed, ".toolchain", "bin"), { recursive: true });
-    writeFileSync(join(handed, ".toolchain", "bin", "engine"), "#!/bin/sh\necho engine\n", { mode: 0o755 });
+    mkdirSync(join(handed, TOOL_TREE_DIR, "bin"), { recursive: true });
+    writeFileSync(join(handed, TOOL_TREE_DIR, "bin", "engine"), "#!/bin/sh\necho engine\n", { mode: 0o755 });
     const { digest } = await openHarness(handed);
     const flags = ["--name", NAME, "--harness", handed];
     const was = { latest: latestBuilt(read(campaign.log)), promoted: promoted(read(campaign.log)) };
@@ -425,8 +426,8 @@ describe("a campaign", () => {
     expect(imported).toEqual({ digest, dir: join(campaign.states, digest) });
     // Kept under its digest with its programs in a tree beside it, named by a link, as `snapshot`
     // keeps a session's state; and every flag that names a kept harness opens it.
-    expect(lstatSync(join(imported.dir, ".toolchain")).isSymbolicLink()).toBe(true);
-    expect(readFileSync(join(imported.dir, ".toolchain", "bin", "engine"), "utf8")).toContain("echo engine");
+    expect(lstatSync(join(imported.dir, TOOL_TREE_DIR)).isSymbolicLink()).toBe(true);
+    expect(readFileSync(join(imported.dir, TOOL_TREE_DIR, "bin", "engine"), "utf8")).toContain("echo engine");
     expect(await keptAs(campaign, "--parent", digest)).toEqual(imported);
     expect(await keptAs(campaign, "--reference", `programs-of:${digest}`)).not.toEqual(imported);
     // The record says where it came from. The import is no session: `latest` is unmoved, and so
@@ -458,12 +459,37 @@ describe("a campaign", () => {
     layOut();
     await openCampaign({ ...ARGS, name: FRESH });
     const handed = join(root, "fresh", "harness");
-    const engine = join(".toolchain", "bin", "engine");
+    const engine = join(TOOL_TREE_DIR, "bin", "engine");
     cpSync(FIXTURE, handed, { recursive: true });
     mkdirSync(dirname(join(handed, engine)), { recursive: true });
     writeFileSync(join(handed, engine), "#!/bin/sh\necho engine\n", { mode: 0o755 });
     const imported = await importCommand(["--name", FRESH, "--harness", handed]);
     expect(readFileSync(join(imported.dir, engine), "utf8")).toContain("echo engine");
+  });
+
+  it("refuses a harness whose programs link outside the folder it lies in", async () => {
+    // The import copies the programs from where the link resolves, as the host and outside every
+    // wall; a link to the operator's home would hand that home to the next Builder.
+    layOut();
+    await openCampaign({ ...ARGS, name: FRESH });
+    const handed = join(root, "linked", "harness");
+    cpSync(FIXTURE, handed, { recursive: true });
+    const elsewhere = join(root, "elsewhere");
+    mkdirSync(join(elsewhere, "bin"), { recursive: true });
+    // A program of its own, so the harness is none the campaign keeps already.
+    writeFileSync(join(elsewhere, "bin", "engine"), "#!/bin/sh\necho elsewhere\n", { mode: 0o755 });
+    symlinkSync(elsewhere, join(handed, TOOL_TREE_DIR));
+    await expect(importCommand(["--name", FRESH, "--harness", handed])).rejects.toThrow("outside");
+    // A kept state's link to the tree beside it, as another campaign keeps one, is imported.
+    const states = join(root, "other-states");
+    const kept = join(states, "kept");
+    cpSync(FIXTURE, kept, { recursive: true });
+    cpSync(elsewhere, join(states, "tree-1"), { recursive: true });
+    symlinkSync(join("..", "tree-1"), join(kept, TOOL_TREE_DIR));
+    const imported = await importCommand(["--name", FRESH, "--harness", kept]);
+    expect(readFileSync(join(imported.dir, TOOL_TREE_DIR, "bin", "engine"), "utf8")).toContain(
+      "echo elsewhere",
+    );
   });
 
   it("says which harnesses a campaign keeps when --parent names none of them", async () => {

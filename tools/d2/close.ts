@@ -50,7 +50,7 @@ import { UNSETTLED } from "#src/campaign/comparison.ts";
 import { campaignOf, type Handover } from "#src/campaign/handover.ts";
 import { short } from "#src/campaign/move.ts";
 import { type Called, calledBy, namesOf } from "#src/campaign/names.ts";
-import { parentToolTree } from "#src/builder/tools.ts";
+import { copyHarness } from "#src/builder/kept.ts";
 import { openingOf } from "#src/campaign/opening.ts";
 import { frozenChecker, unadmitted } from "#src/kernel/acceptance.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
@@ -58,7 +58,7 @@ import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { comparisonsOf } from "#src/campaign/ground.ts";
 import { promoted } from "#src/kernel/reports.ts";
 import { billedAll, billedParts, costLine } from "#src/kernel/trace.ts";
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { containsPath } from "#src/meta/path-containment.ts";
@@ -319,12 +319,8 @@ export async function closeCommand(args: readonly string[], seated: Seated = sol
   mkdirSync(to, { recursive: true });
   try {
     // Links as they are, but for `.toolchain`, which names the tree kept beside the state and is
-    // replaced by a copy of that tree, its own links again as they are.
-    const verbatim = { recursive: true, verbatimSymlinks: true } as const;
-    const link = resolve(kept.dir, ".toolchain");
-    cpSync(kept.dir, harness, { ...verbatim, filter: (each) => resolve(each) !== link });
-    const tree = parentToolTree(kept.dir);
-    if (tree !== null) cpSync(tree, join(harness, ".toolchain"), verbatim);
+    // replaced by a copy of that tree, as a Builder's `kept/` is laid.
+    copyHarness(kept.dir, harness);
     const opened = await openHarness(harness);
     if (opened.digest !== kept.digest) {
       throw new Error(

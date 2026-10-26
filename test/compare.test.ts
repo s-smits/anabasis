@@ -6,6 +6,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   closedTo,
+  carriedBy,
   differenceOf,
   detectable,
   draw,
@@ -437,6 +438,22 @@ describe("a task's pairings", () => {
     expect(pointsOf(measured(old, fresh)).objective).toBe(Math.sign(expected) * 32.5);
     expect(differenceOf(measured(old, fresh))).toBe(expected);
     expect(differenceOf(measured(fresh, old))).toBe(-differenceOf(measured(old, fresh)));
+  });
+
+  it("names the measure that carried a result: the bill where the score without it ties or loses, which no step reads", () => {
+    const even = { task: "carried", old: [P], fresh: [P] };
+    const cheaper = { used: { old: [{ billed: 0.4 }], fresh: [{ billed: 0.1 }] } };
+    const cases: { pair: Paired; by: ReturnType<typeof carriedBy> }[] = [
+      { pair: { ...even, old: [F] }, by: "validity" },
+      { pair: { ...even, objective: { ...lowerRule, old: [1200], fresh: [1000] } }, by: "objective" },
+      { pair: { ...even, ...cheaper }, by: "bill" },
+      // Cheaper by half and worse by 2% on the objective: a win only as scored.
+      { pair: { ...even, ...cheaper, objective: { ...lowerRule, old: [1000], fresh: [1020] } }, by: "bill" },
+      { pair: even, by: null },
+    ];
+    for (const { pair, by } of cases) expect(carriedBy(pair)).toBe(by);
+    // Exchanged, the same measure carries the other side's win.
+    expect(carriedBy({ ...even, fresh: [F] })).toBe("validity");
   });
 
   it("negates validity and bill scores when exchanged and normalises rounded zeros", () => {

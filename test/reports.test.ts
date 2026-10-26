@@ -110,8 +110,14 @@ const measuredAt = (sides: readonly LogEvent[], measures: readonly number[]) => 
 /** Task versions in one order, whatever order a reader gave them in. */
 const sorted = (versions: Iterable<string>) => [...versions].toSorted();
 const pairsIn = (log: readonly LogEvent[]) => lastReports(log).map((report) => pairsReported(log, report));
-const cells = (log: readonly LogEvent[]) =>
-  new Map([...poolOf(log).standings].map(([task, { cell }]) => [task, cell]));
+/** Who won each task in its last comparison with the reference, and on which measure. */
+const winners = (log: readonly LogEvent[]) =>
+  new Map(
+    [...poolOf(log).standings].map(([task, { won, by }]) => [
+      task,
+      won === null ? null : `${won} on ${String(by)}`,
+    ]),
+  );
 /** Which of `tasks` the reference's last reading failed or left objective room on, before halving. */
 const failedOf = (log: readonly LogEvent[], tasks: readonly string[]) => {
   const { outcomes, standings } = poolOf(log);
@@ -569,11 +575,11 @@ describe("the outcome an Examiner hears of a task", () => {
       standing: poolOf(log_).standings.get("kept") ?? null,
       failed: failedOf(log_, ["kept"]),
     });
-    const won = { cell: "other-won", solves: 2, room: null } as const;
+    const won = { won: "other", by: "validity", room: null } as const;
     expect(read(before)).toEqual({ outcome: "reference-none", standing: won, failed: ["kept"] });
     expect(read(after)).toEqual({
       outcome: "reference-every",
-      standing: { cell: "reference-won", solves: 2, room: null },
+      standing: { won: "reference", by: "validity", room: null },
       failed: [],
     });
     expect(read(beside)).toEqual({ outcome: "earlier-reference", standing: null, failed: [] });
@@ -590,10 +596,10 @@ describe("the outcome an Examiner hears of a task", () => {
   });
 });
 
-describe("where a task stands in the counts an Examiner hears", () => {
+describe("who won each task, as an Examiner hears it", () => {
   const terms = { old: "h1", fresh: "h2", solves: 2, setting: SETTING };
 
-  it("tells a tie both harnesses answered in every solve from one neither answered in any, and a task told apart by the side that won it", () => {
+  it("names the side that won a task told apart and the measure that carried it, and none for a tie or a task set aside", () => {
     const tasks = ["every", "none", "other", "ours", "mixed", "aside"];
     const log = [
       ...tasks.flatMap(heldOut),
@@ -609,26 +615,23 @@ describe("where a task stands in the counts an Examiner hears", () => {
       ...solved("b-1", "mixed", "h2", [F, P]),
       reported("b-1", "no-step", "h2", { ...terms, versions: tasks.slice(0, 5), aside: ["aside"] }),
     ];
-    // Four of the five are ties or losses to a tally; the two ties a plain count would merge are
-    // apart, and the reference's side is the old one.
-    expect(cells(log)).toEqual(
+    // The reference's side is the old one; a task set aside there has an outcome and no winner.
+    expect(winners(log)).toEqual(
       new Map([
-        ["every", "tied-every"],
-        ["none", "tied-none"],
-        ["other", "other-won"],
-        ["ours", "reference-won"],
-        ["mixed", "tied-mixed"],
-        ["aside", "aside"],
+        ["every", null],
+        ["none", null],
+        ["other", "other on validity"],
+        ["ours", "reference on validity"],
+        ["mixed", null],
       ]),
     );
-    // Read from the record the outcome is read from: the same tasks, and the solves a side.
+    // Read from the record the outcome is read from: the same tasks but the one set aside.
     const { standings, outcomes } = poolOf(log);
-    expect(sorted(standings.keys())).toEqual(sorted(outcomes.keys()));
-    expect(standings.get("every")).toEqual({ cell: "tied-every", solves: 2, room: null });
-    expect(standings.get("aside")).toEqual({ cell: "aside", solves: null, room: null });
+    expect(sorted(standings.keys())).toEqual(sorted(outcomes.keys()).filter((task) => task !== "aside"));
+    expect(standings.get("every")).toEqual({ won: null, by: null, room: null });
   });
 
-  it("counts a task the objective told apart between two valid answers as told apart, and the same answers without one as a tie", () => {
+  it("names the objective where it told two valid answers apart, and the same answers without one a tie", () => {
     const measured = (objective: JsonObject | null) => {
       const sides = [
         ...solved("b-1", "split", "h1", [P, P]),
@@ -648,16 +651,16 @@ describe("where a task stands in the counts an Examiner hears", () => {
         }),
       ];
     };
-    expect(cells(measured({ direction: "lower", margin: 0.01 }))).toEqual(
+    expect(winners(measured({ direction: "lower", margin: 0.01 }))).toEqual(
       new Map([
-        ["split", "other-won"],
-        ["even", "tied-every"],
+        ["split", "other on objective"],
+        ["even", null],
       ]),
     );
-    expect(cells(measured(null))).toEqual(
+    expect(winners(measured(null))).toEqual(
       new Map([
-        ["split", "tied-every"],
-        ["even", "tied-every"],
+        ["split", null],
+        ["even", null],
       ]),
     );
   });
@@ -721,26 +724,13 @@ describe("the tasks that go to a person as possibly infeasible", () => {
     const proved = [...twice, proof];
     expect(awaiting(proved)).toEqual([]);
     expect(pairsIn(proved)).toEqual(pairsIn(twice));
-    // It is the one fact an author hears beside an outcome that names no side: a tie nobody
-    // answered is counted apart where a valid answer is known.
+    // It is the one fact an author hears beside an outcome that names no valid solve, whoever
+    // gave the answer on record.
     expect(poolOf(twice).feasible).toEqual(new Set(["easy"]));
     expect(poolOf(proved).feasible).toEqual(new Set(["hard", "easy"]));
-    expect(poolOf(twice).standings.get("hard")).toEqual({
-      cell: "tied-none",
-      solves: 2,
-      room: null,
-    });
-    expect(poolOf(proved).standings.get("hard")).toEqual({
-      cell: "tied-none-known",
-      solves: 2,
-      room: null,
-    });
-    const elsewhere = [...twice, ...solved(undefined, "hard", "h9", [P])];
-    expect(poolOf(elsewhere).standings.get("hard")).toEqual({
-      cell: "tied-none-known",
-      solves: 2,
-      room: null,
-    });
+    expect(poolOf([...twice, ...solved(undefined, "hard", "h9", [P])]).feasible).toEqual(
+      new Set(["hard", "easy"]),
+    );
   });
 
   it("do not count a comparison that cut a solve of the task at a limit", () => {

@@ -47,7 +47,16 @@ import { waitTool } from "../builder/tools.ts";
 import { ending, spilled, text, tool } from "../tools/answer.ts";
 import { type CheckRow, firstMessage, systemPrompt } from "./prompt.ts";
 import type { Walls } from "./shell.ts";
-import { gapSaid, gateAnswers, gateBilled, heard, measuredGate, TRIED, UNAFFORDED } from "./record.ts";
+import {
+  gapSaid,
+  gateAnswers,
+  gateBilled,
+  heard,
+  heldOn,
+  measuredGate,
+  TRIED,
+  UNAFFORDED,
+} from "./record.ts";
 
 /** The home's copy of the reference harness, where the campaign's term lays one there. */
 
@@ -319,7 +328,7 @@ export async function measured(gate: Gate, task: TaskPackage, stop: AbortSignal,
   const roomless = `${counted}, ${unsolved ? "and no answer of yours passed try_answer on it" : "which leaves no room"}`;
   return {
     reason: seen.room ? null : solves === TRIED ? roomless : `${counted}, so it is not measured`,
-    said: counted,
+    said: seen.room ? `${counted}, so it leaves room ${heldOn(valid, solves)}` : counted,
     reference: {
       valid,
       solves,

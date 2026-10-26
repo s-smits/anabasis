@@ -532,6 +532,17 @@ export function differenceOf(pair: Paired, kept: Kept = "scored"): number {
   return wholePoints(KEPT[kept].reduce((sum, measure) => sum + points[measure], 0));
 }
 
+/** The measure that carried a task's result, null for a tie: the bill where the score without it
+ *  does not share the score's sign, a win `stepOf`'s second test reads without; validity where its points
+ *  alone do; and otherwise the objective. In buffer-fresh-opus-v065-a's g-3 the bill carried 25 of
+ *  25 wins, and the Examiner was told each as a win (26 October). */
+export function carriedBy(pair: Paired): keyof Measures | null {
+  const sign = Math.sign(differenceOf(pair));
+  if (sign === 0) return null;
+  if (Math.sign(differenceOf(pair, "unbilled")) !== sign) return "bill";
+  return Math.sign(differenceOf(pair, "validity")) === sign ? "validity" : "objective";
+}
+
 /** Whether the harness on `side` closed the task: valid in every counted solve, and not
  *  `informative` for it, so that it can only tie again at that budget or be lost. Until 12 October
  *  the supply read validity alone; until 19 October it kept a rule of its own beside `informative`

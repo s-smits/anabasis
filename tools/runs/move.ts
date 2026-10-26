@@ -15,8 +15,13 @@
  * A kept flag that names a path under the folder that holds the source's worktrees names the same
  * path under the destination's (`rehomed`), so a prompt file beside the repository is found on a
  * machine whose home is elsewhere; flags after `--` stand for the kept ones. `--hold` stops before
- * the continue, and prints it. Without `--yes` the verb reads where each end stands and moves
- * nothing.
+ * the continue, and prints it. A held seed needs no launch receipt; going on without one needs
+ * explicit campaign flags. Flags are read before the pause or copy. An occupied destination is
+ * left untouched, with instructions to preserve its campaign before removing the worktree and
+ * retrying, or to continue there if the source was already set aside. Without `--yes` the verb
+ * reads where each end stands and moves nothing.
+ * Remote receipts are read here, since the source worktree may predate the receipt reader
+ * (26 October 2026).
  *
  * A log is never copied by hand (operator, 15 October), and until 19 October a campaign went to
  * another host only so: `runs copy` moves a folder between worktrees of one machine and said that
@@ -48,8 +53,9 @@
  * host read copies made by hand; until then a copy went to `.ana/fetched/`, which no reader read.
  */
 import { LOG_FILE } from "#src/kernel/log.ts";
-import { cpSync, existsSync, mkdirSync, renameSync, statSync } from "#src/meta/filesystem.ts";
+import { cpSync, existsSync, mkdirSync, renameSync, rmSync, statSync } from "#src/meta/filesystem.ts";
 import { worktrees } from "#src/meta/git.ts";
+import { tmpdir } from "#src/meta/os.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
@@ -58,10 +64,11 @@ import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { type Host, hostNamed } from "./host-config.ts";
 import { quoted, rsync, shellPath, sshScript, worktreesIn } from "./host-command.ts";
 import { verbOn } from "./hosts.ts";
-import { CAMPAIGNS, campaignOf, HERE, keepers, processes, readNamed, writers } from "./registry.ts";
+import { CAMPAIGNS, HERE, keepers, processes, readNamed, writers } from "./registry.ts";
 import { syncRuns } from "./snapshots.ts";
-import { continueRun, lastRun, pause, said } from "./manage.ts";
+import { continueRun, pause, said } from "./manage.ts";
 import { preparedHost, publishedAt } from "./code.ts";
+import { lastLaunch } from "./receipt.ts";
 
 /** One end of a move: this machine or a host, with the folder its worktrees sit in. */
 interface End {
@@ -103,8 +110,8 @@ function endOf(name: string): End {
   };
 }
 
-/** The worktree at `end` whose `.ana/d2/<name>` holds a campaign log, and refused where none or two do. */
-function treeOf(end: End, name: string): string {
+/** The worktree at `end` whose `.ana/d2/<name>` holds a campaign log, refused where two do. */
+function treeOf(end: End, name: string): string | undefined {
   const found = at(
     end,
     `${worktreesIn(quoted(end.repo))} | while IFS= read -r w; do test -f "$w/${CAMPAIGNS}/${name}/${LOG_FILE}" && echo "$w"; done; true`,
@@ -112,9 +119,22 @@ function treeOf(end: End, name: string): string {
     .split("\n")
     .filter((line) => line !== "");
   const [only, other] = found;
-  if (only === undefined) throw new Error(`no worktree ${end.name} holds a campaign ${name}`);
   if (other !== undefined) throw new Error(`${name} names a campaign in ${found.join(" and in ")}`);
   return only;
+}
+
+/** Read kept flags through the local receipt owner before pausing or copying the campaign. */
+function flagsAt(end: End, source: string, name: string): readonly string[] | null {
+  const log = join(source, CAMPAIGNS, name, LOG_FILE);
+  if (end.host === undefined) return lastLaunch(log)?.flags ?? null;
+  const stage = join(tmpdir(), `ana-move-receipts-${crypto.randomUUID()}`);
+  mkdirSync(stage);
+  try {
+    rsync(`${side(end, dirname(log))}/`, `${stage}/`, "--include=/launch-*.json", "--exclude=/*");
+    return lastLaunch(join(stage, LOG_FILE))?.flags ?? null;
+  } finally {
+    rmSync(stage, { recursive: true, force: true });
+  }
 }
 
 /** The rsync side of `path` at `end`. */
@@ -151,14 +171,26 @@ export async function move(args: readonly string[]): Promise<void> {
   const from = endOf(values.from);
   const to = endOf(values.to);
   const source = treeOf(from, name);
-  const commit = at(from, `git -C ${quoted(source)} rev-parse HEAD`);
   const tree = join(dirname(to.repo), `anabasis-${name}`);
   const folder = (root: string) => join(root, CAMPAIGNS, name);
   const login = values.login === undefined ? [] : ["--login", values.login];
   // Read before anything stops: a pause that a taken destination then refuses leaves the run stopped.
   if (at(to, `test -e ${quoted(tree)} && echo taken; true`) === "taken") {
-    throw new Error(`${tree} is there already on ${to.name}: nothing was stopped or moved`);
+    const recovery =
+      source === undefined
+        ? `no worktree on ${from.name} holds ${name}; inspect ${folder(tree)} on ${to.name}, then use runs continue ${name} there (with explicit flags after -- if no launch receipt exists); if incomplete, recover the source folder from .ana/moved/`
+        : `the source remains at ${folder(source)} on ${from.name}; preserve ${folder(tree)} outside ${tree}, remove the destination with git -C ${quoted(to.repo)} worktree remove ${quoted(tree)} on ${to.name}, then retry`;
+    throw new Error(`${tree} is there already on ${to.name}: ${recovery}; nothing was stopped or moved`);
   }
+  if (source === undefined) throw new Error(`no worktree ${from.name} holds a campaign ${name}`);
+  const commit = at(from, `git -C ${quoted(source)} rev-parse HEAD`);
+  const kept = given.length > 0 ? given : flagsAt(from, source, name);
+  if (kept === null && !values.hold) {
+    throw new Error(
+      `${name} has no launch receipt at ${folder(source)}: supply campaign flags after -- or use --hold; nothing was stopped or moved`,
+    );
+  }
+  const flags = given.length > 0 ? given : rehomed(kept ?? [], dirname(from.repo), dirname(to.repo));
   console.log(
     `${name}: from ${source} (${from.name}) at ${commit.slice(0, 9)} to ${tree} (${to.name}), after its next ${values.after}`,
   );
@@ -181,11 +213,6 @@ export async function move(args: readonly string[]): Promise<void> {
   if (size(from, source) !== size(to, tree)) {
     throw new Error(`the log did not arrive whole in ${folder(tree)}: ${folder(source)} is left as it was`);
   }
-  // The receipts are read where they are on this machine: the source's before it is set aside, or
-  // the copy that arrived.
-  const local = from.host === undefined ? source : tree;
-  const kept = lastRun(campaignOf(local, name));
-  const flags = given.length > 0 ? given : rehomed(kept.flags, dirname(from.repo), dirname(to.repo));
   const aside = asideOf(source, name);
   if (from.host === undefined) setAside(folder(source), aside);
   else at(from, `mkdir -p ${quoted(dirname(aside))} && mv ${quoted(folder(source))} ${quoted(aside)}`);
@@ -197,6 +224,7 @@ export async function move(args: readonly string[]): Promise<void> {
     console.log(
       `held: go on with bun run runs ${to.host === undefined ? "" : `on ${to.name} `}${going.join(" ")}`,
     );
+    if (kept === null) console.log("no launch receipt: supply campaign flags after -- to continue");
     return;
   }
   if (to.host === undefined) await continueRun(going.slice(1));

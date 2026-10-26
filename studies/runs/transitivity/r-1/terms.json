@@ -1,0 +1,25 @@
+{
+  "seed": "sim-tp-epoch1",
+  "commit": "87f0b07ed",
+  "fromEvent": 6440,
+  "startedAt": "2026-10-25T23:09:28.391Z",
+  "command": [
+    "tools/d2/checkpoint.ts",
+    "--id",
+    "r-1",
+    "--reference",
+    "bf4613267f1467cf0a7bcfeff1962abe72defe6a852e24b175b7940123b58d96",
+    "--new",
+    "6a42fac4d8a6d6f78e3c67e4d3123d21a1c244f82871574f8fc9f3f6537c6a20",
+    "--cap",
+    "20",
+    "--reserve",
+    "1",
+    "--reviewer",
+    "claude/claude-opus-5-5",
+    "--reviewer-effort",
+    "medium",
+    "--predict",
+    "P-A: without the bill at least 20 of 24 epoch-1 tasks tie and 6a42fac4 loses at most 2"
+  ]
+}

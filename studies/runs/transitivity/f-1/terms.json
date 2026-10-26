@@ -1,0 +1,25 @@
+{
+  "seed": "sim-tp-bfeb",
+  "commit": "87f0b07ed",
+  "fromEvent": 16731,
+  "startedAt": "2026-10-26T01:15:08.608Z",
+  "command": [
+    "tools/d2/checkpoint.ts",
+    "--id",
+    "f-1",
+    "--reference",
+    "bf4613267f1467cf0a7bcfeff1962abe72defe6a852e24b175b7940123b58d96",
+    "--new",
+    "6a42fac4d8a6d6f78e3c67e4d3123d21a1c244f82871574f8fc9f3f6537c6a20",
+    "--cap",
+    "32",
+    "--reserve",
+    "1",
+    "--reviewer",
+    "claude/claude-opus-5-5",
+    "--reviewer-effort",
+    "medium",
+    "--predict",
+    "P-B: without the bill 6a42fac4 beats bf461326 on the frontier at p <= 0.02"
+  ]
+}

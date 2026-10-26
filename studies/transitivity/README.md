@@ -181,6 +181,14 @@ solves. A reading whose A/A reads a step either way is reported with that beside
 | towards a regression | | | Later promotions lost ability the first had, without the bill: patches that cost earlier ability, whatever B reads |
 | towards room | | | Epoch 1 had room above `bf461326` and the final harness found some; at p at or under 0.02 the proposal's prediction holds |
 
+Correction of 26 October, leaving the registered rows as they were: a falsified P-B is a test that
+did not clear its level, which shows neither that the final harness does no better nor why. Read
+the two rows on it as "the final harness was not shown to beat `bfeb41cd` on this frontier"; that
+selection against the reference explains the frontier wins is one account the design cannot
+separate from others. The row on a falsified P-C rests on one comparison, of the ancestor with
+`bfeb41cd`, and says nothing of the final harness against `bfeb41cd`. Arm C was never run, so no
+recorded outcome changes.
+
 No reading here is a step of a campaign, and none is compared with v065-a's own readings, which
 ran at another commit. A claim made from them names this protocol, the seed and the commit.
 

@@ -1,0 +1,16 @@
+the step is read on 24 tallied tasks, 24 of them untied: one reading at the comparison's level detects four times in five a harness that wins 80% of them
+one reading at these margins reads a step between equal harnesses 2% of the time, never more than the level
+its p is 0: the test weighs each untied task by its score, and where every untied task is won p is one half to the power of their count whatever the margins: 24 won read 0
+the reference against itself, on halves of its own solves mirrored in time (the A/A), over the 24 tallied tasks, 20 of them untied:
+  tie share 17%: the share of tasks two equal harnesses tied at half the comparison's solves a side, where equal harnesses tie more often than at the comparison's own, so no floor for its ties
+  flip rate 0%: how often two of its solves of one task disagree on validity
+  least detectable shift: one reading of it, either half read at the level, detects four times in five a half that wins 88% of its untied tasks
+of the 24 tasks the comparison drew, 24 were tallied: the columns below, room and the test are read over the tallied ones
+each harness by itself, as how many tasks had 0, 1, 2, 3, 4 valid answers in 4 solves (a count of tasks a column, not a share):
+  at its limits: reference 0/0/0/0/24, new 0/0/0/0/24
+the score weighs validity 0.6, the objective 0.3 and the bill 0.1, and over the tallied tasks gave the new harness 0, +67 and +1624 points, a task's score running from -1000 to 1000
+the objective: lower is better
+the median turns of a valid answer, over the 24 tasks both answered: reference 3.75, new 2 (reported, in no test)
+cost, gating nothing: 2 promotion attempts this epoch (bar 3 after set-up): met, over 1 Builder session and 81.51 dollars billed
+predicted before the first solve: P-A: without the bill at least 20 of 24 epoch-1 tasks tie and 6a42fac4 loses at most 2
+read: step

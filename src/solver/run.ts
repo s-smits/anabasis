@@ -91,9 +91,26 @@ export interface SolveRequest {
   readonly kill?: AbortSignal;
 }
 
+/**
+ * A solve's wall, and when its model last spoke under it: as each tool call starts and returns
+ * (`timed`) and as a turn ends without one (`next`). When the wall falls it keeps how long the model
+ * had been silent with none of its tools running, which `unanswered` reads (`SILENT_SECONDS`).
+ */
+export interface Wall {
+  readonly signal: AbortSignal;
+  heard: number;
+  /** The model's tool calls running now. */
+  running: number;
+  /** Seconds the model had been silent when the wall fell; 0 until it falls or while a tool ran. */
+  silentSeconds: number;
+  /** Takes the wall down once the solve is over. */
+  readonly lower: () => void;
+}
+
 /** What a solve has used of its limits, as its tools are told to say it. */
 export interface Used {
   readonly clock: SolveClock;
+  readonly wall: Wall;
   /** The model's turns already recorded, including the one whose tools are running. */
   readonly turns: () => number;
   /** The turns the solve is given; undefined where they are not limited. */
@@ -115,6 +132,9 @@ export interface Played {
   readonly submitted: JsonValue | undefined;
   readonly flagged: string | undefined;
   readonly wallEnded: boolean;
+  /** How long the model had been silent, with no tool of its running, when the wall fell
+   *  (`Wall`). */
+  readonly silentSeconds: number;
   /** Whether the model used every turn it was given, where it was given a number of them. */
   readonly turnsEnded: boolean;
   readonly moved: boolean;
@@ -237,12 +257,11 @@ async function play(
 ): Promise<Played & { readonly spent: Sat["spent"]; readonly released: Promise<void> }> {
   const { limits } = request;
   const dirs = solveDirs(id);
-  const wall = new AbortController();
+  let wall: Wall | null = null;
   const desk = openDesk();
   const before = treeStamp(request.harness);
   const turns: AssistantMessage[] = [];
   let spentOn: Sat["spent"] | null = null;
-  let timer: ReturnType<typeof setTimeout> | undefined;
   let release: ReleaseRoot | null = null;
   let homeBytes: number | null;
   let released: Promise<void> = Promise.resolve();
@@ -273,12 +292,13 @@ async function play(
       programs: installedPrograms(harness.toolTree),
       network: await networkReach(commandWall),
     });
-    const used = { clock, turns: () => turns.length, modelTurns: limits.modelTurns };
-    const tools = defined.map((tool) => timed(tool, used));
     prompts = 1;
     // The wall is the solver's time, so it starts with the first turn rather than the setup.
     clock.started = performance.now();
-    timer = setTimeout(() => wall.abort(), limits.wallSeconds * 1000);
+    const raised = raiseWall(limits.wallSeconds);
+    wall = raised;
+    const used = { clock, wall: raised, turns: () => turns.length, modelTurns: limits.modelTurns };
+    const tools = defined.map((tool) => timed(tool, used));
     const sat = await sit({
       models: request.models,
       home: join(dirs.host, "model"),
@@ -298,13 +318,14 @@ async function play(
       // 3 of 238 turns sent a submit beside a shell call, and the model was asked on.
       over: () => desk.submitted !== undefined || desk.flagged !== undefined,
       next: async () => {
+        raised.heard = performance.now();
         if (desk.submitted !== undefined || desk.flagged !== undefined || prompts >= limits.turns) {
           return null;
         }
         prompts += 1;
         return NUDGE;
       },
-      stops: [wall.signal, request.kill],
+      stops: [raised.signal, request.kill],
     });
     crash = sat.thrown;
     spentOn = sat.spent;
@@ -312,7 +333,7 @@ async function play(
     if (error instanceof BrokenHarness) broken = error.message;
     else crash = errorMessage(error);
   } finally {
-    clearTimeout(timer);
+    wall?.lower();
     // Read apart from the loop, before the root goes: a walk that fails voids no solve.
     homeBytes = bytesUnder(dirs.home);
     if (release !== null) released = release();
@@ -327,12 +348,27 @@ async function play(
     spent: spentOn ?? (await spentBy(id, [], [])),
     submitted: desk.submitted,
     flagged: desk.flagged,
-    wallEnded: wall.signal.aborted,
+    wallEnded: wall?.signal.aborted ?? false,
+    silentSeconds: wall?.silentSeconds ?? 0,
     turnsEnded: limits.modelTurns !== undefined && turns.length >= limits.modelTurns,
     moved: treeStamp(request.harness) !== before,
     homeBytes,
     released,
   };
+}
+
+/** A wall raised now, that falls `seconds` from now. */
+export function raiseWall(seconds: number): Wall {
+  const fall = new AbortController();
+  const wall: Wall = { signal: fall.signal, heard: performance.now(), running: 0, silentSeconds: 0, lower };
+  const timer = setTimeout(() => {
+    if (wall.running === 0) wall.silentSeconds = (performance.now() - wall.heard) / 1000;
+    fall.abort();
+  }, seconds * 1000);
+  function lower() {
+    clearTimeout(timer);
+  }
+  return wall;
 }
 
 /** `m:ss`, as the solve's clock is told. */
@@ -349,7 +385,7 @@ export function clockText(seconds: number): string {
  * (`docs/transfer.md`). What a solver does with its time is its own to decide; this says what the
  * time is.
  */
-export function timed(tool: SeatTool, { clock, turns, modelTurns }: Used): SeatTool {
+export function timed(tool: SeatTool, { clock, wall, turns, modelTurns }: Used): SeatTool {
   const line = () =>
     `[Solve time used: ${clockText(usedSeconds(clock) ?? 0)} of ${clockText(clock.seconds)}${
       modelTurns === undefined ? "" : `. Turn ${String(turns())} of ${String(modelTurns)}`
@@ -357,6 +393,7 @@ export function timed(tool: SeatTool, { clock, turns, modelTurns }: Used): SeatT
   return {
     ...tool,
     execute: async (args, api, context) => {
+      wall.running += 1;
       try {
         const result = await tool.execute(args, api, context);
         if (result.output === undefined) {
@@ -369,6 +406,9 @@ export function timed(tool: SeatTool, { clock, turns, modelTurns }: Used): SeatT
         // output carries only the clock.
         api.output(`\n${line()}`);
         throw error;
+      } finally {
+        wall.running -= 1;
+        wall.heard = performance.now();
       }
     },
   };
@@ -437,6 +477,7 @@ export async function judge(request: SolveRequest, id: string, played: Played): 
   if (played.broken !== null) return { outcome: "fail", kind: "broken-harness", reason: played.broken };
   return unanswered({
     wallEnded: played.wallEnded,
+    silentSeconds: played.silentSeconds,
     turnsEnded: played.turnsEnded,
     last: played.turns.at(-1),
   });

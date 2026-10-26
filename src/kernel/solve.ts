@@ -66,6 +66,19 @@ interface LastTurn {
   readonly errorMessage?: JsonValue | undefined;
 }
 
+/**
+ * How long a solve's model may have been silent, with none of its tools running, when the wall ends
+ * the solve, before that wall is read as the provider's. Of 218,493 solve turns recorded up to 26
+ * October, none that came back took longer than 3.5 minutes. Nine went silent for 22 to 30 minutes
+ * until the wall ended them, and were counted as the solver's fail (`wall-ended`): seven on GPT
+ * solves of two v0.5.4 runs ("Request was aborted"), and at 14:04Z on 26 October two solves of
+ * buffer-fresh-opus-v071's comparison g-3, one on each side; two gate solves of an Examiner seat on
+ * the same machine, started that minute, heard nothing in the 21 minutes until the seat was stopped.
+ * A stalled stream is the provider's failure (rule 7), and as a fail it hands the other side a win by
+ * validity, or a draft room at the gate.
+ */
+export const SILENT_SECONDS = 10 * 60;
+
 /** The host's first cancellation source, carried through parent and invocation signals. */
 export class Cancellation extends Error {
   constructor(readonly cancelledBy: CancellationOrigin) {
@@ -103,17 +116,28 @@ export function providerFailed(last: LastTurn): boolean {
 }
 
 /**
- * How a solve that left no answer ended: the wall's, its last turn's (the provider's failure or the
- * window's), its spent turns', or no answer. The one reading of it, which `judge`
- * (`src/solver/run.ts`) asks once an answer, a flag, a crash and a broken harness are ruled out, and
- * which any other runner of a solve asks of the solve it ran, so that both read one ending alike.
+ * How a solve that left no answer ended: the wall's, unless the model had been silent at it for
+ * `SILENT_SECONDS`, its last turn's (the provider's failure or the window's), its spent turns', or
+ * no answer. The one reading of it, which `judge` (`src/solver/run.ts`) asks once an answer, a flag,
+ * a crash and a broken harness are ruled out, and which any other runner of a solve asks of the
+ * solve it ran, so that both read one ending alike.
  */
 export function unanswered(stopped: {
   readonly wallEnded: boolean;
+  /** How long the model had been silent, with no tool of its running, when the wall fell. */
+  readonly silentSeconds: number;
   readonly turnsEnded: boolean;
   readonly last: LastTurn | undefined;
 }): Extract<Ending, { readonly kind: string }> {
   const { last } = stopped;
+  if (stopped.wallEnded && stopped.silentSeconds >= SILENT_SECONDS) {
+    const minutes = String(Math.floor(stopped.silentSeconds / 60));
+    return {
+      outcome: "non-result",
+      kind: "provider",
+      reason: `the model sent nothing for ${minutes} minutes`,
+    };
+  }
   if (stopped.wallEnded) return { outcome: "fail", kind: "wall-ended" };
   // A last turn the provider failed is the provider's, though it was the last the solve was
   // allowed: until 14 October it was read as the solver's loss at its turns (`turns-ended`). A

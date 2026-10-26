@@ -14,6 +14,7 @@ import {
 } from "@earendil-works/pi-ai";
 import type { Contract } from "../src/kernel/contract.ts";
 import { read } from "../src/kernel/log.ts";
+import { SILENT_SECONDS } from "../src/kernel/solve.ts";
 import { passed } from "../src/kernel/solves.ts";
 import type { Verdict } from "../src/kernel/verify.ts";
 import { cpSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
@@ -59,6 +60,7 @@ const PLAYED: Played = {
   submitted: undefined,
   flagged: undefined,
   wallEnded: false,
+  silentSeconds: 0,
   turnsEnded: false,
   moved: false,
   homeBytes: 0,
@@ -212,6 +214,22 @@ it("without an answer: the wall, the model's turns, the context, a provider fail
   const overflow = providerStop("", "prompt is too long: 213462 tokens > 200000 maximum");
   expect(await attemptEnding({ wallEnded: true, turns: [overflow] }).ending).toMatchObject({
     kind: "wall-ended",
+  });
+  // A wall that fell on a model silent that long is the provider's stalled stream, and the solve is
+  // solved again; a moment less, or a tool of the model's still running (`silentSeconds` 0, as in
+  // "ends wall-ended when the wall falls mid-command"), and the wall is the solver's.
+  expect(await attemptEnding({ wallEnded: true, silentSeconds: SILENT_SECONDS }).ending).toEqual({
+    outcome: "non-result",
+    kind: "provider",
+    reason: "the model sent nothing for 10 minutes",
+  });
+  expect(await attemptEnding({ wallEnded: true, silentSeconds: SILENT_SECONDS - 1 }).ending).toEqual({
+    outcome: "fail",
+    kind: "wall-ended",
+  });
+  expect(await attemptEnding({ silentSeconds: SILENT_SECONDS }).ending).toEqual({
+    outcome: "fail",
+    kind: "no-answer",
   });
   // A solve given a number of model turns that used them all ended there, unless the provider
   // or the window ended its last turn (below); one that submitted in its last turn is judged on

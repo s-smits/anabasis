@@ -12,8 +12,9 @@
  * `<pack>-fresh-<model>[-<suffix>]`, with `-r<n>` where a worktree holds that name or its folder,
  * and the project `<pack>-fresh`. `--effort` is four letters of `lmhx`, for the Builder, the Examiner,
  * the Referee and the solver. The worktree is `anabasis-<name>` beside the checkout, at `--at`, by
- * default this checkout's commit. Without `--host`, placement prefers a pack's prior machine below
- * its configured cap, then the fewest live campaigns and simulation seats (22 October 2026). An explicit
+ * default this checkout's commit. Without `--host`, placement takes a machine below its configured
+ * cap that carries the fewest live runs on the chosen login, then a pack's prior machine, then the
+ * fewest live campaigns and simulation seats (`leastOccupied`, `placement.ts`). An explicit
  * `--host here` or peer overrides placement. Remote source is prepared by `code.ts` before launch,
  * and the peer's own `fresh` is told `--host here`: without it the peer placed the run again over
  * itself alone, and on 23 October refused a named host that held its cap of two live runs.
@@ -170,7 +171,7 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
       : undefined;
   const host =
     values.host === undefined
-      ? await placeFresh(pack, fleet)
+      ? await placeFresh(pack, fleet, undefined, login)
       : values.host === "here"
         ? undefined
         : hostNamed(values.host);

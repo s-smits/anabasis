@@ -6,8 +6,9 @@
  * A keeper looks at the run once a minute and takes one of four turns (`turnOf`). While the run's
  * process lives and its log ends on a provider wait (`campaign.waited`, `for: "provider"`) longer
  * than `--wait-hours`, it stops the run and goes on with it on another login. Where the process
- * is gone it goes on with the run on the same login: after an ending on the environment, as the
- * operator asked of every such run, and after no ending at all, a process that died. Any other
+ * is gone it goes on with the run on the same login, unless that login carries its cap of live
+ * runs: after an ending on the environment, as the operator asked of every such run, and after no
+ * ending at all, a process that died. Any other
  * ending is the campaign's own, and the keeper leaves. A run goes on from its log at the commit
  * its worktree stands at, on its kept flags, through the refusals of `runs continue`.
  *
@@ -58,18 +59,22 @@ export function turnOf(
 
 /**
  * The login a run goes on with after `turn`: none for a run that bills no login, else its own on a
- * continue, unless this keeper saw it spent, else the first of `roomy`, those with room, or null to
- * wait. On 20 October two Codex runs kept on the M1 would have waited for one of three spent logins
- * none of their seats used; until 26 October such a run went on as a login all the same, and
- * `runs usage` counted it against that login's most.
+ * continue, unless this keeper saw it spent or it is `full`, else the first of `roomy`, those with
+ * room, or null to wait. On 20 October two Codex runs kept on the M1 would have waited for one of
+ * three spent logins none of their seats used; until 26 October such a run went on as a login all
+ * the same, and `runs usage` counted it against that login's most. A dead run is not live, so until
+ * 26 October its own login could fill its live-run cap elsewhere and the keeper went on above it.
  */
 export async function nextLogin(
   turn: Turn,
   { current, spent, billed }: { current: string | undefined; spent: ReadonlySet<string>; billed: boolean },
   roomy: () => Promise<readonly string[]>,
+  full: (login: string) => Promise<boolean>,
 ): Promise<string | undefined | null> {
   if (!billed) return undefined;
-  if (turn === "continue" && current !== undefined && !spent.has(current)) return current;
+  if (turn === "continue" && current !== undefined && !spent.has(current) && !(await full(current))) {
+    return current;
+  }
   return (await roomy())[0] ?? null;
 }
 
@@ -121,10 +126,16 @@ async function keepGoing(run: Run, logins: readonly string[], waitMs: number): P
       if (at <= now) spentUntil.delete(login);
     }
     const spent = new Set(spentUntil.keys());
+    let fleet: Awaited<ReturnType<typeof liveEverywhere>> | undefined;
+    const counted = async () => (fleet ??= await liveEverywhere("configured"));
     const target = await nextLogin(
       turn,
       { current, spent, billed: billsLogin(events, lastRun(run).flags) },
-      async () => roomFor(logins, spent, await liveEverywhere("configured")),
+      async () => roomFor(logins, spent, await counted()),
+      async (login) => {
+        const { live, unasked } = await counted();
+        return unasked.length > 0 || atCap(runtimeProcess.env, [login], live).size > 0;
+      },
     );
     if (target === null) {
       if (!waiting) console.log(`${run.name}: no login with room; left waiting`);

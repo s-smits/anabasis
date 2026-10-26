@@ -122,14 +122,30 @@ describe("the login a run goes on with", () => {
     turn: Turn,
     current: string | undefined,
     flags: readonly string[],
-    { spent = [], roomy = [] }: { spent?: readonly string[]; roomy?: readonly string[] } = {},
-  ) => nextLogin(turn, { current, spent: new Set(spent), billed: billsLogin([], flags) }, async () => roomy);
+    {
+      spent = [],
+      roomy = [],
+      full = [],
+    }: { spent?: readonly string[]; roomy?: readonly string[]; full?: readonly string[] } = {},
+  ) =>
+    nextLogin(
+      turn,
+      { current, spent: new Set(spent), billed: billsLogin([], flags) },
+      async () => roomy,
+      async (login) => full.includes(login),
+    );
 
   it("goes on with a dead run on its own login, and a Claude run waits once its own is spent and none has room", async () => {
     expect(await goOn("continue", "2", claude)).toBe("2");
     expect(await goOn("continue", "2", claude, { spent: ["2"] })).toBeNull();
     expect(await goOn("move", "2", claude, { spent: ["2"], roomy: ["1"] })).toBe("1");
     expect(await goOn("continue", undefined, claude)).toBeNull();
+  });
+
+  it("goes on with a dead run on another login once its own carries its cap of live runs elsewhere", async () => {
+    expect(await goOn("continue", "2", claude, { full: ["2"], roomy: ["3"] })).toBe("3");
+    expect(await goOn("continue", "2", claude, { full: ["2"] })).toBeNull();
+    expect(await goOn("continue", "2", claude, { full: ["3"], roomy: ["3"] })).toBe("2");
   });
 
   it("goes on with a run no Claude seat runs in without a login, so no login counts it", async () => {

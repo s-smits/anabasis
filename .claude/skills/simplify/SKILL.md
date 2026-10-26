@@ -32,7 +32,7 @@ procedure.
 | The operator wrote | Do this |
 | --- | --- |
 | "remove X and /simplify", "sloppy, remove and find another way" | The deletion is decided. Follow the whole strand (step 4), and do not come back with a smaller X |
-| "rewrite from scratch", "completely remove and rewrite", "overkill" | [commit-r](../commit-r/SKILL.md) |
+| "fully rewrite", "rewrite from scratch", "rewrite to simpler components", "overhaul X", "completely remove and rewrite", "overkill", or edits that leave a compartment's branch count where it was | [commit-r](../commit-r/SKILL.md) |
 | "why do we even need X?" | Answer with the owner that already covers it, or the root cause X patches. Code comes after that answer |
 | "one layer higher" | Revert the leaf edit. Find the one owner every path runs through and fix it there |
 | "simplify the system so the bug cannot happen again" | Shape H4: fix the class where every instance passes, then remove the per-instance patch |

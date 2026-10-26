@@ -1,6 +1,6 @@
 ---
 name: commit-r
-description: "The commit-R protocol: a test-driven rewrite of one compartment of Anabasis v2. Commit what is in flight, remove the compartment's tests in an \"R:\" commit, write them again from a stated hypothesis so the production code fails on purpose, remove the production files in a second \"R:\" commit, then write the production code again, rewrite the neighbouring functions the old shape bent, and delete what served only it. Use when the operator says \"commit R\", \"commit-R protocol\", \"remove and rewrite the tests\" or \"rewrite from scratch\", or asks for a test-first pass that looks for a faster, simpler path to the same outcome."
+description: "The commit-R protocol: rewrite one compartment of Anabasis v2 test-first instead of editing it in place. Use it when the operator asks for code to be rewritten or overhauled (\"fully rewrite\", \"rewrite from scratch\", \"rewrite X to simpler components\", \"rewrite X and its adjacent functions\", \"overhaul X\", \"rebuild X\", \"commit R\"), and on your own judgment when a fix would add one more branch, flag, reader or fallback to code that earlier patches already bent, when the same outcome looks reachable with about half the machinery, or when simplify finds a compartment that edits cannot shrink. The tests are removed and written again from a stated hypothesis, then the production code and the neighbours its old shape bent, ending in one squashed commit. An overhaul of the pull-request stack itself is stack-pr's."
 ---
 
 # Commit R
@@ -15,6 +15,44 @@ keeps in its body the argument the steps made.
 
 [simplify](../simplify/SKILL.md) sends its "rewrite from scratch" here, and
 [reduce-complexity](../reduce-complexity/SKILL.md) measures what the pass moved.
+
+## When to reach for it
+
+**The operator asks.** "Fully rewrite", "rewrite from scratch", "rewrite X to simpler
+components", "rewrite X and its adjacent functions", "overhaul X", "rebuild X", "completely remove
+and rewrite" and "commit R" all start a pass, even where the request names only a file and says
+nothing of tests. The file is where the compartment starts: widen it to the question it answers.
+"Overhaul" of the pull-request stack (consolidate, restack, regroup) is stack-pr's, not this.
+
+**Your own judgment says the shape is wrong.** Rule 13 of `AGENTS.md` already asks a fix to
+rewrite the owner rather than add to it, and this is the procedure for that. Take a pass, without
+being asked, when the task in hand already changes a compartment and one of these holds:
+
+- the fix you are about to write adds a branch, a flag, an optional field, a fallback or a second
+  reader to code whose earlier patches already show (a run of `git log -L` or `git log --follow`
+  on the function reads as one exception after another);
+- you can state in two sentences a path to the same outcome with about half the decision points,
+  exports or concepts, and say what it would give up;
+- the same fact is decided in two places (rule 12), or a mechanism's old owner still has readers
+  after a new owner took the decision;
+- the tests pin a shape rather than an outcome: they mock internals, assert wording, or break on a
+  refactor that changes no behaviour;
+- a function is near or over the policy's 115 lines, or `measure.py` puts it above 21 decision
+  points, and the change would add to it;
+- simplify finds the same shape at three sites inside one compartment, or its edits leave the
+  branch count where it was.
+
+Before starting on your own judgment, measure the compartment
+(`.claude/skills/reduce-complexity/scripts/measure.py <files...>`) and write the hypothesis in one
+line to the operator with the number it expects to move, then go on without waiting: the rewrite
+is part of the task, not a new one. A compartment the task does not touch is proposed in that one
+line and left alone.
+
+**Keep editing in place** where a patch is a few lines and leaves the shape sound, where the
+compartment is another session's (a worktree or an open pull request on it), in a worktree a run
+was launched from, in `vendor/` (a sed, not a rewrite), in a pack, check program, kept harness or
+log (rule 2), and where the rewrite would change what a solver is given or told without the
+operator's word (section 3).
 
 ## The compartment
 
@@ -45,7 +83,10 @@ step 8 squashes them before anything is pushed, since every published commit pas
 
 1. **Commit what is in flight**, in a worktree of your own at the top of the stack
    ([stack-pr](../stack-pr/SKILL.md), and never one a run was launched from). The R commits then
-   remove the compartment and nothing else.
+   remove the compartment and nothing else. Record the measurement taken before the pass in the
+   working notes: the report compares against it. The commit bodies carry the hypothesis and the
+   boundary list, so a pass survives a compaction by reading `git log` since its first `R:`
+   commit, never by redoing a step that is already committed.
 2. **`R: <test paths>`.** Read the test files whole first and write down every boundary they hold,
    because the rewrite keeps each one or says why it was dropped. Then `git rm` them and commit with
    the subject `R: test/a.test.ts test/b.test.ts` and no body.
@@ -86,6 +127,11 @@ step 8 squashes them before anything is pushed, since every published commit pas
    holds every removed and returned line.
 
 Then take the next compartment from step 2.
+
+A pass handed to a subagent names its compartment, its hypothesis and the budget it must meet.
+The session that handed it out checks the result before reporting it: it measures the squashed
+commit itself, reads any model-visible text the commit changes against the wall test, and reports
+a missed budget as missed.
 
 ## What a pass must not do
 

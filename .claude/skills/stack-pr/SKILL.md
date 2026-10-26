@@ -328,8 +328,8 @@ smaller stack structured by subject. It reviews the whole open stack, folds ever
 related pull requests one, and publishes the result as one native stack. It rewrites other
 sessions' pull requests, so it needs the operator's word (section 8). The procedure, with the
 reason for each rule, is `references/consolidate.md`: spend by importance (`I0` and `I1` rewritten
-surgically through commit-r, lowest on the stack; `I3` folded at the top); review in groups with a second, independent
-review; restructure in one rebase; fix in lanes that deliver only `fixup!` and `amend!` commits;
+surgically through commit-r, lowest on the stack; `I3` folded at the top); review in groups according
+to its importance table; restructure in one rebase; top-based lanes deliver `fixup!` and `amend!` deltas;
 assemble by cherry-pick and autosquash; check that the squashed top's tree equals the pre-squash
 tip and that every commit typechecks where it sits; regroup; publish; prove with
 `bun run land -- <top> --sanitize`.

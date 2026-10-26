@@ -68,10 +68,10 @@ const CHANGE_AGAIN: readonly [string, JsonObject] = [
 const FINISH_IDLE: Step = ["finish", { note: "Nothing further." }];
 const IDLE: readonly Step[] = [FINISH_IDLE, FINISH_IDLE];
 
-// Five held-out tasks all won read a step at 0.05 and none at the tree's default, 0.02, which takes
-// six: this suite is of who makes the moves, so it names the level its five tasks can read at, and
-// a patience of three.
-const LEVEL = ["--level", "0.05", "--patience", "3"];
+// A paid comparison needs a sweep plus two frontier tasks: five at 0.125, eight at the tree's
+// default, 0.02. This suite is of who makes the moves, so it names the level its five tasks are
+// admitted and read a step at, and a patience of three.
+const LEVEL = ["--level", "0.125", "--patience", "3"];
 const FLAGS = ["--practice", "2", "--solves", "1", "--sessions", "1", "--target", "5", ...LEVEL];
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-hb-")));
 const bundle = join(root, "bundle");
@@ -181,7 +181,7 @@ describe("a campaign run by its live Builder", () => {
         "--patience",
         "2",
         "--level",
-        "0.05",
+        "0.125",
         "--target",
         "5",
         "--practice",
@@ -348,8 +348,8 @@ describe("a campaign run by its live Builder", () => {
   });
 
   describe("releases the epoch's practice as the gate holds tasks", () => {
-    // Seven tasks held, three released for a practice of four: the epoch is owed one, which a sweep
-    // of five at 0.05 leaves room for once the frontier holds six.
+    // Seven tasks held, three released for a practice of four: the epoch is owed one, which the
+    // admission floor of five at 0.125 leaves room for once the frontier holds six.
     const flags = ["--practice", "4", "--solves", "1", "--sessions", "1", ...LEVEL];
     const base = () => scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []);
     /** Where in the log each kind, or each Builder call by its tool, first stands. */
@@ -790,10 +790,10 @@ describe("a campaign run by its live Builder", () => {
         "1",
         "--target",
         "5",
-        // Each comparison reads five tasks, every one won, which 0.1 calls a step.
+        // Each comparison reads five tasks, every one won, which 0.125 admits and calls a step.
         "--level",
-        "0.1",
-        // A campaign opens at 0.1 where it bears one attempt without a gain, and no more.
+        "0.125",
+        // A campaign opens at 0.125 where it bears one attempt without a gain, and no more.
         "--patience",
         "1",
         "--exam-tasks",
@@ -1226,9 +1226,12 @@ describe("a campaign tool where the table names more than the action", () => {
   it("tells the Builder the same whichever held-out task was won", async () => {
     layOutPack(root, bundle, MANY, FIXTURE);
     /** Everything the Builder read from its tools in a campaign whose two comparisons tied the
-     *  task `ties` names, by comparison, as the nth task that comparison solved, with the host's
-     *  clock taken out. */
-    const read_ = async (name: string, ties: Readonly<Record<string, number>>): Promise<string> => {
+     *  tasks `ties` names, by comparison, as the nth tasks that comparison solved, with the host's
+     *  clock taken out. Three ties of five keep each reading below a step at the suite's level. */
+    const read_ = async (
+      name: string,
+      ties: Readonly<Record<string, readonly number[]>>,
+    ): Promise<string> => {
       const answering = passing();
       const seen = new Map<string, string[]>();
       const nth = (comparison: string, task: string) => {
@@ -1243,7 +1246,7 @@ describe("a campaign tool where the table names more than the action", () => {
         return {
           ...won,
           solve: (task, harness, kill, comparison) =>
-            (ties[comparison ?? ""] === nth(comparison ?? "", task.taskId) ? tie : won).solve(
+            (ties[comparison ?? ""]?.includes(nth(comparison ?? "", task.taskId)) === true ? tie : won).solve(
               task,
               harness,
               kill,
@@ -1265,8 +1268,8 @@ describe("a campaign tool where the table names more than the action", () => {
       };
       expect(await harnessBuilder([...seeded(name), ...FLAGS], seats)).toMatchObject({ ending: "finished" });
       expect(of(name, REPORTED).map(({ scored }) => scored)).toMatchObject([
-        { wins: 4, losses: 0, ties: 1 },
-        { wins: 4, losses: 0, ties: 1 },
+        { wins: 2, losses: 0, ties: 3 },
+        { wins: 2, losses: 0, ties: 3 },
       ]);
       // The campaign's facts end each campaign tool's result once, and no other tool's.
       const facts = of(name, CALLED).map(({ tool, text }) => ({
@@ -1288,10 +1291,10 @@ describe("a campaign tool where the table names more than the action", () => {
     // The two campaigns tie other tasks in each comparison, and the tallies are the same. Until
     // 12 October the status counted the tasks waiting for a label and the exhausted ones, and two
     // such campaigns read differently (rule 3).
-    const same = await read_(`${STEM}-won-one`, { "g-1": 0, "g-2": 0 });
-    const moved = await read_(`${STEM}-won-other`, { "g-1": 1, "g-2": 3 });
+    const same = await read_(`${STEM}-won-one`, { "g-1": [0, 1, 2], "g-2": [0, 1, 2] });
+    const moved = await read_(`${STEM}-won-other`, { "g-1": [1, 2, 3], "g-2": [2, 3, 4] });
     expect(moved).toBe(same);
-    expect(same).toContain("4 won, 0 lost, 1 tied");
+    expect(same).toContain("2 won, 0 lost, 3 tied");
     expect(same).toContain("Comparison g-2 took 0 minutes and billed");
   });
 });

@@ -69,6 +69,10 @@ if (args.includes("install")) {
   if (process.env.FAKE_INSTALL_DELAY) await Bun.sleep(Number(process.env.FAKE_INSTALL_DELAY));
   mkdirSync("node_modules", {recursive: true});
 }
+else if (args.includes("-e")) {
+  const child = Bun.spawn([process.execPath, ...args], {env:process.env,stdin:"ignore",stdout:"inherit",stderr:"inherit"});
+  process.exit(await child.exited);
+}
 else if (process.env.ANA_HOSTS !== "[]") process.exit(5);
 else if (process.env.FAKE_RUN_CLI === "1") {
   const start = args.findIndex((arg) => arg.startsWith("tools/") || arg.startsWith(".claude/"));

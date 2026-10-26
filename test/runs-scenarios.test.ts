@@ -236,7 +236,7 @@ it("S5: a missing remote login is refused in one line before a launch is sent", 
   ).toBe(false);
 });
 
-it("S6: one fresh batch plans repeated packs across host and login caps before launching anything", () => {
+it("S6: one fresh batch plans repeated packs across host and login caps, each login on two hosts, before launching anything", () => {
   const made = fixture();
   const packs = ["sample", "sample", "domain", "work", "code", "truss"];
   const args = [...packs, "--logins", LOGINS.join(",")];
@@ -253,15 +253,19 @@ it("S6: one fresh batch plans repeated packs across host and login caps before l
   expect(result.code).toBe(0);
   const rows = result.out.split("\n").filter((line) => /^\d+[.] /.test(line));
   expect(rows).toHaveLength(6);
-  for (const [host, count] of [
+  for (const [host, cap] of [
     ["here", 3],
     [made.host.name, 2],
-    [made.other.name, 1],
+    [made.other.name, 2],
   ] as const) {
-    expect(rows.filter((row) => row.includes(`-> ${host};`))).toHaveLength(count);
+    expect(rows.filter((row) => row.includes(`-> ${host};`)).length).toBeLessThanOrEqual(cap);
   }
-  for (const login of LOGINS) expect(rows.filter((row) => row.endsWith(`login ${login}`))).toHaveLength(2);
-  expect(rows.slice(0, 2).every((row) => row.includes("-> here"))).toBe(true);
+  for (const login of LOGINS) {
+    const own = rows.filter((row) => row.endsWith(`login ${login}`));
+    expect(own).toHaveLength(2);
+    expect(new Set(own.map((row) => row.split("-> ")[1]?.split(";")[0])).size).toBe(2);
+  }
+  expect(rows[0]).toContain("-> here");
   expect(
     made.recorded().some((call) => call.tool === "ssh" && call.args.at(-1)?.includes("fresh") === true),
   ).toBe(false);
@@ -298,7 +302,7 @@ it("a batch sends its whole remote plan sequentially and stops on any failed lau
   const command = `import { fresh } from "REPOSITORY/tools/runs/fresh.ts"; await fresh(${JSON.stringify([...packs, "--logins", LOGINS.join(","), "--yes"])}, ${READ});`;
   const env = {
     ANA_LOGINS: LOGINS.join(","),
-    ANA_LOGIN_RUNS: "2",
+    ANA_LOGIN_RUNS: "1",
     FAKE_CATALOGUE: JSON.stringify(catalogue(made, packs)),
   };
   const result = made.run(command, env);

@@ -18,12 +18,14 @@
  * here returns a line of the log. An author's accepted answer is kept for the Referee
  * (`task.feasible`).
  * The opening carries interrupted gate statuses from the log, and read_example also serves the
- * author's earlier drafts, so recovery needs no carried shell file; one longer than a result is
- * written whole into the seat's TMPDIR (`spilled`). Only admitted tasks count
+ * author's earlier drafts, so recovery needs no carried shell file. Only admitted tasks count
  * towards supply; retrieval changes neither duplicate eligibility nor how a retry is solved.
  * On 21 October, 23 passing tries followed a proposal in 30 logs; the proof is read when needed.
  * Unmeasured drafts may return in the same session (5 retry signatures in 30 logs), and the
  * reserve holds the solves a draft starts next (2 reserve refusals of 1,396 drafts).
+ * On 26 October, all 64 proposals in one campaign repeated input already sent to try_answer,
+ * totalling 1,148,964 characters. A checked instance can now be proposed by its content reference,
+ * with the same identity and gate as a full instance, for the rest of this session.
  */
 import type { SeatTool } from "../agent/session.ts";
 import { Type } from "typebox";
@@ -39,12 +41,11 @@ import type { Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
 import { isNumber, isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import { waitTool } from "../builder/tools.ts";
-import { ending, spilled, text, tool } from "../tools/answer.ts";
+import { ending, text, tool } from "../tools/answer.ts";
 import { type CheckRow, firstMessage, systemPrompt } from "./prompt.ts";
 import type { Walls } from "./shell.ts";
 import {
@@ -116,6 +117,8 @@ interface Desk {
   /** The last author answer that passed on each instance, kept only in session memory and
    *  rechecked on the final task before recording proof. */
   readonly answered: Map<string, JsonValue>;
+  /** Checked content, kept once so a proposal can name it without sending its input again. */
+  readonly checked: Map<string, Task>;
   /** Every answer that passed, by hash: a task that carries one whole is refused, since a planted
    *  answer is for `try_answer` and for no task (`carries`; `AGENTS.md`, rule 9). */
   readonly planted: Set<string>;
@@ -133,15 +136,22 @@ const GATE = "task.gate";
  *  and the reference harness's solves of it. */
 const GATES = {
   propose_tasks: {
-    description:
-      "Put task instances to the host's gate, as the system prompt's section on the gate says. Each instance is a family, a public input and hidden values, in the shape of the existing tasks.",
+    description: "Put task instances to the host's gate, as the system prompt's section on the gate says.",
   },
   try_task: {
-    description: `Put task instances to the host's gate and return at once: the shape of each package, then up to ${String(TRIED)} solves of it by the reference harness, the first alone and the rest together, as the system prompt's section on the gate says. What the gate says of each comes with a later tool result, and wait returns with it. Each instance is a family, a public input and hidden values, in the shape of the existing tasks.`,
+    description: `Put task instances to the host's gate and return at once: the shape of each package, then up to ${String(TRIED)} solves of it by the reference harness, the first alone and the rest together, as the system prompt's section on the gate says. What the gate says of each comes with a later tool result, and wait returns with it.`,
   },
 } as const;
 /** What only the checks read of an instance, as each tool that takes one describes it. */
 const HIDDEN = Type.Unknown({ description: "What only the checks receive; null when a task has none." });
+const INSTANCE = Type.Object({
+  family: Type.String({ minLength: 1 }),
+  public_input: Type.Unknown({ description: "What the solver reads of the task." }),
+  hidden: HIDDEN,
+});
+const REFERENCE = Type.Object({
+  reference: Type.String({ description: "The instance reference returned by try_answer in this session." }),
+});
 /** Why the gate refuses a task that carries a planted answer: the witness serves the feasibility
  *  gate and is then discarded, so it never reaches a solver (the overhaul plan, S.4; rule 9). */
 const PLANTED =
@@ -471,10 +481,8 @@ function proposeTool(desk: Desk, name: keyof typeof GATES): SeatTool {
     ...GATES[name],
     parameters: Type.Object({
       tasks: Type.Array(
-        Type.Object({
-          family: Type.String({ minLength: 1 }),
-          public_input: Type.Unknown({ description: "What the solver reads of the task." }),
-          hidden: HIDDEN,
+        Type.Union([INSTANCE, REFERENCE], {
+          description: "An instance in the shape of the existing tasks, or its checked reference.",
         }),
         { minItems: 1 },
       ),
@@ -487,7 +495,13 @@ function proposeTool(desk: Desk, name: keyof typeof GATES): SeatTool {
       if (supplied(desk)) throw new Error(SUPPLIED);
       if (spent()) throw new Error("This session can propose no further task. Call finish.");
       // Take the call's instances before their gates start, so a batch may exceed what is wanted.
-      const instances = args.tasks.map((given) => taken(instanceOf("", given), signal));
+      const instances = args.tasks.map((given) => {
+        if (!("reference" in given)) return taken(instanceOf("", given), signal);
+        const checked = desk.checked.get(given.reference);
+        return checked === undefined
+          ? `Unknown instance reference ${given.reference}. Known references: ${desk.checked.size === 0 ? "none" : [...desk.checked.keys()].join(", ")}.`
+          : taken(checked, signal);
+      });
       if (name === "try_task") {
         return text(putAside(desk, instances, (instance) => gated(desk, instance, signal)));
       }
@@ -502,7 +516,7 @@ function proposeTool(desk: Desk, name: keyof typeof GATES): SeatTool {
   });
 }
 
-function exampleTool(tasks: readonly Task[], spill: string | undefined): SeatTool {
+function exampleTool(tasks: readonly Task[]): SeatTool {
   const examples = new Map(tasks.map((task) => [task.taskId, task]));
   return tool({
     name: "read_example",
@@ -518,12 +532,7 @@ function exampleTool(tasks: readonly Task[], spill: string | undefined): SeatToo
         throw new Error(`${args.task} is not one of the tasks: ${[...examples.keys()].join(", ")}`);
       }
       const { taskId, family, publicInput, hidden } = example;
-      return await spilled(
-        capturedJsonStringify({ taskId, family, publicInput, hidden }, null, 2),
-        spill === undefined
-          ? undefined
-          : join(spill, `read_example-${taskId.replaceAll(/[^\w.-]/g, "_")}.json`),
-      );
+      return text(capturedJsonStringify({ taskId, family, publicInput, hidden }, null, 2));
     },
   });
 }
@@ -563,7 +572,7 @@ function tryTool(desk: Desk, verify: Verifier): SeatTool {
   return tool({
     name: "try_answer",
     description:
-      "Run the checks on an instance with an answer of yours, and say which checks refuse it, or that none does. A try enters no task in the exam. Where the checks pass, the host holds the answer for a task proposed with that content before or after the try. While its gate is still reading, the proof can decide admission; once held, it is kept on the exam side for the Referee. A refused task stays refused. The gate's reading of the instance's package comes first, where it would refuse it.",
+      "Run the checks on an instance with an answer of yours, and say which checks refuse it, or that none does. Return an instance reference for proposing this checked content without resending it. A try enters no task in the exam. Where the checks pass, the host holds the answer for a task proposed with that content before or after the try. While its gate is still reading, the proof can decide admission; once held, it is kept on the exam side for the Referee. A refused task stays refused. The gate's reading of the instance's package comes first, where it would refuse it.",
     parameters: Type.Object({
       family: Type.String({ minLength: 1 }),
       public_input: Type.Unknown({ description: "What the solver would read of the task." }),
@@ -590,6 +599,7 @@ function tryTool(desk: Desk, verify: Verifier): SeatTool {
         );
       }
       const verdict = await verify(instance, answer);
+      desk.checked.set(content, instance);
       if (verdict.kind === "pass") {
         desk.answered.set(content, answer);
         desk.planted.add(hashJsonValue(answer));
@@ -601,7 +611,7 @@ function tryTool(desk: Desk, verify: Verifier): SeatTool {
         isRecord(objective) && isNumber(objective.measure)
           ? ` By the objective it measures ${shown(objective.measure)}.`
           : "";
-      return text(`${gate}${tried(verdict)}${measure}`);
+      return text(`${gate}${tried(verdict)}${measure}\nInstance reference: ${content}.`);
     },
   });
 }
@@ -629,10 +639,8 @@ function gatedTasks(events: readonly LogEvent[]): Task[] {
  */
 export function writing(
   request: Terms,
-  // The engines installed in its shell, and its TMPDIR, where a long example is written whole.
-  walls:
-    | (Pick<Walls, "pinned"> & { readonly shell: { readonly dirs: { readonly temp: string } } })
-    | undefined,
+  // The engines installed in its shell.
+  walls: Pick<Walls, "pinned"> | undefined,
   reference: "unseen" | "in-home",
   stop = new AbortController().signal,
   hostWait: (action: () => Promise<void>) => Promise<void> = async (action) => await action(),
@@ -645,6 +653,7 @@ export function writing(
     proposed: 0,
     seen: new Map(gatedTasks(before).map((task) => [contentOf(task), "earlier"] as const)),
     answered: new Map(),
+    checked: new Map(),
     planted: new Set(),
     held: [],
     refused: [],
@@ -684,7 +693,7 @@ export function writing(
     },
     tools: [
       proposeTool(desk, gate),
-      exampleTool([...writtenTasks(before), ...request.tasks], walls?.shell.dirs.temp),
+      exampleTool([...writtenTasks(before), ...request.tasks]),
       ...(verify === null ? [] : [tryTool(desk, verify)]),
       ...(request.probe === null
         ? []

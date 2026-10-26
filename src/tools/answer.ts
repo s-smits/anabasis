@@ -29,6 +29,7 @@ import { type TSchema, Type } from "typebox";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { sha256 } from "../meta/digest.ts";
+import { rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonParse } from "../meta/json-runtime.ts";
 import type { JsonObject, JsonValue } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
@@ -150,12 +151,17 @@ export function text(value: string, details: JsonObject | null = null): ToolExec
  * pi keeps of a result, and otherwise its head, with one line that gives its full size and the
  * file under `spill`, where the whole text is written for the seat's `read`. Until 25 October
  * `read_example` cut at 20,000 characters, and four recorded drafts of 22,191 to 73,638 came back
- * as JSON that did not parse. Without a `spill` the notice gives the size alone.
+ * as JSON that did not parse. Without a `spill` the notice gives the size alone. `spill` lies in a
+ * folder the seat writes, under a name it can know, so whatever stands there is removed and the file
+ * made new: until 26 October a link the seat left there had the host overwrite what it named.
  */
 export async function spilled(value: string, spill: string | undefined): Promise<ToolExecutionResult> {
   const bounded = boundText(value, RESULT.bytes, "head", RESULT.lines);
   if (!bounded.truncated) return text(bounded.text);
-  if (spill !== undefined) await Bun.write(spill, value);
+  if (spill !== undefined) {
+    rmSync(spill, { force: true });
+    writeFileSync(spill, value, { flag: "wx" });
+  }
   const kept = new TextEncoder().encode(bounded.text).byteLength;
   const where = spill === undefined ? "" : ` The full file is at ${spill}.`;
   return text(

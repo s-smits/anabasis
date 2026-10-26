@@ -31,6 +31,7 @@
  * `try_answer` alone.
  */
 import type { SeatTool } from "../agent/session.ts";
+import { copyHarness } from "../builder/kept.ts";
 import { type Engine, pinnedEngines, type VerifierTree } from "../kernel/verify.ts";
 import { read } from "../kernel/log.ts";
 import { chmodSync, cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
@@ -133,10 +134,11 @@ export async function inExaminerWall<T>(
     };
     const { home } = dirs;
     if (keep !== undefined && existsSync(keep)) cpSync(keep, home, { recursive: true });
-    // A kept state names its programs by a link to the campaign's store, which the wall closes.
-    if (reference !== undefined) {
-      cpSync(reference, join(home, REFERENCE_HOME), { recursive: true, dereference: true });
-    }
+    // A kept state names its programs by a link to the campaign's store, which the wall closes, so
+    // they are laid as files, as in a Builder's `kept/`; every other link stays a link. Until
+    // 26 October every link was followed by the host, so one a Builder left in a harness that was
+    // promoted laid what it named in the Examiner's home, whatever the walls closed.
+    if (reference !== undefined) copyHarness(reference, join(home, REFERENCE_HOME));
     const result = await run({ shell, pinned, began });
     // The campaign's copy of a session's home, made whole when the session ends and replacing the
     // one before: it is the exam side's, under the campaign's folder beside the log, which every

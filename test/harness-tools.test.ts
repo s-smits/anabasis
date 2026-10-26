@@ -248,6 +248,25 @@ it("builds a harness's tools from its own files alone: no macro, no file outside
     rmSync(join(guide, "agent", "BUILT_AGENTS.md"));
     symlinkSync(secret, join(guide, "agent", "BUILT_AGENTS.md"));
     await expect(openHarness(guide)).rejects.toThrow("agent/BUILT_AGENTS.md links outside the harness");
+    // A kept state's programs lie in a tree beside it, linked as `.toolchain`: its tools may import
+    // them. A link to the folder above, or to a tree that does not lie beside it, reaches outside.
+    const shared = 'import { lib } from "../.toolchain/lib.ts";\nexport const LIB = lib;';
+    mkdirSync(join(root, "tree-1"));
+    writeFileSync(join(root, "tree-1", "lib.ts"), 'export const lib = "shared-7c2d";\n');
+    const kept = tools("kept", shared);
+    symlinkSync(join("..", "tree-1"), join(kept, ".toolchain"));
+    expect((await openHarness(kept)).module).toContain("shared-7c2d");
+    const above = tools(
+      "above",
+      'import leak from "../.toolchain/host-secret.txt" with { type: "text" };\nexport const LEAK = leak;',
+    );
+    symlinkSync("..", join(above, ".toolchain"));
+    await expect(openHarness(above)).rejects.toThrow("host-secret.txt, which is outside the harness");
+    mkdirSync(join(root, "distant", "tree-2"), { recursive: true });
+    writeFileSync(join(root, "distant", "tree-2", "lib.ts"), 'export const lib = "far-9e1f";\n');
+    const far = tools("far", shared);
+    symlinkSync(join("..", "distant", "tree-2"), join(far, ".toolchain"));
+    await expect(openHarness(far)).rejects.toThrow("lib.ts, which is outside the harness");
     // Its own files and a package installed under it still bundle.
     const honest = tools("honest", 'import six from "sixfold";\nexport const SIX = six;');
     const sixfold = join(honest, "node_modules", "sixfold");

@@ -6,9 +6,9 @@ import { describe, expect, it } from "bun:test";
 import { decide, epochReleased, practiceRoom, unpromoted } from "../src/campaign/decide.ts";
 import type { Plan } from "../src/campaign/ground.ts";
 import { pendingWords } from "../src/campaign/word.ts";
-import { sweepOf } from "../src/kernel/compare.ts";
+import { sweepOf, tally as tallyPairs } from "../src/kernel/compare.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
-import { releaseOrder, stopRule } from "../src/kernel/reports.ts";
+import { pairsReported, lastReports, poolOf, releaseOrder, stopRule } from "../src/kernel/reports.ts";
 import { conditionId } from "../src/kernel/condition.ts";
 import { taskSets } from "../src/kernel/task.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
@@ -819,6 +819,77 @@ describe("a hold on the move a row named", () => {
     const log = tasks.flatMap(heldOut);
     expect(practiceRoom(log, 0.02)).toBe(Infinity);
     expect(releaseOrder(log, tasks, Math.min(1, practiceRoom(log, 0.02)), "seed")).toHaveLength(1);
+  });
+
+  it("practice: the allowance and released tasks stay the same whichever objective task the new harness won", () => {
+    const tasks = ["a", "b", ...HELD.slice(0, 5)];
+    const won = (task: string) => {
+      const round = roundSolves("g-room", ["start", "h1"], { a: "PP PP", b: "PP PP" });
+      const starts = round.events.filter(({ kind }) => kind === "solve.started");
+      // A already has room between the reference's own answers; B has none. The fresh
+      // answers either win A and lose B, or lose A and win B, preserving the tally.
+      const measures = task === "a" ? [10, 5, 1, 1, 10, 10, 20, 20] : [10, 5, 20, 20, 10, 10, 1, 1];
+      return [
+        ...RELEASED,
+        ...tasks.flatMap(heldOut),
+        ...round.events,
+        ...starts.map(({ data }, index) =>
+          event("verdict", {
+            solve: data.solve ?? "",
+            kind: "pass",
+            answer: {},
+            objective: measures[index] ?? 0,
+          }),
+        ),
+        event("comparison.reported", {
+          session: "g-room",
+          old: "start",
+          fresh: "h1",
+          starter: "start",
+          reading: "no-step",
+          scored: { wins: 1, losses: 1, ties: 0 },
+          ...round.terms,
+          objective: { direction: "lower", margin: 0.01 },
+        }),
+      ];
+    };
+    for (const extra of [0, 1]) {
+      const logs = [won("a"), won("b")].map((events) => [
+        ...events,
+        ...HELD.slice(5, 5 + extra).flatMap(heldOut),
+      ]);
+      const released = logs.map((events) =>
+        releaseOrder(events, taskSets(events).held, practiceRoom(events, 0.02), "seed"),
+      );
+      const tallies = logs.map((events) =>
+        tallyPairs(lastReports(events).flatMap((report) => pairsReported(events, report))),
+      );
+      expect(tallies[0]).toEqual(tallies[1]);
+      expect(logs.map((events) => poolOf(events).frontier.length)).toEqual([6 + extra, 7 + extra]);
+      expect(logs.map((events) => practiceRoom(events, 0.02))).toEqual([extra, extra]);
+      expect(released[0]).toEqual(released[1]);
+      expect(released[0]?.map(([version]) => version)).toEqual(extra === 0 ? [] : ["a"]);
+    }
+  });
+
+  it("practice: an answer from the other harness alone cannot increase the feasibility allowance", () => {
+    const log = (fresh: string) => [
+      ...RELEASED,
+      ...["u", ...HELD.slice(0, 6)].flatMap(heldOut),
+      ...["g-1", "g-2"].flatMap((session) =>
+        compared(session, "h1", "no-step", {
+          solved: { u: `FF ${fresh}` },
+        }),
+      ),
+    ];
+    expect(["PP", "FF"].map((fresh) => practiceRoom(log(fresh), 0.02))).toEqual([0, 0]);
+    // Independent feasibility keeps the failed task available for the sweep.
+    for (const proof of [
+      event("task.feasible", { version: "u" }),
+      event("task.gate", { version: "u", reference: { valid: 1 } }),
+    ]) {
+      expect(practiceRoom([...log("FF"), proof], 0.02)).toBe(1);
+    }
   });
 
   it("practice: a release after a promotion leaves a sweep of frontier tasks held", () => {

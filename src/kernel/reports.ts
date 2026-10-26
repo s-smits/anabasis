@@ -14,6 +14,7 @@
  * choice is the operator's and the record is the log's (`7f0add79:docs/plan.md`, Phase 6). A Builder goes
  * on from the harness its last session left (`latestBuilt`), step or none.
  * Practice priority reads each task's last scored or disputed result, as its outcome does.
+ * Its allowance keeps a reference-only frontier in this same fold (26 October, rule 3).
  *
  * The stop rule is the plan's: as many moves in a row that could have shown a gain and showed none
  * as the campaign's patience (`stopRule`, `patienceOf`).
@@ -116,10 +117,11 @@ interface TaskRecord {
   readonly held: boolean;
   /** The last event at which a person kept it held (`task.state`), or -1. */
   keptAt: number;
-  /** Whether a solve on record gave it a valid answer, under any harness and at any limits. */
-  answered: boolean;
-  /** `answered`, or `task.feasible` records a passing author answer, or its gate says a reference
-   *  solve under `try_task` gave a valid answer, which answers nothing. */
+  /** Feasibility independent of the other harness: an author's proof, a gate's valid solve,
+   *  or a valid solve of the current reference. The practice allowance reads only this evidence. */
+  referenceFeasible: boolean;
+  /** A solve's valid answer on record, or `task.feasible` records a passing author answer, or its
+   *  gate says a reference solve under `try_task` gave a valid answer, which answers nothing. */
   feasible: boolean;
   /** The best measure by the objective of an author's answer on record (`task.feasible`), or null
    *  where none carries one (`informative`, `compare.ts`; 19 October). */
@@ -364,12 +366,12 @@ export function pairsReported(events: readonly LogEvent[], report: Reported): Pa
   return pairsOf(events.slice(0, index + 1), versions, sides, solves).pairs;
 }
 
-/** The held-out tasks `place` gives a place, in the order of their places: the first pair that
+/** The tasks `place` gives a place, in the order of their places: the first pair that
  *  put each on the list. */
 function placed(records: readonly TaskRecord[], place: (record: TaskRecord) => number | undefined): string[] {
   return records
     .flatMap((record) => {
-      const at = record.held ? place(record) : undefined;
+      const at = place(record);
       return at === undefined ? [] : [[record.version, at] as const];
     })
     .toSorted((one, other) => one[1] - other[1])
@@ -394,7 +396,7 @@ function taskRecords(events: readonly LogEvent[]) {
       version,
       held: held.has(version),
       keptAt: -1,
-      answered: false,
+      referenceFeasible: false,
       feasible: false,
       best: null,
       tallied: [],
@@ -408,7 +410,10 @@ function taskRecords(events: readonly LogEvent[]) {
     if (!isString(data.version)) continue;
     if (kind === "task.state" && data.state === "held") of(data.version).keptAt = index;
     const tried = kind === "task.gate" ? asRecord(data.reference)?.valid : undefined;
-    if (kind === "task.feasible" || (isNumber(tried) && tried > 0)) of(data.version).feasible = true;
+    if (kind === "task.feasible" || (isNumber(tried) && tried > 0)) {
+      of(data.version).feasible = true;
+      of(data.version).referenceFeasible = true;
+    }
     const { measure, direction } = asRecord(data.objective) ?? {};
     if (kind !== "task.feasible" || !isNumber(measure)) continue;
     const record = of(data.version);
@@ -439,6 +444,7 @@ function taskRecords(events: readonly LogEvent[]) {
       each.seat === "solve" && each.part === "turn" ? [[each.id, each]] : [],
     ),
   );
+  const reference = referenceOf(events);
   for (const solve of ranUnder(events)) {
     const { task, limits, harness } = solve.under;
     const { comparison } = solve.start;
@@ -447,7 +453,10 @@ function taskRecords(events: readonly LogEvent[]) {
     const last = { stopReason: turn?.stopReason, errorMessage: turn?.error };
     const interrupted = windowEnded(last) || providerFailed(last);
     const budgeted = kind === "turns-ended" && isNumber(limits.modelTurns) && !interrupted;
-    if (passed(solve) === true) Object.assign(of(task), { answered: true, feasible: true });
+    if (passed(solve) === true) {
+      of(task).feasible = true;
+      if (harness === reference) of(task).referenceFeasible = true;
+    }
     if (isString(comparison) && AT_A_LIMIT.has(kind) && !budgeted) cut.add(cutIn(comparison, task, harness));
   }
   tallyReports(events, of, cut);
@@ -626,10 +635,11 @@ function tallyReports(
  */
 export function poolOf(events: readonly LogEvent[]) {
   const { records, held } = taskRecords(events);
-  const awaiting = placed(records, ({ feasible, keptAt, tallied }) =>
+  const heldRecords = records.filter((record) => record.held);
+  const awaiting = placed(heldRecords, ({ feasible, keptAt, tallied }) =>
     runOf(tallied.filter(({ index, cut }) => !feasible && index >= keptAt && !cut)),
   );
-  const spent = placed(records, ({ tallied }) => {
+  const spent = placed(heldRecords, ({ tallied }) => {
     const last = tallied.findLast(({ reference, referenceCut }) => reference !== null && !referenceCut);
     return last?.closed === true ? last.order : undefined;
   });
@@ -647,11 +657,24 @@ export function poolOf(events: readonly LogEvent[]) {
   const unstood = held.filter((task) => before.has(task) && !out.has(task) && !stood.has(task));
   const retained = [...new Set([...spent, ...unstood])];
   const scorable = held.filter((task) => !out.has(task));
+  // Practice keeps a conservative sweep using reference-only feasibility, limits and objective
+  // room. The comparison frontier also reads the other harness and cannot set a public count.
+  const practiceOut = placed(heldRecords, ({ referenceFeasible, keptAt, tallied }) => {
+    const own = tallied.filter((reading) => reading.reference !== null);
+    const last = own.findLast(({ referenceCut }) => !referenceCut);
+    if (last !== undefined && sideOf(last) === "every" && (last.room ?? 0) === 0) return last.order;
+    return referenceFeasible
+      ? undefined
+      : runOf(own.filter(({ index, referenceCut }) => index >= keptAt && !referenceCut));
+  });
   const first = ({ tallied, asideOrder }: TaskRecord) =>
     Math.min(tallied[0]?.order ?? asideOrder, asideOrder);
   return {
     scorable,
     frontier: scorable.filter((task) => !retained.includes(task)),
+    practiceFrontier: held.filter(
+      (task) => !(before.has(task) && !stood.has(task)) && !practiceOut.includes(task),
+    ),
     awaiting,
     exhausted: spent,
     retained,
@@ -716,8 +739,8 @@ function standingOf(record: TaskRecord): [string, Standing][] {
 
 /**
  * The `count` held-out tasks of `pool` a release takes, each with why, in the order they are
- * taken. A task no solve answered in two comparisons goes to the Builder before the draw: it is
- * what a session has to work on, where every released task passes. Then the tasks the reference
+ * taken. A task no reference solve answered in two comparisons goes to the Builder before the draw:
+ * it is what a session has to work on, where every released task passes. Then the tasks the reference
  * harness failed in the last comparison, half of them rounded up, so that the comparison keeps
  * tasks it can untie. The rest is the contract's draw over every task neither list holds, those the
  * reference answered in every solve among them: such a task still teaches through the objective's
@@ -728,7 +751,7 @@ function standingOf(record: TaskRecord): [string, Standing][] {
  * held-out task a new harness won would change what is released, which the Builder reads (rule 3):
  * the release reads the reference's own solves alone. The release in `tools/d2/prepare.ts` calls it.
  *
- * The tasks the reference failed are the held-out ones whose last scored result says it failed
+ * The tasks the reference failed are the ones whose last scored result says it failed
  * a solve, excluding a later dispute or comparison between other harnesses, as a task's outcome
  * does: the tasks that leave the reference room are the ones a Builder has to work on, and on
  * 10 October three campaigns each ran three sessions after a promotion on practice tasks the
@@ -744,12 +767,14 @@ function standingOf(record: TaskRecord): [string, Standing][] {
  * after a first promotion was the draw alone while the frontier held 4 to 21 tasks with room. The
  * other harness's answers stay out of `room`, so which held-out task it won moves no release (rule 3).
  *
- * The tasks no solve answered are the held-out ones without a valid answer in `UNSOLVED_RUN` or
- * more comparisons, cut at a limit or not. On 10 October one campaign held four to five such tasks
- * of ten while its last three Builder sessions passed every practice task and changed nothing.
- * `poolOf`'s `awaiting` is the question to a person, which leaves out a task its wall or its
- * context cut (`taskRecords`); this leaves nothing out, since a task cut twice is as much beyond
- * the harness as one answered wrongly twice. A valid answer anywhere on record settles it either way.
+ * The tasks the reference never answered are the held-out ones it gave no valid answer in
+ * `UNSOLVED_RUN` or more comparisons it stood in, cut at a limit or not, unlike `poolOf`'s `awaiting`:
+ * on 10 October one campaign held four to five of ten while its Builder passed every practice task.
+ * Until 26 October any harness's valid answer took a task off this list, so a release told the
+ * Builder which held-out task its harness won (rule 3). A task only the other harness answered now
+ * goes to practice too, and leaves the exam.
+ * The failed half is drawn from the whole reading, including tasks already released: repeated
+ * one-task releases must leave the same half held (26 October).
  */
 export function releaseOrder(
   events: readonly LogEvent[],
@@ -759,17 +784,16 @@ export function releaseOrder(
 ): [string, string][] {
   const { records } = taskRecords(events);
   const among = (versions: readonly string[]) => versions.filter((version) => pool.includes(version));
-  const unanswered = among(
-    placed(records, ({ answered, tallied }) => (answered ? undefined : runOf(tallied))),
-  );
-  const failed = among(
-    placed(records, (record) => {
-      const last = lastRead(record);
-      if (last === null || last === "aside" || last.reference === null) return undefined;
-      return last[last.reference].some((valid) => !valid) || (last.room ?? 0) > 0 ? last.order : undefined;
-    }),
-  ).filter((version) => !unanswered.includes(version));
-  const first = [...unanswered, ...failed.slice(0, Math.ceil(failed.length / 2))];
+  const unanswered = placed(records, ({ tallied }) => {
+    const own = tallied.filter(({ reference }) => reference !== null);
+    return own.some((reading) => sideOf(reading) !== "none") ? undefined : runOf(own);
+  });
+  const failed = placed(records, (record) => {
+    const last = lastRead(record);
+    if (last === null || last === "aside" || last.reference === null) return undefined;
+    return last[last.reference].some((valid) => !valid) || (last.room ?? 0) > 0 ? last.order : undefined;
+  }).filter((version) => !unanswered.includes(version));
+  const first = among([...unanswered, ...failed.slice(0, Math.ceil(failed.length / 2))]);
   const rest = pool.filter((version) => !first.includes(version) && !failed.includes(version));
   const chosen = [
     ...first.slice(0, count),
@@ -777,7 +801,7 @@ export function releaseOrder(
   ];
   return chosen.map((version) => {
     const why = unanswered.includes(version)
-      ? ": no solve answered it in two comparisons, and it is"
+      ? ": the reference harness answered it in no solve of two comparisons, and it is"
       : failed.includes(version)
         ? ": the reference harness failed it in the last comparison, or a better answer on record left it room, and it is"
         : ":";

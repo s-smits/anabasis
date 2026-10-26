@@ -233,6 +233,16 @@ The exam side knows what a right answer is. The build side tries to produce righ
 measurement is only worth something because the build side never learns what the exam side knows,
 so the wall between them is the system's main asset.
 
+The wall runs one way. In learning terms the Builder is the learner, the practice tasks are its
+training set and the held-out tasks its test set: it learns what to improve from practice, where it
+reads every task, trace and result whole, and a step says the harness is better on tasks it never
+saw. A Builder that learned anything of a held-out task, even which one its harness won, could fit
+the harness to the test set, and a step would then measure that fit. The other direction is open
+by design: the Examiner reads what the reference harness did on each task and, under the term
+`exam-results`, which harness won it (section 3). Its risk is an exam written towards the newest
+harness, which the gate bounds by admitting a task only where the reference has room on it, and
+which the operator accepted on 20 October.
+
 What crosses from the exam side to the build side is a closed list:
 
 - the contract's public rules, its scope and conventions, the answer format and, where the check
@@ -805,16 +815,18 @@ session the table releases more where tasks have been held out since the last re
 control that read room (section 7) it releases as many again. Inside a Builder's conversation,
 which spans epochs, the host releases what the epoch is still owed as each Examiner session beside
 it holds a task and as it ends (`releaseOwed`, `tools/d2/campaign-actions.ts`). `--practice` is a
-per-epoch count, and once practice exists a release never leaves fewer frontier tasks than a sweep
-at the level needs (`practiceRoom`, `src/campaign/decide.ts`). Each release is one task fewer to
+per-epoch count, and once practice exists a release never leaves fewer frontier tasks, read on the
+reference's own solves alone, than a sweep at the level needs (`practiceRoom`,
+`src/campaign/decide.ts`). Each release is one task fewer to
 compare.
 
 A release takes, in this order:
 
-1. the tasks no solve answered in two comparisons;
+1. the tasks the reference harness answered in no solve of two comparisons it stood in;
 2. half, rounded up, of the tasks the reference harness failed in a solve of its last reading of
    each, or where an answer of its own or its author's on record bettered one of its answers there
-   by at least the room floor (`room`); the other half stays held for the comparisons;
+   by at least the room floor (`room`), counted with those already released, so at most half of
+   them ever reach practice; the other half stays held for the comparisons;
 3. the rest by the contract's draw from every task neither list holds, those the reference
    answered in every solve among them, since a practice pass returns the objective's measure
    (`releaseOrder`, `src/kernel/reports.ts`, which `tools/d2/prepare.ts` calls).
@@ -1185,14 +1197,16 @@ Cite a rule by its number in a pull request or a review.
    check afterwards.
 
 3. **Nothing crosses the wall except the closed list of section 1.** The test is exact: changing a
-   hidden value, a check, or which held-out task was won must leave every message a Builder or a
-   solver reads byte-identical. For a Builder that test is in the suite (`test/builder.test.ts`,
+   hidden value, a check, or which held-out task a harness other than the reference won must leave
+   every message a Builder or a solver reads byte-identical. For a Builder that test is in the suite (`test/builder.test.ts`,
    "what crosses to the Builder"): two campaigns that differ in every such detail, one session over
    each, and every context and every file of its home compared. For what its campaign tools tell it,
    the test is `test/builder-led.test.ts`, "tells the Builder the same whichever held-out task was
    won": two campaigns with equal tallies in which different tasks were won. A change that touches
    such a message says in its pull request how it checked this. Withholding applies to everything an
-   agent can read: prompts, tool descriptions, tool results and the files in its home.
+   agent can read: prompts, tool descriptions, tool results and the files in its home, and the
+   choice of which tasks are released for practice. The rule binds what reaches the build side;
+   what the Examiner may read of the build side is section 3's list.
 
 4. **Terms are fixed before the first solve and never moved after a result.** The tasks, the solves
    per side, the level, the cap and the prediction are logged first. Do not top up a set that a

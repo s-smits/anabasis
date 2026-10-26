@@ -754,9 +754,9 @@ describe("the reader of a round compared with another harness than its session s
   const { triggers } = seenHere;
   const said = (name: keyof typeof TRIGGERS) => triggers.find((trigger) => trigger.name === name)?.detail;
 
-  it("reads a quick win against the reference harness, which is what the task was lost under", () => {
+  it("reads a quick win of a task its comparison won", () => {
     expect(said("WIN AT A SMALL WALL SHARE")).toBe(
-      "r-1: 1 passed solves of tasks the reference harness failed, in few calls",
+      "r-1: 1 passed solves of tasks the new harness won, in few calls",
     );
   });
 
@@ -1544,10 +1544,21 @@ describe("the reader of comparisons the campaign command named apart from its Bu
     expect(lines).toContain("b-2: hc > hc, ended finished, 0 practice solves, reading none");
   });
 
-  it("reads a quick win only against a task its own comparison lost under the reference", () => {
+  it("reads a quick win only of a task its own comparison won", () => {
     expect(said("WIN AT A SMALL WALL SHARE")).toBe(
-      "b-1: 1 passed solves of tasks the reference harness failed, in few calls",
+      "b-1: 1 passed solves of tasks the new harness won, in few calls",
     );
+  });
+
+  it("reads a quick win of a task won on the objective, where the reference was valid too", () => {
+    // buffer-fresh-gpt-v071's g-1 on 26 October: six tasks won with all 48 solves valid.
+    const onObjective = log.map((event) =>
+      event.kind === REPORTED && event.data.session === "g-2"
+        ? { ...event, data: { ...event.data, frontier: { of: ["v1", "v2"], differences: [3, 0] } } }
+        : event,
+    );
+    const quick = overview(onObjective).triggers.find(({ name }) => name === "WIN AT A SMALL WALL SHARE");
+    expect(quick?.detail).toBe("b-1: 2 passed solves of tasks the new harness won, in few calls");
   });
 
   it("names each comparison's won tasks by solve, and says nothing of a comparison that won none", () => {
@@ -1563,7 +1574,9 @@ describe("the reader of comparisons the campaign command named apart from its Bu
         ? { ...event, data: { ...event.data, frontier: { of: ["v1"], differences: [0] } } }
         : event,
     );
-    expect(overview(tied).triggers.some((trigger) => trigger.name === "WINS")).toBe(false);
+    const names = overview(tied).triggers.map(({ name }) => name);
+    expect(names).not.toContain("WINS");
+    expect(names).not.toContain("WIN AT A SMALL WALL SHARE");
   });
 
   it("names a check that refused no answer, beside the answers the others refused", () => {

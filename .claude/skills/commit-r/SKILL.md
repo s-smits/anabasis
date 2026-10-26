@@ -1,118 +1,156 @@
 ---
 name: commit-r
-description: "The commit-R protocol: a test-driven rewrite of one compartment of Anabasis v2. Commit what is in flight, remove the compartment's tests in an \"R:\" commit, write them again from a stated hypothesis so the production code fails on purpose, remove the production files in a second \"R:\" commit, then write the production code again, rewrite the neighbouring functions the old shape bent, and delete what served only it. Use when the operator says \"commit R\", \"commit-R protocol\", \"remove and rewrite the tests\" or \"rewrite from scratch\", or asks for a test-first pass that looks for a faster, simpler path to the same outcome."
+description: "The commit-R protocol: rewrite one compartment of Anabasis v2 test-first instead of editing it in place, with the old code kept as an oracle until the new code agrees with it or each difference is named. Use it when the operator asks for code to be rewritten or overhauled (\"fully rewrite\", \"rewrite from scratch\", \"rewrite X to simpler components\", \"rewrite X and its adjacent functions\", \"overhaul X\", \"rebuild X\", \"commit R\"), and on your own judgment when a fix would add one more branch, flag, reader or fallback to code that earlier patches already bent, or when the same outcome looks reachable with about half the machinery. An overhaul of the pull-request stack itself is stack-pr's."
 ---
 
 # Commit R
 
-A suite that grew beside its code pins the shape the code happened to take, not the outcome
-anyone wanted, and an edit in place keeps that shape. Commit R removes both halves of one
-compartment and writes them again in the order that exposes the difference: first the tests, from
-a hypothesis about what the compartment is for, then the production code those tests now demand.
-Each removal is a commit of its own while the pass runs, so each step reads against the one before
-it. Before anything leaves the machine the compartment's commits become one, which passes alone and
-keeps in its body the argument the steps made.
+A suite that grew beside its code pins the shape the code happened to take, and an edit in place
+keeps that shape. Commit R removes both halves of one compartment and writes them again in the
+order that exposes the difference: first the tests, from a hypothesis about what the compartment is
+for, then the production code those tests demand. Removing the old code frees the rewrite from its
+shape, and the old code still knows things the hypothesis may have missed, so the pass keeps it as
+an oracle and puts the new code to it before the pass ends. Every difference the oracle finds is
+then either intended, a boundary retired with its reason, or a regression to fix.
 
-[simplify](../simplify/SKILL.md) sends its "rewrite from scratch" here, and
-[reduce-complexity](../reduce-complexity/SKILL.md) measures what the pass moved.
+[simplify](../simplify/SKILL.md) sends its rewrites here, and
+[reduce-complexity](../reduce-complexity/SKILL.md) owns the instruments the budget is read with.
 
-## The compartment
+## When to start a pass
 
-The unit is a **compartment**: one question someone could want answered differently. It is not a
-file. It can span a test file, the module it tests, the constant that module reads and two
-functions in a neighbouring module that exist only to serve it. Three of v2's, as examples:
+**The operator asks.** "Fully rewrite", "rewrite from scratch", "rewrite X to simpler components",
+"rewrite X and its adjacent functions", "overhaul X", "rebuild X", "completely remove and rewrite"
+and "commit R" each start a pass, even where the request names only a file and says nothing of
+tests. The file is where the compartment starts.
 
-- **what the Builder is told of the past**: the failed practice solves and each comparison's tally
-  (`src/builder/past.ts`, `src/builder/prompt.ts`, `test/builder.test.ts`);
-- **which tasks a comparison scores**: the frontier draw and the retained tasks beside it
-  (`scoredSet` in `src/campaign/round.ts`, `poolOf` in `src/kernel/reports.ts`, `test/round.test.ts`);
-- **the move that follows a reading** (`decide` in `src/campaign/decide.ts`, `test/decide.test.ts`).
+**Your own judgment says the shape is wrong**, inside a task that already changes the compartment.
+Rule 13 of `AGENTS.md` asks a fix to rewrite its owner rather than add to it, and this is how. Any
+one of these is enough:
 
-Each compartment gets a **hypothesis**, written before any test: what should change, why a path
-with about half the machinery probably reaches the same outcome or nearly all of it, and what it
-gives up if it does not. Map what stands now as rule 13 of `AGENTS.md` asks,
-`owner → live reader → decision it changes → evidence → hostile test`: a concept with a missing
-link is what the rewrite drops. Two compartments in one pass carry different hypotheses, or they
-are one compartment.
+- the fix adds a branch, flag, optional field, fallback or second reader to code whose history
+  (`git log -L :<function>:<file>`) reads as one exception after another;
+- you can state in two sentences a path to the same outcome with about half the decision points,
+  exports or concepts, and what it would give up;
+- one fact is decided in two places (rule 12), or an old owner keeps readers after a new owner took
+  the decision;
+- the tests pin a shape rather than an outcome: they mock internals, assert wording, or break on a
+  change of no behaviour;
+- a function is near 115 lines or above 21 decision points (`measure.py`), and the fix adds to it.
 
-Take one to three compartments a pass, small enough to review as one argument.
+Tell the operator in one line which compartment and what number the pass expects to move, then go
+on: the rewrite is the fix, so it needs no second word. A compartment outside the task is only
+proposed, in that one line.
+
+**Edit in place instead** where a patch of a few lines leaves the shape sound, and never rewrite:
+
+- a compartment another session is editing (`bun .claude/skills/stack-pr/scripts/stack.ts`,
+  `git worktree list`);
+- in a worktree a run was launched from;
+- `vendor/`, which takes a sed;
+- a pack, a check program, a kept harness or a log (rule 2);
+- text a solver is given or told, without the operator's word (`AGENTS.md`, section 3).
+
+## The frame
+
+Before the first removal, write the frame. It goes in the body of the first removal commit (step 3),
+so it is in `git log` before anything is removed and survives a compaction.
+
+- **The compartment**: one question someone could want answered differently, such as what the
+  Builder is told of the past, which tasks a comparison scores, or the move that follows a reading.
+  It is not a file. It spans the tests, the modules that answer the question, and the functions of
+  neighbours that exist only to serve it. Keep it small enough to finish within one context.
+- **The map**, as rule 13 has it: `owner → live reader → decision it changes → evidence → hostile
+  test` for each concept that stands now. A concept with a missing link is what the rewrite drops.
+- **The hypothesis**: what changes, why a path with about half the machinery reaches the same
+  outcome or nearly all of it, and what it gives up if not.
+- **The budget**, measured, never estimated: the compartment's nonblank lines, decision points and
+  exports now (`.claude/skills/reduce-complexity/scripts/measure.py <files...>`), and the numbers
+  the hypothesis expects after. The report says met or missed.
+- **The boundaries**: every case the old tests hold, read whole, one line each. The rewrite keeps
+  each one or retires it with a reason.
+
+Two compartments carry two hypotheses, or they are one compartment.
 
 ## The sequence
 
-Every step ends in a local commit. Only the last of a compartment's four could pass alone: an `R:`
-commit deletes files the rest of the tree imports, and the rewritten tests fail on purpose. So
-step 8 squashes them before anything is pushed, since every published commit passes alone.
+Every step ends in a local commit, so each reads against the one before it, and a pass resumed
+after a compaction starts from `git log` since its first `R:` commit and never redoes a committed
+step. Only the squashed commit passes alone.
 
-1. **Commit what is in flight**, in a worktree of your own at the top of the stack
-   ([stack-pr](../stack-pr/SKILL.md), and never one a run was launched from). The R commits then
-   remove the compartment and nothing else.
-2. **`R: <test paths>`.** Read the test files whole first and write down every boundary they hold,
-   because the rewrite keeps each one or says why it was dropped. Then `git rm` them and commit with
-   the subject `R: test/a.test.ts test/b.test.ts` and no body.
-3. **Write the tests again from the hypothesis**, for the outcome and not the old shape: keep each
-   boundary the old file held, fold the cases that now assert one thing, and add the cases the
-   hypothesis predicts. Hold them to `tools/oxlint/HABITS.md`, 12.12: the smallest owning file, the
-   positive case beside its nearest hostile one, a name that is a sentence about the system, a
-   script in every model seat. Run `bun run test -- <paths>`. The production code fails on purpose
-   and only in the new cases: a new case that passes already tests nothing the hypothesis said, and
-   an old boundary that fails means the rewrite broke something. Commit; the body states the
-   hypothesis and which cases fail on purpose.
-4. **Read why they fail, and look for the faster path.** Before touching production, ask which
-   module owns the behaviour, whether a simpler owner exists, and which functions or union members
-   served only the old shape. Find every reader of each export and each member: a branch whose
-   producer is gone is dead code to remove. Then look for the simpler algorithm, the one that
-   computes an answer once instead of twice, or drops a case no recorded log reaches
-   (`bun run runs replay` reads every campaign log, live and interrupted ones among them). A negative claim
-   needs the named symbol, its call sites and a check in the same turn (`AGENTS.md`, section 9).
-5. **`R: <production paths>`.** `git rm` the production files the rewrite replaces, and commit with
-   the subject `R: src/x.ts src/y.ts`.
-6. **Write production again, and rewrite or remove what it leaves outdated.** Make the new tests
-   pass with the smallest owner that holds them. In the same commit, bring the neighbouring modules
-   and their tests to the new shape: a function of a neighbour that the compartment's old shape
-   bent, or that the new shape lets be simpler, is written again whole, and its file need not be
-   removed in an `R:` commit for that. A patch that only renames a call is the least a neighbour
-   takes, and no limit on what it may take. Delete what served only the old shape, and say in the
-   body which functions outside the compartment were rewritten and why. Then run `bun run typecheck`,
-   `bun run lint -- --strict`, `bun tools/loc/source-policy.ts` (adding no finding) and every test
-   file that imports the compartment, and read each exit code. v2 has no complexity gate, so a function's branch
-   count is read with reduce-complexity's `measure.py`. The body says what the rewrite found: a
-   behaviour that changed, what the simpler form gave up and how that was measured, and code that
-   looked dead but stays because a document of record calls it live.
-7. **Fix in place.** A finding on an earlier commit is fixed inside it:
-   `git commit --fixup=<sha>`, then `GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <sha>~1`.
-8. **Squash the compartment.** `git reset --soft <the commit before its first R:>`, run
-   `bun run commit:check`, then make one commit whose subject states the finished change and whose
-   body joins the hypothesis, the cases that failed on purpose and what the rewrite found. Its diff
-   holds every removed and returned line.
+1. **Commit what is in flight**, in a worktree of your own at the top of the stack, or on `main`
+   where the operator says so ([stack-pr](../stack-pr/SKILL.md)). The pass then removes the
+   compartment and nothing else. Call this commit the base.
+2. **Capture the oracle** while the old code still runs. The old tests come back from the base
+   with `git show`. Where the compartment reads logs, save the old tree's output of
+   `bun run runs replay` (or the reader's own command) over the logs it touches. Where it drives a
+   campaign, save a rehearsal's events (`bun run runs rehearse`). Keep these in the scratchpad.
+3. **`R: <test paths>`**: `git rm` the tests, and commit with that subject and the frame as its body.
+4. **Write the tests from the hypothesis**, for the outcome and not the old shape. Keep each
+   boundary, fold cases that now assert one thing, and add the cases the hypothesis predicts. Hold
+   them to `tools/oxlint/HABITS.md`, 12.12: the smallest owning file, the positive case beside its
+   nearest hostile one, a name that is a sentence about the system, a script in every model seat.
+   Run them against the old code and sort the failures:
+   - a new case failing on behaviour is the hypothesis, failing on purpose;
+   - a failure to import or to call a changed interface says nothing yet, and is listed once;
+   - a kept boundary failing on behaviour is a boundary written down wrongly, so fix the test;
+   - a new case that already passes tests nothing the hypothesis said, so sharpen or drop it.
 
-Then take the next compartment from step 2.
+   Commit with this sorting in the body.
+5. **Find the faster path** before writing production. Ask which module should own the behaviour,
+   whether a simpler owner already exists, and which functions, union members and fields served only
+   the old shape. Count the readers of each export (`git grep -w`): a branch whose producer is
+   gone is dead. Prefer the algorithm that computes an answer once, and drop a case only when its producer or
+   contract is gone: a case no recorded log reaches can still be a boundary. A negative claim needs the symbol, its call sites and a check in the same turn
+   (`AGENTS.md`, section 9).
+6. **`R: <production paths>`**: `git rm` the files the rewrite replaces, and commit.
+7. **Write production again with the smallest owner the tests allow.** In the same commit, bring
+   the neighbours to the new shape: a function the old shape bent, or that the new shape lets be
+   simpler, is written again whole, and its file needs no `R:` commit for that. Delete what served
+   only the old shape. Run `bun run typecheck`, `bun run lint -- --strict`,
+   `bun tools/loc/source-policy.ts` and every test file that imports the compartment, and read each
+   exit code.
+8. **Put it to the oracle.** Copy each old test file back as `test/_old-<name>.test.ts`, run it
+   through `bun run test --`, and move it to the Trash afterwards; compare the saved replay or
+   rehearsal with the new tree's. Each difference is intended (the hypothesis named it), a boundary
+   retired (name it and why), or a regression (fix it in step 7's commit with `git commit --fixup`
+   and `GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <base>`). Import failures from the
+   changed interface are expected and listed once.
+9. **Measure and squash.** Run `measure.py --base <base>` over the compartment and set it against
+   the budget. Save the working steps as `git branch commit-r/<compartment> HEAD`, then
+   `git reset --soft <base>`, run `bun run commit:check`, and make one commit. Its subject states
+   the finished change. Its body gives the hypothesis, the budget met or missed, the cases that
+   failed on purpose, what the oracle found, and which functions outside the compartment were
+   rewritten and why. Delete the saved branch once the pull request merges.
+
+Then take the next compartment from the frame.
+
+## A pass handed to a subagent
+
+Give it the frame, its worktree and its budget, and let it run steps 1 to 9. The session that
+handed it out checks the result before repeating it. It runs `measure.py` on the squashed commit
+itself and reads any model-visible text the commit changes against the wall tests. It reports a
+missed budget as missed.
 
 ## What a pass must not do
 
 - **Change what a model reads without saying so.** A string that reaches the Builder, the
-  Examiner, a solver or the Referee changes what that seat is told. Say so in the body, and say how
-  the wall test still holds (`test/builder.test.ts`, "what crosses to the Builder"; rule 3).
-  Changing what a solver is given or told is the operator's decision (`AGENTS.md`, section 3), so
-  such text stays out of scope until the operator gives that word.
-- **Silence a failing old test.** It is a boundary the rewrite keeps, or one the body retires with
-  its reason.
-- **Rewrite a compartment another session is editing.** Read the open pull requests
-  (`bun .claude/skills/stack-pr/scripts/stack.ts`) and `git worktree list` first.
-- **Touch a pack, a check program, a kept harness or a log** (rule 2, and `.ana/` in section 11).
-  A compartment is the host's code.
-- **Push.** The pass stays local, and publication is the operator's, through stack-pr.
+  Examiner, a solver or the Referee changes what that seat is told. Say so in the body, with how
+  the wall tests still hold (`test/builder.test.ts`, "what crosses to the Builder", and
+  `test/builder-led.test.ts`; rule 3).
+- **Silence a failing old test.** It is a boundary kept, or one the body retires with its reason.
+- **Leave the oracle unrun.** A pass that skipped step 8 says so in its report, and why.
+- **Push** unless the operator's task includes publishing; then publish through stack-pr.
 
 ## Report
 
 For each compartment:
 
-- the hypothesis;
-- the four working commits (R, tests, R, production) and the squashed commit that replaced them;
-- the tests, with how many failed on purpose and then passed;
-- what the rewrite found: the owner moved, the branches removed, what the simpler form gave up,
-  and anything left for the operator.
+- the hypothesis, and the budget before, expected and measured (the budget lines of `measure.py`,
+  and `stack-complexity.py <base> HEAD` for decision points, import edges, exports and optional
+  fields);
+- the squashed commit, and the saved branch of working steps;
+- the tests: how many, how many failed on purpose, and how each failure class came out;
+- what the oracle found: differences intended, boundaries retired, regressions fixed;
+- what the simpler form gave up, and anything left for the operator.
 
-Give the size before and after as measured, never estimated: the budget lines of `measure.py`, and
-the structural rows of `stack-complexity.py` (decision points, import edges, exported symbols,
-optional fields) over the compartment's commit. When the compartment gave nothing up, say so,
-since it is the claim a reader checks first.
+When the compartment gave nothing up, say so, since that is the claim a reader checks first.

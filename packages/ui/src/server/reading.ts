@@ -218,9 +218,7 @@ const coreIn = once((log) => {
       labels: { tasks: campaign.supply.awaiting, rejections: unsettledCount(log) },
       controls: bars.filter((bar) => bar.noise !== null).length,
       controlSteps: bars.filter(
-        ({ id, noise, level }) =>
-          noise !== null &&
-          readsStepEitherWay(noise.differences, level, reported(log.events, id)?.noise?.unbilled),
+        ({ noise, level }) => noise !== null && readsStepEitherWay(noise.differences, level, noise.unbilled),
       ).length,
       risk: riskIn(log),
       runway: runwayIn(log),

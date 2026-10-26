@@ -214,6 +214,7 @@ export const barsIn = once((log): ComparisonBar[] => {
               tally: tallyOf(report.noise),
               p: report.noise.p,
               differences: report.noise.differences,
+              unbilled: report.noise.unbilled ?? report.noise.differences,
             },
       rulings: move.rulings,
       sets:

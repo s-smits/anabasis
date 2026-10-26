@@ -31,13 +31,13 @@ import { ranWith, receipts, sources } from "../tools/runs/receipt.ts";
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-skill-scripts-")));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
-const pull = (number: number, head: string, base: string): Pull => ({
+const pull = (number: number, head: string, base: string, labels: readonly string[] = []): Pull => ({
   number,
   headRefName: head,
   baseRefName: base,
   headRefOid: String(number).repeat(40).slice(0, 40),
   isDraft: false,
-  labels: [],
+  labels: labels.map((name) => ({ name })),
 });
 
 describe("the stack", () => {
@@ -56,6 +56,19 @@ describe("the stack", () => {
     expect(stackTold(pulls, "a").at(-1)).toBe("stacked on it: #9, #2. It takes new commits only");
     expect(stackTold(pulls, "side")[1]).toBe("beside the stack");
     expect(() => stackTold(pulls, "gone")).toThrow(CommandFailure);
+  });
+
+  it("ends each line in its importance, and says unranked where land would refuse it", () => {
+    const ranked = [
+      pull(1, "a", "main", ["importance:I1", "bug"]),
+      pull(2, "b", "a"),
+      pull(3, "c", "b", ["importance:I0", "importance:I3"]),
+    ];
+    expect(
+      stackTold(ranked, null)
+        .slice(0, 3)
+        .map((line) => line.split("  ").at(-1)),
+    ).toStrictEqual(["I1", "unranked", "unranked"]);
   });
 
   it("starts a chain on a base that has landed, and says so of an empty list", () => {

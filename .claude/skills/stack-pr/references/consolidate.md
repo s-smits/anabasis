@@ -10,10 +10,26 @@ procedure below is the one run on 25 October over #353 to #378, where 25 open pu
 Its record is under `.ana/wri/2026-10-25-cycle-pr370/` in the runs checkout: `review/` and
 `restack/`.
 
+## Spend by importance
+
+The importance label (`SKILL.md`, section 7) decides where a consolidation spends its time and how
+far it may change a pull request, because a fault left in an `I0` or `I1` change misreads every
+comparison after it, while one in an `I3` change misprints a report. `stack.ts` prints each pull
+request's label at the end of its line.
+
+| Label | What the consolidation does with it | Review | Where it sits |
+| --- | --- | --- | --- |
+| `I0`, `I1` | Rewrite its compartment through [commit-r](../../commit-r/SKILL.md) once the restructure stands: the tests again from the hypothesis, then the smallest owner that passes them, so the change is simple and surgical. Fold only what touches the same compartment into it, never an `I2` or `I3` change on another subject. Most of the pass's time goes here | both reviews, every finding checked against a log, a hostile test for each boundary | lowest on the stack, so it can land on its own |
+| `I2` | Fold related changes by mechanism, and simplify in lanes (sections 3 to 6). A commit-r pass only where a review finds the code bent around an old shape | both reviews | above the `I0` and `I1` pull requests |
+| `I3` | Fold aggressively: into the pull request whose mechanism it reports on, or into one pull request of reporting and wording. Drop one whose output nobody reads. Little time | one review | at the top |
+
+A survivor takes the highest label among what it absorbed. Where an `I3` change has to fold into an
+`I1` pull request because it reads the same compartment, the `I1` treatment covers it.
+
 ## 1. Review in groups
 
 Split the open pull requests into five to ten groups of related changes, by the mechanism they
-touch rather than by number, and give each group one reviewer with one brief
+touch rather than by number, keeping `I0` and `I1` pull requests out of groups with `I3` ones, and give each group one reviewer with one brief
 (`review/brief.md`): read the code first and the runs second, measure rather than assert, and say
 per pull request keep, simplify, merge or drop. The reviewers are read-only and write one report
 each. Then a second review by another model family, with no sight of the first, catches what one
@@ -29,6 +45,11 @@ folded into #361, #378 into #362). Every fix is then written against the shape t
 published, and the result's head is the lanes' one base.
 
 ## 3. Fix in lanes
+
+An `I0` or `I1` lane is a commit-r pass over its compartment, run to commit-r's step 8, so it
+delivers one squashed commit that replaces the pull request's commits (an `amend!` of the first,
+with the rest dropped in the assembly), with the hypothesis and the cases that failed on purpose in
+its body. Every other lane works as follows.
 
 One worktree and branch per group (`claude/restack-laneN`), from that base, with `node_modules`
 cloned rather than installed (`cp -cR <a tree>/node_modules <lane>/`). A lane delivers only
@@ -58,8 +79,8 @@ commit beneath it.
 
 ## 6. Regroup
 
-Reorder commits so that related pull requests sit next to each other, and make each group one
-pull request (on 25 October: #356 and #371 into #353, #360 and #367 into #359). Retitle the
+Reorder commits so that related pull requests sit next to each other, `I0` and `I1` lowest and
+`I3` at the top, and make each group one pull request (on 25 October: #356 and #371 into #353, #360 and #367 into #359). Retitle the
 survivor and rewrite its body (`gh pr edit`). A title carries no "Ix:" prefix: the importance is
 the pull request's `importance:I0` to `importance:I3` label, which the survivor keeps. A reorder
 that conflicts in many hunks is abandoned for that group and the pull requests stay apart: the

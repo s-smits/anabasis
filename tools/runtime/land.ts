@@ -177,10 +177,14 @@ function readLanding(root: string, target: number): Landing {
   return { trunk, trunkSha, pulls, beside };
 }
 
+/** The importance labels a pull request carries; a landing asks for exactly one. */
+export const ranksOf = (pull: Pull): string[] =>
+  pull.labels.map((label) => label.name).filter((name) => IMPORTANCE.test(name));
+
 /** Refuses a landing in which a pull request carries no importance label, or more than one. */
 function checkImportance(landing: Landing): void {
   const unranked = landing.pulls.flatMap((pull) => {
-    const ranks = pull.labels.map((label) => label.name).filter((name) => IMPORTANCE.test(name));
+    const ranks = ranksOf(pull);
     if (ranks.length === 1) return [];
     return [
       `#${String(pull.number)} carries ${ranks.length === 0 ? "no importance label" : ranks.join(" and ")}`,

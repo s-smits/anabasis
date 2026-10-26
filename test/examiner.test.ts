@@ -478,6 +478,7 @@ async function admission(s: ReturnType<typeof seat<"write">>, seated: Seated) {
   // SAFETY: probing reads only these campaign fields with a supplied seat and no reviewer.
   const campaign = {
     log: s.log,
+    limits: settingAsked({}, null).named.limits,
     states: join(dirname(s.log), "states"),
     test: { model: s.request.model, effort: s.request.effort },
   } as Campaign;

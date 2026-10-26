@@ -5,7 +5,7 @@ import { mkdirSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
 import { seats } from "../tools/runs/fresh.ts";
-import { nextLogin, type Turn, turnOf } from "../tools/runs/keep.ts";
+import { nextLogin, roomFor, type Turn, turnOf } from "../tools/runs/keep.ts";
 import { allowedLogins, billsLogin, type Reading, room } from "../tools/runs/logins.ts";
 import { type Receipt, writeReceipt } from "../tools/runs/receipt.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
@@ -87,6 +87,23 @@ describe("the login a run moves to", () => {
       { login: "4", plain: false, error: "unauthorized" },
     ];
     expect(room(readings, ["1", "2", "3", "4"], new Set())).toEqual([]);
+  });
+
+  it("leaves a login at its live-run cap across the fleet, and waits while a host goes uncounted", async () => {
+    const live = [1, 2].map((n) => ({ name: `run-${n}`, login: "2", host: n === 1 ? "here" : "m1" }));
+    const readAll = (wanted: readonly string[]) =>
+      Promise.resolve(
+        [read("2", 10, 10, "allowed", 1), read("3", 50, 10, "allowed", 40)].filter((reading) =>
+          wanted.includes(reading.login),
+        ),
+      );
+    const env = { ANA_LOGIN_RUNS: "2" };
+    expect(await roomFor(["2", "3"], new Set(), { live, unasked: [] }, readAll, env)).toEqual(["3"]);
+    expect(await roomFor(["2", "3"], new Set(), { live: live.slice(1), unasked: [] }, readAll, env)).toEqual([
+      "2",
+      "3",
+    ]);
+    expect(await roomFor(["2", "3"], new Set(), { live: [], unasked: ["m1"] }, readAll, env)).toEqual([]);
   });
 
   it("allows the logins ANA_LOGINS names, or else every login the environment holds", () => {

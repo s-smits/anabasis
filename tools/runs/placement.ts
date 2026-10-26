@@ -8,7 +8,7 @@ import { runtimeProcess } from "#src/meta/process.ts";
 import { asked } from "./hosts.ts";
 import { type Host, hostsOf } from "./host-config.ts";
 import { type Live } from "./live.ts";
-import { allowedLogins, capOf, liveEverywhere, readLogins, room } from "./logins.ts";
+import { allowedLogins, atCap, liveEverywhere, readLogins, room } from "./logins.ts";
 import { localCatalogue, remoteRuns } from "./snapshots.ts";
 
 interface Occupancy {
@@ -106,15 +106,9 @@ export async function freshLogin(
   allowed = allowedLogins(runtimeProcess.env),
 ): Promise<string> {
   const env = runtimeProcess.env;
-  const full = new Set(
-    allowed.filter((login) => {
-      const cap = capOf(env, login);
-      return cap !== null && live.filter((run) => run.login === login).length >= Number(cap);
-    }),
-  );
+  const full = atCap(env, allowed, live);
   if (requested !== undefined) {
-    const cap = capOf(env, requested);
-    if (cap !== null && live.filter((run) => run.login === requested).length >= Number(cap)) {
+    if (atCap(env, [requested], live).size > 0) {
       throw new Error(`login ${requested} is at its live-run cap across the fleet`);
     }
     return requested;

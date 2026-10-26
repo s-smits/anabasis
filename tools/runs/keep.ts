@@ -27,7 +27,8 @@ import { isString } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { allowedLogins, billsLogin, readLogins, room } from "./logins.ts";
+import { allowedLogins, atCap, billsLogin, liveEverywhere, readLogins, room } from "./logins.ts";
+import { type Live } from "./live.ts";
 import { lastRun, rerun, start } from "./manage.ts";
 import { KEEPING, keepers, logEvents, processes, type Run, runNamed, writers } from "./registry.ts";
 import { stop } from "./stop.ts";
@@ -72,6 +73,29 @@ export async function nextLogin(
   return (await roomy())[0] ?? null;
 }
 
+/** The logins of `logins` a run may move to: those with room, less those this keeper saw `spent`
+ *  and those at their live-run cap across the fleet (`atCap`), or none while a host goes uncounted.
+ *  Until 26 October a keeper moved a run onto a login with room whatever runs it carried already,
+ *  which `fresh` refuses. */
+export async function roomFor(
+  logins: readonly string[],
+  spent: ReadonlySet<string>,
+  { live, unasked }: { live: readonly Live[]; unasked: readonly string[] },
+  read: typeof readLogins = readLogins,
+  env: Readonly<Record<string, string | undefined>> = runtimeProcess.env,
+): Promise<string[]> {
+  if (unasked.length > 0) return [];
+  const out = new Set([...spent, ...atCap(env, logins, live)]);
+  return room(
+    await read(
+      logins.filter((login) => !out.has(login)),
+      env,
+    ),
+    logins,
+    out,
+  );
+}
+
 /** Keep `run` going on `logins` until it ends on its own terms. */
 async function keepGoing(run: Run, logins: readonly string[], waitMs: number): Promise<void> {
   // A login this keeper moved off, until its limit resets.
@@ -100,7 +124,7 @@ async function keepGoing(run: Run, logins: readonly string[], waitMs: number): P
     const target = await nextLogin(
       turn,
       { current, spent, billed: billsLogin(events, lastRun(run).flags) },
-      async () => room(await readLogins(logins, runtimeProcess.env), logins, spent),
+      async () => roomFor(logins, spent, await liveEverywhere("configured")),
     );
     if (target === null) {
       if (!waiting) console.log(`${run.name}: no login with room; left waiting`);

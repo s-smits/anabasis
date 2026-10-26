@@ -151,6 +151,21 @@ export function capOf(env: Readonly<Record<string, string | undefined>>, login: 
   );
 }
 
+/** The logins of `allowed` that carry as many live runs across the fleet (`live`) as their cap,
+ *  which takes no other run: neither a fresh one nor one a keeper moves. */
+export function atCap(
+  env: Readonly<Record<string, string | undefined>>,
+  allowed: readonly string[],
+  live: readonly Live[],
+): Set<string> {
+  return new Set(
+    allowed.filter((login) => {
+      const cap = capOf(env, login);
+      return cap !== null && live.filter((run) => run.login === login).length >= Number(cap);
+    }),
+  );
+}
+
 /** The usage endpoint's window `value`: its share used and its reset. */
 function windowOf(value: JsonValue | undefined): Window {
   const window = asRecord(value);

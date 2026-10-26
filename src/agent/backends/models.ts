@@ -3,15 +3,22 @@
  * OpenRouter on `OPENROUTER_API_KEY`, and Claude Code on `CLAUDE_CODE_OAUTH_TOKEN`, or, as the
  * provider `claude-api`, on `ANTHROPIC_API_KEY`. The Builder and the Built Harness both resolve
  * their models here.
+ * Codex's terminal response names the model that served it, which pi's normalisation drops, so
+ * job-fresh-gpt-v071 recorded no served model on any of its 724 turns (26 October). `codexStream`
+ * keeps it as `responseModel` for the session recorder and the bill. Pi's Codex usage cost is a
+ * catalogue calculation rather than the backend's bill, so these turns report no backend cost.
  */
 import {
   type Api,
+  type AssistantMessageEventStream,
   type CredentialStore,
   createModels,
+  lazyStream,
   type Model,
   type MutableModels,
   type OAuthCredential,
   type Provider,
+  type StreamOptions,
 } from "@earendil-works/pi-ai";
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
@@ -58,11 +65,58 @@ const codexLogin: CredentialStore = {
 
 export function backends(options: BackendOptions): MutableModels {
   const models = createModels({ credentials: codexLogin });
-  models.setProvider(openaiCodexProvider());
+  const codex: Provider = openaiCodexProvider();
+  models.setProvider({
+    ...codex,
+    stream: (model, context, request) =>
+      codexStream(
+        model,
+        (onProviderStreamEvent) => codex.stream<Api>(model, context, { ...request, onProviderStreamEvent }),
+        request?.onProviderStreamEvent,
+      ),
+    streamSimple: (model, context, request) =>
+      codexStream(
+        model,
+        (onProviderStreamEvent) => codex.streamSimple(model, context, { ...request, onProviderStreamEvent }),
+        request?.onProviderStreamEvent,
+      ),
+  });
   models.setProvider(openrouter());
   models.setProvider(claudeProvider(options.claude));
   models.setProvider(claudeProvider(options.claude, CLAUDE_API_PROVIDER));
   return models;
+}
+
+/** Keep the served id on the normalised terminal message; never infer it from the requested id. */
+function codexStream(
+  model: Model<Api>,
+  start: (observe: NonNullable<StreamOptions["onProviderStreamEvent"]>) => AssistantMessageEventStream,
+  observe: StreamOptions["onProviderStreamEvent"],
+): AssistantMessageEventStream {
+  return lazyStream(model, async () => {
+    let responseModel: string | undefined;
+    const stream = start(async (event, asked) => {
+      const data = asRecord(event);
+      if (
+        isString(data?.type) &&
+        ["response.done", "response.completed", "response.incomplete", "response.failed"].includes(data.type)
+      ) {
+        const served = asRecord(data.response)?.model;
+        responseModel = isString(served) ? served : undefined;
+      }
+      await observe?.(event, asked);
+    });
+    return {
+      async *[Symbol.asyncIterator]() {
+        for await (const event of stream) {
+          const turn =
+            event.type === "done" ? event.message : event.type === "error" ? event.error : undefined;
+          if (turn !== undefined && responseModel !== undefined) turn.responseModel = responseModel;
+          yield event;
+        }
+      },
+    };
+  });
 }
 
 /** Durable owns retries for the two providers previously wrapped here, with the same backoff. */

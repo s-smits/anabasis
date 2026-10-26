@@ -205,7 +205,8 @@ environment (`allowedLogins`). It looks at the run once a minute and takes one o
 `--wait-hours` left until the reset, it stops the run and
 continues it on the login with room whose week resets soonest. Where the process is gone and the
 log holds no ending, or the ending `environment`, it continues on the same login where that
-login is recorded and its wait has expired, otherwise on one with room. Any other
+login is recorded, its wait has expired and it is below its cap of live runs across the fleet
+(`atCap`), otherwise on one with room. Any other
 ending is the campaign's own, and the keeper leaves. A run with no `claude/` seat bills no login
 and goes on without one, so no login's count holds it. A login it moved off is not taken again until
 the wait named for it is over; with no login left it says so once and waits. Three continues in a

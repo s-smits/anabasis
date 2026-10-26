@@ -34,6 +34,7 @@ const EXAM_STARTED = "exam.started";
 const WAITED = "campaign.waited";
 const HELD = ["v1", "v2", "v3", "v4"];
 const TESTED = { wins: 0, losses: 0, ties: 0, p: 1 };
+const PRICE = { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 };
 /** A report's fields where a case names none: a comparison that tallied nothing and stopped nowhere. */
 const REPORT = {
   scored: TESTED,
@@ -61,7 +62,7 @@ const condition = (task: string, harness: string): Condition => ({
   task,
   model: "p/m",
   effort: "high",
-  prices: { "p/m": { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 } },
+  prices: { "p/m": PRICE },
   runtime: {},
   compaction: "off",
   solverTools: "s1",
@@ -889,17 +890,23 @@ describe("the reader of what each Examiner session's tasks came to", () => {
 describe("the reader of the load a comparison's solves started under", () => {
   /** A log of one comparison a row: its id, the one-minute load each of its solves started under,
    *  the host's cores where the log holds them, and the order its harnesses started in, `o` for the
-   *  reference and `n` for the new, mirrored as the round orders them where none is given. */
-  const read = (rows: readonly (readonly [string, readonly number[], number?, string?])[]) => {
+   *  reference and `n` for the new, mirrored as the round orders them where none is given, and the
+   *  model that served the new harness's solves, the one asked for where none is given, and the
+   *  model every condition asks for, `p/m` where none is given. */
+  const read = (
+    rows: readonly (readonly [string, readonly number[], number?, string?, string?, string?])[],
+  ) => {
     const log: LogEvent[] = [];
     const put = appendTo(log);
     put("task.proposed", { version: "v1" });
     put(GATE, { version: "v1", gate: 1, outcome: "passed" });
-    for (const [session, loads, cores, order] of rows) {
+    for (const [session, loads, cores, order, served, asked] of rows) {
       const terms = { session, old: "hbase", fresh: "hy", starter: "hbase", setting: SETTING };
       put(COMPARISON_STARTED, { ...terms, solves: 1, level: 0.1, tasks: ["v1"] });
       for (const [index, load] of loads.entries()) {
-        const ran = condition("v1", (order?.[index] ?? "onno"[index % 4]) === "o" ? "hbase" : "hy");
+        const old = (order?.[index] ?? "onno"[index % 4]) === "o";
+        const base = condition("v1", old ? "hbase" : "hy");
+        const ran = asked === undefined ? base : { ...base, model: asked, prices: { [asked]: PRICE } };
         const id = `${session}-${String(index)}`;
         put(CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) });
         put(SOLVE_STARTED, {
@@ -914,7 +921,7 @@ describe("the reader of the load a comparison's solves started under", () => {
           solve: id,
           ending: { outcome: "pass" },
           seconds: 50,
-          responseModels: ["m-1"],
+          responseModels: [old ? "m-20261001" : (served ?? "m")],
         });
       }
       put(REPORTED, { ...REPORT, ...terms, versions: ["v1"], reading: "no-step" });
@@ -982,6 +989,22 @@ describe("the reader of the load a comparison's solves started under", () => {
       "g-1: 1 of 1 tasks started their harnesses' solves out of turn",
       "g-5: 1 of 1 tasks started their harnesses' solves out of turn",
     ]);
+  });
+
+  it("names a comparison whose solves another model served than the one their condition asked for", () => {
+    // recode's comparisons on 23 October: claude-opus-5 served a setting of claude-opus-5-5.
+    const said = read([
+      ["g-1", [1, 1, 1, 1], 4, "onno", "m-old"],
+      ["g-2", [1, 1, 1, 1], 4, "onno"],
+    ]);
+    expect(said("SERVED ANOTHER MODEL")).toEqual([
+      "g-1: 2 of 4 solves, 0 of them under the reference harness; m-old 2",
+    ]);
+  });
+
+  it("reads a dated model served exactly as its condition asked as that model", () => {
+    const said = read([["g-1", [1, 1, 1, 1], 4, "onno", "m-20261001", "p/m-20261001"]]);
+    expect(said("SERVED ANOTHER MODEL")).toEqual([]);
   });
 
   it("reads the wall and the load on the solves a comparison measured, not on the non-results it reran", () => {

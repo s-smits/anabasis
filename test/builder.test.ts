@@ -546,6 +546,8 @@ describe("a Builder session", () => {
     expect(practised).toContain("1 practice solve left.");
     // The trace, listed and then one call whole.
     expect(s.sent[3]).toContain(String.raw`ending: fail (rejected)\nsubmitted answer: {\"answer\":\"41\"}`);
+    // Each call listed with its size and the command it ran, which a Builder chose its reads by.
+    expect(s.sent[3]).toContain(String.raw`\n1 bash (13 characters): run`);
     expect(s.sent[4]).toContain("result: margin of s-3");
     // Nothing of the verifier's side reached the Builder: not the check, not the Referee's reason.
     expect(s.sent.join("\n")).not.toContain(CHECK);

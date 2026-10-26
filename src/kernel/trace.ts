@@ -12,6 +12,11 @@
  *
  * The Builder reads a practice solve's calls through `callList` and `callText` and nothing wider;
  * a verdict's checks and the Referee's reasons share the log and never enter a practice trace.
+ * Until 27 October the list named each call's tool alone and a call was read in windows of 4,000
+ * characters. Over the 297 Builder sessions on record (8 to 26 October), 955 single-call reads
+ * opened a median of 2 calls a solve, 893 of them bash calls the list showed only as "bash", and
+ * 139 reads were cut at the window while 9 paged on. The list now shows each call's arguments and
+ * size, and a call comes back whole: the seat tool's own cap spills a longer one to a file.
  * The same records bill completed and unfinished sessions. `costLine` checks that bill against the
  * backend's own totals on the endings that carry one.
  */
@@ -24,6 +29,7 @@ import {
   type JsonObject,
   type JsonValue,
 } from "../meta/json-shape.ts";
+import { plural } from "../meta/text.ts";
 import type { LogEvent } from "./log.ts";
 
 /** Each seat whose trace the log holds, in the order a stopped run's open sessions are ended
@@ -92,11 +98,8 @@ interface Compaction extends Mark {
 
 export type Traced = Turn | Call | Compaction;
 
-/** One read of a call's result: the Referee's window on a check program, a third as wide, since a
- *  reader pages several calls where it reads one program. */
-const READ_WINDOW = 4_000;
-/** The cap on a call's arguments as a reader pages them (v1's diagnosis-reader.ts:46-60). */
-const ARGUMENTS_CHARS = 1_200;
+/** What a call list shows of a call's arguments: about one terminal line. */
+const ARGUMENT_HEAD = 100;
 
 const BUILD_FINISHED = "build.finished";
 
@@ -202,26 +205,37 @@ export function traceOf(events: readonly LogEvent[], seat: Seat, id: string) {
 export const closingOf = (turns: readonly Turn[]) =>
   turns.map(({ text }) => text).findLast((said) => said !== "");
 
-/** Every call of a solve: its number, its tool and whether it failed. */
+/** How long a call ran and how long its result is. */
+function callSize(call: Call): string {
+  const took = call.ms === null ? "" : `, ${(call.ms / 1000).toFixed(1)} s`;
+  return `(${plural(call.text.length, "character")}${took})`;
+}
+
+/** Every call of a solve: its number, its tool, whether it failed, its size, and its arguments on
+ *  one line, a shell call's as the command it ran. */
 export function callList(calls: readonly Call[]): string {
   return (
     calls
-      .map((call, index) => `${String(index + 1)} ${call.tool}${call.isError ? " failed" : ""}`)
+      .map((call, index) => {
+        const command = asRecord(call.args)?.command;
+        const said = (isString(command) ? command : capturedJsonStringify(call.args))
+          .replaceAll(/\s+/g, " ")
+          .trim();
+        const line = said.length > ARGUMENT_HEAD ? `${said.slice(0, ARGUMENT_HEAD)}...` : said;
+        return `${String(index + 1)} ${call.tool}${call.isError ? " failed" : ""} ${callSize(call)}: ${line}`;
+      })
       .join("\n") || "no tool call recorded"
   );
 }
 
-/** Call `number` whole: its arguments and up to 4000 characters of its result starting at `from`. */
-export function callText(calls: readonly Call[], number: number, from: number): string {
+/** Call `number` whole: its arguments and its result as the trace keeps them. */
+export function callText(calls: readonly Call[], number: number): string {
   const call = calls[Math.floor(number) - 1];
   if (call === undefined) throw new Error(`the solve recorded ${String(calls.length)} tool calls`);
-  const start = Math.floor(from);
-  const window = call.text.slice(start, start + READ_WINDOW);
-  const rest = call.text.length - start - window.length;
   return [
-    `call ${String(Math.floor(number))} ${call.isError ? "failed" : "completed"} ${call.tool}`,
-    `arguments: ${capturedJsonStringify(call.args).slice(0, ARGUMENTS_CHARS)}`,
-    `result: ${window || "(no result recorded)"}${rest > 0 ? `\n[${String(rest)} more characters from ${String(start + window.length)}]` : ""}`,
+    `call ${String(Math.floor(number))} ${call.isError ? "failed" : "completed"} ${call.tool} ${callSize(call)}`,
+    `arguments: ${capturedJsonStringify(call.args)}`,
+    `result: ${call.text || "(no result recorded)"}`,
   ].join("\n");
 }
 

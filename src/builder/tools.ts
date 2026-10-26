@@ -141,8 +141,6 @@ export interface Bench {
  *  `digest` against the reference, or null (`BuildRequest.campaign`). */
 type Unmeasured = (digest: string) => Promise<string | null>;
 
-/** What a submitted answer or a closing text shows of itself in a trace's head. */
-const HEAD_CHARS = 4_000;
 /** What a preview names the solve's home, which only a solve has. */
 const SOLVE_HOME = "(the solve's own home directory)";
 /** The harness's tool tree, as a path in the Builder's home. */
@@ -539,22 +537,16 @@ export function practiceTool(bench: Bench): SeatTool {
   });
 }
 
-/** The paged trace of a practice solve. Which task version a solve ran is read from its logged
+/** The trace of a practice solve. Which task version a solve ran is read from its logged
  *  condition, so a solve of any other task is refused whatever id is asked for. */
 export function traceTool(bench: Bench): SeatTool {
   return tool({
     name: "read_trace",
     description:
-      "Read a solve of one of your practice tasks: the ones the opening message lists and the ones practice returns. With no call, return its ending, the answer it submitted, its closing text and every tool call by number. With a call number, return that call whole: its arguments and up to 4000 characters of its result starting at `from`.",
+      "Read a solve of one of your practice tasks: the ones the opening message lists and the ones practice returns. With no call, return its ending, the answer it submitted, its closing text and every tool call by number, each with its size and its arguments on one line. With a call number, return that call whole: its arguments and its result.",
     parameters: Type.Object({
       solve: Type.String({ description: "A solve's id." }),
       call: Type.Optional(Type.Number({ minimum: 1, description: "A call's number, from the list." })),
-      from: Type.Optional(
-        Type.Number({
-          minimum: 0,
-          description: "The first character of the result to return; 0 by default.",
-        }),
-      ),
     }),
     executionMode: "sequential",
     execute: async (args) => {
@@ -565,7 +557,7 @@ export function traceTool(bench: Bench): SeatTool {
         throw new Error(`${args.solve} is not a solve of one of this session's practice tasks`);
       }
       const { turns, calls } = traceOf(events, "solve", args.solve);
-      if (args.call !== undefined) return text(callText(calls, args.call, args.from ?? 0));
+      if (args.call !== undefined) return text(callText(calls, args.call));
       const { ending } = ran;
       const answer = verdictsOf(events).get(args.solve)?.answer;
       const closing = closingOf(turns);
@@ -574,8 +566,8 @@ export function traceTool(bench: Bench): SeatTool {
           `ending: ${rejectionAside(events, ran) ? "rejection set aside" : isString(ending?.outcome) ? `${ending.outcome}${isString(ending.kind) ? ` (${ending.kind})` : ""}` : "not recorded"}`,
           answer === undefined
             ? "no answer was submitted"
-            : `submitted answer: ${capturedJsonStringify(answer).slice(0, HEAD_CHARS)}`,
-          `closing text: ${closing?.slice(0, HEAD_CHARS) ?? "(none recorded)"}`,
+            : `submitted answer: ${capturedJsonStringify(answer)}`,
+          `closing text: ${closing ?? "(none recorded)"}`,
           callList(calls),
         ].join("\n"),
       );

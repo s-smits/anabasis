@@ -172,6 +172,28 @@ describe("the code a solve's condition records", () => {
     expect(codeOf(tree).host).toBe(host);
   });
 
+  it("moves when command code that executes a campaign changes", () => {
+    for (const part of ["tools/d2", "tools/c", "tools/d1b"]) {
+      mkdirSync(join(tree, part), { recursive: true });
+      const file = join(tree, part, "command.ts");
+      writeFileSync(file, "export const a = 1;\n");
+      const host = codeOf(tree).host;
+      writeFileSync(file, "export const a = 2;\n");
+      expect(codeOf(tree).host).not.toBe(host);
+    }
+  });
+
+  it("stays the same when reader or development command code changes", () => {
+    for (const part of ["tools/runs", "tools/wri", "tools/oxlint", "tools/loc", "tools/runtime"]) {
+      mkdirSync(join(tree, part), { recursive: true });
+      const file = join(tree, part, "command.ts");
+      writeFileSync(file, "export const a = 1;\n");
+      const host = codeOf(tree).host;
+      writeFileSync(file, "export const a = 2;\n");
+      expect(codeOf(tree).host).toBe(host);
+    }
+  });
+
   // The verifier runs every check under the command's own Bun, so a comparison continued under
   // another Bun is continued under other code.
   it("names the Bun that runs it beside the runtime's pins", () => {

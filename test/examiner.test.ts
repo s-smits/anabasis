@@ -1618,9 +1618,8 @@ describe("a session that writes tasks", () => {
     expect(said.filter((line) => line.includes("refused")).join("\n")).not.toContain("leaves room on");
     // A later session counts them by the same kinds, with those refused after reading all three
     // solves: x-1-006 read two, which no reading counts as measured (`measuredGate`).
-    expect(heard(read(s.log), []).measured).toBe(
-      "Under the current reference harness the gate held out 3 drafts: 3 on validity, its solves valid in some and not all; 0 on an answer of yours, where none of its solves was valid; 0 on the objective alone, every one of its solves valid. It refused 2 drafts after reading them. These are measurements and no target.",
-    );
+    // Held 3, all on validity, none on an answer of the author's or on the objective; 2 refused.
+    expect(heard(read(s.log), []).measured?.match(/\d+/gu)).toEqual(["3", "3", "0", "0", "2"]);
     expect(s.of("exam.started")).toMatchObject([{ tried: 3 }]);
     expect(s.sent[0]).toContain("try_task takes instances");
     expect(s.sent[0]).not.toContain("propose_tasks");

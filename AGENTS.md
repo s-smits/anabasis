@@ -393,12 +393,14 @@ What the **Examiner** reads:
   a walled home of its own, empty when it starts.
 
 What the **Examiner** never reads: a target, a harness's name, the other harness's result on any one
-task where `exam-results` is `off`, or a count of a task's valid solves beyond every, some or none. The one exception is how many
-of the reference harness's solves of a draft task were valid (`try_task`, and in later sessions; up
-to three, the first alone and the other two together where it leaves no room, until they leave
-room), how many of them gave no reading, the turns each
-valid one took and, where the contract declares an objective, their measure and its own answer's.
-Nothing else of those solves reaches it. The Examiner makes none of the exam's solves itself.
+task where `exam-results` is `off` beyond whether a valid answer to it is on record, or a count of
+the other harness's valid solves. The reference harness's own solves are facts it may count: a
+task's line lists the turns of each of its valid answers in the last comparison, one entry a valid
+solve, and a draft's gate (`try_task`, and in later sessions; up to three solves, the first alone
+and the other two together where it leaves no room, until they leave room) tells how many were
+valid, how many gave no reading, the turns each valid one took and, where the contract declares an
+objective, their measure and its own answer's. Nothing else of those solves reaches it. The
+Examiner makes none of the exam's solves itself.
 
 The tools of each model seat, as its source names them:
 

@@ -8,10 +8,12 @@
  * off the middle carries a higher one. `--branch` says where one branch sits: its parent, and what
  * is stacked on it, which decides whether it may still be rewritten. The reading is GitHub's at
  * this moment and the stack moves, so run it again before a branch, a pull request and a push.
+ * Each line ends in the pull request's importance label (`I0` to `I3`), or `unranked` where it
+ * carries none or several, which `bun run land` refuses.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
-import { openPulls, type Pull } from "#tools/runtime/land.ts";
+import { openPulls, type Pull, ranksOf } from "#tools/runtime/land.ts";
 
 /** The stack: the longest chain of open pull requests, bottom first, and the pull requests on no
  *  such chain. A chain starts on a base that is no open pull request's head, which is `main` or a
@@ -35,8 +37,11 @@ export function chain(pulls: readonly Pull[]) {
   return { line, sides: pulls.filter((pull) => !line.includes(pull)) };
 }
 
-const said = (pull: Pull) =>
-  `#${String(pull.number)}  ${pull.headRefName}  on ${pull.baseRefName}  ${pull.headRefOid.slice(0, 7)}`;
+const said = (pull: Pull) => {
+  const [rank, ...more] = ranksOf(pull);
+  const label = rank === undefined || more.length > 0 ? "unranked" : rank.slice("importance:".length);
+  return `#${String(pull.number)}  ${pull.headRefName}  on ${pull.baseRefName}  ${pull.headRefOid.slice(0, 7)}  ${label}`;
+};
 
 /** What is said of the open pull requests, or of one branch among them. */
 export function told(pulls: readonly Pull[], branch: string | null): string[] {

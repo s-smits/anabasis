@@ -6,7 +6,8 @@
  * rerun. On 21 October, 128 gate solves refused 43 of 1,396 drafts in 30 campaigns at such resets.
  * A task's check non-result returns to its caller; a verifier non-result stops the run.
  * Killed endings retain the first typed host cancellation source, or caller for an unlabelled
- * external abort. The solve's own wall remains a wall-ended fail.
+ * external abort. The solve's own wall remains a wall-ended fail unless the model left no
+ * completed turn for `SILENT_SECONDS`, with none of its tools running.
  * `waiting` ends sleeps at cancellation, including injected host sleeps before a solve starts.
  *
  * The loop runs in this process and so does the model's own process: under the Claude backend,
@@ -17,7 +18,7 @@
  * The loop is v1's: tools run one at a time, a
  * model that stops without submitting is nudged, and the turn cap counts the prompts, the opening one
  * and each nudge. Departures, beside those named in the tools and the prompt:
- * - No submit at the wall: a solve the wall ends is a wall-ended fail.
+ * - No submit at the wall: a solve the wall ends is a wall-ended fail, except for that silence.
  * - A limit on the model's own turns, where the condition names one (`Limits.modelTurns`): the
  *   solver is told it and how many it has used, and the loop ends after the last one.
  * - A failed model turn ends the attempt as the provider's non-result, which `solve` runs again whole;
@@ -91,6 +92,22 @@ export interface SolveRequest {
   readonly kill?: AbortSignal;
 }
 
+/**
+ * A solve's wall observes completed turns and tool starts and endings through `sit`'s hooks,
+ * including unavailable tools and argument refusals. When it falls it keeps the seconds since
+ * that activity, or zero while a tool runs, which `unanswered` reads (`SILENT_SECONDS`). It observes
+ * no partial stream content. Until 26 October `timed` missed calls that durable refused.
+ */
+export interface Wall {
+  readonly signal: AbortSignal;
+  readonly onTurn: () => void;
+  readonly onTool: (phase: "start" | "end") => void;
+  /** Seconds the model had been silent when the wall fell; 0 until it falls or while a tool ran. */
+  readonly silentSeconds: number;
+  /** Takes the wall down once the solve is over. */
+  readonly lower: () => void;
+}
+
 /** What a solve has used of its limits, as its tools are told to say it. */
 export interface Used {
   readonly clock: SolveClock;
@@ -115,6 +132,9 @@ export interface Played {
   readonly submitted: JsonValue | undefined;
   readonly flagged: string | undefined;
   readonly wallEnded: boolean;
+  /** How long the model had been silent, with no tool of its running, when the wall fell
+   *  (`Wall`). */
+  readonly silentSeconds: number;
   /** Whether the model used every turn it was given, where it was given a number of them. */
   readonly turnsEnded: boolean;
   readonly moved: boolean;
@@ -237,12 +257,11 @@ async function play(
 ): Promise<Played & { readonly spent: Sat["spent"]; readonly released: Promise<void> }> {
   const { limits } = request;
   const dirs = solveDirs(id);
-  const wall = new AbortController();
+  let wall: Wall | null = null;
   const desk = openDesk();
   const before = treeStamp(request.harness);
   const turns: AssistantMessage[] = [];
   let spentOn: Sat["spent"] | null = null;
-  let timer: ReturnType<typeof setTimeout> | undefined;
   let release: ReleaseRoot | null = null;
   let homeBytes: number | null;
   let released: Promise<void> = Promise.resolve();
@@ -273,12 +292,13 @@ async function play(
       programs: installedPrograms(harness.toolTree),
       network: await networkReach(commandWall),
     });
-    const used = { clock, turns: () => turns.length, modelTurns: limits.modelTurns };
-    const tools = defined.map((tool) => timed(tool, used));
     prompts = 1;
     // The wall is the solver's time, so it starts with the first turn rather than the setup.
     clock.started = performance.now();
-    timer = setTimeout(() => wall.abort(), limits.wallSeconds * 1000);
+    const raised = raiseWall(limits.wallSeconds);
+    wall = raised;
+    const used = { clock, turns: () => turns.length, modelTurns: limits.modelTurns };
+    const tools = defined.map((tool) => timed(tool, used));
     const sat = await sit({
       models: request.models,
       home: join(dirs.host, "model"),
@@ -292,6 +312,8 @@ async function play(
       trace: { log: request.log, of: "solve" },
       turns,
       most: limits.modelTurns,
+      onTurn: raised.onTurn,
+      onTool: raised.onTool,
       // After a turn's tool calls have run, so an answer submitted in the last turn is held. An
       // accepted submit ends the solve here as its description says, and not only through its
       // `terminate`, which pi heeds when every call of the turn returns it: on esp32 (12 October)
@@ -304,7 +326,7 @@ async function play(
         prompts += 1;
         return NUDGE;
       },
-      stops: [wall.signal, request.kill],
+      stops: [raised.signal, request.kill],
     });
     crash = sat.thrown;
     spentOn = sat.spent;
@@ -312,7 +334,7 @@ async function play(
     if (error instanceof BrokenHarness) broken = error.message;
     else crash = errorMessage(error);
   } finally {
-    clearTimeout(timer);
+    wall?.lower();
     // Read apart from the loop, before the root goes: a walk that fails voids no solve.
     homeBytes = bytesUnder(dirs.home);
     if (release !== null) released = release();
@@ -327,11 +349,38 @@ async function play(
     spent: spentOn ?? (await spentBy(id, [], [])),
     submitted: desk.submitted,
     flagged: desk.flagged,
-    wallEnded: wall.signal.aborted,
+    wallEnded: wall?.signal.aborted ?? false,
+    silentSeconds: wall?.silentSeconds ?? 0,
     turnsEnded: limits.modelTurns !== undefined && turns.length >= limits.modelTurns,
     moved: treeStamp(request.harness) !== before,
     homeBytes,
     released,
+  };
+}
+
+/** A wall raised now, that falls `seconds` from now. */
+export function raiseWall(seconds: number): Wall {
+  const fall = new AbortController();
+  let heard = performance.now();
+  let running = 0;
+  let silentSeconds = 0;
+  const timer = setTimeout(() => {
+    if (running === 0) silentSeconds = (performance.now() - heard) / 1000;
+    fall.abort();
+  }, seconds * 1000);
+  return {
+    signal: fall.signal,
+    onTurn: () => {
+      heard = performance.now();
+    },
+    onTool: (phase) => {
+      running += phase === "start" ? 1 : -1;
+      heard = performance.now();
+    },
+    get silentSeconds() {
+      return silentSeconds;
+    },
+    lower: () => clearTimeout(timer),
   };
 }
 
@@ -437,6 +486,7 @@ export async function judge(request: SolveRequest, id: string, played: Played): 
   if (played.broken !== null) return { outcome: "fail", kind: "broken-harness", reason: played.broken };
   return unanswered({
     wallEnded: played.wallEnded,
+    silentSeconds: played.silentSeconds,
     turnsEnded: played.turnsEnded,
     last: played.turns.at(-1),
   });

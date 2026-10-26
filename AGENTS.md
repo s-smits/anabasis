@@ -300,7 +300,7 @@ model is itself the subject of the decision, or the value must stay identical on
 comparison. Models keep the second column because code cannot reason about a domain it has never
 seen.
 
-Six consequences guide a change:
+Seven consequences guide a change:
 
 1. **Give a model facts, never a course.** The host tells an agent what happened: a tally, an
    ending, a limit and how much of it is used. It leaves what to do next to the agent: a model
@@ -339,6 +339,15 @@ Six consequences guide a change:
    three protected things. A seat's commands write one root, except for the host's own folder
    inside it (`SolveDirs`, `src/tools/command.ts`), and each policy is probed once per process by
    one command run exactly as every command of a seat is run (`walledBase`, `probeWall`).
+7. **Take the simple path that reaches most of the result.** The system is already large, and each
+   mechanism added makes the next change harder to read, to prove and to undo. Prefer the design
+   that reaches about four fifths of the result with about a fifth of the code, and accept the
+   loss: a plain mechanism that works and writes events the readers can count beats a complete one
+   that nobody can check. This holds for the host's code, a prompt, a tool and a skill alike, and it
+   is why rule 13 asks for evidence before machinery. It never holds for the measurement's honesty:
+   the wall, the terms fixed before the first solve, fresh solves, the step test and the rulings
+   (rules 3 to 8) are not traded for less code, since a simpler measurement that reads a false step
+   costs more than all the code it saved.
 
 ## 3. The seats
 

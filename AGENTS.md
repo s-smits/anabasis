@@ -1564,11 +1564,15 @@ In practice:
   edges and the top; where `gh` has no GraphQL, `gh api repos/<owner>/<repo>/pulls` gives the same
   edges. The top is the end of the longest chain, which need not be the highest number. State no
   fact about the repository without the commit you read it at.
-- **A new subject is a new pull request on the top of the chain**, never beside it, even where it
-  depends on nothing below; its body says so. The same subject as one of your own open pull
-  requests is appended to it. Skills go on the chain like code, and so does documentation that
-  describes an open pull request, with the row of `docs/transfer.md` that the change moves. Only
-  documentation alone (`AGENTS.md`, `docs/`) that describes no open pull request may go on `main`.
+- **Expand an open pull request before opening a new one.** A change that fixes, simplifies,
+  completes or supersedes an open pull request's own code belongs to that pull request; a shared
+  file alone does not make it so. It is folded in where nothing is stacked above, and otherwise
+  carried on the top as a `fixup!` that the next consolidation folds down (the skill `stack-pr`,
+  section 2). A new subject is a new pull request on the top of the chain, never beside it, even
+  where it depends on nothing below; its body says so. Skills go on the chain like code, and so
+  does documentation that describes an open pull request, with the row of `docs/transfer.md` that
+  the change moves. Only documentation alone (`AGENTS.md`, `docs/`) that describes no open pull
+  request may go on `main`.
 - **Another session's pull request changes only on the operator's word**, which a request to fix it
   gives. A pull request with children takes new commits only.
 - **One worktree per pull request**, from the top, pinned by commit, with its own

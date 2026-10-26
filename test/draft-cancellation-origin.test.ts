@@ -27,6 +27,7 @@ const PLAYED: Played = {
   submitted: undefined,
   flagged: undefined,
   wallEnded: false,
+  silentSeconds: 0,
   turnsEnded: false,
   moved: false,
   homeBytes: 0,

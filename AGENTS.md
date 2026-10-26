@@ -954,7 +954,7 @@ comparisons, and one frozen draw of the reference's solves would bias every late
 | --- | --- | --- |
 | pass | | Valid. It beats an answer that is not valid; against another valid one it gains by how much better it is by the objective, where the comparison fixed one, and by how much less its solve billed |
 | fail | `rejected`, once the rejection is ruled a true fail | Not valid |
-| fail | `wall-ended`, `turns-ended`, `context-ended`, `no-answer` | Not valid. There is nothing to recompute, so no ruling is needed |
+| fail | `wall-ended`, `turns-ended`, `context-ended`, `no-answer` | Not valid. There is nothing to recompute, so no ruling is needed. A wall that falls on a model silent for ten minutes, with none of its tools running, is the provider's non-result instead (`SILENT_SECONDS`, `src/kernel/solve.ts`) |
 | fail | `broken-harness` | Not valid. The harness is what is compared, and one that cannot open answers nothing |
 | fail | `rejected`, ruled a check defect or unclear, or waiting for a person | The task is set aside for both harnesses |
 | non-result | `provider`, `sandbox-crash`, `killed`, `moved-files`, `check`, `verifier` | No measurement. It is solved again and is in no pair |

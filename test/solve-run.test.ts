@@ -4,7 +4,7 @@
 // the solver reads, a solve under the Starter with pi's own file tools, the host's limits over the
 // harness's, the wall, no answer, the reruns of a provider's failed turn and of moved files, and
 // the run stopping on the verifier's non-result.
-import { afterAll, expect, it } from "bun:test";
+import { afterAll, expect, it, jest } from "bun:test";
 import {
   createModels,
   fauxAssistantMessage,
@@ -12,8 +12,11 @@ import {
   fauxProvider,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
+import { type SeatTool, sit } from "../src/agent/session.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { read } from "../src/kernel/log.ts";
+import { SILENT_SECONDS } from "../src/kernel/solve.ts";
 import { passed } from "../src/kernel/solves.ts";
 import type { Verdict } from "../src/kernel/verify.ts";
 import { cpSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
@@ -22,7 +25,8 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { NUDGE } from "../src/solver/prompt.ts";
-import { judge, type Played, solve, type SolveRequest } from "../src/solver/run.ts";
+import { judge, type Played, raiseWall, solve, type SolveRequest, timed } from "../src/solver/run.ts";
+import { text as toolText, tool as seatTool } from "../src/tools/answer.ts";
 import { writeStarter } from "../src/harness/starter.ts";
 import { osIsolationSupport } from "../src/wall/os-isolation.ts";
 
@@ -59,6 +63,7 @@ const PLAYED: Played = {
   submitted: undefined,
   flagged: undefined,
   wallEnded: false,
+  silentSeconds: 0,
   turnsEnded: false,
   moved: false,
   homeBytes: 0,
@@ -146,6 +151,101 @@ const searchHome = fauxAssistantMessage(
   toolUse,
 );
 
+/** Drive the real session hooks on a virtual thirty-minute wall, without an OS wall or a model. */
+async function atWall(responses: FauxResponseStep[], tools: SeatTool[] = []) {
+  jest.useFakeTimers();
+  const wall = raiseWall(30 * 60);
+  try {
+    const { request, events } = setup(responses);
+    const turns: Played["turns"][number][] = [];
+    const used = {
+      clock: { started: performance.now(), seconds: 30 * 60 },
+      turns: () => turns.length,
+      modelTurns: undefined,
+    };
+    const sat = await sit({
+      onTurn: wall.onTurn,
+      onTool: wall.onTool,
+      models: request.models,
+      id: request.id,
+      model: request.model,
+      effort: request.effort,
+      system: "A solver.",
+      opening: "Begin.",
+      tools: tools.map((entry) => timed(entry, used)),
+      trace: { log: request.log, of: "solve" },
+      turns,
+      stops: [wall.signal],
+    });
+    expect(sat).toMatchObject({ cut: true, thrown: null });
+    return {
+      ending: await judge(request, request.id, {
+        ...PLAYED,
+        turns,
+        wallEnded: wall.signal.aborted,
+        silentSeconds: wall.silentSeconds,
+      }),
+      events: events(),
+    };
+  } finally {
+    wall.lower();
+    jest.useRealTimers();
+  }
+}
+
+it("keeps a tool running through the whole silence threshold as the solver's wall-ended fail", async () => {
+  const working = seatTool({
+    name: "working",
+    description: "Work until the wall.",
+    parameters: Type.Object({}),
+    execute: async () => {
+      jest.advanceTimersByTime(30 * 60_000);
+      return toolText("finished");
+    },
+  });
+  const result = await atWall([fauxAssistantMessage(fauxToolCall("working", {}), toolUse)], [working]);
+  expect(result.ending).toEqual({ outcome: "fail", kind: "wall-ended" });
+});
+
+it.each(["unavailable", "invalid arguments"])("keeps %s calls active at the wall", async (refusal) => {
+  const required = seatTool({
+    name: "required",
+    description: "Requires a key.",
+    parameters: Type.Object({ key: Type.String() }),
+    execute: async () => {
+      throw new Error("refused arguments reached the tool");
+    },
+  });
+  const replies: FauxResponseStep[] = Array.from({ length: 14 }, () => () => {
+    jest.advanceTimersByTime(2 * 60_000);
+    return fauxAssistantMessage(fauxToolCall(refusal === "unavailable" ? "absent" : "required", {}), toolUse);
+  });
+  replies.push(() => {
+    jest.advanceTimersByTime(2 * 60_000);
+    return providerStop("", "aborted at the wall");
+  });
+  const result = await atWall(replies, [required]);
+  expect(result.ending).toEqual({ outcome: "fail", kind: "wall-ended" });
+  const calls = result.events.filter(({ kind }) => kind === "solve.call");
+  expect(calls).toHaveLength(14);
+  expect(calls.every(({ data }) => data.isError === true)).toBe(true);
+});
+
+it("reads a model producing no completed turn through the whole silence as the provider's non-result", async () => {
+  const result = await atWall([
+    () => {
+      jest.advanceTimersByTime(30 * 60_000);
+      return providerStop("", "aborted at the wall");
+    },
+  ]);
+  expect(result.ending).toEqual({
+    outcome: "non-result",
+    kind: "provider",
+    reason: "the model sent nothing for 30 minutes",
+  });
+  expect(result.events.filter(({ kind }) => kind === "solve.turn")).toHaveLength(0);
+});
+
 it("is a kill, then moved files, then a held answer, before the sandbox's crash", async () => {
   const kill = AbortSignal.abort();
   const all = { crash: "the model process died", moved: true, submitted: { answer: "42" } };
@@ -212,6 +312,20 @@ it("without an answer: the wall, the model's turns, the context, a provider fail
   const overflow = providerStop("", "prompt is too long: 213462 tokens > 200000 maximum");
   expect(await attemptEnding({ wallEnded: true, turns: [overflow] }).ending).toMatchObject({
     kind: "wall-ended",
+  });
+  // The hook-driven cases above check activity; these check the threshold and wall requirement.
+  expect(await attemptEnding({ wallEnded: true, silentSeconds: SILENT_SECONDS }).ending).toEqual({
+    outcome: "non-result",
+    kind: "provider",
+    reason: "the model sent nothing for 10 minutes",
+  });
+  expect(await attemptEnding({ wallEnded: true, silentSeconds: SILENT_SECONDS - 1 }).ending).toEqual({
+    outcome: "fail",
+    kind: "wall-ended",
+  });
+  expect(await attemptEnding({ silentSeconds: SILENT_SECONDS }).ending).toEqual({
+    outcome: "fail",
+    kind: "no-answer",
   });
   // A solve given a number of model turns that used them all ended there, unless the provider
   // or the window ended its last turn (below); one that submitted in its last turn is judged on

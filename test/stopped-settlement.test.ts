@@ -300,6 +300,21 @@ it("keeps ordinary settlement and swapped readings for a completed scored compar
   expect(comparison.swapped(read(s.log), ID)?.decided).toBe(report.reading);
 });
 
+it("reads a settled flip against this tree's unlabelled reading, apart from the reading on record", async () => {
+  const s = fixture({ complete: ["PPPR", "PPPP"] });
+  const report = await checkpoint(s.request);
+  settleReading(s.log, ID, s.labels);
+  // The first report as an older rule would have recorded it: another reading of the same solves.
+  const other = report.reading === "step" ? "no-step" : "step";
+  let first = true;
+  const older = read(s.log).map((event) => {
+    if (event.kind !== "comparison.reported" || !first) return event;
+    first = false;
+    return { ...event, data: { ...event.data, reading: other } };
+  });
+  expect(comparison.swapped(older, ID)).toMatchObject({ decided: other, unlabelled: report.reading });
+});
+
 it("draws and settles the stopped comparison through the blind packet command", async () => {
   const s = fixture();
   await checkpoint(s.request);

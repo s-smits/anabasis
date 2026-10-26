@@ -176,9 +176,13 @@ function labelLines(events: readonly LogEvent[]): string[] {
       if (again === null) return [];
       const { wins, losses, ties } = again.scored;
       const flips =
-        again.swapped === again.decided ? "it holds" : "it flips, so its packet was too small to stand on";
+        again.swapped === again.unlabelled ? "it holds" : "it flips, so its packet was too small to stand on";
+      const rule =
+        again.unlabelled === again.decided
+          ? ""
+          : `, and ${again.unlabelled} by this tree's rule without them`;
       return [
-        `${id}: decided ${again.decided}, and ${again.swapped} at ${String(wins)}-${String(losses)}-${String(ties)} with its labels in place of the verdicts they overturn: ${flips}`,
+        `${id}: decided ${again.decided}${rule}, and ${again.swapped} at ${String(wins)}-${String(losses)}-${String(ties)} with its labels in place of the verdicts they overturn: ${flips}`,
       ];
     }),
   ];

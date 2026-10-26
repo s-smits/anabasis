@@ -588,12 +588,15 @@ export function wrongAsFailed(
  * and one labelled unclear left aside. It is read as the comparison's own report found it, before
  * its settling disputed anything. Null until it is settled. A decision that flips means its packet
  * was too small to stand on (the overhaul plan's M3, research 06): a report, and no move reads it.
+ * The flip is read against the same solves without labels by this tree (`unlabelled`), since a
+ * report recorded under an older rule may read otherwise by today's: on 26 October buffer-fresh-
+ * opus-v065-a's g-3, recorded `step`, read `no-step` by the rule that a step stands without the bill.
  * A comparison whose first report has no score has no decided test to swap.
  */
 export function swapped(
   events: readonly LogEvent[],
   id: string,
-): { decided: Reading; swapped: Reading; scored: Tested } | null {
+): { decided: Reading; unlabelled: Reading; swapped: Reading; scored: Tested } | null {
   const own = asReported(events, id);
   const settled = reported(events, id)?.settled;
   const fixed = fixedIn(events, id);
@@ -618,7 +621,8 @@ export function swapped(
   );
   const { labels } = failed;
   const found = compared(swappedIn, fixed, labels);
-  return { decided, swapped: found.reading, scored: found.scored };
+  const unlabelled = compared(own, fixed, NO_LABELS).reading;
+  return { decided, unlabelled, swapped: found.reading, scored: found.scored };
 }
 
 /**

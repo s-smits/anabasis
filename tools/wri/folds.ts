@@ -70,8 +70,9 @@ export interface Solve {
    *  every turn its start allowed. Read from the end, since a call's turn counted from 0 in logs up
    *  to 22 October and from 1 after, and the end's count from 1 in both (25 October). */
   readonly limit: string | null;
-  /** Whether the provider named the model that served it. */
-  readonly attested: boolean;
+  /** The model its condition asked for, and those its provider named as serving it, if any. */
+  readonly model: string;
+  readonly served: readonly string[];
 }
 
 /** One call of a Builder's tool, at its place in the log. */
@@ -201,6 +202,7 @@ export const TRIGGERS = {
   "REFERENCE AGAINST ITSELF": 24,
   "HOST CODE MOVED": 20,
   "STARTS OUT OF TURN": 20,
+  "SERVED ANOTHER MODEL": 20,
   "CHAIN": 25,
   "NO TASK HELD OUT": 25,
   "WALL SHARE": 26,
@@ -289,7 +291,8 @@ function solvesOf(
           calls: [],
           errors: 0,
           limit: modelTurns !== null && count(end?.turns) === modelTurns ? "last turn" : null,
-          attested: items(end?.responseModels).length > 0,
+          model: condition?.model ?? "",
+          served: items(end?.responseModels).filter(isString),
         },
       ];
     }),

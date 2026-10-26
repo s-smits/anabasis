@@ -36,7 +36,7 @@ import {
 import { conditionsOf, settingId } from "../kernel/condition.ts";
 import { proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { lastReports, pairsReported, poolOf } from "../kernel/reports.ts";
+import { lastReports, pairsReported, poolOf, type Reported } from "../kernel/reports.ts";
 import { passed, ranUnder, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
@@ -588,12 +588,15 @@ export function wrongAsFailed(
  * and one labelled unclear left aside. It is read as the comparison's own report found it, before
  * its settling disputed anything. Null until it is settled. A decision that flips means its packet
  * was too small to stand on (the overhaul plan's M3, research 06): a report, and no move reads it.
+ * The flip is read against the same solves without labels by this tree (`unlabelled`), since a
+ * report recorded under an older rule may read otherwise by today's: on 26 October buffer-fresh-
+ * opus-v065-a's g-3, recorded `step`, read `no-step` by the rule that a step stands without the bill.
  * A comparison whose first report has no score has no decided test to swap.
  */
 export function swapped(
   events: readonly LogEvent[],
   id: string,
-): { decided: Reading; swapped: Reading; scored: Tested } | null {
+): { decided: Reading; unlabelled: Reading; swapped: Reading; scored: Tested } | null {
   const own = asReported(events, id);
   const settled = reported(events, id)?.settled;
   const fixed = fixedIn(events, id);
@@ -618,7 +621,8 @@ export function swapped(
   );
   const { labels } = failed;
   const found = compared(swappedIn, fixed, labels);
-  return { decided, swapped: found.reading, scored: found.scored };
+  const unlabelled = compared(own, fixed, NO_LABELS).reading;
+  return { decided, unlabelled, swapped: found.reading, scored: found.scored };
 }
 
 /**
@@ -641,11 +645,16 @@ export function promotionReadings(events: readonly LogEvent[]): ReadonlyMap<numb
           index < at && report.fresh === data.harness && report.old === data.from && report.scored !== null,
       );
       if (rest === undefined) return [];
-      const passes = asRecord(asRecord(rest.data.settled)?.passes) ?? {};
-      const settled = wrongAsFailed(events, NO_LABELS, passes).events;
-      return [[at, { comparison: rest.session, readings: readingsOf(pairsReported(settled, rest)) }]];
+      return [[at, { comparison: rest.session, readings: readingsOf(labelledPairs(events, rest)) }]];
     }),
   );
+}
+
+/** A reported tally's pairs with its wrong-pass labels applied. Its versions already carry the
+ *  rejection labels' exclusions and restorations; rejection labels never turn a fail into a pass. */
+export function labelledPairs(events: readonly LogEvent[], report: Reported): Paired[] {
+  const passes = asRecord(asRecord(report.data.settled)?.passes) ?? {};
+  return pairsReported(wrongAsFailed(events, NO_LABELS, passes).events, report);
 }
 
 /** What the operator predicted of comparison `id` before its first solve, or null where they

@@ -12,11 +12,11 @@
  * unmeasured rather than a measured zero.
  */
 import { pSaid } from "#src/campaign/climb.ts";
+import { labelledPairs } from "#src/campaign/comparison.ts";
 import { short } from "#src/campaign/move.ts";
 import { gateAnswers } from "#src/examiner/record.ts";
 import { differenceOf, flipP, informative, type Kept, type Paired } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { pairsReported } from "#src/kernel/reports.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { type Compared, count, fired, type Index, indexOf, items, type Trigger, text } from "./folds.ts";
 import {
@@ -208,14 +208,15 @@ export function safeguardTriggers(log: Index): Trigger[] {
 }
 
 /** Each tested task's score (`testedOf`) on the measures `kept` names, as the step reads it
- *  (`differenceOf`), summed over a promotion's two readings as `joined` sums them. Until 25 October
+ *  (`differenceOf`), from the same labelled pairs as `promotionReadings` (`labelledPairs`), summed
+ *  over a promotion's two readings as `joined` sums them. Until 25 October
  *  it summed the measures itself, and rounded half points up where the step rounds them away from
  *  zero. */
 function measuredOf(events: readonly LogEvent[], rests: readonly Compared[], kept: Kept) {
   const sums = new Map<string, number>();
   for (const { session, at, last } of rests) {
     const tested = new Set(testedOf(last).of);
-    for (const pair of pairsReported(events, { session, index: at, data: last })) {
+    for (const pair of labelledPairs(events, { session, index: at, data: last })) {
       if (tested.has(pair.task)) sums.set(pair.task, (sums.get(pair.task) ?? 0) + differenceOf(pair, kept));
     }
   }

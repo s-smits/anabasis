@@ -206,7 +206,9 @@ a serious run failure, `I2` is a bounded functional improvement, and `I3` is rep
 convenience. The title carries no "Ix:" prefix; the label replaced it on 25 October. `bun run land`
 refuses a stack in which any pull request has no importance label or more than one, naming each,
 before it gates anything, so `--sanitize` shows such a stack as not ready (`gh pr edit <number>
---add-label importance:I<n>` repairs it).
+--add-label importance:I<n>` repairs it). `stack.ts` ends each line in the label, and a
+consolidation spends its time by it: `I0` and `I1` through commit-r, `I3` folded
+(`references/consolidate.md`, "Spend by importance").
 
 The operator's title is used word for word. Otherwise, name the changed behaviour in a short
 imperative sentence, such as "Let the host wait for Examiner admission results" or "Reuse gate
@@ -325,7 +327,8 @@ Consolidating turns a stack that grew one fix at a time, in the order the fixes 
 smaller stack structured by subject. It reviews the whole open stack, folds every fix into the commit it belongs to, makes
 related pull requests one, and publishes the result as one native stack. It rewrites other
 sessions' pull requests, so it needs the operator's word (section 8). The procedure, with the
-reason for each rule, is `references/consolidate.md`: review in groups with a second, independent
+reason for each rule, is `references/consolidate.md`: spend by importance (`I0` and `I1` rewritten
+surgically through commit-r, lowest on the stack; `I3` folded at the top); review in groups with a second, independent
 review; restructure in one rebase; fix in lanes that deliver only `fixup!` and `amend!` commits;
 assemble by cherry-pick and autosquash; check that the squashed top's tree equals the pre-squash
 tip and that every commit typechecks where it sits; regroup; publish; prove with

@@ -832,7 +832,7 @@ control that read room (section 7) it releases as many again. Inside a Builder's
 which spans epochs, the host releases what the epoch is still owed as each Examiner session beside
 it holds a task and as it ends (`releaseOwed`, `tools/d2/campaign-actions.ts`). `--practice` is a
 per-epoch count, and once practice exists a release never leaves fewer frontier tasks, read on the
-reference's own solves alone, than a sweep at the level needs (`practiceRoom`,
+reference's own solves alone, than a comparison needs (`comparisonFloor`, `practiceRoom`,
 `src/campaign/decide.ts`). Each release is one task fewer to
 compare.
 
@@ -863,8 +863,8 @@ a round or a checkpoint asks it before writing its first event, whether the camp
 it or someone started it by hand. Among other things it refuses:
 
 - a log with no held-out task;
-- a comparison that would score fewer frontier tasks than a step needs at the level
-  (`held-short`, `sweepOf`);
+- a comparison that would score fewer frontier tasks than a step needs at the level, plus two:
+  room for one task set aside and one tie (`held-short`, `comparisonFloor`);
 - a comparison with no `--cap`;
 - a checker that nobody has read;
 - a campaign the stop rule has stopped, unless `--past-stop "<why>"` gives the operator's reason,

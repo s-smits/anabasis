@@ -9,8 +9,10 @@
  * hold no such rule of their own (`decide.ts`), since their answer to one is a move and no flag.
  *
  * - `no-held`: a log with no held-out task to score;
- * - `held-short`: fewer to score than a step takes at the level asked for (`sweepOf`; until
- *   19 October a first reading at the trigger, which bought a repeat);
+ * - `held-short`: fewer to score than a sweep at the level plus `MARGIN`, one set-aside task and
+ *   one tie (`comparisonFloor`). Four of eight first comparisons scored the bare six at 0.02;
+ *   truss-fresh-opus-v071's g-1 set one aside and read 5-0, p 0.031, unable to promote. The margin
+ *   keeps that loss of a reading out of the paid start (26 October).
  *   The frontier already leaves out every task the reference closed in its last comparison, so
  *   the share of the last comparison's tasks left untied, read since 8 October and mended six
  *   times, read 1 at 69 of 72 recorded starts by 16 October and refused none (`untied-short`):
@@ -118,6 +120,8 @@ interface Admission {
 /** The command an Examiner session runs as: where a refusal sends its reader for more held-out
  *  tasks, and what a stop knows a running one by (`tools/runs/registry.ts`, `tools/runs/stop.ts`). */
 export const EXAMINE = "tools/d1b/examine.ts";
+/** Leave room for one task set aside and one tie before paying for a comparison. */
+const MARGIN = 2;
 const STARTED = "comparison.started";
 // On 9 October a round on a checker nobody had read rejected 22 of 32 solves, 14 on one check,
 // with nothing to say whose fault.
@@ -145,13 +149,17 @@ export function supplyOf(events: readonly LogEvent[]): Supply {
   };
 }
 
+/** The least frontier a paid comparison starts on, also left held by practice releases. */
+export function comparisonFloor(level: number): number {
+  return sweepOf(level) + MARGIN;
+}
+
 /** The numbers a comparison's size is read from on a supply: the tasks it would score, and the
- *  fewest a step takes at its level. */
+ *  admission floor at its level. */
 function sized(supply: Supply, wanted: Pick<Wanted, "target" | "level">) {
   const scored = Math.min(wanted.target, supply.held);
-  // What a comparison's test can say at this size is arithmetic, and is known before a round pays
-  // for it.
-  const least = sweepOf(wanted.level);
+  // Reserve the margin before a round pays for solves that may tie or be set aside.
+  const least = comparisonFloor(wanted.level);
   return { scored, least };
 }
 
@@ -190,7 +198,7 @@ export function refusals(supply: Supply, wanted: Sized) {
     [
       "held-short",
       supply.held > 0 && scored < least,
-      `${size}. ${more}${wanted.target < least ? `, and ask for a --target of ${String(least)} or more` : ""}`,
+      `${size}. A paid comparison needs at least ${String(least)} frontier tasks, leaving room for one set-aside task and one tie. ${more}${wanted.target < least ? `, and ask for a --target of ${String(least)} or more` : ""}`,
     ],
     [
       "unread",

@@ -11,6 +11,9 @@
  * first row that names a move chose it, and a hold (`HOLDS`) may change the move a row named. A
  * decision carries the code of the row or the hold it came from. What the gate refuses a
  * comparison for is the gate's to say (`refusals`, `admission.ts`), and the rows read its codes.
+ * Since 26 October its floor leaves one set-aside task and one tie above a sweep: g-1 of
+ * truss-fresh-opus-v071 lost its chance to promote when one of six tasks was set aside. The
+ * `short` row asks for tasks first; practice releases and Examiner counts keep the same floor.
  *
  * One count ends a campaign that cannot be given tasks or room (`roomless`), at its patience.
  *
@@ -18,7 +21,6 @@
  * log is read, at the one budget it names (`7f0add79:docs/simplify.md`, package A).
  */
 import { unadmitted } from "../kernel/acceptance.ts";
-import { sweepOf } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { poolOf, practiceFailures, roomOf } from "../kernel/reports.ts";
 import { heldAtGate, taskSets } from "../kernel/task.ts";
@@ -26,6 +28,7 @@ import { isNumber, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { draftOf } from "../examiner/draft.ts";
 import { plural } from "../meta/text.ts";
+import { comparisonFloor } from "./admission.ts";
 import { crashedRun, cutShort, groundOf, heldOut, type Plan } from "./ground.ts";
 import { type Decided, type Ending, short } from "./move.ts";
 import { pendingWords } from "./word.ts";
@@ -345,8 +348,8 @@ function tasks(ground: Ground): Move | null {
 }
 
 /**
- * How many held-out tasks the campaign is short of: a comparison's target and what the next
- * release still draws for practice, which leaves the held ones, less what it holds. The table's
+ * How many held-out tasks the campaign is short of: its target or admission floor, whichever is
+ * larger, and what the next release still draws for practice, less what it holds. The table's
  * examine before a comparison and the session's ask (`examTasks`, `campaign-terms.ts`) are this
  * count. Until 19 October a repeat that was due was short of a sweep at the level instead.
  */
@@ -356,7 +359,10 @@ export function shortOf(events: readonly LogEvent[], plan: Plan): number {
 
 function shortBy({ plan, supply }: Ground): number {
   const practice = Math.max(0, (plan.practice ?? 0) - supply.released);
-  return Math.max(0, practice - (supply.held - plan.wanted.target));
+  return Math.max(
+    0,
+    practice + Math.max(plan.wanted.target, comparisonFloor(plan.wanted.level)) - supply.held,
+  );
 }
 
 function unfinished({ all }: Ground): Move | null {
@@ -479,7 +485,7 @@ function wanting(ground: Ground): Move | null {
   }
   if (lacks === undefined) return null;
   return written(
-    "the campaign holds fewer tasks a step can be read on than a step takes: those the reference harness answered in every solve, and those held out before its promotion that it has stood in no comparison of, are read apart",
+    "the campaign holds fewer frontier tasks than a sweep plus one set-aside task and one tie needs: those the reference harness answered in every solve, and those held out before its promotion that it has stood in no comparison of, are read apart",
   );
 }
 
@@ -567,7 +573,7 @@ export function epochReleased(events: readonly LogEvent[]) {
 }
 
 /** How many more tasks a release may take for practice, each one fewer to compare: once practice
- *  exists or a promotion is on record, leave a sweep at `level` of frontier tasks held.
+ *  exists or a promotion is on record, leave the admission floor at `level` of frontier tasks held.
  *  Top-ups before a promotion consumed esp32-r2's frontier (20 October 2026, whole-run
  *  investigations of six campaigns). Until 16 October it was also at most one in four of the
  *  epoch's scorable and released tasks, which bound alone in none of 35 releases on record.
@@ -576,7 +582,7 @@ export function epochReleased(events: readonly LogEvent[]) {
 export function practiceRoom(events: readonly LogEvent[], level: number): number {
   const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
   if (promotedAt === -1 && taskSets(events).released.length === 0) return Infinity;
-  return Math.max(0, poolOf(events).practiceFrontier.length - sweepOf(level));
+  return Math.max(0, poolOf(events).practiceFrontier.length - comparisonFloor(level));
 }
 
 /** How many more tasks the epoch's practice is owed: the `practice` a campaign names less what it

@@ -185,7 +185,7 @@ Open and close each pass with these rows for each campaign. Say which point the 
 | --- | --- | --- | --- | --- |
 | 1 | Climb | how many promotions from a fresh opening | `runs status`, `runs view`, the closing report's "Promotions" | `AGENTS.md`, factor 1 |
 | 2 | Honesty | could a promotion be chance or drift | each report's `noise`; the closing report's "The chance of a false promotion" | the A/A controls and risk over every attempt |
-| 3 | Supply | are there informative tasks | the campaign's `--dry-run`, the view's set-up line, `task.gate` | `AGENTS.md`, supply condition; admission also needs `sweepOf(level)` frontier tasks |
+| 3 | Supply | are there informative tasks | the campaign's `--dry-run`, the view's set-up line, `task.gate` | `AGENTS.md`, supply condition; admission also needs `comparisonFloor(level)` frontier tasks, a sweep plus two |
 | 4 | Verdicts | does a person agree with the Referee | `tools/d2/settle.ts` | `AGENTS.md`, factor 3 |
 | 5 | Economy | what each promotion cost | the closing report's "Work and spend", `promotionsWorth`, `worthLine` | at most three promotion attempts an epoch after set-up, unless the opening names another cost bar |
 
@@ -263,7 +263,7 @@ Links 1, 2 and 6 limit what the reading can establish.
 
 | # | Link | Point | Holds when | Evidence |
 | --- | --- | --- | --- | --- |
-| 1 | supply | 3 | enough scorable frontier tasks remain for `sweepOf(level)` | dry run, set-up line, `task.gate` |
+| 1 | supply | 3 | enough scorable frontier tasks remain for `comparisonFloor(level)` | dry run, set-up line, `task.gate` |
 | 2 | instrument | 4 | exam stands and rejections have rulings or labels | `checker.read`, `contract.frozen`, `referee.finding`, tasks set aside |
 | 3 | reference's room | 1 | the report finds informative tasks for the reference | `valid.informative.old`, `roomOf` |
 | 4 | session | 1 | Builder practised and changed something the solver uses | `build.*`, `harness.version`, practice verdicts |

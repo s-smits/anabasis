@@ -359,29 +359,32 @@ wall keeps from it.
 What the **Examiner** reads:
 
 - the contract, the operator's brief, the budget every solve is held to, and examples;
-- one outcome for each task of the campaign, and whether a valid answer to it is on record;
+- one line for each task of the campaign: its outcome in the last comparison that scored it, with
+  the solver's turns for each valid answer of the reference, and whether a valid answer to it is on
+  record;
 - for a task the reference stood in two or more comparisons of, the same outcome for each of its
   last three, newest first, each with whether a limit cut one of the reference's solves, and how
   many of the newest closed it in a row (`histories`, `poolOf`), since one outcome cannot tell a
   task answered once from one answered every time;
-- for each task the last comparison tallied, which harness won it or that it tied. This
+- for each task the last comparison tallied, which harness won it and on which measure (validity,
+  the objective or the bill; `carriedBy`), or that it tied. This
   is the operator's word of 20 October, a term of the campaign (`exam-results`, on by default):
   the Examiner learns which tasks the newest harness wins, and so what to write against it. With the
   term `off` it is told none of it;
 - for such a task, how much better a measure on record is than one of the reference's answers,
   where another of its own or its author's is (`roomLeft`). The other harness's answers are left
   out of it, so it reads the same with `exam-results` off whatever that harness measured;
-- those tasks counted by family, with the solves per side they rest on, and by family the turns
-  each valid answer of the reference took (`src/examiner/record.ts`). With `exam-results` off, where any family holds one
-  task, the counts are a total only, and a total of one is withheld. Whether the counts help is
-  untested (`docs/plan.md`, row F60);
+- one line of what the reference was measured to do across the exam: its tasks in the last
+  comparison it stood in, by every, some or none of its solves valid, with those set aside counted
+  apart, and the drafts its gates held under it, by where their room came from
+  (`measuredLine`, `heldOn`, `src/examiner/record.ts`);
 - what the last session under the current reference said at its `finish`;
 - the home the last session left, with a copy of the reference harness in it unless the
   campaign's term `exam-reference` is `off`;
-- how many of its gate's solves each held task passed on, and the drafts a gate refused after
-  reading them, with the reason, each with how far its author's answer stood from the reference's
-  best by the objective (`reference.gap` of `task.gate`): those read on the current reference counted alone, and those
-  read on a replaced reference as one count;
+- how many of its gate's solves each held task passed on, with their turns, and the drafts a gate
+  refused after reading them, with the reason, each with how far its author's answer stood from the
+  reference's best by the objective (`reference.gap` of `task.gate`). Gates read on a replaced
+  reference are not told;
 - interrupted gates separately by draft, including across a promotion, since they did
   not decide room. Only a gate under the current reference carries its counts and gate-level
   reason. `read_example` also returns earlier authored drafts from the log; their content may be

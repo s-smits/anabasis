@@ -24,7 +24,17 @@
  * Nothing here decides a comparison or makes a solve.
  */
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
-import { closedTo, draw, objectiveRuleIn, type Paired, pairsOf, roomLeft, tally } from "./compare.ts";
+import {
+  carriedBy,
+  closedTo,
+  draw,
+  type Measures,
+  objectiveRuleIn,
+  type Paired,
+  pairsOf,
+  roomLeft,
+  tally,
+} from "./compare.ts";
 import type { LogEvent } from "./log.ts";
 import { providerFailed, windowEnded } from "./solve.ts";
 import { passed, practiceRan, ranUnder, rejectionAside } from "./solves.ts";
@@ -49,20 +59,13 @@ export type Outcome =
   | "earlier-reference"
   | "disputed";
 
-/** Where a task stands in the counts its author hears (`poolOf`): told apart, and by which
- *  side; tied with both sides valid in every solve; tied with neither valid in any, with a valid
- *  answer on record (`feasible`) or without; tied otherwise; or set aside. `solves` is the solves
- *  a side it rests on, null for a task set aside. */
+/** How a task's last comparison with the reference harness on a side went, as its author hears it
+ *  (`poolOf`, standings). */
 export interface Standing {
-  readonly cell:
-    | "other-won"
-    | "reference-won"
-    | "tied-every"
-    | "tied-none-known"
-    | "tied-none"
-    | "tied-mixed"
-    | "aside";
-  readonly solves: number | null;
+  /** The harness that won the task there, the reference or the other side, null for a tie. */
+  readonly won: "reference" | "other" | null;
+  /** The measure that carried a win there (`carriedBy`), null for a tie. */
+  readonly by: keyof Measures | null;
   /** The room by the objective the reference harness's answers left there, against its own and its
    *  author's (`roomLeft`), and 0 under the floor (`ROOM`). */
   readonly room: number | null;
@@ -100,6 +103,8 @@ interface TalliedIn {
   readonly closed: boolean;
   /** The side that won the task in this comparison's tally (`tally`), or null for a tie. */
   readonly won: "old" | "fresh" | null;
+  /** The measure that carried the win (`carriedBy`), null for a tie. */
+  readonly by: keyof Measures | null;
   /** The room by the objective the reference harness's answers left there, against its own and its
    *  author's (`roomLeft`), and 0 under the floor (`ROOM`), where it leaves none; null where it
    *  stood on neither side. */
@@ -500,6 +505,7 @@ function tallyReports(
         referenceCut: side !== null && cutOn(data[side]),
         closed: side !== null && closedTo(pair, side, of(task).best),
         won: wins > 0 ? "fresh" : losses > 0 ? "old" : null,
+        by: carriedBy(pair),
         room: left,
       });
     }
@@ -600,8 +606,8 @@ function tallyReports(
  * (`7f0add79:docs/plan.md`, Phase 2): without a stronger solve the author would otherwise hear nothing, and
  * a difficulty zone or a target count is what v1 found an author writes towards. The reading is of
  * the reference's side alone: which other harness was compared, and what it answered on that
- * task, are not the author's. What the other side did reaches the author only as counts by family
- * (`standings`). An outcome that named a winner told the author nothing of where the room was:
+ * task, are not the author's. Who won it reaches the author apart, unless the campaign's term
+ * `exam-results` is off (`standings`). An outcome that named a winner told the author nothing of where the room was:
  * after a control a task the reference and the starter both failed read as one with no valid
  * answer, which the author's prompt says measures nothing (`7f0add79:docs/simplify.md`, F3). A task no
  * comparison has scored has no outcome.
@@ -616,12 +622,12 @@ function tallyReports(
  * neither of which is the reference, a checkpoint named against another digest or one made before
  * a promotion of a third, is `earlier-reference`.
  *
- * **Standings** hold where each task some comparison scored or set aside stands in the counts its
- * author hears, by task version (`Standing`; why, in `src/examiner/record.ts`). It is read from the
- * record the outcome is read from (`lastRead`), so the counts and the lines agree by construction.
- * A task last compared between two other harnesses has an outcome and no standing. Told apart is
- * the comparison's own tally (`tally`, `compare.ts`), so under an objective two valid answers can
- * be told apart, and a tie with both sides valid in every solve is one the objective did not break.
+ * **Standings** hold how each task's last comparison with the reference harness on a side went,
+ * by task version (`Standing`): who won, on which measure, and the room the reference's answers
+ * left. It is read from the record the outcome is read from (`lastRead`), so the two agree by
+ * construction. A task last compared between two other harnesses, or set aside there, has none.
+ * Told apart is the comparison's own tally (`tally`, `compare.ts`), so under an objective two
+ * valid answers can be told apart.
  *
  * **Histories** hold, for each task the reference stood in two comparisons or more of, the same
  * reading of the reference's side for each of its last `HISTORY` such comparisons, newest first,
@@ -721,20 +727,15 @@ function outcomeOf(record: TaskRecord): [string, Outcome][] {
   return [[version, side === null ? "earlier-reference" : `reference-${side}`]];
 }
 
-/** Where a task stands in the counts its author hears (`poolOf`, standings), or nothing where no
- *  report read it against the reference. */
+/** How a task's last comparison went for its author (`poolOf`, standings), or nothing where no
+ *  report read it against the reference or the last set it aside. */
 function standingOf(record: TaskRecord): [string, Standing][] {
   const last = lastRead(record);
-  if (last === null) return [];
-  const aside = { cell: "aside", solves: null, room: null } as const;
-  if (last === "aside") return [[record.version, aside]];
-  const { reference, won, old, fresh } = last;
-  if (reference === null) return [];
-  const both = [...old, ...fresh];
-  const none = record.feasible ? "tied-none-known" : "tied-none";
-  const tied = both.every(Boolean) ? "tied-every" : both.some(Boolean) ? "tied-mixed" : none;
-  const cell = won === null ? tied : won === reference ? "reference-won" : "other-won";
-  return [[record.version, { cell, solves: old.length, room: last.room }]];
+  if (last === null || last === "aside" || last.reference === null) return [];
+  const { reference, won, by, room } = last;
+  return [
+    [record.version, { won: won === null ? null : won === reference ? "reference" : "other", by, room }],
+  ];
 }
 
 /**

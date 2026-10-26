@@ -112,12 +112,18 @@ const sorted = (versions: Iterable<string>) => [...versions].toSorted();
 const pairsIn = (log: readonly LogEvent[]) => lastReports(log).map((report) => pairsReported(log, report));
 const cells = (log: readonly LogEvent[]) =>
   new Map([...poolOf(log).standings].map(([task, { cell }]) => [task, cell]));
-/** Which of `tasks` a release takes as failed by the reference: alone in a pool such a task is
- *  released first, with the reason that names its failure. */
-const failedOf = (log: readonly LogEvent[], tasks: readonly string[]) =>
-  tasks.filter((task) =>
-    (releaseOrder(log, [task], 1, "seed")[0]?.[1] ?? "").includes("failed it in the last"),
-  );
+/** Which of `tasks` the reference's last reading failed or left objective room on, before halving. */
+const failedOf = (log: readonly LogEvent[], tasks: readonly string[]) => {
+  const { outcomes, standings } = poolOf(log);
+  return tasks.filter((task) => {
+    const outcome = outcomes.get(task);
+    return (
+      outcome === "reference-none" ||
+      outcome === "reference-some" ||
+      (outcome === "reference-every" && (standings.get(task)?.room ?? 0) > 0)
+    );
+  });
+};
 
 describe("the harness a Builder goes on from", () => {
   const built = (session: string, harness: string, more: JsonObject = {}) =>
@@ -670,10 +676,11 @@ describe("the tasks that go to a person as possibly infeasible", () => {
     reported(session, "no-step", fresh, { ...terms, fresh, versions: ["hard", "easy"] }),
   ];
   const awaiting = (log: readonly LogEvent[]) => poolOf(log).awaiting;
-  /** The tasks a release gives the Builder first because no solve answered them in two comparisons. */
+  /** The tasks a release gives the Builder first because the reference harness answered them in
+   *  no solve of two comparisons. */
   const unanswered = (log: readonly LogEvent[]) =>
     releaseOrder(log, ["hard", "easy"], 2, "seed").flatMap(([task, why]) =>
-      why.includes("no solve answered it in two comparisons") ? [task] : [],
+      why.includes("answered it in no solve of two comparisons") ? [task] : [],
     );
   const start = [...heldOut("hard"), ...heldOut("easy")];
   const once = compared(start, "b-1", "h2", F);
@@ -830,7 +837,7 @@ describe("the tasks that go to a person as possibly infeasible", () => {
     expect(awaiting(compared(settled, "b-3", "h4", F))).toEqual([]);
   });
 
-  it("go to the Builder first at a release, cut at a limit or not, while they are held out and no solve answered them", () => {
+  it("go to the Builder first at a release, cut at a limit or not, while they are held out and the reference answered them in no solve", () => {
     // t-5 (10 October): two tasks no solve answered in two comparisons, every solve of them cut
     // at 2 told turns, so no person was asked either; the draw released another task.
     expect(unanswered(once)).toEqual([]);
@@ -838,8 +845,19 @@ describe("the tasks that go to a person as possibly infeasible", () => {
     const cut = compared(compared(start, "b-1", "h2", "turns-ended"), "b-2", "h3", "turns-ended");
     expect(unanswered(cut)).toEqual(["hard"]);
     expect(awaiting(cut)).toEqual([]);
-    // A valid answer anywhere settles it.
-    expect(unanswered(compared(twice, "b-3", "h4", P))).toEqual([]);
+    // Only the reference harness's own valid answer settles it: one of the new harness's leaves
+    // it first, so which held-out task the new harness won moves no release (rule 3).
+    expect(unanswered(compared(twice, "b-3", "h4", P))).toEqual(["hard"]);
+    expect(
+      unanswered([
+        ...twice,
+        ...solved("b-3", "hard", "h1", [P, F]),
+        ...solved("b-3", "hard", "h4", [F, F]),
+        ...solved("b-3", "easy", "h1", [P, P]),
+        ...solved("b-3", "easy", "h4", [P, P]),
+        reported("b-3", "no-step", "h4", { ...terms, fresh: "h4", versions: ["hard", "easy"] }),
+      ]),
+    ).toEqual([]);
   });
 });
 
@@ -888,6 +906,28 @@ describe("the release before the draw", () => {
     expect(releaseOrder(once, ["s1", "a1"], 1, "seed").map(([version]) => version)).toEqual(["s1"]);
   });
 
+  it("keeps the same half of five failed tasks across releases of one task at a time", () => {
+    const failed = ["f1", "f2", "f3", "f4", "f5"];
+    const events = [
+      ...failed.flatMap(heldOut),
+      ...failed.flatMap((task) => [
+        ...solved("b-1", task, "h1", [F, F]),
+        ...solved("b-1", task, "h2", [P, P]),
+      ]),
+      reported("b-1", "no-step", "h2", { ...terms, versions: failed }),
+    ];
+    const released: string[] = [];
+    for (let nth = 0; nth < failed.length; nth += 1) {
+      const chosen = releaseOrder(events, taskSets(events).held, 1, "seed");
+      for (const [version] of chosen) {
+        released.push(version);
+        events.push(event("task.state", { version, state: "released" }));
+      }
+    }
+    expect(released).toEqual(failed.slice(0, Math.ceil(failed.length / 2)));
+    expect(taskSets(events).held).toEqual(["f4", "f5"]);
+  });
+
   it("releases the same tasks whichever held-out task the new harness bettered by the objective", () => {
     // Two logs with equal tallies, one task won and one tied, which differ only in which task the
     // new harness's answers measured half the reference's. The release reads the reference's own
@@ -914,6 +954,26 @@ describe("the release before the draw", () => {
     expect(poolOf(won("a2")).frontier).toEqual(["a2"]);
     expect(releaseOrder(won("a1"), ["a1", "a2"], 1, "seed")).toEqual(
       releaseOrder(won("a2"), ["a1", "a2"], 1, "seed"),
+    );
+  });
+
+  it("releases the same tasks whichever held-out task the new harness won where the reference answered neither", () => {
+    // Two campaigns with equal tallies over two comparisons, which differ only in which of two
+    // tasks the reference never answers the new harness won. Until 26 October a valid answer of
+    // any harness took a task off the first list, so the other task was released from each, and
+    // the Builder could read which one its harness had won (AGENTS.md rule 3).
+    const won = (task: string) => [
+      ...["u1", "u2"].flatMap(heldOut),
+      ...["b-1", "b-2"].flatMap((session) => [
+        ...["u1", "u2"].flatMap((each) => [
+          ...solved(session, each, "h1", [F, F]),
+          ...solved(session, each, "h2", each === task ? [P, P] : [F, F]),
+        ]),
+        reported(session, "no-step", "h2", { ...terms, versions: ["u1", "u2"] }),
+      ]),
+    ];
+    expect(releaseOrder(won("u1"), ["u1", "u2"], 1, "seed")).toEqual(
+      releaseOrder(won("u2"), ["u1", "u2"], 1, "seed"),
     );
   });
 
@@ -981,9 +1041,10 @@ describe("the release before the draw", () => {
   });
 
   it("takes no practice priority from a rejection set aside until its comparison is settled", () => {
+    // The reference answers `f1` once here, so it is no task it never answered (`unanswered`).
     const pending = [
       ...log,
-      ...solved("b-2", "f1", "h1", [F, F]),
+      ...solved("b-2", "f1", "h1", [P, F]),
       ...solved("b-2", "f1", "h2", [P, P]),
       ...solved("b-2", "a1", "h1", [P, P]),
       ...solved("b-2", "a1", "h2", [P, P]),

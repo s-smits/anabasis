@@ -570,11 +570,13 @@ export function epochReleased(events: readonly LogEvent[]) {
  *  exists or a promotion is on record, leave a sweep at `level` of frontier tasks held.
  *  Top-ups before a promotion consumed esp32-r2's frontier (20 October 2026, whole-run
  *  investigations of six campaigns). Until 16 October it was also at most one in four of the
- *  epoch's scorable and released tasks, which bound alone in none of 35 releases on record. */
+ *  epoch's scorable and released tasks, which bound alone in none of 35 releases on record.
+ *  Since 26 October the allowance reads reference-only room: the comparison frontier can change
+ *  with which task the other harness wins, and practice is visible to the Builder (rule 3). */
 export function practiceRoom(events: readonly LogEvent[], level: number): number {
   const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
   if (promotedAt === -1 && taskSets(events).released.length === 0) return Infinity;
-  return Math.max(0, poolOf(events).frontier.length - sweepOf(level));
+  return Math.max(0, poolOf(events).practiceFrontier.length - sweepOf(level));
 }
 
 /** How many more tasks the epoch's practice is owed: the `practice` a campaign names less what it

@@ -68,9 +68,10 @@ and any other model a backend serves goes as its `<provider>/<id>`, at `hhhh` an
 The solve defaults are the campaign's: 20 model turns and 30 minutes (`LIMITS`,
 `tools/d2/campaign.ts`).
 
-Without `--host`, `fresh` prefers a machine whose catalogue already holds a campaign of project
-`<pack>-fresh`, among machines below their capacity. It then chooses the fewest live campaigns
-and simulation seats. This machine's cap is `ANA_RUN_CAP`; each peer's is its `capacity` in
+Without `--host`, `fresh` first takes, among machines below their capacity, the one where the
+run's login pays for the fewest live runs, so that one login's limit leaves every machine
+working. It then prefers a machine whose catalogue already holds a campaign of project
+`<pack>-fresh`, and then the fewest live campaigns and simulation seats. This machine's cap is `ANA_RUN_CAP`; each peer's is its `capacity` in
 `ANA_HOSTS`, both 2 where unset. A missing count or catalogue refuses placement. Ties follow
 configuration order, with this machine first. `--host here` selects this machine explicitly;
 `--host <host>` selects a peer, using its name as the suffix unless `--as` names one.

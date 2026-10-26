@@ -96,3 +96,16 @@ it("keeps a pack on a familiar host with room and falls back when it is full", (
     made.run(code, { FAKE_CATALOGUE: catalogue, FAKE_ACTIVE: JSON.stringify(occupied) }).out.trim(),
   ).toBe("here");
 });
+
+it("spreads one login's runs over the hosts before it prefers a familiar one", () => {
+  const made = fixture();
+  const place = (login: string) =>
+    `import { placeFresh } from "REPOSITORY/tools/runs/placement.ts"; console.log((await placeFresh("sample", undefined, undefined, "${login}"))?.name ?? "here");`;
+  const catalogue = JSON.stringify([
+    { name: "prior", path: `${made.root}/prior/log.jsonl`, project: "sample-fresh" },
+  ]);
+  const active = JSON.stringify([{ name: "one", login: LOGIN, host: made.host.name }]);
+  const env = { FAKE_CATALOGUE: catalogue, FAKE_ACTIVE: active };
+  expect(made.run(place(LOGIN), env).out.trim()).toBe("here");
+  expect(made.run(place(OTHER), env).out.trim()).toBe("runner");
+});

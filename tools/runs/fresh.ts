@@ -170,7 +170,7 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
       : undefined;
   const host =
     values.host === undefined
-      ? await placeFresh(pack, fleet)
+      ? await placeFresh(pack, fleet, undefined, login)
       : values.host === "here"
         ? undefined
         : hostNamed(values.host);

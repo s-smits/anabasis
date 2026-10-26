@@ -116,10 +116,10 @@ interface TaskRecord {
   readonly held: boolean;
   /** The last event at which a person kept it held (`task.state`), or -1. */
   keptAt: number;
-  /** Whether a solve on record gave it a valid answer, under any harness and at any limits. */
+  /** Whether the reference harness gave it a valid answer in a comparison it stood in. */
   answered: boolean;
-  /** `answered`, or `task.feasible` records a passing author answer, or its gate says a reference
-   *  solve under `try_task` gave a valid answer, which answers nothing. */
+  /** A solve's valid answer on record, or `task.feasible` records a passing author answer, or its
+   *  gate says a reference solve under `try_task` gave a valid answer, which answers nothing. */
   feasible: boolean;
   /** The best measure by the objective of an author's answer on record (`task.feasible`), or null
    *  where none carries one (`informative`, `compare.ts`; 19 October). */
@@ -447,7 +447,7 @@ function taskRecords(events: readonly LogEvent[]) {
     const last = { stopReason: turn?.stopReason, errorMessage: turn?.error };
     const interrupted = windowEnded(last) || providerFailed(last);
     const budgeted = kind === "turns-ended" && isNumber(limits.modelTurns) && !interrupted;
-    if (passed(solve) === true) Object.assign(of(task), { answered: true, feasible: true });
+    if (passed(solve) === true) of(task).feasible = true;
     if (isString(comparison) && AT_A_LIMIT.has(kind) && !budgeted) cut.add(cutIn(comparison, task, harness));
   }
   tallyReports(events, of, cut);
@@ -481,6 +481,7 @@ function tallyReports(
       // Room under the floor decides no pair and holds no draft, so its author is told none.
       const left = side === null ? null : roomLeft(pair, side, [of(task).best]);
       order += 1;
+      if (side !== null && pair[side].some(Boolean)) of(task).answered = true;
       of(task).tallied.push({
         index,
         order,
@@ -716,8 +717,8 @@ function standingOf(record: TaskRecord): [string, Standing][] {
 
 /**
  * The `count` held-out tasks of `pool` a release takes, each with why, in the order they are
- * taken. A task no solve answered in two comparisons goes to the Builder before the draw: it is
- * what a session has to work on, where every released task passes. Then the tasks the reference
+ * taken. A task no reference solve answered in two comparisons goes to the Builder before the draw:
+ * it is what a session has to work on, where every released task passes. Then the tasks the reference
  * harness failed in the last comparison, half of them rounded up, so that the comparison keeps
  * tasks it can untie. The rest is the contract's draw over every task neither list holds, those the
  * reference answered in every solve among them: such a task still teaches through the objective's
@@ -744,12 +745,12 @@ function standingOf(record: TaskRecord): [string, Standing][] {
  * after a first promotion was the draw alone while the frontier held 4 to 21 tasks with room. The
  * other harness's answers stay out of `room`, so which held-out task it won moves no release (rule 3).
  *
- * The tasks no solve answered are the held-out ones without a valid answer in `UNSOLVED_RUN` or
- * more comparisons, cut at a limit or not. On 10 October one campaign held four to five such tasks
- * of ten while its last three Builder sessions passed every practice task and changed nothing.
- * `poolOf`'s `awaiting` is the question to a person, which leaves out a task its wall or its
- * context cut (`taskRecords`); this leaves nothing out, since a task cut twice is as much beyond
- * the harness as one answered wrongly twice. A valid answer anywhere on record settles it either way.
+ * The tasks the reference never answered are the held-out ones it gave no valid answer in
+ * `UNSOLVED_RUN` or more comparisons it stood in, cut at a limit or not, unlike `poolOf`'s `awaiting`:
+ * on 10 October one campaign held four to five of ten while its Builder passed every practice task.
+ * Until 26 October any harness's valid answer took a task off this list, so a release told the
+ * Builder which held-out task its harness won (rule 3). A task only the other harness answered now
+ * goes to practice too, and leaves the exam.
  */
 export function releaseOrder(
   events: readonly LogEvent[],
@@ -760,7 +761,7 @@ export function releaseOrder(
   const { records } = taskRecords(events);
   const among = (versions: readonly string[]) => versions.filter((version) => pool.includes(version));
   const unanswered = among(
-    placed(records, ({ answered, tallied }) => (answered ? undefined : runOf(tallied))),
+    placed(records, ({ answered, tallied }) => (answered ? undefined : runOf(tallied.filter(sideOf)))),
   );
   const failed = among(
     placed(records, (record) => {
@@ -777,7 +778,7 @@ export function releaseOrder(
   ];
   return chosen.map((version) => {
     const why = unanswered.includes(version)
-      ? ": no solve answered it in two comparisons, and it is"
+      ? ": the reference harness answered it in no solve of two comparisons, and it is"
       : failed.includes(version)
         ? ": the reference harness failed it in the last comparison, or a better answer on record left it room, and it is"
         : ":";

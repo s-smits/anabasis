@@ -32,8 +32,8 @@ Split the open pull requests into five to ten groups of related changes, by the 
 touch rather than by number, keeping `I0` and `I1` pull requests out of groups with `I3` ones, and give each group one reviewer with one brief
 (`review/brief.md`): read the code first and the runs second, measure rather than assert, and say
 per pull request keep, simplify, merge or drop. The reviewers are read-only and write one report
-each. Then a second review by another model family, with no sight of the first, catches what one
-reader misses: on 25 October the GPT review added nine findings beyond the eight Opus reports
+each. Where the importance table calls for both reviews, use another model family with no sight
+of the first: on 25 October the GPT review added nine findings beyond the eight Opus reports
 (`review/10-gpt-review-summary.md`). Check every finding against the source and a log before it
 becomes a fix (`AGENTS.md`, section 11, "Reviews and subagents").
 
@@ -46,15 +46,18 @@ published, and the result's head is the lanes' one base.
 
 ## 3. Fix in lanes
 
-An `I0` or `I1` lane is a commit-r pass over its compartment, run to commit-r's step 8, so it
-delivers one squashed commit that replaces the pull request's commits (an `amend!` of the first,
-with the rest dropped in the assembly), with the hypothesis and the cases that failed on purpose in
-its body. Every other lane works as follows.
+An `I0` or `I1` lane runs commit-r through **Measure and squash**, with the hypothesis and the
+cases that failed on purpose in its report. Its delivery depends on where it starts:
+
+- From the restructured stack's top, deliver the delta as `fixup! <subject>` commits, or
+  `amend! <subject>` where the message must change. These amend the target during assembly.
+- A replacement of a commit range is formed on that range's parent and replaces only that range.
+  Replay the descendants onto it before checking the final tree. A whole commit formed on the top
+  cannot replace a lower range: it carries the descendants too.
 
 One worktree and branch per group (`claude/restack-laneN`), from that base, with `node_modules`
-cloned rather than installed (`cp -cR <a tree>/node_modules <lane>/`). A lane delivers only
-`fixup! <subject>` commits, or `amend! <subject>` where the commit's message must change, each
-applying to the base, after format, typecheck, strict lint and the owning tests. It changes no
+cloned rather than installed (`cp -cR <a tree>/node_modules <lane>/`). Every top-based lane delivers
+its delta in the form above, after format, typecheck, strict lint and the owning tests. It changes no
 branch but its own and pushes nothing, and writes a report with each commit, its checks and its
 counts (`restack/brief.md`). A fixup per target commit keeps the assembly mechanical.
 
@@ -64,10 +67,11 @@ and names the resolved tree per conflict, so the assembly can take it with
 
 ## 4. Assemble
 
-Cherry-pick every lane's commits onto the base, keep that tip as the reference
+Cherry-pick the top-based lanes' deltas onto the base, keep that tip as the reference
 (`git branch consolidate/pre HEAD`), then `GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash
 origin/main`. Resolve each conflict hunk by hunk, from the lane's `-squash-check` tree where one
-exists.
+exists. For a range replacement, keep the same reference with its delta applied before replacing
+the range and replaying its descendants.
 
 ## 5. Check the assembly
 

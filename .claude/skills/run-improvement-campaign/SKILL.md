@@ -45,7 +45,7 @@ time, tell the operator and ask, rather than land first.
 ### The running window, until six promotions a run
 
 1. **Fork at the release.** Take the commit the last release merged (`git tag` of `main`), or the
-   top of the stack where the operator names it. A pull request above it that changes code a
+   top of the stack only on the operator's recorded word. A pull request above it that changes code a
    campaign runs need not hold up the fork; name it. Fork **one fresh campaign per runner host**,
    or the set the operator names, so each runs on a host no other campaign loads:
    `runs fresh <pack> --host <host> --at <commit> --login N --as <suffix> --yes`, after a dry run
@@ -67,10 +67,10 @@ time, tell the operator and ask, rather than land first.
 
 ### The improvement window, in this order
 
-4. **Stop** each run `scripts/cycle.ts` names at the step `stop`: those at or past the threshold,
-   on any host. Repeat until every run the cycle forked is closed before the investigation starts:
-   `runs stop <name> ... --yes`, which goes to each run's host, and then `runs status` must read
-   each `closed`. Keep only a run the operator names as kept, such as an ablation. A stop word
+4. **Stop** each run `scripts/cycle.ts` names at the step `stop`, those at or past the threshold,
+   with `runs stop <name> ... --yes`, which goes to each run's host. The investigation starts once
+   `runs status` reads every run the cycle forked `closed`, except a run the operator named as kept
+   (`--keep`), such as an ablation; other runs and simulations do not count. A stop word
    (`tools/d2/word.ts --stop`) waits for the next move boundary, which inside a led campaign can be
    an Examiner session of an hour or more: on 21 October two words left at 23:44 had not acted 20
    minutes later. A stopped run's log stays where it is. Resolve every prediction whose event
@@ -92,7 +92,12 @@ time, tell the operator and ask, rather than land first.
    `cases/before-after.md`): its commit against the commit beneath it, on the same logs or the same
    seed cut from the run that showed the defect, at the smallest layer that shows it. The pull
    request states what moved against what was predicted. A fix is measured by the next cycle's
-   runs, never by the runs it was found in.
+   runs, never by the runs it was found in. When a Codex swarm implements the rows, the primary
+   commits what its sandbox cannot (no nested verifier wall, no git directories), stacks the patches
+   with `git apply --3way`, folds later fixes into their commits, and runs the composed gate on the
+   top, which found an interaction every commit had passed alone. A patch that rewrites the scheduler
+   and changes the counting rule of the runs launched next is deferred, with its reason in the plan,
+   until a recorded reading is shown to flip on it.
 9. **Consolidate the open stack** before it lands, from the order its fixes were found into one
    structured by subject: review it in groups of related pull requests,
    fix what the reviews confirm in lanes, regroup related pull requests into one, publish, and
@@ -460,8 +465,8 @@ local file beside the handover. Timers arrange this procedure; they add no campa
 
 | Timer | When | Does |
 | --- | --- | --- |
-| watch | hourly, off the hour | every run's milestone and possible stall on every host |
-| pass | every three hours | rewrite ranked triage, rehearse its top row, fix the owner, review timer usefulness |
+| watch | hourly, off the hour and the half hour (`13 * * * *`) | every run's milestone and possible stall on every host; one ledger row, silent when nothing moved |
+| pass (the cycle's driver) | every three hours (`17 */3 * * *`) | take the first cycle step not done, close out ended runs, read `runs usage`, review timer usefulness from the ledger alone |
 | milestone | one-shot at the predicted event | read the named milestone and any investigation it owes |
 | cycle checkpoint | one-shot at each step of the release cycle | run `scripts/cycle.ts` over the cycle's runs, take the step it names within the order, log it, and re-arm or delete the cycle's timers |
 | handover | one-shot at the agreed handover time | five points, changes and decisions waiting |
@@ -491,6 +496,15 @@ idle, a few minutes off the time it names. So:
 - When a timer is replaced (an hour moved, a run added), delete the old one by its id. A one-shot
   that a later reading made early is re-armed, not left to fire on stale facts.
 - The handover timer reads the other timers' ledger rows and says which were useful.
+- Review timers from the ledger inside the pass, not with a separate recurring Codex session: on 24
+  October one fired three times in six hours, the first from a ledger 20 minutes stale, the second
+  with no change, and the third found it redundant. A Codex review is for a new kind of timer or
+  three empty firings in a row.
+- Write the time with its UTC offset in the ledger and the prompt (DST ended 25 October 03:00), and
+  keep recurring minutes off :00 and :30.
+
+Use [references/cycle-ledger.md](references/cycle-ledger.md) for the evidence fields. The release
+cycle above owns the steps and authority for the next cycle too.
 
 ## Which skill each step uses
 

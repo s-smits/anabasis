@@ -248,7 +248,7 @@ const DECLARATION_HEAD = /^(?:export )?(?:declare )?(?:interface|type) [A-Za-z_$
 const DECLARED_FIELD = /^\s+(?:readonly )?([A-Za-z_$][\w$]*)\??:/u;
 const FIELD_LENGTH_FLOOR = 7;
 
-const REGISTERED_RULE = /^\s*"([a-z][a-z0-9-]*)":\s*[A-Za-z]/gu;
+const REGISTERED_RULE = /^[\t ]*"([a-z][a-z0-9-]*)":\s*[A-Za-z]/gmu;
 const FILESYSTEM_IMPORT = /import\s*\{([^}]*)\}\s*from\s*"[^"]*meta\/filesystem\.ts"/u;
 const FILESYSTEM_BUDGET = 6;
 const SCHEMA_TAG = /["']([a-z][a-z0-9-]*)\/v(\d+)["']/gu;
@@ -378,7 +378,10 @@ function rulesWithoutFixture(tree: Tree): TreeFinding[] {
     .flatMap(([path, text]) => (path.startsWith("test/") ? [text] : []))
     .join("\n");
   const plugins = new Map([...tree.files].filter(([path]) => /^tools\/oxlint\/.*\/index\.ts$/u.test(path)));
-  return matchesOf(plugins, REGISTERED_RULE)
+  return [...plugins]
+    .flatMap(([path, text]) =>
+      [...text.matchAll(REGISTERED_RULE)].map((match) => ({ path, line: lineAt(text, match.index), match })),
+    )
     .filter(({ match: [, name = ""] }) => !fixtures.includes(name))
     .map(({ path, line, match: [, name] }) => ({
       kind: "rule-without-fixture",

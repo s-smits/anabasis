@@ -65,6 +65,7 @@ const codexLogin: CredentialStore = {
 
 export function backends(options: BackendOptions): MutableModels {
   const models = createModels({ credentials: codexLogin });
+  // TEMPORARY: `codexProvider` adds GPT-6.1 Terra until pi-ai lists it natively.
   const codex: Provider = codexProvider();
   models.setProvider({
     ...codex,
@@ -88,11 +89,14 @@ export function backends(options: BackendOptions): MutableModels {
 }
 
 /**
+ * TEMPORARY, until pi-ai lists GPT-6.1 Terra itself. Then remove this function, call
+ * `openaiCodexProvider()` in `backends` again, and keep the test in test/backends.test.ts.
+ *
  * Codex as pi serves it, with GPT-6.1 Terra in place of GPT-5.6 Terra (operator, 27 October). pi-ai
  * 1.4.0, its latest release, lists 5.6 Terra and no 6.1 Terra, which OpenAI released on 26 October at
  * $1 and $5 a million tokens, cached input at $0.05, with the surcharge above 272K input tokens. The
  * entry is the one pi's main branch added that day (earendil-works/pi 363ad78bf, unreleased): 6.1
- * Sol's with Terra's prices on the same 500K window. Drop this once a pi release carries it.
+ * Sol's with Terra's prices on the same 500K window.
  */
 function codexProvider(): Provider {
   const codex = openaiCodexProvider();

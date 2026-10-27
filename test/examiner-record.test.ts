@@ -404,11 +404,16 @@ describe("what an Examiner is told of its campaign's past", () => {
     expect(told.refused).toEqual([]);
     expect(told.interrupted).toEqual(["interrupted (fixture): gate not measured; used a replaced reference"]);
     expect(JSON.stringify(told)).not.toMatch(/937|941|947|37%|\b9 turns/u);
+    // The promotion is told, with the listed tasks held out under the harness it replaced.
+    expect(told.promoted).toContain(
+      "The reference harness was promoted. 1 of the 2 tasks listed were held out before then",
+    );
     // With no promotion every gate is the current reference's.
     const unpromoted = heard(
       log.events.filter(({ kind }) => kind !== "harness.promoted"),
       ["old", "new"].map(fixture),
     );
+    expect(unpromoted.promoted).toBeNull();
     expect(byTask(unpromoted.lines).old).toContain("gate 1 of 3 valid");
     expect(byTask(unpromoted.lines).old).toContain("in 9 turns");
     expect(unpromoted.refused).toEqual(["the reference harness valid in 0 of 3 solves: closed (fixture)"]);
@@ -464,7 +469,14 @@ describe("what an Examiner is told of its campaign's past", () => {
 
   it("says nothing it cannot count: a task the log does not hold, and no task at all", () => {
     const empty = heard([], []);
-    expect(empty).toEqual({ legend: empty.legend, lines: [], measured: null, refused: [], interrupted: [] });
+    expect(empty).toEqual({
+      legend: empty.legend,
+      lines: [],
+      promoted: null,
+      measured: null,
+      refused: [],
+      interrupted: [],
+    });
     // A task the log does not hold yet, as a pack's is before `prepare.ts`, is not yet compared.
     const line = byTask(heard([], [fixture("e-1")]).lines)["e-1"];
     expect(line).toContain("not yet compared");

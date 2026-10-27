@@ -39,6 +39,7 @@ import {
 } from "../src/meta/filesystem.ts";
 import { asRecord, isString, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
 import { dirname, join } from "../src/meta/path.ts";
+import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { asError } from "../src/meta/runtime-values.ts";
 import { referee } from "../src/referee/referee.ts";
@@ -457,7 +458,11 @@ describe("a session that drafts an exam", () => {
 
 /** A reference solve launcher for `try_task` whose every solve passes, measuring what `measure`
  *  says of the task and the solve's place among the task's own. */
-function measuredProbe(log: string, measure: (task: TaskPackage, nth: number) => number | undefined) {
+function measuredProbe(
+  log: string,
+  measure: (task: TaskPackage, nth: number) => number | undefined,
+  turns?: number,
+) {
   const solved: string[] = [];
   return async (task: TaskPackage, session: string) => {
     const objective = measure(task, solved.filter((each) => each === taskVersion(task)).length);
@@ -467,7 +472,7 @@ function measuredProbe(log: string, measure: (task: TaskPackage, nth: number) =>
     append(log, "condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
     append(log, STARTED, { solve, condition: conditionId(ran), comparison: session });
     append(log, "verdict", { solve, answer: GOOD, kind: "pass", objective: objective ?? null });
-    append(log, FINISHED, { solve, ending: PASS, billed: 0 });
+    append(log, FINISHED, { solve, ending: PASS, billed: 0, ...keyIfDefined("turns", turns) });
     return PASS;
   };
 }
@@ -488,10 +493,11 @@ async function admission(s: ReturnType<typeof seat<"write">>, seated: Seated) {
 /** What a gate told of each draft: its id, held out or refused, and how many of the reference
  *  harness's solves were valid where it read any. The facts, without the sentence around them. */
 function gateSaid(text: JsonValue | undefined): (string | number | null)[][] {
-  return (isString(text) ? text : "").split("\n").map((line) => {
-    const [, id = "", outcome = "", valid] =
-      /^(\S+): (held out|refused)(?:.*? validly in (\d+) of)?/.exec(line) ?? [];
-    return [id, outcome, valid === undefined ? null : Number(valid)];
+  return (isString(text) ? text : "").split("\n").flatMap((line) => {
+    const said = /^(\S+): (held out|refused)(?:.*? validly in (\d+) of)?/.exec(line);
+    if (said === null) return line.endsWith("put to the gate in this session.") ? [] : [["", "", null]];
+    const [, id = "", outcome = "", valid] = said;
+    return [[id, outcome, valid === undefined ? null : Number(valid)]];
   });
 }
 
@@ -594,7 +600,7 @@ describe("a session that writes tasks", () => {
       "check-product (every family): The answer is six times the base.",
       // The pack's task is listed with its outcome, as every task of the campaign is.
       "- e-1 (fixture): not yet compared; no answer on record",
-      "This session has 10 minutes and 12 turns.",
+      "This session has 10 minutes, 12 turns and 4 drafts to put to the gate.",
     ]) {
       expect(opening).toContain(said);
     }
@@ -1784,6 +1790,21 @@ describe("a session that writes tasks", () => {
     const later = heard(read(s.log), [{ taskId: "x-1-001", family: "fixture" }]);
     expect(later.lines[0]).toContain("gate 1 of 1 valid, yours 10% better than its best");
     expect(lines.find((line) => line.startsWith("x-1-003: "))).not.toContain("try_answer on it");
+  });
+
+  it("tells the turns of the reference's valid answers at the gate against the budget, and the drafts used each turn", async () => {
+    const s = seat("write", [call(TRY, { tasks: [instance(2)] }), finish, finish]);
+    await examine({
+      ...s.request,
+      budget: { modelTurns: 20, minutes: 30 },
+      probe: measuredProbe(s.log, () => undefined, 4),
+    });
+    const said = s
+      .of(CALLED)
+      .flatMap(({ text: line }) => (isString(line) ? [line] : []))
+      .join("\n");
+    expect(said).toContain("validly in 3 of 3 solves, taking 4, 4, 4 of its 20 turns, which leaves no room");
+    expect(said).toContain("1 of 4 drafts put to the gate in this session.");
   });
 
   it("tells its author's gap on a draft the reference answers in some of its solves", async () => {

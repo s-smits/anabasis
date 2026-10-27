@@ -176,6 +176,9 @@ export function heard(
   const compared = referenceTurns(events);
   const gated = gateAnswers(events, since);
   const practice: string[] = [];
+  // The listed tasks the current reference's own gates held, and the rest, held under one it replaced.
+  let under = 0;
+  let listed = 0;
   const carried: Carried = { gate: false, history: false, bill: false };
   const elsewhere = new Map<string, string[]>();
   const lines = tasks.flatMap(({ taskId, family }) => {
@@ -187,10 +190,12 @@ export function heard(
       practice.push(named);
       return [];
     }
+    listed += 1;
     if (state === "disputed") return [`${named}: disputed: a check was at fault on an answer to it`];
     const outcome = outcomes.get(version);
     const answered = outcome === "reference-every" || outcome === "reference-some";
     const said = outcome === undefined ? "not yet compared" : SAID[outcome];
+    if (heldAtGate(gates.get(version)?.outcome)) under += 1;
     const gate = gateLine(
       gates.get(version),
       (gated.get(version) ?? []).flatMap(({ turns }) => turns ?? []),
@@ -232,10 +237,22 @@ export function heard(
       ),
       ...(practice.length === 0 ? [] : [`In use as practice, and so never scored: ${practice.join(", ")}.`]),
     ],
+    promoted: promotedLine(events[since], listed - under, listed),
     measured: measuredLine(events, gates),
     refused: refusedLines(events, gates),
     interrupted: interruptedLines(events, last, since),
   };
+}
+
+/** That the reference harness was promoted, on which comparison, and how many of the `listed` tasks
+ *  were held out under the harness it replaced. At esp32-fresh-opus-terra's x-4 (27 October) the
+ *  promoted harness answered all 22 listed tasks in 2 turns each, and the opening said nothing of the
+ *  promotion: the session spent 362 minutes on ten drafts of one kind, each refused. */
+function promotedLine(promotion: LogEvent | undefined, before: number, listed: number): string | null {
+  if (promotion === undefined) return null;
+  const rests = promotion.data.rests;
+  const on = Array.isArray(rests) ? asRecord(rests[0])?.comparison : undefined;
+  return `The reference harness was promoted${isString(on) ? ` on the step of comparison ${on}` : ""}. ${String(before)} of the ${String(listed)} tasks listed were held out before then, under the harness it replaced; a line reads the harness that is the reference now wherever it stood in the comparison that last scored the task.`;
 }
 
 /** Each proposed version's last gate, with where it stands in the log. */

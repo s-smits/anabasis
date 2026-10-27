@@ -104,7 +104,8 @@ interface Terms {
 
 /** What the gate reads of one draft: the campaign's contract and log, the session that asks, the
  *  reference harness's solve, and the answers that passed `try_answer` in the session. */
-type Gate = Pick<Terms, "contract" | "log" | "id" | "probe"> & { readonly planted: ReadonlySet<string> };
+type Gate = Pick<Terms, "contract" | "log" | "id" | "probe"> &
+  Partial<Pick<Terms, "budget">> & { readonly planted: ReadonlySet<string> };
 
 /** What a task-writing session's tools share. */
 interface Desk {
@@ -329,9 +330,12 @@ export async function measured(gate: Gate, task: TaskPackage, stop: AbortSignal,
     solves < ran
       ? `, ${String(ran - solves)} of them ending in no reading or in a rejection the Referee did not rule earned`
       : "";
-  // The turns each valid answer took, as the session's later ones are told by family.
+  // The turns each valid answer took, against the budget where it counts them: a refusal at 3 of 20
+  // turns says the method reached the answer directly (esp32-fresh-opus-terra's x-4, 27 October).
   const took = answers.flatMap(({ turns: each }) => (each === null ? [] : [each]));
-  const turns = took.length === 0 ? "" : `, taking ${took.join(", ")} of the solver's own turns`;
+  const most = gate.budget?.modelTurns;
+  const of = isNumber(most) ? `its ${String(most)}` : "the solver's own";
+  const turns = took.length === 0 ? "" : `, taking ${took.join(", ")} of ${of} turns`;
   // The measures by the objective, theirs and the author's, which decide room where every solve is
   // valid (`informative`).
   const measures = answers.flatMap(({ measure }) => (measure === null ? [] : [shown(measure)]));
@@ -502,15 +506,18 @@ function proposeTool(desk: Desk, name: keyof typeof GATES): SeatTool {
           ? `Unknown instance reference ${given.reference}. Known references: ${desk.checked.size === 0 ? "none" : [...desk.checked.keys()].join(", ")}.`
           : taken(checked, signal);
       });
+      // How many of its drafts the session has put: told the limit at the opening alone, esp32-fresh-opus-terra's
+      // x-2 and x-3 met it unawares with a draft still unproposed (27 October).
+      const used = `${String(desk.proposed)} of ${plural(limits.puts, "draft")} put to the gate in this session.`;
       if (name === "try_task") {
-        return text(putAside(desk, instances, (instance) => gated(desk, instance, signal)));
+        return text(`${putAside(desk, instances, (instance) => gated(desk, instance, signal))}\n${used}`);
       }
       const lines = await Promise.all(
         instances.map(async (instance) =>
           isString(instance) ? instance : await gated(desk, instance, signal),
         ),
       );
-      const result = text(`${lines.join("\n")}${supplied(desk) ? `\n\n${SUPPLIED}` : ""}`);
+      const result = text(`${lines.join("\n")}\n${used}${supplied(desk) ? `\n\n${SUPPLIED}` : ""}`);
       return supplied(desk) ? ending(result) : result;
     },
   });
@@ -710,7 +717,7 @@ export function writing(
     enters: `a task enters it through ${gate} alone`,
     nudge: "Propose further tasks",
     finish:
-      "End the session. Say in one or two sentences what kinds of task you wrote and what you would try next.",
+      "End the session. Say in one or two sentences what kinds of task you wrote, which kinds the gate held and refused, and what you would try next.",
     declined: MORE,
     done: (): "supplied" | null => (supplied(desk) ? "supplied" : null),
     // What the gate said since the session was last told, and at a turn's last call how many

@@ -15,15 +15,15 @@
  * The next login is the one with room whose week resets soonest, of those this keeper has not seen
  * spent (`room`, `logins.ts`), and `--logins` defaults to `ANA_LOGINS`. With none it says so once
  * and waits. A run none of whose seats is a `claude/` model bills no login and goes on without one
- * (`billsLogin`). A run that goes on three times in a row without its log growing
- * is left: something the keeper cannot mend ends it each time.
+ * (`billsLogin`). A run that goes on three times in a row without a model turn of any seat that the
+ * provider answered (`turnsIn`) is left: something the keeper cannot mend ends it each time.
  *
  * With `--yes` the verb leaves a keeper running by itself, its output in `keep.out` beside the log,
  * and ends: one keeper a run, and `runs stop`, `pause` or `continue --after` of the run end it. Until
  * 15 October this was three shell loops of the operator's and a wrapper a login, each moving one run.
  */
 import { type LogEvent } from "#src/kernel/log.ts";
-import { openSync, statSync } from "#src/meta/filesystem.ts";
+import { openSync } from "#src/meta/filesystem.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -38,8 +38,19 @@ export type Turn = "watch" | "move" | "continue" | "done";
 
 const LOOK_MS = 60_000;
 const HOUR = 3_600_000;
-/** Goings-on in a row with no growth of the log, after which a keeper leaves its run. */
+/** Goings-on in a row with no model turn, after which a keeper leaves its run. */
 const BARREN = 3;
+
+/**
+ * The model turns `events` record that the provider answered, of any seat: what a going-on has to
+ * add to count as work. A launch into a failure still writes its moves, its ending and a turn of
+ * each seat it opened, stopped on `error`, so the log grows however little was done: on 20 October
+ * esp32-fresh-opus-m1-air-r2 went on 15 times in a row, every 13 minutes, into one DNS failure, four
+ * failed turns each time, and its keeper, which counted the log's bytes, never left (lane 35 of the
+ * investigation of 27 October).
+ */
+export const turnsIn = (events: readonly LogEvent[]): number =>
+  events.filter(({ kind, data }) => kind.endsWith(".turn") && data.stopReason !== "error").length;
 
 /** What a keeper does with a run whose log is `events` and whose process is `process`, at `now`. */
 export function turnOf(
@@ -106,7 +117,7 @@ async function keepGoing(run: Run, logins: readonly string[], waitMs: number): P
   // A login this keeper moved off, until its limit resets.
   const spentUntil = new Map<string, number>();
   let barren = 0;
-  let grown = -1;
+  let worked = -1;
   let waiting = false;
   for (; ; await Bun.sleep(LOOK_MS)) {
     const events = logEvents(run.path);
@@ -143,12 +154,12 @@ async function keepGoing(run: Run, logins: readonly string[], waitMs: number): P
       continue;
     }
     waiting = false;
-    const size = statSync(run.path).size;
-    barren = turn === "continue" && size === grown ? barren + 1 : 0;
-    grown = size;
+    const turns = turnsIn(events);
+    barren = turn === "continue" && turns === worked ? barren + 1 : 0;
+    worked = turns;
     if (barren >= BARREN) {
       return console.log(
-        `${run.name} went on ${String(BARREN)} times and its log did not grow: kept no longer`,
+        `${run.name} went on ${String(BARREN)} times and no seat took a model turn: kept no longer`,
       );
     }
     console.log(

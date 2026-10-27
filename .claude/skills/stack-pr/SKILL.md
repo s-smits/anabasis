@@ -1,13 +1,13 @@
 ---
 name: stack-pr
-description: "Put a change on the one open stack of Anabasis v2 pull requests: find the real top, keep local work while moving to it, expand the open pull request a change belongs to before opening a new one, shape commits that each pass alone, run the checks CI runs (by hand where the runners do not), publish through the checking pre-push hook, prove the stack with `bun run land -- <top> --sanitize`, write the body, repair your own children when a parent moves, consolidate the whole stack by subject (review in groups, fix in lanes, regroup, republish), and land a stack with `bun run land`. Use when asked to open, append to, stack, restack, consolidate or overhaul, rebase, hop to the latest head, sanitize or land a pull request, or when a push, a hook or a base refuses. v1's stack-hop and setup-pr in one."
+description: "Put a change on an open stack of Anabasis v2 pull requests, or start one: find the real top, keep local work while moving to it, expand the open pull request a change belongs to before opening a new one, shape commits that each pass alone, run the checks CI runs (by hand where the runners do not), publish through the checking pre-push hook, prove the stack with `bun run land -- <top> --sanitize`, write the body, repair your own children when a parent moves, consolidate the whole stack by subject (review in groups, fix in lanes, regroup, republish), and land a stack with `bun run land`. Use when asked to open, append to, stack, restack, consolidate or overhaul, rebase, hop to the latest head, sanitize or land a pull request, or when a push, a hook or a base refuses. v1's stack-hop and setup-pr in one."
 ---
 
 # Stack a pull request
 
-Every open pull request sits on one chain based on `main` (`AGENTS.md`, section 11), and "the
-top" below is the end of that chain, or `origin/main` when nothing is open. Only a change of
-documentation alone that describes no open pull request goes on `main` beside it. Several sessions
+Open pull requests sit on stacks, each a chain based on `main` that lands alone (`AGENTS.md`,
+section 11), and "the top" below is the end of the stack a change goes on, or `origin/main` for a
+change that starts a stack of its own. Several sessions
 write at once. This skill is the order of operations that keeps a
 change on the stack without losing local work, without touching another session's branch, and
 with every commit able to stand alone.
@@ -20,8 +20,8 @@ bun .claude/skills/stack-pr/scripts/stack.ts                     # every edge, b
 bun .claude/skills/stack-pr/scripts/stack.ts --branch <branch>   # one branch: what is stacked on it
 ```
 
-The top is the end of the longest chain of open pull requests. It is not the highest number: a
-side branch off the middle carries a higher one, and the script lists those apart.
+Each stack's top is the end of its chain. It is not the highest number: a side branch off the
+middle carries a higher one, and the script lists those apart.
 
 **The stack moves under you.** On 9 October another session stacked eight pull requests in one
 afternoon above a branch that had been read as the top two hours before. Read the edges again
@@ -45,9 +45,12 @@ reading from the start of the task is a lead, not a fact.
   pull request of your own on the top, whose body opens "Absorbs into #N at the next
   consolidation". Section 10 folds it down and closes the carrier (`republish.ts --absorb`).
   Delete the code the change makes dead in the same commit.
-- **A change that belongs to no open pull request: a new pull request on the top**, never beside
-  the stack. Its base is the top branch, and it holds that branch's head. A change that depends
-  on nothing below it still goes on top; say so in the body.
+- **A change that belongs to no open pull request: a new pull request on a top.** Where it
+  builds on an open pull request, or rewrites text one changes, its base is the top branch of that
+  pull request's stack, and it holds that branch's head. Where it depends on nothing open, it
+  starts a stack of its own on `main` and lands alone; once another stack lands first, `land`
+  refuses it until it is replayed onto the new `main`. Never base it on the middle of a stack.
+  Say which in the body.
 - **Another session's pull request is never yours to change.** No commit, no rebase, no force
   push, whatever the fix. Carry the fix as a `fixup!` on the top, as above, or tell the owner.
 - **Skills go on the stack too**, and so does documentation that describes an open pull request,

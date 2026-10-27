@@ -39,10 +39,9 @@ import { read } from "#src/kernel/log.ts";
 import { solverLast } from "#src/kernel/solves.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { campaignLog, keptAs, openCampaign, packNamed, PROMOTED, stayAwake } from "./campaign.ts";
+import { keptAs, packNamed, PROMOTED, stayAwake } from "./campaign.ts";
 import {
-  capNamed,
-  refereeNamed,
+  campaignFor,
   parentNamed,
   predictionNamed,
   reviewersNamed,
@@ -52,7 +51,7 @@ import {
   solved,
   solvingAs,
 } from "./round.ts";
-import { firstRecord, keepSetting, recordedSetting, settingAsked } from "./setting.ts";
+import { firstRecord, keepSetting } from "./setting.ts";
 
 /** `bun tools/d2/session.ts`, and under a simulation's `seated` the same session with its seats
  *  scripted. Returns what the session left: the harness it froze, or null where it left the one it
@@ -65,13 +64,8 @@ export async function sessionCommand(
   const { values } = parseArgs({ args: [...args], options: SESSION_OPTIONS });
   const { session } = values;
   const pack = packNamed(values, " and --session");
-  const { name } = pack;
   if (session === undefined) throw new Error("name --session, the id the session takes in the log");
-  // Read before the campaign is opened: a paid session with no cap starts nothing.
-  const cap = capNamed(values, seated === solved ? "paid" : "scripted");
-  refereeNamed(values, seated === solved ? "paid" : "scripted");
-  const setting = settingAsked(values, recordedSetting(read(campaignLog(name))));
-  const campaign = await openCampaign({ ...pack, ...setting.named });
+  const { cap, setting, campaign } = await campaignFor(values, pack, seated);
   const parent = await parentNamed(campaign, { ...values, session });
   // A scripted solve is told from its harness which side of a comparison it stands on, and a
   // practice solve stands on none: it is seated against the campaign's reference harness.

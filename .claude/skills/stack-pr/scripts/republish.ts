@@ -29,7 +29,7 @@ import { runtimeProcess } from "#src/meta/process.ts";
 import { shellQuote } from "#src/wall/isolation.ts";
 import { short } from "#tools/runtime/gate.ts";
 import { ghOrThrow, openPulls, type Pull } from "#tools/runtime/land.ts";
-import type { NativeStack } from "./follow.ts";
+import { type NativeStack, STACKS } from "./follow.ts";
 import { chain } from "./stack.ts";
 
 /** One surviving pull request: its new head and final base. */
@@ -188,7 +188,7 @@ export function republish(
     else gh(args);
   };
   const touched = new Set([...plan.moves, ...plan.absorbed].map(({ pull }) => pull.number));
-  const stacks = parseJsonAs<NativeStack[]>(gh(["api", "repos/{owner}/{repo}/stacks"])).filter(
+  const stacks = parseJsonAs<NativeStack[]>(gh(["api", STACKS])).filter(
     (stack) => stack.open && stack.pull_requests.some((pull) => touched.has(pull.number)),
   );
   for (const stack of stacks) {

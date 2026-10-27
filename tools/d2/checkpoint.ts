@@ -48,23 +48,12 @@ import type { Report } from "#src/campaign/comparison.ts";
 import { type CheckpointRequest, checkpoint, refuseTerms, scoredSet } from "#src/campaign/round.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
-import { stopRule } from "#src/kernel/reports.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { parseArgs } from "#src/meta/process.ts";
+import { keptAs, packNamed, starter, stayAwake } from "./campaign.ts";
 import {
-  awaitingLines,
-  campaignLog,
-  starter,
-  keptAs,
-  openCampaign,
-  packNamed,
-  stayAwake,
-} from "./campaign.ts";
-import {
-  predictionLines,
+  campaignFor,
   predictionNamed,
-  capNamed,
-  refereeNamed,
   COMPARISON_OPTIONS,
   objectiveNamed,
   packaged,
@@ -72,10 +61,10 @@ import {
   ROUND_OPTIONS,
   type Seated,
   solved,
-  reportLines,
+  printReport,
   wantedNamed,
 } from "./round.ts";
-import { keepSetting, recordedSetting, SETTING_OPTIONS, settingAsked } from "./setting.ts";
+import { keepSetting, SETTING_OPTIONS } from "./setting.ts";
 
 /** A checkpoint's flags and their defaults. */
 const CHECKPOINT_OPTIONS = {
@@ -101,15 +90,9 @@ export async function checkpointCommand(
   const { values } = parseArgs({ args: [...args], options: CHECKPOINT_OPTIONS });
   const { id } = values;
   const pack = packNamed(values, " and --id");
-  const { name } = pack;
   if (id === undefined) throw new Error("name --id, the id the comparison takes in the log");
   if (kill?.aborted === true) throw new Error(`comparison ${id} was stopped before it began`);
-  // Read before the campaign is opened: a paid comparison with no cap starts nothing.
-  const cap = capNamed(values, seated === solved ? "paid" : "scripted");
-  refereeNamed(values, seated === solved ? "paid" : "scripted");
-  // The campaign's setting is its log's, as a round reads it (`setting.ts`).
-  const setting = settingAsked(values, recordedSetting(read(campaignLog(name))));
-  const campaign = await openCampaign({ ...pack, ...setting.named });
+  const { cap, setting, campaign } = await campaignFor(values, pack, seated);
   const packageOf = packaged(campaign);
   const old = await keptAs(campaign, "--reference", values.reference);
   const fresh = await keptAs(campaign, "--new", values.new);
@@ -160,15 +143,7 @@ export async function checkpointCommand(
   keepSetting(campaign.log, setting);
   stayAwake();
   const report = await checkpoint(request);
-  console.log(JSON.stringify(report, null, 2));
-  console.log(JSON.stringify(stopRule(read(campaign.log)), null, 2));
-  for (const line of [
-    ...reportLines(report),
-    ...predictionLines(read(campaign.log), id, report),
-    ...awaitingLines(campaign),
-  ]) {
-    console.log(line);
-  }
+  printReport(campaign, id, report);
   return report;
 }
 

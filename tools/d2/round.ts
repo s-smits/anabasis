@@ -74,7 +74,7 @@ import type { BuildRequest, Practised } from "#src/builder/session.ts";
 import { type ObjectiveRule, testOf, WEIGHTS } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
-import { type LogEvent, read } from "#src/kernel/log.ts";
+import { read } from "#src/kernel/log.ts";
 import { priceKey } from "#src/kernel/meter.ts";
 import { type Cap, capHolds, stopRule } from "#src/kernel/reports.ts";
 import { solverLast } from "#src/kernel/solves.ts";
@@ -346,13 +346,6 @@ export function predictionNamed(flag: string | undefined): string | undefined {
   return said === "" ? undefined : said;
 }
 
-/** A comparison's prediction beside what it read, as a command prints the two; no line where the
- *  operator predicted nothing. The prediction is the one the comparison began with. */
-export function predictionLines(events: readonly LogEvent[], id: string, report: Report): string[] {
-  const said = predicted(events, id);
-  return said === null ? [] : [`predicted before the first solve: ${said}`, `read: ${report.reading}`];
-}
-
 /**
  * The dollars `--cap` and `--reserve` name, read in one place for every command: each is a plain
  * number above nothing. A cap typed as "$40" is no number, and held
@@ -397,6 +390,41 @@ export function refereeNamed(
 ): void {
   if (values.reviewer === undefined && seats === "paid") {
     throw new Error("name --reviewer, the Referee that rules each rejection before it counts");
+  }
+}
+
+/**
+ * The campaign a round, a session or a checkpoint runs in. The cap and the Referee are read before
+ * it is opened, so a paid move without them starts nothing, and what the flags name of the setting
+ * is held to the log's record before the campaign is opened under it (`setting.ts`).
+ */
+export async function campaignFor(
+  values: Parameters<typeof capNamed>[0] &
+    Parameters<typeof refereeNamed>[0] &
+    Parameters<typeof settingAsked>[0],
+  pack: Parameters<typeof openCampaign>[0],
+  seated: Seated,
+) {
+  const seats = seated === solved ? "paid" : "scripted";
+  const cap = capNamed(values, seats);
+  refereeNamed(values, seats);
+  const setting = settingAsked(values, recordedSetting(read(campaignLog(pack.name))));
+  return { cap, setting, campaign: await openCampaign({ ...pack, ...setting.named }) };
+}
+
+/** A comparison's report and the stop rule as JSON, then its lines for a person to read: the
+ *  prediction the comparison began with beside what it read, where the operator made one. */
+export function printReport(campaign: Campaign, id: string, report: Report): void {
+  const events = read(campaign.log);
+  const said = predicted(events, id);
+  console.log(JSON.stringify(report, null, 2));
+  console.log(JSON.stringify(stopRule(events), null, 2));
+  for (const line of [
+    ...reportLines(report),
+    ...(said === null ? [] : [`predicted before the first solve: ${said}`, `read: ${report.reading}`]),
+    ...awaitingLines(campaign),
+  ]) {
+    console.log(line);
   }
 }
 
@@ -541,16 +569,9 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
   const { values } = parseArgs({ args: [...args], options: ROUND_OPTIONS });
   const { session } = values;
   const pack = packNamed(values, " and --session");
-  const { name } = pack;
   if (session === undefined) throw new Error("name --session, the id the round takes in the log");
-  // Read before the campaign is opened: a paid round with no cap starts nothing.
-  const cap = capNamed(values, seated === solved ? "paid" : "scripted");
-  refereeNamed(values, seated === solved ? "paid" : "scripted");
-  // The campaign's setting is its log's: what the flags name is held to the record before the
-  // campaign is opened under it (`setting.ts`).
-  const setting = settingAsked(values, recordedSetting(read(campaignLog(name))));
+  const { cap, setting, campaign } = await campaignFor(values, pack, seated);
   const { limits } = setting.named;
-  const campaign = await openCampaign({ ...pack, ...setting.named });
   const packageOf = packaged(campaign);
   const reviewers = reviewersNamed(campaign, values);
   const parent = await parentNamed(campaign, { ...values, session });
@@ -597,15 +618,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
   keepSetting(campaign.log, setting);
   stayAwake();
   const report = await round(request);
-  console.log(JSON.stringify(report, null, 2));
-  console.log(JSON.stringify(stopRule(read(campaign.log)), null, 2));
-  for (const line of [
-    ...reportLines(report),
-    ...predictionLines(read(campaign.log), session, report),
-    ...awaitingLines(campaign),
-  ]) {
-    console.log(line);
-  }
+  printReport(campaign, session, report);
   return report;
 }
 

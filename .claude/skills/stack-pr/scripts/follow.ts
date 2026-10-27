@@ -30,7 +30,10 @@ import { runSync } from "#src/meta/subprocess.ts";
 import { ghOrThrow, openPulls } from "#tools/runtime/land.ts";
 import { chain } from "./stack.ts";
 
-/** One of GitHub's native stacks, as `GET repos/{owner}/{repo}/stacks` lists it. */
+/** Where GitHub lists the repository's native stacks. */
+export const STACKS = "repos/{owner}/{repo}/stacks";
+
+/** One of GitHub's native stacks, as `GET` on `STACKS` lists it. */
 export interface NativeStack {
   readonly number: number;
   readonly open: boolean;
@@ -64,7 +67,7 @@ export function nativeTop(stacks: readonly NativeStack[]): Top | undefined {
 }
 
 function topNow(root: string): Top | undefined {
-  const stacks = parseJsonAs<NativeStack[]>(ghOrThrow(root, ["api", "repos/{owner}/{repo}/stacks"]));
+  const stacks = parseJsonAs<NativeStack[]>(ghOrThrow(root, ["api", STACKS]));
   const native = nativeTop(stacks);
   if (native !== undefined) return native;
   const { line } = chain(openPulls(root));

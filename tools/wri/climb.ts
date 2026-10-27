@@ -16,11 +16,12 @@ import { short } from "#src/campaign/move.ts";
 import { gateAnswers } from "#src/examiner/record.ts";
 import { differenceOf, flipP, informative, type Kept, type Paired } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
+import { asRecord, isNumber } from "#src/meta/json-shape.ts";
 import { type Compared, count, fired, type Index, indexOf, items, type Trigger, text } from "./folds.ts";
 import {
   epochsOf,
   joinedTest,
+  pinnedRule,
   pSaid,
   sharedPaths,
   spentTo,
@@ -67,15 +68,6 @@ const COLUMNS = [
   "last move ended",
 ] as const;
 
-/** The opening's level and trigger, or the tree's default. */
-function ruleOf(log: Index): string {
-  const terms = asRecord(log.of("campaign.opened").at(-1)?.terms);
-  const pinned = ["level", "trigger"].flatMap((key) =>
-    isString(terms?.[key]) ? [`${key} ${text(terms[key])}`] : [],
-  );
-  return pinned.join(", ") || "default";
-}
-
 /** A campaign's row. Before any promotion its comparisons stand where the rests would. */
 function rowOf({ name, events }: Campaign): string[] {
   const log = indexOf(events);
@@ -102,7 +94,7 @@ function rowOf({ name, events }: Campaign): string[] {
     name,
     // The host code of the last condition the campaign recorded.
     short(text(asRecord(log.of("condition.recorded").at(-1)?.condition)?.host)) || "none",
-    ruleOf(log),
+    pinnedRule(log).join(", ") || "default",
     epoch === undefined
       ? "none yet"
       : `${short(text(epoch.data.harness))} at ${events[epoch.at]?.at.slice(11, 16) ?? ""}Z`,

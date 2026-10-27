@@ -129,7 +129,7 @@ const DRAFT_PARAMETERS = Type.Object({
   scope: Type.String({
     minLength: 1,
     description:
-      "What a task of this domain may ask. It bounds every task written later, so a size it fixes for a task is the ceiling on how hard one can be made.",
+      "What a task of this domain may ask. It bounds every task written later, so a size it fixes for a task is the ceiling on how hard one can be made. Whatever the operator's prompt asks of an answer that no check here decides, such as a work product or a step of the work, is named here as not measured.",
   }),
   conventions: Type.String({
     description: "What a practitioner takes as given: units, rounding, notation.",

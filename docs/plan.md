@@ -20,7 +20,7 @@ factors"). The values below are read from the fresh campaigns' logs on the opera
 | # | Factor | Now | Bar |
 | --- | --- | --- | --- |
 | S | Supply | Fresh buffer campaigns hold out tasks after each promotion: r3's Examiner proved 89 author answers (`task.feasible`) over 5 epochs | At least 4 informative tasks before each comparison |
-| M1 | Climb | One campaign with five promotions (buffer r3, 14 comparisons). Six with one each (five buffer, one esp32). Truss: none in 3 | 12 confirmed in one real campaign, observed, no quota; then a second domain |
+| M1 | Climb | One campaign with five promotions (buffer r3, 14 comparisons). Six with one each (five buffer, one esp32). Truss: none in 3 | 6 confirmed in one real campaign, observed, no quota; then a second domain (operator, 25 October; 12 until then) |
 | M2 | Honesty | 0 A/A steps in 31 A/A readings across those campaigns; the count that could have read one at 0.02 is in the PR | 0 in the ten controls after the six on record |
 | M3 | Verdicts | 0 hand labels. r3: 5 Referee rulings in 14 comparisons | 30 labels; 3 in 4 defects caught, at most 1 in 10 earned voided |
 | W | Economy | r3: $401 billed for 5 promotions, 25 active hours | At most 3 promotion attempts an epoch, reported |
@@ -34,7 +34,7 @@ factors"). The values below are read from the fresh campaigns' logs on the opera
 | F20 | A Builder keeping its facts across a compaction | Planned | r3 compacted once (`build.compacted`); read whether its next turns used the restated facts |
 | F30 | The checker's identity in every task version | Planned | |
 | F32 | No field engine behind buffer's or recode's checks; every drafted exam stands on `--admit-authored` | Planned | A domain whose exam names an installed engine |
-| F60 | Whether the Examiner's family counts help | Present in source, proved without a model | An ablation, or a read of drafts refused before and after |
+| F60 | Whether a line a task, with turns, the winning measure and one measured line, helps the Examiner more than the family counts it replaced | Proved without a model | The before-and-after Examiner seat over one seed: held drafts with validity room, and drafts held |
 | F61 | The room floor (`ROOM`, 1%, one constant), one judgement of what improvement counts: two answers closer than it tie in a pair, and a task an answer on record betters by less leaves no room. r6's g-2 would read 3-3-18 where it promoted on 23-0-1. Replayed on r6, it moves all 24 of the first promotion's tasks off the frontier, so the Examiner is asked for a whole comparison's tasks instead of 4 | Proved without a model, replayed | A fresh campaign's drafts held, frontier and comparisons after its first promotion |
 | F62 | The Examiner told each task's winner (`exam-results`; the objective margin was withdrawn on 21 October), the gate's gap on later lines, and `read_opening` | Proved without a model | Drafts held and refused after a promotion, against r6's; an ablation with `exam-results off` |
 | B6 | The investigation's reader still reads its own copy of the campaign | Planned | |
@@ -45,6 +45,7 @@ factors"). The values below are read from the fresh campaigns' logs on the opera
 | F34 | The size policy runs in no script, CI job or hook | Present in source | The operator's word on running it in the gate |
 | Builder-led | The single conversation's value | Proved without a model | A matched ablation with `--no-builder-led` |
 | X1 | Whether a harness built without a benchmark's tasks or grades scores higher on it than pi's starter (WorkBuddy-Bench Code), then how it stands against Harness² (`studies/harness2/README.md`) | Present in source (`studies/harness2/run.ts`); WorkBuddy's dry run resolves its job, no container has run it | The operator's word on WorkBuddy-Bench's licence, then `run.ts check` of the starter in WorkBuddy's container and the domain fit, without a model; then the operator's word for the paid arms |
+| X2 | Whether buffer v065-a's later promotions carry over to fresh tasks selected against a third harness of its chain, or are patches against tasks chosen to beat the reference (`studies/transitivity/README.md`) | Exercised live: arms A and B ran at `87f0b07e`, P-A and P-B held, arm C not run ($46.32; `studies/runs/transitivity/`) | A second reading of f-1's pair on fresh solves, before the carry-over is claimed without qualification |
 
 Moved on 20 October by r3's log (`buffer-fresh-opus-forkedPR223_v0_5_4-r3`, commit `0b04d709`):
 

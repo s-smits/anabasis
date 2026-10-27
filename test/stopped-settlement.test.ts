@@ -5,9 +5,10 @@ import { afterAll, expect, it, spyOn } from "bun:test";
 import * as comparison from "../src/campaign/comparison.ts";
 import { epochsOf } from "../src/campaign/climb.ts";
 import { checkpoint, settleReading, type CheckpointRequest } from "../src/campaign/round.ts";
+import { scored } from "../src/kernel/compare.ts";
 import { recordCondition, settingId } from "../src/kernel/condition.ts";
 import { append, read } from "../src/kernel/log.ts";
-import { stopRule } from "../src/kernel/reports.ts";
+import { lastReports, stopRule } from "../src/kernel/reports.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import { taskStates } from "../src/kernel/task.ts";
 import {
@@ -19,13 +20,15 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
-import type { JsonObject, JsonValue } from "../src/meta/json-shape.ts";
+import { asRecord, isString, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { agreement, clears } from "../src/referee/agreement.ts";
 import type { Ruling } from "../src/referee/referee.ts";
-import { settleCommand } from "../tools/d2/settle.ts";
+import { labelLines, settleCommand } from "../tools/d2/settle.ts";
+import { safeguardTriggers } from "../tools/wri/climb.ts";
+import { indexOf } from "../tools/wri/folds.ts";
 import { conditionOf } from "./helpers/logged-round.ts";
 import { fixtureTasks, layOutPack } from "./helpers/fixture-pack.ts";
 
@@ -298,6 +301,110 @@ it("keeps ordinary settlement and swapped readings for a completed scored compar
   const settled = settleReading(s.log, ID, s.labels);
   expect(settled.scored).toEqual(report.scored);
   expect(comparison.swapped(read(s.log), ID)?.decided).toBe(report.reading);
+});
+
+it("reads promotion tallies with restored, removed and wrong answers from the settled packet", async () => {
+  for (const label of ["earned", "unclear", "check-defect"] as const) {
+    const s = fixture({ restored: ["DDDD", "PPPP"], stable: ["LLLL", "PPPP"] });
+    const original = await checkpoint({ ...s.request, defects: 100 });
+    const passes = new Map([[comparison.passesIn(read(s.log), ID).at(-1)!, "wrong"]] as const);
+    const settled = settleReading(
+      s.log,
+      ID,
+      new Map([...s.labels.keys()].map((solve) => [solve, label])),
+      passes,
+    );
+    expect(original.versions).toEqual(["stable"]);
+    expect(settled.versions).toEqual(label === "earned" ? ["restored", "stable"] : ["stable"]);
+    expect(settled.scored).not.toEqual(original.scored);
+    append(s.log, "harness.promoted", { from: "old", harness: "fresh" });
+    const events = read(s.log);
+    const report = lastReports(events)[0]!;
+    const reading = scored(comparison.labelledPairs(events, report));
+    expect(reading).toMatchObject({
+      wins: settled.scored!.wins,
+      losses: settled.scored!.losses,
+      ties: settled.scored!.ties,
+      p: settled.scored!.p,
+    });
+  }
+});
+
+it("uses the promotion reader's settled wrong passes in safeguard nine", async () => {
+  const wins = Object.fromEntries(
+    Array.from({ length: 7 }, (_, n) => [`win-${String(n)}`, ["PPPP", "PPPP"] as const]),
+  );
+  const s = fixture(wins);
+  await checkpoint(s.request);
+  const fixed = comparison.fixedIn(read(s.log), ID)!;
+  const reference = new Set(
+    comparison
+      .solvesUnder(read(s.log), fixed)
+      .flatMap(({ id, under }) => (under.harness === "old" ? [id] : [])),
+  );
+  const billed = read(s.log).map((event) =>
+    event.kind === "solve.finished" && isString(event.data.solve)
+      ? { ...event, data: { ...event.data, billed: reference.has(event.data.solve) ? 2 : 1 } }
+      : event,
+  );
+  const passes = { [comparison.passesIn(billed, ID)[4]!]: "wrong" };
+  const failed = comparison.wrongAsFailed(billed, new Map(), passes);
+  const settled = comparison.compared(failed.events, fixed, failed.labels);
+  const events = billed.map((event) =>
+    event.kind === comparison.REPORTED
+      ? {
+          ...event,
+          data: { ...event.data, ...asRecord(settled), settled: { labels: {}, passes } },
+        }
+      : event,
+  );
+  events.push({
+    at: "2026-10-26T00:00:00.000Z",
+    kind: "harness.promoted",
+    data: { from: "old", harness: "fresh", rests: [{ comparison: ID }] },
+  });
+  const safeguard = safeguardTriggers(indexOf(events)).find(({ name }) => name.startsWith("SAFEGUARD-9"));
+  expect(safeguard?.detail).toContain("0-1 p 1.000 on validity alone");
+  expect(safeguard?.detail).toContain("0-1 p 1.000 without the bill");
+});
+
+it("reads a settled flip against this tree's unlabelled reading, apart from the reading on record", async () => {
+  const s = fixture({ complete: ["PPPR", "PPPP"] });
+  const report = await checkpoint(s.request);
+  settleReading(s.log, ID, s.labels);
+  // The first report as an older rule would have recorded it: another reading of the same solves.
+  const other = report.reading === "step" ? "no-step" : "step";
+  let first = true;
+  const older = read(s.log).map((event) => {
+    if (event.kind !== "comparison.reported" || !first) return event;
+    first = false;
+    return { ...event, data: { ...event.data, reading: other } };
+  });
+  expect(comparison.swapped(older, ID)).toMatchObject({ decided: other, unlabelled: report.reading });
+  expect(labelLines(older).at(-1)).toContain("it holds");
+});
+
+it("reports a label-induced flip even when its labelled reading agrees with the historical one", async () => {
+  const wins = Object.fromEntries(
+    Array.from({ length: 6 }, (_, n) => [`win-${String(n)}`, ["LLLL", "PPPP"] as const]),
+  );
+  const s = fixture(wins);
+  const report = await checkpoint(s.request);
+  expect(report.reading).toBe("step");
+  const wrong = comparison.passesIn(read(s.log), ID).slice(0, 4);
+  settleReading(s.log, ID, new Map(), new Map(wrong.map((solve) => [solve, "wrong"] as const)));
+  let first = true;
+  const older = read(s.log).map((event) => {
+    if (event.kind !== comparison.REPORTED || !first) return event;
+    first = false;
+    return { ...event, data: { ...event.data, reading: "no-step" } };
+  });
+  expect(comparison.swapped(older, ID)).toMatchObject({
+    decided: "no-step",
+    unlabelled: "step",
+    swapped: "no-step",
+  });
+  expect(labelLines(older).at(-1)).toContain("it flips, so its packet was too small to stand on");
 });
 
 it("draws and settles the stopped comparison through the blind packet command", async () => {

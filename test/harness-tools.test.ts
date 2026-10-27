@@ -5,6 +5,8 @@ import { expect, it } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Type, validateToolArguments } from "@earendil-works/pi-ai";
 import type { SeatTool } from "../src/agent/session.ts";
+import { copyHarness } from "../src/builder/kept.ts";
+import { stagedState } from "../src/builder/tools.ts";
 import {
   chmodSync,
   cpSync,
@@ -186,6 +188,41 @@ it("has one digest wherever it sits, though the bundle names where each file was
   }
 });
 
+it.each(["__dirname", "__filename"])(
+  "keeps its digest when a toolchain import uses %s through freezing and handover",
+  async (location) => {
+    const root = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-harness-toolchain-place-")));
+    try {
+      const source = join(root, "source");
+      cpSync(FIXTURE, source, { recursive: true });
+      const tools = join(source, "agent", "tools.ts");
+      writeFileSync(
+        tools,
+        `import location from "../.toolchain/lib.cjs";\nexport const LOCATION = location;\n${readFileSync(tools, "utf8")}`,
+      );
+      const tree = join(source, ".toolchain");
+      mkdirSync(tree);
+      writeFileSync(join(tree, "lib.cjs"), `module.exports = ${location};\n`);
+      const original = await openHarness(source);
+      const states = join(root, "states");
+      const keptTree = join(states, "tree-one");
+      cpSync(tree, keptTree, { recursive: true });
+      const frozen = stagedState(source, states, keptTree, "freezing-");
+      const opened = await openHarness(frozen);
+      expect(opened.module).toContain(keptTree);
+      expect(opened.digest).toBe(original.digest);
+      const handed = join(root, "handover", "harness");
+      copyHarness(frozen, handed);
+      expect((await openHarness(handed)).digest).toBe(original.digest);
+      // Normalising the location must still leave a changed dependency as another harness.
+      writeFileSync(join(handed, ".toolchain", "lib.cjs"), `module.exports = [${location}, 7];\n`);
+      expect((await openHarness(handed)).digest).not.toBe(original.digest);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
+
 it("builds a harness's tools from its own files alone: no macro, no file outside it", async () => {
   const root = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-harness-wall-")));
   try {
@@ -248,6 +285,25 @@ it("builds a harness's tools from its own files alone: no macro, no file outside
     rmSync(join(guide, "agent", "BUILT_AGENTS.md"));
     symlinkSync(secret, join(guide, "agent", "BUILT_AGENTS.md"));
     await expect(openHarness(guide)).rejects.toThrow("agent/BUILT_AGENTS.md links outside the harness");
+    // A kept state's programs lie in a tree beside it, linked as `.toolchain`: its tools may import
+    // them. A link to the folder above, or to a tree that does not lie beside it, reaches outside.
+    const shared = 'import { lib } from "../.toolchain/lib.ts";\nexport const LIB = lib;';
+    mkdirSync(join(root, "tree-1"));
+    writeFileSync(join(root, "tree-1", "lib.ts"), 'export const lib = "shared-7c2d";\n');
+    const kept = tools("kept", shared);
+    symlinkSync(join("..", "tree-1"), join(kept, ".toolchain"));
+    expect((await openHarness(kept)).module).toContain("shared-7c2d");
+    const above = tools(
+      "above",
+      'import leak from "../.toolchain/host-secret.txt" with { type: "text" };\nexport const LEAK = leak;',
+    );
+    symlinkSync("..", join(above, ".toolchain"));
+    await expect(openHarness(above)).rejects.toThrow("host-secret.txt, which is outside the harness");
+    mkdirSync(join(root, "distant", "tree-2"), { recursive: true });
+    writeFileSync(join(root, "distant", "tree-2", "lib.ts"), 'export const lib = "far-9e1f";\n');
+    const far = tools("far", shared);
+    symlinkSync(join("..", "distant", "tree-2"), join(far, ".toolchain"));
+    await expect(openHarness(far)).rejects.toThrow("lib.ts, which is outside the harness");
     // Its own files and a package installed under it still bundle.
     const honest = tools("honest", 'import six from "sixfold";\nexport const SIX = six;');
     const sixfold = join(honest, "node_modules", "sixfold");

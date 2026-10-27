@@ -28,12 +28,13 @@ archived campaign; `copy <name> --to <worktree>` brings this machine's back to g
 | `continue <name> [--at <c>] [--login N] [--budget N] [--after <event>] [--yes] [-- <flags>]` | runs a campaign again from its log, on its kept flags or their replacement after `--` | `manage.ts` |
 | `pause <name> --after <event> [--yes]` | stops a campaign once its log gains one more of the event and nothing but its Builder's conversation is open | `manage.ts` |
 | `keep <name> [--logins 2,3,4] [--wait-hours 1] [--yes]` | keeps a campaign going: moves it off a long provider wait, and continues it after a death or an `environment` ending | `keep.ts` |
-| `copy <name> --to <worktree> [--yes]` | copies a stopped campaign whole to another worktree, from a worktree or the archive, and sets the source aside | `manage.ts` |
+| `copy <name> --to <worktree> [--yes]` | copies a stopped campaign whole to another worktree, from a worktree or the archive, and sets the source aside | `move.ts` |
 | `move <name> --to <host\|here> [--from <host\|here>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]` | pauses a campaign at a clean point, takes its folder whole to a new worktree on the other machine at the same commit, sets the source aside and continues it there on its kept flags | `move.ts` |
 | `stop <name> ... [--yes]` | ends the process that writes each log, and its keeper, and releases what its unfinished solves and sessions held | `stop.ts` |
 | `status [--all]` | one row a run: the live ones and those whose log moved in a day, with tree, commit, login, open comparison, comparisons reported, promotions and ending, and on a closed row the hours until it leaves; under the rows, the closed runs it leaves out and the archive's newest campaigns; then each host `ANA_HOSTS` lists, all asked at once and each printed as it answers, within 30 s after cold preparation | `pulse.ts` |
 | `usage [N ...] [--json]` | each login's five-hour and weekly use and, without `--json`, how many runs and simulation seats are live on it on every host (`1/2 active`, out of the most `ANA_LOGIN_RUNS` lets it carry, such as `2,N:4`); without numbers or `--json`, also the pool forecast | `logins.ts` |
 | `active` | the runs and simulation seats live on each login by name, on this machine and every host, asking no provider | `logins.ts` |
+| `search <pattern> [--regex] [--ignore-case] [--host <name>]... [--here] [--in logs\|notes\|all] [--max <chars>]` | searches campaign folders, notes and docs on all hosts concurrently; private extra note roots come from `ANA_SEARCH_ROOTS` in `.env.runs`; reports each engine and spills complete matches to a temporary log when output is cut | `search.ts` |
 | `fetch <name> [--from <host>]` | a copy of a campaign another machine holds, to read here, into the archive as `data/runs/<host>/<name>/` | `move.ts` |
 | `retire [--days 1] [--yes]` | moves each campaign no process writes or keeps, idle for `--days`, into the archive whole (a seed, `seed.json` beside its log, is deleted instead, the archive's too), and deletes each worktree nothing has used for a week (two for one with uncommitted work); then the same on every host, whose archive comes here. A daily job runs it with `--yes`; nothing else in an archive is deleted | `retire.ts` |
 | `on <host> <verb ...>`, `hosts [--all]` | any verb on another host over ssh; `status` on each other host alone. A verb that names a run goes to its host by itself | `hosts.ts` |
@@ -68,9 +69,10 @@ and any other model a backend serves goes as its `<provider>/<id>`, at `hhhh` an
 The solve defaults are the campaign's: 20 model turns and 30 minutes (`LIMITS`,
 `tools/d2/campaign.ts`).
 
-Without `--host`, `fresh` prefers a machine whose catalogue already holds a campaign of project
-`<pack>-fresh`, among machines below their capacity. It then chooses the fewest live campaigns
-and simulation seats. This machine's cap is `ANA_RUN_CAP`; each peer's is its `capacity` in
+Without `--host`, `fresh` first takes, among machines below their capacity, the one where the
+run's login pays for the fewest live runs, so that one login's limit leaves every machine
+working. It then prefers a machine whose catalogue already holds a campaign of project
+`<pack>-fresh`, and then the fewest live campaigns and simulation seats. This machine's cap is `ANA_RUN_CAP`; each peer's is its `capacity` in
 `ANA_HOSTS`, both 2 where unset. A missing count or catalogue refuses placement. Ties follow
 configuration order, with this machine first. `--host here` selects this machine explicitly;
 `--host <host>` selects a peer, using its name as the suffix unless `--as` names one.
@@ -129,8 +131,9 @@ remote branch holds. It then installs (`bun install --frozen-lockfile`), runs th
   process, which hands the environment on; these verbs do not open the file. Do not
   print, copy or search for it. `--login N` runs the command on the login the environment holds as
   `CLAUDE_CODE_OAUTH_TOKEN<N>`, passed on as `CLAUDE_CODE_OAUTH_TOKEN`, and no numbered key
-  reaches the command. With no `--login` and no unnumbered login, the one numbered login held is
-  taken, and two or more are refused. `claude/<model>` runs Claude Code on that login and `claude-api/<model>` on
+  reaches the command. With no `--login` the environment goes on less its numbered keys and no
+  login is guessed: the command's dry run refuses a seat whose provider holds no credential, so a
+  run with a `claude/` seat names its login, as `fresh` and `keep` do. `claude/<model>` runs Claude Code on that login and `claude-api/<model>` on
   `ANTHROPIC_API_KEY`: two providers, so a solver on one is another setting than on the other.
 - **What the operator's machines hold is environment, too.** `ANA_LOGINS` names the logins a run
   may take (`2,3,4`; every login the environment holds where unset), and `ANA_HOSTS` the other
@@ -203,8 +206,10 @@ environment (`allowedLogins`). It looks at the run once a minute and takes one o
 `--wait-hours` left until the reset, it stops the run and
 continues it on the login with room whose week resets soonest. Where the process is gone and the
 log holds no ending, or the ending `environment`, it continues on the same login where that
-login is recorded and its wait has expired, otherwise on one with room. Any other
-ending is the campaign's own, and the keeper leaves. A login it moved off is not taken again until
+login is recorded, its wait has expired and it is below its cap of live runs across the fleet
+(`atCap`), otherwise on one with room. Any other
+ending is the campaign's own, and the keeper leaves. A run with no `claude/` seat bills no login
+and goes on without one, so no login's count holds it. A login it moved off is not taken again until
 the wait named for it is over; with no login left it says so once and waits. Three continues in a
 row that leave the log as it was end the keeper: something it cannot mend ends the run each time.
 
@@ -262,8 +267,9 @@ from the rate-limit headers of a one-token request where that is refused, and ke
 in `.ana/logins-history.jsonl` of the main worktree after each call with a usable weekly reading,
 keeping eight days. With no numbers or `--json`, it forecasts when the pool runs out at the
 week's pace and a recent pace from a reading 2 to 24 hours old (`poolLines`). A login has room
-for a move when its week is under 90%, its five hours under 100%, and neither window is refused
-(`room`), which is what `keep` reads. Each login's head line reads its live runs on every
+for a move when neither its week nor its five hours is used up and neither window is refused, the
+week that resets soonest first, a nearly spent one included (`room`), which is what `keep` and
+`fresh` read. Each login's head line reads its live runs on every
 host out of the most it carries: the lower of its cap in `ANA_LOGIN_RUNS` and the runs its week
 left fits until its reset, each active 16 of 24 hours, at the rate a run spent between earlier
 readings (`fitOf`). More live runs than the week fits reads `oversubscribed`, as `2/1`.

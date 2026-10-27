@@ -24,6 +24,42 @@ describe("cycle.ts", () => {
     expect(result.exitCode).toBe(0);
   }, 30_000);
 
+  it.each([6, 7])("stops a run at %i promotions before waiting for one at five", (promotions) => {
+    const made = fakeHosts();
+    fixtures.push(made.root);
+    const row = (name: string, live: boolean, count: number) => ({
+      name,
+      host: "here",
+      live,
+      promotions: count,
+      compared: count,
+      ending: null,
+      hours: 0,
+    });
+    const reached = row("reached", true, promotions);
+    const short = row("short", true, 5);
+    const rows = [reached, short, row("kept", true, 7), row("closed", false, 7)];
+    const read = () =>
+      made.runScript(SCRIPT, ["reached", "short", "closed", "--keep", "kept"], {
+        FAKE_PREPARED: JSON.stringify(rows),
+      });
+
+    const stop = read();
+    expect(stop.code).toBe(0);
+    expect(stop.out).toContain("step: stop");
+    expect(stop.out.split("\n").filter((line) => line.includes("runs stop"))).toEqual([
+      "  bun --env-file=.env.runs run runs stop reached --yes",
+    ]);
+    reached.live = false;
+    const running = read();
+    expect(running.code).toBe(0);
+    expect(running.out).toContain("step: run · short 5/6");
+    short.live = false;
+    const closed = read();
+    expect(closed.code).toBe(0);
+    expect(closed.out).toContain("step: investigate");
+  });
+
   it("reads a run in a peer's quoted tree, and leaves it unread where the peer fails or is silent", () => {
     const made = fakeHosts();
     fixtures.push(made.root);

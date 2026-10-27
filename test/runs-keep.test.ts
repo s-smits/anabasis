@@ -1,12 +1,23 @@
 // Keeping a campaign going: the turn a keeper takes, and the login it moves the run to.
-import { describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
+import { mkdirSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
-import { nextLogin, seatModels, type Turn, turnOf } from "../tools/runs/keep.ts";
-import { allowedLogins, type Reading, room } from "../tools/runs/logins.ts";
+import { join } from "../src/meta/path.ts";
+import { seats } from "../tools/runs/fresh.ts";
+import { nextLogin, roomFor, type Turn, turnOf } from "../tools/runs/keep.ts";
+import { allowedLogins, billsLogin, type Reading, room } from "../tools/runs/logins.ts";
+import { type Receipt, writeReceipt } from "../tools/runs/receipt.ts";
+import { fakeHosts } from "./helpers/fake-hosts.ts";
 
 const NOW = Date.parse("2026-10-15T12:00:00.000Z");
 const HOUR = 3_600_000;
+const OPUS = "claude/claude-opus-5-5";
+const fixtures: string[] = [];
+
+afterAll(() => {
+  for (const root of fixtures) rmSync(root, { recursive: true, force: true });
+});
 
 const event = (kind: EventKind, data: JsonObject): LogEvent => ({
   at: "2026-10-15T12:00:00.000Z",
@@ -58,14 +69,41 @@ describe("the login a run moves to", () => {
     expect(room(readings, ["2", "3", "4"], new Set(["4"]))).toEqual(["3", "2"]);
   });
 
-  it("leaves a login whose week is nearly spent, whose five hours are, that is refused, or that could not be read", () => {
+  it("takes a nearly spent week first where it resets first, so the week is used before it resets", () => {
+    expect(
+      room(
+        [read("1", 2, 10, "allowed", 90), read("4", 95, 10, "allowed_warning", 50)],
+        ["1", "4"],
+        new Set(),
+      ),
+    ).toEqual(["4", "1"]);
+  });
+
+  it("leaves a login whose week is spent, whose five hours are, that is refused, or that could not be read", () => {
     const readings: Reading[] = [
-      read("1", 90),
+      read("1", 100),
       read("2", 20, 100),
       read("3", 20, 10, "rejected"),
       { login: "4", plain: false, error: "unauthorized" },
     ];
     expect(room(readings, ["1", "2", "3", "4"], new Set())).toEqual([]);
+  });
+
+  it("leaves a login at its live-run cap across the fleet, and waits while a host goes uncounted", async () => {
+    const live = [1, 2].map((n) => ({ name: `run-${n}`, login: "2", host: n === 1 ? "here" : "m1" }));
+    const readAll = (wanted: readonly string[]) =>
+      Promise.resolve(
+        [read("2", 10, 10, "allowed", 1), read("3", 50, 10, "allowed", 40)].filter((reading) =>
+          wanted.includes(reading.login),
+        ),
+      );
+    const env = { ANA_LOGIN_RUNS: "2" };
+    expect(await roomFor(["2", "3"], new Set(), { live, unasked: [] }, readAll, env)).toEqual(["3"]);
+    expect(await roomFor(["2", "3"], new Set(), { live: live.slice(1), unasked: [] }, readAll, env)).toEqual([
+      "2",
+      "3",
+    ]);
+    expect(await roomFor(["2", "3"], new Set(), { live: [], unasked: ["m1"] }, readAll, env)).toEqual([]);
   });
 
   it("allows the logins ANA_LOGINS names, or else every login the environment holds", () => {
@@ -78,38 +116,124 @@ describe("the login a run moves to", () => {
 });
 
 describe("the login a run goes on with", () => {
-  const claude = ["--builder", "claude/claude-opus-5-5", "--solver", "claude/claude-opus-5-5"];
+  const claude = ["--builder", OPUS, "--solver", OPUS];
   const codex = ["--builder", "openai-codex/gpt-6.1-sol", "--solver", "openai-codex/gpt-6.1-sol"];
   const goOn = (
     turn: Turn,
     current: string | undefined,
-    models: readonly string[],
-    { spent = [], roomy = [] }: { spent?: readonly string[]; roomy?: readonly string[] } = {},
-  ) => nextLogin(turn, { current, spent: new Set(spent), models }, async () => roomy, ["3", "1", "2"]);
+    flags: readonly string[],
+    {
+      spent = [],
+      roomy = [],
+      full = [],
+    }: { spent?: readonly string[]; roomy?: readonly string[]; full?: readonly string[] } = {},
+  ) =>
+    nextLogin(
+      turn,
+      { current, spent: new Set(spent), billed: billsLogin([], flags) },
+      async () => roomy,
+      async (login) => full.includes(login),
+    );
 
   it("goes on with a dead run on its own login, and a Claude run waits once its own is spent and none has room", async () => {
     expect(await goOn("continue", "2", claude)).toBe("2");
     expect(await goOn("continue", "2", claude, { spent: ["2"] })).toBeNull();
     expect(await goOn("move", "2", claude, { spent: ["2"], roomy: ["1"] })).toBe("1");
-  });
-
-  it("goes on with a run no Claude seat runs in whatever room the logins have", async () => {
-    expect(await goOn("continue", undefined, codex)).toBe("3");
-    expect(await goOn("continue", "2", codex, { spent: ["2"] })).toBe("2");
     expect(await goOn("continue", undefined, claude)).toBeNull();
   });
 
-  it("reads a Claude seat from a flag joined by its sign, and from the opening the flags leave it to", async () => {
+  it("goes on with a dead run on another login once its own carries its cap of live runs elsewhere", async () => {
+    expect(await goOn("continue", "2", claude, { full: ["2"], roomy: ["3"] })).toBe("3");
+    expect(await goOn("continue", "2", claude, { full: ["2"] })).toBeNull();
+    expect(await goOn("continue", "2", claude, { full: ["3"], roomy: ["3"] })).toBe("2");
+  });
+
+  it("goes on with a run no Claude seat runs in without a login, so no login counts it", async () => {
+    // On 20 October two Codex runs kept on the M1 would have waited for one of three spent logins
+    // none of their seats used; a login named for them counted against its most.
+    expect(await goOn("continue", undefined, codex)).toBeUndefined();
+    expect(await goOn("continue", "2", codex, { spent: ["2"] })).toBeUndefined();
+    expect(await goOn("move", "2", codex, { roomy: ["1"] })).toBeUndefined();
+  });
+
+  it("bills a login for a Claude seat its flags name, by a space or a sign, or its record names", () => {
     const codexOpening = event("campaign.opened", {
       seats: { builder: { model: "openai-codex/gpt-6.1-sol", effort: "high" } },
     });
     const claudeOpening = event("campaign.opened", {
-      seats: { builder: { model: "claude/claude-opus-5-5", effort: "high" } },
+      seats: { builder: { model: OPUS, effort: "high" } },
     });
-    expect(
-      await goOn("continue", undefined, seatModels([codexOpening], ["--builder=claude/claude-opus-5-5"])),
-    ).toBeNull();
-    expect(await goOn("continue", undefined, seatModels([claudeOpening], ["--budget", "800"]))).toBeNull();
-    expect(await goOn("continue", undefined, seatModels([codexOpening], ["--budget", "800"]))).toBe("3");
+    const claudeSolver = event("campaign.setting", {
+      solver: { model: OPUS, effort: "high" },
+      minutes: 30,
+      modelTurns: 20,
+      target: 24,
+    });
+    expect(billsLogin([], [...codex, "--budget", "800"])).toBe(false);
+    expect(billsLogin([codexOpening], [`--builder=${OPUS}`])).toBe(true);
+    expect(billsLogin([claudeOpening], ["--budget", "800"])).toBe(true);
+    expect(billsLogin([codexOpening], ["--budget", "800"])).toBe(false);
+    expect(billsLogin([codexOpening, claudeSolver], [])).toBe(true);
+  });
+
+  it("bills only the effective seats after the campaign's overrides", () => {
+    const preset = seats(OPUS, "hhhh");
+    const overrides = seats("openai-codex/gpt-6.1-sol", "hhhh");
+    expect(billsLogin([], [...preset, ...overrides])).toBe(false);
+    const opening = event("campaign.opened", {
+      seats: Object.fromEntries(
+        ["builder", "examiner", "reviewer"].map((name) => [name, { model: OPUS, effort: "high" }]),
+      ),
+      solver: { model: OPUS, effort: "high" },
+    });
+    expect(billsLogin([opening], overrides)).toBe(false);
+  });
+
+  it("leaves prompt text out of login billing", () => {
+    const gpt = seats("openai-codex/gpt-6.1-sol", "hhhh");
+    expect(billsLogin([], [...gpt, "--prompt", "claude/a domain to investigate"])).toBe(false);
+    expect(billsLogin([], [...gpt, "--prompt=claude/a domain to investigate"])).toBe(false);
+  });
+
+  it("reads the seats past a flag the campaign command does not take", () => {
+    const gpt = seats("openai-codex/gpt-6.1-sol", "hhhh");
+    expect(billsLogin([], [...gpt, "--at", "campaign-value"])).toBe(false);
+    expect(billsLogin([], ["--at", "campaign-value", ...seats(OPUS, "hhhh")])).toBe(true);
+  });
+
+  it("bills a login for all-Claude and mixed seats", () => {
+    const gpt = seats("openai-codex/gpt-6.1-sol", "hhhh");
+    expect(billsLogin([], seats(OPUS, "hhhh"))).toBe(true);
+    expect(billsLogin([], [...gpt, `--reviewer=${OPUS}`])).toBe(true);
+  });
+
+  it("keeps an all-GPT campaign with no login and refuses a Claude campaign there", () => {
+    const made = fakeHosts();
+    fixtures.push(made.root);
+    const folder = join(made.main, ".ana", "d2", "sample");
+    mkdirSync(folder, { recursive: true });
+    const log = join(folder, "log.jsonl");
+    writeFileSync(log, "");
+    const receipt: Receipt = {
+      at: new Date(NOW).toISOString(),
+      pid: 1,
+      flags: seats("openai-codex/gpt-6.1-sol", "hhhh"),
+      envFile: null,
+      commit: made.commit,
+      dirty: false,
+      load: 0,
+      cores: 1,
+    };
+    writeReceipt(log, "run-1", receipt);
+    const command = 'import { keep } from "REPOSITORY/tools/runs/keep.ts"; await keep(["sample"]);';
+    const result = made.run(command);
+    expect(result.err).toBe("");
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("would be kept going");
+    expect(made.recorded().some(({ tool }) => tool === "ssh")).toBe(false);
+    writeReceipt(log, "run-1", { ...receipt, flags: seats(OPUS, "hhhh") });
+    const refused = made.run(command);
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain("no allowed Claude login");
   });
 });

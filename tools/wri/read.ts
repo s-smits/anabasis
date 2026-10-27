@@ -97,9 +97,6 @@ interface PractisedSession {
   readonly child: string;
   /** Frozen and compared states, with the boundary before which practice must have run. */
   readonly read: readonly PracticeCandidate[];
-  /** The reference harness of the comparison, which need not be the one the session started from.
-   *  A report written before 2026-10-09 names none: it compared with its parent. */
-  readonly reference: string;
   readonly round: {
     readonly practice: readonly Solve[];
     readonly scoring: readonly Solve[];
@@ -110,10 +107,7 @@ interface PractisedSession {
 }
 
 /** Lanes 16 to 19: one session's practice, and what its comparison then showed of it. */
-function practiceTriggers(
-  log: Index,
-  { build, changed, child, read, reference, round }: PractisedSession,
-): Trigger[] {
+function practiceTriggers(log: Index, { build, changed, child, read, round }: PractisedSession): Trigger[] {
   const { session, finished, calls } = build;
   // A practice solve's condition names the state it ran under, so the log says by digest whether
   // the harness that was measured is one the Builder tried: an edit made with the shell leaves no
@@ -156,16 +150,18 @@ function practiceTriggers(
   const flipped = failed.filter((fail) => laterPass(fail, true)).length;
   const exposed = round.exposed.size;
   const shell = calls.filter(({ tool }) => tool === "bash").length;
-  // A task lost in one comparison is no loss of another's: recode's b-1 was measured twice.
-  const lost = (solve: Solve) => `${String(solve.comparison)} ${solve.version}`;
-  const lostBefore = new Set(
-    round.scoring.filter((solve) => solve.harness === reference && solve.outcome === "fail").map(lost),
+  // A task won in one comparison is no win of another's: recode's b-1 was measured twice. A win
+  // on the objective or the bill counts as one on validity does: buffer-fresh-gpt-v071's one step,
+  // g-1 on 26 October, won six tasks where all 48 solves were valid, and a reference fail was
+  // asked for until then, so lane 19 could not open on the promotion that most needed it.
+  const wonTasks = new Set(
+    wonOf(log).flatMap((each) => each.won.map((pair) => `${each.session} ${pair.task}`)),
   );
   const quickWins = round.scoring.filter(
     (solve) =>
       solve.harness === child &&
       solve.outcome === "pass" &&
-      lostBefore.has(lost(solve)) &&
+      wonTasks.has(`${String(solve.comparison)} ${solve.version}`) &&
       solve.seconds < solve.wallSeconds * SMALL_WALL_SHARE &&
       solve.calls.length <= FEW_CALLS,
   ).length;
@@ -196,7 +192,7 @@ function practiceTriggers(
       ? [
           fired(
             "WIN AT A SMALL WALL SHARE",
-            `${session}: ${String(quickWins)} passed solves of tasks the reference harness failed, in few calls`,
+            `${session}: ${String(quickWins)} passed solves of tasks the new harness won, in few calls`,
           ),
         ]
       : []),
@@ -212,12 +208,21 @@ function practiceTriggers(
  * recorded (`testedOf`), and only another by this tree's score: on 22 October the score of weighted
  * measures listed as won a task the Linux fork of #306 tied and one it lost, both scored before it.
  */
-function winTriggers(log: Index): Trigger[] {
-  return log.compared.flatMap(({ session, at, last }) => {
+function wonOf(log: Index) {
+  return log.compared.map(({ session, at, last }) => {
     const pairs = pairsReported(log.events, { session, index: at, data: last });
     const tested = testedOf(last);
     const recorded = new Map(tested.of.map((task, index) => [task, tested.differences[index]] as const));
-    const won = pairs.filter((pair) => (recorded.get(pair.task) ?? differenceOf(pair)) > 0);
+    return {
+      session,
+      pairs,
+      won: pairs.filter((pair) => (recorded.get(pair.task) ?? differenceOf(pair)) > 0),
+    };
+  });
+}
+
+function winTriggers(log: Index): Trigger[] {
+  return wonOf(log).flatMap(({ session, pairs, won }) => {
     const named = (side: "old" | "fresh", valid: boolean) =>
       won.flatMap((pair) => pair.solves?.[side].filter((_, index) => pair[side][index] === valid) ?? []);
     return won.length === 0
@@ -356,7 +361,6 @@ function harnessTriggers(log: Index): Trigger[] {
         changed: edited,
         child,
         read: practiceCandidates(log, build, comparisons),
-        reference: text(compared[0]?.own.old) || parent,
         round,
       }),
     ];
@@ -443,6 +447,7 @@ function comparisonTriggers(log: Index): Trigger[] {
     const flips = [...seen.values()].filter((outcomes) => outcomes.size > 1).length;
     const noise = asRecord(last.noise);
     const apart = items(noise?.differences).filter(isNumber);
+    const unbilled = Array.isArray(noise?.unbilled) ? noise.unbilled.filter(isNumber) : undefined;
     return [
       ...(moved > 0
         ? [
@@ -474,7 +479,7 @@ function comparisonTriggers(log: Index): Trigger[] {
         : [
             fired(
               "REFERENCE AGAINST ITSELF",
-              `${session}: ${String(count(noise.wins))} won, ${String(count(noise.losses))} lost and ${String(count(noise.ties))} tied between two samples of the reference harness${readsStepEitherWay(apart, level) ? ", which reads a step where none can be" : ""}`,
+              `${session}: ${String(count(noise.wins))} won, ${String(count(noise.losses))} lost and ${String(count(noise.ties))} tied between two samples of the reference harness${readsStepEitherWay(apart, level, unbilled) ? ", which reads a step where none can be" : ""}`,
             ),
           ]),
     ];
@@ -726,7 +731,7 @@ function rowsOf(log: Index, steps: readonly Handover[]): Row[] {
       lines: [
         `${plural(conditions.length, "condition")}: ${tally(countBy(conditions, (condition) => `${condition.side} ${condition.model}`))}`,
         `host code ${distinct((condition) => condition.host)}, sandbox ${distinct((condition) => condition.sandbox)}, verifier tools ${distinct((condition) => condition.verifierTools)}, harnesses ${distinct((condition) => condition.harness)}`,
-        `${share(done.filter((solve) => !solve.attested).length, done.length)} finished solves name no response model`,
+        `${share(done.filter((solve) => solve.served.length === 0).length, done.length)} finished solves name no response model`,
       ],
     },
     {

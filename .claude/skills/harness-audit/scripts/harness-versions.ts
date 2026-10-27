@@ -21,6 +21,7 @@
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { type Handover, campaignOf } from "#src/campaign/handover.ts";
+import { namesOf } from "#src/campaign/names.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { AGENT_DIR, GENERATED_TOOLS_FILE, GUIDE_FILE, TOOLS_SPEC_FILE } from "#src/meta/bundle-layout.ts";
 import {
@@ -53,16 +54,6 @@ const OPTIONS = { name: "text", log: "abs", json: "flag", diff: "text", against:
 const TOOL_TREE = ".toolchain";
 const GUIDE = `${AGENT_DIR}${GUIDE_FILE}`;
 const PARTS: ReadonlySet<string> = new Set([GUIDE, TOOLS_SPEC_FILE, GENERATED_TOOLS_FILE]);
-/** Where a campaign event names a harness, by the fields that hold its digest. */
-const NAMING = new Map<string, readonly string[]>([
-  ["build.started", ["parent"]],
-  ["build.finished", ["harness"]],
-  ["harness.version", ["parent", "version"]],
-  ["harness.imported", ["harness"]],
-  ["harness.promoted", ["from", "harness"]],
-  ["comparison.started", ["old", "fresh"]],
-  ["comparison.reported", ["old", "fresh"]],
-]);
 
 interface Parts {
   /** Nonblank lines of the guide, null where the state holds none of its own. */
@@ -168,6 +159,19 @@ function madeOf(events: readonly LogEvent[], digest: string, starter: string) {
     ({ kind, data }) => kind === "harness.imported" && data.harness === digest,
   )?.data;
   if (imported !== undefined) return { made: `imported from ${recorded(imported.from)}`, parent: null };
+  // A Builder that leads its campaign freezes a harness with `build.checkpoint` and no parent: its
+  // parent is the session's checkpoint before it, or what the session began from. Until 27 October
+  // this read only `harness.version`, and every harness compared in a led campaign read as made by
+  // no record.
+  const at = events.findIndex(({ kind, data }) => kind === "build.checkpoint" && data.harness === digest);
+  const session = events[at]?.data.session;
+  const before = events.slice(0, Math.max(at, 0)).filter(({ data }) => data.session === session);
+  const parent =
+    before.findLast(({ kind }) => kind === "build.checkpoint")?.data.harness ??
+    before.findLast(({ kind }) => kind === "build.started")?.data.parent;
+  if (isString(parent)) {
+    return { made: `checkpoint of session ${recorded(session)} from ${short(parent)}`, parent };
+  }
   if (digest === starter) {
     return { made: "the Starter Built Harness as this checkout writes it", parent: null };
   }
@@ -211,9 +215,7 @@ export async function versionsOf(keeping: Keeping): Promise<Version[]> {
   const { steps, reference, latest } = campaignOf(events);
   const starter = await starterDigest();
   const states = existsSync(keeping.states) ? readdirSync(keeping.states).sort() : [];
-  const named = events.flatMap(({ kind, data }) =>
-    (NAMING.get(kind) ?? []).map((field) => data[field]).filter(isString),
-  );
+  const named = namesOf(events).keys();
   const digests = [...new Set([...(states.includes(starter) ? [starter] : []), ...named, ...states])];
   return await Promise.all(
     digests.map(async (digest): Promise<Version> => {

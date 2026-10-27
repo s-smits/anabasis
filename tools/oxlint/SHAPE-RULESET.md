@@ -31,9 +31,9 @@ an overhaul has to clear, and **with test** is what the rule costs the day it is
 A reader arriving at this file should not have to read 1,400 lines to learn what is already on.
 
 **52 rules are registered and gating**, 36 in `ana` and 16 in `anti-slop`, every one an `error` in
-`.oxlintrc.json`. `tools/oxlint/simplify.json` holds nothing: the staging file that carried each
-catcher as a warning while its sites were read is empty, so there is no rule in this repository
-that reports without failing a push.
+`.oxlintrc.json`. The staging file that carried each catcher as a warning while its sites were
+read, `tools/oxlint/simplify.json`, emptied and was deleted on 27 October, so there is no rule in
+this repository that reports without failing a push.
 
 **14 of the 52 carry a fixer. 38 report only.** That ratio is the ruleset's normal mode rather
 than an unfinished state, and `tools/oxlint/FIXER-DECISIONS.md` holds the audit: the four
@@ -1056,11 +1056,9 @@ shape carrying both verdicts, and the exactness is the pin.
 shape's argument once and its sites under it. `--all` lists every site; `bun run simplify -- <name>`
 reads one shape.
 
-Nothing the census reports blocks a push, and `tools/oxlint/simplify.json` is loaded by nothing
-else, so a catcher moved into `.oxlintrc.json` is moved on purpose.
-`test/simplify-census.test.ts` holds the two files apart: every rule
-`tools/oxlint/ana/index.ts` registers is named in exactly one of them, never both and never
-neither, because a rule in neither reports nothing and nobody notices.
+Nothing the census reports blocks a push. It read `tools/oxlint/simplify.json` beside the scans
+until 27 October, when that file had long held no rule and went with the scans' rewrite; the
+census now prints the whole-tree scans alone.
 
 Measured over `src`, `tools`, `vendor`, `starters`, `test` and `packages`, the census opened on
 2026-09-20 at **1992 findings across 37 shapes**, reached **92 across 4** the same day, and now

@@ -118,10 +118,31 @@ describe("a seed", () => {
       events: 3,
       of: 5,
       before: "x-1",
+      examinerHome: false,
     });
     // The launch receipts are the source run's, and the source's log is as it was.
     expect(existsSync(join(to, "launch-b-1.json"))).toBe(false);
     expect(readFileSync(join(from, "log.jsonl"), "utf8").endsWith('{"at":"2026')).toBe(true);
+  });
+
+  it("carries the Examiner's home only where no session after the cut replaced it", () => {
+    const lines = [...LINES.slice(0, 4), line("exam.finished", { session: "x-1" }), LINES[4] ?? ""];
+    const from = campaignAt("homed", lines);
+    mkdirSync(join(from, "examiner-home"), { recursive: true });
+    writeFileSync(join(from, "examiner-home", "notes.md"), "x-1 left this\n");
+    const after = seedCampaign(from, join(root, "homed-after"), { before: "b-2" });
+    expect(after.examinerHome).toBe(true);
+    expect(readFileSync(join(root, "homed-after", "examiner-home", "notes.md"), "utf8")).toBe(
+      "x-1 left this\n",
+    );
+    // Cut before x-1 ended, the home is the one x-1 left, which no session at the cut had.
+    for (const [name, cut] of [
+      ["homed-before", { before: "x-1" }],
+      ["homed-inside", { events: "4" }],
+    ] as const) {
+      expect(seedCampaign(from, join(root, name), cut).examinerHome).toBe(false);
+      expect(existsSync(join(root, name, "examiner-home"))).toBe(false);
+    }
   });
 
   it("refuses a name that is taken and a folder with no log, and leaves nothing of a copy that does not read", () => {

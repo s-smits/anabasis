@@ -10,6 +10,7 @@ import { priceKey } from "../src/kernel/meter.ts";
 import { latestBuilt, PATIENCE, promoted } from "../src/kernel/reports.ts";
 import { sizeLines } from "../src/kernel/size.ts";
 import { taskSets, taskVersion } from "../src/kernel/task.ts";
+import { TOOL_TREE_DIR } from "../src/meta/bundle-layout.ts";
 import {
   cpSync,
   lstatSync,
@@ -106,7 +107,7 @@ function layOut(): void {
   );
   cpSync(FIXTURE, join(root, "hb-bundles", "s-c01"), { recursive: true });
   mkdirSync(join(bundle, "correctness-model"), { recursive: true });
-  mkdirSync(join(bundle, ".toolchain", "bin"), { recursive: true });
+  mkdirSync(join(bundle, TOOL_TREE_DIR, "bin"), { recursive: true });
   const execution = {
     families: "all",
     artifactPaths: ["$.answer"],
@@ -169,6 +170,28 @@ describe("the code a solve's condition records", () => {
     mkdirSync(join(tree, "docs"));
     writeFileSync(join(tree, "docs", "plan.md"), "a row\n");
     expect(codeOf(tree).host).toBe(host);
+  });
+
+  it("moves when command code that executes a campaign changes", () => {
+    for (const part of ["tools/d2", "tools/c", "tools/d1b"]) {
+      mkdirSync(join(tree, part), { recursive: true });
+      const file = join(tree, part, "command.ts");
+      writeFileSync(file, "export const a = 1;\n");
+      const host = codeOf(tree).host;
+      writeFileSync(file, "export const a = 2;\n");
+      expect(codeOf(tree).host).not.toBe(host);
+    }
+  });
+
+  it("stays the same when reader or development command code changes", () => {
+    for (const part of ["tools/runs", "tools/wri", "tools/oxlint", "tools/loc", "tools/runtime"]) {
+      mkdirSync(join(tree, part), { recursive: true });
+      const file = join(tree, part, "command.ts");
+      writeFileSync(file, "export const a = 1;\n");
+      const host = codeOf(tree).host;
+      writeFileSync(file, "export const a = 2;\n");
+      expect(codeOf(tree).host).toBe(host);
+    }
   });
 
   // The verifier runs every check under the command's own Bun, so a comparison continued under
@@ -381,7 +404,7 @@ describe("a campaign", () => {
     // The link is made where the states are, since it names the tree relatively.
     const staged = join(campaign.states, "staged");
     cpSync(made, staged, { recursive: true });
-    symlinkSync(join("..", "tree-one"), join(staged, ".toolchain"));
+    symlinkSync(join("..", "tree-one"), join(staged, TOOL_TREE_DIR));
     const built = await place(staged);
     rmSync(staged, { recursive: true });
 
@@ -390,8 +413,8 @@ describe("a campaign", () => {
     // The programs and nothing else: no guide, no tool, and so neither the starter nor the harness.
     expect(opened.guide).toBeNull();
     expect(opened.kinds.size).toBe(0);
-    expect(opened.toolTree).toBe(join(control.dir, ".toolchain"));
-    expect(readFileSync(join(control.dir, ".toolchain", "bin", "engine"), "utf8")).toContain("echo engine");
+    expect(opened.toolTree).toBe(join(control.dir, TOOL_TREE_DIR));
+    expect(readFileSync(join(control.dir, TOOL_TREE_DIR, "bin", "engine"), "utf8")).toContain("echo engine");
     expect(new Set([control.digest, built.digest, least.digest]).size).toBe(3);
     expect(control.dir).toBe(join(campaign.states, control.digest));
     // Asked for again it is the same harness, and nothing half-made is left among the states.
@@ -414,8 +437,8 @@ describe("a campaign", () => {
     const handed = join(root, "handed", "harness");
     cpSync(least.dir, handed, { recursive: true });
     writeFileSync(join(handed, "agent", "BUILT_AGENTS.md"), "Imported: run the engine, then record.\n");
-    mkdirSync(join(handed, ".toolchain", "bin"), { recursive: true });
-    writeFileSync(join(handed, ".toolchain", "bin", "engine"), "#!/bin/sh\necho engine\n", { mode: 0o755 });
+    mkdirSync(join(handed, TOOL_TREE_DIR, "bin"), { recursive: true });
+    writeFileSync(join(handed, TOOL_TREE_DIR, "bin", "engine"), "#!/bin/sh\necho engine\n", { mode: 0o755 });
     const { digest } = await openHarness(handed);
     const flags = ["--name", NAME, "--harness", handed];
     const was = { latest: latestBuilt(read(campaign.log)), promoted: promoted(read(campaign.log)) };
@@ -425,8 +448,8 @@ describe("a campaign", () => {
     expect(imported).toEqual({ digest, dir: join(campaign.states, digest) });
     // Kept under its digest with its programs in a tree beside it, named by a link, as `snapshot`
     // keeps a session's state; and every flag that names a kept harness opens it.
-    expect(lstatSync(join(imported.dir, ".toolchain")).isSymbolicLink()).toBe(true);
-    expect(readFileSync(join(imported.dir, ".toolchain", "bin", "engine"), "utf8")).toContain("echo engine");
+    expect(lstatSync(join(imported.dir, TOOL_TREE_DIR)).isSymbolicLink()).toBe(true);
+    expect(readFileSync(join(imported.dir, TOOL_TREE_DIR, "bin", "engine"), "utf8")).toContain("echo engine");
     expect(await keptAs(campaign, "--parent", digest)).toEqual(imported);
     expect(await keptAs(campaign, "--reference", `programs-of:${digest}`)).not.toEqual(imported);
     // The record says where it came from. The import is no session: `latest` is unmoved, and so
@@ -458,12 +481,37 @@ describe("a campaign", () => {
     layOut();
     await openCampaign({ ...ARGS, name: FRESH });
     const handed = join(root, "fresh", "harness");
-    const engine = join(".toolchain", "bin", "engine");
+    const engine = join(TOOL_TREE_DIR, "bin", "engine");
     cpSync(FIXTURE, handed, { recursive: true });
     mkdirSync(dirname(join(handed, engine)), { recursive: true });
     writeFileSync(join(handed, engine), "#!/bin/sh\necho engine\n", { mode: 0o755 });
     const imported = await importCommand(["--name", FRESH, "--harness", handed]);
     expect(readFileSync(join(imported.dir, engine), "utf8")).toContain("echo engine");
+  });
+
+  it("refuses a harness whose programs link outside the folder it lies in", async () => {
+    // The import copies the programs from where the link resolves, as the host and outside every
+    // wall; a link to the operator's home would hand that home to the next Builder.
+    layOut();
+    await openCampaign({ ...ARGS, name: FRESH });
+    const handed = join(root, "linked", "harness");
+    cpSync(FIXTURE, handed, { recursive: true });
+    const elsewhere = join(root, "elsewhere");
+    mkdirSync(join(elsewhere, "bin"), { recursive: true });
+    // A program of its own, so the harness is none the campaign keeps already.
+    writeFileSync(join(elsewhere, "bin", "engine"), "#!/bin/sh\necho elsewhere\n", { mode: 0o755 });
+    symlinkSync(elsewhere, join(handed, TOOL_TREE_DIR));
+    await expect(importCommand(["--name", FRESH, "--harness", handed])).rejects.toThrow("outside");
+    // A kept state's link to the tree beside it, as another campaign keeps one, is imported.
+    const states = join(root, "other-states");
+    const kept = join(states, "kept");
+    cpSync(FIXTURE, kept, { recursive: true });
+    cpSync(elsewhere, join(states, "tree-1"), { recursive: true });
+    symlinkSync(join("..", "tree-1"), join(kept, TOOL_TREE_DIR));
+    const imported = await importCommand(["--name", FRESH, "--harness", kept]);
+    expect(readFileSync(join(imported.dir, TOOL_TREE_DIR, "bin", "engine"), "utf8")).toContain(
+      "echo elsewhere",
+    );
   });
 
   it("says which harnesses a campaign keeps when --parent names none of them", async () => {
@@ -575,9 +623,9 @@ describe("a campaign", () => {
     const valid = { old: [8, 0, 0], fresh: [4, 0, 4], informative: { old: 0, fresh: 0 } };
     const frontier = { ...scored, tasks: ["v1", "v2", "v3", "v4", "v5", "v6", "v7"], aside: [] };
     expect(reportLines({ valid, objective: null, scored, frontier, noise: null }).slice(0, 2)).toEqual([
-      "the step is read on 8 tallied tasks, 4 of them untied: one reading at the comparison's level detects four times in five a harness that wins 95% of them",
+      "the test on the full score is read on 8 tallied tasks, 4 of them untied: one reading at the comparison's level detects four times in five a harness that wins 95% of them",
       // Beside the level, the test's own rate at the report's margins.
-      "one reading at these margins reads a step between equal harnesses 2% of the time, never more than the level",
+      "the test on the full score at these margins clears the level between equal harnesses 2% of the time, never more than the level: an upper bound for the rule requiring both tests",
     ]);
     // A report written before 20 October read its step, and these two, on its frontier alone.
     expect(reportLines({ valid, objective: null, frontier, noise: null }).at(0)).toContain(
@@ -617,11 +665,11 @@ describe("a campaign", () => {
       "the reference against itself, on halves of its own solves mirrored in time (the A/A), over the 8 tallied tasks, 2 of them untied:",
       "  tie share 75%: the share of tasks two equal harnesses tied at half the comparison's solves a side, where equal harnesses tie more often than at the comparison's own, so no floor for its ties",
       "  flip rate 13%: how often two of its solves of one task disagree on validity",
-      "  least detectable shift: none, too few of its tasks are untied for any shift between its halves to read as a step, so its reading no step shows little",
+      "  least detectable shift on the full score alone: none, too few of its tasks are untied for any shift between its halves to clear the level, so its reading no step shows little",
       "of the 8 tasks the comparison drew, 6 were tallied and 1 set aside on a rejection not ruled a true fail, 1 disputed: the columns below, room and the test are read over the tallied ones",
     ]);
     expect(lines(0.9)[3]).toBe(
-      "  least detectable shift: one reading of it, either half read at the level, detects four times in five a half that wins 90% of its untied tasks",
+      "  least detectable shift on the full score alone: one reading of it, either half read at the level, detects four times in five a half that wins 90% of its untied tasks",
     );
     expect(ROUND_OPTIONS).not.toHaveProperty("budget");
     // Where the report carries points, the points each measure gave are said beside.

@@ -1,35 +1,38 @@
 #!/usr/bin/env bun
 /**
- * Publish a consolidated stack: every pull request's new head in one push, the absorbed pull
- * requests closed, and the native stack linked again.
+ * Publish a consolidated stack in the order of `--head`, bottom to top.
  *
  *   bun .claude/skills/stack-pr/scripts/republish.ts --head <pr>=<commit> ... [--absorb <pr>=<into>] ...
  *     [--yes] [--no-verify]
  *
- * Without `--yes` it only shows each branch before and after, and the commands it would run. With
- * it, it pushes every moved head atomically, each with a lease on the head GitHub showed, closes each
- * absorbed pull request with a comment naming where its change went, and links the survivors bottom
- * to top. A pull request on the stack that `--head` does not name keeps its head.
+ * Without `--yes` it shows each branch before and after, and every operation in order. With it,
+ * it unstacks, retargets every survivor to main, pushes moved heads atomically with leases on the
+ * heads GitHub showed, sets bases bottom to top, closes absorbed pull requests with a comment naming
+ * where their changes went, and relinks. Unnamed survivors follow the named ones in their old order
+ * and keep their heads; name every survivor when reordering the whole stack.
  *
  * The consolidation of 25 October did these steps by hand, and each went wrong once or nearly did: zsh
  * read `$sha:refs/...` as a `:r` modifier, macOS's /bin/bash 3.2 has no `mapfile`, and main was
  * rewritten mid-consolidation (same tree, new commits), so a stack built on the old main had to be
  * replayed before it could land. So the script runs git without a shell, refuses before it writes
  * anything unless the bottom holds origin/main's head and each head holds the one beneath it (what
- * `bun run land` will ask), and unstacks before it links, since GitHub refuses a base edit inside a
- * native stack. `--no-verify` passes the operator's word to skip the pre-push hook; the stack stays
+ * `bun run land` will ask). On 25 October pushing reordered heads while their old bases remained
+ * attached let GitHub mark #390 and #392 merged into intermediate branches. Unstacking and
+ * retargeting must therefore precede the push, as the hostile test of 26 October checks.
+ * `--no-verify` passes the operator's word to skip the pre-push hook; the stack stays
  * unproved until `bun run land -- <top> --sanitize`.
  */
 import { CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { gitMaybe, gitText } from "#src/meta/git.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
+import { shellQuote } from "#src/wall/isolation.ts";
 import { short } from "#tools/runtime/gate.ts";
 import { ghOrThrow, openPulls, type Pull } from "#tools/runtime/land.ts";
-import type { NativeStack } from "./follow.ts";
+import { type NativeStack, STACKS } from "./follow.ts";
 import { chain } from "./stack.ts";
 
-/** One surviving pull request: its new head, and the base the link gives it. */
+/** One surviving pull request: its new head and final base. */
 interface Move {
   readonly pull: Pull;
   readonly to: string;
@@ -87,7 +90,10 @@ export function planConsolidation(
   };
   for (const number of [...heads.keys(), ...absorbed.keys(), ...absorbed.values()]) onStack(number);
   const gone = line.filter((pull) => absorbed.has(pull.number));
-  const kept = line.filter((pull) => !absorbed.has(pull.number));
+  const kept = [
+    ...[...heads.keys()].map(onStack),
+    ...line.filter((pull) => !heads.has(pull.number) && !absorbed.has(pull.number)),
+  ];
   for (const pull of gone) {
     if (heads.has(pull.number)) throw new CommandFailure(`${named(pull)} is absorbed and given a head`);
     const into = absorbed.get(pull.number) ?? 0;
@@ -98,13 +104,14 @@ export function planConsolidation(
     }
   }
   const trunk = gitText(root, "rev-parse", "--verify", "origin/main^{commit}");
-  const bottom = line[0]?.baseRefName ?? "main";
   const moves = kept.map((pull, index): Move => {
     const given = heads.get(pull.number);
     const to = given === undefined ? pull.headRefOid : commitOf(root, pull, given);
-    return { pull, to, base: kept[index - 1]?.headRefName ?? bottom };
+    return { pull, to, base: kept[index - 1]?.headRefName ?? "main" };
   });
-  const changed = moves.some((move) => move.to !== move.pull.headRefOid) || gone.length > 0;
+  const changed =
+    moves.some((move) => move.to !== move.pull.headRefOid || move.base !== move.pull.baseRefName) ||
+    gone.length > 0;
   if (!changed) throw new CommandFailure("nothing moves: every head is as GitHub shows it");
   for (const [index, move] of moves.entries()) {
     const beneath = moves[index - 1];
@@ -140,10 +147,9 @@ export function pushArgs(plan: Consolidation, verify: Verify): string[] {
   ];
 }
 
-/** Each branch before and after, and what `--yes` would do. */
-function shown(plan: Consolidation, verify: Verify): string[] {
+/** Each branch before and after. The publisher below owns the operation order in both modes. */
+function shown(plan: Consolidation): string[] {
   const top = plan.moves.at(-1);
-  const push = pushArgs(plan, verify);
   return [
     `origin/main at ${short(plan.trunk)}`,
     ...plan.moves.map((move) => {
@@ -158,8 +164,6 @@ function shown(plan: Consolidation, verify: Verify): string[] {
     ...plan.absorbed.map(
       ({ pull, into }) => `${named(pull)}  ${pull.headRefName}  closed into #${String(into)}`,
     ),
-    push.length === 0 ? "nothing to push" : `git ${push.join(" ")}`,
-    `gh stack unstack <each open stack holding these>; gh stack link ${plan.moves.map((move) => move.pull.number).join(" ")}`,
     ...(top === undefined || top.to === top.pull.headRefOid
       ? []
       : [
@@ -168,36 +172,39 @@ function shown(plan: Consolidation, verify: Verify): string[] {
   ];
 }
 
-/** Push, close what was absorbed, and link the survivors again as one native stack. */
+/** Show or carry out the same sequence, detaching every surviving base before any head moves. */
 export function republish(
   root: string,
   plan: Consolidation,
   verify: Verify,
   gh: (args: readonly string[]) => string,
+  mode: "publish" | "dry-run" = "publish",
 ): string[] {
   const said: string[] = [];
-  const push = pushArgs(plan, verify);
-  if (push.length > 0) {
-    gitText(root, ...push);
-    said.push(`pushed ${String(push.filter((arg) => arg.startsWith("--force-with-lease")).length)} heads`);
-  }
+  const run = (tool: "git" | "gh", args: readonly string[]) => {
+    said.push(`${tool} ${args.map(shellQuote).join(" ")}`);
+    if (mode === "dry-run") return;
+    if (tool === "git") gitText(root, ...args);
+    else gh(args);
+  };
   const touched = new Set([...plan.moves, ...plan.absorbed].map(({ pull }) => pull.number));
-  const stacks = parseJsonAs<NativeStack[]>(gh(["api", "repos/{owner}/{repo}/stacks"])).filter(
+  const stacks = parseJsonAs<NativeStack[]>(gh(["api", STACKS])).filter(
     (stack) => stack.open && stack.pull_requests.some((pull) => touched.has(pull.number)),
   );
   for (const stack of stacks) {
-    gh(["stack", "unstack", String(stack.number)]);
-    said.push(`unstacked ${String(stack.number)}`);
+    run("gh", ["stack", "unstack", String(stack.number)]);
   }
+  for (const { pull } of plan.moves) run("gh", ["pr", "edit", String(pull.number), "--base", "main"]);
+  const push = pushArgs(plan, verify);
+  if (push.length > 0) run("git", push);
+  for (const { pull, base } of plan.moves) run("gh", ["pr", "edit", String(pull.number), "--base", base]);
   for (const { pull, into } of plan.absorbed) {
     const at = short(plan.moves.find((move) => move.pull.number === into)?.to ?? "");
     const note = `Closed when the stack was consolidated: this change is now part of #${String(into)} at ${at}.`;
-    gh(["pr", "close", String(pull.number), "--comment", note]);
-    said.push(`closed ${named(pull)} into #${String(into)}`);
+    run("gh", ["pr", "close", String(pull.number), "--comment", note]);
   }
   const survivors = plan.moves.map((move) => String(move.pull.number));
-  gh(["stack", "link", ...survivors]);
-  said.push(`linked #${survivors.join(", #")}`);
+  run("gh", ["stack", "link", ...survivors]);
   return said;
 }
 
@@ -219,9 +226,16 @@ if (import.meta.main) {
       );
       const plan = planConsolidation(root, openPulls(root), pairs("head", args.list("head")), absorbed);
       const verify: Verify = args.flag("no-verify") ? "no-verify" : "verify";
-      console.log(shown(plan, verify).join("\n"));
-      if (!args.flag("yes")) return;
-      console.log(republish(root, plan, verify, (gh) => ghOrThrow(root, gh)).join("\n"));
+      console.log(shown(plan).join("\n"));
+      console.log(
+        republish(
+          root,
+          plan,
+          verify,
+          (gh) => ghOrThrow(root, gh),
+          args.flag("yes") ? "publish" : "dry-run",
+        ).join("\n"),
+      );
     },
   );
 }

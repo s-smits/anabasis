@@ -31,13 +31,13 @@ import { ranWith, receipts, sources } from "../tools/runs/receipt.ts";
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-skill-scripts-")));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
-const pull = (number: number, head: string, base: string): Pull => ({
+const pull = (number: number, head: string, base: string, labels: readonly string[] = []): Pull => ({
   number,
   headRefName: head,
   baseRefName: base,
   headRefOid: String(number).repeat(40).slice(0, 40),
   isDraft: false,
-  labels: [],
+  labels: labels.map((name) => ({ name })),
 });
 
 describe("the stack", () => {
@@ -56,6 +56,19 @@ describe("the stack", () => {
     expect(stackTold(pulls, "a").at(-1)).toBe("stacked on it: #9, #2. It takes new commits only");
     expect(stackTold(pulls, "side")[1]).toBe("beside the stack");
     expect(() => stackTold(pulls, "gone")).toThrow(CommandFailure);
+  });
+
+  it("ends each line in its importance, and says unranked where land would refuse it", () => {
+    const ranked = [
+      pull(1, "a", "main", ["importance:I1", "bug"]),
+      pull(2, "b", "a"),
+      pull(3, "c", "b", ["importance:I0", "importance:I3"]),
+    ];
+    expect(
+      stackTold(ranked, null)
+        .slice(0, 3)
+        .map((line) => line.split("  ").at(-1)),
+    ).toStrictEqual(["I1", "unranked", "unranked"]);
   });
 
   it("starts a chain on a base that has landed, and says so of an empty list", () => {
@@ -219,7 +232,68 @@ describe("republishing a consolidated stack", () => {
   const heads = pairs("head", [`1=${a1}`, `#2=${b1}`]);
   const absorbed = new Map([[3, 2]]);
 
-  it("pushes every moved head with a lease on the head GitHub showed, closes what was absorbed and relinks", () => {
+  it("takes the survivor order from --head and refuses heads outside that ancestry", () => {
+    const reordered = pairs("head", [`2=${a1}`, `1=${b1}`]);
+    const plan = planConsolidation(co, pulls, reordered, new Map([[3, 1]]));
+    expect(plan.moves.map((move) => [move.pull.number, move.to, move.base])).toStrictEqual([
+      [2, a1, "main"],
+      [1, b1, "b"],
+    ]);
+    expect(() =>
+      planConsolidation(co, pulls, pairs("head", [`2=${b1}`, `1=${a1}`]), new Map([[3, 1]])),
+    ).toThrow("does not hold #2's");
+  });
+
+  it("prints every publication operation in order in a dry run without changing a head or GitHub", () => {
+    const plan = planConsolidation(co, pulls, heads, absorbed);
+    const asked: string[] = [];
+    const said = republish(
+      co,
+      plan,
+      "no-verify",
+      (args) => {
+        asked.push(args.join(" "));
+        return capturedJsonStringify([
+          { number: 7, open: true, pull_requests: [{ number: 1, state: "open", head: { ref: "a" } }] },
+        ]);
+      },
+      "dry-run",
+    );
+    expect([sha(up, "a"), sha(up, "b")], "a dry run must leave the heads unchanged").toStrictEqual([a0, b0]);
+    expect(asked).toStrictEqual(["api repos/{owner}/{repo}/stacks"]);
+    expect(said).toStrictEqual([
+      "gh 'stack' 'unstack' '7'",
+      "gh 'pr' 'edit' '1' '--base' 'main'",
+      "gh 'pr' 'edit' '2' '--base' 'main'",
+      `git ${pushArgs(plan, "no-verify")
+        .map((arg) => `'${arg}'`)
+        .join(" ")}`,
+      "gh 'pr' 'edit' '1' '--base' 'main'",
+      "gh 'pr' 'edit' '2' '--base' 'a'",
+      `gh 'pr' 'close' '3' '--comment' 'Closed when the stack was consolidated: this change is now part of #2 at ${b1.slice(0, 9)}.'`,
+      "gh 'stack' 'link' '1' '2'",
+    ]);
+  });
+
+  it("leaves every head alone if a survivor cannot be retargeted", () => {
+    const plan = planConsolidation(co, pulls, heads, absorbed);
+    const asked: string[] = [];
+    expect(() =>
+      republish(co, plan, "no-verify", (args) => {
+        asked.push(args.join(" "));
+        if (args.join(" ") === "pr edit 2 --base main") throw new CommandFailure("retarget refused");
+        return "[]";
+      }),
+    ).toThrow("retarget refused");
+    expect(asked).toStrictEqual([
+      "api repos/{owner}/{repo}/stacks",
+      "pr edit 1 --base main",
+      "pr edit 2 --base main",
+    ]);
+    expect([sha(up, "a"), sha(up, "b")]).toStrictEqual([a0, b0]);
+  });
+
+  it("unstacks and retargets every survivor before pushing leased heads, then sets bases, closes and relinks", () => {
     const plan = planConsolidation(co, pulls, heads, absorbed);
     expect(plan.moves.map((move) => [move.pull.number, move.to, move.base])).toStrictEqual([
       [1, a1, "main"],
@@ -241,14 +315,24 @@ describe("republishing a consolidated stack", () => {
       { number: 7, open: true, pull_requests: [{ number: 3, state: "open", head: { ref: "c" } }] },
     ];
     const said = republish(co, plan, "no-verify", (args) => {
+      if (sha(up, "a") === a1 && !asked.includes("git push")) asked.push("git push");
       asked.push(args.join(" "));
       return args[0] === "api" ? capturedJsonStringify(stacks) : "";
     });
-    expect(said).toContain("pushed 2 heads");
+    expect(said).toContain(
+      `git ${pushArgs(plan, "no-verify")
+        .map((arg) => `'${arg}'`)
+        .join(" ")}`,
+    );
     expect([sha(up, "a"), sha(up, "b"), sha(up, "c")]).toStrictEqual([a1, b1, c0]);
-    expect(asked).toStrictEqual([
+    expect(asked, "heads must be pushed only after unstacking and retargeting every survivor").toStrictEqual([
       "api repos/{owner}/{repo}/stacks",
       "stack unstack 7",
+      "pr edit 1 --base main",
+      "pr edit 2 --base main",
+      "git push",
+      "pr edit 1 --base main",
+      "pr edit 2 --base a",
       `pr close 3 --comment Closed when the stack was consolidated: this change is now part of #2 at ${b1.slice(0, 9)}.`,
       "stack link 1 2",
     ]);

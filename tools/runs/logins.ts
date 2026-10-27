@@ -44,6 +44,8 @@
  * every login the environment holds where it is unset. Until 15 October this was a script of the
  * operator's, which read the checkout's `.env` itself, and a shell loop applied the room rule.
  */
+import { openingOf, SEATS } from "#src/campaign/opening.ts";
+import type { LogEvent } from "#src/kernel/log.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { mainTree } from "#src/meta/git.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
@@ -53,6 +55,8 @@ import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
+import { looseFlagsOf } from "../d2/campaign-terms.ts";
+import { recordedSetting } from "../d2/setting.ts";
 import { asked } from "./hosts.ts";
 import { hostsOf } from "./host-config.ts";
 import { type Live, liveHere, liveOf } from "./live.ts";
@@ -97,8 +101,6 @@ const WEEK = 168 * HOUR;
 const AHEAD = 4 * WEEK;
 const STEP = HOUR / 12;
 const KEPT_MS = 8 * 24 * HOUR;
-/** A login's week past this share has no room for a run moved to it (`room`). */
-const FULL_WEEK = 90;
 /** The share of a day a run is taken to be active when a week is read for how many runs it fits:
  *  16 of 24 hours (operator, 22 October). */
 const ACTIVE_SHARE = 16 / 24;
@@ -126,6 +128,18 @@ export function allowedLogins(env: Readonly<Record<string, string | undefined>>)
   return named === undefined || named.length === 0 ? loginsIn(env) : named;
 }
 
+/** Whether a run bills a Claude login: whether an effective seat is a `claude/` model. The last
+ *  flag for each seat overrides its opening, with the setting as the solver's fallback. The pickers
+ *  that choose a login (`fresh`, `keep`) ask it; the launcher names only the login it is given. */
+export function billsLogin(events: readonly LogEvent[], flags: readonly string[]): boolean {
+  const values = looseFlagsOf(flags);
+  const opening = openingOf(events);
+  return [
+    ...SEATS.map((seat) => values[seat] ?? opening?.seats[seat]?.model),
+    values.solver ?? opening?.solver?.model ?? recordedSetting(events)?.solver?.model,
+  ].some((model) => isString(model) && model.startsWith("claude/"));
+}
+
 /** The most live runs `login` may carry, from `ANA_LOGIN_RUNS` such as `2,1:4`: a bare number for
  *  every login, `N:most` for login N. `null` where it names neither. */
 export function capOf(env: Readonly<Record<string, string | undefined>>, login: string): string | null {
@@ -134,6 +148,21 @@ export function capOf(env: Readonly<Record<string, string | undefined>>, login: 
     entries.find(([who, most]) => who === login && most !== undefined)?.[1] ??
     entries.find(([most, rest]) => most !== "" && rest === undefined)?.[0] ??
     null
+  );
+}
+
+/** The logins of `allowed` that carry as many live runs across the fleet (`live`) as their cap,
+ *  which takes no other run: neither a fresh one nor one a keeper moves. */
+export function atCap(
+  env: Readonly<Record<string, string | undefined>>,
+  allowed: readonly string[],
+  live: readonly Live[],
+): Set<string> {
+  return new Set(
+    allowed.filter((login) => {
+      const cap = capOf(env, login);
+      return cap !== null && live.filter((run) => run.login === login).length >= Number(cap);
+    }),
   );
 }
 
@@ -274,21 +303,23 @@ const resetOf = (iso: string | null): number | null => {
 };
 
 /** The logins of `readings` a run may move to, the week that resets soonest first: in `allowed`,
- *  not in `spent`, its week under 90% and neither window refused. */
+ *  not in `spent`, neither window used up or refused. A nearly spent week is taken first where it
+ *  resets first, so each login's week is used before it resets, and a run that meets the limit
+ *  waits it out or moves on (operator, 25 October; until then a week past 90% was left). */
 export function room(
   readings: readonly Reading[],
   allowed: readonly string[],
   spent: ReadonlySet<string>,
 ): string[] {
-  const open = (window: Window, below: number) =>
-    (window.status ?? "allowed").startsWith("allowed") && (window.pct ?? 0) < below;
+  const open = (window: Window) =>
+    (window.status ?? "allowed").startsWith("allowed") && (window.pct ?? 0) < 100;
   return readings
     .flatMap((reading) =>
       "error" in reading ||
       !allowed.includes(reading.login) ||
       spent.has(reading.login) ||
-      !open(reading.sevenDay, FULL_WEEK) ||
-      !open(reading.fiveHour, 100)
+      !open(reading.sevenDay) ||
+      !open(reading.fiveHour)
         ? []
         : [{ login: reading.login, reset: resetOf(reading.sevenDay.resetsAt) ?? Number.POSITIVE_INFINITY }],
     )

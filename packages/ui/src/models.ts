@@ -211,6 +211,9 @@ export interface ComparisonBar {
     readonly tally: Tally;
     readonly p: number;
     readonly differences: readonly number[];
+    /** Each task's score without the bill, or its score where a report written before 26 October
+     *  holds none, which keeps that report's scored-only reading. */
+    readonly unbilled: readonly number[];
   } | null;
   /** The Referee's last ruling of each of its rejections, as the handover counts them, by kind only
    *  while none is withheld. */

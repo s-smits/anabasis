@@ -3,12 +3,12 @@
 // or of tasks, and the rule a promotion by hand is held to.
 
 import { describe, expect, it } from "bun:test";
-import { decide, epochReleased, practiceRoom, unpromoted } from "../src/campaign/decide.ts";
+import { decide, epochReleased, practiceRoom, shortOf, unpromoted } from "../src/campaign/decide.ts";
 import type { Plan } from "../src/campaign/ground.ts";
 import { pendingWords } from "../src/campaign/word.ts";
-import { sweepOf } from "../src/kernel/compare.ts";
+import { sweepOf, tally as tallyPairs } from "../src/kernel/compare.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
-import { releaseOrder, stopRule } from "../src/kernel/reports.ts";
+import { pairsReported, lastReports, poolOf, releaseOrder, stopRule } from "../src/kernel/reports.ts";
 import { conditionId } from "../src/kernel/condition.ts";
 import { taskSets } from "../src/kernel/task.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
@@ -25,7 +25,7 @@ const HALF: Valid = [4, 4, 4];
 const ALL: Valid = [0, 0, 12];
 const NONE: Valid = [12, 0, 0];
 const SHORT_WHY =
-  "the campaign holds fewer tasks a step can be read on than a step takes: those the reference harness answered in every solve, and those held out before its promotion that it has stood in no comparison of, are read apart";
+  "the campaign holds fewer frontier tasks than a sweep plus one set-aside task and one tie needs: those the reference harness answered in every solve, and those held out before its promotion that it has stood in no comparison of, are read apart";
 const PLAN: Plan = {
   sessions: 1,
   // The plan's three, which these rows were written against; the default is six (`PATIENCE`).
@@ -138,6 +138,18 @@ const promotedOn = (fresh: Valid) => [
 ];
 
 describe("a row of the table", () => {
+  it("short: asks for tasks at frontier six and compares at eight at level 0.02", () => {
+    const plan = { ...PLAN, wanted: { target: 8, level: 0.02 } };
+    const log = [...SIX, built("b-1", "h1"), ...compared("g-1", "h1", "no-step"), built("b-2", "h2")];
+    expect(decide(log, plan)).toMatchObject({ move: "examine", code: "short" });
+    expect(shortOf(log, plan)).toBe(2);
+    expect(shortOf(log, { ...plan, wanted: { ...plan.wanted, target: 6 } })).toBe(2);
+    expect(decide([...log, ...HELD.slice(6, 8).flatMap(heldOut)], plan)).toMatchObject({
+      move: "compare",
+      code: "unread",
+    });
+  });
+
   it("stop: a stop the operator left ends the campaign, once", () => {
     const word = (data: JsonObject) => event("campaign.word", data);
     const stopped = [...FIRST, word({ word: "tasks" }), word({ word: "stop", why: "the host is needed" })];
@@ -588,7 +600,7 @@ describe("a row of the table", () => {
     // solve: one to win, where a reading at the level takes four, and the reference at three solves
     // in four leaves room. At twelve tasks the two cannot both hold: one task to untie means eleven
     // closed, which is no room, and the no-room row answers.
-    const small = { ...PLAN, wanted: { ...PLAN.wanted, target: 4 } };
+    const small = { ...PLAN, wanted: { ...PLAN.wanted, target: 6 } };
     const tied = [
       READ,
       ...HELD.slice(0, 4).flatMap(heldOut),
@@ -609,7 +621,7 @@ describe("a row of the table", () => {
     });
     expect(move([...tied, built("b-2", "h2")], small)).toEqual({ move: "examine", why: SHORT_WHY });
     // Tasks held out since count whole, and the comparison is admitted.
-    const more = ["v13", "v14", "v15", "v16"].flatMap(heldOut);
+    const more = ["v13", "v14", "v15", "v16", "v17"].flatMap(heldOut);
     expect(move([...tied, built("b-2", "h2"), ...more], small)).toMatchObject({ move: "compare" });
     // A comparison that tallied no task says nothing of the ones it set aside.
     const aside = compared("g-1", "h1", "not-scored", { extra: { versions: [], aside: HELD } });
@@ -804,9 +816,9 @@ describe("a hold on the move a row named", () => {
     expect(epochReleased(after).epoch).toBe(1);
   });
 
-  it("practice: a top-up before the first promotion leaves a sweep of frontier tasks held", () => {
-    const floor = sweepOf(0.02);
-    for (const held of [2, floor, floor + 2]) {
+  it("practice: a top-up leaves a sweep plus one set-aside task and one tie held", () => {
+    const floor = sweepOf(0.02) + 2;
+    for (const held of [2, 6, 7, floor, floor + 2]) {
       const tasks = HELD.slice(0, held);
       const log = [...RELEASED, ...tasks.flatMap(heldOut)];
       const room = practiceRoom(log, 0.02);
@@ -821,22 +833,93 @@ describe("a hold on the move a row named", () => {
     expect(releaseOrder(log, tasks, Math.min(1, practiceRoom(log, 0.02)), "seed")).toHaveLength(1);
   });
 
-  it("practice: a release after a promotion leaves a sweep of frontier tasks held", () => {
+  it("practice: the allowance and released tasks stay the same whichever objective task the new harness won", () => {
+    const tasks = ["a", "b", ...HELD.slice(0, 7)];
+    const won = (task: string) => {
+      const round = roundSolves("g-room", ["start", "h1"], { a: "PP PP", b: "PP PP" });
+      const starts = round.events.filter(({ kind }) => kind === "solve.started");
+      // A already has room between the reference's own answers; B has none. The fresh
+      // answers either win A and lose B, or lose A and win B, preserving the tally.
+      const measures = task === "a" ? [10, 5, 1, 1, 10, 10, 20, 20] : [10, 5, 20, 20, 10, 10, 1, 1];
+      return [
+        ...RELEASED,
+        ...tasks.flatMap(heldOut),
+        ...round.events,
+        ...starts.map(({ data }, index) =>
+          event("verdict", {
+            solve: data.solve ?? "",
+            kind: "pass",
+            answer: {},
+            objective: measures[index] ?? 0,
+          }),
+        ),
+        event("comparison.reported", {
+          session: "g-room",
+          old: "start",
+          fresh: "h1",
+          starter: "start",
+          reading: "no-step",
+          scored: { wins: 1, losses: 1, ties: 0 },
+          ...round.terms,
+          objective: { direction: "lower", margin: 0.01 },
+        }),
+      ];
+    };
+    for (const extra of [0, 1]) {
+      const logs = [won("a"), won("b")].map((events) => [
+        ...events,
+        ...HELD.slice(7, 7 + extra).flatMap(heldOut),
+      ]);
+      const released = logs.map((events) =>
+        releaseOrder(events, taskSets(events).held, practiceRoom(events, 0.02), "seed"),
+      );
+      const tallies = logs.map((events) =>
+        tallyPairs(lastReports(events).flatMap((report) => pairsReported(events, report))),
+      );
+      expect(tallies[0]).toEqual(tallies[1]);
+      expect(logs.map((events) => poolOf(events).frontier.length)).toEqual([8 + extra, 9 + extra]);
+      expect(logs.map((events) => practiceRoom(events, 0.02))).toEqual([extra, extra]);
+      expect(released[0]).toEqual(released[1]);
+      expect(released[0]?.map(([version]) => version)).toEqual(extra === 0 ? [] : ["a"]);
+    }
+  });
+
+  it("practice: an answer from the other harness alone cannot increase the feasibility allowance", () => {
+    const log = (fresh: string) => [
+      ...RELEASED,
+      ...["u", ...HELD.slice(0, 8)].flatMap(heldOut),
+      ...["g-1", "g-2"].flatMap((session) =>
+        compared(session, "h1", "no-step", {
+          solved: { u: `FF ${fresh}` },
+        }),
+      ),
+    ];
+    expect(["PP", "FF"].map((fresh) => practiceRoom(log(fresh), 0.02))).toEqual([0, 0]);
+    // Independent feasibility keeps the failed task available for the sweep.
+    for (const proof of [
+      event("task.feasible", { version: "u" }),
+      event("task.gate", { version: "u", reference: { valid: 1 } }),
+    ]) {
+      expect(practiceRoom([...log("FF"), proof], 0.02)).toBe(1);
+    }
+  });
+
+  it("practice: a release after a promotion leaves the admission margin held", () => {
     // Each release is one task fewer to compare. The first release still bootstraps practice.
     const eight = HELD.slice(0, 8).flatMap(heldOut);
     expect(practiceRoom(eight, 0.1)).toBe(Infinity);
-    // Eight held after a promotion: four may go, past the four a sweep at 0.1 takes. One
-    // released, three more (until 16 October one in four of them bound it at two).
+    // Eight held after a promotion: two may go, leaving four for a sweep at 0.1 and the margin.
+    // Once one is released, one more may go.
     // Held after it: a task held out before the promotion that the promoted harness has stood in
     // no comparison of is retained, and no room (`poolOf`).
     expect(practiceRoom([...eight, promotion("h1")], 0.1)).toBe(0);
     const promoted = [promotion("h1"), ...eight];
-    expect(practiceRoom(promoted, 0.1)).toBe(4);
+    expect(practiceRoom(promoted, 0.1)).toBe(2);
     const one = [...promoted, event("task.state", { version: "v1", state: "released" })];
-    expect(practiceRoom(one, 0.1)).toBe(3);
-    // Five held leave one over the four a sweep at 0.1 takes, and four none.
-    expect(practiceRoom([promotion("h1"), ...HELD.slice(0, 5).flatMap(heldOut)], 0.1)).toBe(1);
-    expect(practiceRoom([promotion("h1"), ...HELD.slice(0, 4).flatMap(heldOut)], 0.1)).toBe(0);
+    expect(practiceRoom(one, 0.1)).toBe(1);
+    // Seven held leave one over the admission floor at 0.1, and six none.
+    expect(practiceRoom([promotion("h1"), ...HELD.slice(0, 7).flatMap(heldOut)], 0.1)).toBe(1);
+    expect(practiceRoom([promotion("h1"), ...HELD.slice(0, 6).flatMap(heldOut)], 0.1)).toBe(0);
     // Four the promoted harness answered in every solve leave four it may win, and a sweep takes
     // four: a task it closed can only tie, and is no room. buffer-159-opus held 28 after its
     // promotion, 14 of them exhausted and 6 frontier, and counted over the 28 the room was 7.

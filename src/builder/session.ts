@@ -279,6 +279,21 @@ export async function keepPractised(log: string, id: string, states: string): Pr
   append(log, "build.checkpoint", { session: id, harness });
 }
 
+/** The released tasks' public parts as `practice/<task>.json` of a Builder's home, laid afresh. A
+ *  session lays them as it opens and a campaign again after a release, so a link a Builder left
+ *  there is removed, never written through. */
+export function layPractice(home: string, tasks: readonly PracticeTask[]): void {
+  const folder = join(home, "practice");
+  rmSync(folder, { recursive: true, force: true });
+  mkdirSync(folder, { recursive: true });
+  for (const { task } of tasks) {
+    writeFileSync(
+      join(folder, `${task.taskId.replace(/[^A-Za-z0-9._-]+/g, "-")}.json`),
+      `${capturedJsonStringify(publicView(task), null, 2)}\n`,
+    );
+  }
+}
+
 /**
  * The session over a home and a host-only folder that already exist. `walled` supplies the tools
  * that need the command wall, so that everything else here runs, and is tested, without one.
@@ -304,7 +319,7 @@ export async function session(
     );
   }
   copyHarness(request.parent, join(dirs.home, "harness"));
-  mkdirSync(join(dirs.home, "practice"), { recursive: true });
+  layPractice(dirs.home, request.tasks);
   writeFileSync(join(dirs.home, "resources.json"), `${capturedJsonStringify(request.resources, null, 2)}\n`);
   // The account of a harness's files is this host's, whichever harness the session forks.
   writeFileSync(join(dirs.home, "HARNESS.md"), HARNESS_ACCOUNT);
@@ -314,12 +329,6 @@ export async function session(
   );
   seedMemory(dirs.home, request.memory, lastKept(request.memory, earlier));
   seedKept(dirs.home, request.states, before, parent.digest);
-  for (const { task } of request.tasks) {
-    writeFileSync(
-      join(dirs.home, "practice", `${task.taskId.replace(/[^A-Za-z0-9._-]+/g, "-")}.json`),
-      `${capturedJsonStringify(publicView(task), null, 2)}\n`,
-    );
-  }
   append(log, BUILD_STARTED, {
     session: request.id,
     parent: parent.digest,

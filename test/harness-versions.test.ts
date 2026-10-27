@@ -22,11 +22,11 @@ mkdirSync(states);
 const script = join(import.meta.dir, "../.claude/skills/harness-audit/scripts/harness-versions.ts");
 
 /** Write a harness, and keep it under the digest it opens as, as a session's freeze does. */
-async function keep(write: (dir: string) => void): Promise<string> {
+async function keep(write: (dir: string) => void, into = states): Promise<string> {
   const dir = join(root, "scratch");
   write(dir);
   const { digest } = await openHarness(dir);
-  renameSync(dir, join(states, digest));
+  renameSync(dir, join(into, digest));
   return digest;
 }
 
@@ -100,6 +100,65 @@ describe("the harnesses a campaign keeps", () => {
       "other files: added none; removed none; changed none",
     ]);
     expect(moves.join("\n")).not.toContain(EXAMPLE.guide.split("\n")[0] ?? "");
+  });
+});
+
+describe("a campaign its Builder leads", () => {
+  it("reads each checkpoint's parent as the session's checkpoint before it, or what it began from", async () => {
+    // A led conversation freezes with `build.checkpoint` alone: buffer-fresh-opus-v072's compared
+    // harnesses all read "no record of its making" (the sweep of 27 October, lane 13).
+    const led = join(root, "led");
+    const ledStates = join(led, "states");
+    mkdirSync(ledStates, { recursive: true });
+    for (const digest of [starter, child]) {
+      cpSync(join(states, digest), join(ledStates, digest), { recursive: true });
+    }
+    const later = await keep(
+      (dir) => writeHarness(dir, { ...EXAMPLE, guide: `${EXAMPLE.guide}\nOne more line.` }),
+      ledStates,
+    );
+    const ledLog = join(led, "log.jsonl");
+    append(ledLog, "build.started", { session: "b-1", parent: starter });
+    append(ledLog, "build.checkpoint", { session: "b-1", harness: child });
+    append(ledLog, "build.checkpoint", { session: "b-1", harness: later });
+    const made = new Map((await versionsOf({ log: ledLog, states: ledStates })).map((v) => [v.digest, v]));
+    expect(made.get(child)?.made).toBe(`checkpoint of session b-1 from ${short(starter)}`);
+    expect(made.get(later)?.made).toBe(`checkpoint of session b-1 from ${short(child)}`);
+    expect(made.get(later)?.parent).toBe(child);
+  });
+
+  it("preserves an imported harness's origin when a checkpoint reuses its digest", async () => {
+    const imported = join(root, "imported");
+    const importedStates = join(imported, "states");
+    mkdirSync(importedStates, { recursive: true });
+    for (const digest of [starter, child]) {
+      cpSync(join(states, digest), join(importedStates, digest), { recursive: true });
+    }
+    const importedLog = join(imported, "log.jsonl");
+    append(importedLog, "harness.imported", { harness: child, from: "handed/harness" });
+    const origin = { made: "imported from handed/harness", parent: null };
+    expect(
+      (await versionsOf({ log: importedLog, states: importedStates })).find((v) => v.digest === child),
+    ).toMatchObject(origin);
+    append(importedLog, "build.started", { session: "b-1", parent: starter });
+    append(importedLog, "build.checkpoint", { session: "b-1", harness: child });
+    expect(
+      (await versionsOf({ log: importedLog, states: importedStates })).find((v) => v.digest === child),
+    ).toMatchObject(origin);
+    const diffed = runSync([capturedExecPath, script, "--log", importedLog, "--diff", child]);
+    expect(diffed.exitCode).toBe(2);
+    expect(decodeOutput(diffed.stderr)).toContain("has no parent on record");
+    const against = runSync([
+      capturedExecPath,
+      script,
+      "--log",
+      importedLog,
+      "--diff",
+      child,
+      "--against",
+      starter,
+    ]);
+    expect(against.exitCode).toBe(0);
   });
 });
 

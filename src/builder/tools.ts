@@ -141,8 +141,6 @@ export interface Bench {
  *  `digest` against the reference, or null (`BuildRequest.campaign`). */
 type Unmeasured = (digest: string) => Promise<string | null>;
 
-/** What a submitted answer or a closing text shows of itself in a trace's head. */
-const HEAD_CHARS = 4_000;
 /** What a preview names the solve's home, which only a solve has. */
 const SOLVE_HOME = "(the solve's own home directory)";
 /** The harness's tool tree, as a path in the Builder's home. */
@@ -196,10 +194,18 @@ function compared(events: readonly LogEvent[], harness: string): boolean {
   );
 }
 
-/** The parent's tool tree, where it really is; null when the parent has none. */
+/** The parent's tool tree, where it really is; null when the parent has none. Every caller copies
+ *  it as the host, outside every wall, into a seat's home or a handover, so the tree lies in the
+ *  harness or beside it, as a kept state's does. Until 26 October a link to anywhere was followed,
+ *  and an imported harness's `.toolchain` could hand any folder the host reads to the next Builder. */
 export function parentToolTree(parent: string): string | null {
   const tree = join(parent, TOOL_TREE_DIR);
-  return existsSync(tree) ? realpathSync(tree) : null;
+  if (!existsSync(tree)) return null;
+  const real = realpathSync(tree);
+  if (!containsPath(real, realpathSync(dirname(parent)))) {
+    throw new Error(`${parent}: its ${TOOL_TREE_DIR} links outside the folder it lies in`);
+  }
+  return real;
 }
 
 /** Refuses the links and scripts in a copy of `harness/<under>` that name the session's home, where
@@ -415,27 +421,44 @@ export function practiceLeft({ request, spent }: Bench, events: readonly LogEven
 }
 
 /** What a practice line says of the harness a solve ran under, by the tool's `under`. */
-const UNDER = {
-  harness: "",
-  parent: " under the harness you started from",
-  reference: " under the reference harness",
-} as const;
+const UNDER = { harness: "", reference: " under the reference harness" } as const;
+
+/** A task's practice record under each harness `roles` names, each digest once with every role
+ *  it plays. Until 27 October it named harness/ and the parent whatever ran, so the 129 practice
+ *  calls under the reference on record (of 852, 8 to 26 October) were told nothing of its record. */
+function recordText(
+  events: readonly LogEvent[],
+  version: string,
+  roles: readonly (readonly [string | null, string])[],
+) {
+  const named = new Map<string, string[]>();
+  for (const [digest, role] of roles) {
+    if (digest !== null) named.set(digest, [...(named.get(digest) ?? []), role]);
+  }
+  return [...named]
+    .map(([digest, [role, ...also]], index) => {
+      const kept = record(events, version, digest);
+      const which = `${role ?? ""}${also.length > 0 ? `, which is also ${also.join(" and ")}` : ""}`;
+      return `${index === 0 ? "Record under" : "Under"} ${which}: ${index === 0 ? "passed " : ""}${String(kept.passed)} of ${String(kept.solves.length)}.`;
+    })
+    .join(" ");
+}
 
 export function practiceTool(bench: Bench): SeatTool {
   const { request } = bench;
   return tool({
     name: "practice",
     description:
-      'Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host\'s limits. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, the time, the model turns and the tokens it took, the task\'s record under this harness and under the one you started from, the solve\'s id for read_trace and, for a fail, what the Referee read. It never says which check refused an answer. A harness that does not open spends no solve. With `under: "parent"` the tasks are solved under the harness you started from instead, and with `under: "reference"` under the reference harness, the one yours is compared with; each costs the same solves and shows what your change is measured against.',
+      "Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host's limits. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, the time, the model turns and the tokens it took, the task's record under the harness that ran it, under harness/ as last practised and under the harness you started from, the solve's id for read_trace and, for a fail, what the Referee read. It never says which check refused an answer. A harness that does not open spends no solve. With `under: \"reference\"` the tasks are solved under the reference harness instead, the one yours is compared with; it costs the same solves and shows what your change is measured against.",
     parameters: Type.Object({
       tasks: Type.Array(Type.String(), {
         minItems: 1,
         description: "Practice task ids, as the opening message lists them.",
       }),
       under: Type.Optional(
-        Type.Union([Type.Literal("harness"), Type.Literal("parent"), Type.Literal("reference")], {
+        Type.Union([Type.Literal("harness"), Type.Literal("reference")], {
           description:
-            "Which harness solves: harness/ as it stands (the default), the one you started from, or the reference harness yours is compared with.",
+            "Which harness solves: harness/ as it stands (the default), or the reference harness yours is compared with.",
         }),
       ),
     }),
@@ -466,18 +489,15 @@ export function practiceTool(bench: Bench): SeatTool {
       // session ends through `over`. Aborting the seat here loses durable's unfinished call.
       const failed = new AbortController();
       const kill = AbortSignal.any([context.abortSignal ?? bench.halt.signal, failed.signal]);
-      // Under the parent, the solve runs the harness the session started from, as kept outside the
-      // home, and harness/ as it stands need not open: without it a Builder reads its change only
-      // against the parent's comparison record, which a campaign's first session does not have.
-      // Under the reference the solve runs the harness the session's is compared with: the fact
-      // "what does the reference do on this task" is the Builder's to buy with its own solve,
-      // and the host hands it no table of it (the plan's climb section, C5).
-      const other =
-        args.under === "parent" ? request.parent : args.under === "reference" ? bench.reference : null;
+      // Under the reference the solve runs the harness the session's is compared with, and
+      // harness/ as it stands need not open: the fact "what does the reference do on this task" is
+      // the Builder's to buy with its own solve, and the host hands it no table of it (the plan's
+      // climb section, C5). `under: "parent"` went on 27 October: 4 of 852 practice calls on
+      // record named it.
       const ran: Snapshot =
-        other === null
-          ? await snapshot(bench)
-          : { dir: other, harness: await openHarness(other), listed: null };
+        args.under === "reference"
+          ? { dir: bench.reference, harness: await openHarness(bench.reference), listed: null }
+          : await snapshot(bench);
       if (kill.aborted) throw new Error("The session has ended.");
       bench.spent += chosen.length;
       let unstarted = 0;
@@ -506,16 +526,19 @@ export function practiceTool(bench: Bench): SeatTool {
         throw new Error("The session has ended.");
       }
       const events = read(request.log);
+      const under = args.under ?? "harness";
+      const roles = [
+        [ran.harness.digest, under === "reference" ? "the reference harness" : "this harness"],
+        [under === "reference" ? (bench.opened?.harness.digest ?? null) : null, "harness/ as last practised"],
+        [bench.parent, "the harness you started from"],
+      ] as const;
       const said = solved.flat().map(({ task, solve, ending, lines }) => {
         const shown = rejectionAside(events, { id: solve, ending })
           ? "rejection set aside"
           : endingText(ending);
-        const [now, before] = [bench.opened?.harness.digest ?? null, bench.parent].map((harness) =>
-          harness === null ? null : record(events, task.version, harness),
-        );
         return [
-          `${task.task.taskId}${UNDER[args.under ?? "harness"]}: ${shown}. Solve ${solve}.${usedText(events, solve)}${measuredText(events, solve, request.contract)}`,
-          `Record under this harness: passed ${String(now?.passed ?? 0)} of ${String(now?.solves.length ?? 0)}. Under the harness you started from: ${String(before?.passed ?? 0)} of ${String(before?.solves.length ?? 0)}.`,
+          `${task.task.taskId}${UNDER[under]}: ${shown}. Solve ${solve}.${usedText(events, solve)}${measuredText(events, solve, request.contract)}`,
+          recordText(events, task.version, roles),
           ...lines,
         ].join("\n");
       });
@@ -531,22 +554,16 @@ export function practiceTool(bench: Bench): SeatTool {
   });
 }
 
-/** The paged trace of a practice solve. Which task version a solve ran is read from its logged
+/** The trace of a practice solve. Which task version a solve ran is read from its logged
  *  condition, so a solve of any other task is refused whatever id is asked for. */
 export function traceTool(bench: Bench): SeatTool {
   return tool({
     name: "read_trace",
     description:
-      "Read a solve of one of your practice tasks: the ones the opening message lists and the ones practice returns. With no call, return its ending, the answer it submitted, its closing text and every tool call by number. With a call number, return that call whole: its arguments and up to 4000 characters of its result starting at `from`.",
+      "Read a solve of one of your practice tasks: the ones the opening message lists and the ones practice returns. With no call, return its ending, the answer it submitted, its closing text and every tool call by number, each with its size and its arguments on one line. With a call number, return that call whole: its arguments and its result.",
     parameters: Type.Object({
       solve: Type.String({ description: "A solve's id." }),
       call: Type.Optional(Type.Number({ minimum: 1, description: "A call's number, from the list." })),
-      from: Type.Optional(
-        Type.Number({
-          minimum: 0,
-          description: "The first character of the result to return; 0 by default.",
-        }),
-      ),
     }),
     executionMode: "sequential",
     execute: async (args) => {
@@ -557,7 +574,7 @@ export function traceTool(bench: Bench): SeatTool {
         throw new Error(`${args.solve} is not a solve of one of this session's practice tasks`);
       }
       const { turns, calls } = traceOf(events, "solve", args.solve);
-      if (args.call !== undefined) return text(callText(calls, args.call, args.from ?? 0));
+      if (args.call !== undefined) return text(callText(calls, args.call));
       const { ending } = ran;
       const answer = verdictsOf(events).get(args.solve)?.answer;
       const closing = closingOf(turns);
@@ -566,8 +583,8 @@ export function traceTool(bench: Bench): SeatTool {
           `ending: ${rejectionAside(events, ran) ? "rejection set aside" : isString(ending?.outcome) ? `${ending.outcome}${isString(ending.kind) ? ` (${ending.kind})` : ""}` : "not recorded"}`,
           answer === undefined
             ? "no answer was submitted"
-            : `submitted answer: ${capturedJsonStringify(answer).slice(0, HEAD_CHARS)}`,
-          `closing text: ${closing?.slice(0, HEAD_CHARS) ?? "(none recorded)"}`,
+            : `submitted answer: ${capturedJsonStringify(answer)}`,
+          `closing text: ${closing ?? "(none recorded)"}`,
           callList(calls),
         ].join("\n"),
       );

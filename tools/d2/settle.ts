@@ -159,7 +159,7 @@ function labelsIn<Word extends string>(
 
 /** What a campaign's settled packets say: the Referee's agreement with their labels, and each
  *  settled comparison's decision read again with the verdicts its labels overturned swapped in. */
-function labelLines(events: readonly LogEvent[]): string[] {
+export function labelLines(events: readonly LogEvent[]): string[] {
   const ids = new Set(
     events.flatMap(({ kind, data }) => (kind === REPORTED && isString(data.session) ? [data.session] : [])),
   );
@@ -176,9 +176,13 @@ function labelLines(events: readonly LogEvent[]): string[] {
       if (again === null) return [];
       const { wins, losses, ties } = again.scored;
       const flips =
-        again.swapped === again.decided ? "it holds" : "it flips, so its packet was too small to stand on";
+        again.swapped === again.unlabelled ? "it holds" : "it flips, so its packet was too small to stand on";
+      const rule =
+        again.unlabelled === again.decided
+          ? ""
+          : `, and ${again.unlabelled} by this tree's rule without them`;
       return [
-        `${id}: decided ${again.decided}, and ${again.swapped} at ${String(wins)}-${String(losses)}-${String(ties)} with its labels in place of the verdicts they overturn: ${flips}`,
+        `${id}: decided ${again.decided}${rule}, and ${again.swapped} at ${String(wins)}-${String(losses)}-${String(ties)} with its labels in place of the verdicts they overturn: ${flips}`,
       ];
     }),
   ];

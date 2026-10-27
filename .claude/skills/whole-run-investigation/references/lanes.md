@@ -522,17 +522,16 @@ task content in the harness.
 **19. Trace challenge.**
 
 Starts from `WIN AT A SMALL WALL SHARE (lane 19)`, and only when lane 11, 15 or 18 suspects a
-shortcut. It also starts from `ANSWER FROM A PROGRAM (lane 19)` on its own, which needs no other
+shortcut. That trigger counts the passed solves, in few calls and a small share of their wall, of
+tasks the new harness won, on validity, the objective or the bill alike. It also starts from `ANSWER FROM A PROGRAM (lane 19)` on its own, which needs no other
 lane's suspicion: that trigger counts the solves whose one shell call was followed by `submit`, with
 no file-writing call, per Builder session's practice and per comparison. It is a lead that one
 program may have made what the solve submitted. Each comparison's reference side is printed beside its new one as the
 control, since a solver can finish a task in one command of its own; on the #107 campaigns none of
 the 132 reference solves read so, and 24 of recode's 40 measured solves under its built harnesses
 did. The lane's own table is what tells a harness's program from a solver's one command.
-`WINS (lane 19)` lists each comparison's won tasks by solve, as the comparison paired them.
-At this commit it also makes `selected` queue this isolated lane, even without suspicion; that is
-the selection defect found on 20 October, with its fix in an open PR. The primary must decline
-that lead alone and require one of the reasons above before building the lane. It runs alone.
+`WINS (lane 19)` lists each comparison's won tasks by solve, as the comparison paired them, and
+starts nothing by itself (`selected`). It runs alone.
 
 The question is where the deciding value came from. Take the tasks the new harness won by pair
 wins, which `WINS` names by solve. A task can be won by the objective with valid answers under
@@ -553,7 +552,7 @@ or `host`, by where the value came from.
 
 **20. Pair identity and source reach.**
 
-Starts from `HOST CODE MOVED (lane 20)` and `STARTS OUT OF TURN (lane 20)`.
+Starts from `HOST CODE MOVED (lane 20)`, `STARTS OUT OF TURN (lane 20)` and `SERVED ANOTHER MODEL (lane 20)`.
 
 The question is whether the two sides of each comparison differ in the harness and in nothing
 else. A condition is a content address: the contract, the harness, the task version, the model
@@ -565,7 +564,8 @@ the log all the same: for the counted solves of each comparison, list the distin
 every field but the harness and its `solverTools`, which may change with it. Then read what a
 condition does not hold: load, recorded at solve start and finish, which `gated` in `tools/d2/host.ts` gates at
 the start unless `--loaded` is named; the hour; the provider's
-served model, which `responseModels` names or leaves empty; how many solves ran at once. The round
+served model, which `responseModels` names or leaves empty, and `SERVED ANOTHER MODEL` counts
+by side where it is not the one the condition asked for; how many solves ran at once. The round
 mirrors which harness takes the first place, slot by slot and task by task, so that neither has the
 quieter hours. One worker runs a task's slots in that order: each solve call, with its load wait,
 its provider reruns or reset and its one outer retry, returns before the next slot starts

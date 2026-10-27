@@ -23,7 +23,13 @@
 import type { TSchema } from "@earendil-works/pi-ai";
 import type { JsonValue } from "@earendil-works/chord";
 import type { SeatTool } from "../agent/session.ts";
-import { AGENT_DIR, GENERATED_TOOLS_FILE, GUIDE_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
+import {
+  AGENT_DIR,
+  GENERATED_TOOLS_FILE,
+  GUIDE_FILE,
+  TOOLS_SPEC_FILE,
+  TOOL_TREE_DIR,
+} from "../meta/bundle-layout.ts";
 import { sha256OfFile } from "../meta/digest.ts";
 import { existsSync, lstatSync, readlinkSync, realpathSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
@@ -132,12 +138,14 @@ const BUNDLED_PATH = /^\/\/ .+\.(?:[cm]?[jt]sx?|json)$/gm;
 
 /** A harness's module as its digest reads it: without the path comments, and with the harness's own
  *  directory, which Bun writes out whole wherever a bundled CommonJS file reads `__dirname` or
- *  `__filename`, replaced by one name. Otherwise a harness with such a package had one digest where
- *  it was edited, another where it was frozen and a third where it was kept. */
-function located(module: string, dir: string): string {
+ *  `__filename`, replaced by one name. Its resolved tool tree is read as `.toolchain` under it,
+ *  whether inside or beside it. Otherwise such an import changes the digest on freezing or copying. */
+function located(module: string, dir: string, toolTree: string | null): string {
+  const source =
+    toolTree === null ? module : module.replaceAll(realpathSync(toolTree), join(resolve(dir), TOOL_TREE_DIR));
   const places = [...new Set([realpathSync(dir), resolve(dir)])].sort((a, b) => b.length - a.length);
   return places
-    .reduce((source, place) => source.replaceAll(place, "<harness>"), module)
+    .reduce((bundled, place) => bundled.replaceAll(place, "<harness>"), source)
     .replace(BUNDLED_PATH, "");
 }
 
@@ -177,7 +185,7 @@ export async function openHarness(dir: string): Promise<Harness> {
     );
   }
   const module = await bundle(join(dir, GENERATED_TOOLS_FILE));
-  const toolchain = resolve(dir, ".toolchain");
+  const toolchain = resolve(dir, TOOL_TREE_DIR);
   const toolTree = existsSync(toolchain) ? toolchain : null;
   const tree = toolTree === null ? null : keptTreeContent(toolTree);
   return {
@@ -186,7 +194,7 @@ export async function openHarness(dir: string): Promise<Harness> {
     kinds,
     toolTree,
     module,
-    digest: hashJsonValue({ module: located(module, dir), spec, guide, tree }),
+    digest: hashJsonValue({ module: located(module, dir, toolTree), spec, guide, tree }),
   };
 }
 
@@ -260,9 +268,17 @@ function keptTreeContent(toolTree: string) {
  * writes `node_modules` under its harness: a package there importing `../../../log.jsonl` as text
  * passed such a guard, and the log, with every hidden value in it, was bundled into the solver's
  * tools. Whatever names a file, by whatever route it resolves, it is loaded here or not at all.
+ *
+ * A kept state's `.toolchain` is a link to the tree beside it (`stagedState`), so a tool that imports
+ * the harness's own programs reached that tree and was refused once frozen, though it opened in the
+ * Builder's home: on 26 October a Builder of `buffer-fresh-opus-forkedPR377-m1-air` copied its
+ * `.toolchain/lib` into `agent/` to get past it. That tree is admitted where it lies directly beside
+ * the harness, and no other: a link to the folder above or to a tree further off still reaches
+ * outside.
  */
 async function bundle(entry: string): Promise<string> {
   const root = realpathSync(dirname(dirname(entry)));
+  const roots = [root, ...besideTree(root), ...HOST_ROOTS];
   const result = await Bun.build({
     entrypoints: [entry],
     target: "bun",
@@ -282,7 +298,7 @@ async function bundle(entry: string): Promise<string> {
           }));
           build.onLoad({ filter: /.*/ }, ({ path }) => {
             const file = realpathSync(path);
-            if ([root, ...HOST_ROOTS].some((own) => containsPath(file, own))) return undefined;
+            if (roots.some((own) => containsPath(file, own))) return undefined;
             throw new Error(
               `an import reaches ${basename(file)}, which is outside the harness: its tools are built from its own files and installed packages`,
             );
@@ -296,6 +312,14 @@ async function bundle(entry: string): Promise<string> {
     throw new Error(`harness bundle failed: ${result.logs.map((log) => log.message).join("; ")}`);
   }
   return await output.text();
+}
+
+/** The tree a kept state's `.toolchain` links to, where it lies directly beside the harness. */
+function besideTree(root: string): string[] {
+  const tree = join(root, TOOL_TREE_DIR);
+  if (!existsSync(tree)) return [];
+  const real = realpathSync(tree);
+  return real !== root && dirname(real) === dirname(root) ? [real] : [];
 }
 
 /**

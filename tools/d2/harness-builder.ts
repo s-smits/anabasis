@@ -116,7 +116,7 @@ import { pendingWords } from "#src/campaign/word.ts";
 import { keepPractised } from "#src/builder/session.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { unadmitted } from "#src/kernel/acceptance.ts";
-import { sweepOf } from "#src/kernel/compare.ts";
+import { comparisonFloor } from "#src/campaign/admission.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { latestBuilt, promoted } from "#src/kernel/reports.ts";
 import { cutSessions } from "#src/kernel/trace.ts";
@@ -599,9 +599,9 @@ export async function harnessBuilder(
       for (const line of size) console.log(line);
       // A paid campaign that could never read a step is refused before it is paid for (rule 14):
       // until 20 October it ran, and the table sent for tasks no target that small could use.
-      const sweep = sweepOf(plan.wanted.level);
-      if (paid === "paid" && plan.wanted.target < sweep) {
-        throw new Error(`${size[0] ?? ""}: name a --target of at least ${String(sweep)}`);
+      const floor = comparisonFloor(plan.wanted.level);
+      if (paid === "paid" && plan.wanted.target < floor) {
+        throw new Error(`${size[0] ?? ""}: name a --target of at least ${String(floor)}`);
       }
     }
     const decided = decide(events, plan);

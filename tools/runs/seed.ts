@@ -13,6 +13,8 @@
  * `seed.json` in the copy says where it came from and where it was cut. `rehearse` runs only where
  * that file is, since a scripted solve in a real campaign's log would be counted as a solve.
  *
+ * The Examiner's home comes with it only where it is still the one the cut stood with.
+ *
  * Not copied: the receipts and outputs, which are the source run's, and the notes of a
  * session the cut log no longer holds, which a session run again under its id would otherwise find
  * in its place. The states come with the
@@ -94,7 +96,25 @@ export function seedCampaign(from: string, to: string, cut: Cut) {
         cpSync(join(from, notes), join(to, notes), { recursive: true, verbatimSymlinks: true });
       }
     }
-    const origin = { from: resolve(from), events: kept, of: lines.length, before: cut.before ?? null };
+    // The Examiner's home is one folder each session replaces as it ends (`src/examiner/shell.ts`),
+    // so it is the one the cut stood with only where no session ended after the cut. Until 26
+    // October no seed copied it, and both arms of one simulation opened their Examiner on no home.
+    const examinerHome =
+      existsSync(join(from, "examiner-home")) &&
+      !lines.slice(kept).some((line) => asRecord(capturedJsonParse(line))?.kind === "exam.finished");
+    if (examinerHome) {
+      cpSync(join(from, "examiner-home"), join(to, "examiner-home"), {
+        recursive: true,
+        verbatimSymlinks: true,
+      });
+    }
+    const origin = {
+      from: resolve(from),
+      events: kept,
+      of: lines.length,
+      before: cut.before ?? null,
+      examinerHome,
+    };
     writeFileSync(join(to, SEED_FILE), `${capturedJsonStringify(origin, null, 2)}\n`);
     return { ...origin, sets: taskSets(events) };
   } catch (error) {
@@ -129,6 +149,9 @@ export async function seed(args: readonly string[]): Promise<void> {
   console.log(
     `  ${String(sets.held.length)} held out, ${String(sets.released.length)} released for practice`,
   );
+  if (!made.examinerHome) {
+    console.log("  no Examiner home: the source holds none, or a session after the cut replaced it");
+  }
   console.log(`  scripted  bun run runs rehearse ... --name ${name} --session <id>`);
   console.log(`  live      bun tools/d2/harness-builder.ts ... --name ${name}, or a move's own command`);
 }

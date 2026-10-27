@@ -224,7 +224,10 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
   }
   const log = join(folder, LOG_FILE);
   const from = read(log).length;
-  const env = { ...loginEnv(runtimeProcess.env, args.value("login") ?? undefined), RUN_REMOTE: "0" };
+  const env = {
+    ...loginEnv(runtimeProcess.env, args.value("login") ?? undefined),
+    RUN_REMOTE: "0",
+  };
   const child = capturedSpawn(["nice", "-n", "10", capturedExecPath, ...command, "--name", name], {
     cwd: tree,
     env,

@@ -71,10 +71,10 @@ import { worthLine } from "#src/campaign/climb.ts";
 import { predicted, type Report } from "#src/campaign/comparison.ts";
 import { refuseTerms, type RoundRequest, round, scoredSet } from "#src/campaign/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
-import { type ObjectiveRule, WEIGHTS } from "#src/kernel/compare.ts";
+import { type ObjectiveRule, testOf, WEIGHTS } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
-import { type LogEvent, read } from "#src/kernel/log.ts";
+import { read } from "#src/kernel/log.ts";
 import { priceKey } from "#src/kernel/meter.ts";
 import { type Cap, capHolds, stopRule } from "#src/kernel/reports.ts";
 import { solverLast } from "#src/kernel/solves.ts";
@@ -346,13 +346,6 @@ export function predictionNamed(flag: string | undefined): string | undefined {
   return said === "" ? undefined : said;
 }
 
-/** A comparison's prediction beside what it read, as a command prints the two; no line where the
- *  operator predicted nothing. The prediction is the one the comparison began with. */
-export function predictionLines(events: readonly LogEvent[], id: string, report: Report): string[] {
-  const said = predicted(events, id);
-  return said === null ? [] : [`predicted before the first solve: ${said}`, `read: ${report.reading}`];
-}
-
 /**
  * The dollars `--cap` and `--reserve` name, read in one place for every command: each is a plain
  * number above nothing. A cap typed as "$40" is no number, and held
@@ -401,10 +394,46 @@ export function refereeNamed(
 }
 
 /**
+ * The campaign a round, a session or a checkpoint runs in. The cap and the Referee are read before
+ * it is opened, so a paid move without them starts nothing, and what the flags name of the setting
+ * is held to the log's record before the campaign is opened under it (`setting.ts`).
+ */
+export async function campaignFor(
+  values: Parameters<typeof capNamed>[0] &
+    Parameters<typeof refereeNamed>[0] &
+    Parameters<typeof settingAsked>[0],
+  pack: Parameters<typeof openCampaign>[0],
+  seated: Seated,
+) {
+  const seats = seated === solved ? "paid" : "scripted";
+  const cap = capNamed(values, seats);
+  refereeNamed(values, seats);
+  const setting = settingAsked(values, recordedSetting(read(campaignLog(pack.name))));
+  return { cap, setting, campaign: await openCampaign({ ...pack, ...setting.named }) };
+}
+
+/** A comparison's report and the stop rule as JSON, then its lines for a person to read: the
+ *  prediction the comparison began with beside what it read, where the operator made one. */
+export function printReport(campaign: Campaign, id: string, report: Report): void {
+  const events = read(campaign.log);
+  const said = predicted(events, id);
+  console.log(JSON.stringify(report, null, 2));
+  console.log(JSON.stringify(stopRule(events), null, 2));
+  for (const line of [
+    ...reportLines(report),
+    ...(said === null ? [] : [`predicted before the first solve: ${said}`, `read: ${report.reading}`]),
+    ...awaitingLines(campaign),
+  ]) {
+    console.log(line);
+  }
+}
+
+/**
  * A report in lines, printed with every reading: the tasks its step was read on (`scored`, or the
  * frontier before 20 October), with their untied tasks,
- * the least share of them one reading detects four times in five (`detectable`) and the chance
- * it reads a step between equal harnesses (`falseRate`), and its p with what the test weighs; the
+ * the least share of them the full-score test detects four times in five (`detectable`) and its
+ * false rate between equal harnesses (`falseRate`), an upper bound for the dual rule, and its p, and
+ * the same tasks without the bill, which a step clears as well (`stepOf`); the
  * reference against itself where the comparison carries it (`aaLines`); the tasks it drew, by what
  * became of each (`accounted`); and `valid`,
  * each harness by itself, as the tasks by how many of their solves were valid, which is what the
@@ -432,14 +461,21 @@ export function reportLines({
   const test = scored?.falseRate === undefined ? frontier : scored;
   const share = test?.detectable ?? null;
   const untied = test === null ? 0 : test.wins + test.losses;
+  // Each task's score without the bill, which a report from before 26 October holds none of.
+  const unbilled = test?.unbilled === undefined ? null : testOf(test.unbilled);
   return [
     ...(test?.falseRate === undefined
       ? []
       : [
-          `the step is read on ${plural(untied + test.ties, "tallied task")}, ${String(untied)} of them untied: one reading at the comparison's level detects four times in five ${share === null ? "no share of them" : `a harness that wins ${String(Math.round(100 * share))}% of them`}`,
-          `one reading at these margins reads a step between equal harnesses ${String(Math.round(1000 * test.falseRate) / 10)}% of the time, never more than the level`,
+          `the test on the full score is read on ${plural(untied + test.ties, "tallied task")}, ${String(untied)} of them untied: one reading at the comparison's level detects four times in five ${share === null ? "no share of them" : `a harness that wins ${String(Math.round(100 * share))}% of them`}`,
+          `the test on the full score at these margins clears the level between equal harnesses ${String(Math.round(1000 * test.falseRate) / 10)}% of the time, never more than the level: an upper bound for the rule requiring both tests`,
           // The test weighs margins, but a sweep's p is its count's alone (the plan's 7.5).
           `its p is ${rounded(test.p)}: the test weighs each untied task by its score${test.losses === 0 && untied > 0 ? `, and where every untied task is won p is one half to the power of their count whatever the margins: ${String(untied)} won read ${rounded(0.5 ** untied)}` : ""}`,
+          ...(unbilled === null
+            ? []
+            : [
+                `without the bill's points the same tasks read ${String(unbilled.wins)}-${String(unbilled.losses)}-${String(unbilled.ties)}, p ${rounded(unbilled.p)}: a step clears the level on both`,
+              ]),
         ]),
     ...(noise === null ? [] : aaLines(noise)),
     ...accounted(apart),
@@ -487,7 +523,7 @@ function aaLines(noise: NonNullable<Report["noise"]>): string[] {
     `the reference against itself, on halves of its own solves mirrored in time (the A/A), over the ${plural(tasks, "tallied task")}, ${String(noise.wins + noise.losses)} of them untied:`,
     `  tie share ${tasks === 0 ? "none" : percent(noise.ties / tasks)}: the share of tasks two equal harnesses tied at half the comparison's solves a side, where equal harnesses tie more often than at the comparison's own, so no floor for its ties`,
     `  flip rate ${noise.flips === null ? "none" : percent(noise.flips)}: how often two of its solves of one task disagree on validity`,
-    `  least detectable shift: ${shift === null ? "none, too few of its tasks are untied for any shift between its halves to read as a step, so its reading no step shows little" : `one reading of it, either half read at the level, detects four times in five a half that wins ${percent(shift)} of its untied tasks`}`,
+    `  least detectable shift on the full score alone: ${shift === null ? "none, too few of its tasks are untied for any shift between its halves to clear the level, so its reading no step shows little" : `one reading of it, either half read at the level, detects four times in five a half that wins ${percent(shift)} of its untied tasks`}`,
   ];
 }
 
@@ -533,16 +569,9 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
   const { values } = parseArgs({ args: [...args], options: ROUND_OPTIONS });
   const { session } = values;
   const pack = packNamed(values, " and --session");
-  const { name } = pack;
   if (session === undefined) throw new Error("name --session, the id the round takes in the log");
-  // Read before the campaign is opened: a paid round with no cap starts nothing.
-  const cap = capNamed(values, seated === solved ? "paid" : "scripted");
-  refereeNamed(values, seated === solved ? "paid" : "scripted");
-  // The campaign's setting is its log's: what the flags name is held to the record before the
-  // campaign is opened under it (`setting.ts`).
-  const setting = settingAsked(values, recordedSetting(read(campaignLog(name))));
+  const { cap, setting, campaign } = await campaignFor(values, pack, seated);
   const { limits } = setting.named;
-  const campaign = await openCampaign({ ...pack, ...setting.named });
   const packageOf = packaged(campaign);
   const reviewers = reviewersNamed(campaign, values);
   const parent = await parentNamed(campaign, { ...values, session });
@@ -589,15 +618,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
   keepSetting(campaign.log, setting);
   stayAwake();
   const report = await round(request);
-  console.log(JSON.stringify(report, null, 2));
-  console.log(JSON.stringify(stopRule(read(campaign.log)), null, 2));
-  for (const line of [
-    ...reportLines(report),
-    ...predictionLines(read(campaign.log), session, report),
-    ...awaitingLines(campaign),
-  ]) {
-    console.log(line);
-  }
+  printReport(campaign, session, report);
   return report;
 }
 

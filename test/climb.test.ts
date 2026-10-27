@@ -27,6 +27,7 @@ import {
   worthOf,
 } from "../src/campaign/climb.ts";
 import { examine } from "../src/examiner/session.ts";
+import { readsStep } from "../src/kernel/compare.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import { type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import { GUIDE_FILE } from "../src/meta/bundle-layout.ts";
@@ -404,11 +405,11 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     expect(epoch?.falsePromotion.union).toBeCloseTo(0.25, 12);
     if (epoch === undefined) throw new Error("an epoch");
     expect(epochLine(epoch)).toContain(
-      "3 promotion attempts under this reference, a false promotion among them estimated at 25%: 10% for the riskiest attempt by the rule's design; no A/A control on record that could read a step",
+      "3 promotion attempts under this reference, a false promotion among them estimated at 25%: 10% for the riskiest attempt by the rule's design; no A/A control with enough untied tasks in every test",
     );
     // The closing report sums the epochs' estimates, here the one epoch's (the plan's 7.6).
     expect(riskLines(log).slice(0, 2)).toEqual([
-      "- Epoch 1: 3 promotion attempts, a false promotion among them estimated at 25%: 10% for the riskiest attempt by the rule's design; no A/A control on record that could read a step.",
+      "- Epoch 1: 3 promotion attempts, a false promotion among them estimated at 25%: 10% for the riskiest attempt by the rule's design; no A/A control with enough untied tasks in every test.",
       "Over the campaign, a false promotion in any epoch estimated at 25%: the sum of the epochs' estimates, capped at one, which assumes nothing of how the attempts depend on one another. It sums estimates, so it is an estimate and no bound.",
     ]);
     // A rate under ten percent is printed to a tenth: 1.8% is not 2%.
@@ -449,7 +450,7 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     });
     if (second === undefined) throw new Error("an epoch");
     expect(epochLine(second)).toContain(
-      "a false promotion among them estimated at 10%: 10% for the riskiest attempt by the rule's design; 0 of 1 A/A control that could read a step read one, and 3 too small to read one at their level",
+      "a false promotion among them estimated at 10%: 10% for the riskiest attempt by the rule's design; 0 of 1 A/A control with enough untied tasks in every test read a step; joint reachability unmeasured, and 3 too small to read one at their level",
     );
     expect(riskLines(log)[2]).toStartWith(
       "Over the campaign, a false promotion in any epoch estimated at 50%:",
@@ -462,12 +463,44 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
       attempt("g-2", "S", "h2", [-1, -1, -1, -1]),
     ];
     expect(epochsOf(lucky)[0]?.falsePromotion).toMatchObject({ errors: 1, controls: 2, incapable: 0 });
-    expect(riskLines(lucky)[0]).toContain("1 of 2 A/A controls that could read a step read one.");
+    expect(riskLines(lucky)[0]).toContain(
+      "1 of 2 A/A controls with enough untied tasks in every test read a step; joint reachability unmeasured.",
+    );
     // Past one the sum is capped there.
     const many = Array.from({ length: 11 }, (_, at) =>
       attempt(`g-${String(at + 1)}`, "S", `h${String(at + 2)}`),
     );
     expect(epochsOf([started, ...many])[0]?.falsePromotion.union).toBe(1);
+  });
+
+  it("counts dual A/A steps and reports only marginal size, without claiming joint reachability", () => {
+    const aa = (session: string, unbilled: readonly number[]) =>
+      event("comparison.reported", {
+        ...attempt(session, "S", "h2").data,
+        noise: { differences: [1, 1, 1, 1], unbilled: [...unbilled] },
+      });
+    const log = [
+      started,
+      aa("bill-only", [0, 0, 0, 0]),
+      aa("unbilled-short", [1, 1, 1, -1]),
+      aa("opposite", [-1, -1, -1, -1]),
+      aa("both", [1, 1, 1, 1]),
+    ];
+    expect(epochsOf(log)[0]?.falsePromotion).toMatchObject({ errors: 1, controls: 3, incapable: 1 });
+    // Opposite scores can each pass after independent sign changes, but never under common flips.
+    const signs = Array.from({ length: 16 }, (_unused, mask) =>
+      Array.from({ length: 4 }, (_, at) => ((mask & (1 << at)) === 0 ? 1 : -1)),
+    );
+    expect(
+      signs.some((one) =>
+        readsStep(
+          one,
+          one.map((value) => -value),
+          0.1,
+        ),
+      ),
+    ).toBe(false);
+    expect(epochLine(epochsOf(log)[0]!)).toContain("joint reachability unmeasured");
   });
 });
 

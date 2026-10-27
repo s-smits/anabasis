@@ -13,6 +13,7 @@ import {
   regraded,
   runControls,
   unadmitted,
+  unreadFields,
 } from "../src/kernel/acceptance.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
@@ -266,6 +267,94 @@ describe("a checker's acceptance", () => {
   it("stops on a control of a task the pack does not hold", async () => {
     const gone: Control = { taskId: "gone", answer: {}, refusedBy: null };
     await expect(runControls(verify, [roof], [gone], 1)).rejects.toThrow("a control names gone");
+  });
+});
+
+describe("the answer's fields", () => {
+  const format = (x: JsonObject) => ({ type: "object", required: ["x"], properties: { x } });
+  const fields = async (schema: JsonObject, checks: Verifier, controls: Control[]) =>
+    unreadFields(checks, [roof], await runControls(checks, [roof], controls, 1), schema, 1);
+
+  it("credits an isolated reject control when both generic range probes pass", async () => {
+    const range: Verifier = async (_task, answer) => {
+      const x = asRecord(answer)?.x;
+      return isNumber(x) && Math.abs(x) <= 10 ? { kind: "pass" } : { kind: "fail", blocking: ["range"] };
+    };
+    expect(
+      await fields(format({ type: "number" }), range, [
+        { taskId: roof.taskId, answer: { x: 0 }, refusedBy: null },
+        { taskId: roof.taskId, answer: { x: 11 }, refusedBy: "range" },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("does not credit a rejection caused by another field", async () => {
+    const schema = {
+      type: "object",
+      required: ["x", "mass"],
+      properties: { x: { type: "number" }, mass: { type: "number" } },
+    };
+    const faults = await fields(schema, verify, [
+      { taskId: roof.taskId, answer: { x: 0, mass: 5 }, refusedBy: null },
+      { taskId: roof.taskId, answer: { x: 11, mass: 50 }, refusedBy: "mass" },
+    ]);
+    expect(faults).toHaveLength(1);
+    expect(faults[0]).toContain("field x moved no check");
+  });
+
+  it.each([
+    ["an enumeration", { type: "string", enum: ["A", "B"] }, "A"],
+    ["a bounded number", { type: "number", minimum: 0, maximum: 0.5 }, 0],
+  ])("reports an unused field allowed by %s", async (_name, schema, x) => {
+    const ignored: Verifier = async () => ({ kind: "pass" });
+    const faults = await fields(format(schema), ignored, [
+      { taskId: roof.taskId, answer: { x }, refusedBy: null },
+    ]);
+    expect(faults).toHaveLength(1);
+    expect(faults[0]).toContain("field x moved no check");
+  });
+
+  it("probes the other enumerated value before crediting its check", async () => {
+    const seen: JsonObject[] = [];
+    const checked: Verifier = async (_task, answer) => {
+      const record = asRecord(answer);
+      if (record !== null) seen.push(record);
+      return record?.x === "A" ? { kind: "pass" } : { kind: "fail", blocking: ["enum"] };
+    };
+    expect(
+      await fields(format({ type: "string", enum: ["A", "B"] }), checked, [
+        { taskId: roof.taskId, answer: { x: "A" }, refusedBy: null },
+      ]),
+    ).toEqual([]);
+    expect(seen).toContainEqual({ x: "B" });
+  });
+
+  it("leaves fields fixed by their format to the format", async () => {
+    const ignored: Verifier = async () => ({ kind: "pass" });
+    for (const schema of [{ const: 0 }, { enum: [0] }, { type: "number", minimum: 0, maximum: 0 }]) {
+      expect(
+        await fields(format(schema), ignored, [{ taskId: roof.taskId, answer: { x: 0 }, refusedBy: null }]),
+      ).toEqual([]);
+    }
+  });
+
+  it("carries schema alternatives through objects and the first array item", async () => {
+    const ignored: Verifier = async () => ({ kind: "pass" });
+    const faults = await fields(
+      format({ type: "array", items: { type: "string", enum: ["A", "B"] } }),
+      ignored,
+      [{ taskId: roof.taskId, answer: { x: ["A"] }, refusedBy: null }],
+    );
+    expect(faults).toHaveLength(1);
+    expect(faults[0]).toContain("field x[] moved no check");
+  });
+
+  it("leaves a field to the format where the format refuses every generated alternative", async () => {
+    const ignored: Verifier = async () => ({ kind: "pass" });
+    const faults = await fields(format({ type: "string", pattern: "^[AB]$" }), ignored, [
+      { taskId: roof.taskId, answer: { x: "A" }, refusedBy: null },
+    ]);
+    expect(faults).toEqual([]);
   });
 });
 

@@ -42,6 +42,8 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: package.json
+      # `bun run runs search` runs rg, which the macOS image does not ship.
+      - run: brew install ripgrep
       - id: install
         run: bun install --frozen-lockfile
       # The UI's own lock and React types, without which the lint leaves packages/ui out.
@@ -88,9 +90,9 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: package.json
-      - name: Install bubblewrap
+      - name: Install bubblewrap and ripgrep
         # ubuntu-24.04 packages bubblewrap 0.9.0, above the 0.8.0 that carries --disable-userns.
-        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap ripgrep
       - name: Allow unprivileged user namespaces
         # Ubuntu 24.04 restricts them through AppArmor, and bwrap then fails with "setting up uid
         # map: Permission denied".

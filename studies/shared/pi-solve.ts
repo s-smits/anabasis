@@ -58,7 +58,7 @@ import type { SolveClock } from "#src/tools/command.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { installedPrograms } from "#src/harness/programs.ts";
 import { NUDGE } from "#src/solver/prompt.ts";
-import { timed } from "#src/solver/run.ts";
+import { raiseWall, timed, type Wall } from "#src/solver/run.ts";
 import { type SeatTool, sit } from "#src/agent/session.ts";
 import { shellQuote, toolTreeSearchDirs } from "#src/wall/isolation.ts";
 
@@ -203,12 +203,11 @@ async function solve(ask: Asked) {
   const turns: AssistantMessage[] = [];
   const started = performance.now();
   const clock: SolveClock = { started, seconds: ask.wallSeconds };
+  const wall = raiseWall(ask.wallSeconds);
   const tools = defined.map((entry) =>
     timed(entry, { clock, turns: () => turns.length, modelTurns: ask.modelTurns }),
   );
   const log = join(ask.logs, TRACE_FILE);
-  const wall = new AbortController();
-  const timer = setTimeout(() => wall.abort(), ask.wallSeconds * 1000);
   let prompts = 1;
   const { thrown: crash, spent } = await sit({
     models: () => models,
@@ -223,6 +222,8 @@ async function solve(ask: Asked) {
     trace: { log, of: "solve" },
     turns,
     most: ask.modelTurns,
+    onTurn: wall.onTurn,
+    onTool: wall.onTool,
     over: () => said.submitted,
     next: async () => {
       if (said.submitted || prompts >= ask.prompts) return null;
@@ -231,7 +232,7 @@ async function solve(ask: Asked) {
     },
     stops: [wall.signal],
   });
-  clearTimeout(timer);
+  wall.lower();
   // Harbor's viewer and `harbor analyze` read an agent's run from `agent/trajectory.json`.
   const trajectory = trajectoryOf(read(log), "solve", "pi-solve", {
     name: "anabasis",
@@ -240,7 +241,7 @@ async function solve(ask: Asked) {
   });
   writeFileSync(join(ask.logs, "trajectory.json"), `${capturedJsonStringify(trajectory, null, 2)}\n`);
   return {
-    ending: endingOf({ crash, submitted: said.submitted, wallEnded: wall.signal.aborted, turns, ask }),
+    ending: endingOf({ crash, submitted: said.submitted, wall, turns, ask }),
     crash,
     harness: harness.digest,
     model: ask.model,
@@ -265,14 +266,17 @@ function resolved(prefix: string | undefined, programs: readonly string[]): stri
 function endingOf(played: {
   crash: string | null;
   submitted: boolean;
-  wallEnded: boolean;
+  wall: Wall;
   turns: readonly AssistantMessage[];
   ask: Asked;
 }): Ending {
   if (played.crash !== null) return "crash";
   if (played.submitted) return "submitted";
   const turnsEnded = played.turns.length >= played.ask.modelTurns;
-  return unanswered({ wallEnded: played.wallEnded, turnsEnded, last: played.turns.at(-1) }).kind;
+  const { wall } = played;
+  const last = played.turns.at(-1);
+  return unanswered({ wallEnded: wall.signal.aborted, silentSeconds: wall.silentSeconds, turnsEnded, last })
+    .kind;
 }
 
 if (import.meta.main) {

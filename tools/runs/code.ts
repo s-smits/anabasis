@@ -20,11 +20,16 @@ const CONTROLLERS = "ana-code";
 /** A cold Linux controller can need several minutes for its frozen install. */
 const PREPARE_MS = 300_000;
 const warned = new Set<string>();
+/** One in-flight preparation a host and commit in a process. On 27 October `wri.ts start` named five
+ *  campaigns, each asked every host, and the five preparations on one host raced one `git fetch`
+ *  ("cannot lock ref") and one lock, which refused the losers until the wait below. */
+const preparing = new Map<string, Promise<Host | null>>();
 
 /** The shell function that says whether the lock folder `$1` is stale: older than a preparation
  *  may take, or held by a process that is gone. A preparation takes a stale lock of its own commit
  *  over, and `PRUNE` removes a controller behind one: on 22 October a preparation on the M1 left
- *  `c5e16d7f.lock`, which kept that controller from pruning for good. */
+ *  `c5e16d7f.lock`, which kept that controller from pruning for good. Any other holder is waited
+ *  for: the fetch runs under the lock, since two fetches in one repository race on its refs. */
 const STALE = `stale() {
   stamp="$(stat -c %Y "$1" 2>/dev/null || stat -f %m "$1")"
   test "$(($(date +%s) - stamp))" -le ${String(PREPARE_MS / 1000)} || return 0
@@ -113,22 +118,20 @@ ${STALE}
 cd ${shellPath(host.tree)}
 root="$(git rev-parse --path-format=absolute --git-common-dir)/${CONTROLLERS}"
 tree="$root/${commit}"
-if ${mode === "install" ? "true" : `! test -f "$root/${commit}.ready" || ! test -d "$tree/node_modules"`}; then
+unready() { ! test -f "$root/${commit}.ready" || ! test -d "$tree/node_modules"; }
+if ${mode === "install" ? "true" : "unready"}; then
+mkdir -p "$root"
+lock="$root/${commit}.lock"
+until mkdir "$lock" 2>/dev/null; do
+  if stale "$lock"; then mv "$lock" "$lock.stale.$$" && rm -rf "$lock.stale.$$"; else sleep 1; fi
+done
+echo "$$" > "$lock/pid"
+trap 'rm -f "$lock/pid"; rmdir "$lock"' EXIT
 git fetch -q origin
 git cat-file -e ${quoted(`${commit}^{commit}`)} 2>/dev/null || git fetch -q origin ${quoted(commit)}
 test "$(git rev-parse --verify ${quoted(`${commit}^{commit}`)})" = ${quoted(commit)}
 test -n "$(git branch -r --contains ${quoted(commit)})" || git ls-remote origin | grep -q ${quoted(`^${commit}	`)} || { echo 'commit is on no remote branch or tag' >&2; exit 1; }
-fi
-if ! test -f "$root/${commit}.ready" || ! test -d "$tree/node_modules"; then
-mkdir -p "$root"
-lock="$root/${commit}.lock"
-if test -d "$lock" && stale "$lock"; then
-  mv "$lock" "$lock.stale.$$"
-  rm -rf "$lock.stale.$$"
-fi
-mkdir "$lock" || { echo 'code preparation is already in progress' >&2; exit 1; }
-echo "$$" > "$lock/pid"
-trap 'rm -f "$lock/pid"; rmdir "$lock"' EXIT
+if unready; then
 rm -f "$root/${commit}.ready"
 if ! test -e "$tree"; then git worktree add -q --detach "$tree" ${quoted(commit)}; fi
 cd "$tree"
@@ -137,6 +140,7 @@ test -z "$(git status --porcelain)" || { echo 'control tree has uncommitted chan
 ${treeBun(configuredRuntime(host).bun)} install --frozen-lockfile >&2
 touch "$root/${commit}.ready"
 ${PRUNE}
+fi
 rm -f "$lock/pid"
 rmdir "$lock"
 trap - EXIT
@@ -159,32 +163,40 @@ export async function readControllers(hosts: readonly Host[]): Promise<(Host | n
   if (hosts.length === 0) return [];
   const commit = readCommit();
   return await Promise.all(
-    hosts.map(async (host) => {
-      const started = performance.now();
-      try {
-        const script = `${preparation(host, commit, "cached")}\nprintf '%s\\n' "$tree"`;
-        const child = capturedSpawn(sshScript(host, script), {
-          stdin: "ignore",
-          stdout: "pipe",
-          stderr: "pipe",
-          timeout: PREPARE_MS,
-        });
-        const [said, errors, code] = await Promise.all([
-          new Response(child.stdout).text(),
-          new Response(child.stderr).text(),
-          child.exited,
-        ]);
-        const tree = said.trim();
-        if (code !== 0 || !isAbsolute(tree) || tree.includes("\n")) {
-          throw new Error(`controller preparation failed (${String(code)}): ${errors.trim()}`);
-        }
-        return { ...host, ...configuredRuntime(host), tree, prepared: true } as const;
-      } catch (error) {
-        console.error(
-          `${host.name}: ${errorMessage(error)} after ${((performance.now() - started) / 1000).toFixed(1)} s`,
-        );
-        return null;
-      }
+    hosts.map((host) => {
+      const key = `${host.name} ${commit}`;
+      const prepared =
+        preparing.get(key) ?? readController(host, commit).finally(() => preparing.delete(key));
+      preparing.set(key, prepared);
+      return prepared;
     }),
   );
+}
+
+async function readController(host: Host, commit: string): Promise<Host | null> {
+  const started = performance.now();
+  try {
+    const script = `${preparation(host, commit, "cached")}\nprintf '%s\\n' "$tree"`;
+    const child = capturedSpawn(sshScript(host, script), {
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: PREPARE_MS,
+    });
+    const [said, errors, code] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    const tree = said.trim();
+    if (code !== 0 || !isAbsolute(tree) || tree.includes("\n")) {
+      throw new Error(`controller preparation failed (${String(code)}): ${errors.trim()}`);
+    }
+    return { ...host, ...configuredRuntime(host), tree, prepared: true };
+  } catch (error) {
+    console.error(
+      `${host.name}: ${errorMessage(error)} after ${((performance.now() - started) / 1000).toFixed(1)} s`,
+    );
+    return null;
+  }
 }

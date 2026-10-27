@@ -34,6 +34,7 @@ const EXAM_STARTED = "exam.started";
 const WAITED = "campaign.waited";
 const HELD = ["v1", "v2", "v3", "v4"];
 const TESTED = { wins: 0, losses: 0, ties: 0, p: 1 };
+const PRICE = { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 };
 /** A report's fields where a case names none: a comparison that tallied nothing and stopped nowhere. */
 const REPORT = {
   scored: TESTED,
@@ -61,7 +62,7 @@ const condition = (task: string, harness: string): Condition => ({
   task,
   model: "p/m",
   effort: "high",
-  prices: { "p/m": { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 } },
+  prices: { "p/m": PRICE },
   runtime: {},
   compaction: "off",
   solverTools: "s1",
@@ -753,9 +754,9 @@ describe("the reader of a round compared with another harness than its session s
   const { triggers } = seenHere;
   const said = (name: keyof typeof TRIGGERS) => triggers.find((trigger) => trigger.name === name)?.detail;
 
-  it("reads a quick win against the reference harness, which is what the task was lost under", () => {
+  it("reads a quick win of a task its comparison won", () => {
     expect(said("WIN AT A SMALL WALL SHARE")).toBe(
-      "r-1: 1 passed solves of tasks the reference harness failed, in few calls",
+      "r-1: 1 passed solves of tasks the new harness won, in few calls",
     );
   });
 
@@ -834,6 +835,33 @@ describe("the reader of a round compared with another harness than its session s
       "r-1: 0 won, 4 lost and 0 tied between two samples of the reference harness, which reads a step where none can be",
     );
   });
+
+  it("does not diagnose an A/A step carried by the bill", () => {
+    const withUnbilled = (unbilled: readonly number[]) =>
+      overview(
+        log.map((each) =>
+          each.kind === REPORTED
+            ? {
+                ...each,
+                data: {
+                  ...each.data,
+                  noise: {
+                    wins: 0,
+                    losses: 4,
+                    ties: 0,
+                    p: 1,
+                    differences: [-2, -2, -2, -2],
+                    unbilled: [...unbilled],
+                  },
+                },
+              }
+            : each,
+        ),
+      ).triggers.find(({ name }) => name === "REFERENCE AGAINST ITSELF")?.detail;
+    // Same tally and p; only whether the unbilled test supports the false step changes.
+    expect(withUnbilled([0, 0, 0, 0])).not.toBe(withUnbilled([-2, -2, -2, -2]));
+    expect(withUnbilled([-2, -2, -2, -2])).toBe(said("REFERENCE AGAINST ITSELF"));
+  });
 });
 
 describe("the reader of what each Examiner session's tasks came to", () => {
@@ -862,17 +890,23 @@ describe("the reader of what each Examiner session's tasks came to", () => {
 describe("the reader of the load a comparison's solves started under", () => {
   /** A log of one comparison a row: its id, the one-minute load each of its solves started under,
    *  the host's cores where the log holds them, and the order its harnesses started in, `o` for the
-   *  reference and `n` for the new, mirrored as the round orders them where none is given. */
-  const read = (rows: readonly (readonly [string, readonly number[], number?, string?])[]) => {
+   *  reference and `n` for the new, mirrored as the round orders them where none is given, and the
+   *  model that served the new harness's solves, the one asked for where none is given, and the
+   *  model every condition asks for, `p/m` where none is given. */
+  const read = (
+    rows: readonly (readonly [string, readonly number[], number?, string?, string?, string?])[],
+  ) => {
     const log: LogEvent[] = [];
     const put = appendTo(log);
     put("task.proposed", { version: "v1" });
     put(GATE, { version: "v1", gate: 1, outcome: "passed" });
-    for (const [session, loads, cores, order] of rows) {
+    for (const [session, loads, cores, order, served, asked] of rows) {
       const terms = { session, old: "hbase", fresh: "hy", starter: "hbase", setting: SETTING };
       put(COMPARISON_STARTED, { ...terms, solves: 1, level: 0.1, tasks: ["v1"] });
       for (const [index, load] of loads.entries()) {
-        const ran = condition("v1", (order?.[index] ?? "onno"[index % 4]) === "o" ? "hbase" : "hy");
+        const old = (order?.[index] ?? "onno"[index % 4]) === "o";
+        const base = condition("v1", old ? "hbase" : "hy");
+        const ran = asked === undefined ? base : { ...base, model: asked, prices: { [asked]: PRICE } };
         const id = `${session}-${String(index)}`;
         put(CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) });
         put(SOLVE_STARTED, {
@@ -887,7 +921,7 @@ describe("the reader of the load a comparison's solves started under", () => {
           solve: id,
           ending: { outcome: "pass" },
           seconds: 50,
-          responseModels: ["m-1"],
+          responseModels: [old ? "m-20261001" : (served ?? "m")],
         });
       }
       put(REPORTED, { ...REPORT, ...terms, versions: ["v1"], reading: "no-step" });
@@ -955,6 +989,22 @@ describe("the reader of the load a comparison's solves started under", () => {
       "g-1: 1 of 1 tasks started their harnesses' solves out of turn",
       "g-5: 1 of 1 tasks started their harnesses' solves out of turn",
     ]);
+  });
+
+  it("names a comparison whose solves another model served than the one their condition asked for", () => {
+    // recode's comparisons on 23 October: claude-opus-5 served a setting of claude-opus-5-5.
+    const said = read([
+      ["g-1", [1, 1, 1, 1], 4, "onno", "m-old"],
+      ["g-2", [1, 1, 1, 1], 4, "onno"],
+    ]);
+    expect(said("SERVED ANOTHER MODEL")).toEqual([
+      "g-1: 2 of 4 solves, 0 of them under the reference harness; m-old 2",
+    ]);
+  });
+
+  it("reads a dated model served exactly as its condition asked as that model", () => {
+    const said = read([["g-1", [1, 1, 1, 1], 4, "onno", "m-20261001", "p/m-20261001"]]);
+    expect(said("SERVED ANOTHER MODEL")).toEqual([]);
   });
 
   it("reads the wall and the load on the solves a comparison measured, not on the non-results it reran", () => {
@@ -1355,18 +1405,20 @@ describe("the reader of the campaign's clock", () => {
     expect(hoursOf(log)).toContain("comparisons 1.0 (50%), between moves 1.0 (50%), of 2.0");
   });
 
-  it("counts a drafting session's dollars as the Examiner's, as the host's budget does", () => {
+  it("counts a drafting session's dollars and its example solves as the Examiner's, as the host's budget does", () => {
     const log = timed([
       [0, "draft.started", { session: "d-1" }],
+      [4, SOLVE_STARTED, { solve: "e1", comparison: "d-1" }],
+      [6, SOLVE_FINISHED, { solve: "e1", ending: { outcome: "pass" }, billed: 1 }],
       [10, "draft.finished", { session: "d-1", ended: "finished", billed: 3 }],
       [20, EXAM_STARTED, { session: "x-1" }],
       [30, "exam.finished", { session: "x-1", ended: "finished", billed: 1 }],
       [40, "referee.finding", { solve: "p1", ruling: "earned", billed: 1 }],
     ]);
     const { rows, triggers } = overview(log);
-    expect(rows[0]?.lines).toContain("billed dollars: examiner 4.00, referee 1.00");
+    expect(rows[0]?.lines).toContain("billed dollars: examiner 5.00, referee 1.00");
     expect(triggers.filter((trigger) => trigger.name === "SPEND LED BY A ROLE")).toEqual([
-      { lane: 28, name: "SPEND LED BY A ROLE", detail: "examiner: 80.0% of billed dollars" },
+      { lane: 28, name: "SPEND LED BY A ROLE", detail: "examiner: 83.3% of billed dollars" },
     ]);
   });
 
@@ -1494,10 +1546,21 @@ describe("the reader of comparisons the campaign command named apart from its Bu
     expect(lines).toContain("b-2: hc > hc, ended finished, 0 practice solves, reading none");
   });
 
-  it("reads a quick win only against a task its own comparison lost under the reference", () => {
+  it("reads a quick win only of a task its own comparison won", () => {
     expect(said("WIN AT A SMALL WALL SHARE")).toBe(
-      "b-1: 1 passed solves of tasks the reference harness failed, in few calls",
+      "b-1: 1 passed solves of tasks the new harness won, in few calls",
     );
+  });
+
+  it("reads a quick win of a task won on the objective, where the reference was valid too", () => {
+    // buffer-fresh-gpt-v071's g-1 on 26 October: six tasks won with all 48 solves valid.
+    const onObjective = log.map((event) =>
+      event.kind === REPORTED && event.data.session === "g-2"
+        ? { ...event, data: { ...event.data, frontier: { of: ["v1", "v2"], differences: [3, 0] } } }
+        : event,
+    );
+    const quick = overview(onObjective).triggers.find(({ name }) => name === "WIN AT A SMALL WALL SHARE");
+    expect(quick?.detail).toBe("b-1: 2 passed solves of tasks the new harness won, in few calls");
   });
 
   it("names each comparison's won tasks by solve, and says nothing of a comparison that won none", () => {
@@ -1513,7 +1576,9 @@ describe("the reader of comparisons the campaign command named apart from its Bu
         ? { ...event, data: { ...event.data, frontier: { of: ["v1"], differences: [0] } } }
         : event,
     );
-    expect(overview(tied).triggers.some((trigger) => trigger.name === "WINS")).toBe(false);
+    const names = overview(tied).triggers.map(({ name }) => name);
+    expect(names).not.toContain("WINS");
+    expect(names).not.toContain("WIN AT A SMALL WALL SHARE");
   });
 
   it("names a check that refused no answer, beside the answers the others refused", () => {

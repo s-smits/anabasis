@@ -190,7 +190,23 @@ describe("a draft read without a model", () => {
       "the do-nothing answer was not rejected on ex-001: pass",
       "the do-nothing answer was not rejected on ex-002: pass",
       "the do-nothing answer was not rejected on ex-003: pass",
+      "the answer's field answer moved no check's verdict and no objective when changed on an accept control: check what it says, or drop it from the answer format",
     ]);
+  });
+
+  it("tells a field of the answer that no check reads, and leaves one the format allows no change of", async () => {
+    const noted = (format: JsonObject) => ({
+      ...SOUND,
+      answerFormat: { ...FORMAT, properties: { ...FORMAT.properties, note: format } },
+      accept: [2, 3, 4].map((base, task) => ({
+        task,
+        answer: { answer: String(base * 6), note: "six times" },
+      })),
+    });
+    expect(await draftReading(join(root, "read"), noted({ type: "string" }), 2)).toEqual([
+      "the answer's field note moved no check's verdict and no objective when changed on an accept control: check what it says, or drop it from the answer format",
+    ]);
+    expect(await draftReading(join(root, "read"), noted({ const: "six times" }), 2)).toEqual([]);
   });
 
   it("tells a do-nothing answer that does not follow the format as a fault, with a check that passes everything", async () => {

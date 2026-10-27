@@ -11,16 +11,17 @@
  * Reference validity comes from each report's scored profile; an absent denominator reads
  * unmeasured rather than a measured zero.
  */
+import { labelledPairs } from "#src/campaign/comparison.ts";
 import { short } from "#src/campaign/move.ts";
 import { gateAnswers } from "#src/examiner/record.ts";
-import { flipP, informative, type Measures, type Paired, pointsOf } from "#src/kernel/compare.ts";
+import { differenceOf, flipP, informative, type Kept, type Paired } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { pairsReported } from "#src/kernel/reports.ts";
-import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
+import { asRecord, isNumber } from "#src/meta/json-shape.ts";
 import { type Compared, count, fired, type Index, indexOf, items, type Trigger, text } from "./folds.ts";
 import {
   epochsOf,
   joinedTest,
+  pinnedRule,
   pSaid,
   sharedPaths,
   spentTo,
@@ -67,15 +68,6 @@ const COLUMNS = [
   "last move ended",
 ] as const;
 
-/** The opening's level and trigger, or the tree's default. */
-function ruleOf(log: Index): string {
-  const terms = asRecord(log.of("campaign.opened").at(-1)?.terms);
-  const pinned = ["level", "trigger"].flatMap((key) =>
-    isString(terms?.[key]) ? [`${key} ${text(terms[key])}`] : [],
-  );
-  return pinned.join(", ") || "default";
-}
-
 /** A campaign's row. Before any promotion its comparisons stand where the rests would. */
 function rowOf({ name, events }: Campaign): string[] {
   const log = indexOf(events);
@@ -102,7 +94,7 @@ function rowOf({ name, events }: Campaign): string[] {
     name,
     // The host code of the last condition the campaign recorded.
     short(text(asRecord(log.of("condition.recorded").at(-1)?.condition)?.host)) || "none",
-    ruleOf(log),
+    pinnedRule(log).join(", ") || "default",
     epoch === undefined
       ? "none yet"
       : `${short(text(epoch.data.harness))} at ${events[epoch.at]?.at.slice(11, 16) ?? ""}Z`,
@@ -156,7 +148,8 @@ export function climbTable(campaigns: readonly Campaign[]): string {
  * reading is by this tree's score, whose objective counts a gain by its size (`FULL`), so it can
  * differ from the ordered rule a comparison begun before 21 October was read by: an outside review
  * of 22 October built eight tasks won by 1.1% and one lost by 20%, 8-1 at p 0.0195 by that rule and
- * p 0.502 by this score. The line says so.
+ * p 0.502 by this score. The line says so. Since 26 October a step clears the level without the
+ * bill as well (`stepOf`), so the second reading falls short only for a promotion made before.
  */
 export function safeguardTriggers(log: Index): Trigger[] {
   const authored = authorRoom(log.events);
@@ -171,10 +164,8 @@ export function safeguardTriggers(log: Index): Trigger[] {
     if (rests.length === 0 || flipP(joined) > level) return [];
     const harness = `${short(text(data.harness))} ${said(joined)} joined at level ${String(level)}`;
     const without = joinedTest(reports, authored);
-    const valid = measuredOf(log.events, rests, ["validity"]);
-    return [
-      { level, harness, without, valid, unbilled: measuredOf(log.events, rests, ["validity", "objective"]) },
-    ];
+    const valid = measuredOf(log.events, rests, "validity");
+    return [{ level, harness, without, valid, unbilled: measuredOf(log.events, rests, "unbilled") }];
   });
   const author = promotions.filter(({ without, level }) => flipP(without) > level);
   const beyond = promotions.filter(({ valid, level }) => flipP(valid) > level);
@@ -208,20 +199,17 @@ export function safeguardTriggers(log: Index): Trigger[] {
   ];
 }
 
-/** Each tested task's score (`testedOf`) on the `kept` measures alone (`pointsOf`), summed over a
- *  promotion's two readings as `joined` sums them. */
-function measuredOf(
-  events: readonly LogEvent[],
-  rests: readonly Compared[],
-  kept: readonly (keyof Measures)[],
-) {
+/** Each tested task's score (`testedOf`) on the measures `kept` names, as the step reads it
+ *  (`differenceOf`), from the settled pairs (`labelledPairs`), summed
+ *  over a promotion's two readings as `joined` sums them. Until 25 October
+ *  it summed the measures itself, and rounded half points up where the step rounds them away from
+ *  zero. */
+function measuredOf(events: readonly LogEvent[], rests: readonly Compared[], kept: Kept) {
   const sums = new Map<string, number>();
   for (const { session, at, last } of rests) {
     const tested = new Set(testedOf(last).of);
-    for (const pair of pairsReported(events, { session, index: at, data: last })) {
-      const points = pointsOf(pair);
-      const score = Math.round(kept.reduce((sum, measure) => sum + points[measure], 0));
-      if (tested.has(pair.task)) sums.set(pair.task, (sums.get(pair.task) ?? 0) + score);
+    for (const pair of labelledPairs(events, { session, index: at, data: last })) {
+      if (tested.has(pair.task)) sums.set(pair.task, (sums.get(pair.task) ?? 0) + differenceOf(pair, kept));
     }
   }
   return [...sums.values()];

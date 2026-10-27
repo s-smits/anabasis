@@ -11,7 +11,7 @@
  * had promoted once each and none twice, and no view said at which epoch a campaign stood or what
  * its tasks had done since the promotion. `runs view` prints the rows.
  */
-import { flipP } from "../kernel/compare.ts";
+import { readsStep } from "../kernel/compare.ts";
 import { conditionsOf } from "../kernel/condition.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, type Reported } from "../kernel/reports.ts";
@@ -33,15 +33,9 @@ interface FalsePromotion {
   /** The readings of a candidate against the epoch's reference on a frontier, each one attempt,
    *  unsuccessful ones included. Until 19 October a step and the repeat it bought were one. */
   readonly attempts: number;
-  /** The A/A controls on record, each read as an attempt between equal harnesses is, one-sided at
-   *  its comparison's level, and those that read a step: a count beside the estimate, which sets
-   *  none of it. Until 19 October the controls were read in pairs as a step and its repeat, and
-   *  until then too a 95% bound off the pairs replaced the design's rate once one pair was on
-   *  record: esp32-fresh-opus's closing report read "at most 100%" where its attempts' own rates
-   *  were 1.8%. Only a control that could read a step counts: one with too few untied tasks to
-   *  reach the level, where every task won reads none, tests nothing about the rate, and is
-   *  counted apart (`incapable`). Until 20 October it counted as a control that read no step,
-   *  and 30 of the 49 recorded controls were such. */
+  /** A/A steps under the comparison's one-sided rule. The denominator excludes controls where
+   * a marginal test is too small to clear the level; passing this size check does not establish
+   * that both tests can pass together. Historical reports without unbilled scores use one test. */
   readonly errors: number;
   readonly controls: number;
   readonly incapable: number;
@@ -218,11 +212,23 @@ function falsePromotionOf(
     return isNumber(rate) ? rate : levelOf(attempt);
   };
   const read = reports.flatMap((each) => {
-    const apart = asRecord(each.data.noise)?.differences;
-    return Array.isArray(apart) ? [{ each, apart: apart.filter(isNumber) }] : [];
+    const noise = asRecord(each.data.noise);
+    if (!Array.isArray(noise?.differences)) return [];
+    const differences = noise.differences.filter(isNumber);
+    return [
+      {
+        level: levelOf(each),
+        differences,
+        unbilled: Array.isArray(noise.unbilled) ? noise.unbilled.filter(isNumber) : differences,
+      },
+    ];
   });
-  const controls = read.filter(({ each, apart }) => flipP(apart.map(Math.abs)) <= levelOf(each));
-  const errors = controls.filter(({ each, apart }) => flipP(apart) <= levelOf(each)).length;
+  const controls = read.filter(({ differences, unbilled, level }) =>
+    readsStep(differences.map(Math.abs), unbilled.map(Math.abs), level),
+  );
+  const errors = controls.filter(({ differences, unbilled, level }) =>
+    readsStep(differences, unbilled, level),
+  ).length;
   const rates = attempts.map(rateOf);
   return {
     attempts: attempts.length,
@@ -237,7 +243,8 @@ function falsePromotionOf(
   };
 }
 
-/** One line an epoch, as the view prints them, each harness `called` as the view names it. */
+/** One line an epoch, as the view prints them, each harness `called` as the view names it, and the
+ *  promotion that ends it. */
 export function epochLine(epoch: Epoch, called: Called = short): string {
   const share = (named: string, found: Share | null) =>
     found === null ? `${named} unread` : `${named} valid ${String(found.valid)} of ${String(found.solves)}`;
@@ -262,8 +269,8 @@ function percent(chance: number): string {
 function sourceOf(risk: FalsePromotion): string {
   const controls =
     risk.controls === 0
-      ? "no A/A control on record that could read a step"
-      : `${String(risk.errors)} of ${plural(risk.controls, "A/A control")} that could read a step read one`;
+      ? "no A/A control with enough untied tasks in every test"
+      : `${String(risk.errors)} of ${plural(risk.controls, "A/A control")} with enough untied tasks in every test read a step; joint reachability unmeasured`;
   const incapable =
     risk.incapable === 0 ? "" : `, and ${String(risk.incapable)} too small to read one at their level`;
   return `${percent(risk.bound)} for the riskiest attempt by the rule's design; ${controls}${incapable}`;

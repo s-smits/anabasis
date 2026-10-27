@@ -68,17 +68,58 @@ it("finishes a cold install longer than the request deadline before asking the h
   expect(request).toBeGreaterThan(install);
 });
 
-it("reclaims a dead or expired preparation lock but preserves a recent live holder", () => {
+it("reclaims a dead or expired preparation lock and waits for a live holder to end", () => {
   for (const kind of ["dead", "expired", "live"]) {
     const made = fixture();
     const lock = join(made.root, "git", "ana-code", `${made.commit}.lock`);
     mkdirSync(lock, { recursive: true });
-    writeFileSync(join(lock, "pid"), kind === "dead" ? "99999999" : String(process.pid));
+    // The holder is orphaned at once, so its exit is reaped while this process waits on the run.
+    const holder = Bun.spawnSync(["sh", "-c", "sleep 4 >/dev/null 2>&1 & echo $!"]).stdout.toString().trim();
+    writeFileSync(join(lock, "pid"), kind === "dead" ? "99999999" : holder);
     if (kind === "expired") utimesSync(lock, new Date(0), new Date(0));
+    const started = performance.now();
     const result = made.run(PREPARE, { FAKE_EXECUTE: "1" });
-    expect(result.code).toBe(kind === "live" ? 1 : 0);
-    expect(existsSync(lock)).toBe(kind === "live");
+    expect(result.code).toBe(0);
+    expect(existsSync(lock)).toBe(false);
+    expect(performance.now() - started > 3000).toBe(kind === "live");
   }
+});
+
+it("prepares each host once for concurrent asks in one process", () => {
+  const made = fixture();
+  const both =
+    'import { asked } from "REPOSITORY/tools/runs/hosts.ts"; await Promise.all([asked(["catalogue"]), asked(["catalogue"])]);';
+  expect(made.run(both, { FAKE_EXECUTE: "1" }).code).toBe(0);
+  const scripts = made
+    .recorded()
+    .filter((call) => call.tool === "ssh")
+    .map((call) => call.args.at(-1) ?? "");
+  expect(scripts.filter((script) => script.includes("git fetch"))).toHaveLength(1);
+});
+
+it("retries a controller after connectivity returns in the same process", () => {
+  const made = fixture();
+  const retry = String.raw`import { asked } from "REPOSITORY/tools/runs/hosts.ts"; import { readFileSync, writeFileSync } from "REPOSITORY/src/meta/filesystem.ts"; const ssh = process.env.FAKE_SSH!; const online = readFileSync(ssh, "utf8"); writeFileSync(ssh, "#!/bin/sh\nexit 255\n"); console.log(JSON.stringify((await asked(["catalogue"]))[0]?.lines)); writeFileSync(ssh, online); console.log(JSON.stringify((await asked(["catalogue"]))[0]?.lines));`;
+  const result = made.run(retry, { FAKE_SSH: join(made.root, "bin", "ssh") });
+  expect(result.code).toBe(0);
+  const [failed, recovered] = result.out
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  expect(failed).toBeNull();
+  expect(recovered).toEqual(["[]"]);
+});
+
+it("prepares a controller again after its tree is pruned between asks", () => {
+  const made = fixture();
+  const retry =
+    'import { asked } from "REPOSITORY/tools/runs/hosts.ts"; import { rmSync } from "REPOSITORY/src/meta/filesystem.ts"; console.log(JSON.stringify((await asked(["catalogue"]))[0]?.lines)); const tree = process.env.FAKE_GIT! + "/ana-code/" + process.env.FAKE_COMMIT!; rmSync(tree, {recursive: true}); rmSync(tree + ".ready"); console.log(JSON.stringify((await asked(["catalogue"]))[0]?.lines));';
+  const result = made.run(retry, { FAKE_EXECUTE: "1" });
+  expect(result.code).toBe(0);
+  expect(result.out.trim().split("\n")).toEqual(["[]", "[]"]);
+  expect(
+    made.recorded().filter((call) => call.tool === "host-bun" && call.args.includes("install")),
+  ).toHaveLength(2);
 });
 
 it("prunes old controllers by readiness time and preserves active paths and working directories", () => {

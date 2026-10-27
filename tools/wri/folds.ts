@@ -25,7 +25,7 @@ import type { LogEvent } from "#src/kernel/log.ts";
 import { unsolved as noneAnswered } from "#src/kernel/compare.ts";
 import { lastReports, poolOf, pairsReported } from "#src/kernel/reports.ts";
 import { billedAll, type Traced, traced, tracesIn } from "#src/kernel/trace.ts";
-import { type Judged, refusedBy, solvesIn, verdictsOf } from "#src/kernel/solves.ts";
+import { examinerSessions, type Judged, refusedBy, solvesIn, verdictsOf } from "#src/kernel/solves.ts";
 import { heldAtGate, taskSets } from "#src/kernel/task.ts";
 import { OBJECTIVE } from "#src/kernel/verify.ts";
 import type { Handover } from "#src/campaign/handover.ts";
@@ -70,8 +70,9 @@ export interface Solve {
    *  every turn its start allowed. Read from the end, since a call's turn counted from 0 in logs up
    *  to 22 October and from 1 after, and the end's count from 1 in both (25 October). */
   readonly limit: string | null;
-  /** Whether the provider named the model that served it. */
-  readonly attested: boolean;
+  /** The model its condition asked for, and those its provider named as serving it, if any. */
+  readonly model: string;
+  readonly served: readonly string[];
 }
 
 /** One call of a Builder's tool, at its place in the log. */
@@ -201,6 +202,7 @@ export const TRIGGERS = {
   "REFERENCE AGAINST ITSELF": 24,
   "HOST CODE MOVED": 20,
   "STARTS OUT OF TURN": 20,
+  "SERVED ANOTHER MODEL": 20,
   "CHAIN": 25,
   "NO TASK HELD OUT": 25,
   "WALL SHARE": 26,
@@ -289,7 +291,8 @@ function solvesOf(
           calls: [],
           errors: 0,
           limit: modelTurns !== null && count(end?.turns) === modelTurns ? "last turn" : null,
-          attested: items(end?.responseModels).length > 0,
+          model: condition?.model ?? "",
+          served: items(end?.responseModels).filter(isString),
         },
       ];
     }),
@@ -409,8 +412,10 @@ export function spendOf(log: Index): [string, number][] {
   // A solve an Examiner session asked for to try a draft task (`try_task`) names the session where a
   // comparison's names the comparison, and is the Examiner's, as `countedSolves` keeps it out of
   // every tally: about seven reference solves an admitted task at three a draft (the overhaul plan,
-  // 4b), which until 12 October read as the solver's.
-  const sessions = new Set(log.of(EXAM_START).map(({ session }) => session));
+  // 4b), which until 12 October read as the solver's. A drafting session's solves of its examples
+  // are the Examiner's too: until 27 October this reader took only `exam.started`, and $2.23 of
+  // buffer-fresh-opus-v072's drafting read as the solver's.
+  const sessions = examinerSessions(log.events);
   const tried = new Set(log.solves.flatMap(({ id, comparison }) => (sessions.has(comparison) ? [id] : [])));
   const whose = ({ kind, data }: LogEvent) => {
     const role = roleOf(kind);

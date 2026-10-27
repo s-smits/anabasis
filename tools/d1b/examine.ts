@@ -7,14 +7,14 @@
  *
  * The Examiner writes task instances against the pack's contract and check program. Each is put to
  * the one gate, the shape of its package, and since 12 October to the reference harness's solves:
- * fresh solves of it under the campaign's setting, one at a time and at most `TRIED`, and it is a
+ * fresh solves of it under the campaign's setting, at most `TRIED`, the first alone and the rest together, and it is a
  * held-out task at the first after which those that gave a reading leave the reference room as a comparison reads it (`informative`), or where none
  * was valid and its author's own answer passes on it (`try_task`, `src/examiner/write.ts`). The
  * session is shown every task the campaign holds, the pack's own
  * and the ones earlier sessions wrote, and the opening message says one outcome of each: how the
  * reference harness did on it in the last comparison that scored it, disputed, or no longer
- * scored, and whether a valid answer to it is on record, with those tasks counted by family beside
- * the lines (`src/examiner/record.ts`, 11 October). The home the
+ * scored, who won it and on which measure, and whether a valid answer to it is on record, with one
+ * line of what the reference was measured to do across the exam (`src/examiner/record.ts`). The home the
  * last session computed in, and what it said at its finish, are carried into this one, and its
  * shell runs the engines the pack's checks run (12 October).
  *
@@ -108,8 +108,8 @@ const EXAMINE_OPTIONS = {
   /** `on` lays a copy of the reference harness the gate solves with in the Examiner's home; `off`
    *  keeps it blind. The one owner of the default, which a campaign that names no term reads. */
   "reference-home": { type: "string", default: "on" },
-  /** `on` tells the Examiner who won each task in its last comparison; `off` tells it by family
-   *  alone (`exam-results`, `heard`, `src/examiner/record.ts`). */
+  /** `on` tells the Examiner who won each task in its last comparison; `off` tells it nothing of
+   *  the other harness but whether a valid answer is on record (`exam-results`, `heard`, `record.ts`). */
   results: { type: "string", default: "on" },
   /** The campaign's setting, as every command that solves takes it: the solver and the limits the
    *  reference harness's solves of a draft task run under (`try_task`), and the budget fact the

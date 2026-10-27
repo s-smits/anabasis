@@ -16,6 +16,15 @@ function fixture() {
   return made;
 }
 
+it("chooses no Claude login after fresh's preset seats are all overridden to GPT", () => {
+  const made = fixture();
+  const result = made.run(`import { fresh, seats } from "REPOSITORY/tools/runs/fresh.ts";
+await fresh(["sample", "--host", "runner", "--model", "opus", "--", ...seats("openai-codex/gpt-6.1-sol", "hhhh")], async () => { throw new Error("login usage must not be read"); });`);
+  expect(result.err).toBe("");
+  expect(result.code).toBe(0);
+  expect(result.out).toContain("nothing is launched without --yes");
+});
+
 it("refuses a fleet-full login before any source preparation, even with an explicit host", () => {
   const made = fixture();
   const result = made.run(
@@ -86,4 +95,17 @@ it("keeps a pack on a familiar host with room and falls back when it is full", (
   expect(
     made.run(code, { FAKE_CATALOGUE: catalogue, FAKE_ACTIVE: JSON.stringify(occupied) }).out.trim(),
   ).toBe("here");
+});
+
+it("spreads one login's runs over the hosts before it prefers a familiar one", () => {
+  const made = fixture();
+  const place = (login: string) =>
+    `import { placeFresh } from "REPOSITORY/tools/runs/placement.ts"; console.log((await placeFresh("sample", undefined, undefined, "${login}"))?.name ?? "here");`;
+  const catalogue = JSON.stringify([
+    { name: "prior", path: `${made.root}/prior/log.jsonl`, project: "sample-fresh" },
+  ]);
+  const active = JSON.stringify([{ name: "one", login: LOGIN, host: made.host.name }]);
+  const env = { FAKE_CATALOGUE: catalogue, FAKE_ACTIVE: active };
+  expect(made.run(place(LOGIN), env).out.trim()).toBe("here");
+  expect(made.run(place(OTHER), env).out.trim()).toBe("runner");
 });

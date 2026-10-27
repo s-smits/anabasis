@@ -110,14 +110,26 @@ const measuredAt = (sides: readonly LogEvent[], measures: readonly number[]) => 
 /** Task versions in one order, whatever order a reader gave them in. */
 const sorted = (versions: Iterable<string>) => [...versions].toSorted();
 const pairsIn = (log: readonly LogEvent[]) => lastReports(log).map((report) => pairsReported(log, report));
-const cells = (log: readonly LogEvent[]) =>
-  new Map([...poolOf(log).standings].map(([task, { cell }]) => [task, cell]));
-/** Which of `tasks` a release takes as failed by the reference: alone in a pool such a task is
- *  released first, with the reason that names its failure. */
-const failedOf = (log: readonly LogEvent[], tasks: readonly string[]) =>
-  tasks.filter((task) =>
-    (releaseOrder(log, [task], 1, "seed")[0]?.[1] ?? "").includes("failed it in the last"),
+/** Who won each task in its last comparison with the reference, and on which measure. */
+const winners = (log: readonly LogEvent[]) =>
+  new Map(
+    [...poolOf(log).standings].map(([task, { won, by }]) => [
+      task,
+      won === null ? null : `${won} on ${String(by)}`,
+    ]),
   );
+/** Which of `tasks` the reference's last reading failed or left objective room on, before halving. */
+const failedOf = (log: readonly LogEvent[], tasks: readonly string[]) => {
+  const { outcomes, standings } = poolOf(log);
+  return tasks.filter((task) => {
+    const outcome = outcomes.get(task);
+    return (
+      outcome === "reference-none" ||
+      outcome === "reference-some" ||
+      (outcome === "reference-every" && (standings.get(task)?.room ?? 0) > 0)
+    );
+  });
+};
 
 describe("the harness a Builder goes on from", () => {
   const built = (session: string, harness: string, more: JsonObject = {}) =>
@@ -563,11 +575,11 @@ describe("the outcome an Examiner hears of a task", () => {
       standing: poolOf(log_).standings.get("kept") ?? null,
       failed: failedOf(log_, ["kept"]),
     });
-    const won = { cell: "other-won", solves: 2, room: null } as const;
+    const won = { won: "other", by: "validity", room: null } as const;
     expect(read(before)).toEqual({ outcome: "reference-none", standing: won, failed: ["kept"] });
     expect(read(after)).toEqual({
       outcome: "reference-every",
-      standing: { cell: "reference-won", solves: 2, room: null },
+      standing: { won: "reference", by: "validity", room: null },
       failed: [],
     });
     expect(read(beside)).toEqual({ outcome: "earlier-reference", standing: null, failed: [] });
@@ -584,10 +596,10 @@ describe("the outcome an Examiner hears of a task", () => {
   });
 });
 
-describe("where a task stands in the counts an Examiner hears", () => {
+describe("who won each task, as an Examiner hears it", () => {
   const terms = { old: "h1", fresh: "h2", solves: 2, setting: SETTING };
 
-  it("tells a tie both harnesses answered in every solve from one neither answered in any, and a task told apart by the side that won it", () => {
+  it("names the side that won a task told apart and the measure that carried it, and none for a tie or a task set aside", () => {
     const tasks = ["every", "none", "other", "ours", "mixed", "aside"];
     const log = [
       ...tasks.flatMap(heldOut),
@@ -603,26 +615,23 @@ describe("where a task stands in the counts an Examiner hears", () => {
       ...solved("b-1", "mixed", "h2", [F, P]),
       reported("b-1", "no-step", "h2", { ...terms, versions: tasks.slice(0, 5), aside: ["aside"] }),
     ];
-    // Four of the five are ties or losses to a tally; the two ties a plain count would merge are
-    // apart, and the reference's side is the old one.
-    expect(cells(log)).toEqual(
+    // The reference's side is the old one; a task set aside there has an outcome and no winner.
+    expect(winners(log)).toEqual(
       new Map([
-        ["every", "tied-every"],
-        ["none", "tied-none"],
-        ["other", "other-won"],
-        ["ours", "reference-won"],
-        ["mixed", "tied-mixed"],
-        ["aside", "aside"],
+        ["every", null],
+        ["none", null],
+        ["other", "other on validity"],
+        ["ours", "reference on validity"],
+        ["mixed", null],
       ]),
     );
-    // Read from the record the outcome is read from: the same tasks, and the solves a side.
+    // Read from the record the outcome is read from: the same tasks but the one set aside.
     const { standings, outcomes } = poolOf(log);
-    expect(sorted(standings.keys())).toEqual(sorted(outcomes.keys()));
-    expect(standings.get("every")).toEqual({ cell: "tied-every", solves: 2, room: null });
-    expect(standings.get("aside")).toEqual({ cell: "aside", solves: null, room: null });
+    expect(sorted(standings.keys())).toEqual(sorted(outcomes.keys()).filter((task) => task !== "aside"));
+    expect(standings.get("every")).toEqual({ won: null, by: null, room: null });
   });
 
-  it("counts a task the objective told apart between two valid answers as told apart, and the same answers without one as a tie", () => {
+  it("names the objective where it told two valid answers apart, and the same answers without one a tie", () => {
     const measured = (objective: JsonObject | null) => {
       const sides = [
         ...solved("b-1", "split", "h1", [P, P]),
@@ -642,16 +651,16 @@ describe("where a task stands in the counts an Examiner hears", () => {
         }),
       ];
     };
-    expect(cells(measured({ direction: "lower", margin: 0.01 }))).toEqual(
+    expect(winners(measured({ direction: "lower", margin: 0.01 }))).toEqual(
       new Map([
-        ["split", "other-won"],
-        ["even", "tied-every"],
+        ["split", "other on objective"],
+        ["even", null],
       ]),
     );
-    expect(cells(measured(null))).toEqual(
+    expect(winners(measured(null))).toEqual(
       new Map([
-        ["split", "tied-every"],
-        ["even", "tied-every"],
+        ["split", null],
+        ["even", null],
       ]),
     );
   });
@@ -670,10 +679,11 @@ describe("the tasks that go to a person as possibly infeasible", () => {
     reported(session, "no-step", fresh, { ...terms, fresh, versions: ["hard", "easy"] }),
   ];
   const awaiting = (log: readonly LogEvent[]) => poolOf(log).awaiting;
-  /** The tasks a release gives the Builder first because no solve answered them in two comparisons. */
+  /** The tasks a release gives the Builder first because the reference harness answered them in
+   *  no solve of two comparisons. */
   const unanswered = (log: readonly LogEvent[]) =>
     releaseOrder(log, ["hard", "easy"], 2, "seed").flatMap(([task, why]) =>
-      why.includes("no solve answered it in two comparisons") ? [task] : [],
+      why.includes("answered it in no solve of two comparisons") ? [task] : [],
     );
   const start = [...heldOut("hard"), ...heldOut("easy")];
   const once = compared(start, "b-1", "h2", F);
@@ -714,26 +724,13 @@ describe("the tasks that go to a person as possibly infeasible", () => {
     const proved = [...twice, proof];
     expect(awaiting(proved)).toEqual([]);
     expect(pairsIn(proved)).toEqual(pairsIn(twice));
-    // It is the one fact an author hears beside an outcome that names no side: a tie nobody
-    // answered is counted apart where a valid answer is known.
+    // It is the one fact an author hears beside an outcome that names no valid solve, whoever
+    // gave the answer on record.
     expect(poolOf(twice).feasible).toEqual(new Set(["easy"]));
     expect(poolOf(proved).feasible).toEqual(new Set(["hard", "easy"]));
-    expect(poolOf(twice).standings.get("hard")).toEqual({
-      cell: "tied-none",
-      solves: 2,
-      room: null,
-    });
-    expect(poolOf(proved).standings.get("hard")).toEqual({
-      cell: "tied-none-known",
-      solves: 2,
-      room: null,
-    });
-    const elsewhere = [...twice, ...solved(undefined, "hard", "h9", [P])];
-    expect(poolOf(elsewhere).standings.get("hard")).toEqual({
-      cell: "tied-none-known",
-      solves: 2,
-      room: null,
-    });
+    expect(poolOf([...twice, ...solved(undefined, "hard", "h9", [P])]).feasible).toEqual(
+      new Set(["hard", "easy"]),
+    );
   });
 
   it("do not count a comparison that cut a solve of the task at a limit", () => {
@@ -830,7 +827,7 @@ describe("the tasks that go to a person as possibly infeasible", () => {
     expect(awaiting(compared(settled, "b-3", "h4", F))).toEqual([]);
   });
 
-  it("go to the Builder first at a release, cut at a limit or not, while they are held out and no solve answered them", () => {
+  it("go to the Builder first at a release, cut at a limit or not, while they are held out and the reference answered them in no solve", () => {
     // t-5 (10 October): two tasks no solve answered in two comparisons, every solve of them cut
     // at 2 told turns, so no person was asked either; the draw released another task.
     expect(unanswered(once)).toEqual([]);
@@ -838,8 +835,19 @@ describe("the tasks that go to a person as possibly infeasible", () => {
     const cut = compared(compared(start, "b-1", "h2", "turns-ended"), "b-2", "h3", "turns-ended");
     expect(unanswered(cut)).toEqual(["hard"]);
     expect(awaiting(cut)).toEqual([]);
-    // A valid answer anywhere settles it.
-    expect(unanswered(compared(twice, "b-3", "h4", P))).toEqual([]);
+    // Only the reference harness's own valid answer settles it: one of the new harness's leaves
+    // it first, so which held-out task the new harness won moves no release (rule 3).
+    expect(unanswered(compared(twice, "b-3", "h4", P))).toEqual(["hard"]);
+    expect(
+      unanswered([
+        ...twice,
+        ...solved("b-3", "hard", "h1", [P, F]),
+        ...solved("b-3", "hard", "h4", [F, F]),
+        ...solved("b-3", "easy", "h1", [P, P]),
+        ...solved("b-3", "easy", "h4", [P, P]),
+        reported("b-3", "no-step", "h4", { ...terms, fresh: "h4", versions: ["hard", "easy"] }),
+      ]),
+    ).toEqual([]);
   });
 });
 
@@ -888,6 +896,51 @@ describe("the release before the draw", () => {
     expect(releaseOrder(once, ["s1", "a1"], 1, "seed").map(([version]) => version)).toEqual(["s1"]);
   });
 
+  it.each(["disputed", "refused"])(
+    "excludes %s tasks before taking half of the reference's failures",
+    (state) => {
+      const failed = ["f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8"];
+      const compared = [
+        ...failed.flatMap(heldOut),
+        ...failed.flatMap((task) => [
+          ...solved("b-1", task, "h1", [F, F]),
+          ...solved("b-1", task, "h2", [P, P]),
+        ]),
+        reported("b-1", "no-step", "h2", { ...terms, versions: failed }),
+      ];
+      const events = [
+        ...compared,
+        ...failed.slice(0, 4).map((version) => event("task.state", { version, state })),
+      ];
+      expect(releaseOrder(events, taskSets(events).held, 2, "seed").map(([version]) => version)).toEqual([
+        "f5",
+        "f6",
+      ]);
+    },
+  );
+
+  it("keeps the same half of five failed tasks across releases of one task at a time", () => {
+    const failed = ["f1", "f2", "f3", "f4", "f5"];
+    const events = [
+      ...failed.flatMap(heldOut),
+      ...failed.flatMap((task) => [
+        ...solved("b-1", task, "h1", [F, F]),
+        ...solved("b-1", task, "h2", [P, P]),
+      ]),
+      reported("b-1", "no-step", "h2", { ...terms, versions: failed }),
+    ];
+    const released: string[] = [];
+    for (let nth = 0; nth < failed.length; nth += 1) {
+      const chosen = releaseOrder(events, taskSets(events).held, 1, "seed");
+      for (const [version] of chosen) {
+        released.push(version);
+        events.push(event("task.state", { version, state: "released" }));
+      }
+    }
+    expect(released).toEqual(failed.slice(0, Math.ceil(failed.length / 2)));
+    expect(taskSets(events).held).toEqual(["f4", "f5"]);
+  });
+
   it("releases the same tasks whichever held-out task the new harness bettered by the objective", () => {
     // Two logs with equal tallies, one task won and one tied, which differ only in which task the
     // new harness's answers measured half the reference's. The release reads the reference's own
@@ -914,6 +967,26 @@ describe("the release before the draw", () => {
     expect(poolOf(won("a2")).frontier).toEqual(["a2"]);
     expect(releaseOrder(won("a1"), ["a1", "a2"], 1, "seed")).toEqual(
       releaseOrder(won("a2"), ["a1", "a2"], 1, "seed"),
+    );
+  });
+
+  it("releases the same tasks whichever held-out task the new harness won where the reference answered neither", () => {
+    // Two campaigns with equal tallies over two comparisons, which differ only in which of two
+    // tasks the reference never answers the new harness won. Until 26 October a valid answer of
+    // any harness took a task off the first list, so the other task was released from each, and
+    // the Builder could read which one its harness had won (AGENTS.md rule 3).
+    const won = (task: string) => [
+      ...["u1", "u2"].flatMap(heldOut),
+      ...["b-1", "b-2"].flatMap((session) => [
+        ...["u1", "u2"].flatMap((each) => [
+          ...solved(session, each, "h1", [F, F]),
+          ...solved(session, each, "h2", each === task ? [P, P] : [F, F]),
+        ]),
+        reported(session, "no-step", "h2", { ...terms, versions: ["u1", "u2"] }),
+      ]),
+    ];
+    expect(releaseOrder(won("u1"), ["u1", "u2"], 1, "seed")).toEqual(
+      releaseOrder(won("u2"), ["u1", "u2"], 1, "seed"),
     );
   });
 
@@ -981,9 +1054,10 @@ describe("the release before the draw", () => {
   });
 
   it("takes no practice priority from a rejection set aside until its comparison is settled", () => {
+    // The reference answers `f1` once here, so it is no task it never answered (`unanswered`).
     const pending = [
       ...log,
-      ...solved("b-2", "f1", "h1", [F, F]),
+      ...solved("b-2", "f1", "h1", [P, F]),
       ...solved("b-2", "f1", "h2", [P, P]),
       ...solved("b-2", "a1", "h1", [P, P]),
       ...solved("b-2", "a1", "h2", [P, P]),

@@ -1,6 +1,6 @@
 ---
 name: stack-pr
-description: "Put a change on the one open stack of Anabasis v2 pull requests: find the real top, keep local work while moving to it, decide between appending and a new pull request, shape commits that each pass alone, run the checks CI runs (by hand where the runners do not), publish through the checking pre-push hook, prove the stack with `bun run land -- <top> --sanitize`, write the body, repair your own children when a parent moves, consolidate the whole stack by subject (review in groups, fix in lanes, regroup, republish), and land a stack with `bun run land`. Use when asked to open, append to, stack, restack, consolidate or overhaul, rebase, hop to the latest head, sanitize or land a pull request, or when a push, a hook or a base refuses. v1's stack-hop and setup-pr in one."
+description: "Put a change on the one open stack of Anabasis v2 pull requests: find the real top, keep local work while moving to it, expand the open pull request a change belongs to before opening a new one, shape commits that each pass alone, run the checks CI runs (by hand where the runners do not), publish through the checking pre-push hook, prove the stack with `bun run land -- <top> --sanitize`, write the body, repair your own children when a parent moves, consolidate the whole stack by subject (review in groups, fix in lanes, regroup, republish), and land a stack with `bun run land`. Use when asked to open, append to, stack, restack, consolidate or overhaul, rebase, hop to the latest head, sanitize or land a pull request, or when a push, a hook or a base refuses. v1's stack-hop and setup-pr in one."
 ---
 
 # Stack a pull request
@@ -30,16 +30,26 @@ reading from the start of the task is a lead, not a fact.
 
 ## 2. Decide where the change goes
 
-- **The same subject as one of your own open pull requests: append to it.** Same subject, not
-  same directory. A second pull request for two files that belong with ten is noise.
-- **A new subject: a new pull request on the top**, never beside the stack. Its base is the top
-  branch, and it holds that branch's head. A change that depends on nothing below it still goes
-  on top; say so in the body.
+- **First find the open pull request the change belongs to.** Read every open title, and compare
+  the files the change touches with each one's diff (`git diff --name-only <base> <head>`). A
+  change belongs to a pull request when it fixes, simplifies, completes or supersedes that pull
+  request's own code: it rewrites lines that pull request added, or makes one of its hunks dead.
+  Sharing a file is not enough, since half the stack touches `decide.ts` or `AGENTS.md`. On
+  27 October, of eight lanes stacked as new pull requests, #420 rewrote #403's reader, #423 capped
+  the concurrency #404 had added, and #427 superseded #417's spill. The other five were new
+  subjects, and right as new pull requests.
+- **A change that belongs to an open pull request expands it.** With no children (`stack.ts
+  --branch` names none), fold the change into that pull request's commit and rewrite its title and
+  body. With children, a rewrite moves every branch above it, so it takes new commits only: make
+  the change as `fixup! <the commit's subject>` (`amend!` where the message changes too) in a
+  pull request of your own on the top, whose body opens "Absorbs into #N at the next
+  consolidation". Section 10 folds it down and closes the carrier (`republish.ts --absorb`).
+  Delete the code the change makes dead in the same commit.
+- **A change that belongs to no open pull request: a new pull request on the top**, never beside
+  the stack. Its base is the top branch, and it holds that branch's head. A change that depends
+  on nothing below it still goes on top; say so in the body.
 - **Another session's pull request is never yours to change.** No commit, no rebase, no force
-  push, whatever the fix. Stack the fix as your own pull request on the top, or tell the owner.
-- **A pull request with children takes new commits only.** Rewriting it moves every branch
-  above it. Fold a fix into its own commit only while `stack.ts --branch` says nothing is
-  stacked on the branch.
+  push, whatever the fix. Carry the fix as a `fixup!` on the top, as above, or tell the owner.
 - **Skills go on the stack too**, and so does documentation that describes an open pull request,
   with the row of `docs/transfer.md` that the change moves, in the same pull request.
 - **Work that names anything private never becomes a pull request**: which provider account a
@@ -206,7 +216,9 @@ a serious run failure, `I2` is a bounded functional improvement, and `I3` is rep
 convenience. The title carries no "Ix:" prefix; the label replaced it on 25 October. `bun run land`
 refuses a stack in which any pull request has no importance label or more than one, naming each,
 before it gates anything, so `--sanitize` shows such a stack as not ready (`gh pr edit <number>
---add-label importance:I<n>` repairs it).
+--add-label importance:I<n>` repairs it). `stack.ts` ends each line in the label, and a
+consolidation spends its time by it: `I0` and `I1` through commit-r, `I3` folded
+(`references/consolidate.md`, "Spend by importance").
 
 The operator's title is used word for word. Otherwise, name the changed behaviour in a short
 imperative sentence, such as "Let the host wait for Examiner admission results" or "Reuse gate
@@ -287,6 +299,8 @@ open (98 of them on 21 September in v1). The command is `tools/runtime/land.ts`:
 bun run land -- <top>                 # prove it here; nothing is written to GitHub
 bun run land -- <top> --sanitize      # and post each commit's verdict as ana/commit
 bun run land -- <top> --merge         # and wait for ci.yml, post ana/stack-gate, and merge
+bun run land -- <pr> --auto --merge   # land the top above <pr>, and follow a new top stacked meanwhile
+bun run land -- --merge               # the same, for the stack that holds the oldest stacked pull request
 ```
 
 GitHub enforces this. Since 25 October the repository allows merge commits only, with squash,
@@ -323,10 +337,12 @@ only (`test/land.test.ts`); never against this repository.
 
 Consolidating turns a stack that grew one fix at a time, in the order the fixes were found, into a
 smaller stack structured by subject. It reviews the whole open stack, folds every fix into the commit it belongs to, makes
-related pull requests one, and publishes the result as one native stack. It rewrites other
+related pull requests one, and publishes the result as one native stack. Every carrier whose body
+says "Absorbs into #N" is folded into #N and closed. It rewrites other
 sessions' pull requests, so it needs the operator's word (section 8). The procedure, with the
-reason for each rule, is `references/consolidate.md`: review in groups with a second, independent
-review; restructure in one rebase; fix in lanes that deliver only `fixup!` and `amend!` commits;
+reason for each rule, is `references/consolidate.md`: spend by importance (`I0` and `I1` rewritten
+surgically through commit-r, lowest on the stack; `I3` folded at the top); review in groups according
+to its importance table; restructure in one rebase; top-based lanes deliver `fixup!` and `amend!` deltas;
 assemble by cherry-pick and autosquash; check that the squashed top's tree equals the pre-squash
 tip and that every commit typechecks where it sits; regroup; publish; prove with
 `bun run land -- <top> --sanitize`.
@@ -342,5 +358,6 @@ bun .claude/skills/stack-pr/scripts/republish.ts <the same> --yes [--no-verify]
 
 ## Report
 
-Say the edges you read and when, where the new pull request sits, each commit with its subject,
+Say the edges you read and when, which open pull request the change expanded or why it is a new
+subject, where it sits, each commit with its subject,
 the checks with their counts and where they ran, and where each banked file went.

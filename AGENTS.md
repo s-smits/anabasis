@@ -123,16 +123,17 @@ prove the public input is enough to derive that answer, so a held task no refere
 may be hard or may be underspecified, and no reading can tell which until a person reads it.
 
 A small movement is read against the solver's measured variation before it is called a gain.
-Milestone: twelve confirmed promotions in one real campaign, then the same in a second domain. This
-is the operator's milestone for observation, and it is no quota, promotion rule or stop: no prompt,
-table row or tool names a count of promotions, and the campaign keeps its own endings. The stop
-rule's patience marks a possible plateau, which is evidence that progress stalled and no proof that
-no step is left. A campaign that ended before twelve because of its budget, its environment or as
-`finished` (three Builder conversations in a row made no campaign move) reads "reached N promotions;
-further improvement unresolved". One ended by its patience reads differently. Its false-promotion
-risk is reported across the whole campaign, over every comparison that could have promoted, because
-the opening's estimate over one patience's attempts restarts with each promotion and so covers one
-window at most.
+Milestone: six confirmed promotions in one real campaign, then the same in a second domain. This is
+the operator's milestone for observation, and it is no quota, promotion rule or stop: no seat's
+prompt or tool and no row of the move table names a count of promotions, and the campaign keeps its
+own endings. The release cycle stops its runs at the milestone from outside
+(run-improvement-campaign). The stop rule's patience marks a possible plateau, which is evidence
+that progress stalled and no proof that no step is left. A campaign that ended before six because
+of its budget, its environment or as `finished` (three Builder conversations in a row made no
+campaign move) reads "reached N promotions; further improvement unresolved". One ended by its
+patience reads differently. Its false-promotion risk is reported across the whole campaign, over
+every comparison that could have promoted, because the opening's estimate over one patience's
+attempts restarts with each promotion and so covers one window at most.
 
 **2. Honesty: could the measured gains be chance or drift?** A test at level 0.10 is designed to
 crown a winner between two equal harnesses about one time in ten. That design value stays a claim
@@ -157,8 +158,9 @@ what the attempts risk together as they come: each reading of a harness against 
 one attempt, at its own rate, and the sum is an estimate and no bound. The A/A controls that read a
 step, one-sided at the level, are counted beside it (`falsePromotion`, `src/campaign/climb.ts`). A
 control with too few untied tasks to reach the level cannot read a step, so it tests nothing about
-that rate: the climb counts only the controls that could have, and reports the others apart as too
-small to read one (`incapable`).
+that rate: the climb counts only controls whose individual tests have enough untied tasks to reach the
+level, and reports the others apart as too small (`incapable`). This marginal size check does not
+establish that both tests can pass together.
 
 **3. Verdicts: are the labels correct?** Validity is decided by a check program nobody has audited
 against the field, and a check that rejects a right answer is label noise: in v1, 36 of 47
@@ -233,6 +235,16 @@ The exam side knows what a right answer is. The build side tries to produce righ
 measurement is only worth something because the build side never learns what the exam side knows,
 so the wall between them is the system's main asset.
 
+The wall runs one way. In learning terms the Builder is the learner, the practice tasks are its
+training set and the held-out tasks its test set: it learns what to improve from practice, where it
+reads every task, trace and result whole, and a step says the harness is better on tasks it never
+saw. A Builder that learned anything of a held-out task, even which one its harness won, could fit
+the harness to the test set, and a step would then measure that fit. The other direction is open
+by design: the Examiner reads what the reference harness did on each task and, under the term
+`exam-results`, which harness won it (section 3). Its risk is an exam written towards the newest
+harness, which the gate bounds by admitting a task only where the reference has room on it, and
+which the operator accepted on 20 October.
+
 What crosses from the exam side to the build side is a closed list:
 
 - the contract's public rules, its scope and conventions, the answer format and, where the check
@@ -289,7 +301,7 @@ model is itself the subject of the decision, or the value must stay identical on
 comparison. Models keep the second column because code cannot reason about a domain it has never
 seen.
 
-Six consequences guide a change:
+Seven consequences guide a change:
 
 1. **Give a model facts, never a course.** The host tells an agent what happened: a tally, an
    ending, a limit and how much of it is used. It leaves what to do next to the agent: a model
@@ -328,6 +340,15 @@ Six consequences guide a change:
    three protected things. A seat's commands write one root, except for the host's own folder
    inside it (`SolveDirs`, `src/tools/command.ts`), and each policy is probed once per process by
    one command run exactly as every command of a seat is run (`walledBase`, `probeWall`).
+7. **Take the simple path that reaches most of the result.** The system is already large, and each
+   mechanism added makes the next change harder to read, to prove and to undo. Prefer the design
+   that reaches about four fifths of the result with about a fifth of the code, and accept the
+   loss: a plain mechanism that works and writes events the readers can count beats a complete one
+   that nobody can check. This holds for the host's code, a prompt, a tool and a skill alike, and it
+   is why rule 13 asks for evidence before machinery. It never holds for the measurement's honesty:
+   the wall, the terms fixed before the first solve, fresh solves, the step test and the rulings
+   (rules 3 to 8) are not traded for less code, since a simpler measurement that reads a false step
+   costs more than all the code it saved.
 
 ## 3. The seats
 
@@ -347,29 +368,32 @@ wall keeps from it.
 What the **Examiner** reads:
 
 - the contract, the operator's brief, the budget every solve is held to, and examples;
-- one outcome for each task of the campaign, and whether a valid answer to it is on record;
+- one line for each task of the campaign: its outcome in the last comparison that scored it, with
+  the solver's turns for each valid answer of the reference, and whether a valid answer to it is on
+  record;
 - for a task the reference stood in two or more comparisons of, the same outcome for each of its
   last three, newest first, each with whether a limit cut one of the reference's solves, and how
   many of the newest closed it in a row (`histories`, `poolOf`), since one outcome cannot tell a
   task answered once from one answered every time;
-- for each task the last comparison tallied, which harness won it or that it tied. This
+- for each task the last comparison tallied, which harness won it and on which measure (validity,
+  the objective or the bill; `carriedBy`), or that it tied. This
   is the operator's word of 20 October, a term of the campaign (`exam-results`, on by default):
   the Examiner learns which tasks the newest harness wins, and so what to write against it. With the
   term `off` it is told none of it;
 - for such a task, how much better a measure on record is than one of the reference's answers,
   where another of its own or its author's is (`roomLeft`). The other harness's answers are left
   out of it, so it reads the same with `exam-results` off whatever that harness measured;
-- those tasks counted by family, with the solves per side they rest on, and by family the turns
-  each valid answer of the reference took (`src/examiner/record.ts`). With `exam-results` off, where any family holds one
-  task, the counts are a total only, and a total of one is withheld. Whether the counts help is
-  untested (`docs/plan.md`, row F60);
+- one line of what the reference was measured to do across the exam: its tasks in the last
+  comparison it stood in, by every, some or none of its solves valid, with those set aside counted
+  apart, and the drafts its gates held under it, by where their room came from
+  (`measuredLine`, `heldOn`, `src/examiner/record.ts`);
 - what the last session under the current reference said at its `finish`;
 - the home the last session left, with a copy of the reference harness in it unless the
   campaign's term `exam-reference` is `off`;
-- how many of its gate's solves each held task passed on, and the drafts a gate refused after
-  reading them, with the reason, each with how far its author's answer stood from the reference's
-  best by the objective (`reference.gap` of `task.gate`): those read on the current reference counted alone, and those
-  read on a replaced reference as one count;
+- how many of its gate's solves each held task passed on, with their turns, and the drafts a gate
+  refused after reading them, with the reason, each with how far its author's answer stood from the
+  reference's best by the objective (`reference.gap` of `task.gate`). Gates read on a replaced
+  reference are not told;
 - interrupted gates separately by draft, including across a promotion, since they did
   not decide room. Only a gate under the current reference carries its counts and gate-level
   reason. `read_example` also returns earlier authored drafts from the log; their content may be
@@ -379,11 +403,14 @@ What the **Examiner** reads:
   a walled home of its own, empty when it starts.
 
 What the **Examiner** never reads: a target, a harness's name, the other harness's result on any one
-task where `exam-results` is `off`, or a count of a task's valid solves beyond every, some or none. The one exception is how many
-of the reference harness's solves of a draft task were valid (`try_task`, and in later sessions; up
-to three, one at a time until they leave room), how many of them gave no reading, the turns each
-valid one took and, where the contract declares an objective, their measure and its own answer's.
-Nothing else of those solves reaches it. The Examiner makes none of the exam's solves itself.
+task where `exam-results` is `off` beyond whether a valid answer to it is on record, or a count of
+the other harness's valid solves. The reference harness's own solves are facts it may count: a
+task's line lists the turns of each of its valid answers in the last comparison, one entry a valid
+solve, and a draft's gate (`try_task`, and in later sessions; up to three solves, the first alone
+and the other two together where it leaves no room, until they leave room) tells how many were
+valid, how many gave no reading, the turns each valid one took and, where the contract declares an
+objective, their measure and its own answer's. Nothing else of those solves reaches it. The
+Examiner makes none of the exam's solves itself.
 
 The tools of each model seat, as its source names them:
 
@@ -416,7 +443,8 @@ The tools of each model seat, as its source names them:
 - Builder: `read`, `bash`, `edit`, `write`, `practice`, `read_trace`, `read_opening`,
   `check_harness`, `preview_harness` and `finish`. In the campaign command it also has `examine`,
   `release_practice`, `compare`, `promote`, `campaign_status` and `wait`, which returns once the
-  Examiner session beside the conversation ends, on the host's time.
+  Examiner session beside the conversation ends or the host releases practice while it writes, on
+  the host's time.
 - Solver: `read`, `bash`, `edit`, `write` and `submit`. Its answer is the file `answer.json`;
   `submit` with `malformed` is its statement that the task is malformed, given instead of an
   answer.
@@ -503,10 +531,10 @@ one Builder conversation and one workspace open while its campaign tools run.
 An Examiner call runs a separate agent with its own view. The call returns at once and the session
 writes alongside the conversation. A comparison or a promotion waits for it on the host's time, a
 release of practice tasks does not, and the campaign facts under each campaign tool's result say
-what it held out. When the Builder finishes or hits its wall, the end of the conversation waits for
-the Examiner session without stopping it. What does stop it: the host's halt (on the run's moves, an
-ending the table names, or the operator's stop) and a kill of the run. It then ends on record as
-killed.
+what it held out. As its gate holds each task the host releases the practice the epoch is owed.
+When the Builder finishes or hits its wall, the end of the conversation waits for the Examiner
+session without stopping it. What does stop it: the host's halt (on the run's moves, an ending the
+table names, or the operator's stop) and a kill of the run. It then ends on record as killed.
 
 A comparison returns the same aggregate tally and reading the Builder already receives. A
 promotion can only name the harness the existing rule allows. The model cannot choose a checker, a
@@ -678,7 +706,9 @@ fields remain unknown, and abrupt process termination promises no ending. That r
 - a source on every rule;
 - one check per rule;
 - every control through the checks twice;
-- the smallest answer the format allows, refused on every example (`draftReading`,
+- the smallest answer the format allows, refused on every example;
+- each field of an accept control's answer, changed as the format allows, moving some check's
+  verdict or the objective (`unreadFields`, `src/kernel/acceptance.ts`; `draftReading`,
   `tools/d2/exam.ts`).
 
 What the reading cannot tell is whether a rule really belongs to the field and its source is real.
@@ -802,16 +832,19 @@ so a campaign that opens on a few tasks releases fewer than `--practice` names. 
 session the table releases more where tasks have been held out since the last release, and after a
 control that read room (section 7) it releases as many again. Inside a Builder's conversation,
 which spans epochs, the host releases what the epoch is still owed as each Examiner session beside
-it ends (`releaseOwed`, `tools/d2/campaign-actions.ts`). `--practice` is a per-epoch count,
-and once practice exists a release never leaves fewer frontier tasks than a sweep at the level needs
-(`practiceRoom`, `src/campaign/decide.ts`). Each release is one task fewer to compare.
+it holds a task and as it ends (`releaseOwed`, `tools/d2/campaign-actions.ts`). `--practice` is a
+per-epoch count, and once practice exists a release never leaves fewer frontier tasks, read on the
+reference's own solves alone, than a comparison needs (`comparisonFloor`, `practiceRoom`,
+`src/campaign/decide.ts`). Each release is one task fewer to
+compare.
 
 A release takes, in this order:
 
-1. the tasks no solve answered in two comparisons;
+1. the tasks the reference harness answered in no solve of two comparisons it stood in;
 2. half, rounded up, of the tasks the reference harness failed in a solve of its last reading of
    each, or where an answer of its own or its author's on record bettered one of its answers there
-   by at least the room floor (`room`); the other half stays held for the comparisons;
+   by at least the room floor (`room`), counted with those already released, so at most half of
+   them ever reach practice; the other half stays held for the comparisons;
 3. the rest by the contract's draw from every task neither list holds, those the reference
    answered in every solve among them, since a practice pass returns the objective's measure
    (`releaseOrder`, `src/kernel/reports.ts`, which `tools/d2/prepare.ts` calls).
@@ -832,8 +865,8 @@ a round or a checkpoint asks it before writing its first event, whether the camp
 it or someone started it by hand. Among other things it refuses:
 
 - a log with no held-out task;
-- a comparison that would score fewer frontier tasks than a step needs at the level
-  (`held-short`, `sweepOf`);
+- a comparison that would score fewer frontier tasks than a step needs at the level, plus two:
+  room for one task set aside and one tie (`held-short`, `comparisonFloor`);
 - a comparison with no `--cap`;
 - a checker that nobody has read;
 - a campaign the stop rule has stopped, unless `--past-stop "<why>"` gives the operator's reason,
@@ -939,7 +972,7 @@ comparisons, and one frozen draw of the reference's solves would bias every late
 | --- | --- | --- |
 | pass | | Valid. It beats an answer that is not valid; against another valid one it gains by how much better it is by the objective, where the comparison fixed one, and by how much less its solve billed |
 | fail | `rejected`, once the rejection is ruled a true fail | Not valid |
-| fail | `wall-ended`, `turns-ended`, `context-ended`, `no-answer` | Not valid. There is nothing to recompute, so no ruling is needed |
+| fail | `wall-ended`, `turns-ended`, `context-ended`, `no-answer` | Not valid. There is nothing to recompute, so no ruling is needed. A wall that falls on a model silent for ten minutes, with none of its tools running, is the provider's non-result instead (`SILENT_SECONDS`, `src/kernel/solve.ts`) |
 | fail | `broken-harness` | Not valid. The harness is what is compared, and one that cannot open answers nothing |
 | fail | `rejected`, ruled a check defect or unclear, or waiting for a person | The task is set aside for both harnesses |
 | non-result | `provider`, `sandbox-crash`, `killed`, `moved-files`, `check`, `verifier` | No measurement. It is solved again and is in no pair |
@@ -993,13 +1026,19 @@ tasks can offset a loss on old ones. The report gives the two sets' tallies apar
 retained tasks shows; an empty retained set reads `unmeasured`, never "no loss". Each family's
 tallies stand beside both, from the same rows; they show concentration, and prove no independence.
 
-One reading decides (`stepOf`): a test at or under the level (0.02 by default: 6 to 0, 8 to 1,
-10 to 2, 12 to 3; at 0.10: 4 to 0, 6 to 1, 7 to 2, 9 to 3) reads `step` and promotes. The
-null hypothesis is the fixed-task one, in which each drawn task is as likely won as lost on fresh
-solves. Every reading prints its untied count, the smallest share of those tasks it detects four
-times in five (`detectable`), and the chance that one reading at its margins reads a step between
-equal harnesses (`falseRate`), never more than the level. A reading of `step` counts for the stop
-rule as a move that showed a gain. The level is recorded in the campaign's opening, so a campaign
+One reading decides (`stepOf`): the test at or under the level (0.02 by default: 6 to 0, 8 to 1,
+10 to 2, 12 to 3; at 0.10: 4 to 0, 6 to 1, 7 to 2, 9 to 3) on each task's score, and again on the
+same tasks' scores with the bill's points taken out (`unbilled` in each set of the report), reads
+`step` and promotes. A step has to stand without the bill (the operator, 25 October): the bill
+still weighs a tenth of a task's score between two valid answers, but a promotion it carries, alone
+or by moving the margins past the level, is no step. The second test can only take a step away,
+since a step still needs the first. The null hypothesis is the fixed-task one, in which each drawn
+task is as likely won as lost on fresh solves. Every reading prints its untied count, the smallest
+share of those tasks it detects four times in five (`detectable`), and the chance that one reading
+at its margins reads a step between equal harnesses (`falseRate`), never more than the level. All
+three describe the test on the scores as they stand, so for the rule that needs both tests the
+false rate is an upper bound; the tally and p without the bill are printed beside them. A reading
+of `step` counts for the stop rule as a move that showed a gain. The level is recorded in the campaign's opening, so a campaign
 is read by its own rule whatever the tree's default is, and a trigger an older opening holds is
 read past. Two other ways to read a tally are in the plan ("Statistical power
 and cost"); neither is built.
@@ -1044,8 +1083,10 @@ reading at a shorter budget would describe a solver that was told the longer one
 
 Beside every comparison of four solves per side stands the reference read against itself, on
 halves of its own solves mirrored in time. It should read no step; its tie share is the noise every
-comparison has to beat, and its flip rate is how often two solves of a task disagree. The
-A/A is read either way, each half at the comparison's level, since which half is which is arbitrary. Every A/A
+comparison has to beat, and its flip rate is how often two solves of a task disagree. The A/A is
+read either way, each half at the comparison's level by the step's own rule, both tests clearing in
+the same direction (`readsStepEitherWay`), since which half is which is arbitrary; a report written
+before 26 October holds no scores without the bill and keeps its scored-only reading. Every A/A
 stands as a reading and ends nothing: the climb counts it beside the false-promotion estimate
 (section 1, factor 2). An older log may end `control`, an ending no command writes now.
 
@@ -1172,14 +1213,16 @@ Cite a rule by its number in a pull request or a review.
    check afterwards.
 
 3. **Nothing crosses the wall except the closed list of section 1.** The test is exact: changing a
-   hidden value, a check, or which held-out task was won must leave every message a Builder or a
-   solver reads byte-identical. For a Builder that test is in the suite (`test/builder.test.ts`,
+   hidden value, a check, or which held-out task a harness other than the reference won must leave
+   every message a Builder or a solver reads byte-identical. For a Builder that test is in the suite (`test/builder.test.ts`,
    "what crosses to the Builder"): two campaigns that differ in every such detail, one session over
    each, and every context and every file of its home compared. For what its campaign tools tell it,
    the test is `test/builder-led.test.ts`, "tells the Builder the same whichever held-out task was
    won": two campaigns with equal tallies in which different tasks were won. A change that touches
    such a message says in its pull request how it checked this. Withholding applies to everything an
-   agent can read: prompts, tool descriptions, tool results and the files in its home.
+   agent can read: prompts, tool descriptions, tool results and the files in its home, and the
+   choice of which tasks are released for practice. The rule binds what reaches the build side;
+   what the Examiner may read of the build side is section 3's list.
 
 4. **Terms are fixed before the first solve and never moved after a result.** The tasks, the solves
    per side, the level, the cap and the prediction are logged first. Do not top up a set that a
@@ -1249,7 +1292,10 @@ Cite a rule by its number in a pull request or a review.
     and ends a campaign on its environment, which is a pause and not a result. Such an ending is not
     a failure of any mechanism: do not patch, triage or report it as one, do not count it against a
     change, and do not spend a pull request on waiting it out. A generic 429, a timeout or a crash
-    that does not name a limit is a different matter: investigate the failure itself.
+    that does not name a limit is a different matter: investigate the failure itself. Logins are
+    spent in the order their weeks reset, the soonest first, a nearly spent one included (`room`,
+    `tools/runs/logins.ts`): a run that stops on its login's limit near the end of the week costs
+    nothing, so long as each week is used before it resets (operator, 25 October).
     The whole-run hours reader (`hoursLine`, `tools/wri/time.ts`) gives role hours as overlapping
     elapsed spans, the union of every recorded wait (provider, network and load), and the hours a
     promotion with and without that union. A provider or network wait runs from its event to the
@@ -1439,7 +1485,7 @@ or recovery write (`pinFault`, `tools/d2/harness-builder.ts`).
 | `bun run ui:gate` | The UI's own gate: its dependencies, its typecheck and build, and its tests under `packages/ui/test` |
 | `bun .claude/skills/stack-pr/scripts/stack.ts` | The open stack: every edge, and the top |
 | `bun run follow` | Moves this checkout to the top of the open stack (GitHub's native stack, else the longest chain of bases), on `stack-pr<N>` reset to the top's branch: a commit made on it is not kept, and the earlier `stack-pr` branch is deleted. Uncommitted changes to tracked files come back, and it installs where `bun.lock` moved (`.claude/skills/stack-pr/scripts/follow.ts`) |
-| `bun run land -- <pull request>` | Proves every commit a landing would publish, where it sits; `--sanitize` posts each verdict, `--merge` also merges ("The stack and pull requests") |
+| `bun run land -- [<pull request>] [--auto]` | Proves every commit a landing would publish, where it sits; `--sanitize` posts each verdict, `--merge` also merges. `--auto`, or no pull request named, follows a top stacked while it lands ("The stack and pull requests") |
 | `bun tools/loc/source-policy.ts` | The size and unused-export policy. No package script, CI job or hook runs it (`tools/oxlint/HABITS.md`, 12.10) |
 
 The gate is what CI runs, and `bun run gate` runs it: CI's two Darwin jobs in one command, cheapest
@@ -1469,14 +1515,16 @@ run only the owning test files: `bun run test -- test/compare.test.ts`. The wrap
 path that does not exist, because Bun would treat it as a filter and silently run its neighbours.
 
 CI (`.github/workflows/ci.yml`) runs on `main` and on the top of a landing, where
-`bun run land -- <top> --merge` dispatches it; pushing to a pull request starts no run, since only
-the top's run is read. It has three jobs:
+`bun run land -- <top> --merge` dispatches it. A push to a pull request starts only
+`mergeable.yml`, which marks pull requests pending, since only the top's run of `ci.yml` is read.
+It has three jobs:
 
-- `darwin`, on macOS 15, installs the UI's dependencies so that the lint reaches `packages/ui`,
-  then runs typecheck, lint, the format check and the suite;
+- `darwin`, on macOS 15, installs ripgrep, which `bun run runs search` runs, and the UI's
+  dependencies, so that the lint reaches `packages/ui`, then runs typecheck, lint, the format check
+  and the suite;
 - `darwin-ui`, on a macOS 15 runner of its own, runs the UI's own gate, in three separate steps;
-- `linux`, on an Ubuntu VM, installs Bubblewrap and runs the suite, then the climb simulation,
-  which the suite skips without `ANA_CLIMB` (`ANA_CLIMB=1 bun run test -- test/climb.test.ts`).
+- `linux`, on an Ubuntu VM, installs Bubblewrap and ripgrep and runs the suite, then the climb
+  simulation, which the suite skips without `ANA_CLIMB` (`ANA_CLIMB=1 bun run test -- test/climb.test.ts`).
 
 Every step after the install runs even when an earlier one failed, so one run names every failure.
 In a container without user namespaces the tests that need the wall fail. Name those in the pull
@@ -1519,11 +1567,15 @@ In practice:
   edges and the top; where `gh` has no GraphQL, `gh api repos/<owner>/<repo>/pulls` gives the same
   edges. The top is the end of the longest chain, which need not be the highest number. State no
   fact about the repository without the commit you read it at.
-- **A new subject is a new pull request on the top of the chain**, never beside it, even where it
-  depends on nothing below; its body says so. The same subject as one of your own open pull
-  requests is appended to it. Skills go on the chain like code, and so does documentation that
-  describes an open pull request, with the row of `docs/transfer.md` that the change moves. Only
-  documentation alone (`AGENTS.md`, `docs/`) that describes no open pull request may go on `main`.
+- **Expand an open pull request before opening a new one.** A change that fixes, simplifies,
+  completes or supersedes an open pull request's own code belongs to that pull request; a shared
+  file alone does not make it so. It is folded in where nothing is stacked above, and otherwise
+  carried on the top as a `fixup!` that the next consolidation folds down (the skill `stack-pr`,
+  section 2). A new subject is a new pull request on the top of the chain, never beside it, even
+  where it depends on nothing below; its body says so. Skills go on the chain like code, and so
+  does documentation that describes an open pull request, with the row of `docs/transfer.md` that
+  the change moves. Only documentation alone (`AGENTS.md`, `docs/`) that describes no open pull
+  request may go on `main`.
 - **Another session's pull request changes only on the operator's word**, which a request to fix it
   gives. A pull request with children takes new commits only.
 - **One worktree per pull request**, from the top, pinned by commit, with its own
@@ -1545,10 +1597,13 @@ In practice:
   `main`, which leaves the pull requests open. It reads the chain of bases down to `main`, requires
   each head to contain the one beneath it, and proves every commit it would publish over its own
   checkout, with the whole gate on the top's head. `--sanitize` stops there and posts each verdict
-  as the status `ana/commit`. `--merge` also waits for `ci.yml` on the top's head, posts
-  `ana/stack-gate` on every head, and merges the top through GitHub's asynchronous merge, pinned to
-  its gated head, which merges the native stack beneath it all or nothing; the merge commit's tree
-  must match the top's. A landing of several pull requests is refused unless they are one native
+  as the status `ana/commit`, and the check `mergeable` on each pull request's head: pending on
+  every head before the first proof, success on each head as soon as every commit from the bottom
+  to it has passed, and failure from the pull request that holds a failed commit upwards. A push
+  turns its head and every head stacked above it pending again (`mergeable.yml`). `--merge` also
+  waits for `ci.yml` on the top's head, posts `ana/stack-gate` on every head, and merges the top
+  through GitHub's asynchronous merge, pinned to its gated head, which merges the native stack
+  beneath it all or nothing; the merge commit's tree must match the top's. A landing of several pull requests is refused unless they are one native
   stack, its members up to the top the chain of bases. GitHub enforces this route: since 25 October
   the repository allows merge commits only, and ruleset 25824510 on the default branch ("main lands
   only through bun run land --merge", no bypass actors) refuses deleting `main` and any

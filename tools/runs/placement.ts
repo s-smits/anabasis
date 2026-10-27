@@ -3,12 +3,17 @@
  * prose and keep its own caps. Read the same live records as usage, and choose the least occupied
  * machine below its configured capacity, preferring one that has run the pack before. Login
  * admission shares the keeper's provider reader and room rule. Missing readings refuse placement.
+ *
+ * A login's runs are spread over the machines before anything else decides (26 October 2026). On
+ * that day one login paid for both runs on one runner, and when it met its five-hour limit at 15:34Z
+ * that runner stood idle for two hours while two other logins had room. The host chosen is the one where
+ * the run's login has the fewest live runs, so one login's limit leaves every machine working.
  */
 import { runtimeProcess } from "#src/meta/process.ts";
 import { asked } from "./hosts.ts";
 import { type Host, hostsOf } from "./host-config.ts";
 import { type Live } from "./live.ts";
-import { allowedLogins, capOf, liveEverywhere, readLogins, room } from "./logins.ts";
+import { allowedLogins, atCap, liveEverywhere, readLogins, room } from "./logins.ts";
 import { localCatalogue, remoteRuns } from "./snapshots.ts";
 
 interface Occupancy {
@@ -16,6 +21,8 @@ interface Occupancy {
   readonly live: number;
   readonly capacity: number;
   readonly familiar?: boolean;
+  /** Live runs on this host that the new run's login pays for. */
+  readonly sameLogin?: number;
 }
 
 interface FreshHost {
@@ -44,11 +51,17 @@ const capacityOf = (value: string | undefined): number => {
   return capacity;
 };
 
-/** A familiar host with room, then the least occupied; configured order breaks a tie. */
+/** A host with room where the login runs least, then a familiar one, then the least occupied;
+ *  configured order breaks a tie. */
 export function leastOccupied(rows: readonly Occupancy[]): Host | undefined {
   const chosen = rows
     .filter((row) => row.live < row.capacity)
-    .toSorted((a, b) => Number(b.familiar ?? false) - Number(a.familiar ?? false) || a.live - b.live)[0];
+    .toSorted(
+      (a, b) =>
+        (a.sameLogin ?? 0) - (b.sameLogin ?? 0) ||
+        Number(b.familiar ?? false) - Number(a.familiar ?? false) ||
+        a.live - b.live,
+    )[0];
   if (chosen === undefined) throw new Error("no host has room for a fresh campaign");
   return chosen.host;
 }
@@ -77,15 +90,20 @@ export async function placeFresh(
   pack: string,
   counted?: readonly Live[],
   choices?: readonly FreshHost[],
+  login?: string,
 ): Promise<Host | undefined> {
   const fleet = counted ?? (await freshFleet());
   return leastOccupied(
-    (choices ?? (await freshHosts())).map((choice) => ({
-      host: choice.host,
-      capacity: choice.capacity,
-      live: fleet.filter((run) => run.host === (choice.host?.name ?? "here")).length,
-      familiar: choice.projects.includes(`${pack}-fresh`),
-    })),
+    (choices ?? (await freshHosts())).map((choice) => {
+      const there = fleet.filter((run) => run.host === (choice.host?.name ?? "here"));
+      return {
+        host: choice.host,
+        capacity: choice.capacity,
+        live: there.length,
+        familiar: choice.projects.includes(`${pack}-fresh`),
+        sameLogin: login === undefined ? 0 : there.filter((run) => run.login === login).length,
+      };
+    }),
   );
 }
 
@@ -106,15 +124,9 @@ export async function freshLogin(
   allowed = allowedLogins(runtimeProcess.env),
 ): Promise<string> {
   const env = runtimeProcess.env;
-  const full = new Set(
-    allowed.filter((login) => {
-      const cap = capOf(env, login);
-      return cap !== null && live.filter((run) => run.login === login).length >= Number(cap);
-    }),
-  );
+  const full = atCap(env, allowed, live);
   if (requested !== undefined) {
-    const cap = capOf(env, requested);
-    if (cap !== null && live.filter((run) => run.login === requested).length >= Number(cap)) {
+    if (atCap(env, [requested], live).size > 0) {
       throw new Error(`login ${requested} is at its live-run cap across the fleet`);
     }
     return requested;

@@ -22,16 +22,29 @@
  * v1 took three submit attempts and no more, when its submit ran checks of its own. This one
  * returns no verdict and reads nothing hidden, so a refused submit tells a solver nothing but what
  * is wrong with its file, and none is counted.
+ *
+ * Every seat's own tool caps text results here at pi's 50 KB and 2,000 lines, with the full text
+ * in a `.log` of its environment's TMPDIR. Until 25 October read_example cut at 20,000
+ * characters, leaving four drafts of 22,191 to 73,638 characters as JSON that did not parse. On 26 October the
+ * operator made spilling automatic for all seats, including harness tools; pi's coding tools
+ * keep their own limits. A seat without an environment gets the size alone.
  */
-import { copyJson } from "@earendil-works/chord";
-import { defineTool, type ToolExecutionResult, type ToolRegistration } from "@earendil-works/pi-durable";
+import { copyJson, type Context } from "@earendil-works/chord";
+import {
+  defineTool,
+  type ToolExecutionApi,
+  type ToolExecutionResult,
+  type ToolRegistration,
+} from "@earendil-works/pi-durable";
 import { type TSchema, Type } from "typebox";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { sha256 } from "../meta/digest.ts";
+import { rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonParse } from "../meta/json-runtime.ts";
 import type { JsonObject, JsonValue } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
+import { isSafePathSegment } from "../meta/path-segment.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { canonicalJson, hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
@@ -137,7 +150,26 @@ export function submitTool(desk: Desk, contract: Contract, home: string, exec: W
 
 /** A seat tool, typed by its schema and always sequential on the shared command wall. */
 export function tool<Parameters extends TSchema>(definition: ToolRegistration<Parameters>): SeatTool {
-  return defineTool({ ...definition, executionMode: "sequential" });
+  return defineTool({
+    ...definition,
+    executionMode: "sequential",
+    execute: async (args, api, context) => {
+      const result = await definition.execute(args, api, context);
+      const output = result.output ?? [{ type: "text" as const, text: api.retainedOutput().text }];
+      // pi bounds all text items together, keeping non-text items in place.
+      const value = output.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
+      if (Buffer.byteLength(value) <= RESULT.bytes && value.split("\n").length <= RESULT.lines) {
+        return result;
+      }
+      const shown = await capped(value, definition.name, api, context);
+      const first = output.findIndex((part) => part.type === "text");
+      const kept = output.filter((part, at) => part.type !== "text" || at === first);
+      return {
+        ...result,
+        output: kept.map((part) => (part.type === "text" ? { ...part, text: shown } : part)),
+      };
+    },
+  });
 }
 
 /** A result the model reads as `value`, with `details` for the trace and the host. */
@@ -145,22 +177,35 @@ export function text(value: string, details: JsonObject | null = null): ToolExec
   return { output: [{ type: "text", text: value }], details: copyJson(details) };
 }
 
+/** The head of `value` that pi keeps, and a notice of its full size and of the file that holds it. */
+async function capped(value: string, name: string, api: ToolExecutionApi, context: Context): Promise<string> {
+  const head = boundText(value, RESULT.bytes, "head", RESULT.lines).text;
+  const file = await spill(value, name, api, context);
+  const where = file === undefined ? "" : ` The full file is at ${file}.`;
+  const size = plural(Buffer.byteLength(value), "byte");
+  return `${head}\n\nShown: the first ${String(Buffer.byteLength(head))} of ${size}.${where}`;
+}
+
 /**
- * `value` as a seat's own tool result, as pi's bash keeps a long output: whole where it fits what
- * pi keeps of a result, and otherwise its head, with one line that gives its full size and the
- * file under `spill`, where the whole text is written for the seat's `read`. Until 25 October
- * `read_example` cut at 20,000 characters, and four recorded drafts of 22,191 to 73,638 came back
- * as JSON that did not parse. Without a `spill` the notice gives the size alone.
+ * `value` whole in a new `.log` of the calling seat's TMPDIR, or undefined where none could be
+ * written: a path is named only once its file is whole, as pi's `OutputSpill` does. The seat
+ * writes that folder, so whatever stands at the new path is removed before an exclusive write: a
+ * link it left there must never have the host overwrite its target. The environment makes each
+ * path unique; the tool's name goes into it only where it is a safe file name.
  */
-export async function spilled(value: string, spill: string | undefined): Promise<ToolExecutionResult> {
-  const bounded = boundText(value, RESULT.bytes, "head", RESULT.lines);
-  if (!bounded.truncated) return text(bounded.text);
-  if (spill !== undefined) await Bun.write(spill, value);
-  const kept = new TextEncoder().encode(bounded.text).byteLength;
-  const where = spill === undefined ? "" : ` The full file is at ${spill}.`;
-  return text(
-    `${bounded.text}\n\nShown: the first ${String(kept)} of ${plural(bounded.totalBytes, "byte")}.${where}`,
+async function spill(value: string, name: string, api: ToolExecutionApi, context: Context) {
+  const created = await api.env?.createTempFile(
+    { prefix: isSafePathSegment(name) ? `${name}-` : "", suffix: ".log" },
+    context,
   );
+  if (created?.ok !== true) return undefined;
+  try {
+    rmSync(created.value, { force: true });
+    writeFileSync(created.value, value, { flag: "wx" });
+    return created.value;
+  } catch {
+    return undefined;
+  }
 }
 
 /** `result`, asking that the run end after this round (`control.terminate`). */

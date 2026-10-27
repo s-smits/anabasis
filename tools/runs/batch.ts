@@ -41,7 +41,7 @@ export async function batchFresh(
   const plan: Planned[] = [];
   for (const [index, pack] of packs.entries()) {
     const login = index === 0 ? first : await chooseLogin();
-    const host = await placeFresh(pack, fleet, choices);
+    const host = await placeFresh(pack, fleet, choices, login);
     plan.push({ pack, host, login });
     fleet.push({ name: `planned-${String(index)}`, host: host?.name ?? "here", login: login ?? null });
     choices = choices.map((choice) =>

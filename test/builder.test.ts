@@ -546,6 +546,8 @@ describe("a Builder session", () => {
     expect(practised).toContain("1 practice solve left.");
     // The trace, listed and then one call whole.
     expect(s.sent[3]).toContain(String.raw`ending: fail (rejected)\nsubmitted answer: {\"answer\":\"41\"}`);
+    // Each call listed with its size and the command it ran, which a Builder chose its reads by.
+    expect(s.sent[3]).toContain(String.raw`\n1 bash (13 characters): run`);
     expect(s.sent[4]).toContain("result: margin of s-3");
     // Nothing of the verifier's side reached the Builder: not the check, not the Referee's reason.
     expect(s.sent.join("\n")).not.toContain(CHECK);
@@ -1005,34 +1007,33 @@ describe("a Builder session", () => {
     expect(s.ran).toHaveLength(0);
   });
 
-  it("practises under the harness it started from where asked, which spends the same solves", async () => {
-    // The change is read against the parent on the same task: t-10's first session had no parent
-    // record to read its change against (10 October).
+  it("practises under the reference harness where asked, and is told the record of the harness that ran", async () => {
+    // What the reference does on a released task is the Builder's to find out, and the host hands
+    // it no table of it (the plan's climb section, C5). Until 27 October the record named harness/
+    // and the parent whatever ran, so a solve under the reference came back without its record.
     const s = await setup([
       edit,
-      call("practice", { tasks: ["t-1"], under: "parent" }),
       call("practice", { tasks: ["t-1"] }),
+      call("practice", { tasks: ["t-1"], under: "reference" }),
       finish,
     ]);
     await session(s.request, s, s.walled);
-    expect(s.ran[0]).toEqual({ dir: s.parent, digest: s.digest });
-    expect(s.ran[1]?.digest).not.toBe(s.digest);
-    expect(s.sent[2]).toContain("t-1 under the harness you started from: pass. Solve s-3.");
-    expect(s.sent[2]).toContain(
-      "Record under this harness: passed 0 of 0. Under the harness you started from: 1 of 2.",
+    expect(s.ran[1]).toEqual({ dir: s.request.reference, digest: s.digest });
+    expect(s.ran[0]?.digest).not.toBe(s.digest);
+    expect(s.sent[3]).toContain("t-1 under the reference harness: pass. Solve s-4.");
+    // The reference is the parent here, so its digest is named once with both roles.
+    expect(s.sent[3]).toContain(
+      "Record under the reference harness, which is also the harness you started from: passed 1 of 2. Under harness/ as last practised: 1 of 1.",
     );
-    expect(s.sent[3]).toContain("1 practice solve left.");
-    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ practiceSolves: 2, changed: true });
+    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ practiceSolves: 2 });
   });
 
-  it("practises under the reference harness where asked, so the Builder buys that fact with its own solve", async () => {
-    // What the reference does on a released task is the Builder's to find out, and the host hands
-    // it no table of it (the plan's climb section, C5).
-    const s = await setup([edit, call("practice", { tasks: ["t-1"], under: "reference" }), finish]);
+  it("refuses a practice under the harness it started from, which spends no solve", async () => {
+    // 4 of 852 practice calls on record named the parent; the option went on 27 October.
+    const s = await setup([call("practice", { tasks: ["t-1"], under: "parent" }), finish]);
     await session(s.request, s, s.walled);
-    expect(s.ran[0]).toEqual({ dir: s.request.reference, digest: s.digest });
-    expect(s.sent[2]).toContain("t-1 under the reference harness: pass. Solve s-3.");
-    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ practiceSolves: 1 });
+    expect(s.ran).toEqual([]);
+    expect(s.of(BUILD_CALL).find(({ tool: name }) => name === "practice")).toMatchObject({ isError: true });
   });
 
   it("is not given the correctness model a v1 state carries, whose battery holds hidden values", async () => {
@@ -1202,8 +1203,10 @@ describe("a Builder session", () => {
     async (state) => {
       const failed = fauxAssistantMessage("", { stopReason: "error", errorMessage: "overloaded" });
       const later = call(WRITE_FILE, { path: GUIDE_PATH, content: `${GUIDE}More.\n` });
-      // A control under the parent after the practice is not the state the session left.
-      const control = state === "controlled" ? [call("practice", { tasks: ["t-1"], under: "parent" })] : [];
+      // A control under the reference, here the parent, after the practice is not the state the
+      // session left.
+      const control =
+        state === "controlled" ? [call("practice", { tasks: ["t-1"], under: "reference" })] : [];
       const practice = state === "unpractised" ? [] : [call("practice", { tasks: ["t-1"] }), ...control];
       const s = await setup([edit, ...practice, later, failed]);
       await session(s.request, s, s.walled);

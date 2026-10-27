@@ -158,7 +158,7 @@ const EXPLAINED: Readonly<Record<keyof typeof OPTIONS, string>> = {
   "exam-turns": "an Examiner session's turns (200)",
   "exam-reference": "on or off: a copy of the reference harness in the Examiner's home (on)",
   "exam-results":
-    "on or off: tell the Examiner who won each task in its last comparison, and by how much where the objective alone decided it; off tells it by family alone (on)",
+    "on or off: tell the Examiner who won each task in its last comparison, and on which measure; off tells it nothing of the other harness but whether a valid answer to a task is on record (on)",
   cost: "promotion attempts an epoch after set-up the economy bar reads; printed, gates nothing (3)",
   moves: "the most campaign moves this run makes",
   handover: "a directory, outside the repository, to write what the campaign hands over at its end",
@@ -186,6 +186,12 @@ export const flag = (name: string, value: string | undefined): string[] =>
 
 export function flagsOf(args: readonly string[]) {
   return parseArgs({ args: [...args], options: OPTIONS, allowNegative: true }).values;
+}
+
+/** The campaign's flags among `args`, read past any flag the campaign command does not take: what
+ *  `fresh` passes after `--` and a launch's receipt carry the `runs` verbs' flags too (`billsLogin`). */
+export function looseFlagsOf(args: readonly string[]) {
+  return parseArgs({ args: [...args], options: OPTIONS, allowNegative: true, strict: false }).values;
 }
 
 /** The flags of the campaign command, a line each, as `--help` prints them. */

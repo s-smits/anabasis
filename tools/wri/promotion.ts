@@ -139,12 +139,17 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
   }));
 }
 
-/** The opening's step rule: pinned in its terms, or left to the tree's default. */
-function ruleOf(log: Index): string {
+/** The step rule an opening pins in its terms; none leaves it to the tree's default. */
+export function pinnedRule(log: Index): string[] {
   const terms = asRecord(log.of("campaign.opened").at(-1)?.terms);
-  const pinned = ["level", "trigger"].flatMap((key) =>
+  return ["level", "trigger"].flatMap((key) =>
     isString(terms?.[key]) ? [`${key} ${text(terms[key])}`] : [],
   );
+}
+
+/** The opening's step rule: pinned in its terms, or left to the tree's default. */
+function ruleOf(log: Index): string {
+  const pinned = pinnedRule(log);
   return pinned.length > 0
     ? `opened with ${pinned.join(", ")}`
     : "opened with no level in its terms (the tree's default)";

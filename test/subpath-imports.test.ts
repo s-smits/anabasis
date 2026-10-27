@@ -9,7 +9,7 @@ import { resolve } from "../src/meta/path.ts";
 import { importSpecifier } from "../tools/oxlint/ana/shared/import-fix.ts";
 import { subpathAlias } from "../tools/oxlint/anti-slop/shared/subpath-alias.ts";
 import { identitiesWithoutOwner } from "../tools/oxlint/tree-identity.ts";
-import { unreadModules } from "../tools/oxlint/tree-module.ts";
+import { unreadModules } from "../tools/oxlint/tree-findings.ts";
 import { spawnTextSync } from "./helpers/bun-spawn-sync.ts";
 import { expectedLines, fixedSource, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
 
@@ -21,7 +21,7 @@ const REPO = resolve(import.meta.dirname, "..");
 const ROOT = { files: new Map([["package.json", JSON.stringify({ imports: manifest.imports })]]) };
 
 const CLIMBING = `import { a } from "../../../../src/meta/path.ts"; // REPORT four levels into src
-import { b } from "../../../../tools/oxlint/tree-module.ts"; // REPORT four levels into tools
+import { b } from "../../../../tools/oxlint/tree-findings.ts"; // REPORT four levels into tools
 export { c } from "../../../../src/meta/os.ts"; // REPORT a re-export climbs the same way
 export * from "../../../../src/meta/text.ts"; // REPORT and so does a star re-export
 type D = typeof import("../../../../src/run/source-identity.ts"); // REPORT a type import too
@@ -61,7 +61,7 @@ export const c = [a, b];
   });
 
   it("leaves a relativeOnly tree at its relative spelling at any depth", async () => {
-    const deep = 'import { a } from "../../../../tools/oxlint/tree-module.ts";\nexport const b = a;\n';
+    const deep = 'import { a } from "../../../../tools/oxlint/tree-findings.ts";\nexport const b = a;\n';
     const at = "src/a/b/c/x.ts";
     expect(await reportedLines("anti-slop", RULE, deep, at, ROOT)).toStrictEqual([1]);
     const options = [{ relativeOnly: ["src"] }];
@@ -71,14 +71,14 @@ export const c = [a, b];
   it("rewrites the specifier to the alias in the quote the line already used", async () => {
     const before = [
       "import { a } from '../../../../src/meta/path.ts';",
-      'const b = await import("../../../../tools/oxlint/tree-module.ts");',
+      'const b = await import("../../../../tools/oxlint/tree-findings.ts");',
       "export const c = [a, b];",
       "",
     ].join("\n");
     expect(await fixedSource("anti-slop", RULE, before, SKILL_SCRIPT, ROOT)).toBe(
       [
         "import { a } from '#src/meta/path.ts';",
-        'const b = await import("#tools/oxlint/tree-module.ts");',
+        'const b = await import("#tools/oxlint/tree-findings.ts");',
         "export const c = [a, b];",
         "",
       ].join("\n"),

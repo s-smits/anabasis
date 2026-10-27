@@ -32,13 +32,14 @@ import {
 } from "../src/builder/session.ts";
 import type { Bench } from "../src/builder/tools.ts";
 import { type Condition, recordCondition, settingId } from "../src/kernel/condition.ts";
-import { draw, pairsOf, WEIGHTS } from "../src/kernel/compare.ts";
+import { detectable, draw, pairsOf, power, readsStep, testOf, WEIGHTS } from "../src/kernel/compare.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import { latestBuilt, poolOf, stopRule } from "../src/kernel/reports.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import { passed, ranUnder } from "../src/kernel/solves.ts";
 import { taskStates } from "../src/kernel/task.ts";
+import { reportLines } from "../tools/d2/round.ts";
 import {
   cpSync,
   mkdirSync,
@@ -126,6 +127,31 @@ const again = call("write", {
 });
 const third = call("write", { path: "harness/agent/BUILT_AGENTS.md", content: "Third.\n" });
 const finish = call("finish", { note: "A shorter guide." });
+
+it("qualifies power and false rates as full-score statistics when the unbilled test opposes it", () => {
+  const differences = Array<number>(6).fill(67);
+  const unbilled = Array<number>(6).fill(-33);
+  const tested = {
+    ...testOf(differences),
+    differences,
+    unbilled,
+    detectable: detectable(differences, 0.02),
+    falseRate: power(differences, 0.5, 0.02),
+  };
+  expect(tested.falseRate).toBe(1 / 64);
+  expect(readsStep(differences, unbilled, 0.02)).toBe(false);
+  const lines = reportLines({
+    valid: { old: [0, 0, 6], fresh: [0, 0, 6], informative: { old: 0, fresh: 0 } },
+    objective: null,
+    frontier: null,
+    scored: { ...tested, unsolved: 0 },
+    noise: { ...tested, flips: 0 },
+  });
+  expect(lines[0]).toContain("the test on the full score");
+  expect(lines[1]).toContain("upper bound for the rule requiring both tests");
+  expect(lines.find((line) => line.includes("least detectable shift"))).toContain("full score alone");
+  expect(lines.join("\n")).toContain("without the bill's points the same tasks read 0-6-0, p 1");
+});
 
 afterAll(() => {
   for (const dir of scratches) rmSync(dir, { recursive: true, force: true });
@@ -586,12 +612,20 @@ describe("a round", () => {
         scored: {
           ...tested,
           differences: [600, 600, 600, 600],
+          unbilled: [600, 600, 600, 600],
           unsolved: 0,
           detectable: 0.95,
           falseRate: 1 / 16,
         },
         // Nothing is exhausted yet, so every task is on the frontier and the retained set is unmeasured.
-        frontier: { ...tested, tasks: HELD, aside: [], differences: [600, 600, 600, 600], of: HELD },
+        frontier: {
+          ...tested,
+          tasks: HELD,
+          aside: [],
+          differences: [600, 600, 600, 600],
+          unbilled: [600, 600, 600, 600],
+          of: HELD,
+        },
         retained: "unmeasured",
         // Each family's tallies, from the same rows, sum to the whole.
         families: {
@@ -1659,7 +1693,7 @@ describe("a checkpoint with no session", () => {
       scored: { wins: 0, losses: 4, ties: 0, differences: [-300, -600, -600, -600] },
       // The first and last slot against the two between tie the reference with itself on s1, and
       // two of its four solves of s1 that disagree are four of its six pairs.
-      noise: { wins: 0, losses: 0, ties: 4, p: 1, flips: 1 / 6 },
+      noise: { wins: 0, losses: 0, ties: 4, p: 1, flips: 1 / 6, unbilled: [0, 0, 0, 0] },
     });
     // No solve was made for it: four a side on each of four tasks.
     expect(s.asked.filter(({ side }) => side === "old")).toHaveLength(16);

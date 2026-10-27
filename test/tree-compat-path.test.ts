@@ -1,10 +1,10 @@
 /**
- * `tree/compatibility-path` (`tools/oxlint/tree-compat-path.ts`): a name that keeps a path for what
+ * `tree/compatibility-path` (`tools/oxlint/tree-findings.ts`): a name that keeps a path for what
  * an older version left behind, reported in the repository's own source, and read as written in a
  * test and in a vendored upstream, where pi's own legacy readers stood answered until 19 October.
  */
 import { describe, expect, it } from "bun:test";
-import { compatibilityPaths } from "../tools/oxlint/tree-compat-path.ts";
+import { compatibilityPaths } from "../tools/oxlint/tree-findings.ts";
 
 const LEGACY = [
   "export function read(path: string): string {",

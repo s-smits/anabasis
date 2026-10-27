@@ -1,0 +1,51 @@
+# Marks a pushed pull request, and every pull request stacked above it, as waiting for a landing.
+#
+# `bun run land -- <top> --sanitize` or `--merge` posts the check `mergeable` on each pull request's
+# head: success once every commit from the bottom of the stack to that head has passed
+# (`tools/runtime/land.ts`). A status belongs to its commit, so a push leaves the new head with no
+# check, and the heads stacked above it keep the success they earned on top of the old one, although
+# they no longer hold what is now beneath them. On 27 October the operator asked that the stack go
+# orange again on such a push, until the next landing proves it. This job does only that: no install,
+# no checkout, no test. The proof stays with `bun run land`, and `ci.yml` still starts on no push.
+# A head whose `mergeable` was posted after this push is left alone: a landing started straight after
+# the push may already have proved it, and this job would otherwise turn its success back to pending.
+# The landing revalidates the current chain before posting success, refusing an obsolete proof.
+name: mergeable
+on:
+  push:
+    branches-ignore: [main]
+permissions:
+  statuses: write
+  pull-requests: read
+jobs:
+  pending:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Mark the pushed head and every head stacked above it pending
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          PUSHED: ${{ github.event.repository.pushed_at }}
+        run: |
+          mark() {
+            posted=$(gh api "repos/$GH_REPO/commits/$1/status" \
+              --jq '[.statuses[] | select(.context == "mergeable") | .updated_at] | first // ""')
+            if [ -n "$posted" ] && [ "$(date -d "$posted" +%s)" -ge "$PUSHED" ]; then return; fi
+            gh api -X POST "repos/$GH_REPO/statuses/$1" -f state=pending -f context=mergeable \
+              -f description="waiting for bun run land to prove every commit up to this head" --silent
+          }
+          mark "$SHA"
+          gh pr list --state open --limit 200 --json baseRefName,headRefName,headRefOid > open.json
+          below=("$BRANCH")
+          while [ ${#below[@]} -gt 0 ]; do
+            base="${below[0]}"
+            below=("${below[@]:1}")
+            while read -r head oid; do
+              [ -n "$head" ] || continue
+              mark "$oid"
+              below+=("$head")
+            done < <(jq -r --arg base "$base" '.[] | select(.baseRefName == $base) | "\(.headRefName) \(.headRefOid)"' open.json)
+          done

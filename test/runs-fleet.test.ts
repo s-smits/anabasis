@@ -2,11 +2,16 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { append } from "../src/kernel/log.ts";
 import {
+  closeSync,
   existsSync,
+  fstatSync,
+  lockExclusiveSync,
   mkdirSync,
+  openSync,
   readFileSync,
   rmSync,
   symlinkSync,
+  statSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
@@ -307,6 +312,65 @@ describe("campaign snapshots", () => {
     expect(existsSync(join(made.main, ".ana", "d2", "distant"))).toBe(false);
     expect(made.run(sync, { ...remote.env, FAKE_TRANSFER_FAIL: "1" }).code).toBe(1);
     expect(readFileSync(copied, "utf8")).toBe(whole);
+  });
+
+  it("takes over a fetch lock that a dead fetch left behind", () => {
+    const made = fixture();
+    const remote = campaign(made);
+    const lock = join(made.main, "data", "runs", "runner", ".fetch-distant.lock");
+    mkdirSync(lock, { recursive: true });
+    writeFileSync(join(lock, "pid"), String(Bun.spawnSync(["true"]).pid));
+    expect(made.run(sync, remote.env).code).toBe(0);
+    expect(existsSync(join(made.main, "data", "runs", "runner", "distant", "log.jsonl"))).toBe(true);
+    expect(existsSync(lock)).toBe(true);
+  });
+
+  it("waits for a live descriptor holder despite a stale PID", async () => {
+    const made = fixture();
+    const remote = campaign(made);
+    const lock = join(made.main, "data", "runs", "runner", ".fetch-distant.lock");
+    mkdirSync(lock, { recursive: true });
+    writeFileSync(join(lock, "pid"), String(Bun.spawnSync(["true"]).pid));
+    const ready = join(made.root, "reader-ready");
+    const script = join(made.root, "reader.ts");
+    const copied = join(made.main, "data", "runs", "runner", "distant", "log.jsonl");
+    writeFileSync(
+      script,
+      `await Bun.write(${JSON.stringify(ready)}, "ready");\n${sync.replaceAll("REPOSITORY/", `${join(import.meta.dir, "..")}/`)}`,
+    );
+    const fd = openSync(lock, "r");
+    lockExclusiveSync(fd);
+    const reader = Bun.spawn([process.execPath, script], {
+      cwd: made.main,
+      env: { ...made.env, ...remote.env },
+      stdout: "ignore",
+      stderr: "pipe",
+    });
+    try {
+      const started = performance.now() + 5000;
+      while (!existsSync(ready) && performance.now() < started) await Bun.sleep(5);
+      expect(existsSync(ready)).toBe(true);
+      const deadline = performance.now() + 1500;
+      while (!existsSync(copied) && performance.now() < deadline) await Bun.sleep(5);
+      expect(existsSync(copied)).toBe(false);
+      expect(existsSync(lock) && statSync(lock).ino === fstatSync(fd).ino).toBe(true);
+    } finally {
+      closeSync(fd);
+      const code = await reader.exited;
+      expect({ code, err: await new Response(reader.stderr).text() }).toEqual({ code: 0, err: "" });
+    }
+    expect(readFileSync(copied, "utf8")).toBe(readFileSync(remote.log, "utf8"));
+  });
+
+  it("serialises refreshes in one process and releases a failed refresh", () => {
+    const made = fixture();
+    const remote = campaign(made);
+    const result = made.run(
+      'import { syncRuns } from "REPOSITORY/tools/runs/snapshots.ts"; process.env.FAKE_TRANSFER_FAIL = "1"; await syncRuns(["distant"]).catch(() => undefined); delete process.env.FAKE_TRANSFER_FAIL; await Promise.all(Array.from({length: 3}, () => syncRuns(["distant"])));',
+      remote.env,
+    );
+    expect({ code: result.code, err: result.err }).toEqual({ code: 0, err: "" });
+    expect(made.recorded().filter((call) => call.tool === "rsync")).toHaveLength(4);
   });
 
   it("refuses ambiguity, an unavailable catalogue and unsafe catalogue paths without transferring", () => {

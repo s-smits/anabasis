@@ -110,6 +110,12 @@ time, tell the operator and ask, rather than land first.
    the last release: one sentence on what the release changes, "Includes N PRs from #a to #b,
    merged into `main` at `<sha>`", one paragraph per change with its recorded counts, and
    **Validation and limits** with the land counts, the CI run and what the stopped runs showed. Where the proof fails, do not land: report the commit and step.
+   One cycle is one stack and one release (`AGENTS.md`, section 11), and the number tells a reader
+   which runs may be read side by side. The patch moves (0.7.2 to 0.7.3) where the cycle's runs
+   measure what the last release's runs measured. The minor moves (0.7 to 0.8) where the release
+   changes what a run measures, such as a weight, the level, the step test, the task gate or the
+   setting: the release says which, and no run of the earlier minor is read beside one of the new.
+   The major moves only on the operator's word, for a break in the design.
 11. **Fork** the next cycle at the release's merge commit: step 1 again.
 
 **The threshold.** Stop each run at **six promotions** (operator, 25 October, matching the

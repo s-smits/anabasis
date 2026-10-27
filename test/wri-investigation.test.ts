@@ -50,8 +50,8 @@ const fired = (...started: number[]) =>
 
 describe("an investigation's lanes", () => {
   it("opens the triggered and the standing lanes, and leaves an isolated lane waiting", () => {
-    const { open, isolated, waiting } = selected(lanes, fired(4, 5, 26), null);
-    expect(numbers(open)).toEqual([1, 4, 15, 18, 22, 26]);
+    const { open, isolated, waiting } = selected(lanes, fired(4, 5, 29), null);
+    expect(numbers(open)).toEqual([1, 4, 18, 23, 29]);
     expect(isolated).toEqual([]);
     expect(numbers(waiting)).toEqual([5]);
   });
@@ -63,7 +63,7 @@ describe("an investigation's lanes", () => {
     expect(() => selected(lanes, [wins], [19])).toThrow("runs only on its trigger");
     const program = { lane: 19, name: "ANSWER FROM A PROGRAM" as const, detail: "" };
     expect(numbers(selected(lanes, [wins, program], [19]).isolated)).toEqual([19]);
-    expect(() => selected(lanes, [], [32])).toThrow("no lane 32");
+    expect(() => selected(lanes, [], [37])).toThrow("no lane 37");
   });
 
   it("refuses shared instructions with a section left blank", () => {
@@ -131,19 +131,19 @@ describe("an investigation's lanes", () => {
     const prompt = lanePrompt({ ...parts, lane: lane(4) });
     expect(prompt).toContain("Fired on this campaign: `REFUSED UNREAD`");
     expect(prompt).toContain("Not fired: `CHECK DEFECT RULED`, `RULED UNCLEAR`.");
-    // Lane 14's body names `NEVER CHECKED`, which buffer-a's lane 14 read as fired (11 October).
-    const standing = lanePrompt({ ...parts, lane: lane(14) });
+    // Lane 16's body names `NEVER CHECKED`, which buffer-a's lane 14 read as fired (11 October).
+    const standing = lanePrompt({ ...parts, lane: lane(16) });
     expect(standing).toContain("None of these triggers fired on this campaign");
     expect(standing).toContain("Not fired: `NEVER CHECKED`, `TOOLS CALLED`, `TOOL CALLS ERRED`.");
   });
 
   it("gives the lane that reads the climb side by side the table, or says one campaign is read, and no other lane either", () => {
     const parts = { shared, campaigns: two, catalogue, owners, report: "/r/31.md" };
-    expect(lane(31).sideBySide).toBe(true);
-    const named = lanePrompt({ ...parts, lane: lane(31), climb: "### The climb, side by side" });
+    expect(lane(27).sideBySide).toBe(true);
+    const named = lanePrompt({ ...parts, lane: lane(27), climb: "### The climb, side by side" });
     expect(named).toContain("## The campaigns side by side");
     expect(named).toContain("### The climb, side by side");
-    expect(lanePrompt({ ...parts, campaigns: one, lane: lane(31) })).toContain(
+    expect(lanePrompt({ ...parts, campaigns: one, lane: lane(27) })).toContain(
       "One campaign is under review",
     );
     expect(lanePrompt({ ...parts, lane: lane(4), climb: "### The climb" })).not.toContain("side by side");

@@ -1,7 +1,14 @@
 # From v1's catalogue to v2's
 
 Read this mapping when a v1 archive names a lane this catalogue lacks. It records the first
-thirty v2 lanes; lane 31 was added on 10 October to read promotions and what followed them.
+thirty v2 lanes, in that catalogue's numbers. A lane was added on 10 October to read promotions and
+what followed them, and five on 27 October, when every pull request was labelled by area and five
+areas had no lane: the campaign command's moves against its table, the Builder's conversation
+across compactions, the drafted exam against its prompt (v1's lane 31, "Brief against the
+request", returns as lane 8), the launches and logins, and the log with its readers. The same day
+three lanes were folded into neighbours and the rest were put in label order, as thirty-three;
+the table in [lanes.md](lanes.md) maps the earlier numbers to today's. The tables of v2 lanes below
+keep the first catalogue's numbers; the columns that name a current home or reading use today's.
 The current procedure is in [lanes.md](lanes.md), and the campaign contract is in `AGENTS.md`.
 The mapping is historical, rather than a second statement of current campaign rules.
 
@@ -29,10 +36,10 @@ whose author is not the Builder.
 | --- | --- |
 | A. Campaign identity | A. Campaign and log |
 | B. Claim and promotion state | F. Sessions and harness chain; promotions are `harness.promoted` events |
-| C. Workspace and Git | Lane 13 reads kept states by digest; the launch receipt names the source commit |
-| D. Static conformance | Lanes 13 and 14 read `build.finished`, `broken` and harness checks |
+| C. Workspace and Git | Lane 15 reads kept states by digest; the launch receipt names the source commit |
+| D. Static conformance | Lanes 15 and 16 read `build.finished`, `broken` and harness checks |
 | E. Fingerprint and gate census | B. Checker identity and `checker.read` |
-| F. F2 solvability | D. Task sets; lanes 7 and 8 read admission and unanswered tasks |
+| F. F2 solvability | D. Task sets; lanes 9 and 10 read admission and unanswered tasks |
 | G. Case partition | E. Case partition |
 | H. Runtime identity and isolation | C. Conditions |
 | I. Served-model attestation | C. Conditions, including missing `responseModels` |
@@ -85,15 +92,15 @@ Read these from the v1 archive. Their original mechanism has no current lane wit
 | --- | --- |
 | 3. Authoring-to-host contract compatibility | The Examiner drafts an exam before task writing; `draftReading` checks its shape |
 | 9. Rehearsal instrument reach | Practice uses the campaign's verifier |
-| 31. Brief against the request | A prompt can now open a campaign; this catalogue has no dedicated lane for its fidelity |
-| 36. Difficulty pressure on the Builder | The Examiner writes tasks; lane 12 reads its inputs |
-| 37. Battery size and probe graduation | Lanes 7 and 22 read supply and statistical power |
-| 12. Epoch Reviewer standing duties | The Referee reads rejected answers; lanes 29 and 30 read its work |
+| 31. Brief against the request | A prompt can now open a campaign; lane 8 reads the drafted exam against it since 27 October |
+| 36. Difficulty pressure on the Builder | The Examiner writes tasks; lane 14 reads its inputs |
+| 37. Battery size and probe graduation | Lanes 9 and 23 read supply and statistical power |
+| 12. Epoch Reviewer standing duties | The Referee reads rejected answers; lanes 6 and 7 read its work |
 | 16. Judge disagreement adjudication | There is no model Judge; lane 1 samples passes |
 | 32. Judge pass decidability | A person labels sampled passes in `settle.ts` |
-| 10. Difficulty calibration loop | The setting stays fixed; lanes 10 and 25 read ties and the chain |
-| 17. Round hand-off census | Lane 30 reads what each seat received |
-| 26. Builder memory and posture | `memory.ts` carries notes and scratch; no dedicated lane reads them |
+| 10. Difficulty calibration loop | The setting stays fixed; lanes 12 and 26 read ties and the chain |
+| 17. Round hand-off census | Lane 7 reads what each seat received |
+| 26. Builder memory and posture | `memory.ts` carries notes and scratch; lane 20 reads them with the conversation's compactions since 27 October |
 | 29. Hardware target coverage against public ground truth | Lane 1 weighs the instrument used by each check |
 | 30. Ground-truth verdict comparison | Lane 1 weighs what a pass establishes |
 
@@ -101,6 +108,6 @@ Read these from the v1 archive. Their original mechanism has no current lane wit
 
 The first catalogue added lanes 9, 12, 17, 18 and 20 to 25. They read validity and objective
 separation, Examiner inputs, follow-up of practice fails, exposure, pair identity, the scored set,
-the test's power, the starter, solver variance and the comparison chain. Lane 31 later added the
-promotion and its consequences. Until 19 October a promotion used a first reading and a repeat;
+the test's power, the starter, solver variance and the comparison chain. A later lane, 27 today, added
+the promotion and its consequences. Until 19 October a promotion used a first reading and a repeat;
 one reading of `step` now promotes under the campaign rule.

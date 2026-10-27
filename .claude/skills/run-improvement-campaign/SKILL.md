@@ -33,7 +33,7 @@ that file first.
 **The order is fixed, and nothing moves a step ahead of the one before it:**
 
 ```text
-run (6 promotions a run) → stop → investigate → vet → plan → implement → consolidate → land and release → fork → run
+run (6 promotions a run) → stop → investigate → vet → plan → implement → consolidate → land and release → predict → fork → run
 ```
 
 A run is evidence about the code it ran (`AGENTS.md`, section 9), so a run left going while its
@@ -46,7 +46,33 @@ time, tell the operator and ask, rather than land first.
 
 ### The running window, until six promotions a run
 
-1. **Fork at the release.** Take the commit the last release merged (`git tag` of `main`), or the
+1. **Predict in `Predictions.md`**, a file of its own beside the cycle's `cycle.md`, written before
+   step 2's `runs fresh ... --yes`: a fresh campaign makes its first solve minutes after it opens,
+   and a row written after that is a description (section 3). The file holds one row for **every
+   pull request merged since the last cycle's fork**, which the release note lists ("Includes N
+   PRs from #a to #b") and `git log --merges <last fork>..<release>` confirms. A row's labels are
+   its pull request's, which `bun run land` requires, and its lanes are those labels' lanes whose
+   triggers read its events (whole-run-investigation's `references/lanes.md`, "Labels"; none for a
+   label with no lanes). Where a row needs a lane outside them, the label is wrong, and the pull
+   request is relabelled. Its group is `first` for code the runs are the first to run, `again` for
+   code an earlier run ran under another condition, and `off-run` for tooling or text no seat
+   reads, whose falsifier names what settles it instead (the next landing, a reader, the launch).
+   A pull request without a run-side reading still gets its row. The file has three tables:
+
+   ```text
+   | id | PR | labels | lanes | group | claim, as a count | falsified by |
+   | id | claim, as a count | lanes | falsified by |            (cycle-wide: supply, climb, honesty)
+   | id | held, falsified or unreached | event or count | time |   (Resolutions)
+   ```
+
+   The cycle-wide predictions are rows of the second table, so every prediction and its resolution
+   sit in one file. A peer session's ledger for the same runs is read and linked, not repeated.
+   Every checkpoint first checks that `Predictions.md` exists. Where it is missing, the checkpoint
+   writes it before anything else, marked as written after launch, with each run's solves at the
+   time of writing. On 27 October the v0.7.3 runs opened with only cycle-wide predictions, and
+   their per-PR ledger was written 15 minutes after launch; the next cycle's ledger was written
+   before its fork but without labels, lanes or groups, which the tables above now ask for.
+2. **Fork at the release**, once step 1 is on record. Take the commit the last release merged (`git tag` of `main`), or the
    top of the stack only on the operator's recorded word. A pull request above it that changes code a
    campaign runs need not hold up the fork; name it. Fork **one fresh campaign per runner host**,
    or the set the operator names, so each runs on a host no other campaign loads:
@@ -60,9 +86,6 @@ time, tell the operator and ask, rather than land first.
    October two `fresh --host` launches sent at once from one checkout both exited 1, and each
    passed when run alone. Fresh performs the fleet login admission before each launch. Tag
    `run/<name>/1` at the commit and push the tag.
-2. **Predict** before the first solve (section 3): one ledger for the cycle, with at least one row
-   per pull request the runs carry, each naming that pull request, its link and its falsifier. A
-   peer session's ledger for the same runs is read and linked, not repeated.
 3. **Read the runs** with `scripts/cycle.ts` (below) at every checkpoint and at every milestone,
    and resolve each prediction the hour its event lands, in the ledger's Resolutions. A defect seen live is noted for the plan of step 7; the run
    is not stopped to fix it (`AGENTS.md`, section 10, item 6).
@@ -83,7 +106,9 @@ time, tell the operator and ask, rather than land first.
    isolated lanes 5 and 19 where their triggers and the reports call for them, then the synthesis.
 6. **Vet** the synthesis: check each finding against the logs and against the head (a fix may
    already be on the stack), and mark it confirmed, plausible or refuted (whole-run-investigation,
-   "Vetting"). Sorting a finding by owner is triage, and checks nothing. A finding whose
+   "Vetting"). Backtrack every row of `Predictions.md` there first: recount it from the logs,
+   triage and vet each falsified row as a finding, and carry each unreached row into the next
+   cycle's ledger. Sorting a finding by owner is triage, and checks nothing. A finding whose
    behaviour `AGENTS.md` documents as intended is an operator decision, not a defect: ask it then,
    with the evidence and a recommendation.
 7. **Plan.** One row per confirmed finding, falsified prediction and defect seen live, each with
@@ -117,13 +142,13 @@ time, tell the operator and ask, rather than land first.
    changes what a run measures, such as a weight, the level, the step test, the task gate or the
    setting: the release says which, and no run of the earlier minor is read beside one of the new.
    The major moves only on the operator's word, for a break in the design.
-11. **Fork** the next cycle at the release's merge commit: step 1 again.
+11. **Predict and fork** the next cycle at the release's merge commit: steps 1 and 2 again.
 
 **The threshold.** Stop each run at **six promotions** (operator, 25 October, matching the
 milestone). The running window ends when every run the cycle stops has ended, never at a time on
 the clock. The #306 forks
 reached their first promotion at 11.9 and 14.4 hours after their opening and their third at 17.8
-and 19.1 hours (`wri.ts start`, lane 31); no run has yet been timed to its sixth. The A/A of every promoting
+and 19.1 hours (`wri.ts start`, lane 27); no run has yet been timed to its sixth. The A/A of every promoting
 reading should read no step; the release says where one did. No seat is told the threshold and no
 campaign stops at it (`AGENTS.md`, factor 1): the cycle stops the runs.
 
@@ -154,7 +179,7 @@ A run named with `--keep`, such as an ablation the operator keeps going, is show
 for or stopped. The script reads and prints; it stops, fetches and launches nothing. The session or
 timer that runs it takes the step, under the cycle's word. A host answers by running the script in
 its own tree with `--here`, so a host's tree must hold the script: bring it to the release's commit
-before the fork, as step 1 does.
+before the fork, as step 2 does.
 
 The cycle's checkpoints are one-shot timers (section "Timers"), each of which runs the script and
 takes the step it names: about 30 minutes after the fork for M1, then at each run's comparisons and
@@ -239,12 +264,12 @@ it predicts. Quiet between milestones is read against the limits of the work in 
 | M3 first reading | first `comparison.reported` | `valid.informative.old`, tested untied and tied, `scored.detectable`, A/A, load | reading and untied count | only if a `read` trigger fires |
 | M4 step | `comparison.reported` with `reading: step` against the reference | tested margins, the retained tally apart, A/A | untied count and A/A result | none |
 | M5 promotion | `harness.promoted` | supporting reading, untied tasks, A/A and campaign risk; `wri.ts climb --log <log>,<peer>,<peer>` | write M6 prediction now | first promotion, once M6's first Examiner session has ended |
-| M6 next epoch | first Examiner session and first comparison after M5 | drafts held and refused by reason, frontier and retained sizes, objective room | held out after M5 against before it | lane 31 with standing lanes, when owed at M5 |
+| M6 next epoch | first Examiner session and first comparison after M5 | drafts held and refused by reason, frontier and retained sizes, objective room | held out after M5 against before it | lane 27 with standing lanes, when owed at M5 |
 | M7 ending | `campaign.ended` | ending kind, closing report, resolve every prediction | every open row | full investigation where the campaign promoted or an early ending raises an unresolved question |
 
 An investigation follows its event and waits for a comparison's `comparison.reported`. Open it
 for a question the readers cannot settle, a reading in doubt or an unclear failure owner. A timer
-alone raises no question. A second promotion reopens lane 31 only where `wri.ts climb` shows
+alone raises no question. A second promotion reopens lane 27 only where `wri.ts climb` shows
 something the first did not. For an ending other than patience, report "reached N promotions;
 further improvement unresolved" (`AGENTS.md`, factor 1).
 
@@ -281,7 +306,7 @@ Links 1, 2 and 6 limit what the reading can establish.
 
 Read room by `informative`, rather than a target pass share. `noRoom` in `src/campaign/decide.ts`
 requests an Examiner session after promotion even where the promotion's comparison leaves room.
-Lane 25 of [whole-run-investigation](../whole-run-investigation/SKILL.md) reads a campaign's chain;
+Lane 26 of [whole-run-investigation](../whole-run-investigation/SKILL.md) reads a campaign's chain;
 this walk chooses what to do about it.
 
 ### What each link reads as, and its owner
@@ -348,7 +373,8 @@ better model behaviour needs the fresh campaign's real milestone, read against i
 ## 3. Put the prediction on record
 
 The campaign command takes no `--predict`: its comparisons are the Builder's to request. Keep a
-ledger outside campaign folders before the first solve, naming campaign, commit and milestone.
+ledger outside campaign folders before the first solve, naming campaign, commit and milestone. In a
+release cycle that ledger is the cycle's `Predictions.md` (step 1).
 A comparison made by hand takes:
 
 ```sh
@@ -522,7 +548,7 @@ cycle above owns the steps and authority for the next cycle too.
 | --- | --- | --- |
 | cycle | the plan file and its log | run-management to fork and stop; whole-run-investigation on the stopped runs; system-path-simulation's before-and-after for each patch; stack-pr to implement on the open stack, its section 10 to consolidate it by subject, and `bun run land` to release |
 | score | five points and milestone | none |
-| walk | epoch, pulse, reader, link table | whole-run-investigation lane 25 for a campaign with a chain |
+| walk | epoch, pulse, reader, link table | whole-run-investigation lane 26 for a campaign with a chain |
 | choose | link, owner, falsifier | stack-pr for source; simplify over the diff |
 | prove | replay and launch dry run | system-path-simulation rehearsal for a round or campaign path |
 | predict | ledger before first solve | `--predict` on a manual comparison |

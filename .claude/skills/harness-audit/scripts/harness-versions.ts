@@ -17,7 +17,7 @@
  * `harness.imported`, `harness.promoted` and the comparisons' own, and `campaignOf`
  * (`src/campaign/handover.ts`) folds them. This lists the states, opens each as a solve would
  * (`openHarness`), counts its parts, and leaves the joining to the fold. Whole-run-investigation's
- * lane 13 diffs a parent and a child part by part; `--diff` is that count, and quotes no line.
+ * lane 15 diffs a parent and a child part by part; `--diff` is that count, and quotes no line.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { type Handover, campaignOf } from "#src/campaign/handover.ts";

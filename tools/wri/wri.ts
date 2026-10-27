@@ -10,7 +10,7 @@
  *   bun tools/wri/wri.ts synthesis --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts grade --log .ana/d2/truss/log.jsonl [--bundle <pack>] --task <taskId> --answer <file>
  *
- * - `climb` prints lane 31's columns for every log `--log` names, one row each, and the paths
+ * - `climb` prints lane 27's columns for every log `--log` names, one row each, and the paths
  *   under the host's `/tmp` one campaign named before another's solve ran them. It reads the logs as they stand, so it can be run on campaigns still running.
  * - `read` prints the six rows and every trigger with the lane it starts (`tools/wri/read.ts`), and
  *   the host hash of the last condition beside this checkout's, and beside the campaign's own
@@ -163,7 +163,7 @@ function hostLine(log: string): string {
 }
 
 function overviewText(log: string): string {
-  return `${rendered(overview(read(log)))}\n\n${hostLine(log)}\n`;
+  return `${rendered(overview(read(log), receipts(log)))}\n\n${hostLine(log)}\n`;
 }
 
 function start(): number {
@@ -205,11 +205,15 @@ function start(): number {
 function opened(): Investigation {
   const out = resolve(needed("out"));
   const { logs } = parseJsonAs<{ logs: string[] }>(readFileSync(join(out, "investigation.json"), "utf8"));
-  const campaigns = logs.map((log) => ({ name: nameOf(log), log, overview: overview(read(log)) }));
+  const campaigns = logs.map((log) => ({
+    name: nameOf(log),
+    log,
+    overview: overview(read(log), receipts(log)),
+  }));
   return { out, shared: readFileSync(join(out, SHARED), "utf8"), campaigns };
 }
 
-/** The campaigns in lane 31's columns, and the `/tmp` paths one named before another's solve ran
+/** The campaigns in lane 27's columns, and the `/tmp` paths one named before another's solve ran
  *  them (`tools/wri/climb.ts`). */
 function climbText(logs: readonly string[]): string {
   const campaigns = logs.map((each) => ({ name: nameOf(each), events: read(each) }));

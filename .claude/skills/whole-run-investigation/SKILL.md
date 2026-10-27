@@ -11,8 +11,8 @@ synthesis that says whether each reading may be believed, what limited it, and w
 change belongs to. It reads and proposes. It starts no solve, no session and no round, it appends to
 no log, and the host's verifier stays the one owner of every verdict.
 
-The catalogue has six deterministic rows and thirty-one lanes. [from-v1.md](references/from-v1.md)
-maps the earlier catalogue to this one. Lane 31 reads a promotion and the climb after it, with
+The catalogue has six deterministic rows and thirty-three lanes. [from-v1.md](references/from-v1.md)
+maps the earlier catalogue to this one. Lane 27 reads a promotion and the climb after it, with
 every campaign under review side by side. `AGENTS.md` sections 1 to 8 own the campaign's rules.
 
 These narrower questions need no lanes. Start there when one is the whole question. A `wri.ts`
@@ -42,7 +42,7 @@ holds.
    each campaign's row filled in and two sections left blank. Where one question spans several
    campaigns (other domains, other hosts, other commits of one pack), name them all: they are read
    as equals. Every lane reads every campaign, opens where a trigger fired on any of them, and
-   triages each finding against the others on its `Seen in:` line; lane 31 is also given their
+   triages each finding against the others on its `Seen in:` line; lane 27 is also given their
    climbs side by side. The logs are read again when the lanes are built.
    With `bun --env-file=.env.runs tools/wri/wri.ts ... --log <name>`, a campaign on another machine
    is fetched automatically into `data/runs/<host>/<name>/`. Explicit log paths select an offline
@@ -59,7 +59,7 @@ holds.
    *Check:* no `##` section is blank, and the hard rules are still there.
 3. **Build the lanes.** `wri.ts lanes --out <dir>` writes one prompt per lane under `<dir>/lanes/`
    and `<dir>/launch.json`, one session for each lane it built. With no `--lanes` it opens every
-   lane a trigger started and the four standing lanes. By default it builds no isolated lane:
+   lane a trigger started and the three standing lanes. By default it builds no isolated lane:
    it names the ones whose trigger fired for the primary to assess. A prompt built before is
    kept and excluded from any newly written `launch.json`.
    *Check:* exit 0, and count the sessions that this call built. If it built none, launch nothing:
@@ -71,7 +71,7 @@ holds.
    them all in one message.
    *Check:* read the model each transcript recorded before using its report.
 5. **Collect.** `wri.ts collect --out <dir>` holds every expected report to its shape and writes
-   `<dir>/reports.md`. Read lane 4's report, then decide lane 5; read lanes 11, 15 and 18, then
+   `<dir>/reports.md`. Read lane 4's report, then decide lane 5; read lanes 13, 15 and 18, then
    decide lane 19, applying the `WINS` limitation below. Build lane 5 with
    `wri.ts lanes --out <dir> --lanes 5`, or lane 19 with `--lanes 19`, then launch the one lane it
    says it built, alone, and collect again.
@@ -98,25 +98,25 @@ Each runs as `bun tools/wri/wri.ts <verb>` from the checkout. The usage block at
 | lanes 1, 5 | `grade --log <log> [--bundle <pack>] --task <taskId> --answer <file>` | nothing: one verdict line. `--bundle` names a stored pack; a campaign that drafted its exam names none |
 
 One investigation reads one question, over one campaign or several. Two campaigns of one pack, one
-under a checker and one under its repair, are read apart, and lane 6 of the later one joins them.
+under a checker and one under its repair, are read apart, and lane 3 of the later one joins them.
 
 ## Sizing
 
 One session reads one lane, on every campaign under review: more campaigns make each session
-longer, and add none. `selected` opens all four standing lanes even before a comparison
+longer, and add none. `selected` opens all three standing lanes even before a comparison
 reports, alongside any triggered open lanes. Count the manifest rather than assuming a size.
 When the budget is
 smaller than the build, read the groups in this order, because each rests on the one before:
 
-1. **The instrument (1 to 6).** A comparison counts verdicts. Until the refusals read sound, a win
+1. **The verdicts (1 to 8).** A comparison counts verdicts. Until the refusals read sound, a win
    may be the check refusing the parent's right answer. Lane 4 first.
-2. **The comparison (20 to 25).** Whether the pairs are pairs, how the scored set was chosen and
-   what the test could show at its size. Lanes 21 and 22 first.
-3. **The harness (13 to 19).** What changed and whether it could know the exam. Lane 18 first.
-4. **The tasks (7 to 12), the solve (26 to 28), the review loop (29 to 30).**
-5. **The climb (31).** Once a promotion is on record, open it before a person is told the campaign
+2. **The comparison (21 to 25).** Whether the pairs are pairs, how the scored set was chosen and
+   what the test could show at its size. Lanes 22 and 23 first.
+3. **The harness (15 to 20).** What changed and whether it could know the exam. Lane 18 first.
+4. **The supply (9 to 14), the solve (29 and 30), the economy (31), the runs (32) and the log (33).**
+5. **The climb (26 to 28).** Once a promotion is on record, open it before a person is told the campaign
    improved a harness: it reads what the promotion rested on and what followed, and it rests on
-   lanes 13, 19, 22 and 25 where they ran.
+   lanes 15, 19, 23 and 26 where they ran.
 
 `--lanes` takes whatever is asked for. A lane named without its trigger opens and is told so by its
 own overview. An isolated lane is refused without its trigger. The tool permits named isolated
@@ -184,7 +184,12 @@ and deleting a heading drops its section on purpose.
 | Hard rules | the preset | the rules above |
 
 A lane told what to find finds it. An earlier diagnosis goes under the prior state as a hypothesis,
-never under the orientation as a premise.
+never under the orientation as a premise. Where the campaigns belong to a release cycle, the prior
+state lists every row of the cycle's `Predictions.md` as a hypothesis: its pull request, its
+area labels ("Labels" in [the catalogue](references/lanes.md)), lanes, claim and falsifier,
+without the ledger's resolution. Step 3 opens every lane a row names with
+`--lanes`, triggered or not, since a row whose lanes never opened has no report to backtrack from.
+Lanes 5 and 19 stay isolated: no row names them, and they are given no row.
 
 ## Vetting
 
@@ -203,6 +208,28 @@ as `<dir>/vetting.md`, one row a finding with its verdict and what was checked, 
 finding that was only triaged as vetted. On 22 October eight of thirteen findings were first
 reported as adjudicated after triage alone.
 
+**Backtrack the predictions before the synthesis's own findings.** Where the campaigns belong to a
+release cycle, `vetting.md` opens with one row for each row of the cycle's `Predictions.md`, and
+of its `cycle.md`:
+
+- **Resolve it from the logs.** Mark it held, falsified or unreached, with the count recounted here
+  from the events the row names. The reports of the lanes the row names are read first, as leads.
+  A resolution already in the ledger, a lane's report or the synthesis is a lead to recount, never
+  the evidence.
+- **Name the witness.** Say whether an event shows the pull request's mechanism ran in these runs
+  (`AGENTS.md`, section 9). A held row whose mechanism never ran held by chance, and is
+  unreached for its pull request.
+- **Treat a falsified row as a finding.** Triage it to one owner (the pull request's code, the
+  prediction's reasoning, or the run's condition), then vet it like every other finding. A
+  confirmed one becomes a row of the cycle's plan.
+- **Carry an unreached row forward.** Say why its trigger never came. Its pull request is still
+  unmeasured, and the row goes into the next cycle's `Predictions.md`.
+
+A finding of the synthesis that bears on a prediction names that row. The step's check: `vetting.md`
+holds as many prediction rows as the two ledgers do. Beside the rows, count them by label: held,
+falsified and unreached for each area label, which shows where the cycle's changes were measured
+and where they still wait.
+
 - **Start from the operator's decision.** Usually one of: believe this step, run another round,
   repair the checker, run the Examiner again. Order the synthesis by that.
 - **Read the instrument before the tally.** A rejection counts only once it is ruled a true fail.
@@ -213,7 +240,7 @@ reported as adjudicated after triage alone.
   (`tools/d2/settle.ts`), and the settled report says what was labelled, disputed and restored.
   An investigation proposes that reading; it never makes it.
 - **Read `not-scored` and an empty `no-step` as no test.** A comparison that tallied no task says
-  nothing of its harness. Row D's count of held-out tasks, and lane 8's of those waiting for a
+  nothing of its harness. Row D's count of held-out tasks, and lane 10's of those waiting for a
   label, say whether the next one can do better.
 - **Keep the observation apart from the cause.** "Forty of fifty-five refusals name one check" is an
   observation; "the check is too strict" and "the solver cannot do it" are two causes, and lane 5 is
@@ -228,7 +255,7 @@ reported as adjudicated after triage alone.
 
 | file | owns |
 | --- | --- |
-| [references/lanes.md](references/lanes.md) | the stance, the owner table, rows A to F and lanes 1 to 31 |
+| [references/lanes.md](references/lanes.md) | the stance, the owner table, rows A to F and lanes 1 to 33 |
 | [references/from-v1.md](references/from-v1.md) | what became of v1's nine rows and thirty-eight lanes, and what that says about v2's direction |
 | [references/shared-instructions.template.md](references/shared-instructions.template.md) | the preset every open lane carries |
 | [references/synthesis.template.md](references/synthesis.template.md) | the synthesis session's prompt |

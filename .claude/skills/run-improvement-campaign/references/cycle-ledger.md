@@ -19,7 +19,7 @@ evidence against those steps and supplies no additional authority.
 | Stops | Closed runs / named cycle runs to stop, excluding `--keep`; list exceptions and unread runs separately |
 | Investigation | Links to synthesis, vetting and each finding's evidence and disposition |
 | Plan and patches | Owner, hostile test, before-and-after result, commit or PR, checks and exit codes |
-| Predictions | Frozen claim, link, falsifier, opening commit, resolution and evidence |
+| Predictions | A link to `Predictions.md` beside this file, which holds every prediction of the cycle and its resolution ([step 1](../SKILL.md#the-running-window-until-six-promotions-a-run)) |
 | Release | Operator's word, tree-equality proof, land result, merge commit and tag |
 | Next cycle | Link to its ledger, authority, named runs and opening commits |
 

@@ -20,7 +20,7 @@ export interface Lane {
   readonly standing: boolean;
   /** Runs alone, on its trigger, and reads no other report. */
   readonly isolated: boolean;
-  /** Is given every campaign under review side by side, in lane 31's columns. */
+  /** Is given every campaign under review side by side, in lane 27's columns. */
   readonly sideBySide: boolean;
   /** The lane whole, as a session is given it. */
   readonly body: string;

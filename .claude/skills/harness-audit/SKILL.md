@@ -15,7 +15,7 @@ marked, and each needs the operator's word (`AGENTS.md`, section 10).
 | The question | Read |
 | --- | --- |
 | Which harnesses, where each came from, what measured it | `harness-versions.ts` |
-| What moved from a parent to its child | `harness-versions.ts --diff`, and lane 13 for what it means |
+| What moved from a parent to its child | `harness-versions.ts --diff`, and lane 15 for what it means |
 | How one runs on a task | [Trying a kept harness](#trying-a-kept-harness) |
 | Ready to promote, or to hand over | [Before a promotion](#before-a-promotion) and [At a handover](#at-a-handover) |
 | Which part of a harness did it | a checkpoint against `programs-of:<digest>`, worded by [attribution-and-proof](../attribution-and-proof/SKILL.md) |
@@ -56,7 +56,7 @@ keeps, the starter first:
 `--diff` counts what moved, part by part, against the parent the log records or `--against`:
 lines added and removed in the guide and the tools module, tools added and removed in the spec,
 files added, removed and changed in the tool tree and under which folders, and other files by path.
-It quotes no line, and neither does anything written from it (lane 13). It takes no control: the
+It quotes no line, and neither does anything written from it (lane 15). It takes no control: the
 command that compares one makes it.
 
 ## Trying a kept harness
@@ -86,8 +86,8 @@ manual promotion, put these in front of the operator.
 3. **What moved since the reference.** `--diff <digest> --against promoted` counts the whole change
    a promotion makes, which can span several sessions. Attributing a gain to one part requires a
    checkpoint against `programs-of:<digest>` (`AGENTS.md`, section 9).
-4. **What it measured.** Lane 31 of [whole-run-investigation](../whole-run-investigation/SKILL.md)
-   reads a promotion's rule, what its step measured and the climb after it; lanes 13 to 16 read
+4. **What it measured.** Lane 27 of [whole-run-investigation](../whole-run-investigation/SKILL.md)
+   reads a promotion's rule, what its step measured and the climb after it; lanes 15 to 17 read
    the change, the guide's truth, check mirroring and the finish. Open them when a reading is in
    doubt, not as a ritual.
 
@@ -114,7 +114,7 @@ Without `--solve` it calls no model. Then arrange a blind review:
 ## Whether a part earns its place
 
 A program, a tool or a guide line is read from what solves under it did: their `solve.call` rows,
-which lane 14 counts. Count use over the solves where the need arose and the part was there; a
+which lane 16 counts. Count use over the solves where the need arose and the part was there; a
 missing record is unknown, never zero. A successful call is not a valid answer, a failed answer
 does not say which part failed it, and a shell command alone is no reason for a tool.
 

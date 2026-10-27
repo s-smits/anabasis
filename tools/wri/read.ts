@@ -1,6 +1,6 @@
 /**
  * The deterministic read of one campaign's log for a whole-run investigation: six rows of
- * identities the primary reviewer settles, and the triggers that say which of the thirty-one lanes of
+ * identities the primary reviewer settles, and the triggers that say which of the thirty-three lanes of
  * `.claude/skills/whole-run-investigation/references/lanes.md` have something to read.
  *
  * v1's readers walked a campaign folder of some forty record kinds: claims, promotions, epochs,
@@ -12,13 +12,14 @@
  * something to read and never what the answer is: a lane that contradicts its trigger from the
  * bytes has done its job. A trigger that did not fire says this arithmetic found nothing, and not
  * that the property is absent. No trigger carries an answer, a task's text or a hidden value.
- * Lane 22 reads the recorded tally and power at its margins. Reversing one win establishes
+ * Lane 23 reads the recorded tally and power at its margins. Reversing one win establishes
  * neither a small sample nor dependence on winning every task, so it starts no trigger.
  *
- * The folds of the log, the catalogue of triggers and the lanes of the exam side (1 to 12) are
- * `folds.ts` since 10 October, when this file was over the size policy's ceiling. This file keeps
- * the lanes of the harness, the comparison, the solve and the review (13 to 30), the rows and the
- * overview. The climb's lane (31) is `promotion.ts`. The lanes that read the clock (26 and 28) and
+ * The folds of the log, the catalogue of triggers and the lanes of the exam side (1 to 5 and 9 to
+ * 14) are `folds.ts` since 10 October, when this file was over the size policy's ceiling. This file
+ * keeps the lanes of the review, the harness, the comparison and the solve (6 to 7, 15 to 26, 29 to
+ * 30), the rows and the overview. The climb's lane (27) is `promotion.ts`, and the lanes of how a run
+ * was conducted are `run.ts`. The lanes that read the clock (29 and 31) and
  * row A's hours are `time.ts`, split from here on the same day for the same ceiling.
  * Practice gaps retain whether a state was frozen at session end or entered a comparison, with
  * that comparison's start boundary and report status. Score readers still use reports alone.
@@ -66,6 +67,8 @@ import {
 } from "./folds.ts";
 import { safeguardTriggers } from "./climb.ts";
 import { promotionTriggers, testedOf } from "./promotion.ts";
+import { runTriggers } from "./run.ts";
+import type { Receipt } from "../runs/receipt.ts";
 import { costTriggers, hoursLine, wallTriggers } from "./time.ts";
 
 export interface Row {
@@ -106,7 +109,7 @@ interface PractisedSession {
   };
 }
 
-/** Lanes 16 to 19: one session's practice, and what its comparison then showed of it. */
+/** Lanes 17 to 19: one session's practice, and what its comparison then showed of it. */
 function practiceTriggers(log: Index, { build, changed, child, read, round }: PractisedSession): Trigger[] {
   const { session, finished, calls } = build;
   // A practice solve's condition names the state it ran under, so the log says by digest whether
@@ -280,7 +283,7 @@ function programTriggers(log: Index): Trigger[] {
     : [];
 }
 
-/** Lanes 13 to 19: the harness, which is the Builder's. */
+/** Lanes 15 to 19: the harness, which is the Builder's. */
 function harnessTriggers(log: Index): Trigger[] {
   const comparisons = comparisonsOf(log.events);
   return log.builds.flatMap((build) => {
@@ -390,7 +393,7 @@ function practiceCandidates(
   return read;
 }
 
-/** Lane 22, from a comparison's last report alone: whether it scored a task, what its cap
+/** Lane 23, from a comparison's last report alone: whether it scored a task, what its cap
  *  cut, and what it is short of. */
 function testTriggers(session: string, last: JsonObject): Trigger[] {
   const scored = asRecord(last.scored);
@@ -420,7 +423,7 @@ function testTriggers(session: string, last: JsonObject): Trigger[] {
   ];
 }
 
-/** Lanes 20 to 25: the comparison, which is the host's. */
+/** Lanes 21 to 26: the comparison, which is the host's. */
 function comparisonTriggers(log: Index): Trigger[] {
   const hosts = new Set([...log.conditions.values()].map((condition) => condition.host)).size;
   const perComparison = log.compared.flatMap(({ session, own, began: start, last, scoring }) => {
@@ -509,11 +512,11 @@ function unendedSolves(log: Index) {
   return { cut, open: unended.length - cut };
 }
 
-/** A lane 27 trigger's detail: what the campaign went past, then what is open at the log's end. */
+/** A lane 30 trigger's detail: what the campaign went past, then what is open at the log's end. */
 const apart = (cut: string, open: string) =>
   [cut, open === "" ? "" : `${open} open at the log's end`].filter((part) => part !== "").join("; ");
 
-/** Lanes 26 to 28: the solve, its failure and the cost, of which `time.ts` reads lanes 26 and 28. */
+/** Lanes 29 to 31: the solve, its failure and the cost, of which `time.ts` reads lanes 29 and 31. */
 function solveTriggers(log: Index, steps: readonly Handover[]): Trigger[] {
   const done = log.solves.filter((solve) => solve.outcome !== null);
   const missed = done.filter((solve) => solve.outcome === "fail");
@@ -565,7 +568,7 @@ function solveTriggers(log: Index, steps: readonly Handover[]): Trigger[] {
   ];
 }
 
-/** Lanes 29 and 30: the review loop. */
+/** Lanes 6 and 7: the review loop. */
 function reviewTriggers(log: Index): Trigger[] {
   const moved = [...log.rulings].filter(([solve, data]) => {
     const replay = asRecord(data.replay);
@@ -625,7 +628,7 @@ function reviewTriggers(log: Index): Trigger[] {
 }
 
 /**
- * The campaign command's own record, for lane 25's "what runs next": its moves, how it ended, and
+ * The campaign command's own record, for lane 26's "what runs next": its moves, how it ended, and
  * its calculated dollars against the budget it opened with, beside the backend's own totals. Lane
  * 25 read the stop rule from the command's output, which the log outlives. An ending before the
  * last event is one the campaign went on from: both #107 campaigns ended `exam` at their fourth event and ran on under the same opening.
@@ -761,8 +764,8 @@ function rowsOf(log: Index, steps: readonly Handover[]): Row[] {
   ];
 }
 
-/** The rows and the triggers of one log. */
-export function overview(events: readonly LogEvent[]): Overview {
+/** The rows and the triggers of one log, with the launches its receipts record beside it. */
+export function overview(events: readonly LogEvent[], launches: readonly Receipt[] = []): Overview {
   const log = indexOf(events);
   const { steps } = handoverOf(events);
   return {
@@ -778,6 +781,7 @@ export function overview(events: readonly LogEvent[]): Overview {
       ...reviewTriggers(log),
       ...promotionTriggers(log),
       ...safeguardTriggers(log),
+      ...runTriggers(log, launches),
     ],
   };
 }

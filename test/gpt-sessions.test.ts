@@ -150,7 +150,8 @@ describe("a launch", () => {
       ["limited", "failed", 2, "rate-limit"],
     ]);
     const resumed = calls().filter((call) => call.name === "flaky")[1];
-    expect(resumed?.args.slice(0, 2)).toStrictEqual(["exec", "resume"]);
+    expect(calls()[0]?.args.slice(0, 2)).toStrictEqual(["--search", "exec"]);
+    expect(resumed?.args.slice(0, 3)).toStrictEqual(["--search", "exec", "resume"]);
     expect(resumed?.args.at(-2)).toBe("thread_flaky_0001");
     expect(resumed?.stdin).toContain("Continue the task from where it stopped");
   });
@@ -170,6 +171,16 @@ describe("a launch", () => {
         .map((call) => call.name),
     ).toStrictEqual(["limited"]);
     expect(run("--drain", out).stdout).toContain("report from limited");
+  });
+
+  it("leaves web search off where the manifest says so", () => {
+    const path = join(root, "quiet.json");
+    writeFileSync(
+      path,
+      capturedJsonStringify({ workdir, search: false, sessions: [{ name: "quiet", task: "q" }] }),
+    );
+    expect(run("--manifest", path, "--output-dir", join(root, "quiet"), "--codex-bin", codex).code).toBe(0);
+    expect(calls().find((call) => call.name === "quiet")?.args[0]).toBe("exec");
   });
 
   it("refuses an effort the model does not take, and a condition a retry would change", () => {

@@ -290,6 +290,9 @@ describe("the lanes verb", () => {
     const [built, first] = [prompts(), sessions()];
     expect(first).toHaveLength(Object.keys(built).length);
     expect(first.map(({ name }) => name)).toContain("lane_04");
+    expect(parseJsonAs<{ search: boolean }>(readFileSync(join(out, "launch.json"), "utf8")).search).toBe(
+      false,
+    );
     expect(Object.keys(built)).toContain("04-prompt.md");
     expect(Object.keys(built)).not.toContain("05-prompt.md");
     // The primary rewrites the orientation after the first sessions wrote against the first prompts.

@@ -6,6 +6,7 @@ import { CommandFailure } from "#skills/main/cli.ts";
 import { gitText } from "#src/meta/git.ts";
 import { bundle } from "#skills/oracle-handover/scripts/bundle.ts";
 import { follow, type NativeStack, nativeTop } from "#skills/stack-pr/scripts/follow.ts";
+import { pairLines } from "#skills/compare-systems/scripts/systems.ts";
 import { newsOf, readingOf, told as seatTold } from "#skills/system-path-simulation/scripts/live-seat.ts";
 import { pairs, planConsolidation, pushArgs, republish } from "#skills/stack-pr/scripts/republish.ts";
 import { chains, told as stackTold } from "#skills/stack-pr/scripts/stack.ts";
@@ -609,5 +610,38 @@ describe("a live seat's reading", () => {
     expect(result.exitCode).not.toBe(0);
     expect(decodeOutput(result.stderr)).toContain("is no seed");
     expect(existsSync(join(root, "tree", ".ana", "d2", "buffer"))).toBe(false);
+  });
+});
+
+describe("compare-systems reads a candidate against the baseline as a comparison does", () => {
+  const system = (name: string) => ({ name, model: "m", effort: "high", harness: "starter" });
+  const solvedAs = (valid: boolean, rejected: boolean) =>
+    new Map(
+      ["t1", "t2", "t3", "t4", "t5", "t6"].map((task) => [
+        task,
+        { valid: [valid, valid], measure: [null, null], billed: [1, 1], rejected: [rejected, rejected] },
+      ]),
+    );
+  const at = { solves: 2, level: 0.02, direction: undefined };
+
+  it("names the system that wins six untied tasks, baseline or candidate", () => {
+    const [fails, passes] = [solvedAs(false, true), solvedAs(true, false)];
+    const forward = pairLines([system("cheap"), fails], [system("dear"), passes], at).join("\n");
+    const backward = pairLines([system("dear"), passes], [system("cheap"), fails], at).join("\n");
+    expect(forward).toContain("dear won 6, lost 0, tied 0");
+    expect(forward).toContain("dear is better");
+    expect(backward).toContain("cheap won 0, lost 6, tied 0");
+    expect(backward).toContain("dear is better");
+    expect(forward).toContain("6 of the 6 untied tasks hold a rejection nobody ruled");
+  });
+
+  it("reads equal systems as no step, never as equality", () => {
+    const lines = pairLines(
+      [system("a"), solvedAs(true, false)],
+      [system("b"), solvedAs(true, false)],
+      at,
+    ).join("\n");
+    expect(lines).toContain("b won 0, lost 0, tied 6");
+    expect(lines).toContain("no step either way");
   });
 });

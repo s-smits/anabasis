@@ -75,6 +75,8 @@ describe("what the flags of a setting name", () => {
     expect(at("openrouter/deepseek/deepseek-v4.1-flash-1017", "low")).toBe("low");
     expect(at("claude/claude-opus-5-5", "medium")).toBe("medium");
     expect(() => at("openrouter/no-such/model", "high")).toThrow("no backend serves");
+    // pi would send a name it does not know as the model's lowest level.
+    expect(() => at("claude/claude-opus-5-5", "hgih")).toThrow("--solver-effort hgih");
   });
 
   it("holds one command to a share of the wall: a quarter by default and half at most", () => {

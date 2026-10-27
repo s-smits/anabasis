@@ -53,6 +53,7 @@
  * solver started could be cut and handed back to it before the solve itself ended.
  */
 import { clampThinkingLevel, type ThinkingLevel } from "@earendil-works/pi-ai";
+import { THINKING_LEVELS } from "@earendil-works/pi-ai/providers/model-schema";
 import type { Limits } from "#src/kernel/condition.ts";
 import { append, type LogEvent } from "#src/kernel/log.ts";
 import { SIZE } from "#src/kernel/size.ts";
@@ -202,11 +203,13 @@ export function settingNamed(values: SettingFlags): NamedSetting {
       `--solver-window ${String(given["solver-window"])}: a solver's compaction window is a whole number of tokens`,
     );
   }
-  // SAFETY: an effort is one of pi's levels. pi sends one the model does not serve as the next it
-  // does (`clampThinkingLevel`), so the setting records that one: DeepSeek V4.1 Flash serves no
-  // `medium`, and its solves asked for it ran at `high` while the log said `medium` (21 October). A
-  // model with no reasoning is sent none, whatever is asked, and keeps the asked level.
-  const asked = given["solver-effort"] as ThinkingLevel;
+  // pi sends an effort it does not know as the model's lowest level, so that one is refused. It sends
+  // a level the model does not serve as the next it does (`clampThinkingLevel`), and the setting
+  // records that one (DeepSeek's `medium` as `high`, 21 October). A model with no reasoning gets none.
+  const asked = THINKING_LEVELS.find((level) => level === given["solver-effort"]);
+  if (asked === undefined) {
+    throw new Error(`--solver-effort ${given["solver-effort"]}: one of ${THINKING_LEVELS.join(", ")}`);
+  }
   const effort = (solver: string) => {
     const sent = clampThinkingLevel(modelNamed(solver), asked);
     return sent === "off" ? asked : sent;

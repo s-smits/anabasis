@@ -1398,6 +1398,7 @@ procedure:
 | Doubting a reading, or asking what a fail was | `whole-run-investigation` |
 | Reading the harnesses a campaign keeps, before a promotion or a handover | `harness-audit` |
 | Reading the promotions on record, and tuning the promotion rule | `promotion-tuner` |
+| Comparing whole systems, a solver inside a harness, outside a campaign's readings | `compare-systems` |
 | Handing runs, or a question, to someone outside | `zip-run`, `oracle-handover` |
 
 `/goal` (`.claude/commands/goal.md`, kept from v1) carries one of the operator's objectives across a

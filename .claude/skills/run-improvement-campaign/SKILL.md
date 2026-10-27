@@ -498,39 +498,59 @@ name each claim's evidence level from attribution-and-proof.
 For authorised unattended work, keep timers, their authority and one ledger row per firing in a
 local file beside the handover. Timers arrange this procedure; they add no campaign scheduler.
 
-| Timer | When | Does |
+### Every firing: one protocol
+
+Every firing of every timer takes the same five steps, in this order. The order and the records
+are fixed; what the session reads, which reader or lane it opens, and what it concludes between
+the steps are its own judgment, held to the evidence and to recorded authority.
+
+1. **Read the state.** `cycle.md`, `Predictions.md` beside it, and `scripts/cycle.ts` over the
+   cycle's runs. Where `Predictions.md` is missing, write it first (step 1 of the cycle).
+2. **Resolve the predictions.** Each row whose event has landed or whose deadline has passed is
+   `held` or `falsified` in Resolutions, with the count from the log that settles it and the time.
+   A written resolution stays; a recount that disagrees adds a row beside it. A falsified row opens
+   a triage row.
+3. **Act.** Take the step `cycle.ts` names, within the cycle's order and the recorded authority
+   for launches and stops, and read any milestone that landed (section "Milestones"); investigate
+   after the event, never before it. Keep one triage list, rewritten each
+   pass: problem, link, event or count, how found, and status, ranked by the first failed link and
+   then by the number of runs showing it. Check a row against log and source, and prove it with a
+   replay or rehearsal that passes its link.
+4. **Re-arm.** Add, move or delete timers toward the cycle's goal (operator, 21 October). Arm a
+   one-shot at the next event a run's log predicts: for a comparison, scored tasks × solves a side
+   × 2 × median solve minutes, divided by concurrent solves. Once every run the cycle forked has
+   its `campaign.opened`, arm one one-shot for each row of `Predictions.md` whose claim names a time
+   ("within 14 hours of its opening", "by 24 hours"), at the latest opening plus that time, so one
+   firing reads every run. A one-shot that a later reading made early is re-armed, and a replaced
+   timer is deleted by its id.
+5. **Log.** One Firings row in `cycle.md`: the time with its UTC offset, what was found, the rows
+   resolved, whether the firing was useful, when it should have fired, and each timer change. Speak
+   to the operator only when a milestone landed, a run stalled or ended, or a prediction resolved;
+   otherwise stay silent.
+
+At step 4 of the cycle every row still open is marked `unreached`.
+
+### The timers
+
+| Timer | When | Its step 3 |
 | --- | --- | --- |
-| watch | hourly, off the hour and the half hour (`13 * * * *`) | every run's milestone and possible stall on every host; one ledger row, silent when nothing moved |
-| pass (the cycle's driver) | every three hours (`17 */3 * * *`) | take the first cycle step not done, close out ended runs, read `runs usage`, review timer usefulness from the ledger alone |
-| milestone | one-shot at the predicted event | read the named milestone and any investigation it owes |
-| cycle checkpoint | one-shot at each step of the release cycle | run `scripts/cycle.ts` over the cycle's runs, take the step it names within the order, log it, and re-arm or delete the cycle's timers |
-| handover | one-shot at the agreed handover time | five points, changes and decisions waiting |
+| watch | hourly, off the hour and the half hour (`13 * * * *`) | every run's milestone and possible stall on every host |
+| pass (the cycle's driver) | every three hours (`17 */3 * * *`) | the first cycle step not done, ended runs closed out, `runs usage`, and the timers reviewed from the ledger alone |
+| milestone | one-shot at a predicted event, or at a prediction's deadline | the named milestone or row, and any investigation it owes |
+| cycle checkpoint | one-shot at each step of the release cycle | the step `cycle.ts` names |
+| handover | one-shot at the agreed handover time | five points, changes and decisions waiting, and which timers were useful by their ledger rows |
 
-Each watch and pass estimates the next event from that run's log and arms a one-shot. For a
-comparison, estimate scored tasks × solves a side × 2 × median solve minutes, divided by concurrent
-solves. If early, re-arm from the new evidence. Investigate after the event.
-
-Keep one triage list, rewritten each pass: problem, link, event or count, how found, and status.
-Rank by the first failed link, then the number of runs showing it. Check against log and source;
-prove a row with a replay or rehearsal that passes its link. A failed prediction opens a row.
-
-Each firing records what it found, whether useful and when it should have fired. Review those
-rows: three empty watches may justify two-hour spacing; M3 or M5 approaching needs a one-shot.
-Timers act only within recorded authority, including authority for launches and stops.
+Review the Firings rows in the pass: three empty watches may justify two-hour spacing, and M3 or M5
+approaching needs a one-shot.
 
 A Claude Code timer (`CronCreate`) lives only in the session that armed it. It dies when that
 session exits, and a recurring one expires after seven days. It fires only while the session is
 idle, a few minutes off the time it names. So:
 
-- Write each timer's prompt to stand alone, with absolute paths, the ledger file, the runs it reads
-  and its authority. It fires after compactions that will have dropped the context it was armed in.
-- Every timer may move its work forward and patch or tune the timers (add, move, delete) to reach
-  the goal it serves (operator, 21 October). Say so in its prompt, and log each change.
-- A watch speaks to the operator only when a milestone landed, a run stalled or ended, or a
-  prediction resolved. Otherwise it writes its ledger row and stays silent.
-- When a timer is replaced (an hour moved, a run added), delete the old one by its id. A one-shot
-  that a later reading made early is re-armed, not left to fire on stale facts.
-- The handover timer reads the other timers' ledger rows and says which were useful.
+- Write each timer's prompt to stand alone, with absolute paths, `cycle.md`, `Predictions.md` and
+  the rows it settles, the runs it reads, its authority, and "follow the firing protocol of
+  run-improvement-campaign's Timers". It fires after compactions that will have dropped the context
+  it was armed in.
 - Review timers from the ledger inside the pass, not with a separate recurring Codex session: on 24
   October one fired four times in about eight and a half hours (16:39, 19:13, 22:13, 01:13); the
   19:13 firing changed the cadence usefully, and the others read a stale ledger, found no change or

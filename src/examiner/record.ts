@@ -424,11 +424,17 @@ function interruptedLines(
 export function gateAnswers(
   events: readonly LogEvent[],
   from: number,
-): Map<string, { readonly turns: number | null; readonly measure: number | null }[]> {
+): Map<
+  string,
+  { readonly turns: number | null; readonly seconds: number | null; readonly measure: number | null }[]
+> {
   const sessions = examinerSessions(events);
   const conditions = conditionsOf(events);
   const verdicts = verdictsOf(events);
-  const answers = new Map<string, { readonly turns: number | null; readonly measure: number | null }[]>();
+  const answers = new Map<
+    string,
+    { readonly turns: number | null; readonly seconds: number | null; readonly measure: number | null }[]
+  >();
   for (const { id, started, start, ending, end, condition } of solvesIn(events)) {
     const version = conditions.get(condition)?.task;
     if (started <= from || !sessions.has(start.comparison) || version === undefined) continue;
@@ -437,7 +443,11 @@ export function gateAnswers(
     const measure = checker?.kind === "pass" ? (checker.objective ?? null) : null;
     answers.set(version, [
       ...(answers.get(version) ?? []),
-      { turns: isNumber(end?.turns) ? end.turns : null, measure },
+      {
+        turns: isNumber(end?.turns) ? end.turns : null,
+        seconds: isNumber(end?.seconds) ? end.seconds : null,
+        measure,
+      },
     ]);
   }
   return answers;

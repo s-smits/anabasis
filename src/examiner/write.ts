@@ -335,7 +335,14 @@ export async function measured(gate: Gate, task: TaskPackage, stop: AbortSignal,
   const took = answers.flatMap(({ turns: each }) => (each === null ? [] : [each]));
   const most = gate.budget?.modelTurns;
   const of = isNumber(most) ? `its ${String(most)}` : "the solver's own";
-  const turns = took.length === 0 ? "" : `, taking ${took.join(", ")} of ${of} turns`;
+  // The longest of them against the wall: on that x-4 every one of 34 took under 70 of 1,800 seconds.
+  const longest = Math.max(...answers.flatMap(({ seconds }) => (seconds === null ? [] : [seconds])));
+  const minutes = gate.budget?.minutes;
+  const wall =
+    isNumber(minutes) && Number.isFinite(longest)
+      ? ` and at most ${plural(Math.max(1, Math.ceil(longest / 60)), "minute")} of its ${String(minutes)}`
+      : "";
+  const turns = took.length === 0 ? "" : `, taking ${took.join(", ")} of ${of} turns${wall}`;
   // The measures by the objective, theirs and the author's, which decide room where every solve is
   // valid (`informative`).
   const measures = answers.flatMap(({ measure }) => (measure === null ? [] : [shown(measure)]));

@@ -462,6 +462,7 @@ function measuredProbe(
   log: string,
   measure: (task: TaskPackage, nth: number) => number | undefined,
   turns?: number,
+  seconds?: number,
 ) {
   const solved: string[] = [];
   return async (task: TaskPackage, session: string) => {
@@ -472,7 +473,13 @@ function measuredProbe(
     append(log, "condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
     append(log, STARTED, { solve, condition: conditionId(ran), comparison: session });
     append(log, "verdict", { solve, answer: GOOD, kind: "pass", objective: objective ?? null });
-    append(log, FINISHED, { solve, ending: PASS, billed: 0, ...keyIfDefined("turns", turns) });
+    append(log, FINISHED, {
+      solve,
+      ending: PASS,
+      billed: 0,
+      ...keyIfDefined("turns", turns),
+      ...keyIfDefined("seconds", seconds),
+    });
     return PASS;
   };
 }
@@ -1792,18 +1799,20 @@ describe("a session that writes tasks", () => {
     expect(lines.find((line) => line.startsWith("x-1-003: "))).not.toContain("try_answer on it");
   });
 
-  it("tells the turns of the reference's valid answers at the gate against the budget, and the drafts used each turn", async () => {
+  it("tells the turns and minutes of the reference's valid answers at the gate against the budget, and the drafts used", async () => {
     const s = seat("write", [call(TRY, { tasks: [instance(2)] }), finish, finish]);
     await examine({
       ...s.request,
       budget: { modelTurns: 20, minutes: 30 },
-      probe: measuredProbe(s.log, () => undefined, 4),
+      probe: measuredProbe(s.log, () => undefined, 4, 61),
     });
     const said = s
       .of(CALLED)
       .flatMap(({ text: line }) => (isString(line) ? [line] : []))
       .join("\n");
-    expect(said).toContain("validly in 3 of 3 solves, taking 4, 4, 4 of its 20 turns, which leaves no room");
+    expect(said).toContain(
+      "validly in 3 of 3 solves, taking 4, 4, 4 of its 20 turns and at most 2 minutes of its 30, which leaves no room",
+    );
     expect(said).toContain("1 of 4 drafts put to the gate in this session.");
   });
 

@@ -299,6 +299,8 @@ open (98 of them on 21 September in v1). The command is `tools/runtime/land.ts`:
 bun run land -- <top>                 # prove it here; nothing is written to GitHub
 bun run land -- <top> --sanitize      # and post each commit's verdict as ana/commit
 bun run land -- <top> --merge         # and wait for ci.yml, post ana/stack-gate, and merge
+bun run land -- <pr> --auto --merge   # land the top above <pr>, and follow a new top stacked meanwhile
+bun run land -- --merge               # the same, for the stack that holds the oldest stacked pull request
 ```
 
 GitHub enforces this. Since 25 October the repository allows merge commits only, with squash,

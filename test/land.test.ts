@@ -27,6 +27,7 @@ import { capturedExecPath } from "../src/meta/process.ts";
 import { afterAll, beforeEach, describe, expect, it } from "bun:test";
 
 import { execTextSync, spawnTextSync } from "./helpers/bun-spawn-sync.ts";
+import { topAbove } from "../tools/runtime/land.ts";
 import { fakeBun, gatesRun, logLines } from "./helpers/fake-bun.ts";
 
 const land = join(import.meta.dir, "..", "tools", "runtime", "land.ts");
@@ -109,6 +110,8 @@ const testOnly = commit("test/c.test.ts", "export {};\n", "a test");
 const testsTop = commit("src/d.ts", "export const d = 1;\n", "d");
 git("checkout", "-q", "-b", "nodispatch", "main");
 const noDispatch = commit(".github/workflows/ci.yml", workflow(""), "no dispatch");
+git("checkout", "-q", "-b", "c", "b");
+const stacked = commit("src/e.ts", "export const e = 1;\n", "c");
 git("checkout", "-q", "b");
 execTextSync("git", ["init", "-q", "--bare", origin]);
 execTextSync("git", ["-C", origin, "config", "uploadpack.allowAnySHA1InWant", "true"]);
@@ -212,6 +215,58 @@ describe("bun run land", () => {
     ]);
     expect(writes().filter((line) => !/context=(ana\/commit|mergeable) /u.test(line))).toEqual([]);
     expect(logLines(ghLog).some((line) => line.startsWith("run list"))).toBe(false);
+  });
+
+  it("with --auto lands a pull request stacked on the top during its proof, and merges the new top", () => {
+    const next = join(fixture, "stacked-pulls");
+    rmSync(`${next}.read`, { force: true });
+    writeFileSync(next, stack(upper, pull(15, "c", "b", stacked)));
+    const result = runLand(["12", "--auto", "--merge"], {
+      ANA_FAKE_PULLS_NEXT: next,
+      ANA_FAKE_STACK: "7 11,12,15",
+      ANA_FAKE_STACK_SHA: stacked,
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(
+      "a pull request was stacked on #12 while it landed; landing the new top.",
+    );
+    expect(gatesRun(gateLog)).toContain(`${stacked} suite`);
+    const merges = logLines(ghLog).filter((line) => line.includes("/merge-async") && line.includes("-X PUT"));
+    expect(merges.map((line) => /pulls\/(\d+)\//u.exec(line)?.[1])).toEqual(["15"]);
+  });
+
+  it("follows the longest chain above a pull request, and the older of two chains of one length", () => {
+    const [bottom, older, newer, above] = [
+      pull(11, "a", "main", lowerDocs),
+      pull(12, "y", "a", upper),
+      pull(13, "x", "a", beside),
+      pull(14, "z", "x", stacked),
+    ];
+    expect(topAbove([newer, bottom, older, above], bottom).number).toBe(14);
+    expect(topAbove([newer, bottom, older], bottom).number).toBe(12);
+    expect(topAbove([bottom, older], older).number).toBe(12);
+  });
+
+  it("without --auto stops at the pull request named, and leaves one stacked meanwhile open", () => {
+    const next = join(fixture, "stacked-pulls");
+    rmSync(`${next}.read`, { force: true });
+    writeFileSync(next, stack(upper, pull(15, "c", "b", stacked)));
+    const result = runLand(["12", "--sanitize"], { ANA_FAKE_PULLS_NEXT: next });
+    expect(result.status).toBe(0);
+    expect(gatesRun(gateLog)).not.toContain(`${stacked} suite`);
+  });
+
+  it("with no pull request named lands the stack that holds the oldest stacked pull request, up to its top", () => {
+    const result = runLand(["--sanitize"], {
+      ANA_FAKE_PULLS: JSON.stringify([
+        pull(9, "beside", "main", beside),
+        pull(11, "a", "main", lowerDocs),
+        pull(12, "b", "a", upper),
+        pull(16, "tests", "main", testsTop),
+      ]),
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("#11, #12 onto main");
   });
 
   it("gives a commit that changes a test alone its static steps, with that test", () => {

@@ -478,14 +478,15 @@ it.skipIf(!walled).concurrent(
     expect(calls[0]?.text).toContain('"base": 7');
     expect(calls[1]?.text).toContain('"additionalProperties": false');
     expect(calls[4]?.text).toMatch(/\/home\n+\[Solve time used: 0:\d\d of 10:00\]$/);
-    // The Starter adds nothing to pi: its four tools and submit, and pi's prompt with the host's part.
+    // The Starter adds no tool to pi: its four tools and submit, pi's prompt with the host's part,
+    // and the starter instructions as the project's.
     expect(sent[0]).toContain("You are an expert coding assistant operating inside pi");
     expect(sent[0]).toContain("- submit: Send answer.json from your working directory as your answer.");
     expect(sent[0]).toContain("in the 1 file under public/resources/; read both before you build.");
     expect(sent[0]).toContain(
       "- A command runs for at most 30 seconds unless it names a longer timeout, and 60 seconds is the longest it may name.",
     );
-    expect(sent[0]).not.toContain("<project_context>");
+    expect(sent[0]).toContain("<project_context>");
   },
   120_000,
 );

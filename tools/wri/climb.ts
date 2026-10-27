@@ -1,5 +1,5 @@
 /**
- * Lane 31 across campaigns: one row a campaign, in the columns the lane compares, and the paths
+ * Lane 27 across campaigns: one row a campaign, in the columns the lane compares, and the paths
  * under the host's `/tmp` that one campaign named before another campaign's solve ran them.
  *
  * Campaigns of one pack run side by side on one host, each on its own code. Read one at a time, a
@@ -7,7 +7,7 @@
  * that ran a program from `/tmp` says nothing of who put it there: on 10 October abl175-new's
  * reference solve ran the phreeqc buffer-a's Builder had installed under `/tmp/phq-inst` four
  * hours before, and only the two logs together show it. `wri.ts climb` prints this, and the
- * lane 31 prompt carries it beside the peers' overviews.
+ * lane 27 prompt carries it beside the peers' overviews.
  * Reference validity comes from each report's scored profile; an absent denominator reads
  * unmeasured rather than a measured zero.
  */

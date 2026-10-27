@@ -13,8 +13,8 @@ const flat = (body: string) => body.replaceAll(/\s+/g, " ");
 const numbers = (some: readonly Lane[]) => some.map((each) => each.number);
 
 describe("the lane catalogue", () => {
-  it("holds thirty-one lanes, numbered in order, each with its three sentences", () => {
-    expect(numbers(lanes)).toEqual(Array.from({ length: 31 }, (_, index) => index + 1));
+  it("holds thirty-three lanes, numbered in order, each with its three sentences", () => {
+    expect(numbers(lanes)).toEqual(Array.from({ length: 33 }, (_, index) => index + 1));
     for (const { number, body } of lanes) {
       for (const phrase of ["The question is", "The decision it changes is", "it routes to"]) {
         expect(`${String(number)}: ${String(flat(body).includes(phrase))}`).toBe(`${String(number)}: true`);
@@ -29,7 +29,7 @@ describe("the lane catalogue", () => {
   });
 
   it("says in each lane's own paragraph whether it is standing or runs alone", () => {
-    expect(numbers(lanes.filter((each) => each.standing))).toEqual([1, 15, 18, 22]);
+    expect(numbers(lanes.filter((each) => each.standing))).toEqual([1, 18, 23]);
     expect(numbers(lanes.filter((each) => each.isolated))).toEqual([5, 19]);
   });
 

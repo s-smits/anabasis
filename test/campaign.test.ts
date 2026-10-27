@@ -324,12 +324,13 @@ describe("a campaign", () => {
 
   it("starts from the Starter Built Harness, and keeps it and the latest a session left, each by name", async () => {
     const campaign = await openCampaign(ARGS);
-    // The starter is a harness like any other: it opens, with pi's four coding tools selected and
-    // no guide and no tool of its own, and it is kept under its digest among the campaign's states.
+    // The starter is a harness like any other: it opens, with pi's four coding tools selected, the
+    // starter instructions as its guide and no tool of its own, and it is kept under its digest
+    // among the campaign's states.
     const least = await starter(campaign);
     const opened = await openHarness(least.dir);
     expect(least).toEqual({ dir: join(campaign.states, opened.digest), digest: opened.digest });
-    expect(opened.guide).toBeNull();
+    expect(opened.guide).toContain("# Operating Guide");
     expect(opened.presets).toEqual(["read", "bash", "edit", "write"]);
     expect(opened.kinds.size).toBe(0);
     expect(opened.toolTree).toBeNull();
@@ -410,8 +411,9 @@ describe("a campaign", () => {
 
     const control = await keptAs(campaign, "--new", `programs-of:${built.digest}`);
     const opened = await openHarness(control.dir);
-    // The programs and nothing else: no guide, no tool, and so neither the starter nor the harness.
-    expect(opened.guide).toBeNull();
+    // The starter with the programs and nothing else: the starter's guide, no tool, and so neither
+    // the starter nor the harness.
+    expect(opened.guide).toBe((await openHarness(least.dir)).guide);
     expect(opened.kinds.size).toBe(0);
     expect(opened.toolTree).toBe(join(control.dir, TOOL_TREE_DIR));
     expect(readFileSync(join(control.dir, TOOL_TREE_DIR, "bin", "engine"), "utf8")).toContain("echo engine");

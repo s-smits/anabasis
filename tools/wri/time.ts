@@ -1,6 +1,6 @@
 /**
  * The lanes of a whole-run investigation that read the clock: the solver's walls, limits and load
- * (lane 26), and where the campaign's hours, dollars and silences went (lane 28).
+ * (lane 29), and where the campaign's hours, dollars and silences went (lane 31).
  * Role hours are elapsed open spans and can overlap. Every recorded wait, a provider's reset
  * (its grace minute included), a network wait and a load-gate wait, joins one union, and the hours
  * a promotion stand with and without it. Until 25 October only provider waits were read, then load
@@ -149,13 +149,13 @@ function limitTriggers(log: Index): Trigger[] {
   ];
 }
 
-/** Lane 26: the misses at a limit, and over the solves each comparison measured, not the non-results
+/** Lane 29: the misses at a limit, and over the solves each comparison measured, not the non-results
  *  it reran, the share of the wall each harness used and the host's load when they started. */
 export function wallTriggers(log: Index): Trigger[] {
   const results = log.compared.map((each) => ({ ...each, scoring: tallied(each).filter(measured) }));
   const wallShares = results.flatMap(({ session, own, scoring }) => {
     // The median share of its wall a harness's solves used, or null for none under a wall. v1 read
-    // this share as the measure that moves on every battery and leads a fail (lane 26).
+    // this share as the measure that moves on every battery and leads a fail (lane 29).
     const under = (harness: JsonValue | undefined) =>
       median(
         scoring.flatMap((solve) =>
@@ -359,7 +359,7 @@ function causeOf(log: Index, spans: readonly Span[], index: number, gap: number)
   return open ? `before ${log.events[index]?.kind ?? ""}` : BETWEEN_MOVES;
 }
 
-/** Lane 28: the longest silences, each by what ran through it, and a role that took most of the
+/** Lane 31: the longest silences, each by what ran through it, and a role that took most of the
  *  dollars. A silence is read against the campaign's own median solve: at a fixed twenty minutes it
  *  read nothing on buffer on 10 October, whose longest gap was 19.5 minutes, and gave recode's two
  *  longer ones as a count and the time of the first, with nothing of what ran. */

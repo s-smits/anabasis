@@ -1,4 +1,4 @@
-// Lane 31's triggers on a campaign small enough to count by hand: a Builder session leaves hn, two
+// Lane 27's triggers on a campaign small enough to count by hand: a Builder session leaves hn, two
 // comparisons against a starter that answers almost nothing read it a step, the table promotes it,
 // and the campaign moves its budget, holds out two tasks, runs a control and builds from it. One
 // reference solve runs a program another campaign compiled under the host's `/tmp`, and two new
@@ -227,7 +227,7 @@ function leaning({
   return events;
 }
 
-describe("lane 31: a promotion and the climb after it", () => {
+describe("lane 27: a promotion and the climb after it", () => {
   it.each([
     [null, "unmeasured"],
     [{}, "unmeasured"],
@@ -447,7 +447,7 @@ describe("lane 31: a promotion and the climb after it", () => {
   });
 });
 
-describe("lane 31 across campaigns", () => {
+describe("lane 27 across campaigns", () => {
   /** A campaign whose Builder installs a program under `/tmp`, and one whose solves run it later. */
   const peers = () => {
     const builder = campaign();
@@ -471,7 +471,7 @@ describe("lane 31 across campaigns", () => {
     ];
   };
 
-  it("sets each campaign in lane 31's columns, promoted or not", () => {
+  it("sets each campaign in lane 27's columns, promoted or not", () => {
     const table = climbTable(peers()).split("\n");
     expect(table).toHaveLength(4);
     expect(table[2]).toContain("| promoting |");

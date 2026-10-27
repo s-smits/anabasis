@@ -10,7 +10,7 @@
  * it reads anything that could lead it.
  *
  * An investigation reads one campaign or several as equals, and each lane reads every one of them.
- * Until 21 October one campaign was under review and the others were peers that only lane 31 read
+ * Until 21 October one campaign was under review and the others were peers that only lane 27 read
  * beside it: the final investigation of four stopped Opus campaigns then ran 40 sessions, ten lanes
  * a campaign, and found the crashed Examiner session after a promotion four times over, while a
  * defect one campaign held alone was read by the ten sessions of that campaign only. Now every
@@ -152,7 +152,7 @@ function reporting(lane: Lane, report: string, owners: readonly string[], names:
     "What you could not read, and why.",
     "```",
     "",
-    `Each of the ${several ? "six" : "five"} fields starts a line of its own, as above: the collector counts them by the line's first word, and a finding written as one paragraph is refused (abl175-new's lane 9, 11 October).`,
+    `Each of the ${several ? "six" : "five"} fields starts a line of its own, as above: the collector counts them by the line's first word, and a finding written as one paragraph is refused (abl175-new's lane 11, 13 October).`,
     "",
     `An owner is one of: ${owners.map((owner) => `\`${owner}\``).join(", ")}. Name the file beside \`host\` and a prompt owner.`,
     "",

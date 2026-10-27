@@ -505,10 +505,12 @@ alongside it, shows the shapes with a worked example):
 
 A harness is named by its digest, so changing any part makes a different harness, and solves under
 the old one do not count for the new one. The bytecode caches Python writes beside a program it runs
-(`__pycache__`) are no part of it (`BYTECODE`, `src/harness/open.ts`). The **Starter Built Harness** is pi's coding agent as pi
-releases it, with no guide and no domain program (`src/harness/starter.ts`). Every campaign starts
-from it, it is the first reference harness, and it stays the fixed lower reference after a
-promotion.
+(`__pycache__`) are no part of it (`BYTECODE`, `src/harness/open.ts`). The **Starter Built Harness**
+is pi's coding agent as pi releases it, with no domain program and the starter instructions as its
+guide, a few lines true in every domain that the Builder may revise, replace or remove
+(`src/harness/starter.ts`). The guide is named `BUILT_AGENTS.md` rather than `AGENTS.md`, which a
+solver's backend may load by itself. Every campaign starts from it, it is the first reference
+harness, and it stays the fixed lower reference after a promotion.
 
 The solver and the Built Harness it runs in are one system, and every solve happens inside one:
 "the starter's solves" are the solver's solves inside the starter. The setting fixes the solver,
@@ -1607,7 +1609,8 @@ In practice:
   checkout, with the whole gate on the top's head. `--sanitize` stops there and posts each verdict
   as the status `ana/commit`, and the check `mergeable` on each pull request's head: pending on
   every head before the first proof, success on each head as soon as every commit from the bottom
-  to it has passed, and failure from the pull request that holds a failed commit upwards. A push
+  to it has passed, and failure from the pull request that holds a failed commit upwards. A pull
+  request opens as a draft, and the same success moves it to Ready for review. A push
   turns its head and every head stacked above it pending again (`mergeable.yml`). `--merge` also
   waits for `ci.yml` on the top's head, posts `ana/stack-gate` on every head, and merges the top
   through GitHub's asynchronous merge, pinned to its gated head, which merges the native stack

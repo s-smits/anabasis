@@ -777,9 +777,9 @@ describe("the reader of a round compared with another harness than its session s
     expect(said("EXAMINER NEVER FINISHED")).toBe("x-9");
   });
 
-  // Until 11 October lane 27 opened on every live campaign's running Examiner session, and row F's
+  // Until 11 October lane 30 opened on every live campaign's running Examiner session, and row F's
   // moves left out the move being made, whose `campaign.move` is written when it ends.
-  it("names a session open at the log's end in row F, with what it did so far, and says it apart in lane 27", () => {
+  it("names a session open at the log's end in row F, with what it did so far, and says it apart in lane 30", () => {
     const live = [...log];
     const more = appendTo(live);
     more(EXAM_STARTED, { session: "x-10" });
@@ -1038,7 +1038,7 @@ describe("the reader of the load a comparison's solves started under", () => {
     }
     put(REPORTED, { ...REPORT, ...terms, versions: ["v1"], reading: "no-step" });
     const { triggers } = overview(log);
-    expect(triggers.flatMap((trigger) => (trigger.lane === 26 ? [trigger.detail] : []))).toEqual([
+    expect(triggers.flatMap((trigger) => (trigger.lane === 29 ? [trigger.detail] : []))).toEqual([
       "g-1: median 50.0% under the reference harness, 50.0% under the new",
       "g-1: load 30.0 at the median and 30.0 at most when its solves started, on 12 cores",
     ]);
@@ -1423,7 +1423,7 @@ describe("the reader of the campaign's clock", () => {
     const { rows, triggers } = overview(log);
     expect(rows[0]?.lines).toContain("billed dollars: examiner 5.00, referee 1.00");
     expect(triggers.filter((trigger) => trigger.name === "SPEND LED BY A ROLE")).toEqual([
-      { lane: 28, name: "SPEND LED BY A ROLE", detail: "examiner: 83.3% of billed dollars" },
+      { lane: 31, name: "SPEND LED BY A ROLE", detail: "examiner: 83.3% of billed dollars" },
     ]);
   });
 

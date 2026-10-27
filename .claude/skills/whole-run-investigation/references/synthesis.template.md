@@ -36,10 +36,10 @@ the event kinds, solve ids and counts the report cites: a report is a lead and n
 1. **Whether the reading may be believed.** One row per `comparison.reported` of each campaign, four links, each
    `holds`, `does not hold` or `undeterminable`, with the event kind and the count it rests on:
    (a) the exam measured: the checker was frozen and read, and the refusals that entered the tally
-   read sound (lanes 1 to 6); (b) the tasks bracketed: the scored set was held out, fixed before
-   the comparison's first solve and chosen by no result of that comparison (lanes 7 to 12 and 21); (c) the pair differed in the
-   harness alone, and the harness could not know the exam (lanes 13, 18 and 20); (d) the reading
-   follows from the pairs at their number (lanes 22 to 24). Then one sentence a row: believed as
+   read sound (lanes 1 to 5); (b) the tasks bracketed: the scored set was held out, fixed before
+   the comparison's first solve and chosen by no result of that comparison (lanes 9 to 14 and 22); (c) the pair differed in the
+   harness alone, and the harness could not know the exam (lanes 15, 18 and 21); (d) the reading
+   follows from the pairs at their number (lanes 23 to 25). Then one sentence a row: believed as
    written, believed with a named limit, or not believed.
 2. **The binding constraint.** The one mechanism that most limits the next round, and why it
    outranks the rest.
@@ -58,7 +58,8 @@ the event kinds, solve ids and counts the report cites: a report is a lead and n
 6. **Operator decisions.** Each with the missing evidence and what it changes, and the number of
    the plan's decision where one already stands.
 7. **Predictions.** Falsifiable rows for the next round: the moved variable, the claim, the
-   direction, the falsifier.
+   direction, the falsifier. Where a row checks a `patch` row, name it, so that the next cycle's
+   `Predictions.md` can carry it under that patch's pull request.
 
 ## Hard rules
 

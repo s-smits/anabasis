@@ -25,7 +25,7 @@ import type { LogEvent } from "#src/kernel/log.ts";
 import { unsolved as noneAnswered } from "#src/kernel/compare.ts";
 import { lastReports, poolOf, pairsReported } from "#src/kernel/reports.ts";
 import { billedAll, type Traced, traced, tracesIn } from "#src/kernel/trace.ts";
-import { type Judged, refusedBy, solvesIn, verdictsOf } from "#src/kernel/solves.ts";
+import { examinerSessions, type Judged, refusedBy, solvesIn, verdictsOf } from "#src/kernel/solves.ts";
 import { heldAtGate, taskSets } from "#src/kernel/task.ts";
 import { OBJECTIVE } from "#src/kernel/verify.ts";
 import type { Handover } from "#src/campaign/handover.ts";
@@ -412,8 +412,10 @@ export function spendOf(log: Index): [string, number][] {
   // A solve an Examiner session asked for to try a draft task (`try_task`) names the session where a
   // comparison's names the comparison, and is the Examiner's, as `countedSolves` keeps it out of
   // every tally: about seven reference solves an admitted task at three a draft (the overhaul plan,
-  // 4b), which until 12 October read as the solver's.
-  const sessions = new Set(log.of(EXAM_START).map(({ session }) => session));
+  // 4b), which until 12 October read as the solver's. A drafting session's solves of its examples
+  // are the Examiner's too: until 27 October this reader took only `exam.started`, and $2.23 of
+  // buffer-fresh-opus-v072's drafting read as the solver's.
+  const sessions = examinerSessions(log.events);
   const tried = new Set(log.solves.flatMap(({ id, comparison }) => (sessions.has(comparison) ? [id] : [])));
   const whose = ({ kind, data }: LogEvent) => {
     const role = roleOf(kind);

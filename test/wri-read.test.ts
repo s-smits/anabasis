@@ -1405,18 +1405,20 @@ describe("the reader of the campaign's clock", () => {
     expect(hoursOf(log)).toContain("comparisons 1.0 (50%), between moves 1.0 (50%), of 2.0");
   });
 
-  it("counts a drafting session's dollars as the Examiner's, as the host's budget does", () => {
+  it("counts a drafting session's dollars and its example solves as the Examiner's, as the host's budget does", () => {
     const log = timed([
       [0, "draft.started", { session: "d-1" }],
+      [4, SOLVE_STARTED, { solve: "e1", comparison: "d-1" }],
+      [6, SOLVE_FINISHED, { solve: "e1", ending: { outcome: "pass" }, billed: 1 }],
       [10, "draft.finished", { session: "d-1", ended: "finished", billed: 3 }],
       [20, EXAM_STARTED, { session: "x-1" }],
       [30, "exam.finished", { session: "x-1", ended: "finished", billed: 1 }],
       [40, "referee.finding", { solve: "p1", ruling: "earned", billed: 1 }],
     ]);
     const { rows, triggers } = overview(log);
-    expect(rows[0]?.lines).toContain("billed dollars: examiner 4.00, referee 1.00");
+    expect(rows[0]?.lines).toContain("billed dollars: examiner 5.00, referee 1.00");
     expect(triggers.filter((trigger) => trigger.name === "SPEND LED BY A ROLE")).toEqual([
-      { lane: 28, name: "SPEND LED BY A ROLE", detail: "examiner: 80.0% of billed dollars" },
+      { lane: 28, name: "SPEND LED BY A ROLE", detail: "examiner: 83.3% of billed dollars" },
     ]);
   });
 

@@ -426,7 +426,7 @@ export async function openCampaign(args: CampaignArgs) {
       ...keyIfDefined("comparison", comparison),
     });
   };
-  const reviewers = (reader: Reader) => reviewersOf(reader, { log, contract, checks, verify });
+  const reviewers = (reader: Reader) => reviewersOf(reader, { log: written, contract, checks, verify });
   return {
     repo: REPO,
     trees,

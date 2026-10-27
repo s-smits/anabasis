@@ -642,24 +642,35 @@ describe("a live seat's reading", () => {
 
 describe("compare-systems reads a candidate against the baseline as a comparison does", () => {
   const system = (name: string) => ({ name, model: "m", effort: "high", harness: "starter" });
-  const solvedAs = (valid: boolean, rejected: boolean) =>
+  const solvedAs = (valid: boolean, aside: boolean) =>
     new Map(
       ["t1", "t2", "t3", "t4", "t5", "t6"].map((task) => [
         task,
-        { valid: [valid, valid], measure: [null, null], billed: [1, 1], rejected: [rejected, rejected] },
+        { valid: [valid, valid], measure: [null, null], billed: [1, 1], aside: [aside, aside] },
       ]),
     );
   const at = { solves: 2, level: 0.02, direction: undefined };
 
   it("names the system that wins six untied tasks, baseline or candidate", () => {
-    const [fails, passes] = [solvedAs(false, true), solvedAs(true, false)];
+    const [fails, passes] = [solvedAs(false, false), solvedAs(true, false)];
     const forward = pairLines([system("cheap"), fails], [system("dear"), passes], at).join("\n");
     const backward = pairLines([system("dear"), passes], [system("cheap"), fails], at).join("\n");
     expect(forward).toContain("dear won 6, lost 0, tied 0");
     expect(forward).toContain("dear is better");
     expect(backward).toContain("cheap won 0, lost 6, tied 0");
     expect(backward).toContain("dear is better");
-    expect(forward).toContain("6 of the 6 untied tasks hold a rejection nobody ruled");
+    expect(forward).toContain("0 more tasks");
+  });
+
+  it("sets a task aside on a rejection the Referee did not rule earned, for both systems", () => {
+    const lines = pairLines(
+      [system("cheap"), solvedAs(false, true)],
+      [system("dear"), solvedAs(true, false)],
+      at,
+    ).join("\n");
+    expect(lines).toContain("on the 0 tasks");
+    expect(lines).toContain("6 more tasks");
+    expect(lines).toContain("no step either way");
   });
 
   it("reads equal systems as no step, never as equality", () => {

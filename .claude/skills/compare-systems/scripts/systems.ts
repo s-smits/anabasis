@@ -14,16 +14,18 @@
  * systems are scored as a comparison scores its pairs (`scored`, `readsStep`, `detectable`,
  * `carriedBy`, `src/kernel/compare.ts`).
  *
- * Two things a comparison has are left out, and the reading says where they matter. No Referee
- * rules a rejection, so a rejection counts as a fail, and the reading counts the untied tasks that
- * one may have decided. No A/A is read. The trial logs hold hidden values, so they stay under
+ * Both of a comparison's judges rule every solve: the campaign's checks, and the Referee `--reviewer`
+ * names on every rejection, which counts as a fail only once ruled earned and otherwise sets its task
+ * aside for every system (`rejectionAside`), as a comparison's does. At four solves or more the
+ * baseline is read against itself on halves of its solves mirrored in time, the comparison's A/A,
+ * so a reading has its own noise beside it. The trial logs hold hidden values, so they stay under
  * `.ana/compare/`, behind the wall and outside `.ana/d2/`, where `runs retire` sweeps idle seeds.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { carriedBy, detectable, draw, flipP, type Paired, readsStep, scored } from "#src/kernel/compare.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { LOG_FILE, read } from "#src/kernel/log.ts";
-import { ended, passed, ranUnder, verdictsOf } from "#src/kernel/solves.ts";
+import { ended, passed, ranUnder, rejectionAside, verdictsOf } from "#src/kernel/solves.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { billedAll } from "#src/kernel/trace.ts";
 import { existsSync, mkdirSync } from "#src/meta/filesystem.ts";
@@ -31,9 +33,9 @@ import { isNumber } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { join } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
-import { keptAs, openCampaign } from "#tools/d2/campaign.ts";
+import { keptAs, openCampaign, packNamed } from "#tools/d2/campaign.ts";
 import { gated } from "#tools/d2/host.ts";
-import { objectiveNamed, solved } from "#tools/d2/round.ts";
+import { objectiveNamed, reviewersNamed, solved } from "#tools/d2/round.ts";
 import { recordedSetting, settingNamed } from "#tools/d2/setting.ts";
 import { SEED_FILE } from "#tools/runs/registry.ts";
 
@@ -41,14 +43,14 @@ const USAGE = `compare-systems: solve a campaign's held-out tasks under two or m
 
   bun .claude/skills/compare-systems/scripts/systems.ts --seed <seed> \\
     --baseline <name>=<model>:<effort>@<harness> --candidate <name>=<model>:<effort>@<harness> \\
-    [--candidate ...] [--tasks 24] [--solves 2] [--cap <dollars>] [--level 0.02] [--read]
+    [--candidate ...] [--root <dir> --sweep <id> --cycle <id> --bundle <dir>] [--tasks 24] [--solves 4] [--level 0.02] [--read | --cap <dollars> --reviewer <model>]
 
 <seed> is a seed of a campaign that opened from a prompt (bun run runs seed), never the campaign
-itself. <harness> is starter, promoted, or a whole digest or a letter the seed keeps; import a harness
+itself; a seed of a campaign over a stored pack names that pack by its four flags. <harness> is starter, promoted, or a whole digest or a letter the seed keeps; import a harness
 from elsewhere into the seed first (tools/d2/import.ts).
 Each candidate is read against the baseline. Without --read it solves what each system is short
-of, up to --cap dollars over every system, then reads; run it again to go on. With --read it only
-reads.`;
+of, up to --cap dollars over every system, has the Referee --reviewer names rule every rejection
+not yet ruled, then reads; run it again to go on. With --read it only reads.`;
 
 interface System {
   readonly name: string;
@@ -62,7 +64,8 @@ interface Solved {
   readonly valid: boolean[];
   readonly measure: (number | null)[];
   readonly billed: (number | null)[];
-  readonly rejected: boolean[];
+  /** A rejection not ruled earned, which sets its task aside (`rejectionAside`). */
+  readonly aside: boolean[];
 }
 
 function systemOf(flag: string, die: CommandArgs["die"]): System {
@@ -91,12 +94,12 @@ function solvedIn(log: string): Map<string, Solved> {
   for (const solve of ended(ranUnder(events)).sort((a, b) => a.started - b.started)) {
     const valid = passed(solve);
     if (valid === null) continue;
-    const task = out.get(solve.under.task) ?? { valid: [], measure: [], billed: [], rejected: [] };
+    const task = out.get(solve.under.task) ?? { valid: [], measure: [], billed: [], aside: [] };
     const checker = verdicts.get(solve.id)?.checker;
     task.valid.push(valid);
     task.measure.push(checker?.kind === "pass" ? (checker.objective ?? null) : null);
     task.billed.push(isNumber(solve.end.billed) ? solve.end.billed : null);
-    task.rejected.push(solve.ending?.kind === "rejected");
+    task.aside.push(rejectionAside(events, solve));
     out.set(solve.under.task, task);
   }
   return out;
@@ -111,11 +114,11 @@ function systemLines(system: System, digest: string, own: Map<string, Solved>, b
   const solves = rows.flatMap((row) => row.valid).length;
   const every = rows.filter((row) => row.valid.every(Boolean)).length;
   const none = rows.filter((row) => !row.valid.some(Boolean)).length;
-  const rejected = rows.flatMap((row) => row.rejected).filter(Boolean).length;
+  const aside = rows.flatMap((row) => row.aside).filter(Boolean).length;
   return [
     `${system.name}: ${system.model} at ${system.effort}, inside ${digest.slice(0, 8)}`,
     `  valid in ${String(valid)} of ${String(solves)} solves; of ${String(rows.length)} tasks, every solve valid on ${String(every)}, some on ${String(rows.length - every - none)}, none on ${String(none)}`,
-    `  ${String(rejected)} of its ${String(solves - valid)} fails are rejections nobody ruled`,
+    `  ${String(aside)} of its ${String(solves - valid)} fails are rejections the Referee did not rule earned, which set their tasks aside`,
     `  billed ${dollars(billed)}${solves === 0 ? "" : `, ${dollars(billed / solves)} a solve`}${valid === 0 ? "" : `, ${dollars(billed / valid)} a valid answer`}`,
   ];
 }
@@ -128,12 +131,13 @@ export function pairLines(
   at: { readonly solves: number; readonly level: number; readonly direction: "lower" | "higher" | undefined },
 ): string[] {
   const cut = <T>(values: readonly T[]) => values.slice(0, at.solves);
-  const both = [...fresh.keys()].flatMap((task) => {
+  const solvedBoth = [...fresh.keys()].flatMap((task) => {
     const [a, b] = [old.get(task), fresh.get(task)];
     return a === undefined || b === undefined || a.valid.length < at.solves || b.valid.length < at.solves
       ? []
       : [{ task, a, b }];
   });
+  const both = solvedBoth.filter(({ a, b }) => ![...cut(a.aside), ...cut(b.aside)].some(Boolean));
   const pairs = both.map(
     ({ task, a, b }): Paired => ({
       task,
@@ -156,9 +160,6 @@ export function pairLines(
   const other = { differences: differences.map((one) => -one), unbilled: unbilled.map((one) => -one) };
   const carried = pairs.map(carriedBy);
   const by = (measure: string) => carried.filter((one) => one === measure).length;
-  const unruled = both.filter(
-    ({ a, b }, index) => differences[index] !== 0 && [...cut(a.rejected), ...cut(b.rejected)].some(Boolean),
-  ).length;
   const [x, y] = [candidate.name, baseline.name];
   const shift = detectable(differences, at.level);
   const reading = readsStep(differences, unbilled, at.level)
@@ -170,7 +171,34 @@ export function pairLines(
     `${x} against ${y}, on the ${String(pairs.length)} tasks both solved ${String(at.solves)} times:`,
     `  ${x} won ${String(wins)}, lost ${String(losses)}, tied ${String(ties)}; untied tasks carried by validity ${String(by("validity"))}, by the objective ${String(by("objective"))}, by the bill alone ${String(by("bill"))}`,
     `  p ${p.toFixed(3)} that ${x} is better, ${flipP(other.differences).toFixed(3)} that ${y} is; ${reading}`,
-    `  ${String(unruled)} of the ${String(wins + losses)} untied tasks hold a rejection nobody ruled`,
+    `  ${String(solvedBoth.length - both.length)} more tasks both solved are set aside on a rejection the Referee did not rule earned`,
+  ];
+}
+
+/** The baseline against itself on halves of its solves mirrored in time (first and last against the
+ *  two between), the A/A a comparison of four solves a side carries: it should read no step. */
+function itself(baseline: System, own: Map<string, Solved>, at: Parameters<typeof pairLines>[2]): string[] {
+  if (at.solves < 4 || at.solves % 2 !== 0) return [];
+  const half = (keep: boolean) =>
+    new Map(
+      [...own].map(([task, row]) => {
+        const pick = <T>(values: readonly T[]) =>
+          values.slice(0, at.solves).filter((_, index) => (index % 4 === 0 || index % 4 === 3) === keep);
+        return [
+          task,
+          {
+            valid: pick(row.valid),
+            measure: pick(row.measure),
+            billed: pick(row.billed),
+            aside: pick(row.aside),
+          },
+        ];
+      }),
+    );
+  const named = (which: string) => ({ ...baseline, name: `${baseline.name} (${which} half)` });
+  return [
+    ...pairLines([named("one"), half(true)], [named("other"), half(false)], { ...at, solves: at.solves / 2 }),
+    "",
   ];
 }
 
@@ -182,15 +210,30 @@ async function main(args: CommandArgs): Promise<number> {
     return args.die("name a --baseline and at least one --candidate, each under its own name");
   }
   const [solves, count, level, cap] = [
-    args.int("solves") ?? 2,
+    args.int("solves") ?? 4,
     args.int("tasks") ?? 24,
     Number(args.value("level") ?? "0.02"),
     Number(args.value("cap") ?? Number.NaN),
   ];
-  if (!args.flag("read") && !(cap > 0)) {
-    return args.die("name --cap, the dollars every system's solves may bill together");
+  const reviewer = {
+    reviewer: args.value("reviewer") ?? undefined,
+    "reviewer-effort": args.value("reviewer-effort") ?? "high",
+  };
+  if (!args.flag("read") && (!(cap > 0) || reviewer.reviewer === undefined)) {
+    return args.die(
+      "name --cap, the dollars every system's solves may bill together, and --reviewer, the Referee",
+    );
   }
-  const source = await openCampaign({ name: seed });
+  // A seed of a campaign over a stored pack names the pack as the campaign's commands do (`packNamed`).
+  const flag = (name: string) => args.value(name) ?? undefined;
+  const stored = packNamed({
+    name: seed,
+    root: flag("root"),
+    sweep: flag("sweep"),
+    cycle: flag("cycle"),
+    bundle: flag("bundle"),
+  });
+  const source = await openCampaign(stored);
   if (!existsSync(join(source.log, "..", SEED_FILE))) {
     return args.die(`${seed} is no seed: copy the campaign first with bun run runs seed`);
   }
@@ -211,13 +254,13 @@ async function main(args: CommandArgs): Promise<number> {
       });
       mkdirSync(join(out, system.name), { recursive: true });
       const log = join(out, system.name, LOG_FILE);
-      const campaign = await openCampaign({ name: seed, solver, limits, trial: log });
+      const campaign = await openCampaign({ ...stored, solver, limits, trial: log });
       const harness = await keptAs(campaign, system.name, system.harness);
       const seat = gated({ seated: solved, loaded: false }, log)(campaign, {
         builder: undefined,
         reference: harness.dir,
       });
-      return { system, log, harness, seat };
+      return { system, log, harness, seat, reviewers: reviewersNamed(campaign, reviewer) };
     }),
   );
   const billed = (log: string) => (existsSync(log) ? billedAll(read(log)) : 0);
@@ -252,18 +295,38 @@ async function main(args: CommandArgs): Promise<number> {
       }
     };
     await Promise.all(Array.from({ length: source.limits.concurrency }, work));
+    // The Referee rules every rejection no finding answers yet, this run's and an earlier one's.
+    const unruled = opened.flatMap(({ system, log, reviewers }) => {
+      const own = existsSync(log) ? read(log) : [];
+      const found = new Set(
+        own.flatMap(({ kind, data }) => (kind === "referee.finding" ? [data.solve] : [])),
+      );
+      return ended(ranUnder(own)).flatMap((solve) =>
+        solve.ending?.kind === "rejected" && !found.has(solve.id) ? [{ system, reviewers, solve }] : [],
+      );
+    });
+    const rule = async () => {
+      for (let one = unruled.shift(); one !== undefined; one = unruled.shift()) {
+        const pack = packages.get(one.solve.under.task);
+        if (pack === undefined || one.reviewers === null) continue;
+        const { ruling } = await one.reviewers.referee(one.solve.id, pack, new AbortController().signal);
+        console.log(`${one.system.name} ${one.solve.under.task.slice(0, 8)}: the Referee ruled ${ruling}`);
+      }
+    };
+    await Promise.all(Array.from({ length: source.limits.concurrency }, rule));
   }
   const drawn = new Set(tasks);
   const solvedBy = opened.map(({ log }) => new Map([...solvedIn(log)].filter(([task]) => drawn.has(task))));
   const direction = objectiveNamed(source)?.direction;
   const lines = [
     `${String(tasks.length)} of the ${String(held.length)} held-out tasks of ${seed}, drawn by its contract's hash. Its Examiner gated them under ${recorded.solver === null ? "the stored cycle's solver" : `${recorded.solver.model} at ${recorded.solver.effort}`} against its references, so a system with that solver met their selection.`,
-    `Every solve: ${String(recorded.minutes)} minutes and ${recorded.modelTurns === null ? "unlimited" : String(recorded.modelTurns)} model turns, the campaign's checks, and no Referee.`,
+    `Every solve: ${String(recorded.minutes)} minutes and ${recorded.modelTurns === null ? "unlimited" : String(recorded.modelTurns)} model turns, the campaign's checks, and the Referee on every rejection.`,
     "",
     ...opened.flatMap(({ system, harness, log }, index) =>
       systemLines(system, harness.digest, solvedBy[index] ?? new Map(), billed(log)),
     ),
     "",
+    ...itself(baseline, solvedBy[0] ?? new Map(), { solves, level, direction }),
     ...opened.slice(1).flatMap(({ system }, index) =>
       pairLines([baseline, solvedBy[0] ?? new Map()], [system, solvedBy[index + 1] ?? new Map()], {
         solves,
@@ -290,6 +353,12 @@ if (import.meta.main) {
         cap: "text",
         level: "text",
         read: "flag",
+        root: "text",
+        sweep: "text",
+        cycle: "text",
+        bundle: "text",
+        reviewer: "text",
+        "reviewer-effort": "text",
       },
     },
     main,

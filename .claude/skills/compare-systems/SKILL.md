@@ -27,8 +27,14 @@ scores each candidate against the baseline with the comparison's own functions: 
 step rule with the bill and without it (`readsStep`), the least detectable shift (`detectable`) and
 the measure that carried each task (`carriedBy`).
 
+Both of a comparison's judges rule every solve. The campaign's checks give each answer its verdict,
+and the Referee `--reviewer` names rules every rejection before it counts: one ruled earned is a
+fail, and one ruled a check defect or unclear, or left unruled, sets its task aside for every system
+(`rejectionAside`), as a comparison's does. At four solves or more the baseline is read against
+itself on halves of its solves mirrored in time, the comparison's A/A, which should read no step.
+
 For two harnesses under the campaign's own solver, where the reading feeds a decision about that
-campaign, use the production checkpoint on a seed instead: it seats the Referee and reads the A/A
+campaign, the production checkpoint on a seed reads the same pair with its terms in the log
 (`tools/d2/import.ts`, then `tools/d2/checkpoint.ts --reference <digest>`, as
 `studies/transitivity/README.md` does).
 
@@ -46,6 +52,8 @@ campaign, use the production checkpoint on a seed instead: it seats the Referee 
      --baseline dear=claude/claude-opus-5-5:high@starter \
      --candidate cheap=openai-codex/gpt-6.1-terra:high@promoted --read
    ```
+   A seed of a campaign over a stored pack, such as the truss benchmark `round4-veryhard`, names
+   that pack by the four flags its launch receipt holds (`--root --sweep --cycle --bundle`).
    A system is `name=model:effort@harness`: a solver at an effort, inside a harness. A harness is
    `starter`, `promoted`, or a whole digest or a letter the seed keeps. A harness from another campaign or
    a handover is first imported into the seed, `bun tools/d2/import.ts --name cmp-<what> --harness
@@ -53,11 +61,12 @@ campaign, use the production checkpoint on a seed instead: it seats the Referee 
    every link as it is, and refuses a harness that does not reopen under its digest. Every run
    checks that each kept harness still reopens under its digest (`keptAs`). The **baseline**
    is the system to beat; each **candidate** (one or more `--candidate`) is read against it.
-4. **Solve, on the operator's word.** The same command with `--cap <dollars>` and without `--read`.
-   It is a paid run (`AGENTS.md`, section 10). The size is tasks times solves times systems: 22
-   tasks, 2 solves and 2 systems are 88 solves. Run it from the main checkout, where the logins are,
+4. **Solve, on the operator's word.** The same command with `--cap <dollars>`, `--reviewer <model>`
+   and without `--read`. It is a paid run (`AGENTS.md`, section 10). The size is tasks times solves
+   times systems: 22 tasks, 4 solves and 2 systems are 176 solves, and a Referee session for each
+   rejection. Run it from the main checkout, where the logins are,
    on one quiet host. It stops starting solves at the cap. Run it again to go on: each system solves
-   only what its own log is still short of.
+   only what its own log is still short of, and the Referee rules what is still unruled.
 5. **Clean up.** Move the seed and its trial logs to the Trash once the reading is recorded:
    `/usr/bin/trash .ana/d2/cmp-<what> .ana/compare/cmp-<what>`.
 
@@ -68,8 +77,11 @@ The reading prints three blocks.
 1. **The tasks.** How many of the seed's held-out tasks were drawn, and under which solver its
    Examiner gated them.
 2. **One block a system, on its own.** Valid solves of all solves; tasks where every, some or no solve
-   was valid; how many fails were rejections; dollars billed, per solve and per valid answer.
-3. **One block a candidate.** Its wins, losses and ties against the baseline; which measure carried the untied
+   was valid; how many fails were rejections the Referee did not rule earned; dollars billed, per
+   solve and per valid answer.
+3. **The A/A**, at four solves or more: the baseline's two halves read as two systems. A step there
+   is a false positive by construction.
+4. **One block a candidate.** Its wins, losses and ties against the baseline; which measure carried the untied
    tasks (validity, the objective, or the bill alone); p in each direction; and one verdict:
    - `X is better`: a step at the level, with the bill and without it, as a campaign reads one.
    - `no step either way`: this size found no difference. It is **no proof of equality**. The line
@@ -84,10 +96,8 @@ and the dollars per valid answer of each system beside it.
 - **Selection.** The tasks were gated under the campaign's own solver against its references. A
   system with that solver, or that campaign's reference harness, met their selection first. Draw from a
   campaign whose solver is neither system's where the comparison must be fair to both.
-- **No Referee.** A rejection counts as a fail. The pair block counts the untied tasks where one
-  side holds a rejection nobody ruled; where that count is large, the verdict may rest on a wrong
-  check.
-- **No A/A.** The reading has no measure of its own noise beyond the test's p.
+- **No person's labels.** The Referee is a model, and its rulings stand until a person labels them;
+  the pair block counts the tasks set aside on its rulings.
 - **Another campaign's harness** is read under this campaign's contract and answer format. A
   harness built for another exam of the same domain may lose on the format alone.
 - **Hidden values.** The trial logs hold them. Keep them under `.ana/compare/`, and keep their

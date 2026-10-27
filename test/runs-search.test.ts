@@ -167,6 +167,8 @@ test("uses one configured-tree ssh command per host, each searching with its own
   try {
     mkdirSync(join(made.main, "notes"));
     writeFileSync(join(made.main, "notes", "remote.txt"), "remote needle\n");
+    // The fake host's PATH holds no Homebrew directory, where a macOS CI runner keeps its rg.
+    symlinkSync(Bun.which("rg") ?? "rg", join(made.root, "bin", "rg"));
     const peer = { ...made.host, name: "offline", ssh: "fake-offline" };
     const result = made.run(
       `import { search } from "REPOSITORY/tools/runs/search.ts";

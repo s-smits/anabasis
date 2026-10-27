@@ -1609,7 +1609,8 @@ In practice:
   checkout, with the whole gate on the top's head. `--sanitize` stops there and posts each verdict
   as the status `ana/commit`, and the check `mergeable` on each pull request's head: pending on
   every head before the first proof, success on each head as soon as every commit from the bottom
-  to it has passed, and failure from the pull request that holds a failed commit upwards. A push
+  to it has passed, and failure from the pull request that holds a failed commit upwards. A pull
+  request opens as a draft, and the same success moves it to Ready for review. A push
   turns its head and every head stacked above it pending again (`mergeable.yml`). `--merge` also
   waits for `ci.yml` on the top's head, posts `ana/stack-gate` on every head, and merges the top
   through GitHub's asynchronous merge, pinned to its gated head, which merges the native stack

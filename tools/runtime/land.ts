@@ -31,7 +31,9 @@
  * gated, and failure on the head that holds a failed commit and on each above it. A check belongs
  * to its commit, so a push leaves the new head without it and the pull request reads unproved again
  * (`mergeable.yml` marks it and the heads above it pending); a label would outlive the head it was
- * earned on (the operator, 27 October). That is how a stack shows it is ready. `--merge` posts the same, and
+ * earned on (the operator, 27 October). That is how a stack shows it is ready. A pull request opens as a
+ * draft, and the same success moves a draft to Ready for review, so a draft is one no landing has
+ * proved yet (the operator, 27 October). `--merge` posts the same, and
  * also wants `ci.yml` passed on the top's head, since only it proves the Linux isolation on a clean
  * runner. No pull request push starts that run (since 19 October, `ci.yml`); when none exists and
  * `ci.yml` takes `workflow_dispatch`, `--merge` dispatches one before gating, so it runs meanwhile,
@@ -543,10 +545,6 @@ async function landTo(root: string, target: number, mode: Mode): Promise<number 
   checkChain(root, landing);
   // SAFETY: readLanding's chain ends with the named pull request.
   const top = landing.pulls.at(-1) as Pull;
-  const draft = landing.pulls.find((pull) => pull.isDraft);
-  if (mode.merge && draft !== undefined) {
-    throw new Refusal(`#${String(draft.number)} is a draft, and it would merge in this landing.`);
-  }
   const [chain] = landing.beside;
   if (mode.merge && chain !== undefined) {
     throw new Refusal(
@@ -598,6 +596,11 @@ async function landTo(root: string, target: number, mode: Mode): Promise<number 
         "success",
         "every commit up to this head passed bun run land",
       );
+      if (pull.isDraft && !gh(root, ["pr", "ready", String(pull.number)]).ok) {
+        say(
+          `#${String(pull.number)} passed, and stays a draft: gh pr ready ${String(pull.number)} was refused.`,
+        );
+      }
       green += 1;
     }
   };

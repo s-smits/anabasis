@@ -212,8 +212,11 @@ GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <sha>~1
 ```
 
 ```sh
-gh pr create --base <parent branch> --head <branch> --title "<title>" --body-file <file> --label importance:I<n> --label <category>
+gh pr create --draft --base <parent branch> --head <branch> --title "<title>" --body-file <file> --label importance:I<n> --label <category>
 ```
+
+A pull request opens as a draft. `bun run land -- <top> --sanitize` moves each one to Ready for
+review as it posts `mergeable` success on its head, so a draft is one no landing has proved yet.
 
 Every pull request carries exactly one importance label, defined in the repository's labels:
 `importance:I0` blocks a release or further operation, `I1` protects comparison validity or prevents

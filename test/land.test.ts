@@ -447,15 +447,17 @@ describe("bun run land", () => {
     expect(runLand(["12"], { ANA_FAKE_PULLS: ranked }).status).toBe(0);
   });
 
-  it("refuses to merge a landing that holds a draft, before gating anything", () => {
-    const result = runLand(["12", "--merge"], {
-      ANA_FAKE_PULLS: JSON.stringify([pull(11, "a", "main", lowerDocs, true), pull(12, "b", "a", upper)]),
-    });
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain(
-      "#11 is a draft, and it would merge in this landing. Nothing was merged.",
-    );
-    expect(gatesRun(gateLog)).toEqual([]);
+  it("moves a proved draft to Ready for review, and leaves an unproved draft as it is", () => {
+    const drafts = JSON.stringify([pull(11, "a", "main", lowerDocs, true), pull(12, "b", "a", upper, true)]);
+    writeFileSync(ghLog, "");
+    expect(runLand(["12", "--sanitize"], { ANA_FAKE_PULLS: drafts }).status).toBe(0);
+    expect(logLines(ghLog).filter((line) => line.startsWith("pr ready"))).toEqual([
+      "pr ready 11",
+      "pr ready 12",
+    ]);
+    writeFileSync(ghLog, "");
+    expect(runLand(["12"], { ANA_FAKE_PULLS: drafts }).status).toBe(0);
+    expect(logLines(ghLog).filter((line) => line.startsWith("pr ready"))).toEqual([]);
   });
 
   it("refuses to merge a pull request beside another open chain on main, before gating anything", () => {

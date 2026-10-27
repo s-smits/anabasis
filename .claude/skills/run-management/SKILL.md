@@ -29,7 +29,7 @@ archived campaign; `copy <name> --to <worktree>` brings this machine's back to g
 | `pause <name> --after <event> [--yes]` | stops a campaign once its log gains one more of the event and nothing but its Builder's conversation is open | `manage.ts` |
 | `keep <name> [--logins 2,3,4] [--wait-hours 1] [--yes]` | keeps a campaign going: moves it off a long provider wait, and continues it after a death or an `environment` ending | `keep.ts` |
 | `copy <name> --to <worktree> [--yes]` | copies a stopped campaign whole to another worktree, from a worktree or the archive, and sets the source aside | `move.ts` |
-| `move <name> --to <host\|here> [--from <host\|here>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]` | pauses a campaign at a clean point, takes its folder whole to a new worktree on the other machine at the same commit, sets the source aside and continues it there on its kept flags | `move.ts` |
+| `move <name> --to <host> [--from <host>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]` | pauses a campaign at a clean point, takes its folder whole to a new worktree on the other machine at the same commit, sets the source aside and continues it there on its kept flags | `move.ts` |
 | `stop <name> ... [--yes]` | ends the process that writes each log, and its keeper, and releases what its unfinished solves and sessions held | `stop.ts` |
 | `status [--all]` | one row a run: the live ones and those whose log moved in a day, with tree, commit, login, open comparison, comparisons reported, promotions and ending, and on a closed row the hours until it leaves; under the rows, the closed runs it leaves out and the archive's newest campaigns; then each host `ANA_HOSTS` lists, all asked at once and each printed as it answers, within 30 s after cold preparation | `pulse.ts` |
 | `usage [N ...] [--json]` | each login's five-hour and weekly use and, without `--json`, how many runs and simulation seats are live on it on every host (`1/2 active`, out of the most `ANA_LOGIN_RUNS` lets it carry, such as `2,N:4`); without numbers or `--json`, also the pool forecast | `logins.ts` |
@@ -236,11 +236,12 @@ code it then runs.
 ## Move a campaign to another machine
 
 ```sh
-bun --env-file=.env.runs run runs move <name> --to <host> [--login N] --yes
-bun --env-file=.env.runs run runs move <name> --from <host> --to here [--login N] --yes
+bun --env-file=.env.runs run runs move <name> --from <host> --to <host> [--login N] --yes
 ```
 
-One end is this machine and the other a host `ANA_HOSTS` lists. The verb checks first that the
+Each end is a host `ANA_HOSTS` lists or this machine, named by its own short host name (`hostname
+-s`; `here` also names it) and the default `--from`; between two hosts the folder passes through
+this machine, since rsync takes one remote side. The verb checks first that the
 destination has no worktree `anabasis-<name>`, prepares its code, then pauses the run at its next `--after` event
 (`finished` by default), makes that worktree beside the destination's repository at the commit the
 source stands at, takes the folder over with rsync, checks the log's size, sets the source aside

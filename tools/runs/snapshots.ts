@@ -169,7 +169,10 @@ function bring(run: RemoteRun, host: Host, repo: string, depth: Depth): Promise<
 }
 
 /** Refresh matching remote campaigns. Exact discovery is used by one-run readers; collections
- *  use the CLI's substring matching. A missing host or ambiguous original refuses the read. */
+ *  use the CLI's substring matching. A missing host refuses the read, and so does a name two
+ *  machines hold where one run is asked for. A collection leaves out each copy after the first and
+ *  says so, since one shared name refused every collection read, the daily retire's among them
+ *  (27 October 2026: `sim-truss-live` on two machines refused `runs source --has`). */
 export async function syncRuns(
   names: readonly string[],
   options: {
@@ -195,14 +198,19 @@ export async function syncRuns(
       .map((run) => ({ host, run })),
   );
   const owners = new Set(local.map((run) => run.name));
-  for (const { host, run } of remote) {
-    if (owners.has(run.name)) {
-      throw new Error(`${run.name}: more than one original campaign, including ${host.name}`);
+  const kept: typeof remote = [];
+  for (const one of remote) {
+    if (owners.has(one.run.name)) {
+      const twice = `${one.run.name}: more than one original campaign, including ${one.host.name}`;
+      if (options.match === "exact") throw new Error(twice);
+      console.error(`${twice}; that copy is left out`);
+      continue;
     }
-    owners.add(run.name);
+    owners.add(one.run.name);
+    kept.push(one);
   }
   const logs: string[] = [];
-  for (const { host, run } of remote) logs.push(await bring(run, host, repo, options.depth ?? "whole"));
+  for (const { host, run } of kept) logs.push(await bring(run, host, repo, options.depth ?? "whole"));
   return logs;
 }
 

@@ -386,7 +386,7 @@ describe("campaign snapshots", () => {
     expect(made.recorded().filter((call) => call.tool === "rsync")).toHaveLength(4);
   });
 
-  it("refuses ambiguity, an unavailable catalogue and unsafe catalogue paths without transferring", () => {
+  it("refuses ambiguity in an exact read, an unavailable catalogue and unsafe paths, and reads one copy in a collection", () => {
     const made = fixture();
     const remote = campaign(made);
     const duplicate = {
@@ -403,6 +403,12 @@ describe("campaign snapshots", () => {
       expect(made.run(sync, extra).code).toBe(1);
     }
     expect(made.recorded().filter((call) => call.tool === "rsync")).toHaveLength(0);
+    const collection = made.run(sync.replace('{match:"exact"}', "{}"), duplicate);
+    expect(collection.code).toBe(0);
+    expect(collection.err).toContain(
+      "distant: more than one original campaign, including runner; that copy is left out",
+    );
+    expect(made.recorded().filter((call) => call.tool === "rsync")).toHaveLength(1);
   });
 
   it("lets view, source, replay, zip, WRI and harness audit read a campaign by name", () => {

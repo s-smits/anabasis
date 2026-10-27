@@ -2,8 +2,8 @@
  * The Starter Pack: the Starter Built Harness, and the account of a harness's files that a Builder
  * is handed beside it.
  *
- * The Starter Built Harness is pi's coding agent as pi releases it and nothing more: pi's four
- * coding tools selected, no guide and no domain tool. It is the empty harness, and its two files
+ * The Starter Built Harness is pi's coding agent as pi releases it, with pi's four coding tools
+ * selected, no domain program or tool, and the starter instructions as its guide. Its three files
  * are there as the places a Builder extends. Everything else a solver is given under it is the
  * host's, the same under every harness: the command wall behind the tools, the answer file and
  * `submit`, and the prompt's addendum and environment (`run.ts`, `answer.ts`, `prompt.ts`).
@@ -19,9 +19,20 @@
  * It needs nothing from the correctness model. The host seeds the solver's home with the task, the
  * public rules and the contract's answer format, and sends the submitted answer to the verifier.
  *
+ * The starter instructions (`STARTER.guide`) replace the empty guide of 9 October to 27 October. On
+ * 27 October 38 of the 43 guides promoted across the recorded campaigns copied `EXAMPLE`'s outline
+ * exactly, so the outline was taught, while the general lines that recurred across domains (what a
+ * check establishes, a run that could not run against one that found a fault) were each written
+ * afresh, and two campaigns' guides told the solver it need not read the public rules. Systems that
+ * evolve a harness from a seed start it with an instruction file of roughly 10 to 200 words
+ * (Meta-Harness, Harness², DGM), and in AHE's ablation the evolved prompt alone scored below its
+ * seed while the whole evolved harness scored above it. So the starter's guide is short, holds only
+ * what is true in every domain, and is the Builder's to revise, replace or remove on the evidence
+ * of its practice.
+ *
  * It is written out in v1's on-disk format like any other harness state, and is named by its digest
- * like any other: the two files below are the whole of it, so a change to either is another
- * harness, and solves under the old one are not counted for the new.
+ * like any other: the three files below are the whole of it, so a change to any is another harness,
+ * and solves under the old one are not counted for the new.
  *
  * The account, `HARNESS.md`, stands where v1's starter pack carried `contract.md`. A Builder without
  * it wrote three tool files whose only purpose was to print `defineDraftTool`'s source through tool
@@ -39,9 +50,10 @@ import { join } from "../meta/path.ts";
 import { CODING_TOOLS } from "../tools/coding.ts";
 
 /**
- * The Starter's two files. Its tools file is the place a harness adds tools of its own, and says
+ * The Starter's three files. Its tools file is the place a harness adds tools of its own, and says
  * so; under the Starter it adds none. A comment is not in the bundle a harness is named by, so a
- * change to the comment leaves the Starter the harness it was.
+ * change to the comment leaves the Starter the harness it was. Its guide is the starter
+ * instructions, in `EXAMPLE`'s outline with its entries empty.
  */
 const STARTER = {
   spec: { presets: [...CODING_TOOLS], tools: [] },
@@ -53,6 +65,22 @@ import type { DomainHarnessFactory } from "@ana/agent-bundle";
 export const createDomainHarness: DomainHarnessFactory = () => ({
   tools: [],
 });
+`,
+  guide: `# Operating Guide
+
+These are the starter instructions, the same in every domain.
+
+## Programs and tools
+None yet.
+
+## Working with them
+- A check you run shows only what it tests: the published requirements it does not cover are
+  still open.
+- A command that could not run has found no requirement broken: its exit code and its error say
+  which happened.
+
+## Domain notes
+None yet.
 `,
 };
 
@@ -252,8 +280,17 @@ ${EXAMPLE.programs[CHECKER].trimEnd()}
 
 The operating guide. The solver reads it whole in its system prompt, as its project's instructions,
 under one sentence saying that it cannot override the public task, tool authority, runtime limits
-or submission rules. Without the file the solver reads no guide, and the harness you start from may
-have none. It is words: code the solver would copy out and run is a program. It says nothing of
+or submission rules. Without the file the solver reads no guide.
+
+Every campaign's first harness, the Starter, carries the starter instructions as this file:
+
+\`\`\`markdown
+${STARTER.guide.trimEnd()}
+\`\`\`
+
+They are yours to revise, replace or remove, the file included.
+
+It is words: code the solver would copy out and run is a program. It says nothing of
 time or turns: the host tells the solver its limits and appends how much of them is used to results
 of tools that execute; argument refusals and unavailable tools carry no reminder. Keep to this
 outline, with one entry a program or a tool, so that one harness's

@@ -5,7 +5,15 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { diffOf, versionsOf } from "#skills/harness-audit/scripts/harness-versions.ts";
 import { append } from "../src/kernel/log.ts";
-import { cpSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync } from "../src/meta/filesystem.ts";
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+} from "../src/meta/filesystem.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
@@ -34,7 +42,9 @@ const starter = await keep(writeStarter);
 const child = await keep((dir) => writeHarness(dir, EXAMPLE));
 const misnamed = "0".repeat(64);
 cpSync(join(states, child), join(states, misnamed), { recursive: true });
-const guideLines = EXAMPLE.guide.split("\n").filter((line) => line.trim() !== "").length;
+const nonblank = (text: string) => text.split("\n").filter((line) => line.trim() !== "").length;
+const guideLines = nonblank(EXAMPLE.guide);
+const starterLines = nonblank(readFileSync(join(states, starter, "agent", "BUILT_AGENTS.md"), "utf8"));
 const short = (digest: string) => digest.slice(0, 8);
 
 append(log, "build.started", { session: "b-1", parent: starter });
@@ -93,7 +103,8 @@ describe("the harnesses a campaign keeps", () => {
   it("counts what moved from a parent to its child, part by part, and quotes no line", async () => {
     const moves = await diffOf(join(states, starter), join(states, child));
     expect(moves).toStrictEqual([
-      `guide: 0 to ${guideLines} nonblank lines, +${guideLines} -0`,
+      // The starter instructions and the worked guide share their four headings.
+      `guide: ${starterLines} to ${guideLines} nonblank lines, +${guideLines - 4} -${starterLines - 4}`,
       "spec: presets read, bash, edit, write to read, bash, edit, write; tools added none, removed none",
       expect.stringMatching(/^tools\.ts: (\d+) to \1 nonblank lines, \+0 -0$/),
       ".toolchain: 0 to 1 files, +1 -0 changed 0, under bin",

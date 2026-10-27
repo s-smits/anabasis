@@ -28,7 +28,9 @@ export const AGENT_DIR = "agent/";
 /** The check program's entry, at the root of its directory: it exports the checks as `checks`. */
 export const EVALUATOR_FILE = "evaluator.ts";
 
-/** The guide, under `AGENT_DIR` on disk and by this name in the solver's system prompt. */
+/** The guide, under `AGENT_DIR` on disk and by this name in the solver's system prompt. It is not
+ *  `AGENTS.md`, the name a solver's backend may load by itself, so that the guide reaches the solver
+ *  once, through its prompt, and never beside a file of the backend's own (operator, 27 October). */
 export const GUIDE_FILE = "BUILT_AGENTS.md";
 
 /** The check program's declaration: the domain plan and its public rule decisions. */

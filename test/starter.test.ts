@@ -1,7 +1,8 @@
-// The Starter Pack: the Starter Built Harness, which is the empty harness, and the account of a
-// harness's files a Builder is handed. The account gives each part one purpose, and its two worked
-// harnesses open and run as they are printed: one whose computation is a program the solver runs
-// from its shell, and one without the shell, whose computation is a tool.
+// The Starter Pack: the Starter Built Harness, which has no program or tool of its own and the
+// starter instructions as its guide, and the account of a harness's files a Builder is handed. The
+// account gives each part one purpose, and its two worked harnesses open and run as they are
+// printed: one whose computation is a program the solver runs from its shell, and one without the
+// shell, whose computation is a tool.
 import { expect, it } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ToolExecutionApi } from "@earendil-works/pi-durable";
@@ -66,7 +67,7 @@ function seed(home: string): void {
   writeFileSync(join(home, "over.json"), JSON.stringify(OVER));
 }
 
-it("is the empty harness: pi's coding tools selected, and no guide, tool or program of its own", async () => {
+it("has pi's coding tools selected, the starter instructions as its guide, and no tool or program", async () => {
   const dir = scratch();
   try {
     writeStarter(dir);
@@ -74,9 +75,13 @@ it("is the empty harness: pi's coding tools selected, and no guide, tool or prog
     expect(starter.presets).toEqual([...CODING_TOOLS]);
     expect(selectedCodingTools(starter.presets)).toEqual(["read", "bash", "edit", "write"]);
     expect(starter.kinds.size).toBe(0);
-    expect(starter.guide).toBeNull();
     expect(starter.toolTree).toBeNull();
-    // Its two files are the whole of it, so it is one harness wherever it is written.
+    // Its guide keeps the outline the account asks of every guide, and the account prints it whole
+    // as the starter instructions, so a Builder reads what it starts from.
+    const headings = (guide: string | null) => guide?.split("\n").filter((line) => line.startsWith("#"));
+    expect(headings(starter.guide)).toEqual(headings(EXAMPLE.guide));
+    expect(HARNESS_ACCOUNT).toContain(`\`\`\`markdown\n${starter.guide?.trimEnd()}\n\`\`\``);
+    // Its three files are the whole of it, so it is one harness wherever it is written.
     const again = join(dir, "again");
     writeStarter(again);
     expect((await openHarness(again)).digest).toBe(starter.digest);
@@ -88,6 +93,7 @@ it("is the empty harness: pi's coding tools selected, and no guide, tool or prog
     writeHarness(bare, {
       spec: { presets: [...CODING_TOOLS], tools: [] },
       tools: file.replaceAll(/^\/\/.*\n/gm, ""),
+      guide: readFileSync(join(dir, "agent", "BUILT_AGENTS.md"), "utf8"),
     });
     expect((await openHarness(bare)).digest).toBe(starter.digest);
   } finally {

@@ -165,7 +165,14 @@ describe("a replay", () => {
       line("task.gate", { version: "v1", gate, outcome: "passed", controls: "d" }),
     );
     expect(replayed(at("replayed", [LINES[0] ?? "", ...gates, ...LINES.slice(1, 3)]))).toBe(
-      "7 events · 0 conditions · 1 held out, 0 released · 0 written by a session · 0 compared",
+      "7 events · 0 conditions · 1 held out, 0 released · 0 written by a session · 0 compared · 0 counted by the stop rule",
+    );
+    // Two comparisons of harnesses no session built: both reported, and the stop rule counts neither.
+    const reports = ["g-1", "g-2"].map((session) =>
+      line("comparison.reported", { session, reading: "no-step", old: "starter", fresh: "elsewhere" }),
+    );
+    expect(replayed(at("reported", [...LINES.slice(0, 3), ...reports]))).toMatch(
+      / · 2 compared · 0 counted by the stop rule$/,
     );
     expect(() => replayed(at("strange", [line("round.imagined", {})]))).toThrow("is not a log event");
     // A gate for a task the log never proposed is a fold's refusal, not a line's.

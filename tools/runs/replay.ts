@@ -5,7 +5,8 @@
  * whose every launch ran with what `--holds` and `--has` name (`ranWith`, `receipt.ts`), through
  * this tree's readers of a log: its events and their kinds (`read`), the task states and the sets a
  * comparison takes (`taskSets`), what its sessions wrote (`writtenTasks`), each recorded condition,
- * and the plan's stop rule over its reports (`stopRule`). It writes nothing. The whole-run
+ * the comparisons that reported (`lastReports`) and the moves the plan's stop rule counts of them
+ * (`stopRule`), which are fewer: until 27 October the second was printed as the first. It writes nothing. The whole-run
  * investigation reads a log through its own command (`tools/wri/wri.ts read`), which a production
  * verb does not import.
  *
@@ -16,7 +17,7 @@
 import { conditionsOf } from "#src/kernel/condition.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { read } from "#src/kernel/log.ts";
-import { stopRule } from "#src/kernel/reports.ts";
+import { lastReports, stopRule } from "#src/kernel/reports.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
@@ -33,7 +34,8 @@ export function replayed(path: string): string {
     `${String(conditionsOf(events).size)} conditions`,
     `${String(sets.held.length)} held out, ${String(sets.released.length)} released`,
     `${String(writtenTasks(events).length)} written by a session`,
-    `${String(stopRule(events).checkpoints)} compared`,
+    `${String(lastReports(events).length)} compared`,
+    `${String(stopRule(events).checkpoints)} counted by the stop rule`,
   ].join(" · ");
 }
 

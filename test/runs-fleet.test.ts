@@ -309,6 +309,17 @@ describe("campaign snapshots", () => {
     expect(readFileSync(copied, "utf8")).toBe(whole);
   });
 
+  it("takes over a fetch lock that a dead fetch left behind", () => {
+    const made = fixture();
+    const remote = campaign(made);
+    const lock = join(made.main, "data", "runs", "runner", ".fetch-distant.lock");
+    mkdirSync(lock, { recursive: true });
+    writeFileSync(join(lock, "pid"), String(Bun.spawnSync(["true"]).pid));
+    expect(made.run(sync, remote.env).code).toBe(0);
+    expect(existsSync(join(made.main, "data", "runs", "runner", "distant", "log.jsonl"))).toBe(true);
+    expect(existsSync(lock)).toBe(false);
+  });
+
   it("refuses ambiguity, an unavailable catalogue and unsafe catalogue paths without transferring", () => {
     const made = fixture();
     const remote = campaign(made);

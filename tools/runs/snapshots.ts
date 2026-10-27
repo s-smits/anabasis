@@ -14,6 +14,8 @@ import { asRecord, isString, isBoolean } from "#src/meta/json-shape.ts";
 import { dirname, isAbsolute, join } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
+import { errorCode } from "#src/meta/runtime-values.ts";
+import { processGroupExists } from "#src/meta/subprocess.ts";
 import { asked } from "./hosts.ts";
 import { type Host, hostNamed, hostsOf } from "./host-config.ts";
 import { quoted, rsync } from "./host-command.ts";
@@ -99,12 +101,37 @@ export function remoteRuns(lines: readonly string[] | null, host: Host): RemoteR
   });
 }
 
+/** Hold a run's fetch lock, with the holder's pid inside it. The lock is laid whole by one
+ *  rename, so it never stands without its holder. A live holder is waited for and a dead one's lock
+ *  taken over: on 27 October five reads of one run at once, and a fetch killed mid-copy, each left
+ *  every later read refused on EEXIST. */
+async function lockFetch(lock: string): Promise<void> {
+  for (;;) {
+    const laid = mkdtempSync(`${lock}.`);
+    await Bun.write(join(laid, "pid"), String(runtimeProcess.pid));
+    try {
+      renameSync(laid, lock);
+      return;
+    } catch (error) {
+      rmSync(laid, { recursive: true, force: true });
+      if (errorCode(error) !== "ENOTEMPTY" && errorCode(error) !== "EEXIST") throw error;
+    }
+    const holder = Number(
+      await Bun.file(join(lock, "pid"))
+        .text()
+        .catch(() => ""),
+    );
+    if (processGroupExists(holder)) await Bun.sleep(500);
+    else rmSync(lock, { recursive: true, force: true });
+  }
+}
+
 /** Stage a refresh and restore the previous copy if publishing the new one fails. */
 async function bring(run: RemoteRun, host: Host, repo: string, depth: Depth): Promise<string> {
   const into = archiveOf(repo, host.name, run.name);
   mkdirSync(dirname(into), { recursive: true });
   const lock = join(dirname(into), `.fetch-${run.name}.lock`);
-  mkdirSync(lock);
+  await lockFetch(lock);
   const stage = mkdtempSync(join(dirname(into), ".fetch-"));
   const folder = join(stage, "campaign");
   const previous = join(stage, "previous");

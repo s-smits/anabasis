@@ -70,7 +70,8 @@ time, tell the operator and ask, rather than land first.
 ### The improvement window, in this order
 
 4. **Stop** each run `scripts/cycle.ts` names at the step `stop`, those at or past the threshold,
-   with `runs stop <name> ... --yes`, which goes to each run's host. The investigation starts once
+   with the `runs stop` it prints, which names each run's host (`runs on <host> stop`), since two
+   hosts may hold one name. The investigation starts once
    `runs status` reads every run the cycle forked `closed`, except a run the operator named as kept
    (`--keep`), such as an ablation; other runs and simulations do not count. A stop word
    (`tools/d2/word.ts --stop`) waits for the next move boundary, which inside a led campaign can be
@@ -144,9 +145,9 @@ leaves its runs `unread`.
 
 | Step | When | Prints |
 | --- | --- | --- |
-| `stop` | a run the cycle stops is live at or past the threshold | the `runs stop ... --yes` for those runs |
+| `stop` | a run the cycle stops is live at or past the threshold | the `runs stop ... --yes` for those runs, through `runs on <host>` for a run on another host |
 | `run` | the remaining live runs have fewer promotions than the threshold | each such run and its count |
-| `investigate` | none is live | the `runs fetch` of each run on another host, and the `wri.ts start` over all of them |
+| `investigate` | none is live | the `runs fetch --from <host>` of each run on another host, and the `wri.ts start` over all of them, a copy by its path |
 | `unread` (exit 1) | a run is found on no host that answered | the runs not found; no step is read past one that may be live |
 
 A run named with `--keep`, such as an ablation the operator keeps going, is shown and never waited

@@ -17,11 +17,12 @@
  *
  * Without a flag nothing is written to GitHub. `--sanitize` posts each commit's verdict as the
  * status `ana/commit` and stops. It also posts the check `mergeable` on each pull request's head:
- * pending on every head before the first proof, then success on every head once every commit
- * passed, or failure on the head that holds the failed commit and on each above it, the heads below
- * it left pending. A head is pending from its push until a landing reads it, rather than unmarked. A check belongs to its commit, so a push leaves the new head without it and
- * the pull request reads unproved again; a label would outlive the head it was earned on (the
- * operator, 27 October). That is how a stack shows it is ready. `--merge` posts the same, and
+ * pending on every head before the first proof, then success on each head as soon as every commit
+ * from the bottom to it has passed, so the stack turns green from the bottom up while the rest is
+ * gated, and failure on the head that holds a failed commit and on each above it. A check belongs
+ * to its commit, so a push leaves the new head without it and the pull request reads unproved again
+ * (`mergeable.yml` marks it and the heads above it pending); a label would outlive the head it was
+ * earned on (the operator, 27 October). That is how a stack shows it is ready. `--merge` posts the same, and
  * also wants `ci.yml` passed on the top's head, since only it proves the Linux isolation on a clean
  * runner. No pull request push starts that run (since 19 October, `ci.yml`); when none exists and
  * `ci.yml` takes `workflow_dispatch`, `--merge` dispatches one before gating, so it runs meanwhile,
@@ -523,24 +524,42 @@ async function main(argv: readonly string[]): Promise<number> {
         "waiting for bun run land to prove every commit up to this head",
       );
     }
+    // A pull request turns green as soon as every commit from the bottom to its head has passed,
+    // so the stack shows its proof climbing while the commits above are still being gated.
+    const at = new Map(proofs.map((proof, index) => [proof.commit, index]));
+    const passed = new Set<string>();
+    let green = 0;
+    const greenUpTo = (): void => {
+      const unproved = proofs.findIndex((proof) => !passed.has(proof.commit));
+      const upTo = unproved === -1 ? proofs.length : unproved;
+      for (let pull = landing.pulls[green]; pull !== undefined; pull = landing.pulls[green]) {
+        if ((at.get(pull.headRefOid) ?? upTo) >= upTo) return;
+        postStatus(
+          root,
+          pull.headRefOid,
+          MERGEABLE_CONTEXT,
+          "success",
+          "every commit up to this head passed bun run land",
+        );
+        green += 1;
+      }
+    };
     const failed = await proveCommits(root, proofs, {
       who: "land",
       jobs,
       say,
       mark: (commit, state, description) => {
-        if (reach) postStatus(root, commit, COMMIT_CONTEXT, state, description);
+        if (!reach) return;
+        postStatus(root, commit, COMMIT_CONTEXT, state, description);
+        if (state === "success") passed.add(commit);
+        greenUpTo();
       },
     });
-    const marked =
-      failed === null ? landing.pulls : landing.pulls.slice(holding(root, landing, failed.commit));
-    for (const pull of reach ? marked : []) {
-      const [state, description] =
-        failed === null
-          ? ["success", `every commit up to #${String(top.number)}'s head passed bun run land`]
-          : ["failure", `${short(failed.commit)} fails ${failed.step} on its own`];
-      postStatus(root, pull.headRefOid, MERGEABLE_CONTEXT, state, description);
-    }
     if (failed !== null) {
+      for (const pull of reach ? landing.pulls.slice(holding(root, landing, failed.commit)) : []) {
+        const description = `${short(failed.commit)} fails ${failed.step} on its own`;
+        postStatus(root, pull.headRefOid, MERGEABLE_CONTEXT, "failure", description);
+      }
       recipe(root, landing, failed.commit);
       console.error(
         `land: ${short(failed.commit)} FAILS ${failed.step} ON ITS OWN. Nothing was merged. Log: ${failed.log}`,

@@ -1515,8 +1515,9 @@ run only the owning test files: `bun run test -- test/compare.test.ts`. The wrap
 path that does not exist, because Bun would treat it as a filter and silently run its neighbours.
 
 CI (`.github/workflows/ci.yml`) runs on `main` and on the top of a landing, where
-`bun run land -- <top> --merge` dispatches it; pushing to a pull request starts no run, since only
-the top's run is read. It has three jobs:
+`bun run land -- <top> --merge` dispatches it. A push to a pull request starts only
+`mergeable.yml`, which marks pull requests pending, since only the top's run of `ci.yml` is read.
+It has three jobs:
 
 - `darwin`, on macOS 15, installs ripgrep, which `bun run runs search` runs, and the UI's
   dependencies, so that the lint reaches `packages/ui`, then runs typecheck, lint, the format check
@@ -1597,12 +1598,12 @@ In practice:
   each head to contain the one beneath it, and proves every commit it would publish over its own
   checkout, with the whole gate on the top's head. `--sanitize` stops there and posts each verdict
   as the status `ana/commit`, and the check `mergeable` on each pull request's head: pending on
-  every head before the first proof, then success on every head once every commit passed, or
-  failure from the pull request that holds a failed commit upwards. A push leaves the new head without it, so a pull request shows `mergeable` only on the
-  head that was proved. `--merge` also waits for `ci.yml` on the top's head, posts
-  `ana/stack-gate` on every head, and merges the top through GitHub's asynchronous merge, pinned to
-  its gated head, which merges the native stack beneath it all or nothing; the merge commit's tree
-  must match the top's. A landing of several pull requests is refused unless they are one native
+  every head before the first proof, success on each head as soon as every commit from the bottom
+  to it has passed, and failure from the pull request that holds a failed commit upwards. A push
+  turns its head and every head stacked above it pending again (`mergeable.yml`). `--merge` also
+  waits for `ci.yml` on the top's head, posts `ana/stack-gate` on every head, and merges the top
+  through GitHub's asynchronous merge, pinned to its gated head, which merges the native stack
+  beneath it all or nothing; the merge commit's tree must match the top's. A landing of several pull requests is refused unless they are one native
   stack, its members up to the top the chain of bases. GitHub enforces this route: since 25 October
   the repository allows merge commits only, and ruleset 25824510 on the default branch ("main lands
   only through bun run land --merge", no bypass actors) refuses deleting `main` and any

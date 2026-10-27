@@ -233,10 +233,15 @@ describe("bun run land", () => {
     expect(statuses("ana/stack-gate")).toEqual([]);
   });
 
-  it("leaves a pull request below the failed one pending, and marks the one that holds it", () => {
+  it("turns each pull request below a failed commit green, and the one that holds it red", () => {
     const result = runLand(["12", "--sanitize"], { ANA_FAKE_FAIL: `${upper} lint` });
     expect(result.status).toBe(1);
-    expect(statuses("mergeable")).toEqual([`pending ${lowerDocs}`, `pending ${upper}`, `failure ${upper}`]);
+    expect(statuses("mergeable")).toEqual([
+      `pending ${lowerDocs}`,
+      `pending ${upper}`,
+      `success ${lowerDocs}`,
+      `failure ${upper}`,
+    ]);
   });
 
   it("gates commits side by side with --jobs, each on its share of the cores, and the top alone once every one beneath it passed", () => {

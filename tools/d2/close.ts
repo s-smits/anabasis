@@ -2,7 +2,8 @@
  * What a campaign hands over: its reference harness as a directory that stands by itself, and a
  * closing report.
  *
- *   bun tools/d2/close.ts --name queues --to ~/handover/queues
+ *   bun tools/d2/close.ts --name queues --to ~/handover/queues [--harness <letter|digest>]
+ *     [--solve <task id>[,<task id>...] [--solver <model> --solver-effort <level> ...]]
  *   bun tools/d2/close.ts --root ... --sweep ... --cycle c01 --bundle ... --name truss --to ../truss-handover
  *
  * Until 2026-10-09 a campaign handed nothing over: a kept harness stayed a folder among the
@@ -10,7 +11,9 @@
  * had read stood in its log alone (`7f0add79:docs/plan.md`, row F51). This writes, under `--to`:
  *
  *   harness/     the reference harness as it then stands, the starter where no step was promoted,
- *                copied whole with its programs. It is opened there before the command returns,
+ *                copied whole with its programs, except that under `data/harnesses/` a tool tree over
+ *                100 MB is copied once to `.trees/<campaign>/` there and linked to (`copyHarness`).
+ *                It is opened there before the command returns,
  *                and has to open as the harness it was kept as; where it does not, nothing is left
  *                under `--to`. Its links are copied as links: until 11 October they were followed,
  *                and a link in its programs to a host file came out as that file's bytes, in a
@@ -31,16 +34,22 @@
  * buffer-fresh-opus-forkedPR223_v0_5_4-r3 every one of the 7 checks, the objective among them, was
  * its author's own computation, and a reader of the report could not tell.
  *
- * The report is a view of the log, written once, and nothing reads it back. It names no task and
+ * The report is a view of the log, and nothing reads it back. A handover written again to its folder
+ * replaces the one there, since the campaign command writes one at each ending, a pause's among them. It names no task and
  * holds no check, hidden value or answer, so the folder can leave the exam side: `--to` lies
- * outside the repository, which holds the logs.
+ * outside the repository, which holds the logs, or under `data/harnesses/` of its main worktree
+ * (`harnessesOf`), which git ignores and every seat's wall denies with the rest of the repository.
+ * `runs fresh` names a campaign's own folder there. `--harness` hands over another harness the
+ * campaign keeps, named as `promote.ts` names one; the reference harness is the default.
  *
  * The campaign command writes it at an ending where `--handover <dir>` names the place
  * (`harness-builder.ts`), and this command writes it at any time, of an ended campaign or not.
  *
- * With `--solve <task id>` it then solves that task of the campaign under the harness as handed
- * over, from the folder it was written to: row F51's criterion that the harness runs by itself.
- * The solve is the campaign's solver's, under the campaign's checks, and is recorded in a log of
+ * With `--solve <task id>[,<task id>...]` it then solves those tasks of the campaign, one after the
+ * other, under the harness as handed over, from the folder it was written to: row F51's criterion
+ * that the harness runs by itself. The solver is the campaign's, or the one `--solver` and the other
+ * setting flags name (`settingNamed`), so a harness can be tried under another model with nothing
+ * else of the campaign run. The solves are under the campaign's checks, and are recorded in a log of
  * its own under the campaign's folder (`handover/log.jsonl`), which no reading of the campaign
  * counts; the command prints how it ended. A released task is the one to name: a held-out task
  * is solved for nothing a Builder could learn from, but its answer then lies in that log.
@@ -51,6 +60,7 @@ import { campaignOf, type Handover } from "#src/campaign/handover.ts";
 import { short } from "#src/campaign/move.ts";
 import { type Called, calledBy, namesOf } from "#src/campaign/names.ts";
 import { copyHarness } from "#src/builder/kept.ts";
+import { harnessesOf } from "../runs/registry.ts";
 import { openingOf } from "#src/campaign/opening.ts";
 import { frozenChecker, unadmitted } from "#src/kernel/acceptance.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
@@ -69,7 +79,7 @@ import { plural } from "#src/meta/text.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { keptAs, openCampaign, PROMOTED, packNamed } from "./campaign.ts";
 import { type Seated, solved } from "./round.ts";
-import { recordedSetting } from "./setting.ts";
+import { recordedSetting, SETTING_OPTIONS, settingNamed } from "./setting.ts";
 
 type Campaign = Awaited<ReturnType<typeof openCampaign>>;
 type Compared = Extract<Handover, { step: "comparison" }>;
@@ -81,7 +91,9 @@ const OPTIONS = {
   bundle: { type: "string" },
   name: { type: "string" },
   to: { type: "string" },
+  harness: { type: "string" },
   solve: { type: "string" },
+  ...SETTING_OPTIONS,
 } as const;
 
 const row = (cells: readonly string[]): string => `| ${cells.join(" | ")} |`;
@@ -109,7 +121,7 @@ function comparisonRow(step: Compared, called: Called): string {
 }
 
 /** The closing report of a campaign, from its log: Markdown, a view and no record. */
-function closingReport(name: string, events: readonly LogEvent[], handed: string): string {
+function closingReport(name: string, events: readonly LogEvent[], handed: string, asked?: string): string {
   const { steps, supply } = campaignOf(events);
   const comparisons = steps.filter((step): step is Compared => step.step === "comparison");
   const ended = events.at(-1)?.kind === "campaign.ended" ? events.at(-1)?.data : undefined;
@@ -155,15 +167,19 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
   // The checks of the last reading that no installed instrument decides, the objective among them.
   const authored = unadmitted(events, []);
   const budget = opening?.budget ?? null;
+  const defaulted =
+    reference === null
+      ? "the Starter Built Harness, since no step was promoted"
+      : "the reference harness, promoted as below";
   return [
     `# ${name}: closing report`,
     ended === undefined
       ? `The campaign has not ended: the last event of its log is \`${events.at(-1)?.kind ?? "none"}\`.`
       : `The campaign ended on its ${isString(ended.ending) ? ended.ending : "?"}: ${isString(ended.why) ? ended.why : ""}.`,
     `It hands over harness ${called(handed)}, in \`harness/\`: ${
-      reference === null
-        ? "the Starter Built Harness, since no step was promoted"
-        : "the reference harness, promoted as below"
+      asked === undefined
+        ? defaulted
+        : `the harness \`--harness ${asked}\` named, ${handed === (reference ?? "") ? "the reference harness" : "which is not the reference harness"}`
     }. A harness is named by a letter in the order the log first names it, the Starter A, with its digest's first eight characters beside it: a later letter is a later harness, not a better one.`,
     ...(isString(opening?.prompt)
       ? [`It opened from this prompt:\n\n> ${opening.prompt.replaceAll("\n", "\n> ")}`]
@@ -302,22 +318,30 @@ export async function closeCommand(args: readonly string[], seated: Seated = sol
   const to = resolve(values.to);
   const pack = packNamed(values, " and --to");
   const campaign = await openCampaign(pack);
-  if (containsPath(to, campaign.repo)) {
+  if (containsPath(to, campaign.repo) && !containsPath(to, harnessesOf(campaign.repo))) {
     throw new Error(
-      `--to ${to} lies inside the repository, which holds the campaign's logs: a handover leaves it`,
+      `--to ${to} lies inside the repository, which holds the campaign's logs: a handover leaves it, or goes under ${harnessesOf(campaign.repo)}`,
     );
   }
-  if (existsSync(to) && readdirSync(to).length > 0) {
-    throw new Error(`--to ${to} holds something already: a handover is written to a folder of its own`);
+  // A campaign hands over at each ending, a pause's among them, so a handover replaces an earlier one.
+  const before = existsSync(to) ? readdirSync(to) : [];
+  if (before.some((one) => !["harness", "RULES.md", "REPORT.md"].includes(one))) {
+    throw new Error(
+      `--to ${to} holds something besides a handover: a handover is written to a folder of its own`,
+    );
   }
-  const kept = await keptAs(campaign, "--reference", PROMOTED);
+  const kept = await keptAs(campaign, "--harness", values.harness ?? PROMOTED);
+  for (const one of before) rmSync(join(to, one), { recursive: true, force: true });
   const harness = join(to, "harness");
   const events = read(campaign.log);
   mkdirSync(to, { recursive: true });
   try {
     // Links as they are, but for `.toolchain`, which names the tree kept beside the state and is
-    // replaced by a copy of that tree, as a Builder's `kept/` is laid.
-    copyHarness(kept.dir, harness);
+    // replaced by a copy of that tree, as a Builder's `kept/` is laid. Under `data/harnesses/` a tree
+    // over 100 MB is copied once to `.trees/<campaign>/` there and linked to, and outside it a
+    // handover leaves the host whole.
+    const shared = containsPath(to, harnessesOf(campaign.repo));
+    copyHarness(kept.dir, harness, shared ? harnessesOf(campaign.repo, ".trees", pack.name) : undefined);
     const opened = await openHarness(harness);
     if (opened.digest !== kept.digest) {
       throw new Error(
@@ -325,30 +349,39 @@ export async function closeCommand(args: readonly string[], seated: Seated = sol
       );
     }
     writeFileSync(join(to, "RULES.md"), rulesOf(campaign));
-    writeFileSync(join(to, "REPORT.md"), closingReport(pack.name, events, kept.digest));
+    writeFileSync(join(to, "REPORT.md"), closingReport(pack.name, events, kept.digest, values.harness));
   } catch (error) {
-    // `to` was empty or absent, so everything under it is this command's, and none of it is a
-    // handover.
+    // `to` held at most an earlier handover, removed above, so everything under it is this
+    // command's, and none of it is a handover.
     for (const name of readdirSync(to)) rmSync(join(to, name), { recursive: true, force: true });
     throw error;
   }
   console.log(`handed over harness ${short(kept.digest)} with its report: ${to}`);
   if (values.solve === undefined) return { to, harness: kept.digest, solved: null };
   // The tasks an Examiner session wrote are in the log and in no pack.
-  const task = [...writtenTasks(events), ...campaign.tasks].find(({ taskId }) => taskId === values.solve);
-  if (task === undefined) throw new Error(`--solve ${values.solve}: the campaign holds no task by that id`);
+  const tasks = [...writtenTasks(events), ...campaign.tasks];
+  const asked = values.solve.split(",").map((id) => {
+    const task = tasks.find(({ taskId }) => taskId === id);
+    if (task === undefined) throw new Error(`--solve ${id}: the campaign holds no task by that id`);
+    return task;
+  });
   const trialLog = join(campaign.log, "..", "handover", LOG_FILE);
   mkdirSync(join(campaign.log, "..", "handover"), { recursive: true });
-  const trial = await openCampaign({ ...pack, trial: trialLog });
+  const trial = await openCampaign({ ...pack, trial: trialLog, ...settingNamed(values) });
   const { solve } = seated(trial, { builder: undefined, reference: PROMOTED });
-  const trialled = await solve(trial.pack(task), { dir: harness, digest: kept.digest }, undefined);
-  console.log(
-    `solved task ${task.taskId} under harness ${short(kept.digest)} from ${harness}: ${trialled.ending.outcome}${"kind" in trialled.ending ? ` (${trialled.ending.kind})` : ""}, recorded in ${trialLog}`,
-  );
-  return { to, harness: kept.digest, solved: trialled.ending.outcome };
+  const outcomes: string[] = [];
+  for (const task of asked) {
+    const { ending } = await solve(trial.pack(task), { dir: harness, digest: kept.digest }, undefined);
+    outcomes.push(ending.outcome);
+    console.log(
+      `solved task ${task.taskId} under harness ${short(kept.digest)} from ${harness}: ${ending.outcome}${"kind" in ending ? ` (${ending.kind})` : ""}, recorded in ${trialLog}`,
+    );
+  }
+  return { to, harness: kept.digest, solved: outcomes };
 }
 
 if (import.meta.main) {
   await closeCommand(Bun.argv.slice(2));
-  runtimeProcess.exitCode = 0;
+  // A backend's pooled connections outlive the last solve and would hold the process open.
+  runtimeProcess.exit(0);
 }

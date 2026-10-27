@@ -21,20 +21,41 @@
  */
 import type { LogEvent } from "../kernel/log.ts";
 import { CORRECTNESS_MODEL_DIR, TOOL_TREE_DIR } from "../meta/bundle-layout.ts";
-import { cpSync, existsSync, mkdirSync } from "../meta/filesystem.ts";
-import { basename, join, resolve } from "../meta/path.ts";
+import { cpSync, existsSync, lstatSync, mkdirSync, renameSync, symlinkSync } from "../meta/filesystem.ts";
+import { basename, join, relative, resolve } from "../meta/path.ts";
+import { pathsUnder } from "../harness/open.ts";
 import { short } from "../campaign/move.ts";
 import { namesOf } from "../campaign/names.ts";
 import { parentToolTree } from "./tools.ts";
 
-/** Copy the kept state `state` to `into`, its programs as files and its correctness model left out. */
-export function copyHarness(state: string, into: string): void {
+/** A tool tree larger than this is a helper a handover links to instead of copying (operator, 27
+ *  October): an installed Python stack ran to 469 MB, and a campaign hands over at each ending. */
+const LINKED_TREE_BYTES = 100 * 1024 * 1024;
+
+/** Copy the kept state `state` to `into`, its programs as files and its correctness model left out.
+ *  With `trees`, a tool tree over `LINKED_TREE_BYTES` is copied once to `trees/<its name>` and
+ *  `.toolchain` links there, as a kept state's does to the tree beside it: the digest and the wall
+ *  both read a tree where it really is (`keptTreeContent`, `commandReadAllows`). */
+export function copyHarness(state: string, into: string, trees?: string): void {
   const copy = { recursive: true, verbatimSymlinks: true } as const;
   const own = resolve(state, TOOL_TREE_DIR);
   const battery = basename(CORRECTNESS_MODEL_DIR);
   const tree = parentToolTree(state);
   cpSync(state, into, { ...copy, filter: (each) => resolve(each) !== own && basename(each) !== battery });
-  if (tree !== null) cpSync(tree, join(into, TOOL_TREE_DIR), copy);
+  if (tree === null) return;
+  const bytes = pathsUnder(tree).reduce((sum, path) => sum + lstatSync(join(tree, path)).size, 0);
+  if (trees === undefined || bytes <= LINKED_TREE_BYTES) {
+    cpSync(tree, join(into, TOOL_TREE_DIR), copy);
+    return;
+  }
+  // A tree kept under a name never changes (`keptTree`), so a copy there is reused, and one is only
+  // there whole: an interrupted copy is left under another name.
+  const shared = join(trees, basename(tree));
+  if (!existsSync(shared)) {
+    cpSync(tree, `${shared}.part`, copy);
+    renameSync(`${shared}.part`, shared);
+  }
+  symlinkSync(relative(into, shared), join(into, TOOL_TREE_DIR));
 }
 
 /** Copy into `home/kept` each harness the log names and `states` keeps, other than `parent`. The

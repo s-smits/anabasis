@@ -228,7 +228,7 @@ promotion, milestone, A/A results and dollars spent of its total. Read the closi
 bun tools/d2/close.ts --name <name> --to <scratch dir>
 ```
 
-Point `--to` outside the repository. Without `--solve`, this writes a handover and runs no solve.
+Point `--to` outside the repository, or under `data/harnesses/` of the main worktree, where a campaign `runs fresh` launched writes its own at its end. Without `--solve`, this writes a handover and runs no solve.
 Supply binds before a comparison can say anything; economy reports and gates nothing.
 
 A different level, target or number of solves a side changes what the instrument can show. Name

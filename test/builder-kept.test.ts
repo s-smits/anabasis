@@ -7,12 +7,17 @@
  */
 import { afterEach, describe, expect, it } from "bun:test";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
-import { seedKept } from "../src/builder/kept.ts";
+import { copyHarness, seedKept } from "../src/builder/kept.ts";
 import {
+  closeSync,
+  existsSync,
   mkdirSync,
+  ftruncateSync,
   mkdtempSync,
+  openSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -120,5 +125,28 @@ describe("the harnesses a campaign kept, in a Builder's home", () => {
     const { states: none, home: empty } = scratch();
     seedKept(empty, none, [], digestOf("a"));
     expect(readdirSync(join(empty, "kept"))).toEqual([]);
+  });
+
+  it("links a tool tree over 100 MB from a shared folder, and copies a small one", () => {
+    const { states, home } = scratch();
+    const [large, small] = [digestOf("b"), digestOf("c")];
+    keep(states, large, { name: "tree-1", bytes: 10 });
+    keep(states, small, { name: "tree-2", bytes: 10 });
+    // A sparse file takes the tree over the bound without writing 101 MB.
+    const helper = openSync(join(states, "tree-1", "bin", "engine"), "w");
+    ftruncateSync(helper, 101 * 1024 * 1024);
+    closeSync(helper);
+    const trees = join(home, ".trees", "campaign");
+    for (const into of ["one", "two"]) copyHarness(join(states, large), join(home, into), trees);
+    copyHarness(join(states, small), join(home, "three"), trees);
+    for (const into of ["one", "two"]) {
+      expect(readlinkSync(join(home, into, ".toolchain"))).toBe(join("..", ".trees", "campaign", "tree-1"));
+      expect(readFileSync(join(home, into, ".toolchain", "bin", "run"), "utf8")).toBe("x".repeat(10));
+    }
+    expect(readdirSync(trees)).toEqual(["tree-1"]);
+    expect(existsSync(join(trees, "tree-1.part"))).toBe(false);
+    expect(realpathSync(join(home, "three", ".toolchain", "bin", "run"))).toBe(
+      join(home, "three", ".toolchain", "bin", "run"),
+    );
   });
 });

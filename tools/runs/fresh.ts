@@ -44,7 +44,7 @@ import { preparedHost, publishedAt } from "./code.ts";
 import { freshFleet, freshLogin, placeFresh, loginPool, loginPresent } from "./placement.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 import { launch } from "./manage.ts";
-import { everyRun } from "./registry.ts";
+import { everyRun, harnessesOf } from "./registry.ts";
 import { batchFresh } from "./batch.ts";
 import { billsLogin, readLogins } from "./logins.ts";
 
@@ -244,6 +244,8 @@ async function startFresh(pack: string, options: FreshStart): Promise<void> {
     prompt,
     "--budget",
     options.budget,
+    "--handover",
+    harnessesOf(here, name),
     ...options.seated,
     ...options.more,
   ];

@@ -74,6 +74,10 @@ export const ARCHIVE = join("data", "runs");
 /** The archive's folder of this machine's own campaigns, and the word `runs move` names it by. */
 export const HERE = "here";
 
+/** The harnesses campaigns hand over, one folder each, under the main worktree, which git ignores:
+ *  `runs fresh` names a campaign's own there, and `close.ts` writes there by hand (27 October). */
+export const harnessesOf = (repo: string, ...parts: readonly string[]) =>
+  join(mainTree(repo), "data", "harnesses", ...parts);
 /** A path in the archive of the repository `repo` lies in. */
 export const archiveOf = (repo: string, ...parts: readonly string[]) =>
   join(mainTree(repo), ARCHIVE, ...parts);

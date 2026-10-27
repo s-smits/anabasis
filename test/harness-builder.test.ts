@@ -41,6 +41,7 @@ import { importCommand } from "../tools/d2/import.ts";
 import * as prepare from "../tools/d2/prepare.ts";
 import { packetOf, settleCommand } from "../tools/d2/settle.ts";
 import { wordCommand } from "../tools/d2/word.ts";
+import { harnessesOf } from "../tools/runs/registry.ts";
 import { scriptedSeats } from "../tools/runs/rehearse.ts";
 import { admittedCost, indexOf } from "../tools/wri/folds.ts";
 import { FORMAT, fixtureTasks, gradedOf, layOutPack, scriptedModel } from "./helpers/fixture-pack.ts";
@@ -722,7 +723,24 @@ describe("a campaign run by its log", () => {
     const handed = await closeCommand([...pack, "--to", to]);
     expect(handed.to).toBe(to);
     expect(of(name, "harness.promoted")).toMatchObject([{ harness: handed.harness }]);
-    await expect(closeCommand([...pack, "--to", to])).rejects.toThrow("holds something already");
+    // Written again, as a campaign does at each ending, it replaces itself; a folder holding
+    // anything else is refused. Under the main worktree's data/harnesses/ it may lie inside the
+    // repository, and `--harness` hands over a kept harness other than the reference.
+    expect((await closeCommand([...pack, "--to", to])).harness).toBe(handed.harness);
+    const other = join(root, "other");
+    mkdirSync(other);
+    writeFileSync(join(other, "notes.txt"), "");
+    await expect(closeCommand([...pack, "--to", other])).rejects.toThrow(
+      "holds something besides a handover",
+    );
+    const inside = harnessesOf(REPO, `test-${crypto.randomUUID()}`);
+    try {
+      const starter = await closeCommand([...pack, "--to", inside, "--harness", "starter"]);
+      expect(starter.harness).not.toBe(handed.harness);
+      expect(readFileSync(join(inside, "REPORT.md"), "utf8")).toContain("which is not the reference harness");
+    } finally {
+      rmSync(inside, { recursive: true, force: true });
+    }
     const closing = readFileSync(join(to, "REPORT.md"), "utf8");
     expect(closing).toContain(
       "a person read 3 in 1 comparison, drawn uniformly by each comparison's id: 2 sound, 1 wrong, 0 unclear",
@@ -785,7 +803,7 @@ describe("a campaign run by its log", () => {
       [...pack, "--to", trial, "--solve", "t-1"],
       scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, strayed),
     );
-    expect(solved).toMatchObject({ harness: handed.harness, solved: "pass" });
+    expect(solved).toMatchObject({ harness: handed.harness, solved: ["pass"] });
     const trialled = read(join(REPO, ".ana", "d2", name, "handover", LOG_FILE));
     expect(trialled.filter(({ kind }) => kind === "solve.finished")).toMatchObject([
       { data: { ending: { outcome: "pass" }, harness: handed.harness } },

@@ -32,6 +32,7 @@
 import { asRecord, isBoolean, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { pooled } from "../meta/pool.ts";
+import { sameJsonValue } from "../meta/stable-json.ts";
 import { answerFormatFault, type Contract } from "./contract.ts";
 import type { LogEvent } from "./log.ts";
 import { checkerVerdict } from "./solves.ts";
@@ -136,13 +137,24 @@ function swapsOf(leaf: JsonValue): JsonValue[] {
 }
 
 /** Each leaf of an answer by its path, an array read at its first item, with the whole answer
- *  changed there (`swapsOf`). */
-function changes(answer: JsonValue, at: string): { path: string; answers: JsonValue[] }[] {
+ *  changed there. Control values and schema alternatives supplement the generic swaps. */
+function changes(
+  answer: JsonValue,
+  at: string,
+  schema: JsonValue | undefined,
+  controls: readonly JsonValue[],
+): { path: string; answers: JsonValue[] }[] {
+  const held = asRecord(schema);
   if (Array.isArray(answer)) {
     const [first, ...rest] = answer;
     return first === undefined
       ? []
-      : changes(first, `${at}[]`).map(({ path, answers }) => ({
+      : changes(
+          first,
+          `${at}[]`,
+          held?.items,
+          controls.flatMap((value) => (Array.isArray(value) ? value.slice(0, 1) : [])),
+        ).map(({ path, answers }) => ({
           path,
           answers: answers.map((changed) => [changed, ...rest]),
         }));
@@ -150,21 +162,35 @@ function changes(answer: JsonValue, at: string): { path: string; answers: JsonVa
   const record = asRecord(answer);
   if (record !== null) {
     return Object.entries(record).flatMap(([key, value]) =>
-      changes(value, at === "" ? key : `${at}.${key}`).map(({ path, answers }) => ({
+      changes(
+        value,
+        at === "" ? key : `${at}.${key}`,
+        asRecord(held?.properties)?.[key],
+        controls.flatMap((control) => {
+          const other = asRecord(control)?.[key];
+          return other === undefined ? [] : [other];
+        }),
+      ).map(({ path, answers }) => ({
         path,
         answers: answers.map((changed) => ({ ...record, [key]: changed })),
       })),
     );
   }
-  const swaps = swapsOf(answer);
-  return swaps.length === 0 ? [] : [{ path: at === "" ? "(the whole answer)" : at, answers: swaps }];
+  const swaps = [
+    ...(Array.isArray(held?.enum) ? held.enum : swapsOf(answer)),
+    ...controls,
+    ...[held?.minimum, held?.maximum].filter(isNumber),
+  ].filter((value) => !sameJsonValue(value, answer));
+  return [{ path: at === "" ? "(the whole answer)" : at, answers: swaps }];
 }
 
 /**
  * The fields of the answer no check decides, a sentence each. Every leaf of each accept control
  * that passed is changed in the ways the format still allows, and a field stands once one change
  * moves a verdict or the objective on some control; a field the format allows no change of is
- * the format's. In the sweep of 27 October the job exam's answers carried a field for the rule
+ * the format's. Control values are tried one field at a time, so a rejection of another field
+ * proves nothing.
+ * In the sweep of 27 October the job exam's answers carried a field for the rule
  * applied that no check read, so a pass certified the numbers and none of what the answer said of
  * them (lane 1 of both investigations).
  */
@@ -180,7 +206,13 @@ export async function unreadFields(
   for (const { taskId, refusedBy, answer, verdicts } of runs) {
     const task = byId.get(taskId);
     if (task === undefined || refusedBy !== null || verdicts[0].kind !== "pass") continue;
-    for (const { path, answers } of changes(answer, "")) {
+    const controls = runs.filter((run) => run.taskId === taskId && controlFault(run) === null);
+    for (const { path, answers } of changes(
+      answer,
+      "",
+      answerFormat,
+      controls.map((run) => run.answer),
+    )) {
       const allowed = answers.filter((changed) => answerFormatFault(answerFormat, changed) === null);
       tries.set(path, [
         ...(tries.get(path) ?? []),
@@ -189,18 +221,13 @@ export async function unreadFields(
     }
   }
   const unread = await pooled([...tries], width, async ([path, each]) => {
+    if (each.length === 0) return null;
     for (const { task, was, answer } of each) {
       if (spelled(await decided(verify, task, answer)) !== was) return null;
     }
-    return each.length === 0 ? null : path;
+    return `the answer's field ${path} moved no check's verdict and no objective when changed on an accept control: check what it says, or drop it from the answer format`;
   });
-  return unread.flatMap((path) =>
-    path === null
-      ? []
-      : [
-          `the answer's field ${path} moved no check's verdict and no objective when changed on an accept control: check what it says, or drop it from the answer format`,
-        ],
-  );
+  return unread.flatMap((fault) => fault ?? []);
 }
 
 /** Every control through the checks, twice, `width` at once. A control of a task the pack does not

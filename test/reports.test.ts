@@ -896,6 +896,29 @@ describe("the release before the draw", () => {
     expect(releaseOrder(once, ["s1", "a1"], 1, "seed").map(([version]) => version)).toEqual(["s1"]);
   });
 
+  it.each(["disputed", "refused"])(
+    "excludes %s tasks before taking half of the reference's failures",
+    (state) => {
+      const failed = ["f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8"];
+      const compared = [
+        ...failed.flatMap(heldOut),
+        ...failed.flatMap((task) => [
+          ...solved("b-1", task, "h1", [F, F]),
+          ...solved("b-1", task, "h2", [P, P]),
+        ]),
+        reported("b-1", "no-step", "h2", { ...terms, versions: failed }),
+      ];
+      const events = [
+        ...compared,
+        ...failed.slice(0, 4).map((version) => event("task.state", { version, state })),
+      ];
+      expect(releaseOrder(events, taskSets(events).held, 2, "seed").map(([version]) => version)).toEqual([
+        "f5",
+        "f6",
+      ]);
+    },
+  );
+
   it("keeps the same half of five failed tasks across releases of one task at a time", () => {
     const failed = ["f1", "f2", "f3", "f4", "f5"];
     const events = [

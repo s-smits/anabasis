@@ -775,7 +775,8 @@ function standingOf(record: TaskRecord): [string, Standing][] {
  * Builder which held-out task its harness won (rule 3). A task only the other harness answered now
  * goes to practice too, and leaves the exam.
  * The failed half is drawn from the whole reading, including tasks already released: repeated
- * one-task releases must leave the same half held (26 October).
+ * one-task releases must leave the same half held (26 October). Disputed and refused tasks have
+ * no place in that half.
  */
 export function releaseOrder(
   events: readonly LogEvent[],
@@ -784,12 +785,14 @@ export function releaseOrder(
   seed: string,
 ): [string, string][] {
   const { records } = taskRecords(events);
+  const { released } = taskSets(events);
+  const eligible = records.filter(({ held, version }) => held || released.includes(version));
   const among = (versions: readonly string[]) => versions.filter((version) => pool.includes(version));
-  const unanswered = placed(records, ({ tallied }) => {
+  const unanswered = placed(eligible, ({ tallied }) => {
     const own = tallied.filter(({ reference }) => reference !== null);
     return own.some((reading) => sideOf(reading) !== "none") ? undefined : runOf(own);
   });
-  const failed = placed(records, (record) => {
+  const failed = placed(eligible, (record) => {
     const last = lastRead(record);
     if (last === null || last === "aside" || last.reference === null) return undefined;
     return last[last.reference].some((valid) => !valid) || (last.room ?? 0) > 0 ? last.order : undefined;

@@ -1413,6 +1413,38 @@ describe("a session that writes tasks", () => {
     }
   });
 
+  it("serves a draft of this session by its id once the gate has read it", async () => {
+    const s = seat("write", []);
+    append(s.log, "exam.started", { session: s.request.id });
+    const mode = writing({ ...s.request, probe: async () => PASS }, undefined, "unseen");
+    await invoke(mode.tools[0]!, "put", { tasks: [instance(2)] });
+    await mode.settle(true);
+    const [draft] = writtenTasks(read(s.log));
+    if (draft === undefined) throw new Error("the draft was not written");
+    expect(mode.result().refused).toEqual([s.versionOf(draft.taskId, 2)]);
+    const example = await invoke(mode.tools.find(({ name }) => name === "read_example")!, "own", {
+      task: draft.taskId,
+    });
+    expect(example.output).toEqual([{ type: "text", text: JSON.stringify(draft, null, 2) }]);
+  });
+
+  it("keeps a long finish note to its first 700 bytes instead of refusing it", async () => {
+    const long = `${"a".repeat(600)}\n${"b".repeat(300)}`;
+    const s = seat("write", [call("finish", { note: long }), call("finish", { note: long })]);
+    await examine(s.request);
+    expect(
+      s
+        .of(CALLED)
+        .filter(({ tool }) => tool === "finish")
+        .map(({ isError }) => isError),
+    ).toEqual([false, false]);
+    const [ended] = s.of(EXAM_FINISHED);
+    expect(ended).toMatchObject({
+      ended: "finished",
+      note: expect.stringMatching(/^a{600}\s*\[…301 bytes omitted\]$/u),
+    });
+  });
+
   it("reads a proof that passes after a draft's first reading while it is still at the gate", async () => {
     for (const alreadyProved of [false, true]) {
       const s = seat("write", []);

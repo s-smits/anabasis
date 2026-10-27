@@ -140,7 +140,8 @@ const GATES = {
     description: "Put task instances to the host's gate, as the system prompt's section on the gate says.",
   },
   try_task: {
-    description: `Put task instances to the host's gate and return at once: the shape of each package, then up to ${String(TRIED)} solves of it by the reference harness, the first alone and the rest together, as the system prompt's section on the gate says. What the gate says of each comes with a later tool result, and wait returns with it.`,
+    description:
+      "Put task instances to the host's gate and return at once, as the system prompt's section on the gate says.",
   },
 } as const;
 /** What only the checks read of an instance, as each tool that takes one describes it. */
@@ -207,7 +208,7 @@ function measureOf(contract: Contract, verdict: Verdict): JsonObject {
 /** A verdict as the Examiner reads it. */
 function tried(verdict: Verdict): string {
   if (verdict.kind === "pass") {
-    return "Every applicable check passed this answer: the instance has a valid answer.";
+    return "Every applicable check passed this answer: the instance has a valid answer. Whether it leaves the reference harness room is what the gate measures.";
   }
   if (verdict.kind === "fail") {
     return `Refused by ${verdict.blocking.join(", ") || "no check: the answer was missing"}.`;
@@ -531,17 +532,19 @@ function proposeTool(desk: Desk, name: keyof typeof GATES): SeatTool {
   });
 }
 
-function exampleTool(tasks: readonly Task[]): SeatTool {
-  const examples = new Map(tasks.map((task) => [task.taskId, task]));
+/** `read_example`, over the log as it stands at each call: until 28 October it served what stood at
+ *  the session's start, and 31 calls asked in vain for a draft, most of them the session's own. */
+function exampleTool(tasks: () => readonly Task[]): SeatTool {
   return tool({
     name: "read_example",
     description:
-      "Return one task whole: its family, its public input and its hidden values. It serves the exam's tasks and every instance proposed in an earlier session, those its gate refused or left unmeasured among them.",
+      "Return one task whole: its family, its public input and its hidden values. It serves the exam's tasks and every instance proposed in this campaign, this session's and those a gate refused or left unmeasured among them.",
     parameters: Type.Object({
-      task: Type.String({ description: "A task's id, from the opening message." }),
+      task: Type.String({ description: "A task's or a draft's id." }),
     }),
     executionMode: "sequential",
     execute: async (args) => {
+      const examples = new Map(tasks().map((task) => [task.taskId, task]));
       const example = examples.get(args.task);
       if (example === undefined) {
         throw new Error(`${args.task} is not one of the tasks: ${[...examples.keys()].join(", ")}`);
@@ -708,7 +711,7 @@ export function writing(
     },
     tools: [
       proposeTool(desk, gate),
-      exampleTool([...writtenTasks(before), ...request.tasks]),
+      exampleTool(() => [...writtenTasks(read(request.log)), ...request.tasks]),
       ...(verify === null ? [] : [tryTool(desk, verify)]),
       ...(request.probe === null
         ? []

@@ -38,6 +38,7 @@ import { Cancellation } from "../kernel/solve.ts";
 import { priceKey } from "../kernel/meter.ts";
 import { billedAll } from "../kernel/trace.ts";
 import type { JsonObject } from "../meta/json-shape.ts";
+import { boundText } from "../meta/bounded-text.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { plural } from "../meta/text.ts";
 import { type SeatTool, sit } from "../agent/session.ts";
@@ -255,12 +256,13 @@ function withinBudget(log: string, spent: AbortController): boolean {
 
 /** The session's `finish`: the work still running is waited for and told first, so that the
  *  session's end reads it, and a first `finish` is declined once where the mode declines one and
- *  its work is not done. */
+ *  its work is not done. A note is kept to its first 700 bytes, as a Referee's reason is: until
+ *  28 October a longer one was refused, 23 times in 417 calls, each a turn spent rewriting it. */
 function finishTool(mode: Mode, said: Said, told: (last: boolean, line: string) => string): SeatTool {
   return tool({
     name: "finish",
     description: mode.finish,
-    parameters: Type.Object({ note: Type.String({ minLength: 1, maxLength: 700 }) }),
+    parameters: Type.Object({ note: Type.String({ minLength: 1 }) }),
     executionMode: "sequential",
     execute: async (args) => {
       await mode.settle?.(true);
@@ -268,7 +270,7 @@ function finishTool(mode: Mode, said: Said, told: (last: boolean, line: string) 
         said.declined = true;
         return text(told(true, mode.declined));
       }
-      said.note = args.note.trim();
+      said.note = boundText(args.note, 700).shown;
       return ending(text(told(true, "Finished.")));
     },
   });

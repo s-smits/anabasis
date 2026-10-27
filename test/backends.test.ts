@@ -54,6 +54,14 @@ describe("the three backends", () => {
     expect(compactionMode(key, options)).toBe(compactionMode(login_, options));
   });
 
+  it("serve GPT-6.1 Terra at its list price on 6.1 Sol's window, and no GPT-5.6 Terra", () => {
+    const models = backends(options);
+    const terra = models.getModel("openai-codex", "gpt-6.1-terra");
+    expect(terra).toMatchObject({ api: "openai-codex-responses", contextWindow: 500_000 });
+    expect(terra?.cost).toMatchObject({ input: 1, output: 5, cacheRead: 0.05 });
+    expect(models.getModel("openai-codex", "gpt-5.6-terra")).toBeUndefined();
+  });
+
   it("route a model pinned to one OpenRouter endpoint there alone, at that endpoint's price", () => {
     const models = backends(options);
     const dated = models.getModel("openrouter", "deepseek/deepseek-v4.1-flash-1017");

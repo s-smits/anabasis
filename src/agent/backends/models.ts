@@ -65,7 +65,7 @@ const codexLogin: CredentialStore = {
 
 export function backends(options: BackendOptions): MutableModels {
   const models = createModels({ credentials: codexLogin });
-  const codex: Provider = openaiCodexProvider();
+  const codex: Provider = codexProvider();
   models.setProvider({
     ...codex,
     stream: (model, context, request) =>
@@ -85,6 +85,39 @@ export function backends(options: BackendOptions): MutableModels {
   models.setProvider(claudeProvider(options.claude));
   models.setProvider(claudeProvider(options.claude, CLAUDE_API_PROVIDER));
   return models;
+}
+
+/**
+ * Codex as pi serves it, with GPT-6.1 Terra in place of GPT-5.6 Terra (operator, 27 October). pi-ai
+ * 1.4.0, its latest release, lists 5.6 Terra and no 6.1 Terra, which OpenAI released on 26 October at
+ * $1 and $5 a million tokens, cached input at $0.05, with the surcharge above 272K input tokens. The
+ * entry is the one pi's main branch added that day (earendil-works/pi 363ad78bf, unreleased): 6.1
+ * Sol's with Terra's prices on the same 500K window. Drop this once a pi release carries it.
+ */
+function codexProvider(): Provider {
+  const codex = openaiCodexProvider();
+  const sol = codex.getModels().find(({ id }) => id === "gpt-6.1-sol");
+  const terra = sol && {
+    ...sol,
+    id: "gpt-6.1-terra",
+    name: "GPT-6.1 Terra",
+    cost: {
+      input: 1,
+      output: 5,
+      cacheRead: 0.05,
+      cacheWrite: 1.25,
+      tiers: [{ inputTokensAbove: 272_000, input: 2, output: 7.5, cacheRead: 0.1, cacheWrite: 2.5 }],
+    },
+  };
+  const swap = <M extends { readonly id: string }>(models: readonly M[]) => [
+    ...models.filter(({ id }) => id !== "gpt-5.6-terra"),
+    ...(terra === undefined ? [] : [terra]),
+  ];
+  return {
+    ...codex,
+    getModels: () => swap(codex.getModels()),
+    getAllModels: () => swap(codex.getAllModels?.() ?? codex.getModels()),
+  };
 }
 
 /** Keep the served id on the normalised terminal message; never infer it from the requested id. */

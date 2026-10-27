@@ -33,7 +33,7 @@
     "ui:gate": "bun run ui:deps && bun run ui:build && bun run test -- packages/ui/test"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.3.306",
+    "@anthropic-ai/claude-agent-sdk": "0.3.311",
     "@earendil-works/pi-agent-core": "1.4.0",
     "@earendil-works/pi-ai": "1.4.0",
     "@earendil-works/pi-durable": "1.4.0",

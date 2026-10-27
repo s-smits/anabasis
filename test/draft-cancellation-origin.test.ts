@@ -275,11 +275,12 @@ it("cancels queued draft probes through the host without inventing solve ids or 
   const kill = new AbortController();
   const queued = Promise.withResolvers<void>();
   let launched = 0;
-  // SAFETY: the scripted launcher reads only these fields, as in the Examiner admission tests.
+  // SAFETY: the scripted launcher and the host's gate read only these fields.
   const campaign = {
     log: s.log,
     states: join(dirname(s.log), "states"),
     test: { model: s.request.model, effort: "medium" },
+    limits: { concurrency: 4 },
   } as Campaign;
   const seated = gated(
     {

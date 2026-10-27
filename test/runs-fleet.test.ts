@@ -237,7 +237,7 @@ describe("code preparation", () => {
     expect(dry.code).toBe(0);
     expect(made.recorded().some((call) => call.tool === "git" && call.args.includes("fetch"))).toBe(true);
     const real = made.run(
-      'import { fresh } from "REPOSITORY/tools/runs/fresh.ts"; await fresh(["sample", "--model", "gpt", "--host", "runner", "--yes", "--", "--at", "campaign-value"]);',
+      'import { fresh } from "REPOSITORY/tools/runs/fresh.ts"; await fresh(["sample", "--model", "gpt", "--as", "terra", "--host", "runner", "--yes", "--", "--at", "campaign-value"]);',
     );
     expect(real.code).toBe(0);
     const command =
@@ -248,6 +248,9 @@ describe("code preparation", () => {
     expect(command).toContain("campaign-value");
     expect(command).toContain("prepared");
     expect(command).toMatch(/--host\W+here\W+--yes/);
+    // On 27 October `--as terra` sent to two hosts opened one name on each, since each peer's
+    // `freeName` reads its own names alone: the host goes into the suffix.
+    expect(command).toMatch(/--as\W+terra-runner\W/);
     expect(command).toContain("ANA_RUN_CAP");
   });
 

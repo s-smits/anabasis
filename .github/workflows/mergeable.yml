@@ -9,6 +9,7 @@
 # no checkout, no test. The proof stays with `bun run land`, and `ci.yml` still starts on no push.
 # A head whose `mergeable` was posted after this push is left alone: a landing started straight after
 # the push may already have proved it, and this job would otherwise turn its success back to pending.
+# The landing revalidates the current chain before posting success, refusing an obsolete proof.
 name: mergeable
 on:
   push:

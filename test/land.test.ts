@@ -41,7 +41,11 @@ const fake = (mkdirSync(bin), fakeBun(bin, gateLog));
 const GH = String.raw`#!/bin/sh
 printf '%s\n' "$*" >> "$ANA_GH_LOG"
 case "$*" in
-"pr list"*) printf '%s\n' "$ANA_FAKE_PULLS" ;;
+"pr list"*) if [ -n "$ANA_FAKE_PULLS_NEXT" ] && [ -e "$ANA_FAKE_PULLS_NEXT.read" ]; then
+  cat "$ANA_FAKE_PULLS_NEXT"
+else
+  printf '%s\n' "$ANA_FAKE_PULLS"
+fi ;;
 "repo view"*) echo main ;;
 "run list"*) if [ -n "$ANA_FAKE_CI_STATES" ]; then
   row=$(head -n 1 "$ANA_FAKE_CI_STATES")
@@ -56,7 +60,8 @@ fi ;;
 "api repos/{owner}/{repo}/pulls/"*"/merge-async/"*) printf '%s\t\t%s\t%s\n' "$ANA_FAKE_STACK_END" "$ANA_FAKE_STACK_SHA" "$ANA_FAKE_STACK_END" ;;
 "api repos/{owner}/{repo}/stacks"*) [ "$ANA_FAKE_STACK" != down ] || { echo "gh: Bad Gateway (HTTP 502)" >&2; exit 1; }
   printf '%s\n' "$ANA_FAKE_STACK" ;;
-"api -X"*) ;;
+"api -X"*) case "$*" in *"state=success -f context=mergeable"*)
+  [ -z "$ANA_FAKE_PULLS_NEXT" ] || touch "$ANA_FAKE_PULLS_NEXT.read" ;; esac ;;
 "api repos/"*) echo true ;;
 esac
 `;
@@ -96,6 +101,9 @@ git("checkout", "-q", "-b", "b");
 const upper = commit("src/b.ts", "export const b = 1;\n", "b");
 git("checkout", "-q", "-b", "beside", "main");
 const beside = commit("src/c.ts", "export const c = 1;\n", "beside");
+git("checkout", "-q", "-b", "merged");
+git("merge", "-qm", "merge a through the second parent", "a");
+const merged = git("rev-parse", "HEAD");
 git("checkout", "-q", "-b", "tests", "main");
 const testOnly = commit("test/c.test.ts", "export {};\n", "a test");
 const testsTop = commit("src/d.ts", "export const d = 1;\n", "d");
@@ -210,6 +218,42 @@ describe("bun run land", () => {
     const result = runLand(["14"], { ANA_FAKE_PULLS: JSON.stringify([pull(14, "tests", "main", testsTop)]) });
     expect(result.status).toBe(0);
     expect(gatesRun(gateLog)).toEqual([`${testOnly} test/c.test.ts`, `${testsTop} suite`]);
+  });
+
+  it("proves every landing head and turns the stack green when a lower head is a merge's second parent", () => {
+    const result = runLand(["12", "--sanitize"], {
+      ANA_FAKE_PULLS: JSON.stringify([pull(11, "a", "main", lowerDocs), pull(12, "merged", "a", merged)]),
+    });
+    expect(result.status).toBe(0);
+    expect(statuses("mergeable")).toEqual([
+      `pending ${lowerDocs}`,
+      `pending ${merged}`,
+      `success ${lowerDocs}`,
+      `success ${merged}`,
+    ]);
+    expect(statuses("ana/commit")).toContain(`success ${lowerDocs}`);
+    expect(gatesRun(gateLog)).toContain(`${lowerMore} test/owner.test.ts`);
+    expect(gatesRun(gateLog).at(-1)).toBe(`${merged} suite`);
+  });
+
+  it("refuses to restore green when a parent moves while its unchanged child is being proved", () => {
+    const next = join(fixture, "moved-pulls");
+    for (const [head, reason] of [
+      [beside, "does not contain #11's head"],
+      [lowerMore, "a pull request's head moved"],
+    ] as const) {
+      rmSync(ghLog, { force: true });
+      rmSync(`${next}.read`, { force: true });
+      writeFileSync(next, JSON.stringify([pull(11, "a", "main", head), pull(12, "b", "a", upper)]));
+      const result = runLand(["12", "--sanitize"], { ANA_FAKE_PULLS_NEXT: next });
+      expect(statuses("mergeable")).toEqual([
+        `pending ${lowerDocs}`,
+        `pending ${upper}`,
+        `success ${lowerDocs}`,
+      ]);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(reason);
+    }
   });
 
   it("stops at the first commit that fails and names its pull request and where the fix goes", () => {

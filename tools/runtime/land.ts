@@ -6,7 +6,7 @@
  *
  * A push runs no test: the pre-push hook runs every other step of the gate over the pushed head
  * (`tools/runtime/pre-push.ts`), so a pushed commit is unproved until it lands here. This is where
- * every commit along the top's first parents above main is proved over its own checkout: the static
+ * each landing head's first-parent line above main is proved over its own checkout: the static
  * steps and its nearby tests, and the whole gate, the full suite among it, on the top's head
  * (`tools/runtime/gate.ts`), each pass already recorded skipped. `--sanitize` runs that proof when
  * its author judges the stack ready, without merging. The stack is read
@@ -407,15 +407,22 @@ async function mergeStack(
   return "unsure";
 }
 
+/** Refuses a proof whose chain has moved before its success is published. */
+function checkCurrent(root: string, target: number, landing: Landing): void {
+  const again = readLanding(root, target);
+  checkChain(root, again);
+  if (
+    again.pulls.map((pull) => pull.headRefOid).join() !== landing.pulls.map((pull) => pull.headRefOid).join()
+  ) {
+    throw new Refusal("a pull request's head moved while its commits were gated. Land again.");
+  }
+}
+
 /** Posts the required status on every head, then merges the top with the stack beneath it. A merge
  *  that does not go through takes the status back from every head. */
 async function merge(root: string, target: number, landing: Landing): Promise<boolean> {
-  const again = readLanding(root, target);
-  checkChain(root, again);
+  checkCurrent(root, target, landing);
   const heads = landing.pulls.map((pull) => pull.headRefOid);
-  if (again.pulls.map((pull) => pull.headRefOid).join() !== heads.join()) {
-    throw new Refusal("a pull request's head moved while its commits were gated. Land again.");
-  }
   const stack = stackOf(root, landing);
   const revoke = (): void => {
     for (const sha of heads) postStatus(root, sha, STACK_CONTEXT, "pending", "Waiting for bun run land");
@@ -504,8 +511,9 @@ async function main(argv: readonly string[]): Promise<number> {
       stackOf(root, landing);
       startCi(root, top);
     }
-    // Each commit the landing publishes along the top's first parents, with the pass it needs.
-    const proofs = addedLine(root, [top.headRefOid], [landing.trunkSha], say).map(
+    // Each landing head's own line, including a lower head reached through a merge's other parent.
+    const heads = landing.pulls.map((pull) => pull.headRefOid);
+    const proofs = addedLine(root, heads, [landing.trunkSha], say).map(
       (commit): Proof => ({
         commit,
         pass: commit === top.headRefOid ? "whole" : changesSource(root, commit) ? "static" : null,
@@ -534,6 +542,7 @@ async function main(argv: readonly string[]): Promise<number> {
       const upTo = unproved === -1 ? proofs.length : unproved;
       for (let pull = landing.pulls[green]; pull !== undefined; pull = landing.pulls[green]) {
         if ((at.get(pull.headRefOid) ?? upTo) >= upTo) return;
+        checkCurrent(root, target, landing);
         postStatus(
           root,
           pull.headRefOid,

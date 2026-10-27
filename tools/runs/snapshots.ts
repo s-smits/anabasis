@@ -8,14 +8,22 @@
  */
 import { LOG_FILE } from "#src/kernel/log.ts";
 import { openingOf } from "#src/campaign/opening.ts";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "#src/meta/filesystem.ts";
+import {
+  closeSync,
+  existsSync,
+  lockExclusiveSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  renameSync,
+  rmSync,
+} from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isString, isBoolean } from "#src/meta/json-shape.ts";
 import { dirname, isAbsolute, join } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
-import { errorCode } from "#src/meta/runtime-values.ts";
-import { processGroupExists } from "#src/meta/subprocess.ts";
 import { asked } from "./hosts.ts";
 import { type Host, hostNamed, hostsOf } from "./host-config.ts";
 import { quoted, rsync } from "./host-command.ts";
@@ -44,6 +52,7 @@ interface RemoteRun {
 type Depth = "record" | "whole";
 const EXCLUDED = ["--exclude=.env", "--exclude=.env.*", "--exclude=*.env", "--exclude=auth.json"];
 const RECORD = ["--include=/log.jsonl", "--include=/launch-*.json", "--exclude=/*"];
+let fetching = Promise.resolve();
 
 /** One original campaign's identity and project, as a catalogue lists it. */
 function entryOf({ name, path }: Run): { name: string; path: string; project: string | null } {
@@ -101,42 +110,20 @@ export function remoteRuns(lines: readonly string[] | null, host: Host): RemoteR
   });
 }
 
-/** Hold a run's fetch lock, with the holder's pid inside it. The lock is laid whole by one
- *  rename, so it never stands without its holder. A live holder is waited for and a dead one's lock
- *  taken over: on 27 October five reads of one run at once, and a fetch killed mid-copy, each left
- *  every later read refused on EEXIST. */
-async function lockFetch(lock: string): Promise<void> {
-  for (;;) {
-    const laid = mkdtempSync(`${lock}.`);
-    await Bun.write(join(laid, "pid"), String(runtimeProcess.pid));
-    try {
-      renameSync(laid, lock);
-      return;
-    } catch (error) {
-      rmSync(laid, { recursive: true, force: true });
-      if (errorCode(error) !== "ENOTEMPTY" && errorCode(error) !== "EEXIST") throw error;
-    }
-    const holder = Number(
-      await Bun.file(join(lock, "pid"))
-        .text()
-        .catch(() => ""),
-    );
-    if (processGroupExists(holder)) await Bun.sleep(500);
-    else rmSync(lock, { recursive: true, force: true });
-  }
-}
-
-/** Stage a refresh and restore the previous copy if publishing the new one fails. */
-async function bring(run: RemoteRun, host: Host, repo: string, depth: Depth): Promise<string> {
+/** Lock a stable directory through transfer and publication, released on close or a crash.
+ *  Deleting the directory would let a stale reader bypass the next holder's lock. */
+async function refresh(run: RemoteRun, host: Host, repo: string, depth: Depth): Promise<string> {
   const into = archiveOf(repo, host.name, run.name);
   mkdirSync(dirname(into), { recursive: true });
   const lock = join(dirname(into), `.fetch-${run.name}.lock`);
-  await lockFetch(lock);
+  mkdirSync(lock, { recursive: true });
   const stage = mkdtempSync(join(dirname(into), ".fetch-"));
   const folder = join(stage, "campaign");
   const previous = join(stage, "previous");
   let published = false;
+  const fd = openSync(lock, "r");
   try {
+    lockExclusiveSync(fd);
     mkdirSync(folder);
     const reused = existsSync(into) ? [`--link-dest=${into}`] : [];
     // A record refresh keeps any previously fetched artefacts. A whole refresh replaces them.
@@ -165,10 +152,20 @@ async function bring(run: RemoteRun, host: Host, repo: string, depth: Depth): Pr
     }
     return join(into, LOG_FILE);
   } finally {
+    closeSync(fd);
     if (published || !existsSync(previous)) rmSync(stage, { recursive: true, force: true });
     else console.error(`${run.name}: the previous copy is kept in ${previous}`);
-    rmSync(lock, { recursive: true });
   }
+}
+
+/** Queue this process's refreshes so a blocking lock wait cannot strand an asynchronous holder. */
+function bring(run: RemoteRun, host: Host, repo: string, depth: Depth): Promise<string> {
+  const next = fetching.then(() => refresh(run, host, repo, depth));
+  fetching = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next;
 }
 
 /** Refresh matching remote campaigns. Exact discovery is used by one-run readers; collections

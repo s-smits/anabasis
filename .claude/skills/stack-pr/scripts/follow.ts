@@ -28,7 +28,7 @@ import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { runSync } from "#src/meta/subprocess.ts";
 import { ghOrThrow, openPulls } from "#tools/runtime/land.ts";
-import { chain } from "./stack.ts";
+import { chains } from "./stack.ts";
 
 /** Where GitHub lists the repository's native stacks. */
 export const STACKS = "repos/{owner}/{repo}/stacks";
@@ -70,7 +70,7 @@ function topNow(root: string): Top | undefined {
   const stacks = parseJsonAs<NativeStack[]>(ghOrThrow(root, ["api", STACKS]));
   const native = nativeTop(stacks);
   if (native !== undefined) return native;
-  const { line } = chain(openPulls(root));
+  const line = chains(openPulls(root)).stacks[0] ?? [];
   const top = line.at(-1);
   if (top === undefined) return undefined;
   return { number: top.number, branch: top.headRefName, pulls: line.map((pull) => pull.number) };

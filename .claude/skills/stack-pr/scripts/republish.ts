@@ -30,7 +30,7 @@ import { shellQuote } from "#src/wall/isolation.ts";
 import { short } from "#tools/runtime/gate.ts";
 import { ghOrThrow, openPulls, type Pull } from "#tools/runtime/land.ts";
 import { type NativeStack, STACKS } from "./follow.ts";
-import { chain } from "./stack.ts";
+import { chains } from "./stack.ts";
 
 /** One surviving pull request: its new head and final base. */
 interface Move {
@@ -82,7 +82,8 @@ export function planConsolidation(
   heads: ReadonlyMap<number, string>,
   absorbed: ReadonlyMap<number, number>,
 ): Consolidation {
-  const { line } = chain(pulls);
+  const asked = new Set([...heads.keys(), ...absorbed.keys()]);
+  const line = chains(pulls).stacks.find((each) => each.some((pull) => asked.has(pull.number))) ?? [];
   const onStack = (number: number): Pull => {
     const pull = line.find((each) => each.number === number);
     if (pull === undefined) throw new CommandFailure(`#${String(number)} is not on the open stack`);

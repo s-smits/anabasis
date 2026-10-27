@@ -8,7 +8,7 @@ import { bundle } from "#skills/oracle-handover/scripts/bundle.ts";
 import { follow, type NativeStack, nativeTop } from "#skills/stack-pr/scripts/follow.ts";
 import { newsOf, readingOf, told as seatTold } from "#skills/system-path-simulation/scripts/live-seat.ts";
 import { pairs, planConsolidation, pushArgs, republish } from "#skills/stack-pr/scripts/republish.ts";
-import { chain, told as stackTold } from "#skills/stack-pr/scripts/stack.ts";
+import { chains, told as stackTold } from "#skills/stack-pr/scripts/stack.ts";
 import type { Pull } from "#tools/runtime/land.ts";
 import {
   existsSync,
@@ -41,12 +41,12 @@ const pull = (number: number, head: string, base: string, labels: readonly strin
 });
 
 describe("the stack", () => {
-  // #9 sits beside the stack with the highest number, off the middle.
+  // #9 sits off the middle of the stack with the highest number.
   const pulls = [pull(9, "side", "a"), pull(3, "c", "b"), pull(1, "a", "main"), pull(2, "b", "a")];
 
   it("takes the deepest pull request for the top, not the highest number", () => {
-    const { line, sides } = chain(pulls);
-    expect(line.map((each) => each.number)).toStrictEqual([1, 2, 3]);
+    const { stacks, sides } = chains(pulls);
+    expect(stacks.map((line) => line.map((each) => each.number))).toStrictEqual([[1, 2, 3]]);
     expect(sides.map((each) => each.number)).toStrictEqual([9]);
     expect(stackTold(pulls, null)).toContain("top: #3 c at 3333333");
   });
@@ -54,7 +54,8 @@ describe("the stack", () => {
   it("says of a branch whether anything is stacked on it", () => {
     expect(stackTold(pulls, "c").at(-1)).toBe("nothing is stacked on it: its commits may still be folded");
     expect(stackTold(pulls, "a").at(-1)).toBe("stacked on it: #9, #2. It takes new commits only");
-    expect(stackTold(pulls, "side")[1]).toBe("beside the stack");
+    expect(stackTold(pulls, "side")[1]).toBe("off the middle of a stack");
+    expect(stackTold(pulls, "b")[1]).toBe("on the stack whose top: #3 c at 3333333");
     expect(() => stackTold(pulls, "gone")).toThrow(CommandFailure);
   });
 
@@ -73,8 +74,20 @@ describe("the stack", () => {
 
   it("starts a chain on a base that has landed, and says so of an empty list", () => {
     const landed = [pull(5, "b", "a"), pull(4, "a", "landed"), pull(6, "lone", "main")];
-    expect(chain(landed).line.map((each) => each.number)).toStrictEqual([4, 5]);
+    expect(chains(landed).stacks[0]?.map((each) => each.number)).toStrictEqual([4, 5]);
     expect(stackTold([], null)).toStrictEqual(["no pull request is open"]);
+  });
+
+  it("lists each stack on main with its own top, longest first, and a fork off the middle apart", () => {
+    const several = [pull(7, "lone", "main"), pull(1, "a", "main"), pull(2, "b", "a"), pull(9, "side", "a")];
+    const { stacks, sides } = chains(several);
+    expect(stacks.map((line) => line.map((each) => each.number))).toStrictEqual([[1, 2], [7]]);
+    expect(sides.map((each) => each.number)).toStrictEqual([9]);
+    expect(stackTold(several, null).filter((line) => line.startsWith("top:"))).toStrictEqual([
+      "top: #2 b at 2222222",
+      "top: #7 lone at 7777777",
+    ]);
+    expect(stackTold(several, "lone")[1]).toBe("on the stack whose top: #7 lone at 7777777");
   });
 });
 

@@ -1484,7 +1484,7 @@ or recovery write (`pinFault`, `tools/d2/harness-builder.ts`).
 | `bun run ui:dev` | The page that shows a campaign as its log reads, on the loopback with a token (`packages/ui/README.md`). `-- --exam-side` adds the exam side's content: start that only where no Builder or solver runs |
 | `bun run ui:gate` | The UI's own gate: its dependencies, its typecheck and build, and its tests under `packages/ui/test` |
 | `bun .claude/skills/stack-pr/scripts/stack.ts` | The open stack: every edge, and the top |
-| `bun run follow` | Moves this checkout to the top of the open stack (GitHub's native stack, else the longest chain of bases), on `stack-pr<N>` reset to the top's branch: a commit made on it is not kept, and the earlier `stack-pr` branch is deleted. Uncommitted changes to tracked files come back, and it installs where `bun.lock` moved (`.claude/skills/stack-pr/scripts/follow.ts`) |
+| `bun run follow` | Moves this checkout to the top of the longest open stack (GitHub's native stack, else the longest chain of bases), on `stack-pr<N>` reset to the top's branch: a commit made on it is not kept, and the earlier `stack-pr` branch is deleted. Uncommitted changes to tracked files come back, and it installs where `bun.lock` moved (`.claude/skills/stack-pr/scripts/follow.ts`) |
 | `bun run land -- [<pull request>] [--auto]` | Proves every commit a landing would publish, where it sits; `--sanitize` posts each verdict, `--merge` also merges. `--auto`, or no pull request named, follows a top stacked while it lands ("The stack and pull requests") |
 | `bun tools/loc/source-policy.ts` | The size and unused-export policy. No package script, CI job or hook runs it (`tools/oxlint/HABITS.md`, 12.10) |
 
@@ -1549,10 +1549,14 @@ request as failures that occur without the change, and do not call the suite gre
 `.claude/skills/stack-pr/SKILL.md` owns this procedure. Read it before you branch and again before
 you push.
 
-Every open pull request sits on one chain whose bottom is based on `main`, and several sessions
-write at once. One chain, because pull requests beside each other on `main` cannot describe one
-another, each pays the whole gate at its own head, and they land in whatever order the merges come.
-A chain lands with one `bun run land -- <top>`, which runs the whole gate once, at the top.
+Open pull requests sit on stacks: chains whose bottom is based on `main`, each landed whole by one
+`bun run land -- <top>`, which runs the whole gate once, at its top. Several sessions write at once.
+A subject that builds on an open pull request, or rewrites text one of them changes, goes on that
+pull request's stack, because pull requests beside each other cannot describe one another and land
+in whatever order the merges come. A subject that depends on nothing open starts a stack of its own
+on `main`, so it lands without waiting for the others. Once one stack lands, `land` refuses every
+other until it is replayed onto the new `main` (`checkChain`, `tools/runtime/land.ts`), so each is
+still proved and merged on top of what landed.
 
 v2 was built in `s-smits/anabasis-v2` until 11 October 2026, when it took over this repository,
 v1's. A pull request number in text written before then, up to #235, refers to that repository,
@@ -1563,19 +1567,19 @@ repository's pull-request branches, rewritten before it merged.
 In practice:
 
 - **Read the stack every time**: before `git worktree add`, before opening a pull request, and
-  before a push that rewrites a branch. `bun .claude/skills/stack-pr/scripts/stack.ts` prints the
-  edges and the top; where `gh` has no GraphQL, `gh api repos/<owner>/<repo>/pulls` gives the same
-  edges. The top is the end of the longest chain, which need not be the highest number. State no
-  fact about the repository without the commit you read it at.
+  before a push that rewrites a branch. `bun .claude/skills/stack-pr/scripts/stack.ts` prints every
+  stack with its top, the end of its chain, which need not be the highest number, and a fork off
+  the middle of a stack apart; where `gh` has no GraphQL, `gh api repos/<owner>/<repo>/pulls` gives
+  the same edges. State no fact about the repository without the commit you read it at.
 - **Expand an open pull request before opening a new one.** A change that fixes, simplifies,
   completes or supersedes an open pull request's own code belongs to that pull request; a shared
   file alone does not make it so. It is folded in where nothing is stacked above, and otherwise
   carried on the top as a `fixup!` that the next consolidation folds down (the skill `stack-pr`,
-  section 2). A new subject is a new pull request on the top of the chain, never beside it, even
-  where it depends on nothing below; its body says so. Skills go on the chain like code, and so
-  does documentation that describes an open pull request, with the row of `docs/transfer.md` that
-  the change moves. Only documentation alone (`AGENTS.md`, `docs/`) that describes no open pull
-  request may go on `main`.
+  section 2). A new subject is a new pull request on the top of the stack it builds on, or the
+  bottom of a new stack on `main` where it depends on nothing open; its body says which, and it
+  never forks off the middle of a stack. Skills go on a stack like code, and documentation that
+  describes an open pull request goes on that pull request's stack, with the row of
+  `docs/transfer.md` that the change moves.
 - **Another session's pull request changes only on the operator's word**, which a request to fix it
   gives. A pull request with children takes new commits only.
 - **One worktree per pull request**, from the top, pinned by commit, with its own
@@ -1611,8 +1615,8 @@ In practice:
   status `ana/stack-gate`, which only `land --merge` posts
   (`gh api repos/s-smits/anabasis/rulesets/25824510` reads it). One gap remains: a token with admin
   rights can post `ana/stack-gate` by hand.
-- **A restack makes the stack one chain again** (restack, linearize, quench, drain): each pull
-  request that left the chain is replayed onto the head beneath it, based there and added to the
+- **A restack makes each stack one chain again** (restack, linearize, quench, drain): each pull
+  request that left its chain is replayed onto the head beneath it, based there and added to the
   native stack. Resolve conflicts hunk by hunk, never by taking one side's file whole, which drops
   the other side's hunks, push each moved branch with a lease, and prove the result with
   `bun run land -- <top> --sanitize`. A consolidation, which also reviews the stack and regroups its

@@ -15,7 +15,7 @@
  * run no tool.
  */
 import { type Draft, draftFaults, draftOf } from "#src/examiner/draft.ts";
-import { readChecker } from "#src/kernel/acceptance.ts";
+import { readChecker, unreadFields } from "#src/kernel/acceptance.ts";
 import { read } from "#src/kernel/log.ts";
 import { CHECK_PROGRAM_CONTRACT, openVerifier, readBrief } from "#src/kernel/verify.ts";
 import { EVALUATOR_FILE } from "#src/meta/bundle-layout.ts";
@@ -118,8 +118,10 @@ export function stageExam(dir: string, draft: Draft): Staged {
 }
 
 /**
- * What the host reads of a draft without a model, one sentence a fault: its shape, and then the
- * acceptance reading every checker is held to, less the faults that are the operator's to admit.
+ * What the host reads of a draft without a model, one sentence a fault: its shape, then the
+ * acceptance reading every checker is held to, less the faults that are the operator's to admit,
+ * and then whether some check decides each field of the answer (`unreadFields`). A stored pack is
+ * not held to that last reading: its author is not in a session to mend it.
  * A check program that does not load or a wall that is not there stops a verifier, and here that
  * is told as a fault too: the draft's author is in the session and can mend the first.
  */
@@ -130,8 +132,9 @@ export async function draftReading(dir: string, draft: Draft, width: number): Pr
     const { bundle, checks } = stageExam(dir, draft);
     const brief = readBrief(checks);
     const pack = readPack(bundle);
-    const { faults } = await readChecker({
-      verify: openVerifier({ checks, tools: join(bundle, ".toolchain") }),
+    const verify = openVerifier({ checks, tools: join(bundle, ".toolchain") });
+    const { faults, runs } = await readChecker({
+      verify,
       brief,
       contract: contractOf(pack.brief, draft.answerFormat),
       tasks: pack.tasks,
@@ -140,7 +143,7 @@ export async function draftReading(dir: string, draft: Draft, width: number): Pr
       found: toolOnPath(bundle),
       width,
     });
-    return faults;
+    return [...faults, ...(await unreadFields(verify, pack.tasks, runs, draft.answerFormat, width))];
   } catch (error) {
     return [`the check program could not be put to its controls: ${errorMessage(error)}`];
   }

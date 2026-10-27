@@ -706,7 +706,9 @@ fields remain unknown, and abrupt process termination promises no ending. That r
 - a source on every rule;
 - one check per rule;
 - every control through the checks twice;
-- the smallest answer the format allows, refused on every example (`draftReading`,
+- the smallest answer the format allows, refused on every example;
+- each field of an accept control's answer, changed as the format allows, moving some check's
+  verdict or the objective (`unreadFields`, `src/kernel/acceptance.ts`; `draftReading`,
   `tools/d2/exam.ts`).
 
 What the reading cannot tell is whether a rule really belongs to the field and its source is real.

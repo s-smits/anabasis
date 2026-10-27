@@ -79,6 +79,8 @@ configuration order, with this machine first. `--host here` selects this machine
 An explicit host selects the destination; a remote receiver rechecks its cap before launching.
 Counts are observations, so launch
 sequentially; they reserve no slot against another launcher.
+A peer whose `ANA_HOSTS` entry lists `packs` is kept for them: `fresh` puts no other pack there
+and none of those packs on any other machine, whether it chooses or `--host` names the machine.
 
 A peer's controller is prepared automatically at `--at` or this checkout's commit: fetch, a
 detached worktree under Git's `ana-code/`, then a frozen install. Its configured checkout stays
@@ -137,7 +139,7 @@ remote branch holds. It then installs (`bun install --frozen-lockfile`), runs th
   `ANTHROPIC_API_KEY`: two providers, so a solver on one is another setting than on the other.
 - **What the operator's machines hold is environment, too.** `ANA_LOGINS` names the logins a run
   may take (`2,3,4`; every login the environment holds where unset), and `ANA_HOSTS` the other
-  hosts, a JSON list of `{name, ssh, tree, bun, envFiles, capacity}`. Copy `.env.runs.example` to
+  hosts, a JSON list of `{name, ssh, tree, bun, envFiles, capacity, packs}`. Copy `.env.runs.example` to
   `.env.runs`, which Git ignores; `.env.runs.example` stays tracked. Fill in your own and
   pass it with a second `--env-file`.
 - **One or two campaigns at a time on one host.** A solve's wall counts the clock. The command

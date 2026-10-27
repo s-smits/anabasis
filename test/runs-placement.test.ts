@@ -109,3 +109,16 @@ it("spreads one login's runs over the hosts before it prefers a familiar one", (
   expect(made.run(place(LOGIN), env).out.trim()).toBe("here");
   expect(made.run(place(OTHER), env).out.trim()).toBe("runner");
 });
+
+it("keeps a reserved pack on its host, and every other pack off it, chosen or named", () => {
+  const made = fixture();
+  const hosts = JSON.stringify([{ ...made.host, packs: ["truss"] }]);
+  const code =
+    'import { placeFresh, takes } from "REPOSITORY/tools/runs/placement.ts"; import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; const [runner] = hostsOf(); console.log((await placeFresh("truss"))?.name ?? "here", (await placeFresh("sample"))?.name ?? "here", takes(undefined, "truss"), takes(runner, "sample"), takes(undefined, "sample"));';
+  expect(made.run(code, { ANA_HOSTS: hosts }).out.trim()).toBe("runner here false false true");
+  const full = JSON.stringify(["one", "two"].map((name) => ({ name, login: null, host: made.host.name })));
+  expect(made.run(code, { ANA_HOSTS: hosts, FAKE_ACTIVE: full }).err).toContain("no host has room");
+  expect(made.run(code, { ANA_HOSTS: JSON.stringify([{ ...made.host, packs: ["../x"] }]) }).err).toContain(
+    "packs takes a list of pack names",
+  );
+});

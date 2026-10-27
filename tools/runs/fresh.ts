@@ -41,7 +41,7 @@ import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { hostNamed } from "./host-config.ts";
 import { verbOn } from "./hosts.ts";
 import { preparedHost, publishedAt } from "./code.ts";
-import { freshFleet, freshLogin, placeFresh, loginPool, loginPresent } from "./placement.ts";
+import { freshFleet, freshLogin, placeFresh, loginPool, loginPresent, takes } from "./placement.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 import { launch } from "./manage.ts";
 import { everyRun, harnessesOf } from "./registry.ts";
@@ -175,6 +175,9 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
       : values.host === "here"
         ? undefined
         : hostNamed(values.host);
+  if (!takes(host, pack)) {
+    throw new Error(`${host?.name ?? "here"} does not take ${pack}, by the packs ANA_HOSTS reserves`);
+  }
   const commit = publishedAt(here, values.at);
   if (host !== undefined) {
     console.log(`${host.name}: prepare a detached controller at ${commit.slice(0, 9)}, then fresh ${pack}`);

@@ -15,6 +15,8 @@ export interface Host {
   readonly envFiles?: readonly string[];
   /** Live campaigns or simulation seats this machine may carry. */
   readonly capacity?: number;
+  /** The packs this machine is kept for: it takes no other, and no other machine takes them. */
+  readonly packs?: readonly string[];
   /** A controller already prepared by code.ts, never accepted from configuration. */
   readonly prepared?: true;
 }
@@ -47,6 +49,13 @@ export function hostsOf(): readonly Host[] {
     if (capacity !== undefined && (!isNumber(capacity) || !Number.isSafeInteger(capacity) || capacity < 1)) {
       throw new Error(`${host.name}: capacity takes a positive integer`);
     }
+    const packs = host.packs;
+    if (
+      packs !== undefined &&
+      (!Array.isArray(packs) || !packs.every(isString) || !packs.every(isSafePathSegment))
+    ) {
+      throw new Error(`${host.name}: packs takes a list of pack names`);
+    }
     return {
       name: host.name,
       ssh: host.ssh,
@@ -54,6 +63,7 @@ export function hostsOf(): readonly Host[] {
       bun: host.bun,
       ...keyIfDefined("envFiles", files),
       ...keyIfDefined("capacity", capacity),
+      ...keyIfDefined("packs", packs),
     };
   });
 }

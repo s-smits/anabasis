@@ -47,8 +47,8 @@ describe("cycle.ts", () => {
     const stop = read();
     expect(stop.code).toBe(0);
     expect(stop.out).toContain("step: stop");
-    expect(stop.out.split("\n").filter((line) => line.includes("runs stop"))).toEqual([
-      "  bun --env-file=.env.runs run runs stop reached --yes",
+    expect(stop.out.split("\n").filter((line) => line.includes(" stop reached"))).toEqual([
+      "  bun --env-file=.env.runs run runs on runner stop reached --yes",
     ]);
     reached.live = false;
     const running = read();
@@ -58,6 +58,9 @@ describe("cycle.ts", () => {
     const closed = read();
     expect(closed.code).toBe(0);
     expect(closed.out).toContain("step: investigate");
+    // Two hosts may hold one name, so each fetch and each log the start reads names its host.
+    expect(closed.out).toContain("run runs fetch reached --from runner");
+    expect(closed.out).toContain(join("data", "runs", "runner", "reached", LOG_FILE));
   });
 
   it("reads a run in a peer's quoted tree, and leaves it unread where the peer fails or is silent", () => {

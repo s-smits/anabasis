@@ -113,7 +113,7 @@ import { sessionEnded } from "#src/campaign/ground.ts";
 import { type Decided, decidedLine } from "#src/campaign/move.ts";
 import { type Opening, SEATS } from "#src/campaign/opening.ts";
 import { pendingWords } from "#src/campaign/word.ts";
-import { keepPractised } from "#src/builder/session.ts";
+import { keepCutNotes, keepPractised } from "#src/builder/session.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { unadmitted } from "#src/kernel/acceptance.ts";
 import { comparisonFloor } from "#src/campaign/admission.ts";
@@ -352,13 +352,16 @@ function keepReceipt(log: string, args: readonly string[]): void {
 
 /**
  * End on record, as killed, each Builder and Examiner session a stopped run of the command left
- * open, with what the log holds of it. Until 13 October a reopened campaign started new sessions
+ * open, with what the log holds of it, and a Builder's notes where its home still stands. Until 13 October a reopened campaign started new sessions
  * beside them, and readers metered each only to its last turn and counted it open (x-1 and x-2 of
  * two campaigns stopped and reopened). Killed is no crash, so the crash rule counts none of them.
  */
 export async function endCut(log: string): Promise<void> {
   for (const { of, session, ...spent } of cutSessions(read(log))) {
-    if (of === "build") await keepPractised(log, session, join(dirname(log), "states"));
+    if (of === "build") {
+      keepCutNotes(log, session);
+      await keepPractised(log, session, join(dirname(log), "states"));
+    }
     append(log, `${of}.finished`, { session, ended: "killed", crash: null, ...spent });
   }
 }

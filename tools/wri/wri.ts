@@ -105,7 +105,13 @@ const resolvedLogs = await Promise.all(
     .filter((each) => each !== "")
     .map(async (each) => resolve(await logAcross(each))),
 );
-const nameOf = (log: string) => basename(dirname(log));
+/** A campaign's name, with the host folder of its copy where two logs named share it: two hosts
+ *  held a run named `buffer-fresh-opus-terra` on 27 October, and `start` refused their copies. */
+const nameOf = (log: string) => {
+  const name = basename(dirname(log));
+  const shared = resolvedLogs.filter((each) => basename(dirname(each)) === name).length > 1;
+  return shared ? `${name}@${basename(dirname(dirname(log)))}` : name;
+};
 
 function oneLog(): string {
   const [log] = resolvedLogs;

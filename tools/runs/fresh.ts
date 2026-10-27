@@ -194,7 +194,7 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
       "--budget",
       values.budget,
       "--as",
-      values.as ?? host.name,
+      values.as === undefined ? host.name : `${values.as}-${host.name}`,
       "--host",
       "here",
       ...(values.effort === undefined ? [] : ["--effort", values.effort]),

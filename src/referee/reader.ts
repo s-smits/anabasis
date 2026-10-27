@@ -6,9 +6,8 @@
  * pi-durable ends a tool round only when every call asks to terminate. The accepted ruling also
  * sets `over`, so a check read in the same round cannot start another model turn.
  *
- * v1 ran a reader as one provider turn over a fixed packet (`src/review/review-reader.ts` at
- * 7af7315). Here it is a loop, since the Referee's probes and reads are calls the model chooses, and
- * a cap on model turns stands in for v1's single turn.
+ * v1 ran a reader as one provider turn over a fixed packet (`src/review/review-reader.ts` at 7af7315);
+ * here the Referee's probes and reads are calls the model chooses, and a turn cap stands for that turn.
  *
  * A session also ends at a wall and at the run's kill. The turn cap bounds spend and not time, and a
  * session that hangs would hang the run that waits on it. The seat's frame aborts the loop's signal
@@ -34,7 +33,7 @@ export interface Reader {
   readonly kill?: AbortSignal;
 }
 
-/** Enough for a dozen reads and probes and the ruling; a reader that has not ruled by then will not. */
+/** Enough for a dozen reads and probes and the ruling; until then a turn with no call is answered (`next`). */
 const TURN_CAP = 24;
 /** Half an hour: v1's reader deadline was an hour, and its ESP32 reviews spent 50 and 63 minutes of it
  *  inside probes (`review-probe.ts:84-86` at 3f93d06b). A v2 reader reads one fail, not a battery. */
@@ -68,6 +67,7 @@ export async function readOnce(
     over: session.over,
     turns,
     most: TURN_CAP,
+    next: async () => "Nothing is recorded until you call the tool that records your answer.",
     stops: [wall, reader.kill],
   });
   return {

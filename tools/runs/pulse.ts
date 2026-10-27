@@ -139,6 +139,8 @@ const SAID: Partial<
   // A campaign's ending, and a wait for the provider or the network: until 15 October the pulse
   // said neither, and a run waiting out a limit read as quiet. A wait on the load is one a solve.
   "campaign.ended": (data) => `◆ the campaign ended ${word(data.ending)}: ${short(data.why)}`,
+  // Until 27 October a promotion had no line, and an hourly watch over the pulse missed one by 4.5 h.
+  "harness.promoted": (data) => `◆ promoted ${word(data.harness).slice(0, 8)} to the reference`,
   "campaign.waited": (data) =>
     isString(data.for)
       ? `⚠ waited ${isNumber(data.ms) ? minutes(data.ms) : "?"} for the ${data.for}${isString(data.until) ? ` until ${data.until}` : ""}`
@@ -187,6 +189,8 @@ function status(run: Run, log: readonly LogEvent[], solves: readonly Solve[], op
   const running = solves.filter(({ finished }) => finished === null).length;
   if (running > 0) said.push(`${String(running)} ${open ? "running" : "unfinished"}`);
   const last = log.at(-1);
+  const promoted = count(log, "harness.promoted");
+  if (promoted > 0) said.push(`${String(promoted)} promoted`);
   return [
     // A seed's counts and dollars are its source's up to the cut, and a script's or a run's after it.
     `${run.name}${run.seed === true ? " (a seed)" : ""}  ${stage(log, running, open)}`,
@@ -229,11 +233,14 @@ export function pulse(
   if (!quiet && before?.quiet === true) lines.push("· not quiet any more");
   // A run's end is that of the last thing it started: an Examiner session writes no report, and
   // the second on exam-1 (2026-10-08) ended whole and was said to be gone before one. A checkpoint
-  // starts no session, so its own start is where its report is looked for.
+  // starts no session, so its own start is where its report is looked for. A campaign that wrote
+  // its ending is done whatever it was doing: until 27 October one that ended while drafting its
+  // exam, which none of these starts covers, was said to be gone before a report.
   const end = log[lastStart(log)]?.kind === "exam.started" ? "exam.finished" : run.end;
   const ended =
-    count(log.slice(Math.max(lastWork(log), 0)), end) > 0 &&
-    solves.every(({ finished }) => finished !== null);
+    last?.kind === "campaign.ended" ||
+    (count(log.slice(Math.max(lastWork(log), 0)), end) > 0 &&
+      solves.every(({ finished }) => finished !== null));
   if (before?.open === true && !open && !ended) lines.push(`⚠ the process is gone before ${end}`);
   // A comparison starts each task under two harnesses, so a line may come twice.
   const said = Object.entries(countBy(lines, (line) => line)).map(([line, n]) =>

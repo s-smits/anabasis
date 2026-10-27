@@ -1,8 +1,17 @@
 // A stop ends the run's own process and what it started, and no sibling, and releases what the
 // run's unfinished solves and sessions left on the host.
 import { describe, expect, it } from "bun:test";
+import { keepCutNotes, sessionDirs } from "../src/builder/session.ts";
+import { lastKept, SCRATCHPAD_FILE, seedMemory } from "../src/builder/memory.ts";
 import { append } from "../src/kernel/log.ts";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { basename, dirname, join } from "../src/meta/path.ts";
 import { capturedSpawn } from "../src/meta/process.ts";
@@ -61,6 +70,32 @@ describe("a stop", () => {
       append(copy, "build.started", { session: "b-2" });
       expect(left({ path: copy, seed: true })).toEqual(["solve-build-sim-r1-b-2", "solve-s-3"]);
     } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // A stop releases a cut Builder's root, and its home with it. PR377-m1-air's b-2 opened on the
+  // starter's notes after its b-1 was stopped (lane 33 of the investigation of 27 October).
+  it("keeps a cut Builder's notes for the next session before its home goes", () => {
+    const root = mkdtempSync(join(tmpdir(), "ana-runs-stop-test-"));
+    const path = join(root, basename(root), "log.jsonl");
+    const cut = sessionDirs(path, "b-1");
+    try {
+      mkdirSync(dirname(path));
+      append(path, "build.started", { session: "b-1" });
+      expect(leftOpen({ path }).map(({ build }) => build)).toEqual(["b-1"]);
+      mkdirSync(cut.home, { recursive: true });
+      writeFileSync(join(cut.home, SCRATCHPAD_FILE), "# Scratchpad\n\nNext: widen the sweep.\n");
+      keepCutNotes(path, "b-1");
+      rmSync(cut.root, { recursive: true, force: true });
+      keepCutNotes(path, "b-1");
+      const memory = join(dirname(path), "memory");
+      const next = join(root, "b-2-home");
+      mkdirSync(next);
+      seedMemory(next, memory, lastKept(memory, ["b-1"]));
+      expect(readFileSync(join(next, SCRATCHPAD_FILE), "utf8")).toContain("Next: widen the sweep.");
+    } finally {
+      rmSync(cut.root, { recursive: true, force: true });
       rmSync(root, { recursive: true, force: true });
     }
   });

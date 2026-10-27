@@ -5,7 +5,7 @@ import { mkdirSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
 import { seats } from "../tools/runs/fresh.ts";
-import { nextLogin, roomFor, type Turn, turnOf } from "../tools/runs/keep.ts";
+import { nextLogin, roomFor, type Turn, turnOf, turnsIn } from "../tools/runs/keep.ts";
 import { allowedLogins, billsLogin, type Reading, room } from "../tools/runs/logins.ts";
 import { type Receipt, writeReceipt } from "../tools/runs/receipt.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
@@ -45,6 +45,27 @@ describe("the turn a keeper takes", () => {
     for (const ending of ["budget", "stop", "operator", "finished", "no-room"]) {
       expect(turnOf([event("campaign.ended", { ending })], "closed", NOW, HOUR)).toBe("done");
     }
+  });
+
+  it("counts as work an answered model turn of any seat, and none of what a going-on into a failure writes", () => {
+    const worked = [
+      event("build.turn", { session: "b-1", stopReason: "toolUse" }),
+      event("solve.turn", { solve: "s-1", stopReason: "toolUse" }),
+    ];
+    // A going-on into a network failure, as esp32-fresh-opus-m1-air-r2 wrote it 15 times.
+    const failed = [
+      event("campaign.move", { move: "build", code: "led" }),
+      event("build.started", { session: "b-2" }),
+      event("exam.started", { session: "x-2" }),
+      event("build.turn", { session: "b-2", turn: 1, stopReason: "error" }),
+      event("exam.turn", { session: "x-2", turn: 1, stopReason: "error" }),
+      event("exam.finished", { session: "x-2", ended: "crashed" }),
+      event("build.finished", { session: "b-2", ended: "crashed" }),
+      event("campaign.ended", { ending: "environment" }),
+    ];
+    expect(turnsIn(worked)).toBe(2);
+    expect(turnsIn([...worked, ...failed, ...failed])).toBe(2);
+    expect(turnsIn([...worked, event("exam.turn", { session: "x-1", stopReason: "stop" })])).toBe(3);
   });
 });
 

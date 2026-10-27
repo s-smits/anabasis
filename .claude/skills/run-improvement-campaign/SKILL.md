@@ -70,7 +70,8 @@ time, tell the operator and ask, rather than land first.
 ### The improvement window, in this order
 
 4. **Stop** each run `scripts/cycle.ts` names at the step `stop`, those at or past the threshold,
-   with `runs stop <name> ... --yes`, which goes to each run's host. The investigation starts once
+   with the `runs stop` it prints, which names each run's host (`runs on <host> stop`), since two
+   hosts may hold one name. The investigation starts once
    `runs status` reads every run the cycle forked `closed`, except a run the operator named as kept
    (`--keep`), such as an ablation; other runs and simulations do not count. A stop word
    (`tools/d2/word.ts --stop`) waits for the next move boundary, which inside a led campaign can be
@@ -110,6 +111,12 @@ time, tell the operator and ask, rather than land first.
    the last release: one sentence on what the release changes, "Includes N PRs from #a to #b,
    merged into `main` at `<sha>`", one paragraph per change with its recorded counts, and
    **Validation and limits** with the land counts, the CI run and what the stopped runs showed. Where the proof fails, do not land: report the commit and step.
+   One cycle is one stack and one release (`AGENTS.md`, section 11), and the number tells a reader
+   which runs may be read side by side. The patch moves (0.7.2 to 0.7.3) where the cycle's runs
+   measure what the last release's runs measured. The minor moves (0.7 to 0.8) where the release
+   changes what a run measures, such as a weight, the level, the step test, the task gate or the
+   setting: the release says which, and no run of the earlier minor is read beside one of the new.
+   The major moves only on the operator's word, for a break in the design.
 11. **Fork** the next cycle at the release's merge commit: step 1 again.
 
 **The threshold.** Stop each run at **six promotions** (operator, 25 October, matching the
@@ -138,9 +145,9 @@ leaves its runs `unread`.
 
 | Step | When | Prints |
 | --- | --- | --- |
-| `stop` | a run the cycle stops is live at or past the threshold | the `runs stop ... --yes` for those runs |
+| `stop` | a run the cycle stops is live at or past the threshold | the `runs stop ... --yes` for those runs, through `runs on <host>` for a run on another host |
 | `run` | the remaining live runs have fewer promotions than the threshold | each such run and its count |
-| `investigate` | none is live | the `runs fetch` of each run on another host, and the `wri.ts start` over all of them |
+| `investigate` | none is live | the `runs fetch --from <host>` of each run on another host, and the `wri.ts start` over all of them, a copy by its path |
 | `unread` (exit 1) | a run is found on no host that answered | the runs not found; no step is read past one that may be live |
 
 A run named with `--keep`, such as an ablation the operator keeps going, is shown and never waited

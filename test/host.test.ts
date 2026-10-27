@@ -159,6 +159,29 @@ describe("the gate at a solve's start", () => {
     ]);
   });
 
+  it("reads the load again while a solve waits for a slot, and waits for it before the start", async () => {
+    // On 27 October three admission probes read a load of 3.2 on 12 cores, waited a minute for a
+    // slot, and started at 15.9 with no wait on record.
+    const log = logIn("slot-then-load");
+    let load = 0;
+    const free = Promise.withResolvers<void>();
+    const host = hostOf(
+      () => load,
+      4,
+      (count) => {
+        if (count === 1) [load] = [99, free.resolve()];
+        if (count === 3) load = 0;
+      },
+    );
+    const held = gate(log, host, false, 1);
+    const [, ended] = await Promise.all([
+      flying(log, () => free.promise),
+      held.solve(TASK, HARNESS, undefined, "x-1"),
+    ]);
+    expect(ended).toMatchObject({ ending: { outcome: "pass" } });
+    expect(waits(log).map(({ data }) => data.load)).toEqual([99]);
+  });
+
   it("starts a solve all the same after half an hour of looks where the load never falls", async () => {
     // On 15 October one campaign's solves waited 107 minutes while two others kept its host of 8 cores loaded.
     const log = logIn("looks");

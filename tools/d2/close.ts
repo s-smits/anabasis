@@ -56,6 +56,7 @@ import { frozenChecker, unadmitted } from "#src/kernel/acceptance.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { comparisonsOf } from "#src/campaign/ground.ts";
+import { examinerSessions } from "#src/kernel/solves.ts";
 import { promoted } from "#src/kernel/reports.ts";
 import { billedAll, billedParts, costLine } from "#src/kernel/trace.ts";
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
@@ -212,19 +213,15 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
   ].join("\n\n");
 }
 
-/**
- * What each measured thing cost, from the log alone: the Examiner's dollars a task it held out,
- * its own turns and its admission solves together; a comparison's a task it scored; and how many of the
- * comparisons that began reported, since one cut before its report bought nothing it can show.
- */
+/** What each measured thing cost, from the log alone: the Examiner's as `spendOf` bills it, Referee aside. */
 function economyLines(events: readonly LogEvent[], steps: readonly Handover[]): string[] {
   const per = (dollars: number, count: number, what: string) =>
     count > 0 ? `$${(dollars / count).toFixed(2)} a ${what} (${String(count)})` : `no ${what}`;
-  // The handover's Examiner steps, an open or cut session's by its gated proposals: until 25 October
-  // only ended sessions were read here, and buffer-141 said 2 tasks held out where it held out 7.
-  const exams = steps.flatMap((step) => (step.step === "examiner" ? [step] : []));
-  const examined = exams.reduce((sum, { billed }) => sum + billed, 0);
-  const held = exams.reduce((sum, step) => sum + step.held, 0);
+  const held = steps.reduce((sum, step) => sum + (step.step === "examiner" ? step.held : 0), 0);
+  const unruled = events.filter(({ kind }) => !kind.startsWith("referee."));
+  const own = billedAll(events.filter(({ kind }) => /^(exam|draft)\./.test(kind)));
+  const sessions = [...examinerSessions(events)].filter(isString);
+  const examined = sessions.reduce((sum, id) => sum + billedParts(unruled, id).comparison, own);
   const all = comparisonsOf(events);
   const reported = all.filter(({ report }) => report !== null);
   const compared = reported.reduce((sum, { id }) => sum + billedParts(events, id).comparison, 0);

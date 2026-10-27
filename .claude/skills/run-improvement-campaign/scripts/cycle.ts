@@ -23,13 +23,19 @@
  * host's own tree as before, now with its path quoted, under the Bun that tree pins, and within the
  * runs CLI's deadline. Until 25 October this script spawned its own ssh with no deadline and an
  * unquoted tree.
+ *
+ * Each command a step prints names the host of a run held elsewhere. On 27 October two hosts held a
+ * run named `buffer-fresh-opus-terra`, and a stop or a fetch by the name alone refuses such a pair
+ * (`routed`, `syncRuns`), as `wri.ts start` did over two copies of one name.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { hostsOf } from "#tools/runs/host-config.ts";
+import { LOG_FILE } from "#src/kernel/log.ts";
+import { runtimeProcess } from "#src/meta/process.ts";
 import { askedScript } from "#tools/runs/hosts.ts";
-import { isCampaign, logEvents, processes, runs, writers } from "#tools/runs/registry.ts";
+import { archiveOf, isCampaign, logEvents, processes, runs, writers } from "#tools/runs/registry.ts";
 
 const SCRIPT = ".claude/skills/run-improvement-campaign/scripts/cycle.ts";
 /** The promotions at which the cycle stops a run: the operator's milestone of 25 October. */
@@ -103,10 +109,17 @@ function stepOf(rows: readonly Row[], kept: readonly string[], threshold: number
   const stopped = rows.filter((row) => !kept.includes(row.name));
   const live = stopped.filter((row) => row.live);
   const reached = live.filter((row) => row.promotions >= threshold);
+  const runsOn = (host: string) => (host === "here" ? "run runs" : `run runs on ${host}`);
   if (reached.length > 0) {
     return [
       `step: stop · ${reached.map((row) => `${row.name} ${String(row.promotions)}/${String(threshold)}`).join(", ")}`,
-      `  bun --env-file=.env.runs run runs stop ${reached.map((row) => row.name).join(" ")} --yes`,
+      ...[...new Set(reached.map((row) => row.host))].map(
+        (host) =>
+          `  bun --env-file=.env.runs ${runsOn(host)} stop ${reached
+            .filter((row) => row.host === host)
+            .map((row) => row.name)
+            .join(" ")} --yes`,
+      ),
     ];
   }
   if (live.length > 0) {
@@ -117,8 +130,12 @@ function stepOf(rows: readonly Row[], kept: readonly string[], threshold: number
   const away = stopped.filter((row) => row.host !== "here");
   return [
     "step: investigate · no run the cycle stops is live",
-    ...away.map((row) => `  bun --env-file=.env.runs run runs fetch ${row.name}`),
-    `  bun tools/wri/wri.ts start --log ${stopped.map((row) => row.name).join(",")} --out .ana/wri/<date>-<cycle>`,
+    ...away.map((row) => `  bun --env-file=.env.runs run runs fetch ${row.name} --from ${row.host}`),
+    `  bun tools/wri/wri.ts start --log ${stopped
+      .map((row) =>
+        row.host === "here" ? row.name : archiveOf(runtimeProcess.cwd(), row.host, row.name, LOG_FILE),
+      )
+      .join(",")} --out .ana/wri/<date>-<cycle>`,
   ];
 }
 

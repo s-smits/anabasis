@@ -84,17 +84,28 @@ export function gated(
       ...seats,
       solve: async (task, harness, kill, comparison) => {
         kill?.throwIfAborted();
-        const [since, load] = [Date.now(), host.load()];
-        if (!loaded && load > host.cores) {
+        // Said once, not on record: under a tight total every solve past the first waits its turn.
+        if (inFlight(log) > 0 && !affords(log, 1)) {
           console.log(
-            `the host's load is ${load.toFixed(1)} on ${String(host.cores)} cores: a solve of ${task.taskId} waits until it is at or under them, at most half an hour, or pass --loaded`,
+            `a solve of ${task.taskId} waits for the campaign's reserve while others are in flight`,
           );
-          let looks = 0;
-          do {
-            await waiting(host.waitMs, kill, host.sleep);
-            looks += 1;
-            if (kill?.aborted === true) break;
-          } while (looks < LOOKS && host.load() > host.cores);
+        }
+        // The load is read at every look until the solve starts: on 27 October three admission probes
+        // of esp32-fresh-opus-terra read 3.2 on 12 cores, waited a minute for a slot, and began at 15.9.
+        let [looks, since, load] = [0, 0, 0];
+        for (;;) {
+          const [now, flown] = [loaded || looks >= LOOKS ? 0 : host.load(), inFlight(log)];
+          const full = flown >= campaign.limits.concurrency || (flown > 0 && !affords(log, 1));
+          if (kill?.aborted === true || (now <= host.cores && !full)) break;
+          if (now > host.cores && (looks += 1) === 1) {
+            [since, load] = [Date.now(), now];
+            console.log(
+              `the host's load is ${load.toFixed(1)} on ${String(host.cores)} cores: a solve of ${task.taskId} waits until it is at or under them, at most half an hour, or pass --loaded`,
+            );
+          }
+          await waiting(host.waitMs, kill, host.sleep);
+        }
+        if (looks > 0) {
           append(log, WAITED, {
             task: task.taskId,
             harness: harness.digest,
@@ -103,17 +114,6 @@ export function gated(
             cores: host.cores,
             ms: Date.now() - since,
           });
-        }
-        // Said once, not on record: under a tight total every solve past the first waits its turn.
-        if (inFlight(log) > 0 && !affords(log, 1)) {
-          console.log(
-            `a solve of ${task.taskId} waits for the campaign's reserve while others are in flight`,
-          );
-        }
-        kill?.throwIfAborted();
-        while (inFlight(log) >= campaign.limits.concurrency || (inFlight(log) > 0 && !affords(log, 1))) {
-          if (kill?.aborted === true) break;
-          await waiting(host.waitMs, kill, host.sleep);
         }
         kill?.throwIfAborted();
         return flying(log, () => seats.solve(task, harness, kill, comparison));

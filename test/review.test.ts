@@ -276,6 +276,7 @@ it("the probe rewrites one passage inside a text field, where the thing in dispu
     log: s.log,
   });
   const ruling = (args: JsonObject) => fauxAssistantMessage(fauxToolCall("record_ruling", args), toolUse);
+  const UNSETTLED = { ruling: "unclear", reason: "Not settled.", probes: [] };
 
   it("the Referee accepts coupled edits only when their cited probe clears the deciding check", async () => {
     const answer = { left: `${"x".repeat(4_001)}bad`, right: `${"x".repeat(4_001)}bad` };
@@ -545,17 +546,25 @@ it("the probe rewrites one passage inside a text field, where the thing in dispu
   });
 
   it("the Referee logs no refusal where the first ruling stands", async () => {
-    const s = setup([ruling({ ruling: "unclear", reason: "Not settled.", probes: [] })]);
+    const s = setup([ruling(UNSETTLED)]);
     failed(s.record);
     expect((await referee(s.reader, fail(s))).ruling).toBe("unclear");
     expect(read(s.log).filter(({ kind }) => kind === "referee.refused")).toHaveLength(0);
+  });
+
+  it("the Referee records the ruling it gives after a turn with no call", async () => {
+    // On 27 October two esp32 readers answered in prose and were set aside as unruled.
+    const s = setup([fauxAssistantMessage("The rejection looks earned."), ruling(UNSETTLED)]);
+    failed(s.record);
+    expect(await referee(s.reader, fail(s))).toMatchObject({ ruling: "unclear", reason: "Not settled." });
+    expect(s.calls()).toBe(2);
   });
 
   it("the Referee ends after an accepted ruling in a round that also reads a check, in either order", async () => {
     for (const order of ["read-first", "ruling-first"]) {
       const calls = [
         fauxToolCall("read_check_program", { path: "evaluator.ts" }),
-        fauxToolCall("record_ruling", { ruling: "unclear", reason: "Not settled.", probes: [] }),
+        fauxToolCall("record_ruling", UNSETTLED),
       ];
       const s = setup([fauxAssistantMessage(order === "read-first" ? calls : calls.toReversed(), toolUse)]);
       failed(s.record);
@@ -629,7 +638,7 @@ it("the probe rewrites one passage inside a text field, where the thing in dispu
   });
 
   it("the Referee sets an answer the checks accepted for the task beside the one under review", async () => {
-    const unclear = ruling({ ruling: "unclear", reason: "Not settled.", probes: [] });
+    const unclear = ruling(UNSETTLED);
     const s = setup([unclear, unclear]);
     failed(s.record);
     await referee(s.reader, fail(s));
@@ -706,9 +715,14 @@ it("the probe rewrites one passage inside a text field, where the thing in dispu
   });
 
   it("the Referee leaves the fail unclear when the reader never rules", async () => {
-    const s = setup([fauxAssistantMessage("The check looks right to me.")]);
+    // Each turn with no call is answered once more, until the reader's cap of 24 turns.
+    const s = setup(Array.from({ length: 24 }, () => fauxAssistantMessage("The check looks right to me.")));
     failed(s.record);
-    expect((await referee(s.reader, fail(s))).ruling).toBe("unclear");
+    expect(await referee(s.reader, fail(s))).toMatchObject({
+      ruling: "unclear",
+      reason: "the Referee recorded no ruling",
+    });
+    expect(s.calls()).toBe(24);
   });
 
   it("the Referee logs no ruling where the provider ended the reading before it ruled, so the fail is asked again", async () => {
@@ -732,7 +746,7 @@ it("the probe rewrites one passage inside a text field, where the thing in dispu
   });
 
   it("the Referee gives two readings begun in the same millisecond two session ids", async () => {
-    const unclear = ruling({ ruling: "unclear", reason: "Not settled.", probes: [] });
+    const unclear = ruling(UNSETTLED);
     const [a, b] = [setup([unclear]), setup([unclear])];
     failed(a.record);
     failed(b.record);

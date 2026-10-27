@@ -1551,12 +1551,14 @@ you push.
 
 Open pull requests sit on stacks: chains whose bottom is based on `main`, each landed whole by one
 `bun run land -- <top>`, which runs the whole gate once, at its top. Several sessions write at once.
-A subject that builds on an open pull request, or rewrites text one of them changes, goes on that
-pull request's stack, because pull requests beside each other cannot describe one another and land
-in whatever order the merges come. A subject that depends on nothing open starts a stack of its own
-on `main`, so it lands without waiting for the others. Once one stack lands, `land` refuses every
-other until it is replayed onto the new `main` (`checkChain`, `tools/runtime/land.ts`), so each is
-still proved and merged on top of what landed.
+One release cycle (the skill `run-improvement-campaign`) builds one stack, and that stack lands as
+the cycle's release. Its first pull request starts it on `main`, and every later subject goes on its
+top, whether or not it builds on an open pull request, for three reasons: pull requests beside each
+other cannot describe one another; every stack waits for the end of the cycle to land in any case;
+and a second stack is replayed onto `main` once the first lands. A stack of its own on `main` starts
+only on the operator's word, for a change that has to land before the cycle's stack does. Once one
+stack lands, `land` refuses every other until it is replayed onto the new `main` (`checkChain`,
+`tools/runtime/land.ts`), so each is still proved and merged on top of what landed.
 
 v2 was built in `s-smits/anabasis-v2` until 11 October 2026, when it took over this repository,
 v1's. A pull request number in text written before then, up to #235, refers to that repository,
@@ -1575,9 +1577,9 @@ In practice:
   completes or supersedes an open pull request's own code belongs to that pull request; a shared
   file alone does not make it so. It is folded in where nothing is stacked above, and otherwise
   carried on the top as a `fixup!` that the next consolidation folds down (the skill `stack-pr`,
-  section 2). A new subject is a new pull request on the top of the stack it builds on, or the
-  bottom of a new stack on `main` where it depends on nothing open; its body says which, and it
-  never forks off the middle of a stack. Skills go on a stack like code, and documentation that
+  section 2). A new subject is a new pull request on the top of the cycle's stack, or the bottom
+  of a new stack on `main` where the operator asks for one; its body says which, and it never forks
+  off the middle of a stack. Skills go on a stack like code, and documentation that
   describes an open pull request goes on that pull request's stack, with the row of
   `docs/transfer.md` that the change moves.
 - **Another session's pull request changes only on the operator's word**, which a request to fix it
@@ -1589,7 +1591,9 @@ In practice:
 - **Every commit passes alone.** Fold a fix into the unpublished commit it corrects. The pre-commit
   hook runs `bun run commit:check`; run it by hand where the hooks are not installed.
 - **Label every pull request** with exactly one of `importance:I0` to `importance:I3`, with no "Ix:"
-  prefix in its title; `bun run land` refuses a stack in which one is missing or doubled.
+  prefix in its title, and at least one category label, the subject it belongs to (`CATEGORIES`,
+  `tools/runtime/land.ts`; each label's description in the repository says what it holds);
+  `bun run land` refuses a stack in which either is missing or the importance doubled.
 - **Push your own branch**, never `main`. Push with `--no-verify` only where the operator says so.
   Rewriting a published branch takes `--force-with-lease` on the head you last saw. The pre-push
   hook reads the commits along each pushed head's first parents that no remote-tracking ref holds;

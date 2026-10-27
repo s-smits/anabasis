@@ -8,6 +8,7 @@
 
 import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
 import { REPORTED } from "../src/campaign/comparison.ts";
+import { campaignOf } from "../src/campaign/handover.ts";
 import { examine } from "../src/examiner/session.ts";
 import { append, LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
 import { countedSolves, solvesIn } from "../src/kernel/solves.ts";
@@ -41,6 +42,7 @@ import * as prepare from "../tools/d2/prepare.ts";
 import { packetOf, settleCommand } from "../tools/d2/settle.ts";
 import { wordCommand } from "../tools/d2/word.ts";
 import { scriptedSeats } from "../tools/runs/rehearse.ts";
+import { admittedCost, indexOf } from "../tools/wri/folds.ts";
 import { FORMAT, fixtureTasks, gradedOf, layOutPack, scriptedModel } from "./helpers/fixture-pack.ts";
 
 const REPO = resolve(import.meta.dir, "..");
@@ -860,6 +862,33 @@ describe("a campaign run by its log", () => {
     // Calculated $40 in all; the backend's $31 stands beside the $25 of the two endings that have it.
     expect(spend?.match(/\d+(?:\.\d+)?/g)?.slice(-6)).toEqual(["40.00", "31.00", "2", "3", "25.00", "24.0"]);
     expect(read(log)).toEqual(before);
+  });
+
+  it("bills the drafting session and the solves each Examiner session asked for to the tasks it held out", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
+    const name = `${STEM}-drafting`;
+    const pack = seeded(name).slice(0, -4);
+    const log = join(REPO, ".ana", "d2", name, LOG_FILE);
+    append(log, "draft.started", { session: "d-x" });
+    append(log, "solve.started", { solve: "draft-solve", comparison: "d-x" });
+    append(log, "solve.finished", { solve: "draft-solve", billed: 1 });
+    append(log, "draft.finished", { session: "d-x", billed: 3 });
+    append(log, "exam.started", { session: "x-x" });
+    append(log, "solve.started", { solve: "gate-solve", comparison: "x-x" });
+    append(log, "solve.finished", { solve: "gate-solve", billed: 2 });
+    append(log, "referee.finding", { solve: "gate-solve", ruling: "earned", billed: 6 });
+    append(log, "exam.finished", { session: "x-x", billed: 4, held: ["a", "b"] });
+    const to = join(root, "handover-drafting");
+    await closeCommand([...pack, "--to", to]);
+    const row = readFileSync(join(to, "REPORT.md"), "utf8")
+      .split("\n")
+      .find((line) => line.startsWith("- The Examiner:"));
+    // $10 over two tasks, the Referee's $6 left to the Referee: until 27 October the drafting session's
+    // $4 read as nobody's here, and the ruling of the gate's solve as the Examiner's, $6.00 a task.
+    expect(row).toContain("$5.00 a task held out (2)");
+    // The whole-run reader bills the same work to the Examiner.
+    const events = read(log);
+    expect(admittedCost(indexOf(events), campaignOf(events).steps).join("")).toContain("5.00 a task");
   });
 
   it("reads a word the operator left during a comparison at the next move, and changes nothing in the comparison", async () => {

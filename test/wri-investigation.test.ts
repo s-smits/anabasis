@@ -307,6 +307,22 @@ describe("the lanes verb", () => {
     ]);
     expect(prompts()["04-prompt.md"]).toBe(built["04-prompt.md"]);
   });
+
+  it("starts over two hosts' copies of one campaign name, each named by its host", () => {
+    const copies = ["m1", "linux"].map((host) => {
+      mkdirSync(join(dir, host, "twin"), { recursive: true });
+      const copy = join(dir, host, "twin", "log.jsonl");
+      writeFileSync(copy, readFileSync(log, "utf8"));
+      return copy;
+    });
+    const twins = join(dir, "twins");
+    execTextSync(capturedExecPath, ["tools/wri/wri.ts", "start", "--log", copies.join(","), "--out", twins], {
+      cwd: REPO,
+    });
+    const instructions = readFileSync(join(twins, "shared-instructions.md"), "utf8");
+    expect(instructions).toContain("| twin@m1 |");
+    expect(instructions).toContain("| twin@linux |");
+  });
 });
 
 describe("the read verb's host line", () => {

@@ -60,7 +60,7 @@ import { type Cap } from "../kernel/reports.ts";
 import { billedParts, ownedBy } from "../kernel/trace.ts";
 import { ended as endedSolves, practiceRan, solvesIn } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
-import { mkdirSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -277,6 +277,15 @@ export async function keepPractised(log: string, id: string, states: string): Pr
     return;
   }
   append(log, "build.checkpoint", { session: id, harness });
+}
+
+/** Keep the notes of session `id`, cut by a stop or a lost process, from its home while the home
+ *  stands, as its own end would have (`keepMemory`). Until 27 October only a session that ended
+ *  itself kept them: a stop released the home with the notes in it, and PR377-m1-air's b-2 opened
+ *  on the starter's (lane 33 of the investigation of 27 October). */
+export function keepCutNotes(log: string, id: string): void {
+  const { home } = sessionDirs(log, id);
+  if (existsSync(home)) keepMemory(home, join(dirname(log), "memory"), id);
 }
 
 /** The released tasks' public parts as `practice/<task>.json` of a Builder's home, laid afresh. A

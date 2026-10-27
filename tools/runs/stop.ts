@@ -14,11 +14,12 @@
  * A stop also releases what the run held on the host: the root of each solve and session its
  * log started and never finished (`unfinished`, `src/kernel/reports.ts`), which only the ended
  * process would have let go. A named run that is not running is released the same way, so a run
- * that was killed, or stopped before this was done, is cleaned up by stopping it again. A keeper
+ * that was killed, or stopped before this was done, is cleaned up by stopping it again. A Builder's
+ * notes are kept from its home first (`keepCutNotes`), as its own end would have. A keeper
  * of the run (`runs keep`) ends with it, but for the one that asked for the stop.
  */
 import { EXAMINE } from "#src/campaign/admission.ts";
-import { sessionDirs, spent } from "#src/builder/session.ts";
+import { keepCutNotes, sessionDirs, spent } from "#src/builder/session.ts";
 import { examinerDirs } from "#src/examiner/shell.ts";
 import { unfinished } from "#src/kernel/trace.ts";
 import { existsSync, rmSync } from "#src/meta/filesystem.ts";
@@ -63,12 +64,12 @@ export function family(table: string, pid: number): number[] {
  * stayed and had to be released by hand (buffer x-1, 2026-10-10). A session that drafts
  * an exam has had one since 11 October.
  */
-export function leftOpen(run: Pick<Run, "path" | "seed">): SolveDirs[] {
+export function leftOpen(run: Pick<Run, "path" | "seed">): Array<SolveDirs & { build?: string }> {
   const events = logEvents(run.path).slice(run.seed === true ? seedCut(dirname(run.path)) : 0);
   return unfinished(events).flatMap(({ of, id }) => {
     if (!isString(id)) return [];
     if (of === "solve") return [solveDirs(id)];
-    if (of === "build") return [sessionDirs(run.path, id)];
+    if (of === "build") return [{ ...sessionDirs(run.path, id), build: id }];
     return of === "exam" || of === "draft" ? [examinerDirs(run.path, id)] : [];
   });
 }
@@ -124,8 +125,9 @@ async function release(run: Run, yes: boolean): Promise<number> {
   );
   if (!yes) return left.length;
   let kept = 0;
-  for (const { root, host } of left) {
+  for (const { root, host, build } of left) {
     try {
+      if (build !== undefined) keepCutNotes(run.path, build);
       await releaseRoot(root);
       rmSync(host, { recursive: true, force: true });
     } catch (error) {

@@ -5,9 +5,9 @@ description: "Put a change on an open stack of Anabasis v2 pull requests, or sta
 
 # Stack a pull request
 
-Open pull requests sit on stacks, each a chain based on `main` that lands alone (`AGENTS.md`,
-section 11), and "the top" below is the end of the stack a change goes on, or `origin/main` for a
-change that starts a stack of its own. Several sessions
+Open pull requests sit on stacks, each a chain based on `main` that lands alone, and one release
+cycle builds one stack (`AGENTS.md`, section 11). "The top" below is the end of that stack, or
+`origin/main` for the cycle's first change and for a stack the operator asks for. Several sessions
 write at once. This skill is the order of operations that keeps a
 change on the stack without losing local work, without touching another session's branch, and
 with every commit able to stand alone.
@@ -45,12 +45,14 @@ reading from the start of the task is a lead, not a fact.
   pull request of your own on the top, whose body opens "Absorbs into #N at the next
   consolidation". Section 10 folds it down and closes the carrier (`republish.ts --absorb`).
   Delete the code the change makes dead in the same commit.
-- **A change that belongs to no open pull request: a new pull request on a top.** Where it
-  builds on an open pull request, or rewrites text one changes, its base is the top branch of that
-  pull request's stack, and it holds that branch's head. Where it depends on nothing open, it
-  starts a stack of its own on `main` and lands alone; once another stack lands first, `land`
-  refuses it until it is replayed onto the new `main`. Never base it on the middle of a stack.
-  Say which in the body.
+- **A change that belongs to no open pull request: a new pull request on the cycle's top.** Its
+  base is the top branch of the stack the current release cycle builds, whether or not it builds on
+  an open pull request, and it holds that branch's head. The cycle's file names that stack; where
+  none does, it is the stack `bun run follow` follows, the longest. The cycle's first change, after
+  a release has landed, starts the stack on `main`. Any other stack of its own on `main` starts only
+  on the operator's word, for a change that has to land before the cycle's stack; it lands alone,
+  and once one of the two lands, `land` refuses the other until it is replayed onto the new `main`.
+  Never base a change on the middle of a stack. Say which in the body.
 - **Another session's pull request is never yours to change.** No commit, no rebase, no force
   push, whatever the fix. Carry the fix as a `fixup!` on the top, as above, or tell the owner.
 - **Skills go on the stack too**, and so does documentation that describes an open pull request,
@@ -210,16 +212,19 @@ GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <sha>~1
 ```
 
 ```sh
-gh pr create --base <parent branch> --head <branch> --title "<title>" --body-file <file> --label importance:I<n>
+gh pr create --base <parent branch> --head <branch> --title "<title>" --body-file <file> --label importance:I<n> --label <category>
 ```
 
 Every pull request carries exactly one importance label, defined in the repository's labels:
 `importance:I0` blocks a release or further operation, `I1` protects comparison validity or prevents
 a serious run failure, `I2` is a bounded functional improvement, and `I3` is reporting, wording or
 convenience. The title carries no "Ix:" prefix; the label replaced it on 25 October. `bun run land`
-refuses a stack in which any pull request has no importance label or more than one, naming each,
-before it gates anything, so `--sanitize` shows such a stack as not ready (`gh pr edit <number>
---add-label importance:I<n>` repairs it). `stack.ts` ends each line in the label, and a
+refuses a stack in which any pull request has no importance label or more than one, or no category
+label, naming each, before it gates anything, so `--sanitize` shows such a stack as not ready
+(`gh pr edit <number> --add-label <label>` repairs it). The categories are the subjects a pull request
+is filed under, mostly the investigation's lane groups: `harness`, `climb`, `comparison`, `solve`,
+`supply`, `verdicts`, `economy`, `log`, `runs`, `landing`, `quality`, `docs` and `misc` (`CATEGORIES`,
+`tools/runtime/land.ts`); `gh label list` gives what each holds, and a pull request may carry several. `stack.ts` ends each line in the label, and a
 consolidation spends its time by it: `I0` and `I1` through commit-r, `I3` folded
 (`references/consolidate.md`, "Spend by importance").
 

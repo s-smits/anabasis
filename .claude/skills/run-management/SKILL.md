@@ -75,7 +75,7 @@ working. It then prefers a machine whose catalogue already holds a campaign of p
 `<pack>-fresh`, and then the fewest live campaigns and simulation seats. This machine's cap is `ANA_RUN_CAP`; each peer's is its `capacity` in
 `ANA_HOSTS`, both 2 where unset. A missing count or catalogue refuses placement. Ties follow
 configuration order, with this machine first. `--host here` selects this machine explicitly;
-`--host <host>` selects a peer, using its name as the suffix unless `--as` names one.
+`--host <host>` selects a peer and adds its name to the suffix, after `--as` where one is named.
 An explicit host selects the destination; a remote receiver rechecks its cap before launching.
 Counts are observations, so launch
 sequentially; they reserve no slot against another launcher.
@@ -163,7 +163,8 @@ A name is the campaign's folder, `.ana/d2/<name>/`, chosen once and never reused
 with a letter or digit, uses only letters, digits, `.`, `_` and `-`, has at most 128 characters
 and contains no `..` (`isSafePathSegment`). `fresh` makes it,
 `<pack>-fresh-<model>[-<suffix>][-r<n>]`. A suffix
-may be given with `--as`; otherwise a remote launch uses its host's configured name. A campaign
+may be given with `--as`; a remote launch adds its host's configured name to it, so one pack
+sent to two hosts opens two names. A campaign
 continued keeps its name. The project (`--project`) groups campaigns for the operator. Write
 the name, the project and why into the prediction ledger before the launch, beside the prediction.
 

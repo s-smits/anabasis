@@ -48,6 +48,7 @@ import { gateAnswers, measuredGate } from "#src/examiner/record.ts";
 import type { writing as Writing } from "#src/examiner/write.ts";
 import type { examineCommand as ExamineCommand } from "#tools/d1b/examine.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
+import { ROOM } from "#src/kernel/compare.ts";
 import { billedBetween, tracesIn } from "#src/kernel/trace.ts";
 import { heldAtGate } from "#src/kernel/task.ts";
 import { existsSync, openSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
@@ -119,6 +120,9 @@ interface Reading {
   /** The solves the reference ran at each gate that solved its draft: `ran`, or the solves it read
    *  where a gate from before one solve at a time (#280) did not say. */
   readonly ran: readonly number[];
+  /** The author's gain by the objective over the reference's best valid answer at each gate that
+   *  measured both (`reference.gap`): a graded loss where held drafts are too few to read. */
+  readonly gaps: readonly number[];
   /** The solver's own turns of each valid gate answer, least, median and most. */
   readonly turns: readonly [number, number, number] | null;
   readonly calls: Readonly<Record<string, number>>;
@@ -174,6 +178,10 @@ export function readingOf(events: readonly LogEvent[], from: number, mentions: r
       return isNumber(count) && count > 0 ? [count] : [];
     }),
     turns: spread(turns),
+    gaps: gates.flatMap(({ reference }) => {
+      const { gap } = asRecord(reference) ?? {};
+      return isNumber(gap) ? [gap] : [];
+    }),
     calls: counted(calls.map(({ tool }) => tool)),
     mentions: Object.fromEntries(
       mentions.map((text) => [
@@ -409,6 +417,17 @@ function compare(args: CommandArgs, seats: readonly string[]): number {
     ["per held", each(perHeld)],
     ["gate solves", each((reading) => reading.ran.reduce((sum, count) => sum + count, 0))],
     ["median turns", each((reading) => reading.turns?.[1] ?? "none")],
+    [
+      "gap >= 1%",
+      each(({ gaps }) => `${String(gaps.filter((gap) => gap >= ROOM).length)} of ${String(gaps.length)}`),
+    ],
+    [
+      "median gap",
+      each(({ gaps }) => {
+        const mid = spread(gaps)?.[1];
+        return mid === undefined ? "none" : `${(mid * 100).toFixed(2)}%`;
+      }),
+    ],
   ];
   const width = Math.max(...rows.flatMap(([, cells]) => cells.map((cell) => cell.length)), 8) + 2;
   if (gates !== null) console.log(`each cut after its first ${plural(gates, "gate")}`);

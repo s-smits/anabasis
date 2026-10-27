@@ -16,7 +16,11 @@
  * read.
  *
  * Without a flag nothing is written to GitHub. `--sanitize` posts each commit's verdict as the
- * status `ana/commit` and stops: that is how a stack shows it is ready. `--merge` posts the same, and
+ * status `ana/commit` and stops. It also posts the check `mergeable` on each pull request's head:
+ * success on every head once every commit passed, failure on the head that holds the failed commit
+ * and on each above it. A check belongs to its commit, so a push leaves the new head without it and
+ * the pull request reads unproved again; a label would outlive the head it was earned on (the
+ * operator, 27 October). That is how a stack shows it is ready. `--merge` posts the same, and
  * also wants `ci.yml` passed on the top's head, since only it proves the Linux isolation on a clean
  * runner. No pull request push starts that run (since 19 October, `ci.yml`); when none exists and
  * `ci.yml` takes `workflow_dispatch`, `--merge` dispatches one before gating, so it runs meanwhile,
@@ -88,6 +92,7 @@ interface Answer {
 }
 
 const COMMIT_CONTEXT = "ana/commit";
+const MERGEABLE_CONTEXT = "mergeable";
 const STACK_CONTEXT = "ana/stack-gate";
 const CI_WORKFLOW = "ci.yml";
 /** ANA_CI_POLL_MS shortens it for the tests that walk a run from queued to completed. */
@@ -428,12 +433,14 @@ async function merge(root: string, target: number, landing: Landing): Promise<bo
   return ended === "merged";
 }
 
+/** The index of the lowest pull request of the landing whose head holds `commit`. */
+const holding = (root: string, landing: Landing, commit: string): number =>
+  landing.pulls.findIndex((pull) => gitSays(root, ["merge-base", "--is-ancestor", commit, pull.headRefOid]));
+
 /** Where the fix for a failed commit goes, and how a second landing finds it. */
 function recipe(root: string, landing: Landing, commit: string): void {
   const at = short(commit);
-  const index = landing.pulls.findIndex((pull) =>
-    gitSays(root, ["merge-base", "--is-ancestor", commit, pull.headRefOid]),
-  );
+  const index = holding(root, landing, commit);
   const holder = landing.pulls[index];
   const name = holder === undefined ? "" : `#${String(holder.number)} (${holder.headRefName})`;
   const above = landing.pulls.slice(index + 1);
@@ -514,6 +521,15 @@ async function main(argv: readonly string[]): Promise<number> {
         if (reach) postStatus(root, commit, COMMIT_CONTEXT, state, description);
       },
     });
+    const marked =
+      failed === null ? landing.pulls : landing.pulls.slice(holding(root, landing, failed.commit));
+    for (const pull of reach ? marked : []) {
+      const [state, description] =
+        failed === null
+          ? ["success", `every commit up to #${String(top.number)}'s head passed bun run land`]
+          : ["failure", `${short(failed.commit)} fails ${failed.step} on its own`];
+      postStatus(root, pull.headRefOid, MERGEABLE_CONTEXT, state, description);
+    }
     if (failed !== null) {
       recipe(root, landing, failed.commit);
       console.error(

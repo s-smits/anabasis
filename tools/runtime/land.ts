@@ -17,8 +17,9 @@
  *
  * Without a flag nothing is written to GitHub. `--sanitize` posts each commit's verdict as the
  * status `ana/commit` and stops. It also posts the check `mergeable` on each pull request's head:
- * success on every head once every commit passed, failure on the head that holds the failed commit
- * and on each above it. A check belongs to its commit, so a push leaves the new head without it and
+ * pending on every head before the first proof, then success on every head once every commit
+ * passed, or failure on the head that holds the failed commit and on each above it, the heads below
+ * it left pending. A head is pending from its push until a landing reads it, rather than unmarked. A check belongs to its commit, so a push leaves the new head without it and
  * the pull request reads unproved again; a label would outlive the head it was earned on (the
  * operator, 27 October). That is how a stack shows it is ready. `--merge` posts the same, and
  * also wants `ci.yml` passed on the top's head, since only it proves the Linux isolation on a clean
@@ -513,6 +514,15 @@ async function main(argv: readonly string[]): Promise<number> {
       `${numbers(landing.pulls)} onto ${landing.trunk} ${short(landing.trunkSha)}: ${plural(proofs.length, "commit")}.`,
     );
     const reach = values.merge || values.sanitize;
+    for (const pull of reach ? landing.pulls : []) {
+      postStatus(
+        root,
+        pull.headRefOid,
+        MERGEABLE_CONTEXT,
+        "pending",
+        "waiting for bun run land to prove every commit up to this head",
+      );
+    }
     const failed = await proveCommits(root, proofs, {
       who: "land",
       jobs,

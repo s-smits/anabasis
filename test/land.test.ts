@@ -196,7 +196,12 @@ describe("bun run land", () => {
       `${lowerDocs} documentation only`,
       `${upper} passed the whole gate on its own checkout`,
     ]);
-    expect(statuses("mergeable")).toEqual([`success ${lowerDocs}`, `success ${upper}`]);
+    expect(statuses("mergeable")).toEqual([
+      `pending ${lowerDocs}`,
+      `pending ${upper}`,
+      `success ${lowerDocs}`,
+      `success ${upper}`,
+    ]);
     expect(writes().filter((line) => !/context=(ana\/commit|mergeable) /u.test(line))).toEqual([]);
     expect(logLines(ghLog).some((line) => line.startsWith("run list"))).toBe(false);
   });
@@ -219,14 +224,19 @@ describe("bun run land", () => {
     const last = result.stderr.trimEnd().split("\n").at(-1) ?? "";
     expect(last).toStartWith(`land: ${short(lower)} FAILS lint ON ITS OWN. Nothing was merged. Log: `);
     expect(statuses("ana/commit")).toEqual([`failure ${lower}`]);
-    expect(statuses("mergeable")).toEqual([`failure ${lowerDocs}`, `failure ${upper}`]);
+    expect(statuses("mergeable")).toEqual([
+      `pending ${lowerDocs}`,
+      `pending ${upper}`,
+      `failure ${lowerDocs}`,
+      `failure ${upper}`,
+    ]);
     expect(statuses("ana/stack-gate")).toEqual([]);
   });
 
-  it("leaves a pull request below the failed one unmarked, and marks the one that holds it", () => {
+  it("leaves a pull request below the failed one pending, and marks the one that holds it", () => {
     const result = runLand(["12", "--sanitize"], { ANA_FAKE_FAIL: `${upper} lint` });
     expect(result.status).toBe(1);
-    expect(statuses("mergeable")).toEqual([`failure ${upper}`]);
+    expect(statuses("mergeable")).toEqual([`pending ${lowerDocs}`, `pending ${upper}`, `failure ${upper}`]);
   });
 
   it("gates commits side by side with --jobs, each on its share of the cores, and the top alone once every one beneath it passed", () => {

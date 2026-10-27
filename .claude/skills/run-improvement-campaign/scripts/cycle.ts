@@ -31,7 +31,7 @@
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
-import { hostsOf } from "#tools/runs/host-config.ts";
+import { centralOf, hostsOf } from "#tools/runs/host-config.ts";
 import { LOG_FILE } from "#src/kernel/log.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { askedScript } from "#tools/runs/hosts.ts";
@@ -146,6 +146,10 @@ async function main(args: CommandArgs): Promise<number> {
   if (args.flag("here")) {
     console.log(capturedJsonStringify(rowsHere(names)));
     return 0;
+  }
+  const central = centralOf();
+  if (central !== null && central !== "here") {
+    console.log(`note: the cycle's files live on ${central}, the central host`);
   }
   const rows = [...rowsHere(names), ...(await rowsAway(names))];
   for (const row of rows) console.log(line(row, kept.includes(row.name)));

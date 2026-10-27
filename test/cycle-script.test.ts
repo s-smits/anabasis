@@ -92,8 +92,9 @@ describe("cycle.ts", () => {
         FAKE_FLEET: JSON.stringify({ [made.host.ssh]: { execute: true, ...peer } }),
         ...extra,
       });
-    const read = ask({ env: { FAKE_MAIN: tree, FAKE_RUN_CLI: "1" } });
+    const read = ask({ env: { FAKE_MAIN: tree, FAKE_RUN_CLI: "1" } }, { ANA_CENTRAL: "runner" });
     expect(read.out).toContain("distant · runner · closed (finished)");
+    expect(read.out).toContain("note: the cycle's files live on runner, the central host");
     expect(read.out).toContain("step: investigate");
     expect(read.code).toBe(0);
     const unread = "step: unread · not found on any host that answered: distant";

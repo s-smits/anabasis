@@ -67,6 +67,15 @@ export function configuredRuntime(host: Host) {
     envFiles: [...new Set([".env", ...(host.envFiles ?? [".env.runs"])].map(rooted))],
   };
 }
+/** The machine whose archive gathers every host's records and holds the cycle's files: `here` on
+ *  that machine and its `ANA_HOSTS` name on the others; unset, each machine reads for itself
+ *  (27 October: the v0.7.4 cycle's folder was first kept on a runner, and moved). */
+export function centralOf(): string | null {
+  const name = runtimeProcess.env.ANA_CENTRAL ?? "";
+  if (name === "") return null;
+  return name === "here" ? name : hostNamed(name).name;
+}
+
 export function hostNamed(name: string | undefined): Host {
   const known = hostsOf();
   const host = known.find((one) => one.name === name);

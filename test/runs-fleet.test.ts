@@ -175,6 +175,16 @@ describe("host execution", () => {
       }).code,
     ).toBe(1);
   });
+
+  it("names the central host only where ANA_HOSTS lists it", () => {
+    const made = fixture();
+    const code =
+      'import { centralOf } from "REPOSITORY/tools/runs/host-config.ts"; console.log(centralOf());';
+    expect(made.run(code, { ANA_CENTRAL: "" }).out).toContain("null");
+    expect(made.run(code, { ANA_CENTRAL: "here" }).out).toContain("here");
+    expect(made.run(code, { ANA_CENTRAL: made.host.name }).out).toContain(made.host.name);
+    expect(made.run(code, { ANA_CENTRAL: "elsewhere" }).code).toBe(1);
+  });
 });
 
 describe("code preparation", () => {

@@ -138,12 +138,14 @@ const BUNDLED_PATH = /^\/\/ .+\.(?:[cm]?[jt]sx?|json)$/gm;
 
 /** A harness's module as its digest reads it: without the path comments, and with the harness's own
  *  directory, which Bun writes out whole wherever a bundled CommonJS file reads `__dirname` or
- *  `__filename`, replaced by one name. Otherwise a harness with such a package had one digest where
- *  it was edited, another where it was frozen and a third where it was kept. */
-function located(module: string, dir: string): string {
+ *  `__filename`, replaced by one name. Its resolved tool tree is read as `.toolchain` under it,
+ *  whether inside or beside it. Otherwise such an import changes the digest on freezing or copying. */
+function located(module: string, dir: string, toolTree: string | null): string {
+  const source =
+    toolTree === null ? module : module.replaceAll(realpathSync(toolTree), join(resolve(dir), TOOL_TREE_DIR));
   const places = [...new Set([realpathSync(dir), resolve(dir)])].sort((a, b) => b.length - a.length);
   return places
-    .reduce((source, place) => source.replaceAll(place, "<harness>"), module)
+    .reduce((bundled, place) => bundled.replaceAll(place, "<harness>"), source)
     .replace(BUNDLED_PATH, "");
 }
 
@@ -192,7 +194,7 @@ export async function openHarness(dir: string): Promise<Harness> {
     kinds,
     toolTree,
     module,
-    digest: hashJsonValue({ module: located(module, dir), spec, guide, tree }),
+    digest: hashJsonValue({ module: located(module, dir, toolTree), spec, guide, tree }),
   };
 }
 

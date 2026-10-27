@@ -5,6 +5,8 @@ import { expect, it } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Type, validateToolArguments } from "@earendil-works/pi-ai";
 import type { SeatTool } from "../src/agent/session.ts";
+import { copyHarness } from "../src/builder/kept.ts";
+import { stagedState } from "../src/builder/tools.ts";
 import {
   chmodSync,
   cpSync,
@@ -185,6 +187,41 @@ it("has one digest wherever it sits, though the bundle names where each file was
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+it.each(["__dirname", "__filename"])(
+  "keeps its digest when a toolchain import uses %s through freezing and handover",
+  async (location) => {
+    const root = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-harness-toolchain-place-")));
+    try {
+      const source = join(root, "source");
+      cpSync(FIXTURE, source, { recursive: true });
+      const tools = join(source, "agent", "tools.ts");
+      writeFileSync(
+        tools,
+        `import location from "../.toolchain/lib.cjs";\nexport const LOCATION = location;\n${readFileSync(tools, "utf8")}`,
+      );
+      const tree = join(source, ".toolchain");
+      mkdirSync(tree);
+      writeFileSync(join(tree, "lib.cjs"), `module.exports = ${location};\n`);
+      const original = await openHarness(source);
+      const states = join(root, "states");
+      const keptTree = join(states, "tree-one");
+      cpSync(tree, keptTree, { recursive: true });
+      const frozen = stagedState(source, states, keptTree, "freezing-");
+      const opened = await openHarness(frozen);
+      expect(opened.module).toContain(keptTree);
+      expect(opened.digest).toBe(original.digest);
+      const handed = join(root, "handover", "harness");
+      copyHarness(frozen, handed);
+      expect((await openHarness(handed)).digest).toBe(original.digest);
+      // Normalising the location must still leave a changed dependency as another harness.
+      writeFileSync(join(handed, ".toolchain", "lib.cjs"), `module.exports = [${location}, 7];\n`);
+      expect((await openHarness(handed)).digest).not.toBe(original.digest);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
 
 it("builds a harness's tools from its own files alone: no macro, no file outside it", async () => {
   const root = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-harness-wall-")));

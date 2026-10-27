@@ -97,6 +97,31 @@ it("prepares each host once for concurrent asks in one process", () => {
   expect(scripts.filter((script) => script.includes("git fetch"))).toHaveLength(1);
 });
 
+it("retries a controller after connectivity returns in the same process", () => {
+  const made = fixture();
+  const retry = String.raw`import { asked } from "REPOSITORY/tools/runs/hosts.ts"; import { readFileSync, writeFileSync } from "REPOSITORY/src/meta/filesystem.ts"; const ssh = process.env.FAKE_SSH!; const online = readFileSync(ssh, "utf8"); writeFileSync(ssh, "#!/bin/sh\nexit 255\n"); console.log(JSON.stringify((await asked(["catalogue"]))[0]?.lines)); writeFileSync(ssh, online); console.log(JSON.stringify((await asked(["catalogue"]))[0]?.lines));`;
+  const result = made.run(retry, { FAKE_SSH: join(made.root, "bin", "ssh") });
+  expect(result.code).toBe(0);
+  const [failed, recovered] = result.out
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  expect(failed).toBeNull();
+  expect(recovered).toEqual(["[]"]);
+});
+
+it("prepares a controller again after its tree is pruned between asks", () => {
+  const made = fixture();
+  const retry =
+    'import { asked } from "REPOSITORY/tools/runs/hosts.ts"; import { rmSync } from "REPOSITORY/src/meta/filesystem.ts"; console.log(JSON.stringify((await asked(["catalogue"]))[0]?.lines)); const tree = process.env.FAKE_GIT! + "/ana-code/" + process.env.FAKE_COMMIT!; rmSync(tree, {recursive: true}); rmSync(tree + ".ready"); console.log(JSON.stringify((await asked(["catalogue"]))[0]?.lines));';
+  const result = made.run(retry, { FAKE_EXECUTE: "1" });
+  expect(result.code).toBe(0);
+  expect(result.out.trim().split("\n")).toEqual(["[]", "[]"]);
+  expect(
+    made.recorded().filter((call) => call.tool === "host-bun" && call.args.includes("install")),
+  ).toHaveLength(2);
+});
+
 it("prunes old controllers by readiness time and preserves active paths and working directories", () => {
   const made = fixture();
   const root = join(made.root, "git", "ana-code");

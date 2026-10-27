@@ -20,7 +20,7 @@ const CONTROLLERS = "ana-code";
 /** A cold Linux controller can need several minutes for its frozen install. */
 const PREPARE_MS = 300_000;
 const warned = new Set<string>();
-/** One preparation a host and commit in a process. On 27 October `wri.ts start` named five
+/** One in-flight preparation a host and commit in a process. On 27 October `wri.ts start` named five
  *  campaigns, each asked every host, and the five preparations on one host raced one `git fetch`
  *  ("cannot lock ref") and one lock, which refused the losers until the wait below. */
 const preparing = new Map<string, Promise<Host | null>>();
@@ -165,7 +165,8 @@ export async function readControllers(hosts: readonly Host[]): Promise<(Host | n
   return await Promise.all(
     hosts.map((host) => {
       const key = `${host.name} ${commit}`;
-      const prepared = preparing.get(key) ?? readController(host, commit);
+      const prepared =
+        preparing.get(key) ?? readController(host, commit).finally(() => preparing.delete(key));
       preparing.set(key, prepared);
       return prepared;
     }),

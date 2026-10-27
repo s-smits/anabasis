@@ -55,8 +55,8 @@ import { declarationsBeforeTheFirstFunctionRule } from "./rules/declarations-bef
  *  so read it as the order things arrived in and nothing more.
  *
  *  Every one of them is registered at `error` in `.oxlintrc.json`, so all of them run
- *  in `bun run lint` and fail it under `--strict` or `ANA_LINT_STRICT=1`, and
- *  `tools/oxlint/simplify.json` declares no rules of its own at all. Each was promoted by passing
+ *  in `bun run lint` and fail it under `--strict` or `ANA_LINT_STRICT=1`; the census runs no rule
+ *  of its own. Each was promoted by passing
  *  the admission test — at every site it reports, does a spelling exist that satisfies every
  *  other rule — and a catcher that could not pass it was retuned until it could, or taken out;
  *  none was baselined per file.

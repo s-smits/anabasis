@@ -148,7 +148,7 @@ const UI_CHECKS = [
 ] as const;
 /** A line a pass prints for its caller to repeat once the pass has passed (`proveCommits`). */
 const NOTE = "gate: note: ";
-const CENSUS = /^Simplify census — (.*)$/mu;
+const CENSUS = /^Simplify census: (.*)$/mu;
 const GATE = join(import.meta.dir, "gate.ts");
 const PROVED = {
   checks: "every step but the tests passed on its own checkout",

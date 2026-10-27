@@ -199,8 +199,9 @@ ones, whose sites a program could find, is named under "For the census" with its
 argument. A program could find them where the syntax shows them (a catcher, HABITS 12.4 and 12.5)
 or where the whole tree does (a `tree-*.ts` scan, 12.9).
 
-It goes in as the census's own shapes went. First it reports in `bun run simplify` (staged in
-`tools/oxlint/simplify.json`, or as a scan in `tree-findings.ts`), measured over the tree. It is
+It goes in as the census's own shapes went. First it reports, measured over the tree: a per-file
+rule as a warning in a strict lint run, a whole-tree shape as a scan in `tree-findings.ts`, which
+`bun run simplify` prints. It is
 promoted to `.oxlintrc.json` only once its sites are at zero and it passes the admission test: at
 every site, some spelling satisfies every other rule. A heuristic reports and never blocks, since
 a false positive costs more than a miss (operator, 1 October). The shapes of section 2 that need a

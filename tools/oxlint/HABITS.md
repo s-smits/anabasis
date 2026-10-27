@@ -340,14 +340,15 @@ change, as 12.2 allows.
 
 ## 12.9 The whole-tree scans
 
-`bun run simplify` prints shapes that span files (`tools/oxlint/tree-findings.ts`). They report and
+`bun run simplify` prints shapes that span files (`tools/oxlint/tree-findings.ts`, with the identity
+and copied-block scans beside it). They report and
 never block; `bun run commit:check` prints the ones on your changed lines. Treat each row as a
 question, repair the true ones, and answer a false one in the ledger as `tree/<kind>`.
 
 | Kind | Repair |
 | --- | --- |
 | `orphan-module`, `test-only-module`, `test-only-export` | Delete the code with its test, or wire it into a live path |
-| `unread-field`, `unread-forward`, `unproduced-set-member` | Delete it, with the branch that handled it |
+| `unread-field`, `unread-forward` | Delete it, with the branch that handled it |
 | `single-reader-export` | Move the one export into its one reader |
 | `copied-block` | One owner for the block |
 | `identity-without-owner` | One constant for the name |

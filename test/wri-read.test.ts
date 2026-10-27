@@ -879,11 +879,16 @@ describe("the reader of what each Examiner session's tasks came to", () => {
     put(COMPARISON_STARTED, { ...terms, solves: 1, level: 0.1, tasks: [] });
     put(REPORTED, { ...REPORT, ...terms, reading: "no-step" });
     wrote("x-2", "v2");
-    expect(
+    const outcomes = () =>
       overview(log).triggers.flatMap((trigger) =>
         trigger.name === "OUTCOMES BY SESSION" ? [trigger.detail] : [],
-      ),
-    ).toEqual(["x-1, opened after 0 reports: not compared 1; x-2, opened after 1 report: not compared 1"]);
+      );
+    expect(outcomes()).toEqual([
+      "held, by hp: x-1, opened after 0 reports: not compared 1; x-2, opened after 1 report: not compared 1",
+    ]);
+    // A promotion changes the reference the outcomes are read under, and the line says so.
+    put("harness.promoted", { harness: "hc" });
+    expect(outcomes()[0]).toStartWith("held, by hc: ");
   });
 });
 

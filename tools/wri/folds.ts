@@ -23,7 +23,7 @@ import { unadmitted } from "#src/kernel/acceptance.ts";
 import { type Condition, conditionsOf } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { unsolved as noneAnswered } from "#src/kernel/compare.ts";
-import { lastReports, poolOf, pairsReported } from "#src/kernel/reports.ts";
+import { lastReports, poolOf, pairsReported, referenceOf } from "#src/kernel/reports.ts";
 import { billedAll, type Traced, traced, tracesIn } from "#src/kernel/trace.ts";
 import { examinerSessions, type Judged, refusedBy, solvesIn, verdictsOf } from "#src/kernel/solves.ts";
 import { heldAtGate, taskSets } from "#src/kernel/task.ts";
@@ -659,11 +659,11 @@ export function taskTriggers(log: Index): Trigger[] {
     ),
   );
   const unanswered = [...scored.values()].filter(Boolean).length;
-  const { outcomes, awaiting } = poolOf(log.events);
+  const [{ outcomes, awaiting }, by] = [poolOf(log.events), short(referenceOf(log.events) ?? "none")];
   const done = log.solves.filter((solve) => solve.side === TEST && solve.outcome === "pass");
   const quick = done.filter((solve) => solve.seconds < solve.wallSeconds * SMALL_WALL_SHARE);
   const sequences = new Set(quick.map((solve) => solve.calls.join(">"))).size;
-  // Each Examiner session's held-out tasks by the log's end, and the reports its opening came after.
+  // Each Examiner session's tasks still held at the end, under the reference then, and the reports before it.
   const bySession = Map.groupBy(proposed, (data) => text(data.session));
   const heard = [...bySession].flatMap(([session, tasks]) => {
     const said = countBy(
@@ -706,6 +706,6 @@ export function taskTriggers(log: Index): Trigger[] {
           ),
         ]
       : []),
-    ...(heard.length > 0 ? [fired("OUTCOMES BY SESSION", heard.join("; "))] : []),
+    ...(heard.length > 0 ? [fired("OUTCOMES BY SESSION", `held, by ${by}: ${heard.join("; ")}`)] : []),
   ];
 }

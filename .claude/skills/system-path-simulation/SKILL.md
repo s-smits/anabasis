@@ -27,7 +27,7 @@ reads its later tasks and answers from there (`draftedSource`, `tools/runs/rehea
 | The real run | everything a script cannot say | hours, tens of dollars | run-management, then `bun run runs pulse` |
 | Before and after | whether a change moves what its pull request says, and nothing else, against the commit without it | twice the case it wraps | [before-after](cases/before-after.md) |
 | The open stack | which of a stack's changes hold with a real model before it lands, while its other fixes go on | one live seat a change, one after the other | [stack](cases/stack.md), `scripts/referee-seat.ts` |
-| Optimise by simulation | whether a prompt or a term moves one count a live seat produces, read with a graded loss beside it and tuned in rounds of arms | two seats a round, a few rounds | [optimize](cases/optimize.md), `live-seat.ts prompt`, `compare`, `stop` |
+| Optimise by simulation | whether a prompt or a term moves one count a live seat produces, read with a graded loss beside it and tuned in rounds of arms | two seats a round, a few rounds | [optimize](cases/optimize.md), `live-seat.ts prompt`, `compare`, `pairs`, `calls`, `stop` |
 
 A cheaper case that answers the question cancels every dearer one. Say which case you stopped at,
 and why the next was not needed.

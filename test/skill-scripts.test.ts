@@ -7,7 +7,12 @@ import { gitText } from "#src/meta/git.ts";
 import { bundle } from "#skills/oracle-handover/scripts/bundle.ts";
 import { follow, type NativeStack, nativeTop } from "#skills/stack-pr/scripts/follow.ts";
 import { pairLines } from "#skills/compare-systems/scripts/systems.ts";
-import { newsOf, readingOf, told as seatTold } from "#skills/system-path-simulation/scripts/live-seat.ts";
+import {
+  censusOf,
+  newsOf,
+  readingOf,
+  told as seatTold,
+} from "#skills/system-path-simulation/scripts/live-seat.ts";
 import { pairs, planConsolidation, pushArgs, republish } from "#skills/stack-pr/scripts/republish.ts";
 import { chains, told as stackTold } from "#skills/stack-pr/scripts/stack.ts";
 import type { Pull } from "#tools/runtime/land.ts";
@@ -18,13 +23,14 @@ import {
   mkdtempSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "../src/meta/subprocess.ts";
 import { capturedJsonStringify } from "../src/meta/json-runtime.ts";
-import { read } from "../src/kernel/log.ts";
+import { LOG_FILE, read } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
 import { ranWith, receipts, sources } from "../tools/runs/receipt.ts";
@@ -621,6 +627,112 @@ describe("a live seat's reading", () => {
     const stopped = runSync([capturedExecPath, script, "stop", "--seat", late]);
     expect(stopped.exitCode).not.toBe(0);
     expect(decodeOutput(stopped.stderr)).toContain("no process group running on this host");
+  });
+
+  it("reads pairs at the shorter arm's gates, signs each measure, and refuses a pair of two seats or two cuts", () => {
+    const script = join(import.meta.dir, "..", ".claude/skills/system-path-simulation/scripts/live-seat.ts");
+    const head = readFileSync(log, "utf8").split("\n").slice(0, 3);
+    const seed = (name: string, lines: readonly string[], events = 3) => {
+      const folder = join(root, "pairs", ".ana", "d2", name);
+      mkdirSync(folder, { recursive: true });
+      writeFileSync(join(folder, LOG_FILE), `${lines.join("\n")}\n`);
+      writeFileSync(join(folder, "seed.json"), JSON.stringify({ from: "/runs/job", events }));
+    };
+    const seat = (prefix: string, name: string, examiner: string) => {
+      const command = ["tools/d1b/examine.ts", "--examiner", examiner, "--examiner-effort", "high"];
+      writeFileSync(
+        join(root, `${prefix}.json`),
+        JSON.stringify({ tree: join(root, "pairs"), name, commit: prefix, command, from: 3, pid: null }),
+      );
+      return join(root, prefix);
+    };
+    seed("sim-control", readFileSync(log, "utf8").trimEnd().split("\n"));
+    seed("sim-arm", [
+      ...head,
+      gate("passed", { valid: 1, solves: 3, gap: 0.05 }),
+      gate("passed", { valid: 0, solves: 3 }, { proved: true }),
+    ]);
+    seed("sim-other-cut", head, 2);
+    const control = seat("p-control", "sim-control", "openai-codex/gpt-6.1-sol");
+    const arm = seat("p-arm", "sim-arm", "openai-codex/gpt-6.1-sol");
+    const result = runSync([capturedExecPath, script, "pairs", `${control},${arm}`]);
+    expect(result.exitCode).toBe(0);
+    const out = decodeOutput(result.stdout);
+    // Two gates each: the control refused an every and a some, the arm held a some and a proved none.
+    expect(out).toMatch(
+      /^p-control,p-arm\s+openai-codex\/gpt-6\.1-sol high\s+2\s+0 \/ 2\s+1 \/ 2\s+0 \/ 1\s/mu,
+    );
+    expect(out).toMatch(/^\s+held\s+more in 1, fewer in 0, the same in 0$/mu);
+    expect(out).toMatch(/^\s+median turns\s+more in 0, fewer in 0, the same in 0$/mu);
+    const opus = seat("p-opus", "sim-arm", "claude/claude-opus-5-5");
+    const models = runSync([capturedExecPath, script, "pairs", `${control},${opus}`]);
+    expect(models.exitCode).not.toBe(0);
+    expect(decodeOutput(models.stderr)).toContain("claude/claude-opus-5-5");
+    const cuts = runSync([
+      capturedExecPath,
+      script,
+      "pairs",
+      `${control},${seat("p-cut", "sim-other-cut", "openai-codex/gpt-6.1-sol")}`,
+    ]);
+    expect(cuts.exitCode).not.toBe(0);
+    expect(decodeOutput(cuts.stderr)).toContain("at event 2");
+  });
+
+  it("reads a seed's log from its cut, and refuses to seat a seed whose links point at nothing", () => {
+    const script = join(import.meta.dir, "..", ".claude/skills/system-path-simulation/scripts/live-seat.ts");
+    const folder = join(root, "cut", ".ana", "d2", "sim-cut");
+    mkdirSync(join(folder, "states", "h"), { recursive: true });
+    writeFileSync(join(folder, LOG_FILE), readFileSync(log, "utf8"));
+    writeFileSync(join(folder, "seed.json"), JSON.stringify({ from: "/runs/job", events: 3 }));
+    const reading = runSync([capturedExecPath, script, "read", "--log", join(folder, LOG_FILE), "--json"]);
+    expect(reading.exitCode).toBe(0);
+    expect(decodeOutput(reading.stdout)).toContain('"sessions": [\n    "x-2"\n  ]');
+    expect(runSync([capturedExecPath, script, "read", "--log", log]).exitCode).not.toBe(0);
+    symlinkSync("../nowhere", join(folder, "states", "h", ".toolchain"));
+    const flags = ["--tree", join(root, "cut"), "--name", "sim-cut", "--out", join(root, "cut-seat")];
+    const started = runSync([
+      capturedExecPath,
+      script,
+      "start",
+      ...flags,
+      "--cap",
+      "1",
+      "--minutes",
+      "1",
+      "--",
+      "x.ts",
+    ]);
+    expect(started.exitCode).not.toBe(0);
+    expect(decodeOutput(started.stderr)).toContain(join(folder, "states", "h", ".toolchain"));
+    expect(existsSync(join(root, "cut-seat.json"))).toBe(false);
+  });
+
+  it("counts each Examiner call once across copies of a log, its failures by the line that names them", () => {
+    const call = (tool: string, extra: JsonObject = {}) =>
+      line(1, "exam.call", { session: "x-1", tool, args: {}, isError: false, text: "", ...extra });
+    const events = [
+      line(0, "exam.started", { session: "x-1" }),
+      call("bash", {
+        isError: true,
+        text: "out\nModuleNotFoundError: No module named 'scipy'\n\nTurn 3 of 200; 1 of 240 minutes used.\nCommand exited with code 1",
+      }),
+      call("finish"),
+      call("read_example", {
+        isError: true,
+        text: "x-1-006 is not one of the tasks: ex-001\n\nTurn 9 of 200",
+      }),
+      call("finish"),
+    ].map((each, index) => ({ ...JSON.parse(each), at: at(index) }));
+    const census = censusOf([events, events.slice(0, 4)]);
+    expect(census.logs).toBe(2);
+    expect(census.sessions).toBe(1);
+    expect(census.calls).toStrictEqual({ bash: 1, finish: 2, read_example: 1 });
+    expect(census.failed).toStrictEqual({ bash: 1, read_example: 1 });
+    expect(Object.keys(census.kinds).toSorted()).toStrictEqual([
+      "bash: ModuleNotFoundError: No module named 'scipy'",
+      "read_example: x-N-N is not one of the tasks: ex-N",
+    ]);
+    expect(census.finishes).toStrictEqual([2, 1]);
   });
 
   it("seats the Referee only on a seed, before it opens any campaign", () => {

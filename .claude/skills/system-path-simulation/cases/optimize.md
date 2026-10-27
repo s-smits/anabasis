@@ -31,6 +31,11 @@ the change must leave where they were. Write all three in the ledger (step 8) be
 | Referee | rulings that agree with a recorded hand label | evidence refusals per ruling | rulings refused for their evidence |
 | Builder | practice solves before its first edit, edits that reach a comparison | practice solves that fail on the same check twice | dollars per session |
 
+A measure the change moves is no graded loss unless it moves with the count. In round 8 of
+27 October one sentence of the opening moved the Opus Examiner's drafts to tasks the reference took
+longer on, its median gate turns from 2 to 6, while its holds fell from 14 to 10 at 14 gates: every
+one of the 28 gates was valid in every reference solve, and longer for the reference was not room.
+
 Size each arm from the base rate the survey (step 2) reads: enough gates that the prediction's
 difference is two events or more, or a graded loss whose spread on the control is known.
 
@@ -39,7 +44,10 @@ difference is two events or more, or a graded loss whose spread on the control i
 Survey before seeding. For each campaign that stood in the position, read the stretch the seat
 wrote there (`live-seat.ts read --log <name> --from <event>`), classify every attempt by its
 outcome (for the Examiner, each gate by its word and the sign and size of its gap), and keep the
-positions where the recorded count was poor.
+positions where the recorded count was poor. Without `--from`, `read --log` on a seed's log starts
+at the seed's cut (`seed.json`'s `events`): the events before it are the source campaign's, and a
+one-off read of a seed that counted its gates from the top mixed the source's history into the
+seat's.
 
 A position is closed only on proof that nothing can open it, and a seat's failures there are no
 such proof. Look for a **positive deviant** first: another session, another model or a later
@@ -78,6 +86,14 @@ any edit. Three questions find most defects:
 - **Which failure does every arm repeat?** A call that fails the same way in every arm (a wrong
   path, a refused argument) is a fact the prompt or the tool states wrongly. Its fix is economy, it
   confounds nothing, and it can ride with any round.
+
+  `live-seat.ts calls <log or campaign folder>...` is that census over any number of logs: every
+  Examiner call once, however many seeds copied it, the failed ones by tool and by the line that
+  names the error, and the `finish` calls the session went on after. On 28 October, over the 213
+  campaign logs that the scratch census of 27 October read, it counted 42,146 calls, as that census had; among
+  them 31 failed `read_example` and 23 failed `finish` calls, 217 of 418 finishes the session went
+  on after, and 65 `cat reference-harness/agent/BUILT_AGENTS.md` that found no file. Run it on the arms' seeds
+  after a round too: a kind that grows in one arm is the change's side effect.
 
 Where the questions outrun one session, launch read-only research sessions
 ([codex-gpt-swarm](../../codex-gpt-swarm/SKILL.md), which search the web by default): one on the
@@ -118,6 +134,11 @@ mean. This step costs nothing, so repeat it after every edit.
   candidate edits can run at once, each its own arm against one shared control. Both save hours,
   and both mean the arms started at different times under different load: read them at equal
   gates (step 6), never at equal minutes, and say in the ledger when each started.
+- **A seed on another host is seeded there.** `bun run runs seed --from <campaign> --name <name>`
+  on that host fetches the source across `ANA_HOSTS` and cuts it in place. A seed copied by hand
+  keeps its links as links: on 27 October two seats on another host crashed on a missing file
+  after `rsync -a`, and `rsync -aL` worked. `start` refuses a seed whose `checks/`, `exams/` or
+  `states/` hold a link that points at nothing, and names the first.
 - **A host with room.** Each arm's gate runs the reference's solves, three to a draft, and they wait
   on the host's load as a campaign's do (`campaign.waited`). Read `bun run runs hosts --health`
   and seat where the load leaves the most cores free; never pass `--loaded`.
@@ -142,6 +163,22 @@ named, or when one arm's ending is certain. Then end the arms with `live-seat.ts
 <prefix>`, which ends the group and lets `start` print its reading, instead of paying for gates
 that cannot change the round's answer.
 
+A round of several pairs reads them together:
+
+```sh
+bun .claude/skills/system-path-simulation/scripts/live-seat.ts pairs <control>,<arm> <control>,<arm> ... [--gates N]
+```
+
+`pairs` reads each pair at the shorter arm's count of gates (or N, where both reached it), one row
+a pair: the drafts held, the gates that left the reference room on validity (`some` and `none,
+proved`), the gates where the author's answer beat the reference's best by the room floor
+(`gap >= 1%`), the median turns of the reference's valid gate answers, and dollars per gate, each as
+control / arm. It refuses a pair whose two seats differ in the Examiner, the Referee or their
+efforts, or whose seeds were cut from different campaigns or at different events, since then the
+tree is not the one variable. Under the rows, for each Examiner model apart, it counts the pairs in
+which the arm did more, fewer or the same on each measure, and sums dollars per gate on each side:
+the guard of step 1 and the sign of step 7, read without the hand table round 8 needed.
+
 Before reading the counts, read who ran: the arm's commit in `compare`, and, for a research
 session or a seat on another provider, the model and effort its own records name.
 
@@ -149,7 +186,10 @@ session or a seat on another provider, the model and effort its own records name
 
 A single round reads one draw an arm. Where several rounds or seeds compared the same pair of
 prompts, read them together: count the pairs in which the after arm did better on the count or the
-graded loss, and the pairs in which it did worse. Five of five pairs one way is the least that a
+graded loss, and the pairs in which it did worse (`pairs` prints both, with the ties apart, and a
+tie counts against a prediction of "more in at least 4 of 5"). Pool only pairs of one Examiner model
+and effort: the models hold and refuse at different rates, so a GPT pair and an Opus pair in one
+sign measure the models as much as the change. Five of five pairs one way is the least that a
 sign test reads at 0.05. Report the count of pairs with each result, never a sum of holds over
 seeds that gated at different paces.
 

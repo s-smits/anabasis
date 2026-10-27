@@ -71,6 +71,15 @@ bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat <scra
   sim-<what> -- tools/d1b/examine.ts <its flags>` prints what that Examiner session would be told,
   composed by the tree's own code, and seats nothing. All three serve rounds of arms
   ([optimize](optimize.md)).
+- `compare <prefix>...` sets seats' counts side by side, each cut at `--gates N`; `pairs
+  <control>,<arm>...` reads a round of pairs at equal gates and signs each measure for each Examiner
+  model apart; `calls <log or folder>...` counts the Examiner's calls and failures over any logs
+  ([optimize](optimize.md), steps 3, 6 and 7).
+- `start` refuses a seed whose `checks/`, `exams/` or `states/` hold a link to nothing, as a seed
+  copied to another host with `rsync -a` does. Seed on the host that seats it (`bun run runs seed
+  --from <campaign>` fetches the source), or copy with `rsync -aL`.
+- `read --log` without `--from` on a seed's log reads from the seed's cut, never from its source's
+  history.
 - `start` uses `capturedExecPath`, the Bun that runs it, and sets `RUN_REMOTE=0` for the seat.
   Its seed and selected login stay on the local runner.
 

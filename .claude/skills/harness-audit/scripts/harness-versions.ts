@@ -155,6 +155,10 @@ function madeOf(events: readonly LogEvent[], digest: string, starter: string) {
       parent: version.parent,
     };
   }
+  const imported = events.find(
+    ({ kind, data }) => kind === "harness.imported" && data.harness === digest,
+  )?.data;
+  if (imported !== undefined) return { made: `imported from ${recorded(imported.from)}`, parent: null };
   // A Builder that leads its campaign freezes a harness with `build.checkpoint` and no parent: its
   // parent is the session's checkpoint before it, or what the session began from. Until 27 October
   // this read only `harness.version`, and every harness compared in a led campaign read as made by
@@ -168,10 +172,6 @@ function madeOf(events: readonly LogEvent[], digest: string, starter: string) {
   if (isString(parent)) {
     return { made: `checkpoint of session ${recorded(session)} from ${short(parent)}`, parent };
   }
-  const imported = events.find(
-    ({ kind, data }) => kind === "harness.imported" && data.harness === digest,
-  )?.data;
-  if (imported !== undefined) return { made: `imported from ${recorded(imported.from)}`, parent: null };
   if (digest === starter) {
     return { made: "the Starter Built Harness as this checkout writes it", parent: null };
   }

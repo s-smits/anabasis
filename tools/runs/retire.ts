@@ -32,11 +32,12 @@
  * thirteen `anabasis-v2` trees here, from before v2 took this repository over, held 64 campaign
  * logs that no verb lists.
  *
- * Every configured host then sweeps its own originals. Since 22 October its records are refreshed
- * through snapshots.ts instead of a separate archive transfer. Readers fetch artefacts when
- * needed; originals remain whole on their owning machine. Record-only transfers avoid the
- * case-sensitive toolchain names a Mac cannot hold. Without --yes it describes both local and
- * remote retirement and moves no campaign.
+ * Every host sweeps its own originals with its own daily job, and this one then refreshes each
+ * configured host's records through snapshots.ts. Until 27 October it ran `retire` on every host
+ * over ssh, so no host was swept on a night the machine that asked was asleep. Readers fetch
+ * artefacts when needed; originals remain whole on their owning machine. Record-only transfers
+ * avoid the case-sensitive toolchain names a Mac cannot hold. Without --yes it describes the sweep
+ * and moves no campaign.
  *
  * Until 20 October this was an operator's script outside the repository, run once a day: it moved a
  * retired tree's campaigns into the main worktree's `.ana/d2`, where every verb took them for runs
@@ -51,7 +52,6 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { controllersOf } from "./code.ts";
 import { hostsOf } from "./host-config.ts";
-import { verbOn } from "./hosts.ts";
 import { syncRuns } from "./snapshots.ts";
 import { archived, archiveOf, HERE, keepers, processes, runs, writers } from "./registry.ts";
 
@@ -177,10 +177,7 @@ export async function retire(args: readonly string[]): Promise<void> {
   );
   retireTrees(sweep, archiveIdle(sweep));
   for (const host of hostsOf()) {
-    console.log(`── ${host.name}`);
     try {
-      const code = await verbOn(host, ["retire", "--days", values.days, ...(sweep.yes ? ["--yes"] : [])]);
-      if (code !== 0) throw new Error(`retire there ended with exit ${String(code)}`);
       say(sweep, `${host.name}: its campaigns' records refreshed into ${archiveOf(sweep.main, host.name)}`);
       if (sweep.yes) await syncRuns([], { from: host.name, depth: "record" });
     } catch (error) {

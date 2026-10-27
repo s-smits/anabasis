@@ -48,7 +48,7 @@ reading from the start of the task is a lead, not a fact.
 - **A change that belongs to no open pull request: a new pull request on the cycle's top.** Its
   base is the top branch of the stack the current release cycle builds, whether or not it builds on
   an open pull request, and it holds that branch's head. The cycle's file names that stack; where
-  none does, it is the stack `bun run follow` follows, the longest. The cycle's first change, after
+  none does, it is the stack `bun run follow` follows, the one that holds the oldest open pull request. The cycle's first change, after
   a release has landed, starts the stack on `main`. Any other stack of its own on `main` starts only
   on the operator's word, for a change that has to land before the cycle's stack; it lands alone,
   and once one of the two lands, `land` refuses the other until it is replayed onto the new `main`.
@@ -312,6 +312,7 @@ bun run land -- <top> --sanitize      # and post each commit's verdict as ana/co
 bun run land -- <top> --merge         # and wait for ci.yml, post ana/stack-gate, and merge
 bun run land -- <pr> --auto --merge   # land the top above <pr>, and follow a new top stacked meanwhile
 bun run land -- --merge               # the same, for the stack that holds the oldest stacked pull request
+bun run land -- <top> --merge --alone # merge beside another chain on main, on the operator's word; replay that chain after
 ```
 
 GitHub enforces this. Since 25 October the repository allows merge commits only, with squash,

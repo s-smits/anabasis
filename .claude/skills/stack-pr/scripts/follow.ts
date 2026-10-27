@@ -6,8 +6,11 @@
  *   bun run follow
  *
  * The top is the last pull request of GitHub's open native stack (`gh api .../stacks`), or, where
- * GitHub holds none, the end of the longest chain of bases (`stack.ts`). The checkout lands on
- * `stack-pr<top>`, tracking the top's branch, and an earlier `stack-pr<N>` branch is deleted. On
+ * GitHub holds none, the end of a chain of bases (`stack.ts`). Of several open stacks it follows
+ * the one that holds the oldest open pull request and leaves the later ones alone, as `bun run
+ * land` lands that one first (operator, 27 October). Until then it took the stack with the most
+ * open pull requests, so a later stack that grew longer took the checkout off the cycle's stack.
+ * The checkout lands on `stack-pr<top>`, tracking the top's branch, and an earlier `stack-pr<N>` branch is deleted. On
  * 18 October the main checkout sat on `stack-pr197` after the stack was restacked onto a newer
  * main and grew to #199, four commits ahead and six behind, where a fast-forward no longer reaches.
  *
@@ -53,24 +56,28 @@ export interface Top {
 
 const STACK_BRANCH = /^stack-pr\d+$/;
 
-/** The top of the open native stack holding the most open pull requests, the lower number of two
- *  as long, or undefined where GitHub holds no open one. */
+/** The top of the open native stack that holds the oldest open pull request, or undefined where
+ *  GitHub holds no open one. */
 export function nativeTop(stacks: readonly NativeStack[]): Top | undefined {
-  const longest = stacks
-    .flatMap((stack) =>
-      stack.open ? [{ stack, open: stack.pull_requests.filter((pull) => pull.state === "open") }] : [],
-    )
-    .toSorted((a, b) => b.open.length - a.open.length || a.stack.number - b.stack.number)[0];
-  const top = longest?.open.at(-1);
-  if (longest === undefined || top === undefined) return undefined;
-  return { number: top.number, branch: top.head.ref, pulls: longest.open.map((pull) => pull.number) };
+  const oldest = stacks
+    .flatMap((stack) => {
+      const open = stack.pull_requests.filter((pull) => pull.state === "open");
+      return stack.open && open.length > 0
+        ? [{ open, first: Math.min(...open.map((pull) => pull.number)) }]
+        : [];
+    })
+    .toSorted((a, b) => a.first - b.first)[0];
+  const top = oldest?.open.at(-1);
+  if (oldest === undefined || top === undefined) return undefined;
+  return { number: top.number, branch: top.head.ref, pulls: oldest.open.map((pull) => pull.number) };
 }
 
 function topNow(root: string): Top | undefined {
   const stacks = parseJsonAs<NativeStack[]>(ghOrThrow(root, ["api", STACKS]));
   const native = nativeTop(stacks);
   if (native !== undefined) return native;
-  const line = chains(openPulls(root)).stacks[0] ?? [];
+  const line =
+    chains(openPulls(root)).stacks.toSorted((a, b) => (a[0]?.number ?? 0) - (b[0]?.number ?? 0))[0] ?? [];
   const top = line.at(-1);
   if (top === undefined) return undefined;
   return { number: top.number, branch: top.headRefName, pulls: line.map((pull) => pull.number) };

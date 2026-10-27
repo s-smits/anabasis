@@ -115,7 +115,7 @@ describe("following the stack's top", () => {
     git(co, "switch", "-q", "--track", "-c", "stack-pr1", "origin/claude/one");
   };
 
-  it("takes the last open pull request of the longest open native stack", () => {
+  it("takes the last open pull request of the open native stack that holds the oldest one", () => {
     const stacks = [
       native(150, false, [
         [140, "old", "closed"],
@@ -127,9 +127,18 @@ describe("following the stack's top", () => {
         [194, "b", "open"],
         [199, "c", "open"],
       ]),
-      native(205, true, [[198, "side", "open"]]),
+      native(205, true, [
+        [190, "first", "open"],
+        [196, "second", "open"],
+      ]),
+      native(208, true, [[180, "gone", "closed"]]),
     ];
-    expect(nativeTop(stacks)).toStrictEqual({ number: 199, branch: "c", pulls: [193, 194, 199] });
+    expect(nativeTop(stacks)).toStrictEqual({ number: 196, branch: "second", pulls: [190, 196] });
+    expect(nativeTop(stacks.filter((stack) => stack.number !== 205))).toStrictEqual({
+      number: 199,
+      branch: "c",
+      pulls: [193, 194, 199],
+    });
     expect(nativeTop(stacks.filter((stack) => !stack.open))).toBeUndefined();
   });
 

@@ -2,7 +2,7 @@
  * Lands a pull request, with every open one beneath it, on main, after proving each commit the
  * landing would publish where it sits.
  *
- *   bun run land -- [<pull request>] [--auto] [--sanitize | --merge] [--jobs N]
+ *   bun run land -- [<pull request>] [--auto] [--sanitize | --merge [--alone]] [--jobs N]
  *
  * `--auto` follows the top: it lands the top of the longest chain above the pull request named, and
  * after the proof, and again after `ci.yml` before a merge, it reads the chain again and lands its
@@ -54,7 +54,8 @@
  * head, and every pull request on it would have to be replayed before it could land. On 22 October
  * #343 merged alone beside the chain #338 to #352, which then needed 26 commits replayed, three of
  * them by hand, before it could land. A lone pull request beside the landing is cheap to replay and
- * is left alone.
+ * is left alone. `--alone` merges anyway, on the operator's word, and that chain is replayed after
+ * (operator, 27 October).
  *
  * Every pull request of the landing carries exactly one importance label, `importance:I0` to
  * `importance:I3`, which the operator ranks the stack by; since 25 October a title carries no "Ix:"
@@ -104,6 +105,7 @@ interface Mode {
   readonly merge: boolean;
   readonly sanitize: boolean;
   readonly auto: boolean;
+  readonly alone: boolean;
   readonly jobs: number;
 }
 
@@ -143,7 +145,7 @@ const CATEGORIES = new Set([
   "docs",
   "misc",
 ]);
-const USAGE = "usage: bun run land -- [<pull request>] [--auto] [--sanitize | --merge] [--jobs N]";
+const USAGE = "usage: bun run land -- [<pull request>] [--auto] [--sanitize | --merge [--alone]] [--jobs N]";
 
 class Refusal extends Error {}
 
@@ -546,11 +548,11 @@ async function landTo(root: string, target: number, mode: Mode): Promise<number 
   // SAFETY: readLanding's chain ends with the named pull request.
   const top = landing.pulls.at(-1) as Pull;
   const [chain] = landing.beside;
-  if (mode.merge && chain !== undefined) {
+  if (mode.merge && !mode.alone && chain !== undefined) {
     throw new Refusal(
       `#${String(chain.number)} (${chain.headRefName}) starts another chain on ${landing.trunk}, which this merge ` +
         `would leave short of ${landing.trunk}'s new head, so that every pull request on it has to be replayed. ` +
-        `Put ${numbers(landing.pulls)} on that chain's top, or land that chain first.`,
+        `Put ${numbers(landing.pulls)} on that chain's top, land that chain first, or name --alone to merge it anyway.`,
     );
   }
   if (mode.merge) {
@@ -644,6 +646,7 @@ async function main(argv: readonly string[]): Promise<number> {
       merge: { type: "boolean", default: false },
       sanitize: { type: "boolean", default: false },
       auto: { type: "boolean", default: false },
+      alone: { type: "boolean", default: false },
       jobs: { type: "string", default: "1" },
     },
     allowPositionals: true,
@@ -660,7 +663,13 @@ async function main(argv: readonly string[]): Promise<number> {
     return 2;
   }
   const root = git(runtimeProcess.cwd(), ["rev-parse", "--show-toplevel"]);
-  const mode = { merge: values.merge, sanitize: values.sanitize, auto: values.auto || named === null, jobs };
+  const mode = {
+    merge: values.merge,
+    sanitize: values.sanitize,
+    auto: values.auto || named === null,
+    alone: values.alone,
+    jobs,
+  };
   try {
     let target = named ?? oldestStack(root);
     for (;;) {

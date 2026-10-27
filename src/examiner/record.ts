@@ -177,6 +177,7 @@ export function heard(
     [...last].flatMap(([version, { data, at }]) => (at > since ? [[version, data] as const] : [])),
   );
   const compared = referenceTurns(events);
+  const took: number[] = [];
   const gated = gateAnswers(events, since);
   const practice: string[] = [];
   // The listed tasks the current reference's own gates held, and the rest, held under one it replaced.
@@ -229,6 +230,7 @@ export function heard(
     carried.gate ||= gate.said !== "";
     carried.history ||= history !== "";
     carried.bill ||= won !== "" && standing?.by === "bill";
+    if (answered) took.push(...(compared.get(version) ?? []));
     return [`${named}: ${said}${answered ? inTurns(compared.get(version) ?? []) : ""}${known}${rest}`];
   });
   return {
@@ -241,7 +243,7 @@ export function heard(
       ...(practice.length === 0 ? [] : [`In use as practice, and so never scored: ${practice.join(", ")}.`]),
     ],
     promoted: promotedLine(events[since], listed - under, listed),
-    measured: measuredLine(events, gates),
+    measured: measuredLine(events, gates, took),
     refused: refusedLines(events, gates, gated),
     interrupted: interruptedLines(events, last, since),
   };
@@ -332,8 +334,13 @@ function historyLine(history: History | undefined): string {
 /** What the current reference harness was measured to do across the exam: its tasks in the last
  *  comparison it stood in, on either side, by every, some or none of its solves valid, with those
  *  set aside counted apart, and never a count of solves, which with one task tallied would be that
- *  task's; and the drafts its gates held by where their room came from (`heldOn`), with those they refused having read them; null where neither is on record. */
-function measuredLine(events: readonly LogEvent[], gates: ReadonlyMap<string, JsonObject>): string | null {
+ *  task's; the spread of the turns its valid answers to the listed tasks took, since on the job seed of
+ *  27 October every one took 3 to 5 of 20 turns and no line summed them; and the drafts its gates held by where their room came from (`heldOn`), with those they refused having read them; null where none is on record. */
+function measuredLine(
+  events: readonly LogEvent[],
+  gates: ReadonlyMap<string, JsonObject>,
+  took: readonly number[],
+): string | null {
   const reference = referenceOf(events);
   const report = lastReports(events).findLast(
     ({ data }) => data.old === reference || data.fresh === reference,
@@ -352,11 +359,17 @@ function measuredLine(events: readonly LogEvent[], gates: ReadonlyMap<string, Js
   const kinds = Object.values(HELD_ON).map(
     (on) => `${String(held.filter((each) => each === on).length)} ${on}`,
   );
+  const sorted = took.toSorted((a, b) => a - b);
   const said = [
     ...(reads.length === 0
       ? []
       : [
           `In the last comparison the reference harness stood in, it was valid in every solve on ${String(reads.length - some - none)} of ${plural(reads.length, "task")} tallied, in some on ${String(some)}, in none on ${String(none)}${aside === 0 ? "" : `; ${String(aside)} more ${aside === 1 ? "was" : "were"} set aside`}.`,
+        ]),
+    ...(sorted.length === 0
+      ? []
+      : [
+          `Its valid answers to the tasks listed took from ${String(sorted[0])} to ${plural(sorted.at(-1) ?? 0, "turn")}, ${String(sorted[Math.floor(sorted.length / 2)])} at the median.`,
         ]),
     ...(held.length + refused === 0
       ? []

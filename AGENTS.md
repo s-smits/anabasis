@@ -42,6 +42,10 @@ one question:
 > Is the new harness better than the reference harness, for this solver, on tasks neither was
 > built on?
 
+The point of the climb lies outside it: a cheap solver inside the harness built for its domain
+should reach what a dear solver reaches inside the starter. A campaign cannot read that, since its
+setting fixes the solver; the skill `compare-systems` reads it on a campaign's held-out tasks.
+
 A comparison in code answers it. Both harnesses solve the same held-out tasks afresh, under the
 same limits. A hidden check program decides whether each answer is valid. Each task then counts as
 a win, a loss or a tie for the new harness, by its score over validity, the objective and the bill,
@@ -1398,7 +1402,7 @@ procedure:
 | Doubting a reading, or asking what a fail was | `whole-run-investigation` |
 | Reading the harnesses a campaign keeps, before a promotion or a handover | `harness-audit` |
 | Reading the promotions on record, and tuning the promotion rule | `promotion-tuner` |
-| Comparing whole systems, a solver inside a harness, outside a campaign's readings | `compare-systems` |
+| Asking whether a cheap solver inside the domain's built harness reaches a dear solver inside the starter | `compare-systems` |
 | Handing runs, or a question, to someone outside | `zip-run`, `oracle-handover` |
 
 `/goal` (`.claude/commands/goal.md`, kept from v1) carries one of the operator's objectives across a

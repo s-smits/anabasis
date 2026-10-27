@@ -2,9 +2,14 @@
  * Two or more solving systems, each a solver inside a harness, read against each other on one
  * campaign's held-out tasks. A campaign cannot make this reading: its setting fixes the solver, and
  * every comparison it makes sets two harnesses under that one solver (`tools/d2/setting.ts`). The
- * operator asked for it on 27 October: does a solver at about a quarter of the price, inside a
- * harness its campaign built, reach what a dearer solver reaches inside the starter? And how do the
- * harnesses of one domain stand against each other?
+ * operator asked for it on 27 October: does a cheap solver inside the harness built for its domain
+ * reach what a dear solver reaches inside the starter, as `gpt-6.1-terra` at high inside the truss
+ * campaign's harness against `claude-opus-5-5` at medium inside the starter? That is the point of
+ * building a harness. On the same day a reading of Terra in the starter against Terra in the built
+ * harness answered a campaign's question instead, and the operator asked for one solve of every
+ * held-out task a system, so a reading is one run per task and system unless `--solves` names more.
+ * `--login N` puts the login `CLAUDE_CODE_OAUTH_TOKEN<N>` in the plain token's place for a Claude
+ * solver, as `runs launch --login` does (`loginEnv`).
  *
  * Everything here is a production primitive, and this file only joins them. Each system opens a seed
  * of the campaign with its own solver and its own trial log (`openCampaign`, the path
@@ -37,18 +42,20 @@ import { keptAs, openCampaign, packNamed } from "#tools/d2/campaign.ts";
 import { gated } from "#tools/d2/host.ts";
 import { objectiveNamed, reviewersNamed, solved } from "#tools/d2/round.ts";
 import { recordedSetting, settingNamed } from "#tools/d2/setting.ts";
+import { loginEnv } from "#tools/runs/manage.ts";
 import { SEED_FILE } from "#tools/runs/registry.ts";
 
 const USAGE = `compare-systems: solve a campaign's held-out tasks under two or more systems, and read them
 
   bun .claude/skills/compare-systems/scripts/systems.ts --seed <seed> \\
     --baseline <name>=<model>:<effort>@<harness> --candidate <name>=<model>:<effort>@<harness> \\
-    [--candidate ...] [--root <dir> --sweep <id> --cycle <id> --bundle <dir>] [--tasks 24] [--solves 4] [--level 0.02] [--read | --cap <dollars> --reviewer <model>]
+    [--candidate ...] [--root <dir> --sweep <id> --cycle <id> --bundle <dir>] [--tasks <all>] [--solves 1] [--level 0.02] [--login N] [--read | --cap <dollars> --reviewer <model>]
 
 <seed> is a seed of a campaign that opened from a prompt (bun run runs seed), never the campaign
 itself; a seed of a campaign over a stored pack names that pack by its four flags. <harness> is starter, promoted, or a whole digest or a letter the seed keeps; import a harness
 from elsewhere into the seed first (tools/d2/import.ts).
-Each candidate is read against the baseline. Without --read it solves what each system is short
+Each candidate is read against the baseline, by default on every held-out task, one solve a task.
+--login N solves on the login CLAUDE_CODE_OAUTH_TOKEN<N> instead of the plain one. Without --read it solves what each system is short
 of, up to --cap dollars over every system, has the Referee --reviewer names rule every rejection
 not yet ruled, then reads; run it again to go on. With --read it only reads.`;
 
@@ -210,8 +217,8 @@ async function main(args: CommandArgs): Promise<number> {
     return args.die("name a --baseline and at least one --candidate, each under its own name");
   }
   const [solves, count, level, cap] = [
-    args.int("solves") ?? 4,
-    args.int("tasks") ?? 24,
+    args.int("solves") ?? 1,
+    args.int("tasks") ?? Number.POSITIVE_INFINITY,
     Number(args.value("level") ?? "0.02"),
     Number(args.value("cap") ?? Number.NaN),
   ];
@@ -226,6 +233,8 @@ async function main(args: CommandArgs): Promise<number> {
   }
   // A seed of a campaign over a stored pack names the pack as the campaign's commands do (`packNamed`).
   const flag = (name: string) => args.value(name) ?? undefined;
+  const login = flag("login");
+  if (login !== undefined) Object.assign(Bun.env, loginEnv(Bun.env, login));
   const stored = packNamed({
     name: seed,
     root: flag("root"),
@@ -359,6 +368,7 @@ if (import.meta.main) {
         bundle: "text",
         reviewer: "text",
         "reviewer-effort": "text",
+        login: "text",
       },
     },
     main,

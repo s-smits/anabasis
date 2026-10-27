@@ -92,7 +92,7 @@ const SHIM = Bun.fileURLToPath(new URL("./shim.ts", import.meta.url));
  *  54 states buffer-fresh-opus-v065-b kept, and on 24 October two states that differed from the one
  *  practised by those caches alone read as never practised. A `.pyc` outside `__pycache__` is code
  *  Python imports with no source beside it, and stays in. */
-const BYTECODE = /(^|\/)__pycache__(\/|$)/;
+export const BYTECODE = /(^|\/)__pycache__(\/|$)/;
 /** The host's own source and installed packages, which the shim imports from. */
 const HOST_ROOTS = [dirname(dirname(SHIM)), join(dirname(dirname(dirname(SHIM))), "node_modules")];
 const MARKER = "@@ana-harness-result@@";

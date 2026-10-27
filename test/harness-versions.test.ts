@@ -1,7 +1,8 @@
 // The harness-versions script of the harness-audit skill, over a campaign written here with the
 // log's own `append`: the starter, the child one session froze from it (the account's worked
 // harness, one program and a guide), and a copy of the child kept under a digest it does not open
-// as, which `keptAs` refuses and the listing has to name.
+// as, which `keptAs` refuses and the listing has to name. Beside them lies a shared tool tree
+// (`tree-*`), which a kept state links to and which is no harness.
 import { afterAll, describe, expect, it } from "bun:test";
 import { diffOf, versionsOf } from "#skills/harness-audit/scripts/harness-versions.ts";
 import { append } from "../src/kernel/log.ts";
@@ -13,6 +14,7 @@ import {
   realpathSync,
   renameSync,
   rmSync,
+  writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -42,6 +44,8 @@ const starter = await keep(writeStarter);
 const child = await keep((dir) => writeHarness(dir, EXAMPLE));
 const misnamed = "0".repeat(64);
 cpSync(join(states, child), join(states, misnamed), { recursive: true });
+mkdirSync(join(states, "tree-x", "bin"), { recursive: true });
+writeFileSync(join(states, "tree-x", "bin", "tool"), "#!/bin/sh\n");
 const nonblank = (text: string) => text.split("\n").filter((line) => line.trim() !== "").length;
 const guideLines = nonblank(EXAMPLE.guide);
 const starterLines = nonblank(readFileSync(join(states, starter, "agent", "BUILT_AGENTS.md"), "utf8"));
@@ -111,6 +115,16 @@ describe("the harnesses a campaign keeps", () => {
       "other files: added none; removed none; changed none",
     ]);
     expect(moves.join("\n")).not.toContain(EXAMPLE.guide.split("\n")[0] ?? "");
+  });
+
+  it("counts no bytecode cache, as the digest reads none", async () => {
+    const cached = join(root, "cached");
+    cpSync(join(states, child), cached, { recursive: true });
+    mkdirSync(join(cached, ".toolchain", "bin", "__pycache__"));
+    writeFileSync(join(cached, ".toolchain", "bin", "__pycache__", "tool.cpython-314.pyc"), "cache");
+    expect((await openHarness(cached)).digest).toBe(child);
+    const moves = await diffOf(join(states, child), cached);
+    expect(moves).toContain(".toolchain: 1 to 1 files, +0 -0 changed 0");
   });
 });
 

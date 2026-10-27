@@ -377,6 +377,12 @@ describe("a campaign", () => {
     await expect(keptAs(campaign, "--harness", "C")).rejects.toThrow(
       "--harness C is no harness this campaign keeps",
     );
+    // A tool tree kept beside the states (`tree-*`) is no harness, so a refusal lists only digests.
+    mkdirSync(join(campaign.states, "tree-x"));
+    await expect(keptAs(campaign, "--harness", "C")).rejects.toThrow(
+      `whole: ${[digest, least.digest].sort().join(", ")}.`,
+    );
+    await expect(keptAs(campaign, "--parent", "tree-x")).rejects.toThrow("is no harness this campaign keeps");
     // A kept state that has changed is no longer the harness its name says, and is refused before
     // a solve is paid for under that name.
     writeFileSync(join(built.dir, "agent", "BUILT_AGENTS.md"), "Add first.\n");
@@ -528,12 +534,13 @@ describe("a campaign", () => {
       const ran = Bun.spawnSync({ cmd: [capturedExecPath, "tools/d2/round.ts", ...flags], cwd: REPO });
       return `${ran.stdout.toString()}${ran.stderr.toString()}`;
     };
-    // A digest cut short, as every reader prints one: the whole one is named beside it.
+    // A digest cut short, as every reader prints one: the whole one is named beside it. The tool
+    // trees kept beside the states (`tree-*`) are no harness, and the refusal leaves them out.
     const short = round(digest.slice(0, 8));
+    const kept = readdirSync(campaign.states).filter((each) => /^[0-9a-f]{64}$/u.test(each));
+    expect(readdirSync(campaign.states).length).toBeGreaterThan(kept.length);
     expect(short).toContain("--parent abababab is no harness this campaign keeps");
-    expect(short).toContain(
-      `whole: ${readdirSync(campaign.states).sort().join(", ")}. abababab begins ${digest}.`,
-    );
+    expect(short).toContain(`whole: ${kept.sort().join(", ")}. abababab begins ${digest}.`);
     // Nor is another folder of the campaign a harness, wherever the name leads.
     expect(round("../checks")).toContain("--parent ../checks is no harness this campaign keeps");
     expect(read(campaign.log).filter(({ kind }) => kind === "build.started")).toEqual([]);

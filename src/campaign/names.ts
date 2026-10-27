@@ -36,7 +36,7 @@ const NAMING: Readonly<Partial<Record<EventKind, readonly string[]>>> = {
 };
 
 /** A whole digest, as a kept harness is named. */
-const DIGEST = /^[0-9a-f]{64}$/u;
+export const DIGEST = /^[0-9a-f]{64}$/u;
 
 /** The letters of the nth name, from zero: A to Z, then AA, AB and on. */
 export function letters(nth: number): string {

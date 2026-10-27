@@ -32,7 +32,7 @@
 import type { Api, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { backends, compactionMode } from "#src/agent/backends/models.ts";
 import { type Practised, practised } from "#src/builder/session.ts";
-import { namesOf } from "#src/campaign/names.ts";
+import { DIGEST, namesOf } from "#src/campaign/names.ts";
 import { type Opening, openingOf } from "#src/campaign/opening.ts";
 import { type Draft, draftOf } from "#src/examiner/draft.ts";
 import { departure } from "#src/kernel/acceptance.ts";
@@ -520,7 +520,12 @@ export async function keptAs(campaign: Keeping, flag: string, asked: string): Pr
   // names two, as A can, falls through to the refusal with the digests there are (14 October).
   const lettered = [...namesOf(events)].flatMap(([each, letter]) => (letter === asked ? [each] : []));
   const digest = built ?? (lettered.length === 1 ? (lettered[0] ?? asked) : asked);
-  const kept = existsSync(campaign.states) ? readdirSync(campaign.states).sort() : [];
+  // `states/` also holds the tool trees the states link to (`tree-*`), which name no harness.
+  const kept = existsSync(campaign.states)
+    ? readdirSync(campaign.states)
+        .filter((each) => DIGEST.test(each))
+        .sort()
+    : [];
   if (!kept.includes(digest)) {
     const begun = kept.filter((each) => digest !== "" && each.startsWith(digest));
     const named =

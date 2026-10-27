@@ -15,7 +15,7 @@ marked, and each needs the operator's word (`AGENTS.md`, section 10).
 | The question | Read |
 | --- | --- |
 | Which harnesses, where each came from, what measured it | `harness-versions.ts` |
-| What moved from a parent to its child | `harness-versions.ts --diff`, and lane 15 for what it means |
+| What moved from a parent to its child | `harness-versions.ts --diff`, the lines through [git](#the-lines-that-moved), and lane 15 for what it means |
 | How one runs on a task | [Trying a kept harness](#trying-a-kept-harness) |
 | Ready to promote, or to hand over | [Before a promotion](#before-a-promotion) and [At a handover](#at-a-handover) |
 | Which part of a harness did it | a checkpoint against `programs-of:<digest>`, worded by [attribution-and-proof](../attribution-and-proof/SKILL.md) |
@@ -47,7 +47,8 @@ keeps, the starter first:
   holds it.
 - **its parts**: nonblank lines of the guide and of `agent/tools.ts`, the presets and the tools the
   spec declares, the files and size of `.toolchain` and whether it is a link, and other files.
-  `agent/config.yaml` is ignored; a module may import other files under the harness.
+  `agent/config.yaml` is ignored; a module may import other files under the harness. Python's
+  bytecode caches are left out of the counts, as the digest leaves them out.
 - **what measured it**: each session that started from it, with its practice solves and counted
   fails, and each comparison it stood in, on which side, against what, and how it read, with its
   tally. The fold is `campaignOf` (`src/campaign/handover.ts`), the one the view and the campaign
@@ -58,6 +59,26 @@ lines added and removed in the guide and the tools module, tools added and remov
 files added, removed and changed in the tool tree and under which folders, and other files by path.
 It quotes no line, and neither does anything written from it (lane 15). It takes no control: the
 command that compares one makes it.
+
+### The lines that moved
+
+To read the change itself, for example before a promotion or when a part may answer a particular
+task, run `git diff --no-index` from the campaign's `states/`, with the two whole digests the first
+line of `--diff` prints, parent first:
+
+```sh
+git diff --no-index <parent> <child> -- ':!.toolchain'
+git diff --no-index <parent>/.toolchain/ <child>/.toolchain/ -- ':!*__pycache__*'
+```
+
+Both are needed. A kept state's `.toolchain` is a link to a tree kept once beside the states
+(`tree-*`), so one `git diff` of the two folders compares the link targets and no program: in
+buffer-fresh-opus-v065-a, between its second promoted harness and the reference it replaced, it
+showed the guide and a changed link, where the trees behind the links differed in five files. The trailing slash makes git read
+the tree where the link leads, and the exclusion leaves out the caches the digest ignores: in
+buffer-fresh-gpt-v071 they were 404 of 405 changed files. Where one side has no tool tree, git
+refuses the second command, and the counts already say how many files the other side holds. The
+patch quotes lines: read it, and write what it shows by kind and size, as lane 15 asks.
 
 ## Trying a kept harness
 
@@ -84,8 +105,9 @@ manual promotion, put these in front of the operator.
    and each comparison's tally. Every comparison the promotion would rest on names this digest as
    its new side.
 3. **What moved since the reference.** `--diff <digest> --against promoted` counts the whole change
-   a promotion makes, which can span several sessions. Attributing a gain to one part requires a
-   checkpoint against `programs-of:<digest>` (`AGENTS.md`, section 9).
+   a promotion makes, which can span several sessions, and [the lines](#the-lines-that-moved) show
+   it. Attributing a gain to one part requires a checkpoint against `programs-of:<digest>`
+   (`AGENTS.md`, section 9).
 4. **What it measured.** Lane 27 of [whole-run-investigation](../whole-run-investigation/SKILL.md)
    reads a promotion's rule, what its step measured and the climb after it; lanes 15 to 17 read
    the change, the guide's truth, check mirroring and the finish. Open them when a reading is in

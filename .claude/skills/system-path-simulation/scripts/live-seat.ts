@@ -6,7 +6,11 @@
  * prints the reading once the group is gone. `read` is that reading of any stretch of a log. `watch`
  * and `due` tell an agent what a seat wrote as it lands (`newsOf`): `watch` one line an event for a
  * line reader such as Claude Code's Monitor, `due` what is unread since it last looked, and with
- * `--hook` an exit of 2 that a Claude Code Stop hook turns into a turn the agent must take.
+ * `--hook` an exit of 2 that a Claude Code Stop hook turns into a turn the agent must take. `stop`
+ * ends a seat whose question is answered, and `start` says so in its reading. `compare` sets the
+ * readings of several seats side by side, each cut at the same count of gates where `--gates` names
+ * one, since two arms gate at different paces. `prompt` prints what an Examiner session would be told,
+ * composed by a tree's own code with no model, so two arms' prompts are diffed before either is paid.
  *
  *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts start --tree <worktree> --name sim-<what>
  *     --out <prefix> --cap <dollars> --minutes <n> [--login N] [--mention <text>]... -- <command> <its flags>
@@ -14,6 +18,10 @@
  *     | --log <path> --from <event> [--mention <text>]... [--json]
  *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts watch --seat <prefix>
  *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts due <prefix>... [--hook]
+ *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts stop --seat <prefix>
+ *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts compare <prefix>... [--gates N]
+ *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts prompt --tree <worktree> --name sim-<what>
+ *     -- tools/d1b/examine.ts <its flags>
  *
  * Run `start` under `bun --env-file=<file>` and as one background command: it ends when the seat
  * does, so its end is the one notice to wait for, and the 30-minute monitor a watcher re-arms is not
@@ -29,9 +37,15 @@
  * on the PATH sends a command to a remote host. Each fact here has one owner already: the login
  * (`loginEnv`), the dollars (`billedBetween`), a gate that read its draft (`measuredGate`) and held
  * it (`heldAtGate`), and the turns of the reference's valid answers at a gate (`gateAnswers`).
+ *
+ * The prompt rewrite of 27 October (#471) ran two rounds of before-and-after arms and improvised the
+ * rest: a scratch script composed each arm's prompt, a second watcher counted both arms, a seat was
+ * ended by killing its group by hand, and the arms read at different paces were compared by eye.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { gateAnswers, measuredGate } from "#src/examiner/record.ts";
+import type { writing as Writing } from "#src/examiner/write.ts";
+import type { examineCommand as ExamineCommand } from "#tools/d1b/examine.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { billedBetween, tracesIn } from "#src/kernel/trace.ts";
 import { heldAtGate } from "#src/kernel/task.ts";
@@ -53,11 +67,18 @@ const USAGE = `usage:
   live-seat.ts read --seat <prefix> | --log <path> --from <event> [--mention <text>]... [--json]
   live-seat.ts watch --seat <prefix>
   live-seat.ts due <prefix>... [--hook]
+  live-seat.ts stop --seat <prefix>
+  live-seat.ts compare <prefix>... [--gates N]
+  live-seat.ts prompt --tree <worktree> --name sim-<what> -- tools/d1b/examine.ts <its flags>
 
 start runs <command> with --name in <tree>, on a seed only, and prints the reading when it ends.
 watch prints one line for each event worth reading as it lands, until the seat's process is gone.
 due prints what landed in each seat since due last looked; with --hook it writes that to stderr and
-exits 2 when there is any, as a Claude Code Stop hook keeps the session from stopping.`;
+exits 2 when there is any, as a Claude Code Stop hook keeps the session from stopping.
+stop ends a running seat's process group; its start then prints the reading.
+compare prints each seat's counts in a column, each cut after its first N gates with --gates.
+prompt prints the system prompt, opening, tools and nudges the Examiner command would seat, and
+seats nothing.`;
 const OPTIONS = {
   tree: "abs",
   name: "text",
@@ -71,6 +92,7 @@ const OPTIONS = {
   mention: "list",
   json: "flag",
   hook: "flag",
+  gates: "int",
 } as const;
 /** How often the watch reads the log, and how often it says so when nothing new was gated. */
 const TICK_MS = 30_000;
@@ -209,6 +231,16 @@ function eventsNow(log: string): LogEvent[] | null {
   }
 }
 
+/** The log of a seed: rule 4 of the skill, a seat writes only to a seed, and the name and seed.json
+ *  are the guard. */
+function seedLog(tree: string, name: string, die: CommandArgs["die"]): string {
+  const folder = join(tree, ".ana", "d2", name);
+  if (!name.startsWith("sim-") || !existsSync(join(folder, SEED_FILE))) {
+    die(`${folder} is no seed: a seat runs on sim-<what> with ${SEED_FILE} beside its log`);
+  }
+  return join(folder, LOG_FILE);
+}
+
 async function start(args: CommandArgs, command: readonly string[]): Promise<number> {
   const tree = args.required("tree");
   const name = args.required("name");
@@ -217,12 +249,7 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
   const minutes = args.int("minutes") ?? args.die("--minutes is required");
   if (!Number.isFinite(cap) || cap <= 0) args.die("--cap is a number of dollars above 0");
   if (command.length === 0) args.die("name the command after --");
-  const folder = join(tree, ".ana", "d2", name);
-  // Rule 4 of the skill: a seat writes only to a seed, and the name and seed.json are the guard.
-  if (!name.startsWith("sim-") || !existsSync(join(folder, SEED_FILE))) {
-    args.die(`${folder} is no seed: a seat runs on sim-<what> with ${SEED_FILE} beside its log`);
-  }
-  const log = join(folder, LOG_FILE);
+  const log = seedLog(tree, name, args.die);
   const from = read(log).length;
   const env = {
     ...loginEnv(runtimeProcess.env, args.value("login") ?? undefined),
@@ -236,6 +263,7 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
     stdout: openSync(`${out}.out`, "w"),
     stderr: openSync(`${out}.err`, "w"),
   });
+  writeFileSync(`${out}.stopped`, "");
   child.unref();
   const commit = gitText(tree, "rev-parse", "--short=9", "HEAD");
   writeFileSync(
@@ -267,6 +295,7 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
       await terminateAndReapProcessGroupId(child.pid);
     }
   }
+  stopped ??= readFileSync(`${out}.stopped`, "utf8") || null;
   console.log(stopped === null ? `${name} ended by itself` : `${name} stopped at ${stopped}`);
   console.log(told(readingOf(read(log), from, args.list("mention"))).join("\n"));
   return stopped === null ? 0 : 1;
@@ -332,6 +361,99 @@ function due(args: CommandArgs, seats: readonly string[]): number {
   return 2;
 }
 
+/** Ends a seat this host started, as its cap would, and leaves `start` the word that it was stopped. */
+async function stop(args: CommandArgs): Promise<number> {
+  const seat = args.required("seat");
+  const { pid } = keptSeat(seat, args.die);
+  if (pid === null || !processGroupExists(pid)) args.die(`${seat} has no process group running on this host`);
+  writeFileSync(`${seat}.stopped`, "live-seat stop");
+  await terminateAndReapProcessGroupId(pid);
+  console.log(`${basename(seat)} stopped`);
+  return 0;
+}
+
+/** A log's events up to its `gates`th gate from event `from` on, or all of them where it has fewer. */
+function cutAt(events: readonly LogEvent[], from: number, gates: number | null): readonly LogEvent[] {
+  const at = events.flatMap((event, index) => (index >= from && event.kind === "task.gate" ? [index] : []));
+  const last = gates === null ? undefined : at[gates - 1];
+  return last === undefined ? events : events.slice(0, last + 1);
+}
+
+/** Each seat's counts in a column of its own: the arms of one round, read at one count of gates. */
+function compare(args: CommandArgs, seats: readonly string[]): number {
+  if (seats.length < 2) args.die("name two seats' prefixes or more");
+  const gates = args.int("gates");
+  const readings = seats.map((seat) => {
+    const { log, from } = keptSeat(seat, args.die);
+    const kept = asRecord(capturedJsonParse(readFileSync(`${seat}.json`, "utf8")));
+    return { seat, commit: kept?.commit, reading: readingOf(cutAt(read(log), from, gates), from, []) };
+  });
+  const words = [...new Set(readings.flatMap(({ reading }) => Object.keys(reading.gates)))].toSorted();
+  const each = (row: (reading: Reading) => number | string) =>
+    readings.map(({ reading }) => String(row(reading)));
+  const perHeld = (reading: Reading) =>
+    reading.held === 0 ? "none held" : `$${(reading.billed / reading.held).toFixed(2)}`;
+  const rows: [string, readonly string[]][] = [
+    ["seat", readings.map(({ seat }) => basename(seat))],
+    ["commit", readings.map(({ commit }) => (isString(commit) ? commit : "?"))],
+    ["minutes", each((reading) => reading.minutes.toFixed(0))],
+    ["billed", each((reading) => `$${reading.billed.toFixed(2)}`)],
+    ["proposed", each((reading) => reading.proposed)],
+    ["gated", each((reading) => reading.ran.length)],
+    ...words.map((word): [string, readonly string[]] => [
+      `  ${word}`,
+      each((reading) => reading.gates[word] ?? 0),
+    ]),
+    ["held", each((reading) => reading.held)],
+    ["per held", each(perHeld)],
+    ["gate solves", each((reading) => reading.ran.reduce((sum, count) => sum + count, 0))],
+    ["median turns", each((reading) => reading.turns?.[1] ?? "none")],
+  ];
+  const width = Math.max(...rows.flatMap(([, cells]) => cells.map((cell) => cell.length)), 8) + 2;
+  if (gates !== null) console.log(`each cut after its first ${plural(gates, "gate")}`);
+  for (const [label, cells] of rows) {
+    console.log(label.padEnd(14) + cells.map((cell) => cell.padEnd(width)).join(""));
+  }
+  return 0;
+}
+
+/** What the Examiner session of `command` would be told, composed by `tree`'s own code: the session
+ *  stands in for `examine`, prints its mode, and exits before any turn, gate or event. A gate is
+ *  composed as `try_task` whatever the seed's host may seat; the engines in its shell are left out. */
+async function prompt(args: CommandArgs, command: readonly string[]): Promise<number> {
+  const tree = args.required("tree");
+  const name = args.required("name");
+  const [script, ...flags] = command;
+  if (script !== "tools/d1b/examine.ts") {
+    args.die("prompt composes an Examiner session: -- tools/d1b/examine.ts");
+  }
+  const log = seedLog(tree, name, args.die);
+  const before = read(log).length;
+  // The tree's own modules, so a tree at another commit composes its own prompt.
+  // SAFETY: both paths are modules of an Anabasis tree, which export these two functions; a tree whose
+  // signatures differ fails the call below with the tree's own error.
+  const { examineCommand } = (await import(join(tree, script))) as { examineCommand: typeof ExamineCommand };
+  // SAFETY: as above.
+  const { writing } = (await import(join(tree, "src/examiner/write.ts"))) as { writing: typeof Writing };
+  runtimeProcess.chdir(tree);
+  await examineCommand([...flags, "--name", name], (request, wall) => {
+    const probe = () => Promise.reject(new Error("a composed prompt seats no gate"));
+    const mode = writing(
+      { ...request, probe },
+      undefined,
+      wall?.reference === undefined ? "unseen" : "in-home",
+    );
+    console.log(`=== SYSTEM\n${mode.system}\n\n=== OPENING\n${mode.opening}`);
+    for (const tool of mode.tools) console.log(`\n=== TOOL ${tool.name}\n${tool.description}`);
+    console.log(`\n=== NUDGE ${mode.nudge}\n=== FINISH ${mode.finish}\n=== DECLINED ${mode.declined}`);
+    if (read(log).length !== before) {
+      console.error(`${name}: composing wrote ${String(read(log).length - before)} events`);
+    }
+    return runtimeProcess.exit(0);
+  });
+  return 0;
+}
+
 async function readCommand(args: CommandArgs): Promise<number> {
   const stretch = stretchOf(args);
   const log = await logAcross(stretch.log);
@@ -347,11 +469,14 @@ async function main(args: CommandArgs): Promise<number> {
   if (verb === "start") return start(args, command);
   if (verb === "watch") return watch(args);
   if (verb === "due") return due(args, command);
+  if (verb === "stop") return stop(args);
+  if (verb === "compare") return compare(args, command);
+  if (verb === "prompt") return prompt(args, command);
   if (verb === "read") {
     if (command.length > 0) args.die("read takes no command");
     return readCommand(args);
   }
-  return args.die(`the verb is start, read, watch or due, not ${verb ?? "none"}`);
+  return args.die(`the verb is start, read, watch, due, stop, compare or prompt, not ${verb ?? "none"}`);
 }
 
 if (import.meta.main) {

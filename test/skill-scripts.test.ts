@@ -596,6 +596,33 @@ describe("a live seat's reading", () => {
     expect(decodeOutput(again.stderr)).toBe("");
   });
 
+  it("compares two arms at the same count of gates, and stops only a seat running here", () => {
+    const folder = join(root, "arms", ".ana", "d2", "sim-arms");
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, "log.jsonl"), readFileSync(log, "utf8"));
+    const arm = (name: string, from: number) => {
+      const seat = join(root, name);
+      writeFileSync(
+        `${seat}.json`,
+        JSON.stringify({ tree: join(root, "arms"), name: "sim-arms", from, pid: null }),
+      );
+      return seat;
+    };
+    const [late, early] = [arm("arm-late", 3), arm("arm-early", 0)];
+    const script = join(import.meta.dir, "..", ".claude/skills/system-path-simulation/scripts/live-seat.ts");
+    const whole = decodeOutput(runSync([capturedExecPath, script, "compare", late, early]).stdout);
+    expect(whole).toMatch(/^gated\s+5\s+6\s*$/mu);
+    expect(whole).toMatch(/^held\s+2\s+2\s*$/mu);
+    const cut = decodeOutput(
+      runSync([capturedExecPath, script, "compare", late, early, "--gates", "2"]).stdout,
+    );
+    expect(cut).toMatch(/^gated\s+2\s+2\s*$/mu);
+    expect(cut).toMatch(/^held\s+0\s+0\s*$/mu);
+    const stopped = runSync([capturedExecPath, script, "stop", "--seat", late]);
+    expect(stopped.exitCode).not.toBe(0);
+    expect(decodeOutput(stopped.stderr)).toContain("no process group running on this host");
+  });
+
   it("seats the Referee only on a seed, before it opens any campaign", () => {
     const script = join(
       import.meta.dir,

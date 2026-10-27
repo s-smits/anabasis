@@ -31,7 +31,9 @@ git worktree add --detach ../anabasis-after-<what> <after>
 
 Give both arms the same input. A reader takes the same logs by name or path, and the registry finds
 a log from either fork. A seed is cut once in each fork from the same source at the same cut, under
-two names, because the registry refuses a name two worktrees hold:
+two names, because the registry refuses a name two worktrees hold, and a seat's root is named by
+its campaign and session, so two live arms under one name on one host refuse the second's root
+(`claimRoot`, `src/wall/seat-root.ts`; 27 October):
 `bun run runs seed --from <campaign folder> --name sim-<what>-before` in the one and `-after` in
 the other, with the same cut flags. A script (`--held`, `--starter`, `--supply`) is the same in both.
 

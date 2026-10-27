@@ -65,6 +65,12 @@ bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat <scra
     "command": "bun .claude/skills/system-path-simulation/scripts/live-seat.ts due <scratch>/arm-a <scratch>/arm-b --hook" }] }] } }
   ```
 
+- `stop --seat <prefix>` ends a seat this host started once its question is answered, and its
+  `start` prints the reading with that reason. `compare <prefix>...` sets several seats' counts in
+  columns, each cut after its first N gates with `--gates N`. `prompt --tree <worktree> --name
+  sim-<what> -- tools/d1b/examine.ts <its flags>` prints what that Examiner session would be told,
+  composed by the tree's own code, and seats nothing. All three serve rounds of arms
+  ([optimize](optimize.md)).
 - `start` uses `capturedExecPath`, the Bun that runs it, and sets `RUN_REMOTE=0` for the seat.
   Its seed and selected login stay on the local runner.
 

@@ -105,11 +105,10 @@ const resolvedLogs = await Promise.all(
     .filter((each) => each !== "")
     .map(async (each) => resolve(await logAcross(each))),
 );
-/** A campaign's name, with the host folder of its copy where two logs named share it: two hosts
- *  held a run named `buffer-fresh-opus-terra` on 27 October, and `start` refused their copies. */
-const nameOf = (log: string) => {
+/** A campaign's name, and its copy's host folder where two `logs` share the name (27 October). */
+const nameOf = (log: string, logs: readonly string[] = resolvedLogs) => {
   const name = basename(dirname(log));
-  const shared = resolvedLogs.filter((each) => basename(dirname(each)) === name).length > 1;
+  const shared = logs.filter((each) => basename(dirname(each)) === name).length > 1;
   return shared ? `${name}@${basename(dirname(dirname(log)))}` : name;
 };
 
@@ -170,7 +169,7 @@ function start(): number {
   needed("log");
   const [logs, out] = [resolvedLogs, resolve(needed("out"))];
   if (existsSync(join(out, SHARED))) throw new Error(`${out} already holds ${SHARED}`);
-  if (new Set(logs.map(nameOf)).size < logs.length) throw new Error("--log names one campaign twice");
+  if (new Set(logs.map((log) => nameOf(log))).size < logs.length) throw new Error("--log names a log twice");
   mkdirSync(join(out, "lanes"), { recursive: true });
   const texts = logs.map(overviewText);
   const campaigns = [
@@ -206,7 +205,7 @@ function opened(): Investigation {
   const out = resolve(needed("out"));
   const { logs } = parseJsonAs<{ logs: string[] }>(readFileSync(join(out, "investigation.json"), "utf8"));
   const campaigns = logs.map((log) => ({
-    name: nameOf(log),
+    name: nameOf(log, logs),
     log,
     overview: overview(read(log), receipts(log)),
   }));

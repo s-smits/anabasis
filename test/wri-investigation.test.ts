@@ -308,7 +308,7 @@ describe("the lanes verb", () => {
     expect(prompts()["04-prompt.md"]).toBe(built["04-prompt.md"]);
   });
 
-  it("starts over two hosts' copies of one campaign name, each named by its host", () => {
+  it("starts over two hosts' copies of one campaign name, and builds lanes that name each by its host", () => {
     const copies = ["m1", "linux"].map((host) => {
       mkdirSync(join(dir, host, "twin"), { recursive: true });
       const copy = join(dir, host, "twin", "log.jsonl");
@@ -322,6 +322,12 @@ describe("the lanes verb", () => {
     const instructions = readFileSync(join(twins, "shared-instructions.md"), "utf8");
     expect(instructions).toContain("| twin@m1 |");
     expect(instructions).toContain("| twin@linux |");
+    // `lanes` names no `--log`: it reads the logs `start` saved, and keeps both names apart.
+    writeFileSync(join(twins, "shared-instructions.md"), shared);
+    execTextSync(capturedExecPath, ["tools/wri/wri.ts", "lanes", "--out", twins], { cwd: REPO });
+    const prompt = readFileSync(join(twins, "lanes", "04-prompt.md"), "utf8");
+    expect(prompt).toContain("twin@m1");
+    expect(prompt).toContain("twin@linux");
   });
 });
 

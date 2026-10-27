@@ -272,7 +272,7 @@ ship_script() { cat "$runner_dir/lib.sh" "$runner_dir/host.sh" | on_host "cat > 
 # remote_run <root> <pin> [args...]: the task in the slot's folder on the host. The folder names
 # this machine too, so two machines that share a host never share a slot.
 remote_run() {
-  local root=$1 pin=$2 dir quoted="" strict="" bail="" status=0
+  local root=$1 pin=$2 dir quoted="" strict="" bail="" plain="" status=0
   shift 2
   dir=".cache/ana-runner/$(uname -n | cut -d. -f1)-slot-$held_slot"
   with_retries on_host "mkdir -p '$dir' && rm -f '$dir.status'"
@@ -291,9 +291,13 @@ remote_run() {
   # that asks for it goes as ANA_LINT_STRICT does, since ssh carries no environment.
   if [[ -n "${ANA_TEST_BAIL:-}" ]]; then printf -v bail "ANA_TEST_BAIL=%q " "$ANA_TEST_BAIL"; fi
   with_retries ship_script "$dir"
+  # The forced terminal is what delivers a HUP to the host when ssh drops, so it stays. Where this
+  # end is no terminal, the task writes into a pipe instead, so the host's tools draw no progress
+  # bars into a log or an agent's output (operator, 27 October).
+  [[ -t 1 ]] || plain=" 2>&1 | cat"
   # --norc: a bash started straight under sshd reads ~/.bashrc, and the M1's does not parse.
   ssh "${ssh_options[@]}" -tt "$host" \
-    "${strict}${bail}/bin/bash --norc $dir.run.sh $dir $pin $task $wall_seconds $quoted" || status=$?
+    "${strict}${bail}/bin/bash --norc $dir.run.sh $dir $pin $task $wall_seconds $quoted$plain" || status=$?
   # ssh reports its own failures as 255. Otherwise the verdict is the status host.sh left beside
   # the slot, since Tailscale SSH reports 0 whatever the task did; none left is no verdict either.
   if ((status != 255)); then

@@ -212,16 +212,19 @@ GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <sha>~1
 ```
 
 ```sh
-gh pr create --base <parent branch> --head <branch> --title "<title>" --body-file <file> --label importance:I<n>
+gh pr create --base <parent branch> --head <branch> --title "<title>" --body-file <file> --label importance:I<n> --label <category>
 ```
 
 Every pull request carries exactly one importance label, defined in the repository's labels:
 `importance:I0` blocks a release or further operation, `I1` protects comparison validity or prevents
 a serious run failure, `I2` is a bounded functional improvement, and `I3` is reporting, wording or
 convenience. The title carries no "Ix:" prefix; the label replaced it on 25 October. `bun run land`
-refuses a stack in which any pull request has no importance label or more than one, naming each,
-before it gates anything, so `--sanitize` shows such a stack as not ready (`gh pr edit <number>
---add-label importance:I<n>` repairs it). `stack.ts` ends each line in the label, and a
+refuses a stack in which any pull request has no importance label or more than one, or no category
+label, naming each, before it gates anything, so `--sanitize` shows such a stack as not ready
+(`gh pr edit <number> --add-label <label>` repairs it). The categories are the subjects a pull request
+is filed under, mostly the investigation's lane groups: `harness`, `climb`, `comparison`, `solve`,
+`supply`, `verdicts`, `economy`, `log`, `runs`, `landing`, `quality`, `docs` and `misc` (`CATEGORIES`,
+`tools/runtime/land.ts`); `gh label list` gives what each holds, and a pull request may carry several. `stack.ts` ends each line in the label, and a
 consolidation spends its time by it: `I0` and `I1` through commit-r, `I3` folded
 (`references/consolidate.md`, "Spend by importance").
 

@@ -126,9 +126,9 @@ const pull = (number: number, head: string, base: string, sha: string, isDraft =
   baseRefName: base,
   headRefOid: sha,
   isDraft,
-  labels: [{ name: "importance:I2" }],
+  labels: [{ name: "importance:I2" }, { name: "landing" }],
 });
-/** A pull request carrying `names` as its labels in place of the one importance label. */
+/** A pull request carrying `names` as its labels in place of its importance and category labels. */
 const labelled = (open: ReturnType<typeof pull>, ...names: string[]) => ({
   ...open,
   labels: names.map((name) => ({ name })),
@@ -414,10 +414,10 @@ describe("bun run land", () => {
     );
   });
 
-  it("refuses a landing in which a pull request carries no importance label or two, naming each, before gating anything", () => {
+  it("refuses a landing in which a pull request carries no importance label or two, or no category label, naming each, before gating anything", () => {
     const unranked = JSON.stringify([
       labelled(pull(11, "a", "main", lowerDocs)),
-      labelled(pull(12, "b", "a", upper), "importance:I1", "importance:I3", "bug"),
+      labelled(pull(12, "b", "a", upper), "importance:I1", "importance:I3", "runs"),
       labelled(pull(13, "beside", "main", beside)),
     ]);
     for (const flags of [[], ["--sanitize"], ["--merge"]]) {
@@ -425,13 +425,21 @@ describe("bun run land", () => {
       const result = runLand(["12", ...flags], { ANA_FAKE_PULLS: unranked });
       expect(result.status).toBe(1);
       expect(result.stderr).toContain(
-        "#11 carries no importance label; #12 carries importance:I1 and importance:I3. Give each pull request exactly one",
+        "#11 carries no importance label, and no category label; #12 carries importance:I1 and importance:I3. Give each pull request exactly one",
       );
       expect(result.stderr).not.toContain("#13");
       expect(gatesRun(gateLog)).toEqual([]);
       expect(logLines(ghLog).filter((call) => call.startsWith("api -X POST"))).toEqual([]);
     }
-    // One importance label among others lands.
+    // An importance label with no category is refused; one of each among others lands.
+    const uncategorised = JSON.stringify([
+      labelled(pull(11, "a", "main", lowerDocs), "importance:I0", "bug"),
+      pull(12, "b", "a", upper),
+    ]);
+    const refused = runLand(["12"], { ANA_FAKE_PULLS: uncategorised });
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain("#11 carries no category label. Give each pull request");
+    expect(refused.stderr).not.toContain("#12");
     const ranked = JSON.stringify([
       labelled(pull(11, "a", "main", lowerDocs), "importance:I0", "docs"),
       pull(12, "b", "a", upper),

@@ -56,9 +56,11 @@
  *
  * Every pull request of the landing carries exactly one importance label, `importance:I0` to
  * `importance:I3`, which the operator ranks the stack by; since 25 October a title carries no "Ix:"
- * prefix in its place. A landing in which any lacks one or carries two is refused before anything is
- * gated, in every mode, so `--sanitize` too shows a stack that is not ready, and the refusal names
- * each such pull request (`checkImportance`).
+ * prefix in its place. It also carries at least one category label, the subject the operator files
+ * it under (`CATEGORIES`, mostly the investigation's lane groups); on 27 October four pull requests
+ * were opened with none. A landing in which any lacks either, or carries two importance labels, is
+ * refused before anything is gated, in every mode, so `--sanitize` too shows a stack that is not
+ * ready, and the refusal names each such pull request (`checkLabels`).
  *
  * A failure names the commit and the pull request it sits on. Its fix goes into that commit, the
  * pull requests above it are replayed on it (stack-pr, section 8), and a second landing runs only
@@ -123,6 +125,22 @@ const STACK_POLL_MS = Number(runtimeProcess.env.ANA_CI_POLL_MS) || 2000;
 const STACK_WAIT_MS = 10 * 60_000;
 /** The labels that rank a pull request's importance; each of a landing carries exactly one. */
 const IMPORTANCE = /^importance:I[0-3]$/u;
+/** The labels that file a pull request under a subject; each of a landing carries at least one. */
+const CATEGORIES = new Set([
+  "harness",
+  "climb",
+  "comparison",
+  "solve",
+  "supply",
+  "verdicts",
+  "economy",
+  "log",
+  "runs",
+  "landing",
+  "quality",
+  "docs",
+  "misc",
+]);
 const USAGE = "usage: bun run land -- [<pull request>] [--auto] [--sanitize | --merge] [--jobs N]";
 
 class Refusal extends Error {}
@@ -233,19 +251,22 @@ function readLanding(root: string, target: number): Landing {
 export const ranksOf = (pull: Pull): string[] =>
   pull.labels.map((label) => label.name).filter((name) => IMPORTANCE.test(name));
 
-/** Refuses a landing in which a pull request carries no importance label, or more than one. */
-function checkImportance(landing: Landing): void {
-  const unranked = landing.pulls.flatMap((pull) => {
+/** Refuses a landing in which a pull request carries no importance label or more than one, or no
+ *  category label. */
+function checkLabels(landing: Landing): void {
+  const faults = landing.pulls.flatMap((pull) => {
     const ranks = ranksOf(pull);
-    if (ranks.length === 1) return [];
-    return [
-      `#${String(pull.number)} carries ${ranks.length === 0 ? "no importance label" : ranks.join(" and ")}`,
+    const said = [
+      ...(ranks.length === 1 ? [] : [ranks.length === 0 ? "no importance label" : ranks.join(" and ")]),
+      ...(pull.labels.some(({ name }) => CATEGORIES.has(name)) ? [] : ["no category label"]),
     ];
+    return said.length === 0 ? [] : [`#${String(pull.number)} carries ${said.join(", and ")}`];
   });
-  if (unranked.length > 0) {
+  if (faults.length > 0) {
     throw new Refusal(
-      `${unranked.join("; ")}. Give each pull request exactly one of importance:I0 to importance:I3 ` +
-        `(gh pr edit <number> --add-label importance:I2), and land again.`,
+      `${faults.join("; ")}. Give each pull request exactly one of importance:I0 to importance:I3 and ` +
+        `at least one of ${[...CATEGORIES].join(", ")} (gh pr edit <number> --add-label <label>), ` +
+        `and land again.`,
     );
   }
 }
@@ -518,7 +539,7 @@ const moved = (root: string, top: Pull): boolean => topAbove(openPulls(root), to
  *  new top before the landing ended. */
 async function landTo(root: string, target: number, mode: Mode): Promise<number | "moved"> {
   const landing = readLanding(root, target);
-  checkImportance(landing);
+  checkLabels(landing);
   checkChain(root, landing);
   // SAFETY: readLanding's chain ends with the named pull request.
   const top = landing.pulls.at(-1) as Pull;

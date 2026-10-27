@@ -1591,7 +1591,9 @@ In practice:
 - **Every commit passes alone.** Fold a fix into the unpublished commit it corrects. The pre-commit
   hook runs `bun run commit:check`; run it by hand where the hooks are not installed.
 - **Label every pull request** with exactly one of `importance:I0` to `importance:I3`, with no "Ix:"
-  prefix in its title; `bun run land` refuses a stack in which one is missing or doubled.
+  prefix in its title, and at least one category label, the subject it belongs to (`CATEGORIES`,
+  `tools/runtime/land.ts`; each label's description in the repository says what it holds);
+  `bun run land` refuses a stack in which either is missing or the importance doubled.
 - **Push your own branch**, never `main`. Push with `--no-verify` only where the operator says so.
   Rewriting a published branch takes `--force-with-lease` on the head you last saw. The pre-push
   hook reads the commits along each pushed head's first parents that no remote-tracking ref holds;

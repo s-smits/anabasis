@@ -1,6 +1,6 @@
 // The runs pulse says what a run's log gained since the last look: milestones, solves that ended
-// without a result, failed turns gathered into one line, a quiet that starts and ends, and a
-// process gone before its run was done. A first look says the status alone.
+// without a result, failed turns gathered into one line, a quiet that starts and ends, a promotion,
+// and a process gone before its run was done. A first look says the status alone.
 import { describe, expect, it } from "bun:test";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import { existsSync, mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
@@ -19,6 +19,8 @@ const event = (minute: number, kind: EventKind, data: JsonObject): LogEvent => (
   data,
 });
 const usage = (total: number) => ({ cost: { total } });
+/** What a look that read `lines` events of an open run remembers. */
+const lookedAt = (lines: number) => ({ lines, open: true, quiet: false });
 
 const built: LogEvent[] = [
   event(0, "build.started", { session: "r1-b", model: "claude/claude-opus-5" }),
@@ -38,14 +40,14 @@ describe("the runs pulse", () => {
     const look = pulse(round, built, "open", undefined, START + 5 * 60_000);
     expect(look.status).toBe("r1  build turn 1 · solves 1 non-result · $0.75 · 1m since the last event");
     expect(look.said).toEqual([]);
-    expect(look.seen).toEqual({ lines: 5, open: true, quiet: false });
+    expect(look.seen).toEqual(lookedAt(5));
     // A seed's counts are its source's and a script's, so its line says what it is.
     const seeded = pulse({ ...round, seed: true }, built, "closed", undefined, START + 5 * 60_000);
     expect(seeded.status.startsWith("r1 (a seed)  closed · ")).toBe(true);
   });
 
   it("says what came since the last look, by the solve's task", () => {
-    const look = pulse(round, built, "open", { lines: 1, open: true, quiet: false }, START + 5 * 60_000);
+    const look = pulse(round, built, "open", lookedAt(1), START + 5 * 60_000);
     expect(look.said).toEqual([
       "· mass-03 started on openai-codex/gpt-6.1-sol",
       "⚠ mass-03 ended without a result, provider: WebSocket closed 1000 in 4m, $0.25",
@@ -70,7 +72,7 @@ describe("the runs pulse", () => {
 
   it("says a quiet once when it starts and once when it ends", () => {
     const later = START + 30 * 60_000;
-    const quiet = pulse(round, built, "open", { lines: 5, open: true, quiet: false }, later);
+    const quiet = pulse(round, built, "open", lookedAt(5), later);
     expect(quiet.said).toEqual(["⚠ quiet for 26m"]);
     expect(pulse(round, built, "open", quiet.seen, later).said).toEqual([]);
     const woken = [
@@ -85,24 +87,24 @@ describe("the runs pulse", () => {
       event(5, "campaign.waited", { for: "provider", until: at(60), ms: 3_300_000 }),
       event(10, "exam.finished", { session: "x-1" }),
     ];
-    const seen = { lines: 7, open: true, quiet: false };
+    const seen = lookedAt(7);
     expect(pulse(round, waiting, "open", seen, later).seen.quiet).toBe(false);
     expect(pulse(round, waiting, "open", seen, START + 61 * 60_000).seen.quiet).toBe(false);
     expect(pulse(round, waiting, "open", seen, START + 81 * 60_000).said).toEqual(["⚠ quiet for 21m"]);
   });
 
   it("says a process gone before its report, and not one that reported", () => {
-    const gone = pulse(round, built, "closed", { lines: 5, open: true, quiet: false }, START + 5 * 60_000);
+    const gone = pulse(round, built, "closed", lookedAt(5), START + 5 * 60_000);
     expect(gone.status).toStartWith("r1  closed");
     expect(gone.said).toEqual(["⚠ the process is gone before comparison.reported"]);
     const reported = [...built, event(5, "comparison.reported", { reading: "held" })];
-    const done = pulse(round, reported, "closed", { lines: 5, open: true, quiet: false }, START + 6 * 60_000);
+    const done = pulse(round, reported, "closed", lookedAt(5), START + 6 * 60_000);
     expect(done.status).toStartWith("r1  closed, reported held");
     expect(done.said).toEqual(["◆ reported held"]);
     // An Examiner session writes no report: its own end is the run's, and a round's report before it
     // is not.
     const examining = [...reported, event(6, "exam.started", { session: "x-1" })];
-    const seen = { lines: 7, open: true, quiet: false };
+    const seen = lookedAt(7);
     expect(pulse(round, examining, "closed", seen, START + 7 * 60_000).said).toEqual([
       "⚠ the process is gone before exam.finished",
     ]);
@@ -149,6 +151,36 @@ describe("the runs pulse", () => {
     expect(says({ reading: "not-scored", unflagged: null })).toEqual(["⚠ reported not-scored"]);
   });
 
+  it("says a promotion, and counts the promotions on the status line", () => {
+    const promoted = [
+      ...built,
+      event(5, "comparison.reported", { reading: "step" }),
+      event(6, "harness.promoted", { harness: "0a1b2c3d4e5f", from: "starter", rests: "g1" }),
+    ];
+    const look = pulse(round, promoted, "open", lookedAt(5), START + 7 * 60_000);
+    expect(look.said).toEqual(["◆ reported step", "◆ promoted 0a1b2c3d to the reference"]);
+    expect(look.status).toContain("1 promoted");
+    expect(pulse(round, built, "open", undefined, START + 5 * 60_000).status).not.toContain("promoted");
+  });
+
+  it("reads a campaign that ended while drafting its exam as done, and one that stopped as gone", () => {
+    const drafting = [
+      event(0, "campaign.opened", { project: "p" }),
+      event(1, "draft.started", { session: "d-1" }),
+    ];
+    const seen = lookedAt(2);
+    const ended = [
+      ...drafting,
+      event(2, "campaign.ended", { ending: "environment", why: "the provider failed" }),
+    ];
+    expect(pulse(round, ended, "closed", seen, START + 3 * 60_000).said).toEqual([
+      "◆ the campaign ended environment: the provider failed",
+    ]);
+    expect(pulse(round, drafting, "closed", seen, START + 3 * 60_000).said).toEqual([
+      "⚠ the process is gone before comparison.reported",
+    ]);
+  });
+
   it("reads a checkpoint by its own start, in a log that holds an earlier comparison's report", () => {
     // A campaign's log holds many comparisons. A checkpoint starts no session, so only its own
     // start says that the report before it is another's.
@@ -158,7 +190,7 @@ describe("the runs pulse", () => {
       event(6, "comparison.started", { session: "g0" }),
       event(7, "solve.started", { solve: "s9", task: "mass-04", model: "claude/claude-opus-5" }),
     ];
-    const seen = { lines: 8, open: true, quiet: false };
+    const seen = lookedAt(8);
     expect(pulse(round, solving, "open", seen, START + 8 * 60_000).status).toStartWith("r1  solving");
     // Gone with that solve unfinished and no report of its own, it is said to be gone.
     const gone = pulse(round, solving, "closed", seen, START + 9 * 60_000);
@@ -187,7 +219,7 @@ describe("the runs pulse", () => {
       event(2, "comparison.reported", { session: "g1", reading: "no-step" }),
       event(3, "solve.started", { solve: "s7", task: "mass-05", model: "claude/claude-opus-5" }),
     ];
-    const seen = { lines: 4, open: true, quiet: false };
+    const seen = lookedAt(4);
     expect(pulse(round, resumed, "open", seen, START + 4 * 60_000).status).toStartWith("r1  solving");
     expect(pulse(round, resumed, "closed", seen, START + 4 * 60_000).said).toEqual([
       "⚠ the process is gone before comparison.reported",
@@ -208,7 +240,7 @@ describe("the runs pulse", () => {
       event(5, "solve.started", { solve: "s2", task: "wind-01", model: "claude/claude-opus-5" }),
       event(5, "solve.started", { solve: "s3", task: "wind-01", model: "claude/claude-opus-5" }),
     ];
-    const look = pulse(round, twice, "open", { lines: 5, open: true, quiet: false }, START + 6 * 60_000);
+    const look = pulse(round, twice, "open", lookedAt(5), START + 6 * 60_000);
     expect(look.said).toEqual(["· wind-01 started on claude/claude-opus-5 (×2)"]);
     expect(look.status).toContain("2 running");
   });

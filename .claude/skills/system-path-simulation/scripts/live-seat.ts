@@ -43,6 +43,7 @@
  * ended by killing its group by hand, and the arms read at different paces were compared by eye.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
+import { EXAMINE } from "#src/campaign/admission.ts";
 import { gateAnswers, measuredGate } from "#src/examiner/record.ts";
 import type { writing as Writing } from "#src/examiner/write.ts";
 import type { examineCommand as ExamineCommand } from "#tools/d1b/examine.ts";
@@ -424,8 +425,8 @@ async function prompt(args: CommandArgs, command: readonly string[]): Promise<nu
   const tree = args.required("tree");
   const name = args.required("name");
   const [script, ...flags] = command;
-  if (script !== "tools/d1b/examine.ts") {
-    args.die("prompt composes an Examiner session: -- tools/d1b/examine.ts");
+  if (script !== EXAMINE) {
+    args.die(`prompt composes an Examiner session: -- ${EXAMINE}`);
   }
   const log = seedLog(tree, name, args.die);
   const before = read(log).length;

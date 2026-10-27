@@ -259,10 +259,11 @@ async function seenOf(
     declared === undefined || authored === undefined ? [] : (gainOver(declared, authored, measure) ?? []),
   );
   const gap = gains.length === 0 ? undefined : Math.min(...gains);
+  const widest = gains.length === 0 ? undefined : Math.max(...gains);
   const unsolved = solves > 0 && valid === 0;
   const proved = new Set(unsolved && checked?.kind === "pass" ? [version] : []);
   const room = informative(pair, "old", proved, new Map(authored === undefined ? [] : [[version, authored]]));
-  return { solves, valid, answers, authored, gap, unsolved, room };
+  return { solves, valid, answers, authored, gap, widest, unsolved, room };
 }
 
 /** What the gate reads of one package: its shape, and under `try_task` the reference harness's
@@ -325,7 +326,7 @@ export async function measured(gate: Gate, task: TaskPackage, stop: AbortSignal,
     await together(rest);
   }
   const seen = await reading;
-  const { solves, valid, answers, authored, gap, unsolved } = seen;
+  const { solves, valid, answers, authored, gap, widest, unsolved } = seen;
   const unread =
     solves < ran
       ? `, ${String(ran - solves)} of them ending in no reading or in a rejection the Referee did not rule earned`
@@ -350,7 +351,7 @@ export async function measured(gate: Gate, task: TaskPackage, stop: AbortSignal,
   const yours =
     authored === undefined
       ? ""
-      : `, and your answer that passed try_answer on it ${shown(authored)}${gap === undefined ? "" : `, ${gapSaid(gap)}`}`;
+      : `, and your answer that passed try_answer on it ${shown(authored)}${gap === undefined ? "" : `, ${gapSaid(gap)}`}${gap === undefined || widest === undefined || gapSaid(widest) === gapSaid(gap) ? "" : ` and ${gapSaid(widest, "worst")}`}`;
   const counted = `the reference harness answered it validly in ${String(valid)} of ${String(ran)} solves${turns}${theirs}${yours}${unread}`;
   // The rule itself is the system prompt's, said once there.
   const roomless = `${counted}, ${unsolved ? "and no answer of yours passed try_answer on it" : "which leaves no room"}`;

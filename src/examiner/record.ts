@@ -110,9 +110,12 @@ function legendOf(results: boolean, carried: Carried): string {
 }
 
 /** How an author's answer at a gate stood against the reference harness's best valid answer by
- *  the objective, as a share of the larger magnitude (`gainOver`, `seenOf` in `write.ts`). */
-export function gapSaid(gap: number): string {
-  return gap === 0 ? "the same as its best" : `${percent(gap)} ${gap > 0 ? "better" : "worse"} than its best`;
+ *  the objective, or against its worst (`of`), as a share of the larger magnitude (`gainOver`,
+ *  `seenOf` in `write.ts`). Room is read against any one of its answers, so the worst decides it. */
+export function gapSaid(gap: number, of: "best" | "worst" = "best"): string {
+  return gap === 0
+    ? `the same as its ${of}`
+    : `${percent(gap)} ${gap > 0 ? "better" : "worse"} than its ${of}`;
 }
 
 /** Where the room of a draft its gate held came from, by how many of the solves it read were valid. */
@@ -239,7 +242,7 @@ export function heard(
     ],
     promoted: promotedLine(events[since], listed - under, listed),
     measured: measuredLine(events, gates),
-    refused: refusedLines(events, gates),
+    refused: refusedLines(events, gates, gated),
     interrupted: interruptedLines(events, last, since),
   };
 }
@@ -252,7 +255,7 @@ function promotedLine(promotion: LogEvent | undefined, before: number, listed: n
   if (promotion === undefined) return null;
   const rests = promotion.data.rests;
   const on = Array.isArray(rests) ? asRecord(rests[0])?.comparison : undefined;
-  return `The reference harness was promoted${isString(on) ? ` on the step of comparison ${on}` : ""}. ${String(before)} of the ${String(listed)} tasks listed were held out before then, under the harness it replaced; a line reads the harness that is the reference now wherever it stood in the comparison that last scored the task.`;
+  return `The reference harness was promoted${isString(on) ? ` on the step of comparison ${on}` : ""}. ${String(before)} of the ${String(listed)} tasks listed were held out before then, under the harness it replaced; a line reads the harness that is the reference now wherever it stood in the comparison that last scored the task. Files in your home from sessions before then were written against the harness it replaced.`;
 }
 
 /** Each proposed version's last gate, with where it stands in the log. */
@@ -369,7 +372,11 @@ function measuredLine(events: readonly LogEvent[], gates: ReadonlyMap<string, Js
  *  of three valid solves from one never written. A draft refused on the reference's solves is said
  *  by their count, the rule being the system prompt's; one refused on its package, by the gate's
  *  reason. */
-function refusedLines(events: readonly LogEvent[], gates: ReadonlyMap<string, JsonObject>): string[] {
+function refusedLines(
+  events: readonly LogEvent[],
+  gates: ReadonlyMap<string, JsonObject>,
+  answered: ReturnType<typeof gateAnswers>,
+): string[] {
   const why = new Map<string, string[]>();
   for (const { version, task } of proposalsOf(events)) {
     const gate = gates.get(version);
@@ -383,7 +390,7 @@ function refusedLines(events: readonly LogEvent[], gates: ReadonlyMap<string, Js
         : gate.reason;
     why.set(reason, [
       ...(why.get(reason) ?? []),
-      `${task.taskId} (${task.family}${yoursSaid(gate.reference)})`,
+      `${task.taskId} (${task.family}${inTurns(answered.get(version)?.flatMap(({ turns }) => (turns === null ? [] : [turns])) ?? [])}${yoursSaid(gate.reference)})`,
     ]);
   }
   return [...why].map(([reason, drafts]) => `${reason}: ${drafts.join(", ")}`);

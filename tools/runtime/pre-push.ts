@@ -1,18 +1,22 @@
 /**
- * What `.githooks/pre-push` checks before anything leaves this clone: every step of the CI gate, with
- * the suite replaced by the tests one import away from what each pushed head changed (`--static`). It
- * reads Git's ref lines on stdin. A commit below a pushed head is unproved until
- * `bun run land -- <top> --sanitize` or `--merge` has run its own static pass, and the whole CI gate,
- * the full suite among it, on the top's head (`tools/runtime/land.ts`). A static pass is remembered by
- * its tree and its parent's, so `land` does not run a pushed head's again.
+ * What `.githooks/pre-push` checks before anything leaves this clone: `git diff --check` on each commit
+ * a push adds and the secret scan on what it adds, and, where the push asks with
+ * `ANA_PUSH_VERIFY=1 git push`, every step of the CI gate with the suite replaced by the tests one
+ * import away from what each pushed head changed (`--static`). It reads Git's ref lines on stdin. A
+ * pushed commit is unproved until `bun run land -- <top> --sanitize` or `--merge` has run its own
+ * static pass, and the whole CI gate, the full suite among it, on the top's head
+ * (`tools/runtime/land.ts`). A static pass is remembered by its tree and its parent's, so `land` does
+ * not run a pushed head's again.
  *
  * Until 25 October the hook was that proof: every commit a push added got the static steps and its
  * nearby tests over a checkout of its own, and the pushed head holding the newest the whole CI gate. In
  * this clone the six-commit push of #372 to #377 on 25 October took 591 seconds of CI gate, the whole
  * CI gate alone 315 of them, and a one-commit push 311 to 696; `bun run land` then ran the same proof
- * again over the stack. From 25 October the hook ran every step but the tests (`--checks`), and a push
- * then proved nothing a test holds until the stack was sanitized; on 28 October the operator asked
- * for the nearby tests back, on the pushed heads only, so a restack still pays one pass a head.
+ * again over the stack. From 25 October the hook ran every step but the tests, and from 28 October
+ * every step with the nearby tests, on the pushed heads only. On 29 October the operator made the
+ * levels four: `--no-verify` checks nothing, a plain push the two checks that cost seconds,
+ * `ANA_PUSH_VERIFY=1` the static pass, and `land --sanitize` every commit of the stack with the suite
+ * at its top. A plain push of #508 had waited minutes on its nearby tests before it could leave.
  *
  * What a push adds is the commits along each pushed head's first parents that neither a
  * remote-tracking ref of this clone nor the branch the push replaces holds (`addedLine`), so a
@@ -20,12 +24,11 @@
  * every commit new to the remote, 444 of them v2's history merged into PR #141. Each added commit gets
  * `git diff --check` against its first parent, and the lines each pushed head that no other pushed
  * head holds adds since the remote get the secret scan (`scanAdded`), documentation included. Where
- * one of them changes more than documentation, each such head gets the CI gate's `--static` pass over a
- * checkout of its own (`proveCommits`): the install, the UI's steps as far as they are due, the
- * format check, typecheck, strict lint, and the tests near what the head's own commit changed. The
- * working tree may hold anything. A pass is remembered by content, so a push its lease
- * refused goes out again without paying twice. `ANA_PUSH_VERIFY=full git push` gives each such head
- * the whole CI gate instead, for one pull request where `bun run land` would prove the whole stack.
+ * the push asks and one of them changes more than documentation, each such head gets the CI gate's
+ * `--static` pass over a checkout of its own (`proveCommits`): the install, the UI's steps as far as
+ * they are due, the format check, typecheck, strict lint, and the tests near what the head's own
+ * commit changed. The working tree may hold anything. A pass is remembered by content, so a push its
+ * lease refused goes out again without paying twice.
  *
  * The push queue and the refusal of a push stacked on a base the push before it replaced went with
  * the tests. The queue kept a push from gating the commits of one still at its CI gate, which cost a
@@ -115,15 +118,21 @@ async function main(): Promise<number> {
     );
     return 0;
   }
-  // `ANA_PUSH_VERIFY=full git push` asks for the whole CI gate, the suite among it, on the pushed head;
   // git's own `--verify` only says that the hook runs, so a push cannot carry the choice as a flag.
-  const pass = runtimeProcess.env.ANA_PUSH_VERIFY === "full" ? "whole" : "static";
+  if (runtimeProcess.env.ANA_PUSH_VERIFY !== "1") {
+    say(
+      `git diff --check and the secret scan passed on ${plural(line.length, "commit")}; ANA_PUSH_VERIFY=1 adds the static steps and nearby tests, and bun run land -- <top> --sanitize proves the stack.`,
+    );
+    return 0;
+  }
   say(
-    `git diff --check and the secret scan passed on ${plural(line.length, "commit")}${pass === "whole" ? "." : "; the suite waits for bun run land -- <top> --sanitize."}`,
+    `git diff --check and the secret scan passed on ${plural(line.length, "commit")}; the suite waits for bun run land -- <top> --sanitize.`,
   );
   const failed = await proveCommits(
     root,
-    tips.filter((tip) => source.some((commit) => holds(commit, tip))).map((commit) => ({ commit, pass })),
+    tips
+      .filter((tip) => source.some((commit) => holds(commit, tip)))
+      .map((commit) => ({ commit, pass: "static" as const })),
     { who: "pre-push", jobs: 1, say, mark: () => undefined },
   );
   if (failed === null) return 0;

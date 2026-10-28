@@ -411,11 +411,7 @@ task's line lists the turns of each of its valid answers in the last comparison,
 solve, and a draft's task admission (`try_task`, and in later sessions; up to three solves, the first alone
 and the other two together where it leaves no room, until they leave room) tells how many were
 valid, how many gave no reading, the turns each valid one took and, where the contract declares an
-objective, their measure and its own answer's. In the task admission's own reply it also tells the calls each
-valid solve made, by tool, with each shell command's length in lines and how many failed
-(`methodOf`, `src/examiner/record.ts`), so an author whose drafts the
-reference answers in a few turns can see how. Nothing else of those solves reaches it: no argument,
-output or answer. The Examiner makes none of the exam's solves itself.
+objective, their measure and its own answer's. Nothing else of those solves reaches it. The Examiner makes none of the exam's solves itself.
 
 The tools of each model seat, as its source names them:
 

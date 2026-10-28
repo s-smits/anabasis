@@ -39,7 +39,7 @@ import {
   pairsReported,
   referenceOf,
 } from "../kernel/reports.ts";
-import { BILLED, type Call, tracesIn } from "../kernel/trace.ts";
+import { BILLED } from "../kernel/trace.ts";
 import { conditionsOf } from "../kernel/condition.ts";
 import { examinerSessions, solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { heldAtGate, taskStates } from "../kernel/task.ts";
@@ -53,12 +53,11 @@ export const TRIED = 3;
 export const UNAFFORDED =
   "the campaign's budget holds no reserve for the reference harness's next solve of it beside the solves running, so it is not measured";
 
-/** One valid answer of the reference at a task admission, and how its solve reached it (`methodOf`). */
+/** One valid answer of the reference at a task admission. */
 interface RoomAnswer {
   readonly turns: number | null;
   readonly seconds: number | null;
   readonly measure: number | null;
-  readonly method: string | null;
 }
 
 /** How each outcome is said. */
@@ -439,10 +438,6 @@ export function gateAnswers(events: readonly LogEvent[], from: number): Map<stri
   const sessions = examinerSessions(events);
   const conditions = conditionsOf(events);
   const verdicts = verdictsOf(events);
-  const calls = Map.groupBy(
-    tracesIn(events).filter((each): each is Call => each.seat === "solve" && each.part === "call"),
-    ({ id }) => id,
-  );
   const answers = new Map<string, RoomAnswer[]>();
   for (const { id, started, start, ending, end, condition } of solvesIn(events)) {
     const version = conditions.get(condition)?.task;
@@ -456,28 +451,10 @@ export function gateAnswers(events: readonly LogEvent[], from: number): Map<stri
         turns: isNumber(end?.turns) ? end.turns : null,
         seconds: isNumber(end?.seconds) ? end.seconds : null,
         measure,
-        method: methodOf(calls.get(id) ?? []),
       },
     ]);
   }
   return answers;
-}
-
-/** How a valid room solve reached its answer, told without one argument or result: its calls by
- *  tool, each shell command's length in lines, and how many failed; null where it recorded none.
- *  job-fresh-opus-stackedPR485's x-1 to x-3 (28 October) had 30 of 30 drafts refused at 4 to 9 of
- *  20 turns, and the turns alone could not tell its Examiner how the solver got there. */
-function methodOf(calls: readonly Call[]): string | null {
-  if (calls.length === 0) return null;
-  const tools = [...Map.groupBy(calls, ({ tool }) => tool)].map(
-    ([tool, each]) => `${tool} ${String(each.length)}`,
-  );
-  const lines = calls.flatMap(({ args }) => {
-    const command = asRecord(args)?.command;
-    return isString(command) ? [command.split("\n").length] : [];
-  });
-  const failed = calls.filter(({ isError }) => isError).length;
-  return `${tools.join(", ")}${lines.length === 0 ? "" : `, commands of ${lines.join(", ")} lines`}${failed === 0 ? "" : `, ${String(failed)} failed`}`;
 }
 
 /** What draft `version`'s solves at session `session`'s task admission billed, read once every one has

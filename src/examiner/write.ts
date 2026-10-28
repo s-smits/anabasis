@@ -359,13 +359,7 @@ export async function measured(
     authored === undefined
       ? ""
       : `, and your answer that passed try_answer on it ${shown(authored)}${gap === undefined ? "" : `, ${gapSaid(gap)}`}${gap === undefined || widest === undefined || gapSaid(widest) === gapSaid(gap) ? "" : ` and ${gapSaid(widest, "worst")}`}`;
-  // How each valid answer was reached, by its calls (`methodOf`, `record.ts`).
-  const methods = answers.flatMap(({ method }) => (method === null ? [] : [method]));
-  const how =
-    methods.length === 0
-      ? ""
-      : `, its valid solves calling ${methods.map((method) => `(${method})`).join(", ")}`;
-  const counted = `the reference harness answered it validly in ${String(valid)} of ${String(ran)} solves${turns}${how}${theirs}${yours}${unread}`;
+  const counted = `the reference harness answered it validly in ${String(valid)} of ${String(ran)} solves${turns}${theirs}${yours}${unread}`;
   // The rule itself is the system prompt's, said once there.
   const roomless = `${counted}, ${unsolved ? "and no answer of yours passed try_answer on it" : "which leaves no room"}`;
   return {

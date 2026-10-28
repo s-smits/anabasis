@@ -36,6 +36,49 @@ import { writeHarness } from "./helpers/write-harness.ts";
 const scratchRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-harness-tools-")));
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
 const TASK = { taskId: "t-1", family: "fixture", publicInput: { base: 7 } };
+
+const KERNEL_TOOLS = `import { defineDraftTool } from "@ana/agent-bundle";
+import { Type } from "@earendil-works/pi-ai";
+const run = async (argv: string[]) => {
+  const child = Bun.spawn(argv, { stdout: "pipe", stderr: "pipe" });
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  return { stdout, stderr, code };
+};
+const shown = (what: string, r: { stdout: string; stderr: string; code: number }) =>
+  [r.stdout.trimEnd(), r.stderr.trimEnd()].filter((p) => p !== "").join("\\n") + "\\n" + what;
+export const createDomainHarness = () => ({
+  tools: [
+    defineDraftTool({
+      name: "ctoolchain",
+      label: "Check the kernel build toolchain",
+      description: "Check the host can build the kernel.",
+      parameters: Type.Object({}),
+      run: async () => ({ text: shown("ctoolchain", await run(["ctoolchain"])) }),
+    }),
+    defineDraftTool({
+      name: "cbuild",
+      label: "Build named kernel targets",
+      description: "Build named targets only.",
+      parameters: Type.Object({ tree: Type.String(), targets: Type.Array(Type.String()) }),
+      run: async ({ tree, targets }: { tree: string; targets: string[] }) => ({
+        text: shown("cbuild", await run(["cbuild", tree, ...targets])),
+      }),
+    }),
+    defineDraftTool({
+      name: "cdiff",
+      label: "Print source files from the tree",
+      description: "Print a source file whole.",
+      parameters: Type.Object({ tree: Type.String(), files: Type.Array(Type.String()) }),
+      run: async ({ tree, files }: { tree: string; files: string[] }) => ({
+        text: shown("cdiff", await run(["cdiff", tree, ...files])),
+      }),
+    }),
+  ],
+});`;
 const walled = osIsolationSupport().ok;
 // SAFETY: harness registrations use only the context's abort signal, no tool API methods.
 const UNUSED_API = undefined as never;
@@ -348,6 +391,48 @@ it.skipIf(!walled)(
       await expect(present(read).execute({ path: host }, UNUSED_API, BACKGROUND_CONTEXT)).rejects.toThrow(
         `cannot read ${host}: ${CLOSED_CODE}`,
       );
+    });
+  },
+  120_000,
+);
+
+it.skipIf(!walled)(
+  "runs the kernel harness's three helpers as tools, each under the wall",
+  async () => {
+    const dir = join(scratchRoot, "kernel-tools");
+    const bin = join(dir, ".toolchain", "bin");
+    mkdirSync(bin, { recursive: true });
+    mkdirSync(join(dir, "agent"), { recursive: true });
+    for (const name of ["ctoolchain", "cbuild", "cdiff"]) {
+      writeFileSync(join(bin, name), `#!/usr/bin/env bash\necho "${name} $*"\n`, { mode: 0o755 });
+    }
+    writeFileSync(join(dir, "agent", "BUILT_AGENTS.md"), "# Kernel guide\n", { encoding: "utf8", flag: "w" });
+    writeHarness(dir, {
+      spec: {
+        presets: ["read", "bash", "edit", "write"],
+        tools: [
+          { name: "ctoolchain", kind: "advisor" },
+          { name: "cbuild", kind: "advisor" },
+          { name: "cdiff", kind: "reader" },
+        ],
+      },
+      tools: KERNEL_TOOLS,
+    });
+    const harness = await openHarness(dir);
+    expect([...harness.kinds.keys()]).toEqual(["ctoolchain", "cbuild", "cdiff"]);
+    await withWall(async (wall) => {
+      const tools = await harnessTools(harness, TASK, { ...wall, toolTree: bin });
+      const by = new Map(tools.map((each) => [each.name, each]));
+      const ctool = await by.get("ctoolchain")?.execute({}, UNUSED_API, BACKGROUND_CONTEXT);
+      expect(textOf(ctool ?? { output: [] })).toContain("ctoolchain");
+      const build = await by
+        .get("cbuild")
+        ?.execute({ tree: "/kernel", targets: ["net/ipv4/tcp.o"] }, UNUSED_API, BACKGROUND_CONTEXT);
+      expect(textOf(build ?? { output: [] })).toContain("net/ipv4/tcp.o");
+      const diff = await by
+        .get("cdiff")
+        ?.execute({ tree: "/kernel", files: ["net/ipv4/tcp.c"] }, UNUSED_API, BACKGROUND_CONTEXT);
+      expect(textOf(diff ?? { output: [] })).toContain("tcp.c");
     });
   },
   120_000,

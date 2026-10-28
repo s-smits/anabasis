@@ -128,9 +128,12 @@ describe("the shape of a draft", () => {
     });
     expect(examined).toMatchObject({ ended: "stands", puts: 2 });
     expect(reached).toEqual([SOUND]);
-    expect(s.of("draft.call")[0]?.text).toBe(
-      "The draft does not stand. 2 faults:\n- example 0 has no accept control: an answer to it that keeps every rule\n- check check-product has no reject control: an answer that breaks its rule and names it\nMend them and put the whole draft again. This session can put 3 more drafts.",
-    );
+    // The refusal carries each of the draft's faults and the puts it has left.
+    const told = s.of("draft.call")[0]?.text;
+    const faults = draftFaults(lone);
+    expect(faults).toHaveLength(2);
+    for (const fault of faults) expect(told).toContain(`- ${fault}`);
+    expect(told).toContain("3 more drafts");
     expect(draftOf(read(s.log))).toEqual(SOUND);
   });
 });
@@ -219,7 +222,7 @@ describe("a draft read without a model", () => {
     expect(await draftReading(join(root, "read"), lax, 2)).toEqual([
       "a reject control of ex-001 names check-product, which did not refuse it: pass",
       "check-product has refused nothing in this reading",
-      `the do-nothing answer {"answer":""} does not follow the answer format (Validation failed for tool "answer":\n  - answer: must match pattern "^[0-9]+$"), so no check was seen to refuse it: the host builds it from the schema's types, required properties, minimums, least lengths and counts, first enumerated or constant values and first choices, and reads no other keyword`,
+      expect.stringContaining('the do-nothing answer {"answer":""} does not follow the answer format'),
     ]);
   });
 

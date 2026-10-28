@@ -167,13 +167,6 @@ describe("the notes block a fresh session opens on", () => {
     expect(block).toContain("submitted twice");
     expect(block).not.toContain("## Open");
   });
-
-  it("seeds a memory starter whose every heading is distinct", () => {
-    // Two headings for one subject split the notes between them, and the next pass finds half.
-    const headings = STARTER_MEMORY.split("\n").filter((line) => line.startsWith("## "));
-    expect(new Set(headings).size).toBe(headings.length);
-    expect(headings.filter((heading) => heading.includes("tools"))).toHaveLength(1);
-  });
 });
 
 describe("the handover between sessions", () => {

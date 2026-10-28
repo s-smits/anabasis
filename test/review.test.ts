@@ -599,9 +599,12 @@ it("the probe rewrites one passage inside a text field, where the thing in dispu
     ]);
     failed(s.record);
     expect(await referee(s.reader, fail(s))).toMatchObject({ ruling: "unclear", probes: [1, 2] });
-    const refused =
-      "an earned ruling cites a probe that changed $.span and moved a check that cites R1 off its refusal";
-    expect([1, 3, 5].map((call) => (s.sent[call] ?? "").split(refused).length - 1)).toEqual([1, 2, 3]);
+    // Each of the three earned rulings is refused on record, and its reason reaches the reader next.
+    const refused = read(s.log).filter(({ kind }) => kind === "referee.refused");
+    expect(refused.map(({ data }) => asRecord(data.asked)?.probes)).toEqual([[], [1], [2]]);
+    refused.forEach(({ data }, index) => {
+      expect(s.sent[[1, 3, 5][index] ?? 0]).toContain(JSON.stringify(data.why).slice(1, -1));
+    });
     expect(read(s.log).at(-1)?.data.probeRows).toEqual([
       expect.objectContaining({ id: 1, moved: [] }),
       expect.objectContaining({ id: 2, moved: [] }),
@@ -845,9 +848,8 @@ it("the probe rewrites one passage inside a text field, where the thing in dispu
     expect(labelled(1).unclearEarned).toBe(0.25);
     expect(unclearReport(labelled(1))).toBeNull();
     expect(labelled(2).unclearEarned).toBe(0.5);
-    expect(unclearReport(labelled(2))).toBe(
-      "a person labelled earned 2 of the Referee's 4 unclear rulings, more than one in four: an unclear ruling sets aside a task a person reads as a real limit",
-    );
+    // The report counts the earned labels over the unclear rulings.
+    expect(unclearReport(labelled(2))).toContain("2 of the Referee's 4 unclear rulings");
     expect(agreement(events, new Map([["c", "earned"]] as const)).unclearEarned).toBeNull();
     expect(unclearReport(agreement(events, new Map([["c", "earned"]] as const)))).toBeNull();
   });

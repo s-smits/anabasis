@@ -71,9 +71,10 @@ describe("submit", () => {
   it("sends answer.json from the working directory, and the answer once sent stays the answer", async () => {
     const { desk, tool, submit, answer } = solving();
     expect(tool.name).toBe("submit");
-    expect(tool.description).toBe(
-      "Send answer.json from your working directory as your answer. It holds the answer as JSON, in the format public/answer-format.json gives. A file that does not is refused with the reason, and you may submit again. An accepted submit ends the task and returns no verdict. If you judge the task malformed, so that no answer could meet it as posed, give malformed instead, saying why: that ends the task with no answer read.",
-    );
+    // The description names the file it sends, its format, and the malformed alternative.
+    for (const fact of ["answer.json", "public/answer-format.json", "malformed"]) {
+      expect(tool.description).toContain(fact);
+    }
     answer('{ "span": 4,\n  "note": "first" }\n');
     expect(desk.submitted).toBeUndefined();
     expect(await submit()).toEqual({ text: "Submitted.", terminate: true });

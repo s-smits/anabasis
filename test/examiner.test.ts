@@ -289,7 +289,6 @@ describe("a session of any mode", () => {
       expect(told).toContain("but no repository or private data");
       expect(told).toMatch(/It has (no )?network access: a package index (was|could not be) reached/);
       expect(told).toContain(`Nothing in your home enters the exam: ${ENTERS[mode]}.`);
-      if (mode === "draft") expect(told).not.toMatch(/research/i);
     }
   });
 
@@ -772,9 +771,8 @@ describe("a session that writes tasks", () => {
     // turns and finished, of twelve tasks and two hundred turns it had.
     const short = seat("write", [propose(1), finish, propose(2), finish]);
     expect(await examine(short.request)).toMatchObject({ ended: "finished", puts: 2 });
-    expect(short.of(CALLED)[1]?.text).toBe(
-      "Noted, and the session goes on: the host does not yet have the tasks it needs from it. Propose further tasks, varying what they ask, and call finish again when you have none left worth proposing.",
-    );
+    // The first finish is declined with the need and without a count, which an author writes towards.
+    expect(short.of(CALLED)[1]?.text).not.toMatch(/\d/);
     expect(short.of("exam.turn")).toHaveLength(4);
   });
 

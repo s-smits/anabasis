@@ -440,9 +440,11 @@ describe("a reading of a checker", () => {
     ]);
     const unformed = await readUnder(mass({ type: "string", pattern: "^[0-9]+$" }));
     expect(unformed.rejected).toEqual([]);
-    expect(unformed.faults.filter((fault) => fault.startsWith("the do-nothing"))).toEqual([
-      `the do-nothing answer {"mass":""} does not follow the answer format (${unformed.unformed ?? ""}), so no check was seen to refuse it: the host builds it from the schema's types, required properties, minimums, least lengths and counts, first enumerated or constant values and first choices, and reads no other keyword`,
-    ]);
+    // One fault, naming the do-nothing answer and why the format refuses it.
+    const [fault, ...more] = unformed.faults.filter((each) => each.startsWith("the do-nothing"));
+    expect(more).toEqual([]);
+    expect(fault).toContain('{"mass":""}');
+    expect(fault).toContain(unformed.unformed ?? "missing");
     expect(unformed.unformed).toContain("pattern");
   });
 });

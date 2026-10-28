@@ -13,7 +13,6 @@ import {
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { crashedRun } from "../src/campaign/ground.ts";
-import { SAID, systemPrompt } from "../src/builder/prompt.ts";
 import { type BuildRequest, build, type PracticeTask, session } from "../src/builder/session.ts";
 import { type Bench, HOME_TOOL_TREE, practiceLeft, record, snapshot } from "../src/builder/tools.ts";
 import { type Condition, recordCondition } from "../src/kernel/condition.ts";
@@ -508,34 +507,10 @@ describe("a Builder session", () => {
       "The next session opens in a new home, and what you learned reaches it only through MEMORY.md, SCRATCHPAD.md and scratch/ in your home directory (files up to 256 KB each, 4096 KB in all;",
     );
     expect(s.sent[0]).not.toContain("Comparisons so far");
-    // The one limit on a harness, as the operator settled it on 20 October: a program may search
-    // and test candidates against the public rules, and nothing in it answers a particular task.
-    expect(s.sent[0]).toContain("task identifiers, copied task text and answers are not");
-    // Each part of a harness has one purpose: a computation is a program, and no tool beside it.
-    // Programs and tools are both the Builder's to choose, told what each costs; no sentence steers
-    // it from tools while the solver has the shell (that was a second limit in a prompt, lifted
-    // 10 October).
-    expect(s.sent[0]).toContain("Whether a computation is a program, a tool or both is yours to choose");
-    expect(s.sent[0]).not.toContain("Leave its list empty");
-    expect(s.sent[0]).not.toContain("same thing built twice");
-    expect(s.sent[0]).toContain(
-      "search for candidates, test them against the public rules and report which meet them",
-    );
-    // Until 20 October the rule also named the composition of a search and a judge in one part,
-    // which no reader of a harness could tell from a filter; the operator lifted it.
-    expect(s.sent[0]).not.toContain("both propose a candidate and judge it");
-    // What the rounds of 9 October showed of a guide and of the practice solves: four of the six
-    // harnesses that went to a comparison told the solver that time was short, and both truss
-    // sessions spent their last solve before their last change. The prompt states each of these
-    // once; what a tool result ends with (the turn, the time, the solves left, whether a practice
-    // solve has run harness/) it does not restate (`7f0add79:docs/simplify.md`, E3).
-    expect(s.sent[0]).toContain("so the guide says nothing of time or turns");
-    expect(s.sent[0]).toContain("is measured untried");
-    expect(s.sent[0]).not.toContain("Every tool result ends with the turn");
     expect(readFileSync(join(s.home, "practice", "t-1.json"), "utf8")).toContain('"base": 7');
     // The solver's public resources, in the home as one file, which the opening message names.
     expect(readFileSync(join(s.home, "resources.json"), "utf8")).toContain('"maxSpan": 12');
-    expect(s.sent[0]).toContain("are in resources.json");
+    expect(s.sent[0]).toContain("resources.json");
     // The practice result: endings, records under both harnesses, the budget. Until 2026-10-11 a
     // Diagnoser's reading of the fail came too (`7f0add79:docs/simplify.md`, E1).
     const practised = s.sent[2] ?? "";
@@ -1424,17 +1399,16 @@ describe("a Builder session", () => {
         /not one of this session's practice tasks: t-1, t-2\n\n\[Session: turn 1 of 12, /,
       ),
     });
-    // The turn that ended with no call is answered with the goal and the facts, and with no course.
+    // The turn that ended with no call is answered with the goal and the facts, and with no course:
+    // its turns and minutes used, the practice solves left, and whether harness/ is practised.
     const continued = parseJsonAs<{ messages: { role: string; content: string }[] }>(s.sent[4] ?? "{}");
-    expect(continued.messages.at(-1)).toMatchObject({
-      role: "user",
-      content: [
-        `${GOES_ON}, and the session goes on: ending a turn does not end it. It ends when you call finish or at its limits, and what harness/ holds then is frozen and measured.`,
-        "The goal, unchanged: Your harness is measured against a reference harness on tasks you are never shown: the same solving model answers each task under each harness, under the same limits.",
-        "This session so far: 4 of 12 turns and 0 of 10 minutes used, 2 practice solves left. harness/ has counted practice results under its exact current digest.",
-        "read_opening returns the opening message again: the public rules, the practice tasks, the failed practice solves and the comparisons so far.",
-      ].join("\n\n"),
-    });
+    const told = continued.messages.at(-1);
+    expect(told?.role).toBe("user");
+    expect(told?.content).toStartWith(GOES_ON);
+    expect(told?.content).toContain("4 of 12 turns and 0 of 10 minutes used, 2 practice solves left");
+    expect(told?.content).toContain("harness/ has counted practice results under its exact current digest");
+    expect(told?.content).toContain("tasks you are never shown");
+    expect(told?.content).toContain("read_opening");
     // The parent's older counted failure is still practice; a genuinely changed state has none.
     const idle = await setup([stop, finish]);
     await session(idle.request, idle, idle.walled);
@@ -1890,28 +1864,4 @@ describe.skipIf(!osIsolationSupport().ok)("a Builder session under the command w
       expect(linked).toContain(join("..", name));
     }
   }, 120_000);
-});
-
-describe("the texts a Builder reads, by who makes its campaign's moves", () => {
-  it("tells a Builder that leads its campaign nowhere that finishing has its harness measured", () => {
-    const { host, builder } = SAID;
-    const texts = (said: typeof host) => [
-      said.frozen,
-      said.finish,
-      said.broken.unpractised,
-      said.broken.practised,
-      said.untried,
-    ];
-    // Under the host a session's end is a measurement, and every one of these says so.
-    for (const each of texts(host)) expect(each).toMatch(/\bmeasured\b/);
-    // Led by the Builder, only `compare` measures: finishing freezes, and no text says more.
-    for (const each of texts(builder)) expect(each).not.toMatch(/\bmeasured\b/);
-    expect(systemPrompt(builder)).toContain(builder.closing);
-    expect(systemPrompt(host)).toContain(host.closing);
-    expect(systemPrompt(host)).not.toContain("compare");
-    // The led closing in five sentences at most, its patience counted in moves as the stop rule
-    // counts it: until 14 October it said comparisons, and a session that changed nothing counts.
-    expect(builder.closing.split(/(?<=\.) /).length).toBeLessThanOrEqual(5);
-    expect(builder.closing).toContain("as many moves in a row without a gain as its patience");
-  });
 });

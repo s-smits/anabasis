@@ -496,9 +496,12 @@ describe("what an Examiner is told of its campaign's past", () => {
     for (const event of log.events) append(s.log, event.kind, event.data);
     await examine({ ...s.request, tasks: tasks.map((task) => ({ ...task, publicInput: {}, hidden: null })) });
     const opening = s.sent[0] ?? "";
-    expect(opening).toContain(
-      String.raw`- every (fixture): valid in every solve, in 11, 11 turns; tied there\n\nIn the last comparison the reference harness stood in`,
-    );
+    // What `heard` reads of the log reaches the opening whole: each task's line, then the measurement.
+    const told = heard(log.events, tasks);
+    const at = (text: string) => opening.indexOf(JSON.stringify(text).slice(1, -1));
+    const lines = told.lines.map(at);
+    expect(lines).not.toContain(-1);
+    expect(at(String(told.measured))).toBeGreaterThan(Math.max(...lines));
     for (const absent of ["h1", "h2", SOLVER, "too easy", "| family |"]) {
       expect(opening).not.toContain(absent);
     }

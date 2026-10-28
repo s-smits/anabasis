@@ -184,7 +184,7 @@ describe("the login a run goes on with", () => {
     expect(billsLogin([opening], overrides)).toBe(false);
   });
 
-  it("keeps an all-GPT campaign with no login and refuses a Claude campaign there", () => {
+  it("keeps an all-GPT campaign with no login, and a Claude campaign only where the plain login is set", () => {
     const made = fakeHosts();
     fixtures.push(made.root);
     const folder = join(made.main, ".ana", "d2", "sample");
@@ -212,5 +212,8 @@ describe("the login a run goes on with", () => {
     const refused = made.run(command);
     expect(refused.code).toBe(1);
     expect(refused.err).toContain("no allowed Claude login");
+    const plain = made.run(command, { CLAUDE_CODE_OAUTH_TOKEN: "plain" });
+    expect(plain.code).toBe(0);
+    expect(plain.out).toContain("would be kept going");
   });
 });

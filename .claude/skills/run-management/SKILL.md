@@ -135,13 +135,16 @@ remote branch holds. It then installs (`bun install --frozen-lockfile`), runs th
   `CLAUDE_CODE_OAUTH_TOKEN<N>`, passed on as `CLAUDE_CODE_OAUTH_TOKEN`, and no numbered key
   reaches the command. With no `--login` the environment goes on less its numbered keys and no
   login is guessed: the command's dry run refuses a seat whose provider holds no credential, so a
-  run with a `claude/` seat names its login, as `fresh` and `keep` do. `claude/<model>` runs Claude Code on that login and `claude-api/<model>` on
+  run with a `claude/` seat names its login, as `fresh` and `keep` do. A machine that holds only the
+  plain `CLAUDE_CODE_OAUTH_TOKEN`, and no numbered login is allowed, runs every campaign on it
+  (`plainOnly`, `tools/runs/logins.ts`). `claude/<model>` runs Claude Code on that login and `claude-api/<model>` on
   `ANTHROPIC_API_KEY`: two providers, so a solver on one is another setting than on the other.
 - **What the operator's machines hold is environment, too.** `ANA_LOGINS` names the logins a run
   may take (`2,3,4`; every login the environment holds where unset), and `ANA_HOSTS` the other
-  hosts, a JSON list of `{name, ssh, tree, bun, envFiles, capacity, packs}`. Copy `.env.runs.example` to
-  `.env.runs`, which Git ignores; `.env.runs.example` stays tracked. Fill in your own and
-  pass it with a second `--env-file`.
+  hosts, a JSON list of `{name, ssh, tree, bun, envFiles, capacity, packs}`. Copy `.env.runs.example`
+  to `.env.runs`, which Git ignores; `.env.runs.example` stays tracked, with every setting
+  commented out, so a copy as it stands keeps every run on one machine. Fill in your own and pass
+  it with a second `--env-file`.
 - **One or two campaigns at a time on one host.** A solve's deadline counts elapsed time. The command
   waits before each solve until the one-minute load is at or under the cores, or half an hour on,
   and says so once; `--loaded` starts it all the same, the operator's word that its times will not

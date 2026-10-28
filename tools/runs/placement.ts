@@ -18,7 +18,7 @@ import { runtimeProcess } from "#src/meta/process.ts";
 import { asked } from "./hosts.ts";
 import { type Host, hostsOf } from "./host-config.ts";
 import type { Live } from "./live.ts";
-import { allowedLogins, atCap, liveEverywhere, readLogins, room } from "./logins.ts";
+import { allowedLogins, atCap, liveEverywhere, plainOnly, readLogins, room } from "./logins.ts";
 import { localCatalogue, remoteRuns } from "./snapshots.ts";
 
 interface Occupancy {
@@ -132,8 +132,9 @@ export async function freshLogin(
   live: readonly Live[],
   read: typeof readLogins = readLogins,
   allowed = allowedLogins(runtimeProcess.env),
-): Promise<string> {
+): Promise<string | undefined> {
   const env = runtimeProcess.env;
+  if (requested === undefined && allowed.length === 0 && plainOnly(env)) return undefined;
   const full = atCap(env, allowed, live);
   if (requested !== undefined) {
     if (atCap(env, [requested], live).size > 0) {

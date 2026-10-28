@@ -196,12 +196,7 @@ describe("bun run land", () => {
       `${lowerDocs} documentation only`,
       `${upper} passed the whole gate on its own checkout`,
     ]);
-    expect(statuses("mergeable")).toEqual([
-      `pending ${lowerDocs}`,
-      `pending ${upper}`,
-      `success ${lowerDocs}`,
-      `success ${upper}`,
-    ]);
+    expect(statuses("mergeable")).toEqual([`success ${lowerDocs}`, `success ${upper}`]);
     expect(writes().filter((line) => !/context=(ana\/commit|mergeable) /u.test(line))).toEqual([]);
     expect(logLines(ghLog).some((line) => line.startsWith("run list"))).toBe(false);
   });
@@ -242,12 +237,7 @@ describe("bun run land", () => {
       ANA_FAKE_PULLS: JSON.stringify([pull(11, "a", "main", lowerDocs), pull(12, "merged", "a", merged)]),
     });
     expect(result.status).toBe(0);
-    expect(statuses("mergeable")).toEqual([
-      `pending ${lowerDocs}`,
-      `pending ${merged}`,
-      `success ${lowerDocs}`,
-      `success ${merged}`,
-    ]);
+    expect(statuses("mergeable")).toEqual([`success ${lowerDocs}`, `success ${merged}`]);
     expect(statuses("ana/commit")).toContain(`success ${lowerDocs}`);
     expect(gatesRun(gateLog)).toContain(`${lowerMore} test/owner.test.ts`);
     expect(gatesRun(gateLog).at(-1)).toBe(`${merged} suite`);
@@ -265,12 +255,7 @@ describe("bun run land", () => {
     const last = result.stderr.trimEnd().split("\n").at(-1) ?? "";
     expect(last).toStartWith(`land: ${short(lower)} FAILS lint ON ITS OWN. Nothing was merged. Log: `);
     expect(statuses("ana/commit")).toEqual([`failure ${lower}`]);
-    expect(statuses("mergeable")).toEqual([
-      `pending ${lowerDocs}`,
-      `pending ${upper}`,
-      `failure ${lowerDocs}`,
-      `failure ${upper}`,
-    ]);
+    expect(statuses("mergeable")).toEqual([`failure ${lowerDocs}`, `failure ${upper}`]);
     expect(statuses("ana/stack-gate")).toEqual([]);
   });
 
@@ -480,11 +465,7 @@ describe("bun run land", () => {
       rmSync(`${next}.read`, { force: true });
       writeFileSync(next, JSON.stringify([pull(11, "a", "main", head), pull(12, "b", "a", upper)]));
       const result = runLand(["12", "--sanitize"], { ANA_FAKE_PULLS_NEXT: next });
-      expect(statuses("mergeable")).toEqual([
-        `pending ${lowerDocs}`,
-        `pending ${upper}`,
-        `success ${lowerDocs}`,
-      ]);
+      expect(statuses("mergeable")).toEqual([`success ${lowerDocs}`]);
       expect(result.status).toBe(1);
       expect(result.stderr).toContain(reason);
     }

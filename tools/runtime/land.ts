@@ -26,9 +26,11 @@
  *
  * Without a flag nothing is written to GitHub. `--sanitize` posts each commit's verdict as the
  * status `ana/commit` and stops. It also posts the check `mergeable` on each pull request's head:
- * pending on every head before the first proof, then success on each head as soon as every commit
- * from the bottom to it has passed, so the stack turns green from the bottom up while the rest is
- * gated, and failure on the head that holds a failed commit and on each above it. A check belongs
+ * success on each head as soon as every commit from the bottom to it has passed, so the stack turns
+ * green from the bottom up while the rest is gated, and failure on the head that holds a failed
+ * commit and on each above it. It posts no pending first: `mergeable.yml` marks a pushed head
+ * pending, and until 28 October a rerun set every proved head back to pending before its remembered
+ * passes turned it green again, so an unchanged stack read as reset. A check belongs
  * to its commit, so a push leaves the new head without it and the pull request reads unproved again
  * (`mergeable.yml` marks it and the heads above it pending); a label would outlive the head it was
  * earned on (the operator, 27 October). That is how a stack shows it is ready. A pull request opens as a
@@ -571,15 +573,6 @@ async function landTo(root: string, target: number, mode: Mode): Promise<number 
     `${numbers(landing.pulls)} onto ${landing.trunk} ${short(landing.trunkSha)}: ${plural(proofs.length, "commit")}.`,
   );
   const reach = mode.merge || mode.sanitize;
-  for (const pull of reach ? landing.pulls : []) {
-    postStatus(
-      root,
-      pull.headRefOid,
-      MERGEABLE_CONTEXT,
-      "pending",
-      "waiting for bun run land to prove every commit up to this head",
-    );
-  }
   // A pull request turns green as soon as every commit from the bottom to its head has passed,
   // so the stack shows its proof climbing while the commits above are still being gated.
   const at = new Map(proofs.map((proof, index) => [proof.commit, index]));

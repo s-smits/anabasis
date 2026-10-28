@@ -1615,11 +1615,11 @@ In practice:
   `main`, which leaves the pull requests open. It reads the chain of bases down to `main`, requires
   each head to contain the one beneath it, and proves every commit it would publish over its own
   checkout, with the whole gate on the top's head. `--sanitize` stops there and posts each verdict
-  as the status `ana/commit`, and the check `mergeable` on each pull request's head: pending on
-  every head before the first proof, success on each head as soon as every commit from the bottom
-  to it has passed, and failure from the pull request that holds a failed commit upwards. A pull
-  request opens as a draft, and the same success moves it to Ready for review. A push
-  turns its head and every head stacked above it pending again (`mergeable.yml`). `--merge` also
+  as the status `ana/commit`, and the check `mergeable` on each pull request's head: success on each
+  head as soon as every commit from the bottom to it has passed, and failure from the pull request
+  that holds a failed commit upwards. A pull request opens as a draft, and the same success moves it
+  to Ready for review. A push turns its head and every head stacked above it pending
+  (`mergeable.yml`), and a landing leaves a proved head as it stands until its verdict changes. `--merge` also
   waits for `ci.yml` on the top's head, posts `ana/stack-gate` on every head, and merges the top
   through GitHub's asynchronous merge, pinned to its gated head, which merges the native stack
   beneath it all or nothing; the merge commit's tree must match the top's. A landing of several pull requests is refused unless they are one native

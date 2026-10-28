@@ -163,7 +163,7 @@ const lastWork = (log: readonly LogEvent[]) =>
   );
 
 /** Where a run stands: reported, closed, inside a Builder or Examiner session, or solving. A report
- *  counts when it follows the last work: a checkpoint solving after an earlier comparison's report
+ *  counts when it follows the last work: a standalone comparison solving after an earlier comparison's report
  *  has not reported. */
 function stage(log: readonly LogEvent[], running: number, open: boolean): string {
   const from = Math.max(lastStart(log), 0);
@@ -232,7 +232,7 @@ export function pulse(
   if (quiet && before?.quiet !== true) lines.push(`⚠ quiet for ${minutes(now - since)}`);
   if (!quiet && before?.quiet === true) lines.push("· not quiet any more");
   // A run's end is that of the last thing it started: an Examiner session writes no report, and
-  // the second on exam-1 (2026-10-08) ended whole and was said to be gone before one. A checkpoint
+  // the second on exam-1 (2026-10-08) ended whole and was said to be gone before one. A standalone comparison
   // starts no session, so its own start is where its report is looked for. A campaign that wrote
   // its ending is done whatever it was doing: until 27 October one that ended while drafting its
   // exam, which none of these starts covers, was said to be gone before a report.

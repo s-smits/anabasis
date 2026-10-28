@@ -3,7 +3,7 @@
  * promotion, to the next promotion or the log's end, under one reference harness. The climb the
  * system is for is a chain of epochs in which each promoted harness answers tasks the one before
  * it failed, so an epoch's row keeps apart what each side answered on the tasks held out in it:
- * the reference harness, as the control and the comparisons read it, and the starter, the fixed
+ * the reference harness, as the A/A comparison and the other comparisons read it, and the starter, the fixed
  * lower reference, which says whether the tasks got harder from one epoch to the next. A row holds
  * counts of valid answers and solves and nothing of a task.
  *
@@ -33,7 +33,7 @@ interface FalsePromotion {
   /** The readings of a candidate against the epoch's reference on a frontier, each one attempt,
    *  unsuccessful ones included. Until 19 October a step and the repeat it bought were one. */
   readonly attempts: number;
-  /** A/A steps under the comparison's one-sided rule. The denominator excludes controls where
+  /** A/A steps under the comparison's one-sided rule. The denominator excludes A/A comparisons where
    * a marginal test is too small to clear the level; passing this size check does not establish
    * that both tests can pass together. Historical reports without unbilled scores use one test. */
   readonly errors: number;
@@ -83,7 +83,7 @@ const PROMOTED = "harness.promoted";
  *  may set (`TERMS`): the promotion attempts of an epoch after set-up, comparisons against its
  *  reference, which are what the false-promotion estimate counts, so the bar does not move with the
  *  solver's price. A session the provider cut finished nothing and is no attempt. Dollars are
- *  reported beside it, and it gates nothing (12 October). The effect and transfer bars it stood
+ *  reported beside it, and it decides no admission (12 October). The effect and transfer bars it stood
  *  beside until 13 October went: each read a set that changed with every reading. The ladder that
  *  took their place, a fixed set read after every promotion, went on 16 October: the first
  *  promotion's reference answered it whole. The climb is read as promotions. */
@@ -116,7 +116,7 @@ function boundsOf(events: readonly LogEvent[]): { index: number; harness: string
   return [{ index: 0, harness: "starter" }, ...promotions];
 }
 
-/** The task versions that passed their gate in each epoch, oldest epoch first: the tasks written
+/** The task versions that passed task admission in each epoch, oldest epoch first: the tasks written
  *  under one reference harness, which the comparison draws from newest epoch down (`scoredSet`). */
 export function tasksByEpoch(events: readonly LogEvent[]): string[][] {
   const bounds = boundsOf(events);
@@ -189,7 +189,7 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
 
 /**
  * An epoch's false-promotion reading (`FalsePromotion`): its attempts, from `reports` within it
- * against `reference`, each at its own rate, and beside them the campaign's A/A controls, each the
+ * against `reference`, each at its own rate, and beside them the campaign's A/A comparisons, each the
  * reference against itself read as a comparison is.
  */
 function falsePromotionOf(
@@ -223,18 +223,18 @@ function falsePromotionOf(
       },
     ];
   });
-  const controls = read.filter(({ differences, unbilled, level }) =>
+  const aaComparisons = read.filter(({ differences, unbilled, level }) =>
     readsStep(differences.map(Math.abs), unbilled.map(Math.abs), level),
   );
-  const errors = controls.filter(({ differences, unbilled, level }) =>
+  const errors = aaComparisons.filter(({ differences, unbilled, level }) =>
     readsStep(differences, unbilled, level),
   ).length;
   const rates = attempts.map(rateOf);
   return {
     attempts: attempts.length,
     errors,
-    controls: controls.length,
-    incapable: read.length - controls.length,
+    controls: aaComparisons.length,
+    incapable: read.length - aaComparisons.length,
     bound: Math.max(0, ...rates),
     union: Math.min(
       1,
@@ -265,15 +265,15 @@ function percent(chance: number): string {
   return chance < 0.1 ? `${(100 * chance).toFixed(1)}%` : `${String(Math.round(100 * chance))}%`;
 }
 
-/** The riskiest attempt's rate by design, an estimate, and the A/A controls read beside it. */
+/** The riskiest attempt's rate by design, an estimate, and the A/A comparisons read beside it. */
 function sourceOf(risk: FalsePromotion): string {
-  const controls =
+  const comparisons =
     risk.controls === 0
-      ? "no A/A control with enough untied tasks in every test"
-      : `${String(risk.errors)} of ${plural(risk.controls, "A/A control")} with enough untied tasks in every test read a step; joint reachability unmeasured`;
+      ? "no A/A comparison with enough untied tasks in every test"
+      : `${String(risk.errors)} of ${plural(risk.controls, "A/A comparison")} with enough untied tasks in every test read a step; joint reachability unmeasured`;
   const incapable =
     risk.incapable === 0 ? "" : `, and ${String(risk.incapable)} too small to read one at their level`;
-  return `${percent(risk.bound)} for the riskiest attempt by the rule's design; ${controls}${incapable}`;
+  return `${percent(risk.bound)} for the riskiest attempt by the rule's design; ${comparisons}${incapable}`;
 }
 
 /**
@@ -293,7 +293,7 @@ export function riskLines(events: readonly LogEvent[]): string[] {
       return `- Epoch ${String(nth)}: ${attempts}, a false promotion among them estimated at ${percent(risk.union)}: ${sourceOf(risk)}.`;
     }),
     `Over the campaign, a false promotion in any epoch estimated at ${percent(total)}: the sum of the epochs' estimates, capped at one, which assumes nothing of how the attempts depend on one another. It sums estimates, so it is an estimate and no bound.`,
-    "The rule's design assumes each untied task is as likely won as lost between two equal harnesses, which a solver whose solves drift can break. The A/A controls test that assumption: one that reads a step is a false promotion between equal harnesses, and the design's rate then does not hold. No step in n controls bounds an attempt only near 3 in n, so the controls on record count against the design and bound nothing by themselves. Each line counts the attempts on record: a campaign that goes on makes more, and its estimate grows with them.",
+    "The rule's design assumes each untied task is as likely won as lost between two equal harnesses, which a solver whose solves drift can break. The A/A comparisons test that assumption: one that reads a step is a false promotion between equal harnesses, and the design's rate then does not hold. No step in n A/A comparisons bounds an attempt only near 3 in n, so the A/A comparisons on record count against the design and bound nothing by themselves. Each line counts the attempts on record: a campaign that goes on makes more, and its estimate grows with them.",
   ];
 }
 
@@ -342,9 +342,9 @@ export function promotionsWorth(events: readonly LogEvent[]): ReadonlyMap<string
   );
 }
 
-/** A worth as one line: what the bar read, and that it gates nothing. */
+/** A worth as one line: what the bar read, and that it decides no admission. */
 export function worthLine({ bars, cost }: Worth): string {
   return cost === null
     ? "cost unread"
-    : `cost, gating nothing: ${plural(cost.attempts, "promotion attempt")} this epoch (bar ${String(bars.cost)} after set-up): ${cost.met ? "met" : "over it"}, over ${plural(cost.sessions, "Builder session")} and ${cost.dollars.toFixed(2)} dollars billed`;
+    : `cost, reported only: ${plural(cost.attempts, "promotion attempt")} this epoch (bar ${String(bars.cost)} after set-up): ${cost.met ? "met" : "over it"}, over ${plural(cost.sessions, "Builder session")} and ${cost.dollars.toFixed(2)} dollars billed`;
 }

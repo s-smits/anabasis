@@ -45,8 +45,8 @@ export type Decided =
         readonly answers?: readonly number[];
       }
   ) & {
-    /** The row of the table that chose it, or the hold that changed what a row named (`ROWS`,
-     *  `HOLDS`, `decide.ts`), which `campaign.move` carries beside its reason. */
+    /** The row of the table that chose it, or the build condition that named practice or tasks
+     *  (`ROWS`, `decide.ts`), which `campaign.move` carries beside its reason. */
     readonly code: string;
   };
 

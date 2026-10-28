@@ -9,7 +9,7 @@
  * and no promotion waits for it: a campaign runs unattended (the operator, 12 October). A rejected
  * answer one the Referee ruled a check defect or unclear, and one nobody ruled on, sets its task
  * aside, out of every tally of the comparison (`src/campaign/round.ts`), and the packet is how a
- * person decides those. `--session` is the comparison's id: a round's session, or a checkpoint's
+ * person decides those. `--session` is the comparison's id: a round's session, or a standalone comparison's
  * `--id`.
  *
  * Run once, it draws the packet. It holds every rejected answer under any of the comparison's
@@ -22,8 +22,8 @@
  * it: the task with its hidden values, the public contract whole (scope, conventions, rules, answer
  * format and objective) and the answer, and for a rejection the checks that refused it. A packet
  * holds no ruling and names no harness, so a label is made blind to both. A rejection ruled earned
- * is only sampled, and since 12 October that ruling rests on a probe that moved a check: a probe
- * shows a difference, not which side is right, and in one audit 51 of 77 such differences stayed
+ * is only sampled, and since 12 October that ruling rests on an answer probe that moved a check.
+ * An answer probe shows a difference, not which side is right, and in one audit 51 of 77 such differences stayed
  * undecidable (research 06).
  *
  * A person writes `earned`, `check-defect` or `unclear` into each rejection's entry, and `sound`,

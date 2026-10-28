@@ -27,7 +27,7 @@
  * limits is followed by another on the Builder's notes, and so is one the Builder ends with
  * `finish`, until three in a row have made no campaign move (`finished`). Every ending the table
  * names ends a live conversation too, a lack of room among them: until 22 October that one was
- * advice while a conversation lived, and a Builder bought an Examiner session past its patience.
+ * advice while a conversation lived, and a Builder bought an Examiner session past its supply patience.
  * Without the term the command makes every move itself, a Builder session among them, as it did
  * before 13 October, and nothing a Builder reads differs from then (`SAID`,
  * `src/builder/prompt.ts`). A campaign on record without the term runs so.
@@ -57,8 +57,8 @@
  * the opening: `projectOf`, `campaign.ts`), the total budget in dollars and the
  * reserve one solve is held at (`--budget`, `--reserve`), the full limit of a solve in the model's
  * turns (`--solve-model-turns`), the Builder sessions before a comparison (`--sessions`), the
- * campaign's patience (`--patience`: the moves without a gain, and the readings that left nothing
- * to gain, it bears in a row before it ends, six by default while the system is
+ * campaign's improvement patience and supply patience (`--patience`: moves without a gain, and
+ * readings that left nothing to gain, it bears in a row before it ends, six by default while the system is
  * built, since every campaign of 9 and 10 October ended on the plan's three before its tasks were
  * measured), who sits in each seat, and the terms of its moves as a command last named them
  * (`TERMS`, `src/campaign/opening.ts`): a session's limits, a comparison's size, the practice tasks.
@@ -99,7 +99,7 @@
  * (`keepReceipt`, `tools/runs/receipt.ts`).
  *
  * **A solve waits for the host.** Each solve of a Builder session or a comparison starts once the
- * host's one-minute load is at or under its cores, and a wait is on record (`gated`, `host.ts`).
+ * host's one-minute load is at or under its cores, and a wait is on record (`queued`, `host.ts`).
  * `--loaded` starts them all the same.
  *
  * `--dry-run` prints the next move and makes none. Under a rehearsal's seats (`tools/runs/`) the
@@ -158,7 +158,7 @@ import {
 } from "./campaign-terms.ts";
 import { checkpointCommand } from "./checkpoint.ts";
 import { closeCommand } from "./close.ts";
-import { gated, HOST, waitCrashed } from "./host.ts";
+import { gated as queued, HOST, waitCrashed } from "./host.ts";
 import { prepareCommand } from "./prepare.ts";
 import { promoteCommand } from "./promote.ts";
 import { solved } from "./round.ts";
@@ -268,11 +268,16 @@ async function make(
       throw new Error(`a rehearsal seats no Examiner, and the campaign needs one: ${decided.why}`);
     }
     const session = nextId(events, decided.move === "draft" ? "d" : "x");
-    const { args, probe } = examinerRun(turn, session, stand, decided.move === "draft" ? "draft" : "write");
+    const { args, roomSolves } = examinerRun(
+      turn,
+      session,
+      stand,
+      decided.move === "draft" ? "draft" : "write",
+    );
     begin({ session });
     await (decided.move === "draft"
-      ? draftCommand(args, seats.draft, probe)
-      : examineCommand(args, seats.examine, probe));
+      ? draftCommand(args, seats.draft, roomSolves)
+      : examineCommand(args, seats.examine, roomSolves));
     return;
   }
   const { setting, cap, reviewer, pastStop } = sharedOf(turn);
@@ -520,7 +525,7 @@ function settingHeld(log: string, given: Values): void {
  * The opening of a paid campaign, refused where a seat's provider holds no credential here, before
  * anything is paid for (rule 14), and so also under `--dry-run`, which every launch runs first.
  * Every call of such a seat ends a provider non-result: on 21 October a campaign on the Linux host,
- * whose env file held no OpenRouter key, ended its Examiner's 9 gate solves "Provider is not
+ * whose env file held no OpenRouter key, ended its Examiner's 9 room solves "Provider is not
  * configured: openrouter" while its Opus Examiner billed $3.11.
  */
 async function served(opening: Opening, paid: "paid" | "scripted", named?: string): Promise<Opening> {
@@ -588,7 +593,7 @@ export async function harnessBuilder(
   // Every move is made with the terms the opening keeps: this command's, and the record's for
   // each it does not name.
   const values: Values = { ...given, ...opening.terms };
-  const held = gated({ ...seats, loaded: values.loaded }, log);
+  const held = queued({ ...seats, loaded: values.loaded }, log);
   /** The move this run made last: an exam read here printed its faults as it was read. */
   let last: Decided["move"] | null = null;
   for (let made = 0; ; ) {

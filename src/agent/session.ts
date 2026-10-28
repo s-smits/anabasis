@@ -7,7 +7,7 @@
  * aborted when the loop returns (which closes a backend's own process: a Claude Code query stays
  * open until its signal fires), the home the model's process keeps its state in, the trace and the
  * compactions in the log, the crash, and the one sum of the spend the seat's end records. The seat
- * keeps what is its own: its tools, its prompt, its wall, its events and its ending's name.
+ * keeps what is its own: its tools, its prompt, its deadline, its events and its ending's name.
  *
  * Until 21 October the trace and the spend lived in the solve's runner, which the Builder's and the
  * Examiner's sessions imported for them; until 22 October each of the four spelled the loop's
@@ -99,7 +99,7 @@ export interface Seat {
   /** Where the session's model turns are pushed as they end, metered and traced before their tools
    *  run, which the seat reads its count from while it runs. */
   readonly turns: AssistantMessage[];
-  /** The most model turns; none where absent. */
+  /** The model turn limit; none where absent. */
   readonly most?: number | undefined;
   /** Whether the seat's work is done: no model request follows the round, whatever else it called. */
   readonly over?: () => boolean;
@@ -111,7 +111,7 @@ export interface Seat {
   readonly onTool?: (phase: "start" | "end", callId: string, tool: string) => void;
   /** Awaited once the session's last round is over, before its signal closes the model's process. */
   readonly settle?: () => Promise<void>;
-  /** What ends the session from outside: its wall, a kill, a bound. */
+  /** What ends the session from outside: its deadline, a kill, a bound. */
   readonly stops: readonly (AbortSignal | undefined)[];
 }
 

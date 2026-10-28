@@ -1,31 +1,32 @@
 /**
  * The Examiner's task-writing mode: the agent that writes tasks, and the host that holds each one
- * out (`writing`, which `examine` seats, `session.ts`). Gate settlement goes through the session's
+ * out (`writing`, which `examine` seats, `session.ts`). Task admission settlement goes through the session's
  * host-wait callback, so only blocked waits pause its author clock, including finish and shutdown.
  *
  * The session is given the public contract, its checks by id and assertion, and every task the
- * campaign holds with its outcome so far (`record.ts`). Each instance it proposes goes to the gate:
- * the shape of its package (`src/kernel/task.ts`) and, under `try_task`, fresh solves by the
+ * campaign holds with its outcome so far (`record.ts`). Each instance it proposes undergoes task admission:
+ * the shape check of its package (`src/kernel/task.ts`) and, under `try_task`, fresh solves by the
  * reference harness, held out where they leave it room (`measured`). No stronger solver passes a
  * task first (`AGENTS.md`, rule 9): when sessions put each instance to one, the first lost 14 of 25
- * tasks at that solve and the second spent $48.45. Of the gate's solves the author hears counts,
- * turns and measures, and how far its own answer stands from their best, and nothing else.
+ * tasks at that solve and the second spent $48.45. Of the room solves the author hears counts,
+ * model turns and measures, the objective gap from its own answer to their best, and tool call
+ * counts, shell command lengths and failures. It receives no solver answer, argument or output.
  *
  * An Examiner is a new process each session, so the host keeps what a session cannot: an instance
- * held, measured or still at the gate is not taken again, the session's home is carried into the next
+ * held, measured or still at the task admission is not taken again, the session's home is carried into the next
  * (`Wall.keep`, `shell.ts`), and what a session said at its `finish` opens the next. An instance is
  * logged whole with its proposal, hidden values too, so a later solve needs the log alone; no tool
  * here returns a line of the log. An author's accepted answer is kept for the Referee
  * (`task.feasible`).
- * The opening carries interrupted gate statuses from the log, and read_example also serves the
+ * The opening carries interrupted task admission statuses from the log, and read_example also serves the
  * author's earlier drafts, so recovery needs no carried shell file. Only admitted tasks count
  * towards supply; retrieval changes neither duplicate eligibility nor how a retry is solved.
- * On 21 October, 23 passing tries followed a proposal in 30 logs; the proof is read when needed.
+ * On 21 October, 23 passing tries followed a proposal in 30 logs; the author's answer is read when needed.
  * Unmeasured drafts may return in the same session (5 retry signatures in 30 logs), and the
  * reserve holds the solves a draft starts next (2 reserve refusals of 1,396 drafts).
  * On 26 October, all 64 proposals in one campaign repeated input already sent to try_answer,
  * totalling 1,148,964 characters. A checked instance can now be proposed by its content reference,
- * with the same identity and gate as a full instance, for the rest of this session.
+ * with the same identity and task admission as a full instance, for the rest of this session.
  */
 import type { SeatTool } from "../agent/session.ts";
 import { Type } from "typebox";
@@ -36,7 +37,7 @@ import { poolOf } from "../kernel/reports.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { gainOver, informative, type Paired } from "../kernel/compare.ts";
 import { Cancellation, type Ending } from "../kernel/solve.ts";
-import { packageGate, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
+import { packageGate as checkPackage, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
 import type { Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
 import { isNumber, isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
@@ -50,26 +51,24 @@ import { type CheckRow, firstMessage, systemPrompt } from "./prompt.ts";
 import type { Walls } from "./shell.ts";
 import {
   gapSaid,
-  gateAnswers,
+  gateAnswers as roomAnswersOf,
   gateBilled,
   heard,
   heldOn,
-  measuredGate,
+  measuredGate as admissionSettled,
   TRIED,
   UNAFFORDED,
 } from "./record.ts";
 
-/** The home's copy of the reference harness, where the campaign's term lays one there. */
-
-/** The author's current answer checked under the draft's own id when needed (`gated`). */
-type Proof = () => Promise<Verdict | null>;
+/** The author's current answer checked under the draft's own id when needed (`admitDraft`). */
+type AuthorAnswer = () => Promise<Verdict | null>;
 
 /** What a task-writing session is handed: who sits, as far as this mode reads it, and its campaign. */
 interface Terms {
   /** Names the session in the log, and prefixes the ids of the tasks it writes. */
   readonly id: string;
   readonly log: string;
-  /** `puts` is the instances the session may put to the gate. */
+  /** `puts` is the instances the session may put to task admission. */
   readonly limits: { readonly wallSeconds: number; readonly turns: number; readonly puts: number };
   readonly contract: Contract;
   /** The checks as the Examiner is shown them. */
@@ -92,16 +91,16 @@ interface Terms {
    *  comparison is held to, made at the asking of `session`: its start names the session, so no
    *  comparison counts it and no Builder is shown it (`pairsOf`, `practiceRan`). It is the solve
    *  launcher a comparison uses, called (`tools/d1b/examine.ts`). Given, a task is held out by
-   *  `try_task` on up to `TRIED` such solves; null, by `propose_tasks` on its package's shape. */
+   *  `try_task` on up to `TRIED` such solves; null, by `propose_tasks` on its package's shape check. */
   readonly probe: ((task: TaskPackage, session: string, kill: AbortSignal) => Promise<Ending>) | null;
-  /** Called as the gate holds a task, so the campaign can release practice while the session writes
+  /** Called as task admission holds a task, so the campaign can release practice while the session writes
    *  (`releaseOwed`, `campaign-actions.ts`). */
   readonly held?: () => void;
 }
 
-/** What the gate reads of one draft: the campaign's contract and log, the session that asks, the
+/** What the task admission reads of one draft: the campaign's contract and log, the session that asks, the
  *  reference harness's solve, and the answers that passed `try_answer` in the session. */
-type Gate = Pick<Terms, "contract" | "log" | "id" | "probe"> &
+type Admission = Pick<Terms, "contract" | "log" | "id" | "probe"> &
   Partial<Pick<Terms, "budget">> & { readonly planted: ReadonlySet<string> };
 
 /** What a task-writing session's tools share. */
@@ -110,10 +109,10 @@ interface Desk {
   /** Admission outlives its tool call; durable ends that call's context as soon as it returns. */
   readonly stop: AbortSignal;
   proposed: number;
-  /** Content held, refused on a reading or still at the gate, in this or an earlier session. */
+  /** Content held, refused on a reading or still at the task admission, in this or an earlier session. */
   readonly seen: Map<string, "now" | "earlier">;
   /** The last author answer that passed on each instance, kept only in session memory and
-   *  rechecked on the final task before recording proof. */
+   *  rechecked on the final task before recording a known valid answer. */
   readonly answered: Map<string, JsonValue>;
   /** Checked content, kept once so a proposal can name it without sending its input again. */
   readonly checked: Map<string, Task>;
@@ -122,17 +121,17 @@ interface Desk {
   readonly planted: Set<string>;
   readonly held: string[];
   readonly refused: string[];
-  /** The gate's work still running under `try_task`, one promise an instance, and the lines it said
+  /** The task admission's work still running under `try_task`, one promise an instance, and the lines it said
    *  of instances that the session has not been told yet (`heard`). */
   readonly pending: Set<Promise<void>>;
   readonly arrived: string[];
 }
 
-/** The event a gate writes of each draft (`gated`). */
-const GATE = "task.gate";
-/** The tool a task is held out by, as the Examiner is told it: on its package's shape, or on that
+/** The event a task admission writes of each draft (`admitDraft`). */
+const TASK_ADMISSION = "task.gate";
+/** The tool a task is held out by, as the Examiner is told it: on its package's shape check, or on that
  *  and the reference harness's solves of it. */
-const GATES = {
+const ADMISSION_TOOLS = {
   propose_tasks: {
     description: "Put task instances to the host's gate, as the system prompt's section on the gate says.",
   },
@@ -151,8 +150,8 @@ const INSTANCE = Type.Object({
 const REFERENCE = Type.Object({
   reference: Type.String({ description: "The instance reference returned by try_answer in this session." }),
 });
-/** Why the gate refuses a task that carries a planted answer: the witness serves the feasibility
- *  gate and is then discarded, so it never reaches a solver (the overhaul plan, S.4; rule 9). */
+/** A planted author's answer would reach the solver as task content. Accepted author answers
+ *  stay on the exam side as `task.feasible`, for the Referee, rather than inside the task. */
 const PLANTED =
   "it carries, whole, an answer that passed try_answer in this session: a planted answer is for try_answer alone, and no task holds one, in its public input or its hidden values";
 const SUPPLIED = "The host has the tasks it needs. The session ends here.";
@@ -177,7 +176,7 @@ function contentOf({ family, publicInput, hidden }: Omit<Task, "taskId">): strin
 
 /** An instance as a tool's arguments carry it, under `taskId`. A hidden value sent as JSON text is
  *  the JSON it encodes, for a try as for a proposal: on 12 October tries sent "null" where their
- *  proposals sent null, and no proof of a task was kept. */
+ *  proposals sent null, and no valid answer was kept for a task. */
 function instanceOf(
   taskId: string,
   given: { readonly family: string; readonly public_input: unknown; readonly hidden: unknown },
@@ -224,23 +223,23 @@ function shown(measure: number): string {
  *  their best (`gap`, by `gainOver`), and whether they leave the reference room as a comparison
  *  reads it (`informative`). Each later reading only adds to them, so room once shown stays. */
 async function seenOf(
-  { contract, log }: Gate,
+  { contract, log }: Admission,
   task: TaskPackage,
   {
     from,
     readings,
-    proof,
-  }: { readonly from: number; readonly readings: readonly Ending[]; readonly proof: Proof },
+    authorAnswer,
+  }: { readonly from: number; readonly readings: readonly Ending[]; readonly authorAnswer: AuthorAnswer },
 ) {
   const solves = readings.length;
   const valid = readings.filter(({ outcome }) => outcome === "pass").length;
   const version = taskVersion(task);
-  const answers = gateAnswers(read(log), from).get(version) ?? [];
-  // The author's proof is read once the gate has a reading: it decides a task the reference never
+  const answers = roomAnswersOf(read(log), from).get(version) ?? [];
+  // The author's answer is read once the task admission has a reading: it decides a task the reference never
   // answers, as a valid answer on record, and one it answers every time where it is better by the
   // floor than one of the reference's answers (`informative`). A draft the reference answers in
-  // some solves is held anyway, and its proof read then, so its gap is told too.
-  const checked = solves > 0 ? await proof() : null;
+  // some solves is held anyway, and its answer read then, so its gap is told too.
+  const checked = solves > 0 ? await authorAnswer() : null;
   const declared = contract.objective;
   const authored = checked?.kind === "pass" && declared !== undefined ? checked.objective : undefined;
   const pair: Paired = {
@@ -259,52 +258,62 @@ async function seenOf(
   const gap = gains.length === 0 ? undefined : Math.min(...gains);
   const widest = gains.length === 0 ? undefined : Math.max(...gains);
   const unsolved = solves > 0 && valid === 0;
-  const proved = new Set(unsolved && checked?.kind === "pass" ? [version] : []);
-  const room = informative(pair, "old", proved, new Map(authored === undefined ? [] : [[version, authored]]));
+  const knownValidAnswers = new Set(unsolved && checked?.kind === "pass" ? [version] : []);
+  const room = informative(
+    pair,
+    "old",
+    knownValidAnswers,
+    new Map(authored === undefined ? [] : [[version, authored]]),
+  );
   return { solves, valid, answers, authored, gap, widest, unsolved, room };
 }
 
-/** What the gate reads of one package: its shape, and under `try_task` the reference harness's
- *  solves of a package whose shape passed, at most `TRIED`: the first alone and, where it leaves the
+/** What the task admission reads of one package: its shape check, and under `try_task` the reference harness's
+ *  solves of a package whose shape check passed, at most `TRIED`: the first alone and, where it leaves the
  *  reference no room (`seenOf`), the rest together, as many as the campaign's reserve holds beside
  *  the solves in flight (`affords`), choosing again after an incomplete batch; each still waits
- *  for the host (`gated`, `tools/d2/host.ts`).
+ *  for the host (`queued`, `tools/d2/host.ts`).
  *  The draft is held at the first reading that leaves room, and the solves still running are
  *  cancelled through their signal: one still queued at the host starts no solve, and work already
  *  started stays billed. From 20 October they ran one at a time, and every refusal took three.
- *  A thrown probe cancels and drains its batch before the error leaves the gate (26 October).
- *  Replayed on 25 October over 800 such gates of 18 campaigns, which spent 6,564 minutes in their
- *  solves one after another: the other two together save 754 of them on the 273 gates that ran three
+ *  A failed room solve cancels and drains its batch before the error leaves the task admission (26 October).
+ *  Replayed on 25 October over 800 such task admissions of 18 campaigns, which spent 6,564 minutes in their
+ *  solves one after another: the other two together save 754 of them on the 273 task admissions that ran three
  *  (548 on the 239 refused), and spend one more solve on each of the 87 held at their second, cut
  *  when that second ends, estimated at most 745 solve minutes with a $23.48 retrospective cost
  *  proxy, rather than a bound on the extra bill. A solve that ended in no reading, or in a
  *  rejection the Referee did not rule earned (`probing`, `tools/d1b/examine.ts`),
- *  is no reading, and a non-result under the gate's own cancellation is not counted, including a
- *  rejection still with the Referee. `stop` is the session's signal, which its wall, its end and a
- *  killed run abort, so a wall that fires mid-try starts no other solve and
+ *  is no reading, and a non-result under the task admission's own cancellation is not counted, including a
+ *  rejection still with the Referee. `stop` is the session's signal, which its deadline, its end and a
+ *  killed run abort, so a deadline that fires mid-try starts no other solve and
  *  leaves the draft refused unmeasured. */
-export async function measured(gate: Gate, task: TaskPackage, stop: AbortSignal, proof: Proof) {
-  const { contract, log, id, probe } = gate;
-  if (carries([task.publicInput, task.hidden], gate.planted)) return { reason: PLANTED, said: "" };
-  const packaged = packageGate(contract, task);
+export async function measured(
+  admission: Admission,
+  task: TaskPackage,
+  stop: AbortSignal,
+  authorAnswer: AuthorAnswer,
+) {
+  const { contract, log, id, probe: solveRoom } = admission;
+  if (carries([task.publicInput, task.hidden], admission.planted)) return { reason: PLANTED, said: "" };
+  const packaged = checkPackage(contract, task);
   if (packaged.outcome === "refused") return { reason: packaged.reason, said: "" };
-  if (probe === null) return { reason: null, said: "" };
+  if (solveRoom === null) return { reason: null, said: "" };
   if (!affords(log, 1)) return { reason: UNAFFORDED, said: "" };
   const from = read(log).length - 1;
   const readings: Ending[] = [];
   let ran = 0;
   // Each reading is read after the one before, so the last read holds every reading.
-  let reading = seenOf(gate, task, { from, readings, proof });
+  let reading = seenOf(admission, task, { from, readings, authorAnswer });
   const held = new Cancellation("caller");
   const cut = new AbortController();
   const signal = AbortSignal.any([stop, cut.signal]);
   const together = async (count: number) => {
     const batch = Array.from({ length: count }, async () => {
-      const solved = await probe(task, id, signal);
+      const solved = await solveRoom(task, id, signal);
       if (solved.outcome === "non-result" && signal.reason === held) return;
       ran += 1;
       if (solved.outcome !== "non-result") readings.push(solved);
-      reading = reading.then(() => seenOf(gate, task, { from, readings, proof }));
+      reading = reading.then(() => seenOf(admission, task, { from, readings, authorAnswer }));
       if ((await reading).room) cut.abort(held);
     });
     try {
@@ -332,16 +341,16 @@ export async function measured(gate: Gate, task: TaskPackage, stop: AbortSignal,
   // The turns each valid answer took, against the budget where it counts them: a refusal at 3 of 20
   // turns says the method reached the answer directly (esp32-fresh-opus-terra's x-4, 27 October).
   const took = answers.flatMap(({ turns: each }) => (each === null ? [] : [each]));
-  const most = gate.budget?.modelTurns;
+  const most = admission.budget?.modelTurns;
   const of = isNumber(most) ? `its ${String(most)}` : "the solver's own";
-  // The longest of them against the wall: on that x-4 every one of 34 took under 70 of 1,800 seconds.
+  // The longest of them against the deadline: on that x-4 every one of 34 took under 70 of 1,800 seconds.
   const longest = Math.max(...answers.flatMap(({ seconds }) => (seconds === null ? [] : [seconds])));
-  const minutes = gate.budget?.minutes;
-  const wall =
+  const minutes = admission.budget?.minutes;
+  const deadline =
     isNumber(minutes) && Number.isFinite(longest)
       ? ` and at most ${plural(Math.max(1, Math.ceil(longest / 60)), "minute")} of its ${String(minutes)}`
       : "";
-  const turns = took.length === 0 ? "" : `, taking ${took.join(", ")} of ${of} turns${wall}`;
+  const turns = took.length === 0 ? "" : `, taking ${took.join(", ")} of ${of} turns${deadline}`;
   // The measures by the objective, theirs and the author's, which decide room where every solve is
   // valid (`informative`).
   const measures = answers.flatMap(({ measure }) => (measure === null ? [] : [shown(measure)]));
@@ -374,8 +383,8 @@ export async function measured(gate: Gate, task: TaskPackage, stop: AbortSignal,
 
 /** One proposed instance and its reply. The author's current passing answer is checked under
  *  the task's id at each reading and once held. No cached absence or verdict hides a later try.
- *  A task the reference never answers needs that proof to leave room (`measured`). */
-async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<string> {
+ *  A task the reference never answers needs that known valid answer to leave room (`measured`). */
+async function admitDraft(desk: Desk, instance: Task, stop: AbortSignal): Promise<string> {
   const { request } = desk;
   const { log, id: session, verify } = request;
   const task = request.pack(instance);
@@ -383,7 +392,7 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
   const { taskId, family, publicInput, hidden } = instance;
   append(log, "task.proposed", { version, taskId, session, task: { taskId, family, publicInput, hidden } });
   let answer: JsonValue | undefined;
-  const proof = () => {
+  const authorAnswer = () => {
     answer = desk.answered.get(contentOf(instance));
     return verify === null || answer === undefined
       ? Promise.resolve(null)
@@ -395,11 +404,11 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
     { ...request, planted: desk.planted },
     task,
     stop,
-    proof,
+    authorAnswer,
   );
   const held = `${taskId}: held out${said === "" ? "" : `; ${said}`}.`;
   const outcome = reason === null ? { outcome: "passed" } : { outcome: "refused", reason };
-  append(log, GATE, {
+  append(log, TASK_ADMISSION, {
     version,
     gate: 1,
     ...outcome,
@@ -407,7 +416,7 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
     proved: desk.answered.has(contentOf(instance)),
   });
   if (outcome.outcome === "refused") {
-    if (!measuredGate({ ...outcome, ...keyIfDefined("reference", reference) })) {
+    if (!admissionSettled({ ...outcome, ...keyIfDefined("reference", reference) })) {
       desk.seen.delete(contentOf(instance));
     }
     append(log, "task.state", { version, state: "refused", session });
@@ -416,7 +425,7 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
   }
   desk.held.push(version);
   request.held?.();
-  const verdict = await proof();
+  const verdict = await authorAnswer();
   if (verdict === null || answer === undefined) return held;
   if (verdict.kind !== "pass") {
     return `${held} Author proof was not retained under this task id: ${tried(verdict)}`;
@@ -428,7 +437,7 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
 /** Whether the host has the tasks it asked for. */
 const supplied = (desk: Desk): boolean => desk.held.length >= desk.request.wanted;
 
-/** All of the gate, or its next word, under the session's cancellation signal. */
+/** All of the task admission, or its next word, under the session's cancellation signal. */
 async function settled(
   desk: Desk,
   until: "all" | "next",
@@ -442,20 +451,20 @@ async function settled(
 }
 
 /**
- * A `try_task` call's instances put to the gate without waiting on it: the line of each instance
- * not taken, and the ids of the ones whose solves now run while the session goes on. What the gate
+ * A `try_task` call's instances put to task admission without waiting on it: the line of each instance
+ * not taken, and the ids of the ones whose solves now run while the session goes on. What the task admission
  * says of each comes with a later tool result, and `finish` and the session's end wait for it
  * (`settle`). Until 19 October a call waited on its slowest instance, and the first Examiner
- * sessions of three buffer campaigns spent 56, 57 and 80 minutes on the gate's replies.
+ * sessions of three buffer campaigns spent 56, 57 and 80 minutes on the task admission's replies.
  */
-function putAside(
+function startAdmissions(
   desk: Desk,
   instances: readonly (string | Task)[],
-  gate: (instance: Task) => Promise<string>,
+  admission: (instance: Task) => Promise<string>,
 ) {
   const put = instances.flatMap((instance) => {
     if (isString(instance)) return [];
-    const running = gate(instance)
+    const running = admission(instance)
       .catch((error: unknown) => `${instance.taskId}: the gate stopped on it: ${errorMessage(error)}`)
       .then((line) => {
         desk.arrived.push(line);
@@ -464,17 +473,17 @@ function putAside(
     desk.pending.add(running);
     return [instance.taskId];
   });
-  const gating =
+  const admitting =
     put.length === 0
       ? []
       : [
           `${put.join(", ")}: put to the gate. What it says of each comes with a later tool result, and wait returns with it.`,
         ];
-  return [...instances.filter(isString), ...gating].join("\n");
+  return [...instances.filter(isString), ...admitting].join("\n");
 }
 
-/** The tool that holds tasks out, under the name the session's gate has. */
-function proposeTool(desk: Desk, name: keyof typeof GATES): SeatTool {
+/** The tool that holds tasks out, under the name the session's task admission has. */
+function proposeTool(desk: Desk, name: keyof typeof ADMISSION_TOOLS): SeatTool {
   const { id, limits } = desk.request;
   const spent = () => desk.proposed >= limits.puts;
   /** One instance of a batch: why it was not taken, or the instance under its task id. */
@@ -485,7 +494,7 @@ function proposeTool(desk: Desk, name: keyof typeof GATES): SeatTool {
     if (before === "earlier") return "An instance an earlier session wrote was not taken again.";
     if (spent()) return "An instance was not taken: this session can propose no further task.";
     if (supplied(desk)) return `An instance was not taken. ${SUPPLIED}`;
-    // Until 14 October an instance was still proposed after the wall, and its three solves started
+    // Until 14 October an instance was still proposed after the deadline, and its three solves started
     // on the spent signal to be killed at once: recode-151's x-1 ended with two batches killed so.
     if (stop.aborted) return "An instance was not taken: the session has ended.";
     desk.seen.set(content, "now");
@@ -494,7 +503,7 @@ function proposeTool(desk: Desk, name: keyof typeof GATES): SeatTool {
   };
   return tool({
     name,
-    ...GATES[name],
+    ...ADMISSION_TOOLS[name],
     parameters: Type.Object({
       tasks: Type.Array(
         Type.Union([INSTANCE, REFERENCE], {
@@ -504,13 +513,13 @@ function proposeTool(desk: Desk, name: keyof typeof GATES): SeatTool {
       ),
     }),
     executionMode: "sequential",
-    // The session's signal, which its wall, its end and a killed run abort (`measured`).
+    // The session's signal, which its deadline, its end and a killed run abort (`measured`).
     execute: async (args, _api, context) => {
       context.abortSignal?.throwIfAborted();
       const signal = desk.stop;
       if (supplied(desk)) throw new Error(SUPPLIED);
       if (spent()) throw new Error("This session can propose no further task. Call finish.");
-      // Take the call's instances before their gates start, so a batch may exceed what is wanted.
+      // Take the call's instances before their task admissions start, so a batch may exceed what is wanted.
       const instances = args.tasks.map((given) => {
         if (!("reference" in given)) return taken(instanceOf("", given), signal);
         const checked = desk.checked.get(given.reference);
@@ -522,11 +531,13 @@ function proposeTool(desk: Desk, name: keyof typeof GATES): SeatTool {
       // x-2 and x-3 met it unawares with a draft still unproposed (27 October).
       const used = `${String(desk.proposed)} of ${plural(limits.puts, "draft")} put to the gate in this session.`;
       if (name === "try_task") {
-        return text(`${putAside(desk, instances, (instance) => gated(desk, instance, signal))}\n${used}`);
+        return text(
+          `${startAdmissions(desk, instances, (instance) => admitDraft(desk, instance, signal))}\n${used}`,
+        );
       }
       const lines = await Promise.all(
         instances.map(async (instance) =>
-          isString(instance) ? instance : await gated(desk, instance, signal),
+          isString(instance) ? instance : await admitDraft(desk, instance, signal),
         ),
       );
       const result = text(`${lines.join("\n")}\n${used}${supplied(desk) ? `\n\n${SUPPLIED}` : ""}`);
@@ -559,22 +570,27 @@ function exampleTool(tasks: () => readonly Task[]): SeatTool {
 }
 
 /** The checks run on one instance with an answer of the Examiner's: which refuse it, or that none
- *  does. Without it the Examiner wrote tasks it could not know to be feasible: on 10 October the
- *  notes of nine sessions said in eight that feasibility rested on hand estimates, and two of
+ *  does. Without it the Examiner wrote tasks it could not know to have a valid answer: on 10 October the
+ *  notes of nine sessions said in eight that validity rested on hand estimates, and two of
  *  seven tasks of one session asked for more than their input allowed. Nothing of a try is kept
- *  but its trace and, where the checks pass on a task in the exam, the answer with its proof.
+ *  but its trace and, where the checks pass on a task in the exam, the known valid answer.
  *  An instance the campaign already holds is checked under that task's own id, and a pass
- *  proves the task where it is held out, in practice or disputed.
+ *  records a known valid answer where it is held out, in practice or disputed.
  *
  *  An answer is held to the format first, as a solver's is (`answerFormatFault`): one the checks
- *  passed though the format refused it would mark its instance feasible on an answer no solver
+ *  passed though the format refused it would mark its instance as having a known valid answer on an answer no solver
  *  could submit (`poolOf`). */
 function tryTool(desk: Desk, verify: Verifier): SeatTool {
   const { request } = desk;
   const { log, contract } = request;
   /** Puts on record that a held task has a valid answer, where the log does not say so yet or the
    *  answer carries a measure of the objective, which each such pass keeps (`measureOf`). */
-  const prove = (events: readonly LogEvent[], version: string, verdict: Verdict, answer: JsonValue) => {
+  const recordValidAnswer = (
+    events: readonly LogEvent[],
+    version: string,
+    verdict: Verdict,
+    answer: JsonValue,
+  ) => {
     const sets = taskSets(events);
     const inExam =
       sets.held.includes(version) ||
@@ -609,14 +625,14 @@ function tryTool(desk: Desk, verify: Verifier): SeatTool {
       const content = contentOf(candidate);
       const instance =
         [...writtenTasks(events), ...request.tasks].find((task) => contentOf(task) === content) ?? candidate;
-      const packaged = packageGate(contract, request.pack(instance));
-      const gate =
+      const packaged = checkPackage(contract, request.pack(instance));
+      const admission =
         packaged.outcome === "passed" ? "" : `The gate would refuse this instance: ${packaged.reason}\n`;
       if (context.abortSignal?.aborted === true) throw new Error("The session has ended.");
       const unformed = answerFormatFault(contract.answerFormat, answer);
       if (unformed !== null) {
         return text(
-          `${gate}This answer does not follow the answer format, so a solver's answer like it is refused before any check reads it, and no check was run: ${unformed}`,
+          `${admission}This answer does not follow the answer format, so a solver's answer like it is refused before any check reads it, and no check was run: ${unformed}`,
         );
       }
       const verdict = await verify(instance, answer);
@@ -624,29 +640,31 @@ function tryTool(desk: Desk, verify: Verifier): SeatTool {
       if (verdict.kind === "pass") {
         desk.answered.set(content, answer);
         desk.planted.add(hashJsonValue(answer));
-        prove(events, taskVersion(request.pack(instance)), verdict, answer);
+        recordValidAnswer(events, taskVersion(request.pack(instance)), verdict, answer);
       }
-      // The verifier's measure, which the gate reads against the reference's (`measured`).
+      // The verifier's measure, which the task admission reads against the reference's (`measured`).
       const { objective } = measureOf(contract, verdict);
       const measure =
         isRecord(objective) && isNumber(objective.measure)
           ? ` By the objective it measures ${shown(objective.measure)}.`
           : "";
-      return text(`${gate}${tried(verdict)}${measure}\nInstance reference: ${content}.`);
+      return text(`${admission}${tried(verdict)}${measure}\nInstance reference: ${content}.`);
     },
   });
 }
 
 /**
- * The instances earlier sessions wrote that their gate read. One whose session was cut before its
- * gate wrote anything is no task of the campaign's, and may be proposed again.
+ * The instances earlier sessions wrote that their task admission read. One whose session was cut before its
+ * task admission wrote anything is no task of the campaign's, and may be proposed again.
  */
-function gatedTasks(events: readonly LogEvent[]): Task[] {
-  const gates = new Set(
-    events.flatMap(({ kind, data }) => (kind === GATE && measuredGate(data) ? [data.version] : [])),
+function admittedDrafts(events: readonly LogEvent[]): Task[] {
+  const admissions = new Set(
+    events.flatMap(({ kind, data }) =>
+      kind === TASK_ADMISSION && admissionSettled(data) ? [data.version] : [],
+    ),
   );
   return proposalsOf(events).flatMap(({ version, task }) =>
-    task !== null && gates.has(version) ? [task] : [],
+    task !== null && admissions.has(version) ? [task] : [],
   );
 }
 
@@ -671,7 +689,7 @@ export function writing(
     request,
     stop,
     proposed: 0,
-    seen: new Map(gatedTasks(before).map((task) => [contentOf(task), "earlier"] as const)),
+    seen: new Map(admittedDrafts(before).map((task) => [contentOf(task), "earlier"] as const)),
     answered: new Map(),
     checked: new Map(),
     planted: new Set(),
@@ -680,9 +698,9 @@ export function writing(
     pending: new Set(),
     arrived: [],
   };
-  // How a task is held out: on its package's shape, or on that and `TRIED` solves of the reference
+  // How a task is held out: on its package's shape check, or on that and `TRIED` solves of the reference
   // harness where the host can have it solve one.
-  const gate = request.probe === null ? "propose_tasks" : "try_task";
+  const admission = request.probe === null ? "propose_tasks" : "try_task";
   const attempts = request.probe === null ? undefined : TRIED;
   // What the last Examiner session that finished under the reference harness said at its
   // `finish`, where one did. A note written under a reference since replaced is about the tasks
@@ -706,7 +724,7 @@ export function writing(
       referenceHome: reference === "in-home",
     },
     tools: [
-      proposeTool(desk, gate),
+      proposeTool(desk, admission),
       exampleTool(() => [...writtenTasks(read(request.log)), ...request.tasks]),
       ...(verify === null ? [] : [tryTool(desk, verify)]),
       ...(request.probe === null
@@ -721,14 +739,14 @@ export function writing(
             ),
           ]),
     ],
-    enters: `a task enters it through ${gate} alone`,
+    enters: `a task enters it through ${admission} alone`,
     nudge: "Propose further tasks",
     finish:
       "End the session. Say in one or two sentences what kinds of task you wrote, which kinds the gate held and refused, and what you would try next.",
     declined: MORE,
     done: (): "supplied" | null => (supplied(desk) ? "supplied" : null),
-    // What the gate said since the session was last told, and at a turn's last call how many
-    // instances are still at it (`putAside`).
+    // What the task admission said since the session was last told, and at a turn's last call how many
+    // instances are still at it (`startAdmissions`).
     heard: (last: boolean) => {
       const waiting =
         last && desk.pending.size > 0 ? `${plural(desk.pending.size, "instance")} still at the gate.` : "";

@@ -1,4 +1,4 @@
-// A task: the gate its package passes and the states a log folds it into.
+// A task: the shape check its package passes and the states a log folds it into.
 import { afterAll, describe, expect, it } from "bun:test";
 import { type Contract } from "../src/kernel/contract.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
@@ -61,7 +61,7 @@ function pkg(changes: Partial<TaskPackage> = {}): TaskPackage {
   };
 }
 
-describe("the gate", () => {
+describe("the shape check", () => {
   it("changes task identity when a nested checker file changes, wherever the checker is kept", () => {
     const versions = ["one", "one", "two"].map((content) => {
       const dir = program(["beams"], ["span-rule"]);
@@ -110,7 +110,7 @@ describe("the gate", () => {
 describe("the task states", () => {
   const at = "2026-10-09T00:00:00.000Z";
   const proposedAs = (version: string): LogEvent => ({ at, kind: "task.proposed", data: { version } });
-  const gateAs = (version: string, number: number, outcome = "passed"): LogEvent => ({
+  const admissionAs = (version: string, number: number, outcome = "passed"): LogEvent => ({
     at,
     kind: "task.gate",
     data: { version, gate: number, outcome },
@@ -121,19 +121,19 @@ describe("the task states", () => {
     data: { version, state: to },
   });
   const proposed = proposedAs("v1");
-  const gate = (number = 1, outcome = "passed") => gateAs("v1", number, outcome);
+  const admission = (number = 1, outcome = "passed") => admissionAs("v1", number, outcome);
   const state = (to: string) => stateAs("v1", to);
-  const held = [proposed, gate()];
+  const held = [proposed, admission()];
 
-  it("holds a task out once its package passes the gate, and no sooner", () => {
+  it("holds a task out once it passes task admission, and no sooner", () => {
     expect(taskStates([proposed])).toEqual(new Map([["v1", "held"]]));
     expect(taskSets([proposed])).toMatchObject({ held: [], released: [] });
     expect(taskSets(held)).toMatchObject({ held: ["v1"], released: [] });
-    // In the order they were proposed, whichever passed its gate first.
-    const two = [proposedAs("v2"), proposed, gate(), gateAs("v2", 1)];
+    // In the order they were proposed, whichever passed task admission first.
+    const two = [proposedAs("v2"), proposed, admission(), admissionAs("v2", 1)];
     expect(taskSets(two).held).toEqual(["v2", "v1"]);
-    expect(taskStates([proposed, gate(1, "refused"), state("refused")]).get("v1")).toBe("refused");
-    expect(taskSets([proposed, gate(1, "refused"), state("refused")]).held).toEqual([]);
+    expect(taskStates([proposed, admission(1, "refused"), state("refused")]).get("v1")).toBe("refused");
+    expect(taskSets([proposed, admission(1, "refused"), state("refused")]).held).toEqual([]);
   });
 
   it("refuses a history that could not have happened", () => {
@@ -141,9 +141,9 @@ describe("the task states", () => {
       [[state("held")], /v1.*not proposed/u],
       [[proposed, proposed], /v1.*twice/u],
       [[{ at, kind: "task.state", data: { state: "held" } }], /task.state.*version/u],
-      [[...held, gate()], /v1.*gate twice/u],
+      [[...held, admission()], /v1.*gate twice/u],
       [[proposed, state("released")], /held.*released.*gate/u],
-      [[proposed, gate(1, "refused"), state("disputed")], /held.*disputed.*gate/u],
+      [[proposed, admission(1, "refused"), state("disputed")], /held.*disputed.*gate/u],
       [[...held, state("released"), state("held")], /released.*held/u],
       [[...held, state("disputed"), state("released")], /disputed.*released/u],
       [[...held, state("refused"), state("released")], /refused.*released/u],

@@ -3,7 +3,7 @@
  * `campaign-actions.ts`): the command's flags, what a campaign runs by and keeps in its opening,
  * and the flags of each move's command. Nothing here knows who makes a move.
  * A paid campaign needs a Referee before it opens (20 October). The 81 unruled admission
- * rejections in the recent logs predate gate review, but source triage found a campaign could
+ * rejections in the recent logs predate task admission review, but source triage found a campaign could
  * still omit its reviewer and silently leave every admission rejection unmeasured.
  */
 import { shortOf } from "#src/campaign/decide.ts";
@@ -31,7 +31,7 @@ import { recordedSetting, SETTING_OPTIONS } from "./setting.ts";
 /** Who sits in a campaign's model seats: a session's and a comparison's, and an Examiner's. */
 export interface Seats {
   readonly seated: Seated;
-  /** An explicitly seated admission solver beside a scripted Examiner. */
+  /** An explicitly seated solver for room solves beside a scripted Examiner. */
   readonly probe?: Seated;
   /** An Examiner session: `examine`, unless a rehearsal's script stands in for it. */
   readonly examine?: Session<"write"> | undefined;
@@ -51,7 +51,7 @@ export interface Turn {
   readonly opening: Opening;
   readonly values: Values;
   readonly seats: Seats;
-  /** Who solves, each solve held at the host's gate unless `--loaded` (`gated`). */
+  /** Who solves, each solve held in the solve queue unless `--loaded` (`queued`). */
   readonly held: Seated;
 }
 
@@ -126,7 +126,7 @@ const EXPLAINED: Readonly<Record<keyof typeof OPTIONS, string>> = {
   budget: "the campaign's total in dollars; each move's cap is what is left of it",
   reserve: `what one solve is held at, in dollars; the campaign ends when less is left (${DEFAULTS.reserve})`,
   sessions: `Builder sessions the table counts before it advises a comparison (${String(SESSIONS)})`,
-  patience: `moves without a gain before the stop rule, and readings without room before no-room (${String(PATIENCE)})`,
+  patience: `improvement patience (moves without a gain) and supply patience (readings without room) (${String(PATIENCE)})`,
   builder: "the Builder's model",
   "builder-effort": "the Builder's effort",
   examiner: "the Examiner's model",
@@ -136,22 +136,22 @@ const EXPLAINED: Readonly<Record<keyof typeof OPTIONS, string>> = {
   solver: "the solver's model: part of the setting, fixed once recorded",
   "solver-effort": "the solver's effort (setting)",
   "solver-window": "the context at which the solver compacts, in tokens (setting)",
-  "solve-minutes": "a solve's wall in minutes (setting)",
-  "solve-model-turns": "a solve's budget in the solver's own turns (setting)",
+  "solve-minutes": "a solve's deadline in minutes (setting)",
+  "solve-model-turns": "a solve's model turn limit (setting)",
   target: "frontier tasks a comparison scores (setting; 24)",
   solves: "solves a side of each scored task (4)",
   level: "the step test's level: one reading at or under it promotes (0.02)",
   defects: "tasks with a check defect before a comparison stops (3)",
-  minutes: "a Builder conversation's wall in minutes of its own time (1440)",
-  turns: "a Builder conversation's turns (300)",
+  minutes: "a Builder conversation's deadline in minutes of its own time (1440)",
+  turns: "a Builder conversation's session turn limit (300)",
   "practice-solves": "practice solves a Builder session may make (24)",
   practice: "practice tasks released an epoch, at most half of what is held",
   admit: "checks admitted by name, under --hitl",
   "exam-tasks": "tasks an Examiner session is asked for; unnamed, what the campaign is short of",
-  "exam-proposals": "instances an Examiner session may put to its gate (36)",
-  "exam-minutes": "an Examiner session's wall in minutes (240)",
-  "exam-turns": "an Examiner session's turns (200)",
-  cost: "promotion attempts an epoch after set-up the economy bar reads; printed, gates nothing (3)",
+  "exam-proposals": "instances an Examiner session may put to task admission (36)",
+  "exam-minutes": "an Examiner session's deadline in minutes (240)",
+  "exam-turns": "an Examiner session's session turn limit (200)",
+  cost: "promotion attempts an epoch after set-up the economy bar reads; printed, limits nothing (3)",
   moves: "the most campaign moves this run makes",
   handover: "a directory, outside the repository, to write what the campaign hands over at its end",
   loaded: "start solves without waiting for the host's load",
@@ -488,7 +488,7 @@ export function examinerRun(turn: Turn, session: string, stand: unknown, kind: "
             ...flag("turns", values["exam-turns"]),
           ],
     tasks,
-    probe: seats.probe ?? (stand === undefined ? turn.held : null),
+    roomSolves: seats.probe ?? (stand === undefined ? turn.held : null),
   };
 }
 

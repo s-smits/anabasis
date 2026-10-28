@@ -1,13 +1,13 @@
 /**
- * The Referee's counterfactual: compare the rejected answer with a copy after one list of changes.
+ * The Referee's answer probe: compare the rejected answer with a copy after one list of changes.
  * Each replaces an existing field or parent, including a scalar root, or edits one text passage.
- * Coupled changes are one probe, with both complete answers checked once: the review of 20 October
+ * Coupled changes are one answer probe, with both complete answers checked once: the review of 20 October
  * found three unclear rulings that could not clear a check by changing one failing part alone
  * (buffer-fresh-opus:2829,4268; recode-pr169-sonnet:291). Parent replacement alone is insufficient
  * when coupled source fields together exceed the value cap. The eight-probe budget and 4000-character
  * cap per value or passage remain; a side without a verdict still supplies no evidence. The same
  * review found that whole-answer swaps could manufacture defect evidence: object and array roots
- * stay fixed, and a coupled probe has at most three paths that one refusing check reads together.
+ * stay fixed, and a coupled answer probe has at most three paths that one refusing check reads together.
  */
 import { Type } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
@@ -19,8 +19,8 @@ import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import { text, tool } from "../tools/answer.ts";
 
-/** review-probe.ts:57: each probe runs every applicable check, so eight keep a review from becoming
- *  a second battery. */
+/** review-probe.ts:57: each answer probe runs every applicable check, so eight keep a review from becoming
+ *  a second exam. */
 const PROBE_BUDGET = 8;
 /** Bound each replacement value and each half of a text edit, including within a coupled probe. */
 const VALUE_MAX_CHARS = 4_000;
@@ -31,7 +31,7 @@ type ProbeEdit = {
   readonly replace: string;
 };
 
-/** What one probe ran and what the checks said. */
+/** What one answer probe ran and what the checks said. */
 export type ProbeRow = {
   /** 1-based, and what a ruling cites. */
   readonly id: number;
@@ -197,7 +197,7 @@ export function probeAnswer(answer: JsonValue, changes: ProbeRow["changes"]): Js
   return changed;
 }
 
-/** The probe tool over one answer; `rows` collects every probe that ran, in order. Probes run one at
+/** The answer probe tool over one answer; `rows` collects every answer probe that ran, in order. Probes run one at
  *  a time, as v1's did, so ids and the budget stay exact. */
 export function probeTool(
   verify: Verifier,

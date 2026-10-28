@@ -711,7 +711,7 @@ describe("a Builder session", () => {
     expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ practiceSolves: 2 });
   });
 
-  it("is not given the correctness model a v1 state carries, whose battery holds hidden values", async () => {
+  it("is not given the correctness model a v1 state carries, whose exam holds hidden values", async () => {
     const s = await setup([finish]);
     // A v1 state keeps it at its root and again under each bundle snapshot.
     const kept = ["correctness-model", ".bundle-snapshots/4cc4dd31/correctness-model"];
@@ -835,13 +835,13 @@ describe("a Builder session", () => {
 
   // Found in buffer-149, 13 October: b-1 crashed on a provider error with a harness it had
   // practised three of three on, and b-2 started from the starter.
-  it("keeps the harness a crashed session last practised as a checkpoint, and no edit after it", async () => {
+  it("keeps the harness a crashed session last practised as a harness snapshot, and no edit after it", async () => {
     const failed = fauxAssistantMessage("", { stopReason: "error", errorMessage: "overloaded" });
     const tried = await setup([edit, call("practice", { tasks: ["t-1"] }), failed]);
     const kept = await session(tried.request, tried, tried.walled);
     expect(kept).toMatchObject({ changed: true, ended: "crashed" });
     expect(tried.of("build.checkpoint")).toEqual([{ session: "b-1", harness: kept.harness }]);
-    // The checkpointed crash moved the campaign, so the provider's crash rule does not count it.
+    // The crash with a harness snapshot moved the campaign, so the provider's crash rule does not count it.
     expect(crashedRun(read(tried.request.log)).count).toBe(0);
     // A crash after an edit no solve ran keeps the state the practice solve ran, not the edit,
     // which may be half done.
@@ -862,16 +862,17 @@ describe("a Builder session", () => {
     expect(crashedRun(read(unpractised.request.log)).count).toBe(1);
   });
 
-  it.each(["practised", "controlled", "unpractised", "missing", "mismatched", "checkpointed"])(
+  it.each(["practised", "reference-practice", "unpractised", "missing", "mismatched", "snapshotted"])(
     "recovers a cut session from its last practised state only where it opens: %s",
     async (state) => {
       const failed = fauxAssistantMessage("", { stopReason: "error", errorMessage: "overloaded" });
       const later = call(WRITE_FILE, { path: GUIDE_PATH, content: `${GUIDE}More.\n` });
-      // A control under the reference, here the parent, after the practice is not the state the
+      // Practice under the reference, here the parent, after the practice is not the state the
       // session left.
-      const control =
-        state === "controlled" ? [call("practice", { tasks: ["t-1"], under: "reference" })] : [];
-      const practice = state === "unpractised" ? [] : [call("practice", { tasks: ["t-1"] }), ...control];
+      const referencePractice =
+        state === "reference-practice" ? [call("practice", { tasks: ["t-1"], under: "reference" })] : [];
+      const practice =
+        state === "unpractised" ? [] : [call("practice", { tasks: ["t-1"] }), ...referencePractice];
       const s = await setup([edit, ...practice, later, failed]);
       await session(s.request, s, s.walled);
       // A stopped process never reached the finaliser. Reproduce that prefix as a fixture log.
@@ -885,12 +886,12 @@ describe("a Builder session", () => {
         const saved = join(s.request.states, digest);
         if (state === "missing") renameSync(saved, `${saved}-missing`);
         if (state === "mismatched") writeFileSync(join(saved, "agent/BUILT_AGENTS.md"), "Other bytes.\n");
-        if (state === "checkpointed") append(cut, "build.checkpoint", { session: "b-1", harness: digest });
+        if (state === "snapshotted") append(cut, "build.checkpoint", { session: "b-1", harness: digest });
       }
       await endCut(cut);
-      const checkpoints = () => read(cut).filter(({ kind }) => kind === "build.checkpoint");
-      const recoverable = ["practised", "controlled", "checkpointed"].includes(state);
-      expect(checkpoints().map(({ data }) => data)).toEqual(
+      const harnessSnapshots = () => read(cut).filter(({ kind }) => kind === "build.checkpoint");
+      const recoverable = ["practised", "reference-practice", "snapshotted"].includes(state);
+      expect(harnessSnapshots().map(({ data }) => data)).toEqual(
         recoverable ? [{ session: "b-1", harness: digest }] : [],
       );
       expect(read(cut).at(-1)).toMatchObject({
@@ -911,7 +912,7 @@ describe("a Builder session", () => {
       );
       expect(read(cut).findLast(({ kind }) => kind === "build.started")?.data.parent).toBe(digest);
       expect(readFileSync(join(resumed.home, GUIDE_PATH), "utf8")).toBe(GUIDE);
-      expect(checkpoints()).toHaveLength(1);
+      expect(harnessSnapshots()).toHaveLength(1);
     },
   );
 
@@ -964,14 +965,14 @@ describe("a Builder session", () => {
     expect(JSON.stringify(s.of(BUILD_CALL))).not.toContain(s.scratch);
   });
 
-  it("ends at its wall, and blames no host, when the wall reaches a practice solve queued at the host", async () => {
+  it("ends at its deadline, and blames no host, when the deadline reaches a practice solve queued at the host", async () => {
     const s = await setup([call("practice", { tasks: ["t-1", "t-2"] }), finish]);
     const built = await session(
       {
         ...s.request,
         limits: { ...LIMITS, wallSeconds: 1 },
-        // t-1 is in flight and ends killed; t-2 waits at the host's gate, which leaves on the kill
-        // with its reason before any solve starts (`gated`, `tools/d2/host.ts`).
+        // t-1 is in flight and ends killed; t-2 waits in the solve queue and leaves on the kill
+        // with its reason before any solve starts (`queued`, `tools/d2/host.ts`).
         practise: async (task, _dir, _digest, kill) => {
           if (!kill.aborted) {
             await new Promise((resolve) => kill.addEventListener("abort", resolve, { once: true }));

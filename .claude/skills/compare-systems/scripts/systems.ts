@@ -365,7 +365,7 @@ async function main(args: CommandArgs): Promise<number> {
   const solvedBy = opened.map(({ log }) => new Map([...solvedIn(log)].filter(([task]) => drawn.has(task))));
   const direction = objectiveNamed(source)?.direction;
   const lines = [
-    `${String(tasks.length)} of the ${String(held.length)} held-out tasks of ${seed}, drawn by its contract's hash. Its Examiner gated them under ${recorded.solver === null ? "the stored cycle's solver" : `${recorded.solver.model} at ${recorded.solver.effort}`} against its references, so a system with that solver met their selection.`,
+    `${String(tasks.length)} of the ${String(held.length)} held-out tasks of ${seed}, drawn by its contract's hash. Its Examiner admitted them under ${recorded.solver === null ? "the stored cycle's solver" : `${recorded.solver.model} at ${recorded.solver.effort}`} against its references, so a system with that solver met their selection.`,
     `Every solve: ${String(recorded.minutes)} minutes and ${recorded.modelTurns === null ? "unlimited" : String(recorded.modelTurns)} model turns, the campaign's checks, and the Referee on every rejection.`,
     "",
     ...opened.flatMap(({ system, harness }, index) =>

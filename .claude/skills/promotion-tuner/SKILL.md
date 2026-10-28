@@ -1,6 +1,6 @@
 ---
 name: promotion-tuner
-description: "Score recorded comparisons again by a tree's weighted measures, without models or spend. Read which promotions the score supports, which measure won each task, the A/A controls, and hours and dollars per promotion. Sweep the weights and the level by flag, and compare a candidate tree that changes a floor or the test."
+description: "Score recorded comparisons again by a tree's weighted measures, without models or spend. Read which promotions the score supports, which measure won each task, the A/A comparisons, and hours and dollars per promotion. Sweep the weights and the level by flag, and compare a candidate tree that changes a floor or the test."
 ---
 
 # Promotion tuner
@@ -12,7 +12,7 @@ weights, another level or a candidate tree read the same solves. A replay starts
 model and writes nothing of a campaign's.
 
 It tunes how a comparison scores the solves it bought. What a seat is told (the Examiner's prompt,
-a gate's reply) is tuned by seating it in rounds of live pairs, system-path-simulation's
+a task admission's reply) is tuned by seating it in rounds of live pairs, system-path-simulation's
 [optimize](../system-path-simulation/cases/optimize.md), which reads its rounds in the same order
 as this skill reads a replay.
 
@@ -22,7 +22,7 @@ as this skill reads a replay.
 | --- | --- | --- |
 | The weights of validity, the objective and the bill | `WEIGHTS`, `src/kernel/compare.ts`; the operator's, in steps of five | `--weights v,o,b`, in hundredths |
 | The level | the campaign's opening; the operator's | `--level` |
-| The room floor, the objective's full gain, the bill's floor | `ROOM`, `FULL`, `CHEAPER` | a candidate tree |
+| The objective gap floor, the objective's full gain, the bill's floor | `ROOM`, `FULL`, `CHEAPER` | a candidate tree |
 | How a measure is read over the pairings, and the test | `pointsOf`, `flipP`, `stepOf` | a candidate tree |
 
 The weights and the level are the operator's conditions, so a sweep of them is evidence brought to

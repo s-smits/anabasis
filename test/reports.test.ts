@@ -140,7 +140,7 @@ describe("the stop rule", () => {
   const sessions = ["h2", "h3", "h4", "h5", "h6", "h7"].map((harness) => session(`s-${harness}`, harness));
   const flat = (id: string, fresh: string, more: JsonObject = {}) => reported(id, "no-step", fresh, more);
   const two = [...sessions, flat("b-1", "h2"), flat("b-2", "h3")];
-  it("stops after as many harnesses in a row that showed no gain as the patience, counted from the last step", () => {
+  it("stops after as many harnesses in a row that showed no gain as the improvement patience, counted from the last step", () => {
     expect(stopRule([])).toEqual(counted(0, 0));
     expect(stopRule(two)).toEqual(counted(2, 2));
     expect(stopRule([...two, flat("b-3", "h4")])).toEqual(counted(3, 3));
@@ -202,9 +202,9 @@ describe("the stop rule", () => {
     const waiting = reported("b-5", "not-scored", "h2", { versions: [], aside: ["v1"] });
     const log = [...sessions, nothing("b-1"), nothing("b-2"), stopped("b-3"), capped("b-4"), waiting];
     expect(stopRule(log)).toEqual(counted(0, 0));
-    const gates = [reported("g0", "no-step", "start"), reported("g2", "no-step", "start")];
-    expect(stopRule(gates)).toEqual(counted(0, 0));
-    expect(stopRule([...gates, ...sessions, flat("b-1", "h2")])).toEqual(counted(1, 1));
+    const starterComparisons = [reported("g0", "no-step", "start"), reported("g2", "no-step", "start")];
+    expect(stopRule(starterComparisons)).toEqual(counted(0, 0));
+    expect(stopRule([...starterComparisons, ...sessions, flat("b-1", "h2")])).toEqual(counted(1, 1));
   });
 });
 
@@ -262,7 +262,7 @@ describe("the outcome an Examiner hears of a task", () => {
       ...solved("g-2", "kept", "h4", [F, F]),
       reported("g-2", "no-step", "h4", { ...terms, old: "h3", fresh: "h4", versions: ["kept"] }),
     ];
-    const controlFirst = [
+    const standaloneFirst = [
       ...heldOut("kept"),
       ...solved("control", "kept", "h3", [P, P]),
       ...solved("control", "kept", "h4", [P, P]),
@@ -285,7 +285,7 @@ describe("the outcome an Examiner hears of a task", () => {
       failed: [],
     });
     expect(read(beside)).toEqual({ outcome: "earlier-reference", standing: null, failed: [] });
-    expect(read(controlFirst)).toEqual({ outcome: "reference-none", standing: won, failed: ["kept"] });
+    expect(read(standaloneFirst)).toEqual({ outcome: "reference-none", standing: won, failed: ["kept"] });
     const lost = [
       ...heldOut("a1"),
       ...solved("b-1", "a1", "h1", [P, P]),
@@ -365,7 +365,7 @@ describe("who won each task, as an Examiner hears it", () => {
   });
 });
 
-describe("the tasks that go to a person as possibly infeasible", () => {
+describe("the tasks awaiting task review", () => {
   const terms = { old: "h1", solves: 2, setting: SETTING };
   const compared = (log: readonly LogEvent[], session: string, fresh: string, hard: boolean | string) => [
     ...log,
@@ -384,7 +384,7 @@ describe("the tasks that go to a person as possibly infeasible", () => {
   const once = compared(start, "b-1", "h2", F);
   const twice = compared(once, "b-2", "h3", F);
 
-  it("are never the ones a valid answer is on record for, by a solve anywhere or the author's own proof, which moves no pair", () => {
+  it("are never the ones a valid answer is on record for, by a solve anywhere or the author's own answer, which moves no pair", () => {
     expect(poolOf(once)).toMatchObject({ awaiting: [], scorable: ["hard", "easy"] });
     expect(poolOf(twice)).toMatchObject({ awaiting: ["hard"], scorable: ["easy"] });
     const valid = compared(once, "b-2", "h3", P);
@@ -397,23 +397,23 @@ describe("the tasks that go to a person as possibly infeasible", () => {
     expect(
       awaiting([...twice.slice(0, -1), ...solved("b-2", "hard", "base", [P, F]), ...twice.slice(-1)]),
     ).toEqual([]);
-    const proof = event("task.feasible", { version: "hard", session: "x-1" });
-    const atGate = twice.flatMap((each) =>
-      each.kind === "task.gate" && each.data.version === "hard" ? [each, proof] : [each],
+    const authorAnswer = event("task.feasible", { version: "hard", session: "x-1" });
+    const atAdmission = twice.flatMap((each) =>
+      each.kind === "task.gate" && each.data.version === "hard" ? [each, authorAnswer] : [each],
     );
-    expect(awaiting(atGate)).toEqual([]);
-    expect(awaiting(compared(atGate, "b-3", "h4", F))).toEqual([]);
-    const proved = [...twice, proof];
-    expect(awaiting(proved)).toEqual([]);
-    expect(pairsIn(proved)).toEqual(pairsIn(twice));
+    expect(awaiting(atAdmission)).toEqual([]);
+    expect(awaiting(compared(atAdmission, "b-3", "h4", F))).toEqual([]);
+    const withAuthorAnswer = [...twice, authorAnswer];
+    expect(awaiting(withAuthorAnswer)).toEqual([]);
+    expect(pairsIn(withAuthorAnswer)).toEqual(pairsIn(twice));
     expect(poolOf(twice).feasible).toEqual(new Set(["easy"]));
-    expect(poolOf(proved).feasible).toEqual(new Set(["hard", "easy"]));
+    expect(poolOf(withAuthorAnswer).feasible).toEqual(new Set(["hard", "easy"]));
     expect(poolOf([...twice, ...solved(undefined, "hard", "h9", [P])]).feasible).toEqual(
       new Set(["hard", "easy"]),
     );
   });
 
-  it("count a comparison whose solves used every model turn the condition names, and no wall it cut", () => {
+  it("count a comparison whose solves used every model turn the condition names, and no deadline that cut one short", () => {
     const told = (task: string, harness: string): Condition => {
       const plain = condition(task, harness);
       return { ...plain, limits: { ...plain.limits, modelTurns: 16 } };

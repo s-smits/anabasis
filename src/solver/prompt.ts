@@ -6,9 +6,9 @@
  * working directory. On 22 October the durable migration removed the vendor prompt builder; the
  * duty, environment and guide keep the same facts and sections:
  * - The addendum holds what a solver cannot find out for itself and no harness may change: what it
- *   must deliver, where the published requirements are, which file is its answer, the solve wall
- *   and what the wall does. The duty and the minutes are v1's `BUILT_SOLVE_DUTY` and `solveTime`;
- *   the wall's last sentence is this host's, which ends a solve as a fail and submits
+ *   must deliver, where the published requirements are, which file is its answer, the solve deadline
+ *   and what the deadline does. The duty and the minutes are v1's `BUILT_SOLVE_DUTY` and `solveTime`;
+ *   the deadline's last sentence is this host's, which ends a solve as a fail and submits
  *   nothing.
  *   Limit reminders are appended by executed tools; argument refusals and unavailable tools
  *   bypass execution and carry none. Diagnostics may follow the reminder.
@@ -77,7 +77,7 @@ const TOOL_RULES = new Map<string, readonly string[]>([
   ["write", ["Use write only for new files or complete rewrites."]],
 ]);
 
-/** What the solver must deliver and under what wall, with where the requirements are. */
+/** What the solver must deliver and under what deadline, with where the requirements are. */
 function duty({ wallSeconds, limits, resources, guide }: Told): string {
   const minutes = `${String(Math.round(wallSeconds / 60))} minutes of solve time`;
   const given =

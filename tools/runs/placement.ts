@@ -2,11 +2,11 @@
  * One host choice for a fresh campaign (22 October 2026). The scheduled fork used to parse status
  * prose and keep its own caps. Read the same live records as usage, and choose the least occupied
  * machine below its configured capacity, preferring one that has run the pack before. Login
- * admission shares the keeper's provider reader and room rule. Missing readings refuse placement.
+ * admission shares the keeper's provider reader and capacity rule. Missing readings refuse placement.
  *
  * A login's runs are spread over the machines before anything else decides (26 October 2026). On
  * that day one login paid for both runs on one runner, and when it met its five-hour limit at 15:34Z
- * that runner stood idle for two hours while two other logins had room. The host chosen is the one where
+ * that runner stood idle for two hours while two other logins had capacity. The host chosen is the one where
  * the run's login has the fewest live runs, so one login's limit leaves every machine working.
  *
  * A machine may be kept for some packs (`packs` in `ANA_HOSTS`, 27 October 2026). The operator kept
@@ -56,7 +56,7 @@ const capacityOf = (value: string | undefined): number => {
   return capacity;
 };
 
-/** A host with room where the login runs least, then a familiar one, then the least occupied;
+/** A host with capacity where the login runs least, then a familiar one, then the least occupied;
  *  configured order breaks a tie. */
 export function leastOccupied(rows: readonly Occupancy[]): Host | undefined {
   const chosen = rows
@@ -126,7 +126,7 @@ export async function freshFleet(): Promise<Live[]> {
   return live;
 }
 
-/** Reuse the keeper's room rule and provider reader, with a fleet-wide cap for each login. */
+/** Reuse the keeper's capacity rule and provider reader, with a fleet-wide cap for each login. */
 export async function freshLogin(
   requested: string | undefined,
   live: readonly Live[],

@@ -16,7 +16,7 @@
  *   --tasks   an Examiner session writes other tasks before anything else is built or compared.
  *   --budget  the campaign's total in dollars from there on: what is left of it caps each move.
  *
- * Until 20 October `--cause` released a campaign its A/A control had ended; an older log may hold
+ * Until 20 October `--cause` released a campaign its A/A comparison had ended; an older log may hold
  * such a word, which nothing reads now.
  *
  * Each takes effect once: the event that acts on a word names it. Nothing here reaches a seat. A

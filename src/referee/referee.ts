@@ -4,22 +4,22 @@
  * reads only the verifier's side: the task with its hidden values, the contract's public rules, the
  * answer, which checks refused it, and the check program. It never sees the harness, the solver's
  * trace or the Builder, and its reasons go to the log, never to the Builder.
- * Ruling prose has no length gate: evidence is checked on the submitted arguments before the
+ * Evidence is checked on the submitted arguments before the
  * finding's reason is bounded to trimmed UTF-8 content plus an omission marker for display.
  * The call trace retains the full explanation, as does a refusal's record of what was asked.
  *
  * Neither ruling that settles a fail is free. An `earned` ruling must name the public rule the
  * answer breaks, one a refusing check cites, and the field of the answer that breaks it, one such a
  * check reads: without that, "earned" was the ruling that needed nothing, and it is the one that lets
- * a broken check count. And it must cite a probe that changed that field and moved a refusing check
+ * a broken check count. And it must cite an answer probe that changed that field and moved a refusing check
  * that cites the rule off its refusal. A ruling that restates the check adds nothing its verdict did
- * not say: truss-141-m3's rulings of 12 October cited a probe that moved nothing on `mass-budget` in
- * 8 of 8, and one of the 12 cited none. Without such a probe the ruling is unclear, and the task
- * waits for a person's label. A `check-defect` ruling must cite a probe that decided both sides
+ * not say: truss-141-m3's rulings of 12 October cited an answer probe that moved nothing on `mass-budget` in
+ * 8 of 8, and one of the 12 cited none. Without such an answer probe the ruling is unclear, and the task
+ * waits for a person's label. A `check-defect` ruling must cite an answer probe that decided both sides
  * (`probe.ts`) and changed a field the check it names reads. A check declaring no answer fields
- * can be ruled defective on a conclusive probe too: its refusal is independent of the answer.
+ * can be ruled defective on a conclusive answer probe too: its refusal is independent of the answer.
  * Coupled changes and parent fields are admissible (20 October): three older unclear rulings
- * could not clear the deciding check one part at a time. A probe that merely supplies an accepted
+ * could not clear the deciding check one part at a time. An answer probe that merely supplies an accepted
  * answer, whole or on everything the named check reads, proves no defect and is refused: the
  * same review found that coupling this freedom with accepted answers could otherwise void true fails.
  *
@@ -30,16 +30,16 @@
  * shows. On 20 October source triage found that calling a replay non-result `unclear` made rule 7's
  * retryable non-result a permanent set-aside: `src/campaign/round.ts:410-418` retries only null rulings.
  *
- * The packet carries the whole public contract and an accepted answer, from a solve or the author's
- * proof. The review of 20 October found scope, answer format and objective missing, and 36 recent
- * readings had a passing solve available while an author's proof alone supplied no answer here.
+ * The packet carries the whole public contract and a known valid answer, from a solve or the author.
+ * The review of 20 October found scope, answer format and objective missing, and 36 recent
+ * readings had a passing solve available but could obtain an accepted answer only from the author.
  *
  * What a ruling does to the task, and how an `unclear` fail counts, is the caller's: this module
  * rules and logs, one `referee.finding` per fail. A reader whose session the provider or a kill
  * ended before it ruled gives no answer, and its finding holds no ruling, so that it is asked again.
  * A replay that reaches no verdict follows the same path. On 12 October, one Referee call that met
  * the provider's session limit was logged `unclear`; because no caller retried it, a task needed for
- * a step was set aside for good. One that reads to its own wall, or stops without a ruling, leaves
+ * a step was set aside for good. One that reads to its own deadline, or stops without a ruling, leaves
  * the fail unclear.
  *
  * A ruling the host refuses for want of its evidence is logged too, one `referee.refused` a refusal,
@@ -52,11 +52,19 @@
  * of refused rulings would sit. It carries the reader's reason, so like `referee.finding` it is
  * the exam side's: no Builder reader reads it (`test/builder.test.ts`, "what crosses to the
  * Builder").
+ *
+ * The session runs here since 28 October, with its sole-caller wrapper folded in. Its deadline
+ * and the run's kill reach tools through `sit`, so an answer probe cannot keep verifier work alive
+ * after the session ends (triage, 20 October). An accepted ruling also sets `over`: pi-durable
+ * otherwise continues when another call in the same round does not ask to terminate.
  */
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { type Static, Type } from "typebox";
+import { sit } from "../agent/session.ts";
 import type { Contract } from "../kernel/contract.ts";
 import { acceptedAnswers, proposalsOf } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
+import { priceKey } from "../kernel/meter.ts";
 import {
   applicableTruthChecks,
   checkProgramFiles,
@@ -69,13 +77,13 @@ import { boundText } from "../meta/bounded-text.ts";
 import { readFileSync } from "../meta/filesystem.ts";
 import { resolveJsonPath } from "../meta/json-evidence.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { isString, type JsonValue } from "../meta/json-shape.ts";
+import { isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined, keyIfNotNull, keysIf } from "../meta/optional-key.ts";
 import { join } from "../meta/path.ts";
 import { sameJsonValue } from "../meta/stable-json.ts";
 import { ending, text, tool } from "../tools/answer.ts";
 import { conclusive, probeAnswer, type ProbeRow, probeTool, reaches } from "./probe.ts";
-import { type Reader, readOnce } from "./reader.ts";
+import type { Reader } from "./reader.ts";
 
 export type Ruling = "earned" | "check-defect" | "unclear";
 
@@ -119,6 +127,11 @@ interface Answers {
 const REASON_DISPLAY_BYTES = 700;
 /** answer.ts's window: the longest text one read returns. */
 const READ_WINDOW = 12_000;
+/** Enough for a dozen reads and answer probes and the ruling. */
+const MODEL_TURN_LIMIT = 24;
+/** Half an hour: v1's ESP32 reviews spent 50 and 63 minutes inside answer probes
+ *  (`review-probe.ts:84-86` at 3f93d06b). A Referee session reads one fail. */
+const DEADLINE_SECONDS = 1_800;
 
 const SYSTEM_PROMPT = [
   "You are the Referee for one failed solve. A solver submitted the answer below and the task's checks refused it. Decide one thing: does this fail count against the solver?",
@@ -293,7 +306,7 @@ function refusal(
   if (!citing.some(([, { fields }]) => reaches(field, fields))) {
     return `no refusing check that cites ${String(args.rule)} reads ${field}; name the field the rule is broken at, or rule unclear`;
   }
-  // A probe's original side is the replay, on which every citing check refused: one it moved
+  // An answer probe's original side is the replay, on which every citing check refused: one it moved
   // was moved off its refusal.
   const moved = rows.some(
     (row) =>
@@ -345,7 +358,7 @@ function rulingTool(
 
 /** Referee one fail and log the finding. The host rules what needs no reading (`hostRuling`), and
  *  the reader rules the rest; one that never rules leaves the fail unclear. The reader's first
- *  probe reuses the replay as its original side, so a reading costs no second run of the checks.
+ *  answer probe reuses the replay as its original side, so a reading costs no second run of the checks.
  *  The accepted answer is the last the log holds for the task's id, which is how a verdict names
  *  its task.
  *
@@ -372,41 +385,63 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
       .filter((check) => verdict.blocking.includes(check.id))
       .map((check) => [check.id, { fields: check.execution.artifactPaths, rules: check.citedDecisionIds }]),
   );
-  const meter =
-    host === null
-      ? await readOnce(
-          reader,
-          SYSTEM_PROMPT,
-          packet(fail, verdict, accepted.at(-1)),
-          [
-            readProgramTool(fail.checks),
-            probeTool(
-              async (task, answer, signal) =>
-                replay !== null && answer === verdict.answer ? replay : fail.verify(task, answer, signal),
-              fail.task,
-              verdict.answer,
-              rows,
-              [...refusing.values()].map(({ fields }) => fields),
-            ),
-            rulingTool(refusing, { answer: verdict.answer, accepted }, rows, found, (asked, why) =>
-              append(fail.log, "referee.refused", {
-                solve: fail.solve,
-                task: fail.task.taskId,
-                asked: {
-                  ruling: asked.ruling,
-                  ...keyIfDefined("check", asked.check),
-                  ...keyIfDefined("rule", asked.rule),
-                  ...keyIfDefined("field", asked.field),
-                  reason: asked.reason,
-                  probes: asked.probes,
-                },
-                why,
-              }),
-            ),
-          ],
-          { log: fail.log, over: () => found.length > 0 },
-        )
-      : null;
+  let meter: JsonObject | null = null;
+  if (host === null) {
+    const opening = packet(fail, verdict, accepted.at(-1));
+    const tools = [
+      readProgramTool(fail.checks),
+      probeTool(
+        async (task, answer, signal) =>
+          replay !== null && answer === verdict.answer ? replay : fail.verify(task, answer, signal),
+        fail.task,
+        verdict.answer,
+        rows,
+        [...refusing.values()].map(({ fields }) => fields),
+      ),
+      rulingTool(refusing, { answer: verdict.answer, accepted }, rows, found, (asked, why) =>
+        append(fail.log, "referee.refused", {
+          solve: fail.solve,
+          task: fail.task.taskId,
+          asked: {
+            ruling: asked.ruling,
+            ...keyIfDefined("check", asked.check),
+            ...keyIfDefined("rule", asked.rule),
+            ...keyIfDefined("field", asked.field),
+            reason: asked.reason,
+            probes: asked.probes,
+          },
+          why,
+        }),
+      ),
+    ];
+    const deadline = AbortSignal.timeout((reader.wallSeconds ?? DEADLINE_SECONDS) * 1000);
+    // Parallel rulings need distinct session ids: two begun in one millisecond once shared a
+    // Claude query, and the second packet went into the first one's session.
+    const turns: AssistantMessage[] = [];
+    const id = `reader-${crypto.randomUUID()}`;
+    const { spent } = await sit({
+      models: reader.models,
+      id,
+      model: reader.model,
+      effort: reader.effort,
+      system: SYSTEM_PROMPT,
+      opening,
+      tools,
+      trace: { log: fail.log, of: "referee" },
+      over: () => found.length > 0,
+      turns,
+      most: MODEL_TURN_LIMIT,
+      next: async () => "Nothing is recorded until you call the tool that records your answer.",
+      stops: [deadline, reader.kill],
+    });
+    meter = {
+      reader: id,
+      model: priceKey(reader.model),
+      walled: deadline.aborted,
+      error: turns.at(-1)?.errorMessage ?? null,
+      ...spent,
+    };
+  }
   const finding = host ??
     found.at(-1) ?? {
       ruling: isString(meter?.error) && meter.walled === false ? null : "unclear",

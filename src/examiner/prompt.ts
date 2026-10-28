@@ -8,26 +8,26 @@
  * and a worse one does not. While the budget was withheld the tasks of ten campaigns tied.
  *
  * Room is defined once, in the scoring section, as a comparison reads it (`informative`,
- * `src/kernel/compare.ts`), with the objective's floor (`ROOM`); the gate section and the opening
+ * `src/kernel/compare.ts`), with the objective's floor (`ROOM`); the task admission section and the opening
  * refer to it. What v1's prompt said of tasks is kept: no limit the field does not hold, nothing a
  * solver needs in the hidden values, and no growth by size or a moved limit alone (limits reset at
  * a 3.4-hour search's best passed 5 of 6).
  *
  * A task needs a valid answer, and the prompt says how to be sure of one: plant it, put it to
  * `try_answer`, and grow the task around it. Nothing solves a task before it is held but the
- * reference harness at the gate (`AGENTS.md`, rule 9), so the author alone stands between the
+ * reference harness at the task admission (`AGENTS.md`, rule 9), so the author alone stands between the
  * exam and a task no answer satisfies: in the first campaign opened from a prompt, two of seven
- * tasks pressed to the margin had none. The planted answer never reaches a solver: the gate
+ * tasks pressed to the margin had none. The planted answer never reaches a solver: the task admission
  * refuses a task that carries it (`write.ts`).
  *
  * The solve is described as one system, the model inside the harness, because an Examiner that read
  * the reference harness's programs wrote against them: at esp32-fresh-opus-terra's x-4 (27 October)
  * ten drafts made `plan-pins` fail, the solver repaired each in 3 to 7 of its 20 turns, and the
- * gate refused all ten. The three kinds of room are listed apart. No kind of draft is named: a list
- * of the three kinds the v0.7.2 gates held stood here until 28 October, and in sessions where
+ * task admission refused all ten. The three kinds of room are listed apart. No kind of draft is named: a list
+ * of the three kinds the v0.7.2 task admissions held stood here until 28 October, and in sessions where
  * fifteen holds bore fifteen family labels the author called them one construction. Without it, an
- * Opus seat from one recorded position held 12 of 12 gated drafts as the seat with it did, at 11%
- * fewer dollars a gate (28 October). The home's copy
+ * Opus seat from one recorded position held 12 of 12 drafts put to task admission as the seat with it did, at 11%
+ * fewer dollars a task admission (28 October). The home's copy
  * of the reference harness is said to compute what its solver reaches: at buffer-fresh-gpt-v071's
  * x-3 the Examiner computed its answers with the reference's own optimiser, and in 9 refusals that
  * compared them its answer equalled the reference's best or was up to 0.59% worse (27 October).
@@ -35,9 +35,9 @@
  * Each fact is stated once, in the section that owns it (17 October, #191: 1,088 words to 793).
  * What the host enforces is said by the tool result that enforces it and not beforehand: a declined
  * first finish (195 of 417 finishes in the record), an instance not taken again, a planted answer
- * carried whole (refused by the gate, never once on record), and what a passing try shows (28 October).
- * The opening separates interrupted gates from measured refusals: incomplete admission leaves
- * room undecided, and its draft can be recovered and proposed afresh unless a later gate read it.
+ * carried whole (refused by the task admission, never once on record), and what a passing try shows (28 October).
+ * The opening separates interrupted task admissions from measured refusals: incomplete admission leaves
+ * room undecided, and its draft can be recovered and proposed afresh unless a later task admission read it.
  */
 import { ROOM } from "../kernel/compare.ts";
 import { type Contract, objectiveLine } from "../kernel/contract.ts";
@@ -54,12 +54,12 @@ export interface CheckRow {
 
 /** The system prompt of a session that holds tasks out by `propose_tasks`, or, given how many
  *  solves try one, by `try_task`. Each fact is stated once, in the section that owns it; the
- *  tools' descriptions point here for the gate (plan item 5.1, 14 October). `reference` says
+ *  tools' descriptions point here for the task admission (plan item 5.1, 14 October). `reference` says
  *  whether a copy of the reference harness lies in the home (19 October). */
 export function systemPrompt(tried: number | undefined, reference: "in-home" | "unseen"): string {
   const tool = tried === undefined ? "propose_tasks" : "try_task";
   const floor = `${String(ROOM * 100)}%`;
-  // The gate a task enters the exam by: its package's shape alone, or that and `tried` fresh solves
+  // The task admission a task enters the exam by: its package's shape check alone, or that and `tried` fresh solves
   // of it by the reference harness, held where they leave the room the scoring section names.
   const solved =
     tried === undefined
@@ -88,7 +88,7 @@ export function budgetLine(budget: { readonly modelTurns: number | null; readonl
 
 /** The opening message: the operator's brief where the campaign opened from one, the domain's
  *  public contract, its checks by id and assertion, and what `record.ts` tells of the campaign's
- *  past: a line a task, the measurement of the reference across the exam, and the drafts the gate
+ *  past: a line a task, the measurement of the reference across the exam, and the drafts the task admission
  *  refused or left unmeasured. `told` is the limits the session is told it runs under; how many tasks are wanted
  *  is not among them. `campaign` is what it is told of its campaign beside the contract, each null
  *  where there is none: the operator's brief, the budget every solve is held to, and what the last

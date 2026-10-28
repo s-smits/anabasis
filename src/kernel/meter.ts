@@ -5,7 +5,7 @@
  * Dollars come two ways from the same tokens, and neither converts to the other: on the truss sweep
  * metered ran 4.49 times billed on one run and 4.97 times on another.
  * - Billed is calculated at the list price of the model that served each turn, cache reads at
- *   their discount and cache writes at their premium. Gates and reports read it.
+ *   their discount and cache writes at their premium. Admission checks and reports read it.
  * - Metered charges every input token at the full input price, so a solve costs the same whether its
  *   prompt prefix was warm or cold. Reports carry it beside billed.
  */

@@ -22,7 +22,7 @@
  * else the operator sets. And where a person
  * labels more than one in four of the Referee's `unclear` rulings earned, it is said in one line
  * (`unclearReport`): an unclear ruling sets its task aside, so a Referee that rules unclear what a
- * person reads as earned removes real limits from the count. The line is a report and gates nothing.
+ * person reads as earned removes real limits from the count. The line is a report and changes no decision.
  */
 import type { LogEvent } from "../kernel/log.ts";
 import { isString } from "../meta/json-shape.ts";
@@ -125,7 +125,7 @@ export function clears(measured: Agreement, bar: Bar): boolean {
 }
 
 /** One line where a person labelled more than one in four of the Referee's `unclear` rulings
- *  earned; null otherwise. It gates nothing. */
+ *  earned; null otherwise. It changes no decision. */
 export function unclearReport({ table, unclearEarned }: Agreement): string | null {
   if (unclearEarned === null || unclearEarned <= UNCLEAR_EARNED) return null;
   const ruled = RULINGS.reduce((sum, label) => sum + table[label].unclear, 0);

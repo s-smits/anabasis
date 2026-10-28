@@ -155,7 +155,7 @@ Moving a helper's body into three callers is no removal.
   reader, and say which logs were read. On 11 October a pass replayed all 66 logs and found them
   identical. A count taken any other way is labelled an estimate.
 - While editing, run only the owning tests: `bun run test -- <paths>`. Run `bun run commit:check`
-  before the commit, and the gate CI runs (`AGENTS.md`, section 11) once before delivery, reading
+  before the commit, and the CI gate (`AGENTS.md`, section 11) once before delivery, reading
   every exit code. A run that printed nothing is not a pass.
 
 ## Budgets
@@ -167,7 +167,7 @@ Moving a helper's body into three callers is no removal.
 - A ceiling is met with fewer branches in the owner, then a closure, then a function. Helpers with
   one use spread the same count over more places. A sibling module that lets new code sit outside
   the 800-line count is refused, and `copiedFileLimits` in `tools/loc/source-policy.json` stays
-  empty. v2 has no complexity gate: a `measure.py` branch count over 21 is a lead, never a refusal.
+  empty. v2 has no complexity threshold: a `measure.py` branch count over 21 is a lead, never a refusal.
 
 ## What a pass must not cut
 

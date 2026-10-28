@@ -42,15 +42,15 @@ bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat <scra
   commit and the command in `<out>.json`, runs the command niced in a process group of its own on
   the login named, ends the group at `--cap` dollars billed since that event or at `--minutes`, and
   prints the reading when the group is gone. It reads the log every 30 seconds, so an in-flight
-  request can take it past the named bound, and notices within a second that the group has ended. It prints each gate, ruling and session end as it lands. An abrupt end can leave
+  request can take it past the named bound, and notices within a second that the group has ended. It prints each task admission, ruling and session end as it lands. An abrupt end can leave
   roots; inspect them with `bun run runs stop sim-<what>` and follow run-management for cleanup.
 - Run `start` as one background command and wait for its end. It is the seat's end, so nothing
   re-arms a monitor every 30 minutes, and no turn ends with a seat running unwatched: the
   ablation's watcher did both on 18 October.
 - `read` gives the stretch's minutes and billed dollars (`billedBetween`), its sessions and how
-  they ended, the drafts proposed, each gate as `every`, `some`, `none`, `none, proved`, `package`
+  they ended, the drafts proposed, each task admission as `every`, `some`, `none`, `none, proved`, `package`
   or `unread` (`measuredGate`, `heldAtGate`), how many were held, the turns the reference's valid
-  gate answers took (`gateAnswers`), the calls by tool, and with `--mention` the calls whose
+  room-solve answers took (`gateAnswers`), the calls by tool, and with `--mention` the calls whose
   arguments name a text. It quotes no task and no answer.
 - `watch --seat <prefix>` prints the same lines for a seat already running, from where it began,
   until its process group is gone, then the reading: one Monitor in Claude Code, or any agent's
@@ -76,7 +76,7 @@ bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat <scra
   told, composed by the tree's own code, and seats nothing, for rounds of arms
   ([optimize](optimize.md)).
 - `compare <prefix>...` sets seats' counts side by side, each cut at `--gates N`; `pairs
-  <control>,<arm>...` reads a round of pairs at equal gates and signs each measure for each Examiner
+  <control>,<arm>...` reads a round of pairs at equal task admissions and signs each measure for each Examiner
   model apart; `calls <log or folder>...` counts the Examiner's calls and failures over any logs
   ([optimize](optimize.md), steps 3 and 6).
 - `start` refuses a seed whose `checks/`, `exams/` or `states/` hold a link to nothing, as a seed
@@ -115,8 +115,8 @@ a legacy sweep probe, not a campaign solve under the current default of 20 model
   copy it or look for another.
 - **One live seat a login at a time.** A login at its session limit fails every solve in flight. On
   8 October 2026 that took three solves and $8.25 with it.
-- **Size it in drafts, not in sessions.** An Examiner session that its gate refuses finishes on its
-  own: on 18 October arm A finished after 20 drafts. Its dollars are its gate solves, about $0.25
+- **Size it in drafts, not in sessions.** An Examiner session that its task admission refuses finishes on its
+  own: on 18 October arm A finished after 20 drafts. Its dollars are its room solves, about $0.25
   a draft at three solves of the reference, and its Examiner's turns besides. That is a dated
   measurement, not a price estimate for another model or domain.
 - **A live seat's result is one sample.** One solve a side says the path works. It says nothing of

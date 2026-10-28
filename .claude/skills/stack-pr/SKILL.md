@@ -130,7 +130,7 @@ measure.
 ## 6. Run what CI runs
 
 `.github/workflows/ci.yml` runs on two platforms, because the isolation has two mechanisms and a
-suite passing on one platform says nothing of the other. The UI's gate has a macOS runner of its
+suite passing on one platform says nothing of the other. The UI's CI gate has a macOS runner of its
 own. CI runs on pushes to `main` and by `workflow_dispatch`; a pull request push starts no run.
 `bun run land -- <top> --merge` dispatches the top's run when none exists. After the root install,
 checks run despite earlier check failures; the UI build and tests both require its dependency
@@ -144,7 +144,8 @@ install to pass.
 
 `bun run gate` runs the two Darwin jobs' steps in one command, cheapest first; `-- --static` runs the
 tests one import from what `HEAD` changed in place of the suite, and leaves out the UI's browser
-test files unless `HEAD` changed `packages/ui`. Unlike CI, the local gate stops at the first failed
+test files unless `HEAD` changed `packages/ui` or its install, run or lint setup (`UI_SETUP` in
+`tools/runtime/gate.ts`). Unlike CI, the local CI gate stops at the first failed
 step. Judge every step by its exit code, never by its last lines.
 
 Where the runners do not run, each job is run by hand at the pushed head, and the body says
@@ -188,20 +189,20 @@ pushed head's first parents that no remote-tracking ref of the clone holds; each
 scan. Where one of them changes more than `AGENTS.md`, `README.md`, `docs/` or a `.md` under
 `.claude/`, each such head gets `bun run gate -- --checks` over a scratch checkout: the install, the
 UI's install and build, the format check, the secret scan, typecheck, strict lint, and the simplify census, whose
-count it prints and which gates nothing. The working tree may hold anything. A
+count it prints and which refuses nothing. The working tree may hold anything. A
 history brought in through a merge's other parent is counted and left alone, and the merge is
 checked: 444 of v2's commits came into this repository that way on 11 October, and v1's hook, which
-gated every commit new to the remote, could not pass one of them. To push another repository's
+ran the CI gate on every commit new to the remote, could not pass one of them. To push another repository's
 history as a branch of its own, fetch it as a remote first, so that its commits are already held.
 
 **A pushed commit is unproved.** Its tests run when the stack is proved: `bun run land -- <top>
 --sanitize` (section 9) gives every commit its static steps and nearby tests and the top the whole
-gate, the full suite among it, and posts each verdict. Run it when the stack is worth proving, such
+CI gate, the full suite among it, and posts each verdict. Run it when the stack is worth proving, such
 as after a restack or before asking for a merge; `--merge` runs the same proof again. A pass is
 remembered by content in the common Git directory, a whole or checks pass by the commit's tree and a
 static one by its tree and its parent's, so a push its lease refused or a restack that kept every
 tree is not run again, and after a failure the commits beneath the fix keep their passes. The key
-also holds the gate that ran and the Bun version, so either changing runs it again.
+also holds the CI gate that ran and the Bun version, so either changing runs it again.
 `ANA_GATE_FRESH=1` ignores remembered passes.
 A failure ends on one line naming the commit and the step, with its log. The fix goes into the
 commit that brought it, and the push or the landing goes again:
@@ -224,7 +225,7 @@ a serious run failure, or broadly simplifies the tree or the suite, `I2` is a bo
 improvement, and `I3` is reporting, wording or convenience (AGENTS.md section 11 owns the
 definitions). The title carries no "Ix:" prefix; the label replaced it on 25 October. `bun run land`
 refuses a stack in which any pull request has no importance label or more than one, or no category
-label, naming each, before it gates anything, so `--sanitize` shows such a stack as not ready
+label, naming each, before it runs any checks, so `--sanitize` shows such a stack as not ready
 (`gh pr edit <number> --add-label <label>` repairs it). The categories are the subjects a pull request
 is filed under, mostly the investigation's lane groups: `harness`, `climb`, `comparison`, `solve`,
 `supply`, `verdicts`, `economy`, `log`, `runs`, `landing`, `quality`, `docs` and `misc` (`CATEGORIES`,
@@ -233,7 +234,7 @@ consolidation spends its time by it: `I0` and `I1` through commit-r, `I3` folded
 (`references/consolidate.md`, "Spend by importance").
 
 The operator's title is used word for word. Otherwise, name the changed behaviour in a short
-imperative sentence, such as "Let the host wait for Examiner admission results" or "Reuse gate
+imperative sentence, such as "Let the host wait for Examiner admission results" or "Reuse CI gate
 results when unrelated tooling changes". Leave the full implementation sequence to the body.
 
 Write in the simple academic style of `AGENTS.md` section 13. Start with `Stacked on #<n>.` where
@@ -328,9 +329,9 @@ can post `ana/stack-gate` by hand.
 does not contain the one beneath it, or a bottom that does not contain `main`'s head: only then
 does the last merge leave `main` at exactly the top's tree. Then it proves every commit along the
 top's first parents above `main`, each over its own checkout: the static steps and nearby tests,
-and the whole gate, the full suite among it, on the top's head (`land.ts`, where it builds the
+and the whole CI gate, the full suite among it, on the top's head (`land.ts`, where it builds the
 proofs). A pass already recorded is not run again. `--jobs N` runs up to N static passes at once;
-the whole gate runs alone.
+the whole CI gate runs alone.
 
 A failure names the commit and the pull request it sits on. Fold the fix into that commit, replay
 the pull requests above it (section 8), push them together, and land again: the commits below the
@@ -339,7 +340,7 @@ fix keep their passes.
 `--merge` dispatches `ci.yml` on the top's head before the proof when no run is there, and waits
 for it after; a failed run is not dispatched again. It then reads every head again, posts
 `ana/stack-gate` on each, and merges the top through GitHub's asynchronous merge, pinned to its
-gated head, which merges the native stack beneath it all or nothing; the returned merge commit
+head checked by the CI gate, which merges the native stack beneath it all or nothing; the returned merge commit
 must have the top's tree. A landing of several pull requests outside a native stack is refused
 before the proof, with the `gh stack link` line that makes one. A refused merge sets
 `ana/stack-gate` back to pending on every head. An uncertain merge, or one that went into a merge

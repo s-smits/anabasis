@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { decide, practiceRoom, shortOf, unpromoted } from "../src/campaign/decide.ts";
+import { decide, practiceAllowance, shortOf, unpromoted } from "../src/campaign/decide.ts";
 import type { Plan } from "../src/campaign/ground.ts";
 import { pendingWords } from "../src/campaign/word.ts";
 import { tally as tallyPairs } from "../src/kernel/compare.ts";
@@ -54,7 +54,7 @@ const built = (id: string, harness: string, more: JsonObject = {}) =>
 const FIRST = [...SET_UP, built("b-1", "h1")];
 const setting = (modelTurns: number | null) =>
   event("campaign.setting", { solver: null, minutes: 120, turns: 24, modelTurns, tasks: null, target: 12 });
-/** An Examiner session that ended whole and held out `held`, each put to its gate. */
+/** An Examiner session that ended whole and held out `held`, each put to task admission. */
 const examined = (id: string, held: readonly string[] = [], more: JsonObject = {}) => [
   event(EXAM_FINISHED, { session: id, held: [...held], refused: [], proposed: held.length, ...more }),
   ...held.flatMap(heldOut),
@@ -420,8 +420,8 @@ describe("comparison readings", () => {
       move: "promote",
       harness: "h2",
     });
-    const control = compared("g-3", "start", "step", { old: "h1", tally: [8, 0, 4] });
-    expect(move([...epoch, ...control])).not.toMatchObject({ move: "promote", harness: "start" });
+    const starterComparison = compared("g-3", "start", "step", { old: "h1", tally: [8, 0, 4] });
+    expect(move([...epoch, ...starterComparison])).not.toMatchObject({ move: "promote", harness: "start" });
     const unread = compared("g-3", "h2", "starter-unread", { old: "h1", tally: [8, 0, 4] });
     expect(move([...epoch, ...unread])).not.toMatchObject({ move: "promote" });
     const later = [built("b-2", "h2"), ...compared("b-2", "h2", "no-step", { old: "h1", tally: [4, 4, 4] })];
@@ -484,7 +484,7 @@ describe("room for the reference", () => {
     expect(namedReading.why).toContain("b-3");
   });
 
-  it("short: tasks are written where the gate would refuse the next comparison for want of them", () => {
+  it("short: tasks are written where comparison admission would refuse the next comparison for want of them", () => {
     const small = { ...PLAN, wanted: { ...PLAN.wanted, target: 6 } };
     const tied = [
       READ,
@@ -558,15 +558,15 @@ describe("unread harnesses and tasks", () => {
     });
     expect(decide(written, PLAN).why).toContain("h1");
     expect(decide(written, PLAN).why.match(/\b1\b/g)).toHaveLength(1);
-    const control = (reading: string, old: Valid, tally: [number, number, number]) => [
+    const starterComparison = (reading: string, old: Valid, tally: [number, number, number]) => [
       ...written,
       ...compared("g-3", "start", reading, { old: "h1", tally, valid: { old, fresh: HALF } }),
     ];
-    expect(move(control("no-step", HALF, [2, 2, 8]))).toEqual({
+    expect(move(starterComparison("no-step", HALF, [2, 2, 8]))).toEqual({
       move: "build",
     });
-    expect(move(control("step", [8, 2, 2], [6, 0, 6]))).toMatchObject({ move: "build" });
-    expect(move(control("no-step", ALL, [0, 0, 12]))).toMatchObject({ move: "examine" });
+    expect(move(starterComparison("step", [8, 2, 2], [6, 0, 6]))).toMatchObject({ move: "build" });
+    expect(move(starterComparison("no-step", ALL, [0, 0, 12]))).toMatchObject({ move: "examine" });
 
     expect(move(PROMOTED)).toMatchObject({ move: "examine" });
     expect(move([...PROMOTED, ...examined("x-9")])).toMatchObject({ move: "build" });
@@ -580,7 +580,7 @@ describe("unread harnesses and tasks", () => {
   });
 });
 
-describe("a hold on the move a row named", () => {
+describe("the build conditions", () => {
   it("begins a comparison or an Examiner session while what is left holds a solve's reserve, whatever the last one billed", () => {
     const solve = (id: string, billed: number) => [
       event("solve.started", { solve: id, comparison: "g-1" }),
@@ -607,7 +607,7 @@ describe("a hold on the move a row named", () => {
     const won = (task: string) => {
       const round = roundSolves("g-room", ["start", "h1"], { a: "PP PP", b: "PP PP" });
       const starts = round.events.filter(({ kind }) => kind === "solve.started");
-      // A already has room between the reference's own answers; B has none. The fresh
+      // A already has an objective gap between the reference's own answers; B has none. The fresh
       // answers either win A and lose B, or lose A and win B, preserving the tally.
       const measures = task === "a" ? [10, 5, 1, 1, 10, 10, 20, 20] : [10, 5, 20, 20, 10, 10, 1, 1];
       return [
@@ -640,20 +640,20 @@ describe("a hold on the move a row named", () => {
         ...HELD.slice(7, 7 + extra).flatMap(heldOut),
       ]);
       const released = logs.map((events) =>
-        releaseOrder(events, taskSets(events).held, practiceRoom(events, 0.02), "seed"),
+        releaseOrder(events, taskSets(events).held, practiceAllowance(events, 0.02), "seed"),
       );
       const tallies = logs.map((events) =>
         tallyPairs(lastReports(events).flatMap((report) => pairsReported(events, report))),
       );
       expect(tallies[0]).toEqual(tallies[1]);
       expect(logs.map((events) => poolOf(events).frontier.length)).toEqual([8 + extra, 9 + extra]);
-      expect(logs.map((events) => practiceRoom(events, 0.02))).toEqual([extra, extra]);
+      expect(logs.map((events) => practiceAllowance(events, 0.02))).toEqual([extra, extra]);
       expect(released[0]).toEqual(released[1]);
       expect(released[0]?.map(([version]) => version)).toEqual(extra === 0 ? [] : ["a"]);
     }
   });
 
-  it("practice: an answer from the other harness alone cannot increase the feasibility allowance", () => {
+  it("practice: an answer from the other harness alone cannot increase the practice allowance", () => {
     const log = (fresh: string) => [
       ...RELEASED,
       ...["u", ...HELD.slice(0, 8)].flatMap(heldOut),
@@ -663,12 +663,59 @@ describe("a hold on the move a row named", () => {
         }),
       ),
     ];
-    expect(["PP", "FF"].map((fresh) => practiceRoom(log(fresh), 0.02))).toEqual([0, 0]);
-    for (const proof of [
+    expect(["PP", "FF"].map((fresh) => practiceAllowance(log(fresh), 0.02))).toEqual([0, 0]);
+    for (const knownAnswer of [
       event("task.feasible", { version: "u" }),
       event("task.gate", { version: "u", reference: { valid: 1 } }),
     ]) {
-      expect(practiceRoom([...log("FF"), proof], 0.02)).toBe(1);
+      expect(practiceAllowance([...log("FF"), knownAnswer], 0.02)).toBe(1);
+    }
+  });
+
+  it("releases practice before asking for tasks after an unchanged session, preserving both codes", () => {
+    const log = [
+      ...SET_UP,
+      ...heldOut("v13"),
+      event("build.started", { session: "b-idle" }),
+      built("b-idle", "start", { changed: false }),
+    ];
+    expect(decide(log, { ...PLAN, practice: 2 })).toEqual({
+      move: "prepare",
+      code: "practice",
+      why: "1 of the 2 practice tasks the campaign names are released, and tasks were held out since the last release: the contract's draw releases more before the Builder builds",
+    });
+    expect(decide(log, PLAN)).toEqual({
+      move: "examine",
+      code: "unshown",
+      why: "Builder session b-idle left its harness as it was, and no practice solve of its failed: it had nothing to work on, so the tasks have to change before another session is paid for",
+    });
+    const cases = [
+      { events: [...log, event("campaign.word", { word: "stop" })], plan: PLAN, code: "stop" },
+      { events: log.slice(1), plan: PLAN, code: "exam" },
+      { events: log, plan: { ...PLAN, left: { dollars: 0, reserve: 1 } }, code: "bound" },
+      { events: log, plan: { ...PLAN, unprepared: true }, code: "tasks" },
+      {
+        events: [...log, event("comparison.started", { session: "g-open", old: "start", fresh: "h1" })],
+        plan: PLAN,
+        code: "unfinished",
+      },
+      { events: [...log, ...compared("g-step", "h1", "step")], plan: PLAN, code: "step" },
+      { events: [...log, ...full("g-full")], plan: PLAN, code: "no-room" },
+      {
+        events: [
+          ...log,
+          built("b-active", "h1"),
+          ...compared("g-empty", "h1", "not-scored", { extra: { versions: [] } }),
+        ],
+        plan: PLAN,
+        code: "short",
+      },
+      { events: [...log, built("b-new", "h1")], plan: PLAN, code: "unread" },
+    ];
+    for (const { events, plan, code } of cases) {
+      const withoutPractice = decide(events, plan);
+      expect(withoutPractice.code).toBe(code);
+      expect(decide(events, { ...plan, practice: 2 })).toEqual(withoutPractice);
     }
   });
 
@@ -691,7 +738,7 @@ describe("a hold on the move a row named", () => {
 });
 
 describe("the one count", () => {
-  it("ends the campaign where as many readings in a row as its patience left nothing to gain", () => {
+  it("ends the campaign where as many readings in a row as its supply patience left nothing to gain", () => {
     expect(move([READ, ...idle(2)])).toMatchObject({ move: "examine" });
     expect(decide([READ, ...idle(3)], PLAN).why.match(/\d+/g)).toEqual(["3"]);
     expect(decide([READ, ...idle(3)], PLAN)).toMatchObject({

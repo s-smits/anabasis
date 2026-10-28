@@ -1,6 +1,6 @@
 ---
 name: attribution-and-proof
-description: "Use after an Anabasis v2 comparison, checkpoint or system change, and before any sentence claims that a harness, a model or a patch improved something. States what one reading may be said to show: the identities it was made under, the counts kept apart, whether it was repeated, which part of a harness it belongs to, whether a mechanism was live in the run, and whether the measurement is valid as distinct from whether it was exploited. Ends in one fixed report."
+description: "Use after an Anabasis v2 comparison, standalone comparison or system change, and before any sentence claims that a harness, a model or a patch improved something. States what one reading may be said to show: the identities it was made under, the counts kept apart, whether it was repeated, which part of a harness it belongs to, whether a mechanism was live in the run, and whether the measurement is valid as distinct from whether it was exploited. Ends in one fixed report."
 ---
 
 # Attribution and proof
@@ -24,13 +24,13 @@ answers. The null treats each untied task's sign as equally likely and independe
 tasks' scores and again on their scores without the bill (`stepOf`, since 26 October).
 It does not say:
 
-- **that the harness is better under another condition.** Another wall, budget, solver, effort
+- **that the harness is better under another condition.** Another deadline, budget, solver, effort
   or host code is another condition, and no solve of one counts for the other.
-- **which part of the harness did it.** A harness is presets, programs and a guide. The control
+- **which part of the harness did it.** A harness is presets, programs and a guide. The programs ablation
   `programs-of:<digest>` is the Starter with that harness's installed programs alone
-  (`keptAs`, `tools/d2/campaign.ts`); a checkpoint against it separates the programs from the rest.
+  (`keptAs`, `tools/d2/campaign.ts`); a standalone comparison against it separates the programs from the rest.
 - **that the solver designs better.** A harness that installs an engine the public rules name
-  saves a solver its setup time. Under a short wall that reads as a step.
+  saves a solver its setup time. Under a short deadline that reads as a step.
 - **that it would read so again.** One comparison is one draw.
 
 ## Rules
@@ -38,7 +38,7 @@ It does not say:
 - **Match the identities.** Every solve has a `condition.recorded`: contract, harness, task,
   solver model and effort, compaction, limits, the host's code by content. Two solves compare
   when their conditions differ in the one thing compared. Two harnesses are set side by side by
-  a checkpoint, under one setting; rounds made apart are not a comparison (`AGENTS.md`, section 9).
+  a standalone comparison, under one setting; rounds made apart are not a comparison (`AGENTS.md`, section 9).
 - **Count no solve twice.** Solves of two rounds were made apart, each under its own hour of
   the host. Setting them side by side is a description. A pair is made by one comparison.
 - **Keep the counts apart**: valid answers; rejected answers, by ruling (earned, a check defect,
@@ -65,7 +65,7 @@ refusal that fired establishes its own condition and nothing about the answers.
 
 Answer these from the log before using the word step in a sentence of your own:
 
-- **Repeated?** One reading promotes. A checkpoint of the same two harnesses with a new `--id`
+- **Repeated?** One reading promotes. A standalone comparison of the same two harnesses with a new `--id`
   makes a second draw on fresh solves; the same id returns the existing report. Until a later
   reading holds the step, say it is one draw at its level. Until 19 October promotion required a repeat.
 - **What does the reference do against itself?** Read `noise` on the same tallied tasks, with
@@ -88,10 +88,10 @@ Answer these from the log before using the word step in a sentence of your own:
   capped at one, across epochs. It is an estimate, not a measured bound. Its A/A error count is
   one-sided at the comparison's level, and counts only the controls that could read a step.
 - **Which measure?** Give `points` beside the untied count: the points validity, the objective and the bill gave the tallied tasks, so a step the bill carried is named as one. A report begun before 21 October holds `objective.decided` instead.
-- **Under what load?** A wall counts the clock. The reader's `HOST LOADED` and `LOAD MOVED` say
+- **Under what load?** A deadline counts elapsed time. The reader's `HOST LOADED` and `LOAD MOVED` say
   when solve-start loads were high or moved between halves within or across comparisons. Compare
   no times across those loads.
-- **At which budget?** Give the setting's model-turn and wall limits. A comparison reads the one
+- **At which budget?** Give the setting's model turn limit and deadline. A comparison reads the one
   budget its solver was told; it does not rescore those solves at shorter budgets. A different
   budget needs a separate setting and fresh solves (`settingAsked`, `tools/d2/setting.ts`).
 
@@ -103,7 +103,7 @@ rests on.
 
 - **Measurement validity**: `demonstrated gap`, `no gap found in the named checks`, or
   `unassessed`. What v2 runs: the checker's reading (`bun tools/c/accept.ts`), which puts each
-  control to the checks twice and the do-nothing answer to every task; the Referee on each
+  control answer to the checks twice and the do-nothing answer to every task; the Referee on each
   rejection that reached a check; a person's labels where `tools/d2/settle.ts` draws them,
   including its blind sample of passes. No model seat reviews a pass. An authored check stands
   on the operator's admission, by `--admit` or `--admit-authored`; a campaign launch without

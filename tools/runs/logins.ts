@@ -42,7 +42,7 @@
  *
  * `ANA_LOGINS` in the environment, such as `2,3,4`, names the logins a run may take (`allowedLogins`),
  * every login the environment holds where it is unset. Until 15 October this was a script of the
- * operator's, which read the checkout's `.env` itself, and a shell loop applied the room rule.
+ * operator's, which read the checkout's `.env` itself, and a shell loop applied the capacity rule.
  */
 import { openingOf, SEATS } from "#src/campaign/opening.ts";
 import type { LogEvent } from "#src/kernel/log.ts";

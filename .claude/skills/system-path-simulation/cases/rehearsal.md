@@ -1,6 +1,6 @@
 # Rehearsal
 
-A round, session, checkpoint or campaign on a seed, with scripted seats and no Referee. It answers
+A round, session, standalone comparison or campaign on a seed, with scripted seats and no Referee. It answers
 whether commands still join after a change, and what a position of a given size can read at all.
 It calls no model; its duration depends on the solves and their limits.
 
@@ -53,15 +53,15 @@ target cannot be changed by these flags. Six frontier wins clear 0.02; four do n
 - `--held old:new` says how a solve of a held-out task ends under the reference harness and the
   new. `--reference promoted` is the default: the last promoted harness, or the starter until one
   is promoted. `none:pass` scripts wins, which read a step only with enough frontier tasks at the
-  level. `--starter` applies where the starter is neither side, for example in a campaign's control
+  level. `--starter` applies where the starter is neither side, for example in a campaign's starter comparison
   after a promotion. A comparison adds no third arm after a step.
-- In a campaign the admission gate seats the same scripted solver, under the promoted reference
+- In a campaign the task admission seats the same scripted solver, under the promoted reference
   as `old`, with three fresh solves per draft (18 October 2026). Five rehearsals seated none, while
   esp32-fresh-opus refused 45 of 50 drafts after promotion. The scripted
   Examiner tries each available recorded valid answer through `try_answer`, so an unanswered draft
-  can be held on that proof. `pass:pass` refuses an answered draft unless an answer on record
+  can be held on that known valid answer. `pass:pass` refuses an answered draft unless an answer on record
   beats the reference by the objective (`informative`). A campaign with no task admitted can
-  reach `no-room` or `exam` at its patience.
+  reach `no-room` or `exam` at its supply patience.
 - `--target` draws that many held-out tasks by the contract's hash.
 - A rehearsal needs no `--cap`: a script is paid nothing.
 - It bypasses supply, checker-read and stop-rule admission, while its comparison's own terms still
@@ -71,8 +71,8 @@ No reviewer reads a rehearsal, so a scripted `fail` is a rejection nobody ruled 
 task aside, the report's `counted` holds the tally were it to stand, and `tools/d2/settle.ts` on
 the seed settles it on labels, as a paid comparison with no reviewer is settled.
 
-For a stored pack the script reads graded passes from the sweep, then pack controls, then answers
-accepted or rejected in the seed's log (`answersOf`). For a drafted exam it reads staged controls
+For a stored pack the script reads graded passes from the sweep, then pack control answers, then answers
+accepted or rejected in the seed's log (`answersOf`). For a drafted exam it reads staged control answers
 and the source campaign's accepted answers, then the seed's verdicts (`draftedSource`). A missing
 `pass` or `fail` answer makes the script give none and report a stray at the end, with exit 1;
 `none` needs no answer.
@@ -86,8 +86,8 @@ available. A stored-pack campaign has no scripted Examiner and ends when it need
 
 With `--no-comparison` the flags are a Builder session's (`tools/d2/session.ts`): the scripted
 Builder forks the latest harness, adds its line and finishes, and nothing is compared. The plan's
-checkpoint, several sessions and then one comparison, is walked as that many of these and then a
-checkpoint with `--new latest`. `test/checker-commands.test.ts` walks two and a checkpoint over a
+standalone comparison, several sessions and then one comparison, is walked as that many of these and then a
+standalone comparison with `--new latest`. `test/checker-commands.test.ts` walks two and a standalone comparison over a
 fixture pack on every run of the suite, on a host that has a command wall.
 
 ```sh
@@ -96,9 +96,9 @@ bun run runs rehearse <pack flags> --name sim-<what> --session b-3 --no-comparis
 bun run runs rehearse <pack flags> --name sim-<what> --id g2 --new latest
 ```
 
-## Rehearse a checkpoint
+## Rehearse a standalone comparison
 
-Flags that hold `--id` are a checkpoint's (`tools/d2/checkpoint.ts`): one comparison of two kept
+Flags that hold `--id` are a standalone comparison's (`tools/d2/checkpoint.ts`): one comparison of two kept
 harnesses, with no Builder session. It compares the latest harness a session left with the
 reference, the last promoted harness or the starter until one is promoted. The seed must keep a new
 harness: rehearse a session or round first. At four solves a side the report reads the reference
@@ -117,7 +117,7 @@ It prints the round's report, then the stop rule, then each harness by itself as
 many of their solves were valid, then one of two last lines.
 
 - `the rehearsal went as scripted`, exit 0. No solve strayed, and an isolated Builder session or
-  round left a changed harness. A checkpoint runs no Builder. Read `reading` against the prediction.
+  round left a changed harness. A standalone comparison runs no Builder. Read `reading` against the prediction.
 - `the rehearsal did not go as scripted`, exit 1, with each stray named. Find out whose fault it is
   before anything else (rule 7): read the named solve's `solve.call` and `verdict` in the seed's log.
 

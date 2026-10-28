@@ -13,15 +13,15 @@ import type { PriceTable } from "./meter.ts";
 
 /**
  * What the host holds every solve to. A harness never sets one: a file or a prompt that asks for a
- * longer wall, more turns, more concurrency or more disk changes nothing.
+ * longer deadline, higher prompt limit, more concurrency or more disk changes nothing.
  */
 export type Limits = {
   readonly wallSeconds: number;
-  /** The prompts a solver is given, the opening one and each nudge after a turn that ended without a
+  /** The prompt limit: the opening one and each nudge after a turn that ended without a
    *  submit, before the solve stops without an answer of its own: v1's `maxTurns`. */
   readonly turns: number;
   /**
-   * The model's own turns a solve is given, a turn being one reply of the model with the tool calls
+   * The model turn limit of a solve, a turn being one reply of the model with the tool calls
    * in it; absent, they are not limited. The solver is told the number and how many it has used, and
    * a solve that reaches it without an answer ends there (`turns-ended`). It is the unit of a
    * budget that does not move with the host's load: the one step on record was read under a time
@@ -34,7 +34,7 @@ export type Limits = {
   readonly shellDefaultSeconds: number;
   /** The longest one shell command may run. */
   readonly shellMaxSeconds: number;
-  /** Solves the host runs at once, which moves wall time through the load they put on one another. */
+  /** Solves the host runs at once, which moves elapsed time through the load they put on one another. */
   readonly concurrency: number;
 };
 
@@ -59,7 +59,8 @@ export interface Condition {
   readonly solverTools: string;
   readonly verifierTools: string;
   /** The digest of the sandbox a solve ran under, as the campaign names it: the isolation
-   *  profile's id and the platform (`tools/d2/campaign.ts`); until 19 October the disk cap too. What the profile lets a
+   * profile's id and the platform (`tools/d2/campaign.ts`); until 19 October the disk cap too. What the
+   * profile lets a
    *  command read and reach, the network among it, is the profile's and is not recorded apart. */
   readonly sandbox: string;
   readonly limits: Limits;

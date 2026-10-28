@@ -24,7 +24,7 @@ import {
   type Paired,
   pairsOf,
   scored,
-  stepOf,
+  readsStep,
   type Tally,
   tally,
   UNMEASURED,
@@ -44,16 +44,17 @@ import type { Ruling } from "../referee/referee.ts";
 import { type Worth, worthOf } from "./climb.ts";
 
 /**
- * How the plan's rules read a comparison. A step is the new harness's test against the reference
- * one clearing its level, on the tasks' scores and on their scores without the bill. A comparison that tallied no task is named apart: it tested nothing,
- * and `no-step` would say a test was made and found no gain. Eight rounds of 8 October scored no
- * task and read `no-step` eight times. `check-defects` is the comparison stopped on its check
- * defects, and `no-change` a session that left nothing new to compare. `regressed` is a report's
- * of 12 to 20 October, when the retained tasks were a second test (`stepOf`, `compare.ts`).
+ * How the plan's rules read a comparison. A step is the new harness's test against the reference one
+ * clearing its level, on the tasks' scores and on their scores without the bill. A comparison that
+ * tallied no task is named apart: it tested nothing, and `no-step` would say a test was made and found
+ * no gain. Eight rounds of 8 October scored no task and read `no-step` eight times. `check-defects` is
+ * the comparison stopped on its check defects, and `no-change` a session that left nothing new to
+ * compare. `regressed` is a report's of 12 to 20 October, when the retained tasks were a second test
+ * (`readsStep`, `compare.ts`).
  *
  * A report written before 11 October may hold `below-starter` or `starter-unread` and an
  * `against`: readings of a third arm that solved the starter on a step. The starter is now the
- * control after a promotion (`decide.ts`).
+ * starter comparison after a promotion (`decide.ts`).
  */
 type Reading = "step" | "no-step" | "regressed" | "narrow" | "not-scored" | "check-defects" | "no-change";
 /** One test's tally, each task's score, and its p; and each task's score without the bill, which a
@@ -63,7 +64,7 @@ type Tested = Omit<ReturnType<typeof scored>, "unbilled"> & { readonly unbilled?
  *  entered it, which are its denominator, those of them set aside, and its tally and test. */
 /** `of` names the task of each difference; a report from before 14 October holds none. `unbilled`
  *  holds each task's score without the bill in the same order, which the step clears as well
- *  (`stepOf`). */
+ *  (`readsStep`). */
 type Entered = Tested & {
   readonly tasks: readonly string[];
   readonly aside: readonly string[];
@@ -92,7 +93,7 @@ export interface Report {
   /** The new harness against the reference one, over `versions`: the tally and its test. `unsolved`
    *  counts the tied tasks no counted solve of either harness answered validly. The other ties are
    *  between valid answers, which is the share the plan's Phase 3 turns on. Null when nothing was
-   *  compared. The step is read on it (`stepOf`), with its `detectable` and `falseRate`, the test's
+   *  compared. The step is read on it (`readsStep`), with its `detectable` and `falseRate`, the test's
    *  `power` at one half and never over the level. Before 20 October those two were the frontier's. */
   readonly scored:
     | (Tested & {
@@ -114,9 +115,9 @@ export interface Report {
   /** Each family's tallies on the two sets, from the same rows, so they sum to the whole. They show
    *  concentration; a family name can hide correlated tasks, and they establish no independence. */
   readonly families: Readonly<Record<string, { readonly frontier: Tally; readonly retained: Tally }>> | null;
-  /** The comparison of the same two harnesses before this one, and the task versions both scored. */
+  /** The preceding comparison of the same two harnesses, and their initial draws' intersection. */
   readonly overlap: { readonly with: string; readonly tasks: readonly string[] } | null;
-  /** The reference harness against itself on halves of its own solves mirrored in time, the A/A,
+  /** The reference harness against itself on halves of its own solves mirrored in time, the A/A comparison,
    *  where it holds four or more of a task: how often two of its solves of a task
    *  disagree (`flips`), the least share of its untied tasks one half has to win for the scored
    *  test at the level to detect it four times in five (`detectable`), which says how much its
@@ -164,7 +165,7 @@ export interface Report {
     Record<string, { readonly old: number | null; readonly fresh: number | null }>
   > | null;
   /** Where it reads a step, the cost bar as the log stood (`worthOf`, the plan's W): the epoch's
-   *  attempts. Reported, and gating nothing. A report before 13 October holds an effect and a
+   *  attempts. Reported without deciding admission. A report before 13 October holds an effect and a
    *  transfer beside it, which nothing reads. */
   readonly worth: Worth | null;
   /** `unsettled` in the comparison's own report until a person answers its packet (`settle.ts`),
@@ -270,7 +271,7 @@ function asReported(events: readonly LogEvent[], id: string): LogEvent[] {
 function validOf(
   pairs: readonly Paired[],
   solves: number,
-  { feasible, bests }: Pick<ReturnType<typeof poolOf>, "feasible" | "bests">,
+  { feasible: knownValidAnswers, bests }: Pick<ReturnType<typeof poolOf>, "feasible" | "bests">,
 ): Valid {
   const census = (side: "old" | "fresh") => {
     const tasks = Array.from({ length: solves + 1 }, () => 0);
@@ -281,7 +282,7 @@ function validOf(
     return tasks;
   };
   const told = (side: "old" | "fresh") =>
-    pairs.filter((pair) => informative(pair, side, feasible, bests)).length;
+    pairs.filter((pair) => informative(pair, side, knownValidAnswers, bests)).length;
   return {
     old: census("old"),
     fresh: census("fresh"),
@@ -380,10 +381,9 @@ function setsOf(
   };
   const ofFamily = (family: string, set: keyof typeof tallied) =>
     tally(tallied[set].filter(({ task }) => familyOf(task) === family));
-  const retained = setOf("retained");
   return {
     frontier: setOf("frontier"),
-    retained: retained.wins + retained.losses + retained.ties > 0 ? retained : UNMEASURED,
+    retained: tallied.retained.length > 0 ? setOf("retained") : UNMEASURED,
     families: Object.fromEntries(
       [...new Set(fixed.tasks.map(familyOf))].map((family) => [
         family,
@@ -446,12 +446,11 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
   /** The reference against itself on halves of the test's own solves (`Sides`, `halves`), over
    *  the tallied tasks and no other: until 14 October it read every live task, so a task short on
    *  the new side alone stood in the A/A and not in the tally, and its printed count was neither. */
-  const tallied = pairs.map(({ task }) => task);
   const itself = () =>
     kept(
       pairsOf(
         events,
-        tallied,
+        pairs.map(({ task }) => task),
         {
           old: fixed.old,
           fresh: fixed.old,
@@ -468,10 +467,9 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
   // side every comparison carries one.
   const mirrored = fixed.solves >= 4 && fixed.solves % 2 === 0 ? itself() : null;
   const aa = mirrored === null ? null : scored(mirrored);
-  const valid = validOf(pairs, fixed.solves, poolOf(events));
-  // The step is read off the sets as a report holds them, which is how it is read again (`stepOf`).
-  const reading = pairs.length === 0 ? ("not-scored" as const) : stepOf(asRecord(sets) ?? {}, fixed.level);
   const tested = scored(pairs);
+  const stepped = readsStep(tested.differences, tested.unbilled, fixed.level);
+  const reading: Reading = pairs.length === 0 ? "not-scored" : stepped ? "step" : "no-step";
   return {
     scored: {
       ...tested,
@@ -483,7 +481,7 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     retained: sets.retained,
     families: sets.families,
     overlap: overlapOf(all, fixed),
-    valid,
+    valid: validOf(pairs, fixed.solves, poolOf(events)),
     billed: { old: billedMean(pairs, "old"), fresh: billedMean(pairs, "fresh") },
     noise:
       mirrored === null || aa === null
@@ -502,7 +500,7 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     withdrawn: coverage.withdrawn.filter(scorable),
     reading,
     turns: turnsOf(events, pairs),
-    // The cost bar, read where a step is (the plan's W): printed, and gating nothing.
+    // The cost bar, read where a step is (the plan's W): printed without deciding admission.
     worth: reading === "step" ? worthOf(events, fixed.id) : null,
     objective: fixed.objective ?? null,
     points: pairs.length === 0 ? null : pointsIn(pairs),
@@ -546,16 +544,16 @@ function flipsOf(pairs: readonly Paired[]): number | null {
   return each.length === 0 ? null : each.reduce((sum, one) => sum + one, 0) / each.length;
 }
 
-/** The comparison of the same two harnesses that began before `fixed` did, and the tasks both
- *  scored; null where none did. */
+/** The preceding comparison of the same two harnesses, and the intersection of the two
+ *  comparisons' initial draws; null where none began before `fixed`. */
 function overlapOf(events: readonly LogEvent[], fixed: Fixed) {
   const began = events.findIndex(({ kind, data }) => kind === STARTED && data.session === fixed.id);
   const before = events
     .slice(0, Math.max(0, began))
     .findLast(({ kind, data }) => kind === STARTED && data.old === fixed.old && data.fresh === fixed.fresh);
   if (before === undefined || !isString(before.data.session)) return null;
-  const scoredThen = new Set(Array.isArray(before.data.tasks) ? before.data.tasks.filter(isString) : []);
-  return { with: before.data.session, tasks: fixed.tasks.filter((task) => scoredThen.has(task)) };
+  const drawnThen = new Set(Array.isArray(before.data.tasks) ? before.data.tasks.filter(isString) : []);
+  return { with: before.data.session, tasks: fixed.tasks.filter((task) => drawnThen.has(task)) };
 }
 
 /**

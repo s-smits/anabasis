@@ -12,7 +12,7 @@
   --complexity N  --function-lines N  --file-lines N
                                         ceilings to flag (defaults 21, 115, 800). The two
                                         line counts are `tools/loc/source-policy.ts`'s; v2 has
-                                        no complexity gate, so 21 is v1's and flags only
+                                        no complexity threshold, so 21 is v1's and flags only
 
 Every --diff run ends with two sections the operator's budgets are argued from:
 

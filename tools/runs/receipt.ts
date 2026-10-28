@@ -7,7 +7,7 @@
  * The campaign command keeps one a run, as `launch-run-<n>.json` (`keepReceipt`,
  * `tools/d2/harness-builder.ts`), and `bun run runs launch` writes its output beside it under the
  * same `n` (`nextRun`). Until 10 October the command kept none; until 11 October the launcher kept
- * one for each round, checkpoint or session it started, under that session's id, and a campaign of
+ * one for each round, standalone comparison or session it started, under that session's id, and a campaign of
  * then holds those. Until 15 October two readers numbered the next run, and one reader left the
  * flags out and another read them again from the file.
  *

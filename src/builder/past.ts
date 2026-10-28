@@ -22,7 +22,7 @@
  *   names no task, no share of valid answers, no ruling and no cost: a held-out task is never
  *   shown, and which of them were won is a way to it. That is a few bits a comparison, which the
  *   plan accepts while comparisons are few. The line says how many tasks the tally is over, which
- *   is the tally's own sum. It names the two harnesses, and the turns each solve was held to
+ *   is the tally's own sum. It names the two harnesses, and the prompt limit each solve was held to
  *   where they were limited: a campaign's reference changes at a promotion, and a list that said
  *   "the reference harness" of each line set tallies against two references side by side as if
  *   they were one series. Both are the build side's own facts: a harness the Builder made or

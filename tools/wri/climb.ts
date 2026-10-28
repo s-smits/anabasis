@@ -136,7 +136,7 @@ export function climbTable(campaigns: readonly Campaign[]): string {
  *
  * 8 and 9 are what buffer-fresh-opus-forkedPR223_v0_5_4-r3 leaned on, the first campaign from a
  * prompt to promote three times (19 October). 8: the joined frontier clears the level only with
- * the tasks the gate held out on their author's answer alone, every reference solve of them valid
+ * the tasks the task admission held out on their author's answer alone, every reference solve of them valid
  * and alike and the author's better than each (`authorRoom`). Its second promotion
  * read 8-0 joined and 5-0 (p 0.031) without them, its third 8-0 and 3-0 (p 0.125): such a task's
  * room is the author's answer measured by the author's objective, and the promotion is as sound as
@@ -215,7 +215,7 @@ function measuredOf(events: readonly LogEvent[], rests: readonly Compared[], kep
   return [...sums.values()];
 }
 
-/** The task versions the gate held out on their author's answer alone: every reference solve
+/** The task versions the task admission held out on their author's answer alone: every reference solve
  *  valid, their measures alike, and the author's on record better than each, the
  *  room `informative` reads only with the author's measure (since 19 October). */
 function authorRoom(events: readonly LogEvent[]): Set<string> {

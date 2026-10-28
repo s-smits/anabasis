@@ -6,7 +6,8 @@
  *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --session b-1 \
  *     --builder claude/claude-opus-5-5 --target 8 --cap 625
  *
- * That is the plan's first round and its gate G0 (`7f0add79:docs/plan.md`, Phase 0). The Builder forks the
+ * That is the plan's first round and its starter measurement G0 (`7f0add79:docs/plan.md`, Phase 0). The
+ * Builder forks the
  * Starter Built Harness and builds on it, and the harness it leaves is compared with the starter
  * on eight drawn tasks, two solves a harness, under today's limits and a dollar cap. The same
  * comparison shows how the starter does by itself: the report holds, for each harness, on how
@@ -21,7 +22,7 @@
  * (`src/campaign/round.ts`, `scoredSet`).
  *
  * The defaults are the plan's (`SIZE`, `src/kernel/size.ts`): 24 scored tasks, four solves a
- * harness, the paired sign-flip test at 0.10, and a stop past three check defects. At those a
+ * harness, the paired sign-flip test at 0.02, and a stop past three check defects. At those a
  * round's comparison is 192 solves, all of them fresh and side by side; until 12 October it was 12
  * tasks and two solves, 48 solves, and until 2026-10-09 a round was about 430.
  *
@@ -31,9 +32,8 @@
  * cost over $220 and scored no task, under no cap.
  *
  * `--reference` names the harness the new one is compared with, and is `promoted`: the campaign's
- * reference harness, which is the starter until the operator promotes another
- * (`tools/d2/promote.ts`) and the one last promoted from then on. Once the reference is no longer
- * the starter, a step is also held to the starter, which is then solved on the tallied tasks.
+ * reference harness, which is the starter until another is promoted (`tools/d2/promote.ts`),
+ * and the one last promoted from then on. Each comparison solves only the two harnesses it names.
  * `--parent` names the harness the session starts from, and is `latest`: the one the last whole
  * session left, and the starter while none has. After a comparison without a step the Builder
  * continues from its latest harness, and the operator may send it back to an earlier one.
@@ -125,9 +125,9 @@ interface SolverSeat {
  *  first and never reads the second (`checkpoint.ts`). */
 export interface Seats extends SolverSeat {
   readonly builder: Pick<BuildRequest, "model" | "models"> | null;
-  /** Set by the paid seats, and kept by whatever holds them, as the host's gate does: until
+  /** Set by the paid seats, and kept by whatever holds them, as the solve queue does: until
    *  20 October a command told them by `seated === solved`, and every move the campaign command
-   *  made through the gate read as a rehearsal's and skipped its admission (a Builder's compare on
+   *  made through the solve queue read as a rehearsal's and skipped its admission (a Builder's compare on
    *  esp32-fresh-opus-m1-air-r2 began on 1 task, where a step at the level takes 6). The cap is still read by identity before the campaign opens,
    *  and the admission refuses a paid move without one. */
   readonly paid?: true;
@@ -273,7 +273,7 @@ export function sessionNamed(
     resources: campaign.resources,
     ...seats.builder,
     effort: effortNamed(values["builder-effort"]),
-    // The session's own wall and turns, and a command of its own held to that wall and not to a
+    // The session's own deadline and session turn limit, and a command held to that deadline and not to a
     // solve's: a Builder builds an engine in one command, whatever a solve's minutes are.
     limits: {
       ...limits,
@@ -382,7 +382,7 @@ export function capNamed(
  * The Referee `--reviewer` names. A command whose solves are paid for is refused without one: a
  * rejection nobody rules sets its task aside, so a paid run without a Referee measured nothing of
  * its rejections and said so nowhere (20 October; the 81 unruled admission rejections on record all
- * predate the gate's review). A simulation, whose seats are scripts, may name none.
+ * predate task admission review). A simulation, whose seats are scripts, may name none.
  */
 export function refereeNamed(
   values: { readonly reviewer?: string | undefined },
@@ -394,7 +394,7 @@ export function refereeNamed(
 }
 
 /**
- * The campaign a round, a session or a checkpoint runs in. The cap and the Referee are read before
+ * The campaign a round, a session or a standalone comparison runs in. The cap and the Referee are read before
  * it is opened, so a paid move without them starts nothing, and what the flags name of the setting
  * is held to the log's record before the campaign is opened under it (`setting.ts`).
  */
@@ -437,7 +437,8 @@ export function printReport(campaign: Campaign, id: string, report: Report): voi
  * reference against itself where the comparison carries it (`aaLines`); the tasks it drew, by what
  * became of each (`accounted`); and `valid`,
  * each harness by itself, as the tasks by how many of their solves were valid, which is what the
- * plan's first gate reads of the starter, the reference harness of the first round (`7f0add79:docs/plan.md`,
+ * plan's starter measurement reads of the starter, the reference harness of the first round
+ * (`7f0add79:docs/plan.md`,
  * G0); the objective's margin. None for a report that compared nothing.
  */
 export function reportLines({

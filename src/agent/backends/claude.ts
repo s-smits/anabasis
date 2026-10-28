@@ -117,7 +117,7 @@ const INTERRUPT_MS = 1000;
  * minutes at most. On 24 October the Builder b-2 of buffer-fresh-opus-v065-b had its tool results due
  * at 00:24Z and heard nothing after: its Claude Code idle, with no connection open and nothing queued
  * on either side of its pipes. Of 558 recorded turns whose calls ran over 10 minutes, it is the one
- * that never continued, and the session's 24-hour wall, which stops while host actions run, would
+ * that never continued, and the session's 24-hour deadline, which stops while host actions run, would
  * have ended it 22 hours later.
  */
 const QUIET_MS = 30 * 60_000;
@@ -477,8 +477,8 @@ function claudeEnv(
     // claude.ai's cloud MCP servers load past strict MCP config and empty setting sources unless this
     // is off, as the sweep set it.
     ENABLE_CLAUDEAI_MCP_SERVERS: "0",
-    // `off` is real. In the bundled CLI 0.3.285 the auto-compact gate `Uf` is false when `rht` reads
-    // DISABLE_AUTO_COMPACT or DISABLE_COMPACT, and `Uf` gates the threshold compaction (`hAe`), the
+    // `off` is real. In the bundled CLI 0.3.285 the auto-compact condition `Uf` is false when `rht` reads
+    // DISABLE_AUTO_COMPACT or DISABLE_COMPACT, and `Uf` permits the threshold compaction (`hAe`), the
     // reactive one after a too-long prompt (`UEr`) and the precomputed summary (`x4n`); a context that
     // outgrows the model then ends the query. The sweep set the window.
     ...(compaction === "off"
@@ -765,7 +765,7 @@ export function resetOf(said: string, now: Date): Date | null {
   const dated = named === undefined ? undefined : MONTHS.indexOf(named.toLowerCase());
   if (dated === -1 || hour > 23 || Number(m) > 59) return null;
   try {
-    const wall = new Intl.DateTimeFormat("en-US", {
+    const dateParts = new Intl.DateTimeFormat("en-US", {
       ...keyIfDefined("timeZone", zone),
       hourCycle: "h23",
       year: "numeric",
@@ -774,7 +774,7 @@ export function resetOf(said: string, now: Date): Date | null {
       hour: "numeric",
       minute: "numeric",
     }).formatToParts(now);
-    const part = (type: string) => Number(wall.find((one) => one.type === type)?.value);
+    const part = (type: string) => Number(dateParts.find((one) => one.type === type)?.value);
     const [year, month, day] = [part("year"), part("month") - 1, part("day")];
     const offset =
       Date.UTC(year, month, day, part("hour"), part("minute")) - Math.floor(now.getTime() / 60_000) * 60_000;

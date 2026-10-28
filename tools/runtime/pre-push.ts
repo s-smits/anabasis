@@ -1,14 +1,14 @@
 /**
- * What `.githooks/pre-push` checks before anything leaves this clone: every step of the gate but the
+ * What `.githooks/pre-push` checks before anything leaves this clone: every step of the CI gate but the
  * tests. It reads Git's ref lines on stdin. A pushed commit is unproved until
  * `bun run land -- <top> --sanitize` or `--merge` has run its static steps and nearby tests over its
- * own checkout, and the whole gate, the full suite among it, on the top's head
+ * own checkout, and the whole CI gate, the full suite among it, on the top's head
  * (`tools/runtime/land.ts`).
  *
  * Until 25 October the hook was that proof: every commit a push added got the static steps and its
- * nearby tests over a checkout of its own, and the pushed head holding the newest the whole gate. In
- * this clone the six-commit push of #372 to #377 on 25 October took 591 seconds of gate, the whole
- * gate alone 315 of them, and a one-commit push 311 to 696; `bun run land` then ran the same proof
+ * nearby tests over a checkout of its own, and the pushed head holding the newest the whole CI gate. In
+ * this clone the six-commit push of #372 to #377 on 25 October took 591 seconds of CI gate, the whole
+ * CI gate alone 315 of them, and a one-commit push 311 to 696; `bun run land` then ran the same proof
  * again over the stack. Tests are now run where the stack is proved, once, when its author chooses.
  *
  * What a push adds is the commits along each pushed head's first parents that neither a
@@ -17,14 +17,14 @@
  * every commit new to the remote, 444 of them v2's history merged into PR #141. Each added commit gets
  * `git diff --check` against its first parent, and the lines each pushed head that no other pushed
  * head holds adds since the remote get the secret scan (`scanAdded`), documentation included. Where
- * one of them changes more than documentation, each such head gets the gate's `--checks` pass over a
+ * one of them changes more than documentation, each such head gets the CI gate's `--checks` pass over a
  * checkout of its own (`proveCommits`): the install, the UI's install and build, the format check,
- * typecheck, strict lint, and the simplify census, whose count is printed and gates nothing. The
+ * typecheck, strict lint, and the simplify census, whose count is printed and refuses nothing. The
  * working tree may hold anything. A pass is remembered by the head's tree, so a push its lease
  * refused goes out again without paying twice.
  *
  * The push queue and the refusal of a push stacked on a base the push before it replaced went with
- * the tests. The queue kept a push from gating the commits of one still at its gate, which cost a
+ * the tests. The queue kept a push from gating the commits of one still at its CI gate, which cost a
  * whole suite on 20 October; the checks now read one tree, whatever lies beneath it. A head that does
  * not hold the pull request beneath it is refused by `bun run land` before anything is merged.
  */

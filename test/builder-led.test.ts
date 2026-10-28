@@ -70,7 +70,7 @@ const IDLE: readonly Step[] = [FINISH_IDLE, FINISH_IDLE];
 
 // A paid comparison needs a sweep plus two frontier tasks: five at 0.125, eight at the tree's
 // default, 0.02. This suite is of who makes the moves, so it names the level its five tasks are
-// admitted and read a step at, and a patience of three.
+// admitted and read a step at, and a supply patience of three.
 const LEVEL = ["--level", "0.125", "--patience", "3"];
 const FLAGS = ["--practice", "2", "--solves", "1", "--sessions", "1", "--target", "5", ...LEVEL];
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-hb-")));
@@ -142,7 +142,7 @@ const builderScript = (base: Seated, calls: readonly Step[]): Seated => builderS
 const said = (name: string, tool: string): string[] =>
   of(name, CALLED).flatMap((call) => (call.tool === tool && isString(call.text) ? [call.text] : []));
 
-/** An Examiner's proposal of `count` further instances, each of which the gate holds out. */
+/** An Examiner's proposal of `count` further instances, each of which task admission holds out. */
 const proposing = (count: number, from = 0): readonly [string, JsonObject] => [
   "propose_tasks",
   {
@@ -184,7 +184,8 @@ describe("a campaign run by its live Builder", () => {
     const exam = ["--solve-minutes", "7", "--exam-tasks", "4", "--exam-turns", "17", "--exam-proposals", "9"];
     const ending = await harnessBuilder([...seeded(name), ...terms, ...exam], seats);
     // The Builder's session holds out nothing; the table then names another, which opens the next
-    // conversation (16 October), and a second session that holds out nothing is the patience of two.
+    // conversation (16 October), and a second session that holds out nothing spends the supply patience of
+    // two.
     expect(ending).toMatchObject({ move: "end", ending: "no-room", code: "unshown" });
     expect(asked).toEqual([
       { tasks: 4, minutes: 7, turns: 17, proposals: 9 },
@@ -358,7 +359,7 @@ describe("a campaign run by its live Builder", () => {
         }),
     };
     // Each later conversation opens an Examiner session beside it that holds out none, until the
-    // campaign's patience of them ends it for want of tasks.
+    // campaign's supply patience of them ends it for want of tasks.
     const ending = await harnessBuilder([...seeded(name), ...FLAGS], seats);
     expect(ending).toMatchObject({ move: "end", ending: "no-room" });
     const at = positions(name);
@@ -378,7 +379,7 @@ describe("a campaign run by its live Builder", () => {
     expect(of(name, "exam.started", true)).toHaveLength(1);
   });
 
-  describe("releases the epoch's practice as the gate holds tasks", () => {
+  describe("releases the epoch's practice as task admission holds out tasks", () => {
     // Seven tasks held, three released for a practice of four: the epoch is owed one, which the
     // admission floor of five at 0.125 leaves room for once the frontier holds six.
     const flags = ["--practice", "4", "--solves", "1", "--sessions", "1", ...LEVEL];
@@ -541,11 +542,13 @@ describe("a campaign run by its live Builder", () => {
       await harnessBuilder([...seeded(name), ...FLAGS, "--target", "7", "--moves", "7"], seats);
       const at = positions(name);
       const events = read(log);
-      const control = events.findIndex(
+      const starterComparison = events.findIndex(
         ({ kind, data }) => kind === "comparison.started" && data.session === "g-2",
       );
       expect(of(name, EXAMINED)[0]?.held).toHaveLength(7);
-      expect(supplyOf(events.slice(0, control === -1 ? undefined : control))).toMatchObject({
+      expect(
+        supplyOf(events.slice(0, starterComparison === -1 ? undefined : starterComparison)),
+      ).toMatchObject({
         held: 5,
         released: 4,
       });
@@ -858,7 +861,7 @@ describe("a campaign run by its live Builder", () => {
     expect(of(name, "build.checkpoint")).toHaveLength(1);
   });
 
-  it("keeps hard gates in the host and leaves dry-run as an advisory reader", async () => {
+  it("keeps admission decisions in the host and leaves dry-run as an advisory reader", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-dry-run`;
     const seats: Seats = {
@@ -992,17 +995,17 @@ describe("a campaign tool where the table names more than the action", () => {
       ]),
       examine: writer,
     };
-    // The control reads the tasks x-1 wrote beside retained ones; the promoted harness answers
+    // The starter comparison reads the tasks x-1 wrote beside retained ones; the promoted harness answers
     // none of them while a valid answer to each is on record, which is room, so the table builds.
     await harnessBuilder([...seeded(name), ...FLAGS, "--exam-tasks", "6", "--moves", "8"], seats);
-    const [first, control] = of(name, REPORTED);
-    // The table's control, as it names it: until 12 October the tool froze harness/, which was the
+    const [first, starterComparison] = of(name, REPORTED);
+    // The table's starter comparison, as it names it: until 12 October the tool froze harness/, which was the
     // reference, the comparison was refused, and the advice stayed the same.
-    expect(control).toMatchObject({ fresh: first?.old, old: first?.fresh });
+    expect(starterComparison).toMatchObject({ fresh: first?.old, old: first?.fresh });
     expect(of(name, "build.checkpoint")).toHaveLength(1);
     expect(said(name, "compare")[1]).toContain("the starter harness was read against it");
-    // The new reference's practice is released by the host as x-1 ends, before the control, and
-    // after the control the table builds.
+    // The new reference's practice is released by the host as x-1 ends, before the starter comparison, and
+    // after the starter comparison the table builds.
     expect(
       of(name, MOVED)
         .slice(6, 9)
@@ -1020,7 +1023,7 @@ describe("a campaign tool where the table names more than the action", () => {
     expect(of(name, FINISHED)[0]).toMatchObject({ session: "b-1", ended: "finished" });
   });
 
-  it("promotes the harness each step froze as it reports, whatever harness/ holds since, and records the Builder's comparison of a changed harness/ as its own where the table named the control", async () => {
+  it("promotes the harness each step froze as it reports, whatever harness/ holds since, and records the Builder's comparison of a changed harness/ as its own where the table named the starter comparison", async () => {
     layOutPack(root, bundle, MANY, FIXTURE);
     const name = `${STEM}-asked`;
     const seats: Seats = {
@@ -1039,11 +1042,11 @@ describe("a campaign tool where the table names more than the action", () => {
     };
     await harnessBuilder([...seeded(name), ...FLAGS, "--exam-tasks", "6", "--moves", "10"], seats);
     const [first, second] = of(name, REPORTED);
-    const checkpoints = of(name, "build.checkpoint");
+    const snapshots = of(name, "build.checkpoint");
     // One reading of a step promotes the harness it froze (19 October): until then a step was read
     // again on fresh solves before anything was promoted.
     expect(first).toMatchObject({ reading: "step" });
-    expect(checkpoints[0]).toMatchObject({ harness: first?.fresh });
+    expect(snapshots[0]).toMatchObject({ harness: first?.fresh });
     const [told] = said(name, "compare");
     expect(told).toContain("and the host has made it the campaign's reference");
     // Beside it, what the host spent and counts: until 14 October the last tally alone.
@@ -1051,7 +1054,7 @@ describe("a campaign tool where the table names more than the action", () => {
     expect(told).toContain("Moves without a gain since the last step: 0 of the patience's ");
     // The changed working copy is what was measured, not the starter the table named, and it is
     // read against the promoted harness.
-    expect(second).toMatchObject({ old: first?.fresh, fresh: checkpoints[1]?.harness });
+    expect(second).toMatchObject({ old: first?.fresh, fresh: snapshots[1]?.harness });
     expect(second?.fresh).not.toBe(first?.fresh);
     // Each step is promoted as it reports, so the Builder's own call finds nothing to promote:
     // until 12 October the tool named the last harness frozen.
@@ -1075,7 +1078,8 @@ describe("a campaign tool where the table names more than the action", () => {
       harness: first?.fresh,
       code: "step",
     });
-    // r3, 19 October: g-3 and g-6 kept the control's code and reason while measuring a checkpoint.
+    // r3, 19 October: g-3 and g-6 kept the starter comparison's code and reason while measuring a harness
+    // snapshot.
     expect(compares[1]?.why).toContain("where the table named a comparison of the starter harness");
   });
 
@@ -1170,7 +1174,7 @@ describe("a campaign's endings", () => {
     },
   });
 
-  it("ends on its patience of readings with no room inside a live conversation", async () => {
+  it("ends on its supply patience of readings with no room inside a live conversation", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-roomless-live`;
     const asking: Step[] = [
@@ -1181,7 +1185,7 @@ describe("a campaign's endings", () => {
       seated: builderScript(passing(), [CHANGE_GUIDE, ["compare", {}], ...asking, ...asking, ...asking]),
       examine: unwritten,
     };
-    // g-1 closes every task it reads, and two Examiner sessions that hold out none spend a patience
+    // g-1 closes every task it reads, and two Examiner sessions that hold out none spend a supply patience
     // of two: the conversation that asked for them is halted there. Until 22 October that ending
     // was advice while a conversation lived, and the conversation bought a third session (the job
     // campaign of 22 October started x-9 after six).
@@ -1213,7 +1217,7 @@ describe("a campaign's endings", () => {
     // Until 12 October the command returned the table's next move there and wrote no ending. g-1
     // closes every task it read (15 October), so b-2 opens on the campaign's first Examiner
     // session and b-3 on the next (16 October; until then three conversations came first): two
-    // sessions that hold out none spend a patience of two.
+    // sessions that hold out none spend a supply patience of two.
     expect(
       await harnessBuilder([...seeded(name), ...FLAGS, "--turns", "3", "--patience", "2"], seats),
     ).toMatchObject({ move: "end", ending: "no-room" });

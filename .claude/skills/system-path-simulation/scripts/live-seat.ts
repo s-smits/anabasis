@@ -9,10 +9,10 @@
  * `--hook` an exit of 2 that a Claude Code Stop hook turns into a turn the agent must take. `stop`
  * ends seats whose question is answered, and `start` says so in its reading; a seat it names that is
  * not seated yet is closed, so a seating script still waiting to seat it is refused. `compare` sets the
- * readings of several seats side by side, each cut at the same count of gates where `--gates` names
- * one, since two arms gate at different paces. `pairs` reads several pairs of seats, a control and an
- * arm each, each pair at the shorter arm's count of gates, and counts over the pairs of one Examiner
- * model which way the arm moved, leaving out a pair thinner than `THIN` gates. `calls` counts the
+ * readings of several seats side by side, each cut at the same count of task admissions where `--gates` names
+ * one, since two arms admit drafts at different paces. `pairs` reads several pairs of seats, a control and an
+ * arm each, each pair at the shorter arm's count of task admissions, and counts over the pairs of one Examiner
+ * model which way the arm moved, leaving out a pair thinner than `THIN` task admissions. `calls` counts the
  * Examiner's tool calls and their failures over any logs, a seed's from its cut, each call once
  * however many logs hold it. `prompt` prints what an Examiner session would be told, composed by a
  * tree's own code with no model, so two arms' prompts are diffed before either is paid.
@@ -42,8 +42,8 @@
  * (10757), the watcher summed `billed` by kinds of its own, the reader named one domain's programs,
  * and the second arm's spawner had to name Bun by its path and set `RUN_REMOTE=0`, since the `bun`
  * on the PATH sends a command to a remote host. Each fact here has one owner already: the login
- * (`loginEnv`), the dollars (`billedBetween`), a gate that read its draft (`measuredGate`) and held
- * it (`heldAtGate`), and the turns of the reference's valid answers at a gate (`gateAnswers`).
+ * (`loginEnv`), the dollars (`billedBetween`), a task admission that read its draft (`measuredGate`) and held
+ * it (`heldAtGate`), and the turns of the reference's valid answers at a task admission (`gateAnswers`).
  *
  * The prompt rewrite of 27 October (#471) ran two rounds of before-and-after arms and improvised the
  * rest: a scratch script composed each arm's prompt, a second watcher counted both arms, a seat was
@@ -53,7 +53,7 @@
  * five pairs was set together from one `compare` a pair, the sign over pairs counted by eye, and GPT
  * kept apart from Opus by memory. The census of tool calls that found the failed `read_example`
  * calls and the declined first `finish` was a scratch script. A one-off read of a seed's log counted
- * its source campaign's gates as the seat's, and a seed copied to another host with its links
+ * its source campaign's task admissions as the seat's, and a seed copied to another host with its links
  * unresolved crashed its seat twice on a missing file. `pairs`, `calls`, `read --log` on a seed
  * from its cut, and `start`'s refusal of a seed with a broken link answer those four.
  *
@@ -105,10 +105,10 @@ due prints what landed in each seat since due last looked; with --hook it writes
 exits 2 when there is any, as a Claude Code Stop hook keeps the session from stopping.
 stop ends each running seat's process group, and its start then prints the reading; a prefix not
 seated yet is closed, and start refuses it.
-compare prints each seat's counts in a column, each cut after its first N gates with --gates.
+compare prints each seat's counts in a column, each cut after its first N task admissions with --gates.
 pairs reads each pair of seats, a control and an arm on the same seed cut under the same models, at
-the shorter arm's count of gates (or N), and counts for each Examiner model in how many pairs the arm
-did more, fewer or as many; a pair under 6 gates is marked thin and left out of that count.
+the shorter arm's count of task admissions (or N), and counts for each Examiner model in how many pairs the arm
+did more, fewer or as many; a pair under 6 task admissions is marked thin and left out of that count.
 calls counts the Examiner's tool calls, failed calls by tool and kind, and finishes the session
 went on after, over every log named, a seed's from its cut, each call once however many logs hold it.
 prompt prints the system prompt, opening, tools and nudges the Examiner command would seat, and
@@ -128,17 +128,17 @@ const OPTIONS = {
   hook: "flag",
   gates: "int",
 } as const;
-/** How often the watch reads the log, and how often it says so when nothing new was gated. */
+/** How often the watch reads the log, and how often it says so when nothing new was admitted. */
 const TICK_MS = 30_000;
 const QUIET_TICKS = 10;
-/** The gates where the author's answer beat the reference's best by at least the room floor. */
+/** The task admissions where the author's answer beat the reference's best by at least the objective gap floor. */
 const GAP = `gap >= ${String(ROOM * 100)}%`;
 /** A line of a failed call's text that names its error. */
 const ERROR_LINE = /error|denied|not found|no such|not permitted|timed out|refused|invalid|cannot|failed/iu;
 /** The flags that say who sits in an Examiner seat: a pair is read only within one of them. */
 const SEATED = ["--examiner", "--examiner-effort", "--reviewer", "--reviewer-effort"] as const;
-/** Fewer gates than this leave a pair thin: shown, and left out of the sign over pairs. Round 8's GPT
- *  pairs reached 2 and 8 gates with nothing held on either side, against its Opus pair's 14. */
+/** Fewer task admissions than this leave a pair thin: shown, and left out of the sign over pairs. Round 8's GPT
+ *  pairs reached 2 and 8 task admissions with nothing held on either side, against its Opus pair's 14. */
 const THIN = 6;
 /** How long `stop` gives a seat's `start` to print its reading once the group is gone. */
 const WRAPPER_GRACE_MS = 30_000;
@@ -156,38 +156,38 @@ interface Reading {
   readonly sessions: readonly string[];
   readonly ended: readonly string[];
   readonly proposed: number;
-  /** Each gate by what the reference's solves of its draft did, `every`, `some`, `none`, `none,
+  /** Each task admission by what the reference's solves of its draft did, `every`, `some`, `none`, `none,
    *  proved` (its author's answer passes), `package` (refused on its package before a solve) or `unread`. */
   readonly gates: Readonly<Record<string, number>>;
   readonly held: number;
-  /** The solves the reference ran at each gate that solved its draft: `ran`, or the solves it read
-   *  where a gate from before one solve at a time (#280) did not say. */
+  /** The solves the reference ran at each task admission that solved its draft: `ran`, or the solves it read
+   *  where a task admission from before one solve at a time (#280) did not say. */
   readonly ran: readonly number[];
-  /** The author's gain by the objective over the reference's best valid answer at each gate that
+  /** The author's gain by the objective over the reference's best valid answer at each task admission that
    *  measured both (`reference.gap`): a graded loss where held drafts are too few to read. */
   readonly gaps: readonly number[];
-  /** The solver's own turns of each valid gate answer, least, median and most. */
+  /** The solver's own turns of each valid room-solve answer, least, median and most. */
   readonly turns: readonly [number, number, number] | null;
   readonly calls: Readonly<Record<string, number>>;
   readonly mentions: Readonly<Record<string, number>>;
 }
 
-/** How many of a reading's gates measured the author's answer at least the room floor ahead. */
-const beyondRoom = (gaps: readonly number[]) => gaps.filter((gap) => gap >= ROOM).length;
+/** How many of a reading's task admissions measured the author's answer at least the objective gap floor ahead. */
+const objectiveGaps = (gaps: readonly number[]) => gaps.filter((gap) => gap >= ROOM).length;
 
 /** What a pair is read on, each a count where the arm doing more is the Examiner doing better: drafts
- *  held, gates whose draft the reference answered in some solves or in none while its author's answer
- *  passed, the author ahead of the reference's best by the room floor, and the median turns of the
- *  reference's valid gate answers. Round 8 of 27 October read all four by hand. */
+ *  held, task admissions whose draft the reference answered in some solves or in none while its author's answer
+ *  passed, the author ahead of the reference's best by the objective gap floor, and the median turns of the
+ *  reference's valid room-solve answers. Round 8 of 27 October read all four by hand. */
 const MEASURES: readonly (readonly [string, (reading: Reading) => number | null])[] = [
   ["held", ({ held }) => held],
   ["room on validity", ({ gates }) => (gates.some ?? 0) + (gates["none, proved"] ?? 0)],
-  [GAP, ({ gaps }) => beyondRoom(gaps)],
+  [GAP, ({ gaps }) => objectiveGaps(gaps)],
   ["median turns", ({ turns }) => turns?.[1] ?? null],
 ];
 
-/** What one gate's reading of its draft comes to, as one word. */
-function gateWord(data: JsonObject): string {
+/** What one task admission's reading of its draft comes to, as one word. */
+function admissionWord(data: JsonObject): string {
   if (!measuredGate(data)) return "unread";
   const reference = asRecord(data.reference);
   const valid = reference?.valid;
@@ -212,7 +212,7 @@ const examCalls = (events: readonly LogEvent[]) =>
 export function readingOf(events: readonly LogEvent[], from: number, mentions: readonly string[]): Reading {
   const stretch = events.slice(from);
   const of = (kind: string) => stretch.flatMap((event) => (event.kind === kind ? [event.data] : []));
-  const gates = of("task.gate");
+  const admissions = of("task.gate");
   const calls = examCalls(stretch);
   const first = stretch[0]?.at;
   const last = stretch.at(-1)?.at;
@@ -226,15 +226,15 @@ export function readingOf(events: readonly LogEvent[], from: number, mentions: r
     sessions: of("exam.started").flatMap(({ session }) => (isString(session) ? [session] : [])),
     ended: of("exam.finished").flatMap(({ ended }) => (isString(ended) ? [ended] : [])),
     proposed: of("task.proposed").length,
-    gates: countBy(gates, gateWord),
-    held: gates.filter(({ outcome }) => heldAtGate(outcome)).length,
-    ran: gates.flatMap(({ reference }) => {
+    gates: countBy(admissions, admissionWord),
+    held: admissions.filter(({ outcome }) => heldAtGate(outcome)).length,
+    ran: admissions.flatMap(({ reference }) => {
       const { ran, solves } = asRecord(reference) ?? {};
       const count = ran ?? solves;
       return isNumber(count) && count > 0 ? [count] : [];
     }),
     turns: spread(turns),
-    gaps: gates.flatMap(({ reference }) => {
+    gaps: admissions.flatMap(({ reference }) => {
       const { gap } = asRecord(reference) ?? {};
       return isNumber(gap) ? [gap] : [];
     }),
@@ -259,15 +259,15 @@ export function told(reading: Reading): string[] {
   return [
     `events ${String(reading.events[0])} to ${String(reading.events[1])}, ${reading.minutes.toFixed(0)} min, $${reading.billed.toFixed(2)} billed`,
     `sessions ${reading.sessions.join(", ") || "none"}; ended ${reading.ended.join(", ") || "none yet"}`,
-    `drafts proposed ${String(reading.proposed)}, gated ${listed(reading.gates)}; held ${String(reading.held)}`,
-    `the gate ran ${String(reading.ran.reduce((sum, count) => sum + count, 0))} solves over ${String(reading.ran.length)} drafts${reading.ran.length === 0 ? "" : `: ${reading.ran.join(", ")}`}`,
-    `the reference's valid gate answers took ${turns === null ? "no turns on record" : `${String(turns[0])} to ${String(turns[2])} turns, median ${String(turns[1])}`}`,
+    `drafts proposed ${String(reading.proposed)}, task admissions ${listed(reading.gates)}; held ${String(reading.held)}`,
+    `task admission ran ${String(reading.ran.reduce((sum, count) => sum + count, 0))} solves over ${String(reading.ran.length)} drafts${reading.ran.length === 0 ? "" : `: ${reading.ran.join(", ")}`}`,
+    `the reference's valid room-solve answers took ${turns === null ? "no turns on record" : `${String(turns[0])} to ${String(turns[2])} turns, median ${String(turns[1])}`}`,
     `calls ${listed(reading.calls)}`,
     ...Object.entries(reading.mentions).map(([text, count]) => `calls naming ${text}: ${String(count)}`),
   ];
 }
 
-/** The events of a stretch an agent should read as they land, one line each: a gate's word with the
+/** The events of a stretch an agent should read as they land, one line each: a task admission's word with the
  *  solves it ran, a Referee's ruling or refusal, and a session's end. */
 export function newsOf(events: readonly LogEvent[], from: number): string[] {
   const text = (value: unknown) => (isString(value) ? value : JSON.stringify(value));
@@ -275,7 +275,7 @@ export function newsOf(events: readonly LogEvent[], from: number): string[] {
     if (kind === "task.gate") {
       const ran = asRecord(data.reference)?.ran;
       return [
-        `gate ${text(data.outcome)}, ${gateWord(data)}${isNumber(ran) ? `, ${plural(ran, "solve")} ran` : ""}`,
+        `gate ${text(data.outcome)}, ${admissionWord(data)}${isNumber(ran) ? `, ${plural(ran, "solve")} ran` : ""}`,
       ];
     }
     if (kind === "referee.finding") return [`ruling ${text(data.ruling)} on ${text(data.solve)}`];
@@ -289,7 +289,7 @@ export function newsOf(events: readonly LogEvent[], from: number): string[] {
 
 /** Every Examiner call in `logs`, once each: a seed copies its source's events as they stand, so one
  *  call is one time at one place in a log however many copies hold it. A `finish` the session went
- *  on after was declined by the host, refused, or left drafts at the gate. */
+ *  on after was declined by the host, refused, or left drafts at the task admission. */
 export function censusOf(logs: readonly (readonly LogEvent[])[]) {
   const calls = new Map<string, Call>();
   const wentOn = new Set<string>();
@@ -437,7 +437,7 @@ function stretchOf(args: CommandArgs): Stretch {
   const seat = args.value("seat");
   if (seat === null) {
     const log = args.required("log");
-    // A seed's log begins with its source's events, whose gates are no seat's: read from its cut.
+    // A seed's log begins with its source's events, whose task admissions are no seat's: read from its cut.
     const from =
       args.int("from") ??
       cutOf(log) ??
@@ -541,13 +541,17 @@ async function stop(args: CommandArgs, seats: readonly string[]): Promise<number
   return missed === 0 ? 0 : 1;
 }
 
-/** Where each gate from event `from` on stands in the log. */
-const gatesFrom = (events: readonly LogEvent[], from: number) =>
+/** Where each task admission from event `from` on stands in the log. */
+const admissionsFrom = (events: readonly LogEvent[], from: number) =>
   events.flatMap((event, index) => (index >= from && event.kind === "task.gate" ? [index] : []));
 
-/** A log's events up to its `gates`th gate from event `from` on, or all of them where it has fewer. */
-function cutAt(events: readonly LogEvent[], from: number, gates: number | null): readonly LogEvent[] {
-  const last = gates === null ? undefined : gatesFrom(events, from)[gates - 1];
+/** A log's events up to its `admissionLimit`th task admission from event `from` on, or all of them where it has fewer. */
+function cutAt(
+  events: readonly LogEvent[],
+  from: number,
+  admissionLimit: number | null,
+): readonly LogEvent[] {
+  const last = admissionLimit === null ? undefined : admissionsFrom(events, from)[admissionLimit - 1];
   return last === undefined ? events : events.slice(0, last + 1);
 }
 
@@ -565,13 +569,13 @@ function columns(rows: readonly (readonly string[])[]): string[] {
   );
 }
 
-/** Each seat's counts in a column of its own: the arms of one round, read at one count of gates. */
+/** Each seat's counts in a column of its own: the arms of one round, read at one count of task admissions. */
 function compare(args: CommandArgs, seats: readonly string[]): number {
   if (seats.length < 2) args.die("name two seats' prefixes or more");
-  const gates = args.int("gates");
+  const admissionLimit = args.int("gates");
   const readings = seats.map((seat) => {
     const { log, from, commit } = keptSeat(seat, args.die);
-    return { seat, commit, reading: readingOf(cutAt(read(log), from, gates), from, []) };
+    return { seat, commit, reading: readingOf(cutAt(read(log), from, admissionLimit), from, []) };
   });
   const words = [...new Set(readings.flatMap(({ reading }) => Object.keys(reading.gates)))].toSorted();
   const each = (row: (reading: Reading) => number | string) =>
@@ -591,9 +595,9 @@ function compare(args: CommandArgs, seats: readonly string[]): number {
     ]),
     ["held", each((reading) => reading.held)],
     ["per held", each(perHeld)],
-    ["gate solves", each((reading) => reading.ran.reduce((sum, count) => sum + count, 0))],
+    ["room solves", each((reading) => reading.ran.reduce((sum, count) => sum + count, 0))],
     ["median turns", each((reading) => reading.turns?.[1] ?? "none")],
-    [GAP, each(({ gaps }) => `${String(beyondRoom(gaps))} of ${String(gaps.length)}`)],
+    [GAP, each(({ gaps }) => `${String(objectiveGaps(gaps))} of ${String(gaps.length)}`)],
     [
       "median gap",
       each(({ gaps }) => {
@@ -602,15 +606,17 @@ function compare(args: CommandArgs, seats: readonly string[]): number {
       }),
     ],
   ];
-  if (gates !== null) console.log(`each cut after its first ${plural(gates, "gate")}`);
+  if (admissionLimit !== null) {
+    console.log(`each cut after its first ${plural(admissionLimit, "task admission")}`);
+  }
   console.log(columns(rows.map(([label, cells]) => [label, ...cells])).join("\n"));
   return 0;
 }
 
-/** The pair `spec` names, `<control>,<arm>`, each read at the shorter one's count of gates or at
- *  `gates`. The two must be one seat on one position: the same Examiner and Referee at the same
+/** The pair `spec` names, `<control>,<arm>`, each read at the shorter one's count of task admissions or at
+ *  `admissionLimit`. The two must be one seat on one position: the same Examiner and Referee at the same
  *  efforts, from seeds cut at the same event of the same campaign, so the trees are the one variable. */
-function pairOf(spec: string, gates: number | null, die: CommandArgs["die"]) {
+function pairOf(spec: string, admissionLimit: number | null, die: CommandArgs["die"]) {
   const [first, second, ...rest] = spec.split(",");
   if (first === undefined || second === undefined || rest.length > 0) die(`${spec} is no <control>,<arm>`);
   const seatAt = (seat: string) => {
@@ -634,8 +640,8 @@ function pairOf(spec: string, gates: number | null, die: CommandArgs["die"]) {
   const arm = seatAt(second);
   if (control.who !== arm.who) die(`${spec}: the two seats differ in who sits (${control.who}; ${arm.who})`);
   if (control.cut !== arm.cut) die(`${spec}: the two seeds differ (${control.cut}; ${arm.cut})`);
-  const gated = ({ events, from }: typeof arm) => gatesFrom(events, from).length;
-  const cut = Math.min(gates ?? Infinity, gated(control), gated(arm));
+  const admissionCount = ({ events, from }: typeof arm) => admissionsFrom(events, from).length;
+  const cut = Math.min(admissionLimit ?? Infinity, admissionCount(control), admissionCount(arm));
   const readAt = ({ events, from }: typeof arm) => readingOf(cutAt(events, from, cut), from, []);
   return {
     name: `${control.seat},${arm.seat}`,
@@ -646,25 +652,26 @@ function pairOf(spec: string, gates: number | null, die: CommandArgs["die"]) {
   };
 }
 
-/** Each pair at equal gates in a row, then for each Examiner model the sign over its pairs on each
- *  measure, and what a gated draft cost each side: GPT is read only against GPT, Opus against Opus. */
+/** Each pair at equal task admissions in a row, then for each Examiner model the sign over its pairs on each
+ *  measure, and what an admitted draft cost each side: GPT is read only against GPT, Opus against Opus. */
 function pairs(args: CommandArgs, specs: readonly string[]): number {
   if (specs.length === 0) args.die("name each pair as <control>,<arm>");
   const readPairs = specs.map((spec) => pairOf(spec, args.int("gates"), args.die));
   const shown = (value: number | null) => (value === null ? "none" : String(value));
-  const perGate = (billed: number, gates: number) =>
-    gates === 0 ? "none" : `$${(billed / gates).toFixed(2)}`;
+  const perAdmission = (billed: number, admissions: number) =>
+    admissions === 0 ? "none" : `$${(billed / admissions).toFixed(2)}`;
   const rows = readPairs.map(({ name, model, cut, before, after }) => [
     name,
     model,
     cut < THIN ? `${String(cut)} thin` : String(cut),
     ...MEASURES.map(([, of]) => `${shown(of(before))} / ${shown(of(after))}`),
-    `${perGate(before.billed, cut)} / ${perGate(after.billed, cut)}`,
+    `${perAdmission(before.billed, cut)} / ${perAdmission(after.billed, cut)}`,
   ]);
   console.log(
-    columns([["pair", "examiner", "gates", ...MEASURES.map(([label]) => label), "$ per gate"], ...rows]).join(
-      "\n",
-    ),
+    columns([
+      ["pair", "examiner", "task admissions", ...MEASURES.map(([label]) => label), "$ per task admission"],
+      ...rows,
+    ]).join("\n"),
   );
   for (const model of new Set(readPairs.map((pair) => pair.model))) {
     const own = readPairs.filter((pair) => pair.model === model && pair.cut >= THIN);
@@ -678,19 +685,19 @@ function pairs(args: CommandArgs, specs: readonly string[]): number {
       return [`  ${label}`, `more in ${count(1)}, fewer in ${count(-1)}, the same in ${count(0)}`];
     });
     const sum = (side: "before" | "after") => own.reduce((total, pair) => total + pair[side].billed, 0);
-    const gated = own.reduce((total, { cut }) => total + cut, 0);
+    const admitted = own.reduce((total, { cut }) => total + cut, 0);
     console.log(
-      `\n${model}, the arm against its control over ${plural(own.length, "pair")} of ${String(THIN)} gates or more:`,
+      `\n${model}, the arm against its control over ${plural(own.length, "pair")} of ${String(THIN)} task admissions or more:`,
     );
-    const dollars = `${perGate(sum("before"), gated)} against ${perGate(sum("after"), gated)}`;
-    console.log(columns([...signs, ["  $ per gate", dollars]]).join("\n"));
+    const dollars = `${perAdmission(sum("before"), admitted)} against ${perAdmission(sum("after"), admitted)}`;
+    console.log(columns([...signs, ["  $ per task admission", dollars]]).join("\n"));
     if (thin.length > 0) console.log(`  thin, not counted: ${thin.join(" ")}`);
   }
   return 0;
 }
 
 /** What the Examiner session of `command` would be told, composed by `tree`'s own code: the session
- *  stands in for `examine`, prints its mode, and exits before any turn, gate or event. A gate is
+ *  stands in for `examine`, prints its mode, and exits before any turn, task admission or event. A task admission is
  *  composed as `try_task` whatever the seed's host may seat; the engines in its shell are left out. */
 async function prompt(args: CommandArgs, command: readonly string[]): Promise<number> {
   const tree = args.required("tree");
@@ -709,9 +716,9 @@ async function prompt(args: CommandArgs, command: readonly string[]): Promise<nu
   const { writing } = (await import(join(tree, "src/examiner/write.ts"))) as { writing: typeof Writing };
   runtimeProcess.chdir(tree);
   await examineCommand([...flags, "--name", name], (request, wall) => {
-    const probe = () => Promise.reject(new Error("a composed prompt seats no gate"));
+    const roomSolves = () => Promise.reject(new Error("a composed prompt seats no task admission"));
     const mode = writing(
-      { ...request, probe },
+      { ...request, probe: roomSolves },
       undefined,
       wall?.reference === undefined ? "unseen" : "in-home",
     );

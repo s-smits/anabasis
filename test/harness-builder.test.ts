@@ -1,6 +1,6 @@
 // The Harness Builder's controller over a fixture pack, with a script in each model seat: a
 // campaign run from set-up to an ending on one command (`tools/d2/harness-builder.ts`). The exam's
-// reading, the task sets, each Builder session's wall and freeze, each solve's wall and the
+// reading, the task sets, each Builder session's deadline and freeze, each solve's deadline and the
 // comparison are the real ones; the seats are scripts, which are paid nothing.
 // An isolated manifest also holds the runtime refusal before any campaign write or seat call.
 // Cost displays match backend totals only to covered endings and keep open costs calculated.
@@ -295,7 +295,7 @@ describe("a campaign run by its log", () => {
     expect(after.findIndex(({ kind }) => kind === MOVED)).toBeGreaterThan(1);
     // Reopened once more, with every session ended: nothing more is ended. Ending happens at the
     // opening, so no move is made: a comparison of scripted solves, each on its own disk image,
-    // ran past the test suite's idle wall on a three-core macOS runner (15 October).
+    // ran past the test suite's idle deadline on a three-core macOS runner (15 October).
     const ends = () => read(log).filter(({ data }) => data.ended === "killed").length;
     await harnessBuilder([...flags, "--moves", "0"], seats);
     expect(ends()).toBe(2);
@@ -416,7 +416,7 @@ describe("a campaign run by its log", () => {
       },
     };
     // The host is loaded once, at the first look after the first comparison began: its first solve
-    // waits at the gate until the load falls.
+    // waits in the solve queue until the load falls.
     let loaded = true;
     const host = {
       load: () => {
@@ -483,7 +483,7 @@ describe("a campaign run by its log", () => {
     // (15 October). The six held tasks g-1 did not score are retained, and a comparison at the
     // level takes eight frontier tasks (`comparisonFloor`), which the Examiner writes.
     expect(of(name, "exam.finished")).toMatchObject([{ session: "x-1", proposed: 8, ended: "supplied" }]);
-    // The tasks written are read by a control before a Builder session is paid for: the starter
+    // The tasks written are read by a starter comparison before a Builder session is paid for: the starter
     // against the promoted harness. Until 10 October the Builder built here, three times, on
     // practice the promoted harness passed (t-4, t-9, t-10).
     expect(next).toMatchObject({ move: "compare", fresh: "starter", reference: "promoted" });
@@ -493,14 +493,16 @@ describe("a campaign run by its log", () => {
       fresh: first?.starter,
       old: first?.fresh,
     });
-    // The script answers nothing under the reference nor the starter, so the control reads the
+    // The script answers nothing under the reference nor the starter, so the starter comparison reads the
     // eight new tasks as beyond both; a valid answer to each pack task retained beside them is on
     // record, so the reference failing it now is room (`informative`, 15 October; until then no
     // task it failed in every solve was). The six held before the promotion that the promoted
     // harness never stood in are retained since 16 October, one for each three frontier tasks.
-    // The three the control drew it has now stood in and failed, so they are frontier again: eleven
-    // frontier tasks, three more than a comparison at the level takes, and the control read room, so
-    // the table releases up to three before the Builder builds (`practiceRoom`). Until 19 October a
+    // The three the starter comparison drew it has now stood in and failed, so they are frontier again:
+    // eleven
+    // frontier tasks, three more than a comparison at the level takes, and the starter comparison read room,
+    // so
+    // the table releases up to three before the Builder builds (`practiceAllowance`). Until 19 October a
     // repeat came between, and the Builder built here.
     expect(of(name, "comparison.reported").at(-1)).toMatchObject({
       session: "g-2",
@@ -627,10 +629,11 @@ describe("a campaign run by its log", () => {
     );
     expect(report).toContain(`| g-1 | ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}) | A (`);
     // The points each measure of the score gave it, all by validity here, and its cost beside
-    // them, read against the bar and gating nothing (the plan's W).
+    // them, read against the bar and reported only (the plan's W).
     expect(report).toMatch(
-      /tied 1, the score giving it [1-9]\d* points by validity, 0 by the objective and 0 by the bill\. Its cost, gating nothing: 1 promotion attempt this epoch \(bar 3 after set-up\): met/,
+      /tied 1, the score giving it [1-9]\d* points by validity, 0 by the objective and 0 by the bill\./,
     );
+    expect(report).toContain("1 promotion attempt this epoch (bar 3 after set-up): met");
     expect(report).not.toContain("ladder");
     // What each measured thing cost, the climb's velocity first, and how many comparisons that
     // began bought a report.
@@ -763,7 +766,7 @@ describe("a campaign run by its log", () => {
         ["exam.finished", { session: "x-x", billed: 4, held: ["a", "b"] }],
       ]);
       // $10 over two tasks, the Referee's $6 left to the Referee: until 27 October the drafting session's
-      // $4 read as nobody's here, and the ruling of the gate's solve as the Examiner's, $6.00 a task.
+      // $4 read as nobody's here, and the ruling of the room solve as the Examiner's, $6.00 a task.
       expect(lines.find((line) => line.startsWith("- The Examiner:"))).toContain("$5.00 a task held out (2)");
       // The whole-run reader bills the same work to the Examiner.
       const events = read(join(REPO, ".ana", "d2", name, LOG_FILE));
@@ -843,7 +846,7 @@ describe("a campaign run by its log", () => {
     // No word is left for a campaign that has no opening, and none that names two things.
     expect(() => wordCommand(["--name", `${name}-none`, "--stop", "x"])).toThrow("has no opening on record");
     expect(() => wordCommand(["--name", name, "--stop", "x", "--budget", "5"])).toThrow("one word");
-    // `--cause` released a campaign its control ended until 20 October, and is no word now.
+    // `--cause` released a campaign its A/A comparison ended until 20 October, and is no word now.
     expect(() => wordCommand(["--name", name, "--cause", "the host was loaded"])).toThrow();
     expect(strayed).toEqual([]);
   });
@@ -910,7 +913,7 @@ describe("a campaign run by its log", () => {
     const size = ["--target", "8", "--patience", "2"];
     const flags = ["--name", name, "--project", PROJECT, ...solver, ...terms, ...size];
     const { exam, examples } = draftedOf(TASKS);
-    // The first draft's reject control is the right answer, which no check refuses.
+    // The first draft's reject control answer is the right answer, which no check refuses.
     const wrong = {
       ...exam,
       reject_controls: [{ task: 0, answer: { answer: "12" }, check: "check-product" }],

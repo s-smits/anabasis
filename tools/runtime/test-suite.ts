@@ -44,7 +44,7 @@
  * not load fails that exit with an unhandled error, so silence alone is no verdict. A failure
  * printed before the wall is kept: the rerun covers the files the first process never finished,
  * never the verdict of one it did.
- * The suite owns the wall, so `bun run test` and the gate share one behaviour; `startWall`
+ * The suite owns the wall, so `bun run test` and the CI gate share one behaviour; `startWall`
  * widens it in proportion to load the suite did not create.
  *
  * Around the command: one fresh temporary root, and a check that every explicitly named test file
@@ -206,7 +206,7 @@ function hostLoad(): number {
 /** Two workers fewer than the cores, less half of the load the host carries beyond them, and at
  *  least two; `ANA_TEST_WORKERS` overrides. A runner carrying several CPU-bound jobs of its own
  *  can sit at a load average many times its core count, where six workers at four concurrent tests
- *  each ask for about three times the machine and the gate returns wall failures on a branch whose
+ *  each ask for about three times the machine and the CI gate returns wall failures on a branch whose
  *  files pass alone.
  *
  *  Beyond them, because a load average equal to the cores is a machine that is busy rather than

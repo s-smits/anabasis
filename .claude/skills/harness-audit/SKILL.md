@@ -18,7 +18,7 @@ marked, and each needs the operator's word (`AGENTS.md`, section 10).
 | What moved from a parent to its child | `harness-versions.ts --diff`, the lines through [git](#the-lines-that-moved), and lane 15 for what it means |
 | How one runs on a task | [Trying a kept harness](#trying-a-kept-harness) |
 | Ready to promote, or to hand over | [Before a promotion](#before-a-promotion) and [At a handover](#at-a-handover) |
-| Which part of a harness did it | a checkpoint against `programs-of:<digest>`, worded by [attribution-and-proof](../attribution-and-proof/SKILL.md) |
+| Which part of a harness did it | a standalone comparison against `programs-of:<digest>`, worded by [attribution-and-proof](../attribution-and-proof/SKILL.md) |
 | Whether a part earns its place | [From recorded use](#whether-a-part-earns-its-place) |
 | A change to what makes a harness, or to what a seat is told | [The contract](#the-contract) |
 
@@ -106,7 +106,7 @@ manual promotion, put these in front of the operator.
    its new side.
 3. **What moved since the reference.** `--diff <digest> --against promoted` counts the whole change
    a promotion makes, which can span several sessions, and [the lines](#the-lines-that-moved) show
-   it. Attributing a gain to one part requires a checkpoint against `programs-of:<digest>`
+   it. Attributing a gain to one part requires a standalone comparison against `programs-of:<digest>`
    (`AGENTS.md`, section 9).
 4. **What it measured.** Lane 27 of [whole-run-investigation](../whole-run-investigation/SKILL.md)
    reads a promotion's rule, what its step measured and the climb after it; lanes 15 to 17 read

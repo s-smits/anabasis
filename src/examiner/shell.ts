@@ -4,15 +4,15 @@
  *
  * The home is in a root of its own as a Builder's is, under the solver's command wall (`walledBase`,
  * `src/tools/command.ts`): the repository, its other worktrees and a stored pack are closed to it,
- * and the wall is probed before its first command. Nothing in the home enters the exam: a session
+ * and the wall is tested before its first command. Nothing in the home enters the exam: a session
  * puts a task or a draft through its own tool, and the host reads that alone.
  *
- * A task-writing session has one because, without it, its notes said that a task's feasibility
- * rested on hand estimates. A drafting session has one so that it can look up the source it names
+ * A task-writing session has one because, without it, its notes estimated by hand
+ * whether a task had a valid answer. A drafting session has one so that it can look up the source it names
  * for each rule, and run its own check program on its own controls before it puts a draft
  * (`7f0add79:docs/plan.md`, row F57). One wall and one sentence serve every mode, so that their walls
  * cannot drift apart, and the wall says when the seat began to be set up: a session's time is
- * counted from then, so the claim of its root and the wall's probe are inside its limit in every mode.
+ * counted from then, so the claim of its root and the wall test are inside its limit in every mode.
  *
  * A session with a campaign's exam before it also has the field's engines: the programs the
  * campaign's check program names (`requiredToolsOf`), each as the verifier's tool tree resolves it,
@@ -26,7 +26,7 @@
  * its checks run, since a v1 Builder installed its own tools beside them, so a program no check
  * names stays off the path: the Examiner computes with the instruments, and is never given a
  * solver. The tree itself is open to read, since an engine runs from it, so such a program is off
- * the path and not out of reach. Its tasks still enter through the gate alone (`propose_tasks`, or
+ * the path and not out of reach. Its tasks still enter through the task admission alone (`propose_tasks`, or
  * `try_task` where the reference harness solves a draft task), and its answers are ruled on by
  * `try_answer` alone.
  */
@@ -83,7 +83,7 @@ export const examinerDirs = (log: string, id: string): SolveDirs =>
 
 /**
  * The shell's three tools where the session has one, and none where it has not. `bash` carries
- * what the session is told of its wall, after pi's own description: the network as the wall's probe
+ * what the session is told of its wall, after pi's own description: the network as the wall test
  * found it (`networkReach`), the engines it runs by name where it has them (`inExaminerWall`), and
  * `enters`, how something of the session does enter the exam.
  */

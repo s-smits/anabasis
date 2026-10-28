@@ -221,7 +221,7 @@ of its `cycle.md`:
   from the events the row names. The reports of the lanes the row names are read first, as leads.
   A resolution already in the ledger, a lane's report or the synthesis is a lead to recount, never
   the evidence.
-- **Name the witness.** Say whether an event shows the pull request's mechanism ran in these runs
+- **Name the evidence.** Say whether an event shows the pull request's mechanism ran in these runs
   (`AGENTS.md`, section 9). A held row whose mechanism never ran held by chance, and is
   unreached for its pull request.
 - **Treat a falsified row as a finding.** Triage it to one owner (the pull request's code, the

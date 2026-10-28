@@ -79,15 +79,13 @@ export interface Walled {
   readonly readAllowRoots?: readonly string[] | undefined;
 }
 
-/** The probe of each policy this process has started, by its hash: once a process, and the promise
- *  so that seats that start together wait on one probe (`probeWall`). One that did not hold is
- *  dropped, so the next seat probes again. */
-const PROBED = new Map<string, Promise<string | null>>();
-/** What the host stages for the probe's command, which writes it in its own folder and reads it
- *  back: the probe's control. */
-const PROBE_MARK = "ANA-WALL-PROBE";
-/** The probe's command is held to what v1's probe was: twenty seconds. */
-const PROBE_LIMITS = { shellDefaultSeconds: 20, shellMaxSeconds: 20 };
+/** Each policy's wall test, by its hash: once per process, with the promise shared by seats
+ *  starting together (`probeWall`). A failed test is dropped, so the next seat tests again. */
+const WALL_TESTS = new Map<string, Promise<string | null>>();
+/** The wall test must also write and read back its own file, so refusing every operation fails. */
+const WALL_TEST_MARK = "ANA-WALL-PROBE";
+/** The wall test command keeps v1's twenty-second deadline. */
+const WALL_TEST_LIMITS = { shellDefaultSeconds: 20, shellMaxSeconds: 20 };
 
 /**
  * Whether a package index is reached from inside the wall: `reached` where a command run as a
@@ -144,8 +142,8 @@ export function usedSeconds(clock: SolveClock | undefined, now = performance.now
  * what was named, floored and at least 1 s, and a named value only raises the default, up to the
  * maximum, as v1's Built shell held it.
  *
- * A command held to its own limits alone took the solve with it when the solve's wall fell inside
- * it: at a five-minute wall 12 of 46 Starter solves ended at it, 11 of them inside a command, with
+ * A command held to its own limits alone took the solve with it when the solve's deadline expired inside
+ * it: at a five-minute deadline 12 of 46 Starter solves ended at it, 11 of them inside a command, with
  * nothing sent. So a command returns while there is time to act on it. One started inside
  * the reserve is left to its own limits: the solver is told the time used with every result, and
  * what it starts then is its own to judge. Until 15 October one started under five seconds before
@@ -190,8 +188,8 @@ export function makeSeatDirs(dirs: SolveDirs): void {
  * cannot wall one.
  *
  * The wall is a test and no convention (`AGENTS.md`, rule 3): before its first use in a process
- * each policy is probed (`probeWall`), and a probe that does not hold refuses the wall with its own
- * lines. While the probe ran in the test suite alone, a sibling worktree's log was readable in
+ * each policy runs its wall test (`probeWall`), and a failed test refuses the start with its own
+ * lines. While the wall test ran in the test suite alone, a sibling worktree's log was readable in
  * every live run (10 October).
  */
 export async function walledBase(dirs: SolveDirs, wall: Walled, who: string): Promise<SolveIsolationPolicy> {
@@ -204,28 +202,28 @@ export async function walledBase(dirs: SolveDirs, wall: Walled, who: string): Pr
     readAllowRoots: wall.readAllowRoots ?? [],
   });
   if ("unsupported" in base) throw new Error(`this host cannot wall ${who}: ${base.unsupported}`);
-  const probe =
-    PROBED.get(base.policyHash) ??
-    probeWall({ base, dirs, toolTree: null, limits: PROBE_LIMITS }, wall.repoRoot, otherTrees[0]);
-  PROBED.set(base.policyHash, probe);
-  const said = await probe;
+  const tested =
+    WALL_TESTS.get(base.policyHash) ??
+    probeWall({ base, dirs, toolTree: null, limits: WALL_TEST_LIMITS }, wall.repoRoot, otherTrees[0]);
+  WALL_TESTS.set(base.policyHash, tested);
+  const said = await tested;
   if (said !== null) {
-    if (PROBED.get(base.policyHash) === probe) PROBED.delete(base.policyHash);
+    if (WALL_TESTS.get(base.policyHash) === tested) WALL_TESTS.delete(base.policyHash);
     throw new Error(`the wall does not hold on this host, so ${who} is not started:\n${said}`);
   }
   return base;
 }
 
 /**
- * Whether `wall` holds, by one command launched as every command of a seat is (`runWalled`): a
+ * The wall test uses one command launched as every command of a seat is (`runWalled`): a
  * canary the host writes in the repository is refused to it, as is `sibling`'s `package.json`,
  * which every worktree of this repository holds, and a write in the host's folder in the seat; and
  * a file the host staged for it reaches its own folder, is written there and reads back. Null where
- * all four held, and otherwise the command's output, a line a step. The last step is the probe's
- * control: a launch that refuses everything fails it, as one that refuses nothing fails the first.
+ * all four held, and otherwise the command's output, a line a step. The last step tests its own
+ * write and read: a launch that refuses everything fails it, as one that refuses nothing fails the first.
  *
  * Nothing is written in the sibling, which another user may own: a rehearsal as the campaign user refused
- * every solve on EACCES in the root-owned main tree when the probe wrote a canary there (10 October).
+ * every solve on EACCES in the root-owned main tree when the wall test wrote a canary there (10 October).
  */
 export async function probeWall(
   wall: CommandWall,
@@ -236,7 +234,7 @@ export async function probeWall(
   try {
     folder = mkdtempSync(join(resolve(repoRoot), ".ana-wall-probe-"));
     const canary = join(folder, "canary.txt");
-    writeFileSync(canary, `${PROBE_MARK}\n`, { mode: 0o600 });
+    writeFileSync(canary, `${WALL_TEST_MARK}\n`, { mode: 0o600 });
     // A sibling without the file proves nothing by refusing it, so it is not tried.
     const theirs = sibling === undefined ? null : join(resolve(sibling), "package.json");
     const reads = [{ name: "repository canary", path: canary }];
@@ -250,7 +248,7 @@ export async function probeWall(
           `if cat ${shellQuote(path)} >/dev/null 2>&1; then echo ${shellQuote(`${name}: read`)}; else echo ${shellQuote(`${name}: refused`)}; fi`,
       ),
       // `true`, not `:`: a POSIX shell such as dash ends the script where a special builtin's
-      // redirection fails, so the probe stays whole whichever shell runs it.
+      // redirection fails, so the wall test stays whole whichever shell runs it.
       `if true 2>/dev/null > ${shellQuote(written)}; then echo 'host folder: written'; else echo 'host folder: refused'; fi`,
       "cat brought > own && cat own || echo 'own folder: not written and read back'",
     ].join("\n");
@@ -259,15 +257,15 @@ export async function probeWall(
       onData: (data) => {
         out += data.toString();
       },
-      stage: (into) => writeFileSync(join(into, "brought"), `${PROBE_MARK}\n`),
+      stage: (into) => writeFileSync(join(into, "brought"), `${WALL_TEST_MARK}\n`),
     });
     const lines = out.trim().split("\n");
     const refused = [...reads.map(({ name }) => name), "host folder"].every((name) =>
       lines.includes(`${name}: refused`),
     );
-    return refused && lines.includes(PROBE_MARK) ? null : `${out.trim()}\nexit ${String(exitCode)}`;
+    return refused && lines.includes(WALL_TEST_MARK) ? null : `${out.trim()}\nexit ${String(exitCode)}`;
   } catch (error) {
-    return `the probe did not run: ${errorMessage(error)}`;
+    return `the wall test did not run: ${errorMessage(error)}`;
   } finally {
     if (folder !== null) rmSync(folder, { recursive: true, force: true });
     rmSync(join(wall.dirs.kept, "probe"), { force: true });

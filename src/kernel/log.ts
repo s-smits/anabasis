@@ -42,7 +42,7 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  condition under the id its solves name (`condition.ts`), so a comparison can be checked from
  *  the log alone. The four `build.*` kinds are a Builder session's: what it was given, its own
  *  turns and calls, and how it ended (`src/builder/session.ts`). `build.checkpoint` keeps a
- *  frozen harness inside a live Builder conversation, before a comparison. `solve.compacted`,
+ *  harness snapshot inside a live Builder conversation, before a comparison. `solve.compacted`,
  *  `build.compacted` and `exam.compacted` are a compaction in pi's own loop, and what its summary
  *  spent (`src/agent/backends/compaction.ts`). The `exam.*` kinds are an Examiner session's: the same
  *  four (`src/examiner/session.ts`). `checker.read` is what a campaign's check program was seen to
@@ -68,12 +68,12 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  The `draft.*` kinds are the session in which an Examiner drafts a campaign's exam from the
  *  operator's prompt (`src/examiner/draft.ts`), the same five as an Examiner session's, and
  *  `exam.drafted` holds the draft that stood, whole: its rules with their sources, its answer
- *  format, its check program's source, its example tasks and its controls. A campaign opened from
+ *  format, its check program's source, its example tasks and its control answers. A campaign opened from
  *  a prompt reads its exam from that event and from no file beside the log. The `repair.*` kinds
- *  were a session in which the Examiner repaired its own check program or its controls between
+ *  were a session in which the Examiner repaired its own check program or its control answers between
  *  comparisons, retired on 13 October; they stay so that a log of before still reads, as
  *  `pass.labelled` does, a person's label of a pass, which the settled report holds since 12 October.
- *  `task.feasible` is a task an author's answer passed the checks on, under its own id once its gate
+ *  `task.feasible` is a task an author's answer passed the checks on, under its own id once its task admission
  *  passed or in a `try_answer` after that, by version and never the answer, or one a stored pack's
  *  accepted answer passes today's checks on (`tools/d2/prepare.ts`), by version and sweep. An
  *  optional `objective` holds the contract's quantity, its direction and the answer's measure: the

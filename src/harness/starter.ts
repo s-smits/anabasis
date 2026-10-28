@@ -10,8 +10,8 @@
  *
  * Every campaign starts from it (`7f0add79:docs/plan.md`, Terms and Phase 0). The Builder forks it in its
  * first session, since a session copies the harness it starts from whole. It is the first
- * reference harness: a new harness is compared with it until a step is promoted. And it stays the
- * control after that: once another harness is promoted, the tasks written for it are read by the
+ * reference harness: a new harness is compared with it until a step is promoted. It still runs in starter comparisons
+ * after that: once another harness is promoted, the tasks written for it are read by the
  * starter against it (`src/campaign/decide.ts`). How the starter does by
  * itself, read from the first comparison, is what says whether the tasks leave a harness room to
  * add anything.
@@ -315,8 +315,8 @@ ${capturedJsonStringify(WITHOUT_SHELL.spec, null, 2)}
 ${WITHOUT_SHELL.tools.trimEnd()}
 \`\`\`
 
-- tools-spec.json has one row for each tool tools.ts returns, under the same name and in the same
-  order. kind is reader or advisor: a reader returns what the task publishes, an advisor computes
+- tools-spec.json has one row for each tool tools.ts returns, under the same name; the order may
+  differ. kind is reader or advisor: a reader returns what the task publishes, an advisor computes
   on what the solver passes it.
 - createDomainHarness receives the task's public part, { taskId, family, publicInput }, and returns
   { tools }, each built with defineDraftTool.

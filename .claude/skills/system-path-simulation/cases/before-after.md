@@ -59,7 +59,7 @@ that recording is the before arm (`cases/stack.md`, step 3) and only the after a
 ## Read the difference
 
 1. **Predict both sides first** (rule 1): each line or event that should move, and each that must
-   not. A change to a gate predicts what the gate holds and refuses at the cut; a reader predicts
+   not. A change to a task admission predicts what the task admission holds and refuses at the cut; a reader predicts
    the lines it rewrites.
 2. **Every moved line is accounted for.** It is the change's effect, named in the pull request, or
    it is a finding: a side effect the body does not mention.

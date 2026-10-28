@@ -4,7 +4,7 @@
  * past comparisons and fails name it (`short`, `past.ts`). Until 19 October a session was handed
  * the harness it starts from and nothing else of what the campaign built, so a remedy an earlier
  * session froze and a later one dropped could not be read again. Harness² (arXiv 2610.14224) keeps
- * such a library of adopted harnesses for its editors, and removing it cost 3.1 and 1.8 points in
+ * such a library of kept harnesses for its editors, and removing it cost 3.1 and 1.8 points in
  * its table 3.
  *
  * It is a folder and no tool, and the Builder is told it is there and nothing more (operator,
@@ -15,7 +15,7 @@
  * 0 times in 1,261 Builder calls and went on 15 October.
  *
  * A kept state's tool tree is a link to the copy kept of it, so the tree is copied from where it
- * is. A v1 state carries its correctness model, whose battery holds every task's hidden values, at
+ * is. A v1 state carries its correctness model, whose exam holds every task's hidden values, at
  * its root and again in each `.bundle-snapshots` entry; no harness reads it, and the checks are the
  * host's, so the Builder is given no copy of it at any depth.
  */
@@ -39,9 +39,12 @@ const LINKED_TREE_BYTES = 100 * 1024 * 1024;
 export function copyHarness(state: string, into: string, trees?: string): void {
   const copy = { recursive: true, verbatimSymlinks: true } as const;
   const own = resolve(state, TOOL_TREE_DIR);
-  const battery = basename(CORRECTNESS_MODEL_DIR);
+  const examDirectory = basename(CORRECTNESS_MODEL_DIR);
   const tree = parentToolTree(state);
-  cpSync(state, into, { ...copy, filter: (each) => resolve(each) !== own && basename(each) !== battery });
+  cpSync(state, into, {
+    ...copy,
+    filter: (each) => resolve(each) !== own && basename(each) !== examDirectory,
+  });
   if (tree === null) return;
   const bytes = pathsUnder(tree).reduce((sum, path) => sum + lstatSync(join(tree, path)).size, 0);
   if (trees === undefined || bytes <= LINKED_TREE_BYTES) {

@@ -1,6 +1,6 @@
 ---
 name: reduce-complexity
-description: "Measure whether a change made the tree simpler: line counts, branching, coupling, interface width, rule count, standing exemptions and model-visible prose across one diff or a stack of pull requests. Use before claiming a pass reduced complexity, when deciding which pull request added machinery, and to read a function's branch count, which no v2 gate reports."
+description: "Measure whether a change made the tree simpler: line counts, branching, coupling, interface width, rule count, standing exemptions and model-visible prose across one diff or a stack of pull requests. Use before claiming a pass reduced complexity, when deciding which pull request added machinery, and to read a function's branch count, which no v2 CI gate reports."
 ---
 
 # Reduce complexity
@@ -38,7 +38,7 @@ resolved through `gh` and fetched if this checkout has not seen it.
 | group | measures | what a rise means |
 | --- | --- | --- |
 | how much is there | source files, nonblank source lines, nonblank test lines | more to read. Test lines rising while source holds usually means a mechanism got proved; source rising while tests hold usually means it did not |
-| how much branching | decision points, decisions per 100 lines | more decision tokens. Both are textual proxies, not function-level complexity. The density divides the count by nonblank source lines; v2 has no complexity gate (`tools/oxlint/HABITS.md`, 12.10) |
+| how much branching | decision points, decisions per 100 lines | more decision tokens. Both are textual proxies, not function-level complexity. The density divides the count by nonblank source lines; v2 has no complexity threshold (`tools/oxlint/HABITS.md`, 12.10) |
 | how tangled | import edges, mean fan-out, hub files, max fan-in | more import occurrences. Relative imports and `#` aliases count, using `package.json`'s `imports`. A hub is a file at or above its revision's 90th fan-out percentile. These are textual counts, not a resolved dependency graph |
 | how wide the interface | exported symbols, optional fields, signatures with 5+ parameters | more states every reader must handle. Optional fields are the quiet one: each `?:` is a case somebody downstream has to consider |
 | how many rules | distinct refusal codes, environment knobs | more code literals in `code`, `kind` or `check` positions and more environment variables recognised by the script's regexes. These are proxies, not a count of live refusals or settings |

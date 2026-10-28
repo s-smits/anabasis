@@ -13,6 +13,7 @@ import {
   type Paired,
   pairsOf,
   pointsOf,
+  readsStep,
   readsStepEitherWay,
   scored,
   stepOf,
@@ -20,6 +21,7 @@ import {
   tally,
   wholePoints,
 } from "../src/kernel/compare.ts";
+import { compared, NO_LABELS, type Fixed } from "../src/campaign/comparison.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
@@ -365,7 +367,7 @@ describe("a task's pairings", () => {
 });
 
 describe("a task's measures", () => {
-  it("reads objective direction, the room floor and missing measures only between valid answers", () => {
+  it("reads objective direction, the objective gap floor and missing measures only between valid answers", () => {
     const even = { task: "t", old: [P, P], fresh: [P, P] };
     for (const [direction, old, fresh, expected] of [
       ["lower", [10, 11], [8, 9], 300],
@@ -459,7 +461,7 @@ describe("a task's room", () => {
         ),
       ).toBe(expected);
     }
-    // An author's proof can improve an existing measure, in either direction, including below zero.
+    // An author's answer can improve an existing measure, in either direction, including below zero.
     for (const [direction, old, version, author, expected] of [
       ["lower", [100, 100], "t", 99, true],
       ["lower", [100, 100], "t", 99.5, false],
@@ -714,5 +716,53 @@ describe("the order of counted solves", () => {
     // Beside it the new harness is paired with the reference's first mirrored half, which is the
     // half its own solves were mirrored around.
     expect(halves({ halves: "mirrored" })).toMatchObject({ old: [P, P], fresh: [P, F] });
+  });
+});
+
+describe("the comparison reading", () => {
+  it("reads the same two tests from all pairs as from the frontier and retained sets, keeping both tallies", () => {
+    for (const cases of [pairs(6, 0, 2), pairs(5, 1, 2), pairs(0, 0, 8), pairs(4, 3, 1)]) {
+      const tasks = cases.map(({ task }) => task);
+      const log = cases.flatMap((pair) => [
+        ...heldOut(pair.task),
+        ...pair.old.flatMap((valid) => solve({ ...base, task: pair.task }, valid ? "pass" : "fail")),
+        ...pair.fresh.flatMap((valid) => solve({ ...fresh, task: pair.task }, valid ? "pass" : "fail")),
+      ]);
+      for (let count = 0; count <= tasks.length; count += 1) {
+        const fixed: Fixed = {
+          id: "c-1",
+          ...sides,
+          starter: "starter",
+          solves: 3,
+          level: 0.02,
+          tasks,
+          retained: tasks
+            .filter((_, at) => at % 2 === 0)
+            .concat(tasks.filter((_, at) => at % 2 === 1))
+            .slice(0, count),
+          objective: undefined,
+        };
+        const result = compared(log, fixed, NO_LABELS);
+        const tested = scored(cases);
+        expect(result.scored.differences).toEqual(tested.differences);
+        expect(result.scored.unbilled).toEqual(tested.unbilled);
+        expect(result.reading).toBe(
+          readsStep(tested.differences, tested.unbilled, fixed.level) ? "step" : "no-step",
+        );
+        expect(result.reading).toBe(
+          stepOf(
+            {
+              frontier: requireJsonValue(result.frontier),
+              retained: requireJsonValue(result.retained),
+            },
+            fixed.level,
+          ),
+        );
+        const retained = result.retained === "unmeasured" ? { wins: 0, losses: 0, ties: 0 } : result.retained;
+        for (const key of ["wins", "losses", "ties"] as const) {
+          expect(result.frontier[key] + retained[key]).toBe(result.scored[key]);
+        }
+      }
+    }
   });
 });

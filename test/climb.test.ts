@@ -355,7 +355,7 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     const [epochRisk, total] = riskLines(log);
     for (const line of [epochLine(epoch), epochRisk]) {
       expect(line).toMatch(
-        /\b3 promotion attempts\b.*\b25%.*\b10% for the riskiest attempt\b.*\bno A\/A control\b/u,
+        /\b3 promotion attempts\b.*\b25%.*\b10% for the riskiest attempt\b.*\bno A\/A comparison\b/u,
       );
     }
     expect(total).toContain("25%");
@@ -398,7 +398,7 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     });
     if (second === undefined) throw new Error("an epoch");
     expect(epochLine(second)).toContain(
-      "a false promotion among them estimated at 10%: 10% for the riskiest attempt by the rule's design; 0 of 1 A/A control with enough untied tasks in every test read a step; joint reachability unmeasured, and 3 too small to read one at their level",
+      "a false promotion among them estimated at 10%: 10% for the riskiest attempt by the rule's design; 0 of 1 A/A comparison with enough untied tasks in every test read a step; joint reachability unmeasured, and 3 too small to read one at their level",
     );
     expect(riskLines(log)[2]).toStartWith(
       "Over the campaign, a false promotion in any epoch estimated at 50%:",
@@ -412,7 +412,7 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     ];
     expect(epochsOf(lucky)[0]?.falsePromotion).toMatchObject({ errors: 1, controls: 2, incapable: 0 });
     expect(riskLines(lucky)[0]).toContain(
-      "1 of 2 A/A controls with enough untied tasks in every test read a step; joint reachability unmeasured.",
+      "1 of 2 A/A comparisons with enough untied tasks in every test read a step; joint reachability unmeasured.",
     );
     // Past one the sum is capped there.
     const many = Array.from({ length: 11 }, (_, at) =>

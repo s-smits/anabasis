@@ -5,7 +5,7 @@
 # its place in that list, its name or its ssh destination, 0 runs the task here, and unset takes the
 # first host that is not busy (`pick_host`), or this machine where the list is empty. Whatever the host,
 # the task is `bun run <task>` over the working tree as it stands, uncommitted bytes included,
-# under the Bun the tree pins and one wall, and its exit status is this script's.
+# under the Bun the tree pins and one deadline, and its exit status is this script's.
 #
 # A task waits for one of its host's slots in a queue on this machine, first come first served:
 # each host takes two tasks at once (`slots`), and this machine one. Settings, each optional:
@@ -66,7 +66,7 @@ taken_here() {
 # a load at or above ANA_RUNNER_BUSY percent of its cores, or every slot held by this machine's own
 # tasks. Where all are busy, the least loaded one with a free slot takes it, else the first that
 # answered, where the task queues as before. On 22 October the M1, the first line, carried two
-# campaigns and every gate while the Linux runner sat idle.
+# campaigns and every CI gate while the Linux runner sat idle.
 pick_host() {
   local names=("${host_sshs[@]}") i probes load cores percent taken reading
   local busy_at="${ANA_RUNNER_BUSY:-100}" pick="" fallback="" best="" best_percent="" first_said=""
@@ -220,7 +220,7 @@ queue_enter() {
   ticket=""
 }
 
-# A host that does not answer, or lacks room for a snapshot, its dependencies and the tests'
+# A host that does not answer, or lacks capacity for a snapshot, its dependencies and the tests'
 # scratch, starts nothing: the M1 stood 94% full on 1 October, and a full disk fails a task midway.
 preflight() {
   local free_kib min_gib="${ANA_RUNNER_MIN_FREE_GB:-3}"

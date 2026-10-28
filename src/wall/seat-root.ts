@@ -11,7 +11,7 @@
  * answer to it. Keeping the image cost 397 lines and a run of incidents: cloning a template,
  * waiting out hdiutil calling a device busy on loaded runners, a detach that hung disk
  * arbitration for the whole host (11 October), and images a stopped run left attached. So both
- * platforms now run as Linux did, a seat bounded by its wall, its turns and the campaign's dollars.
+ * platforms now run as Linux did, a seat bounded by its deadline, its model turn limit and the campaign's dollars.
  */
 import { chmodSync, existsSync, mkdirSync, readdirSync, realpathSync, rm } from "../meta/filesystem.ts";
 import { dirname, join, resolve } from "../meta/path.ts";

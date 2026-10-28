@@ -4,10 +4,10 @@
  * A round over a seeded campaign (`seed.ts`) with a script in each model seat and no model called.
  * The plan's first round is walked this way before it is paid for (`7f0add79:docs/plan.md`, Phase 0): the
  * scripted Builder forks the Starter Built Harness, and the harness it leaves is compared with the
- * starter. Flags that hold `--id` are a checkpoint's, as a launch reads them, and rehearse one
+ * starter. Flags that hold `--id` are a standalone comparison's, as a launch reads them, and rehearse one
  * comparison with no Builder session (`tools/d2/checkpoint.ts`). With `--no-comparison` the flags
  * are a session's, and rehearse one Builder session with no comparison after it
- * (`tools/d2/session.ts`): the plan's checkpoint is walked as two of those and then a checkpoint.
+ * (`tools/d2/session.ts`): several sessions are walked before a standalone comparison.
  * With `--campaign` the flags are the Harness Builder's (`tools/d2/harness-builder.ts`), and the
  * live Builder is rehearsed: its script follows the public prompt advice, until it ends or
  * `--moves` are made. Over a stored pack no script sits in the Examiner's seat, so a rehearsal
@@ -18,20 +18,20 @@
  * that it is another instance, which the script answers as it answers the task it copies. That is
  * how a climb of more than one epoch is rehearsed: the Examiner of a source that climbed once
  * wrote tasks for one epoch, and a rehearsal with `--held none:pass --starter pass --supply 30`
- * goes round the table again, from the promoted harness through other tasks, the control, a
+ * goes round the table again, from the promoted harness through other tasks, the starter comparison, a
  * session and a step, until the supply is spent (11 October).
- * Since 18 October 2026 the same scripted solver stands at the admission gate: esp32-fresh-opus
+ * Since 18 October 2026 the same scripted solver runs the room solves for task admission: esp32-fresh-opus
  * refused 45 of 50 drafts after promotion, while five rehearsals saw no reference solve there.
- * A gate's three solves of a draft end as the reference's do (`--held`'s old), after a promotion
- * too: `pass` refuses every draft, and `none` holds one on its recorded answer, tried through
+ * Room solves can stop after the first and follow the reference's scripted ending (`--held`'s old),
+ * after a promotion too: `pass` refuses every draft, and `none` holds one on its recorded answer, tried through
  * try_answer.
  * Everything under the seats is a paid round's: the campaign's log and sets, the Builder's tools on
- * the command wall and its freeze, each solve's wall and root, the answer file and `submit`,
+ * the command wall and its freeze, each solve's deadline and root, the answer file and `submit`,
  * the verifier, the comparison and the report. It is `roundCommand` with other
  * seats, so its flags and defaults are the round's, but that it needs no `--cap`: a script is paid
  * nothing. The three flags that name a model are refused. The answers the script writes are a
- * stored pack's graded passes and controls where `--root --sweep --bundle` name one, and otherwise
- * the drafted exam's controls and every answer the seed's source campaign passed (`draftedGraded`).
+ * stored pack's graded passes and control answers where `--root --sweep --bundle` name one, and otherwise
+ * the drafted exam's control answers and every answer the seed's source campaign passed (`draftedGraded`).
  *
  * The Builder's script edits the guide through its walled shell. In a campaign it follows public
  * action advice; in an isolated session it finishes after the edit.
@@ -137,7 +137,7 @@ const contentOf = ({ family, publicInput, hidden }: Task): string => {
 };
 
 /** `args` without the options `own` names and their values, as `parseArgs` tokenised them: what
- *  this command hands on to the round, the checkpoint or the campaign command it rehearses. */
+ *  this command hands on to the round, the standalone comparison or the campaign command it rehearses. */
 export function passedOn(
   args: readonly string[],
   tokens: readonly { kind: string; index: number; name?: string; inlineValue?: boolean | undefined }[],
@@ -171,8 +171,8 @@ function endOf(word: string): End | undefined {
 /**
  * The answers on record for each task, by its id: the first the checks accepted and the first a
  * check rejected. `graded` are the pack's, the accepted ones first: a stored solve the sweep graded
- * a pass comes before the pack's own accept control, which can be stale. On the truss pack every
- * accept control of four tasks was rejected by four to seven checks (2026-10-08). The log answers
+ * a pass comes before the pack's own accept control answer, which can be stale. On the truss pack every
+ * accept control answer of four tasks was rejected by four to seven checks (2026-10-08). The log answers
  * for the tasks no pack holds: every answer a verdict of it accepted or rejected, so a task a
  * session wrote can be scripted once some solve has answered it.
  */
@@ -297,7 +297,7 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
         const done = await campaign.solveOnce(task, harness, { ...campaign.test, ...by }, kill, comparison);
         const { ending } = done;
         // A solve scripted to give none submits nothing and is asked again until its turns end:
-        // under a bound on the model's turns it ends `turns-ended`, and `no-answer` at its wall.
+        // under a bound on the model's turns it ends `turns-ended`, and `no-answer` at its deadline.
         const failed: readonly string[] = {
           pass: [],
           fail: ["rejected"],
@@ -327,7 +327,7 @@ function storedPasses(root: string, sweep: string): Control[] {
 }
 
 /**
- * The answers a seed of a campaign that drafted its exam gives the script: the draft's controls,
+ * The answers a seed of a campaign that drafted its exam gives the script: the draft's control answers,
  * from where the campaign staged them, and every answer the source campaign's checks passed, which
  * a seed cut before those solves no longer holds. Until 10 October a rehearsal took a stored pack
  * only, and no campaign run on the Linux host has one: every one of them drafted its exam.
@@ -471,7 +471,7 @@ export async function rehearse(args: readonly string[]): Promise<void> {
   const strayed: string[] = [];
   const seats = scriptedSeats({ held: sidesOf(held), starter: least }, graded, strayed);
   const flags = passedOn(args, tokens, OWN);
-  // A checkpoint is named by its `--id` and runs no session, so no Builder's script can stray, and
+  // A standalone comparison is named by its `--id` and runs no session, so no Builder's script can stray, and
   // a campaign's sessions are its own to count. A campaign over a drafted exam seats an Examiner
   // scripted from its source; one over a stored pack seats none, and stops where it needs one,
   // having named what strayed before: on 16 October such a stop hid two solves of old ladder

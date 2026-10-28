@@ -1,6 +1,6 @@
 ---
 name: run-management
-description: "Start, continue, keep, pause, copy, watch and stop authorised Anabasis v2 campaigns through `bun run runs`: launch a campaign under a name, go on with one from its log on another login or commit, keep one going across logins until it ends on its own terms, pause one at a clean point, copy a stopped one to another worktree, move one to another host, read each run's status and each login's room, reach the other hosts, and stop one and release what it held. Use when the operator asks to start, launch, resume, continue, move, keep, pause, copy or stop a campaign or a run, which logins have room, how the runs stand on any host, whether a campaign is ready for its next move, or why a move was refused. Owns the run's life on the host; run-improvement-campaign reads the table, and whole-run-investigation reads what a run did."
+description: "Start, continue, keep, pause, copy, watch and stop authorised Anabasis v2 campaigns through `bun run runs`: launch a campaign under a name, go on with one from its log on another login or commit, keep one going across logins until it ends on its own terms, pause one at a clean point, copy a stopped one to another worktree, move one to another host, read each run's status and each login's capacity, reach the other hosts, and stop one and release what it held. Use when the operator asks to start, launch, resume, continue, move, keep, pause, copy or stop a campaign or a run, which logins have room, how the runs stand on any host, whether a campaign is ready for its next move, or why a move was refused. Owns the run's life on the host; run-improvement-campaign reads the table, and whole-run-investigation reads what a run did."
 ---
 
 # Run management
@@ -142,7 +142,7 @@ remote branch holds. It then installs (`bun install --frozen-lockfile`), runs th
   hosts, a JSON list of `{name, ssh, tree, bun, envFiles, capacity, packs}`. Copy `.env.runs.example` to
   `.env.runs`, which Git ignores; `.env.runs.example` stays tracked. Fill in your own and
   pass it with a second `--env-file`.
-- **One or two campaigns at a time on one host.** A solve's wall counts the clock. The command
+- **One or two campaigns at a time on one host.** A solve's deadline counts elapsed time. The command
   waits before each solve until the one-minute load is at or under the cores, or half an hour on,
   and says so once; `--loaded` starts it all the same, the operator's word that its times will not
   be compared.
@@ -207,14 +207,14 @@ A keeper takes its logins from `--logins`, then `ANA_LOGINS`, then the numbered 
 environment (`allowedLogins`). It looks at the run once a minute and takes one of four turns
 (`turnOf`). While the process lives and its log ends on a provider wait with more than
 `--wait-hours` left until the reset, it stops the run and
-continues it on the login with room whose week resets soonest. Where the process is gone and the
+continues it on the login with capacity whose week resets soonest. Where the process is gone and the
 log holds no ending, or the ending `environment`, it continues on the same login where that
 login is recorded, its wait has expired and it is below its cap of live runs across the fleet
-(`atCap`), otherwise on one with room. Any other
+(`atCap`), otherwise on one with capacity. Any other
 ending is the campaign's own, and the keeper leaves. A run with no `claude/` seat bills no login
 and goes on without one, so no login's count holds it. A login it moved off is not taken again until
 the wait named for it is over; with no login left it says so once and waits. Three continues in a
-row that leave the log as it was end the keeper: something it cannot mend ends the run each time.
+row without an answered model turn from any seat end the keeper: something it cannot mend ends the run each time.
 
 Each restart uses `start` from `manage.ts`, at the current worktree's commit and with the same
 refusals as `runs continue`; it does not switch commits. With `--yes` the keeper runs by itself,
@@ -339,7 +339,7 @@ By hand, what a comparison needs first:
 | further held-out tasks | `bun tools/d1b/examine.ts ... --name <name> --session x-1` |
 
 For acceptance authority, see `AGENTS.md`, section 3 and section 8, rule 10.
-`--predict "<sentence>"` on a checkpoint or round started by hand puts on record what it should
+`--predict "<sentence>"` on a standalone comparison or round started by hand puts on record what it should
 read, before its first solve.
 
 ## Watch
@@ -371,7 +371,7 @@ finished, which only the ended process would have let go; a named run that is no
 released the same way, so a killed run is cleaned up by stopping it.
 
 A stop is abrupt: the run writes no ending. A campaign goes on from its log under the same name
-(`continue`), and the session the stop fell inside has spent its id. A checkpoint, or a round
+(`continue`), and the session the stop fell inside has spent its id. A standalone comparison, or a round
 after its `build.finished`, goes on under the same id with its terms; an Examiner session's id is
 spent wherever the stop fell, and the tasks it held out stay held out. Prefer `pause` or a word
 where a clean point can be waited for. Whether a run should be stopped is a reading

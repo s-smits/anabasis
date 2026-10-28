@@ -2,7 +2,7 @@
  * A reading of the answers a checker refused: what the Referee ruled of each, and the order in which
  * a person's labels and the Referee's rulings are made.
  *
- * A checker's controls test the faults their author thought of (`src/kernel/acceptance.ts`). Whether
+ * A checker's control answers test the faults their author thought of (`src/kernel/acceptance.ts`). Whether
  * its rejections are sound shows only on answers it refused that nobody wrote to be refused, and a
  * stored sweep holds those: every rejected answer, with the checks that refused it. In v1 that share
  * was never taken for a pack before the pack was used, and when it was taken afterwards the check
@@ -47,7 +47,7 @@ interface RepairReading {
   readonly tightened: readonly string[];
   /** Answers ruled a check defect that the repaired checker still refuses. */
   readonly unrepaired: readonly string[];
-  /** What stands between the repair and its adoption, one sentence each; none when every verdict
+  /** What stands between the repair and its use, one sentence each; none when every verdict
    *  it moves is one that was read and ruled the old checker's fault. */
   readonly against: readonly string[];
 }

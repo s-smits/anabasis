@@ -1,6 +1,6 @@
 ---
 name: system-path-simulation
-description: "Test an uncertain Anabasis v2 path at the smallest real layer that can decide it: one fact from a log or a dry run, a walk of one value across the layers, a replay through this tree's readers, a round or campaign rehearsed on a seed with scripted seats and no Referee, one live seat from a seed, or rounds of before-and-after seats that tune a prompt or a term against one count. Use to test a join, revisit a recorded position, size a comparison, check what a kill or stop leaves, or tune the Examiner's, the Referee's or the Builder's prompt or terms in rounds of paired live seats and read such a round: holds at equal gates, against two draws of one commit, on the bar of a gain or of as good and simpler (cases/optimize.md). Not for reading a finished run (whole-run-investigation) or starting a paid one (run-management)."
+description: "Test an uncertain Anabasis v2 path at the smallest real layer that can decide it: one fact from a log or a dry run, a walk of one value across the layers, a replay through this tree's readers, a round or campaign rehearsed on a seed with scripted seats and no Referee, one live seat from a seed, or rounds of before-and-after seats that tune a prompt or a term against one count. Use to test a join, revisit a recorded position, size a comparison, check what a kill or stop leaves, or tune the Examiner's, the Referee's or the Builder's prompt or terms in rounds of paired live seats and read such a round: holds at equal task admissions, against two draws of one commit, on the bar of a gain or of as good and simpler (cases/optimize.md). Not for reading a finished run (whole-run-investigation) or starting a paid one (run-management)."
 ---
 
 # System path simulation
@@ -58,7 +58,7 @@ interpret a remote pid as local.
    Production move commands have no such guard: use `sim-<what>` only for seeds.
 5. **One variable.** Two rehearsals compare when one flag moved between them. Two commits compare
    on the same input, and the commit is then the variable ([before-after](cases/before-after.md)).
-   Rounds of tuning compare only within one series, whose outline (positions, seats, caps, gate
+   Rounds of tuning compare only within one series, whose outline (positions, seats, caps, task admission
    count, host class) no round moves ([optimize](cases/optimize.md), step 5).
 6. **Change the position, never the prompt.** A live seat is seated by the production command with
    the production prompt, and nothing tells the model what the simulation hopes for. If a prompt is
@@ -87,7 +87,7 @@ ends when it needs one. Under the seats it walks:
 - the campaign opened over its stored pack or staged drafted exam, its sets read from the log;
 - the Builder session from `--parent latest`, the starter until a session has left a harness:
   its tools on the command wall, its ordinary root, its freeze and digest;
-- each solve: its wall and root, the answer file and `submit`, the verifier on
+- each solve: its deadline and root, the answer file and `submit`, the verifier on
   the staged check program, its verdict;
 - the comparison: its terms written before its first solve, the reference harness, which is the
   last promoted harness or the starter until one is promoted, and the new one solved afresh, the
@@ -129,7 +129,7 @@ order (`Valid`, `src/campaign/comparison.ts`). At the default level of 0.02 four
 | --- | --- | --- |
 | `--held none:pass` (the default script) | `step`, `valid.old` 4/0/0 and `valid.fresh` 0/0/4 | four wins give p 0.0625, below the explicit level of 0.10 |
 | `--held pass:pass` | `no-step`, `valid` 0/0/4 twice | four ties between valid answers: the tasks leave a harness nothing to add |
-| `--held none:none` | `no-step`, `unsolved` 4 | no harness answers; after two comparisons each task waits for a person's label unless feasibility is on record or its solves were cut by wall or context (`poolOf`) |
+| `--held none:none` | `no-step`, `unsolved` 4 | no harness answers; after two comparisons each task waits for a person's label unless a known valid answer is on record or its solves were cut by a deadline or context (`poolOf`) |
 | `--held fail:pass` | `not-scored`, `aside` 4, `counted` 4-0 | no reviewer is seated, so each rejection sets its task aside until it is labelled |
 | the same, then `settle.ts` with every label `earned` | `step` | the labels restore the tasks, and a settling makes no solve |
 | `--reference <a kept digest> --held none:pass` | `step`, sixteen solves | only the two compared harnesses are solved; the starter adds no third arm |
@@ -171,7 +171,7 @@ What the product did:
 ## Coverage
 
 `test/runs-rehearse.test.ts` holds the seed and scripts. `test/checker-commands.test.ts` rehearses
-two sessions and a checkpoint over a fixture pack when a command wall is available. A pass on one
+two sessions and a standalone comparison over a fixture pack when a command wall is available. A pass on one
 platform proves only that platform's wall (AGENTS.md, section 9). The CLI has no mixed mode with a
 live Builder and scripted solves; its Builder script runs no practice solve and seats no Referee.
 

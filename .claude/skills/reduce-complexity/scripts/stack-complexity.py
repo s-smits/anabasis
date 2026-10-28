@@ -27,7 +27,7 @@ narrower `AUTHORED_ROOTS`.
 
   How much is there
     files, nonblank           source files and their nonblank lines
-    test nonblank             what the gate has to run, which a mechanism moved into tests lowers
+    test nonblank             what the CI gate has to run, which a mechanism moved into tests lowers
                               at the expense of nothing and a mechanism nobody proved does not
 
   How much branching

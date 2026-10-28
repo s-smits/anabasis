@@ -1,42 +1,40 @@
 /**
- * A task: a package of five parts, held out once its shape passes one gate.
+ * Examiner task admission checks a package's shape, then runs room solves under the reference harness.
  *
  * The id, the family and the inputs are what the solver reads; the rule ids are the contract rules
- * the check enforces, which the gate holds it to. The check is a program the solver never sees,
+ * the check enforces, which the shape check holds it to. The check is a program the solver never sees,
  * with hidden values only the check's own runs receive.
  *
- * A task whose package passes the gate is a held-out task: every comparison may score it
- * (`compare.ts`), and no solve chooses whether it does. It leaves that set three ways. It is
+ * A draft is held out when its shape check passes and its room solves leave room (`src/examiner/write.ts`).
+ * Every comparison may score it (`compare.ts`). It leaves that set three ways. It is
  * released to a Builder as practice, and a practice task is never scored. It is disputed when a
  * check is found at fault on an answer to it, from either set, and is then neither scored nor
- * practised on. Or its package is refused at the gate, and it never was one. Each task version's
+ * practised on. Or task admission refuses the draft, and it never was one. Each task version's
  * state is a view over the log.
  *
- * A log of 14 to 16 October may hold a draft the gate held for the ladder, a fixed set read only
- * after a promotion: its gate's outcome and its state are `ladder`. The ladder was retired on
- * 16 October (`gated`, `src/examiner/write.ts`), and such a task is read as held out.
+ * A log of 14 to 16 October may hold a draft held for the ladder by task admission, a fixed set read only
+ * after a promotion: its admission outcome and its state are `ladder`. The ladder was retired on
+ * 16 October (`src/examiner/write.ts`), and such a task is read as held out.
  *
- * The shape is the only gate (`7f0add79:docs/plan.md`, Phase 2, and `docs/v1.md` for what v1 measured):
+ * Room solves use the campaign's solver, never a stronger one. v1's solver matched whatever its
+ * author's side found, and the first live sessions here lost 14 of 25 tasks at an admission test
+ * of one stronger solve (`7f0add79:docs/plan.md`, Phase 2; `docs/v1.md`). Up to three reference
+ * solves now refuse a draft that leaves no room: it needs variation in validity, a known valid
+ * answer where the reference never answers, or an objective gap. Both harnesses later solve the
+ * same scored tasks under one compute budget. Reject control answers belong to the check program
+ * and are read once for it (`tools/c/accept.ts`), rather than written per task.
  *
- * - No stronger solver proves a task possible. v1's solver matched whatever its author's side
- *   found, and the first live sessions here lost 14 of 25 tasks at a gate of one stronger solve.
- *   A task no solve has answered validly is held out like any other and ties until one does.
- * - The reject controls are the check program's and are read once for it (`tools/c/accept.ts`),
- *   not written per task.
- * - No gate selects tasks by pass or fail. Both harnesses solve the same scored tasks under one
- *   compute budget, and a valid answer within it is what the comparison counts.
- *
- * A log written before 9 October holds four later gates (a stronger solve, the checks run again
- * on its answer, three reject controls, and a screening under two harnesses) and the states
+ * A log written before 9 October holds four later admission tests (a stronger solve, the checks run again
+ * on its answer, three reject control answers, and a screening under two harnesses) and the states
  * screening moved a task through: `too-hard`, `admitted`, `too-easy`, `wall-bound`, and the
- * anchor's draw. They are read here as history. A later gate says nothing of a task's shape, and
+ * anchor's draw. They are read here as history. A later admission test says nothing of a task's shape, and
  * each of those states leaves the task what it was, a held-out task; a refusal one of the later
- * gates led to stands, since its state was logged beside it. No command writes any of them now.
+ * admission tests led to stands, since its state was logged beside it. No command writes any of them now.
  *
- * Departure from the plan, which hashes statement, inputs, check and controls into the task
+ * Departure from the plan, which hashes statement, inputs, check and control answers into the task
  * version: a task carries no statement, since v1's tasks have none and a stand-in would be hashed
  * without a reader; the version covers the family, which the solver reads, and the rule ids, which
- * the gate holds the check to.
+ * the shape check holds the check to.
  */
 import { EVALUATOR_FILE } from "../meta/bundle-layout.ts";
 import { existsSync } from "../meta/filesystem.ts";
@@ -63,27 +61,27 @@ export interface TaskPackage extends Task {
   readonly checks: string;
 }
 
-/** The gate passes or refuses. */
+/** The shape check passes or refuses. */
 type Passed = { readonly outcome: "passed" };
 type Refused = { readonly outcome: "refused"; readonly reason: string };
 
-/** A task version as the fold holds it: its state, and whether its package passed the gate. */
+/** A task version as the fold holds it: its state, and whether its package passed task admission. */
 interface Folded {
   state: TaskState;
-  gated: boolean;
+  admitted: boolean;
 }
 
 /** What a log holds of its tasks, from the one fold: each version's state, and the two sets every
  *  command of a campaign asks for, in the order their tasks were proposed. */
 interface TaskSets {
   readonly states: Map<string, TaskState>;
-  /** The held-out tasks: gated, and neither released, disputed nor refused. */
+  /** The held-out tasks: admitted, and neither released, disputed nor refused. */
   readonly held: readonly string[];
   /** The practice tasks. */
   readonly released: readonly string[];
 }
 
-/** The gate's outcome, and the state, of a task held for the ladder until 16 October. */
+/** The task admission's outcome, and the state, of a task held for the ladder until 16 October. */
 const LADDER = "ladder";
 const TASK_STATES = ["held", "refused", "released", "disputed"] as const;
 
@@ -103,7 +101,7 @@ const NEXT: Readonly<Record<TaskState, readonly TaskState[]>> = {
 };
 
 /** The states a log written before 2026-10-09 moved a held-out task through, `held` itself, which
- *  returned one from the wall, and the ladder's. Each leaves the task held out. */
+ *  returned one after a deadline, and the ladder's. Each leaves the task held out. */
 const ONCE_HELD: ReadonlySet<string> = new Set([
   "held",
   "too-hard",
@@ -113,12 +111,12 @@ const ONCE_HELD: ReadonlySet<string> = new Set([
   LADDER,
 ]);
 
-/** The gate a package is put to. A log written before 2026-10-09 holds three more a task, which
+/** The recorded task admission number. A log written before 2026-10-09 holds three more a task, which
  *  say nothing of its shape. */
-const GATE = 1;
+const ADMISSION_RECORD = 1;
 
 /**
- * The gate, on a package's shape: every part is present, and every rule id is in the contract. A check
+ * The shape check: every part is present, and every rule id is in the contract. A check
  * program none of whose checks applies to the family would pass any answer, and a check that
  * enforces a rule the task does not list holds the solver to a rule it was never shown. A check that
  * declares a hidden value of its own must find one in the task, and a declared path must read.
@@ -176,12 +174,12 @@ function packageFault(contract: Contract, task: TaskPackage): string | null {
 }
 
 /**
- * The task version, taken when the package is proposed and its gate runs: its five parts, with the check
- * program as the sha256 of each of its files by its path under the directory. Every file counts,
- * since the verifier copies them all into each check's cell: both check programs v1 wrote on 7
- * October import `./reference/model.ts`, and a version over `evaluator.ts` alone missed it. A
- * program that does not read, a symlink in it among the reasons, is versioned by why, so the gate's
- * refusal is logged against what was proposed.
+ * The task version, taken when the package is proposed and its task admission runs: its five parts,
+ * with the check program as the sha256 of each of its files by its path under the directory. Every
+ * file counts, since the verifier copies them all into each check's cell: both check programs v1 wrote
+ * on 7 October import `./reference/model.ts`, and a version over `evaluator.ts` alone missed it. A
+ * program that does not read, a symlink in it among the reasons, is versioned by why, so task
+ * admission's refusal is logged against what was proposed.
  */
 export function taskVersion(task: TaskPackage): string {
   const { checks, ...parts } = task;
@@ -203,7 +201,7 @@ export function foldsEvent(kind: EventKind): boolean {
 /**
  * Each task version's state, folded from the log: `task.proposed` holds it, a passing `task.gate`
  * makes it a held-out task, and `task.state` moves it. A history that proposes a task twice, puts
- * one to its gate twice, moves one where it cannot go, or releases or disputes one whose package
+ * one to its task admission twice, moves one where it cannot go, or releases or disputes one whose package
  * never passed, is refused, as a torn line is.
  */
 export function taskStates(events: readonly LogEvent[]): Map<string, TaskState> {
@@ -216,7 +214,7 @@ export function taskSets(events: readonly LogEvent[]): TaskSets {
   const tasks = new Map<string, Folded>();
   for (const event of events) step(tasks, event);
   const inState = (wanted: TaskState) =>
-    [...tasks].flatMap(([version, task]) => (task.gated && task.state === wanted ? [version] : []));
+    [...tasks].flatMap(([version, task]) => (task.admitted && task.state === wanted ? [version] : []));
   return {
     states: new Map([...tasks].map(([version, task]) => [version, task.state])),
     held: inState("held"),
@@ -231,16 +229,16 @@ function step(tasks: Map<string, Folded>, { at, kind, data }: LogEvent): void {
   const task = tasks.get(version);
   if (kind === "task.proposed") {
     if (task !== undefined) throw new Error(`${at}: task ${version} is proposed twice`);
-    tasks.set(version, { state: "held", gated: false });
+    tasks.set(version, { state: "held", admitted: false });
     return;
   }
   if (task === undefined) throw new Error(`${at}: task ${version} is not proposed`);
-  const fault = kind === "task.gate" ? gate(task, data) : kind === "task.state" ? move(task, data) : null;
+  const fault = kind === "task.gate" ? admit(task, data) : kind === "task.state" ? move(task, data) : null;
   if (fault !== null) throw new Error(`${at}: task ${version} ${fault}`);
 }
 
-/** Whether a gate's outcome held its task out: `passed`, or `ladder` in a log of 14 to
- *  16 October. Every reader of a gate's outcome asks this, so that an old ladder task is held out
+/** Whether a task admission's outcome held its task out: `passed`, or `ladder` in a log of 14 to
+ *  16 October. Every reader of a task admission's outcome asks this, so that an old ladder task is held out
  *  to each of them alike (16 October: the draw, the epochs and the Examiner's counts read `passed`
  *  alone, and such a task was held and never drawn). */
 export function heldAtGate(outcome: JsonValue | undefined): boolean {
@@ -248,10 +246,10 @@ export function heldAtGate(outcome: JsonValue | undefined): boolean {
 }
 
 /** A `task.gate` event on the task, or why the history may not log it. */
-function gate(task: Folded, data: JsonObject): string | null {
-  if (data.gate !== GATE) return null;
-  if (task.gated) return "logs its gate twice";
-  task.gated = heldAtGate(data.outcome);
+function admit(task: Folded, data: JsonObject): string | null {
+  if (data.gate !== ADMISSION_RECORD) return null;
+  if (task.admitted) return "logs its gate twice";
+  task.admitted = heldAtGate(data.outcome);
   return null;
 }
 
@@ -263,7 +261,7 @@ function move(task: Folded, data: JsonObject): string | null {
   if (to === undefined || (to === "held" ? from !== "held" : !NEXT[from].includes(to))) {
     return `cannot go from ${from} to ${to === undefined ? "no known state" : named}`;
   }
-  if (to !== "refused" && to !== "held" && !task.gated) {
+  if (to !== "refused" && to !== "held" && !task.admitted) {
     return `cannot go from ${from} to ${to} before its gate passed`;
   }
   task.state = to;

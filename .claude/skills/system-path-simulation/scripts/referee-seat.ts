@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * The Referee seated alone: one ruling on a rejection a seed holds, through the campaign's own
- * wiring (`openCampaign`, `reviewersNamed`, `packaged`), as a round or a gate hands it one. Run it
+ * wiring (`openCampaign`, `reviewersNamed`, `packaged`), as a round or a task admission hands it one. Run it
  * as the command of `live-seat.ts start`, which names the seed, the login and the cap:
  *
  *   bun --env-file=<file> .claude/skills/system-path-simulation/scripts/live-seat.ts start --tree <fork>

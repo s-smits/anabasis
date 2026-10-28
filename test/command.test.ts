@@ -62,7 +62,7 @@ const beating = (name: string) =>
   `sh -c 'i=0; while :; do i=$((i+1)); echo $i > "$HOME/${name}"; sleep 0.05; done'`;
 
 /** Whether the loop `beating` started still runs, read from the host: its count moves. A pid is no
- *  witness here, since Bubblewrap numbers a command's processes in a namespace of their own, and the
+ *  evidence here, since Bubblewrap numbers a command's processes in a namespace of their own, and the
  *  pid a command prints names another process on the host or none (18 October). */
 async function stillBeats(beat: string): Promise<boolean> {
   const count = () => (existsSync(beat) ? readFileSync(beat, "utf8") : "");
@@ -78,7 +78,7 @@ describe("a solve's walled commands", () => {
     async () => {
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-repo-")));
       writeFileSync(join(repoRoot, "secret"), "repo-canary");
-      // Where a reader or the Examiner keeps its Claude Code session, as `readOnce` makes it.
+      // Where a reader or the Examiner keeps its Claude Code session, as `sit` makes it.
       const reader = realpathSync.native(hostScratch("claude-cli-reader-"));
       writeFileSync(join(reader, "session"), "reader-canary");
       try {
@@ -141,7 +141,7 @@ describe("a solve's walled commands", () => {
   );
 
   it("refuse a command the repository, its other worktree and the host's folder in the seat, and let it write and read its own", async () => {
-    // The four steps the wall's probe takes before a seat's first command (`walledBase`), here as a
+    // The four steps the wall test takes before a seat's first command (`walledBase`), here as a
     // solver's command would spell them.
     const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-reads-")));
     writeFileSync(join(repoRoot, "secret"), "repo-canary");

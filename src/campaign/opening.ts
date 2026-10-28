@@ -17,8 +17,8 @@
  *
  * It also keeps the terms of the campaign's moves as a command last named them (`TERMS`): the
  * limits of a Builder session and of an Examiner session, the size of a comparison, the practice
- * tasks, and a solve's wall until a setting is recorded. Without them a command that names nothing
- * runs each move by its default: on 9 October a campaign opened with a solve's wall of 8 minutes,
+ * tasks, and a solve's deadline until a setting is recorded. Without them a command that names nothing
+ * runs each move by its default: on 9 October a campaign opened with a solve's deadline of 8 minutes,
  * 6 scored tasks and Builder sessions of 25 minutes and 6 practice solves, and, continued by its
  * name alone, recorded a setting of 120 minutes and 12 tasks and gave each session 240 minutes and
  * 24 practice solves, and nothing said so.
@@ -44,11 +44,11 @@ export interface Opening {
   /** The dollars the campaign may bill in all, and the reserve one solve is held at; null for a
    *  rehearsal's, whose seats are paid nothing. */
   readonly budget: Cap | null;
-  /** The full limit of a solve in the model's turns, and the Builder sessions before a comparison. */
+  /** The model turn limit of a solve, and the Builder sessions before a comparison. */
   readonly limit: number | null;
   readonly sessions: number;
-  /** The moves without a gain, and the readings that left nothing to gain (`roomless`), the
-   *  campaign bears in a row before it ends (`--patience`; `PATIENCE`). */
+  /** The improvement patience and supply patience: moves without a gain and readings that left
+   *  nothing to gain (`roomless`) before the campaign ends (`--patience`; `PATIENCE`). */
   readonly patience: number;
   readonly seats: Readonly<Record<(typeof SEATS)[number], Seat | null>>;
   /** Whether the operator is in the loop (`--hitl`): the freeze, a drafted exam's checks and a
@@ -70,10 +70,10 @@ export interface Opening {
   readonly terms: Terms;
 }
 
-/** The flags of a campaign's moves that its opening keeps: a solve's wall and the scored tasks,
+/** The flags of a campaign's moves that its opening keeps: a solve's deadline and the scored tasks,
  *  which the first setting records; a comparison's solves a side, level and stop on check
- *  defects; a Builder session's minutes, turns and practice solves; the practice tasks; and an
- *  Examiner session's tasks, proposals, minutes and turns. */
+ *  defects; a Builder session's deadline, session turn limit and practice solves; the practice tasks; and an
+ *  Examiner session's tasks, proposals, deadline and session turn limit. */
 export const TERMS = [
   "solve-minutes",
   "target",
@@ -95,8 +95,8 @@ export type Terms = Readonly<Partial<Record<(typeof TERMS)[number], string>>>;
 /** The seats a campaign names a model for. The solver's is the setting's (`tools/d2/setting.ts`). */
 export const SEATS = ["builder", "examiner", "reviewer"] as const;
 /** The Builder sessions before a comparison once set-up stands (epoch 0, `sessionsRun` in
- *  `decide.ts`), where nothing names them: the plan's checkpoint is several sessions and then one
- *  comparison (L5), since one session's change is rarely detectable. Before set-up each session's
+ *  `decide.ts`), where nothing names them: several sessions precede one standalone comparison
+ *  (L5), since one session's change is rarely detectable. Before set-up each session's
  *  harness is compared, and until 12 October three were the default after the first comparison. */
 export const SESSIONS = 2;
 const SETTING = "campaign.setting";

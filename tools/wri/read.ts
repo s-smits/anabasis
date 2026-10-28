@@ -4,9 +4,9 @@
  * `.claude/skills/whole-run-investigation/references/lanes.md` have something to read.
  *
  * v1's readers walked a campaign folder of some forty record kinds: claims, promotions, epochs,
- * batteries, case records, Builder executions, reviews. v2 keeps one append-only log, and everything
- * a lane starts from is a fold of it, so this file replaces v1's thirteen readers and reads nothing
- * else: no harness state, no pack, no file beside the log.
+ * task sets, case records, Builder executions, reviews. v2 keeps one append-only log, and everything
+ * a lane starts from is a fold of it. This file replaces v1's thirteen readers; the overview also
+ * reads launch receipts for host and launch provenance, without reading a harness or a pack.
  *
  * A trigger is a capitalised name, the lane it starts and one line of counts. It says a lane has
  * something to read and never what the answer is: a lane that contradicts its trigger from the
@@ -55,7 +55,7 @@ import {
   practiceOf,
   REPORTED,
   share,
-  SMALL_WALL_SHARE,
+  SMALL_DEADLINE_SHARE,
   type Solve,
   spendOf,
   strings,
@@ -69,7 +69,7 @@ import { safeguardTriggers } from "./climb.ts";
 import { promotionTriggers, testedOf } from "./promotion.ts";
 import { runTriggers } from "./run.ts";
 import type { Receipt } from "../runs/receipt.ts";
-import { costTriggers, hoursLine, wallTriggers } from "./time.ts";
+import { costTriggers, hoursLine, deadlineTriggers } from "./time.ts";
 
 export interface Row {
   readonly id: string;
@@ -165,7 +165,7 @@ function practiceTriggers(log: Index, { build, changed, child, read, round }: Pr
       solve.harness === child &&
       solve.outcome === "pass" &&
       wonTasks.has(`${String(solve.comparison)} ${solve.version}`) &&
-      solve.seconds < solve.wallSeconds * SMALL_WALL_SHARE &&
+      solve.seconds < solve.wallSeconds * SMALL_DEADLINE_SHARE &&
       solve.calls.length <= FEW_CALLS,
   ).length;
   return [
@@ -378,11 +378,11 @@ function practiceCandidates(
 ): PracticeCandidate[] {
   const child = text(build.finished?.harness);
   const read: PracticeCandidate[] = comparisons.flatMap(({ id, at, fresh, report }) => {
-    const checkpoint = log.events.some(
+    const snapshot = log.events.some(
       ({ kind, data }, index) =>
         kind === "build.checkpoint" && data.session === build.session && data.harness === fresh && index < at,
     );
-    return build.from < at && (fresh === child || checkpoint)
+    return build.from < at && (fresh === child || snapshot)
       ? [{ harness: fresh, began: at, origin: "comparison", id, reported: report !== null }]
       : [];
   });
@@ -546,7 +546,7 @@ function solveTriggers(log: Index, steps: readonly Handover[]): Trigger[] {
         ];
   });
   return [
-    ...wallTriggers(log),
+    ...deadlineTriggers(log),
     ...(non.length > 0
       ? [
           fired(

@@ -4,29 +4,29 @@
  *
  * v1's record is why. Its passes were sound, the Judge vetoing 5 of 1,411, and its rejections were
  * not: of 47 rehearsal misses 36 were a check or its instrument refusing a right answer, and 24
- * of 32 firmware fails were an author's stand-in refusing valid code. A task's own gate reads only
- * its package's shape (`task.ts`), so this asks the checker as a whole whether every control gets
+ * of 32 firmware fails were an author's stand-in refusing valid code. A task's shape check reads only
+ * its package's structure (`task.ts`), so this asks the checker as a whole whether every control answer gets
  * the verdict its author labelled it with, whether a second run agrees, whether every check has
  * been seen both to refuse an answer and to let one pass, and whether every instrument a check
  * names is there to run.
- * Since 14 October the opening's current faults and counts rest on fresh controls alone; stored
+ * Since 14 October the opening's current faults and counts rest on fresh control answers alone; stored
  * verdicts are reported apart, without rerunning them, and cannot clear a current fault.
  *
- * Two readings ask what no control of the pack's does (`7f0add79:docs/plan.md`, the correctness model). The
- * do-nothing answer, the smallest the answer format allows, must be rejected on every task: Anchor
- * tests its generated verifiers so, and cites a benchmark on which an agent that did nothing passed
- * 38% of the tasks, because the verifier accepted an empty response. And a check whose author's own
- * computation decides it, with no installed instrument, is a fault until the operator admits it by
- * name: all 32 verified firmware fails in v1 ran on batteries whose instrument a Builder had
- * written, and 24 of them were that stand-in rejecting valid code. A check's instrument is named by
- * the tool it runs. Until 12 October it was the brief's evidence label, which its author writes:
- * buffer-141-m3's reading gave 7 of 7 checks `authored`, and 5 of them ran the pack's engine on
- * their author's input. An exam with no engine behind any check, as every drafted one is (only a
- * stored pack's tool tree installs one), stands only once the operator admits each check by name.
+ * Two readings ask what no control answer of the pack's does (`7f0add79:docs/plan.md`, the correctness
+ * model). The do-nothing answer, the smallest the answer format allows, must be rejected on every
+ * task: Anchor tests its generated verifiers so, and cites a benchmark on which an agent that did
+ * nothing passed 38% of the tasks, because the verifier accepted an empty response. And a check whose
+ * author's own computation decides it, with no installed instrument, is a fault until the operator
+ * admits it by name: all 32 verified firmware fails in v1 ran on task sets whose instrument a Builder
+ * had written, and 24 of them were that stand-in rejecting valid code. A check's instrument is named
+ * by the tool it runs. Until 12 October it was the brief's evidence label, which its author writes:
+ * buffer-141-m3's reading gave 7 of 7 checks `authored`, and 5 of them ran the pack's engine on their
+ * author's input. An exam with no engine behind any check, as every drafted one is (only a stored
+ * pack's tool tree installs one), stands only once the operator admits each check by name.
  *
  * This reads and decides nothing: a fault is a sentence for the checker's owner, and what share of
- * faults a checker may carry is the operator's. One thing is not read here. A control tests the
- * faults its author thought of, so controls cannot show that the answers a check refused were
+ * faults a checker may carry is the operator's. One thing is not read here. A control answer tests the
+ * faults its author thought of, so control answers cannot show that the answers a check refused were
  * wrong; that takes a reading of the refused answers themselves (`src/referee/rejections.ts`).
  */
 import { asRecord, isBoolean, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
@@ -51,7 +51,7 @@ import {
 /** What a check that runs no engine is decided by. */
 export const AUTHOR = "author";
 
-/** A control as v1's `controls.json` labels it: an answer the checks must accept, or an edit of
+/** A control answer as v1's `controls.json` labels it: an answer the checks must accept, or an edit of
  *  one that a named check must refuse. */
 export interface Control {
   readonly taskId: string;
@@ -60,12 +60,12 @@ export interface Control {
   readonly refusedBy: string | null;
 }
 
-/** A control with the checks run on it twice. */
-interface ControlRun extends Control {
+/** A control answer with the checks run on it twice. */
+interface ControlAnswerRun extends Control {
   readonly verdicts: readonly [Verdict, Verdict];
 }
 
-/** An answer whose verdict is on record: a control's first run, or a stored solve's. */
+/** An answer whose verdict is on record: a control answer's first run, or a stored solve's. */
 export interface Graded {
   readonly task: Task;
   readonly verdict: Verdict;
@@ -85,10 +85,10 @@ interface CheckReading {
   readonly instrument: string;
   /** Declared tools the verifier's tool path does not hold. */
   readonly missing: readonly string[];
-  /** Answers it applied to and let pass, and answers it refused, controls and stored answers alike. */
+  /** Answers it applied to and let pass, and answers it refused, control answers and stored answers alike. */
   readonly passed: number;
   readonly refused: number;
-  /** Reject controls that name it, and how many of those it refused. */
+  /** Reject control answers that name it, and how many of those it refused. */
   readonly named: number;
   readonly caught: number;
 }
@@ -105,7 +105,7 @@ interface Checker {
   readonly checks: string;
 }
 
-/** What a checker is read on: its verifier and brief, the tasks and controls put to it, answers
+/** What a checker is read on: its verifier and brief, the tasks and control answers put to it, answers
  *  graded elsewhere, and whether the verifier's tool path holds a tool. */
 export interface Read {
   readonly verify: Verifier;
@@ -137,7 +137,7 @@ function swapsOf(leaf: JsonValue): JsonValue[] {
 }
 
 /** Each leaf of an answer by its path, an array read at its first item, with the whole answer
- *  changed there. Control values and schema alternatives supplement the generic swaps. */
+ *  changed there. Control answer values and schema alternatives supplement the generic swaps. */
 function changes(
   answer: JsonValue,
   at: string,
@@ -185,10 +185,10 @@ function changes(
 }
 
 /**
- * The fields of the answer no check decides, a sentence each. Every leaf of each accept control
+ * The fields of the answer no check decides, a sentence each. Every leaf of each accept control answer
  * that passed is changed in the ways the format still allows, and a field stands once one change
- * moves a verdict or the objective on some control; a field the format allows no change of is
- * the format's. Control values are tried one field at a time, so a rejection of another field
+ * moves a verdict or the objective on some control answer; a field the format allows no change of is
+ * the format's. Control answer values are tried one field at a time, so a rejection of another field
  * proves nothing.
  * In the sweep of 27 October the job exam's answers carried a field for the rule
  * applied that no check read, so a pass certified the numbers and none of what the answer said of
@@ -197,7 +197,7 @@ function changes(
 export async function unreadFields(
   verify: Verifier,
   tasks: readonly Task[],
-  runs: readonly ControlRun[],
+  runs: readonly ControlAnswerRun[],
   answerFormat: Contract["answerFormat"],
   width: number,
 ): Promise<string[]> {
@@ -230,15 +230,15 @@ export async function unreadFields(
   return unread.flatMap((fault) => fault ?? []);
 }
 
-/** Every control through the checks, twice, `width` at once. A control of a task the pack does not
+/** Every control answer through the checks, twice, `width` at once. A control answer of a task the pack does not
  *  hold is the caller's error, not the checker's, and a verifier that cannot decide stops the run,
- *  as it stops a gate (`decided`): a wall that is not there is no fault of a check's. */
+ *  as it stops task admission (`decided`): a wall that is not there is no fault of a check's. */
 export function runControls(
   verify: Verifier,
   tasks: readonly Task[],
   controls: readonly Control[],
   width: number,
-): Promise<ControlRun[]> {
+): Promise<ControlAnswerRun[]> {
   const byId = new Map(tasks.map((task) => [task.taskId, task]));
   return pooled(controls, width, async (control) => {
     const task = byId.get(control.taskId);
@@ -306,8 +306,12 @@ export function doNothingFaults(idle: readonly Idle[]): string[] {
   );
 }
 
-/** Why a control's run is not what its label says, or null when it is. */
-export function controlFault({ taskId, refusedBy, verdicts: [first, second] }: ControlRun): string | null {
+/** Why a control answer's run is not what its label says, or null when it is. */
+export function controlFault({
+  taskId,
+  refusedBy,
+  verdicts: [first, second],
+}: ControlAnswerRun): string | null {
   const named = refusedBy === null ? `the accept control of ${taskId}` : `a reject control of ${taskId}`;
   if (spelled(first) !== spelled(second)) {
     return `${named} got two verdicts from one answer: ${spelled(first)}, then ${spelled(second)}`;
@@ -319,7 +323,7 @@ export function controlFault({ taskId, refusedBy, verdicts: [first, second] }: C
 }
 
 /** The tools a check names that the verifier's tool path does not hold, a sentence each. A check
- *  whose tool is missing decides nothing, so a caller asks this before it runs a control: put to
+ *  whose tool is missing decides nothing, so a caller asks this before it runs a control answer: put to
  *  the verifier first, such a check stops the run and the missing tool is never named. */
 export function toolFaults(brief: Brief, found: (toolId: string) => boolean): string[] {
   return brief.truthChecks.flatMap(({ id, execution }) =>
@@ -330,7 +334,7 @@ export function toolFaults(brief: Brief, found: (toolId: string) => boolean): st
 }
 
 /**
- * The reading: each check's tallies over the controls and the stored answers, and the faults.
+ * The reading: each check's tallies over the control answers and the stored answers, and the faults.
  * `stored` are answers graded elsewhere, a sweep's solves say, and add to what a check has been
  * seen to do without being rerun. `found` says whether the verifier's tool path holds a tool. A
  * verdict that decided nothing, a faulty check's or a non-result, tallies for no check.
@@ -338,7 +342,7 @@ export function toolFaults(brief: Brief, found: (toolId: string) => boolean): st
 function acceptance(
   brief: Brief,
   tasks: readonly Task[],
-  runs: readonly ControlRun[],
+  runs: readonly ControlAnswerRun[],
   stored: readonly Graded[],
   found: (toolId: string) => boolean,
 ): Acceptance {
@@ -387,7 +391,7 @@ function acceptance(
     };
   });
   // A check that could not run is the fault, and what it then never refused or passed is not a
-  // second one: said so, the remedy reads as another control. v1's gate told a Builder to add a
+  // second one: said so, the remedy reads as another control answer. v1's admission test told a Builder to add a
   // reject when twelve existed and the check's tool could not write its output.
   const unrun = new Map(
     graded
@@ -421,7 +425,7 @@ function acceptance(
 }
 
 /**
- * One reading of a checker without a model: every control through the checks twice, what each
+ * One reading of a checker without a model: every control answer through the checks twice, what each
  * check was then seen to do, and the do-nothing answer on every task, where the format's own
  * schema yields one that follows the format (`unformed` says why it does not). The acceptance
  * command records it (`tools/c/accept.ts`), and an Examiner's draft is held to the same reading

@@ -28,7 +28,7 @@ stops and its patches, and its landing, release and next runs only where the wor
 merging is the operator's (`AGENTS.md`, section 11). Record each grant and each decision still
 open. Keep the cycle's plan in one local file beside the handover, on the central host
 (`ANA_CENTRAL` in `.env.runs`), which also gathers every host's records: the word, the threshold,
-the checkpoints, and a log line per step. Every step below reads that file first.
+the reviews, and a log line per step. Every step below reads that file first.
 
 **The order is fixed, and nothing moves a step ahead of the one before it:**
 
@@ -67,7 +67,7 @@ time, tell the operator and ask, rather than land first.
 
    The cycle-wide predictions are rows of the second table, so every prediction and its resolution
    sit in one file. A peer session's ledger for the same runs is read and linked, not repeated.
-   Every checkpoint first checks that `Predictions.md` exists. Where it is missing, the checkpoint
+   Every review first checks that `Predictions.md` exists. Where it is missing, the review
    writes it before anything else, marked as written after launch, with each run's solves at the
    time of writing. On 27 October the v0.7.3 runs opened with only cycle-wide predictions, and
    their per-PR ledger was written 15 minutes after launch; the next cycle's ledger was written
@@ -86,7 +86,7 @@ time, tell the operator and ask, rather than land first.
    October two `fresh --host` launches sent at once from one checkout both exited 1, and each
    passed when run alone. Fresh performs the fleet login admission before each launch. Tag
    `run/<name>/1` at the commit and push the tag.
-3. **Read the runs** with `scripts/cycle.ts` (below) at every checkpoint and at every milestone,
+3. **Read the runs** with `scripts/cycle.ts` (below) at every review and at every milestone,
    and resolve each prediction the hour its event lands, in the ledger's Resolutions. A defect seen live is noted for the plan of step 7; the run
    is not stopped to fix it (`AGENTS.md`, section 10, item 6).
 
@@ -129,7 +129,7 @@ its end, and carry on in the same order; the window gives no step a reason to sk
    request states what moved against what was predicted. A fix is measured by the next cycle's
    runs, never by the runs it was found in. When a Codex swarm implements the rows, the primary
    commits what its sandbox cannot (no nested verifier wall, no git directories), stacks the patches
-   with `git apply --3way`, folds later fixes into their commits, and runs the composed gate on the
+   with `git apply --3way`, folds later fixes into their commits, and runs the composed CI gate on the
    top, which found an interaction every commit had passed alone. A patch that rewrites the scheduler
    and changes the counting rule of the runs launched next is deferred, with its reason in the plan,
    until a recorded reading is shown to flip on it.
@@ -146,7 +146,7 @@ its end, and carry on in the same order; the window gives no step a reason to sk
    One cycle is one stack and one release (`AGENTS.md`, section 11), and the number tells a reader
    which runs may be read side by side. The patch moves (0.7.2 to 0.7.3) where the cycle's runs
    measure what the last release's runs measured. The minor moves (0.7 to 0.8) where the release
-   changes what a run measures, such as a weight, the level, the step test, the task gate or the
+   changes what a run measures, such as a weight, the level, the step test, the task admission or the
    setting: the release says which, and no run of the earlier minor is read beside one of the new.
    The major moves only on the operator's word, for a break in the design.
 11. **Predict and fork** the next cycle at the release's merge commit: steps 1 and 2 again.
@@ -163,7 +163,7 @@ campaign stops at it (`AGENTS.md`, factor 1): the cycle stops the runs.
 
 ### The script: `scripts/cycle.ts`
 
-The cycle's state is read by one script, so a checkpoint or a timer is one line and nobody reads
+The cycle's state is read by one script, so a review or a timer is one line and nobody reads
 the runs by hand to decide the step:
 
 ```sh
@@ -190,10 +190,10 @@ timer that runs it takes the step, under the cycle's word. A host answers by run
 its own tree with `--here`, so a host's tree must hold the script: bring it to the release's commit
 before the fork, as step 2 does.
 
-The cycle's checkpoints are one-shot timers (section "Timers"), each of which runs the script and
+The cycle's reviews are one-shot timers (section "Timers"), each of which runs the script and
 takes the step it names: about 30 minutes after the fork for M1, then at each run's comparisons and
 promotions, and once the script reads `stop`, at each step of the improvement window. Each
-checkpoint may move the plan forward within the order above, and add, move or delete the cycle's
+review may move the plan forward within the order above, and add, move or delete the cycle's
 own timers to reach its goal.
 
 ## Resume
@@ -225,7 +225,7 @@ Open and close each pass with these rows for each campaign. Say which point the 
 | # | Point | Question | Read it from | Bar |
 | --- | --- | --- | --- | --- |
 | 1 | Climb | how many promotions from a fresh opening | `runs status`, `runs view`, the closing report's "Promotions" | `AGENTS.md`, factor 1 |
-| 2 | Honesty | could a promotion be chance or drift | each report's `noise`; the closing report's "The chance of a false promotion" | the A/A controls and risk over every attempt |
+| 2 | Honesty | could a promotion be chance or drift | each report's `noise`; the closing report's "The chance of a false promotion" | the A/A comparisons and risk over every attempt |
 | 3 | Supply | are there informative tasks | the campaign's `--dry-run`, the view's set-up line, `task.gate` | `AGENTS.md`, supply condition; admission also needs `comparisonFloor(level)` frontier tasks, a sweep plus two |
 | 4 | Verdicts | does a person agree with the Referee | `tools/d2/settle.ts` | `AGENTS.md`, factor 3 |
 | 5 | Economy | what each promotion cost | the closing report's "Work and spend", `promotionsWorth`, `worthLine` | at most three promotion attempts an epoch after set-up, unless the opening names another cost bar |
@@ -238,7 +238,7 @@ bun tools/d2/close.ts --name <name> --to <scratch dir>
 ```
 
 Point `--to` outside the repository, or under `data/harnesses/` of the main worktree, where a campaign `runs fresh` launched writes its own at its end. Without `--solve`, this writes a handover and runs no solve.
-Supply binds before a comparison can say anything; economy reports and gates nothing.
+Supply binds before a comparison can say anything; economy reports and refuses nothing.
 
 A different level, target or number of solves a side changes what the instrument can show. Name
 that change separately from a gain of the harness. The level and everything a solver is given
@@ -248,14 +248,14 @@ belong to the operator.
 
 ```text
 prompt → Examiner drafts exam → host reads it → contract.frozen
-Examiner drafts tasks → package gate → three reference solves (try_task)
+Examiner drafts tasks → shape check → up to three room solves (try_task)
                      → informative, or none valid and author's answer passes → held out
                      → no room or no reading → refused
 Builder practises and edits → comparison.reported: step → harness.promoted
                             → new epoch → Examiner writes for the new reference
 ```
 
-The gate uses `informative` in `src/kernel/compare.ts`, as the comparison does. A task leaves room
+Task admission uses `informative` in `src/kernel/compare.ts`, as the comparison does. A task leaves room
 where the reference answers some solves, answers none while a valid answer is on record, or has a
 valid answer beaten by a recorded objective measure. All reference solves passing therefore does
 not by itself close a task. `AGENTS.md`, section 7, owns the full scoring procedure.
@@ -269,17 +269,17 @@ it predicts. Quiet between milestones is read against the limits of the work in 
 | --- | --- | --- | --- | --- |
 | M0 opened | receipt and `campaign.opened` | `runs source`: one commit, clean; fresh opening under section 10, item 9 | ledger written before the first solve | none |
 | M1 exam | `exam.drafted`, `checker.read`, `contract.frozen` | faults by kind, `doNothing`, `admitted`, read when `contract.frozen` lands; a draft still open an hour after M0 is a lead to read, not a fault | frozen before `build.started` | none; assign an `exam` ending from its faults |
-| M2 supply | first Examiner sessions' `task.gate` | held and refused by reason, objective room, missing readings, dry run | held out of drafted, a range | none |
+| M2 supply | first Examiner sessions' `task.gate` | held and refused by reason, objective gap, missing readings, dry run | held out of drafted, a range | none |
 | M3 first reading | first `comparison.reported` | `valid.informative.old`, tested untied and tied, `scored.detectable`, A/A, load | reading and untied count | only if a `read` trigger fires |
 | M4 step | `comparison.reported` with `reading: step` against the reference | tested margins, the retained tally apart, A/A | untied count and A/A result | none |
 | M5 promotion | `harness.promoted` | supporting reading, untied tasks, A/A and campaign risk; `wri.ts climb --log <log>,<peer>,<peer>` | write M6 prediction now | first promotion, once M6's first Examiner session has ended |
-| M6 next epoch | first Examiner session and first comparison after M5 | drafts held and refused by reason, frontier and retained sizes, objective room | held out after M5 against before it | lane 27 with standing lanes, when owed at M5 |
+| M6 next epoch | first Examiner session and first comparison after M5 | drafts held and refused by reason, frontier and retained sizes, objective gap | held out after M5 against before it | lane 27 with standing lanes, when owed at M5 |
 | M7 ending | `campaign.ended` | ending kind, closing report, resolve every prediction | every open row | full investigation where the campaign promoted or an early ending raises an unresolved question |
 
 An investigation follows its event and waits for a comparison's `comparison.reported`. Open it
 for a question the readers cannot settle, a reading in doubt or an unclear failure owner. A timer
 alone raises no question. A second promotion reopens lane 27 only where `wri.ts climb` shows
-something the first did not. For an ending other than patience, report "reached N promotions;
+something the first did not. For an ending other than improvement patience, report "reached N promotions;
 further improvement unresolved" (`AGENTS.md`, factor 1).
 
 **A stall** is a campaign whose milestone has not moved while it bills. Report it with its
@@ -351,7 +351,7 @@ this walk chooses what to do about it.
 
 Choose from a recorded failure, wasted work or an open decision. Name the link, point, owner and
 falsifier before writing code. Change the owner as far as the evidence carries: a prompt, tool
-result, gate, table row or term. When an interface failure recurs, fix its schema, tool or facts.
+result, admission, table row or term. When an interface failure recurs, fix its schema, tool or facts.
 
 Read the producer, consumers and tests first. Prefer deleting a competing owner, then reusing the
 existing one, then adding the minimum. A term needs flags rather than code: read the owning command's
@@ -369,7 +369,7 @@ comparisons miss alike, or a prediction fails, walk the links again before choos
 - **Dry run:** `bun tools/d2/harness-builder.ts --name <name> --dry-run`. Read the table's move
   and the facts it used. The launcher runs this before launch too.
 - **Replay:** `bun run runs replay [<name>]` reads registered campaign logs through this tree's
-  readers, without provider cost. For a changed gate or table,
+  readers, without provider cost. For a changed admission or table,
   also show what it would have held out or named at the relevant milestone.
 - **Rehearsal:** `bun run runs seed --from <campaign folder> --name <seed>`, then
   `bun run runs rehearse` over the seed. Scripts replace the working seats; no Referee runs, and
@@ -422,7 +422,7 @@ bun run runs pulse --once [<name>]
 Read at each milestone and at the timer's predicted moment.
 
 - A missing terminal event alone shows no stall. Solves can record `solve.turn` and `solve.call`
-  before their verdict. Read quiet against the solve's wall and the session's `--minutes`.
+  before their verdict. Read quiet against the solve's deadline and the session's `--minutes`.
 - A receipt's process gone before an ending calls for reading its `.err`. A log that stopped
   growing is a lead, not a process check.
 - Read a quiet run's last event before naming its state. A `status` row saying "solving" or
@@ -462,7 +462,7 @@ margins to size the next comparison; a tally alone does not fix its power.
 
 **Two runs side by side** compare the system at two commits, never two harnesses: each run
 drafted its own exam (`AGENTS.md`, section 9). Match them by **active hours**, then check the
-match against dollars billed and comparisons reported. Wall hours mislead, because runs sit in
+match against dollars billed and comparisons reported. Elapsed hours mislead, because runs sit in
 provider waits, outages and stopped stretches for different lengths of time. Active hours are the
 time between consecutive events, leaving out:
 
@@ -471,7 +471,7 @@ time between consecutive events, leaving out:
 - every stretch that ends in a `provider` non-result or an errored model turn before anything
   productive happens.
 
-On 20 October r5 and r6 read 16 wall hours and 7.5 and 9.4 active hours: a DNS outage had failed
+On 20 October r5 and r6 read 16 elapsed hours and 7.5 and 9.4 active hours: a DNS outage had failed
 their solves as `provider` non-results for four hours. Name each setting the runs differ in
 (limits, objective rule, promotion rule) beside the comparison. No reader in the tree computes
 active hours yet, so give the script with the counts.
@@ -490,8 +490,8 @@ compare, promote or end. A led Builder chooses its tools; code keeps admissions 
 
 The stop rule counts since the last promotion (`stopRule`, `src/kernel/reports.ts`). A changed
 harness/reference pair counts once when tallied with room or a step; a whole unchanged session
-counts only where practice failed. A step shows gain. Controls, unscored comparisons and non-step
-readings without room do not count. Patience defaults to six (`PATIENCE`); `roomless` separately uses it
+counts only where practice failed. A step shows gain. Starter comparisons, unscored comparisons and non-step
+readings without room do not count. Improvement patience defaults to six (`PATIENCE`); supply patience (`roomless`) uses the same limit
 for failed attempts to obtain tasks or room. Budget and other endings remain distinct.
 
 If the pass disagrees with the table, give the counts it cannot read. The loop's own moves are:
@@ -546,7 +546,7 @@ At step 4 of the cycle every row still open is marked `unreached`.
 | watch | hourly, off the hour and the half hour (`13 * * * *`) | every run's milestone and possible stall on every host |
 | pass (the cycle's driver) | every three hours (`17 */3 * * *`) | the first cycle step not done, ended runs closed out, `runs usage`, and the timers reviewed from the ledger alone |
 | milestone | one-shot at a predicted event, or at a prediction's deadline | the named milestone or row, and any investigation it owes |
-| cycle checkpoint | one-shot at each step of the release cycle: the stop at the latest opening plus twelve hours, and the end of the improvement window at the last stop plus twelve hours | the step `cycle.ts` names; at the window's end, what is proved and what is left |
+| cycle review | one-shot at each step of the release cycle: the stop at the latest opening plus twelve hours, and the end of the improvement window at the last stop plus twelve hours | the step `cycle.ts` names; at the window's end, what is proved and what is left |
 | handover | one-shot at the agreed handover time | five points, changes and decisions waiting, and which timers were useful by their ledger rows |
 
 Review the Firings rows in the pass: three empty watches may justify two-hour spacing, and M3 or M5

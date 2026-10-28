@@ -7,7 +7,7 @@
  *   --solver-window 200000              the context its Claude Code compacts at, beside --solver
  *                                       too: 300,000 tokens where not named, which a model served
  *                                       a 200K context, such as claude-haiku-5-5, cannot hold
- *   --solve-minutes 30                  the wall of one solve; 30 where not named
+ *   --solve-minutes 30                  the deadline of one solve; 30 where not named
  *   --solve-model-turns 20              the model's own turns a solve is given, told to the solver; 20 where not
  *                                       named, and `unlimited` for none, as campaigns recorded before
  *                                       19 October read back
@@ -25,7 +25,7 @@
  * budget was set anew, and every fold then read the log by setting: the stop rule, the tasks
  * both harnesses exhausted, the outcome an Examiner hears, the size of the next comparison. The
  * ladder went (`7f0add79:docs/simplify.md`, A1), and the flag and the filters with it (A4): another solver,
- * another wall or another number of turns is another campaign.
+ * another deadline or model turn limit is another campaign.
  *
  * A record is written as a command begins its comparison and not before, so a command that is
  * refused records nothing (`keepSetting`).
@@ -47,8 +47,8 @@
  * is one more thing two comparisons could differ in. A rehearsal seats a script
  * where the solver sits and refuses `--solver`; its limits and its scored set are these.
  *
- * The shell's two timeouts are the sweep's as far as the wall leaves room for them
- * (`commandSeconds`). They ignored the wall until 2026-10-09: under the five-minute wall of the one
+ * The shell's two timeouts are the sweep's as far as the deadline allows
+ * (`commandSeconds`). They ignored the deadline until 2026-10-09: under the five-minute deadline of the one
  * comparison that read a step, a command was allowed 300 s by default and 900 s at most, so none a
  * solver started could be cut and handed back to it before the solve itself ended.
  */
@@ -84,7 +84,7 @@ export interface Recorded {
   /** Who solves in the stored cycle's place; null for the cycle's own model at its effort. */
   readonly solver: { readonly model: string; readonly effort: string; readonly window?: number } | null;
   readonly minutes: number;
-  /** The model's own turns a solve is given; null where they are not limited. */
+  /** The model turn limit of a solve; null where they are not limited. */
   readonly modelTurns: number | null;
   readonly target: number;
 }
@@ -131,7 +131,7 @@ export const SETTING_OPTIONS = {
   "solve-model-turns": { type: "string" },
 } as const;
 
-/** The setting of a campaign nothing has named: `LIMITS`'s wall and model turns, as the flags say
+/** The setting of a campaign nothing has named: `LIMITS`'s deadline and model turn limit, as the flags say
  *  them. The solver is the stored cycle's own, and the scored set is `SIZE.tasks` tasks by the draw. */
 const { modelTurns: budgeted, ...UNTURNED } = LIMITS;
 const SETTING_DEFAULTS = {
@@ -179,7 +179,7 @@ export function targetNamed(flag: string): number {
 /**
  * What the flags name of the solver and its limits, with the defaults for those not given.
  * `--solver-effort` without `--solver` names nothing, as it never did: the cycle's model solves at
- * the cycle's effort. A wall or a turn cap that is no whole number of at least one is refused: a
+ * the cycle's effort. A deadline or a model turn limit that is no whole number of at least one is refused: a
  * fraction of a minute would hash to a setting nobody could name again.
  */
 export function settingNamed(values: SettingFlags): NamedSetting {
@@ -339,10 +339,10 @@ export function keepSetting(log: string, { record }: Pick<AskedSetting, "record"
 }
 
 /**
- * How long one command may run under a wall: the sweep's two limits, 300 s where a command names
- * no timeout and 900 s at most, each held to a share of the wall, a quarter and a half. So a
+ * How long one command may run under a deadline: the sweep's two limits, 300 s where a command names
+ * no timeout and 900 s at most, each held to a share of the deadline, a quarter and a half. So a
  * command that names nothing can be cut and returned four times in a solve, and the longest one a
- * solver may ask for leaves it half its time. From a wall of half an hour up both are the sweep's
+ * solver may ask for leaves it half its time. From a deadline of half an hour up both are the sweep's
  * own. Each is at least a second.
  */
 export function commandSeconds(wallSeconds: number): Pick<Limits, "shellDefaultSeconds" | "shellMaxSeconds"> {

@@ -12,7 +12,7 @@
  * `promoted`, `latest`, a whole digest or its unambiguous letter. The states sit beside the log,
  * under `states/`.
  *
- * v1's final-harness-audit joined each workspace commit to its iteration, its battery and its claim
+ * v1's final-harness-audit joined each workspace commit to its iteration, its scored set and its claim
  * through four scripts of 1,246 lines. v2 writes those joins as events, `harness.version`,
  * `harness.imported`, `harness.promoted` and the comparisons' own, and `campaignOf`
  * (`src/campaign/handover.ts`) folds them. This lists the states, opens each as a solve would
@@ -169,7 +169,7 @@ function madeOf(events: readonly LogEvent[], digest: string, starter: string) {
   )?.data;
   if (imported !== undefined) return { made: `imported from ${recorded(imported.from)}`, parent: null };
   // A Builder that leads its campaign freezes a harness with `build.checkpoint` and no parent: its
-  // parent is the session's checkpoint before it, or what the session began from. Until 27 October
+  // parent is the session's harness snapshot before it, or what the session began from. Until 27 October
   // this read only `harness.version`, and every harness compared in a led campaign read as made by
   // no record.
   const at = events.findIndex(({ kind, data }) => kind === "build.checkpoint" && data.harness === digest);

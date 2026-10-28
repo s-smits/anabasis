@@ -157,7 +157,7 @@ async function setup(responses: FauxResponseStep[], table: Table, from?: string)
   if (from === undefined) {
     for (const version of ["p1", ...HELD, "s5"]) {
       record("task.proposed", { version, family: FAMILIES.get(version) ?? "f2" });
-      record("task.gate", gatePassed(version));
+      record("task.gate", passedPackageCheck(version));
     }
     record(TASK_STATE, { version: "p1", state: "released" });
   } else cpSync(from, log);
@@ -340,8 +340,8 @@ async function compared(table: Table, more: Partial<CheckpointRequest> = {}) {
   return { s, report: await checkpoint(s.paired("g0", more)) };
 }
 
-/** A task's first gate passed, as the log holds it. */
-const gatePassed = (version: string) => ({ version, gate: 1, outcome: "passed" });
+/** A task's shape check passed, as the log holds it. */
+const passedPackageCheck = (version: string) => ({ version, gate: 1, outcome: "passed" });
 
 /** Whether a round stopped, task by task, at the first solve of the last task it reached: the
  *  third of three in a row that had no solve run (`SILENT`, `round.ts`). */
@@ -715,7 +715,7 @@ describe("a round", () => {
       starter: s.starter.digest,
       scored: { wins: 3, losses: 0, ties: 1, p: 0.125 },
       // How the starter does by itself is read from the same comparison: no valid answer on two
-      // tasks, one on a third, two on the fourth. That is the plan's first gate.
+      // tasks, one on a third, two on the fourth. That is the plan's starter measurement.
       valid: { old: [2, 1, 1], fresh: [0, 0, 4] },
       reading: NO_STEP,
     });
@@ -723,7 +723,8 @@ describe("a round", () => {
     // Four tasks, two harnesses, two solves: no solve under any other harness.
     expect(s.asked).toHaveLength(16);
     expect(s.asked.every(({ side }) => side !== "old")).toBe(true);
-    // The first round is a checkpoint of the stop rule: its harness is one a session built, and
+    // The first round is a comparison counted by the improvement patience: its harness is one a session
+    // built, and
     // its 3-0 (p 0.125) left room and showed no gain.
     expect(stopRule(read(s.log))).toEqual({ checkpoints: 1, sinceStep: 1, stop: false });
     // One harness on both sides is no comparison.
@@ -781,7 +782,7 @@ describe("a round", () => {
     });
     expect(s.asked).toHaveLength(16);
     expect(s.of(COMPARISON_REPORTED)[0]).toMatchObject({ tasks: 4, reading: NOT_SCORED });
-    // It tallied nothing, and is no checkpoint of the stop rule.
+    // It tallied nothing, and is no comparison counted by the improvement patience.
     expect(stopRule(read(s.log))).toMatchObject({ checkpoints: 0 });
     const asked = toLabel(read(s.log), "b-1");
     expect(asked.aside).toHaveLength(8);
@@ -1371,16 +1372,16 @@ describe("a round", () => {
     expect(s.of(COMPARISON_REPORTED)).toEqual([]);
   });
 
-  it("keeps a kill as the reason when it reaches a solve queued at the host's gate", async () => {
+  it("keeps a kill as the reason when it reaches a solve queued in the solve queue", async () => {
     const kill = new AbortController();
     const s = await setup([], () => PASS);
     const request = s.compare("g-queued", {
       kill: kill.signal,
-      // The gate's own leaving (`gated`, `tools/d2/host.ts`): the kill's reason, before any solve.
+      // The solve queue's own leaving (`queued`, `tools/d2/host.ts`): the kill's reason, before any solve.
       solve: async (_version, _harness, _comparison, signal) => {
         kill.abort();
         signal.throwIfAborted();
-        throw new Error("the gate let a killed solve start");
+        throw new Error("the solve queue let a killed solve start");
       },
     });
     await expect(checkpoint(request)).rejects.toThrow("the comparison was killed");
@@ -1466,7 +1467,7 @@ describe("a round", () => {
     expect(stopRule(read(s.log))).toEqual({ checkpoints: 0, sinceStep: 0, stop: false });
   });
 
-  it("counts towards the stop only the comparisons that left room: three harnesses without a step stop at the patience, and none counts where nobody answered or every answer was valid", async () => {
+  it("counts towards the stop only the comparisons that left room: three harnesses without a step stop at the improvement patience, and none counts where nobody answered or every answer was valid", async () => {
     {
       // Either harness answers each task on one of its two solves: nothing separates them, and the
       // reference harness is valid on half its solves, which leaves a harness room to gain.
@@ -1476,8 +1477,9 @@ describe("a round", () => {
       for (const [index, id] of ["b-1", "b-2", "b-3"].entries()) {
         const report = await round(s.next(id));
         expect(report).toMatchObject({ scored: { wins: 0, losses: 0, ties: 4 }, reading: NO_STEP });
-        // The campaign's patience is six by default, so three harnesses without a step do not stop
-        // it; with an opening of patience three, as the plan had it, the third does.
+        // The campaign's improvement patience is six by default, so three harnesses without a step do not
+        // stop
+        // it; with an opening of improvement patience three, as the plan had it, the third does.
         expect(stopRule(read(s.log))).toEqual({ checkpoints: index + 1, sinceStep: index + 1, stop: false });
         const three = {
           at: "2026-10-09T00:00:00.000Z",
@@ -1544,7 +1546,7 @@ describe("a round", () => {
   });
 });
 
-describe("a checkpoint with no session", () => {
+describe("a standalone comparison", () => {
   it("reads the reference harness against itself as it reads two harnesses, on its own solves at four a side", async () => {
     // The plan's section 4b: at four solves a side every comparison carries its A/A, the
     // reference's four solves of a task split by slot two against two, read as the test is. The
@@ -1578,7 +1580,7 @@ describe("a checkpoint with no session", () => {
     append(s.log, "harness.promoted", { harness: s.old, from: s.starter.digest, rests: [] });
     for (const version of ["s6", "s7", "s8", "s9"]) {
       append(s.log, "task.proposed", { version, family: version < "s8" ? "f3" : "f4" });
-      append(s.log, "task.gate", gatePassed(version));
+      append(s.log, "task.gate", passedPackageCheck(version));
     }
     // Two comparisons in which the reference answered s1 in every solve exhaust it, and the hash
     // keeps a third of the exhausted, here s1 itself, in the draw as retained. s2 to s5 were held
@@ -1627,7 +1629,8 @@ describe("a checkpoint with no session", () => {
       }
       expect(report).toMatchObject({ scored: null, versions: [], capped: true, reading: NOT_SCORED });
       expect(s.of(COMPARISON_STARTED)[0]).toMatchObject({ cap });
-      // It is no checkpoint of the stop rule, and run again it says what it said and buys nothing.
+      // It is no comparison counted by the improvement patience, and run again it says what it said and buys
+      // nothing.
       expect(stopRule(read(s.log))).toMatchObject({ checkpoints: 0 });
       expect(await checkpoint(s.paired("g0", { cap, concurrency }))).toEqual(report);
       expect(s.asked).toHaveLength(solves);
@@ -1676,9 +1679,10 @@ describe("a checkpoint with no session", () => {
 describe("a session with no comparison after it", () => {
   const practise = call("practice", { tasks: ["t-p1"] });
 
-  // The plan's checkpoint (`7f0add79:docs/plan.md`, Phase 5): several sessions, then one comparison. Until
+  // The plan's standalone comparison (`7f0add79:docs/plan.md`, Phase 5): several sessions, then one
+  // comparison. Until
   // 2026-10-09 a session ran only inside a round, so two sessions were two paid comparisons.
-  it("runs twice, the second from what the first left, and one checkpoint compares what they leave", async () => {
+  it("runs twice, the second from what the first left, and one standalone comparison compares what they leave", async () => {
     const s = await setup([edit, practise, finish, again, finish], step);
     const { session: build, builder } = s.request;
     const first = await sessionOnce(build, builder);
@@ -1742,7 +1746,7 @@ describe("the scored set", () => {
   const heldOut = (versions: readonly string[], family?: string): LogEvent[] =>
     versions.flatMap((version) => [
       { at, kind: "task.proposed", data: { version, ...keyIfDefined("family", family) } } as const,
-      { at, kind: "task.gate", data: gatePassed(version) } as const,
+      { at, kind: "task.gate", data: passedPackageCheck(version) } as const,
     ]);
   const held = ["v1", "v2", "v3", "v4", "v5", "v6"];
   /** The tasks a draw of `target` scores, under one contract. */

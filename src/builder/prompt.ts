@@ -1,6 +1,6 @@
 /**
  * Continuations read counted practice for the current exact digest, so restoring an earlier state
- * keeps its evidence; the latest frozen snapshot alone cannot establish that it was practised.
+ * keeps its evidence; the latest harness snapshot alone cannot establish that it was practised.
  * What a Builder reads before its first call: the system prompt, the opening message, and its
  * shell's description.
  * Custom tools start in temporary directories and persist files through absolute home paths.
@@ -25,7 +25,7 @@
  * Until 20 October the ceiling was one rule: no harness tool returns a finished answer for a task
  * (`7f0add79:docs/plan.md`, principle 6). v1's sentence had two routes, a verdict on a candidate and the answer to a case the
  * solver names, and forbade both as "a check's work", with the reason that the Builder's own
- * battery would then measure a search. That Builder had written the checks. The operator lifted
+ * exam would then measure a search. That Builder had written the checks. The operator lifted
  * the first on 9 October, with the same rule in every session: a tool may tell the solver whether
  * a candidate meets a public rule. A solver does that unaided, as v1 recorded when its solver
  * wrote a search and ran it until the checks cleared; this Builder is never shown a check; and
@@ -166,7 +166,7 @@ export const SAID: Readonly<Record<"host" | "builder", Said>> = {
     opening:
       "Read the current public rules, practice tasks, failed practice solves, comparison tallies and session limits. It changes nothing.",
     finish:
-      "End this conversation and freeze harness/. Say what changed, what remains unmeasured and what you would try next; the next conversation starts from your notes. A notice from finish can be acknowledged by calling finish again.",
+      "End this conversation and freeze harness/. Say what changed, what remains unmeasured and what you would try next; the next conversation starts from your notes. A finish notice about the harness can be acknowledged by calling finish again. Oversized notes must be edited to fit before finish can end the conversation.",
     broken: {
       unpractised: "no harness of this session is kept",
       practised: "the harness your last practice solve ran is kept in its place",
@@ -192,11 +192,11 @@ export interface Used {
   readonly seconds: number;
   /** The practice solves the session may still start (`practiceLeft`, `tools.ts`). */
   readonly practiceLeft: number;
-  /** The session's latest frozen snapshot, or null before one (`bench.opened`, `tools.ts`). */
+  /** The session's latest harness snapshot, or null before one (`bench.opened`, `tools.ts`). */
   readonly practised: string | null;
 }
 
-/** Counted practice comes from the log, independently of which snapshot was frozen last. */
+/** Counted practice comes from the log, independently of which harness snapshot was frozen last. */
 function tried(harness: string | Error, practice: "counted" | "uncounted"): string {
   if (harness instanceof Error) return "harness/ does not open as it stands: check_harness says why.";
   if (practice === "counted") return "harness/ has counted practice results under its exact current digest.";
@@ -205,7 +205,7 @@ function tried(harness: string | Error, practice: "counted" | "uncounted"): stri
 
 /** What the Builder's shell is told about its wall, after pi's own description. The command wall
  *  is the solver's, and the facts are the ones a solver's prompt gives of it
- *  (`src/solver/prompt.ts`, `environment`), the network as the wall's probe found it
+ *  (`src/solver/prompt.ts`, `environment`), the network as the reach test found it
  *  (`networkReach`): the shell is the solver's `bash`, started in the home. */
 export const shellWalls = (network: NetworkReach): string =>
   ` The command runs in your home directory, where harness/, practice/, resources.json, HARNESS.md and your notes are, and kept/, which holds a copy of every other harness this campaign has kept, each under the head of its digest; only harness/ is frozen. ${network === "reached" ? "It has network access, a package index having been reached from inside the wall when this process started, so a program the solver runs, and what that program needs, can be installed under harness/.toolchain." : "It has no network access: a package index could not be reached from inside the wall when this process started, so nothing can be fetched, and a program the solver runs is one written here or already on the host."} It can write your home directory and $TMPDIR, which is kept for the whole session; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. It can read the host's own toolchains and public runtime roots, but no repository or private data. A command has a default time limit and may name a longer timeout. Nothing a command starts runs on after it returns: wait for a background job in the command that started it.`;
@@ -232,7 +232,7 @@ export function systemPrompt(said: Said): string {
  * Builder reads: in the seven sessions on record on 9 October, 365 turns in all, every turn ended
  * in a tool call, so a message sent only between turns was never sent once.
  *
- * The practice fact is there because on 10 October a session of 43 turns spent 69% of its wall
+ * The practice fact is there because on 10 October a session of 43 turns spent 69% of its time limit
  * measuring a tool chain through 40 shell calls, called `check_harness`, `preview_harness` and
  * `practice` not once, and left a tree whose own module spawns a program the tree does not hold;
  * the continuation (`tried`), which alone said where `harness/` stood, no turn of it triggered.
@@ -254,7 +254,7 @@ export function usedLine(used: Used, limits: Pick<Told, "wallSeconds" | "turns">
  * at every turn boundary so that a compaction needed no signal.
  *
  * One part of v1's is left out on purpose: the line that named the next action. v1's Builder had a
- * submit gate to be steered to. Here the host states facts and the Builder chooses the response
+ * submission refusal to be steered to. Here the host states facts and the Builder chooses the response
  * (`AGENTS.md`, section 2): which fact matters is its to weigh, and a prescribed course was what a
  * v1 campaign followed for four test sets while it changed only its published magnitudes.
  */

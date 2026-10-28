@@ -1,5 +1,5 @@
-// The Examiner hears task outcomes, the reference measurement and admission gates from its log.
-// Shared opening evidence stays readonly; other comparisons and gate histories stay independent.
+// The Examiner hears task outcomes, the reference measurement and task admissions from its log.
+// Shared opening evidence stays readonly; other comparisons and task admission histories stay independent.
 import { beforeAll, describe, expect, it } from "bun:test";
 import { heard } from "../src/examiner/record.ts";
 import { examine } from "../src/examiner/session.ts";
@@ -10,7 +10,7 @@ import type { JsonObject } from "../src/meta/json-shape.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { condition, finish, seat } from "./helpers/examiner-seat.ts";
 
-const GATE = "task.gate";
+const TASK_ADMISSION = "task.gate";
 const PROPOSED = "task.proposed";
 const TASK_STATE = "task.state";
 /** A solver-side secret no Examiner may be shown: the text of a measured solve's answer. */
@@ -21,7 +21,7 @@ const WALLED: Ending = { outcome: "fail", kind: "wall-ended" };
 const VALID = "an answer on record";
 const NONE = "no answer on record";
 
-/** A log built by hand: tasks held out by id, solves of them under a harness, gates and reports. */
+/** A log built by hand: tasks held out by id, solves of them under a harness, task admissions and reports. */
 function logged() {
   const events: LogEvent[] = [];
   const add = (kind: EventKind, data: JsonObject) =>
@@ -33,20 +33,20 @@ function logged() {
     hold: (...ids: string[]) => {
       for (const taskId of ids) {
         add(PROPOSED, { version: `v-${taskId}`, taskId });
-        add(GATE, { version: `v-${taskId}`, gate: 1, outcome: "passed" });
+        add(TASK_ADMISSION, { version: `v-${taskId}`, gate: 1, outcome: "passed" });
       }
     },
-    /** A draft proposed whole, and its gate's word on it. */
-    gated: (taskId: string, gate: JsonObject) => {
+    /** A draft proposed whole, and its task admission's word on it. */
+    recordAdmission: (taskId: string, admission: JsonObject) => {
       add(PROPOSED, {
         version: `v-${taskId}`,
         taskId,
         task: { taskId, family: "fixture", publicInput: {}, hidden: null },
       });
-      add(GATE, { version: `v-${taskId}`, gate: 1, ...gate });
-      if (gate.outcome === "refused") add(TASK_STATE, { version: `v-${taskId}`, state: "refused" });
+      add(TASK_ADMISSION, { version: `v-${taskId}`, gate: 1, ...admission });
+      if (admission.outcome === "refused") add(TASK_STATE, { version: `v-${taskId}`, state: "refused" });
     },
-    /** A solve each of `valid` under `harness` in `comparison`, null for one its wall cut; each
+    /** A solve each of `valid` under `harness` in `comparison`, null for one its deadline cut; each
      *  took the turns given, and 11 where none is. */
     solved: (
       comparison: string,
@@ -156,7 +156,7 @@ describe("the reference outcomes delivered at session opening", () => {
   });
 });
 
-describe("the reference measurement and admission gates", () => {
+describe("the reference measurement and task admissions", () => {
   it("measures the reference across the exam in the last comparison it stood in, never one between two other harnesses", () => {
     const log = logged();
     const tasks = ["a", "b", "c"].map(fixture);
@@ -186,46 +186,50 @@ describe("the reference measurement and admission gates", () => {
     expect(JSON.stringify(told)).not.toMatch(/\bh[1-4]\b/u);
   });
 
-  it("puts a held draft's gate on its line, groups the drafts it refused having read them, and keeps the gates that measured nothing apart", () => {
+  it("puts a held draft's task admission on its line, groups the drafts it refused having read them, and keeps the task admissions that measured nothing apart", () => {
     const log = logged();
     log.add("exam.started", { session: "x-1" });
     log.solved("x-1", "twice", "h-any", [true, true], [12, 14]);
-    log.gated("twice", { outcome: "passed", reference: { valid: 2, solves: 3, billed: 0 } });
-    log.gated("short", { outcome: "passed", reference: { valid: 1, solves: 2, billed: 0 } });
-    log.gated("early", {
+    log.recordAdmission("twice", { outcome: "passed", reference: { valid: 2, solves: 3, billed: 0 } });
+    log.recordAdmission("short", { outcome: "passed", reference: { valid: 1, solves: 2, billed: 0 } });
+    log.recordAdmission("early", {
       outcome: "passed",
       reference: { valid: 1, solves: 2, ran: 2, billed: 0, gap: 0.1 },
     });
-    log.gated("every", {
+    log.recordAdmission("every", {
       outcome: "refused",
       reason: "answered in 3 of 3",
       reference: { valid: 3, solves: 3, billed: 0 },
     });
-    log.gated("also", {
+    log.recordAdmission("also", {
       outcome: "refused",
       reason: "answered in 3 of 3",
       reference: { valid: 3, solves: 3, billed: 0, gap: -0.02 },
     });
     // Refused on two readings, or for want of the reserve, measured nothing: each may be proposed again.
-    log.gated("cut", {
+    log.recordAdmission("cut", {
       outcome: "refused",
       reason: "gate-level reason",
       reference: { valid: 0, solves: 1, ran: 3, billed: 0 },
     });
-    log.gated("reserve", {
+    log.recordAdmission("reserve", {
       outcome: "refused",
       reason: "no reserve, so it is not measured",
       reference: null,
     });
-    // A version's last gate decides: one refused unmeasured and held on a later gate is held.
-    log.gated("again", {
+    // A version's last task admission decides: one refused unmeasured and held on a later task admission is held.
+    log.recordAdmission("again", {
       outcome: "refused",
       reason: "gate-level reason",
       reference: { valid: 1, solves: 1, billed: 0 },
     });
-    log.add(GATE, { version: "v-again", outcome: "passed", reference: { valid: 1, solves: 2, ran: 2 } });
+    log.add(TASK_ADMISSION, {
+      version: "v-again",
+      outcome: "passed",
+      reference: { valid: 1, solves: 2, ran: 2 },
+    });
     const told = heard(log.events, ["twice", "short", "early"].map(fixture));
-    // A valid solve at the gate shows an answer on record, which is then not said again.
+    // A valid solve at the task admission shows an answer on record, which is then not said again.
     const lines = byTask(told.lines);
     for (const line of Object.values(lines)) {
       expect(line).toContain("not yet compared");
@@ -255,28 +259,28 @@ describe("the reference measurement and admission gates", () => {
   });
 });
 
-describe("gates after a promotion", () => {
-  it("after a promotion, tells nothing that the replaced reference's gates read", () => {
+describe("task admissions after a promotion", () => {
+  it("after a promotion, tells nothing that the replaced reference's task admissions read", () => {
     const log = logged();
     log.add("exam.started", { session: "x-1" });
     log.solved("x-1", "old", "h1", [true], [9]);
-    log.gated("old", { outcome: "passed", reference: { valid: 1, solves: 3, billed: 0 } });
-    log.gated("closed", {
+    log.recordAdmission("old", { outcome: "passed", reference: { valid: 1, solves: 3, billed: 0 } });
+    log.recordAdmission("closed", {
       outcome: "refused",
       reason: "answered in 0 of 3",
       reference: { valid: 0, solves: 3, billed: 0 },
     });
     log.solved("x-1", "interrupted", "h1", [true, true], [937, 941]);
-    log.gated("interrupted", {
+    log.recordAdmission("interrupted", {
       outcome: "refused",
       reason: "taking 937, 941 turns, measuring 947, yours 37% better, so it is not measured",
       reference: { valid: 2, solves: 2, ran: 3, billed: 0, gap: 0.37 },
     });
     log.add("harness.promoted", { harness: "h2", from: "h1", rests: [] });
     log.solved("x-1", "new", "h2", [true, true], [12, 14]);
-    log.gated("new", { outcome: "passed", reference: { valid: 2, solves: 3, billed: 0 } });
+    log.recordAdmission("new", { outcome: "passed", reference: { valid: 2, solves: 3, billed: 0 } });
     const told = heard(log.events, ["old", "new"].map(fixture));
-    // "old" keeps its answer on record and loses its gate's count and turns, which were h1's.
+    // "old" keeps its answer on record and loses its task admission's count and turns, which were h1's.
     const lines = byTask(told.lines);
     expect(lines.old).toContain("not yet compared");
     expect(lines.old).toContain(VALID);
@@ -292,7 +296,7 @@ describe("gates after a promotion", () => {
     // The promotion is told, with the listed tasks held out under the harness it replaced.
     expect(told.promoted).toContain("promoted");
     expect(told.promoted).toContain("1 of the 2 tasks");
-    // With no promotion every gate is the current reference's.
+    // With no promotion every task admission is the current reference's.
     const unpromoted = heard(
       log.events.filter(({ kind }) => kind !== "harness.promoted"),
       ["old", "new"].map(fixture),

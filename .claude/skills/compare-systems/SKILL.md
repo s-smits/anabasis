@@ -75,7 +75,7 @@ of its solves mirrored in time, at four times the price; take it only on the ope
 ## How to read it
 
 1. **The tasks.** How many of the seed's held-out tasks were drawn, and under which solver its
-   Examiner gated them.
+   Examiner admitted them.
 2. **One block a system, on its own.** Valid solves of all solves; tasks where every, some or no
    solve was valid; fails the Referee did not rule earned.
    **One table for all systems**, on averages a solve: valid solves, cost, wall time, the slowest
@@ -99,7 +99,7 @@ solve beside it.
 
 ## Limits
 
-- **Selection.** The tasks were gated under the campaign's own solver against its references. A
+- **Selection.** The tasks were admitted under the campaign's own solver against its references. A
   system with that solver, or that campaign's reference harness, met their selection first.
 - **No person's labels.** The Referee is a model, and its rulings stand until a person labels them.
 - **Another campaign's harness** is read under this campaign's contract and answer format. A

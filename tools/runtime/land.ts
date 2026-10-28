@@ -13,15 +13,15 @@
  * it, and follows its top (`oldestStack`; operator, 27 October). It never follows into another
  * chain on main.
  *
- * A push runs no test: the pre-push hook runs every other step of the gate over the pushed head
+ * A push runs no test: the pre-push hook runs every other step of the CI gate over the pushed head
  * (`tools/runtime/pre-push.ts`), so a pushed commit is unproved until it lands here. This is where
  * each landing head's first-parent line above main is proved over its own checkout: the static
- * steps and its nearby tests, and the whole gate, the full suite among it, on the top's head
+ * steps and its nearby tests, and the whole CI gate, the full suite among it, on the top's head
  * (`tools/runtime/gate.ts`), each pass already recorded skipped. `--sanitize` runs that proof when
  * its author judges the stack ready, without merging. The stack is read
  * from GitHub as v2's stack-pr reads it, each pull request's base the head of the one beneath it, and
  * the bottom must be based on main. Each head must contain the one beneath it and the bottom main's
- * head, so the last merge leaves main at exactly the top's tree, which is the tree the whole gate
+ * head, so the last merge leaves main at exactly the top's tree, which is the tree the whole CI gate
  * read.
  *
  * Without a flag nothing is written to GitHub. `--sanitize` posts each commit's verdict as the
@@ -69,7 +69,7 @@
  *
  * A failure names the commit and the pull request it sits on. Its fix goes into that commit, the
  * pull requests above it are replayed on it (stack-pr, section 8), and a second landing runs only
- * what the replay moved. `--jobs N` gates up to N commits at once; the top's whole gate runs alone.
+ * what the replay moved. `--jobs N` gates up to N commits at once; the top's whole CI gate runs alone.
  *
  * GitHub holds main to this command. Since 25 October the repository allows merge commits only,
  * and ruleset 25824510 on the default branch, with no bypass actors, refuses deleting main and any
@@ -408,7 +408,7 @@ function stackOf(root: string, landing: Landing): number | null {
 /** Merges the top, with the stack beneath it, as GitHub's asynchronous merge does, all or nothing,
  *  pinned to the top's gated head, and reads it back until it ends. `refused` means nothing merged;
  *  `unsure` that something may have, went into a merge queue (a merge request ends there), or merged
- *  to a tree other than the top's, which is the one the gate read. */
+ *  to a tree other than the top's, which is the one the CI gate read. */
 async function mergeStack(
   root: string,
   landing: Landing,

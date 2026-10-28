@@ -297,8 +297,8 @@ export function openSteps(steps: readonly Handover[]): string[] {
 export function campaignOf(events: readonly LogEvent[]): Campaign {
   const fails = practiceFails(events);
   const practised = practiceRan(events);
-  // Each gated version, held or refused: a draft still at the gate is neither.
-  const gated = new Map(
+  // Each version with a task admission, held or refused: a draft still awaiting admission is neither.
+  const admissions = new Map(
     events.flatMap(({ kind, data }) =>
       kind === "task.gate" ? [[data.version, heldAtGate(data.outcome)] as const] : [],
     ),
@@ -311,12 +311,13 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
     if (kind === "exam.started") {
       const { read, closed, window, billed } = soFar(events, index, id, "exam", led);
       const end = events[closed]?.data;
-      // One `task.proposed` an instance the session took, and one gate or refusal of it
-      // (`src/examiner/write.ts`), so an open session is counted by its proposals and their gates.
+      // One `task.proposed` an instance the session took, and one task admission or refusal of it
+      // (`src/examiner/write.ts`), so an open session is counted by its proposals and their admissions.
       const proposals = window.flatMap((event) =>
         event.kind === "task.proposed" && event.data.session === id ? [event.data.version] : [],
       );
-      const outcome = (held: boolean) => proposals.filter((version) => gated.get(version) === held).length;
+      const outcome = (held: boolean) =>
+        proposals.filter((version) => admissions.get(version) === held).length;
       const counts =
         end === undefined
           ? { proposed: proposals.length, held: outcome(true), refused: outcome(false), billed }

@@ -220,9 +220,9 @@ export interface ComparisonBar {
   readonly rulings: Rulings;
   /** The host's one-minute load when it began (`campaign.move`), null where not recorded. */
   readonly load: number | null;
-  /** The two sets the comparison's start fixed, as its report tallied them: the frontier, where the
-   *  step is read, with its p; and the retained tasks, where a step may not lose more than it
-   *  wins, `unmeasured` where none was tallied, which is never no loss. Null where no report holds
+  /** The two sets fixed at comparison start and tallied separately in its report. The step test
+   *  reads their weighted margins together, both with and without the bill. Retained tasks are
+   *  `unmeasured` where none was tallied; that establishes no absence of losses. Null where no report holds
    *  them: a comparison with no report yet, or one from before the sets were read apart. */
   readonly sets: {
     readonly frontier: { readonly tally: Tally; readonly p: number };
@@ -305,7 +305,7 @@ export interface Counters {
   readonly controls: number;
   readonly controlSteps: number;
   /** What the promotion attempts under the current reference risk together (`falsePromotion`,
-   *  `epochsOf`), which gates nothing. Null only where the log holds no epoch. */
+   *  `epochsOf`), which refuses nothing. Null only where the log holds no epoch. */
   readonly risk: {
     readonly attempts: number;
     readonly union: number;
@@ -346,7 +346,7 @@ export interface CampaignReading extends Answer {
    *  False where the host makes every move the table names. */
   readonly led: boolean;
   /** The bar a promotion's cost is read against, as the opening sets it or by default
-   *  (`barsOf`, `src/campaign/climb.ts`): read and printed, gating nothing. */
+   *  (`barsOf`, `src/campaign/climb.ts`): read and printed, refusing nothing. */
   readonly bars: Worth["bars"];
   readonly supply: Supply;
   /** Digests: the harness last promoted, and the starter as the comparisons name it. Null where the

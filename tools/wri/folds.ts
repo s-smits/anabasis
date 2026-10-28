@@ -94,7 +94,7 @@ export interface Build {
 
 /** A comparison as its reports hold it, with the solves it counted. */
 export interface Compared {
-  /** The id it reported under: a round's session, or a checkpoint's own. */
+  /** The id it reported under: a round's session, or a standalone comparison's own. */
   readonly session: string;
   /** Its own report, which a settling leaves in the log, and where it stands. */
   readonly own: JsonObject;
@@ -127,8 +127,8 @@ export interface Index {
   readonly of: (kind: LogEvent["kind"]) => JsonObject[];
 }
 
-/** A pass under this share of its wall, on few calls, is the lead v1 read for a published recipe. */
-export const SMALL_WALL_SHARE = 0.05;
+/** A pass under this share of its deadline, on few calls, is the lead v1 read for a published recipe. */
+export const SMALL_DEADLINE_SHARE = 0.05;
 const DEFECT = "check-defect";
 export const TEST = "test";
 export const BUILD_END = "build.finished";
@@ -440,8 +440,8 @@ export function spendOf(log: Index): [string, number][] {
 
 /** The Examiner's billed dollars over the tasks its sessions held out, the solves they asked for
  *  included (`spendOf`); none where no task was held out. The count is the handover's (`campaignOf`,
- *  `src/campaign/handover.ts`), an open session's by its gated proposals: until 25 October this
- *  reader derived it again from the gates. It is every task the Examiner held out, released ones
+ *  `src/campaign/handover.ts`), an open session's by its admitted proposals: until 25 October this
+ *  reader derived it again from the task admissions. It is every task the Examiner held out, released ones
  *  among them, where row D says the tasks held out now, the pack's among them. */
 export function admittedCost(log: Index, steps: readonly Handover[]): string[] {
   const admitted = steps.reduce((sum, step) => sum + (step.step === "examiner" ? step.held : 0), 0);
@@ -488,7 +488,7 @@ export function instrumentTriggers(log: Index): Trigger[] {
   const faults = strings(reading?.faults);
   const lost = faults.filter((fault) => fault.includes("not on the verifier's tool path")).length;
   // The objective measures valid answers and refuses none, so the two counts of refusals leave it
-  // out: buffer-r3's lane 3 on 20 October read its row of zeros as a check that missed its controls.
+  // out: buffer-r3's lane 3 on 20 October read its row of zeros as a check that missed its control answers.
   const checks = rows.filter((row) => row.id !== OBJECTIVE.id);
   const uncaught = checks.filter((row) => count(row.named) === 0 || count(row.caught) < count(row.named));
   const refused = refusals(log);
@@ -508,8 +508,8 @@ export function instrumentTriggers(log: Index): Trigger[] {
     top[1] > refused.length / 2 &&
     (next?.[1] ?? 0) < top[1];
   const carried = log.of("task.proposed").filter((data) => isString(data.carried)).length;
-  // A reading's row counts the check's controls, not the campaign's answers, so a check that caught
-  // its controls and refused no answer reads well there and is where a pass may show only the shape
+  // A reading's row counts the check's control answers, not the campaign's answers, so a check that caught
+  // its control answers and refused no answer reads well there and is where a pass may show only the shape
   // it checked: 3 of buffer's 7 checks and 5 of recode's 11 on 10 October.
   const neverRefused = checks.map((row) => text(row.id)).filter((id) => byCheck[id] === undefined);
   return [
@@ -542,7 +542,7 @@ export function instrumentTriggers(log: Index): Trigger[] {
       ? [
           fired(
             "CONTROL COVERAGE",
-            `${share(uncaught.length, checks.length)} checks let through a reject control naming them, or were named by none: ${uncaught.map((row) => `${text(row.id)} refused ${String(count(row.caught))} of ${String(count(row.named))}`).join(", ")}`,
+            `${share(uncaught.length, checks.length)} checks let through a reject control answer naming them, or were named by none: ${uncaught.map((row) => `${text(row.id)} refused ${String(count(row.caught))} of ${String(count(row.named))}`).join(", ")}`,
           ),
         ]
       : []),
@@ -606,7 +606,7 @@ function tallyTriggers(compared: readonly Compared[]): Trigger[] {
   // is such a tie.
   const validTies = decided.filter(({ ties, unsolved, tasks }) => (ties - unsolved) * 2 > tasks);
   // Each harness by itself: the tasks by how many of their solves were valid, none first. For the
-  // plan's first round the reference harness is the starter, and this is what its gate reads.
+  // plan's first round the reference harness is the starter, and this is what its task admission reads.
   const byHarness = decided.flatMap(({ session, last, limits }) => {
     const census = (found: JsonValue | undefined, at: string) => {
       const valid = asRecord(found);
@@ -653,12 +653,12 @@ function tallyTriggers(compared: readonly Compared[]): Trigger[] {
 export function taskTriggers(log: Index): Trigger[] {
   const proposed = log.of("task.proposed").filter((data) => isString(data.session));
   const written = new Set(proposed.map((data) => text(data.version)));
-  // A task meets one gate, the shape of its package. A log written before 2026-10-09 holds three
-  // more a task, which no command runs now and no trigger here reads.
-  const gates = log.of("task.gate").filter((data) => data.gate === 1 && written.has(text(data.version)));
-  const passed = gates.filter((data) => heldAtGate(data.outcome)).length;
+  // One task admission records the shape check and, where available, room solves. Older logs
+  // hold more numbered checks per task, which no command runs now and no trigger here reads.
+  const admissions = log.of("task.gate").filter((data) => data.gate === 1 && written.has(text(data.version)));
+  const passed = admissions.filter((data) => heldAtGate(data.outcome)).length;
   const reasons = countBy(
-    gates.filter((data) => data.outcome === "refused"),
+    admissions.filter((data) => data.outcome === "refused"),
     (data) => text(data.reason) || "unrecorded",
   );
   // Each scored task by its last report: whether any counted solve of either side answered it.
@@ -670,7 +670,7 @@ export function taskTriggers(log: Index): Trigger[] {
   const unanswered = [...scored.values()].filter(Boolean).length;
   const [{ outcomes, awaiting }, by] = [poolOf(log.events), short(referenceOf(log.events) ?? "none")];
   const done = log.solves.filter((solve) => solve.side === TEST && solve.outcome === "pass");
-  const quick = done.filter((solve) => solve.seconds < solve.wallSeconds * SMALL_WALL_SHARE);
+  const quick = done.filter((solve) => solve.seconds < solve.wallSeconds * SMALL_DEADLINE_SHARE);
   const sequences = new Set(quick.map((solve) => solve.calls.join(">"))).size;
   // Each Examiner session's tasks still held at the end, under the reference then, and the reports before it.
   const bySession = Map.groupBy(proposed, (data) => text(data.session));
@@ -687,7 +687,7 @@ export function taskTriggers(log: Index): Trigger[] {
   });
   return [
     ...(proposed.length > 0 && passed * 2 < proposed.length
-      ? [fired("SUPPLY THIN", `${share(passed, proposed.length)} proposed tasks passed the gate`)]
+      ? [fired("SUPPLY THIN", `${share(passed, proposed.length)} proposed tasks passed task admission`)]
       : []),
     ...(Object.keys(reasons).length > 0 ? [fired("GATE REFUSED", tally(reasons))] : []),
     ...(unanswered > 0

@@ -26,12 +26,12 @@
  * solves past a trigger, and this file named the smallest results of both stages.
  *
  * The level is a per-comparison level. Until 20 October an opening was refused where one reading's
- * rate at `target` untied tasks, summed over the patience, passed 10% (`openingLines`). That sum
- * described no campaign: readings run on fewer untied tasks than the target (at 12 of 24 the same
- * sum is 11.6%), tied tasks raised the target and passed the gate without strengthening the test,
- * and the patience restarts at a promotion while every repeat is another attempt. What a campaign's
- * attempts risk together is the climb's running sum over the readings made (`falsePromotion`,
- * `climb.ts`).
+ * rate at `target` untied tasks, summed over the improvement patience, passed 10% (`openingLines`).
+ * That sum described no campaign: readings run on fewer untied tasks than the target (at 12 of 24 the
+ * same sum is 11.6%), tied tasks raised the target and passed comparison admission without
+ * strengthening the test, and the improvement patience restarts at a promotion while every repeat is
+ * another attempt. What a campaign's attempts risk together is the climb's running sum over the
+ * readings made (`falsePromotion`, `climb.ts`).
  */
 import { plural } from "../meta/text.ts";
 import { detectable, flipP, power, sweepOf } from "./compare.ts";

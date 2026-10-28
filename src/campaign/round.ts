@@ -1,8 +1,8 @@
 /**
- * A checkpoint: one comparison of a new harness with the reference harness, on held-out tasks. And
- * a round: a Builder session, then the checkpoint of the harness it left.
+ * A standalone comparison: one comparison of a new harness with the reference harness, on held-out tasks. And
+ * a round: a Builder session, then the comparison of the harness it left.
  *
- * A checkpoint is three steps over one log.
+ * A comparison is three steps over one log.
  * 1. Solving. Each task of the scored set is solved `solves` times under each of the two
  *    harnesses, all of it afresh. The scored set is the caller's, fixed before any solve
  *    (`scoredSet`), so no result of this comparison chooses it, though the reference harness's
@@ -29,13 +29,13 @@
  * later comparison read against it (`7f0add79:docs/plan.md`, What we will not do).
  *
  * The Starter Built Harness is the reference harness until a step is promoted
- * (`src/harness/starter.ts`). Once the operator has promoted another reference, the starter is the
- * control the table reads the tasks with after a promotion (`decide.ts`), and no side of a
+ * (`src/harness/starter.ts`). Once another reference is promoted, the starter is read in a
+ * starter comparison after a promotion (`decide.ts`), and no side of a
  * comparison between two others.
  *
  * How each harness did by itself is in the report beside the test (`valid`): on how many tasks it
  * gave a valid answer in every solve, in some and in none. For the starter this is what the
- * plan's first gate reads: where it is valid on nearly every solve, the tasks leave a harness
+ * plan's starter measurement reads: where it is valid on nearly every solve, the tasks leave a harness
  * nothing to add (`7f0add79:docs/plan.md`, G0).
  *
  * The reference is read against itself as the test is (the plan's A/A): its solves of a task
@@ -71,24 +71,24 @@
  * good, and one labelled unclear stays out. A solve that ended at its limits or gave no answer has
  * nothing to recompute and needs no ruling. A check that could not run disputes its task at once.
  * Past `defects` tasks with a check that could not run or a rejection the Referee ruled a check
- * defect, the checkpoint stops, since the check program then needs its owner before more is spent.
+ * defect, the comparison stops, since the check program then needs its owner before more is spent.
  * A task a person released or refused while the comparison ran is left out and named
  * (`withdrawn`), and no further solve of it is started. A rejection left unruled, by an earlier
  * run killed before its ruling or by a reader that failed or gave no answer, is put to the Referee
  * again before the report, and one still unruled stops the comparison, to go on from its log.
  *
- * A checkpoint that wrote its report is finished, and run again it returns that report and does
+ * A comparison that wrote its report is finished, and run again it returns that report and does
  * nothing: topping up a set a dispute thinned, after the tallies could be seen, would be a second
  * look at the data. It also stops, to go on the same way, when the provider has stopped answering:
  * `SILENT` tasks in a row whose solve ended, after its reruns, with nothing written for it. A login
  * at its session limit does that to every solve in seconds. Named resets wait inside `solve`:
- * on 21 October they had refused 43 of 1,396 gate drafts across 30 campaigns.
+ * on 21 October they had refused 43 of 1,396 admission drafts across 30 campaigns.
  *
  * A round's session starts from the harness the caller names, which need not be the reference
  * harness: a Builder goes on from its latest harness, and the comparison is against the reference
  * one. The session is run once and read from the log whether it ran now or in an earlier run
  * (`sessionOnce`, `session.ts`), which is also how a session runs with no comparison after it. A
- * session cut at its wall or its turns is a whole session and is compared. One that left the
+ * session cut at its deadline or its session turn limit is a whole session and is compared. One that left the
  * harness it started from, the reference harness itself, or one no solve can open, is reported as
  * no change.
  *
@@ -96,7 +96,8 @@
  *
  * Nothing here decides what happens next. `reading` (`compared`, `comparison.ts`) says how the
  * plan's rules read the tallies; the stop rule reads the reports (`src/kernel/reports.ts`), and
- * promotion and a next session are the operator's.
+ * the campaign controller promotes and opens the next session automatically. Under `--hitl`,
+ * promotion waits for the operator's word.
  *
  * What the log holds of a comparison, and how it is read back, is `comparison.ts`: its start, its
  * counted solves, its rejections, its tallies and its report. This file keeps what runs one and
@@ -240,7 +241,7 @@ const UNCOMPARED: ReadonlySet<string> = new Set(["session", "tasks", "retained"]
  * before that the reference has stood in no comparison of (`poolOf`): until then one task in four
  * of the set was kept for those epochs as frontier, and after each promotion they tied (the plan's
  * climb section, C2). The epoch chooses the set and no result does: the hash is fixed before any task
- * exists, and which epoch a task is in is where it passed its gate (`tasksByEpoch`). A draw over
+ * exists, and which epoch a task is in is where its task admission held it out (`tasksByEpoch`). A draw over
  * every epoch at once, in a simulated climb after two promotions, drew for a target of 8 over 19
  * held tasks two or three the reference failed, so three comparisons read one win short and the
  * campaign stopped (`7f0add79:docs/plan.md`, B14). A task that waits for a person's label is left out, and
@@ -360,7 +361,7 @@ function refuseUnreadable(terms: Terms): void {
 /**
  * Refuse the terms a comparison is asked for on: terms no comparison could be read on, and, for
  * one that has not begun, tasks that could not be scored. `practised` is what its session may
- * practise on, and empty for a checkpoint. A comparison that reported is asked nothing.
+ * practise on, and empty for a standalone comparison. A comparison that reported is asked nothing.
  *
  * A comparison asks this of itself before its first event. A command asks it before it records
  * anything, so that a refused command leaves the log as it was: a round refused for a mistyped
@@ -423,7 +424,7 @@ function unruledOf(events: readonly LogEvent[], fixed: Fixed) {
 /**
  * What runs a comparison's solves: the jobs' pool, the Referee's part, and the reasons it stops
  * taking jobs. A solve that throws ends the pool and is thrown again by `settle` once every solve
- * in flight has returned; the kill's own reason, from a solve queued at the host's gate, is said as
+ * in flight has returned; the kill's own reason, from a solve in the solve queue, is said as
  * the kill.
  */
 function floor(request: CheckpointRequest, fixed: Fixed) {
@@ -603,8 +604,9 @@ function write(
 }
 
 /**
- * One comparison of `fresh` with the reference harness `old`, with no session: the plan's
- * checkpoint after several sessions, and at four solves a side its gate G2.
+ * One standalone comparison of `fresh` with the reference harness `old`, after several sessions.
+ * At four solves a side it also reads an A/A comparison on mirrored halves of the reference solves
+ * (the measurement in `7f0add79:docs/plan.md`, G2).
  */
 export async function checkpoint(request: CheckpointRequest): Promise<Report> {
   const { log, id, old, fresh } = request;

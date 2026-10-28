@@ -6,9 +6,9 @@
  *     --target 8 --cap 437
  *
  * With no `--reference` and no `--new` it compares the latest harness a Builder session left with
- * the Starter Built Harness, which is the plan's checkpoint: several sessions, then one comparison
+ * the Starter Built Harness, which is the plan's standalone comparison: several sessions, then one comparison
  * on fresh solves (`7f0add79:docs/plan.md`, Phase 5). While no session has left a harness there is nothing
- * to compare, and the command says so. The plan's first experiment is no checkpoint: it is the
+ * to compare, and the command says so. The plan's first experiment is no standalone comparison: it is the
  * first round (`round.ts`).
  *
  * `--reference` and `--new` each name a harness the campaign keeps (`campaign.ts`, `keptAs`):
@@ -16,14 +16,15 @@
  * harness with a promoted reference, and reads a harness against the starter where a settling, a stop or the cap left a step unread
  * against it (`--reference starter --new <digest>`).
  *
- * `programs-of:` before a name is that harness's control: the starter with the harness's installed
+ * `programs-of:` before a name is that harness's programs ablation: the starter with the harness's installed
  * programs and nothing else of it. `--reference starter --new programs-of:latest` reads what the
  * programs are worth by themselves, and `--reference programs-of:latest --new latest` what the
  * guide and the tools add to them. A step is the whole harness's until those two are read.
  *
  * At four solves a side, the default, the report also reads the reference harness against itself,
  * the plan's A/A comparison, on halves of its own solves mirrored in time (`comparison.ts`). With
- * the starter as the reference and a fixed budget, this command is gate G2. The A/A comparison
+ * the starter as the reference and a fixed budget, this command reads the plan's starter A/A comparison (G2).
+ * The A/A comparison
  * should read no step, and its tie share is the noise every later comparison has to exceed.
  *
  * The scored set and the solver's setting are the campaign's, read from its log as a round reads
@@ -66,8 +67,8 @@ import {
 } from "./round.ts";
 import { keepSetting, SETTING_OPTIONS } from "./setting.ts";
 
-/** A checkpoint's flags and their defaults. */
-const CHECKPOINT_OPTIONS = {
+/** A standalone comparison's flags and their defaults. */
+const STANDALONE_OPTIONS = {
   root: ROUND_OPTIONS.root,
   sweep: ROUND_OPTIONS.sweep,
   cycle: ROUND_OPTIONS.cycle,
@@ -87,7 +88,7 @@ export async function checkpointCommand(
   kill?: AbortSignal,
   admitted?: () => void,
 ): Promise<Report> {
-  const { values } = parseArgs({ args: [...args], options: CHECKPOINT_OPTIONS });
+  const { values } = parseArgs({ args: [...args], options: STANDALONE_OPTIONS });
   const { id } = values;
   const pack = packNamed(values, " and --id");
   if (id === undefined) throw new Error("name --id, the id the comparison takes in the log");

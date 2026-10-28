@@ -25,6 +25,7 @@ import { join } from "../src/meta/path.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "../src/meta/subprocess.ts";
 import { capturedJsonStringify, parseJsonAs } from "../src/meta/json-runtime.ts";
 import { LOG_FILE, read } from "../src/kernel/log.ts";
+import type { LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { capturedExecPath, capturedSpawn } from "../src/meta/process.ts";
 import { sources } from "../tools/runs/receipt.ts";
@@ -623,7 +624,7 @@ describe("a live seat's reading", () => {
         text: "x-1-006 is not one of the tasks: ex-001\n\nTurn 9 of 200",
       }),
       call("finish"),
-    ].map((each, index) => ({ ...JSON.parse(each), at: at(index) }));
+    ].map((each, index) => ({ ...parseJsonAs<LogEvent>(each), at: at(index) }));
     const census = censusOf([events, events.slice(0, 4)]);
     expect(census.logs).toBe(2);
     expect(census.sessions).toBe(1);

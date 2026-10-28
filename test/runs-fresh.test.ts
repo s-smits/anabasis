@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { modelOf, seats } from "../tools/runs/fresh.ts";
+import { present } from "./helpers/matchers.ts";
 
 describe("bun run runs fresh", () => {
   it("seats each preset model at its four efforts and accepts a served model", () => {
@@ -14,7 +15,7 @@ describe("bun run runs fresh", () => {
           `--${seat}`,
           id,
           `--${seat}-effort`,
-          efforts[index]!,
+          present(efforts[index]),
         ]),
       );
     }

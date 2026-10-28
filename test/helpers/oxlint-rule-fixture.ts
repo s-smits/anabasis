@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "../../src/m
 import type { JsonValue } from "../../src/meta/json-shape.ts";
 import { tmpdir } from "../../src/meta/os.ts";
 import { dirname, join, resolve } from "../../src/meta/path.ts";
+import { capturedExecPath } from "../../src/meta/process.ts";
 
 /** Long enough for oxlint and its plugin to load on a crowded host, short of the per-test wall. */
 const RUN_TIMEOUT_MS = 30_000;
@@ -56,7 +57,7 @@ function stage(plugin: string, rule: string, fixtureText: string, at: string, st
   const run = async (...extra: string[]): Promise<string> => {
     const child = Bun.spawn(
       [
-        Bun.argv[0]!,
+        capturedExecPath,
         "--no-env-file",
         "node_modules/oxlint/bin/oxlint",
         "-c",

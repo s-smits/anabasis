@@ -30,6 +30,7 @@ import { claimRoot } from "../src/wall/seat-root.ts";
 import { solveIsolationPolicy } from "../src/wall/base.ts";
 import { osIsolationSupport } from "../src/wall/os-isolation.ts";
 import { CLOSED_CODE } from "./helpers/wall.ts";
+import { present } from "./helpers/matchers.ts";
 import { writeHarness } from "./helpers/write-harness.ts";
 
 const scratchRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-harness-tools-")));
@@ -334,17 +335,17 @@ it.skipIf(!walled)(
         properties: { factor: { type: "number" } },
       });
 
-      const scaled = await scale!.execute({ factor: 3 }, UNUSED_API, BACKGROUND_CONTEXT);
+      const scaled = await present(scale).execute({ factor: 3 }, UNUSED_API, BACKGROUND_CONTEXT);
       expect(textOf(scaled)).toBe("t-1 (fixture): 21");
       expect(scaled.details).toEqual({ value: 21 });
-      await expect(read!.execute({ path: "missing.txt" }, UNUSED_API, BACKGROUND_CONTEXT)).rejects.toThrow(
-        "cannot read missing.txt: ENOENT",
-      );
-      await expect(scale!.execute({ factor: "3" }, UNUSED_API, BACKGROUND_CONTEXT)).rejects.toThrow(
+      await expect(
+        present(read).execute({ path: "missing.txt" }, UNUSED_API, BACKGROUND_CONTEXT),
+      ).rejects.toThrow("cannot read missing.txt: ENOENT");
+      await expect(present(scale).execute({ factor: "3" }, UNUSED_API, BACKGROUND_CONTEXT)).rejects.toThrow(
         'tool "scale_base" arguments do not match its declared parameter schema (/factor: must be number)',
       );
       const host = join(wall.dirs.host, "config");
-      await expect(read!.execute({ path: host }, UNUSED_API, BACKGROUND_CONTEXT)).rejects.toThrow(
+      await expect(present(read).execute({ path: host }, UNUSED_API, BACKGROUND_CONTEXT)).rejects.toThrow(
         `cannot read ${host}: ${CLOSED_CODE}`,
       );
     });

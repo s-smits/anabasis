@@ -31,6 +31,7 @@ import { settleCommand } from "../tools/d2/settle.ts";
 import { wordCommand } from "../tools/d2/word.ts";
 import { scriptedSeats } from "../tools/runs/rehearse.ts";
 import { fixtureTasks, gradedOf, layOutPack, type Step, scriptedModel } from "./helpers/fixture-pack.ts";
+import { containing } from "./helpers/matchers.ts";
 
 const REPO = resolve(import.meta.dir, "..");
 const FIXTURE = join(REPO, "test", "fixtures", "harness-min");
@@ -446,7 +447,7 @@ describe("a campaign run by its live Builder", () => {
       expect(of(name, MOVED, true).filter(({ code }) => code === "practice")).toMatchObject([
         {
           move: "prepare",
-          why: expect.stringContaining("Examiner session x-1 beside the conversation held a task out"),
+          why: containing("Examiner session x-1 beside the conversation held a task out"),
         },
       ]);
     });

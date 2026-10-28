@@ -16,6 +16,7 @@ import {
   unanswerable,
 } from "../tools/oxlint/not-slop-ledger.ts";
 import { type Diagnostic, lintSite } from "../tools/runtime/lint.ts";
+import { present } from "./helpers/matchers.ts";
 
 const HEADER = "id\trule\tpath\tanswered\treason\texcerpt";
 
@@ -43,7 +44,7 @@ function finding(
   const offset =
     new TextEncoder().encode(before).length +
     (line > 1 ? 1 : 0) +
-    source.split("\n")[line - 1]!.indexOf(head);
+    present(source.split("\n")[line - 1]).indexOf(head);
   return {
     message: "m",
     code: rule,

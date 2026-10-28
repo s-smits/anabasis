@@ -45,6 +45,7 @@ import { harnessesOf } from "../tools/runs/registry.ts";
 import { scriptedSeats } from "../tools/runs/rehearse.ts";
 import { admittedCost, indexOf } from "../tools/wri/folds.ts";
 import { FORMAT, fixtureTasks, gradedOf, layOutPack, scriptedModel } from "./helpers/fixture-pack.ts";
+import { anyOf, arrayWith, containing, copies, objectWith } from "./helpers/matchers.ts";
 
 const REPO = resolve(import.meta.dir, "..");
 const FIXTURE = join(REPO, "test", "fixtures", "harness-min");
@@ -208,7 +209,7 @@ describe("a campaign run by its log", () => {
     expect(of(name, "campaign.waited")).toEqual([
       { for: "provider", until: new Date(reset * 1000).toISOString(), ms: slept[0] ?? 0 },
     ]);
-    expect(of(name, "campaign.ended")).toEqual([expect.objectContaining({ ending: "exam" })]);
+    expect(of(name, "campaign.ended")).toEqual([objectWith({ ending: "exam" })]);
     expect(ending).toMatchObject({ move: "end", ending: "exam" });
     // Each move is on record from its start with the row that chose it by its code, the one that threw too.
     expect(of(name, MOVED).map(({ move, session, code }) => [move, session ?? null, code])).toEqual([
@@ -347,7 +348,7 @@ describe("a campaign run by its log", () => {
       move: "end",
       ending: "no-room",
       code: "unshown",
-      why: expect.stringContaining("b-1"),
+      why: containing("b-1"),
     });
     // A move records no time and no load of its own: its event's time is when it began, and the
     // load is each solve's (`solve.started`). Until 15 October it held both.
@@ -436,7 +437,7 @@ describe("a campaign run by its log", () => {
     const kept = read(join(REPO, ".ana", "d2", name, LOG_FILE));
     const waited = kept.findIndex(({ kind }) => kind === "campaign.waited");
     expect(of(name, "campaign.waited")).toEqual([
-      expect.objectContaining({ comparison: "g-1", load: 99, cores: 4, ms: expect.any(Number) }),
+      objectWith({ comparison: "g-1", load: 99, cores: 4, ms: anyOf(Number) }),
     ]);
     // A task's solves start together, so one beside it that read a quiet host may begin before the
     // wait is written (the Linux job, 20 October): the task's last solve to begin is the one that waited.
@@ -446,7 +447,7 @@ describe("a campaign run by its log", () => {
     expect(of(name, MOVED).filter(({ load }) => load !== undefined)).toEqual([]);
     // The comparison was made at the campaign's level, and the move records the command.
     for (const made of of(name, MOVED).filter(({ move }) => move === "compare")) {
-      expect(made.args).toEqual(expect.arrayContaining(["--level", "0.02"]));
+      expect(made.args).toEqual(arrayWith(["--level", "0.02"]));
     }
     expect(of(name, MOVED).map(({ move, session }) => [move, session ?? null])).toEqual([
       ["accept", null],
@@ -533,7 +534,7 @@ describe("a campaign run by its log", () => {
     // Blind: a packet holds the whole public contract and the answer, and names no harness and no ruling.
     const opened = readFileSync(join(folder, `${drawn[0]}.json`), "utf8");
     expect(Object.keys(parseJsonAs<{ contract: JsonObject }>(opened).contract)).toEqual(
-      expect.arrayContaining(["scope", "conventions", "rules", "answerFormat"]),
+      arrayWith(["scope", "conventions", "rules", "answerFormat"]),
     );
     expect(opened).not.toContain(first?.fresh ?? "");
     const [a = "", b = "", c = ""] = drawn;
@@ -897,7 +898,7 @@ describe("a campaign run by its log", () => {
     // Nine solves, each named by the drafting session, under the setting the first recorded; none
     // is on a task's record.
     const events = read(join(folder, LOG_FILE));
-    expect(solvesIn(events).map(({ start }) => start.comparison)).toEqual(Array(9).fill("d-1"));
+    expect(solvesIn(events).map(({ start }) => start.comparison)).toEqual(copies(9, "d-1"));
     expect(countedSolves(events)).toEqual([]);
     expect(of(name, "campaign.setting")).toMatchObject([{ minutes: 8 }]);
     expect(strayed).toEqual([]);
@@ -967,9 +968,7 @@ describe("a campaign run by its log", () => {
     ]);
     expect(of(name, "draft.finished")).toMatchObject([{ session: "d-1", stands: true, tries: 2 }]);
     expect(of(name, "exam.drafted")).toHaveLength(1);
-    expect(of(name, "checker.read").at(-1)?.faults).toEqual([
-      expect.stringContaining("--admit check-product"),
-    ]);
+    expect(of(name, "checker.read").at(-1)?.faults).toEqual([containing("--admit check-product")]);
     expect(of(name, MOVED).map(({ move, session }) => [move, session ?? null])).toEqual([
       ["draft", "d-1"],
       ["accept", null],
@@ -1074,7 +1073,7 @@ describe("a comparison's packet for a person", () => {
     // Fewer than three of a side: all of it.
     expect(packetOf({ aside: [], others: ["e"] }, ["p", "q"], "g-1")).toEqual({
       rejections: ["e"],
-      passes: expect.arrayContaining(["p", "q"]),
+      passes: arrayWith(["p", "q"]),
     });
   });
 });

@@ -40,6 +40,7 @@ import { ANSWER_FILE } from "../src/tools/answer.ts";
 import type { Seats } from "../tools/d2/campaign-terms.ts";
 import { harnessBuilder } from "../tools/d2/harness-builder.ts";
 import { fixtureTasks, layOutPack, scriptedModel } from "./helpers/fixture-pack.ts";
+import { present } from "./helpers/matchers.ts";
 
 const REPO = resolve(import.meta.dir, "..");
 const FIXTURE = join(REPO, "test", "fixtures", "harness-min");
@@ -448,7 +449,7 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
         ),
       ),
     ).toBe(false);
-    expect(epochLine(epochsOf(log)[0]!)).toContain("joint reachability unmeasured");
+    expect(epochLine(present(epochsOf(log)[0]))).toContain("joint reachability unmeasured");
   });
 });
 

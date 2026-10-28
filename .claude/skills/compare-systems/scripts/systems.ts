@@ -369,18 +369,18 @@ async function main(args: CommandArgs): Promise<number> {
     `Every solve: ${String(recorded.minutes)} minutes and ${recorded.modelTurns === null ? "unlimited" : String(recorded.modelTurns)} model turns, the campaign's checks, and the Referee on every rejection.`,
     "",
     ...opened.flatMap(({ system, harness }, index) =>
-      systemLines(system, harness.digest, solvedBy[index] ?? new Map()),
+      systemLines(system, harness.digest, solvedBy[index] ?? new Map<string, Solved>()),
     ),
     "",
     ...tableLines(
       opened.map(({ system, log }, index) => ({
         system,
-        own: solvedBy[index] ?? new Map(),
+        own: solvedBy[index] ?? new Map<string, Solved>(),
         billed: billed(log),
       })),
     ),
     "",
-    ...itself(baseline, solvedBy[0] ?? new Map(), { solves, level, direction }),
+    ...itself(baseline, solvedBy[0] ?? new Map<string, Solved>(), { solves, level, direction }),
     ...opened.slice(1).flatMap(({ system }, index) =>
       pairLines([baseline, solvedBy[0] ?? new Map()], [system, solvedBy[index + 1] ?? new Map()], {
         solves,

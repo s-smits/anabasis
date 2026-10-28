@@ -57,6 +57,7 @@ import { text, tool } from "../src/tools/answer.ts";
 import { openHarness } from "../src/harness/open.ts";
 import { roundSolves } from "./helpers/logged-round.ts";
 import { tallied } from "./helpers/tally.ts";
+import { anyOf, arrayWith, copies } from "./helpers/matchers.ts";
 
 const COMPARISON_REPORTED = "comparison.reported";
 const COMPARISON_STARTED = "comparison.started";
@@ -652,14 +653,14 @@ describe("a round", () => {
         // of set-up's epoch.
         worth: {
           bars: { cost: 3 },
-          cost: { attempts: 1, sessions: 1, dollars: expect.any(Number), met: true },
+          cost: { attempts: 1, sessions: 1, dollars: anyOf(Number), met: true },
         },
       },
     ]);
     // Four tasks, two harnesses, two solves. A worker runs each task's mirror in order,
     // and the next task's mirror starts the other way round. The starter is
     // solved on none: until 2026-10-11 a step was held to it on the tallied tasks.
-    expect(s.asked.map(({ side }) => side)).toEqual(Array(2).fill(MIRRORED).flat());
+    expect(s.asked.map(({ side }) => side)).toEqual(copies(2, MIRRORED).flat());
     const runs = Array.from({ length: 4 }, (_, at) => s.asked.slice(4 * at, 4 * at + 4));
     expect(runs.every((run) => run.every(({ version }) => version === run[0]?.version))).toBe(true);
     expect(new Set(runs.map((run) => run[0]?.version))).toEqual(new Set(HELD));
@@ -687,7 +688,7 @@ describe("a round", () => {
     expect(latestBuilt(read(s.log))).toBe(report.fresh);
     expect(stopRule(read(s.log))).toEqual({ checkpoints: 1, sinceStep: 0, stop: false });
     // The comparison moved no task: every scored task is held out still.
-    expect(HELD.map((version) => taskStates(read(s.log)).get(version))).toEqual(Array(4).fill("held"));
+    expect(HELD.map((version) => taskStates(read(s.log)).get(version))).toEqual(copies(4, "held"));
     // Run again, a finished round says what it said: no session, no solve, no second report.
     expect(await round(s.request)).toEqual(report);
     expect(s.sessions()).toBe(1);
@@ -1593,7 +1594,7 @@ describe("a standalone comparison", () => {
     // tasks, and the start records both.
     const drawn = scoredSet(read(s.log), 12, "c");
     expect(drawn.retained).toHaveLength(2);
-    expect(drawn.tasks).toEqual(expect.arrayContaining(["s6", "s7", "s8", "s9", ...drawn.retained]));
+    expect(drawn.tasks).toEqual(arrayWith(["s6", "s7", "s8", "s9", ...drawn.retained]));
     const report = await checkpoint(s.compare("g3", { tasks, retained: ["s1"] }));
     expect(s.of(COMPARISON_STARTED).at(-1)).toMatchObject({ tasks, retained: ["s1"] });
     expect(report).toMatchObject({
@@ -1836,8 +1837,8 @@ describe("the scored set", () => {
     const closed = Array.from({ length: 9 }, (_, nth) => `c${String(nth)}`);
     const open = ["f1", "f2", "f3"];
     const outcomes = Object.fromEntries([
-      ...closed.map((version) => [version, "PP PP"]),
-      ...open.map((version) => [version, "FF PP"]),
+      ...closed.map((version) => [version, "PP PP"] as const),
+      ...open.map((version) => [version, "FF PP"] as const),
     ]);
     const { events, terms } = roundSolves("g-1", ["h0", "h1"], outcomes);
     const report = {

@@ -18,6 +18,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import { osIsolationSupport } from "../src/wall/os-isolation.ts";
+import { anyOf, matching, objectWith } from "./helpers/matchers.ts";
 
 const REPO = resolve(import.meta.dir, "..");
 /** A campaign's log, by its name in the campaign's folder. */
@@ -182,8 +183,8 @@ suite("acceptance and freezing over a stored pack", () => {
     expect(reading).toMatchObject({
       controls: 3,
       stored: 3,
-      rows: [expect.objectContaining({ passed: 2, refused: 1 })],
-      historicalRows: [expect.objectContaining({ passed: 1, refused: 2 })],
+      rows: [objectWith({ passed: 2, refused: 1 })],
+      historicalRows: [objectWith({ passed: 1, refused: 2 })],
       doNothing: { answer: { answer: "" }, tasks: 2, rejected: 2 },
       admitted: ["check-product"],
       faults: [],
@@ -209,7 +210,7 @@ suite("acceptance and freezing over a stored pack", () => {
     expect(mislabelled.said).toMatch(fault);
     expect(mislabelled.said).toContain("not frozen");
     expect(mislabelled.code).toBe(1);
-    expect(held("checker.read").at(-1)?.faults).toContainEqual(expect.stringMatching(fault));
+    expect(held("checker.read").at(-1)?.faults).toContainEqual(matching(fault));
     expect(held("contract.frozen")).toEqual([]);
     controls("13");
   });
@@ -380,7 +381,7 @@ suite("preparation and rehearsal over a stored pack", () => {
     const log = read(join(REPO, ".ana", "d2", UNFORMED, LOG));
     expect(log.filter(({ kind }) => kind === "contract.frozen")).toEqual([]);
     expect(log.flatMap((event) => (event.kind === "checker.read" ? [event.data.faults] : []))).toEqual([
-      [expect.stringMatching(/^the do-nothing answer /)],
+      [matching(/^the do-nothing answer /)],
     ]);
   });
 
@@ -394,8 +395,8 @@ suite("preparation and rehearsal over a stored pack", () => {
     const taken = run("tools/d2/prepare.ts", { cycle: "c01", name: SOURCE, practice: "1" });
     expect(taken.code).toBe(0);
     expect(taskSets(read(join(source, LOG)))).toMatchObject({
-      held: [expect.any(String)],
-      released: [expect.any(String)],
+      held: [anyOf(String)],
+      released: [anyOf(String)],
     });
     const cli = (...args: string[]) => {
       const ran = Bun.spawnSync({ cmd: [capturedExecPath, "tools/runs/cli.ts", ...args], cwd: REPO });

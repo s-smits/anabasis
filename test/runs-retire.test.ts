@@ -19,6 +19,7 @@ import { join } from "../src/meta/path.ts";
 import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
 
 import { archiveIdle, retireUnused, type Sweep } from "../tools/runs/retire.ts";
+import { arrayWith } from "./helpers/matchers.ts";
 
 const DAY = 86_400_000;
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-runs-retire-test-")));
@@ -124,7 +125,7 @@ describe("retiring", () => {
     utimesSync(join(held, "note"), recent, recent);
 
     retireUnused(sweep(8, false), new Set());
-    expect(branches()).toEqual(expect.arrayContaining(["fresh", "held", "merged", "own", "trunk"]));
+    expect(branches()).toEqual(arrayWith(["fresh", "held", "merged", "own", "trunk"]));
 
     retireUnused(sweep(8, true), new Set());
     expect(branches().toSorted()).toEqual(["fresh", "held", "trunk"]);

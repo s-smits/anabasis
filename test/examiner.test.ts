@@ -57,6 +57,7 @@ import {
   finish,
   instance,
   invoke,
+  toolOf,
   KIND,
   MODES,
   NOTE,
@@ -68,6 +69,8 @@ import {
   sweep,
   WALL,
 } from "./helpers/examiner-seat.ts";
+import { arrayWith, containing, copies, objectWith, present } from "./helpers/matchers.ts";
+import { parseJsonAs } from "../src/meta/json-runtime.ts";
 
 /** The event a tool call of the Examiner writes, with the text it was told. */
 const CALLED = "exam.call";
@@ -472,7 +475,7 @@ describe("a session that writes tasks", () => {
           undefined,
           "unseen",
         );
-        const checked = await invoke(mode.tools.find(({ name }) => name === "try_answer")!, "check", {
+        const checked = await invoke(toolOf(mode, "try_answer"), "check", {
           ...instance(7),
           hidden: JSON.stringify({ seed: 1 }),
           answer: GOOD,
@@ -481,12 +484,12 @@ describe("a session that writes tasks", () => {
         const reference =
           said?.type === "text" ? /Instance reference: (\w+)\./u.exec(said.text)?.[1] : undefined;
         expect(reference).toBeDefined();
-        const put = mode.tools.find(({ name }) => name === admission)!;
+        const put = toolOf(mode, admission);
         const unknown = await invoke(put, "unknown", { tasks: [{ reference: "missing" }] });
         expect(unknown.output).toEqual([
           {
             type: "text",
-            text: expect.stringContaining(`Known references: ${String(reference)}`),
+            text: containing(`Known references: ${String(reference)}`),
           },
         ]);
         expect(mode.result().puts).toBe(0);
@@ -502,12 +505,10 @@ describe("a session that writes tasks", () => {
         await invoke(put, "duplicate", { tasks: [instance(7), { reference: String(reference) }] });
         expect(mode.result().puts).toBe(1);
         const next = writing({ ...s.request, id: "x-2", verify }, undefined, "unseen");
-        const expired = await invoke(next.tools[0]!, "expired", {
+        const expired = await invoke(toolOf(next), "expired", {
           tasks: [{ reference: String(reference) }],
         });
-        expect(expired.output).toEqual([
-          { type: "text", text: expect.stringContaining("Known references: none") },
-        ]);
+        expect(expired.output).toEqual([{ type: "text", text: containing("Known references: none") }]);
       }
       expect(results[0]).toEqual(results[1]);
     });
@@ -639,10 +640,7 @@ describe("a session that writes tasks", () => {
         .of(CALLED)
         .slice(0, 2)
         .map(({ text }) => text),
-    ).toEqual([
-      expect.stringContaining("Every applicable check passed"),
-      expect.stringContaining("Refused by check-product"),
-    ]);
+    ).toEqual([containing("Every applicable check passed"), containing("Refused by check-product")]);
     const proved = [s.versionOf("x-1-001", 7), s.versionOf("x-1-003", 9), s.versionOf("x-1-004", 10)];
     expect(s.of("task.feasible")).toEqual(
       proved.map((version) => ({ version, session: "x-1", answer: GOOD })),
@@ -823,7 +821,7 @@ describe("a session that writes tasks", () => {
         .flatMap(({ text: said }) => (isString(said) ? said.split("\n") : []))
         .filter((line) => line.includes(" validly in "))
         .map((line) => / validly in (\d+ of \d+) solves/.exec(line)?.[1]),
-    ).toEqual(expect.arrayContaining(["0 of 1", "3 of 3"]));
+    ).toEqual(arrayWith(["0 of 1", "3 of 3"]));
   });
 
   it("runs a draft's other two solves together where its first leaves no room, holds it at the first of them that does, and cancels the other", async () => {
@@ -1030,10 +1028,10 @@ describe("a session that writes tasks", () => {
         "unseen",
         stop.signal,
       );
-      await invoke(mode.tools[0]!, "put", { tasks: [instance(2)] });
+      await invoke(toolOf(mode), "put", { tasks: [instance(2)] });
       await mode.settle(true);
       expect(asked).toBe(3);
-      expect(endings).toContainEqual(expect.objectContaining({ outcome: "non-result", kind: "check" }));
+      expect(endings).toContainEqual(objectWith({ outcome: "non-result", kind: "check" }));
       expect(s.of("referee.finding")).toMatchObject([{ ruling: "unclear", walled: false }]);
       const reviewBill = Number(s.of("referee.finding")[0]?.billed);
       expect(reviewBill).toBeGreaterThan(0);
@@ -1063,14 +1061,14 @@ describe("a session that writes tasks", () => {
     };
     // Call the writing owner directly so the model's own budget cannot end the session first.
     const mode = writing({ ...s.request, probe }, undefined, "unseen");
-    await invoke(mode.tools[0]!, "put", { tasks: [instance(2)] });
+    await invoke(toolOf(mode), "put", { tasks: [instance(2)] });
     await mode.settle(true);
     expect(asked).toBe(1);
     expect(mode.result().refused).toEqual([s.versionOf("x-1-001", 2)]);
     expect(s.of(TASK_ADMISSION)).toMatchObject([{ outcome: "refused", reference: { solves: 1, ran: 1 } }]);
     expect(s.of(TASK_ADMISSION).filter(admissionSettled)).toEqual([]);
     // Below one reserve the next draft starts nothing.
-    await invoke(mode.tools[0]!, "put-again", { tasks: [instance(3)] });
+    await invoke(toolOf(mode), "put-again", { tasks: [instance(3)] });
     await mode.settle(true);
     expect(asked).toBe(1);
     // Two drafts need two reserves. The first solve in flight must not be counted again as ahead.
@@ -1091,7 +1089,7 @@ describe("a session that writes tasks", () => {
       undefined,
       "unseen",
     );
-    await invoke(batch.tools[0]!, "batch", { tasks: [instance(2), instance(3)] });
+    await invoke(toolOf(batch), "batch", { tasks: [instance(2), instance(3)] });
     try {
       expect(together).toBe(2);
     } finally {
@@ -1104,12 +1102,12 @@ describe("a session that writes tasks", () => {
     const s = seat("write", []);
     append(s.log, "exam.started", { session: s.request.id });
     const mode = writing({ ...s.request, probe: async () => PASS }, undefined, "unseen");
-    await invoke(mode.tools[0]!, "put", { tasks: [instance(2)] });
+    await invoke(toolOf(mode), "put", { tasks: [instance(2)] });
     await mode.settle(true);
     const [draft] = writtenTasks(read(s.log));
     if (draft === undefined) throw new Error("the draft was not written");
     expect(mode.result().refused).toEqual([s.versionOf(draft.taskId, 2)]);
-    const example = await invoke(mode.tools.find(({ name }) => name === "read_example")!, "own", {
+    const example = await invoke(toolOf(mode, "read_example"), "own", {
       task: draft.taskId,
     });
     expect(example.output).toEqual([{ type: "text", text: JSON.stringify(draft, null, 2) }]);
@@ -1140,8 +1138,8 @@ describe("a session that writes tasks", () => {
         undefined,
         "unseen",
       );
-      const put = mode.tools.find(({ name }) => name === TRY)!;
-      const answer = mode.tools.find(({ name }) => name === "try_answer")!;
+      const put = toolOf(mode, TRY);
+      const answer = toolOf(mode, "try_answer");
       if (alreadyProved) {
         await invoke(answer, "earlier", { ...instance(7), answer: { ...GOOD, answer: "9.95" } });
       }
@@ -1177,7 +1175,7 @@ describe("a session that writes tasks", () => {
       undefined,
       "unseen",
     );
-    const put = mode.tools[0]!;
+    const put = toolOf(mode);
     await invoke(put, "first", { tasks: [instance(7)] });
     await mode.settle(true);
     await invoke(put, "retry", { tasks: [instance(7), instance(7)] });
@@ -1193,13 +1191,13 @@ describe("a session that writes tasks", () => {
       undefined,
       "unseen",
     );
-    await invoke(proved.tools.find(({ name }) => name === "try_answer")!, "proof", {
+    await invoke(toolOf(proved, "try_answer"), "proof", {
       ...instance(8),
       answer: GOOD,
     });
-    await invoke(proved.tools[0]!, "held", { tasks: [instance(8)] });
+    await invoke(toolOf(proved), "held", { tasks: [instance(8)] });
     await proved.settle(true);
-    await invoke(proved.tools[0]!, "duplicate", { tasks: [instance(8)] });
+    await invoke(toolOf(proved), "duplicate", { tasks: [instance(8)] });
     expect(proved.result().held).toHaveLength(1);
     expect(proved.result().puts).toBe(1);
   });
@@ -1245,7 +1243,7 @@ describe("a session that writes tasks", () => {
         };
         append(s.log, "exam.started", { session: "x-1" });
         const first = writing({ ...s.request, probe }, undefined, "unseen", stop.signal);
-        await invoke(first.tools[0]!, "first", { tasks: [instance(7)] });
+        await invoke(toolOf(first), "first", { tasks: [instance(7)] });
         await waiting.promise;
         stop.abort();
         release.resolve();
@@ -1280,19 +1278,19 @@ describe("a session that writes tasks", () => {
           if (!isString(reason)) throw new Error("gate reason missing");
           expect(record.interrupted[0]).toContain(reason);
         }
-        expect(next.opening).toContain(record.interrupted[0]!);
+        expect(next.opening).toContain(present(record.interrupted[0]));
         for (const secret of [SOLVER, "review-private-canary", "provider-private-canary"]) {
           expect(next.opening).not.toContain(secret);
         }
-        const original = writtenTasks(events)[0]!;
-        const recovered = await invoke(next.tools.find(({ name }) => name === "read_example")!, "recover", {
+        const original = present(writtenTasks(events)[0]);
+        const recovered = await invoke(toolOf(next, "read_example"), "recover", {
           task: original.taskId,
         });
         expect(recovered.output).toEqual([{ type: "text", text: JSON.stringify(original, null, 2) }]);
         expect(writing(request, undefined, "unseen").opening).toBe(next.opening);
         await examine(request);
         expect(s.of(CALLED).find(({ tool }) => tool === "read_opening")?.text).toBe(next.opening);
-        await invoke(next.tools[0]!, "retry", { tasks: [instance(7)] });
+        await invoke(toolOf(next), "retry", { tasks: [instance(7)] });
         await next.settle(true);
         expect(asked).toBe(6);
         expect(s.of(TASK_ADMISSION)).toMatchObject([
@@ -1302,7 +1300,7 @@ describe("a session that writes tasks", () => {
         expect(next.result().held).toEqual([]);
         expect(s.of("referee.finding").map(({ ruling }) => ruling)).toEqual(interruptedReview ? [null] : []);
         const again = writing({ ...request, id: "x-3" }, undefined, "unseen");
-        await invoke(again.tools[0]!, "duplicate", { tasks: [instance(7)] });
+        await invoke(toolOf(again), "duplicate", { tasks: [instance(7)] });
         expect(again.result().puts).toBe(0);
         expect(asked).toBe(6);
       });
@@ -1375,7 +1373,7 @@ describe("a session that writes tasks", () => {
       { valid: 1, solves: 2, ran: 3, billed: 1.5 },
       { valid: 2, solves: 2, ran: 3, billed: 1.5 },
     ]);
-    expect(solvesIn(read(s.log)).map(({ start }) => start.comparison)).toEqual(Array(18).fill("x-1"));
+    expect(solvesIn(read(s.log)).map(({ start }) => start.comparison)).toEqual(copies(18, "x-1"));
     expect(billedParts(read(s.log), "x-1")).toEqual({ session: 0, comparison: 9 });
     // None is part of a task's answers or a tally; a valid one is a witness, so its task is
     // feasible and nothing more.
@@ -1386,7 +1384,7 @@ describe("a session that writes tasks", () => {
     const said = s.of(CALLED).flatMap(({ text: each }) => (isString(each) ? each.split("\n") : []));
     expect(
       said.filter((line) => line.includes("held out")).map((line) => line.split(", so it leaves room ")[1]),
-    ).toEqual(Array(3).fill("on validity, its solves valid in some and not all."));
+    ).toEqual(copies(3, "on validity, its solves valid in some and not all."));
     expect(said.filter((line) => line.includes("refused")).join("\n")).not.toContain("leaves room on");
     // A later session counts them by the same kinds, with those refused after reading all three
     // solves: x-1-006 read two, which no reading counts as measured (`measuredGate`).
@@ -1482,7 +1480,7 @@ describe("a session that writes tasks", () => {
     }
     // A later session is told the gap beside the refused draft.
     expect(heard(read(s.log), []).refused).toEqual([
-      expect.stringContaining("x-1-002 (fixture, yours 0.5% better than its best)"),
+      containing("x-1-002 (fixture, yours 0.5% better than its best)"),
     ]);
     // and beside the held one, on its line.
     const later = heard(read(s.log), [{ taskId: "x-1-001", family: "fixture" }]);
@@ -1725,9 +1723,9 @@ describe("a session that writes tasks", () => {
     expect(examined.ended).toBe("wall");
     expect(performance.now() - started).toBeLessThan(4000);
     expect(running.size).toBe(0);
-    expect(s.of(FINISHED).map(({ ending }) => asRecord(ending)?.kind)).toEqual(Array(2).fill("killed"));
+    expect(s.of(FINISHED).map(({ ending }) => asRecord(ending)?.kind)).toEqual(copies(2, "killed"));
     expect(s.of(TASK_ADMISSION)).toMatchObject(
-      Array(2).fill({ outcome: "refused", reference: { valid: 0, solves: 0 } }),
+      copies(2, { outcome: "refused", reference: { valid: 0, solves: 0 } }),
     );
     // Refused unmeasured, so a later session may take either again (`measuredGate`).
     expect(s.of(PROPOSED)).toHaveLength(2);
@@ -1800,13 +1798,13 @@ describe("a session that writes tasks", () => {
     expect(s.of(STARTED)).toHaveLength(2);
     expect(s.of(FINISHED)).toHaveLength(2);
     expect(s.of(TASK_ADMISSION)).toMatchObject(
-      Array(2).fill({
+      copies(2, {
         outcome: "refused",
         reference: { valid: 1, solves: 1, ran: 3 },
       }),
     );
     expect(s.of(TASK_ADMISSION).filter(admissionSettled)).toEqual([]);
-    expect(s.of(TASK_STATE)).toMatchObject(Array(2).fill({ state: "refused", session: "x-1" }));
+    expect(s.of(TASK_STATE)).toMatchObject(copies(2, { state: "refused", session: "x-1" }));
     expect(examined.refused).toHaveLength(2);
     const kinds = read(s.log).map(({ kind }) => kind);
     expect(kinds.lastIndexOf(TASK_ADMISSION)).toBeLessThan(kinds.indexOf(EXAM_FINISHED));
@@ -1860,8 +1858,10 @@ describe("a session that writes tasks", () => {
     pack = join(dirname(s.log), "pack");
     const tools = join(pack, ".toolchain");
     mkdirSync(join(pack, "checks"), { recursive: true });
-    const brief = JSON.parse(readFileSync(join(s.program, "brief.json"), "utf8"));
-    brief.truthChecks[0].execution.requiredToolIds = ["fixeng"];
+    const brief = parseJsonAs<{ truthChecks: { execution: { requiredToolIds?: string[] } }[] }>(
+      readFileSync(join(s.program, "brief.json"), "utf8"),
+    );
+    present(brief.truthChecks[0]).execution.requiredToolIds = ["fixeng"];
     writeFileSync(join(pack, "checks", "brief.json"), JSON.stringify(brief));
     mkdirSync(join(tools, "bin"), { recursive: true });
     mkdirSync(join(tools, "share"), { recursive: true });

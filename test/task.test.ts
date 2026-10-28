@@ -6,6 +6,8 @@ import { packageGate, type TaskPackage, taskSets, taskStates, taskVersion } from
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
+import { containing, matching, present } from "./helpers/matchers.ts";
+import { parseJsonAs } from "../src/meta/json-runtime.ts";
 
 const CONTRACT: Contract = {
   answerFormat: {
@@ -76,12 +78,14 @@ describe("the shape check", () => {
   it("refuses a task that gives a check no hidden value of the check's own to run on", () => {
     // A check that declares its hidden operand required, as v1's reference-comparing checks do.
     const dir = program(["beams"], ["span-rule"]);
-    const brief = JSON.parse(readFileSync(join(dir, "brief.json"), "utf8"));
-    brief.truthChecks[0].execution.hidden = "required";
+    const brief = parseJsonAs<{ truthChecks: { execution: { hidden?: string } }[] }>(
+      readFileSync(join(dir, "brief.json"), "utf8"),
+    );
+    present(brief.truthChecks[0]).execution.hidden = "required";
     writeFileSync(join(dir, "brief.json"), JSON.stringify(brief));
     expect(packageGate(CONTRACT, pkg({ checks: dir, hidden: [] }))).toMatchObject({
       outcome: "refused",
-      reason: expect.stringContaining("check-hidden-operand-missing: spans"),
+      reason: containing("check-hidden-operand-missing: spans"),
     });
     expect(packageGate(CONTRACT, pkg({ checks: dir, hidden: { spans: 4 } })).outcome).toBe("refused");
     const served = [{ checkId: "spans", expectation: { depthM: 0.4 } }];
@@ -101,7 +105,7 @@ describe("the shape check", () => {
     ] satisfies [Partial<TaskPackage>, RegExp][]) {
       expect(packageGate(CONTRACT, pkg(changes))).toMatchObject({
         outcome: "refused",
-        reason: expect.stringMatching(fact),
+        reason: matching(fact),
       });
     }
   });

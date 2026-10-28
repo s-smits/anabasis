@@ -73,12 +73,15 @@ const AT = '{"at":"';
 /** The kernel of the worktree at `path`, imported from its own files; refused where it scores no
  *  weighted measures. */
 export async function loadTree(path: string): Promise<Tree> {
-  const kernel = (file: string) => import(join(path, "src", "kernel", file));
+  // SAFETY: the tree under replay is a worktree of this repository; its kernel modules are typed
+  // as this tree's, and the check below refuses a tree whose scores have a different shape.
+  const kernel = async <Module>(file: string): Promise<Module> =>
+    (await import(join(path, "src", "kernel", file))) as Module;
   const [log, reports, compare, trace] = await Promise.all([
-    kernel("log.ts"),
-    kernel("reports.ts"),
-    kernel("compare.ts"),
-    kernel("trace.ts"),
+    kernel<typeof import("#src/kernel/log.ts")>("log.ts"),
+    kernel<typeof import("#src/kernel/reports.ts")>("reports.ts"),
+    kernel<typeof import("#src/kernel/compare.ts")>("compare.ts"),
+    kernel<typeof import("#src/kernel/trace.ts")>("trace.ts"),
   ]);
   if (!isFunction(compare.pointsOf) || asRecord(compare.WEIGHTS) === null) {
     throw new Error(`${path} scores no weighted measures (pointsOf, WEIGHTS): a tree from before 21 October`);

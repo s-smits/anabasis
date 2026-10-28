@@ -15,6 +15,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { processTable } from "../src/meta/process-table.ts";
+import { anyOf } from "./helpers/matchers.ts";
 
 const onDarwin = runtimeProcess.platform === "darwin";
 
@@ -45,7 +46,7 @@ describe("the process table", () => {
         Bun.spawnSync(["/bin/ps", "-o", "pgid=", "-p", String(runtimeProcess.pid)]).stdout.toString(),
       );
       expect(row()).toEqual({
-        pid: expect.any(Number),
+        pid: anyOf(Number),
         ppid: runtimeProcess.pid,
         pgid: group,
         cwd: works,

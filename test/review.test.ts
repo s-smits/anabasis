@@ -20,7 +20,10 @@ import { agreement, clears } from "../src/referee/agreement.ts";
 import { type ProbeRow, probeTool } from "../src/referee/probe.ts";
 import type { Reader } from "../src/referee/reader.ts";
 import { referee } from "../src/referee/referee.ts";
+import { containing, copies, objectWith } from "./helpers/matchers.ts";
 
+// SAFETY: the probe uses only the context's abort signal, no tool API methods.
+const UNUSED_API = undefined as never;
 const CANARY = "hidden-canary-r7";
 const TASK: Task = { taskId: "t-1", family: "beam", publicInput: { load: 5 }, hidden: { limit: CANARY } };
 const CONTRACT: Contract = {
@@ -112,7 +115,7 @@ function setup(
 
 function invoke(tool: SeatTool, args: JsonObject) {
   // The probe uses the real cancellation context and no execution API operations.
-  return tool.execute(args, undefined!, BACKGROUND_CONTEXT);
+  return tool.execute(args, UNUSED_API, BACKGROUND_CONTEXT);
 }
 
 describe("the probe", () => {
@@ -155,9 +158,7 @@ describe("the probe", () => {
     const tool = probeTool(verify, TASK, ANSWER, rows);
     const probe = (path: string, value: string) => invoke(tool, { changes: [{ path, value }] });
     const moved = await probe(SPAN, "10");
-    expect(moved.output).toEqual([
-      expect.objectContaining({ text: expect.stringContaining("1 check moved: span") }),
-    ]);
+    expect(moved.output).toEqual([objectWith({ text: containing("1 check moved: span") })]);
     expect(JSON.stringify(moved.output)).toContain("probe 1 of 8: 7 probes left");
     expect(tool.description).toContain("at most 8 probes");
     await probe("$.members[0].area", "5");
@@ -324,7 +325,7 @@ describe("deciding check-defect probes", () => {
     for (const fact of ["span", "R1", "A span is at most 12 m.", SPAN]) expect(s.sent[0]).toContain(fact);
     const logged = read(s.log).findLast((event) => event.kind === FINDING)?.data;
     expect(logged).toMatchObject({ solve: "s-1", task: "t-1", ruling: "check-defect", turns: 4 });
-    expect(logged?.probeRows).toEqual([expect.objectContaining({ id: 1, moved: ["span"] })]);
+    expect(logged?.probeRows).toEqual([objectWith({ id: 1, moved: ["span"] })]);
     expect(logged?.replay).toEqual({ kind: "fail", blocking: ["span"] });
   });
 
@@ -359,11 +360,11 @@ describe("host replay", () => {
       [{ kind: "pass" }, { ruling: "check-defect", check: "span", probes: [] }],
       [
         { kind: "non-result", reason: "the cell timed out" },
-        { ruling: null, reason: expect.stringContaining("the cell timed out") },
+        { ruling: null, reason: containing("the cell timed out") },
       ],
       [
         { kind: "faulty", check: "span", reason: "the check threw" },
-        { ruling: null, reason: expect.stringContaining("the check threw") },
+        { ruling: null, reason: containing("the check threw") },
       ],
     ] satisfies [Verdict, JsonObject][]) {
       const s = setup([]);
@@ -389,7 +390,7 @@ describe("host replay", () => {
     });
     expect(await referee(s.reader, fail(s))).toMatchObject({
       ruling: "earned",
-      reason: expect.stringContaining("span is not a number"),
+      reason: containing("span is not a number"),
     });
     expect(s.calls()).toBe(0);
   });
@@ -430,7 +431,7 @@ describe("earned evidence", () => {
     for (const [index, { data }] of refused.entries()) {
       expect(data.why).toMatch(reasons[index] ?? /missing refusal/u);
     }
-    expect(refused.map(({ data }) => [data.solve, data.task])).toEqual(Array(4).fill(["s-1", "t-1"]));
+    expect(refused.map(({ data }) => [data.solve, data.task])).toEqual(copies(4, ["s-1", "t-1"]));
     for (const [index, { data }] of refused.entries()) {
       expect(s.sent[index + 1]).toContain(JSON.stringify(data.why).slice(1, -1));
     }
@@ -466,8 +467,8 @@ describe("earned evidence", () => {
       expect(s.sent[[1, 3, 5][index] ?? 0]).toContain(JSON.stringify(data.why).slice(1, -1));
     }
     expect(read(s.log).at(-1)?.data.probeRows).toEqual([
-      expect.objectContaining({ id: 1, moved: [] }),
-      expect.objectContaining({ id: 2, moved: [] }),
+      objectWith({ id: 1, moved: [] }),
+      objectWith({ id: 2, moved: [] }),
     ]);
   });
 });

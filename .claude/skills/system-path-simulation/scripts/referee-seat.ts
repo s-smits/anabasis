@@ -36,12 +36,14 @@ async function main(args: CommandArgs): Promise<number> {
   const solve = args.required("solve");
   if (!name.startsWith("sim-")) args.die(`${name} is no seed: the Referee here rules only on sim-<what>`);
   const tree = runtimeProcess.cwd();
-  const { openCampaign }: typeof import("#tools/d2/campaign.ts") = await import(
+  // SAFETY: the seed's worktree is the one this script runs from, so its modules are this tree's.
+  const { openCampaign } = (await import(
     join(tree, "tools/d2/campaign.ts")
-  );
-  const { packaged, reviewersNamed }: typeof import("#tools/d2/round.ts") = await import(
+  )) as typeof import("#tools/d2/campaign.ts");
+  // SAFETY: as above.
+  const { packaged, reviewersNamed } = (await import(
     join(tree, "tools/d2/round.ts")
-  );
+  )) as typeof import("#tools/d2/round.ts");
   const campaign = await openCampaign({ name });
   const reviewers = reviewersNamed(campaign, {
     reviewer: args.required("reviewer"),

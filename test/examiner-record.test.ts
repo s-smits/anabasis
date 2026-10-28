@@ -92,9 +92,9 @@ function logged() {
 }
 const fixture = (taskId: string) => ({ taskId, family: "fixture" });
 /** Each task's clauses by its id, preserving their order and repeated outcomes. */
-const byTask = (lines: readonly string[]) =>
+const byTask = (lines: readonly string[]): Record<string, string> =>
   Object.fromEntries(
-    lines.map((said) => [said.split(" (fixture): ")[0], said.split(" (fixture): ")[1] ?? ""]),
+    lines.map((said) => [said.split(" (fixture): ")[0] ?? "", said.split(" (fixture): ")[1] ?? ""] as const),
   );
 
 describe("the reference outcomes delivered at session opening", () => {

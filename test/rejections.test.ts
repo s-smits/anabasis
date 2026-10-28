@@ -4,6 +4,7 @@
 import { describe, expect, it } from "bun:test";
 import type { LogEvent } from "../src/kernel/log.ts";
 import { drawn, rejections, repairReading } from "../src/referee/rejections.ts";
+import { arrayWith } from "./helpers/matchers.ts";
 
 const at = "2026-10-08T00:00:00.000Z";
 const refused = (solve: string, ...blocking: string[]): LogEvent => ({
@@ -47,7 +48,7 @@ describe("a checker's refused answers", () => {
     const sample = drawn(VERDICTS, 2, "seed");
     expect(sample).toHaveLength(2);
     expect(drawn(VERDICTS.toReversed(), 2, "seed")).toEqual(sample);
-    expect(["a", "b", "c", "d"]).toEqual(expect.arrayContaining(sample));
+    expect(["a", "b", "c", "d"]).toEqual(arrayWith(sample));
     expect(() => drawn(VERDICTS, 5, "seed")).toThrow(/5.*4/u);
     expect(() => drawn([...VERDICTS, ruled("a", "earned")], 2, "seed")).toThrow(/blind/u);
   });

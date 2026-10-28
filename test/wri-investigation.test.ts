@@ -18,6 +18,7 @@ import { capturedExecPath } from "../src/meta/process.ts";
 import { catalogueText, type Lane, lanesOf, ownersOf } from "../tools/wri/catalogue.ts";
 import { lanePrompt, reportOf } from "../tools/wri/investigation.ts";
 import { execTextSync } from "./helpers/bun-spawn-sync.ts";
+import { containing } from "./helpers/matchers.ts";
 
 const shared =
   "## Orientation\n\nWhy the step.\n\n## Campaigns under review\n\nthe row\n\n## Hard rules\n\n- quote nothing\n";
@@ -194,7 +195,7 @@ describe("the lanes verb", () => {
     expect(manifest().sessions).toEqual([
       {
         name: "lane_05",
-        task: expect.stringContaining("05-prompt.md"),
+        task: containing("05-prompt.md"),
         ownedPaths: [join(out, "lanes", "05-report.md")],
       },
     ]);

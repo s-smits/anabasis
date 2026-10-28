@@ -11,6 +11,8 @@ import {
 } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
+import { present } from "./helpers/matchers.ts";
+import { parseJsonAs } from "../src/meta/json-runtime.ts";
 
 const fixtures: string[] = [];
 const PREPARE =
@@ -143,7 +145,7 @@ describe("controller pruning and cursor storage", () => {
     });
     expect(result.code).toBe(0);
     for (const tree of trees.slice(0, 4)) expect(existsSync(tree)).toBe(true);
-    expect(existsSync(trees[4]!)).toBe(false);
+    expect(existsSync(present(trees[4]))).toBe(false);
     expect(existsSync(`${trees[4]}.ready`)).toBe(false);
     expect(
       made
@@ -180,7 +182,9 @@ describe("controller pruning and cursor storage", () => {
       expect(existsSync(join(controller, ".ana", "pulse", "observer.json"))).toBe(false);
     }
     expect(
-      JSON.parse(readFileSync(join(made.main, ".ana", "pulse", "observer.json"), "utf8")).logs[log].lines,
+      parseJsonAs<{ logs: Record<string, { lines: number }> }>(
+        readFileSync(join(made.main, ".ana", "pulse", "observer.json"), "utf8"),
+      ).logs[log]?.lines,
     ).toBe(1);
   });
 });

@@ -18,6 +18,7 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { ending, text, tool } from "../src/tools/answer.ts";
+import { present } from "./helpers/matchers.ts";
 
 const homes: string[] = [];
 const LONG = "first part\n" + `${"x".repeat(79)}\n`.repeat(1024) + "last part";
@@ -80,7 +81,7 @@ describe("a seat tool's automatic result cap", () => {
     for (const callId of ["one", "two"]) {
       const result = await large.execute({}, api(callId, env), BACKGROUND_CONTEXT);
       results.push(result);
-      const file = env.files.at(-1)!;
+      const file = present(env.files.at(-1));
       const value = shown(result);
       expect(dirname(dirname(file))).toBe(dir);
       expect(file).toEndWith(".log");
@@ -98,7 +99,7 @@ describe("a seat tool's automatic result cap", () => {
     }
     expect(env.files).toHaveLength(2);
     expect(env.files[0]).not.toBe(env.files[1]);
-    expect(shown(results[0]!)).not.toBe(shown(results[1]!));
+    expect(shown(present(results[0]))).not.toBe(shown(present(results[1])));
   });
 
   it("removes a link before writing and preserves the link's target", async () => {
@@ -114,7 +115,7 @@ describe("a seat tool's automatic result cap", () => {
       execute: async () => text(value),
     });
     await large.execute({}, api("../../call", env), BACKGROUND_CONTEXT);
-    const file = env.files[0]!;
+    const file = present(env.files[0]);
     expect(dirname(dirname(file))).toBe(dir);
     expect(file).toEndWith(".log");
     expect(file).not.toContain("../");
@@ -176,10 +177,10 @@ describe("a seat tool's automatic result cap", () => {
       expect(Buffer.byteLength(shown(result))).toBeLessThanOrEqual(50 * 1024);
       expect(result.output?.[1]).toEqual(IMAGE);
       expect(result.output).toHaveLength(2);
-      const file = env.files[0]!;
+      const file = present(env.files[0]);
       expect(dirname(dirname(file))).toBe(env.cwd);
       expect(readFileSync(file, "utf8")).toBe(first + second);
     }
-    expect(envs[0]!.files[0]).not.toBe(envs[1]!.files[0]);
+    expect(present(envs[0]).files[0]).not.toBe(present(envs[1]).files[0]);
   });
 });

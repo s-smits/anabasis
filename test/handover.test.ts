@@ -13,6 +13,7 @@ import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { viewLines } from "../tools/runs/view.ts";
+import { anyOf } from "./helpers/matchers.ts";
 
 const LIMITS = {
   wallSeconds: 480,
@@ -165,7 +166,7 @@ describe("a campaign's reading", () => {
         ended: "finished",
         cut: false,
         turns: 0,
-        last: expect.any(String),
+        last: anyOf(String),
         proposed: 3,
         held: 2,
         refused: 1,
@@ -177,7 +178,7 @@ describe("a campaign's reading", () => {
         ended: "finished",
         cut: false,
         turns: 0,
-        last: expect.any(String),
+        last: anyOf(String),
         parent: STARTER,
         harness: HA,
         changed: true,

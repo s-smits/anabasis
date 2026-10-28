@@ -31,6 +31,7 @@ import { safeguardTriggers } from "../tools/wri/climb.ts";
 import { indexOf } from "../tools/wri/folds.ts";
 import { conditionOf } from "./helpers/logged-round.ts";
 import { fixtureTasks, layOutPack } from "./helpers/fixture-pack.ts";
+import { arrayWith, present } from "./helpers/matchers.ts";
 
 type Outcomes = Readonly<Record<string, readonly [string, string]>>;
 const STOPPED = "check-defects";
@@ -163,7 +164,7 @@ it("reviews a stopped draw with five short tasks and seventeen rejected answers 
   expect(report.short.filter((task) => report.aside.includes(task))).toHaveLength(2);
   expect(report).toMatchObject({ settled: comparison.UNSETTLED, disputed: [], withdrawn: [] });
   const events = read(s.log);
-  const fixed = comparison.fixedIn(events, ID)!;
+  const fixed = present(comparison.fixedIn(events, ID));
   const covered = comparison.coverageOf(events, fixed);
   expect(fixed.tasks).toHaveLength(10);
   expect(covered.pairs.map(({ task }) => task)).toEqual(["t-1", "t-2", "t-3", "t-4", "t-5"]);
@@ -252,12 +253,12 @@ it("recovers completion omitted by an older stopped report at its original cutof
     aside: ["t-4", "t-5", "t-7", "t-10"],
     reading: STOPPED,
   });
-  const fixed = comparison.fixedIn(read(s.log), ID)!;
+  const fixed = present(comparison.fixedIn(read(s.log), ID));
   const original = comparison.coverageOf(read(s.log), fixed);
   expect(original.short).toHaveLength(5);
   const condition = recordCondition(s.log, conditionOf("t-8", "old"));
   append(s.log, "solve.started", { solve: "after-report", condition, comparison: ID });
-  append(s.log, "solve.finished", { solve: "after-report", ending: ENDINGS.get("D")! });
+  append(s.log, "solve.finished", { solve: "after-report", ending: present(ENDINGS.get("D")) });
   expect(comparison.toLabel(read(s.log), ID).aside).toHaveLength(14);
   const settled = settleReading(
     s.log,
@@ -277,7 +278,7 @@ it("keeps a winning completed prefix unscored after earned labels for both defec
   for (const stop of ["defect", "cap"] as const) {
     const s = fixture({ ...wins, broken: ["D", ""] }, stop);
     const first = await checkpoint(s.request);
-    const fixed = comparison.fixedIn(read(s.log), ID)!;
+    const fixed = present(comparison.fixedIn(read(s.log), ID));
     const labels = new Map([...s.labels.keys()].map((solve) => [solve, "earned"] as const));
     // This is the dangerous counterfactual: the selected prefix would clear the fixed level.
     expect(comparison.compared(read(s.log), fixed, labels).reading).toBe("step");
@@ -307,7 +308,7 @@ it("reads promotion tallies with restored, removed and wrong answers from the se
   for (const label of ["earned", "unclear", "check-defect"] as const) {
     const s = fixture({ restored: ["DDDD", "PPPP"], stable: ["LLLL", "PPPP"] });
     const original = await checkpoint({ ...s.request, defects: 100 });
-    const passes = new Map([[comparison.passesIn(read(s.log), ID).at(-1)!, "wrong"]] as const);
+    const passes = new Map([[present(comparison.passesIn(read(s.log), ID).at(-1)), "wrong"]] as const);
     const settled = settleReading(
       s.log,
       ID,
@@ -319,14 +320,10 @@ it("reads promotion tallies with restored, removed and wrong answers from the se
     expect(settled.scored).not.toEqual(original.scored);
     append(s.log, "harness.promoted", { from: "old", harness: "fresh" });
     const events = read(s.log);
-    const report = lastReports(events)[0]!;
+    const report = present(lastReports(events)[0]);
     const reading = scored(comparison.labelledPairs(events, report));
-    expect(reading).toMatchObject({
-      wins: settled.scored!.wins,
-      losses: settled.scored!.losses,
-      ties: settled.scored!.ties,
-      p: settled.scored!.p,
-    });
+    const { wins, losses, ties, p } = present(settled.scored);
+    expect(reading).toMatchObject({ wins, losses, ties, p });
   }
 });
 
@@ -336,7 +333,7 @@ it("uses the promotion reader's settled wrong passes in safeguard nine", async (
   );
   const s = fixture(wins);
   await checkpoint(s.request);
-  const fixed = comparison.fixedIn(read(s.log), ID)!;
+  const fixed = present(comparison.fixedIn(read(s.log), ID));
   const reference = new Set(
     comparison
       .solvesUnder(read(s.log), fixed)
@@ -347,7 +344,7 @@ it("uses the promotion reader's settled wrong passes in safeguard nine", async (
       ? { ...event, data: { ...event.data, billed: reference.has(event.data.solve) ? 2 : 1 } }
       : event,
   );
-  const passes = { [comparison.passesIn(billed, ID)[4]!]: "wrong" };
+  const passes = { [present(comparison.passesIn(billed, ID)[4])]: "wrong" };
   const failed = comparison.wrongAsFailed(billed, new Map(), passes);
   const settled = comparison.compared(failed.events, fixed, failed.labels);
   const events = billed.map((event) =>
@@ -457,7 +454,7 @@ it("draws and settles the stopped comparison through the blind packet command", 
     expect(Object.keys(evidence).toSorted()).toEqual(["answer", "contract", "refusedBy", "solve", "task"]);
     expect(evidence.task.publicInput.base).toBeGreaterThan(0);
     expect(Object.keys(evidence.contract)).toEqual(
-      expect.arrayContaining(["scope", "conventions", "rules", "answerFormat"]),
+      arrayWith(["scope", "conventions", "rules", "answerFormat"]),
     );
     expect(evidence.answer).toEqual({ answer: "42" });
     expect(evidence.refusedBy).toEqual(s.labels.has(solve) ? ["check-a"] : []);
@@ -476,7 +473,7 @@ it("draws and settles the stopped comparison through the blind packet command", 
   );
   expect(await run()).toContain("17 labelled rejections");
   said.mockRestore();
-  const settled = comparison.reported(read(join(folder, "log.jsonl")), ID)!;
+  const settled = present(comparison.reported(read(join(folder, "log.jsonl")), ID));
   unscored(settled);
   expect(settled.settled).toMatchObject({ labelled: 17, restored: [] });
 });

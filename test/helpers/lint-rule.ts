@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "../../src/meta/filesystem
 import { tmpdir } from "../../src/meta/os.ts";
 import { dirname, join, resolve } from "../../src/meta/path.ts";
 import { expectedLines } from "./oxlint-rule-fixture.ts";
+import { capturedExecPath } from "../../src/meta/process.ts";
 
 type RuleCase = readonly [rule: string, fixture: string, reports: number, at?: string];
 
@@ -30,7 +31,7 @@ export async function lintRules(plugin: string, cases: readonly RuleCase[]): Pro
   );
   const child = Bun.spawn(
     [
-      Bun.argv[0]!,
+      capturedExecPath,
       "--no-env-file",
       "node_modules/oxlint/bin/oxlint",
       "-c",

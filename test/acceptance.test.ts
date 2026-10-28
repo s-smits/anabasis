@@ -17,6 +17,7 @@ import type { Contract } from "../src/kernel/contract.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import type { Brief, Task, Verifier } from "../src/kernel/verify.ts";
 import { asRecord, isNumber, type JsonObject } from "../src/meta/json-shape.ts";
+import { matching } from "./helpers/matchers.ts";
 
 const brief: Brief = {
   correctnessContract: "check-program/v1",
@@ -105,11 +106,11 @@ describe("a checker's acceptance", () => {
     ];
     const read = await reading({ verify: once, tasks: [roof], controls, width: 1 });
     expect(read.faults).toEqual([
-      expect.stringMatching(/accept.*roof-1.*fail mass/u),
-      expect.stringMatching(/reject.*roof-1.*span.*: pass$/u),
-      expect.stringMatching(/roof-1.*fail mass.*pass$/u),
-      expect.stringMatching(/mass.*no reject control/u),
-      expect.stringMatching(/span.*refused nothing/u),
+      matching(/accept.*roof-1.*fail mass/u),
+      matching(/reject.*roof-1.*span.*: pass$/u),
+      matching(/roof-1.*fail mass.*pass$/u),
+      matching(/mass.*no reject control/u),
+      matching(/span.*refused nothing/u),
     ]);
   });
 
@@ -118,9 +119,9 @@ describe("a checker's acceptance", () => {
     const accepted = { tasks: [roof], controls: SOUND.slice(0, 1), width: 1 };
     const bare = await reading({ ...accepted, found: (tool) => tool !== "fe" });
     expect(bare.faults).toEqual([
-      expect.stringMatching(/mass.*fe.*tool path/u),
-      expect.stringMatching(/mass.*refused nothing/u),
-      expect.stringMatching(/span.*refused nothing/u),
+      matching(/mass.*fe.*tool path/u),
+      matching(/mass.*refused nothing/u),
+      matching(/span.*refused nothing/u),
     ]);
     // A stored answer a check refused shows it can refuse, read apart from this reading's controls,
     // whose faults it does not clear; a verdict that decided nothing shows nothing of any check.
@@ -133,10 +134,7 @@ describe("a checker's acceptance", () => {
       ["mass", 0, 1],
       ["span", 0, 1],
     ]);
-    expect(seen.faults).toEqual([
-      expect.stringMatching(/mass.*refused nothing/u),
-      expect.stringMatching(/span.*refused nothing/u),
-    ]);
+    expect(seen.faults).toEqual([matching(/mass.*refused nothing/u), matching(/span.*refused nothing/u)]);
   });
 
   it("names a check's instrument by the tool it runs, whatever its brief labels it, and refuses an exam no engine decides until every check is admitted", async () => {
@@ -166,7 +164,7 @@ describe("a checker's acceptance", () => {
     };
     const { checks: none } = await reading({ ...sound, brief: drafted });
     expect(none.map(({ instrument }) => instrument)).toEqual(["author", "author"]);
-    expect(authoredFaults(none, new Set(["span"]))).toEqual([expect.stringMatching(/mass.*--admit mass/u)]);
+    expect(authoredFaults(none, new Set(["span"]))).toEqual([matching(/mass.*--admit mass/u)]);
     expect(authoredFaults(none, new Set(["mass", "span"]))).toEqual([]);
     // The log's last reading names what the operator's word is still wanted for.
     const logged = (admitted: string[]): LogEvent => ({
@@ -202,9 +200,7 @@ describe("the objective's acceptance", () => {
       caught: 0,
     });
     // It waits on the operator's word like a check, under its own name.
-    expect(authoredFaults(checks, new Set(["span"]))).toEqual([
-      expect.stringMatching(/objective.*--admit objective/u),
-    ]);
+    expect(authoredFaults(checks, new Set(["span"]))).toEqual([matching(/objective.*--admit objective/u)]);
     expect(authoredFaults(checks, new Set(["span", "objective"]))).toEqual([]);
     // The measure is part of the verdict, so a control measured twice at two values is one answer
     // with two verdicts, as a check that decides twice is.
@@ -223,7 +219,7 @@ describe("the objective's acceptance", () => {
     };
     expect((await reading(drifted)).faults[0]).toMatch(/roof-1.*pass 1.*pass 2/u);
     // A verifier that measures nothing, or cannot, is a fault of the objective's and of no check.
-    expect((await reading(sound)).faults).toEqual([expect.stringMatching(/objective.*measured nothing/u)]);
+    expect((await reading(sound)).faults).toEqual([matching(/objective.*measured nothing/u)]);
     const broken: Verifier = async (task, answer) => {
       const verdict = await verify(task, answer);
       return verdict.kind === "pass"
@@ -231,9 +227,9 @@ describe("the objective's acceptance", () => {
         : verdict;
     };
     expect((await reading({ ...sound, verify: broken })).faults).toEqual([
-      expect.stringMatching(/roof-1.*faulty objective.*NaN/u),
-      expect.stringMatching(/mast-1.*faulty objective.*NaN/u),
-      expect.stringMatching(/objective.*not be measured.*NaN/u),
+      matching(/roof-1.*faulty objective.*NaN/u),
+      matching(/mast-1.*faulty objective.*NaN/u),
+      matching(/objective.*not be measured.*NaN/u),
     ]);
   });
 });
@@ -266,7 +262,7 @@ describe("the answer's fields", () => {
       { taskId: roof.taskId, answer: { x: 0, mass: 5 }, refusedBy: null },
       { taskId: roof.taskId, answer: { x: 11, mass: 50 }, refusedBy: "mass" },
     ]);
-    expect(faults).toEqual([expect.stringMatching(/field x moved no check/u)]);
+    expect(faults).toEqual([matching(/field x moved no check/u)]);
   });
 
   it("reports every unused field the format allows to change", async () => {
@@ -325,8 +321,8 @@ describe("the do-nothing answer", () => {
         fault.startsWith("the do-nothing"),
       );
     expect(await idleFaults(lax)).toEqual([
-      expect.stringMatching(/roof-1.*faulty span.*no span to read/u),
-      expect.stringMatching(/mast-1.*pass/u),
+      matching(/roof-1.*faulty span.*no span to read/u),
+      matching(/mast-1.*pass/u),
     ]);
     const strict: Verifier = async () => ({ kind: "fail", blocking: ["mass"] });
     expect(await idleFaults(strict)).toEqual([]);
@@ -337,8 +333,8 @@ describe("the do-nothing answer", () => {
   it("lists a do-nothing answer the checks let pass, and one the format refuses, as faults of its own", async () => {
     const passed = await readUnder(mass({ type: "string" }));
     expect(passed.faults.filter((fault) => fault.startsWith("the do-nothing"))).toEqual([
-      expect.stringMatching(/roof-1.*pass/u),
-      expect.stringMatching(/mast-1.*pass/u),
+      matching(/roof-1.*pass/u),
+      matching(/mast-1.*pass/u),
     ]);
     const unformed = await readUnder(mass({ type: "string", pattern: "^[0-9]+$" }));
     expect(unformed.rejected).toEqual([]);

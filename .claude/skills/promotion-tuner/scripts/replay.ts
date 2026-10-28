@@ -364,7 +364,7 @@ function countFollowed(list: readonly Reading[], totals: Totals): void {
     if (!reading.step || next === undefined) continue;
     totals.followed += 1;
     totals.held += won(next) >= lost(next) ? 1 : 0;
-    totals.cleared += list[at + 1]?.step ? 1 : 0;
+    totals.cleared += list[at + 1]?.step === true ? 1 : 0;
   }
 }
 

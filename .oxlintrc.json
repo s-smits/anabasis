@@ -18,14 +18,7 @@
     {
       "files": ["test/**"],
       "rules": {
-        "typescript/await-thenable": "off",
-        "typescript/no-unsafe-argument": "off",
-        "typescript/no-unsafe-assignment": "off",
-        "typescript/no-unsafe-call": "off",
-        "typescript/no-unsafe-member-access": "off",
-        "typescript/no-unsafe-return": "off",
-        "typescript/no-non-null-assertion": "off",
-        "typescript/no-explicit-any": "off"
+        "typescript/await-thenable": "off"
       }
     },
     {
@@ -38,18 +31,6 @@
             "considerDefaultExhaustiveForUnions": true
           }
         ]
-      }
-    },
-    {
-      "files": [".claude/**/*.ts", ".claude/**/*.mts"],
-      "rules": {
-        "typescript/no-unsafe-argument": "off",
-        "typescript/no-unsafe-assignment": "off",
-        "typescript/no-unsafe-call": "off",
-        "typescript/no-unsafe-member-access": "off",
-        "typescript/no-unsafe-return": "off",
-        "typescript/no-non-null-assertion": "off",
-        "typescript/no-explicit-any": "off"
       }
     }
   ],

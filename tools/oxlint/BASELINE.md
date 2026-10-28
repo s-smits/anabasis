@@ -2734,3 +2734,21 @@ JSX member names count as borrowed names in `no-shape-in-symbol-names`; an alias
 own parameters only and a finite nesting of one alias is not read as recursion; a named class
 expression binds its name only inside itself; `any` and a generic alias applied to `string` are
 broad mapped keys (`THIRD_PARTY_NOTICES.md`).
+
+### The tests and the skills, 28 October
+
+The `test/**` and `.claude/**` overrides first switched off six type-aware rules and
+`no-non-null-assertion`. Only `typescript/await-thenable` stays off in `test/**`, because Bun types
+`expect(...).rejects` as a plain value. Switching the rest on gave 197 findings. They had two causes that were no defects:
+
+- `tsconfig.json` did not include `.claude/`, so its files had `error` types and every call reported
+  as unsafe. Adding it removed those reports, and `bun check` now reads 425 files.
+- Bun types its asymmetric matchers (`expect.any`, `expect.stringContaining`, ...) as `any`. They now
+  go through `test/helpers/matchers.ts`, where the cast is written once, and `Array(n).fill(x)`,
+  which is `any[]`, became `copies(n, x)`.
+
+What was left was real: 55 `!` on a lookup the test had just arranged (now `present`, and `toolOf`
+for the Examiner's tools, which also shortened the calls), untyped `JSON.parse` (now `parseJsonAs`
+with the shape the test reads), 3 `Bun.argv[0]!` (now the `capturedExecPath` owner), dynamic
+imports of another worktree's modules (typed against this tree's, with a stated reason), and one
+nullable boolean in the promotion tuner.

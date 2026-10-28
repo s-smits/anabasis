@@ -20,6 +20,7 @@ import { waitOut } from "../src/solver/run.ts";
 import { gated, type Host, waitCrashed } from "../tools/d2/host.ts";
 import type { Campaign, Seats } from "../tools/d2/round.ts";
 import { EXAMPLE, seat as examinerSeat, sweep } from "./helpers/examiner-seat.ts";
+import { anyOf, present } from "./helpers/matchers.ts";
 
 const NOW = new Date("2026-10-12T12:09:00Z");
 const TASK: TaskPackage = { ...EXAMPLE, ruleIds: [], checks: "" };
@@ -158,7 +159,7 @@ describe("load and reserve admission", () => {
     expect(ended).toMatchObject({ ending: { outcome: "pass" } });
     expect(host.slept).toEqual([30_000, 30_000]);
     expect(waits(log).map(({ data }) => data)).toEqual([
-      { task: EXAMPLE.taskId, harness: "h1", comparison: "g-1", load: 12, cores: 8, ms: expect.any(Number) },
+      { task: EXAMPLE.taskId, harness: "h1", comparison: "g-1", load: 12, cores: 8, ms: anyOf(Number) },
     ]);
   });
 
@@ -347,7 +348,7 @@ describe("the provider's named reset", () => {
       ["Claude AI usage limit reached|1791811800", "2026-10-12T13:30:00.000Z"],
       ["weekly limit · resets Oct 15 at 9pm (Europe/Amsterdam)", "2026-10-15T19:00:00.000Z"],
     ]) {
-      expect(resetOf(message!, NOW)?.toISOString()).toBe(reset);
+      expect(resetOf(present(message), NOW)?.toISOString()).toBe(reset);
     }
     expect(resetOf("You've hit your limit · resets 15:50", NOW)).not.toBeNull();
     for (const message of ["You've hit your limit", "socket hang up", "limit · resets 3pm (Mars/Olympus)"]) {

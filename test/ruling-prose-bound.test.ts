@@ -11,6 +11,7 @@ import { asRecord, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { referee } from "../src/referee/referee.ts";
+import { containing } from "./helpers/matchers.ts";
 
 const TASK: Task = { taskId: "t-1", family: "span", publicInput: {}, hidden: {} };
 const CONTRACT: Contract = {
@@ -143,7 +144,7 @@ describe("ruling prose", () => {
       expect(s.calls[1]?.data.isError).toBe(false);
       const refused = s.events.filter(({ kind }) => kind === "referee.refused");
       expect(refused).toHaveLength(1);
-      expect(refused[0]?.data).toMatchObject({ asked, why: expect.stringContaining("an earned ruling") });
+      expect(refused[0]?.data).toMatchObject({ asked, why: containing("an earned ruling") });
       expect(s.events.findIndex(({ kind }) => kind === "referee.refused")).toBeLessThan(
         s.events.findIndex(({ kind }) => kind === "referee.finding"),
       );

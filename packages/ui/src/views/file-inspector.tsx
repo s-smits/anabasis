@@ -31,17 +31,15 @@ export function FileInspector({
   loading,
   error,
   onClose,
-  expandAll = false,
   children,
 }: {
   /** What is open: "Harness file", "Harness diff", "Event". */
   label: string;
-  path: string | null;
+  path: string;
   payload: InspectorPayload | null;
   loading: boolean;
   error: string | null;
   onClose: () => void;
-  expandAll?: boolean;
   /** What the inspector shows above the payload, or in its place where there is none: a harness's
    *  file list, a diff, an event, or the line that says the exam side holds it. */
   children?: ReactNode;
@@ -64,7 +62,6 @@ export function FileInspector({
       onClose();
     }
   };
-  if (path === null) return null;
   return (
     <aside
       ref={pane}
@@ -93,11 +90,7 @@ export function FileInspector({
           {isString(payload.value) ? (
             <pre className="ana-file-content">{payload.value}</pre>
           ) : (
-            <RecordView
-              key={`${path}:${String(expandAll)}`}
-              value={payload.value}
-              defaultExpanded={expandAll ? "all" : false}
-            />
+            <RecordView key={path} value={payload.value} />
           )}
         </>
       )}

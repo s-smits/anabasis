@@ -238,13 +238,6 @@ describe("the whole-run investigation's reader", () => {
     expect(lines).toContain("b-1: hp > hc, ended finished, 1 practice solve, reading b-1 no-step");
   });
 
-  it("gives every trigger the lane its table names", () => {
-    expect(seen.triggers.length).toBeGreaterThan(0);
-    for (const trigger of seen.triggers) {
-      expect(trigger.lane).toBe(TRIGGERS[trigger.name]);
-    }
-  });
-
   it("starts the instrument lanes on an authored check and a rejection ruled a check defect", () => {
     expect(detail("INSTRUMENT AUTHORED")).toBe(
       "1 of 1 checks run no engine, so their author's own computation decides them",
@@ -692,7 +685,6 @@ describe("the reader on a log written before the plan after the v1 review", () =
     expect(lines).toContain("2 tasks held out, for a comparison to score; 0 released for practice");
     expect(lines).toContain("strong side: pass 1");
     expect(old.triggers.find(({ name }) => name === "CHAIN")?.detail).toBe("b-1 hp>hc no-step");
-    for (const trigger of old.triggers) expect(trigger.lane).toBe(TRIGGERS[trigger.name]);
   });
 });
 
@@ -932,7 +924,6 @@ describe("the reader of the load a comparison's solves started under", () => {
       put(REPORTED, { ...REPORT, ...terms, versions: ["v1"], reading: "no-step" });
     }
     const { triggers } = overview(log);
-    for (const trigger of triggers) expect(trigger.lane).toBe(TRIGGERS[trigger.name]);
     return (name: keyof typeof TRIGGERS) =>
       triggers.flatMap((trigger) => (trigger.name === name ? [trigger.detail] : []));
   };

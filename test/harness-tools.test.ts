@@ -27,11 +27,11 @@ import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { type CommandWall, makeSeatDirs, solveDirs } from "../src/tools/command.ts";
 import { harnessTools, openHarness } from "../src/harness/open.ts";
-import { writeHarness } from "../src/harness/starter.ts";
 import { claimRoot } from "../src/wall/seat-root.ts";
 import { solveIsolationPolicy } from "../src/wall/base.ts";
 import { osIsolationSupport } from "../src/wall/os-isolation.ts";
 import { CLOSED_CODE } from "./helpers/wall.ts";
+import { writeHarness } from "./helpers/write-harness.ts";
 
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
 const TASK = { taskId: "t-1", family: "fixture", publicInput: { base: 7 } };

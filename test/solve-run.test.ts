@@ -773,10 +773,8 @@ it.skipIf(!walled).concurrent(
 );
 
 it.skipIf(!walled).concurrent(
-  "judges an answer held before the model process crashed",
+  "ends on an answer submitted beside another call, without asking the model again",
   async () => {
-    // Submit beside a call that does not end the batch, so the loop asks for one more turn, and the
-    // model process dies on it.
     const submit = fauxAssistantMessage(
       [fauxToolCall("submit", {}), fauxToolCall("bash", { command: "true" })],
       toolUse,
@@ -787,10 +785,10 @@ it.skipIf(!walled).concurrent(
     let requests = 0;
     models.streamSimple = (model, context, options) => {
       requests += 1;
-      if (requests === 3) throw new Error("the model process died");
       return stream(model, context, options);
     };
     expect(await solve(request, noWait)).toEqual({ outcome: "pass" });
+    expect(requests).toBe(2);
     expect(finished()).toHaveLength(1);
   },
   120_000,

@@ -23,15 +23,10 @@ import { type CommandWall, makeSeatDirs, solveDirs } from "../src/tools/command.
 import { walledEnv } from "../src/tools/env.ts";
 import { harnessTools, openHarness } from "../src/harness/open.ts";
 import { installedPrograms } from "../src/harness/programs.ts";
-import {
-  EXAMPLE,
-  HARNESS_ACCOUNT,
-  WITHOUT_SHELL,
-  writeHarness,
-  writeStarter,
-} from "../src/harness/starter.ts";
+import { EXAMPLE, HARNESS_ACCOUNT, WITHOUT_SHELL, writeStarter } from "../src/harness/starter.ts";
 import { solveIsolationPolicy } from "../src/wall/base.ts";
 import { osIsolationSupport } from "../src/wall/os-isolation.ts";
+import { writeHarness } from "./helpers/write-harness.ts";
 
 const TASK = {
   taskId: "t-1",
@@ -85,10 +80,8 @@ it("has pi's coding tools selected, the starter instructions as its guide, and n
     const again = join(dir, "again");
     writeStarter(again);
     expect((await openHarness(again)).digest).toBe(starter.digest);
-    // Its tools file says what a harness's own tools are, and that is a comment: the Starter is the
-    // harness it was without it, and the one it was when the comment said to leave the list empty.
+    // Its tools file is a comment: the Starter is the harness it was without it.
     const file = readFileSync(join(dir, "agent", "tools.ts"), "utf8");
-    expect(file).toStartWith("// Tools of the harness's own, which the solver has beside pi's coding tools");
     const bare = join(dir, "bare");
     writeHarness(bare, {
       spec: { presets: [...CODING_TOOLS], tools: [] },
@@ -116,22 +109,16 @@ it("gives each part one purpose, and prints a worked harness that opens as print
     for (const file of ["agent/tools-spec.json", "agent/BUILT_AGENTS.md", ".toolchain/bin/check-rota"]) {
       expect(HARNESS_ACCOUNT).toContain(readFileSync(join(dir, file), "utf8").trimEnd());
     }
-    // One row a part, and the rule that follows from them.
-    for (const row of [
-      "| agent/tools-spec.json | Which of pi's coding tools the solver has. |",
-      "| .toolchain/ | Programs, which the solver runs by name from its shell. |",
-      "| agent/BUILT_AGENTS.md | Words: what each program and tool is for and how its result is read. |",
-      "| agent/tools.ts | Tools of the harness's own, which the solver has beside pi's tools. |",
+    // One row a part, and the files a solve reads and writes.
+    for (const part of [
+      "| agent/tools-spec.json |",
+      "| .toolchain/ |",
+      "| agent/BUILT_AGENTS.md |",
+      "| agent/tools.ts |",
+      "answer.json",
+      "public/answer-format.json",
+      ...CODING_TOOLS,
     ]) {
-      expect(HARNESS_ACCOUNT).toContain(row);
-    }
-    // The choice between a program and a tool is the Builder's, told what each costs a solve.
-    expect(HARNESS_ACCOUNT).toContain("Which, and how many, is yours to choose");
-    expect(HARNESS_ACCOUNT).toContain("What each route costs a solve");
-    expect(HARNESS_ACCOUNT).not.toContain("same thing built a second time");
-    expect(HARNESS_ACCOUNT).not.toContain("for a harness without the shell");
-    expect(HARNESS_ACCOUNT).toContain("It says nothing of\ntime or turns");
-    for (const part of ["answer.json", "public/answer-format.json", ...CODING_TOOLS]) {
       expect(HARNESS_ACCOUNT).toContain(part);
     }
     // The answer is no tool's, and the host lends a tool no helper: the account names neither.

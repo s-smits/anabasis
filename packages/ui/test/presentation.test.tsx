@@ -10,7 +10,6 @@ import type { Live } from "../src/live.ts";
 import type { AnswerOf } from "../src/models.ts";
 import { type Navigation, type RouteChange, routeOf } from "../src/route.ts";
 import { Shell, selectionOf } from "../src/shell.tsx";
-import { FileInspector } from "../src/views/file-inspector.tsx";
 import { answersOver, type Fixture, writeFixtureCampaign } from "./fixture-campaign.ts";
 
 const CALL = {
@@ -88,36 +87,11 @@ test("the shell says what is missing before a campaign is read, and asks for the
   ).toContain("the address the server printed");
 });
 
-test("the inspector renders nothing while it has no file or event to show", () => {
-  expect(
-    renderToStaticMarkup(
-      <FileInspector
-        label="Event"
-        path={null}
-        payload={null}
-        loading={false}
-        error={null}
-        onClose={() => {}}
-      />,
-    ),
-  ).toBe("");
-});
-
 test("an inspected record opens nested objects and items with their values visible", () => {
   const html = renderToStaticMarkup(
-    <FileInspector
-      label="Event"
-      path="17 · campaign.opened"
-      payload={{
-        content: "json",
-        value: { seats: { builder: [{ model: "recorded-model", enabled: false }] } },
-        truncated: false,
-        bytes: null,
-      }}
-      loading={false}
-      error={null}
-      onClose={() => {}}
-      expandAll
+    <RecordView
+      value={{ seats: { builder: [{ model: "recorded-model", enabled: false }] } }}
+      defaultExpanded="all"
     />,
   );
   expect(html).toContain("recorded-model");

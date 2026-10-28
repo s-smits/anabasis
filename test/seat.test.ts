@@ -90,16 +90,12 @@ function seated(responses: readonly FauxResponseStep[], over: Partial<Seat> = {}
 }
 
 describe("a seat's session", () => {
-  it("ends when its work is over, at its turn cap, or when a stop fires, and a cut one has no crash", async () => {
+  it("ends when its work is over or when a stop fires, and a cut one has no crash", async () => {
     const done = seated([look, look, look]);
     Object.assign(done.seat, { over: () => done.seat.turns.length >= 2 });
     const ended = await sit(done.seat);
     expect([done.seat.turns.length, ended.cut, ended.crash]).toEqual([2, false, null]);
     expect(ended.spent.turns).toBe(2);
-
-    const capped = seated([look, look, look, look], { most: 3 });
-    await sit(capped.seat);
-    expect(capped.seat.turns).toHaveLength(3);
 
     const kill = new AbortController();
     const killed = seated(
@@ -204,6 +200,7 @@ describe("durable session boundaries", () => {
       const s = seated([look, look, look, look], { most });
       expect(await sit(s.seat)).toMatchObject({ crash: null });
       expect(s.faux.state.callCount).toBe(most);
+      expect(s.seat.turns).toHaveLength(most);
     }
   });
 

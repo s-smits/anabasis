@@ -44,9 +44,8 @@
  * not load fails that exit with an unhandled error, so silence alone is no verdict. A failure
  * printed before the wall is kept: the rerun covers the files the first process never finished,
  * never the verdict of one it did.
- * The suite owns the wall, so `bun run test` and the gate share one behaviour;
- * `ANA_TEST_IDLE_SECONDS` shortens it for its own test, and `wallSeconds` widens it in proportion
- * to load the suite did not create.
+ * The suite owns the wall, so `bun run test` and the gate share one behaviour; `startWall`
+ * widens it in proportion to load the suite did not create.
  *
  * Around the command: one fresh temporary root, and a check that every explicitly named test file
  * exists, since Bun treats an unknown path as a filter and would silently run only its neighbours.
@@ -194,12 +193,6 @@ function fileIdentity(path: string): string {
   return existsSync(path) ? realpathSync(path) : path;
 }
 
-function positiveInteger(name: string, value: string | undefined, fallback: number): number {
-  if (value === undefined) return fallback;
-  if (!/^[1-9]\d*$/.test(value)) throw new Error(`${name} must be a positive integer`);
-  return Number(value);
-}
-
 /** The one-minute load average: the trailing count of runnable work on this machine. Its own test
  *  pins it through `ANA_TEST_HOST_LOAD`, which also lets an operator tell the suite the host is
  *  quiet when the reading is not to be believed. */
@@ -227,27 +220,13 @@ function hostLoad(): number {
  *  rather than for cores, and a laptop that this formula leaves on ten workers can still report
  *  none of its files before the idle wall while the same push at four workers runs green. The
  *  lever for that is the override, or a less loaded host. */
-/** The silence a starved host earns. Work on a machine carrying more runnable threads than it
- *  has cores takes proportionally longer to print its first line, and a suite waiting for a core
- *  looks exactly like one that is wedged. Scaling by the same reading `workerCount` uses keeps
- *  the wall at its flat value on a quiet machine and widens it from the load above which
- *  `attribute` already stops blaming the branch.
- *
- *  The suite's own workers cannot reach the multiplier: two of them spinning on a twelve-core
- *  laptop is a load of two, so a real wedge still ends at the flat wall. It widens only for load
- *  from outside — a laptop other work holds at a load of 30.9 on 12 cores gives its files 463 s
- *  rather than 180. */
-export function wallSeconds(idleSeconds: number, busy = hostLoad(), cores = availableParallelism()): number {
-  return Math.round(idleSeconds * Math.max(1, busy / cores));
-}
-
-function workerCount(override: string | undefined, busy = hostLoad()): number {
+function workerCount(override: string | undefined): number {
+  if (override !== undefined) {
+    if (!/^[1-9]\d*$/.test(override)) throw new Error("ANA_TEST_WORKERS must be a positive integer");
+    return Number(override);
+  }
   const cores = availableParallelism();
-  return positiveInteger(
-    "ANA_TEST_WORKERS",
-    override,
-    Math.max(2, cores - 2 - Math.round(Math.max(0, busy - cores) / 2)),
-  );
+  return Math.max(2, cores - 2 - Math.round(Math.max(0, hostLoad() - cores) / 2));
 }
 
 /** The working directory a request names and the positions of the test files it names. */
@@ -433,15 +412,16 @@ let active: Bun.Subprocess | null = null;
  *  the SIGTERM, grace and reap of Bun's own CI runner, through `interruptAndReapProcessGroup`. The
  *  coordinator is not the process that wedged, and given the grace it ends its own workers and
  *  prints which files it was still running and which it had not started, for `interruptReader`. */
-function startWall(
-  child: Bun.Subprocess,
-  idleSeconds: number,
-  state: WallState,
-): ReturnType<typeof setInterval> {
+function startWall(child: Bun.Subprocess, state: WallState): ReturnType<typeof setInterval> {
   const ticker = setInterval(() => {
     const busy = hostLoad();
     state.peakLoad = Math.max(state.peakLoad, busy);
-    const wall = wallSeconds(idleSeconds, busy);
+    // The silence a starved host earns. On a machine with more runnable threads than cores a file
+    // takes longer to print its first line, and a suite waiting for a core looks wedged. Scaling by
+    // the reading `workerCount` uses keeps the flat wall on a quiet machine. The suite's own
+    // workers cannot reach the multiplier, so a real wedge still ends at the flat wall: a laptop
+    // other work holds at a load of 30.9 on 12 cores gives its files 463 s rather than 180.
+    const wall = Math.round(IDLE_WALL_SECONDS * Math.max(1, busy / availableParallelism()));
     if (state.walled || performance.now() - state.lastOutputAt < wall * 1000) return;
     state.walled = true;
     clearInterval(ticker);
@@ -517,12 +497,7 @@ function outputReader(cwd: string): OutputReader {
 }
 
 /** One `bun test` process under the idle wall, relaying its output through `outputReader`. */
-async function runWalled(
-  command: string[],
-  temporaryRoot: string,
-  idleSeconds: number,
-  cwd: string,
-): Promise<WalledRun> {
+async function runWalled(command: string[], temporaryRoot: string, cwd: string): Promise<WalledRun> {
   // Its own process group, so the wall can end every descendant at once and a grandchild cannot
   // outlive the kill. An interrupt reaching the suite is forwarded to the group before exiting.
   const child = Bun.spawn(command, {
@@ -560,7 +535,7 @@ async function runWalled(
     }
     await writer.end();
   };
-  const ticker = startWall(child, idleSeconds, state);
+  const ticker = startWall(child, state);
   await Promise.all([relay(child.stdout, Bun.stdout, false), relay(child.stderr, Bun.stderr, true)]);
   const exitCode = await child.exited;
   clearInterval(ticker);
@@ -573,13 +548,9 @@ async function runWalled(
  *  spawning. They are all attribution rather than execution -- a clock decided rather than an
  *  assertion, the host was carrying more runnable work than it has cores, too many
  *  files failed for a busy host to explain, a file printed no result at all -- so deciding them
- *  here costs a plain call where deciding them inside `main` cost a real sub-suite each. `cores`
- *  is a parameter so a test can state the host it is reasoning about. */
-export function attribute(
-  first: WalledRun,
-  asked: readonly string[],
-  cores: number = availableParallelism(),
-): Attribution {
+ *  here costs a plain call where deciding them inside `main` cost a real sub-suite each. */
+function attribute(first: WalledRun, asked: readonly string[]): Attribution {
+  const cores = availableParallelism();
   const failed = [...first.failed];
   // An error Bun printed outside any test is in its exit code and in no result line, so nothing in
   // `failed` speaks for it and running those files again cannot unsay it: a clock-only or
@@ -640,11 +611,6 @@ async function main(): Promise<number> {
   const temporaryRoot = mkdtempSync(join(tmpdir(), "ana-test-suite-"));
   // A test may name the root by either spelling: Darwin's `/var` is a link to `/private/var`.
   const roots = [temporaryRoot, realpathSync(temporaryRoot)];
-  const idleSeconds = positiveInteger(
-    "ANA_TEST_IDLE_SECONDS",
-    Bun.env.ANA_TEST_IDLE_SECONDS,
-    IDLE_WALL_SECONDS,
-  );
   const requested = Bun.argv.slice(2);
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
     runtimeProcess.once(signal, () => {
@@ -669,12 +635,7 @@ async function main(): Promise<number> {
       : requestedFiles(requested);
   try {
     const { cwd } = scanRequest(requested);
-    const first = await runWalled(
-      testCommand(requested, Bun.env.ANA_TEST_WORKERS),
-      temporaryRoot,
-      idleSeconds,
-      cwd,
-    );
+    const first = await runWalled(testCommand(requested, Bun.env.ANA_TEST_WORKERS), temporaryRoot, cwd);
     const asked = askedFor();
     const step = attribute(first, asked);
     if (step.because !== "stands") {
@@ -721,19 +682,13 @@ async function main(): Promise<number> {
         ...step.rerun,
       ],
       temporaryRoot,
-      idleSeconds,
       cwd,
     );
     if (again.exitCode === null) {
       console.error("idle-wall: error: the rerun was ended by the idle wall named above.");
     }
     if (step.because !== "bailed" || again.exitCode !== 0) return again.exitCode ?? 1;
-    const whole = await runWalled(
-      testCommand(requested, Bun.env.ANA_TEST_WORKERS),
-      temporaryRoot,
-      idleSeconds,
-      cwd,
-    );
+    const whole = await runWalled(testCommand(requested, Bun.env.ANA_TEST_WORKERS), temporaryRoot, cwd);
     return whole.exitCode ?? 1;
   } finally {
     endNaming(roots);

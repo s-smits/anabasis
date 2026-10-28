@@ -45,7 +45,6 @@
 import { AGENT_DIR, GENERATED_TOOLS_FILE, GUIDE_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 import { mkdirSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import type { JsonObject } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
 import { CODING_TOOLS } from "../tools/coding.ts";
 
@@ -342,29 +341,10 @@ command's output, whole unless the command cuts it. A trace names a tool by its 
 by its command, and practice reports what each solve read and wrote.
 `;
 
-/** A harness as this module writes one out. */
-interface Written {
-  readonly spec: { readonly presets: readonly string[]; readonly tools: readonly JsonObject[] };
-  readonly tools: string;
-  readonly guide?: string;
-  readonly programs?: Readonly<Record<string, string>>;
-}
-
 /** Write the Starter Built Harness into `dir`, which is made if it is not there. */
 export function writeStarter(dir: string): void {
-  writeHarness(dir, STARTER);
-}
-
-/** A harness's files, as the host reads them: the two it requires, and a guide and programs where
- *  the harness has them. */
-export function writeHarness(dir: string, harness: Written): void {
   mkdirSync(join(dir, AGENT_DIR), { recursive: true });
-  writeFileSync(join(dir, TOOLS_SPEC_FILE), `${capturedJsonStringify(harness.spec, null, 2)}\n`);
-  writeFileSync(join(dir, GENERATED_TOOLS_FILE), harness.tools);
-  if (harness.guide !== undefined) writeFileSync(join(dir, AGENT_DIR, GUIDE_FILE), harness.guide);
-  const bin = join(dir, ".toolchain", "bin");
-  for (const [name, source] of Object.entries(harness.programs ?? {})) {
-    mkdirSync(bin, { recursive: true });
-    writeFileSync(join(bin, name), source, { mode: 0o755 });
-  }
+  writeFileSync(join(dir, TOOLS_SPEC_FILE), `${capturedJsonStringify(STARTER.spec, null, 2)}\n`);
+  writeFileSync(join(dir, GENERATED_TOOLS_FILE), STARTER.tools);
+  writeFileSync(join(dir, AGENT_DIR, GUIDE_FILE), STARTER.guide);
 }

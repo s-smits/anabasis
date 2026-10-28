@@ -123,6 +123,7 @@ describe("durable compaction", () => {
     });
     const sat = await sit(s.seat);
     expect(sat.thrown).toBe("bound");
+    expect(s.summaries).toHaveLength(0);
     expect(s.faux.state.callCount).toBeLessThan(24);
   });
 });

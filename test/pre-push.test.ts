@@ -177,12 +177,6 @@ describe("pre-push", () => {
     );
   });
 
-  it("publishes a push whose head would fail a test, since no test runs", () => {
-    const result = push([update(second, docs)], { ANA_FAKE_FAIL: `${second} test` });
-    expect(result.status).toBe(0);
-    expect(stepsOver(second).some((args) => args.startsWith("run test"))).toBe(false);
-  });
-
   it("runs nothing again over a tree whose checks passed", () => {
     expect(push([update(second, docs)]).status).toBe(0);
     rmSync(log, { force: true });

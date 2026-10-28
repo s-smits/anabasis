@@ -292,7 +292,6 @@ export function Inspector({
       loading={false}
       error={null}
       onClose={close}
-      expandAll
     >
       {campaign === null ? null : (
         <EventBody campaign={campaign} index={route.event} tier={reading?.tier ?? "default"} />

@@ -30,18 +30,19 @@ import {
 } from "@earendil-works/pi-ai";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
 import { type Static, type TSchema, Type } from "typebox";
-import { openingOf } from "../campaign/opening.ts";
+import { type SeatTool, sit } from "../agent/session.ts";
 import { endingWith, openingTool } from "../builder/tools.ts";
+import { openingOf } from "../campaign/opening.ts";
 import { append, read } from "../kernel/log.ts";
-import { examinerSessions } from "../kernel/solves.ts";
-import { Cancellation } from "../kernel/solve.ts";
 import { priceKey } from "../kernel/meter.ts";
+import { Cancellation } from "../kernel/solve.ts";
+import { examinerSessions } from "../kernel/solves.ts";
 import { billedAll } from "../kernel/trace.ts";
-import type { JsonObject } from "../meta/json-shape.ts";
 import { boundText } from "../meta/bounded-text.ts";
+import { capturedJsonStringify } from "../meta/json-runtime.ts";
+import type { JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { plural } from "../meta/text.ts";
-import { type SeatTool, sit } from "../agent/session.ts";
 import { ending, text, tool } from "../tools/answer.ts";
 import { walledEnv } from "../tools/env.ts";
 import { drafting, type Measurement } from "./draft.ts";
@@ -117,8 +118,8 @@ interface Mode {
   readonly nudge: string;
   /** What `finish` is described as. */
   readonly finish: string;
-  /** What a first `finish` is answered with while the mode's work is not done; null where a first
-   *  `finish` ends the session. */
+  /** What `finish` is answered with while the mode's work is not done; null where `finish` ends the
+   *  session. */
   readonly declined: string | null;
   /** Whether the mode's work is done, which ends the session, and how that ending is named. */
   readonly done: () => "stands" | "supplied" | null;
@@ -159,10 +160,10 @@ interface Put<Parameters extends TSchema, Thing> {
   readonly reads: readonly SeatTool[];
 }
 
-/** What `finish` leaves the loop: the note, and whether a first `finish` was declined. */
+/** What `finish` leaves the loop: the note, and what the mode had counted at the last declined one. */
 interface Said {
   note: string | null;
-  declined: boolean;
+  declined: string | null;
 }
 
 /** What `read_opening` says it serves. */
@@ -255,9 +256,12 @@ function withinBudget(log: string, spent: AbortController): boolean {
 }
 
 /** The session's `finish`: the work still running is waited for and told first, so that the
- *  session's end reads it, and a first `finish` is declined once where the mode declines one and
- *  its work is not done. A note is kept to its first 700 bytes, as a Referee's reason is: until
- *  28 October a longer one was refused, 23 times in 417 calls, each a turn spent rewriting it. */
+ *  session's end reads it, and a `finish` is declined where the mode declines one, its work is not
+ *  done and its count moved since the last decline. Until 28 October only a first `finish` was:
+ *  round 11's GPT arm proposed three more drafts after it and ended at its second, at 9 of 36
+ *  drafts and 35 of 240 minutes; two in a row still end a session that has nothing left. A note
+ *  is kept to its first 700 bytes, as a Referee's reason is: until 28 October a longer one was
+ *  refused, 23 times in 417 calls, each a turn spent rewriting it. */
 function finishTool(mode: Mode, said: Said, told: (last: boolean, line: string) => string): SeatTool {
   return tool({
     name: "finish",
@@ -266,8 +270,9 @@ function finishTool(mode: Mode, said: Said, told: (last: boolean, line: string) 
     executionMode: "sequential",
     execute: async (args) => {
       await mode.settle?.(true);
-      if (mode.declined !== null && !said.declined && mode.done() === null) {
-        said.declined = true;
+      const counted = capturedJsonStringify(mode.counted());
+      if (mode.declined !== null && said.declined !== counted && mode.done() === null) {
+        said.declined = counted;
         return text(told(true, mode.declined));
       }
       said.note = boundText(args.note, 700).shown;
@@ -369,7 +374,7 @@ async function examining(
       ...mode.started,
     });
     request.opened?.();
-    const said: Said = { note: null, declined: false };
+    const said: Said = { note: null, declined: null };
     // Every tool result ends with what the mode heard since, then its own line.
     const told = (last: boolean, line: string) =>
       [mode.heard?.(last) ?? "", line].filter((part) => part !== "").join("\n\n");

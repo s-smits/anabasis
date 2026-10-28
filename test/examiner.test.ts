@@ -577,7 +577,7 @@ describe("a session that writes tasks", () => {
 
   // On the six logs read on 14 October two of eleven Examiner sessions were cut at their wall while
   // still proposing, one in a command; the session's limits were told at its opening alone.
-  it("ends when the host has its tasks, and declines a first finish once while it has not", async () => {
+  it("ends when the host has its tasks, and declines each finish that follows a proposal while it has not", async () => {
     const both = fauxAssistantMessage(
       [
         fauxToolCall("propose_tasks", { tasks: [instance(2), instance(3)] }),
@@ -594,12 +594,14 @@ describe("a session that writes tasks", () => {
     expect(s.of("exam.turn")).toHaveLength(1);
 
     // Every live session of 9 and 10 October proposed one batch of one to three tasks in three
-    // turns and finished, of twelve tasks and two hundred turns it had.
-    const short = seat("write", [propose(1), finish, propose(2), finish]);
+    // turns and finished, of twelve tasks and two hundred turns it had; round 11's GPT arm of 28
+    // October proposed three more after its first finish and ended at its second.
+    const short = seat("write", [propose(1), finish, propose(2), finish, finish]);
     expect(await examine(short.request)).toMatchObject({ ended: "finished", puts: 2 });
-    // The first finish is declined with the need and without a count, which an author writes towards.
-    expect(short.of(CALLED)[1]?.text).not.toMatch(/\d/);
-    expect(short.of("exam.turn")).toHaveLength(4);
+    // Each finish after a proposal is declined with the need and without a count, which an author
+    // writes towards; a second in a row ends the session.
+    for (const at of [1, 3]) expect(short.of(CALLED)[at]?.text).not.toMatch(/\d/);
+    expect(short.of("exam.turn")).toHaveLength(5);
   });
 
   it("runs the checks on an instance with an answer of its own, and keeps of a pass only that the instance has a valid answer", async () => {

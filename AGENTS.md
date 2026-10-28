@@ -915,13 +915,13 @@ bun run runs fresh | launch | continue | keep | pause | copy | fetch | retire | 
 - a solve of 20 of the model's own turns and 30 minutes, whoever solves (`LIMITS`,
   `tools/d2/campaign.ts`), and 24 prompts.
 
-An Examiner session ends when the Examiner calls `finish` a second time, or a first time once the
-host has the tasks it asked for, or at the end of a turn once it has them. Those are what the
-campaign is short of for its practice and, before its first comparison, the admission floor, and
-after it a comparison's target (`shortOf`, `src/campaign/decide.ts`), or `--exam-tasks` where the
-operator names a count. `finish` and the
-session's end first wait for every instance still at the gate, so each reads the whole count, and a
-session can hold out more than it asked for. A first `finish` that falls short is declined once,
+An Examiner session ends when the Examiner calls `finish` twice with no proposal between, or calls
+it once the host has the tasks it asked for, or at the end of a turn once it has them. Those are
+what the campaign is short of for its practice and, before its first comparison, the admission
+floor, and after it a comparison's target (`shortOf`, `src/campaign/decide.ts`), or `--exam-tasks`
+where the operator names a count. `finish` and the session's end first wait for every instance
+still at the gate, so each reads the whole count, and a session can hold out more than it asked
+for. A first `finish` that falls short is declined, and so is each later one after a proposal,
 with the need and without a count, because an Examiner left alone proposes one small batch and
 finishes. The session's home is carried whole into the next session's, and what it said at its
 `finish` opens the next session.

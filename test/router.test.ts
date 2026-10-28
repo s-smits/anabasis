@@ -562,6 +562,21 @@ describe.skipIf(realRsync === null)("the connections to a host", () => {
     );
   });
 
+  it("carries the tree over the shared master where the temp root holds a space", () => {
+    // Short enough that its socket fits, so the space reaches rsync's ssh command.
+    const spaced = mkdtempSync("/tmp/ana r-");
+    fresh();
+    writeFileSync(join(source, "spaced"), "carried");
+    try {
+      expect(run(["test"], { RUN_REMOTE: "m1", TMPDIR: spaced, ANA_TEST_TMPDIR: spaced }).status).toBe(0);
+      expect(readFileSync(log, "utf8")).toContain(`ControlPath=${spaced}/`);
+      expect(readFileSync(join(slot("fake-mac", 1), "spaced"), "utf8")).toBe("carried");
+    } finally {
+      unlinkSync(join(source, "spaced"));
+      rmSync(spaced, { recursive: true, force: true });
+    }
+  });
+
   it("retries a dropped connection before the task, and starts nothing on a host that does not answer, reads no free space, or lacks room", () => {
     fresh();
     writeFileSync(join(source, "retried"), "after a dropped transfer");

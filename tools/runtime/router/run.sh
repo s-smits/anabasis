@@ -64,7 +64,7 @@ taken_here() {
 # answered, where the task queues as before. On 22 October the M1, the first line, carried two
 # campaigns and every CI gate while the Linux runner sat idle.
 pick_host() {
-  local names=("${host_sshs[@]}") i probes load cores percent taken reading slots ssh_options
+  local names=("${host_sshs[@]}") i probes load cores percent taken reading slots ssh_options transport
   local busy_at="${ANA_RUNNER_BUSY:-100}" pick="" fallback="" best="" best_percent="" first_said=""
   probes="$(mktemp -d "${TMPDIR:-/tmp}/ana-runner-probe.XXXXXX")"
   for i in "${!names[@]}"; do
@@ -107,12 +107,13 @@ pick_host() {
 # The hosts are the machines ANA_HOSTS lists, read by its one reader (tools/runs/host-config.ts)
 # through hosts.js, which install.ts bundles from hosts.ts: from the environment, or else from
 # .env.runs in the main worktree, where `bun run runs` finds them, each that sets `checks` with that
-# many slots, and the ssh options every connection to it takes (`sshOptions`, src/meta/ssh.ts), which the
-# runs verbs take too. Until 25 October the runner kept a hosts file of its own, which on the operator's
+# many slots, the ssh command rsync takes (`sshCommand`, tools/runs/host-command.ts) and the ssh
+# options every connection to it takes (`sshOptions`, src/meta/ssh.ts), both the runs verbs' own.
+# Until 25 October the runner kept a hosts file of its own, which on the operator's
 # laptop named the same two machines, in the same order, as its ANA_HOSTS, each with two slots. The
 # lister runs in this folder, so Bun loads no .env of the tree.
 root="$(git rev-parse --show-toplevel)"
-host_names=() host_sshs=() host_slots=() host_options=() slots=1
+host_names=() host_sshs=() host_slots=() host_transports=() host_options=() slots=1
 list_hosts() {
   local main env_file=()
   main="$(dirname "$(git -C "$root" rev-parse --path-format=absolute --git-common-dir)")"
@@ -124,20 +125,23 @@ if [[ "${RUN_REMOTE:-}" != 0 ]]; then
     printf "runner: ANA_HOSTS could not be read; RUN_REMOTE=0 runs the task here\n" >&2
     exit 2
   fi
-  # A line without its count or its options comes from a hosts.js older than this run.sh: without the
-  # count it waited for a slot that cannot exist while holding the queue for every task behind it
-  # (28 October).
-  while IFS=$'\t' read -r name ssh_name checks options; do
+  # A line without its count, its rsync command or its options comes from a hosts.js older than this
+  # run.sh: without the count it waited for a slot that cannot exist while holding the queue for every
+  # task behind it (28 October).
+  while IFS=$'\t' read -r name ssh_name checks transport options; do
     [[ -n "$name" ]] || continue
-    if ! [[ "$checks" =~ ^[1-9][0-9]*$ && -n "$options" ]]; then
-      printf "runner: hosts.js gave %s no count of checks or ssh options; run tools/runtime/router/install.ts again\n" "$name" >&2
+    if ! [[ "$checks" =~ ^[1-9][0-9]*$ && "$transport" == "'ssh' "* && -n "$options" ]]; then
+      printf "runner: hosts.js gave %s no count of checks, rsync command or ssh options; run tools/runtime/router/install.ts again\n" "$name" >&2
       exit 2
     fi
-    host_names+=("$name") host_sshs+=("$ssh_name") host_slots+=("$checks") host_options+=("$options")
+    host_names+=("$name") host_sshs+=("$ssh_name") host_slots+=("$checks") host_transports+=("$transport") host_options+=("$options")
   done <<<"$listed"
 fi
-# options_of <i>: the ssh options of host <i>, in `ssh_options`.
-options_of() { IFS=$'\t' read -r -a ssh_options <<<"${host_options[$1]}"; }
+# options_of <i>: the ssh options of host <i>, in `ssh_options`, and its rsync command, in `transport`.
+options_of() {
+  IFS=$'\t' read -r -a ssh_options <<<"${host_options[$1]}"
+  transport="${host_transports[$1]}"
+}
 
 # The host: none for RUN_REMOTE=0, else the host whose place (from 1), name or ssh destination it
 # gives, and for an unset RUN_REMOTE the one `pick_host` names, or none where the list is empty.
@@ -274,7 +278,7 @@ push_tree() {
     --filter="-s /domains" --filter="-s /campaigns" --filter="-s *.zip" \
     ${includes[@]+"${includes[@]}"} \
     --filter=":s- .gitignore" \
-    -e "ssh ${ssh_options[*]}" "$1/" "$host:$2/"
+    -e "$transport" "$1/" "$host:$2/"
 }
 
 # ship_script <dir>: the slot's folder made, its last status cleared and the task's script written, in

@@ -11,7 +11,8 @@ import {
 import type { Contract } from "../src/kernel/contract.ts";
 import type { SeatTool } from "../src/agent/session.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
-import type { Task, Verdict } from "../src/kernel/verify.ts";
+import { Cancellation } from "../src/kernel/solve.ts";
+import type { Task, Verdict, Verifier } from "../src/kernel/verify.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -554,6 +555,29 @@ describe("accepted answers and reading limits", () => {
     expect(read(s.log).findLast((event) => event.kind === FINDING)?.data).toMatchObject({
       ruling: null,
       error: limit,
+      walled: false,
+    });
+  });
+
+  it("the Referee logs no ruling, and names the cause, where a kill ended the reading between turns", async () => {
+    const kill = new AbortController();
+    const s = setup([
+      fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: SPAN, value: "10" }] }), toolUse),
+    ]);
+    // The replay runs first; the probe's run is where the campaign's budget runs out.
+    let runs = 0;
+    const stopping: Verifier = async (task, answer) => {
+      runs += 1;
+      if (runs > 1) kill.abort(new Cancellation("campaign-budget"));
+      return verify(task, answer);
+    };
+    expect(
+      (await referee({ ...s.reader, kill: kill.signal }, { ...fail(s), verify: stopping })).ruling,
+    ).toBeNull();
+    expect(read(s.log).findLast((event) => event.kind === FINDING)?.data).toMatchObject({
+      ruling: null,
+      cancelledBy: "campaign-budget",
+      error: null,
       walled: false,
     });
   });

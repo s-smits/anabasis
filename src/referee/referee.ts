@@ -36,7 +36,10 @@
  *
  * What a ruling does to the task, and how an `unclear` fail counts, is the caller's: this module
  * rules and logs, one `referee.finding` per fail. A reader whose session the provider or a kill
- * ended before it ruled gives no answer, and its finding holds no ruling, so that it is asked again.
+ * ended before it ruled gives no answer, and its finding holds no ruling, so that it is asked again;
+ * a kill's finding names its cause (`cancelledBy`). Until 28 October a kill that fell between two
+ * turns was logged `unclear` with no cause: two admission reviews of esp32-fresh-opus-terra, cut
+ * when a sibling solve settled the gate, read as a model's uncertainty.
  * A replay that reaches no verdict follows the same path. On 12 October, one Referee call that met
  * the provider's session limit was logged `unclear`; because no caller retried it, a task needed for
  * a step was set aside for good. One that reads to its own deadline, or stops without a ruling, leaves
@@ -65,6 +68,7 @@ import type { Contract } from "../kernel/contract.ts";
 import { acceptedAnswers, proposalsOf } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { priceKey } from "../kernel/meter.ts";
+import { Cancellation } from "../kernel/solve.ts";
 import {
   applicableTruthChecks,
   checkProgramFiles,
@@ -434,17 +438,20 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
       next: async () => "Nothing is recorded until you call the tool that records your answer.",
       stops: [deadline, reader.kill],
     });
+    const origin = reader.kill?.reason instanceof Cancellation ? reader.kill.reason.cancelledBy : "caller";
     meter = {
       reader: id,
       model: priceKey(reader.model),
       walled: deadline.aborted,
+      cancelledBy: reader.kill?.aborted === true ? origin : null,
       error: turns.at(-1)?.errorMessage ?? null,
       ...spent,
     };
   }
   const finding = host ??
     found.at(-1) ?? {
-      ruling: isString(meter?.error) && meter.walled === false ? null : "unclear",
+      ruling:
+        (isString(meter?.error) && meter.walled === false) || isString(meter?.cancelledBy) ? null : "unclear",
       check: null,
       rule: null,
       field: null,

@@ -16,6 +16,8 @@ export interface Host {
   readonly envFiles?: readonly string[];
   /** Live campaigns or simulation seats this machine may carry. */
   readonly capacity?: number;
+  /** The check tasks this machine runs at once for the runner; unset, the runner sends it none. */
+  readonly checks?: number;
   /** The packs this machine is kept for: it takes no other, and no other machine takes them. */
   readonly packs?: readonly string[];
   /** A controller already prepared by code.ts, never accepted from configuration. */
@@ -46,10 +48,15 @@ export function hostsOf(): readonly Host[] {
     if (files !== undefined && (!Array.isArray(files) || !files.every(isString))) {
       throw new Error(`${host.name}: envFiles takes a list of paths`);
     }
-    const capacity = host.capacity;
-    if (capacity !== undefined && (!isNumber(capacity) || !Number.isSafeInteger(capacity) || capacity < 1)) {
-      throw new Error(`${host.name}: capacity takes a positive integer`);
-    }
+    const name = host.name;
+    const count = (key: "capacity" | "checks"): number | undefined => {
+      const given = host[key];
+      if (given === undefined) return undefined;
+      if (!isNumber(given) || !Number.isSafeInteger(given) || given < 1) {
+        throw new Error(`${name}: ${key} takes a positive integer`);
+      }
+      return given;
+    };
     const packs = host.packs;
     if (
       packs !== undefined &&
@@ -63,7 +70,8 @@ export function hostsOf(): readonly Host[] {
       tree: host.tree,
       bun: host.bun,
       ...keyIfDefined("envFiles", files),
-      ...keyIfDefined("capacity", capacity),
+      ...keyIfDefined("capacity", count("capacity")),
+      ...keyIfDefined("checks", count("checks")),
       ...keyIfDefined("packs", packs),
     };
   });

@@ -15,6 +15,26 @@ gates, so most single rounds are noise. And the seat is prompted, never trained,
 shown can change it: a mechanism that works through a reward in the literature carries over only
 where it can be restated as a fact in the seat's prompt, opening, tool results or home.
 
+## What a round can tune, and whose it is
+
+A round changes one thing the seat is given and reads whether the count moves. For the Examiner:
+
+| Term | Where it lives | How a round changes it |
+| --- | --- | --- |
+| A sentence of the system prompt or the opening | `src/examiner/prompt.ts` | a commit, in the arm's tree |
+| A fact a tool result carries, such as the gate's reply | `measured`, `src/examiner/write.ts`; the folds of `src/examiner/record.ts` | a commit |
+| What the session's home holds | `src/examiner/shell.ts` | a commit |
+| The session's terms: tasks asked for, proposals, minutes, turns | `tools/d1b/examine.ts` (`--tasks 12 --proposals 36 --minutes 240 --turns 200`) | the flag, both arms at one commit |
+| The gate's solves of a draft | `TRIED`, `src/examiner/record.ts` | a commit |
+| The solver and its budget | the campaign's setting (`AGENTS.md`, section 6) | none: a seed holds its source's, and another setting is another campaign |
+
+The first three are the host's code and land through a pull request like any change. Whatever they
+add to what the Examiner reads, the same pull request writes into `AGENTS.md` section 3's list. The
+session's terms and the gate's solves are the operator's conditions (`AGENTS.md`, section 6, "What
+the log records of a campaign's conditions"), so a round that moves one is evidence brought to the
+operator with a recommendation, never a change made on its own, as the promotion tuner treats the
+weights and the level. The exam is no term: it is drafted once, and no seat repairs it (rule 2).
+
 ## 1. Name the count, a graded loss beside it, and the guards
 
 Pick one count that `live-seat.ts read` prints, or one a reader over the stretch gives, and say
@@ -22,7 +42,7 @@ which way is better. Where that count is a rare event (a held draft, a ruling th
 beside it a **graded** measure of how close each attempt came, read on every attempt: at a hold
 rate of one in ten, six gates give an arm 0.6 holds on average, and no difference of one hold
 means anything, while a distance to the threshold moves on every gate. Name the guards too: counts
-the change must leave where they were. Write all three in the ledger (step 8) before anything runs.
+the change must leave where they were. Write all three in the ledger (step 7) before anything runs.
 
 | seat | count | graded loss | guards |
 | --- | --- | --- | --- |
@@ -168,62 +188,81 @@ between series, never within one.
 Run each `start` as one background command. `due --hook` or one Monitor on `watch` per arm reads the
 gates as they land; nothing else needs to poll.
 
-## 6. Read at equal gates, and stop when the round is answered
+## 6. Read the round
 
-```sh
-bun .claude/skills/system-path-simulation/scripts/live-seat.ts compare <scratch>/<arm> <scratch>/<arm> ... --gates 6
-```
+Read a round in the order the promotion tuner reads a replay: first whether the round measured
+what its ledger says, then each pair, then the pairs against the difference between two draws of one
+commit, and only then the sign over pairs. A count read before the first two is no reading.
 
-`compare` takes the prefixes `start --out` was given and prints each arm's counts in a column:
-billed, proposed, gated by word, held, dollars per held draft, gate solves, the median turns of the
-reference's valid gate answers, and the graded loss: how many gates measured an author's answer at
-least the room floor ahead of the reference's best (`gap >= 1%`), and the median gap. Each is cut
-after the arm's first N gates.
+**Who ran.** `pairs` refuses a pair whose seats differ in the Examiner, the Referee or their
+efforts, or whose seeds were cut from different campaigns or at different events, since then the
+tree is not the one variable. `compare` names each arm's commit: check it against the ledger's
+`variable` line. For a seat on another provider, read the model and effort its own records name.
 
-The pair is the unit. Read every pair at the outline's gate count, and stop both arms of a pair
-together once both have reached it, rather than waiting for their cap. A pair that cannot reach it
-within its cap is **thin**: reported, and left out of the round's sign (`pairs` marks a pair under
-6 gates `thin`). A round is decided when every pair of the outline has reached the count or ended
-thin, or when the pairs that reached it already fix the sign whatever the rest read; round 8 was
-decided on its Opus pair at 14 and 16 gates, and its GPT pairs at 2 and 8 gates, with nothing held
-on either side, were stopped as thin. The ledger names the pairs a decision rests on. Then close
-the round in one command, `live-seat.ts stop <prefix>...` over every prefix the round's seating
-scripts name, seated or not: it ends each running group, lets each `start` print its reading, and
-closes the prefixes not yet seated, so a script still waiting to seat one seats nothing. On
-28 October a script still waiting for load seated a fresh pair of round 8 twenty minutes after the
-round was decided.
+**What reached the seat.** The composed diff (step 4) proves the prompt. A fact carried in a tool
+result reaches the seat only where the tool runs on a draft that produces it, so count the results
+that carry the new text in each arm, from its seed's cut: `tail -n +<events + 1> <log> | grep -c
+'<text>'`, with `events` from the seed's `seed.json`, prints a count and no line of the log. The arm
+should count some and the control none. In round 11 of 28 October the arm's log held the gate's
+method facts in 6 events by its third gate, and the control's in none. An arm that never received
+its variable reads `unreached` (run-improvement-campaign, section 7): the round then holds two
+draws of the control's code, worth keeping for the spread below, and says nothing of the change.
+Run `calls` on both seeds as well: a kind of failed call that grows in one arm is a side effect of
+the change.
 
-A round of several pairs reads them together:
+**Each pair at equal gates.**
 
 ```sh
 bun .claude/skills/system-path-simulation/scripts/live-seat.ts pairs <control>,<arm> <control>,<arm> ... [--gates N]
 ```
 
-`pairs` reads each pair at the shorter arm's count of gates (or N, where both reached it), one row
-a pair: the drafts held, the gates that left the reference room on validity (`some` and `none,
-proved`), the gates where the author's answer beat the reference's best by the room floor
-(`gap >= 1%`), the median turns of the reference's valid gate answers, and dollars per gate, each as
-control / arm. It refuses a pair whose two seats differ in the Examiner, the Referee or their
-efforts, or whose seeds were cut from different campaigns or at different events, since then the
-tree is not the one variable. Under the rows, for each Examiner model apart, it counts the pairs in
-which the arm did more, fewer or the same on each measure, and sums dollars per gate on each side:
-the guard of step 1 and the sign of step 7, read without the hand table round 8 needed.
+`pairs` reads each pair at the shorter arm's count of gates, or at N where both reached it, one row
+a pair, each as control / arm: the drafts held, the gates that left the reference room on validity
+(`some` and `none, proved`), the gates where the author's answer beat the reference's best by the
+room floor (`gap >= 1%`), the median turns of the reference's valid gate answers, and dollars per
+gate. `compare <prefix>... --gates N` gives each arm's whole column where a row is not enough:
+billed, gates by word, gate solves, dollars per held draft and the median gap.
 
-Before reading the counts, read who ran: the arm's commit in `compare`, and, for a research
-session or a seat on another provider, the model and effort its own records name.
+Read the holds by where their room came from, as the promotion tuner reads which measure won each
+task. A hold on validity and a hold on the objective are different findings, and a measure that
+moves without either is no room (step 1, round 8).
 
-## 7. Pool across rounds and seeds
+The pair is the unit. Read every pair at the outline's gate count, and stop both arms of a pair
+together once both have reached it, rather than waiting for their cap. A pair that cannot reach it
+within its cap is **thin**: reported, and counted as untested (`pairs` marks a pair under 6 gates
+`thin` and leaves it out of the sign). A round is decided when every pair has reached the count or
+ended thin, or when the pairs that reached it fix the sign whatever the rest read; the ledger names
+the pairs a decision rests on. Then close the round with `live-seat.ts stop <prefix>...` over every
+prefix the round's seating scripts name, seated or not: it ends each running group, lets each
+`start` print its reading, and closes the prefixes not yet seated. On 28 October a script still
+waiting for load seated a fresh pair of round 8 twenty minutes after the round was decided.
 
-A single round reads one draw an arm. Where several rounds or seeds compared the same pair of
-prompts, read them together: count the pairs in which the after arm did better on the count or the
-graded loss, and the pairs in which it did worse (`pairs` prints both, with the ties apart, and a
-tie counts against a prediction of "more in at least 4 of 5"). Pool only pairs of one series (step
-5) and of one Examiner model and effort: the models hold and refuse at different rates, so a GPT pair and an Opus pair in one
-sign measure the models as much as the change. Five of five pairs one way is the least that a
-sign test reads at 0.05. Report the count of pairs with each result, never a sum of holds over
-seeds that gated at different paces.
+**Against two draws of one commit.** This is the round's A/A. An Examiner session varies from draw
+to draw as a solver's solves do (rule 6), so an arm's difference means something only beside the
+difference between two seats of one commit at one position. A series holds such a pair wherever a
+round seats code that an earlier round seated at the same position. At the Opus buffer position,
+round 7's code held 14 of 14 gates in round 8 and 12 of 13 in round 9, at $0.57 and $0.63 a gate;
+round 9's arm and round 10's control, one commit, held 12 of 13 and 12 of 12, at $0.45 and $0.53.
+So at about 13 gates two draws of one commit differed by up to two holds, and by 11% and 18% in
+dollars a gate; the cost guard of 30% sits just outside that. A difference inside the series'
+spread is no difference. Keep the spread in the ledger, and widen it with each repeat.
 
-## 8. Keep a ledger of rounds
+**The position's ceiling and floor.** Where the control holds nearly every gate, a round can read
+harm and no gain; where it holds none, gain and no harm. Round 10's control held 12 of 12 at the
+Opus buffer position, so its prediction of more holds could not be met there; the job position of
+round 11 had held 0 of 30 drafts in its source. Seat a "no harm" bar (step 8) where the control
+holds most gates, and a gain where it holds few, and read the graded loss at both.
+
+**The sign over pairs.** A single round reads one draw an arm. Under its rows `pairs` counts, for
+each Examiner model apart, the pairs in which the arm did more, fewer or the same on each measure,
+with the ties apart, and sums dollars per gate on each side. Pool only pairs of one series (step 5)
+and of one Examiner model and effort: the models hold and refuse at different rates, so a GPT pair
+and an Opus pair in one sign measure the models as much as the change. A tie counts against a
+prediction of "more in at least 4 of 5", and five of five is the least a sign test reads at 0.05.
+Report the count of pairs with each result, never a sum of holds over pairs that gated at different
+paces.
+
+## 7. Keep a ledger of rounds
 
 One file for the whole optimisation, in the investigation's folder (`.ana/wri/<date>-<what>/`),
 with one section a round written before its arms start:
@@ -238,8 +277,9 @@ arms:       sim-<what>-<arm> in <tree>, from <campaign> cut before <session>; th
             when each started
 predict:    P1 <arm> holds at least 1 by its 6th gate; P2 <arm>'s gap >= 1% count exceeds <arm>'s ...
 guards:     dollars per gated draft within 30% of the control arm
-result:     (after) pairs at the gate count; the pairs the decision rests on, the thin ones; each
-            prediction held or missed, with the count
+result:     (after) who ran and what reached the seat; pairs at the gate count beside the series'
+            spread; the pairs the decision rests on, the thin ones; each prediction held or missed,
+            with the count; the bar taken (step 8)
 next:       (after) the edit, the next seed, or the end of the loop
 ```
 
@@ -247,28 +287,69 @@ Name the arm in every prediction, and resolve each only as written. A prediction
 after arm that the before arm happens to meet has missed; recording it as held on the other arm is
 a description written after the result.
 
-## 9. Decide the next round
+## 8. Decide
+
+An arm goes into its pull request on one of two bars, and the ledger and the pull request name which:
+
+- **A gain.** The variable reached the seat; in each model's pairs the arm held more than the
+  control, or moved the graded loss, by more than the series' spread; no guard moved; and the move
+  held again on a confirming position from another campaign (step 2). One round that meets the rest
+  is a lead (`AGENTS.md`, rule 6).
+- **As good, and simpler.** The operator's bar of 28 October, on which round 10's deletion was
+  taken: in no pair did the arm hold fewer than the control by more than the spread, the cost guard
+  held, and the change removes more of the Examiner's prompt, tools or code than it adds, as
+  reduce-complexity measures it. A change that adds text or machinery cannot pass on this bar.
+
+An arm that meets neither is reverted, as round 8's sentence was. The next round follows from what
+this one read:
 
 | the round read | next |
 | --- | --- |
+| The arm never received its variable | Find where the path stops (step 3) before another round; keep the two draws for the spread |
 | Neither arm moved, the gates read `every`, and the position has a structural closure (step 2) | Change the seed, never the prompt |
-| Neither arm moved, and a positive deviant held in the same position | The change did not reach the seat. Diagnose again (step 3) on the deviant's calls, edit, run a new round |
+| Neither arm moved, and a positive deviant held in the same position | The change did not reach the seat's choices. Diagnose again (step 3) on the deviant's calls, edit, run a new round |
 | Neither arm moved, the graded loss moved | A lead too weak to read on holds. Run the confirming seed, or more gates, before another edit |
-| The after arm moved the count, and a guard moved too | Fix the guard's cause before another round |
-| The after arm moved the count, guards held | A lead from one draw (`AGENTS.md`, rule 6). Run the confirming seed from another campaign |
+| The arm moved the count, and a guard moved too | Fix the guard's cause before another round |
+| The arm moved the count beyond the spread, guards held | A lead from one draw. Run the confirming seed from another campaign |
 | The move held on the confirming seed | Stop. The change goes on its pull request with the ledger |
 
 Stop the loop after three rounds that moved neither the count nor the graded loss on positions that
 could move, and say so: the seat is not the owner of the count, and the next place to look is the
 gate or the exam.
 
-## What it may claim
+## What a round may claim, and its limits
 
 A round is two draws, one an arm. The pull request states the rounds, each seed's source and cut,
-the count and the graded loss at equal gates for each arm, and which predictions held, in its
-"Validation and limits". It says "the count moved on two seeds from two campaigns", never that the
-change raises the count: that claim needs the real campaigns that run the change from their opening
-(`AGENTS.md`, section 10, item 9), read after the release.
+the count and the graded loss at equal gates for each arm beside the series' spread, which
+predictions held, and the bar taken, in its "Validation and limits". It says "the count moved on two
+seeds from two campaigns", never that the change raises the count: that claim needs the real
+campaigns that run the change from their opening (`AGENTS.md`, section 10, item 9), read after the
+release.
+
+What no round reaches:
+
+- A seed reads the first session after its cut. What the change does in later sessions, across a
+  promotion or over a campaign's supply, only a fresh campaign at the change's commit reads.
+- A position's count rests on the exam its source drafted. On one pack and solver, campaigns on
+  record held from a fifth to two thirds of their gated drafts, a wider range than any round has
+  moved, so a round compares only within one position, and a change tuned on one is fitted to it
+  until a second confirms it.
+- The gate's reference solves are fresh draws in each arm, so a gate's word varies with them; the
+  graded loss carries that noise too.
+
+## The result
+
+Report, in order:
+
+1. The series and round, the two commits, each pair's position (campaign and cut), its seats, and
+   the minute each pair was read.
+2. Who ran, and the counts of what reached each arm.
+3. Each pair at the gate count: holds by where their room came from, the graded loss, the median
+   turns and dollars per gate; the thin pairs by name.
+4. The series' spread between two draws of one commit, and which differences exceed it.
+5. Each prediction held or missed with its count, the guard, and the bar the decision took, or
+   none.
+6. The seats still running, the seeds kept and why, and what was not run.
 
 ## Clean up
 

@@ -79,7 +79,7 @@ bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat <scra
 - `compare <prefix>...` sets seats' counts side by side, each cut at `--gates N`; `pairs
   <control>,<arm>...` reads a round of pairs at equal gates and signs each measure for each Examiner
   model apart; `calls <log or folder>...` counts the Examiner's calls and failures over any logs
-  ([optimize](optimize.md), steps 3, 6 and 7).
+  ([optimize](optimize.md), steps 3 and 6).
 - `start` refuses a seed whose `checks/`, `exams/` or `states/` hold a link to nothing, as a seed
   copied to another host with `rsync -a` does. Seed on the host that seats it (`bun run runs seed
   --from <campaign>` fetches the source), or copy with `rsync -aL`.

@@ -4,7 +4,8 @@
  * archive. Copies never become runnable campaigns. Fetch, WRI, view, source and replay used to
  * disagree on discovery, and an old fetched copy could silently stand for a growing remote log.
  * A failed transfer leaves the previous copy intact and refuses the read. Only whole log lines
- * are published. No credential file is copied and rsync never follows a link.
+ * are published. The catalogue states each log's size, and a record refresh skips a copy that
+ * already has it, so the ten-minute gather of 28 October copies only campaigns that moved. No credential file is copied and rsync never follows a link.
  */
 import { LOG_FILE } from "#src/kernel/log.ts";
 import { openingOf } from "#src/campaign/opening.ts";
@@ -20,7 +21,7 @@ import {
   rmSync,
 } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
-import { asRecord, isString, isBoolean } from "#src/meta/json-shape.ts";
+import { asRecord, isString, isBoolean, isNumber } from "#src/meta/json-shape.ts";
 import { dirname, isAbsolute, join } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
@@ -47,6 +48,7 @@ interface RemoteRun {
   readonly project: string | null;
   readonly open: boolean;
   readonly stderr: string | null;
+  readonly bytes: number | null;
 }
 
 type Depth = "record" | "whole";
@@ -67,6 +69,7 @@ export async function catalogue(): Promise<void> {
       ...entryOf(run),
       open: writers(run, running).length > 0,
       stderr: await stderrTail(run.path),
+      bytes: lstatSync(run.path).size,
     })),
   );
   console.log(capturedJsonStringify(records));
@@ -106,6 +109,7 @@ export function remoteRuns(lines: readonly string[] | null, host: Host): RemoteR
       project: isString(run.project) ? run.project : null,
       open: run.open,
       stderr: run.stderr,
+      bytes: isNumber(run.bytes) ? run.bytes : null,
     };
   });
 }
@@ -114,6 +118,12 @@ export function remoteRuns(lines: readonly string[] | null, host: Host): RemoteR
  *  Deleting the directory would let a stale reader bypass the next holder's lock. */
 async function refresh(run: RemoteRun, host: Host, repo: string, depth: Depth): Promise<string> {
   const into = archiveOf(repo, host.name, run.name);
+  // A log only grows, so a record copy of the size the catalogue states has nothing to gain.
+  const held = join(into, LOG_FILE);
+  if (depth === "record" && run.bytes !== null && existsSync(held) && lstatSync(held).size === run.bytes) {
+    await keepObservation(into, { open: run.open, stderr: run.stderr });
+    return held;
+  }
   mkdirSync(dirname(into), { recursive: true });
   const lock = join(dirname(into), `.fetch-${run.name}.lock`);
   mkdirSync(lock, { recursive: true });

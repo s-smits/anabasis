@@ -3,6 +3,7 @@ import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
+import { hostname } from "#src/meta/os.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { isAbsolute } from "#src/meta/path.ts";
 export interface Host {
@@ -77,6 +78,10 @@ export function configuredRuntime(host: Host) {
     envFiles: [...new Set([".env", ...(host.envFiles ?? [".env.runs"])].map(rooted))],
   };
 }
+/** This machine's own name, its short hostname: what `fresh` ends a run's name with when it runs
+ *  here, and what `move` reads as `here`. */
+export const ownName = (): string => hostname().split(".")[0] ?? "here";
+
 /** The machine whose archive gathers every host's records and holds the cycle's files: `here` on
  *  that machine and its `ANA_HOSTS` name on the others; unset, each machine reads for itself
  *  (27 October: the v0.7.4 cycle's folder was first kept on a runner, and moved). */

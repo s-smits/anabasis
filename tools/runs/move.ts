@@ -57,13 +57,13 @@
 import { LOG_FILE } from "#src/kernel/log.ts";
 import { cpSync, existsSync, mkdirSync, renameSync, rmSync, statSync } from "#src/meta/filesystem.ts";
 import { worktrees } from "#src/meta/git.ts";
-import { hostname, tmpdir } from "#src/meta/os.ts";
+import { tmpdir } from "#src/meta/os.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
-import { type Host, hostNamed } from "./host-config.ts";
+import { type Host, hostNamed, ownName } from "./host-config.ts";
 import { quoted, rsync, shellPath, sshScript, worktreesIn } from "./host-command.ts";
 import { verbOn } from "./hosts.ts";
 import { CAMPAIGNS, HERE, keepers, processes, readNamed, writers } from "./registry.ts";
@@ -157,7 +157,7 @@ export async function move(args: readonly string[]): Promise<void> {
     },
   });
   const [name, ...given] = positionals;
-  const own = hostname().split(".")[0];
+  const own = ownName();
   const [fromName = HERE, toName] = [values.from, values.to].map((end) => (end === own ? HERE : end));
   if (name === undefined || !isSafePathSegment(name) || toName === undefined || toName === fromName) {
     throw new Error(USAGE);
@@ -238,10 +238,17 @@ export async function fetch(args: readonly string[]): Promise<void> {
     allowPositionals: true,
     options: { from: { type: "string" } },
   });
-  const [name] = positionals;
-  if (name === undefined) throw new Error("usage: bun run runs fetch <name> [--from <host>]");
-  const copies = await syncRuns([name], { match: "exact", ...keyIfDefined("from", values.from) });
-  if (copies.length === 0) throw new Error(`no host ANA_HOSTS lists holds a campaign ${name}`);
+  const [name, ...rest] = positionals;
+  if (rest.length > 0) throw new Error("usage: bun run runs fetch [<name>] [--from <host>]");
+  const from = keyIfDefined("from", values.from);
+  // With no name, the records of every campaign the other hosts hold: the gather a timer runs.
+  const copies = await syncRuns(name === undefined ? [] : [name], {
+    ...from,
+    ...(name === undefined ? { depth: "record" } : { match: "exact" }),
+  });
+  if (copies.length === 0 && name !== undefined) {
+    throw new Error(`no host ANA_HOSTS lists holds a campaign ${name}`);
+  }
   for (const log of copies) console.log(log);
 }
 

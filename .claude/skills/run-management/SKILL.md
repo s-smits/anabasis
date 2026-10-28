@@ -35,7 +35,7 @@ archived campaign; `copy <name> --to <worktree>` brings this machine's back to g
 | `usage [N ...] [--json]` | each login's five-hour and weekly use and, without `--json`, how many runs and simulation seats are live on it on every host (`1/2 active`, out of the most `ANA_LOGIN_RUNS` lets it carry, such as `2,N:4`); without numbers or `--json`, also the pool forecast | `logins.ts` |
 | `active` | the runs and simulation seats live on each login by name, on this machine and every host, asking no provider | `logins.ts` |
 | `search <pattern> [--regex] [--ignore-case] [--host <name>]... [--here] [--in logs\|notes\|all] [--max <chars>]` | searches campaign folders, notes and docs on all hosts concurrently; private extra note roots come from `ANA_SEARCH_ROOTS` in `.env.runs`; reports each engine and spills complete matches to a temporary log when output is cut | `search.ts` |
-| `fetch <name> [--from <host>]` | a copy of a campaign another machine holds, to read here, into the archive as `data/runs/<host>/<name>/` | `move.ts` |
+| `fetch [<name>] [--from <host>]` | a copy of a campaign another machine holds, to read here, into the archive as `data/runs/<host>/<name>/`; with no name, the records (log and receipts) of every campaign the other machines hold, which a timer on the central machine runs every ten minutes | `move.ts` |
 | `retire [--days 1] [--yes]` | moves each campaign no process writes or keeps, idle for `--days`, into the archive whole (a seed, `seed.json` beside its log, is deleted instead, the archive's too), and deletes each worktree nothing has used for a week (two for one with uncommitted work); then refreshes each other host's records here. A daily job on every host runs it with `--yes`; nothing else in an archive is deleted | `retire.ts` |
 | `on <host> <verb ...>`, `hosts [--all]` | any verb on another host over ssh; `status` on each other host alone. A verb that names a run goes to its host by itself | `hosts.ts` |
 | `pulse [<part of a name> ...] [--once] [--every 290] [--state <file>]` | what each run gained since the last look; state defaults to `.ana/runs-pulse.json` | `pulse.ts` |
@@ -58,7 +58,7 @@ bun --env-file=<file> run runs fresh <pack> --host <host> ... --yes   # on anoth
 
 It reads the operator's prompt, `<pack>-prompt.txt` in `ANA_PROMPTS` (by default
 `anabasis-prompts` beside the main worktree), and refuses a pack with none: a prompt is the operator's
-to write. It names the run `<pack>-fresh-<model>[-<suffix>][-r<n>]` and its project `<pack>-fresh`,
+to write. It names the run `<pack>-fresh-<model>[-<suffix>]-<host>[-r<n>]` and its project `<pack>-fresh`,
 seats one model in all four seats (`--effort` a letter a seat of `lmhx`, by default `hhmm` for
 Opus, `xxhh` for Sonnet and `hhhh` for GPT and any other model), takes a budget of 800 dollars unless `--budget`,
 makes the worktree `anabasis-<name>` beside the main worktree, detached at `--at` (this
@@ -75,7 +75,7 @@ working. It then prefers a machine whose catalogue already holds a campaign of p
 `<pack>-fresh`, and then the fewest live campaigns and simulation seats. This machine's cap is `ANA_RUN_CAP`; each peer's is its `capacity` in
 `ANA_HOSTS`, both 2 where unset. A missing count or catalogue refuses placement. Ties follow
 configuration order, with this machine first. `--host here` selects this machine explicitly;
-`--host <host>` selects a peer and adds its name to the suffix, after `--as` where one is named.
+`--host <host>` selects a peer. Every name ends with its machine's: a peer's `ANA_HOSTS` name, or this machine's short hostname for a run placed here, after `--as` where one is named.
 An explicit host selects the destination; a remote receiver rechecks its cap before launching.
 Counts are observations, so launch
 sequentially; they reserve no slot against another launcher.
@@ -164,9 +164,9 @@ pull-request branch may be rewritten; `bun run runs source <name>` names the tag
 A name is the campaign's folder, `.ana/d2/<name>/`, chosen once and never reused. It starts
 with a letter or digit, uses only letters, digits, `.`, `_` and `-`, has at most 128 characters
 and contains no `..` (`isSafePathSegment`). `fresh` makes it,
-`<pack>-fresh-<model>[-<suffix>][-r<n>]`. A suffix
-may be given with `--as`; a remote launch adds its host's configured name to it, so one pack
-sent to two hosts opens two names. A campaign
+`<pack>-fresh-<model>[-<suffix>]-<host>[-r<n>]`. A suffix
+may be given with `--as`; every launch adds its machine's name to it, so one pack sent to two hosts
+opens two names and a name says where it runs. A campaign
 continued keeps its name. The project (`--project`) groups campaigns for the operator. Write
 the name, the project and why into the prediction ledger before the launch, beside the prediction.
 

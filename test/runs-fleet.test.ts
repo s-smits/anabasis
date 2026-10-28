@@ -206,7 +206,7 @@ describe("code preparation", () => {
         ?.args.at(-1) ?? "";
     expect(command).toContain("campaign-value");
     expect(command).toContain("prepared");
-    expect(command).toMatch(/--host\W+here\W+--yes/);
+    expect(command).toMatch(/--placed\W+--yes/);
     // On 27 October `--as terra` sent to two hosts opened one name on each, since each peer's
     // `freeName` reads its own names alone: the host goes into the suffix.
     expect(command).toMatch(/--as\W+terra-runner\W/);

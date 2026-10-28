@@ -15,7 +15,7 @@
  * The next login is the one with capacity whose week resets soonest, of those this keeper has not seen
  * spent (`room`, `logins.ts`), and `--logins` defaults to `ANA_LOGINS`. With none it says so once
  * and waits. A run none of whose seats is a `claude/` model bills no login and goes on without one
- * (`billsLogin`). A run that goes on three times in a row without a model turn of any seat that the
+ * (`billsLogin`), and so does every run on a machine that holds only the plain login (`plainOnly`). A run that goes on three times in a row without a model turn of any seat that the
  * provider answered (`turnsIn`) is left: something the keeper cannot mend ends it each time.
  *
  * With `--yes` the verb leaves a keeper running by itself, its output in `keep.out` beside the log,
@@ -28,7 +28,7 @@ import { isString } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { allowedLogins, atCap, billsLogin, liveEverywhere, readLogins, room } from "./logins.ts";
+import { allowedLogins, atCap, billsLogin, liveEverywhere, plainOnly, readLogins, room } from "./logins.ts";
 import type { Live } from "./live.ts";
 import { lastRun, rerun, start } from "./manage.ts";
 import { KEEPING, keepers, logEvents, processes, type Run, runNamed, writers } from "./registry.ts";
@@ -141,7 +141,7 @@ async function keepGoing(run: Run, logins: readonly string[], waitMs: number): P
     const counted = async () => (fleet ??= await liveEverywhere("configured"));
     const target = await nextLogin(
       turn,
-      { current, spent, billed: billsLogin(events, lastRun(run).flags) },
+      { current, spent, billed: logins.length > 0 && billsLogin(events, lastRun(run).flags) },
       async () => roomFor(logins, spent, await counted()),
       async (login) => {
         const { live, unasked } = await counted();
@@ -194,8 +194,12 @@ export async function keep(args: readonly string[]): Promise<void> {
     );
   }
   const run = runNamed(name);
-  if (logins.length === 0 && billsLogin(logEvents(run.path), lastRun(run).flags)) {
-    throw new Error("no allowed Claude login: name --logins or set ANA_LOGINS");
+  if (
+    logins.length === 0 &&
+    !plainOnly(runtimeProcess.env) &&
+    billsLogin(logEvents(run.path), lastRun(run).flags)
+  ) {
+    throw new Error("no allowed Claude login: name --logins, set ANA_LOGINS or CLAUDE_CODE_OAUTH_TOKEN");
   }
   if (values.here) return keepGoing(run, logins, Number(values["wait-hours"]) * HOUR);
   if (keepers(name).length > 0) throw new Error(`${name} is kept already`);

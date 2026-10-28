@@ -41,7 +41,7 @@ one ruled a check defect or unclear, or left unruled, sets its task aside for ev
    pack `--events N` cut before its first release, so every task is still held. The script refuses
    a folder without `seed.json`, so a real campaign is never written. The bare system needs nothing
    more: every seed holds the starter, named `starter` or `A`. Written out, the starter is
-   `data/harnesses/starter/harness` in the main checkout, beside every campaign's handover and
+   `data/harnesses/starter/bare-harness` in the main checkout, beside every campaign's handover and
    behind the wall of every Builder, Examiner and solve, since the wall refuses the repository's
    worktrees; `writeStarter` (`src/harness/starter.ts`) writes it again. Import the domain's harness
    into the seed for the built system: `bun tools/d2/import.ts --name cmp-<what> --harness <data/harnesses/<run>/harness>`.

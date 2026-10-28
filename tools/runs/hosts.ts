@@ -10,8 +10,8 @@
  * `--env-file` from a file git ignores, so no machine is named in the repository. Each names the
  * host, its ssh destination, the worktree the verb runs in, the Bun there, and the env files there
  * that Bun loads (a path on that machine, never copied). The remote command runs under a login
- * shell, so a campaign it starts finds the tools a login there has, and with `ANA_HOSTS` empty,
- * which Bun keeps over an env file's: a verb run on another host reaches no further one, so two
+ * shell, so a campaign it starts finds the tools a login there has, and with `ANA_HOP=1`, under
+ * which `hostsOf` lists no host: a verb run on another host reaches no further one, so two
  * machines that list each other do not ask each other's status in a loop. `hosts` asks every host at
  * once and prints each one's rows as they come, under a time limit a host, so a host that is slow or
  * does not answer holds up no other (15 October: asked one after another, a loaded runner held the
@@ -58,7 +58,7 @@ function scriptCommand(host: Host, script: string, args: readonly string[]): str
   const env = (runtime.envFiles ?? []).map((file) => ` --env-file=${shellPath(file)}`).join("");
   return sshScript(
     host,
-    `cd ${shellPath(host.tree)}\nANA_HOSTS='[]' ANA_RUN_CAP=${quoted(String(host.capacity ?? 2))} ${treeBun(runtime.bun)}${env} ${quoted(script)} ${args.map(quoted).join(" ")}`,
+    `cd ${shellPath(host.tree)}\nANA_HOP=1 ANA_RUN_CAP=${quoted(String(host.capacity ?? 2))} ${treeBun(runtime.bun)}${env} ${quoted(script)} ${args.map(quoted).join(" ")}`,
   );
 }
 

@@ -25,6 +25,11 @@ export interface Host {
 }
 
 export function hostsOf(): readonly Host[] {
+  // A verb another host sent here reaches no further host (`ANA_HOP`, set by `scriptCommand` in
+  // hosts.ts), so two machines that list each other do not ask each other in a loop. Until
+  // 28 October the sender emptied `ANA_HOSTS` instead, and a keeper started that way inherited the
+  // empty list and counted no other machine's runs against a login's cap.
+  if (runtimeProcess.env.ANA_HOP === "1") return [];
   const value = capturedJsonParse(runtimeProcess.env.ANA_HOSTS ?? "[]");
   if (!Array.isArray(value)) throw new Error("ANA_HOSTS takes a JSON list");
   const names = new Set<string>();

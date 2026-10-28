@@ -302,8 +302,8 @@ After an install, prune controllers beyond the newest three by readiness time; p
 and working directories protect live controllers. Failed process inspection preserves them.
 `continue --at` resolves that revision here, and uses its launcher on the peer.
 Environment files stay on their own machine and relative names remain relative to the configured
-checkout. A login shell supplies its tools; `ANA_HOSTS=[]` prevents recursive fan-out. `on` remains
-an explicit override. `hosts` shows peer statuses; `hosts --health` includes this machine and
+checkout. A login shell supplies its tools; `ANA_HOP=1` prevents recursive fan-out and leaves a
+keeper started there counting every host. `on` remains an explicit override. `hosts` shows peer statuses; `hosts --health` includes this machine and
 every peer in one reading. The shared `scriptOn` and
 `askedScript` in `tools/runs/hosts.ts` provide the same boundary to skill scripts, and any script
 that parses through `.claude/skills/main/cli.ts` runs on a peer with `--host <name>`.

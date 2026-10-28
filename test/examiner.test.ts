@@ -1496,6 +1496,34 @@ describe("a session that writes tasks", () => {
     expect(said).toContain("1 of 4 drafts put to the gate");
   });
 
+  it("tells how each valid gate solve reached its answer by its calls, and none of their arguments", async () => {
+    const s = seat("write", [call(TRY, { tasks: [instance(2)] }), finish, finish]);
+    const solved = measuredProbe(s.log, () => undefined, 4);
+    await examine({
+      ...s.request,
+      probe: async (task, session, signal) => {
+        const ending = await solved(task, session);
+        const solve = read(s.log).findLast(({ kind }) => kind === STARTED)?.data.solve ?? "";
+        for (const [tool, args, isError] of [
+          ["read", { path: "public/task.json" }, false],
+          ["bash", { command: "python3 - <<'PY'\nprint(41 + 1)\nPY" }, true],
+          ["bash", { command: "python3 solve.py" }, false],
+          ["submit", {}, false],
+        ] as const) {
+          append(s.log, "solve.call", { solve, tool, args, isError, text: "42" });
+        }
+        signal.throwIfAborted();
+        return ending;
+      },
+    });
+    const said = s
+      .of(CALLED)
+      .flatMap(({ text: line }) => (isString(line) ? [line] : []))
+      .join("\n");
+    expect(said).toContain("(read 1, bash 2, submit 1, commands of 3, 1 lines, 1 failed)");
+    for (const hidden of ["public/task.json", "python3", "42"]) expect(said).not.toContain(hidden);
+  });
+
   it("charges only author work across explicit wait, continuation, finish and crash settlement", async () => {
     for (const path of ["wait", "continuation", "finish", "final finish", "crash"] as const) {
       const release = Promise.withResolvers<void>();

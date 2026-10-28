@@ -490,9 +490,8 @@ The question is whether anything moves the Examiner toward tasks that separate h
 session over session. v1 pressed its Builder with zones, targets, slack figures and a
 reference-distance pointer, and removed each after measuring it: every one pointed the author at
 one route. Read the Examiner's current inputs in `AGENTS.md` section 3 and `record.ts`: outcomes
-and recent histories, gate results, family counts, valid-answer turns, the solve budget and,
-unless `exam-reference` is off, the reference harness. It gets no target or other harness's
-task result. Read which inputs each session actually received. `OUTCOMES BY SESSION` gives,
+and recent histories, gate results, family counts, valid-answer turns, the solve budget, who won each task, and the reference harness. It gets no target or other
+harness's measure. Read which inputs each session actually received. `OUTCOMES BY SESSION` gives,
 for each session's held-out tasks, how many
 the reference harness answered in every solve, in some, in none, and how many no comparison has
 scored, as they stand at the log's end, beside the reports the session opened after: one that

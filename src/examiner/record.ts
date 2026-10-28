@@ -5,8 +5,7 @@
  * - A line a task, in the order the tasks come, except those last compared between two other
  *   harnesses with nothing more to say, which share one line: how the reference harness did on it in the last
  *   comparison that scored it (every, some or no solve valid, or disputed) and the solver's turns
- *   each valid answer took; who won it there and on which measure (`carriedBy`), unless the
- *   campaign's term `exam-results` is off; how far an answer on record beat one of the reference's
+ *   each valid answer took; who won it there and on which measure (`carriedBy`); how far an answer on record beat one of the reference's
  *   own by the objective (`roomLeft`); its gate's count and turns; its last comparisons where it
  *   stood in two or more; and whether a valid answer is on record where nothing on the line shows
  *   one (`poolOf`). An author told only "one harness won" could not tell where the room was
@@ -19,7 +18,7 @@
  * - The drafts a gate refused having read them, by reason (`refusedLines`), and the gates that
  *   measured nothing, by draft (`interruptedLines`).
  *
- * Until 26 October the opening also held a table of the tasks by family with exam-results off, a
+ * Until 26 October the opening also held a table of the tasks by family where winners were hidden, a
  * count of the gates read on a replaced reference, and the turns by family in a block of their
  * own. At forkedPR377's x-6 the table took 2,636 of the opening's 21,705 bytes and no turn of seven
  * sessions cited it; the turns now stand on the line of the task they were taken on.
@@ -39,7 +38,7 @@ import {
   pairsReported,
   referenceOf,
 } from "../kernel/reports.ts";
-import { BILLED } from "../kernel/trace.ts";
+import { BILLED, type Call, tracesIn } from "../kernel/trace.ts";
 import { conditionsOf } from "../kernel/condition.ts";
 import { examinerSessions, solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { heldAtGate, taskStates } from "../kernel/task.ts";
@@ -52,6 +51,14 @@ export const TRIED = 3;
 /** Why a draft is not measured where the campaign's budget holds no reserve for its next solve. */
 export const UNAFFORDED =
   "the campaign's budget holds no reserve for the reference harness's next solve of it beside the solves running, so it is not measured";
+
+/** One valid answer of the reference at a gate, and how its solve reached it (`methodOf`). */
+interface GateAnswer {
+  readonly turns: number | null;
+  readonly seconds: number | null;
+  readonly measure: number | null;
+  readonly method: string | null;
+}
 
 /** How each outcome is said. */
 const SAID: Readonly<Record<Outcome, string>> = {
@@ -85,12 +92,8 @@ interface Carried {
   bill: boolean;
 }
 
-/** What the lines say before them: once, what each clause some line carries means. With
- *  `results`, who won each task in its last comparison is among them (`exam-results`). */
-function legendOf(results: boolean, carried: Carried): string {
-  const won = results
-    ? ", and who won it there, and on which measure: the other harness, whichever the reference harness was compared with, the reference harness, or neither"
-    : "";
+/** What the lines say before them: once, what each clause some line carries means. */
+function legendOf(carried: Carried): string {
   const clauses = [
     carried.bill
       ? `A win "on the bill alone" is one only the cost of its solves carried; a step is also read without the bill.`
@@ -103,7 +106,7 @@ function legendOf(results: boolean, carried: Carried): string {
       : "",
   ].filter((clause) => clause !== "");
   return [
-    `The tasks of the exam so far, a line each: the task, its family, and how the reference harness did on it in the last comparison that scored it, with the solver's own turns each of its valid answers took${won}. Where nothing on the line shows a valid answer, it says whether one is on record.`,
+    `The tasks of the exam so far, a line each: the task, its family, and how the reference harness did on it in the last comparison that scored it, with the solver's own turns each of its valid answers took, and who won it there, and on which measure: the other harness, whichever the reference harness was compared with, the reference harness, or neither. Where nothing on the line shows a valid answer, it says whether one is on record.`,
     ...clauses,
     "These are measurements and no instruction. read_example returns any of them whole.",
   ].join(" ");
@@ -158,11 +161,7 @@ function yoursSaid(reference: unknown): string {
  *  then those last compared between two other harnesses with nothing more to say, grouped, and the
  *  practice tasks in one line. A task the log refused is no task of the exam and has no line; one
  *  the log does not hold, as a pack's before `prepare.ts`, is not yet compared. */
-export function heard(
-  events: readonly LogEvent[],
-  tasks: readonly Pick<Task, "taskId" | "family">[],
-  results = true,
-) {
+export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "taskId" | "family">[]) {
   const states = taskStates(events);
   const { outcomes, standings, feasible, histories } = poolOf(events);
   const versions = new Map(
@@ -209,7 +208,7 @@ export function heard(
         : `; ${feasible.has(version) ? "an answer on record" : "no answer on record"}`;
     const standing = standings.get(version);
     const won =
-      !results || standing === undefined
+      standing === undefined
         ? ""
         : standing.won === null
           ? "; tied there"
@@ -232,7 +231,7 @@ export function heard(
     return [`${named}: ${said}${answered ? inTurns(compared.get(version) ?? []) : ""}${known}${rest}`];
   });
   return {
-    legend: legendOf(results, carried),
+    legend: legendOf(carried),
     lines: [
       ...lines,
       ...[...elsewhere].map(
@@ -428,20 +427,15 @@ function interruptedLines(
  *  draft's line. Until 16 October an Examiner was told the turns of comparisons only, and after a
  *  promotion its drafts stood in none: main0_5_1's answered drafts took a median of 4 of the 16
  *  turns, recode-151's 3, and neither was told. */
-export function gateAnswers(
-  events: readonly LogEvent[],
-  from: number,
-): Map<
-  string,
-  { readonly turns: number | null; readonly seconds: number | null; readonly measure: number | null }[]
-> {
+export function gateAnswers(events: readonly LogEvent[], from: number): Map<string, GateAnswer[]> {
   const sessions = examinerSessions(events);
   const conditions = conditionsOf(events);
   const verdicts = verdictsOf(events);
-  const answers = new Map<
-    string,
-    { readonly turns: number | null; readonly seconds: number | null; readonly measure: number | null }[]
-  >();
+  const calls = Map.groupBy(
+    tracesIn(events).filter((each): each is Call => each.seat === "solve" && each.part === "call"),
+    ({ id }) => id,
+  );
+  const answers = new Map<string, GateAnswer[]>();
   for (const { id, started, start, ending, end, condition } of solvesIn(events)) {
     const version = conditions.get(condition)?.task;
     if (started <= from || !sessions.has(start.comparison) || version === undefined) continue;
@@ -454,10 +448,28 @@ export function gateAnswers(
         turns: isNumber(end?.turns) ? end.turns : null,
         seconds: isNumber(end?.seconds) ? end.seconds : null,
         measure,
+        method: methodOf(calls.get(id) ?? []),
       },
     ]);
   }
   return answers;
+}
+
+/** How a valid gate solve reached its answer, told without one argument or result: its calls by
+ *  tool, each shell command's length in lines, and how many failed; null where it recorded none.
+ *  job-fresh-opus-stackedPR485's x-1 to x-3 (28 October) had 30 of 30 drafts refused at 4 to 9 of
+ *  20 turns, and the turns alone could not tell its Examiner how the solver got there. */
+function methodOf(calls: readonly Call[]): string | null {
+  if (calls.length === 0) return null;
+  const tools = [...Map.groupBy(calls, ({ tool }) => tool)].map(
+    ([tool, each]) => `${tool} ${String(each.length)}`,
+  );
+  const lines = calls.flatMap(({ args }) => {
+    const command = asRecord(args)?.command;
+    return isString(command) ? [command.split("\n").length] : [];
+  });
+  const failed = calls.filter(({ isError }) => isError).length;
+  return `${tools.join(", ")}${lines.length === 0 ? "" : `, commands of ${lines.join(", ")} lines`}${failed === 0 ? "" : `, ${String(failed)} failed`}`;
 }
 
 /** What draft `version`'s solves at session `session`'s gate billed, read once every one has

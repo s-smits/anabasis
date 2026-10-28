@@ -45,15 +45,15 @@
  * a scored set's size until 12 October (`SIZE.tasks` is 24 since). Asking for many at once is what v1 found dilutes them, a probe grown to
  * 25 tasks in 10 of 13 cases (`7f0add79:docs/plan.md`).
  *
- * `--reference-home on`, the default, lays a copy of the reference harness the gate solves with in
- * the home, laid afresh each session; `off` keeps the home blind (the campaign's term
- * `exam-reference`). After a promotion the Examiner wrote drafts the reference's programs answered
+ * A copy of the reference harness the gate solves with is laid in the home afresh each session.
+ * After a promotion the Examiner wrote drafts the reference's programs answered
  * every time, 0 of 49 held in esp32-fresh-opus, and never saw those programs. The term was off
  * unless named until 19 October, when a supply ablation on the buffer domain after its second
  * promotion, one Examiner session an arm, held 1 of 8 drafts blind for $9.22 and 4 of 8 with the
  * copy for $14.41: $9.22 a held draft against $3.60. On esp32, with no room left, both arms held
  * none (20 drafts blind, 6 with the copy). One session an arm and three gate solves a draft; the
- * operator turned it on on that word.
+ * operator turned it on on that word. Its switch, and the one that hid who won each task, were
+ * removed on 28 October: no campaign on record had set either off.
  *
  * Not run here: see `campaign.ts`.
  */
@@ -105,12 +105,6 @@ const EXAMINE_OPTIONS = {
   proposals: { type: "string", default: "36" },
   minutes: { type: "string", default: "240" },
   turns: { type: "string", default: "200" },
-  /** `on` lays a copy of the reference harness the gate solves with in the Examiner's home; `off`
-   *  keeps it blind. The one owner of the default, which a campaign that names no term reads. */
-  "reference-home": { type: "string", default: "on" },
-  /** `on` tells the Examiner who won each task in its last comparison; `off` tells it nothing of
-   *  the other harness but whether a valid answer is on record (`exam-results`, `heard`, `record.ts`). */
-  results: { type: "string", default: "on" },
   /** The campaign's setting, as every command that solves takes it: the solver and the limits the
    *  reference harness's solves of a draft task run under (`try_task`), and the budget fact the
    *  Examiner is told, where no setting is on record yet. `--tasks` is this command's own, so the
@@ -194,10 +188,6 @@ export async function examineCommand(
   if (id === undefined || examiner === undefined) throw new Error("name --session and --examiner");
   if (kill?.aborted === true) throw new Error(`session ${id} was stopped before it began`);
   refereeNamed(values, session === examine && seated !== null ? "paid" : "scripted");
-  const home = values["reference-home"];
-  if (home !== "on" && home !== "off") throw new Error(`--reference-home is on or off, not ${home}`);
-  const { results } = values;
-  if (results !== "on" && results !== "off") throw new Error(`--results is on or off, not ${results}`);
   const pack = packNamed(values, ", --session and --examiner");
   // The campaign's setting is its log's, as a comparison reads it: the reference harness's solves
   // of a draft task run under it and record it where none is on record (`setting.ts`).
@@ -237,7 +227,6 @@ export async function examineCommand(
         puts: Number(values.proposals),
       },
       wanted: Number(values.tasks),
-      results: results === "on",
       models: campaign.examiner,
       log: campaign.log,
       ...keyIfDefined("kill", kill),
@@ -251,11 +240,8 @@ export async function examineCommand(
       engines: { checks: campaign.checks, tools: join(campaign.bundle, ".toolchain") },
       // The home the last session left, carried whole into this one, beside the log.
       keep: join(dirname(campaign.log), "examiner-home"),
-      // The reference harness the gate solves with, where the campaign's term lays it in the home.
-      ...keyIfDefined(
-        "reference",
-        home === "on" ? (await keptAs(campaign, "--reference", PROMOTED)).dir : undefined,
-      ),
+      // The reference harness the gate solves with, laid in the home.
+      reference: (await keptAs(campaign, "--reference", PROMOTED)).dir,
     },
   );
   const sets = taskSets(read(campaign.log));

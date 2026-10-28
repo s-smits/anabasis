@@ -90,7 +90,7 @@ bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat <scra
 
 Two arms of one question are two seeds cut at the same event, each in a worktree of its own at the
 commit that differs in the one variable, or at one commit with the variable as a flag where a
-command takes one (`--reference-home on|off`, on by default since 19 October). Read both with
+command takes one. Read both with
 `read` and set the counts side by side.
 
 ## Smaller than a solve

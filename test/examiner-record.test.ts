@@ -156,58 +156,6 @@ describe("the reference outcomes delivered at session opening", () => {
   });
 });
 
-describe("the exam-results term", () => {
-  it("with exam-results off and feasibility unchanged, reads the same whatever the other harness did, and names no winner", () => {
-    // Only the other harness's outcomes vary.
-    const build = (other: boolean) => {
-      const log = logged();
-      log.hold("run", "once", "one");
-      for (const comparison of ["b-1", "b-2"]) {
-        log.solved(comparison, "run", "h1", [true, true], [4, 5]);
-        log.solved(comparison, "run", "h2", [other, null]);
-        log.reported(comparison, ["h1", "h2"], ["run"]);
-      }
-      log.solved("b-3", "once", "h1", [true, false]);
-      log.solved("b-3", "once", "h2", [other, other]);
-      log.solved("b-3", "one", "h1", [false, false]);
-      log.solved("b-3", "one", "h2", [other, true]);
-      log.reported("b-3", ["h1", "h2"], ["once", "one"]);
-      return log.events;
-    };
-    const tasks = ["run", "once", "one"].map(fixture);
-    const [lost, won] = [build(false), build(true)].map((events) => heard(events, tasks, false));
-    expect(won).toEqual(lost);
-    expect(JSON.stringify(won)).not.toContain("won there");
-    expect(won?.legend).not.toContain("who won");
-    // With the term on, the same logs tell apart.
-    expect(heard(build(true), tasks).lines).not.toEqual(heard(build(false), tasks).lines);
-  });
-
-  it("with exam-results off, permits the feasibility exception, also recorded by task.feasible, when the other harness supplies the first valid answer", () => {
-    const build = (other: boolean) => {
-      const log = logged();
-      log.hold("unanswered");
-      log.solved("b-1", "unanswered", "h1", [false, false]);
-      log.solved("b-1", "unanswered", "h2", [other, false], [37, 41]);
-      log.reported("b-1", ["h1", "h2"], ["unanswered"]);
-      return log;
-    };
-    const tasks = [fixture("unanswered")];
-    const log = build(false);
-    const unknown = heard(log.events, tasks, false);
-    const feasible = heard(build(true).events, tasks, false);
-    expect(unknown.lines[0]).toContain(NONE);
-    expect(feasible).toEqual({
-      ...unknown,
-      lines: unknown.lines.map((line) => line.replace(NONE, VALID)),
-    });
-    // An author's passing answer reveals the same permitted fact, without any other-side success.
-    log.add("task.feasible", { version: "v-unanswered", session: "x-1", answer: { answer: SOLVER } });
-    expect(heard(log.events, tasks, false)).toEqual(feasible);
-    expect(JSON.stringify(feasible)).not.toMatch(/won there|37|41|solver-canary/u);
-  });
-});
-
 describe("the reference measurement and admission gates", () => {
   it("measures the reference across the exam in the last comparison it stood in, never one between two other harnesses", () => {
     const log = logged();
@@ -388,7 +336,7 @@ describe("the reference comparison history", () => {
       log.solved("b-5", "elsewhere", "h3", [true, true]);
       log.solved("b-5", "elsewhere", "h4", [false, false]);
       log.reported("b-5", ["h3", "h4"], ["elsewhere"]);
-      return heard(log.events, ["run", "mixed", "once", "elsewhere"].map(fixture), false).lines;
+      return heard(log.events, ["run", "mixed", "once", "elsewhere"].map(fixture)).lines;
     };
     const lines = build([false, false]);
     const told = byTask(lines.slice(0, -1));
@@ -403,6 +351,9 @@ describe("the reference comparison history", () => {
     expect(lines.at(-1)).toContain("two other harnesses");
     expect(lines.at(-1)).toContain(VALID);
     expect(lines.at(-1)).toContain("elsewhere (fixture)");
-    expect(build([true, null])).toEqual(lines);
+    // The history is read from the reference's side alone, whatever the other harness did.
+    expect(byTask(build([true, null]).slice(0, -1)).mixed).toContain(
+      "last 3 comparisons: every, none (a solve cut at a limit), every",
+    );
   });
 });

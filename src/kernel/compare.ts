@@ -419,7 +419,7 @@ function bettered(pair: Paired, side: "old" | "fresh", best: number | null): boo
  *  the side's own valid answers, as a share of the larger magnitude, where that reaches the floor
  *  (`ROOM`), and 0 under it: the room the task leaves that harness. Null where the pair carries no
  *  objective or the side no measure. Its author is told it against the side's own answers alone,
- *  since the other harness's answers are its result on the task (`exam-results`). */
+ *  since the other harness's answers are its result on the task. */
 export function roomLeft(
   pair: Paired,
   side: "old" | "fresh",

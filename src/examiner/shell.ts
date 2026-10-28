@@ -61,7 +61,7 @@ export interface Wall extends Walled {
    *  carried, as a test may want. */
   readonly keep?: string | undefined;
   /** The reference harness's kept directory, laid in a task-writing session's home as
-   *  `reference-harness/` where the campaign's term `exam-reference` is on, and never kept. */
+   *  `reference-harness/`, and never kept. */
   readonly reference?: string | undefined;
 }
 

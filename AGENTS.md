@@ -102,9 +102,8 @@ new harness is like. The informative tasks lie in between (`informative`,
   `ROOM`, 1%).
 
 In most learning the data stays fixed and the model moves; here the solver stays fixed and the
-Examiner keeps the exam at its frontier. It is told what the reference did on each task and, unless
-the campaign's term `exam-results` is `off`, which harness won it in the last comparison
-(section 3). Supply is measured as the number of
+Examiner keeps the exam at its frontier. It is told what the reference did on each task and which harness won it in the last
+comparison (section 3). Supply is measured as the number of
 informative tasks in a comparison's scored set. Bar: at least four before each comparison starts.
 It is not reported as a factor, because passing it only says a comparison can show a difference,
 and says nothing about whether one was shown. It binds first, because every other number is
@@ -244,8 +243,8 @@ training set and the held-out tasks its test set: it learns what to improve from
 reads every task, trace and result whole, and a step says the harness is better on tasks it never
 saw. A Builder that learned anything of a held-out task, even which one its harness won, could fit
 the harness to the test set, and a step would then measure that fit. The other direction is open
-by design: the Examiner reads what the reference harness did on each task and, under the term
-`exam-results`, which harness won it (section 3). Its risk is an exam written towards the newest
+by design: the Examiner reads what the reference harness did on each task and which harness won it
+(section 3). Its risk is an exam written towards the newest
 harness, which the gate bounds by admitting a task only where the reference has room on it, and
 which the operator accepted on 20 October.
 
@@ -316,7 +315,7 @@ Seven consequences guide a change:
    reads"), with no number to reach. It is told the budget every solve is held to, because a task
    that tells two harnesses apart is one a better method answers within that budget and a worse one
    does not. Which harness won each task of the last comparison is a fact of the record, and it is
-   told unless the campaign's term `exam-results` is `off`: the operator accepted on 20 October
+   told: the operator accepted on 20 October
    that an author who knows which tasks the newest harness wins may write towards that harness,
    to give it the plainest signal of where the exam has fallen behind.
 3. **Keep the Builder free.** It may change or rewrite anything in the harness. One limit stands:
@@ -381,19 +380,17 @@ What the **Examiner** reads:
   task answered once from one answered every time;
 - for each task the last comparison tallied, which harness won it and on which measure (validity,
   the objective or the bill; `carriedBy`), or that it tied. This
-  is the operator's word of 20 October, a term of the campaign (`exam-results`, on by default):
-  the Examiner learns which tasks the newest harness wins, and so what to write against it. With the
-  term `off` it is told none of it;
+  is the operator's word of 20 October: the Examiner learns which tasks the newest harness wins, and
+  so what to write against it;
 - for such a task, how much better a measure on record is than one of the reference's answers,
   where another of its own or its author's is (`roomLeft`). The other harness's answers are left
-  out of it, so it reads the same with `exam-results` off whatever that harness measured;
+  out of it, so it reads the same whatever that harness measured;
 - one line of what the reference was measured to do across the exam: its tasks in the last
   comparison it stood in, by every, some or none of its solves valid, with those set aside counted
   apart, and the drafts its gates held under it, by where their room came from
   (`measuredLine`, `heldOn`, `src/examiner/record.ts`);
 - what the last session under the current reference said at its `finish`;
-- the home the last session left, with a copy of the reference harness in it unless the
-  campaign's term `exam-reference` is `off`;
+- the home the last session left, with a copy of the reference harness in it;
 - how many of its gate's solves each held task passed on, with their turns, and the drafts a gate
   refused after reading them, with the reason, each with how far its author's answer stood from the
   reference's best by the objective (`reference.gap` of `task.gate`). Gates read on a replaced
@@ -406,15 +403,17 @@ What the **Examiner** reads:
 - when it drafts an exam: the operator's prompt, what the host's reading found in each draft, and
   a walled home of its own, empty when it starts.
 
-What the **Examiner** never reads: a target, a harness's name, the other harness's result on any one
-task where `exam-results` is `off` beyond whether a valid answer to it is on record, or a count of
-the other harness's valid solves. The reference harness's own solves are facts it may count: a
+What the **Examiner** never reads: a target, a harness's name, a measure of
+the other harness's answers, or a count of the other harness's valid solves. The reference harness's own solves are facts it may count: a
 task's line lists the turns of each of its valid answers in the last comparison, one entry a valid
 solve, and a draft's gate (`try_task`, and in later sessions; up to three solves, the first alone
 and the other two together where it leaves no room, until they leave room) tells how many were
 valid, how many gave no reading, the turns each valid one took and, where the contract declares an
-objective, their measure and its own answer's. Nothing else of those solves reaches it. The
-Examiner makes none of the exam's solves itself.
+objective, their measure and its own answer's. In the gate's own reply it also tells the calls each
+valid solve made, by tool, with each shell command's length in lines and how many failed
+(`methodOf`, `src/examiner/record.ts`), so an author whose drafts the
+reference answers in a few turns can see how. Nothing else of those solves reaches it: no argument,
+output or answer. The Examiner makes none of the exam's solves itself.
 
 The tools of each model seat, as its source names them:
 
@@ -438,8 +437,8 @@ The tools of each model seat, as its source names them:
   once the gate holds the task. A pass on a held task is logged as `task.feasible`, by version and
   session, with the answer, kept on the exam side for the Referee, and the objective's measure of
   the answer where the contract declares one (`measureOf`). The shell is a walled
-  home of its own. It is seeded with the home the last session left and, unless the campaign's term
-  `exam-reference` is `off`, a copy of the reference harness as `reference-harness/`, laid afresh
+  home of its own. It is seeded with the home the last session left and a copy of the reference harness as
+  `reference-harness/`, laid afresh
   each session and kept out of the home carried on. The only way from it into the exam is that one
   gate. In the session that drafts an exam the tools are `draft_exam`, `bash`, `read`, `write` and
   `finish`, the shell is a walled home empty at its start (`src/examiner/shell.ts`), and the only

@@ -121,29 +121,12 @@ describe("the Examiner command's admission reviews", () => {
     }
   });
 
-  it("hands the session the reference harness's kept directory where --reference-home is on or unnamed, and none where it is off", async () => {
-    const walls: (string | undefined)[] = [];
-    // On unless named since 19 October: a command that names nothing lays the copy.
-    for (const home of ["on", "off", undefined]) {
-      const named = home === undefined ? [] : ["--reference-home", home];
-      await examineCommand(
-        [...PACK, "--name", `${STEM}-home`, "--session", `x-${home ?? "unnamed"}`, ...named],
-        async (_request, wall) => {
-          walls.push(wall?.reference);
-          return { ended: "finished", puts: 0, held: [], refused: [] };
-        },
-      );
-    }
-    expect(walls[0] !== undefined && existsSync(join(walls[0], "agent"))).toBe(true);
-    expect(walls[1]).toBeUndefined();
-    expect(walls[2]).toBe(walls[0]);
-    await expect(
-      examineCommand(
-        [...PACK, "--name", `${STEM}-home`, "--session", "x-3", "--reference-home", "yes"],
-        async () => {
-          throw new Error("no session opens on a word that is neither on nor off");
-        },
-      ),
-    ).rejects.toThrow("--reference-home is on or off, not yes");
+  it("hands the session the reference harness's kept directory", async () => {
+    let reference: string | undefined;
+    await examineCommand([...PACK, "--name", `${STEM}-home`, "--session", "x-1"], async (_request, wall) => {
+      reference = wall?.reference;
+      return { ended: "finished", puts: 0, held: [], refused: [] };
+    });
+    expect(reference !== undefined && existsSync(join(reference, "agent"))).toBe(true);
   });
 });

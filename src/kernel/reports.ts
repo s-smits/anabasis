@@ -75,8 +75,8 @@ export interface Standing {
  *  outcome reads the reference's side, with whether a limit cut one of its own solves there; and
  *  how many of the newest closed the task in a row as its author may hear it (`poolOf`, histories):
  *  every solve valid and no answer of the reference's own or its author's better by the floor
- *  (`room`). The other harness's measures stay out, so the count reads the same with
- *  `exam-results` off whatever that harness measured; the frontier's `closed` reads them. */
+ *  (`room`). The other harness's measures stay out, so the count reads the same whatever that
+ *  harness measured; the frontier's `closed` reads them. */
 export interface History {
   readonly reads: readonly { readonly valid: "every" | "some" | "none"; readonly cut: boolean }[];
   readonly closedRun: number;
@@ -606,8 +606,7 @@ function tallyReports(
  * (`7f0add79:docs/plan.md`, Phase 2): without a stronger solve the author would otherwise hear nothing, and
  * a difficulty zone or a target count is what v1 found an author writes towards. The reading is of
  * the reference's side alone: which other harness was compared, and what it answered on that
- * task, are not the author's. Who won it reaches the author apart, unless the campaign's term
- * `exam-results` is off (`standings`). An outcome that named a winner told the author nothing of where the room was:
+ * task, are not the author's. Who won it reaches the author apart (`standings`). An outcome that named a winner told the author nothing of where the room was:
  * after a control a task the reference and the starter both failed read as one with no valid
  * answer, which the author's prompt says measures nothing (`7f0add79:docs/simplify.md`, F3). A task no
  * comparison has scored has no outcome.

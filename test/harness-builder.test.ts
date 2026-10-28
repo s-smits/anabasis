@@ -218,15 +218,9 @@ describe("a campaign run by its log", () => {
       // The id the move that threw had is not used again.
       ["examine", "x-2", "tasks"],
     ]);
-    // On unless named since 19 October: the supply ablation of that day held 4 of 8 drafts with the
-    // copy and 1 of 8 blind. A campaign that names `off` keeps the ruling of 12 October.
-    const blind = [...seeded(`${STEM}-home-off`), ...terms, "--exam-reference", "off"];
-    expect(await harnessBuilder(blind, seats)).toMatchObject({ move: "end", ending: "exam" });
-    expect(homes).toHaveLength(3);
-    expect(homes.slice(0, 2).every((home) => home !== undefined && existsSync(join(home, "agent")))).toBe(
-      true,
-    );
-    expect(homes[2]).toBeUndefined();
+    // The supply ablation of 19 October held 4 of 8 drafts with the copy and 1 of 8 blind.
+    expect(homes).toHaveLength(2);
+    expect(homes.every((home) => home !== undefined && existsSync(join(home, "agent")))).toBe(true);
   });
   it("ends on its environment where a move it began changed nothing, so the run is never left without an ending", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);

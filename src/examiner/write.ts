@@ -94,9 +94,6 @@ interface Terms {
    *  launcher a comparison uses, called (`tools/d1b/examine.ts`). Given, a task is held out by
    *  `try_task` on up to `TRIED` such solves; null, by `propose_tasks` on its package's shape. */
   readonly probe: ((task: TaskPackage, session: string, kill: AbortSignal) => Promise<Ending>) | null;
-  /** Whether each task's line says who won it in its last comparison (`exam-results`, `heard`);
-   *  told unless a campaign names the term off. */
-  readonly results?: boolean;
   /** Called as the gate holds a task, so the campaign can release practice while the session writes
    *  (`releaseOwed`, `campaign-actions.ts`). */
   readonly held?: () => void;
@@ -353,7 +350,13 @@ export async function measured(gate: Gate, task: TaskPackage, stop: AbortSignal,
     authored === undefined
       ? ""
       : `, and your answer that passed try_answer on it ${shown(authored)}${gap === undefined ? "" : `, ${gapSaid(gap)}`}${gap === undefined || widest === undefined || gapSaid(widest) === gapSaid(gap) ? "" : ` and ${gapSaid(widest, "worst")}`}`;
-  const counted = `the reference harness answered it validly in ${String(valid)} of ${String(ran)} solves${turns}${theirs}${yours}${unread}`;
+  // How each valid answer was reached, by its calls (`methodOf`, `record.ts`).
+  const methods = answers.flatMap(({ method }) => (method === null ? [] : [method]));
+  const how =
+    methods.length === 0
+      ? ""
+      : `, its valid solves calling ${methods.map((method) => `(${method})`).join(", ")}`;
+  const counted = `the reference harness answered it validly in ${String(valid)} of ${String(ran)} solves${turns}${how}${theirs}${yours}${unread}`;
   // The rule itself is the system prompt's, said once there.
   const roomless = `${counted}, ${unsolved ? "and no answer of yours passed try_answer on it" : "which leaves no room"}`;
   return {
@@ -652,8 +655,7 @@ function gatedTasks(events: readonly LogEvent[]): Task[] {
  * system prompt that says whether a copy of the reference harness is in its home (`reference`),
  * which the wall lays there and leaves out of the home it keeps (`inExaminerWall`). Blind to it, esp32-fresh-opus's Examiner held 0 of 49
  * drafts under its first promoted reference; in the supply ablation of 19 October on the buffer
- * domain, 1 of 8 drafts held blind and 4 of 8 with the copy. It is the operator's term
- * (`exam-reference`), on unless a campaign names it off.
+ * domain, 1 of 8 drafts held blind and 4 of 8 with the copy. The campaign command always lays it.
  */
 export function writing(
   request: Terms,
@@ -690,17 +692,11 @@ export function writing(
   return {
     kind: "exam" as const,
     system: systemPrompt(attempts, reference),
-    opening: firstMessage(
-      request.contract,
-      request.checks,
-      heard(before, request.tasks, request.results ?? true),
-      limits,
-      {
-        brief: openingOf(before)?.prompt ?? null,
-        budget: request.budget,
-        lastNote: isString(note) && note.trim() !== "" ? note : null,
-      },
-    ),
+    opening: firstMessage(request.contract, request.checks, heard(before, request.tasks), limits, {
+      brief: openingOf(before)?.prompt ?? null,
+      budget: request.budget,
+      lastNote: isString(note) && note.trim() !== "" ? note : null,
+    }),
     started: {
       limits: { wallSeconds: limits.wallSeconds, turns: limits.turns, proposals: limits.puts, tasks: wanted },
       checks: request.checks.map(({ id }) => id),

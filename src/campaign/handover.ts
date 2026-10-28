@@ -28,7 +28,7 @@
  * billed every move made inside its span, which those moves' own lines billed again.
  * The Referee triage of 20 October found unclear and unread practice rejections counted as failures.
  */
-import { type Measures, measuresIn, type Tally } from "../kernel/compare.ts";
+import { type Measures, type Tally } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, latestBuilt, promoted } from "../kernel/reports.ts";
 import { billedAll, billedParts, ownedBy, traceKind } from "../kernel/trace.ts";
@@ -37,7 +37,7 @@ import { heldAtGate, taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { type Supply, supplyOf } from "./admission.ts";
 import { openingOf } from "./opening.ts";
-import { STARTED } from "./comparison.ts";
+import { reported, STARTED } from "./comparison.ts";
 
 /** A failed practice solve, and where it stands now by the task's later solves. */
 export interface PracticeFail {
@@ -235,11 +235,11 @@ function practiceFails(events: readonly LogEvent[]): (PracticeFail & { readonly 
 /** A comparison's handover, from its start and its last report. A log written before 9 October
  *  holds reports and no starts, and such a comparison's terms are read from its report. */
 function compared(events: readonly LogEvent[], id: string): Compared {
-  const report = lastReports(events).find(({ session }) => session === id)?.data;
+  const report = reported(events, id);
   const start =
-    events.find(({ kind, data }) => kind === STARTED && data.session === id)?.data ?? report ?? {};
-  const scored = asRecord(report?.scored);
-  const valid = asRecord(report?.valid);
+    events.find(({ kind, data }) => kind === STARTED && data.session === id)?.data ??
+    lastReports(events).find(({ session }) => session === id)?.data ??
+    {};
   const solves = solvesIn(events).filter((solve) => solve.start.comparison === id);
   const own = new Set(solves.map((solve) => solve.id));
   const began = events.findIndex(({ kind, data }) => kind === STARTED && data.session === id);
@@ -252,7 +252,6 @@ function compared(events: readonly LogEvent[], id: string): Compared {
         : [],
     ),
   );
-  const side = (each: unknown) => (Array.isArray(each) ? each.filter(isNumber) : []);
   return {
     step: "comparison",
     id,
@@ -263,14 +262,14 @@ function compared(events: readonly LogEvent[], id: string): Compared {
     level: count(start.level),
     cap: isNumber(asRecord(start.cap)?.dollars) ? count(asRecord(start.cap)?.dollars) : null,
     modelTurns: isNumber(told) ? told : null,
-    reading: text(report?.reading),
+    reading: report?.reading ?? null,
     tally:
-      scored === null
+      report?.scored == null
         ? null
-        : { wins: count(scored.wins), losses: count(scored.losses), ties: count(scored.ties) },
-    valid: valid === null ? null : { old: side(valid.old), fresh: side(valid.fresh) },
-    points: measuresIn(report?.points) ?? null,
-    aside: listed(report?.aside),
+        : { wins: report.scored.wins, losses: report.scored.losses, ties: report.scored.ties },
+    valid: report?.valid == null ? null : { old: report.valid.old, fresh: report.valid.fresh },
+    points: report?.points ?? null,
+    aside: report?.aside.length ?? 0,
     rulings: {
       earned: [...ruled.values()].filter((ruling) => ruling === "earned").length,
       "check-defect": [...ruled.values()].filter((ruling) => ruling === "check-defect").length,
@@ -278,7 +277,7 @@ function compared(events: readonly LogEvent[], id: string): Compared {
     },
     billed: billedParts(events, id).comparison,
     // A comparison with no report has a start: a step is a start or a report.
-    cut: report === undefined && nextBound(events, began) !== -1,
+    cut: report === null && nextBound(events, began) !== -1,
     begun: solves.length,
     solved: ended(solves).length,
   };

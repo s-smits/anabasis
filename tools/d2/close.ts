@@ -66,7 +66,7 @@ import { frozenChecker, unadmitted } from "#src/kernel/acceptance.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { comparisonsOf } from "#src/campaign/ground.ts";
-import { promoted } from "#src/kernel/reports.ts";
+import { lastReports, promoted } from "#src/kernel/reports.ts";
 import { billedAll, billedParts, costLine, spendOf } from "#src/kernel/trace.ts";
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
@@ -138,20 +138,9 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
     { earned: 0, defect: 0, unclear: 0 },
   );
   // Each comparison's last word on its packet (`settle.ts`): unsettled, or what settled it.
-  const packets = new Map(
-    events.flatMap(({ kind, data }) =>
-      kind === "comparison.reported" ? [[data.session, data.settled] as const] : [],
-    ),
-  );
-  const settled = packets
-    .values()
-    .map((each) => asRecord(each))
-    .filter((each) => each !== null)
-    .toArray();
-  const unsettled = packets
-    .values()
-    .filter((each) => each === UNSETTLED)
-    .toArray().length;
+  const packets = lastReports(events, true).map(({ data }) => data.settled);
+  const settled = packets.map((each) => asRecord(each)).filter((each) => each !== null);
+  const unsettled = packets.filter((each) => each === UNSETTLED).length;
   // What a person read of the answers that passed, drawn in each settled packet.
   const passes = { comparisons: 0, read: 0, sound: 0, wrong: 0, unclear: 0 };
   for (const labels of settled.map((each) => Object.values(asRecord(each.passes) ?? {}))) {

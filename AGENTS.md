@@ -1835,6 +1835,6 @@ studies/        measurements outside a campaign's reading, one folder each: its 
                 never kept
 .claude/skills/ the procedures (section 10), stack-pr, simplify, reduce-complexity, commit-r,
                 codex-gpt-swarm and promotion-tuner, and main/ with the skill scripts' argument
-                parser and git helper
+                parser, which also runs any of them on another host (`--host`)
 .ana/           campaign logs and kept harnesses; ignored, and never edited by hand
 ```

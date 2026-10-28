@@ -70,11 +70,10 @@ bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat <scra
   `start` prints the reading with that reason and exits; a `start` still there 30 seconds after its
   group is ended too. A prefix nothing has seated yet is closed: `start` refuses an `--out` that
   holds a stop, so a seating script still waiting for load seats nothing for a round already read.
-  End a seat with `stop` on the host that runs it, never `pkill -f <script>` over ssh: the pattern
-  matches the ssh session's own command line, and ends that session. `compare <prefix>...` sets several seats' counts in
-  columns, each cut after its first N gates with `--gates N`. `prompt --tree <worktree> --name
-  sim-<what> -- tools/d1b/examine.ts <its flags>` prints what that Examiner session would be told,
-  composed by the tree's own code, and seats nothing. All three serve rounds of arms
+  End a seat elsewhere with `stop --host <name>`, never `pkill -f <script>` over ssh: the pattern
+  matches the ssh session's own command line, and ends that session. `prompt --tree <worktree>
+  --name sim-<what> -- tools/d1b/examine.ts <its flags>` prints what that Examiner session would be
+  told, composed by the tree's own code, and seats nothing, for rounds of arms
   ([optimize](optimize.md)).
 - `compare <prefix>...` sets seats' counts side by side, each cut at `--gates N`; `pairs
   <control>,<arm>...` reads a round of pairs at equal gates and signs each measure for each Examiner

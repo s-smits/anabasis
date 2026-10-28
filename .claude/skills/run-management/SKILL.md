@@ -301,7 +301,8 @@ Environment files stay on their own machine and relative names remain relative t
 checkout. A login shell supplies its tools; `ANA_HOSTS=[]` prevents recursive fan-out. `on` remains
 an explicit override. `hosts` shows peer statuses; `hosts --health` includes this machine and
 every peer in one reading. The shared `scriptOn` and
-`askedScript` in `tools/runs/hosts.ts` provide the same boundary to skill scripts.
+`askedScript` in `tools/runs/hosts.ts` provide the same boundary to skill scripts, and any script
+that parses through `.claude/skills/main/cli.ts` runs on a peer with `--host <name>`.
 
 `hosts --health` reports load against cores, performance cores where reported, the charger,
 disk free, sizes of run data, archive, controllers and other worktrees, Bun and controller

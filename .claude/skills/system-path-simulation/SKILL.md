@@ -36,8 +36,12 @@ and why the next was not needed.
 
 Readers accept campaign names across `ANA_HOSTS`: `live-seat.ts read --log <name> --from <event>`
 refreshes a copy when the host environment is loaded. `runs seed --from <name>` also resolves and
-fetches its source. Starting a seat still names its seed's execution tree; `watch` and `due` read
-that machine's seat records and process ids. Never interpret a remote pid as local.
+fetches its source. A seat's records and process ids stay on the machine that seated it, so a seat
+elsewhere is read, compared and stopped there: every script here takes `--host <name>` and runs on
+that host at this tree's published commit, with a path under this home naming the same path under
+the host's (`.claude/skills/main/cli.ts`), as in `bun --env-file=.env.runs
+.claude/skills/system-path-simulation/scripts/live-seat.ts due --host <name> ~/sim-r11/arm`. Never
+interpret a remote pid as local.
 
 1. **Write the prediction first.** Before a simulation runs, write what it will read and why, in a
    file. Resolve each line after. A miss is the finding: the product does something you did not

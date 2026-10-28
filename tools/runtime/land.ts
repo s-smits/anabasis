@@ -435,7 +435,8 @@ async function awaitCi(root: string, top: Pull): Promise<void> {
   }
   // The failed jobs' own output, fetched here so the fix starts from it rather than from a link.
   const steps = gh(root, ["run", "view", id, "--json", "jobs", "--jq", CI_FAILED]).out;
-  const failed = gh(root, ["run", "view", id, "--log-failed"]).out;
+  const fetched = gh(root, ["run", "view", id, "--log-failed"]);
+  const failed = fetched.ok ? fetched.out : `gh could not fetch the failed jobs' log: ${fetched.err}`;
   const logs = git(root, ["rev-parse", "--path-format=absolute", "--git-path", "ana-gate"]);
   const log = `${logs}/land-ci-${short(top.headRefOid)}.log`;
   await Bun.write(log, `${failed}\n`);
@@ -785,9 +786,13 @@ async function main(argv: readonly string[]): Promise<number> {
   };
   try {
     // A release the merge could not take is refused before anything is gated.
-    if (mode.tag !== null && gitSays(root, ["ls-remote", "--exit-code", "--tags", "origin", mode.tag])) {
-      throw new Refusal(`${mode.tag} is already a tag on origin.`);
-    }
+    // `--exit-code` exits 2 where origin holds no such ref; any other failure says nothing of the tag.
+    const tagged =
+      mode.tag === null
+        ? 2
+        : runSync(["git", "ls-remote", "--exit-code", "--tags", "origin", mode.tag], { cwd: root }).exitCode;
+    if (tagged === 0) throw new Refusal(`${String(mode.tag)} is already a tag on origin.`);
+    if (tagged !== 2) throw new Refusal(`origin could not be asked whether it holds ${String(mode.tag)}.`);
     let target = named ?? oldestStack(root);
     for (let moves = 0; ; ) {
       if (mode.auto) {

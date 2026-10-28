@@ -26,9 +26,9 @@ const SCRIPTS = {
 const script = args.at(-1);
 const peer = JSON.parse(process.env.FAKE_FLEET ?? "{}")[args.at(-2)] ?? {};
 if (process.env.FAKE_OFFLINE === "1" || peer.offline) process.exit(255);
-if (peer.timeout && script.includes("ANA_HOSTS")) await Bun.sleep(35000);
-if (peer.freshExit && script.includes("ANA_HOSTS") && script.includes("fresh")) process.exit(peer.freshExit);
-if (process.env.FAKE_EXECUTE === "1" || peer.execute || (process.env.FAKE_PREPARE_EXECUTE === "1" && !script.includes("ANA_HOSTS"))) {
+if (peer.timeout && script.includes("ANA_HOP")) await Bun.sleep(35000);
+if (peer.freshExit && script.includes("ANA_HOP") && script.includes("fresh")) process.exit(peer.freshExit);
+if (process.env.FAKE_EXECUTE === "1" || peer.execute || (process.env.FAKE_PREPARE_EXECUTE === "1" && !script.includes("ANA_HOP"))) {
   const env = {...process.env, ...(peer.env ?? {})};
   const child = Bun.spawn(["sh", "-c", script], {env, stdin:"ignore", stdout:"inherit", stderr:"inherit"});
   process.exit(await child.exited);
@@ -38,7 +38,7 @@ else if (script.includes("catalogue")) console.log(JSON.stringify((peer.catalogu
 else if (script.includes("active")) console.log(script.includes("--login") ? peer.loginPresent ?? process.env.FAKE_LOGIN_PRESENT ?? "true" : JSON.stringify(peer.active ?? JSON.parse(process.env.FAKE_ACTIVE ?? "[]")));
 else if (script.includes("pulse")) console.log(peer.pulse ?? "◆ reported step");
 else if (script.includes("holds")) console.log((peer.holds ?? [process.env.FAKE_HOLDS ?? ""]).join("\\n"));
-else if (script.includes("status") && script.includes("ANA_HOSTS")) console.log(peer.status ?? "no local runs");
+else if (script.includes("status") && script.includes("ANA_HOP")) console.log(peer.status ?? "no local runs");
 else console.log(process.env.FAKE_PREPARED);`,
   "rsync": `${RECORD}
 import { cpSync, writeFileSync } from "node:fs";
@@ -74,7 +74,7 @@ else if (args.includes("-e")) {
   const child = Bun.spawn([process.execPath, ...args], {env:process.env,stdin:"ignore",stdout:"inherit",stderr:"inherit"});
   process.exit(await child.exited);
 }
-else if (process.env.ANA_HOSTS !== "[]") process.exit(5);
+else if (process.env.ANA_HOP !== "1") process.exit(5);
 else if (process.env.FAKE_RUN_CLI === "1") {
   const start = args.findIndex((arg) => arg.startsWith("tools/") || arg.startsWith(".claude/"));
   const child = Bun.spawn([process.execPath, process.env.FAKE_REPO + "/" + args[start], ...args.slice(start+1)], {env:process.env,stdin:"ignore",stdout:"inherit",stderr:"inherit"});

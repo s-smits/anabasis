@@ -70,7 +70,8 @@ describe("host execution", () => {
         .recorded()
         .findLast((call) => call.tool === "ssh")
         ?.args.at(-1) ?? "";
-    expect(command).toContain("ANA_HOSTS");
+    expect(command).toContain("ANA_HOP=1");
+    expect(command).not.toContain("ANA_HOSTS");
     expect(command).toContain("example/scripts/cycle.ts");
     expect(command).toContain("touch forbidden");
     expect(existsSync(join(made.main, "forbidden"))).toBe(false);
@@ -145,6 +146,14 @@ describe("host execution", () => {
       ).toBe(1);
       expect(made.recorded()).toHaveLength(0);
     }
+  });
+
+  it("lists no host to a verb another host sent, and every host otherwise", () => {
+    const made = fixture();
+    const code =
+      'import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; console.log(hostsOf().length);';
+    expect(made.run(code).out.trim()).toBe("1");
+    expect(made.run(code, { ANA_HOP: "1" }).out.trim()).toBe("0");
   });
 
   it("names the central host only where ANA_HOSTS lists it", () => {

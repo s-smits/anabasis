@@ -215,5 +215,9 @@ describe("the login a run goes on with", () => {
     const plain = made.run(command, { CLAUDE_CODE_OAUTH_TOKEN: "plain" });
     expect(plain.code).toBe(0);
     expect(plain.out).toContain("would be kept going");
+    // The word the detached keeper is handed on such a machine names no login.
+    const handed = made.run(command.replace('["sample"]', '["sample", "--logins", ""]'));
+    expect(handed.code).toBe(1);
+    expect(handed.err).toContain("no allowed Claude login");
   });
 });

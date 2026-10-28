@@ -1514,7 +1514,8 @@ it; run `--sanitize` whenever the stack is worth proving. A pass is remembered b
 pass by the commit's tree, and a static one by its tree and its parent's, each with the CI gate that
 ran and the Bun version, so a restack that keeps every tree runs nothing again. Each proof stops at
 its first failed test (`ANA_TEST_BAIL`), where CI runs every test to name every failure.
-`ANA_GATE_FRESH=1` ignores remembered passes. A failure names the commit, the step and its log,
+`ANA_GATE_FRESH=1` ignores remembered passes. `ANA_PUSH_VERIFY=full git push` gives each pushed head the
+whole CI gate instead of the static pass, for one pull request without `land`. A failure names the commit, the step and its log,
 under `git rev-parse --git-path ana-gate`.
 
 Run one full suite at a time on a host; two overlapping suites each take about twice as long, and

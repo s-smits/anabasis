@@ -24,7 +24,8 @@
  * checkout of its own (`proveCommits`): the install, the UI's steps as far as they are due, the
  * format check, typecheck, strict lint, and the tests near what the head's own commit changed. The
  * working tree may hold anything. A pass is remembered by content, so a push its lease
- * refused goes out again without paying twice.
+ * refused goes out again without paying twice. `ANA_PUSH_VERIFY=full git push` gives each such head
+ * the whole CI gate instead, for one pull request where `bun run land` would prove the whole stack.
  *
  * The push queue and the refusal of a push stacked on a base the push before it replaced went with
  * the tests. The queue kept a push from gating the commits of one still at its CI gate, which cost a
@@ -113,14 +114,15 @@ async function main(): Promise<number> {
     );
     return 0;
   }
+  // `ANA_PUSH_VERIFY=full git push` asks for the whole CI gate, the suite among it, on the pushed head;
+  // git's own `--verify` only says that the hook runs, so a push cannot carry the choice as a flag.
+  const pass = runtimeProcess.env.ANA_PUSH_VERIFY === "full" ? "whole" : "static";
   say(
-    `git diff --check and the secret scan passed on ${plural(line.length, "commit")}; the suite waits for bun run land -- <top> --sanitize.`,
+    `git diff --check and the secret scan passed on ${plural(line.length, "commit")}${pass === "whole" ? "." : "; the suite waits for bun run land -- <top> --sanitize."}`,
   );
   const failed = await proveCommits(
     root,
-    tips
-      .filter((tip) => source.some((commit) => holds(commit, tip)))
-      .map((commit) => ({ commit, pass: "static" })),
+    tips.filter((tip) => source.some((commit) => holds(commit, tip))).map((commit) => ({ commit, pass })),
     { who: "pre-push", jobs: 1, say, mark: () => undefined },
   );
   if (failed === null) return 0;

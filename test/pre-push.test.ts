@@ -147,6 +147,12 @@ describe("pre-push", () => {
     expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`]);
   });
 
+  it("runs the whole suite on the pushed head where the push asks for a full verify", () => {
+    const result = push([update(source, docs)], { ANA_PUSH_VERIFY: "full" });
+    expect(result.status).toBe(0);
+    expect(gatesRun(log)).toEqual([`${source} suite`]);
+  });
+
   it("refuses a push whose head fails the strict lint, and names the step and its log", () => {
     const result = push([update(second, docs)], { ANA_FAKE_FAIL: `${second} lint` });
     expect(result.status).toBe(1);

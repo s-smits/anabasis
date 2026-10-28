@@ -296,31 +296,37 @@ export function stagedState(source: string, states: string, tree: string | null,
 
 /**
  * `harness/` as it stands, copied beside the kept states, opened as a solve would open it and, under
- * a wall, asked for its tools as a solve would ask. Throws, with the harness's own error, when a
- * solve could not: a harness whose tools do not list fails every task before its first turn, and
- * one frozen so would be scored at a full round's cost to say only that. Links are
+ * a wall, asked for its tools as a solve would ask, then handed to `use`. Throws, with the harness's
+ * own error, when a solve could not: a harness whose tools do not list fails every task before its
+ * first turn, and one frozen so would be scored at a full round's cost to say only that. Links are
  * copied as they are: a stored state carries links that resolve to nothing, and following one would
- * copy what it points at. The copy is the caller's to keep or to remove.
+ * copy what it points at. The copy is removed once `use` returns or throws, unless `use` moved it
+ * away: only a state a solve ran with, or the session's last, is kept (`snapshot`).
  *
  * Every question is asked of the copy, which no command of the Builder's can reach, and none of
  * `harness/` itself, which a process a command left behind could still be changing.
  */
-async function frozen(bench: Bench): Promise<HarnessSnapshot> {
+async function frozen<T>(bench: Bench, use: (kept: HarnessSnapshot) => T | Promise<T>): Promise<T> {
   const { states } = bench.request;
   mkdirSync(states, { recursive: true });
   let dir: string | null = null;
+  let opened = false;
   try {
     dir = stagedState(join(bench.home, "harness"), states, keptTree(bench), "freezing-");
     refuseNamingHome(dir, bench.home, "harness");
     const harness = await openHarness(dir);
     // A preset no solve serves fails every solve, and is refused here before one is spent on it.
     selectedCodingTools(harness.presets);
-    return { dir, harness, listed: (await bench.lists?.(harness)) ?? null };
+    const listed = (await bench.lists?.(harness)) ?? null;
+    opened = true;
+    return await use({ dir, harness, listed });
   } catch (error) {
-    if (dir !== null) rmSync(dir, { recursive: true, force: true });
+    if (opened) throw error;
     // The copy's own path is the host's, and says where the states and the log beside them are.
     const why = errorMessage(error).replaceAll(dir ?? states, "harness");
     throw new Error(`the harness does not open: ${why}`, { cause: error });
+  } finally {
+    if (dir !== null) rmSync(dir, { recursive: true, force: true });
   }
 }
 
@@ -333,21 +339,21 @@ async function frozen(bench: Bench): Promise<HarnessSnapshot> {
  * solve could run a program from.
  */
 export async function snapshot(bench: Bench): Promise<HarnessSnapshot> {
-  const { dir, harness, listed } = await frozen(bench);
-  const kept = join(dirname(dir), harness.digest);
-  try {
-    renameSync(dir, kept);
-  } catch (error) {
-    // A state already kept under this digest, by this session or one beside it, is the same harness.
-    rmSync(dir, { recursive: true, force: true });
-    if (!existsSync(kept)) throw error;
-  }
-  bench.opened = {
-    dir: kept,
-    harness: { ...harness, toolTree: harness.toolTree === null ? null : join(kept, TOOL_TREE_DIR) },
-    listed,
-  };
-  return bench.opened;
+  return await frozen(bench, ({ dir, harness, listed }) => {
+    const kept = join(dirname(dir), harness.digest);
+    try {
+      renameSync(dir, kept);
+    } catch (error) {
+      // A state already kept under this digest, by this session or one beside it, is the same harness.
+      if (!existsSync(kept)) throw error;
+    }
+    bench.opened = {
+      dir: kept,
+      harness: { ...harness, toolTree: harness.toolTree === null ? null : join(kept, TOOL_TREE_DIR) },
+      listed,
+    };
+    return bench.opened;
+  });
 }
 
 /** How much of its limits a finished solve used, as a sentence after its ending: the seconds from
@@ -636,13 +642,7 @@ async function finishNotice(bench: Bench, unmeasured?: Unmeasured): Promise<stri
 
 /** The digest of `harness/` as it stands, or why it does not open: frozen once, the copy removed. */
 export async function harnessNow(bench: Bench): Promise<string | Error> {
-  try {
-    const { dir, harness } = await frozen(bench);
-    rmSync(dir, { recursive: true, force: true });
-    return harness.digest;
-  } catch (error) {
-    return asError(error);
-  }
+  return await frozen(bench, ({ harness }) => harness.digest).catch(asError);
 }
 
 /**
@@ -752,15 +752,8 @@ function checkTool(bench: Bench): SeatTool {
       "Open harness/ as a solve would, for one practice task. Reports pi's tools it selects, its programs by name, the guide's length and its own tools, or the error a solve would stop on. Spends no practice solve.",
     parameters: Type.Object({}),
     executionMode: "sequential",
-    execute: async () => {
-      const { dir, harness, listed } = await frozen(bench);
-      try {
-        return text(opens(harness, listed ?? [...harness.kinds.keys()]));
-      } finally {
-        // A check keeps nothing: only a state a solve ran with, or the session's last, is kept.
-        rmSync(dir, { recursive: true, force: true });
-      }
-    },
+    execute: async () =>
+      await frozen(bench, ({ harness, listed }) => text(opens(harness, listed ?? [...harness.kinds.keys()]))),
   });
 }
 
@@ -781,8 +774,7 @@ function previewTool(bench: Bench, wall: CommandWall): SeatTool {
     execute: async () => {
       const [sample] = bench.tasks;
       if (sample === undefined) return text("This session has no practice task to preview a solve of.");
-      const { dir, harness } = await frozen(bench);
-      try {
+      return await frozen(bench, async ({ harness }) => {
         const tools = await solverTools(
           { task: sample.task, contract: request.contract },
           harness,
@@ -803,10 +795,7 @@ function previewTool(bench: Bench, wall: CommandWall): SeatTool {
         return text(
           `The system prompt a solver of ${sample.task.taskId} would read:\n\n${prompt}\n\nIts tools, as they are declared to it:\n${declared}`,
         );
-      } finally {
-        // A preview keeps nothing, as a check keeps nothing.
-        rmSync(dir, { recursive: true, force: true });
-      }
+      });
     },
   });
 }

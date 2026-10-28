@@ -187,7 +187,10 @@ export async function keep(args: readonly string[]): Promise<void> {
     },
   });
   const [name] = positionals;
-  const logins = values.logins?.split(",") ?? allowedLogins(runtimeProcess.env);
+  // The detached keeper is handed its logins as one word, empty on a machine with the plain login
+  // alone, which until 28 October came back as the one login "".
+  const logins =
+    values.logins?.split(",").filter((login) => login !== "") ?? allowedLogins(runtimeProcess.env);
   if (name === undefined) {
     throw new Error(
       "usage: bun --env-file=<file> run runs keep <name> --logins 2,3,4 [--wait-hours 1] [--yes]",
@@ -223,7 +226,8 @@ export async function keep(args: readonly string[]): Promise<void> {
     ],
     {
       cwd: run.tree,
-      env: runtimeProcess.env,
+      // A keeper outlives the verb, and counts every machine's runs even where another host sent it.
+      env: { ...runtimeProcess.env, ANA_HOP: undefined },
       detached: true,
       stdin: "ignore",
       stdout: openSync(out, "a"),

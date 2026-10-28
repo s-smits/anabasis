@@ -58,6 +58,21 @@ function campaign() {
 }
 
 describe("host execution", () => {
+  it("keeps a verb that names this machine here while a peer is down, and asks the peers otherwise", () => {
+    const made = fixture();
+    const routing = (args: string) =>
+      made.run(
+        `import { routed } from "REPOSITORY/tools/runs/hosts.ts"; const r = await routed("keep", ${args}); console.log(JSON.stringify([r.here, r.away.length]));`,
+        { FAKE_OFFLINE: "1" },
+      );
+    const kept = routing('["far", "--here"]');
+    expect(kept.code).toBe(0);
+    expect(JSON.parse(kept.out)).toEqual([["far", "--here"], 0]);
+    expect(made.recorded().filter((call) => call.tool === "ssh")).toEqual([]);
+    expect(routing('["far"]').code).toBe(1);
+    expect(made.recorded().filter((call) => call.tool === "ssh").length).toBeGreaterThan(0);
+  });
+
   it("keeps paths and arguments literal and clears the peer list for any repository script", () => {
     const made = fixture();
     const result = made.run(
@@ -70,7 +85,8 @@ describe("host execution", () => {
         .recorded()
         .findLast((call) => call.tool === "ssh")
         ?.args.at(-1) ?? "";
-    expect(command).toContain("ANA_HOSTS");
+    expect(command).toContain("ANA_HOP=1");
+    expect(command).not.toContain("ANA_HOSTS");
     expect(command).toContain("example/scripts/cycle.ts");
     expect(command).toContain("touch forbidden");
     expect(existsSync(join(made.main, "forbidden"))).toBe(false);
@@ -145,6 +161,14 @@ describe("host execution", () => {
       ).toBe(1);
       expect(made.recorded()).toHaveLength(0);
     }
+  });
+
+  it("lists no host to a verb another host sent, and every host otherwise", () => {
+    const made = fixture();
+    const code =
+      'import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; console.log(hostsOf().length);';
+    expect(made.run(code).out.trim()).toBe("1");
+    expect(made.run(code, { ANA_HOP: "1" }).out.trim()).toBe("0");
   });
 
   it("names the central host only where ANA_HOSTS lists it", () => {

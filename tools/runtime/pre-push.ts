@@ -40,6 +40,7 @@ import {
   addedLine,
   changesSource,
   diffFromParentSays,
+  failedLine,
   git,
   gitSays,
   lines,
@@ -126,10 +127,12 @@ async function main(): Promise<number> {
     { who: "pre-push", jobs: 1, say, mark: () => undefined },
   );
   if (failed === null) return 0;
-  say(`every published commit passes alone, so the fix goes into the commit that brought the failure,`);
-  say(`not into one on top: stage it, then git commit --fixup=<that commit> and`);
-  say(`  GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <that commit>~1`);
-  say(`${short(failed.commit)} FAILS ${failed.step}. Nothing was pushed. Log: ${failed.log}`);
+  if (failed.verdict) {
+    say(`every published commit passes alone, so the fix goes into the commit that brought the failure,`);
+    say(`not into one on top: stage it, then git commit --fixup=<that commit> and`);
+    say(`  GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <that commit>~1`);
+  }
+  say(`${failedLine(failed)}. Nothing was pushed${failed.verdict ? "" : "; push again"}. Log: ${failed.log}`);
   return 1;
 }
 

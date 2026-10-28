@@ -1493,7 +1493,7 @@ or recovery write (`pinFault`, `tools/d2/harness-builder.ts`).
 | `bun run ui:gate` | The UI's own CI gate: its dependencies, its typecheck and build, and its tests under `packages/ui/test` |
 | `bun .claude/skills/stack-pr/scripts/stack.ts` | The open stack: every edge, and the top |
 | `bun run follow` | Moves this checkout to the top of the open stack that holds the oldest open pull request (GitHub's native stack, else a chain of bases), leaving later stacks alone, on `stack-pr<N>` reset to the top's branch: a commit made on it is not kept, and the earlier `stack-pr` branch is deleted. Uncommitted changes to tracked files come back, and it installs where `bun.lock` moved (`.claude/skills/stack-pr/scripts/follow.ts`) |
-| `bun run land -- [<pull request>] [--auto]` | Proves every commit a landing would publish, where it sits; `--sanitize` posts each verdict, `--merge` also merges. `--auto`, or no pull request named, follows a top stacked while it lands ("The stack and pull requests") |
+| `bun run land -- [<pull request>] [--auto]` | Proves every commit a landing would publish, where it sits; `--sanitize` posts each verdict, `--merge` also waits for `ci.yml` and merges, and `--tag vX.Y.Z` cuts that release at the merge. `--auto`, or no pull request named, follows a top stacked while it lands ("The stack and pull requests") |
 | `bun tools/loc/source-policy.ts` | The size and unused-export policy. No package script, CI job or hook runs it (`tools/oxlint/HABITS.md`, 12.10) |
 
 The CI gate is what CI runs, and `bun run gate` runs it: CI's two Darwin jobs in one command, cheapest

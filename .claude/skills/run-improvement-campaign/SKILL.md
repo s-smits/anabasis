@@ -138,8 +138,9 @@ its end, and carry on in the same order; the window gives no step a reason to sk
    fix what the reviews confirm in lanes, regroup related pull requests into one, publish, and
    prove it with `bun run land -- <top> --sanitize`. Its mechanics, and the word it needs, are
    stack-pr's section 10, "Consolidate the stack".
-10. **Land and release.** `bun run land -- <top>` proves every commit; `--merge` waits for CI and
-   merges the native stack. Then `git tag v<x.y.z> <merge>` and `gh release create`, in the form of
+10. **Land and release.** `bun run land -- <top>` proves every commit; `--merge --tag v<x.y.z>`
+   waits for CI, merges the native stack and cuts the release at the merge, with the notes GitHub
+   generates. Then rewrite the notes (`gh release edit v<x.y.z> --notes-file <file>`) in the form of
    the last release: one sentence on what the release changes, "Includes N PRs from #a to #b,
    merged into `main` at `<sha>`", one paragraph per change with its recorded counts, and
    **Validation and limits** with the land counts, the CI run and what the stopped runs showed. Where the proof fails, do not land: report the commit and step.

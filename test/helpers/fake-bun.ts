@@ -2,6 +2,8 @@
  * A `bun` for tests of the gate's callers: `.githooks/pre-push` and `bun run land`. It stands at
  * the gate's step boundary only. `bun install …` and `bun run …` are logged with the commit checked
  * out where they ran, and pass unless ANA_FAKE_FAIL names that commit and script (`<sha> lint`);
+ * ANA_FAKE_DROP names one the same way whose runner drops, exiting 255, the first ANA_FAKE_DROPS
+ * times (1 unless set);
  * anything else, a `.ts` entry point such as `tools/runtime/gate.ts`, runs on the real Bun, so the
  * hook, the landing and the gate's own choice of steps and nearby tests are the real ones.
  *
@@ -36,6 +38,12 @@ fi
 if [ "$1 $2" = "run test" ] && [ -n "$ANA_FAKE_SUITE" ]; then
   printf '%s\n' "$ANA_FAKE_SUITE"
   sleep 2
+fi
+drops=$ANA_FAKE_DROPS
+[ -n "$drops" ] || drops=1
+if [ "$commit $2" = "$ANA_FAKE_DROP" ] && [ "$(grep -c "^dropped.$commit" "$ANA_FAKE_LOG")" -lt "$drops" ]; then
+  printf 'dropped\t%s\n' "$commit" >> "$ANA_FAKE_LOG"
+  exit 255
 fi
 if [ "$commit $2" = "$ANA_FAKE_FAIL" ]; then
   echo "fake: $2 failed on $commit"

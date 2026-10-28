@@ -183,12 +183,14 @@ still pushes the previous head (20 October).
 Read a refusal and correct its cause within your authority. Pass `--no-verify` only where the
 operator says so, and never push to `main`.
 
-The pre-push hook runs every check, with the tests near each pushed head's own change in place of
-the suite. What a push adds is the commits along each
+A plain push runs `git diff --check` and the secret scan, which take seconds. `ANA_PUSH_VERIFY=1
+git push` also runs every other check, with the tests near each pushed head's own change in place
+of the suite, and `bun run land -- <top> --sanitize` proves every commit of the stack, the suite at
+its top. What a push adds is the commits along each
 pushed head's first parents that no remote-tracking ref of the clone holds; each gets
 `git diff --check`, and what each pushed head that no other pushed head holds adds gets the secret
-scan. Where one of them changes more than `AGENTS.md`, `README.md`, `docs/` or a `.md` under
-`.claude/`, each such head gets `bun run gate -- --static` over a scratch checkout: the install, the
+scan. Where the push asks and one of them changes more than `AGENTS.md`, `README.md`, `docs/` or a
+`.md` under `.claude/`, each such head gets `bun run gate -- --static` over a scratch checkout: the install, the
 UI's steps as far as they are due, the format check, the secret scan, typecheck, strict lint, and
 the test files one import away from what the head's own commit changed. `bun run land` reads that
 pass back and does not run it again. The working tree may hold anything. A

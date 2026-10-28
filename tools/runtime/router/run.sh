@@ -73,7 +73,8 @@ pick_host() {
   local busy_at="${ANA_RUNNER_BUSY:-100}" pick="" fallback="" best="" best_percent="" first_said=""
   probes="$(mktemp -d "${TMPDIR:-/tmp}/ana-runner-probe.XXXXXX")"
   for i in "${!names[@]}"; do
-    ssh -o ConnectTimeout=5 "${ssh_options[@]}" "${names[$i]}" \
+    as_master "$master_dir/$i"
+    ssh -o ConnectTimeout=5 "${master[@]}" "${names[$i]}" \
       'n="$(getconf _NPROCESSORS_ONLN)"; l="$( (sysctl -n vm.loadavg 2>/dev/null || cat /proc/loadavg) | tr -d "{}" | awk "{ print \$1 }")"; echo "$l $n"' \
       >"$probes/$i" 2>/dev/null </dev/null &
   done
@@ -139,6 +140,37 @@ if [[ "${RUN_REMOTE:-}" != 0 ]]; then
   done <<<"$listed"
 fi
 
+# One connection a task. Each probe of `pick_host` opens its host's master, the chosen host keeps
+# its own and the others close at once; a host RUN_REMOTE names opens one before the preflight. Every
+# exchange after it rides on it, and the master closes when the task ends. Until 28 October each
+# exchange opened its own, and the handshakes of the preflight, the script, the transfer, the run and
+# its status took 3 s of a 3.1 s remote secret scan. A master's output goes nowhere, so nothing that
+# reads run.sh's output to its end waits on it, and after a kill it lingers a minute idle at most. An
+# exchange whose master is gone connects on its own, as every exchange did before.
+master_dir="" socket=""
+# as_master <socket>: the options of a master on <socket>, in `master`.
+as_master() {
+  local with=("${ssh_options[@]/ControlPath=none/ControlPath=$1}")
+  master=("${with[@]/ControlMaster=no/ControlMaster=auto}" -o ControlPersist=60)
+}
+# close_masters [<kept socket>]: every master this task opened but the one kept.
+close_masters() {
+  local open
+  for open in "$master_dir"/*; do
+    [[ -e "$open" && "$open" != "${1:-}" ]] || continue
+    ssh -o ControlPath="$open" -O exit "${host:-localhost}" >/dev/null 2>&1 || true
+  done
+}
+drop_masters() {
+  [[ -n "$master_dir" ]] || return 0
+  close_masters
+  rm -rf "$master_dir"
+}
+if [[ "${RUN_REMOTE:-}" != 0 ]] && ((${#host_sshs[@]} > 0)); then
+  master_dir="$(mktemp -d "${TMPDIR:-/tmp}/ana-ssh.XXXXXX")"
+  trap drop_masters EXIT
+fi
+
 # The host: none for RUN_REMOTE=0, else the host whose place (from 1), name or ssh destination it
 # gives, and for an unset RUN_REMOTE the one `pick_host` names, or none where the list is empty.
 host=""
@@ -149,7 +181,7 @@ fi
 if [[ "$choice" != 0 ]]; then
   for ((i = 0; i < ${#host_sshs[@]}; i++)); do
     if [[ "$choice" == "$((i + 1))" || "$choice" == "${host_names[$i]}" || "$choice" == "${host_sshs[$i]}" ]]; then
-      host="${host_sshs[$i]}" slots="${host_slots[$i]}"
+      host="${host_sshs[$i]}" slots="${host_slots[$i]}" socket="$master_dir/$i"
       break
     fi
   done
@@ -160,24 +192,13 @@ if [[ "$choice" != 0 ]]; then
 fi
 on_host() { ssh "${ssh_options[@]}" "$host" "$@"; }
 
-# One connection a task: the master opens before the preflight, every exchange after it rides on it,
-# and release_queue closes it. Until 28 October each exchange opened its own, and the handshakes of
-# the preflight, the script, the transfer, the run and its status took 3 s of a 5 s remote secret
-# scan. The master holds none of this script's output, so nothing that reads run.sh's output to its
-# end waits on it, and after a kill it lingers a minute idle at most. An exchange whose master is gone
-# connects on its own, as every exchange did before.
-master_dir=""
 open_master() {
-  local master
-  master_dir="$(mktemp -d "${TMPDIR:-/tmp}/ana-ssh.XXXXXX")"
-  trap release_queue EXIT
-  master=("${ssh_options[@]/ControlPath=none/ControlPath=$master_dir/m}")
-  if ssh "${master[@]/ControlMaster=no/ControlMaster=yes}" -o ControlPersist=60 -fN "$host" </dev/null >/dev/null 2>&1; then
-    ssh_options=("${ssh_options[@]/ControlPath=none/ControlPath=$master_dir/m}")
-  else
-    rm -rf "$master_dir"
-    master_dir=""
+  if [[ ! -e "$socket" ]]; then
+    as_master "$socket"
+    ssh "${master[@]}" -fN "$host" </dev/null >/dev/null 2>&1 || true
   fi
+  close_masters "$socket"
+  [[ ! -e "$socket" ]] || ssh_options=("${ssh_options[@]/ControlPath=none/ControlPath=$socket}")
 }
 
 # The queue. A waiter's ticket names its PID; it takes a slot only when no live ticket is older,
@@ -191,10 +212,7 @@ ticket=""
 release_queue() {
   [[ -z "$ticket" ]] || rm -f "$ticket"
   [[ -z "$held_slot" ]] || rm -rf "$queue_dir/slot-$held_slot"
-  if [[ -n "$master_dir" ]]; then
-    ssh -o ControlPath="$master_dir/m" -O exit "$host" >/dev/null 2>&1 || true
-    rm -rf "$master_dir"
-  fi
+  drop_masters
 }
 
 tickets_ahead() {

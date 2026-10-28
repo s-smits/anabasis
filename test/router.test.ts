@@ -41,13 +41,19 @@ const SSH = `#!/bin/bash
 # A master, its close and each exchange over it are recorded apart, with the master's socket.
 control=""
 for arg in "$@"; do [[ "$arg" != ControlPath=* || "$arg" == ControlPath=none ]] || control="\${arg#ControlPath=}"; done
-if [[ " $* " == *" -O exit "* ]]; then printf 'exit %s\\n' "$control" >>"$FAKE_MASTERS"; exit 0; fi
-if [[ " $* " == *" ControlMaster=yes "* ]]; then
-  [[ -z "\${FAKE_DOWN:-}" ]] || exit 255
-  printf 'open %s\\n' "$control" >>"$FAKE_MASTERS"
+if [[ " $* " == *" -O exit "* ]]; then
+  rm -f "$control"
+  printf 'exit %s\\n' "$control" >>"$FAKE_MASTERS"
   exit 0
 fi
-[[ -z "$control" ]] || printf 'use %s\\n' "$control" >>"$FAKE_MASTERS"
+if [[ " $* " == *" ControlMaster=auto "* && ! -e "$control" ]]; then
+  [[ -z "\${FAKE_DOWN:-}" ]] || exit 255
+  : >"$control"
+  printf 'open %s\\n' "$control" >>"$FAKE_MASTERS"
+  [[ " $* " != *" -fN "* ]] || exit 0
+elif [[ -n "$control" ]]; then
+  printf 'use %s\\n' "$control" >>"$FAKE_MASTERS"
+fi
 args=("$@")
 while [[ "\${args[0]}" == -* ]]; do
   if [[ "\${args[0]}" == -o ]]; then args=("\${args[@]:2}"); else args=("\${args[@]:1}"); fi
@@ -433,7 +439,7 @@ describe.skipIf(realRsync === null)("run.sh", () => {
     }
   });
 
-  it("carries every exchange of a task over one connection and closes it, and connects each alone where none opens", () => {
+  it("carries every exchange of a task over the connection its probe or preflight opened, closes the rest, and connects each alone where none opens", () => {
     const masters = join(root, "masters.log");
     writeFileSync(masters, "");
     expect(run(["test"], { RUN_REMOTE: "1" }).status).toBe(0);
@@ -441,6 +447,18 @@ describe.skipIf(realRsync === null)("run.sh", () => {
     const socket = opened?.replace(/^open /u, "") ?? "";
     expect(socket.startsWith(join(tmp, "ana-ssh."))).toBe(true);
     expect(rest).toEqual(["use", "use", "use", "use", "exit"].map((kind) => `${kind} ${socket}`));
+    expect(readdirSync(tmp).filter((name) => name.startsWith("ana-ssh."))).toEqual([]);
+    writeFileSync(masters, "");
+    expect(run(["test"]).status).toBe(0);
+    const picked = readFileSync(masters, "utf8").trim().split("\n");
+    const probed = picked.slice(0, 2).toSorted();
+    const [kept, other] = probed.map((line) => line.replace(/^open /u, ""));
+    expect(probed).toEqual([`open ${kept}`, `open ${other}`]);
+    expect([kept?.endsWith("/0"), other?.endsWith("/1")]).toEqual([true, true]);
+    expect(picked.slice(2)).toEqual([
+      `exit ${other}`,
+      ...["use", "use", "use", "use", "exit"].map((kind) => `${kind} ${kept}`),
+    ]);
     expect(readdirSync(tmp).filter((name) => name.startsWith("ana-ssh."))).toEqual([]);
     writeFileSync(masters, "");
     expect(run(["test"], { RUN_REMOTE: "1", FAKE_DOWN: "1" }).status).toBe(69);

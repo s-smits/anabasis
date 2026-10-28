@@ -1,6 +1,8 @@
 /**
- * The machines a routed check task may run on, for `run.sh`: one line a host, `<name> <ssh>`, in the
- * order `ANA_HOSTS` lists them, read by the one reader of that list (`hostsOf`). `install.ts` bundles
+ * The machines a routed check task may run on, for `run.sh`: one line a host, `<name> <ssh> <checks>`,
+ * in the order `ANA_HOSTS` lists them, read by the one reader of that list (`hostsOf`). A host runs
+ * checks only where its entry sets `checks`, the tasks it takes at once: until 28 October every host
+ * the list named took two, so a peer kept for campaigns alone took checks too. `install.ts` bundles
  * this file into the installed runner as `hosts.js`, so the router reads the hosts through the same
  * code at whatever commit the tree it checks stands at.
  *
@@ -9,4 +11,6 @@
  */
 import { hostsOf } from "../../runs/host-config.ts";
 
-for (const host of hostsOf()) console.log(`${host.name} ${host.ssh}`);
+for (const host of hostsOf().filter((each) => each.checks !== undefined)) {
+  console.log(`${host.name} ${host.ssh} ${String(host.checks)}`);
+}

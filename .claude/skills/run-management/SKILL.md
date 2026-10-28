@@ -141,7 +141,8 @@ remote branch holds. It then installs (`bun install --frozen-lockfile`), runs th
   `ANTHROPIC_API_KEY`: two providers, so a solver on one is another setting than on the other.
 - **What the operator's machines hold is environment, too.** `ANA_LOGINS` names the logins a run
   may take (`2,3,4`; every login the environment holds where unset), and `ANA_HOSTS` the other
-  hosts, a JSON list of `{name, ssh, tree, bun, envFiles, capacity, packs}`. Copy `.env.runs.example`
+  hosts, a JSON list of `{name, ssh, tree, bun, envFiles, capacity, checks, packs}`; only a host
+  with `checks` takes the check runner's tasks, that many at once. Copy `.env.runs.example`
   to `.env.runs`, which Git ignores; `.env.runs.example` stays tracked, with every setting
   commented out, so a copy as it stands keeps every run on one machine. Fill in your own and pass
   it with a second `--env-file`.

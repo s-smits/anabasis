@@ -19,6 +19,7 @@ trap 'printf "%s\n" "$?" >"$HOME/$slot_dir.status"' EXIT
 keep_awake=()
 case "$(uname -s)/$(uname -m)" in
   Darwin/arm64) bun_build=darwin-aarch64 keep_awake=(caffeinate -i) ;;
+  Darwin/x86_64) bun_build=darwin-x64 keep_awake=(caffeinate -i) ;;
   Linux/x86_64) bun_build=linux-x64 ;;
   Linux/aarch64) bun_build=linux-aarch64 ;;
   *)

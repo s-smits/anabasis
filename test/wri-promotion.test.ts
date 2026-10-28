@@ -480,14 +480,6 @@ describe("lane 27 across campaigns", () => {
       "g-1 4-0-0 p 0.063, 4 of 4, 1 of 4; g-2 4-0-0 p 0.063, 4 of 4, 1 of 4 | g-1 13%; g-2 25%",
     );
     expect(table[3]).toContain("| building | none | default | none yet | - | none reported |");
-    // A campaign that ended and was run again reads as going on, at its last move.
-    const again = campaign();
-    again.put("campaign.opened", { budget: 300, terms: {} });
-    again.put("campaign.ended", { ending: "finished" });
-    again.put("campaign.move", { move: "examine", session: "x-1" });
-    expect(climbTable([{ name: "again", events: again.log }])).toContain("| examine x-1 |");
-    again.put("campaign.ended", { ending: "budget" });
-    expect(climbTable([{ name: "again", events: again.log }])).toContain("| ended |");
   });
 
   it("reads a campaign that ended and went on from its log by its last move, and one that ended as ended", () => {

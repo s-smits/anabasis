@@ -9,6 +9,7 @@ import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
+import { modelNamed, sweepOptions } from "../tools/m0/stored-sweep.ts";
 
 const HOUR_S = 60 * 60;
 const home = mkdtempSync(join(tmpdir(), "ana-backends-"));
@@ -195,10 +196,12 @@ describe("the three backends", () => {
       claude: { ...options.claude, compaction: { window } },
     });
     const claude = (id: string) => ({ provider: "claude", id, contextWindow: 200_000 });
-    expect(() => compactionMode(claude("claude-haiku-4-5"), at(SWEEP_COMPACT_WINDOW))).toThrow(
-      "claude-haiku-4-5 a 200000-token context",
+    // Haiku as the catalogue serves it, under the window a campaign's setting names.
+    const haiku = modelNamed("claude/claude-haiku-5-5");
+    expect(() => compactionMode(haiku, sweepOptions())).toThrow(
+      "Claude Code serves claude-haiku-5-5 a 200000-token context, so a 300000-token compaction window would be clamped",
     );
-    expect(compactionMode(claude("claude-haiku-4-5"), at(200_000))).toBe("autoCompactWindow=200000");
+    expect(compactionMode(haiku, sweepOptions(undefined, 200_000))).toBe("autoCompactWindow=200000");
     expect(compactionMode(claude("claude-opus-5-5"), at(SWEEP_COMPACT_WINDOW))).toBe(
       "autoCompactWindow=300000",
     );

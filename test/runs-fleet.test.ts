@@ -327,18 +327,7 @@ describe("campaign snapshots", () => {
     expect(readFileSync(copied, "utf8")).toBe(whole);
   });
 
-  it("takes over a fetch lock that a dead fetch left behind", () => {
-    const made = fixture();
-    const remote = campaign(made);
-    const lock = join(made.main, "data", "runs", "runner", ".fetch-distant.lock");
-    mkdirSync(lock, { recursive: true });
-    writeFileSync(join(lock, "pid"), String(Bun.spawnSync(["true"]).pid));
-    expect(made.run(sync, remote.env).code).toBe(0);
-    expect(existsSync(join(made.main, "data", "runs", "runner", "distant", "log.jsonl"))).toBe(true);
-    expect(existsSync(lock)).toBe(true);
-  });
-
-  it("waits for a live descriptor holder despite a stale PID", async () => {
+  it("waits for a live descriptor holder despite a stale PID, then takes over the lock a dead fetch left", async () => {
     const made = fixture();
     const remote = campaign(made);
     const lock = join(made.main, "data", "runs", "runner", ".fetch-distant.lock");
@@ -373,6 +362,7 @@ describe("campaign snapshots", () => {
       expect({ code, err: await new Response(reader.stderr).text() }).toEqual({ code: 0, err: "" });
     }
     expect(readFileSync(copied, "utf8")).toBe(readFileSync(remote.log, "utf8"));
+    expect(existsSync(lock)).toBe(true);
   });
 
   it("serialises refreshes in one process and releases a failed refresh", () => {

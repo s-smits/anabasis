@@ -2,7 +2,6 @@
 // drawn. It is recorded once in the log, a command that names nothing runs under the record, and
 // a command that names another is refused until the operator says the campaign's setting changes.
 import { afterAll, describe, expect, it } from "bun:test";
-import { compactionMode } from "../src/agent/backends/models.ts";
 import { type LogEvent, read } from "../src/kernel/log.ts";
 import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -19,7 +18,6 @@ import {
   settingNamed,
   targetNamed,
 } from "../tools/d2/setting.ts";
-import { modelNamed, sweepOptions } from "../tools/m0/stored-sweep.ts";
 
 /** The setting of a campaign no command has named anything for: the one budget every solver is
  *  held to since 19 October (`LIMITS`), and 24 tasks to score since 12 October (`SIZE`), 12 before. */
@@ -246,14 +244,6 @@ describe("a campaign's setting, recorded once", () => {
     expect(() => settingNamed({ ...haiku, "solver-window": "2e5.5" })).toThrow(
       "--solver-window 2e5.5: a solver's compaction window is a whole number of tokens",
     );
-  });
-
-  it("is the window a Claude solve's condition pins, which the sweep's would not hold for Haiku", () => {
-    const haiku = modelNamed("claude/claude-haiku-5-5");
-    expect(() => compactionMode(haiku, sweepOptions())).toThrow(
-      "Claude Code serves claude-haiku-5-5 a 200000-token context, so a 300000-token compaction window would be clamped",
-    );
-    expect(compactionMode(haiku, sweepOptions(undefined, 200_000))).toBe("autoCompactWindow=200000");
   });
 });
 

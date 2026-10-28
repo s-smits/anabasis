@@ -110,12 +110,14 @@ describe("ana/no-renaming-temporary", () => {
     expect(await reportedLines("ana", RULE, TEMPORARIES)).toStrictEqual(expected);
   });
 
-  it("puts the expression back at its reader and keeps the note written beside it", async () => {
+  it("puts the expression back at its reader, keeps the note written beside it, and leaves a word inside a string", async () => {
     const fixed = await fixedSource("ana", RULE, TEMPORARIES);
     expect(fixed).toContain("return bundle.rows.map(toCase);");
     expect(fixed).toContain("return task.owner;");
     expect(fixed).not.toContain("const rows = bundle.rows; // REPORT a dotted path");
     expect(fixed).toContain("// REPORT a dotted path under a second name");
+    expect(fixed).toContain('return describe("rows");');
+    expect(fixed).toContain("const rows = bundle.rows; // REPORT read, but the only other mention is prose");
   });
 
   it("reports a template word, a brace in one, a shorthand key, a bound call, a shared statement, a crossed update and a closure, and edits none", async () => {
@@ -136,11 +138,5 @@ describe("ana/no-renaming-temporary", () => {
     // The binding is the value before the statement changes it, or before the closure runs.
     expect(fixed).toContain("return state.value++ - before;");
     expect(fixed).toContain("return () => saved;");
-  });
-
-  it("stands down rather than editing the word inside a string", async () => {
-    const fixed = await fixedSource("ana", RULE, TEMPORARIES);
-    expect(fixed).toContain('return describe("rows");');
-    expect(fixed).toContain("const rows = bundle.rows; // REPORT read, but the only other mention is prose");
   });
 });

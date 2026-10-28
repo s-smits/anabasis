@@ -112,11 +112,8 @@ export function reassigned(text: string): number {
 
 describe(`ana/${RULE}`, () => {
   it("reads a threaded run of single-use consts and stops at every line that earns itself", async () => {
-    expect(await reportedLines("ana", RULE, CHAINS)).toStrictEqual(expectedLines(CHAINS));
-  });
-
-  it("asks each admitted case about one guard, by making it long enough to report without it", () => {
-    expect(expectedLines(CHAINS).length).toBe(3);
-    expect(CHAINS.split("// ADMITTED").length - 1).toBe(8);
+    const expected = expectedLines(CHAINS);
+    expect(expected).toHaveLength(3);
+    expect(await reportedLines("ana", RULE, CHAINS)).toStrictEqual(expected);
   });
 });

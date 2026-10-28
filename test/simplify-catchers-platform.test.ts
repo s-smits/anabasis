@@ -1,7 +1,8 @@
 /**
  * The simplify catchers that name a platform feature the code is spelling out by hand: a loop
- * that is `find`, a predicate that also records, a promise around a timer, a count that answers
- * yes or no, a key looked back up, and two walks where `flatMap` does one.
+ * that is `find`, a predicate that also records, a promise around a timer, a key looked back up,
+ * and two walks where `flatMap` does one. The count that answers yes or no has its own file,
+ * `test/prefer-some-over-filter-length.test.ts`.
  *
  * Each of these has a right answer, which is why they are worth catching deterministically, and
  * all of them gate as of 2026-09-20. What a test pins is the edge — the site the platform feature
@@ -124,16 +125,6 @@ export function deferred(value: number) {
 }
 `.trimStart();
 
-const COUNTS = `
-declare const rows: number[];
-declare function large(row: number): boolean;
-
-export const any = rows.filter(large).length > 0; // REPORT counting to answer yes or no
-export const none = rows.filter(large).length === 0; // REPORT the same count read the other way
-export const many = rows.filter(large).length > 2; // ADMITTED a threshold needs the count
-export const filled = rows.length > 0; // ADMITTED no filter: the length is the answer
-`.trimStart();
-
 const KEYS = `
 declare const counts: Record<string, number>;
 declare function use(key: string, value: number): void;
@@ -195,10 +186,6 @@ describe("the simplify platform catchers", () => {
 
   it("reads a promise wrapped around a timer", async () => {
     await pins("no-hand-rolled-sleep", SLEEPS, 1);
-  });
-
-  it("reads a filtered length compared against zero, either way round", async () => {
-    await pins("prefer-some-over-filter-length", COUNTS, 2);
   });
 
   it("reads a key walk that looks the value back up", async () => {

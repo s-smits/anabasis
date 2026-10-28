@@ -452,7 +452,7 @@ describe("the Claude backend", () => {
   // A session that ends on its own call, `finish` or `submit`, leaves the query's `result`, which
   // alone carries Claude Code's cost, to come after its last turn. On buffer (12 October) 10.19 of
   // 13.35 billed dollars had no figure of Claude Code's beside them for it.
-  it("takes Claude Code's cost from the result that follows a session's last call, at its close", async () => {
+  it("takes Claude Code's cost from the result that follows a session's last call, closing the query on the seat's kill signal", async () => {
     replay("parallel-tools.jsonl");
     const context = solverContext([opening]);
     const options = solveOptions();
@@ -461,6 +461,10 @@ describe("the Claude backend", () => {
     expect(last.diagnostics ?? []).toEqual([]);
     shutdown.abort();
     expect(await reportedCost(options.sessionId, [last])).toBeCloseTo(0.0056776, 10);
+    // The fake CLI logs its stdin as it reads it, which can come after the closing cost.
+    for (let waited = 0; waited < 2000 && !interrupted(); waited += 20) await Bun.sleep(20);
+    expect(interrupted()).toBe(true);
+    expect((await turn([opening, last, ...answered(last)])).stopReason).toBe("aborted");
     // A turn that read its own result carries it, and no provider but Claude Code reports one.
     replay(TEXT);
     const other = new AbortController();
@@ -471,19 +475,6 @@ describe("the Claude backend", () => {
     other.abort();
     expect(await reportedCost(own.sessionId, [stopped])).toBeCloseTo(0.020421, 10);
     expect(await reportedCost("solve-elsewhere", [])).toBeNull();
-  });
-
-  it("closes a query on the seat's kill signal and reads its closing cost", async () => {
-    replay("parallel-tools.jsonl");
-    const first = await turn([opening]);
-    expect(first.stopReason).toBe("toolUse");
-    shutdown.abort();
-    expect(await reportedCost(solveOptions().sessionId, [first])).toBeCloseTo(0.0056776, 10);
-    // The fake CLI logs its stdin as it reads it, which can come after the closing cost.
-    for (let waited = 0; waited < 2000 && !interrupted(); waited += 20) await Bun.sleep(20);
-    expect(interrupted()).toBe(true);
-    const after = await turn([opening, first, ...answered(first)]);
-    expect(after.stopReason).toBe("aborted");
   });
 
   it("takes a nudge into the live query, as v1 did (provider.ts:525-560)", async () => {

@@ -154,7 +154,7 @@ describe("an investigation's lanes", () => {
     const open = lanePrompt({ ...parts, lane: lane(4) });
     expect(open).toContain("### buffer-a");
     expect(open).toContain("### buffer-b");
-    expect(open).toContain("## Every campaign is under review");
+    expect(open).toContain("as equals: `buffer-a`, `buffer-b`");
     expect(open).toContain("Fired on `buffer-a`: `REFUSED UNREAD`; on `buffer-b`: `CHECK DEFECT RULED`");
     expect(open).toContain("Not fired: `RULED UNCLEAR`.");
     expect(open).toContain("Seen in: buffer-a <shows | absent | cannot show>, buffer-b");
@@ -165,7 +165,7 @@ describe("an investigation's lanes", () => {
     expect(isolated).not.toContain("CHECK DEFECT RULED (lane 4)");
     // One campaign is read as before, with no section on the others and no Seen in line.
     const alone = lanePrompt({ ...parts, campaigns: one, lane: lane(4) });
-    expect(alone).not.toContain("## Every campaign is under review");
+    expect(alone).not.toContain("as equals");
     expect(alone).not.toContain("Seen in:");
   });
 

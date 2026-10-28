@@ -1,12 +1,12 @@
 /**
  * One solve, start to ending: a home seeded with the public task, pi's coding tools on the
  * command wall with the harness's tools and `submit` beside them, pi-durable under the host's
- * wall and turn cap, then the ending typed and logged with the trace and the meter. A non-result from the solve's side is run
+ * deadline and prompt limit, then the ending typed and logged with the trace and the meter. A non-result from the solve's side is run
  * again, up to three times with backoff; named provider resets are waited out here without using a
- * rerun. On 21 October, 128 gate solves refused 43 of 1,396 drafts in 30 campaigns at such resets.
+ * rerun. On 21 October, 128 room solves refused 43 of 1,396 drafts in 30 campaigns at such resets.
  * A task's check non-result returns to its caller; a verifier non-result stops the run.
  * Killed endings retain the first typed host cancellation source, or caller for an unlabelled
- * external abort. The solve's own wall remains a wall-ended fail unless the model left no
+ * external abort. The solve's own deadline remains a `wall-ended` fail unless the model left no
  * completed turn for `SILENT_SECONDS`, with none of its tools running.
  * `waiting` ends sleeps at cancellation, including injected host sleeps before a solve starts.
  *
@@ -16,21 +16,15 @@
  * harness tool call alike (`command.ts`).
  *
  * The loop is v1's: tools run one at a time, a
- * model that stops without submitting is nudged, and the turn cap counts the prompts, the opening one
+ * model that stops without submitting is nudged, and the prompt limit counts the opening prompt
  * and each nudge. Departures, beside those named in the tools and the prompt:
- * - No submit at the wall: a solve the wall ends is a wall-ended fail, except for that silence.
+ * - No submit at the deadline: a solve the deadline ends is a `wall-ended` fail, except for that silence.
  * - A limit on the model's own turns, where the condition names one (`Limits.modelTurns`): the
  *   solver is told it and how many it has used, and the loop ends after the last one.
  * - A failed model turn ends the attempt as the provider's non-result, which `solve` runs again whole;
  *   v1 nudged once more into the same session unless the failure repeated.
  */
-import {
-  type Api,
-  type AssistantMessage,
-  type Model,
-  type Models,
-  type ThinkingLevel,
-} from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { resetOf } from "../agent/backends/claude.ts";
 import type { Limits } from "../kernel/condition.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
@@ -93,7 +87,7 @@ export interface SolveRequest {
 }
 
 /**
- * A solve's wall observes completed turns and tool starts and endings through `sit`'s hooks,
+ * A solve's deadline observes completed turns and tool starts and endings through `sit`'s hooks,
  * including unavailable tools and argument refusals. When it falls it keeps the seconds since
  * that activity, or zero while a tool runs, which `unanswered` reads (`SILENT_SECONDS`). It observes
  * no partial stream content. Until 26 October `timed` missed calls that durable refused.
@@ -102,9 +96,9 @@ export interface Wall {
   readonly signal: AbortSignal;
   readonly onTurn: () => void;
   readonly onTool: (phase: "start" | "end") => void;
-  /** Seconds the model had been silent when the wall fell; 0 until it falls or while a tool ran. */
+  /** Seconds the model had been silent when the deadline expired; 0 until it falls or while a tool ran. */
   readonly silentSeconds: number;
-  /** Takes the wall down once the solve is over. */
+  /** Disarms the deadline once the solve is over. */
   readonly lower: () => void;
 }
 
@@ -113,7 +107,7 @@ export interface Used {
   readonly clock: SolveClock;
   /** The model's turns already recorded, including the one whose tools are running. */
   readonly turns: () => number;
-  /** The turns the solve is given; undefined where they are not limited. */
+  /** The model turn limit; undefined where they are not limited. */
   readonly modelTurns: number | undefined;
 }
 
@@ -125,14 +119,14 @@ export interface Played {
   /** The harness's digest, null when it did not open. */
   readonly harness: string | null;
   readonly turns: readonly AssistantMessage[];
-  /** The prompts the solver was given: the opening one and each nudge. It is what the turn cap
+  /** The prompts the solver was given: the opening one and each nudge. It is what the prompt limit
    *  counts (`Limits.turns`), where `turns` holds the model's own turns, of which one prompt may
    *  take many. */
   readonly prompts: number;
   readonly submitted: JsonValue | undefined;
   readonly flagged: string | undefined;
   readonly wallEnded: boolean;
-  /** How long the model had been silent, with no tool of its running, when the wall fell
+  /** How long the model had been silent, with no tool of its running, when the deadline expired
    *  (`Wall`). */
   readonly silentSeconds: number;
   /** Whether the model used every turn it was given, where it was given a number of them. */
@@ -215,7 +209,7 @@ async function attemptSolve(request: SolveRequest, id: string): Promise<Ending> 
     model: priceKey(model),
     effort: request.effort,
     limits: request.limits,
-    // The load with the cores it is a load on: a wall counts the clock, and 30 runnable processes
+    // The load with the cores it is a load on: a deadline counts the clock, and 30 runnable processes
     // are another host on 12 cores than on 64.
     load: loadavg(),
     cores: availableParallelism(),
@@ -257,7 +251,7 @@ async function play(
 ): Promise<Played & { readonly spent: Sat["spent"]; readonly released: Promise<void> }> {
   const { limits } = request;
   const dirs = solveDirs(id);
-  let wall: Wall | null = null;
+  let deadline: Wall | null = null;
   const desk = openDesk();
   const before = treeStamp(request.harness);
   const turns: AssistantMessage[] = [];
@@ -293,10 +287,10 @@ async function play(
       network: await networkReach(commandWall),
     });
     prompts = 1;
-    // The wall is the solver's time, so it starts with the first turn rather than the setup.
+    // The deadline counts the solver's time, so it starts with the first turn rather than the setup.
     clock.started = performance.now();
     const raised = raiseWall(limits.wallSeconds);
-    wall = raised;
+    deadline = raised;
     const used = { clock, turns: () => turns.length, modelTurns: limits.modelTurns };
     const tools = defined.map((tool) => timed(tool, used));
     const sat = await sit({
@@ -334,7 +328,7 @@ async function play(
     if (error instanceof BrokenHarness) broken = error.message;
     else crash = errorMessage(error);
   } finally {
-    wall?.lower();
+    deadline?.lower();
     // Read apart from the loop, before the root goes: a walk that fails voids no solve.
     homeBytes = bytesUnder(dirs.home);
     if (release !== null) released = release();
@@ -349,8 +343,8 @@ async function play(
     spent: spentOn ?? (await spentBy(id, [], [])),
     submitted: desk.submitted,
     flagged: desk.flagged,
-    wallEnded: wall?.signal.aborted ?? false,
-    silentSeconds: wall?.silentSeconds ?? 0,
+    wallEnded: deadline?.signal.aborted ?? false,
+    silentSeconds: deadline?.silentSeconds ?? 0,
     turnsEnded: limits.modelTurns !== undefined && turns.length >= limits.modelTurns,
     moved: treeStamp(request.harness) !== before,
     homeBytes,
@@ -358,7 +352,7 @@ async function play(
   };
 }
 
-/** A wall raised now, that falls `seconds` from now. */
+/** A deadline armed now, that expires `seconds` from now. */
 export function raiseWall(seconds: number): Wall {
   const fall = new AbortController();
   let heard = performance.now();

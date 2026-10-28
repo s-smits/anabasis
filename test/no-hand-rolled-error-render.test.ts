@@ -16,7 +16,8 @@
  * the expression and the import land together or not at all.
  */
 import { describe, expect, it } from "bun:test";
-import { expectedLines, fixedSource, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
+import { fixedSource } from "./helpers/oxlint-rule-fixture.ts";
+import { lintRules } from "./helpers/lint-rule.ts";
 
 const RULE = "no-hand-rolled-error-render";
 const INSIDE = "src/example.ts";
@@ -51,18 +52,13 @@ export function typed(cause: unknown): boolean {
 `.trimStart();
 
 describe("ana/no-hand-rolled-error-render", () => {
-  const reports = (at: string): Promise<number[]> => reportedLines("ana", RULE, CAUGHT, at);
-
   it("reports both owned shapes and leaves every near miss alone", async () => {
-    const expected = expectedLines(CAUGHT);
-    expect(expected).toHaveLength(5);
-    expect(await reports(INSIDE)).toStrictEqual(expected);
-  });
-
-  it("stays out of the owner, the browser bundle and the Builder-visible starter", async () => {
-    expect(await reports("src/meta/runtime-values.ts")).toStrictEqual([]);
-    expect(await reports("packages/ui/src/live.ts")).toStrictEqual([]);
-    expect(await reports("starters/pi-built-harness/agent/tools.ts")).toStrictEqual([]);
+    await lintRules("ana", [
+      [RULE, CAUGHT, 5, INSIDE],
+      [RULE, CAUGHT, 0, "src/meta/runtime-values.ts"],
+      [RULE, CAUGHT, 0, "packages/ui/src/live.ts"],
+      [RULE, CAUGHT, 0, "starters/pi-built-harness/agent/tools.ts"],
+    ]);
   });
 
   it("calls the owner and brings both names in through one import", async () => {

@@ -8,15 +8,8 @@
  * and its neighbours in both directions: a rule that reports the neighbour too now refuses a
  * push, and one that stopped reporting its own shape fails nothing at all.
  */
-import { describe, expect, it } from "bun:test";
-import { expectedLines, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
-
-/** Report the fixture's own `// REPORT` lines and nothing else. */
-async function pins(rule: string, fixture: string, count: number): Promise<void> {
-  const expected = expectedLines(fixture);
-  expect(expected).toHaveLength(count);
-  expect(await reportedLines("ana", rule, fixture)).toStrictEqual(expected);
-}
+import { describe, it } from "bun:test";
+import { lintRules } from "./helpers/lint-rule.ts";
 
 const ARMS = `
 declare function spawnUnder(profile: string, command: unknown[]): string;
@@ -113,22 +106,6 @@ export function asserted() {
   expect(one).toMatchObject({ kind: "case", verified: false, runId: "r3" }); // ADMITTED an expectation is read where it is written
   expect(two).toMatchObject({ kind: "case", verified: false, runId: "r3" });
   expect(three).toMatchObject({ kind: "case", verified: false, runId: "r3" });
-}
-`.trimStart();
-
-const TEST_OBJECTS = `
-declare function record(row: { kind: string; verified: boolean; runId: string }): void;
-export function thrice() {
-  record({ kind: "case", verified: true, runId: "r1" }); // ADMITTED in a test the literal is the case being read
-  record({ kind: "case", verified: true, runId: "r1" });
-  record({ kind: "case", verified: true, runId: "r1" });
-}
-export function fivefold() {
-  record({ kind: "probe", verified: false, runId: "r2" }); // REPORT five spellings is a fixture, not a case
-  record({ kind: "probe", verified: false, runId: "r2" });
-  record({ kind: "probe", verified: false, runId: "r2" });
-  record({ kind: "probe", verified: false, runId: "r2" });
-  record({ kind: "probe", verified: false, runId: "r2" });
 }
 `.trimStart();
 
@@ -436,58 +413,20 @@ export const guarded = admissible ? "adopted" : (move === "build" ? "candidate" 
 export const behind = admissible ? String(move === "build" ? 1 : 2) : "none"; // ADMITTED a call argument is a boundary the reader stops at
 `.trimStart();
 
-describe("the simplify shape catchers", () => {
-  it("reads two arms differing in one term, with or without an else", async () => {
-    await pins("no-arms-differing-in-one-term", ARMS, 4);
-  });
-
-  it("reads a third spelling of one object literal", async () => {
-    await pins("no-thrice-spelled-object", OBJECTS, 1);
-  });
-
-  it("waits for a fifth spelling in a test, where the literal is usually the case being read", async () => {
-    const expected = expectedLines(TEST_OBJECTS);
-    expect(expected).toHaveLength(1);
-    expect(
-      await reportedLines("ana", "no-thrice-spelled-object", TEST_OBJECTS, "owner.test.ts"),
-    ).toStrictEqual(expected);
-  });
-
-  it("reads an argument the callee already holds inside another", async () => {
-    await pins("no-argument-already-carried", CARRIED, 1);
-  });
-
-  it("reads a temporary that renames and is read on the next line", async () => {
-    await pins("no-renaming-temporary", TEMPORARIES, 1);
-  });
-
-  it("reads a function whose body only forwards its parameters", async () => {
-    await pins("no-pass-through-wrapper", WRAPPERS, 2);
-  });
-
-  it("reads a let the next if decides, with a default or with both arms", async () => {
-    await pins("prefer-const-conditional", CONDITIONALS, 2);
-  });
-
-  it("reads a condition spelled as two boolean returns, either way round", async () => {
-    await pins("prefer-condition-over-boolean-returns", BOOLEANS, 2);
-  });
-
-  it("reads three branches comparing one name against literals", async () => {
-    await pins("prefer-lookup-over-equality-chain", CHAINS, 1);
-  });
-
-  it("reads a constant table inside a function, and nothing the file could write to", async () => {
-    await pins("no-inline-schema-literal", INLINE_TABLES, 3);
-  });
-
-  it("reads a ternary tail past three cases, and one grown anywhere but the tail", async () => {
-    await pins("no-tangled-ternary", TERNARIES, 3);
-  });
-
-  it("says nothing about a fixture in a test file", async () => {
-    expect(
-      await reportedLines("ana", "no-inline-schema-literal", INLINE_TABLES, "owner.test.ts"),
-    ).toStrictEqual([]);
+describe("the simplify catchers shape", () => {
+  it("reports only the marked lines in every fixture and scope", async () => {
+    await lintRules("ana", [
+      ["no-arms-differing-in-one-term", ARMS, 4],
+      ["no-thrice-spelled-object", OBJECTS, 1],
+      ["no-argument-already-carried", CARRIED, 1],
+      ["no-renaming-temporary", TEMPORARIES, 1],
+      ["no-pass-through-wrapper", WRAPPERS, 2],
+      ["prefer-const-conditional", CONDITIONALS, 2],
+      ["prefer-condition-over-boolean-returns", BOOLEANS, 2],
+      ["prefer-lookup-over-equality-chain", CHAINS, 1],
+      ["no-inline-schema-literal", INLINE_TABLES, 3],
+      ["no-inline-schema-literal", INLINE_TABLES, 0, "owner.test.ts"],
+      ["no-tangled-ternary", TERNARIES, 3],
+    ]);
   });
 });

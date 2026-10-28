@@ -9,15 +9,18 @@
  *
  * The prompt is the operator's, `<pack>-prompt.txt` in the folder `ANA_PROMPTS` names, by default
  * `anabasis-prompts` beside the checkout, and the verb opens nothing else of it. The name is
- * `<pack>-fresh-<model>[-<suffix>]`, with `-r<n>` where a worktree holds that name or its folder,
+ * `<pack>-fresh-<model>[-<suffix>]-<host>`, with `-r<n>` where a worktree holds that name or its folder,
  * and the project `<pack>-fresh`. `--effort` is four letters of `lmhx`, for the Builder, the Examiner,
  * the Referee and the solver. The worktree is `anabasis-<name>` beside the checkout, at `--at`, by
  * default this checkout's commit. Without `--host`, placement takes a machine below its configured
  * cap that carries the fewest live runs on the chosen login, then a pack's prior machine, then the
  * fewest live campaigns and simulation seats (`leastOccupied`, `placement.ts`). An explicit
  * `--host here` or peer overrides placement. Remote source is prepared by `code.ts` before launch,
- * and the peer's own `fresh` is told `--host here`: without it the peer placed the run again over
- * itself alone, and on 23 October refused a named host that held its cap of two live runs.
+ * and the peer's own `fresh` is told `--placed`, the caller's word that it placed the run there and
+ * named it with the peer's `ANA_HOSTS` name: without it the peer placed the run again over itself
+ * alone, and on 23 October refused a named host that held its cap of two live runs. A run placed
+ * here ends with this machine's own name (`ownName`), so from 28 October every name says where it
+ * runs; until then only a peer's did, and the operator asked that the machines be named alike.
  *
  * Until 16 October each fresh launch was typed by hand: a worktree, a prompt file, eight seat
  * flags and a name, and one launch that left out `--login` ended on its environment.
@@ -38,13 +41,13 @@ import { gitText, mainTree } from "#src/meta/git.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
-import { hostNamed } from "./host-config.ts";
+import { hostNamed, ownName } from "./host-config.ts";
 import { verbOn } from "./hosts.ts";
 import { preparedHost, publishedAt } from "./code.ts";
-import { freshFleet, freshLogin, placeFresh, loginPool, loginPresent } from "./placement.ts";
+import { freshFleet, freshLogin, placeFresh, loginPool, loginPresent, takes } from "./placement.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 import { launch } from "./manage.ts";
-import { everyRun } from "./registry.ts";
+import { everyRun, harnessesOf } from "./registry.ts";
 import { batchFresh } from "./batch.ts";
 import { billsLogin, readLogins } from "./logins.ts";
 
@@ -121,6 +124,7 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
       at: { type: "string", default: "HEAD" },
       as: { type: "string" },
       host: { type: "string" },
+      placed: { type: "boolean", default: false },
       yes: { type: "boolean", default: false },
     },
   });
@@ -170,11 +174,14 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
       ? await freshLogin(values.login, fleet, read, loginPool(values.logins))
       : undefined;
   const host =
-    values.host === undefined
+    values.host === undefined && !values.placed
       ? await placeFresh(pack, fleet, undefined, login)
-      : values.host === "here"
+      : values.placed || values.host === "here"
         ? undefined
         : hostNamed(values.host);
+  if (!takes(host, pack)) {
+    throw new Error(`${host?.name ?? "here"} does not take ${pack}, by the packs ANA_HOSTS reserves`);
+  }
   const commit = publishedAt(here, values.at);
   if (host !== undefined) {
     console.log(`${host.name}: prepare a detached controller at ${commit.slice(0, 9)}, then fresh ${pack}`);
@@ -195,8 +202,7 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
       values.budget,
       "--as",
       values.as === undefined ? host.name : `${values.as}-${host.name}`,
-      "--host",
-      "here",
+      "--placed",
       ...(values.effort === undefined ? [] : ["--effort", values.effort]),
       ...(login === undefined ? [] : ["--login", login]),
       "--yes",
@@ -209,7 +215,7 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
   await startFresh(pack, {
     model,
     seated,
-    suffix: values.as,
+    suffix: values.placed ? values.as : [values.as, ownName()].filter((part) => part !== undefined).join("-"),
     budget: values.budget,
     more,
     login,
@@ -244,6 +250,8 @@ async function startFresh(pack: string, options: FreshStart): Promise<void> {
     prompt,
     "--budget",
     options.budget,
+    "--handover",
+    harnessesOf(here, name),
     ...options.seated,
     ...options.more,
   ];

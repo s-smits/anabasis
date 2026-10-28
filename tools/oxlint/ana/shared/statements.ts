@@ -110,7 +110,8 @@ export function inlineFunctionArgument(node: ESTree.CallExpression | ESTree.NewE
 
 /** The entry after `statement` in a list that holds it. */
 function below(body: readonly ESTree.Statement[], statement: ESTree.Node): ESTree.Statement | null {
-  const at = body.findIndex((one) => one === statement);
+  const statements: readonly ESTree.Node[] = body;
+  const at = statements.indexOf(statement);
   return (at === -1 ? undefined : body[at + 1]) ?? null;
 }
 

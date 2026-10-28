@@ -31,7 +31,9 @@ git worktree add --detach ../anabasis-after-<what> <after>
 
 Give both arms the same input. A reader takes the same logs by name or path, and the registry finds
 a log from either fork. A seed is cut once in each fork from the same source at the same cut, under
-two names, because the registry refuses a name two worktrees hold:
+two names, because the registry refuses a name two worktrees hold, and a seat's root is named by
+its campaign and session, so two live arms under one name on one host refuse the second's root
+(`claimRoot`, `src/wall/seat-root.ts`; 27 October):
 `bun run runs seed --from <campaign folder> --name sim-<what>-before` in the one and `-after` in
 the other, with the same cut flags. A script (`--held`, `--starter`, `--supply`) is the same in both.
 
@@ -43,7 +45,7 @@ the other, with the same cut flags. A script (`--held`, `--starter`, `--supply`)
 | A reader | `runs view <name>`, `wri.ts read --log <log>`, `runs replay [<name>]`, `close.ts --to <dir>` over the same logs | the lines that moved, counted, over how many logs |
 | A decision | `bun tools/d2/harness-builder.ts --name <seed> --dry-run` on the seed of each arm | the table's row and move, and the facts it read |
 | A path | `bun run runs rehearse` with the same script on each arm's seed | the readings, the endings and the count of each event kind (`wri.ts read`) |
-| A model seat | `scripts/live-seat.ts start` from each arm's seed, on the operator's word for both seats | one draw per arm (rule 6 of `AGENTS.md`): a difference is a lead unless it is one the change forces |
+| A model seat | `scripts/live-seat.ts start` from each arm's seed, on the operator's word for both seats | one draw per arm (rule 6 of `AGENTS.md`): a difference is a lead unless it is one the change forces. Rounds of pairs that tune a prompt until a count moves are [optimize](optimize.md) |
 
 Before diffing a reader's output, run each arm twice. A reader that prints the time, the load or a
 process's state differs from itself, and those lines are no effect of the change. On 21 October
@@ -57,7 +59,7 @@ that recording is the before arm (`cases/stack.md`, step 3) and only the after a
 ## Read the difference
 
 1. **Predict both sides first** (rule 1): each line or event that should move, and each that must
-   not. A change to a gate predicts what the gate holds and refuses at the cut; a reader predicts
+   not. A change to a task admission predicts what the task admission holds and refuses at the cut; a reader predicts
    the lines it rewrites.
 2. **Every moved line is accounted for.** It is the change's effect, named in the pull request, or
    it is a finding: a side effect the body does not mention.

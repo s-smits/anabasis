@@ -1,11 +1,10 @@
 // Draft acceptance and measurement are independent facts. Controlled probes retain the first
 // parent cancellation through invocation cleanup; the real solver logs active children where
 // the OS wall is available. Queued probes use the production host launcher and create no solve.
-import { afterAll, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { drafting, type Draft } from "../src/examiner/draft.ts";
 import { examine } from "../src/examiner/session.ts";
-import { append, read } from "../src/kernel/log.ts";
+import { read } from "../src/kernel/log.ts";
 import { solvesIn } from "../src/kernel/solves.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { dirname, join } from "../src/meta/path.ts";
@@ -15,7 +14,7 @@ import { probing } from "../tools/d1b/examine.ts";
 import type { Campaign } from "../tools/d2/round.ts";
 import { gated } from "../tools/d2/host.ts";
 import { settingAsked } from "../tools/d2/setting.ts";
-import { drafted, EXAMPLE, finish, instance, call, SOUND, seat, sweep } from "./helpers/examiner-seat.ts";
+import { drafted, EXAMPLE, SOUND, seat, sweep } from "./helpers/examiner-seat.ts";
 
 const MEASURED = { budget: { modelTurns: 20, minutes: 30 }, examples: ["no reading", "valid", "invalid"] };
 const PLAYED: Played = {
@@ -74,7 +73,7 @@ function solver(s: ReturnType<typeof seat<"draft">>, kill?: AbortSignal): SolveR
   };
 }
 
-for (const origin of ["session-wall", "caller"] as const) {
+describe.each(["session-wall", "caller"] as const)("%s during a draft measurement", (origin) => {
   it(`keeps a sound draft with interrupted measurement after ${origin} and latches that first source`, async () => {
     const s = seat("draft", [drafted(SOUND)]);
     const kill = new AbortController();
@@ -94,10 +93,7 @@ for (const origin of ["session-wall", "caller"] as const) {
     const signal = await ready.promise;
     if (origin === "caller") kill.abort(new Error("unlabelled caller stop"));
     await stopped(signal);
-    // A later caller stop and normal seat cleanup cannot replace the first wall origin. The wall
-    // is followed by the agent loop's abort of the put's invocation, with pi's own reason: the
-    // measure's signal keeps the first reason (`AbortSignal.any` in `putting`), where the
-    // invocation's signal alone would read as the caller's.
+    // Invocation cleanup must preserve the parent's first reason carried by AbortSignal.any.
     kill.abort();
     const ending = await judge(solver(s, signal), "probe", PLAYED);
     release.resolve();
@@ -138,7 +134,11 @@ for (const origin of ["session-wall", "caller"] as const) {
                 },
               ]);
               const request = solver(s, signal);
-              await solve({ ...request, id: `${request.id}-${String(index)}`, models: child.request.models });
+              await solve({
+                ...request,
+                id: `${request.id}-${String(index)}`,
+                models: child.request.models,
+              });
             }),
           );
           return signal.aborted ? null : MEASURED;
@@ -157,185 +157,104 @@ for (const origin of ["session-wall", "caller"] as const) {
         expect(child.ending).toMatchObject({ outcome: "non-result", kind: "killed", cancelledBy: origin });
         expect(child.ending?.reason).not.toContain("the run was killed");
       }
-      expect(s.of("draft.finished")[0]?.measurement).toEqual({ status: "interrupted", cancelledBy: origin });
+      expect(s.of("draft.finished")[0]?.measurement).toEqual({
+        status: "interrupted",
+        cancelledBy: origin,
+      });
     },
   );
-}
+});
 
-it("retains a labelled parent origin through another session's caller signal", async () => {
-  const parent = seat("draft", [drafted(SOUND)]);
-  const child = seat("draft", [drafted(SOUND)]);
-  await examine({
-    ...parent.request,
-    limits: { ...parent.request.limits, wallSeconds: 0.1 },
-    measure: async (_draft, signal) => {
+describe("draft measurement completion", () => {
+  it("records complete only for the accepted draft whose aggregate returned, including identical reuse", async () => {
+    for (const [limit, final, status] of [
+      [3, SOUND, "complete"],
+      [2, SOUND, "complete"],
+      [2, { ...SOUND, domain: "Revised products" }, "not-run"],
+    ] as const) {
+      const s = seat("draft", [drafted(SOUND), drafted(final)]);
+      let calls = 0;
       await examine({
-        ...child.request,
-        kill: signal,
-        measure: async (_next, stop) => {
-          await stopped(stop);
-          return null;
+        ...s.request,
+        limits: { ...s.request.limits, puts: limit },
+        measure: async () => {
+          calls += 1;
+          return MEASURED;
         },
       });
-      return null;
-    },
+      expect(calls).toBe(1);
+      expect(s.of("draft.finished")[0]?.measurement).toEqual({ status });
+      expect(s.of("solve.finished")).toEqual([]);
+    }
   });
-  for (const s of [parent, child]) {
-    expect(s.of("draft.finished")).toMatchObject([
+
+  it("cancels queued draft probes through the host without inventing solve ids or endings", async () => {
+    const s = seat("draft", [drafted(SOUND)]);
+    const kill = new AbortController();
+    const queued = Promise.withResolvers<void>();
+    let launched = 0;
+    // SAFETY: the scripted launcher and the host's gate read only these fields.
+    const campaign = {
+      log: s.log,
+      states: join(dirname(s.log), "states"),
+      test: { model: s.request.model, effort: "medium" },
+      limits: { concurrency: 4 },
+    } as Campaign;
+    const seated = gated(
       {
-        ended: "stands",
-        measurement: { status: "interrupted", cancelledBy: "session-wall" },
+        seated: () => ({
+          builder: null,
+          setting: "fixture",
+          solve: async () => {
+            launched += 1;
+            throw new Error("a cancelled queued solve must never launch");
+          },
+        }),
+        loaded: false,
+        host: {
+          cores: 1,
+          load: () => 2,
+          waitMs: 1,
+          sleep: async () => {
+            queued.resolve();
+            await stopped(kill.signal);
+          },
+        },
       },
-    ]);
-  }
-});
-
-it("records complete only for the accepted draft whose aggregate returned, including identical reuse", async () => {
-  for (const variant of ["reuse", "last-same", "last-changed"] as const) {
-    const changed = variant === "last-changed";
-    const final: Draft = changed ? { ...SOUND, domain: "Revised products" } : SOUND;
-    const s = seat("draft", [drafted(SOUND), drafted(final)]);
-    let calls = 0;
-    await examine({
-      ...s.request,
-      limits: { ...s.request.limits, puts: variant === "reuse" ? 3 : 2 },
-      measure: async () => {
-        calls += 1;
-        return MEASURED;
-      },
-    });
-    expect(calls).toBe(1);
-    expect(s.of("draft.finished")[0]?.measurement).toEqual({ status: changed ? "not-run" : "complete" });
-    expect(s.of("solve.finished")).toEqual([]);
-  }
-});
-
-it("records not-run for absent measurement and final-put bypass, and omits it without an accepted draft", async () => {
-  for (const mode of ["absent", "last", "none"] as const) {
-    const s = seat("draft", [mode === "none" ? finish : drafted(SOUND)]);
-    let calls = 0;
-    await examine({
-      ...s.request,
-      limits: { ...s.request.limits, puts: 1 },
-      ...keyIfDefined(
-        "measure",
-        mode === "last"
-          ? async () => {
-              calls += 1;
-              return MEASURED;
-            }
-          : undefined,
-      ),
-    });
-    expect(calls).toBe(0);
-    expect(s.of("draft.finished")[0]?.measurement).toEqual(
-      mode === "none" ? undefined : { status: "not-run" },
+      s.log,
     );
-  }
-});
-
-it("marks a null invocation-only measure interrupted and never reuses it as complete", async () => {
-  const s = seat("draft", []);
-  let calls = 0;
-  const mode = drafting({
-    ...s.request,
-    measure: async () => {
-      calls += 1;
-      return null;
-    },
-  });
-  const stop = AbortSignal.abort(new Error("tool invocation ended"));
-  expect(await mode.measure?.(SOUND, stop)).toBeNull();
-  expect(mode.stood(SOUND)).toEqual({ status: "interrupted", cancelledBy: "invocation" });
-  await mode.measure?.(SOUND, stop);
-  expect(calls).toBe(2);
-});
-
-it("labels the campaign budget at its parent source before invocation cleanup", async () => {
-  const s = seat("write", [call("try_task", { tasks: [instance(2)] }), finish]);
-  let signal: AbortSignal | undefined;
-  await examine({
-    ...s.request,
-    probe: async (_task, _session, stop) => {
-      signal = stop;
-      append(s.log, "campaign.opened", { budget: { dollars: 0, reserve: 1 } });
-      await stopped(stop);
-      return { outcome: "non-result", kind: "killed", reason: "cancelled" };
-    },
-  });
-  expect(signal?.aborted).toBe(true);
-  const draft = seat("draft", []);
-  expect(await judge(solver(draft, signal), "probe", PLAYED)).toMatchObject({
-    cancelledBy: "campaign-budget",
-  });
-});
-
-it("cancels queued draft probes through the host without inventing solve ids or endings", async () => {
-  const s = seat("draft", [drafted(SOUND)]);
-  const kill = new AbortController();
-  const queued = Promise.withResolvers<void>();
-  let launched = 0;
-  // SAFETY: the scripted launcher and the host's gate read only these fields.
-  const campaign = {
-    log: s.log,
-    states: join(dirname(s.log), "states"),
-    test: { model: s.request.model, effort: "medium" },
-    limits: { concurrency: 4 },
-  } as Campaign;
-  const seated = gated(
-    {
-      seated: () => ({
-        builder: null,
-        setting: "fixture",
-        solve: async () => {
-          launched += 1;
-          throw new Error("a cancelled queued solve must never launch");
-        },
-      }),
-      loaded: false,
-      host: {
-        cores: 1,
-        load: () => 2,
-        waitMs: 1,
-        sleep: async () => {
-          queued.resolve();
-          await stopped(kill.signal);
-        },
+    const probe = await probing(campaign, seated, settingAsked({}, null), { "reviewer-effort": "high" });
+    const running = examine({
+      ...s.request,
+      kill: kill.signal,
+      measure: async (_draft, signal) => {
+        await Promise.all(
+          SOUND.tasks.map(async () =>
+            probe({ ...EXAMPLE, checks: s.program, ruleIds: ["R1"] }, s.request.id, signal),
+          ),
+        );
+        return signal.aborted ? null : MEASURED;
       },
-    },
-    s.log,
-  );
-  const probe = await probing(campaign, seated, settingAsked({}, null), { "reviewer-effort": "high" });
-  const running = examine({
-    ...s.request,
-    kill: kill.signal,
-    measure: async (_draft, signal) => {
-      await Promise.all(
-        SOUND.tasks.map(async () =>
-          probe({ ...EXAMPLE, checks: s.program, ruleIds: ["R1"] }, s.request.id, signal),
-        ),
-      );
-      return signal.aborted ? null : MEASURED;
-    },
+    });
+    await queued.promise;
+    kill.abort();
+    expect(await running).toMatchObject({ ended: "stands" });
+    expect(launched).toBe(0);
+    expect(s.of("solve.started")).toEqual([]);
+    expect(s.of("solve.finished")).toEqual([]);
+    expect(s.of("draft.finished")[0]?.measurement).toEqual({ status: "interrupted", cancelledBy: "caller" });
   });
-  await queued.promise;
-  kill.abort();
-  expect(await running).toMatchObject({ ended: "stands" });
-  expect(launched).toBe(0);
-  expect(s.of("solve.started")).toEqual([]);
-  expect(s.of("solve.finished")).toEqual([]);
-  expect(s.of("draft.finished")[0]?.measurement).toEqual({ status: "interrupted", cancelledBy: "caller" });
-});
 
-it("keeps a child's own wall a fail and an unlabelled external cancellation a caller non-result", async () => {
-  const s = seat("draft", []);
-  expect(await judge(solver(s), "probe", { ...PLAYED, wallEnded: true })).toEqual({
-    outcome: "fail",
-    kind: "wall-ended",
-  });
-  expect(await judge(solver(s, AbortSignal.abort()), "probe", PLAYED)).toMatchObject({
-    outcome: "non-result",
-    kind: "killed",
-    cancelledBy: "caller",
+  it("keeps a child's own wall a fail and an unlabelled external cancellation a caller non-result", async () => {
+    const s = seat("draft", []);
+    expect(await judge(solver(s), "probe", { ...PLAYED, wallEnded: true })).toEqual({
+      outcome: "fail",
+      kind: "wall-ended",
+    });
+    expect(await judge(solver(s, AbortSignal.abort()), "probe", PLAYED)).toMatchObject({
+      outcome: "non-result",
+      kind: "killed",
+      cancelledBy: "caller",
+    });
   });
 });

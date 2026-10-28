@@ -146,16 +146,16 @@ Moving a helper's body into three callers is no removal.
 ## 5. Prove it
 
 - `measure.py` again, with the budget lines: production and test lines net, new functions net of
-  moved ones, and the names each import source gained. For a pull request or a stack, give
-  `stack-complexity.py`'s structural rows beside them: decision points, import edges, exported
-  symbols and optional fields. A pass that moved lines and none of those has moved mass.
+  moved ones, and the names each import source gained. For a commit, a pull request or a stack,
+  give `git complexity <base> HEAD`'s structural rows beside them (`git complexity` alone reads
+  HEAD against its parent): decision points, import edges, exported symbols and optional fields. A pass that moved lines and none of those has moved mass.
 - **A producer or a reader is replayed.** Code that writes events, rows, reports or prompts is
   measured on recorded input: `bun run runs replay` reads every campaign log in the repository's
   worktrees and reports selected folds. Count the changed output before and after with its owning
   reader, and say which logs were read. On 11 October a pass replayed all 66 logs and found them
   identical. A count taken any other way is labelled an estimate.
 - While editing, run only the owning tests: `bun run test -- <paths>`. Run `bun run commit:check`
-  before the commit, and the gate CI runs (`AGENTS.md`, section 11) once before delivery, reading
+  before the commit, and the CI gate (`AGENTS.md`, section 11) once before delivery, reading
   every exit code. A run that printed nothing is not a pass.
 
 ## Budgets
@@ -167,7 +167,7 @@ Moving a helper's body into three callers is no removal.
 - A ceiling is met with fewer branches in the owner, then a closure, then a function. Helpers with
   one use spread the same count over more places. A sibling module that lets new code sit outside
   the 800-line count is refused, and `copiedFileLimits` in `tools/loc/source-policy.json` stays
-  empty. v2 has no complexity gate: a `measure.py` branch count over 21 is a lead, never a refusal.
+  empty. v2 has no complexity threshold: a `measure.py` branch count over 21 is a lead, never a refusal.
 
 ## What a pass must not cut
 

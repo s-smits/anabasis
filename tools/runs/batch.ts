@@ -1,7 +1,7 @@
 /** Plan every slot before launching any pack; reuse single-run admission for each actual launch. */
 import { runtimeProcess } from "#src/meta/process.ts";
-import { type Host } from "./host-config.ts";
-import { type Live } from "./live.ts";
+import type { Host } from "./host-config.ts";
+import type { Live } from "./live.ts";
 import { readLogins } from "./logins.ts";
 import { freshFleet, freshHosts, freshLogin, loginPool, loginPresent, placeFresh } from "./placement.ts";
 import { publishedAt } from "./code.ts";

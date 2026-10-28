@@ -1,13 +1,15 @@
 /**
  * Move a campaign to another machine, and go on with it there on the login named.
  *
- *   bun --env-file=<credentials> --env-file=.env.runs run runs move <name> --to <host|here>
- *     [--from <host|here>] [--login N] [--after promoted|compacted|reported|finished] [--hold]
+ *   bun --env-file=<credentials> --env-file=.env.runs run runs move <name> --to <host>
+ *     [--from <host>] [--login N] [--after promoted|compacted|reported|finished] [--hold]
  *     [--yes] [-- <flags>]
  *
- * One end is this machine (`here`, the default source) and the other a host `ANA_HOSTS` lists. The
- * verb pauses the campaign where it runs, at the next `--after` event with no comparison, Examiner
- * session or draft open (`runs pause`; one no process writes is taken as it is, and without
+ * Each end is a host `ANA_HOSTS` lists or this machine, named by its own short host name or `here`
+ * and the default source (27 October: the operator names every machine by its name); between two
+ * hosts the folder passes through this machine, since rsync takes one remote side. The verb pauses
+ * the campaign where it runs, at the next `--after` event with no comparison, Examiner session or
+ * draft open (`runs pause`; one no process writes is taken as it is, and without
  * `--after` the pause waits for the next `finished`), makes a worktree beside the destination's
  * repository at the commit the source's worktree stands at, takes the campaign's folder there whole
  * with rsync and checks that the log arrived as long as it left, sets the source's folder aside under
@@ -61,7 +63,7 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
-import { type Host, hostNamed } from "./host-config.ts";
+import { type Host, hostNamed, ownName } from "./host-config.ts";
 import { quoted, rsync, shellPath, sshScript, worktreesIn } from "./host-command.ts";
 import { verbOn } from "./hosts.ts";
 import { CAMPAIGNS, HERE, keepers, processes, readNamed, writers } from "./registry.ts";
@@ -79,7 +81,7 @@ interface End {
 }
 
 const USAGE =
-  "usage: bun run runs move <name> --to <host|here> [--from <host|here>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]";
+  "usage: bun run runs move <name> --to <host> [--from <host>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]";
 
 /** `flags` with each path under `from` named under `to` instead, whole or after a flag's `=`. */
 export function rehomed(flags: readonly string[], from: string, to: string): string[] {
@@ -155,21 +157,13 @@ export async function move(args: readonly string[]): Promise<void> {
     },
   });
   const [name, ...given] = positionals;
-  if (
-    name === undefined ||
-    !isSafePathSegment(name) ||
-    values.to === undefined ||
-    values.to === values.from
-  ) {
+  const own = ownName();
+  const [fromName = HERE, toName] = [values.from, values.to].map((end) => (end === own ? HERE : end));
+  if (name === undefined || !isSafePathSegment(name) || toName === undefined || toName === fromName) {
     throw new Error(USAGE);
   }
-  if (values.to !== HERE && values.from !== HERE) {
-    throw new Error(
-      `one end of a move is this machine: --from ${values.from} --to ${values.to} names two hosts`,
-    );
-  }
-  const from = endOf(values.from);
-  const to = endOf(values.to);
+  const from = endOf(fromName);
+  const to = endOf(toName);
   const source = treeOf(from, name);
   const tree = join(dirname(to.repo), `anabasis-${name}`);
   const folder = (root: string) => join(root, CAMPAIGNS, name);
@@ -208,7 +202,11 @@ export async function move(args: readonly string[]): Promise<void> {
     to,
     `git -C ${quoted(to.repo)} worktree add -q --detach ${quoted(tree)} ${quoted(commit)} && mkdir -p ${quoted(folder(tree))}`,
   );
-  rsync(`${side(from, folder(source))}/`, `${side(to, folder(tree))}/`);
+  // rsync takes one remote side, so a move between two hosts stages the folder here.
+  const stage = from.host && to.host ? join(tmpdir(), `ana-move-${crypto.randomUUID()}`) : undefined;
+  if (stage !== undefined) rsync(`${side(from, folder(source))}/`, `${stage}/`);
+  rsync(`${stage ?? side(from, folder(source))}/`, `${side(to, folder(tree))}/`);
+  if (stage !== undefined) rmSync(stage, { recursive: true, force: true });
   const size = (end: End, root: string) => at(end, `wc -c < ${quoted(join(folder(root), LOG_FILE))}`);
   if (size(from, source) !== size(to, tree)) {
     throw new Error(`the log did not arrive whole in ${folder(tree)}: ${folder(source)} is left as it was`);
@@ -240,10 +238,17 @@ export async function fetch(args: readonly string[]): Promise<void> {
     allowPositionals: true,
     options: { from: { type: "string" } },
   });
-  const [name] = positionals;
-  if (name === undefined) throw new Error("usage: bun run runs fetch <name> [--from <host>]");
-  const copies = await syncRuns([name], { match: "exact", ...keyIfDefined("from", values.from) });
-  if (copies.length === 0) throw new Error(`no host ANA_HOSTS lists holds a campaign ${name}`);
+  const [name, ...rest] = positionals;
+  if (rest.length > 0) throw new Error("usage: bun run runs fetch [<name>] [--from <host>]");
+  const from = keyIfDefined("from", values.from);
+  // With no name, the records of every campaign the other hosts hold: the gather a timer runs.
+  const copies = await syncRuns(name === undefined ? [] : [name], {
+    ...from,
+    ...(name === undefined ? { depth: "record" } : { match: "exact" }),
+  });
+  if (copies.length === 0 && name !== undefined) {
+    throw new Error(`no host ANA_HOSTS lists holds a campaign ${name}`);
+  }
   for (const log of copies) console.log(log);
 }
 
@@ -285,7 +290,7 @@ export function copy(args: readonly string[]): void {
 /** Where a run's folder is set aside in `tree` once a copy of it went elsewhere: one copy a name,
  *  which `runNamed` asks, so the folder left is no run any registry reads (`runs copy`, `runs move`). */
 export function asideOf(tree: string, name: string): string {
-  return join(tree, ".ana", "moved", `${name}-${new Date().toISOString().replace(/[:.]/g, "")}`);
+  return join(tree, ".ana", "moved", `${name}-${new Date().toISOString().replaceAll(/[:.]/g, "")}`);
 }
 
 /** Moves `folder` to `aside`, making `.ana/moved/` where the tree has none yet. */

@@ -3,7 +3,7 @@
  * against what it asks for.
  *
  * One function owns each refusal a supply earns, by a code (`refusals`), and every reader asks it:
- * a round or a checkpoint before its first event (`admitComparison`), whether the campaign command
+ * a round or a standalone comparison before its first event (`admitComparison`), whether the campaign command
  * made it (`tools/d2/harness-builder.ts`) or a hand started it, so that no comparison started by
  * hand pays for its solves on a checker nobody has read; and move 7, whose rows read the codes and
  * hold no such rule of their own (`decide.ts`), since their answer to one is a move and no flag.
@@ -18,8 +18,8 @@
  *   times, read 1 at 69 of 72 recorded starts by 16 October and refused none (`untied-short`):
  *   it went, as `7f0add79:docs/simplify.md` C1 had planned;
  * - `unread`: a checker `tools/c/accept.ts` has never read;
- * - `stopped`: a campaign the plan's stop rule has stopped, as many moves in a row as its patience
- *   that could have shown a gain and showed none (`stopRule`, `7f0add79:docs/plan.md`, row F48). The
+ * - `stopped`: a campaign the improvement patience has stopped: as many moves in a row as it
+ *   allows could have shown a gain and showed none (`stopRule`, `7f0add79:docs/plan.md`, row F48). The
  *   operator may go on past it by saying why (`--past-stop`), and the reason is logged.
  *
  * Two more are the command's, and are asked beside them: a start with no dollar cap, and a first
@@ -42,8 +42,8 @@
  * after its start goes on under its id, and is not asked again (row F45).
  *
  * What only a host or an id can refuse is the command's: a comparison that reported says what it
- * said and ends, a session whose id was cut is refused (`spent`), and the campaign command waits
- * for the host's load before a move that solves (`quiet`).
+ * said and ends, and a session whose id was cut is refused (`spent`). Each solve waits in the solve
+ * queue for the host's load, budget reserve and a shared slot (`queued`, `tools/d2/host.ts`).
  */
 import { frozenChecker } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
@@ -54,8 +54,8 @@ import { taskSets } from "../kernel/task.ts";
 
 /** What a log holds for the next comparison. */
 export interface Supply {
-  /** The held-out tasks a step may be read on (`frontier`, `poolOf`), those that wait for a person's
-   *  label and are left out, those the reference harness answered in every solve of their last
+  /** The held-out tasks a step may be read on (`frontier`, `poolOf`), those awaiting task review
+   *  and left out, those the reference harness answered in every solve of their last
    *  comparison, which are scored only as retained, and the tasks released for practice. */
   readonly held: number;
   readonly awaiting: number;
@@ -65,7 +65,7 @@ export interface Supply {
    *  reading, and whether the operator has frozen the checker. */
   readonly faults: number | null;
   readonly frozen: boolean;
-  /** The plan's stop rule over the comparisons on record. */
+  /** The improvement patience over the comparisons on record (`stopRule`). */
   readonly stop: ReturnType<typeof stopRule>;
 }
 
@@ -100,7 +100,7 @@ type Seats = "paid" | "scripted";
 
 /** A comparison a command is about to start. */
 interface Starting {
-  /** Its id: a round's session, or a checkpoint's own. */
+  /** Its id: a round's session, or a standalone comparison's own. */
   readonly id: string;
   readonly wanted: Wanted;
   readonly seats: Seats;

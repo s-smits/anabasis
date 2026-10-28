@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { tmpdir } from "../src/meta/os.ts";
+import { capturedExecPath } from "../src/meta/process.ts";
 import { type Diagnostic, optionalFinding, strictByConfig, tsgolintPath } from "../tools/runtime/lint.ts";
 import { spawnTextSync } from "./helpers/bun-spawn-sync.ts";
 
@@ -45,7 +46,7 @@ export function complete(value: "ok" | "failed"): void {
     );
     try {
       const result = spawnTextSync(
-        Bun.argv[0]!,
+        capturedExecPath,
         [
           "--no-env-file",
           join(root, "node_modules/oxlint/bin/oxlint"),

@@ -1,12 +1,12 @@
 /**
  * A log's proposals and accepted answers, in the log's order.
  *
- * `task.ts` folds a task's proposal, its gates and its moves into a version's state, and refuses a
+ * `task.ts` folds a task's proposal, its task admissions and its moves into a version's state, and refuses a
  * history that could not have happened. Its readers ask one thing more of a proposal than a state:
  * which tasks the log holds whole, since no pack holds an Examiner's or a carried one. Here it is
  * read once, for every reader.
- * The review of 20 October found an author's proof absent from Referee packets. Its answer and
- * passing solves have one reader here, by proposed version; feasibility remains `poolOf`'s fact.
+ * The review of 20 October found an author's answer absent from Referee packets. Its answer and
+ * passing solves have one reader here, by proposed version; the known valid answer remains `poolOf`'s fact.
  *
  * Nothing here judges a history. An event the fold would refuse is handed over like any other; a
  * caller that needs the log to be sound asks the fold first (`taskSets`).

@@ -74,31 +74,35 @@ For Claude, `CLAUDE_CODE_OAUTH_TOKEN` (process environment or `.env`; `claude se
 ## Take the Harness along
 
 A campaign hands its reference Harness over as a directory that solves tasks without the campaign that built it: `harness/`, the public rules in `RULES.md` and the closing report in `REPORT.md`.
-Hand over from the checkout that ran it: `your-campaign` is the `--name` it ran under, and the folder must be empty and lie outside the repository.
+A campaign `bun run runs fresh` opens hands over into `data/harnesses/<its name>/` at each of its endings, a pause's among them, and each handover replaces the one before.
+By hand, from the checkout that ran it, `your-campaign` being the `--name` it ran under:
 
 ```sh
-bun tools/d2/close.ts --name your-campaign --to ../my-harness
+bun tools/d2/close.ts --name your-campaign --to data/harnesses/your-campaign
 ```
 
-`--handover ../my-harness` on the campaign command writes the same at the campaign's ending.
-Then solve a task under the Harness as handed over:
+`--to` lies under `data/harnesses/`, which git ignores and every seat's wall denies, or outside the repository. `--harness <letter|digest>` hands over another Harness the campaign keeps, named as `promote.ts` names one.
+Then solve tasks under the Harness as handed over, with nothing but a solver:
 
 ```sh
-bun tools/d2/close.ts --name your-campaign --to ../my-harness --solve task-id
+bun tools/d2/close.ts --name your-campaign --to data/harnesses/your-campaign --solve task-id[,task-id...] \
+  [--solver openai-codex/gpt-6.1-terra --solver-effort high]
 ```
 
-- **Tasks.** A task is a task id the campaign holds. A released task is the one to name: a held-out task's answer then lies in the handover's log.
-- **Solve** runs the campaign's solver once, confined, from the folder the Harness was written to, under the campaign's checks, and prints how it ended. It is recorded in `handover/log.jsonl` beside the campaign's log, which no reading of the campaign counts. It is a local evaluation, not a capability claim.
+- **Tasks.** Each task id is one the campaign holds, solved one after the other. A released task is the one to name for a quick check: a held-out task's answer then lies in the handover's log.
+- **Solver.** The campaign's own, or the one `--solver` and the other setting flags name, under the campaign's limits unless a flag names others.
+- **Solve** runs the solver confined, from the folder the Harness was written to, under the campaign's checks, and prints how each solve ended. It is recorded in `handover/log.jsonl` beside the campaign's log, which no reading of the campaign counts. It is a local evaluation, not a capability claim: one solve is weak evidence.
 - **Checks.** The handover holds no check, hidden value or answer: the report names no task, so the folder can leave the exam side.
 - **Host.** Bun 1.4.4 and the wall a run uses: Seatbelt on macOS, `bubblewrap` on Linux. Without the wall a case is a typed non-result, never an unconfined run.
-- **Tools.** `.toolchain/` holds the tools the Builder installed, built for the operating system and architecture that installed them, and is copied in full, its links as links. The Harness is opened before the command returns, and where it does not open as the Harness the campaign kept, nothing is left in the folder.
+- **Tools.** `.toolchain/` holds the tools the Builder installed, built for the operating system and architecture that installed them, and its links stay links. A small tree is copied into the handover. Under `data/harnesses/`, a tree over 100 MB, such as an installed Python stack, is copied once to `data/harnesses/.trees/<campaign>/` and `.toolchain` links to it, so a handover at each ending does not copy it again; outside the repository a handover holds its tree whole. The Harness is opened before the command returns, and where it does not open as the Harness the campaign kept, nothing is left in the folder.
 - **Code.** The handover runs this checkout's solve and verifier code over the handed-over Harness: a fresh solve, not a replay of the measured run.
+- **Comparing.** To read a Harness against the starter or another system on many tasks, with repeated solves, the Referee on every rejection and the A/A, use the skill `compare-systems`.
 
 ## Contributing
 
 `bun run hooks:install` turns on the repository's commit and push hooks: the commit hook checks
 format and lint on the staged files and scans them for secrets, and the push hook checks what the push adds
-with `git diff --check` and the secret scan, and the pushed head with every step of `bun run gate` but the tests. It runs no test:
+with `git diff --check` and the secret scan, and the pushed head with `bun run gate -- --static`: every step, with the tests near the head's own change in place of the suite.
 `bun run land -- <top> --sanitize` proves each commit with its nearby tests and the top with the whole `bun run gate`.
 The two lint plugins, `anti-slop` (copied from dmmulroy/anti-slop) and the repository's own `ana`
 simplify catchers, are optional: their findings are counted on every run and fail only

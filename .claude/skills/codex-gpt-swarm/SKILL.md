@@ -103,6 +103,12 @@ Write it as a file, using a file-writing tool rather than shell interpolation:
 }
 ```
 
+Every session has Codex's live web search (`codex --search`) unless the manifest holds
+`"search": false`, and the launch record keeps the choice for a retry. A query leaves the machine,
+so a session that reads campaign logs, which hold hidden values, runs without it: the manifest of a
+whole-run investigation's lanes says so itself. Tell a searching session to put only public
+concepts in its queries, and to cite each claim from the web by its URL.
+
 Each session receives the shared instructions (the file's, then `instructions`), its task, then a
 line stating its authority. A row takes only `name`, `task`, `workdir`, `sandbox` and `ownedPaths`;
 names match `^[a-z][a-z0-9_]{0,47}$`, tasks are distinct, and a `workspace-write` session declares

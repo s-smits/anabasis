@@ -8,12 +8,12 @@
  * Run it before a comparison. What it finds already in place it leaves. It is the plan's set-up of
  * the first round (`7f0add79:docs/plan.md`, Phase 0).
  *
- * Each task of the pack that the log does not hold is proposed and put to its one gate, the shape
+ * Each task of the pack that the log does not hold is proposed and put to the shape check
  * of its package (`src/kernel/task.ts`). A task that passes is a held-out task. No solve and no
- * stored answer has a say: until 2026-10-09 a pack's task entered a log through four gates, on a
- * stored cycle's answer and v1's controls for it (`tools/m1/admit-sweep.ts`, removed).
+ * stored answer has a say: until 2026-10-09 a pack's task entered a log through four admission checks, on a
+ * stored cycle's answer and v1's control answers for it (`tools/m1/admit-sweep.ts`, removed).
  *
- * A stored answer does say whether a task has a valid answer on record. Each held-out task the
+ * A stored answer does say whether a task has a known valid answer. Each held-out task the
  * stored sweep accepted an answer to is rechecked under today's checks, until one passes, and a
  * pass is logged as `task.feasible`, as an author's answer is: such a task is never read as
  * possibly infeasible (`poolOf`). A recheck that fails establishes nothing and is said nowhere.
@@ -29,7 +29,7 @@
  * A run that labels a task (below) releases none: a release cannot be taken back, and a person
  * labelling one task has not asked for another to leave the held-out set.
  *
- * It is also where a person labels a task that went to them as possibly infeasible: one with no
+ * It is also where a person labels a task awaiting task review as possibly infeasible: one with no
  * valid answer on record after two comparisons that cut no solve of it at a limit, which is left
  * out of the scored set until it is labelled (`src/kernel/reports.ts`, `poolOf`). `--keep <task id>` returns it to the set,
  * and it is read again after two more comparisons without a valid answer. `--infeasible <task id>`
@@ -107,12 +107,12 @@ export async function prepareCommand(args: readonly string[]): Promise<number> {
     const answer = row.ending.outcome === "pass" ? storedAnswer(row) : undefined;
     if (answer !== undefined) accepted.set(row.taskId, [...(accepted.get(row.taskId) ?? []), answer]);
   }
-  const proven = poolOf(read(log)).feasible;
+  const knownValid = poolOf(read(log)).feasible;
   for (const version of taskSets(read(log)).held) {
     const task = packages.get(version);
     if (task === undefined) continue;
     const { taskId } = task;
-    if (proven.has(version) || !accepted.has(taskId)) continue;
+    if (knownValid.has(version) || !accepted.has(taskId)) continue;
     for (const answer of accepted.get(taskId) ?? []) {
       if ((await campaign.verify(task, answer)).kind !== "pass") continue;
       append(log, "task.feasible", { version, ...keyIfDefined("sweep", sweep) });

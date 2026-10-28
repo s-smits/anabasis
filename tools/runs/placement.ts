@@ -2,17 +2,22 @@
  * One host choice for a fresh campaign (22 October 2026). The scheduled fork used to parse status
  * prose and keep its own caps. Read the same live records as usage, and choose the least occupied
  * machine below its configured capacity, preferring one that has run the pack before. Login
- * admission shares the keeper's provider reader and room rule. Missing readings refuse placement.
+ * admission shares the keeper's provider reader and capacity rule. Missing readings refuse placement.
  *
  * A login's runs are spread over the machines before anything else decides (26 October 2026). On
  * that day one login paid for both runs on one runner, and when it met its five-hour limit at 15:34Z
- * that runner stood idle for two hours while two other logins had room. The host chosen is the one where
+ * that runner stood idle for two hours while two other logins had capacity. The host chosen is the one where
  * the run's login has the fewest live runs, so one login's limit leaves every machine working.
+ *
+ * A machine may be kept for some packs (`packs` in `ANA_HOSTS`, 27 October 2026). The operator kept
+ * the M1 for one truss campaign, and an automatic choice put a buffer campaign there the same day,
+ * because only a session's memory held the rule. A machine that lists packs takes no other pack, and
+ * a pack some machine lists goes to no machine that does not, whether chosen here or named by `--host`.
  */
 import { runtimeProcess } from "#src/meta/process.ts";
 import { asked } from "./hosts.ts";
 import { type Host, hostsOf } from "./host-config.ts";
-import { type Live } from "./live.ts";
+import type { Live } from "./live.ts";
 import { allowedLogins, atCap, liveEverywhere, readLogins, room } from "./logins.ts";
 import { localCatalogue, remoteRuns } from "./snapshots.ts";
 
@@ -51,7 +56,7 @@ const capacityOf = (value: string | undefined): number => {
   return capacity;
 };
 
-/** A host with room where the login runs least, then a familiar one, then the least occupied;
+/** A host with capacity where the login runs least, then a familiar one, then the least occupied;
  *  configured order breaks a tie. */
 export function leastOccupied(rows: readonly Occupancy[]): Host | undefined {
   const chosen = rows
@@ -64,6 +69,11 @@ export function leastOccupied(rows: readonly Occupancy[]): Host | undefined {
     )[0];
   if (chosen === undefined) throw new Error("no host has room for a fresh campaign");
   return chosen.host;
+}
+
+/** Whether a machine, `undefined` for this one, takes a pack under the reservations of `known`. */
+export function takes(host: Host | undefined, pack: string, known = hostsOf()): boolean {
+  return host?.packs?.includes(pack) ?? !known.some((one) => one.packs?.includes(pack) === true);
 }
 
 /** Read every machine before making an automatic choice; silence is never spare capacity. */
@@ -98,7 +108,7 @@ export async function placeFresh(
       const there = fleet.filter((run) => run.host === (choice.host?.name ?? "here"));
       return {
         host: choice.host,
-        capacity: choice.capacity,
+        capacity: takes(choice.host, pack) ? choice.capacity : 0,
         live: there.length,
         familiar: choice.projects.includes(`${pack}-fresh`),
         sameLogin: login === undefined ? 0 : there.filter((run) => run.login === login).length,
@@ -116,7 +126,7 @@ export async function freshFleet(): Promise<Live[]> {
   return live;
 }
 
-/** Reuse the keeper's room rule and provider reader, with a fleet-wide cap for each login. */
+/** Reuse the keeper's capacity rule and provider reader, with a fleet-wide cap for each login. */
 export async function freshLogin(
   requested: string | undefined,
   live: readonly Live[],

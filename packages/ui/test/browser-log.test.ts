@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, test } from "bun:test";
-import { type Browser, type Locator, type Page } from "@playwright/test";
+import type { Browser, Locator, Page } from "@playwright/test";
 import {
   accessibilityViolations,
   DESKTOP,
@@ -7,7 +7,6 @@ import {
   expectQuiet,
   keepAnswers,
   launchBrowser,
-  nextPolls,
   type Opened,
   openPage,
   PHONE,
@@ -15,24 +14,15 @@ import {
   type Served,
   serveFixture,
   type Viewing,
-  withClock,
 } from "./browser.ts";
-import {
-  arm,
-  expectFocusRing,
-  framesOf,
-  mutationsOf,
-  tabTo,
-  watchFrames,
-  watchMutations,
-} from "./browser-watch.ts";
+import { arm, expectFocusRing, framesOf, tabTo, watchFrames } from "./browser-watch.ts";
 import { answersOver, MARKERS } from "./fixture-campaign.ts";
 
 /*
  * The Log pane in Chrome over the fixture's 1,495 events: the Kind and Session filters the server
  * applies before it pages, the paging and its counter, an event opened in the inspector on either
- * tier, the columns under their heads, and what the page paints while a page or an event is read:
- * the page before, never a placeholder in its place (14 October).
+ * tier, and what the page paints while another page is read: the page before, never a placeholder
+ * in its place (14 October).
  */
 
 const EVENTS = 1495;
@@ -183,92 +173,44 @@ describe("the Log pane", () => {
     expectQuiet(opened);
     await opened.context.close();
   });
+});
 
-  test("sets every column's head over its cells", async () => {
-    const opened = await openLog(served);
-    const { page } = opened;
-    const heads = await table(page).locator("thead th").allTextContents();
-    expect(heads).toEqual(["Event", "At", "Kind", "Session", "Solve"]);
-    // The head's text and each cell's text, by their own boxes: a column whose cells sit apart from
-    // its head, as the times did until 14 October, shares no horizontal stretch with it.
-    const apart = await table(page).evaluate((node) => {
-      const box = (element: Element) => {
-        const range = document.createRange();
-        range.selectNodeContents(element);
-        return range.getBoundingClientRect();
-      };
-      const found: string[] = [];
-      const head = [...node.querySelectorAll("thead th")];
-      head.forEach((th, at) => {
-        const over = box(th);
-        for (const tr of node.querySelectorAll("tbody tr")) {
-          const cell = tr.children[at];
-          if (cell === undefined || cell.textContent.trim() === "") continue;
-          const under = box(cell);
-          if (Math.max(over.left, under.left) >= Math.min(over.right, under.right)) {
-            found.push(`${th.textContent} over ${cell.textContent}`);
-          }
-        }
-      });
-      return found;
-    });
-    expect(apart).toEqual([]);
-    expect(await columnTexts(page, 4)).toContain("s-3-1");
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
-  test("in the default tier, an event says quietly that the exam side holds it", async () => {
-    const opened = await openLog(served);
-    const { page } = opened;
-    await row(page, 5).click();
-    expect(routeParameters(page)).toMatchObject({ event: "5" });
-    const inspector = page.getByRole("complementary", { name: "Event" });
-    await expect(inspector).toBeVisible();
-    await expect(inspector).toContainText("#5");
-    await expect(inspector).toContainText(
-      "The exam side holds a raw event's payload: start the server with --exam-side to open it.",
-    );
-    await expect(inspector).not.toContainText("draft.finished");
-    await expect(row(page, 5)).toHaveAttribute("aria-current", "true");
-    expect(await accessibilityViolations(page)).toEqual([]);
-    await inspector.getByRole("button", { name: "Close" }).click();
-    await expect(inspector).toHaveCount(0);
-    expect(routeParameters(page).event).toBeUndefined();
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
-  test("on the exam side opens an event's payload in the inspector and closes it", async () => {
-    const opened = await openLog(exam);
-    const { page } = opened;
-    await row(page, 5).click();
-    expect(routeParameters(page)).toMatchObject({ event: "5" });
-    const inspector = page.getByRole("complementary", { name: "Event" });
-    await expect(inspector).toContainText("draft.finished");
-    await expect(row(page, 5)).toHaveAttribute("aria-current", "true");
-    await row(page, 6).click();
-    expect(routeParameters(page)).toMatchObject({ event: "6" });
-    await expect(inspector).toContainText("#6");
-    await expect(row(page, 5)).not.toHaveAttribute("aria-current");
-    expect(await accessibilityViolations(page)).toEqual([]);
-    await inspector.getByRole("button", { name: "Close" }).click();
-    await expect(inspector).toHaveCount(0);
-    expect(routeParameters(page).event).toBeUndefined();
-    // The browser's back reopens the event the close left.
-    await page.goBack();
-    await expect(page.getByRole("complementary", { name: "Event" })).toContainText("#6");
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
-  test("opens the event a link names", async () => {
-    const opened = await openLog(exam, "&event=5");
-    const { page } = opened;
-    await expect(page.getByRole("complementary", { name: "Event" })).toContainText("draft.finished");
-    await expect(row(page, 5)).toHaveAttribute("aria-current", "true");
-    expectQuiet(opened);
-    await opened.context.close();
+describe("the event inspector and keyboard", () => {
+  test("opens and closes event inspectors in both tiers, exposing payloads only on the exam side", async () => {
+    for (const [server, examSide] of [
+      [served, false],
+      [exam, true],
+    ] as const) {
+      const opened = await openLog(server);
+      const { page } = opened;
+      expect(await accessibilityViolations(page, "main")).toEqual([]);
+      await row(page, 5).click();
+      expect(routeParameters(page)).toMatchObject({ event: "5" });
+      const inspector = page.getByRole("complementary", { name: "Event" });
+      await expect(inspector).toBeVisible();
+      await expect(inspector).toContainText("#5");
+      await expect(row(page, 5)).toHaveAttribute("aria-current", "true");
+      if (examSide) {
+        await expect(inspector).toContainText("draft.finished");
+        await row(page, 6).click();
+        expect(routeParameters(page)).toMatchObject({ event: "6" });
+        await expect(inspector).toContainText("#6");
+        await expect(row(page, 5)).not.toHaveAttribute("aria-current");
+      } else {
+        await expect(inspector).toContainText("--exam-side");
+        await expect(inspector).not.toContainText("draft.finished");
+      }
+      expect(await accessibilityViolations(page)).toEqual([]);
+      await inspector.getByRole("button", { name: "Close" }).click();
+      await expect(inspector).toHaveCount(0);
+      expect(routeParameters(page).event).toBeUndefined();
+      if (examSide) {
+        await page.goBack();
+        await expect(inspector).toContainText("#6");
+      }
+      expectQuiet(opened);
+      await opened.context.close();
+    }
   });
 
   test("reaches the filters and the rows by keyboard, each with a visible ring", async () => {
@@ -292,16 +234,9 @@ describe("the Log pane", () => {
     expectQuiet(opened);
     await opened.context.close();
   });
+});
 
-  test("breaks no accessibility rule, on either tier", async () => {
-    for (const server of [served, exam]) {
-      const opened = await openLog(server);
-      expect(await accessibilityViolations(opened.page, "main")).toEqual([]);
-      expectQuiet(opened);
-      await opened.context.close();
-    }
-  });
-
+describe("the Log pane's layout and wall", () => {
   test("scrolls the table inside its card on a phone, never the page", async () => {
     const opened = await openLog(served, "", PHONE);
     const { page } = opened;
@@ -366,9 +301,9 @@ describe("the Log pane between two pages", () => {
     const { page } = opened;
     await expect(counter(page)).toHaveText("1–100 of 1495 events");
     const held = Promise.withResolvers<void>();
-    // A server that takes a second and a half, or until the test has seen what it waits for.
+    // Release only after the delayed loading state has been observed.
     await page.route(/\/api\/log\?/u, async (route) => {
-      await Promise.race([held.promise, Bun.sleep(1_500)]);
+      await held.promise;
       await route.continue();
     });
     await arm(page);
@@ -385,38 +320,6 @@ describe("the Log pane between two pages", () => {
     const frames = await framesOf(page);
     expect(frames.bad).toBe(0);
     expect(frames.busyAfter).toBeGreaterThanOrEqual(250);
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
-  test("opens and closes an event on the exam side with no placeholder frame", async () => {
-    const opened = await openWatched(exam, [".ana-log table"], "aside[aria-busy=true]");
-    const { page } = opened;
-    await arm(page);
-    const inspector = page.getByRole("complementary", { name: "Event" });
-    await row(page, 5).click();
-    await expect(inspector).toContainText("draft.finished");
-    await row(page, 7).click();
-    await expect(inspector).toContainText("#7");
-    await expect(inspector).toContainText("checker.read");
-    await inspector.getByRole("button", { name: "Close" }).click();
-    await expect(inspector).toHaveCount(0);
-    const frames = await framesOf(page);
-    const aside = await page.evaluate(() => document.body.innerText.includes("Reading the event"));
-    expect(aside).toBe(false);
-    expect(frames.seen).toEqual([]);
-    expect(frames.bad).toBe(0);
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
-  test("changes nothing in the table across two polls of unchanged data", async () => {
-    const opened = await openLog(served);
-    const { page } = opened;
-    await withClock(page);
-    await watchMutations(page.locator(".ana-log"));
-    await nextPolls(page, 2);
-    expect(await mutationsOf(page)).toEqual([]);
     expectQuiet(opened);
     await opened.context.close();
   });

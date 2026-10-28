@@ -3,6 +3,7 @@ import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
+import { hostname } from "#src/meta/os.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { isAbsolute } from "#src/meta/path.ts";
 export interface Host {
@@ -15,6 +16,8 @@ export interface Host {
   readonly envFiles?: readonly string[];
   /** Live campaigns or simulation seats this machine may carry. */
   readonly capacity?: number;
+  /** The packs this machine is kept for: it takes no other, and no other machine takes them. */
+  readonly packs?: readonly string[];
   /** A controller already prepared by code.ts, never accepted from configuration. */
   readonly prepared?: true;
 }
@@ -47,6 +50,13 @@ export function hostsOf(): readonly Host[] {
     if (capacity !== undefined && (!isNumber(capacity) || !Number.isSafeInteger(capacity) || capacity < 1)) {
       throw new Error(`${host.name}: capacity takes a positive integer`);
     }
+    const packs = host.packs;
+    if (
+      packs !== undefined &&
+      (!Array.isArray(packs) || !packs.every(isString) || !packs.every(isSafePathSegment))
+    ) {
+      throw new Error(`${host.name}: packs takes a list of pack names`);
+    }
     return {
       name: host.name,
       ssh: host.ssh,
@@ -54,6 +64,7 @@ export function hostsOf(): readonly Host[] {
       bun: host.bun,
       ...keyIfDefined("envFiles", files),
       ...keyIfDefined("capacity", capacity),
+      ...keyIfDefined("packs", packs),
     };
   });
 }
@@ -67,6 +78,19 @@ export function configuredRuntime(host: Host) {
     envFiles: [...new Set([".env", ...(host.envFiles ?? [".env.runs"])].map(rooted))],
   };
 }
+/** This machine's own name, its short hostname: what `fresh` ends a run's name with when it runs
+ *  here, and what `move` reads as `here`. */
+export const ownName = (): string => hostname().split(".")[0] ?? "here";
+
+/** The machine whose archive gathers every host's records and holds the cycle's files: `here` on
+ *  that machine and its `ANA_HOSTS` name on the others; unset, each machine reads for itself
+ *  (27 October: the v0.7.4 cycle's folder was first kept on a runner, and moved). */
+export function centralOf(): string | null {
+  const name = runtimeProcess.env.ANA_CENTRAL ?? "";
+  if (name === "") return null;
+  return name === "here" ? name : hostNamed(name).name;
+}
+
 export function hostNamed(name: string | undefined): Host {
   const known = hostsOf();
   const host = known.find((one) => one.name === name);

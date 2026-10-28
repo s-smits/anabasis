@@ -6,7 +6,7 @@
  * `node_modules/.bin/tsgolint` — and that entry is a `#!/usr/bin/env node` shim. So the lint step,
  * and therefore every push, depended on a Node binary being on PATH. The machine this was written
  * on had one through a shell-scoped version manager; a detached `env -i` launch does not, and
- * there the whole gate stops on `env: node: No such file or directory` followed by
+ * there the whole CI gate stops on `env: node: No such file or directory` followed by
  * `Error running tsgolint: "exit status: exit status: 127"`.
  *
  * `OXLINT_TSGOLINT_PATH` skips the shim. The real linter is a native executable shipped in a
@@ -26,7 +26,7 @@
  * under `--strict` or `ANA_LINT_STRICT=1`. Without it a contributor is held to oxlint's own rules
  * and told how many optional findings there are. A clone that sets `git config ana.lintStrict true`
  * is strict by default: the key lives in that clone's `.git/config`, which its worktrees share and
- * no push publishes, so a maintainer's checkout keeps the gate a fresh clone does not have.
+ * no push publishes, so a maintainer's checkout keeps the CI gate a fresh clone does not have.
  */
 import { existsSync } from "../../src/meta/filesystem.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
@@ -52,7 +52,7 @@ const ROOT = new URL("../..", import.meta.url).pathname;
 /** The linter itself, relative to the repository root every caller spawns it from. */
 export const OXLINT_BINARY = "node_modules/oxlint/bin/oxlint";
 
-/** The plugins whose findings gate only a strict run. */
+/** The plugins whose findings fail only a strict run. */
 const OPTIONAL_PLUGINS = new Set(["anti-slop", "ana"]);
 /** The rule list of a disable comment, up to its `--` description or the end of the comment. */
 const DISABLE_RULES = /(?:oxlint|eslint)-disable(?:-next-line|-line)?\b(.*?)(?:--|\*\/|$)/su;
@@ -279,7 +279,7 @@ async function main(): Promise<number> {
   const explicit = Bun.env.ANA_LINT_PATHS?.split("\n").filter((line) => line !== "") ?? [];
   const roots = explicit.length > 0 ? ROOTS : lintRoots();
   const args = Bun.argv.slice(2);
-  // A run the optional plugins gate: asked for, or the clone's own default.
+  // A run held to the optional plugin rules: asked for, or the clone's own default.
   const strict = args.includes("--strict") || Bun.env.ANA_LINT_STRICT === "1" || strictByConfig(ROOT);
   const extra = args.filter((argument) => argument !== "--strict");
   const flags = [
@@ -314,7 +314,7 @@ async function main(): Promise<number> {
     (explicit.length > 0 ? explicit.includes(path) : roots.some((root) => path.startsWith(`${root}/`)));
   const seen = new Set(found.flatMap(({ site }) => (site === null ? [] : [site.id])));
   const wholeTree = extra.length === 0 && explicit.length === 0;
-  // The ledger answers the optional plugins alone, so only a run they gate reads it.
+  // The ledger answers the optional plugins alone, so only a run held to their rules reads it.
   const problems = strict ? ledgerProblems(ledger, seen, linted, wholeTree) : [];
 
   const cache = sitesCachePath();

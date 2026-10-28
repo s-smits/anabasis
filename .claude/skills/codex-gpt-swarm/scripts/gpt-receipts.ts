@@ -30,6 +30,8 @@ export interface LaunchRecord {
   model: string;
   reasoningEffort: string;
   serviceTier: string;
+  /** Whether Codex runs with live web search (`--search`); a manifest turns it off with `"search": false`. */
+  search: boolean;
   runtime: { bunVersion: string; bunExecutable: string };
   maxActive: number;
   startIntervalMs: number;

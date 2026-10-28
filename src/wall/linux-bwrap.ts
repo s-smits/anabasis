@@ -26,7 +26,7 @@ export const LINUX_BWRAP_ID = "linux-bwrap/v1" as const;
 export interface LinuxBwrapRuntime {
   platform?: RuntimePlatform;
   bwrapPath?: string;
-  /** A surrounding sandbox is not this wall, so this mirrors the Darwin gate and refuses rather
+  /** A surrounding sandbox is not this wall, so this mirrors the Darwin isolation check and refuses rather
    *  than recording isolation someone else established. */
   outerSandboxed?: boolean;
 }
@@ -284,8 +284,17 @@ export function bwrapEnvironmentArgs(environment: OptionalEnvValues): string[] {
  * bind, because a bind over `/` would otherwise cover them.
  */
 export function bwrapOpenReadArgs(options: { network: boolean }): string[] {
-  const args = [...bwrapIsolationArgs(options), "--clearenv"];
-  args.push("--ro-bind", "/", "/", "--proc", "/proc", "--dev", "/dev");
+  const args = [
+    ...bwrapIsolationArgs(options),
+    "--clearenv",
+    "--ro-bind",
+    "/",
+    "/",
+    "--proc",
+    "/proc",
+    "--dev",
+    "/dev",
+  ];
   if (options.network) for (const path of networkResolverReadPaths()) args.push("--ro-bind", path, path);
   return args;
 }
@@ -313,7 +322,7 @@ export function bwrapWriteBinds(paths: readonly string[]): string[] {
 export function bwrapTmpfsDenies(paths: readonly string[]): string[] {
   // A file-shaped path takes `/dev/null` read-only instead, which denies read and write with EACCES
   // and leaves the host file untouched, where an empty tmpfs file would read as empty rather than
-  // refuse. The wall's probe (`probeWall`, `src/tools/command.ts`) requires an observable refusal,
+  // refuse. The wall test (`probeWall`, `src/tools/command.ts`) requires an observable refusal,
   // because an isolation returning "" instead of an error cannot be told apart from one that is not
   // running.
   //
@@ -321,7 +330,7 @@ export function bwrapTmpfsDenies(paths: readonly string[]): string[] {
   // make the mountpoint ("Can't mkdir <path>: Read-only file system") and refuses the whole launch.
   // The policy names the repository's other worktrees, read once when the campaign opens, and on
   // 10 October two of them were removed while a simulated campaign ran: from the next policy on
-  // every solve ended `sandbox-crash`, 12 in a row, with the probe's own control read refused. A
+  // every solve ended `sandbox-crash`, 12 in a row, with the wall test's own-folder read refused. A
   // path that does not exist cannot be read, so leaving it unmounted denies nothing; it stays in
   // the policy's identity, which says what was denied by name.
   return paths.flatMap((path) => {
@@ -337,7 +346,7 @@ export function bwrapTmpfsDenies(paths: readonly string[]): string[] {
  * <path>: Not a directory", and one refused mountpoint takes the entire isolation with it. (An
  * absent path refuses it too, under a read-only root; `bwrapTmpfsDenies` leaves those out.) Three of
  * the protected home paths are file-shaped: `.netrc`, `.npmrc` and `.claude.json`. A fresh Linux VM
- * has none of them, so a clean-VM gate run passes while an operator machine that has actually run
+ * has none of them, so a clean-VM CI gate run passes while an operator machine that has actually run
  * Claude Code has `~/.claude.json` and refuses every confined call.
  *
  * It uses `lstat` rather than `stat`, because a symbolic link to a directory must not count as a

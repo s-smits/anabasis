@@ -156,7 +156,7 @@ function healthHere(): Health {
 function healthLines(reading: Health): string[] {
   return [
     `${reading.load > reading.cores ? "⚠ " : ""}load ${reading.load.toFixed(1)}/${String(reading.cores)} cores; performance cores ${String(reading.performanceCores ?? "not reported")}`,
-    `charger: ${reading.charger.replace(/\s+/g, " ")}`,
+    `charger: ${reading.charger.replaceAll(/\s+/g, " ")}`,
     `${reading.freePct < 10 ? "⚠ " : ""}disk ${reading.freeGiB.toFixed(1)} GiB free (${reading.freePct.toFixed(1)}%)`,
     `sizes: ${Object.entries(reading.sizes)
       .map(([name, size]) => `${name} ${size === null ? "unavailable" : `${(size / 1024).toFixed(1)} MiB`}`)

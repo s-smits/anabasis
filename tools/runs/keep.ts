@@ -12,7 +12,7 @@
  * ending is the campaign's own, and the keeper leaves. A run goes on from its log at the commit
  * its worktree stands at, on its kept flags, through the refusals of `runs continue`.
  *
- * The next login is the one with room whose week resets soonest, of those this keeper has not seen
+ * The next login is the one with capacity whose week resets soonest, of those this keeper has not seen
  * spent (`room`, `logins.ts`), and `--logins` defaults to `ANA_LOGINS`. With none it says so once
  * and waits. A run none of whose seats is a `claude/` model bills no login and goes on without one
  * (`billsLogin`). A run that goes on three times in a row without a model turn of any seat that the
@@ -22,14 +22,14 @@
  * and ends: one keeper a run, and `runs stop`, `pause` or `continue --after` of the run end it. Until
  * 15 October this was three shell loops of the operator's and a wrapper a login, each moving one run.
  */
-import { type LogEvent } from "#src/kernel/log.ts";
+import type { LogEvent } from "#src/kernel/log.ts";
 import { openSync } from "#src/meta/filesystem.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { allowedLogins, atCap, billsLogin, liveEverywhere, readLogins, room } from "./logins.ts";
-import { type Live } from "./live.ts";
+import type { Live } from "./live.ts";
 import { lastRun, rerun, start } from "./manage.ts";
 import { KEEPING, keepers, logEvents, processes, type Run, runNamed, writers } from "./registry.ts";
 import { stop } from "./stop.ts";
@@ -71,7 +71,7 @@ export function turnOf(
 /**
  * The login a run goes on with after `turn`: none for a run that bills no login, else its own on a
  * continue, unless this keeper saw it spent or it is `full`, else the first of `roomy`, those with
- * room, or null to wait. On 20 October two Codex runs kept on the M1 would have waited for one of
+ * capacity, or null to wait. On 20 October two Codex runs kept on the M1 would have waited for one of
  * three spent logins none of their seats used; until 26 October such a run went on as a login all
  * the same, and `runs usage` counted it against that login's most. A dead run is not live, so until
  * 26 October its own login could fill its live-run cap elsewhere and the keeper went on above it.
@@ -89,9 +89,9 @@ export async function nextLogin(
   return (await roomy())[0] ?? null;
 }
 
-/** The logins of `logins` a run may move to: those with room, less those this keeper saw `spent`
+/** The logins of `logins` a run may move to: those with capacity, less those this keeper saw `spent`
  *  and those at their live-run cap across the fleet (`atCap`), or none while a host goes uncounted.
- *  Until 26 October a keeper moved a run onto a login with room whatever runs it carried already,
+ *  Until 26 October a keeper moved a run onto a login with capacity whatever runs it carried already,
  *  which `fresh` refuses. */
 export async function roomFor(
   logins: readonly string[],
@@ -149,7 +149,7 @@ async function keepGoing(run: Run, logins: readonly string[], waitMs: number): P
       },
     );
     if (target === null) {
-      if (!waiting) console.log(`${run.name}: no login with room; left waiting`);
+      if (!waiting) console.log(`${run.name}: no login with capacity; left waiting`);
       waiting = true;
       continue;
     }

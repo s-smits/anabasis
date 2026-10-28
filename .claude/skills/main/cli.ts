@@ -8,10 +8,17 @@
  * called `--json`. Either way the script measures a condition nobody asked for and says nothing.
  * `--name=value` stays available for a legitimate value that begins with `--`, and a bare `--`
  * ends the options, so every token after it is positional.
+ *
+ * `--host <name>` runs any script that goes through `runCommand` on a host `ANA_HOSTS` names, by the
+ * runs CLI's own transport (`scriptOn`), and writes a path under this machine's home as the same path
+ * under that host's. On 28 October round 11's seats on the Linux runner were read every 15 minutes
+ * through a hand-written ssh line naming the runner's tree and Bun, since `due`, `watch`, `compare`,
+ * `pairs` and `stop` read only the machine they ran on.
  */
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isNumber } from "#src/meta/json-shape.ts";
-import { isAbsolute, resolve } from "#src/meta/path.ts";
+import { homedir } from "#src/meta/os.ts";
+import { isAbsolute, join, relative, resolve } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 
@@ -279,11 +286,43 @@ function commandArgs(spec: CommandSpec, parsed: ParsedCliArgs, die: ExitWith): C
   };
 }
 
+/** `arg` with a `from/` that opens it, opens its value after `--option=`, or follows a comma, as in
+ *  `pairs <control>,<arm>` where the shell expands only the first `~`, written as `to/`. */
+function rehome(arg: string, from: string, to: string): string {
+  return arg
+    .split(",")
+    .map((part) => {
+      const at = part.startsWith("--") ? part.indexOf("=") + 1 : 0;
+      return part.startsWith(`${from}/`, at)
+        ? `${part.slice(0, at)}${to}${part.slice(at + from.length)}`
+        : part;
+    })
+    .join(",");
+}
+
+/** The host `--host` names before any `--`, and the other arguments with each path under `home`
+ *  written `~/`, which the host's own `runCommand` reads as its home; null where none is named. */
+export function hostRoute(argv: readonly string[], home: string): { host: string; args: string[] } | null {
+  const end = argv.includes("--") ? argv.indexOf("--") : argv.length;
+  const at = argv.slice(0, end).findIndex((token) => token === "--host" || token.startsWith("--host="));
+  if (at === -1) return null;
+  const token = argv[at] ?? "";
+  const joined = token !== "--host";
+  return {
+    host: joined ? token.slice("--host=".length) : (argv[at + 1] ?? ""),
+    args: argv
+      .filter((_, index) => index !== at && (joined || index !== at + 1))
+      .map((arg) => rehome(arg, home, "~")),
+  };
+}
+
 /**
  * The whole front of a command script: strict parsing against the declared options, `--help`
  * printing the usage, one line naming the script for a refused argument (exit 2) and for a failed
  * run (exit 1, or a `CommandFailure`'s own code), and the number `run` returns as the exit code.
  * Scripts call it under `import.meta.main`, so a test importing the module runs nothing.
+ * With `--host` the script runs there instead, at this tree's published commit, and its exit code is
+ * this one's.
  */
 export async function runCommand(
   spec: CommandSpec,
@@ -291,13 +330,27 @@ export async function runCommand(
   argv: readonly string[] = Bun.argv.slice(2),
 ): Promise<void> {
   const die: ExitWith = exitWith(spec.name);
+  const home = homedir();
+  const route = hostRoute(argv, home);
+  if (route !== null) {
+    if (route.host === "") die("--host needs a host's name");
+    const { scriptOn } = await import("#tools/runs/hosts.ts");
+    const { hostNamed } = await import("#tools/runs/host-config.ts");
+    const script = relative(join(import.meta.dir, "..", "..", ".."), Bun.main);
+    try {
+      runtimeProcess.exitCode = await scriptOn(hostNamed(route.host), script, route.args);
+    } catch (error) {
+      die(errorMessage(error), 1);
+    }
+    return;
+  }
   const parsed = parseOrDie(
     die,
     { ...kindsOf(spec.options ?? {}), positionals: spec.positionals ?? 0 },
-    argv,
+    argv.map((arg) => rehome(arg, "~", home)),
   );
   if (parsed.flags.has("help")) {
-    console.log(spec.usage);
+    console.log(`${spec.usage}\n\n--host <name> runs it on a host ANA_HOSTS names.`);
     return;
   }
   let code: CommandResult;

@@ -55,7 +55,8 @@ export function argumentOf(value: ESTree.Node): { call: ESTree.CallExpression; i
   }
   const call = at.parent;
   if (call?.type !== "CallExpression") return null;
-  const index = call.arguments.findIndex((argument) => argument === at);
+  const arguments_: readonly ESTree.Node[] = call.arguments;
+  const index = arguments_.indexOf(at);
   return index === -1 ? null : { call, index };
 }
 

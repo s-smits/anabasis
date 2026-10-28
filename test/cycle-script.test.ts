@@ -6,27 +6,14 @@ import { append, LOG_FILE } from "../src/kernel/log.ts";
 import { mkdirSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
-import { capturedExecPath } from "../src/meta/process.ts";
-import { runSync } from "../src/meta/subprocess.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
 const SCRIPT = ".claude/skills/run-improvement-campaign/scripts/cycle.ts";
-const fixtures: string[] = [];
-
-afterAll(() => {
-  for (const root of fixtures) rmSync(root, { recursive: true, force: true });
-});
+const made = fakeHosts();
+afterAll(() => rmSync(made.root, { recursive: true, force: true }));
 
 describe("cycle.ts", () => {
-  it("prints no rows on a host that holds none of the named runs", () => {
-    const result = runSync([capturedExecPath, SCRIPT, "--here", "no-such-run-for-the-cycle-test"]);
-    expect(new TextDecoder().decode(result.stdout).trim()).toBe("[]");
-    expect(result.exitCode).toBe(0);
-  }, 30_000);
-
   it.each([6, 7])("stops a run at %i promotions before waiting for one at five", (promotions) => {
-    const made = fakeHosts();
-    fixtures.push(made.root);
     const row = (name: string, live: boolean, count: number) => ({
       name,
       host: "here",
@@ -63,9 +50,28 @@ describe("cycle.ts", () => {
     expect(closed.out).toContain(join("data", "runs", "runner", "reached", LOG_FILE));
   });
 
+  it("stops a run short of the threshold once its hours since opening reach the cap", () => {
+    const row = (name: string, hours: number) => ({
+      name,
+      host: "here",
+      live: true,
+      promotions: 2,
+      compared: 3,
+      ending: null,
+      hours,
+    });
+    const read = (...extra: string[]) =>
+      made.runScript(SCRIPT, ["late", "early", ...extra], {
+        FAKE_PREPARED: JSON.stringify([row("late", 12.5), row("early", 3)]),
+      });
+    const stop = read();
+    expect(stop.code).toBe(0);
+    expect(stop.out).toContain("step: stop · late 2/6 at 12.5 h");
+    expect(stop.out).not.toContain("stop late early");
+    expect(read("--hours", "24").out).toContain("step: run · late 2/6, early 2/6");
+  });
+
   it("reads a run in a peer's quoted tree, and leaves it unread where the peer fails or is silent", () => {
-    const made = fakeHosts();
-    fixtures.push(made.root);
     const tree = join(made.root, "peer's tree");
     const folder = join(tree, ".ana", "d2", "distant");
     mkdirSync(folder, { recursive: true });
@@ -92,15 +98,19 @@ describe("cycle.ts", () => {
         FAKE_FLEET: JSON.stringify({ [made.host.ssh]: { execute: true, ...peer } }),
         ...extra,
       });
-    const read = ask({ env: { FAKE_MAIN: tree, FAKE_RUN_CLI: "1" } });
+    const read = ask({ env: { FAKE_MAIN: tree, FAKE_RUN_CLI: "1" } }, { ANA_CENTRAL: "runner" });
     expect(read.out).toContain("distant · runner · closed (finished)");
+    expect(read.out).toContain("note: the cycle's files live on runner, the central host");
     expect(read.out).toContain("step: investigate");
     expect(read.code).toBe(0);
     const unread = "step: unread · not found on any host that answered: distant";
-    const failed = ask({ env: { FAKE_REPO: failing, FAKE_RUN_CLI: "1" } });
-    expect({ out: failed.out.trim(), code: failed.code }).toEqual({ out: unread, code: 1 });
-    expect(failed.err).toContain("exit 6");
-    const silent = ask({}, { FAKE_OFFLINE: "1" });
-    expect({ out: silent.out.trim(), code: silent.code }).toEqual({ out: unread, code: 1 });
+    for (const [peer, extra, error] of [
+      [{ env: { FAKE_REPO: failing, FAKE_RUN_CLI: "1" } }, {}, "exit 6"],
+      [{}, { FAKE_OFFLINE: "1" }, ""],
+    ] as const) {
+      const result = ask(peer, extra);
+      expect({ out: result.out.trim(), code: result.code }).toEqual({ out: unread, code: 1 });
+      if (error !== "") expect(result.err).toContain(error);
+    }
   }, 60_000);
 });

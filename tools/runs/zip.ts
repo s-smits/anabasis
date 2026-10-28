@@ -65,7 +65,7 @@ import { readableAcross } from "./snapshots.ts";
 
 const LEVELS = ["light", "medium", "verbose"] as const;
 const CAMPAIGN_ENDED = "campaign.ended";
-export type Level = (typeof LEVELS)[number];
+type Level = (typeof LEVELS)[number];
 
 /** A run folder's groups, the first match first, each with the level that starts to hold it. A
  *  harness's `correctness-model/` is the checker wherever it lies: six of the twenty runs zipped on
@@ -163,7 +163,7 @@ export function fit(root: string, names: readonly string[] = readdirSync(root).s
     } else {
       // A link is grouped with what it names, as a folder: a `.toolchain` with its `tree-*`.
       const named = lstatSync(full).isSymbolicLink() ? `${linkedIn(root, full) ?? path}/` : path;
-      const group = GROUPS.find(([, , , paths]) => paths.test(named))?.[0] ?? "rest";
+      const group = GROUPS.find((entry) => entry[3].test(named))?.[0] ?? "rest";
       held.push({ path, bytes: lstatSync(full).size, group });
     }
   };

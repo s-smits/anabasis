@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { CliArgumentError, parseCliArgs } from "#skills/main/cli.ts";
+import { hostRoute, parseCliArgs, runCommand } from "#skills/main/cli.ts";
+import { homedir } from "#src/meta/os.ts";
+import { join } from "#src/meta/path.ts";
 
 describe("parseCliArgs", () => {
   test("reads values, repeated values, flags and positionals", () => {
@@ -15,31 +17,45 @@ describe("parseCliArgs", () => {
     expect(parsed.positionals).toEqual(["a.json"]);
   });
 
-  test("refuses a misspelled option instead of ignoring it", () => {
+  test("refuses unknown options and positional bounds, and preserves bare positional spelling", () => {
     expect(() => parseCliArgs(["--rnu", "abc"], { values: ["run"] })).toThrow('unknown option "--rnu"');
-  });
-
-  test("refuses to take the next option as a value", () => {
-    expect(() => parseCliArgs(["--out", "--json"], { values: ["out"], flags: ["json"] })).toThrow(
-      'option "--out" needs a value',
-    );
-    expect(parseCliArgs(["--out=--json"], { values: ["out"] }).single.get("out")).toBe("--json");
-  });
-
-  test("counts positionals against the declared range, and a bare -- ends the options", () => {
     expect(() => parseCliArgs(["a", "b"], { positionals: 1 })).toThrow('unexpected positional argument "b"');
     expect(() => parseCliArgs([], { positionals: [1, 2] })).toThrow("expected at least 1 positional");
     expect(parseCliArgs(["--", "--x"], { positionals: 1 }).positionals).toEqual(["--x"]);
     expect(parseCliArgs(["-"], { positionals: 1 }).positionals).toEqual(["-"]);
   });
+});
 
-  test("-h is --help only where help is declared, and help skips the positional count", () => {
-    expect(parseCliArgs(["-h"], { flags: ["help"], positionals: 2 }).flags.has("help")).toBe(true);
-    expect(() => parseCliArgs(["-h"], {})).toThrow(CliArgumentError);
+describe("hostRoute", () => {
+  test("takes --host out before any --, and writes this home's paths as ~/", () => {
+    const argv = [
+      "pairs",
+      "--host",
+      "far",
+      "/h/me/a,/h/me/b",
+      "--tree=/h/me/t",
+      "/h/mend",
+      "--",
+      "--host",
+      "x",
+    ];
+    expect(hostRoute(argv, "/h/me")).toEqual({
+      host: "far",
+      args: ["pairs", "~/a,~/b", "--tree=~/t", "/h/mend", "--", "--host", "x"],
+    });
+    expect(hostRoute(["--host=far", "a"], "/h/me")).toEqual({ host: "far", args: ["a"] });
+    expect(hostRoute(["a", "--", "--host", "far"], "/h/me")).toBeNull();
   });
 
-  test("refuses a repeated single option and a valued flag", () => {
-    expect(() => parseCliArgs(["--a", "1", "--a", "2"], { values: ["a"] })).toThrow("only once");
-    expect(() => parseCliArgs(["--json=1"], { flags: ["json"] })).toThrow("does not take a value");
+  test("reads a ~/ the caller sent as this machine's home", async () => {
+    let seen: string | undefined;
+    await runCommand(
+      { name: "t", usage: "", positionals: 1 },
+      (args) => {
+        seen = args.positionals[0];
+      },
+      ["~/sim/a"],
+    );
+    expect(seen).toBe(join(homedir(), "sim/a"));
   });
 });

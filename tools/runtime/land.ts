@@ -13,22 +13,24 @@
  * it, and follows its top (`oldestStack`; operator, 27 October). It never follows into another
  * chain on main.
  *
- * A push runs no test: the pre-push hook runs every other step of the gate over the pushed head
+ * A push runs no test: the pre-push hook runs every other step of the CI gate over the pushed head
  * (`tools/runtime/pre-push.ts`), so a pushed commit is unproved until it lands here. This is where
  * each landing head's first-parent line above main is proved over its own checkout: the static
- * steps and its nearby tests, and the whole gate, the full suite among it, on the top's head
+ * steps and its nearby tests, and the whole CI gate, the full suite among it, on the top's head
  * (`tools/runtime/gate.ts`), each pass already recorded skipped. `--sanitize` runs that proof when
  * its author judges the stack ready, without merging. The stack is read
  * from GitHub as v2's stack-pr reads it, each pull request's base the head of the one beneath it, and
  * the bottom must be based on main. Each head must contain the one beneath it and the bottom main's
- * head, so the last merge leaves main at exactly the top's tree, which is the tree the whole gate
+ * head, so the last merge leaves main at exactly the top's tree, which is the tree the whole CI gate
  * read.
  *
  * Without a flag nothing is written to GitHub. `--sanitize` posts each commit's verdict as the
  * status `ana/commit` and stops. It also posts the check `mergeable` on each pull request's head:
- * pending on every head before the first proof, then success on each head as soon as every commit
- * from the bottom to it has passed, so the stack turns green from the bottom up while the rest is
- * gated, and failure on the head that holds a failed commit and on each above it. A check belongs
+ * success on each head as soon as every commit from the bottom to it has passed, so the stack turns
+ * green from the bottom up while the rest is gated, and failure on the head that holds a failed
+ * commit and on each above it. It posts no pending first: `mergeable.yml` marks a pushed head
+ * pending, and until 28 October a rerun set every proved head back to pending before its remembered
+ * passes turned it green again, so an unchanged stack read as reset. A check belongs
  * to its commit, so a push leaves the new head without it and the pull request reads unproved again
  * (`mergeable.yml` marks it and the heads above it pending); a label would outlive the head it was
  * earned on (the operator, 27 October). That is how a stack shows it is ready. A pull request opens as a
@@ -67,7 +69,7 @@
  *
  * A failure names the commit and the pull request it sits on. Its fix goes into that commit, the
  * pull requests above it are replayed on it (stack-pr, section 8), and a second landing runs only
- * what the replay moved. `--jobs N` gates up to N commits at once; the top's whole gate runs alone.
+ * what the replay moved. `--jobs N` gates up to N commits at once; the top's whole CI gate runs alone.
  *
  * GitHub holds main to this command. Since 25 October the repository allows merge commits only,
  * and ruleset 25824510 on the default branch, with no bypass actors, refuses deleting main and any
@@ -406,7 +408,7 @@ function stackOf(root: string, landing: Landing): number | null {
 /** Merges the top, with the stack beneath it, as GitHub's asynchronous merge does, all or nothing,
  *  pinned to the top's gated head, and reads it back until it ends. `refused` means nothing merged;
  *  `unsure` that something may have, went into a merge queue (a merge request ends there), or merged
- *  to a tree other than the top's, which is the one the gate read. */
+ *  to a tree other than the top's, which is the one the CI gate read. */
 async function mergeStack(
   root: string,
   landing: Landing,
@@ -571,15 +573,6 @@ async function landTo(root: string, target: number, mode: Mode): Promise<number 
     `${numbers(landing.pulls)} onto ${landing.trunk} ${short(landing.trunkSha)}: ${plural(proofs.length, "commit")}.`,
   );
   const reach = mode.merge || mode.sanitize;
-  for (const pull of reach ? landing.pulls : []) {
-    postStatus(
-      root,
-      pull.headRefOid,
-      MERGEABLE_CONTEXT,
-      "pending",
-      "waiting for bun run land to prove every commit up to this head",
-    );
-  }
   // A pull request turns green as soon as every commit from the bottom to its head has passed,
   // so the stack shows its proof climbing while the commits above are still being gated.
   const at = new Map(proofs.map((proof, index) => [proof.commit, index]));
@@ -675,7 +668,8 @@ async function main(argv: readonly string[]): Promise<number> {
     for (;;) {
       if (mode.auto) {
         const open = openPulls(root);
-        const from = open.find((pull) => pull.number === target);
+        const wanted = target;
+        const from = open.find((pull) => pull.number === wanted);
         if (from !== undefined) target = topAbove(open, from).number;
       }
       const ended = await landTo(root, target, mode);

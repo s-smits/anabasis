@@ -4,12 +4,13 @@
  * on whichever host holds it, and prints a row a run and then the step, with the commands that take
  * it. It stops, launches and writes nothing: the session or the timer that runs it takes the step.
  *
- *   bun .claude/skills/run-improvement-campaign/scripts/cycle.ts <run> ... [--keep <run>]... [--threshold 6]
+ *   bun .claude/skills/run-improvement-campaign/scripts/cycle.ts <run> ... [--keep <run>]... [--threshold 6] [--hours 12]
  *
  * The steps follow the cycle's fixed order (the skill's "The release cycle"):
  *
- * - `stop` for each live run at or past the threshold, with the stop that ends those runs;
- * - `run` while the remaining live runs have fewer promotions than the threshold;
+ * - `stop` for each live run at the threshold of promotions or the hours since its opening, whichever
+ *   comes first, with the stop that ends those runs;
+ * - `run` while the remaining live runs are short of both;
  * - `investigate` once none is live, with the fetches and the investigation's start;
  * - `unread`, exiting 1, while a run is found on no host that answered, since it may be live.
  *
@@ -17,7 +18,8 @@
  * stopped. On 22 October v0.6.4 was landed and six runs forked on it while the investigation of the
  * runs before them was still being read: the order was in the skill, and the session read the
  * running window by the clock. This prints the step from the runs' own logs, so a timer's prompt is
- * one line.
+ * one line. The hours were added on 28 October (operator): no run of the cycles before had reached
+ * six promotions inside 12 hours, and a cycle that waits on six alone waits a day or more.
  *
  * Other hosts are asked through `askedScript` (`tools/runs/hosts.ts`) in its configured mode: in each
  * host's own tree as before, now with its path quoted, under the Bun that tree pins, and within the
@@ -31,7 +33,7 @@
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
-import { hostsOf } from "#tools/runs/host-config.ts";
+import { centralOf, hostsOf } from "#tools/runs/host-config.ts";
 import { LOG_FILE } from "#src/kernel/log.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { askedScript } from "#tools/runs/hosts.ts";
@@ -40,8 +42,10 @@ import { archiveOf, isCampaign, logEvents, processes, runs, writers } from "#too
 const SCRIPT = ".claude/skills/run-improvement-campaign/scripts/cycle.ts";
 /** The promotions at which the cycle stops a run: the operator's milestone of 25 October. */
 const THRESHOLD = 6;
-const USAGE = `usage: bun ${SCRIPT} <run> ... [--keep <run>]... [--threshold ${String(THRESHOLD)}]`;
-const OPTIONS = { keep: "list", threshold: "int", here: "flag" } as const;
+/** The hours after its opening at which the cycle stops a run short of the threshold (operator, 28 October). */
+const HOURS = 12;
+const USAGE = `usage: bun ${SCRIPT} <run> ... [--keep <run>]... [--threshold ${String(THRESHOLD)}] [--hours ${String(HOURS)}]`;
+const OPTIONS = { keep: "list", threshold: "int", hours: "int", here: "flag" } as const;
 const HOUR_MS = 3_600_000;
 
 /** One run as its log reads, and the host that holds it. */
@@ -64,14 +68,18 @@ function rowsHere(names: readonly string[], host = "here"): Row[] {
       const log = logEvents(run.path);
       const last = log.at(-1);
       const opened = Date.parse(log[0]?.at ?? "");
+      const live = writers(run, running).length > 0;
       return {
         name: run.name,
         host,
-        live: writers(run, running).length > 0,
+        live,
         promotions: log.filter(({ kind }) => kind === "harness.promoted").length,
         compared: log.filter(({ kind }) => kind === "comparison.reported").length,
         ending: last?.kind === "campaign.ended" && isString(last.data.ending) ? last.data.ending : null,
-        hours: Number.isNaN(opened) ? 0 : (Date.parse(last?.at ?? "") - opened) / HOUR_MS,
+        // A live run is timed to now: one in a long wait writes nothing, and its clock still runs.
+        hours: Number.isNaN(opened)
+          ? 0
+          : ((live ? Date.now() : Date.parse(last?.at ?? "")) - opened) / HOUR_MS,
       };
     });
 }
@@ -105,14 +113,14 @@ const line = (row: Row, kept: boolean) =>
     .join(" · ");
 
 /** The cycle's next step over `rows`, the runs it stops, and the commands that take the step. */
-function stepOf(rows: readonly Row[], kept: readonly string[], threshold: number): string[] {
+function stepOf(rows: readonly Row[], kept: readonly string[], threshold: number, hours: number): string[] {
   const stopped = rows.filter((row) => !kept.includes(row.name));
   const live = stopped.filter((row) => row.live);
-  const reached = live.filter((row) => row.promotions >= threshold);
+  const reached = live.filter((row) => row.promotions >= threshold || row.hours >= hours);
   const runsOn = (host: string) => (host === "here" ? "run runs" : `run runs on ${host}`);
   if (reached.length > 0) {
     return [
-      `step: stop · ${reached.map((row) => `${row.name} ${String(row.promotions)}/${String(threshold)}`).join(", ")}`,
+      `step: stop · ${reached.map((row) => `${row.name} ${String(row.promotions)}/${String(threshold)} at ${row.hours.toFixed(1)} h`).join(", ")}`,
       ...[...new Set(reached.map((row) => row.host))].map(
         (host) =>
           `  bun --env-file=.env.runs ${runsOn(host)} stop ${reached
@@ -147,6 +155,10 @@ async function main(args: CommandArgs): Promise<number> {
     console.log(capturedJsonStringify(rowsHere(names)));
     return 0;
   }
+  const central = centralOf();
+  if (central !== null && central !== "here") {
+    console.log(`note: the cycle's files live on ${central}, the central host`);
+  }
   const rows = [...rowsHere(names), ...(await rowsAway(names))];
   for (const row of rows) console.log(line(row, kept.includes(row.name)));
   const missing = names.filter((name) => !rows.some((row) => row.name === name));
@@ -155,7 +167,9 @@ async function main(args: CommandArgs): Promise<number> {
     console.log(`step: unread · not found on any host that answered: ${missing.join(", ")}`);
     return 1;
   }
-  for (const said of stepOf(rows, kept, args.int("threshold") ?? THRESHOLD)) console.log(said);
+  for (const said of stepOf(rows, kept, args.int("threshold") ?? THRESHOLD, args.int("hours") ?? HOURS)) {
+    console.log(said);
+  }
   return 0;
 }
 

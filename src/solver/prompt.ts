@@ -6,9 +6,9 @@
  * working directory. On 22 October the durable migration removed the vendor prompt builder; the
  * duty, environment and guide keep the same facts and sections:
  * - The addendum holds what a solver cannot find out for itself and no harness may change: what it
- *   must deliver, where the published requirements are, which file is its answer, the solve wall
- *   and what the wall does. The duty and the minutes are v1's `BUILT_SOLVE_DUTY` and `solveTime`;
- *   the wall's last sentence is this host's, which ends a solve as a fail and submits
+ *   must deliver, where the published requirements are, which file is its answer, the solve deadline
+ *   and what the deadline does. The duty and the minutes are v1's `BUILT_SOLVE_DUTY` and `solveTime`;
+ *   the deadline's last sentence is this host's, which ends a solve as a fail and submits
  *   nothing.
  *   Limit reminders are appended by executed tools; argument refusals and unavailable tools
  *   bypass execution and carry none. Diagnostics may follow the reminder.
@@ -77,7 +77,7 @@ const TOOL_RULES = new Map<string, readonly string[]>([
   ["write", ["Use write only for new files or complete rewrites."]],
 ]);
 
-/** What the solver must deliver and under what wall, with where the requirements are. */
+/** What the solver must deliver and under what deadline, with where the requirements are. */
 function duty({ wallSeconds, limits, resources, guide }: Told): string {
   const minutes = `${String(Math.round(wallSeconds / 60))} minutes of solve time`;
   const given =
@@ -126,7 +126,7 @@ function environment({ limits, programs, wallSeconds, network }: Told): string {
 /** The solver's whole system prompt, with each tool listed by its registered description. */
 export function systemPrompt(told: Told): string {
   const tools = told.tools.map(
-    ({ name, description }) => `- ${name}: ${description.replace(/\s+/g, " ").trim()}`,
+    ({ name, description }) => `- ${name}: ${description.replaceAll(/\s+/g, " ").trim()}`,
   );
   const rules = [
     ...(told.tools.some(({ name }) => name === "bash") ? (TOOL_RULES.get("bash") ?? []) : []),
@@ -144,7 +144,7 @@ export function systemPrompt(told: Told): string {
       : [
           `<project_context>\nProject-specific instructions and guidelines:\n\n<project_instructions path="${GUIDE_FILE}">\n${told.guide}\n</project_instructions>\n</project_context>`,
         ]),
-    `<cwd>\n${told.home.replace(/\\/g, "/")}\n</cwd>`,
+    `<cwd>\n${told.home.replaceAll("\\", "/")}\n</cwd>`,
     `<environment>\n${environment(told)}\n</environment>`,
   ].join("\n\n");
 }
@@ -180,7 +180,7 @@ export function seedHome(
   for (const resource of resources) {
     // One flat readable name per resource. A name that sanitises onto one already used keeps both
     // files rather than overwriting the earlier one silently.
-    const base = resource.name.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "resource";
+    const base = resource.name.replaceAll(/[^A-Za-z0-9._-]+/g, "-").replaceAll(/^-+|-+$/g, "") || "resource";
     let name = base;
     for (let n = 2; used.has(name); n++) name = `${base}-${String(n)}`;
     used.add(name);

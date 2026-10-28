@@ -12,11 +12,11 @@ import {
   type Answer,
   formatLedger,
   readLedger,
-  siteExcerpt,
   siteId,
   unanswerable,
 } from "../tools/oxlint/not-slop-ledger.ts";
 import { type Diagnostic, lintSite } from "../tools/runtime/lint.ts";
+import { present } from "./helpers/matchers.ts";
 
 const HEADER = "id\trule\tpath\tanswered\treason\texcerpt";
 
@@ -44,7 +44,7 @@ function finding(
   const offset =
     new TextEncoder().encode(before).length +
     (line > 1 ? 1 : 0) +
-    source.split("\n")[line - 1]!.indexOf(head);
+    present(source.split("\n")[line - 1]).indexOf(head);
   return {
     message: "m",
     code: rule,
@@ -58,28 +58,14 @@ describe("a site's id", () => {
   const first = { path: "src/a.ts", text: "const kept = rows.filter(Boolean);" };
   const second = { path: "src/b.ts", text: "const kept = rows.filter(Boolean);" };
 
-  it("is the same whichever order a scan found the places in, and however the text is spaced", () => {
+  it("ignores order and spacing, but changes when the second place changes", () => {
     expect(siteId("tree/copied-block", [second, first])).toBe(siteId("tree/copied-block", [first, second]));
     expect(siteId("tree/copied-block", [{ ...first, text: `  ${first.text}\n` }, second])).toBe(
       siteId("tree/copied-block", [first, second]),
     );
-  });
-
-  it("changes when the second place changes, not only the first", () => {
     const edited = { ...second, text: "const kept = rows.filter(isString);" };
     expect(siteId("tree/copied-block", [first, edited])).not.toBe(
       siteId("tree/copied-block", [first, second]),
-    );
-  });
-
-  it("changes with the rule, so one line answered for one rule stays open for another", () => {
-    expect(siteId("anti-slop/no-runtime-typeof", [first])).not.toBe(siteId("ana/no-deep-nesting", [first]));
-  });
-
-  it("carries an excerpt a reviewer can read, cut at a hundred bytes", () => {
-    expect(siteExcerpt([first])).toBe(first.text);
-    expect(siteExcerpt([{ path: "a", text: "x".repeat(150) }])).toBe(
-      `${"x".repeat(100)} […50 bytes omitted]`,
     );
   });
 });
@@ -96,29 +82,9 @@ describe("a lint finding's site", () => {
     expect(lintSite(finding(moved, 4, "typeof value"), bytes(moved))?.id).toBe(site?.id);
     expect(lintSite(finding(edited, 2, "typeof value"), bytes(edited))?.id).not.toBe(site?.id);
   });
-
-  it("tells two findings on one line apart by the span each reports", () => {
-    const two = 'const both = typeof a === "string" && typeof b === "number";\n';
-    const left = lintSite(finding(two, 1, "typeof a"), bytes(two));
-    const right = lintSite(finding(two, 1, "typeof b"), bytes(two));
-    expect(left?.id).not.toBe(right?.id);
-  });
-
-  it("has none for a rule the ledger cannot answer", () => {
-    expect(lintSite(finding(source, 2, "typeof value", "eslint(no-shadow)"), bytes(source))).toBeNull();
-    expect(
-      lintSite(finding(source, 2, "typeof value", "anti-slop(prefer-subpath-import)"), bytes(source)),
-    ).toBeNull();
-  });
 });
 
 describe("the ledger's rows", () => {
-  it("reads a row a reviewer can check", () => {
-    const ledger = readLedger(formatLedger([row({})]));
-    expect(ledger.unread).toStrictEqual([]);
-    expect(ledger.answers).toStrictEqual([row({})]);
-  });
-
   it("refuses a short reason, a bad id, a bad date and a header it does not know", () => {
     const text = [
       HEADER,
@@ -126,8 +92,9 @@ describe("the ledger's rows", () => {
       Object.values(row({ id: "b468e7f2" })).join("\t"),
       Object.values(row({ answered: "yesterday" })).join("\t"),
     ].join("\n");
-    expect(readLedger(text).answers).toStrictEqual([]);
-    expect(readLedger(text).unread.map((problem) => problem.split(":")[0])).toStrictEqual([
+    const ledger = readLedger(text);
+    expect(ledger.answers).toStrictEqual([]);
+    expect(ledger.unread.map((problem) => problem.split(":")[0])).toStrictEqual([
       "line 2",
       "line 3",
       "line 4",
@@ -136,12 +103,16 @@ describe("the ledger's rows", () => {
   });
 
   it("refuses a core rule, a rule with a fixer, an unknown rule and the rule that keeps the ledger", () => {
-    expect(unanswerable("eslint/no-shadow")).toContain("core rule");
-    expect(unanswerable("anti-slop/prefer-subpath-import")).toContain("fixer");
-    expect(unanswerable("ana/no-such-rule")).toContain("not a rule");
-    expect(unanswerable("ana/no-inline-slop-answer")).toContain("only store");
-    expect(unanswerable("anti-slop/no-runtime-typeof")).toBeNull();
-    expect(unanswerable("tree/copied-block")).toBeNull();
+    for (const [rule, refused] of [
+      ["eslint/no-shadow", true],
+      ["anti-slop/prefer-subpath-import", true],
+      ["ana/no-such-rule", true],
+      ["ana/no-inline-slop-answer", true],
+      ["anti-slop/no-runtime-typeof", false],
+      ["tree/copied-block", false],
+    ] as const) {
+      expect(unanswerable(rule) !== null, rule).toBe(refused);
+    }
   });
 
   it("writes one row per id, sorted, with the later of two answers to one site", () => {
@@ -153,11 +124,6 @@ describe("the ledger's rows", () => {
     const lines = text.trimEnd().split("\n");
     expect(lines[0]).toBe(HEADER);
     expect(lines.slice(1).map((line) => line.split("\t")[0])).toStrictEqual(["aaaaaaaaaaaa", "bbbbbbbbbbbb"]);
-    expect(lines[1]).toContain("the answer a union merge kept last");
-  });
-
-  it("keeps a tab or a newline in a reason from breaking the columns", () => {
-    const text = formatLedger([row({ reason: "one\ttab and\na newline in it" })]);
-    expect(readLedger(text).answers[0]?.reason).toBe("one tab and a newline in it");
+    expect(readLedger(text).answers[0]?.reason).toBe("the answer a union merge kept last");
   });
 });

@@ -59,7 +59,7 @@ export const DRAFT = "tools/d1b/draft.ts";
 export const SEED_FILE = "seed.json";
 /** The commands that write a campaign's log by hand, each naming it with `--name`: a round, an
  *  Examiner session (read as closed while it ran, the first time one did: exam-1, 2026-10-08), a
- *  checkpoint and a Builder session alone. */
+ *  standalone comparison and a Builder session alone. */
 const BY_HAND = ["tools/d2/round.ts", EXAMINE, "tools/d2/checkpoint.ts", "tools/d2/session.ts", DRAFT];
 /** This CLI, whose verbs start, read and stop runs; `rehearse` alone writes a log. */
 export const CLI = "tools/runs/cli.ts";
@@ -74,6 +74,10 @@ export const ARCHIVE = join("data", "runs");
 /** The archive's folder of this machine's own campaigns, and the word `runs move` names it by. */
 export const HERE = "here";
 
+/** The harnesses campaigns hand over, one folder each, under the main worktree, which git ignores:
+ *  `runs fresh` names a campaign's own there, and `close.ts` writes there by hand (27 October). */
+export const harnessesOf = (repo: string, ...parts: readonly string[]) =>
+  join(mainTree(repo), "data", "harnesses", ...parts);
 /** A path in the archive of the repository `repo` lies in. */
 export const archiveOf = (repo: string, ...parts: readonly string[]) =>
   join(mainTree(repo), ARCHIVE, ...parts);

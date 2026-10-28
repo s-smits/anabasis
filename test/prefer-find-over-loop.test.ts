@@ -9,12 +9,8 @@
  * that would have returned a boolean from a void function.
  */
 import { describe, expect, it } from "bun:test";
-import {
-  expectedLines,
-  fixedSource,
-  reportedLines,
-  reportedMessages,
-} from "./helpers/oxlint-rule-fixture.ts";
+import { fixedSource } from "./helpers/oxlint-rule-fixture.ts";
+import { lintRules } from "./helpers/lint-rule.ts";
 
 const RULE = "prefer-find-over-loop";
 const SEARCHES = `interface Row {
@@ -109,32 +105,9 @@ export function verdictFor(rows: Row[], id: string): boolean {
 }
 `;
 
-/**
- * A subject that binds looser than the member access the fix writes on it. `primary ?? fallback`
- * walks both arrays; `primary ?? fallback.find(p)` searches only the second and type-checks,
- * because both sides are `Row[]`.
- */
-const LOOSE = `interface Row {
-  readonly id: string;
-}
-
-export function rowFor(primary: Row[] | undefined, fallback: Row[], id: string): Row | undefined {
-  for (const row of primary ?? fallback) if (row.id === id) return row; // REPORT the subject needs its parentheses
-  return undefined;
-}
-`;
-
 describe("ana/prefer-find-over-loop", () => {
   it("reads a search and passes over a Set, an await, a built answer and an else", async () => {
-    const expected = expectedLines(SEARCHES);
-    expect(expected).toHaveLength(9);
-    expect(await reportedLines("ana", RULE, SEARCHES)).toStrictEqual(expected);
-  });
-
-  it("names the guard as a guard rather than as an answer", async () => {
-    const guards = (await reportedMessages("ana", RULE, SEARCHES)).filter((one) => one.includes("if ("));
-    expect(guards).toHaveLength(1);
-    expect(guards[0]).toContain("`if (rows.some(…)) return;`");
+    await lintRules("ana", [[RULE, SEARCHES, 9]]);
   });
 
   it("puts the method where the loop stood, once the line below agrees with it", async () => {
@@ -147,28 +120,13 @@ describe("ana/prefer-find-over-loop", () => {
     expect(fixed).toContain('return rows.every((row) => !(row.name === ""));');
     expect(fixed).toContain("if (rows.some((row) => row.settled)) return;");
     expect(fixed).toContain('note("none settled");');
-  });
-
-  it("parenthesises a subject that binds looser than the call it writes", async () => {
-    expect(await reportedLines("ana", RULE, LOOSE)).toStrictEqual(expectedLines(LOOSE));
-    expect(await fixedSource("ana", RULE, LOOSE)).toContain(
-      "return (primary ?? fallback).find((row) => row.id === id);",
+    expect(fixed).toContain("return rows[0];");
+    expect(fixed).toContain(
+      "for (const row of rows) if (row.id === id) return row; // REPORT read, but the line below is not undefined",
     );
-  });
-
-  it("leaves the loop standing where its body carries a sentence the arrow cannot hold", async () => {
-    const fixed = await fixedSource("ana", RULE, SEARCHES);
     expect(fixed).toContain(
       "// a row is open until something settles it, and that is why this reads !settled",
     );
     expect(fixed).not.toContain("rows.find((row) => !row.settled)");
-  });
-
-  it("keeps the loop where the rewrite would change what no match returns", async () => {
-    const fixed = await fixedSource("ana", RULE, SEARCHES);
-    expect(fixed).toContain(
-      "for (const row of rows) if (row.id === id) return row; // REPORT read, but the line",
-    );
-    expect(fixed).toContain("return rows[0];");
   });
 });

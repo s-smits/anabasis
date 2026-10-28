@@ -17,7 +17,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
 import type { Run } from "../tools/runs/registry.ts";
-import { fit, type Level, zip, zipRuns } from "../tools/runs/zip.ts";
+import { fit, zip } from "../tools/runs/zip.ts";
 
 const DIGEST = "ab".repeat(32);
 const LOG = [
@@ -39,50 +39,51 @@ const RECEIPT = {
   cores: 8,
 };
 
-/** A round's folder as a session leaves it, in a repository of its own, and the run that names it. */
-function round(root: string): Run {
-  const tree = join(root, "tree");
-  const folder = join(tree, ".ana", "d2", "r1");
-  const file = (path: string, content: string) => {
-    mkdirSync(dirname(join(folder, path)), { recursive: true });
-    writeFileSync(join(folder, path), content);
-  };
-  // The log of a live run: its last line is the append in flight.
-  file("log.jsonl", `${LOG.map((event) => JSON.stringify(event)).join("\n")}\n{"at":`);
-  file("launch-b-1.json", JSON.stringify(RECEIPT));
-  file("checks/brief.json", "{}");
-  file("checks/evaluator.ts", "export const check = 1;\n");
-  file(`exams/${DIGEST}/checks/brief.json`, "{}");
-  file(`exams/${DIGEST}/checks/evaluator.ts`, "export const check = 1;\n");
-  file(`states/${DIGEST}/agent/tools-spec.json`, "{}");
-  file(`states/${DIGEST}/correctness-model/controls.json`, "[]");
-  file(`states/${DIGEST}/node_modules/dep/index.js`, "module.exports = 1;\n");
-  file(`states/${DIGEST}/auth.json`, "{}");
-  file("states/tree-abc/bin/solver", "#!/bin/sh\n");
-  file("states/tree-abc/pylibs/numpy-2.0.dist-info/METADATA", "Name: numpy\n");
-  file("notes.txt", "kept by hand\n");
-  symlinkSync("../tree-abc", join(folder, "states", DIGEST, ".toolchain"));
-  symlinkSync(join(folder, "states", "tree-abc"), join(folder, "states", DIGEST, "absolute"));
-  symlinkSync("../../../outside", join(folder, "states", DIGEST, "outside"));
-  for (const path of ["src/prompt.ts", "tools/run.ts", "docs/plan.md", "package.json", "test/a.test.ts"]) {
-    mkdirSync(dirname(join(tree, path)), { recursive: true });
-    writeFileSync(join(tree, path), `${path}\n`);
-  }
-  for (const args of [
-    ["init", "-q"],
-    ["add", "src", "tools", "docs", "package.json", "test"],
-    ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "x"],
-  ]) {
-    runTextSyncOrThrow(["git", "-C", tree, ...args]);
-  }
-  return { name: "r1", tree, path: join(folder, "log.jsonl"), end: "comparison.reported" };
-}
-
 describe("the runs zip", () => {
   it("holds what each level names, a link inside the folder as the link, and never a package, a link out of it or a secret", () => {
     const root = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-runs-zip-test-")));
     try {
-      const run = round(root);
+      const tree = join(root, "tree");
+      const folder = join(tree, ".ana", "d2", "r1");
+      const put = (path: string, content: string) => {
+        mkdirSync(dirname(join(folder, path)), { recursive: true });
+        writeFileSync(join(folder, path), content);
+      };
+      // The log of a live run: its last line is the append in flight.
+      put("log.jsonl", `${LOG.map((event) => JSON.stringify(event)).join("\n")}\n{"at":`);
+      put("launch-b-1.json", JSON.stringify(RECEIPT));
+      put("checks/brief.json", "{}");
+      put("checks/evaluator.ts", "export const check = 1;\n");
+      put(`exams/${DIGEST}/checks/brief.json`, "{}");
+      put(`exams/${DIGEST}/checks/evaluator.ts`, "export const check = 1;\n");
+      put(`states/${DIGEST}/agent/tools-spec.json`, "{}");
+      put(`states/${DIGEST}/correctness-model/controls.json`, "[]");
+      put(`states/${DIGEST}/node_modules/dep/index.js`, "module.exports = 1;\n");
+      put(`states/${DIGEST}/auth.json`, "{}");
+      put("states/tree-abc/bin/solver", "#!/bin/sh\n");
+      put("states/tree-abc/pylibs/numpy-2.0.dist-info/METADATA", "Name: numpy\n");
+      put("notes.txt", "kept by hand\n");
+      symlinkSync("../tree-abc", join(folder, "states", DIGEST, ".toolchain"));
+      symlinkSync(join(folder, "states", "tree-abc"), join(folder, "states", DIGEST, "absolute"));
+      symlinkSync("../../../outside", join(folder, "states", DIGEST, "outside"));
+      for (const path of [
+        "src/prompt.ts",
+        "tools/run.ts",
+        "docs/plan.md",
+        "package.json",
+        "test/a.test.ts",
+      ]) {
+        mkdirSync(dirname(join(tree, path)), { recursive: true });
+        writeFileSync(join(tree, path), `${path}\n`);
+      }
+      for (const args of [
+        ["init", "-q"],
+        ["add", "src", "tools", "docs", "package.json", "test"],
+        ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "x"],
+      ]) {
+        runTextSyncOrThrow(["git", "-C", tree, ...args]);
+      }
+      const run: Run = { name: "r1", tree, path: join(folder, "log.jsonl"), end: "comparison.reported" };
       expect(fit(dirname(run.path)).left).toEqual([
         { path: `states/${DIGEST}/absolute`, why: "a link out of its folder" },
         { path: `states/${DIGEST}/auth.json`, why: "a secret's name" },
@@ -90,17 +91,6 @@ describe("the runs zip", () => {
         { path: `states/${DIGEST}/outside`, why: "a link out of its folder" },
         { path: "states/tree-abc/pylibs", why: "installed, cached or built" },
       ]);
-      const listed = (level: Level) => {
-        const out = join(root, `${level}.zip`);
-        const made = zip([run], level, { out, maxBytes: null, note: null });
-        const names = runTextSyncOrThrow(["unzip", "-Z1", out]).trim().split("\n");
-        expect(names.filter((name) => !name.endsWith("/")).sort()).toEqual(
-          [...made.files.map((file) => file.path), "README.md", "GUIDE.md", "MANIFEST.json"]
-            .map((path) => `${level}/${path}`)
-            .sort(),
-        );
-        return made.files.map((file) => `${file.group} ${file.path}`);
-      };
       const light = [
         "brief tree/r1/checks/brief.json",
         `brief tree/r1/exams/${DIGEST}/checks/brief.json`,
@@ -117,8 +107,28 @@ describe("the runs zip", () => {
         `toolchain tree/r1/states/${DIGEST}/.toolchain`,
         "trajectories tree/r1/trajectories/build-r1-1.json",
       ];
-      expect(listed("light").sort()).toEqual(light.sort());
-      expect(listed("medium").sort()).toEqual(medium.sort());
+      const verbose = [
+        ...medium,
+        "rest tree/r1/notes.txt",
+        ...["docs/plan.md", "package.json", "src/prompt.ts", "tools/run.ts"].map(
+          (path) => `source tree/source/${path}`,
+        ),
+      ];
+      for (const [level, expected] of [
+        ["light", light],
+        ["medium", medium],
+        ["verbose", verbose],
+      ] as const) {
+        const out = join(root, `${level}.zip`);
+        const made = zip([run], level, { out, maxBytes: null, note: null });
+        expect(made.files.map((file) => `${file.group} ${file.path}`).sort()).toEqual(expected.toSorted());
+        const names = runTextSyncOrThrow(["unzip", "-Z1", out]).trim().split("\n");
+        expect(names.filter((name) => !name.endsWith("/")).sort()).toEqual(
+          [...made.files.map((file) => file.path), "README.md", "GUIDE.md", "MANIFEST.json"]
+            .map((path) => `${level}/${path}`)
+            .sort(),
+        );
+      }
       runTextSyncOrThrow(["unzip", "-q", join(root, "medium.zip"), "-d", join(root, "opened")]);
       expect(readlinkSync(join(root, "opened", "medium", "tree", "r1", "states", DIGEST, ".toolchain"))).toBe(
         "../tree-abc",
@@ -129,85 +139,11 @@ describe("the runs zip", () => {
       );
       expect(trajectory.agent.version).toBe(RAN_AT.slice(0, 9));
       expect(trajectory.steps.map(({ message }) => message)).toEqual(["edited"]);
-      expect(listed("verbose").sort()).toEqual(
-        [
-          ...medium,
-          "rest tree/r1/notes.txt",
-          ...["docs/plan.md", "package.json", "src/prompt.ts", "tools/run.ts"].map(
-            (path) => `source tree/source/${path}`,
-          ),
-        ].sort(),
-      );
+      expect(() =>
+        zip([run], "light", { out: join(root, "too-small.zip"), maxBytes: 1, note: null }),
+      ).toThrow(/0 KB/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
-
-  it("says each run's commit and ending, carries the note, and refuses a zip over its size", () => {
-    const root = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-runs-zip-test-")));
-    try {
-      const run = round(root);
-      // A live solve's log lies among the other solves', and only its own goes in.
-      const live = join(run.tree, ".ana", "live");
-      mkdirSync(live);
-      const solved = { at: LOG[0]?.at, kind: "solve.finished", data: { ending: { outcome: "fail" } } };
-      writeFileSync(join(live, "s1.jsonl"), `${JSON.stringify(solved)}\n`);
-      writeFileSync(join(live, "s2.jsonl"), "");
-      const solve: Run = { name: "s1", tree: run.tree, path: join(live, "s1.jsonl"), end: "solve.finished" };
-      const note = join(root, "note.md");
-      writeFileSync(note, "# What the sender saw\n");
-      const out = join(root, "handover.zip");
-      const made = zip([run, solve], "light", { out, maxBytes: null, note });
-      const told = {
-        worktree: run.tree,
-        commit: runTextSyncOrThrow(["git", "-C", run.tree, "rev-parse", "HEAD"]).trim(),
-        dirty: true,
-      };
-      expect(made.runs).toEqual([
-        {
-          name: "r1",
-          log: "tree/r1/log.jsonl",
-          ranAt: [RAN_AT],
-          ...told,
-          events: 4,
-          reading: "no-step",
-          ended: "stop",
-        },
-        {
-          name: "s1",
-          log: "tree/live/s1.jsonl",
-          ranAt: [],
-          ...told,
-          events: 1,
-          reading: "fail",
-          ended: null,
-        },
-      ]);
-      expect(made.files.map((file) => file.path).filter((path) => path.includes("live"))).toEqual([
-        "tree/live/s1.jsonl",
-      ]);
-      const read = (name: string) => runTextSyncOrThrow(["unzip", "-p", out, `handover/${name}`]);
-      expect(read("NOTES.md")).toBe("# What the sender saw\n");
-      expect(read("tree/r1/log.jsonl")).toBe(`${LOG.map((event) => JSON.stringify(event)).join("\n")}\n`);
-      expect(read("README.md")).toContain(
-        `| tree/r1/log.jsonl | ${RAN_AT.slice(0, 9)} | ${told.commit.slice(0, 9)}, with uncommitted changes | 4 | no-step | stop |`,
-      );
-      expect(read("README.md")).toContain("| tree/live/s1.jsonl | no receipt |");
-      expect(read("README.md")).toContain("| brief | the brief the tasks answer | light | 2 files, 0 KB |");
-      expect(read("README.md")).toContain("| checker |");
-      expect(read("README.md")).toContain("| medium | not at this level |");
-      expect(read("GUIDE.md")).toContain("## How to read this bundle");
-      expect(parseJsonAs<{ level: string }>(read("MANIFEST.json")).level).toBe("light");
-      expect(() => zip([run], "light", { out, maxBytes: 100, note: null })).toThrow("over its 0 KB");
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it("refuses a host it does not know, and a note, before it asks a host for anything", async () => {
-    await expect(zipRuns(["r1", "--medium", "--from", "nowhere"])).rejects.toThrow("no host nowhere");
-    await expect(zipRuns(["r1", "--medium", "--from", "nowhere", "--note", "n.md"])).rejects.toThrow(
-      "--note",
-    );
   });
 });

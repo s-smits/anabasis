@@ -6,7 +6,8 @@ whose licences require their notices to travel with the copies.
 ## anti-slop
 
 - Source: https://github.com/dmmulroy/anti-slop, first copied at commit 9b80d9a and updated to
-  commit c44ef22
+  commit 13909c9. The two commits after c44ef22 change only `require-readable-spacing` and its
+  vendored helper, which this copy leaves out, so no file of the copy changed with them.
 - Copies: `tools/oxlint/anti-slop/`. Local changes: the plugin registers through
   `eslintCompatPlugin`; the `no-unknown-parameters`, `require-readable-spacing`, `no-array-filter-map`,
   `no-reflect-apply`, `no-reflect-get` and Effect rules are left out; `no-module-mocking` also
@@ -14,6 +15,13 @@ whose licences require their notices to travel with the copies.
   `examples`; `rules/prefer-subpath-import.ts` and `shared/ast-node.ts`,
   `shared/representation-owner.ts` and `shared/subpath-alias.ts` are this repository's own; and
   the plugin's code carries line-scoped lint suppressions.
+- Open upstream pull requests: #61 (qualified type and JSX member names are borrowed names), #58
+  and #62 (an alias binds only its own parameters, and a finite nesting of one alias is not
+  recursion) and #52 (a named class expression binds its name only inside itself, `any` is a
+  broad mapped key, a generic alias in key position is applied) are carried here as local
+  changes, each with a fixture that failed before it, and may be dropped once upstream merges
+  them. #63 is not carried: #58 and #62 cover its generic alias substitution here. #51, #56 and
+  the Effect, spacing and filter-map pull requests concern rules this copy leaves out.
 
 ```text
 MIT License

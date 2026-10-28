@@ -11,7 +11,7 @@ Read the stack (`bun .claude/skills/stack-pr/scripts/stack.ts`) and every body o
 changes by what they move among the four factors (`AGENTS.md`, section 1), and take as many as the
 operator names, two when they name no number:
 
-- first, a change to what a model seat reads, may do or is held to: a prompt, a tool, a gate, the
+- first, a change to what a model seat reads, may do or is held to: a prompt, a tool, a task admission, the
   Referee's evidence;
 - then a change to what a comparison counts or refuses;
 - last, a reader, the tooling and the documents, which a replay or a test already settles.
@@ -58,7 +58,7 @@ A seat runs for minutes to hours. Use them:
 - Read the seat's events as they land against the predictions, and the source's arm beside them.
   `live-seat.ts watch --seat <prefix>` feeds them to a Monitor; `live-seat.ts due <prefixes> --hook`
   as a Stop hook brings back whatever landed while the turn was on other work, so a fix lower in
-  the stack never leaves a seat's gate or ruling unread (`cases/live-seat.md`).
+  the stack never leaves a seat's task admission or ruling unread (`cases/live-seat.md`).
 - A defect found in the pull request being simulated, or lower in the stack, is fixed in the
   commit that brought it, on the operator's word for the simulation; replay the pull requests above
   it and push each moved head with a lease (stack-pr, section 8). The seat goes on at the commit it

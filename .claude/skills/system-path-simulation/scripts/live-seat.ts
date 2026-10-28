@@ -6,7 +6,16 @@
  * prints the reading once the group is gone. `read` is that reading of any stretch of a log. `watch`
  * and `due` tell an agent what a seat wrote as it lands (`newsOf`): `watch` one line an event for a
  * line reader such as Claude Code's Monitor, `due` what is unread since it last looked, and with
- * `--hook` an exit of 2 that a Claude Code Stop hook turns into a turn the agent must take.
+ * `--hook` an exit of 2 that a Claude Code Stop hook turns into a turn the agent must take. `stop`
+ * ends seats whose question is answered, and `start` says so in its reading; a seat it names that is
+ * not seated yet is closed, so a seating script still waiting to seat it is refused. `compare` sets the
+ * readings of several seats side by side, each cut at the same count of task admissions where `--gates` names
+ * one, since two arms admit drafts at different paces. `pairs` reads several pairs of seats, a control and an
+ * arm each, each pair at the shorter arm's count of task admissions, and counts over the pairs of one Examiner
+ * model which way the arm moved, leaving out a pair thinner than `THIN` task admissions. `calls` counts the
+ * Examiner's tool calls and their failures over any logs, a seed's from its cut, each call once
+ * however many logs hold it. `prompt` prints what an Examiner session would be told, composed by a
+ * tree's own code with no model, so two arms' prompts are diffed before either is paid.
  *
  *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts start --tree <worktree> --name sim-<what>
  *     --out <prefix> --cap <dollars> --minutes <n> [--login N] [--mention <text>]... -- <command> <its flags>
@@ -14,6 +23,12 @@
  *     | --log <path> --from <event> [--mention <text>]... [--json]
  *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts watch --seat <prefix>
  *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts due <prefix>... [--hook]
+ *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts stop <prefix>...
+ *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts compare <prefix>... [--gates N]
+ *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts pairs <control>,<arm>... [--gates N]
+ *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts calls <log or campaign folder>...
+ *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts prompt --tree <worktree> --name sim-<what>
+ *     -- tools/d1b/examine.ts <its flags>
  *
  * Run `start` under `bun --env-file=<file>` and as one background command: it ends when the seat
  * does, so its end is the one notice to wait for, and the 30-minute monitor a watcher re-arms is not
@@ -27,23 +42,48 @@
  * (10757), the watcher summed `billed` by kinds of its own, the reader named one domain's programs,
  * and the second arm's spawner had to name Bun by its path and set `RUN_REMOTE=0`, since the `bun`
  * on the PATH sends a command to a remote host. Each fact here has one owner already: the login
- * (`loginEnv`), the dollars (`billedBetween`), a gate that read its draft (`measuredGate`) and held
- * it (`heldAtGate`), and the turns of the reference's valid answers at a gate (`gateAnswers`).
+ * (`loginEnv`), the dollars (`billedBetween`), a task admission that read its draft (`measuredGate`) and held
+ * it (`heldAtGate`), and the turns of the reference's valid answers at a task admission (`gateAnswers`).
+ *
+ * The prompt rewrite of 27 October (#471) ran two rounds of before-and-after arms and improvised the
+ * rest: a scratch script composed each arm's prompt, a second watcher counted both arms, a seat was
+ * ended by killing its group by hand, and the arms read at different paces were compared by eye.
+ *
+ * Eight rounds of Examiner tuning (26 to 28 October) read their pairs by hand: round 8's table of
+ * five pairs was set together from one `compare` a pair, the sign over pairs counted by eye, and GPT
+ * kept apart from Opus by memory. The census of tool calls that found the failed `read_example`
+ * calls and the declined first `finish` was a scratch script. A one-off read of a seed's log counted
+ * its source campaign's task admissions as the seat's, and a seed copied to another host with its links
+ * unresolved crashed its seat twice on a missing file. `pairs`, `calls`, `read --log` on a seed
+ * from its cut, and `start`'s refusal of a seed with a broken link answer those four.
+ *
+ * Round 8 was decided on its Opus pair at 00:45 on 28 October, and its arms were stopped; a seating
+ * script still waiting for load on another host seated a fresh pair of the round 20 minutes later.
+ * `stop` on a prefix nothing has seated now leaves its `.stopped` word, and `start` refuses a prefix
+ * that holds one. The stopped seats' `start` wrappers were seen alive minutes after their groups
+ * ended; `start` now wakes as its group ends rather than at its next tick, keeps its own pid, and
+ * `stop` ends it where it outlives its reading.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
+import { EXAMINE } from "#src/campaign/admission.ts";
 import { gateAnswers, measuredGate } from "#src/examiner/record.ts";
+import type { writing as Writing } from "#src/examiner/write.ts";
+import type { examineCommand as ExamineCommand } from "#tools/d1b/examine.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
-import { billedBetween, tracesIn } from "#src/kernel/trace.ts";
+import { ROOM } from "#src/kernel/compare.ts";
+import { type Call, billedBetween, tracesIn } from "#src/kernel/trace.ts";
 import { heldAtGate } from "#src/kernel/task.ts";
-import { existsSync, openSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { existsSync, openSync, readFileSync, readdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { gitText } from "#src/meta/git.ts";
-import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
+import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { type JsonObject, asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
-import { basename, join } from "#src/meta/path.ts";
+import { basename, dirname, join } from "#src/meta/path.ts";
+import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import { capturedExecPath, capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { processGroupExists, terminateAndReapProcessGroupId } from "#src/meta/subprocess.ts";
 import { SEED_FILE } from "#tools/runs/registry.ts";
+import { seedCut } from "#tools/runs/seed.ts";
 import { loginEnv } from "#tools/runs/manage.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 
@@ -53,11 +93,26 @@ const USAGE = `usage:
   live-seat.ts read --seat <prefix> | --log <path> --from <event> [--mention <text>]... [--json]
   live-seat.ts watch --seat <prefix>
   live-seat.ts due <prefix>... [--hook]
+  live-seat.ts stop <prefix>...
+  live-seat.ts compare <prefix>... [--gates N]
+  live-seat.ts pairs <control>,<arm>... [--gates N]
+  live-seat.ts calls <log or campaign folder>...
+  live-seat.ts prompt --tree <worktree> --name sim-<what> -- tools/d1b/examine.ts <its flags>
 
 start runs <command> with --name in <tree>, on a seed only, and prints the reading when it ends.
 watch prints one line for each event worth reading as it lands, until the seat's process is gone.
 due prints what landed in each seat since due last looked; with --hook it writes that to stderr and
-exits 2 when there is any, as a Claude Code Stop hook keeps the session from stopping.`;
+exits 2 when there is any, as a Claude Code Stop hook keeps the session from stopping.
+stop ends each running seat's process group, and its start then prints the reading; a prefix not
+seated yet is closed, and start refuses it.
+compare prints each seat's counts in a column, each cut after its first N task admissions with --gates.
+pairs reads each pair of seats, a control and an arm on the same seed cut under the same models, at
+the shorter arm's count of task admissions (or N), and counts for each Examiner model in how many pairs the arm
+did more, fewer or as many; a pair under 6 task admissions is marked thin and left out of that count.
+calls counts the Examiner's tool calls, failed calls by tool and kind, and finishes the session
+went on after, over every log named, a seed's from its cut, each call once however many logs hold it.
+prompt prints the system prompt, opening, tools and nudges the Examiner command would seat, and
+seats nothing.`;
 const OPTIONS = {
   tree: "abs",
   name: "text",
@@ -71,10 +126,22 @@ const OPTIONS = {
   mention: "list",
   json: "flag",
   hook: "flag",
+  gates: "int",
 } as const;
-/** How often the watch reads the log, and how often it says so when nothing new was gated. */
+/** How often the watch reads the log, and how often it says so when nothing new was admitted. */
 const TICK_MS = 30_000;
 const QUIET_TICKS = 10;
+/** The task admissions where the author's answer beat the reference's best by at least the objective gap floor. */
+const GAP = `gap >= ${String(ROOM * 100)}%`;
+/** A line of a failed call's text that names its error. */
+const ERROR_LINE = /error|denied|not found|no such|not permitted|timed out|refused|invalid|cannot|failed/iu;
+/** The flags that say who sits in an Examiner seat: a pair is read only within one of them. */
+const SEATED = ["--examiner", "--examiner-effort", "--reviewer", "--reviewer-effort"] as const;
+/** Fewer task admissions than this leave a pair thin: shown, and left out of the sign over pairs. Round 8's GPT
+ *  pairs reached 2 and 8 task admissions with nothing held on either side, against its Opus pair's 14. */
+const THIN = 6;
+/** How long `stop` gives a seat's `start` to print its reading once the group is gone. */
+const WRAPPER_GRACE_MS = 30_000;
 
 /** A log, and the event a seat began at in it. */
 interface Stretch {
@@ -89,21 +156,38 @@ interface Reading {
   readonly sessions: readonly string[];
   readonly ended: readonly string[];
   readonly proposed: number;
-  /** Each gate by what the reference's solves of its draft did, `every`, `some`, `none`, `none,
+  /** Each task admission by what the reference's solves of its draft did, `every`, `some`, `none`, `none,
    *  proved` (its author's answer passes), `package` (refused on its package before a solve) or `unread`. */
   readonly gates: Readonly<Record<string, number>>;
   readonly held: number;
-  /** The solves the reference ran at each gate that solved its draft: `ran`, or the solves it read
-   *  where a gate from before one solve at a time (#280) did not say. */
+  /** The solves the reference ran at each task admission that solved its draft: `ran`, or the solves it read
+   *  where a task admission from before one solve at a time (#280) did not say. */
   readonly ran: readonly number[];
-  /** The solver's own turns of each valid gate answer, least, median and most. */
+  /** The author's gain by the objective over the reference's best valid answer at each task admission that
+   *  measured both (`reference.gap`): a graded loss where held drafts are too few to read. */
+  readonly gaps: readonly number[];
+  /** The solver's own turns of each valid room-solve answer, least, median and most. */
   readonly turns: readonly [number, number, number] | null;
   readonly calls: Readonly<Record<string, number>>;
   readonly mentions: Readonly<Record<string, number>>;
 }
 
-/** What one gate's reading of its draft comes to, as one word. */
-function gateWord(data: JsonObject): string {
+/** How many of a reading's task admissions measured the author's answer at least the objective gap floor ahead. */
+const objectiveGaps = (gaps: readonly number[]) => gaps.filter((gap) => gap >= ROOM).length;
+
+/** What a pair is read on, each a count where the arm doing more is the Examiner doing better: drafts
+ *  held, task admissions whose draft the reference answered in some solves or in none while its author's answer
+ *  passed, the author ahead of the reference's best by the objective gap floor, and the median turns of the
+ *  reference's valid room-solve answers. Round 8 of 27 October read all four by hand. */
+const MEASURES: readonly (readonly [string, (reading: Reading) => number | null])[] = [
+  ["held", ({ held }) => held],
+  ["room on validity", ({ gates }) => (gates.some ?? 0) + (gates["none, proved"] ?? 0)],
+  [GAP, ({ gaps }) => objectiveGaps(gaps)],
+  ["median turns", ({ turns }) => turns?.[1] ?? null],
+];
+
+/** What one task admission's reading of its draft comes to, as one word. */
+function admissionWord(data: JsonObject): string {
   if (!measuredGate(data)) return "unread";
   const reference = asRecord(data.reference);
   const valid = reference?.valid;
@@ -114,23 +198,22 @@ function gateWord(data: JsonObject): string {
   return data.proved === true ? "none, proved" : "none";
 }
 
-const counted = (words: readonly string[]) =>
-  words.reduce<Record<string, number>>((into, word) => ({ ...into, [word]: (into[word] ?? 0) + 1 }), {});
-
 function spread(values: readonly number[]): readonly [number, number, number] | null {
   if (values.length === 0) return null;
   const sorted = values.toSorted((a, b) => a - b);
   return [sorted[0] ?? 0, sorted[Math.floor((sorted.length - 1) / 2)] ?? 0, sorted.at(-1) ?? 0];
 }
 
+/** The Examiner's tool calls among `events`, as the trace reader reads them. */
+const examCalls = (events: readonly LogEvent[]) =>
+  tracesIn(events).filter((each): each is Call => each.seat === "exam" && each.part === "call");
+
 /** What the log holds from event `from` on: the stretch one seat wrote, read by the owners above. */
 export function readingOf(events: readonly LogEvent[], from: number, mentions: readonly string[]): Reading {
   const stretch = events.slice(from);
   const of = (kind: string) => stretch.flatMap((event) => (event.kind === kind ? [event.data] : []));
-  const gates = of("task.gate");
-  const calls = tracesIn(stretch).flatMap((each) =>
-    each.seat === "exam" && each.part === "call" ? [each] : [],
-  );
+  const admissions = of("task.gate");
+  const calls = examCalls(stretch);
   const first = stretch[0]?.at;
   const last = stretch.at(-1)?.at;
   const turns = [...gateAnswers(events, from - 1).values()].flatMap((answers) =>
@@ -143,15 +226,19 @@ export function readingOf(events: readonly LogEvent[], from: number, mentions: r
     sessions: of("exam.started").flatMap(({ session }) => (isString(session) ? [session] : [])),
     ended: of("exam.finished").flatMap(({ ended }) => (isString(ended) ? [ended] : [])),
     proposed: of("task.proposed").length,
-    gates: counted(gates.map(gateWord)),
-    held: gates.filter(({ outcome }) => heldAtGate(outcome)).length,
-    ran: gates.flatMap(({ reference }) => {
+    gates: countBy(admissions, admissionWord),
+    held: admissions.filter(({ outcome }) => heldAtGate(outcome)).length,
+    ran: admissions.flatMap(({ reference }) => {
       const { ran, solves } = asRecord(reference) ?? {};
       const count = ran ?? solves;
       return isNumber(count) && count > 0 ? [count] : [];
     }),
     turns: spread(turns),
-    calls: counted(calls.map(({ tool }) => tool)),
+    gaps: admissions.flatMap(({ reference }) => {
+      const { gap } = asRecord(reference) ?? {};
+      return isNumber(gap) ? [gap] : [];
+    }),
+    calls: countBy(calls, ({ tool }) => tool),
     mentions: Object.fromEntries(
       mentions.map((text) => [
         text,
@@ -172,15 +259,15 @@ export function told(reading: Reading): string[] {
   return [
     `events ${String(reading.events[0])} to ${String(reading.events[1])}, ${reading.minutes.toFixed(0)} min, $${reading.billed.toFixed(2)} billed`,
     `sessions ${reading.sessions.join(", ") || "none"}; ended ${reading.ended.join(", ") || "none yet"}`,
-    `drafts proposed ${String(reading.proposed)}, gated ${listed(reading.gates)}; held ${String(reading.held)}`,
-    `the gate ran ${String(reading.ran.reduce((sum, count) => sum + count, 0))} solves over ${String(reading.ran.length)} drafts${reading.ran.length === 0 ? "" : `: ${reading.ran.join(", ")}`}`,
-    `the reference's valid gate answers took ${turns === null ? "no turns on record" : `${String(turns[0])} to ${String(turns[2])} turns, median ${String(turns[1])}`}`,
+    `drafts proposed ${String(reading.proposed)}, task admissions ${listed(reading.gates)}; held ${String(reading.held)}`,
+    `task admission ran ${String(reading.ran.reduce((sum, count) => sum + count, 0))} solves over ${String(reading.ran.length)} drafts${reading.ran.length === 0 ? "" : `: ${reading.ran.join(", ")}`}`,
+    `the reference's valid room-solve answers took ${turns === null ? "no turns on record" : `${String(turns[0])} to ${String(turns[2])} turns, median ${String(turns[1])}`}`,
     `calls ${listed(reading.calls)}`,
     ...Object.entries(reading.mentions).map(([text, count]) => `calls naming ${text}: ${String(count)}`),
   ];
 }
 
-/** The events of a stretch an agent should read as they land, one line each: a gate's word with the
+/** The events of a stretch an agent should read as they land, one line each: a task admission's word with the
  *  solves it ran, a Referee's ruling or refusal, and a session's end. */
 export function newsOf(events: readonly LogEvent[], from: number): string[] {
   const text = (value: unknown) => (isString(value) ? value : JSON.stringify(value));
@@ -188,7 +275,7 @@ export function newsOf(events: readonly LogEvent[], from: number): string[] {
     if (kind === "task.gate") {
       const ran = asRecord(data.reference)?.ran;
       return [
-        `gate ${text(data.outcome)}, ${gateWord(data)}${isNumber(ran) ? `, ${plural(ran, "solve")} ran` : ""}`,
+        `gate ${text(data.outcome)}, ${admissionWord(data)}${isNumber(ran) ? `, ${plural(ran, "solve")} ran` : ""}`,
       ];
     }
     if (kind === "referee.finding") return [`ruling ${text(data.ruling)} on ${text(data.solve)}`];
@@ -200,6 +287,48 @@ export function newsOf(events: readonly LogEvent[], from: number): string[] {
   });
 }
 
+/** Every Examiner call in `logs`, once each: a seed copies its source's events as they stand, so one
+ *  call is one time at one place in a log however many copies hold it. A `finish` the session went
+ *  on after was declined by the host, refused, or left drafts at the task admission. */
+export function censusOf(logs: readonly (readonly LogEvent[])[]) {
+  const calls = new Map<string, Call>();
+  const wentOn = new Set<string>();
+  const sessions = new Set<string>();
+  const key = ({ at, index }: { at: string; index: number }) => `${at} ${String(index)}`;
+  for (const events of logs) {
+    const own = examCalls(events);
+    for (const [at, call] of own.entries()) {
+      calls.set(key(call), call);
+      if (call.tool === "finish" && own.slice(at + 1).some(({ id }) => id === call.id)) wentOn.add(key(call));
+    }
+    for (const [index, event] of events.entries()) {
+      if (event.kind === "exam.started") sessions.add(key({ at: event.at, index }));
+    }
+  }
+  const all = [...calls.values()];
+  const failed = all.filter(({ isError }) => isError);
+  // The last line that reads as an error, above the turn and exit lines the host appends, or else the
+  // first, with its numbers and digests as N so that one error is one kind.
+  const kindOf = (text: string) => {
+    const lines = text.split("\n").filter((line) => line.trim() !== "");
+    return (lines.findLast((line) => ERROR_LINE.test(line)) ?? lines[0] ?? "").trim();
+  };
+  return {
+    logs: logs.length,
+    sessions: sessions.size,
+    calls: countBy(all, ({ tool }) => tool),
+    failed: countBy(failed, ({ tool }) => tool),
+    kinds: countBy(
+      failed,
+      ({ tool, text }) =>
+        `${tool}: ${kindOf(text)
+          .replaceAll(/[\da-f]{12,}|\d+/gu, "N")
+          .slice(0, 100)}`,
+    ),
+    finishes: [all.filter(({ tool }) => tool === "finish").length, wentOn.size] as const,
+  };
+}
+
 /** The events of a log as far as they read: a line torn while the seat writes waits a tick. */
 function eventsNow(log: string): LogEvent[] | null {
   try {
@@ -207,6 +336,31 @@ function eventsNow(log: string): LogEvent[] | null {
   } catch {
     return null;
   }
+}
+
+/** The log of a seed: rule 4 of the skill, a seat writes only to a seed, and the name and seed.json
+ *  are the guard. */
+function seedLog(tree: string, name: string, die: CommandArgs["die"]): string {
+  const folder = join(tree, ".ana", "d2", name);
+  if (!name.startsWith("sim-") || !existsSync(join(folder, SEED_FILE))) {
+    die(`${folder} is no seed: a seat runs on sim-<what> with ${SEED_FILE} beside its log`);
+  }
+  // A seed's exam and its kept harnesses' tool trees hold links; copied to another host as links,
+  // they point at nothing, and on 27 October two seats there crashed on the missing file.
+  const broken = ["checks", "exams", "states"].flatMap((part) =>
+    existsSync(join(folder, part))
+      ? readdirSync(join(folder, part), { recursive: true, withFileTypes: true }).flatMap((entry) => {
+          const path = join(entry.parentPath, entry.name);
+          return entry.isSymbolicLink() && !existsSync(path) ? [path] : [];
+        })
+      : [],
+  );
+  if (broken.length > 0) {
+    die(
+      `${folder} holds ${plural(broken.length, "link")} to nothing, ${broken[0] ?? ""} first: seed it on this host, or copy it with rsync -aL`,
+    );
+  }
+  return join(folder, LOG_FILE);
 }
 
 async function start(args: CommandArgs, command: readonly string[]): Promise<number> {
@@ -217,12 +371,9 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
   const minutes = args.int("minutes") ?? args.die("--minutes is required");
   if (!Number.isFinite(cap) || cap <= 0) args.die("--cap is a number of dollars above 0");
   if (command.length === 0) args.die("name the command after --");
-  const folder = join(tree, ".ana", "d2", name);
-  // Rule 4 of the skill: a seat writes only to a seed, and the name and seed.json are the guard.
-  if (!name.startsWith("sim-") || !existsSync(join(folder, SEED_FILE))) {
-    args.die(`${folder} is no seed: a seat runs on sim-<what> with ${SEED_FILE} beside its log`);
-  }
-  const log = join(folder, LOG_FILE);
+  const closed = existsSync(`${out}.stopped`) ? readFileSync(`${out}.stopped`, "utf8") : "";
+  if (closed !== "") args.die(`${out} was stopped (${closed}): its round is read; seat under another --out`);
+  const log = seedLog(tree, name, args.die);
   const from = read(log).length;
   const env = {
     ...loginEnv(runtimeProcess.env, args.value("login") ?? undefined),
@@ -236,11 +387,12 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
     stdout: openSync(`${out}.out`, "w"),
     stderr: openSync(`${out}.err`, "w"),
   });
+  writeFileSync(`${out}.stopped`, "");
   child.unref();
   const commit = gitText(tree, "rev-parse", "--short=9", "HEAD");
   writeFileSync(
     `${out}.json`,
-    `${capturedJsonStringify({ tree, name, commit, command, from, pid: child.pid, at: new Date().toISOString() }, null, 2)}\n`,
+    `${capturedJsonStringify({ tree, name, commit, command, from, pid: child.pid, wrapper: runtimeProcess.pid, at: new Date().toISOString() }, null, 2)}\n`,
   );
   console.log(`${name} at ${commit}: pid ${String(child.pid)}, from event ${String(from)}; ${out}.err`);
   const began = Date.now();
@@ -248,7 +400,11 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
   let quiet = 0;
   let stopped: string | null = null;
   while (processGroupExists(child.pid)) {
-    await Bun.sleep(TICK_MS);
+    // A second at a time, so a group ended from outside is read at once; `child.exited` of an
+    // unreferenced child did not resolve when `stop` ended its group.
+    for (let slept = 0; slept < TICK_MS && processGroupExists(child.pid); slept += 1000) {
+      await Bun.sleep(1000);
+    }
     const events = eventsNow(log);
     if (events === null) continue;
     const billed = billedBetween(events, from);
@@ -267,17 +423,26 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
       await terminateAndReapProcessGroupId(child.pid);
     }
   }
+  stopped ??= readFileSync(`${out}.stopped`, "utf8") || null;
   console.log(stopped === null ? `${name} ended by itself` : `${name} stopped at ${stopped}`);
   console.log(told(readingOf(read(log), from, args.list("mention"))).join("\n"));
   return stopped === null ? 0 : 1;
 }
 
+/** Where a seed's own events begin in its log, which opens with its source's; null outside a seed. */
+const cutOf = (log: string) => (existsSync(join(dirname(log), SEED_FILE)) ? seedCut(dirname(log)) : null);
+
 /** The log and the event a reading starts at: as `start` kept them beside a seat's output, or named. */
 function stretchOf(args: CommandArgs): Stretch {
   const seat = args.value("seat");
   if (seat === null) {
-    const from = args.int("from") ?? args.die("--from is required with --log: the event the seat began at");
-    return { log: args.required("log"), from };
+    const log = args.required("log");
+    // A seed's log begins with its source's events, whose task admissions are no seat's: read from its cut.
+    const from =
+      args.int("from") ??
+      cutOf(log) ??
+      args.die("--from is required with --log outside a seed: the event the seat began at");
+    return { log, from };
   }
   if (args.value("log") !== null || args.int("from") !== null) {
     args.die("name a seat, or a log and an event, not both");
@@ -285,12 +450,20 @@ function stretchOf(args: CommandArgs): Stretch {
   return keptSeat(seat, args.die);
 }
 
-/** Where a seat `start` kept began: its log, its first event and the process that leads its group. */
-function keptSeat(seat: string, die: CommandArgs["die"]): Stretch & { readonly pid: number | null } {
+/** What `start` kept of a seat: its log and first event, the process that leads its group, the
+ *  tree's commit and the command it seated. */
+function keptSeat(seat: string, die: CommandArgs["die"]) {
   const kept = asRecord(capturedJsonParse(readFileSync(`${seat}.json`, "utf8")));
-  const { tree, name, from, pid } = kept ?? {};
+  const { tree, name, from, pid, wrapper, commit, command } = kept ?? {};
   if (!isString(tree) || !isString(name) || !isNumber(from)) die(`${seat}.json is no seat start kept`);
-  return { log: join(tree, ".ana", "d2", name, LOG_FILE), from, pid: isNumber(pid) ? pid : null };
+  return {
+    log: join(tree, ".ana", "d2", name, LOG_FILE),
+    from,
+    pid: isNumber(pid) ? pid : null,
+    wrapper: isNumber(wrapper) ? wrapper : null,
+    commit: isString(commit) ? commit : "?",
+    command: Array.isArray(command) ? command.filter(isString) : [],
+  };
 }
 
 /** Each line worth reading as the seat writes it, then its reading once its process is gone: what a
@@ -332,6 +505,264 @@ function due(args: CommandArgs, seats: readonly string[]): number {
   return 2;
 }
 
+/** Ends seats this host started, as a cap would, and leaves each `start` the word that it was
+ *  stopped. A prefix nothing has seated yet is closed with the same word, which `start` refuses, so a
+ *  round read and stopped takes the seats its scripts still wait to seat with it. */
+async function stop(args: CommandArgs, seats: readonly string[]): Promise<number> {
+  if (seats.length === 0) args.die("name the seats' prefixes");
+  let missed = 0;
+  for (const seat of seats) {
+    if (!existsSync(`${seat}.json`)) {
+      writeFileSync(`${seat}.stopped`, "live-seat stop, before it was seated");
+      console.log(`${basename(seat)} closed before it was seated: start refuses it`);
+      continue;
+    }
+    const { pid, wrapper } = keptSeat(seat, args.die);
+    if (pid === null || !processGroupExists(pid)) {
+      console.error(
+        `${basename(seat)} has no process group running on this host: it ended, or runs elsewhere`,
+      );
+      missed += 1;
+      continue;
+    }
+    writeFileSync(`${seat}.stopped`, "live-seat stop");
+    await terminateAndReapProcessGroupId(pid);
+    // Its start reads the log once more and prints the reading; one that outlives that is ended.
+    const starter = wrapper ?? 0;
+    for (let waited = 0; waited < WRAPPER_GRACE_MS && processGroupExists(starter); waited += 1000) {
+      await Bun.sleep(1000);
+    }
+    const lingered = processGroupExists(starter);
+    if (lingered) runtimeProcess.kill(starter, "SIGTERM");
+    console.log(
+      `${basename(seat)} stopped${lingered ? `, and its start (pid ${String(starter)}) ended` : ""}`,
+    );
+  }
+  return missed === 0 ? 0 : 1;
+}
+
+/** Where each task admission from event `from` on stands in the log. */
+const admissionsFrom = (events: readonly LogEvent[], from: number) =>
+  events.flatMap((event, index) => (index >= from && event.kind === "task.gate" ? [index] : []));
+
+/** A log's events up to its `admissionLimit`th task admission from event `from` on, or all of them where it has fewer. */
+function cutAt(
+  events: readonly LogEvent[],
+  from: number,
+  admissionLimit: number | null,
+): readonly LogEvent[] {
+  const last = admissionLimit === null ? undefined : admissionsFrom(events, from)[admissionLimit - 1];
+  return last === undefined ? events : events.slice(0, last + 1);
+}
+
+/** Rows of cells as lines, each column as wide as its widest cell. */
+function columns(rows: readonly (readonly string[])[]): string[] {
+  const widths: number[] = [];
+  for (const row of rows) {
+    for (const [at, cell] of row.entries()) widths[at] = Math.max(widths[at] ?? 0, cell.length);
+  }
+  return rows.map((row) =>
+    row
+      .map((cell, at) => cell.padEnd((widths[at] ?? 0) + 2))
+      .join("")
+      .trimEnd(),
+  );
+}
+
+/** Each seat's counts in a column of its own: the arms of one round, read at one count of task admissions. */
+function compare(args: CommandArgs, seats: readonly string[]): number {
+  if (seats.length < 2) args.die("name two seats' prefixes or more");
+  const admissionLimit = args.int("gates");
+  const readings = seats.map((seat) => {
+    const { log, from, commit } = keptSeat(seat, args.die);
+    return { seat, commit, reading: readingOf(cutAt(read(log), from, admissionLimit), from, []) };
+  });
+  const words = [...new Set(readings.flatMap(({ reading }) => Object.keys(reading.gates)))].toSorted();
+  const each = (row: (reading: Reading) => number | string) =>
+    readings.map(({ reading }) => String(row(reading)));
+  const perHeld = (reading: Reading) =>
+    reading.held === 0 ? "none held" : `$${(reading.billed / reading.held).toFixed(2)}`;
+  const rows: [string, readonly string[]][] = [
+    ["seat", readings.map(({ seat }) => basename(seat))],
+    ["commit", readings.map(({ commit }) => commit)],
+    ["minutes", each((reading) => reading.minutes.toFixed(0))],
+    ["billed", each((reading) => `$${reading.billed.toFixed(2)}`)],
+    ["proposed", each((reading) => reading.proposed)],
+    ["gated", each((reading) => reading.ran.length)],
+    ...words.map((word): [string, readonly string[]] => [
+      `  ${word}`,
+      each((reading) => reading.gates[word] ?? 0),
+    ]),
+    ["held", each((reading) => reading.held)],
+    ["per held", each(perHeld)],
+    ["room solves", each((reading) => reading.ran.reduce((sum, count) => sum + count, 0))],
+    ["median turns", each((reading) => reading.turns?.[1] ?? "none")],
+    [GAP, each(({ gaps }) => `${String(objectiveGaps(gaps))} of ${String(gaps.length)}`)],
+    [
+      "median gap",
+      each(({ gaps }) => {
+        const mid = spread(gaps)?.[1];
+        return mid === undefined ? "none" : `${(mid * 100).toFixed(2)}%`;
+      }),
+    ],
+  ];
+  if (admissionLimit !== null) {
+    console.log(`each cut after its first ${plural(admissionLimit, "task admission")}`);
+  }
+  console.log(columns(rows.map(([label, cells]) => [label, ...cells])).join("\n"));
+  return 0;
+}
+
+/** The pair `spec` names, `<control>,<arm>`, each read at the shorter one's count of task admissions or at
+ *  `admissionLimit`. The two must be one seat on one position: the same Examiner and Referee at the same
+ *  efforts, from seeds cut at the same event of the same campaign, so the trees are the one variable. */
+function pairOf(spec: string, admissionLimit: number | null, die: CommandArgs["die"]) {
+  const [first, second, ...rest] = spec.split(",");
+  if (first === undefined || second === undefined || rest.length > 0) die(`${spec} is no <control>,<arm>`);
+  const seatAt = (seat: string) => {
+    const kept = keptSeat(seat, die);
+    const folder = dirname(kept.log);
+    const seed = existsSync(join(folder, SEED_FILE))
+      ? parseJsonAs<{ from: string; events: number }>(readFileSync(join(folder, SEED_FILE), "utf8"))
+      : null;
+    return {
+      ...kept,
+      seat: basename(seat),
+      events: read(kept.log),
+      who: SEATED.map((flag) => {
+        const at = kept.command.indexOf(flag);
+        return at === -1 ? "default" : (kept.command[at + 1] ?? "default");
+      }).join(" "),
+      cut: seed === null ? "no seed" : `${basename(seed.from)} at event ${String(seed.events)}`,
+    };
+  };
+  const control = seatAt(first);
+  const arm = seatAt(second);
+  if (control.who !== arm.who) die(`${spec}: the two seats differ in who sits (${control.who}; ${arm.who})`);
+  if (control.cut !== arm.cut) die(`${spec}: the two seeds differ (${control.cut}; ${arm.cut})`);
+  const admissionCount = ({ events, from }: typeof arm) => admissionsFrom(events, from).length;
+  const cut = Math.min(admissionLimit ?? Infinity, admissionCount(control), admissionCount(arm));
+  const readAt = ({ events, from }: typeof arm) => readingOf(cutAt(events, from, cut), from, []);
+  return {
+    name: `${control.seat},${arm.seat}`,
+    model: arm.who.split(" ").slice(0, 2).join(" "),
+    cut,
+    before: readAt(control),
+    after: readAt(arm),
+  };
+}
+
+/** Each pair at equal task admissions in a row, then for each Examiner model the sign over its pairs on each
+ *  measure, and what an admitted draft cost each side: GPT is read only against GPT, Opus against Opus. */
+function pairs(args: CommandArgs, specs: readonly string[]): number {
+  if (specs.length === 0) args.die("name each pair as <control>,<arm>");
+  const readPairs = specs.map((spec) => pairOf(spec, args.int("gates"), args.die));
+  const shown = (value: number | null) => (value === null ? "none" : String(value));
+  const perAdmission = (billed: number, admissions: number) =>
+    admissions === 0 ? "none" : `$${(billed / admissions).toFixed(2)}`;
+  const rows = readPairs.map(({ name, model, cut, before, after }) => [
+    name,
+    model,
+    cut < THIN ? `${String(cut)} thin` : String(cut),
+    ...MEASURES.map(([, of]) => `${shown(of(before))} / ${shown(of(after))}`),
+    `${perAdmission(before.billed, cut)} / ${perAdmission(after.billed, cut)}`,
+  ]);
+  console.log(
+    columns([
+      ["pair", "examiner", "task admissions", ...MEASURES.map(([label]) => label), "$ per task admission"],
+      ...rows,
+    ]).join("\n"),
+  );
+  for (const model of new Set(readPairs.map((pair) => pair.model))) {
+    const own = readPairs.filter((pair) => pair.model === model && pair.cut >= THIN);
+    const thin = readPairs.filter((pair) => pair.model === model && pair.cut < THIN).map(({ name }) => name);
+    const signs = MEASURES.map(([label, of]) => {
+      const moved = own.flatMap(({ before, after }) => {
+        const [was, is] = [of(before), of(after)];
+        return was === null || is === null ? [] : [Math.sign(is - was)];
+      });
+      const count = (sign: number) => String(moved.filter((each) => each === sign).length);
+      return [`  ${label}`, `more in ${count(1)}, fewer in ${count(-1)}, the same in ${count(0)}`];
+    });
+    const sum = (side: "before" | "after") => own.reduce((total, pair) => total + pair[side].billed, 0);
+    const admitted = own.reduce((total, { cut }) => total + cut, 0);
+    console.log(
+      `\n${model}, the arm against its control over ${plural(own.length, "pair")} of ${String(THIN)} task admissions or more:`,
+    );
+    const dollars = `${perAdmission(sum("before"), admitted)} against ${perAdmission(sum("after"), admitted)}`;
+    console.log(columns([...signs, ["  $ per task admission", dollars]]).join("\n"));
+    if (thin.length > 0) console.log(`  thin, not counted: ${thin.join(" ")}`);
+  }
+  return 0;
+}
+
+/** What the Examiner session of `command` would be told, composed by `tree`'s own code: the session
+ *  stands in for `examine`, prints its mode, and exits before any turn, task admission or event. A task admission is
+ *  composed as `try_task` whatever the seed's host may seat; the engines in its shell are left out. */
+async function prompt(args: CommandArgs, command: readonly string[]): Promise<number> {
+  const tree = args.required("tree");
+  const name = args.required("name");
+  const [script, ...flags] = command;
+  if (script !== EXAMINE) {
+    args.die(`prompt composes an Examiner session: -- ${EXAMINE}`);
+  }
+  const log = seedLog(tree, name, args.die);
+  const before = read(log).length;
+  // The tree's own modules, so a tree at another commit composes its own prompt.
+  // SAFETY: both paths are modules of an Anabasis tree, which export these two functions; a tree whose
+  // signatures differ fails the call below with the tree's own error.
+  const { examineCommand } = (await import(join(tree, script))) as { examineCommand: typeof ExamineCommand };
+  // SAFETY: as above.
+  const { writing } = (await import(join(tree, "src/examiner/write.ts"))) as { writing: typeof Writing };
+  runtimeProcess.chdir(tree);
+  await examineCommand([...flags, "--name", name], (request, wall) => {
+    const roomSolves = () => Promise.reject(new Error("a composed prompt seats no task admission"));
+    const mode = writing(
+      { ...request, probe: roomSolves },
+      undefined,
+      wall?.reference === undefined ? "unseen" : "in-home",
+    );
+    console.log(`=== SYSTEM\n${mode.system}\n\n=== OPENING\n${mode.opening}`);
+    for (const tool of mode.tools) console.log(`\n=== TOOL ${tool.name}\n${tool.description}`);
+    console.log(`\n=== NUDGE ${mode.nudge}\n=== FINISH ${mode.finish}\n=== DECLINED ${mode.declined}`);
+    if (read(log).length !== before) {
+      console.error(`${name}: composing wrote ${String(read(log).length - before)} events`);
+    }
+    return runtimeProcess.exit(0);
+  });
+  return 0;
+}
+
+/** The census of the logs or campaign folders named, each read where `logAcross` finds it. */
+async function census(args: CommandArgs, named: readonly string[]): Promise<number> {
+  if (named.length === 0) args.die("name the logs or campaign folders to count");
+  const logs: LogEvent[][] = [];
+  for (const each of named) {
+    const log = existsSync(join(each, LOG_FILE)) ? join(each, LOG_FILE) : await logAcross(each);
+    if (!existsSync(log)) args.die(`${log} does not exist`);
+    // A seed's history before its cut is its source's: on 28 October two seats read 537 and 521
+    // calls, of which they made 59 and 42.
+    logs.push(read(log).slice(cutOf(log) ?? 0));
+  }
+  const found = censusOf(logs);
+  const most = (counts: Readonly<Record<string, number>>) =>
+    Object.entries(counts).toSorted(([, a], [, b]) => b - a);
+  const total = Object.values(found.calls).reduce((sum, count) => sum + count, 0);
+  const lines = [
+    `${plural(total, "Examiner call")} in ${plural(found.sessions, "session")} over ${plural(found.logs, "log")}, each call once`,
+    ...most(found.calls).map(
+      ([tool, count]) => `  ${tool} ${String(count)}, failed ${String(found.failed[tool] ?? 0)}`,
+    ),
+    "failed calls by kind, the commonest first:",
+    ...most(found.kinds)
+      .slice(0, 30)
+      .map(([kind, count]) => `  ${String(count).padStart(4)}  ${kind}`),
+    `finish ${String(found.finishes[0])}, the session went on after ${String(found.finishes[1])}`,
+  ];
+  console.log(lines.join("\n"));
+  return 0;
+}
+
 async function readCommand(args: CommandArgs): Promise<number> {
   const stretch = stretchOf(args);
   const log = await logAcross(stretch.log);
@@ -347,13 +778,20 @@ async function main(args: CommandArgs): Promise<number> {
   if (verb === "start") return start(args, command);
   if (verb === "watch") return watch(args);
   if (verb === "due") return due(args, command);
+  if (verb === "stop") return stop(args, command);
+  if (verb === "compare") return compare(args, command);
+  if (verb === "pairs") return pairs(args, command);
+  if (verb === "calls") return census(args, command);
+  if (verb === "prompt") return prompt(args, command);
   if (verb === "read") {
     if (command.length > 0) args.die("read takes no command");
     return readCommand(args);
   }
-  return args.die(`the verb is start, read, watch or due, not ${verb ?? "none"}`);
+  return args.die(
+    `the verb is start, read, watch, due, stop, compare, pairs, calls or prompt, not ${verb ?? "none"}`,
+  );
 }
 
 if (import.meta.main) {
-  await runCommand({ name: "live-seat", usage: USAGE, options: OPTIONS, positionals: [1, 200] }, main);
+  await runCommand({ name: "live-seat", usage: USAGE, options: OPTIONS, positionals: [1, 1000] }, main);
 }

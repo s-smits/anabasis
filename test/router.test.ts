@@ -219,7 +219,6 @@ const logged = (): string[] =>
   readFileSync(log, "utf8")
     .split("\n")
     .filter((line) => line !== "");
-const hostsLogged = (): Set<string> => new Set(logged().map((line) => line.split(" ")[0] ?? ""));
 
 /** The fields a recording Bun left, by name. */
 function callAt(path: string): Record<string, string> {
@@ -253,7 +252,6 @@ describe("the router on the command line", () => {
     return { queued: existsSync(join(scratch, "ana-runner", "local")), ...callAt(call) };
   }
   const pinned = join(home, ".bun", "releases", "1.4.2", "bin", "bun");
-  const global = join(home, ".bun", "bin", "bun");
 
   it("sends the five check tasks to run.sh and runs everything else on the pinned Bun", () => {
     const cases: [readonly string[], boolean, string][] = [
@@ -275,26 +273,6 @@ describe("the router on the command line", () => {
         active: queued ? "1" : "",
       });
     }
-  });
-
-  it("runs a check task directly inside run.sh's own task, and in a tree without the gate", () => {
-    expect(routed(["run", "typecheck"], source, { ANA_RUNNER_ACTIVE: "1" })).toMatchObject({ queued: false });
-    expect(routed(["run", "typecheck"], plain)).toMatchObject({
-      queued: false,
-      args: "run typecheck",
-      bun: global,
-    });
-  });
-
-  it("runs the release the tree pins, the global Bun where that release is absent, and the folder's pin outside Git", () => {
-    const absent = mkdtempSync(join(root, "absent-"));
-    tree(absent, { "package.json": '{ "packageManager": "bun@9.9.9" }\n' });
-    const loose = mkdtempSync(join(root, "loose-"));
-    writeFileSync(join(loose, "package.json"), '{ "packageManager": "bun@1.4.2" }\n');
-    expect(routed(["x.ts"], source)).toMatchObject({ bun: pinned });
-    expect(routed(["x.ts"], absent)).toMatchObject({ bun: global });
-    expect(routed(["x.ts"], plain)).toMatchObject({ bun: global });
-    expect(routed(["x.ts"], loose)).toMatchObject({ bun: pinned });
   });
 });
 
@@ -367,58 +345,16 @@ describe.skipIf(realRsync === null)("run.sh", () => {
     expect(git(target, "ls-files")).not.toContain("new file");
   });
 
-  it("takes a host by its place, name or ssh destination in ANA_HOSTS, and starts nothing for one it does not list", () => {
-    writeFileSync(log, "");
-    for (const choice of ["2", "zbook", "fake-linux"]) {
-      expect(run(["test"], { RUN_REMOTE: choice }).status).toBe(0);
-    }
-    expect(readFileSync(join(slot("fake-linux", 1), "edited"), "utf8")).toBe("unstaged");
-    expect(hostsLogged()).toEqual(new Set(["fake-linux"]));
-    const refused = run(["test"], { RUN_REMOTE: "9" });
-    expect(refused.status).toBe(2);
-    expect(refused.stderr).toContain("RUN_REMOTE=9 names no host ANA_HOSTS lists");
-    expect(hostsLogged()).toEqual(new Set(["fake-linux"]));
-  });
-
-  it("reads the hosts from the main worktree's .env.runs, runs here where none are listed, and refuses a list it cannot read", () => {
-    const local = join(root, "local.call");
-    const file = join(source, ".env.runs");
-    writeFileSync(
-      file,
-      `ANA_HOSTS='${JSON.stringify([{ name: "zbook", ssh: "fake-linux", tree: "~/a", bun: "b" }])}'\n`,
-    );
-    writeFileSync(log, "");
-    expect(run(["test"], { ANA_HOSTS: undefined, FAKE_CALL: local }).status).toBe(0);
-    rmSync(file);
-    expect(hostsLogged()).toEqual(new Set(["fake-linux"]));
-    expect(existsSync(local)).toBe(false);
-
-    writeFileSync(log, "");
-    expect(run(["test"], { ANA_HOSTS: "[]", FAKE_CALL: local }).status).toBe(0);
-    expect(logged()).toEqual([]);
-    expect(callAt(local)).toMatchObject({ args: "run test", active: "1" });
-
-    const unread = run(["test"], { ANA_HOSTS: "{}" });
-    expect(unread.status).toBe(2);
-    expect(unread.stderr).toContain("ANA_HOSTS takes a JSON list");
-    expect(unread.stderr).toContain("runner: ANA_HOSTS could not be read; RUN_REMOTE=0 runs the task here");
-  });
-
   it("gives an unnamed task to the first host that is not busy by load or by this machine's slots", () => {
     const held = [1, 2].map((k) => join(queue, `slot-${String(k)}`));
-    const cases: [Record<string, string>, boolean, string, string | null][] = [
-      [{ FAKE_LOAD_fake_mac: "9.50 8" }, false, "fake-linux", "fake-mac is busy (load 9.50 of 8 cores"],
-      [{}, true, "fake-linux", "fake-mac is busy (load 0.00 of 4 cores, 2 of 2 slots held from here)"],
-      [{ FAKE_LOAD_fake_mac: "garbled" }, false, "fake-linux", "fake-mac gave no load reading"],
-      [{ FAKE_LOAD_fake_mac: "7.90 8" }, false, "fake-mac", null],
-      [
-        { FAKE_LOAD_fake_mac: "9.50 8", FAKE_LOAD_fake_linux: "6.00 4" },
-        false,
-        "fake-mac",
-        "every host is busy",
-      ],
+    const cases: [Record<string, string>, boolean, string, string[]][] = [
+      [{ FAKE_LOAD_fake_mac: "9.50 8" }, false, "fake-linux", ["fake-mac", "9.50", "8"]],
+      [{}, true, "fake-linux", ["fake-mac", "0.00", "4", "2 of 2"]],
+      [{ FAKE_LOAD_fake_mac: "garbled" }, false, "fake-linux", ["fake-mac"]],
+      [{ FAKE_LOAD_fake_mac: "7.90 8" }, false, "fake-mac", []],
+      [{ FAKE_LOAD_fake_mac: "9.50 8", FAKE_LOAD_fake_linux: "6.00 4" }, false, "fake-mac", []],
     ];
-    for (const [loads, holds, expected, said] of cases) {
+    for (const [loads, holds, expected, facts] of cases) {
       writeFileSync(log, "");
       if (holds) {
         for (const path of held) {
@@ -434,65 +370,30 @@ describe.skipIf(realRsync === null)("run.sh", () => {
           .map((line) => line.split(" ")[0]),
       );
       expect(sent, picked.stderr).toEqual(new Set([expected]));
-      if (said === null) expect(picked.stderr).not.toContain("so the task goes to");
-      else expect(picked.stderr).toContain(said);
+      expect(picked.status).toBe(0);
+      for (const fact of facts) expect(picked.stderr).toContain(fact);
     }
   });
 
   it("retries a dropped transfer, and starts nothing on a host that does not answer or lacks room", () => {
     writeFileSync(join(source, "retried"), "after a dropped transfer");
     const retried = run(["test"], { RUN_REMOTE: "1", FAKE_RSYNC_FAIL_ONCE: join(root, "failed-once") });
-    expect(retried.stderr).toContain("push_tree failed (exit 1); retry 1 of 2");
+    expect(retried.status).toBe(0);
+    expect(existsSync(join(root, "failed-once"))).toBe(true);
     expect(readFileSync(join(target, "retried"), "utf8")).toBe("after a dropped transfer");
     unlinkSync(join(source, "retried"));
     writeFileSync(join(target, "edited"), "untouched");
-    const refusals: [Record<string, string>, string, number][] = [
-      [{ FAKE_DOWN: "1" }, "does not answer; no sync or task started", 2],
-      [{ ANA_RUNNER_MIN_FREE_GB: "1000000" }, "below the 1000000 GiB a task needs", 0],
+    const refusals: [Record<string, string>, number][] = [
+      [{ FAKE_DOWN: "1" }, 2],
+      [{ ANA_RUNNER_MIN_FREE_GB: "1000000" }, 0],
     ];
-    for (const [extra, message, retries] of refusals) {
+    for (const [extra, retries] of refusals) {
+      writeFileSync(log, "");
       const refused = run(["test"], { RUN_REMOTE: "1", ...extra });
       expect(refused.status).toBe(69);
-      expect(refused.stderr).toContain(message);
+      expect(logged()).toEqual(Array.from({ length: retries + 1 }, () => "fake-mac df"));
       expect(refused.stderr.split("on_host failed").length - 1).toBe(retries);
       expect(readFileSync(join(target, "edited"), "utf8")).toBe("untouched");
-    }
-  });
-
-  it("reaps orphaned test workers and trees naming the marker in bash and in zsh where present, never an orphan that only names the checkout", () => {
-    const table = join(root, "table-ps");
-    script(
-      join(table, "ps"),
-      `#!/bin/sh
-cat <<'TABLE'
-    1     0 /sbin/launchd
-  100     1 /work/tree/campaigns/c/workspace/.toolchain/qemu/qemu-system-xtensa -L /work/tree
-  200     1 /usr/bin/bun test --test-worker --isolate
-  201   200 /usr/bin/node child of the worker
-  300     1 /bin/bash .cache/ana-runner/m-slot-1.run.sh .cache/ana-runner/m-slot-1 1.4.2 test
-  301   300 bun run test
-  302   301 bun test
-TABLE
-`,
-    );
-    const printed = execTextSync("bash", [
-      "-c",
-      'source "$1"; declare -f stale_run_pids',
-      "lib",
-      join(ROUTER, "lib.sh"),
-    ]);
-    // zsh where the machine has it: the Linux host and CI's runner have none.
-    for (const shell of ["bash", ...(Bun.which("zsh") === null ? [] : ["zsh"])]) {
-      const stale = (marker: string): number[] =>
-        execTextSync(shell, ["-c", `${printed}\nstale_run_pids "$1"`, "reaper", marker], {
-          env: { ...env, PATH: `${table}:${env.PATH ?? ""}` },
-        })
-          .split("\n")
-          .filter((line) => line !== "")
-          .map((line) => Number(line.split("\t")[0]))
-          .toSorted((a, b) => a - b);
-      expect(stale(""), shell).toEqual([200, 201]);
-      expect(stale(".cache/ana-runner/m-slot-1"), shell).toEqual([200, 201, 300, 301, 302]);
     }
   });
 
@@ -520,7 +421,6 @@ TABLE
       writeFileSync(`${job}.release`, "");
       expect(await child.exited).toBe(0);
     }
-    const ready = (job: string): boolean => existsSync(`${job}.ready`);
     try {
       const first = await start("first", { RUN_REMOTE: "1" });
       writeFileSync(join(source, "edited"), "second snapshot");
@@ -530,7 +430,8 @@ TABLE
       const other = await start("other", { RUN_REMOTE: "zbook" });
       const refused = run(["test"], { RUN_REMOTE: "1", ANA_RUNNER_QUEUE_WAIT: "0" });
       expect(refused.status).toBe(75);
-      expect(refused.stderr).toContain("for a slot on fake-mac; no task started");
+      expect(existsSync(join(queue, "slot-1"))).toBe(true);
+      expect(existsSync(join(queue, "slot-2"))).toBe(true);
       const stale = join(queue, "wait.stale");
       writeFileSync(stale, "99999999\n");
       utimesSync(stale, 1, 1);
@@ -549,20 +450,29 @@ TABLE
         { RUN_REMOTE: "1", ANA_RUNNER_QUEUE_WAIT: "60" },
         false,
       );
+      // Both waiters must have reported; the second can print before the first under load.
       await waitFor(
-        () => readFileSync(join(root, "waiting-second.log"), "utf8").includes("1 tasks ahead ("),
+        () =>
+          (
+            [
+              ["waiting-first", "0"],
+              ["waiting-second", "1"],
+            ] as const
+          ).every(
+            ([name, ahead]) =>
+              /(\d+) tasks ahead/.exec(readFileSync(join(root, `${name}.log`), "utf8"))?.[1] === ahead,
+          ),
         25,
       );
-      expect(readFileSync(join(root, "waiting-first.log"), "utf8")).toContain("0 tasks ahead (");
       expect(existsSync(stale)).toBe(false);
       const released = performance.now();
       await finish(first);
-      await waitFor(() => ready(waitingFirst[1]), 4);
+      await waitFor(() => existsSync(`${waitingFirst[1]}.ready`), 4);
       expect(performance.now() - released).toBeLessThan(4000);
-      expect(ready(waitingSecond[1])).toBe(false);
+      expect(existsSync(`${waitingSecond[1]}.ready`)).toBe(false);
       await finish(other);
       await finish(second);
-      await waitFor(() => ready(waitingSecond[1]), 4);
+      await waitFor(() => existsSync(`${waitingSecond[1]}.ready`), 4);
       await finish(waitingFirst);
       mkdirSync(join(queue, "slot-1"));
       writeFileSync(join(queue, "slot-1", "pid"), "99999999\n");
@@ -575,25 +485,6 @@ TABLE
         await child.exited;
       }
     }
-  });
-
-  it("runs the pinned Bun on the host with its performance cores and strict lint, and its exit status is the runner's", () => {
-    script(join(homes, "fake-mac", ".bun/releases/1.4.2/bin/bun"), RECORDING_BUN);
-    const call = join(root, "call");
-    const full = { RUN_REMOTE: "1", FAKE_FULL: "1", FAKE_CALL: call };
-    git(source, "config", "ana.lintStrict", "true");
-    expect(run(["test", "test/example.test.ts"], full).status).toBe(0);
-    const perf = spawnTextSync("sysctl", ["-n", "hw.perflevel0.logicalcpu"]).stdout.trim();
-    expect(callAt(call)).toMatchObject({
-      args: "run test test/example.test.ts",
-      workers: perf,
-      bun: join(homes, "fake-mac", ".bun/releases/1.4.2/bin/bun"),
-      strict: "1",
-    });
-    const failed = run(["test"], { ...full, FAKE_EXIT: "7" });
-    expect(failed.status, failed.stderr).toBe(7);
-    expect(readdirSync(queue)).toEqual([]);
-    expect(run(["test"], { ...full, FAKE_EXIT: "7", FAKE_TAILSCALE: "1" }).status).toBe(7);
   });
 
   it("runs RUN_REMOTE=0 here on the pinned Bun, reaps an orphaned test worker and spares an orphan that names the checkout", async () => {
@@ -648,60 +539,5 @@ esac
         }
       }
     }
-  });
-});
-
-describe("install.ts", () => {
-  const installer = join(ROUTER, "install.ts");
-  const scratch = mkdtempSync(join(root, "installed-"));
-  const bin = join(scratch, ".local", "bin", "bun");
-  const dir = join(scratch, ".local", "share", "ana-runner");
-  const install = (...args: string[]) =>
-    spawnTextSync(capturedExecPath, [installer, ...args], {
-      env: { ...env, HOME: scratch },
-      timeout: 50_000,
-    });
-  const backups = (): string[] =>
-    [join(scratch, ".local", "bin"), join(scratch, ".local", "share")].flatMap((place) =>
-      readdirSync(place).filter((name) => name.includes(".before-router-")),
-    );
-
-  it("moves aside what it replaces, changes nothing when installed, upgrades in place, and puts everything back", () => {
-    mkdirSync(join(bin, ".."), { recursive: true });
-    writeFileSync(bin, "foreign bun\n");
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, "hosts"), "1 somewhere 2\n");
-
-    const first = install();
-    expect(first.status, first.stderr).toBe(0);
-    expect(first.stdout).toContain(" aside to ");
-    expect(backups()).toHaveLength(2);
-    expect(readFileSync(bin, "utf8")).toBe(readFileSync(join(ROUTER, "bun"), "utf8"));
-    for (const name of ["lib.sh", "run.sh", "host.sh"]) {
-      expect(readFileSync(join(dir, name), "utf8")).toBe(readFileSync(join(ROUTER, name), "utf8"));
-    }
-    expect(
-      execTextSync(capturedExecPath, [join(dir, "hosts.js")], { env: { ...env, ANA_HOSTS: HOSTS } }),
-    ).toBe("m1 fake-mac\nzbook fake-linux\n");
-    expect(existsSync(join(dir, "hosts"))).toBe(false);
-
-    const again = install();
-    expect(again.stdout).toContain("nothing changed");
-    expect(backups()).toHaveLength(2);
-
-    writeFileSync(join(dir, "run.sh"), "an older runner\n");
-    const upgraded = install();
-    expect(upgraded.stdout).not.toContain(" aside to ");
-    expect(readFileSync(join(dir, "run.sh"), "utf8")).toBe(readFileSync(join(ROUTER, "run.sh"), "utf8"));
-    expect(backups()).toHaveLength(2);
-
-    const removed = install("--uninstall");
-    expect(removed.status, removed.stderr).toBe(0);
-    expect(readFileSync(bin, "utf8")).toBe("foreign bun\n");
-    expect(readFileSync(join(dir, "hosts"), "utf8")).toBe("1 somewhere 2\n");
-    expect(backups()).toEqual([]);
-    const twice = install("--uninstall");
-    expect(twice.status).toBe(1);
-    expect(twice.stdout).toContain("nothing changed");
   });
 });

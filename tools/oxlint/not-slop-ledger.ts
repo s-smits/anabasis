@@ -86,7 +86,7 @@ export interface Ledger {
   unread: string[];
 }
 
-const collapsed = (text: string): string => text.replace(/\s+/gu, " ").trim();
+const collapsed = (text: string): string => text.replaceAll(/\s+/gu, " ").trim();
 
 /** The places in one order whatever order a scan found them in, and whatever the host's locale:
  *  an id hashed in a locale's collation could differ between two hosts. */

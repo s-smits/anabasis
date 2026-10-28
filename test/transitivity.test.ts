@@ -7,6 +7,7 @@ import { asRecord } from "../src/meta/json-shape.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
 import { runSync } from "../src/meta/subprocess.ts";
 import { roundSolves } from "./helpers/logged-round.ts";
+import { present } from "./helpers/matchers.ts";
 
 it("reads two comparisons from one stream, each with its whole draw, and scores each with and without the bill", () => {
   const pair: Paired = {
@@ -108,7 +109,7 @@ it("reads settled wrong passes as failures and matches the settled report's tall
     { at: "2026-10-26T00:00:00Z", kind: "comparison.started", data: { ...data, tasks, retained: [] } },
     ...solves,
   );
-  const fixed = fixedIn(events, "r-1")!;
+  const fixed = present(fixedIn(events, "r-1"));
   const original = compared(events, fixed, new Map());
   expect(original.scored).toMatchObject({ wins: 0, losses: 0, ties: 6, p: 1 });
   events.push({

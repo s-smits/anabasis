@@ -2686,3 +2686,69 @@ Two fixes interacted: an autofixed `plain?.schema === …` on a `plainRecord` re
 `.githooks/pre-commit` now runs `biome format` and `bun run lint` over the staged `.ts`, `.tsx`,
 `.js` and `.mjs` files, through `ANA_LINT_PATHS` in `tools/runtime/lint.ts`, before the secret
 scan. The pre-push gate is unchanged; the hook is the same check one file early.
+
+## One hundred more built-in rules, 28 October
+
+A sweep of Oxlint's built-in rules that this tree did not register, each measured on the tree at
+the stack's head before it was turned on. 100 now run at `error`, and most found nothing there and
+stay as guards. Where one found sites they were fixed in the same change, by hand where an
+autofix changed a type or a meaning (`no-useless-undefined` dropped required `undefined`
+arguments: 25 type errors). The tree is at zero strict findings and zero type errors.
+
+What the rules found, with the real defect classes first: `no-promise-executor-return` (10, a
+returned value the promise never reads), `typescript/return-await` in the
+`error-handling-correctness-only` mode (a returned promise outside its `try`), `no-import-type-side-effects`
+(16, an `import { type A }` that still loads the module), `unicorn/no-array-for-each`,
+`prefer-string-replace-all`, `prefer-string-starts-ends-with`, `prefer-regexp-exec`,
+`prefer-includes`, `no-unnecessary-boolean-literal-compare` and `no-immediate-mutation`.
+
+Three were turned on, measured, and taken off again because the fix was churn:
+
+- `unicorn/no-array-sort`: 72 sites. 38 sorted an array built on the same line
+  (`[...set].sort()`, `Object.keys(x).sort()`), where `toSorted` copies twice and removes no hazard.
+  A sort of an array somebody else holds is still `typescript/require-array-sort-compare`'s and
+  review's to catch.
+- `unicorn/numeric-separators-style`: 41 sites of pure spelling, with no defect class behind it.
+- `eslint/no-loop-func`: 8 sites. Its fixes conflicted with `ana/prefer-find-over-loop` and
+  `ana/no-renaming-temporary`, and two needed an `oxlint-disable`. A rule that needs a disable at
+  two of eight sites and fights two others fails the admission test.
+
+One was loosened: `return-await` first ran in its default mode, which also removes `return await`
+outside a `try`. That changed 63 sites and costs the async stack frame at each. The lenient mode
+keeps the one case that is a defect, a missing `await` inside `try`/`catch`.
+
+One rule keeps a single exception beside its code: `unicorn/prefer-code-point` at the constant-time
+token compare in `packages/ui/src/server/api.ts`, which compares UTF-16 code units on purpose.
+
+Three were refused, because their fix breaks a rule already here, a type or a meaning:
+`unicorn/prefer-spread` (a string spread against `no-misused-spread`),
+`typescript/non-nullable-type-assertion-style` (against `no-non-null-assertion`),
+`unicorn/no-useless-undefined` (see above, and the 96 sites of the first ruling).
+
+`eslint/eqeqeq` runs with `"null": "ignore"`: its fix turns `== null` into `=== null`, which stops
+matching `undefined`.
+
+The anti-slop copy was brought to dmmulroy/anti-slop at 13909c9, and four of its open pull
+requests are carried as local changes with a fixture that failed first: qualified type names and
+JSX member names count as borrowed names in `no-shape-in-symbol-names`; an alias body sees its
+own parameters only and a finite nesting of one alias is not read as recursion; a named class
+expression binds its name only inside itself; `any` and a generic alias applied to `string` are
+broad mapped keys (`THIRD_PARTY_NOTICES.md`).
+
+### The tests and the skills, 28 October
+
+The `test/**` and `.claude/**` overrides first switched off six type-aware rules and
+`no-non-null-assertion`. Only `typescript/await-thenable` stays off in `test/**`, because Bun types
+`expect(...).rejects` as a plain value. Switching the rest on gave 197 findings. They had two causes that were no defects:
+
+- `tsconfig.json` did not include `.claude/`, so its files had `error` types and every call reported
+  as unsafe. Adding it removed those reports, and `bun check` now reads 425 files.
+- Bun types its asymmetric matchers (`expect.any`, `expect.stringContaining`, ...) as `any`. They now
+  go through `test/helpers/matchers.ts`, where the cast is written once, and `Array(n).fill(x)`,
+  which is `any[]`, became `copies(n, x)`.
+
+What was left was real: 55 `!` on a lookup the test had just arranged (now `present`, and `toolOf`
+for the Examiner's tools, which also shortened the calls), untyped `JSON.parse` (now `parseJsonAs`
+with the shape the test reads), 3 `Bun.argv[0]!` (now the `capturedExecPath` owner), dynamic
+imports of another worktree's modules (typed against this tree's, with a stated reason), and one
+nullable boolean in the promotion tuner.

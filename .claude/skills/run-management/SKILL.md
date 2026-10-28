@@ -1,6 +1,6 @@
 ---
 name: run-management
-description: "Start, continue, keep, pause, copy, watch and stop authorised Anabasis v2 campaigns through `bun run runs`: launch a campaign under a name, go on with one from its log on another login or commit, keep one going across logins until it ends on its own terms, pause one at a clean point, copy a stopped one to another worktree, move one to another host, read each run's status and each login's room, reach the other hosts, and stop one and release what it held. Use when the operator asks to start, launch, resume, continue, move, keep, pause, copy or stop a campaign or a run, which logins have room, how the runs stand on any host, whether a campaign is ready for its next move, or why a move was refused. Owns the run's life on the host; run-improvement-campaign reads the table, and whole-run-investigation reads what a run did."
+description: "Start, continue, keep, pause, copy, watch and stop authorised Anabasis v2 campaigns through `bun run runs`: launch a campaign under a name, go on with one from its log on another login or commit, keep one going across logins until it ends on its own terms, pause one at a clean point, copy a stopped one to another worktree, move one to another host, read each run's status and each login's capacity, reach the other hosts, and stop one and release what it held. Use when the operator asks to start, launch, resume, continue, move, keep, pause, copy or stop a campaign or a run, which logins have room, how the runs stand on any host, whether a campaign is ready for its next move, or why a move was refused. Owns the run's life on the host; run-improvement-campaign reads the table, and whole-run-investigation reads what a run did."
 ---
 
 # Run management
@@ -29,14 +29,14 @@ archived campaign; `copy <name> --to <worktree>` brings this machine's back to g
 | `pause <name> --after <event> [--yes]` | stops a campaign once its log gains one more of the event and nothing but its Builder's conversation is open | `manage.ts` |
 | `keep <name> [--logins 2,3,4] [--wait-hours 1] [--yes]` | keeps a campaign going: moves it off a long provider wait, and continues it after a death or an `environment` ending | `keep.ts` |
 | `copy <name> --to <worktree> [--yes]` | copies a stopped campaign whole to another worktree, from a worktree or the archive, and sets the source aside | `move.ts` |
-| `move <name> --to <host\|here> [--from <host\|here>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]` | pauses a campaign at a clean point, takes its folder whole to a new worktree on the other machine at the same commit, sets the source aside and continues it there on its kept flags | `move.ts` |
+| `move <name> --to <host> [--from <host>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]` | pauses a campaign at a clean point, takes its folder whole to a new worktree on the other machine at the same commit, sets the source aside and continues it there on its kept flags | `move.ts` |
 | `stop <name> ... [--yes]` | ends the process that writes each log, and its keeper, and releases what its unfinished solves and sessions held | `stop.ts` |
 | `status [--all]` | one row a run: the live ones and those whose log moved in a day, with tree, commit, login, open comparison, comparisons reported, promotions and ending, and on a closed row the hours until it leaves; under the rows, the closed runs it leaves out and the archive's newest campaigns; then each host `ANA_HOSTS` lists, all asked at once and each printed as it answers, within 30 s after cold preparation | `pulse.ts` |
 | `usage [N ...] [--json]` | each login's five-hour and weekly use and, without `--json`, how many runs and simulation seats are live on it on every host (`1/2 active`, out of the most `ANA_LOGIN_RUNS` lets it carry, such as `2,N:4`); without numbers or `--json`, also the pool forecast | `logins.ts` |
 | `active` | the runs and simulation seats live on each login by name, on this machine and every host, asking no provider | `logins.ts` |
 | `search <pattern> [--regex] [--ignore-case] [--host <name>]... [--here] [--in logs\|notes\|all] [--max <chars>]` | searches campaign folders, notes and docs on all hosts concurrently; private extra note roots come from `ANA_SEARCH_ROOTS` in `.env.runs`; reports each engine and spills complete matches to a temporary log when output is cut | `search.ts` |
-| `fetch <name> [--from <host>]` | a copy of a campaign another machine holds, to read here, into the archive as `data/runs/<host>/<name>/` | `move.ts` |
-| `retire [--days 1] [--yes]` | moves each campaign no process writes or keeps, idle for `--days`, into the archive whole (a seed, `seed.json` beside its log, is deleted instead, the archive's too), and deletes each worktree nothing has used for a week (two for one with uncommitted work); then the same on every host, whose archive comes here. A daily job runs it with `--yes`; nothing else in an archive is deleted | `retire.ts` |
+| `fetch [<name>] [--from <host>]` | a copy of a campaign another machine holds, to read here, into the archive as `data/runs/<host>/<name>/`; with no name, the records (log and receipts) of every campaign the other machines hold, which a timer on the central machine runs every ten minutes | `move.ts` |
+| `retire [--days 1] [--yes]` | moves each campaign no process writes or keeps, idle for `--days`, into the archive whole (a seed, `seed.json` beside its log, is deleted instead, the archive's too), and deletes each worktree nothing has used for a week (two for one with uncommitted work) and each local branch no worktree holds that nothing has used for a week, tagging a commit nothing else holds; then refreshes each other host's records here. A daily job on every host runs it with `--yes`; nothing else in an archive is deleted | `retire.ts` |
 | `on <host> <verb ...>`, `hosts [--all]` | any verb on another host over ssh; `status` on each other host alone. A verb that names a run goes to its host by itself | `hosts.ts` |
 | `pulse [<part of a name> ...] [--once] [--every 290] [--state <file>]` | what each run gained since the last look; state defaults to `.ana/runs-pulse.json` | `pulse.ts` |
 | `view <name>` | one campaign as its log reads, and the move the table names next | `view.ts` |
@@ -58,7 +58,7 @@ bun --env-file=<file> run runs fresh <pack> --host <host> ... --yes   # on anoth
 
 It reads the operator's prompt, `<pack>-prompt.txt` in `ANA_PROMPTS` (by default
 `anabasis-prompts` beside the main worktree), and refuses a pack with none: a prompt is the operator's
-to write. It names the run `<pack>-fresh-<model>[-<suffix>][-r<n>]` and its project `<pack>-fresh`,
+to write. It names the run `<pack>-fresh-<model>[-<suffix>]-<host>[-r<n>]` and its project `<pack>-fresh`,
 seats one model in all four seats (`--effort` a letter a seat of `lmhx`, by default `hhmm` for
 Opus, `xxhh` for Sonnet and `hhhh` for GPT and any other model), takes a budget of 800 dollars unless `--budget`,
 makes the worktree `anabasis-<name>` beside the main worktree, detached at `--at` (this
@@ -75,10 +75,12 @@ working. It then prefers a machine whose catalogue already holds a campaign of p
 `<pack>-fresh`, and then the fewest live campaigns and simulation seats. This machine's cap is `ANA_RUN_CAP`; each peer's is its `capacity` in
 `ANA_HOSTS`, both 2 where unset. A missing count or catalogue refuses placement. Ties follow
 configuration order, with this machine first. `--host here` selects this machine explicitly;
-`--host <host>` selects a peer and adds its name to the suffix, after `--as` where one is named.
+`--host <host>` selects a peer. Every name ends with its machine's: a peer's `ANA_HOSTS` name, or this machine's short hostname for a run placed here, after `--as` where one is named.
 An explicit host selects the destination; a remote receiver rechecks its cap before launching.
 Counts are observations, so launch
 sequentially; they reserve no slot against another launcher.
+A peer whose `ANA_HOSTS` entry lists `packs` is kept for them: `fresh` puts no other pack there
+and none of those packs on any other machine, whether it chooses or `--host` names the machine.
 
 A peer's controller is prepared automatically at `--at` or this checkout's commit: fetch, a
 detached worktree under Git's `ana-code/`, then a frozen install. Its configured checkout stays
@@ -137,10 +139,10 @@ remote branch holds. It then installs (`bun install --frozen-lockfile`), runs th
   `ANTHROPIC_API_KEY`: two providers, so a solver on one is another setting than on the other.
 - **What the operator's machines hold is environment, too.** `ANA_LOGINS` names the logins a run
   may take (`2,3,4`; every login the environment holds where unset), and `ANA_HOSTS` the other
-  hosts, a JSON list of `{name, ssh, tree, bun, envFiles, capacity}`. Copy `.env.runs.example` to
+  hosts, a JSON list of `{name, ssh, tree, bun, envFiles, capacity, packs}`. Copy `.env.runs.example` to
   `.env.runs`, which Git ignores; `.env.runs.example` stays tracked. Fill in your own and
   pass it with a second `--env-file`.
-- **One or two campaigns at a time on one host.** A solve's wall counts the clock. The command
+- **One or two campaigns at a time on one host.** A solve's deadline counts elapsed time. The command
   waits before each solve until the one-minute load is at or under the cores, or half an hour on,
   and says so once; `--loaded` starts it all the same, the operator's word that its times will not
   be compared.
@@ -162,9 +164,9 @@ pull-request branch may be rewritten; `bun run runs source <name>` names the tag
 A name is the campaign's folder, `.ana/d2/<name>/`, chosen once and never reused. It starts
 with a letter or digit, uses only letters, digits, `.`, `_` and `-`, has at most 128 characters
 and contains no `..` (`isSafePathSegment`). `fresh` makes it,
-`<pack>-fresh-<model>[-<suffix>][-r<n>]`. A suffix
-may be given with `--as`; a remote launch adds its host's configured name to it, so one pack
-sent to two hosts opens two names. A campaign
+`<pack>-fresh-<model>[-<suffix>]-<host>[-r<n>]`. A suffix
+may be given with `--as`; every launch adds its machine's name to it, so one pack sent to two hosts
+opens two names and a name says where it runs. A campaign
 continued keeps its name. The project (`--project`) groups campaigns for the operator. Write
 the name, the project and why into the prediction ledger before the launch, beside the prediction.
 
@@ -205,14 +207,14 @@ A keeper takes its logins from `--logins`, then `ANA_LOGINS`, then the numbered 
 environment (`allowedLogins`). It looks at the run once a minute and takes one of four turns
 (`turnOf`). While the process lives and its log ends on a provider wait with more than
 `--wait-hours` left until the reset, it stops the run and
-continues it on the login with room whose week resets soonest. Where the process is gone and the
+continues it on the login with capacity whose week resets soonest. Where the process is gone and the
 log holds no ending, or the ending `environment`, it continues on the same login where that
 login is recorded, its wait has expired and it is below its cap of live runs across the fleet
-(`atCap`), otherwise on one with room. Any other
+(`atCap`), otherwise on one with capacity. Any other
 ending is the campaign's own, and the keeper leaves. A run with no `claude/` seat bills no login
 and goes on without one, so no login's count holds it. A login it moved off is not taken again until
 the wait named for it is over; with no login left it says so once and waits. Three continues in a
-row that leave the log as it was end the keeper: something it cannot mend ends the run each time.
+row without an answered model turn from any seat end the keeper: something it cannot mend ends the run each time.
 
 Each restart uses `start` from `manage.ts`, at the current worktree's commit and with the same
 refusals as `runs continue`; it does not switch commits. With `--yes` the keeper runs by itself,
@@ -236,11 +238,12 @@ code it then runs.
 ## Move a campaign to another machine
 
 ```sh
-bun --env-file=.env.runs run runs move <name> --to <host> [--login N] --yes
-bun --env-file=.env.runs run runs move <name> --from <host> --to here [--login N] --yes
+bun --env-file=.env.runs run runs move <name> --from <host> --to <host> [--login N] --yes
 ```
 
-One end is this machine and the other a host `ANA_HOSTS` lists. The verb checks first that the
+Each end is a host `ANA_HOSTS` lists or this machine, named by its own short host name (`hostname
+-s`; `here` also names it) and the default `--from`; between two hosts the folder passes through
+this machine, since rsync takes one remote side. The verb checks first that the
 destination has no worktree `anabasis-<name>`, prepares its code, then pauses the run at its next `--after` event
 (`finished` by default), makes that worktree beside the destination's repository at the commit the
 source stands at, takes the folder over with rsync, checks the log's size, sets the source aside
@@ -298,7 +301,8 @@ Environment files stay on their own machine and relative names remain relative t
 checkout. A login shell supplies its tools; `ANA_HOSTS=[]` prevents recursive fan-out. `on` remains
 an explicit override. `hosts` shows peer statuses; `hosts --health` includes this machine and
 every peer in one reading. The shared `scriptOn` and
-`askedScript` in `tools/runs/hosts.ts` provide the same boundary to skill scripts.
+`askedScript` in `tools/runs/hosts.ts` provide the same boundary to skill scripts, and any script
+that parses through `.claude/skills/main/cli.ts` runs on a peer with `--host <name>`.
 
 `hosts --health` reports load against cores, performance cores where reported, the charger,
 disk free, sizes of run data, archive, controllers and other worktrees, Bun and controller
@@ -335,7 +339,7 @@ By hand, what a comparison needs first:
 | further held-out tasks | `bun tools/d1b/examine.ts ... --name <name> --session x-1` |
 
 For acceptance authority, see `AGENTS.md`, section 3 and section 8, rule 10.
-`--predict "<sentence>"` on a checkpoint or round started by hand puts on record what it should
+`--predict "<sentence>"` on a standalone comparison or round started by hand puts on record what it should
 read, before its first solve.
 
 ## Watch
@@ -367,7 +371,7 @@ finished, which only the ended process would have let go; a named run that is no
 released the same way, so a killed run is cleaned up by stopping it.
 
 A stop is abrupt: the run writes no ending. A campaign goes on from its log under the same name
-(`continue`), and the session the stop fell inside has spent its id. A checkpoint, or a round
+(`continue`), and the session the stop fell inside has spent its id. A standalone comparison, or a round
 after its `build.finished`, goes on under the same id with its terms; an Examiner session's id is
 spent wherever the stop fell, and the tasks it held out stay held out. Prefer `pause` or a word
 where a clean point can be waited for. Whether a run should be stopped is a reading

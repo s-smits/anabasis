@@ -1,17 +1,20 @@
-// Moving a campaign to another machine: the kept flags that name a path where the source's worktrees
-// sit name the destination's, and a move between two hosts, or to where it already is, is refused
-// before anything is asked of either. The folder left behind is set aside, in a tree that never set
-// one aside as in one that did.
-import { describe, expect, it } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
-import { tmpdir } from "../src/meta/os.ts";
+// Moving a campaign or a seed whole between hosts, with recovery paths after interrupted copies.
+import { afterAll, describe, expect, it } from "bun:test";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { hostname } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { asideOf, move, rehomed, setAside } from "../tools/runs/move.ts";
+import { move } from "../tools/runs/move.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 import { writeReceipt } from "../tools/runs/receipt.ts";
 
+const roots: string[] = [];
+afterAll(() => {
+  for (const root of roots) rmSync(root, { recursive: true, force: true });
+});
+
 function seedMove() {
   const made = fakeHosts();
+  roots.push(made.root);
   const folder = join(made.main, ".ana", "d2", "seed");
   mkdirSync(folder, { recursive: true });
   // No opening and no receipt, as a seed cut before the campaign's first launch.
@@ -32,17 +35,46 @@ function seedMove() {
 }
 
 describe("moving a campaign to another machine", () => {
-  it("moves a held seed whole without an opening or a launch receipt", () => {
-    const made = seedMove();
-    const result = made.move(["--hold"]);
-    expect(result.code).toBe(0);
-    expect(existsSync(made.folder)).toBe(false);
-    expect(readFileSync(join(made.into, "log.jsonl"), "utf8")).toBe("");
-    expect(readFileSync(join(made.into, "notes.txt"), "utf8")).toBe("keep the whole folder");
-    expect(made.recorded().filter(({ tool }) => tool === "rsync")).toHaveLength(1);
-    expect(made.recorded().some(({ tool, args }) => tool === "host-bun" && args.includes("continue"))).toBe(
-      false,
-    );
+  it("moves held seeds whole over local, remote and relayed routes", () => {
+    for (const route of ["local", "remote", "relay", "own"] as const) {
+      const made = seedMove();
+      const other = { ...made.host, name: "other", ssh: "fake-other" };
+      const routes = {
+        local: ["--to", made.host.name],
+        remote: ["--from", made.host.name, "--to", "here"],
+        relay: ["--from", made.host.name, "--to", other.name],
+        own: ["--from", hostname().split(".")[0] ?? "", "--to", made.host.name],
+      };
+      const flags = route === "remote" ? ["--hold", "--", "--project", "fixture"] : ["--hold"];
+      const result = made.move(flags, { ANA_HOSTS: JSON.stringify([made.host, other]) }, routes[route]);
+      expect(result.code).toBe(0);
+      expect(existsSync(made.folder)).toBe(false);
+      expect(readFileSync(join(made.into, "log.jsonl"), "utf8")).toBe("");
+      expect(readFileSync(join(made.into, "notes.txt"), "utf8")).toBe("keep the whole folder");
+      expect(made.recorded().some(({ tool, args }) => tool === "host-bun" && args.includes("continue"))).toBe(
+        false,
+      );
+      const copies = made
+        .recorded()
+        .filter(({ tool, args }) => tool === "rsync" && !args.includes("--exclude=/*"));
+      expect(copies).toHaveLength(route === "relay" ? 2 : 1);
+      if (route === "relay") {
+        expect(
+          copies
+            .map(({ args }) => args.slice(-2).map((end) => end.split(":")[0]))
+            .map(([from, to]) => [from === "fake-runner", to === "fake-other"]),
+        ).toEqual([
+          [true, false],
+          [false, true],
+        ]);
+      }
+      if (route === "remote") {
+        expect(result.out).toContain("--project fixture");
+        expect(made.recorded().some(({ tool, args }) => tool === "host-bun" && args.includes("-e"))).toBe(
+          false,
+        );
+      }
+    }
   });
 
   it("refuses an unheld seed with no continuation flags before copying or pausing", () => {
@@ -72,17 +104,6 @@ describe("moving a campaign to another machine", () => {
     expect(made.recorded().some(({ tool, args }) => tool === "host-bun" && args.includes("pause"))).toBe(
       false,
     );
-  });
-
-  it("holds a remote seed and accepts explicit flags without a receipt", () => {
-    const made = seedMove();
-    const flags = ["--project", "fixture"];
-    const result = made.move(["--hold", "--", ...flags], {}, ["--from", made.host.name, "--to", "here"]);
-    expect(result.code).toBe(0);
-    expect(existsSync(made.folder)).toBe(false);
-    expect(readFileSync(join(made.into, "notes.txt"), "utf8")).toBe("keep the whole folder");
-    expect(result.out).toContain(flags.join(" "));
-    expect(made.recorded().some(({ tool, args }) => tool === "host-bun" && args.includes("-e"))).toBe(false);
   });
 
   it("continues a seed on explicit flags without reading a missing receipt", () => {
@@ -119,7 +140,9 @@ describe("moving a campaign to another machine", () => {
     expect(result.out).toContain("--project kept-project");
     expect(existsSync(join(made.into, "launch-run-1.json"))).toBe(true);
   });
+});
 
+describe("recovering interrupted moves", () => {
   it("gives recovery paths after a failed copy and leaves both folders untouched on retry", () => {
     const made = seedMove();
     const failed = made.move(["--hold"], { FAKE_TRANSFER_FAIL: "1" });
@@ -147,51 +170,10 @@ describe("moving a campaign to another machine", () => {
     expect(made.recorded().filter(({ tool }) => tool === "rsync")).toHaveLength(1);
   });
 
-  it("names a kept path under the source's folder under the destination's, whole or after a flag's =", () => {
-    const flags = [
-      "--prompt-file",
-      "/Users/air/Developer/anabasis-prompts/buffer-prompt.txt",
-      "--bundle=/Users/air/Developer/pack",
-      "--project",
-      "buffer-fresh",
-    ];
-    expect(rehomed(flags, "/Users/air/Developer", "/home/stijn/src")).toEqual([
-      "--prompt-file",
-      "/home/stijn/src/anabasis-prompts/buffer-prompt.txt",
-      "--bundle=/home/stijn/src/pack",
-      "--project",
-      "buffer-fresh",
-    ]);
-  });
-
-  it("leaves a path that only begins with the same letters, and one elsewhere, as it was", () => {
-    const flags = [
-      "--prompt-file",
-      "/Users/air/Developer2/p.txt",
-      "--root=/opt/packs",
-      "/Users/air/Developer",
-    ];
-    expect(rehomed(flags, "/Users/air/Developer", "/home/stijn/src")).toEqual(flags);
-  });
-
-  it("refuses a move between two hosts, and one to where the campaign is, asking neither", async () => {
-    // Neither name is a host ANA_HOSTS lists: a refusal that read them would say so instead.
-    await expect(move(["c", "--from", "far", "--to", "near"])).rejects.toThrow(
-      "one end of a move is this machine",
-    );
-    await expect(move(["c", "--to", "here"])).rejects.toThrow("usage: bun run runs move");
-    await expect(move(["c"])).rejects.toThrow("usage: bun run runs move");
-  });
-
-  it("sets the folder left behind aside in a tree that never set one aside, and in one that did", () => {
-    const tree = mkdtempSync(join(tmpdir(), "ana-aside-"));
-    for (const name of ["first", "second"]) {
-      const folder = join(tree, ".ana", "d2", name);
-      mkdirSync(folder, { recursive: true });
-      writeFileSync(join(folder, "log.jsonl"), "");
-      const aside = asideOf(tree, name);
-      setAside(folder, aside);
-      expect([existsSync(folder), existsSync(join(aside, "log.jsonl"))]).toEqual([false, true]);
+  it("refuses a move to where the campaign is, asking no host", async () => {
+    const own = hostname().split(".")[0] ?? "";
+    for (const flags of [["--to", "here"], ["--to", own], ["--from", own, "--to", "here"], []]) {
+      await expect(move(["c", ...flags])).rejects.toThrow(/usage:/);
     }
   });
 });

@@ -2,9 +2,9 @@
  * A solve's ending: every solve ends in exactly one, and the log records which.
  *
  * A pass is an answer the verifier accepted. A fail is any other ending the solver owns, by kind:
- * the verifier rejected the submitted answer, the host's wall ended the solve, the model's context
- * ran out, the model's own turns ran out where the solve is given a number of them, the solve
- * stopped without submitting one, at the prompt cap or by giving up, or the harness's tools could
+ * the verifier rejected the submitted answer, the host's deadline ended the solve, the model's context
+ * ran out, the model turn limit was reached where the solve has one, the solve
+ * stopped without submitting one, at the prompt limit or by giving up, or the harness's tools could
  * not be bundled or listed, so it never began. A broken harness is the
  * harness's own fail: a non-result would be rerun into the same break and then dropped, and the
  * harness would leave the score with it. A context
@@ -68,14 +68,14 @@ interface LastTurn {
 
 /**
  * Time without a completed model turn or tool activity, with none of its tools running, at the
- * wall before it is read as the provider's. Nine solves went silent for 22 to 30 minutes
- * until the wall ended them, and were counted as the solver's fail (`wall-ended`): seven on GPT
+ * deadline before it is read as the provider's. Nine solves went silent for 22 to 30 minutes
+ * until the deadline ended them, and were counted as the solver's fail (`wall-ended`): seven on GPT
  * solves of two v0.5.4 runs ("Request was aborted"), and at 14:04Z on 26 October two solves of
- * buffer-fresh-opus-v071's comparison g-3, one on each side; two gate solves of an Examiner seat on
+ * buffer-fresh-opus-v071's comparison g-3, one on each side; two room solves of an Examiner seat on
  * the same machine, started that minute, heard nothing in the 21 minutes until the seat was stopped.
  * A stalled stream is the provider's failure (rule 7), and as a fail it hands the other side a win by
- * validity, or a draft room at the gate.
- * This threshold is a wall-time heuristic, not an upper bound on returning turns: fifteen
+ * validity, or a draft room through task admission.
+ * This threshold is an elapsed-time heuristic, not an upper bound on returning turns: fifteen
  * completed historical GPT turns took 14.6 to 22.3 minutes before their first tool began
  * (esp32-fresh-gpt-forkedPR223_v0_5_4). Their completions restart the clock; partial streams do not.
  */
@@ -118,7 +118,7 @@ export function providerFailed(last: LastTurn): boolean {
 }
 
 /**
- * How a solve that left no answer ended: the wall's, unless the model had been silent at it for
+ * How a solve that left no answer ended: the deadline's, unless the model had been silent at it for
  * `SILENT_SECONDS`, its last turn's (the provider's failure or the window's), its spent turns', or
  * no answer. The one reading of it, which `judge` (`src/solver/run.ts`) asks once an answer, a flag,
  * a crash and a broken harness are ruled out, and which any other runner of a solve asks of the
@@ -126,7 +126,7 @@ export function providerFailed(last: LastTurn): boolean {
  */
 export function unanswered(stopped: {
   readonly wallEnded: boolean;
-  /** How long the model had been silent, with no tool of its running, when the wall fell. */
+  /** How long the model had been silent, with no tool of its running, when the deadline was reached. */
   readonly silentSeconds: number;
   readonly turnsEnded: boolean;
   readonly last: LastTurn | undefined;

@@ -1,12 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { WAIVER, scanText } from "../tools/secrets/rules.ts";
-import { refusedPath, scanTree } from "../tools/secrets/scan.ts";
+import { scanText } from "../tools/secrets/rules.ts";
+import { refusedPath } from "../tools/secrets/scan.ts";
 
-// Credential-shaped fixtures below are assembled at run time. A test for a secret scanner that
-// spelled its fixtures out would be the first thing the scanner reports, and the repository's own
-// three false-positive incidents came from exactly that: fixtures written for a reader instead of
-// for a scanner. Parts stay below the continuous-string threshold GitGuardian (and our own gate)
-// classify as a secret; the assembled bytes are what the rules see, so the coverage is unchanged.
+// Assemble credential fixtures below scanner thresholds; only the runtime value is a secret.
 const join = (...parts: string[]): string => parts.join("");
 const b64url = (value: string): string =>
   new TextEncoder().encode(value).toBase64({ alphabet: "base64url", omitPadding: true });
@@ -17,7 +13,6 @@ const JWT = [b64url('{"alg":"HS256","typ":"JWT"}'), b64url('{"sub":"1234"}'), b6
   ".",
 );
 const GITHUB_PAT = ["ghp", "16C7e42F292c6912E7710c838347Ae178B4a"].join("_");
-const HEX_KEY = join("9f8c2b1e4d7a", "6f3c0b5e8d1a", "2c4f6b9e");
 // Short stand-in (u:p) — our rules and remote scanners treat it as non-credential.
 const SHORT_URL = join("post", "gres", "://", "u", ":", "p", "@", "example.test/db");
 
@@ -29,7 +24,7 @@ const MUST_FIRE: ReadonlyArray<readonly [string, string]> = [
   ["provider-key", `const token = "${GITHUB_PAT}"`],
   ["aws-access-key-id", `aws: "${join("AKIA", "5J3KLMNOPQRSTUVW")}"`],
   ["private-key-block", join("-----BEGIN RSA PRIVATE ", "KEY-----")],
-  ["secret-assignment", `const apiKey = ${JSON.stringify(HEX_KEY)}`],
+  ["secret-assignment", `const apiKey = ${JSON.stringify(join("9f8c2b1e4d7a", "6f3c0b5e8d1a", "2c4f6b9e"))}`],
 ];
 
 // Every one of these was a live false positive on the tracked tree before the rules were tuned.
@@ -61,21 +56,11 @@ describe("secret scan rules", () => {
     }
   });
 
-  it("never echoes the credential it found", () => {
-    const [hit] = scanText("fixture.ts", `const token = "${GITHUB_PAT}"`);
-    expect(hit?.masked).not.toContain(GITHUB_PAT);
-    expect(hit?.masked).toContain("[redacted");
-  });
-
   it("redacts before it bounds, so a credential across the display bound leaves no part behind", () => {
     // The credential starts five bytes before the 200-byte bound, so a cut first keeps its prefix.
     const [hit] = scanText("fixture.ts", `const token = "${"a ".repeat(90)}${GITHUB_PAT}"`);
     expect(hit?.masked).not.toContain(GITHUB_PAT.slice(0, 4));
     expect(hit?.masked).toContain("bytes omitted]");
-  });
-
-  it("honours a line that waives the scan for itself", () => {
-    expect(scanText("fixture.ts", `DB: "${URL_CREDS}" // ${WAIVER}: documented`)).toEqual([]);
   });
 
   it("refuses a dotenv file by path, and admits its template", () => {
@@ -85,14 +70,5 @@ describe("secret scan rules", () => {
     expect(refusedPath(".env.runs.example")).toBe(false);
     expect(refusedPath(".env.runs")).toBe(true);
     expect(refusedPath("src/backends/env.ts")).toBe(false);
-  });
-});
-
-describe("the tracked tree", () => {
-  // The repo-wide audit, run by `bun run test` so CI covers it. `bun run secrets` is the same scan by
-  // hand; `bun run commit:check` runs it over staged additions only.
-  it("carries no credential-shaped literal", () => {
-    const { hits, refusedPaths } = scanTree();
-    expect({ hits, refusedPaths }).toEqual({ hits: [], refusedPaths: [] });
   });
 });

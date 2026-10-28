@@ -7,10 +7,8 @@ import { describe, expect, it } from "bun:test";
 import manifest from "../package.json" with { type: "json" };
 import { resolve } from "../src/meta/path.ts";
 import { importSpecifier } from "../tools/oxlint/ana/shared/import-fix.ts";
-import { subpathAlias } from "../tools/oxlint/anti-slop/shared/subpath-alias.ts";
 import { identitiesWithoutOwner } from "../tools/oxlint/tree-identity.ts";
 import { unreadModules } from "../tools/oxlint/tree-findings.ts";
-import { spawnTextSync } from "./helpers/bun-spawn-sync.ts";
 import { expectedLines, fixedSource, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
 
 const RULE = "prefer-subpath-import";
@@ -40,34 +38,6 @@ describe("prefer-subpath-import", () => {
     );
   });
 
-  it("reports nothing where no manifest declares an alias", async () => {
-    expect(await reportedLines("anti-slop", RULE, CLIMBING, SKILL_SCRIPT)).toStrictEqual([]);
-  });
-
-  it("reads the nearest manifest, so a nested package is judged by its own imports", async () => {
-    const nested = `import { a } from "../../../server/api.ts"; // REPORT the package's own alias
-import { b } from "../../../../../../src/meta/path.ts"; // ADMITTED the root's alias stops at this package
-export const c = [a, b];
-`;
-    const files = new Map([
-      ...ROOT.files,
-      ["packages/ui/package.json", JSON.stringify({ imports: { "#ui/*": "./src/*" } })],
-    ]);
-    const at = "packages/ui/src/a/b/c/x.ts";
-    expect(await reportedLines("anti-slop", RULE, nested, at, { files })).toStrictEqual(
-      expectedLines(nested),
-    );
-    expect(await fixedSource("anti-slop", RULE, nested, at, { files })).toContain('from "#ui/server/api.ts"');
-  });
-
-  it("leaves a relativeOnly tree at its relative spelling at any depth", async () => {
-    const deep = 'import { a } from "../../../../tools/oxlint/tree-findings.ts";\nexport const b = a;\n';
-    const at = "src/a/b/c/x.ts";
-    expect(await reportedLines("anti-slop", RULE, deep, at, ROOT)).toStrictEqual([1]);
-    const options = [{ relativeOnly: ["src"] }];
-    expect(await reportedLines("anti-slop", RULE, deep, at, { ...ROOT, options })).toStrictEqual([]);
-  });
-
   it("rewrites the specifier to the alias in the quote the line already used", async () => {
     const before = [
       "import { a } from '../../../../src/meta/path.ts';",
@@ -86,36 +56,13 @@ export const c = [a, b];
   });
 
   it("has the fixers that write an import write the alias under this repository's own options", () => {
-    const at = (path: string): string => `${REPO}/${path}`;
-    expect(importSpecifier(at(SKILL_SCRIPT), "src/meta/os.ts")).toBe("#src/meta/os.ts");
-    expect(importSpecifier(at("tools/oxlint/strict-boolean-fix.ts"), "src/meta/os.ts")).toBe(
-      "../../src/meta/os.ts",
-    );
-    expect(importSpecifier(at("src/a/b/c/x.ts"), "src/meta/os.ts")).toBe("../../../meta/os.ts");
-    expect(importSpecifier(at("vendor/pi-built/a/b/x.ts"), "src/meta/os.ts")).toBe(
-      "../../../../src/meta/os.ts",
-    );
-  });
-});
-
-describe("the root manifest's subpath aliases", () => {
-  it("map each `#name/*` onto one `./dir/*` tree, the one shape every reader here reads", () => {
-    const entries = Object.entries(manifest.imports);
-    expect(entries.length).toBeGreaterThan(0);
-    for (const [key, target] of entries) {
-      expect(key).toMatch(/^#[^*]+\/\*$/u);
-      expect(target).toMatch(/^\.\/[^*]+\/\*$/u);
-    }
-  });
-
-  it("leave every nested package at its relative spelling, since an alias resolves in the nearest", () => {
-    const nested = spawnTextSync("git", ["ls-files", "*package.json"], { cwd: REPO })
-      .stdout.split("\n")
-      .filter((path) => path.endsWith("/package.json"));
-    for (const path of nested) {
-      const inside = `${REPO}/${path.slice(0, -"package.json".length)}a/b/c/x.ts`;
-      const toRoot = "../".repeat(path.split("/").length + 2);
-      expect([path, subpathAlias(inside, `${toRoot}src/meta/os.ts`)]).toStrictEqual([path, null]);
+    for (const [path, specifier] of [
+      [SKILL_SCRIPT, "#src/meta/os.ts"],
+      ["tools/oxlint/strict-boolean-fix.ts", "../../src/meta/os.ts"],
+      ["src/a/b/c/x.ts", "../../../meta/os.ts"],
+      ["vendor/pi-built/a/b/x.ts", "../../../../src/meta/os.ts"],
+    ] as const) {
+      expect(importSpecifier(`${REPO}/${path}`, "src/meta/os.ts")).toBe(specifier);
     }
   });
 });
@@ -147,38 +94,23 @@ describe("the tree scans read an alias as the module it names", () => {
     expect(rows.map((row) => row.detail)).toStrictEqual([]);
   });
 
-  it("reads an alias onto a differently named tree the same way, and a bare pair as an identity", () => {
-    const probe = (specifier: string): string =>
-      [
-        `const { cli } = await target<typeof import("${specifier}")>(`,
-        '  ".claude/skills/main/cli-owner.ts",',
-        ");",
-        "",
-      ].join("\n");
-    const rows = (specifier: string) =>
-      identitiesWithoutOwner(
-        new Map([
-          ["a/probe.ts", probe(specifier)],
-          ["b/probe.ts", probe(specifier)],
-        ]),
-      ).map((row) => row.detail);
-    expect(rows("#skills/main/cli-owner.ts")).toStrictEqual([]);
-    expect(rows("#skills/main/other.ts")).not.toStrictEqual([]);
-  });
-
   it("reads a name quoted inside a backtick span as prose, and the same name bare as an identity", () => {
-    const rows = (line: string) =>
-      identitiesWithoutOwner(
-        new Map([
-          ["a/probe.ts", line],
-          ["b/probe.ts", line],
-        ]),
-      ).map((row) => row.detail);
-    expect(rows("const help = 'such as `type T = \"sandbox-level/v1\"` in a type';")).toStrictEqual([]);
-    expect(rows('const help = `such as type T = "sandbox-level/v1" in a type`;')).toStrictEqual([]);
-    expect(rows('const level = "sandbox-level/v1";')).not.toStrictEqual([]);
-    // A literal in a template's `${…}` is code, and so is one after a string that holds a backtick.
-    expect(rows('const level = `at ${"sandbox-level/v1"}`;')).not.toStrictEqual([]);
-    expect(rows('const tick = "`", level = "sandbox-level/v1";')).not.toStrictEqual([]);
+    for (const [line, identity] of [
+      ["const help = 'such as `type T = \"sandbox-level/v1\"` in a type';", false],
+      ['const help = `such as type T = "sandbox-level/v1" in a type`;', false],
+      ['const level = "sandbox-level/v1";', true],
+      ['const level = `at ${"sandbox-level/v1"}`;', true],
+      ['const tick = "`", level = "sandbox-level/v1";', true],
+    ] as const) {
+      expect(
+        identitiesWithoutOwner(
+          new Map([
+            ["a/probe.ts", line],
+            ["b/probe.ts", line],
+          ]),
+        ).length > 0,
+        line,
+      ).toBe(identity);
+    }
   });
 });

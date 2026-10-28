@@ -8,8 +8,6 @@ import type { JsonObject } from "../src/meta/json-shape.ts";
 
 const at = "2026-10-09T00:00:00.000Z";
 const event = (kind: EventKind, data: JsonObject): LogEvent => ({ at, kind, data });
-const setting = (modelTurns: number) =>
-  event("campaign.setting", { solver: null, minutes: 120, turns: 24, modelTurns, tasks: null, target: 12 });
 
 describe("what a campaign runs by", () => {
   const opened = event("campaign.opened", {
@@ -53,29 +51,5 @@ describe("what a campaign runs by", () => {
       prompted: false,
       admits: [],
     });
-  });
-
-  it("is the defaults for a campaign opened before there was a record, and no total", () => {
-    const plan = planOf([setting(15), setting(8)], {
-      unprepared: true,
-      level: 0.2,
-      target: 9,
-      pastStop: "why",
-      practice: 3,
-    });
-    expect(plan).toEqual({
-      sessions: 2,
-      patience: 6,
-      unprepared: true,
-      practice: 3,
-      // The setting on record names twelve tasks to score, which stands over the caller's nine.
-      wanted: { target: 12, level: 0.2 },
-      pastStop: "why",
-      left: null,
-      prompted: false,
-      admits: [],
-    });
-    const old = setting(8);
-    expect(planOf([{ ...old, data: { ...old.data, tasks: ["t-1"] } }], ASKED).wanted.target).toBe(12);
   });
 });

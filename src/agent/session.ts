@@ -7,7 +7,8 @@
  * aborted when the loop returns (which closes a backend's own process: a Claude Code query stays
  * open until its signal fires), the home the model's process keeps its state in, the trace and the
  * compactions in the log, the crash, and the one sum of the spend the seat's end records. The seat
- * keeps what is its own: its tools, its prompt, its wall, its events and its ending's name.
+ * keeps what is its own: its tools, its prompt, its events and its ending's name, and how long its
+ * deadline runs and what pauses it, on the one timer `sessionClock` keeps.
  *
  * Until 21 October the trace and the spend lived in the solve's runner, which the Builder's and the
  * Examiner's sessions imported for them; until 22 October each of the four spelled the loop's
@@ -23,14 +24,14 @@
  * model, the same endings come within 3 to 7% of Claude Code's totals.
  */
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import {
-  type Api,
-  type AssistantMessage,
-  type Message,
-  type Model,
-  type Models,
-  type ThinkingLevel,
-  type Usage,
+import type {
+  Api,
+  AssistantMessage,
+  Message,
+  Model,
+  Models,
+  ThinkingLevel,
+  Usage,
 } from "@earendil-works/pi-ai";
 import { isRetryableAssistantError } from "@earendil-works/pi-ai/utils/retry";
 import {
@@ -51,9 +52,8 @@ import {
   type HookApi,
   type CommitPublication,
 } from "@earendil-works/pi-durable";
-import type { Context, JsonValue } from "@earendil-works/chord";
+import type { Context } from "@earendil-works/chord";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
-import type { TSchema } from "typebox";
 import { CLAUDE_COMPACTED, reportedCost } from "./backends/claude.ts";
 import { retryPolicy } from "./backends/models.ts";
 import { compactionPolicy, compactionTrace } from "./backends/compaction.ts";
@@ -61,6 +61,7 @@ import { append } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import { type Seat as SeatKind, traceKind, whose } from "../kernel/trace.ts";
 import { boundText } from "../meta/bounded-text.ts";
+import { Cancellation } from "../kernel/solve.ts";
 import { rmSync } from "../meta/filesystem.ts";
 import { isString, type JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
@@ -69,7 +70,7 @@ import { hostScratch } from "../wall/policy.ts";
 
 /** A tool as a seat registers one with pi-durable (`defineTool`): its result's `output` is what the
  *  model reads, and `control.terminate` asks that the run end after the round. */
-export type SeatTool = ToolRegistration<TSchema, JsonValue>;
+export type SeatTool = ToolRegistration;
 
 /** What a seat hands `sit`. */
 export interface Seat {
@@ -99,7 +100,7 @@ export interface Seat {
   /** Where the session's model turns are pushed as they end, metered and traced before their tools
    *  run, which the seat reads its count from while it runs. */
   readonly turns: AssistantMessage[];
-  /** The most model turns; none where absent. */
+  /** The model turn limit; none where absent. */
   readonly most?: number | undefined;
   /** Whether the seat's work is done: no model request follows the round, whatever else it called. */
   readonly over?: () => boolean;
@@ -111,7 +112,7 @@ export interface Seat {
   readonly onTool?: (phase: "start" | "end", callId: string, tool: string) => void;
   /** Awaited once the session's last round is over, before its signal closes the model's process. */
   readonly settle?: () => Promise<void>;
-  /** What ends the session from outside: its wall, a kill, a bound. */
+  /** What ends the session from outside: its deadline, a kill, a bound. */
   readonly stops: readonly (AbortSignal | undefined)[];
 }
 
@@ -474,6 +475,70 @@ function toolHooks(seat: Seat, sink: ReturnType<typeof traceSink> | undefined) {
           ended(call, { output: message.content, isError: message.isError });
         }
       }
+    },
+  };
+}
+
+/** A seat's own deadline, one timer that pauses while the host works (`within`): the Builder's while a
+ *  campaign action runs, the Examiner's while it awaits task admission. Overlapping waits share one
+ *  interval; the last to end arms the remaining allowance, unless the owner has closed it. Through
+ *  that interval an optional `look` runs at its start and every `every` milliseconds: with the
+ *  Examiner's clock paused, a budget a peer spent would otherwise wait for the gate's solves to end.
+ *  Until 28 October the Builder and the Examiner each kept a copy, and the Builder's neither
+ *  nested nor named its cancellation. */
+export function sessionClock(
+  began: number,
+  seconds: number,
+  look?: { readonly every: number; readonly run: () => void },
+) {
+  const deadline = new AbortController();
+  let aside = 0;
+  let since = 0;
+  let depth = 0;
+  let closed = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let looking: ReturnType<typeof setInterval> | undefined;
+  const hostMilliseconds = () => aside + (depth === 0 ? 0 : performance.now() - since);
+  const ownSeconds = () => (performance.now() - began - hostMilliseconds()) / 1000;
+  const arm = () => {
+    clearTimeout(timer);
+    if (closed || deadline.signal.aborted) return;
+    timer = setTimeout(
+      () => deadline.abort(new Cancellation("session-wall")),
+      Math.max(0, (seconds - ownSeconds()) * 1000),
+    );
+  };
+  arm();
+  return {
+    began,
+    signal: deadline.signal,
+    seconds: ownSeconds,
+    hostSeconds: () => hostMilliseconds() / 1000,
+    within: async <T>(action: () => Promise<T>): Promise<T> => {
+      if (depth === 0) {
+        if (ownSeconds() >= seconds) deadline.abort(new Cancellation("session-wall"));
+        clearTimeout(timer);
+        since = performance.now();
+        if (look !== undefined) {
+          look.run();
+          looking = setInterval(look.run, look.every);
+        }
+      }
+      depth += 1;
+      try {
+        return await action();
+      } finally {
+        depth -= 1;
+        if (depth === 0) {
+          clearInterval(looking);
+          aside += performance.now() - since;
+          arm();
+        }
+      }
+    },
+    close: () => {
+      closed = true;
+      clearTimeout(timer);
     },
   };
 }

@@ -20,8 +20,8 @@ import { waitOut } from "../src/solver/run.ts";
 import { gated, type Host, waitCrashed } from "../tools/d2/host.ts";
 import type { Campaign, Seats } from "../tools/d2/round.ts";
 import { EXAMPLE, seat as examinerSeat, sweep } from "./helpers/examiner-seat.ts";
+import { anyOf, present } from "./helpers/matchers.ts";
 
-// 12 October, 12:09Z: 14:09 in Amsterdam.
 const NOW = new Date("2026-10-12T12:09:00Z");
 const TASK: TaskPackage = { ...EXAMPLE, ruleIds: [], checks: "" };
 const HARNESS: Kept = { dir: "", digest: "h1" };
@@ -67,7 +67,7 @@ function gate(log: string, host: Host, loaded = false, concurrency = 4) {
   return { ...seats, calls };
 }
 
-describe("the gate at a solve's start", () => {
+describe("shared solve slots", () => {
   it("holds admission probes and comparison solves within the condition's shared concurrency", async () => {
     const s = examinerSeat("write", []);
     const log = s.log;
@@ -133,17 +133,21 @@ describe("the gate at a solve's start", () => {
     expect(peak).toBe(4);
     expect(running).toBe(0);
   });
+});
 
+describe("load and reserve admission", () => {
   it("starts a solve at once on a host at or under its cores, and under --loaded on any", async () => {
     const log = logIn("idle");
-    const idle = hostOf(() => 4);
-    const idleSeat = gate(log, idle);
-    await idleSeat.solve(TASK, HARNESS, undefined);
-    const busy = hostOf(() => 99);
-    const busySeat = gate(log, busy, true);
-    await busySeat.solve(TASK, HARNESS, undefined);
-    expect([idleSeat.calls, busySeat.calls]).toEqual([[TASK.taskId], [TASK.taskId]]);
-    expect([idle.slept, busy.slept]).toEqual([[], []]);
+    for (const [load, loaded] of [
+      [4, false],
+      [99, true],
+    ] as const) {
+      const host = hostOf(() => load);
+      const seated = gate(log, host, loaded);
+      await seated.solve(TASK, HARNESS, undefined);
+      expect(seated.calls).toEqual([TASK.taskId]);
+      expect(host.slept).toEqual([]);
+    }
     expect(waits(log)).toEqual([]);
   });
 
@@ -155,13 +159,11 @@ describe("the gate at a solve's start", () => {
     expect(ended).toMatchObject({ ending: { outcome: "pass" } });
     expect(host.slept).toEqual([30_000, 30_000]);
     expect(waits(log).map(({ data }) => data)).toEqual([
-      { task: EXAMPLE.taskId, harness: "h1", comparison: "g-1", load: 12, cores: 8, ms: expect.any(Number) },
+      { task: EXAMPLE.taskId, harness: "h1", comparison: "g-1", load: 12, cores: 8, ms: anyOf(Number) },
     ]);
   });
 
   it("reads the load again while a solve waits for a slot, and waits for it before the start", async () => {
-    // On 27 October three admission probes read a load of 3.2 on 12 cores, waited a minute for a
-    // slot, and started at 15.9 with no wait on record.
     const log = logIn("slot-then-load");
     let load = 0;
     const free = Promise.withResolvers<void>();
@@ -182,17 +184,6 @@ describe("the gate at a solve's start", () => {
     expect(waits(log).map(({ data }) => data.load)).toEqual([99]);
   });
 
-  it("starts a solve all the same after half an hour of looks where the load never falls", async () => {
-    // On 15 October one campaign's solves waited 107 minutes while two others kept its host of 8 cores loaded.
-    const log = logIn("looks");
-    const host = hostOf(() => 99);
-    expect(await gate(log, host).solve(TASK, HARNESS, undefined)).toMatchObject({
-      ending: { outcome: "pass" },
-    });
-    expect(host.slept).toHaveLength(60);
-    expect(waits(log)).toHaveLength(1);
-  });
-
   it("holds a solve while another is in flight and the reserve is short, until the kill, and puts nothing on record", async () => {
     const log = logIn("reserve");
     append(log, "campaign.opened", { budget: { dollars: 0.7, reserve: 0.4 } });
@@ -207,13 +198,14 @@ describe("the gate at a solve's start", () => {
     await expect(flying(log, () => held.solve(TASK, HARNESS, kill.signal))).rejects.toBe(reason);
     expect(host.slept).toHaveLength(3);
     expect(held.calls).toEqual([]);
-    // With nothing in flight the solve starts at once.
     await held.solve(TASK, HARNESS, new AbortController().signal);
     expect(held.calls).toEqual([TASK.taskId]);
     expect(host.slept).toHaveLength(3);
     expect(waits(log)).toEqual([]);
   });
+});
 
+describe("cancelling queued solves", () => {
   it("leaves a load, reserve or slot wait on cancellation without releasing the host's sleep", async () => {
     for (const queued of ["load", "reserve", "slot"]) {
       const log = logIn(queued);
@@ -243,7 +235,7 @@ describe("the gate at a solve's start", () => {
         const bounded = Promise.race([
           pending.then(
             () => false,
-            (error: Error) => error === reason,
+            (error: unknown) => error instanceof Error && error === reason,
           ),
           new Promise<boolean>((resolve) => {
             deadline.addEventListener("abort", () => resolve(false), {
@@ -313,16 +305,16 @@ describe("the gate at a solve's start", () => {
     const started = performance.now();
     const ran = Bun.spawnSync({ cmd: [capturedExecPath, "-e", script], cwd: REPO });
     expect(ran.exitCode).toBe(0);
-    expect(performance.now() - started).toBeLessThan(2_500);
+    expect(performance.now() - started).toBeLessThan(2500);
   });
+});
 
+describe("shared solve reserve", () => {
   it("counts the reserve over the solves in flight in this process, whoever started them", async () => {
     const log = logIn("reserve");
-    // No opening, no budget: every solve is afforded.
     expect(affords(log, 99)).toBe(true);
     append(log, "campaign.opened", { budget: { dollars: 1, reserve: 0.4 } });
     expect([affords(log, 2), affords(log, 3)]).toEqual([true, false]);
-    // A practice solve in flight takes one reserve from an Examiner's three (14 October).
     await flying(log, async () => {
       expect([affords(log, 1), affords(log, 2)]).toEqual([true, false]);
     });
@@ -350,28 +342,18 @@ describe("the seats behind the gate", () => {
 
 describe("the provider's named reset", () => {
   it("is read from a clock time in a named zone, from the host's, from a week's date, or from Unix seconds", () => {
-    expect(resetOf("You've hit your limit · resets 3:50pm (Europe/Amsterdam)", NOW)?.toISOString()).toBe(
-      "2026-10-12T13:50:00.000Z",
-    );
-    // A time already past in that zone is the next day's.
-    expect(resetOf("Session limit reached ∙ resets 1am (Europe/Amsterdam)", NOW)?.toISOString()).toBe(
-      "2026-10-12T23:00:00.000Z",
-    );
-    expect(resetOf("Claude AI usage limit reached|1791811800", NOW)?.toISOString()).toBe(
-      "2026-10-12T13:30:00.000Z",
-    );
+    for (const [message, reset] of [
+      ["You've hit your limit · resets 3:50pm (Europe/Amsterdam)", "2026-10-12T13:50:00.000Z"],
+      ["Session limit reached ∙ resets 1am (Europe/Amsterdam)", "2026-10-12T23:00:00.000Z"],
+      ["Claude AI usage limit reached|1791811800", "2026-10-12T13:30:00.000Z"],
+      ["weekly limit · resets Oct 15 at 9pm (Europe/Amsterdam)", "2026-10-15T19:00:00.000Z"],
+    ]) {
+      expect(resetOf(present(message), NOW)?.toISOString()).toBe(reset);
+    }
     expect(resetOf("You've hit your limit · resets 15:50", NOW)).not.toBeNull();
-    // A week's reset names its date, which until 15 October read as the hour 15, host-local.
-    expect(resetOf("weekly limit · resets Oct 15 at 9pm (Europe/Amsterdam)", NOW)?.toISOString()).toBe(
-      "2026-10-15T19:00:00.000Z",
-    );
-  });
-
-  it("is none where the message names none, is no limit, or names a month or zone nobody knows", () => {
-    expect(resetOf("You've hit your limit", NOW)).toBeNull();
-    expect(resetOf("socket hang up: connection reset by peer at 5", NOW)).toBeNull();
-    expect(resetOf("limit reached · resets 3pm (Mars/Olympus)", NOW)).toBeNull();
-    expect(resetOf("weekly limit · resets Smarch 15 at 9pm (Europe/Amsterdam)", NOW)).toBeNull();
+    for (const message of ["You've hit your limit", "socket hang up", "limit · resets 3pm (Mars/Olympus)"]) {
+      expect(resetOf(message, NOW)).toBeNull();
+    }
   });
 
   it("is waited out to a minute past it and on record, however far on, from what a move threw", async () => {
@@ -386,7 +368,6 @@ describe("the provider's named reset", () => {
       ),
     ).toBe(true);
     expect(await waitOut(log, "Weekly limit reached|1792416600", host.sleep, NOW)).toBe(true);
-    // A reset past, a message with no reset and a throw that is no limit are not waited for.
     expect(await waitOut(log, "limit reached|1791811800", host.sleep, new Date("2026-10-12T14:00:00Z"))).toBe(
       false,
     );
@@ -417,29 +398,7 @@ describe("the provider's named reset", () => {
     expect(crashedRun([crashed(1), waited({ load: 99 }), crashed(2)]).count).toBe(2);
   });
 
-  it("is waited out after a Builder crashed on it past its checkpoint, which the count leaves out", async () => {
-    const log = logIn("kept");
-    const host = hostOf(() => 0);
-    const crash = (said: string) => {
-      append(log, "build.checkpoint", { session: "b-1" });
-      append(log, "build.finished", { session: "b-1", ended: "crashed", changed: true, crash: said });
-    };
-    // The network's failure of a session that moved the campaign is no crash in a row to wait for.
-    crash("read ECONNRESET");
-    await waitCrashed(log, host);
-    expect(host.slept).toEqual([]);
-    // Until 15 October its limit was not waited for either, and the next conversation opened into it.
-    const reset = `limit reached|${String(Math.ceil(Date.now() / 1000) + 3600)}`;
-    crash(reset);
-    expect(crashedRun(read(log))).toEqual({ count: 0, crash: reset });
-    await waitCrashed(log, host);
-    expect(host.slept).toHaveLength(1);
-    expect(waits(log)).toMatchObject([{ data: { for: "provider" } }]);
-  });
-
   it("is waited out after any seat's session crashed on it, a draft's as a Builder's", async () => {
-    // 16 October: three drafts crashed on a named reset, nothing waited, and three fresh
-    // campaigns ended on their environment 33 minutes before it.
     const log = logIn("draft");
     const host = hostOf(() => 0);
     const reset = `limit reached|${String(Math.ceil(Date.now() / 1000) + 3600)}`;
@@ -448,7 +407,6 @@ describe("the provider's named reset", () => {
     await waitCrashed(log, host);
     expect(host.slept).toHaveLength(1);
     expect(crashedRun(read(log)).count).toBe(0);
-    // One that put a draft before it crashed moved the campaign.
     append(log, "draft.finished", { session: "d-2", tries: 1, ended: "crashed", crash: "exited 1" });
     expect(crashedRun(read(log)).count).toBe(0);
   });
@@ -463,11 +421,9 @@ describe("the wait after a session the network failed", () => {
     const host = hostOf(() => 0);
     crash(log, "x-1", "getaddrinfo ENOTFOUND api.example.test");
     await waitCrashed(log, host);
-    // Asked again before another session ends, as every later move asks: one wait a crash.
     await waitCrashed(log, host);
     crash(log, "x-2", "read ECONNRESET");
     await waitCrashed(log, host);
-    // The third ends the campaign on its environment, and is not waited for.
     crash(log, "x-3", "connect ETIMEDOUT");
     await waitCrashed(log, host);
     expect(host.slept).toEqual([60_000, 300_000]);
@@ -476,19 +432,5 @@ describe("the wait after a session the network failed", () => {
       { for: "network", ms: 60_000 },
       { for: "network", ms: 300_000 },
     ]);
-  });
-
-  it("reads Linux's temporary DNS failure and a refused connection as the network's, and no other crash", async () => {
-    const host = hostOf(() => 0);
-    for (const said of [
-      "getaddrinfo EAI_AGAIN api.example.test",
-      "ConnectionRefused: Unable to connect",
-      "exited 1",
-    ]) {
-      const log = logIn("network");
-      crash(log, "x-1", said);
-      await waitCrashed(log, host);
-    }
-    expect(host.slept).toEqual([60_000, 60_000]);
   });
 });

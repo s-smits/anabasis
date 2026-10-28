@@ -31,7 +31,7 @@ import { CRASHES, decide, epochReleased, heldAfter, practiceOwed, unpromoted } f
 import { comparisonsOf, crashedRun } from "#src/campaign/ground.ts";
 import { campaignOf } from "#src/campaign/handover.ts";
 import { type Decided, short } from "#src/campaign/move.ts";
-import { type Opening } from "#src/campaign/opening.ts";
+import type { Opening } from "#src/campaign/opening.ts";
 import { comparisonsTold } from "#src/builder/past.ts";
 import { type BuildRequest, layPractice } from "#src/builder/session.ts";
 import { type Bench, endingWith, snapshot, waitTool } from "#src/builder/tools.ts";
@@ -94,7 +94,7 @@ export interface CampaignContext {
   /** What the campaign runs by; a total the operator left as a word replaces it at an action. */
   opening: Opening;
   readonly seats: Seats;
-  /** Who solves, each solve held at the host's gate (`gated`, `host.ts`). */
+  /** Who solves, each solve held in the solve queue (`queued`, `host.ts`). */
   readonly held: Seated;
   /** The campaign as last opened: an Examiner session and a promotion open it again. */
   campaign: Campaign;
@@ -163,7 +163,7 @@ function toolOf(decided: Decided): string {
  * One campaign tool. Before anything runs: the run's moves, the host's stop, an ending the table
  * names, and the operator's word for other tasks. A lack of room ends the campaign here as between
  * conversations: until 22 October it was advice while a conversation lived, and the job campaign of
- * 22 October started a seventh empty Examiner session after its patience of six (x-9, $3.03).
+ * 22 October started a seventh empty Examiner session after its supply patience of six (x-9, $3.03).
  * A comparison that began goes on under its own cap whatever is left of the total: the budget's
  * ending is the table's, read above.
  * `run` is handed `begin`, which writes the move's event (`campaign.move`): the table's code and
@@ -183,8 +183,7 @@ function actionTool(context: CampaignContext, bench: Bench, move: ActionMove, ru
     }[move],
     parameters: Type.Object({}),
     executionMode: "sequential",
-    execute: async (_args, _api, execution) =>
-      await runAction(context, bench, move, run, execution.abortSignal),
+    execute: async (_args, _api, execution) => runAction(context, bench, move, run, execution.abortSignal),
   });
 }
 
@@ -239,7 +238,7 @@ async function runAction(
     });
   };
   const { host } = context.seats;
-  // The conversation's wall stops while the action runs, a wait for the provider included.
+  // The conversation's deadline clock stops while the action runs, a wait for the provider included.
   return await bench.within(async () => {
     try {
       const outcome = await run(turn, decided, begin, signal);
@@ -282,7 +281,7 @@ const examineAction =
       return { refused: "This campaign has no Examiner seat, so the host cannot write more tasks." };
     }
     const session = nextId(turn.events, "x");
-    const { args, tasks, probe } = examinerRun(turn, session, seats.examine, "write");
+    const { args, tasks, roomSolves } = examinerRun(turn, session, seats.examine, "write");
     begin({
       session,
       ...keyIfDefined(
@@ -293,7 +292,7 @@ const examineAction =
     // The action returns once the session is on record: a throw before that is the action's.
     const { promise: onRecord, resolve } = Promise.withResolvers<void>();
     const sitting = seats.examine ?? examine;
-    // As the gate holds each task the host releases what the epoch is owed, one release at a time,
+    // As task admission holds out each task the host releases what the epoch is owed, one release at a time,
     // and each release settles `next`, on which `wait` returns. A throw is the environment's ending.
     let releasing = Promise.resolve();
     let next = Promise.withResolvers<void>();
@@ -312,15 +311,15 @@ const examineAction =
     const work = examineCommand(
       args,
       (request, wall) => sitting({ ...request, opened: resolve, held }, wall),
-      probe,
+      roomSolves,
       // The host's halt, on its bounds or an ending, and the run's kill stop it; the
       // conversation's own end is neither.
       AbortSignal.any([bench.halt.signal, ...(bench.request.kill === undefined ? [] : [bench.request.kill])]),
     ).then(() => refreshCampaign(context, bench));
     await Promise.race([work, onRecord]);
     // The session writes beside the conversation, and on past its end, which waits for it
-    // (`closing`): a Builder's finish or its wall does not stop it, while the host's halt and the
-    // run's kill do, and it then ends on record as stopped. A limit it met is waited out, and a
+    // (`closing`): a Builder's finish or its deadline does not stop it, while the host's halt and the
+    // run's kill do, and it then ends on record as killed. A limit it met is waited out, and a
     // throw after it began is the environment's ending, as an action's is (`actionTool`).
     const done = work
       .then(() => waitCrashed(context.log, context.seats.host))
@@ -385,7 +384,7 @@ async function releaseTo(context: CampaignContext, bench: Bench, practice: numbe
  * one Opus campaign practised on 2 tasks over three epochs. It is the host's own move, on record
  * with the hold's code, and `--moves` bounds it as any move.
  *
- * It is also made as the session's gate holds each task: until 25 October it waited for the
+ * It is also made as task admission holds out each task: until 25 October it waited for the
  * session's end, so a Builder in `wait` could not practise on tasks released only then. The
  * comparison's target adds no bound: after a promotion the default ask fills that target alone,
  * and a bound on it delays practice until the unbounded release at the session's end. The sweep
@@ -410,7 +409,7 @@ async function releaseOwed(context: CampaignContext, bench: Bench, session?: str
  * The two harnesses a `compare` reads, and what the Builder is told of the choice. A comparison
  * that began goes on; until 19 October so did the repeat of a reading under the trigger, of the
  * harness that reading froze. Otherwise the working copy is frozen and compared, unless it is
- * the reference harness, where the table's own comparison is made (the control, or the latest
+ * the reference harness, where the table's own comparison is made (the starter comparison, or the latest
  * harness on tasks written since), or one a comparison has read with nothing changed since, which
  * would be a second draw of one pair that no row of the table names.
  */
@@ -444,7 +443,7 @@ async function comparedOf(
   }
   // Another comparison than the table's is the Builder's own, on record as `asked` with what the
   // table named: until 19 October it kept the table's code and reason, and r3's g-3 and g-6 read as
-  // controls of the starter while each measured a changed checkpoint.
+  // starter comparisons while each measured a changed harness snapshot.
   const table = decided.move === "compare" ? `a comparison of the ${decided.fresh} harness` : toolOf(decided);
   return {
     move: {
@@ -610,7 +609,7 @@ function minutesFrom(from: string | undefined, to = new Date().toISOString()): s
 /**
  * What the host has spent and counted, as a led Builder reads it where it acts or asks: the last
  * comparison's minutes and dollars, the moves without a gain against the
- * patience, and the sessions the provider failed in a row. Until 14 October a Builder bought a
+ * improvement patience, and the sessions the provider failed in a row. Until 14 October a Builder bought a
  * comparison of hours knowing of the last one its tally alone. None of it names a task (rule 3).
  */
 function spentLines({ events }: Turn): string[] {

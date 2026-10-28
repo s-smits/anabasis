@@ -5,8 +5,8 @@
  * The admitted side pins what is not a subprocess — a guard building the command it refuses as a
  * string, and `"git"` as ordinary data — and the scope pins where the owner is asked.
  */
-import { describe, expect, it } from "bun:test";
-import { expectedLines, reportedLines, reportedMessages } from "./helpers/oxlint-rule-fixture.ts";
+import { describe, it } from "bun:test";
+import { lintRules } from "./helpers/lint-rule.ts";
 
 const SCRIPT = `
 import { spawnSync } from "node:child_process";
@@ -27,37 +27,17 @@ export const other = () => runTextSyncOrThrow(["gh", "pr", "view"]); // ADMITTED
 export { LIST };
 `.trimStart();
 
-const OWNER = "src/meta/git.ts";
-const SKILL_SCRIPT = ".claude/skills/run-management/scripts/example.mjs";
-
 describe("ana/no-hand-spelled-git", () => {
-  const reports = (at: string): Promise<number[]> => reportedLines("ana", "no-hand-spelled-git", SCRIPT, at);
-
-  it("reports every spelling of a git subprocess and admits the owner's call and git as data", async () => {
-    const expected = expectedLines(SCRIPT);
-    expect(expected).toHaveLength(6);
-    for (const at of [
-      SKILL_SCRIPT,
-      "src/kernel/example.ts",
-      "tools/runs/example.ts",
-      "tools/d2/example.ts",
-    ]) {
-      expect(await reports(at)).toStrictEqual(expected);
-    }
-  });
-
-  it("sends each site to the owner by its three names", async () => {
-    const reported = await reportedMessages("ana", "no-hand-spelled-git", SCRIPT, SKILL_SCRIPT);
-    expect(reported).toHaveLength(6);
-    for (const message of reported) {
-      expect(message).toContain(`Ask gitOutput, gitText or gitMaybe from ${OWNER}`);
-    }
-  });
-
-  it("leaves the owner, tests and the landing commands alone", async () => {
-    expect(await reports(OWNER)).toStrictEqual([]);
-    expect(await reports(".claude/skills/run-management/scripts/example.test.ts")).toStrictEqual([]);
-    expect(await reports("test/example.test.ts")).toStrictEqual([]);
-    expect(await reports("tools/runtime/example.ts")).toStrictEqual([]);
+  it("reports only the marked lines in every fixture and scope", async () => {
+    await lintRules("ana", [
+      ["no-hand-spelled-git", SCRIPT, 6, ".claude/skills/run-management/scripts/example.mjs"],
+      ["no-hand-spelled-git", SCRIPT, 6, "src/kernel/example.ts"],
+      ["no-hand-spelled-git", SCRIPT, 6, "tools/runs/example.ts"],
+      ["no-hand-spelled-git", SCRIPT, 6, "tools/d2/example.ts"],
+      ["no-hand-spelled-git", SCRIPT, 0, "src/meta/git.ts"],
+      ["no-hand-spelled-git", SCRIPT, 0, ".claude/skills/run-management/scripts/example.test.ts"],
+      ["no-hand-spelled-git", SCRIPT, 0, "test/example.test.ts"],
+      ["no-hand-spelled-git", SCRIPT, 0, "tools/runtime/example.ts"],
+    ]);
   });
 });

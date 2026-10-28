@@ -17,6 +17,9 @@ __pycache__/
 # The archive of campaigns that left their worktrees, and of copies from other hosts
 # (`ARCHIVE`, `tools/runs/registry.ts`). Their logs hold hidden values: they stay on the exam side.
 /data/runs/
+# What each campaign hands over at its end, its harness whole with its programs, the public rules and
+# its closing report (`harnessesOf`, `tools/runs/registry.ts`). No hidden value, but large.
+/data/harnesses/
 # The suite's recorded file timings: each checkout learns its own order from its first run
 # (`tools/runtime/test-suite.ts`).
 /test/.test-timings.json

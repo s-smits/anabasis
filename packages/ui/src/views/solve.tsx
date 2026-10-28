@@ -90,7 +90,7 @@ function RulingPart({ detail }: { detail: SolveDetail }) {
 }
 
 /** A solve's detail, from its answer. */
-export function SolveDetailView({
+function SolveDetailView({
   detail,
   reading,
   navigation,

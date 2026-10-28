@@ -6,8 +6,8 @@
  *     --examiner claude/claude-opus-5-5
  *
  * The Examiner writes task instances against the pack's contract and check program. Each is put to
- * the one gate, the shape of its package, and since 12 October to the reference harness's solves:
- * fresh solves of it under the campaign's setting, at most `TRIED`, the first alone and the rest together, and it is a
+ * task admission: its package's shape check, then, since 12 October, the reference harness's room
+ * solves under the campaign's setting, at most `TRIED`, the first alone and the rest together, and it is a
  * held-out task at the first after which those that gave a reading leave the reference room as a comparison reads it (`informative`), or where none
  * was valid and its author's own answer passes on it (`try_task`, `src/examiner/write.ts`). The
  * session is shown every task the campaign holds, the pack's own
@@ -21,39 +21,39 @@
  * The solves are the reference harness's alone, through the launcher a comparison uses, under the
  * setting it records where the log holds none (`--solver`, `--solve-minutes` and the rest, as every
  * command that solves takes them). Each solve's start names the session, so no comparison counts
- * it and no Builder is shown it, and the gate's event carries what the task's solves billed. The
+ * it and no Builder is shown it, and the task admission's event carries what the task's solves billed. The
  * Examiner hears how many of them were valid, how many gave no reading, the turns each valid one
  * took and, where the contract declares an objective, their measures and its own answer's, and
- * nothing else of them.
- * On 21 October, 128 gate solves across 43 of 1,396 drafts in 30 logs ended at a named reset.
- * `solve` now owns that wait; the gate receives only its settled ending, under the session's signal.
+ * tool counts, shell command lengths and failures. It hears no answer, argument or output.
+ * On 21 October, 128 room solves across 43 of 1,396 drafts in 30 logs ended at a named reset.
+ * `solve` now owns that wait; the task admission receives only its settled ending, under the session's signal.
  * Cancellation before the host launches a queued solve returns a killed non-result without a
- * solve id or a Referee call, so the gate durably refuses the draft unmeasured.
- * Since 14 October a submitted rejection is ruled by the campaign's Referee before the gate counts
+ * solve id or a Referee call, so the task admission durably refuses the draft unmeasured.
+ * Since 14 October a submitted rejection is ruled by the campaign's Referee before the task admission counts
  * it. An unclear, defective or unruled rejection leaves the draft unmeasured; other endings keep
  * their meaning. Neither the answer nor the ruling reaches the Examiner.
- * A model session that probes is refused without `--reviewer` before it opens (`refereeNamed`).
- * From 9 to 12 October no solve ran here, and a task was held out on its shape; until 9 October each
+ * A model session that requests room solves is refused without `--reviewer` before it opens (`refereeNamed`).
+ * From 9 to 12 October no solve ran here, and a task was held out on its shape check; until 9 October each
  * instance was put to a stronger solver and to the measured one, and the second live session spent $48.45 that way,
  * $2.01 of it on the Examiner.
  *
- * The session stops at `--tasks` held-out tasks, at `--proposals` instances put to the gate, at
- * its minutes and turns, or when the Examiner calls `finish`, which it may at any count: on
+ * The session stops at `--tasks` held-out tasks, at `--proposals` instances put to task admission, at
+ * its deadline and model turn limit, or when the Examiner calls `finish`, which it may at any count: on
  * 10 October every session held out two to four tasks and finished of its own accord. `--tasks` is
  * the host's and is never told to the Examiner. The campaign command names it from what the
  * campaign is short of (`examTasks`, `tools/d2/campaign-terms.ts`); run by hand it defaults to 12,
  * a scored set's size until 12 October (`SIZE.tasks` is 24 since). Asking for many at once is what v1 found dilutes them, a probe grown to
  * 25 tasks in 10 of 13 cases (`7f0add79:docs/plan.md`).
  *
- * `--reference-home on`, the default, lays a copy of the reference harness the gate solves with in
- * the home, laid afresh each session; `off` keeps the home blind (the campaign's term
- * `exam-reference`). After a promotion the Examiner wrote drafts the reference's programs answered
+ * A copy of the reference harness used for the room solves is laid in the home afresh each session.
+ * After a promotion the Examiner wrote drafts the reference's programs answered
  * every time, 0 of 49 held in esp32-fresh-opus, and never saw those programs. The term was off
  * unless named until 19 October, when a supply ablation on the buffer domain after its second
  * promotion, one Examiner session an arm, held 1 of 8 drafts blind for $9.22 and 4 of 8 with the
  * copy for $14.41: $9.22 a held draft against $3.60. On esp32, with no room left, both arms held
- * none (20 drafts blind, 6 with the copy). One session an arm and three gate solves a draft; the
- * operator turned it on on that word.
+ * none (20 drafts blind, 6 with the copy). One session an arm and three room solves a draft; the
+ * operator turned it on on that word. Its switch, and the one that hid who won each task, were
+ * removed on 28 October: no campaign on record had set either off.
  *
  * Not run here: see `campaign.ts`.
  */
@@ -105,12 +105,6 @@ const EXAMINE_OPTIONS = {
   proposals: { type: "string", default: "36" },
   minutes: { type: "string", default: "240" },
   turns: { type: "string", default: "200" },
-  /** `on` lays a copy of the reference harness the gate solves with in the Examiner's home; `off`
-   *  keeps it blind. The one owner of the default, which a campaign that names no term reads. */
-  "reference-home": { type: "string", default: "on" },
-  /** `on` tells the Examiner who won each task in its last comparison; `off` tells it nothing of
-   *  the other harness but whether a valid answer is on record (`exam-results`, `heard`, `record.ts`). */
-  results: { type: "string", default: "on" },
   /** The campaign's setting, as every command that solves takes it: the solver and the limits the
    *  reference harness's solves of a draft task run under (`try_task`), and the budget fact the
    *  Examiner is told, where no setting is on record yet. `--tasks` is this command's own, so the
@@ -120,7 +114,7 @@ const EXAMINE_OPTIONS = {
 } as const;
 
 /** The solve launcher a comparison of the campaign uses, called for an Examiner session: one fresh
- *  solve of a draft task by the reference harness, under the campaign's setting and wall, its start
+ *  solve of a draft task by the reference harness, under the campaign's setting and deadline, its start
  *  naming the session where a comparison's names the comparison (`solved`, `tools/d2/round.ts`).
  *  The setting is held to the log's solves and recorded where none is, as a session's is. */
 export async function probing(
@@ -157,9 +151,9 @@ export async function probing(
 }
 
 /** The budget every solve is held to now: the recorded setting's turns and minutes, or before a
- *  setting is recorded the opening's full limit and the wall the command names (`--solve-minutes`,
- *  which the campaign command gives from the campaign's terms), and the campaign's default wall
- *  where nothing names one. Until 11 October the minutes were the default wall whatever the setting
+ *  setting is recorded the opening's full limit and the deadline the command names (`--solve-minutes`,
+ *  which the campaign command gives from the campaign's terms), and the campaign's default deadline
+ *  where nothing names one. Until 11 October the minutes were the default deadline whatever the setting
  *  or the terms said: the buffer sessions of that day were told 120 minutes where every solve ran
  *  under 8. */
 export function budgetOf(
@@ -194,10 +188,6 @@ export async function examineCommand(
   if (id === undefined || examiner === undefined) throw new Error("name --session and --examiner");
   if (kill?.aborted === true) throw new Error(`session ${id} was stopped before it began`);
   refereeNamed(values, session === examine && seated !== null ? "paid" : "scripted");
-  const home = values["reference-home"];
-  if (home !== "on" && home !== "off") throw new Error(`--reference-home is on or off, not ${home}`);
-  const { results } = values;
-  if (results !== "on" && results !== "off") throw new Error(`--results is on or off, not ${results}`);
   const pack = packNamed(values, ", --session and --examiner");
   // The campaign's setting is its log's, as a comparison reads it: the reference harness's solves
   // of a draft task run under it and record it where none is on record (`setting.ts`).
@@ -237,7 +227,6 @@ export async function examineCommand(
         puts: Number(values.proposals),
       },
       wanted: Number(values.tasks),
-      results: results === "on",
       models: campaign.examiner,
       log: campaign.log,
       ...keyIfDefined("kill", kill),
@@ -251,11 +240,8 @@ export async function examineCommand(
       engines: { checks: campaign.checks, tools: join(campaign.bundle, ".toolchain") },
       // The home the last session left, carried whole into this one, beside the log.
       keep: join(dirname(campaign.log), "examiner-home"),
-      // The reference harness the gate solves with, where the campaign's term lays it in the home.
-      ...keyIfDefined(
-        "reference",
-        home === "on" ? (await keptAs(campaign, "--reference", PROMOTED)).dir : undefined,
-      ),
+      // The reference harness used for room solves, laid in the home.
+      reference: (await keptAs(campaign, "--reference", PROMOTED)).dir,
     },
   );
   const sets = taskSets(read(campaign.log));

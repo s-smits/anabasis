@@ -1,6 +1,6 @@
 # What runs on a host. run.sh ships lib.sh and this file as one script beside the slot's folder
 # and runs it under ssh -tt with the host's /bin/bash, which on the M1 is 3.2.
-# Arguments: <slot folder> <bun pin> <task> <wall seconds> [task args...]. A slot's script is never
+# Arguments: <slot folder> <bun pin> <task> <deadline seconds> [task args...]. A slot's script is never
 # rewritten while its own task runs: run.sh holds the slot's lock.
 set -euo pipefail
 slot_dir="$1"

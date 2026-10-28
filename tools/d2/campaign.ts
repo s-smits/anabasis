@@ -30,9 +30,9 @@
  * the Mac's command wall, the pack and the sweep on disk, and a model login.
  */
 import type { Api, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
-import { backends, compactionMode } from "#src/agent/backends/models.ts";
+import { type BackendOptions, backends, compactionMode } from "#src/agent/backends/models.ts";
 import { type Practised, practised } from "#src/builder/session.ts";
-import { namesOf } from "#src/campaign/names.ts";
+import { DIGEST, namesOf } from "#src/campaign/names.ts";
 import { type Opening, openingOf } from "#src/campaign/opening.ts";
 import { type Draft, draftOf } from "#src/examiner/draft.ts";
 import { departure } from "#src/kernel/acceptance.ts";
@@ -68,7 +68,7 @@ import { tmpdir } from "#src/meta/os.ts";
 import { plural } from "#src/meta/text.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
-import { worktrees } from "#src/meta/git.ts";
+import { gitMaybe, worktrees } from "#src/meta/git.ts";
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import type { Reader } from "#src/referee/reader.ts";
@@ -151,23 +151,24 @@ interface Standing {
 
 /** What names the reference harness of a campaign: the one last promoted, or the starter. */
 export const PROMOTED = "promoted";
-/** What names the control of a kept harness: `programs-of:latest`, `programs-of:<digest>`. */
+/** What names the programs ablation of a kept harness: `programs-of:latest`, `programs-of:<digest>`. */
 const PROGRAMS_OF = "programs-of:";
 
-/** What every solve is held to, whoever solves: 20 of the model's own turns, which bind, and a wall
- *  of 30 minutes, which stops a solve whose provider stalls. A command names another wall or number
- *  of turns (`setting.ts`), and another is another campaign. The prompts, `turns`, are every
+/** What every solve is held to, whoever solves: a model turn limit of 20, which binds, and a deadline
+ *  of 30 minutes, which stops a solve whose provider stalls. A command names another deadline or
+ *  model turn limit (`setting.ts`), and another is another campaign. The prompt limit, `turns`, is every
  *  solve's (v1's cap on nudges); the shell's timeouts and four solves at a time are the stored
  *  sweep's. Concurrency is part of a condition, so
  *  a campaign's solves and a parity solve (`live-solve.ts`) are not under the same one.
  *
  *  Until 19 October a campaign's default was the sweep's 120 minutes with the model's turns
  *  unlimited, while `bun run runs fresh` named 8 or 30 minutes and 16 turns by model. Of the 1,145
- *  solves of three Opus fresh runs that day at 8 minutes, none ended on its wall; the turns bound.
+ *  solves of three Opus fresh runs that day at 8 minutes, none ended on its deadline; the turns bound.
  *  So one budget stands for every solver, with the turns at 20 (the operator, 19 October).
  *
- *  The turns are what leaves a task room. Until 17 October fresh runs solved at 120 minutes with the
- *  turns unlimited, and the gate held out 6 of 78 buffer drafts and 3 of 24 truss drafts; the three
+ *  The model turn limit is what leaves a task room. Until 17 October fresh runs solved at 120 minutes
+ *  with the model turn limit unlimited, and task admission held out 6 of 78 buffer drafts and 3 of 24
+ *  truss drafts; the three
  *  buffer runs at 16 turns held out 74 of 146, and a truss run 4 of its first 4. A harness's programs
  *  and guide show as an answer reached within the budget, which an unlimited solver reaches anyway.
  *  A turn is also the same on a loaded host, where a second is not. */
@@ -181,6 +182,10 @@ export const LIMITS = {
 } as const satisfies Limits;
 /** The repository a campaign's folder lies in: the worktree whose source the command runs. */
 export const REPO = resolve(import.meta.dir, "..", "..");
+/** The file in a worktree's own git folder that marks a checkout a job keeps moving to the top of
+ *  the open stack (`bun run follow`), so that no paid seat runs from it (`treeFault`). */
+export const FOLLOWED = "ana-followed";
+
 /** The flags that name a stored pack together. */
 const PACK_FLAGS = 4;
 /** The agent runtime's packages, pinned in `package.json`; the SDK pins the Claude Code binary. */
@@ -197,6 +202,34 @@ export function worktreesOf(repo: string): string[] {
   return worktrees(repo)
     .map((tree) => resolve(tree))
     .filter((tree) => tree !== own && existsSync(tree));
+}
+
+/**
+ * Why `tree` runs no paid seat, or null. A seat executes the source of the tree it started in for
+ * hours, so a tree that is checked out again under it runs the seat on two commits, and a tree
+ * holding a live seat cannot be moved. On 28 October a live solve of a candidate harness ran from
+ * the main checkout, and the job that keeps that checkout at the stack's top skipped twice on its
+ * uncommitted files. A repository's main worktree, and a worktree that job marked, are such trees.
+ */
+export function treeFault(tree: string): string | null {
+  const own = gitMaybe(tree, "rev-parse", "--path-format=absolute", "--git-dir");
+  if (own === null) return null;
+  const moved =
+    own === gitMaybe(tree, "rev-parse", "--path-format=absolute", "--git-common-dir")
+      ? "is its repository's main worktree"
+      : existsSync(join(own, FOLLOWED))
+        ? `is kept at the top of the open stack (${FOLLOWED})`
+        : null;
+  return moved === null
+    ? null
+    : `${tree} ${moved}, which is checked out again under a running seat; start a run or a simulation from a worktree of its own (\`git worktree add --detach <path> <commit>\`, as \`runs fresh\` makes one)`;
+}
+
+/** A paid seat's backends, refused in a tree that is checked out again under it (`treeFault`). */
+export function seatBackends(options: BackendOptions): ReturnType<typeof backends> {
+  const fault = treeFault(REPO);
+  if (fault !== null) throw new Error(fault);
+  return backends(options);
 }
 
 /** Where campaign `name` keeps its log: what a command reads before it opens the campaign, for the
@@ -416,7 +449,7 @@ export async function openCampaign(args: CampaignArgs) {
       model: by.model,
       effort: by.effort,
       limits,
-      models: by.models ?? ((home, shutdown) => backends(sweepOptions(home, by.window, shutdown))),
+      models: by.models ?? ((home, shutdown) => seatBackends(sweepOptions(home, by.window, shutdown))),
       verify,
       log: written,
       repoRoot: REPO,
@@ -426,7 +459,7 @@ export async function openCampaign(args: CampaignArgs) {
       ...keyIfDefined("comparison", comparison),
     });
   };
-  const reviewers = (reader: Reader) => reviewersOf(reader, { log, contract, checks, verify });
+  const reviewers = (reader: Reader) => reviewersOf(reader, { log: written, contract, checks, verify });
   return {
     repo: REPO,
     trees,
@@ -442,7 +475,7 @@ export async function openCampaign(args: CampaignArgs) {
     resources,
     /** What every solve of this campaign's command is held to, which its settings hold. */
     limits,
-    /** The pack's directory, laid out as a stored bundle is: what a command reads its controls and
+    /** The pack's directory, laid out as a stored bundle is: what a command reads its control answers and
      *  its tool path from. */
     bundle,
     test: {
@@ -501,15 +534,16 @@ export async function starter(campaign: { readonly states: string }): Promise<Ke
  * operator promotes another; `promoted` for the reference harness itself, the one last promoted
  * and the starter while none has been; `latest` for the one the last whole Builder session left,
  * which is the starter while none has; or the whole digest of one a session froze, which is the
- * name of its folder under the campaign's `states/`. `programs-of:` before any of those names its control, the
- * starter with that harness's installed programs alone (`programsOf`). Any other name is answered with the ones there are: on
+ * name of its folder under the campaign's `states/`. `programs-of:` before any of those names its
+ * programs ablation, the starter with that harness's installed programs alone (`programsAblation`).
+ * Any other name is answered with the ones there are: on
  * 2026-10-08 a digest cut to its first eight characters, as every reader prints one, ended a
  * simulated round in a bare `ENOENT`. A state that opens as another harness is refused here: one
  * that lost its tool tree when its campaign was moved had two solves paid for under its name.
  */
 export async function keptAs(campaign: Keeping, flag: string, asked: string): Promise<Kept> {
   if (asked.startsWith(PROGRAMS_OF)) {
-    return await programsOf(campaign, await keptAs(campaign, flag, asked.slice(PROGRAMS_OF.length)));
+    return await programsAblation(campaign, await keptAs(campaign, flag, asked.slice(PROGRAMS_OF.length)));
   }
   const events = read(campaign.log);
   const built = asked === "latest" ? latestBuilt(events) : asked === PROMOTED ? promoted(events) : null;
@@ -520,7 +554,12 @@ export async function keptAs(campaign: Keeping, flag: string, asked: string): Pr
   // names two, as A can, falls through to the refusal with the digests there are (14 October).
   const lettered = [...namesOf(events)].flatMap(([each, letter]) => (letter === asked ? [each] : []));
   const digest = built ?? (lettered.length === 1 ? (lettered[0] ?? asked) : asked);
-  const kept = existsSync(campaign.states) ? readdirSync(campaign.states).sort() : [];
+  // `states/` also holds the tool trees the states link to (`tree-*`), which name no harness.
+  const kept = existsSync(campaign.states)
+    ? readdirSync(campaign.states)
+        .filter((each) => DIGEST.test(each))
+        .sort()
+    : [];
   if (!kept.includes(digest)) {
     const begun = kept.filter((each) => digest !== "" && each.startsWith(digest));
     const named =
@@ -537,18 +576,18 @@ export async function keptAs(campaign: Keeping, flag: string, asked: string): Pr
 }
 
 /**
- * The control for what a harness installed: the Starter Built Harness with that harness's tool
+ * The programs ablation for what a harness installed: the Starter Built Harness with that harness's tool
  * tree and nothing else of it, kept under its own digest like any harness. Compared with the
  * starter it reads what the installed programs are worth by themselves, and compared with the
  * harness it was taken from, what the guide and the tools add to them.
  *
  * Buffer's first step, on 9 October, is why. Its harness installed the field's engine, a checker
- * and an optimiser in its guide, and won 5 tasks to 0 at an eight-minute wall, where 2 of the
+ * and an optimiser in its guide, and won 5 tasks to 0 at an eight-minute deadline, where 2 of the
  * starter's 20 solves had fetched anything; at two hours, that morning, the starter installed the
  * engine itself and was valid on 18 solves of 18. Which part of the harness the step was could not
  * be read from one comparison of the whole.
  */
-async function programsOf(campaign: Keeping, source: Kept): Promise<Kept> {
+async function programsAblation(campaign: Keeping, source: Kept): Promise<Kept> {
   const tree = join(source.dir, ".toolchain");
   if (!existsSync(tree)) {
     throw new Error(
@@ -596,21 +635,21 @@ export function awaitingLines(campaign: {
  * since the trace holds the host's tools alone. A solver's backends are the sweep's as they stand
  * (`solveOnce`), with the search.
  *
- * A Builder's and an Examiner's cache lives an hour, since they wait on practice solves and on the
- * gate: over the recorded turns of 20 October, 8.4% of a Builder's and 5.0% of an Examiner's came
+ * A Builder's and an Examiner's cache lives an hour, since they wait on practice solves and
+ * room solves: over the recorded turns of 20 October, 8.4% of a Builder's and 5.0% of an Examiner's came
  * more than five minutes after the one before, and five-minute writes would have billed 48% and 28%
  * more. A reviewer's ruling takes minutes, so its cache lives five.
  */
 function hostSession(seat: { readonly webSearch: boolean; readonly cacheTtl: "5m" | "1h" }) {
   return (home: string, shutdown: AbortSignal) =>
-    backends({ claude: { ...sweepOptions(home, undefined, shutdown).claude, ...seat } });
+    seatBackends({ claude: { ...sweepOptions(home, undefined, shutdown).claude, ...seat } });
 }
 
 /** An Examiner's backends, for the session that drafts an exam before there is a campaign to
  *  open (`tools/d1b/draft.ts`). */
 export const examinerSession = hostSession({ webSearch: false, cacheTtl: "1h" });
 
-/** The plan runs every solve under `caffeinate -s`, so the Mac cannot sleep inside a wall; it exits
+/** The plan runs every solve under `caffeinate -s`, so the Mac cannot sleep during a solve; it exits
  *  with this process, and unreferenced it does not hold this one open. */
 export function stayAwake(): void {
   if (runtimeProcess.platform === "darwin") {

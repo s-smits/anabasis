@@ -8,6 +8,7 @@ import {
   realpathSync,
   writeFileSync,
 } from "../../src/meta/filesystem.ts";
+import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { tmpdir } from "../../src/meta/os.ts";
 import { join } from "../../src/meta/path.ts";
 import { capturedExecPath } from "../../src/meta/process.ts";
@@ -132,7 +133,7 @@ export function fakeHosts() {
         .trim()
         .split("\n")
         .filter(Boolean)
-        .map((line) => JSON.parse(line));
+        .map((line) => parseJsonAs<{ tool: string; args: string[] }>(line));
     } catch {
       return [];
     }

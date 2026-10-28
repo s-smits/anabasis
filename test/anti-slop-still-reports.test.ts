@@ -1,5 +1,5 @@
-import { describe, expect, it } from "bun:test";
-import { expectedLines, reportedLines, reportedMessages } from "./helpers/oxlint-rule-fixture.ts";
+import { describe, it } from "bun:test";
+import { lintRules } from "./helpers/lint-rule.ts";
 
 /**
  * The eleven `anti-slop` rules no other fixture makes report.
@@ -87,17 +87,6 @@ export function parsed(): { id: string } {
 }
 `;
 
-const FIXTURES: [string, string][] = [
-  ["no-reduce-accumulator-copy", ACCUMULATOR_COPY],
-  ["no-module-mocking", MODULE_MOCKING],
-  ["no-runtime-typeof", RUNTIME_TYPEOF],
-  ["no-unknown-type-aliases", UNKNOWN_ALIAS],
-  ["no-conditional-empty-object-spread", EMPTY_OBJECT_SPREAD],
-  ["no-chained-type-assertions", CHAINED_ASSERTIONS],
-  ["no-shape-in-symbol-names", FORBIDDEN_TERM_IN_NAME],
-  ["no-unknown-returns", UNKNOWN_RETURN],
-];
-
 /**
  * `no-shape-in-symbol-names` reads the word, not the letters. A name whose words include
  * "shape", "shapes" or "shaped" in any case or spelling convention is reported; a word that only
@@ -115,66 +104,36 @@ export const rowShapes = 1; // REPORT the plural
 `;
 
 /**
- * An object-literal key holding a literal spells a field of a recorded format or a label in a
- * table of data, as the two ledger rows of 8 October and a count's label of 19 October did. A key
- * holding a computed value, or written in shorthand, is still the one place the name is chosen.
+ * A qualified type name and a JSX member name are borrowed the way a property read is: the name
+ * belongs to the namespace that declared it. The local declaration of the same word still reports.
  */
-const FORBIDDEN_TERM_DATA_KEYS = `
-declare function buildTask(): number;
-const rows = [{ name: "design", shape: "object {joints}" }]; // ADMITTED a recorded format's field
-const counts = { shape: 2, unread: 1 }; // ADMITTED a label beside its count
-const template = { shape: \`number\` }; // ADMITTED a template with nothing in it is a literal
-const built = { taskShape: buildTask() }; // REPORT the key names a value this code computed
-const shape = 1; // REPORT a binding
-const short = { shape }; // REPORT the shorthand key is the binding again
-export { built, counts, rows, short, template };
+const BORROWED_NAMESPACE_MEMBER = `
+import type * as z from "zod";
+export type Fields = z.ZodRawShape; // ADMITTED the namespace declared the name
+export type ZodShape = z.ZodType; // REPORT a name chosen here
 `;
 
-describe("anti-slop rules that no other fixture exercises", () => {
-  for (const [rule, fixture] of FIXTURES) {
-    it(`${rule} still reports, and only where it should`, async () => {
-      const expected = expectedLines(fixture);
-      expect(expected).toHaveLength(1);
-      expect(await reportedLines("anti-slop", rule, fixture)).toStrictEqual(expected);
-    });
-  }
-});
+const BORROWED_JSX_MEMBER = `
+import * as Library from "library";
+export const view = <Library.ShapeView />; // ADMITTED the library declared the name
+export const ShapeBox = () => <div />; // REPORT a name chosen here
+`;
 
-describe("anti-slop/no-module-mocking reads bun:test", () => {
-  it("reports mock.module from bun:test and no module method on another object", async () => {
-    expect(await reportedLines("anti-slop", "no-module-mocking", BUN_MODULE_MOCKING)).toStrictEqual(
-      expectedLines(BUN_MODULE_MOCKING),
-    );
-  });
-});
-
-describe("anti-slop/no-shape-in-symbol-names reads whole words", () => {
-  it("reports the word in every spelling convention, and admits a longer word holding its letters", async () => {
-    const expected = expectedLines(FORBIDDEN_TERM_WORDS);
-    expect(expected).toHaveLength(5);
-    expect(await reportedLines("anti-slop", "no-shape-in-symbol-names", FORBIDDEN_TERM_WORDS)).toStrictEqual(
-      expected,
-    );
-  });
-
-  it("admits an object-literal key holding a literal, and reports a key holding a computed value", async () => {
-    const expected = expectedLines(FORBIDDEN_TERM_DATA_KEYS);
-    expect(expected).toHaveLength(3);
-    expect(
-      await reportedLines("anti-slop", "no-shape-in-symbol-names", FORBIDDEN_TERM_DATA_KEYS),
-    ).toStrictEqual(expected);
-  });
-});
-
-describe("anti-slop/no-conditional-empty-object-spread names its owner", () => {
-  it("sends the reader to the optional-key helpers, which ana/prefer-key-if-defined also asks for", async () => {
-    const messages = await reportedMessages(
-      "anti-slop",
-      "no-conditional-empty-object-spread",
-      EMPTY_OBJECT_SPREAD,
-    );
-    expect(messages).toHaveLength(1);
-    expect(messages[0]).toContain("keyIfDefined");
-    expect(messages[0]).toContain("src/meta/optional-key.ts");
+describe("the remaining anti-slop rule boundaries", () => {
+  it("reports only the marked lines in every fixture and scope", async () => {
+    await lintRules("anti-slop", [
+      ["no-reduce-accumulator-copy", ACCUMULATOR_COPY, 1],
+      ["no-module-mocking", MODULE_MOCKING, 1],
+      ["no-module-mocking", BUN_MODULE_MOCKING, 1],
+      ["no-runtime-typeof", RUNTIME_TYPEOF, 1],
+      ["no-unknown-type-aliases", UNKNOWN_ALIAS, 1],
+      ["no-conditional-empty-object-spread", EMPTY_OBJECT_SPREAD, 1],
+      ["no-chained-type-assertions", CHAINED_ASSERTIONS, 1],
+      ["no-shape-in-symbol-names", FORBIDDEN_TERM_IN_NAME, 1],
+      ["no-unknown-returns", UNKNOWN_RETURN, 1],
+      ["no-shape-in-symbol-names", FORBIDDEN_TERM_WORDS, 5],
+      ["no-shape-in-symbol-names", BORROWED_NAMESPACE_MEMBER, 1],
+      ["no-shape-in-symbol-names", BORROWED_JSX_MEMBER, 1, "fixture.tsx"],
+    ]);
   });
 });

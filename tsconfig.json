@@ -15,6 +15,13 @@
     "resolveJsonModule": true,
     "types": ["bun"]
   },
-  "include": ["src/**/*.ts", "tools/**/*.ts", "vendor/**/*.ts", "test/**/*.ts", "studies/**/*.ts"],
+  "include": [
+    "src/**/*.ts",
+    "tools/**/*.ts",
+    "vendor/**/*.ts",
+    "test/**/*.ts",
+    "studies/**/*.ts",
+    ".claude/**/*.ts"
+  ],
   "exclude": ["**/node_modules", "**/dist"]
 }

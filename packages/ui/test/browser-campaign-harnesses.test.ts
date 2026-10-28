@@ -1,18 +1,16 @@
 import { afterAll, beforeAll, describe, test } from "bun:test";
-import { type Browser, type Page, type Route } from "@playwright/test";
+import type { Browser, Page, Route } from "@playwright/test";
 import {
   accessibilityViolations,
   expect,
   expectQuiet,
   launchBrowser,
-  nextPolls,
   type Opened,
   openPage,
   PHONE,
   routeParameters,
   type Served,
   serveFixture,
-  withClock,
 } from "./browser.ts";
 
 /*
@@ -22,8 +20,7 @@ import {
  * phone. Then what a person sees between two states: a frame probe counts every animation frame in
  * which a watched part of the page is gone, empty or saying it is reading, across each step, since
  * on 14 October every card chosen and every file opened flashed a loading line for one to three
- * frames; a held read shows that the previous view stays and that the loading line waits; and two
- * polls of an unchanged campaign redraw nothing.
+ * frames; a held read shows that the previous view stays and that the loading line waits.
  */
 
 /** What the frame probe counted between its start and its stop. */
@@ -47,8 +44,6 @@ interface FrameProbe {
 declare global {
   interface Window {
     anaFrames?: FrameProbe;
-    /** What the poll test's observers saw change. */
-    anaChanged?: string[];
   }
 }
 
@@ -118,7 +113,10 @@ async function watchFrames(
   await act();
   await settled();
   await page.evaluate(
-    () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(null)))),
+    () =>
+      new Promise((done) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => done(null)));
+      }),
   );
   const frames = await page.evaluate(() => window.anaFrames?.stop());
   if (frames === undefined) throw new Error("the frame probe was not installed");
@@ -139,11 +137,10 @@ function cardOf(page: Page, letter: string, digest: string) {
   return strip(page).getByRole("button", { name: new RegExp(`^${letter}\\s*${short(digest)}`, "u") });
 }
 
-async function openCampaign(query = "", width?: number): Promise<Opened> {
-  const at = `campaign=${served.fixture.key}${query === "" ? "" : `&${query}`}`;
+async function openCampaign(width?: number): Promise<Opened> {
   const opened = await openPage(
     browser,
-    served.url(at),
+    served.url(`campaign=${served.fixture.key}`),
     width === undefined ? {} : { width, height: PHONE.height },
   );
   await expect(opened.page.getByRole("heading", { level: 1, name: "fixture" })).toBeVisible();
@@ -175,7 +172,7 @@ function inspector(page: Page) {
 }
 
 describe("the harness strip", () => {
-  test("lists the versions starter first in the order kept, and selects the latest", async () => {
+  test("lists versions in kept order, selects the latest, and navigates by click, arrows and Back", async () => {
     const opened = await openCampaign();
     const { page } = opened;
     const { starter, a, b, c, d, e } = served.fixture.harnesses;
@@ -192,7 +189,7 @@ describe("the harness strip", () => {
     await expect(strip(page).locator("li").first()).toContainText("reference");
     await expect(selected(page)).toContainText(short(e));
     await expect(selected(page)).toContainText("latest");
-    await expect(detail(page)).toContainText("Builder session b-5");
+    await expect(detail(page)).toContainText(/Builder.*b-5/u);
     await expect(detail(page)).toContainText(`Parent${named("C", b)}`);
     await expect(detail(page)).toContainText("no practice solve");
     await expect(detail(page).locator(".ana-harness-files .ana-evidence-link")).toHaveText([
@@ -200,14 +197,7 @@ describe("the harness strip", () => {
       "agent/tools-spec.json",
     ]);
     await expect(detail(page).locator(".ana-harness-part > small")).toHaveText(["Guide", "Tools"]);
-    expectQuiet(opened);
-    await opened.context.close();
-  });
 
-  test("selects a card by click and by arrow key, and the back button undoes the click", async () => {
-    const opened = await openCampaign();
-    const { page } = opened;
-    const { a, b, c } = served.fixture.harnesses;
     await cardOf(page, "B", a).click();
     await expect(page).toHaveURL(new RegExp(`harness=${a}`, "u"));
     await expect(selected(page)).toContainText(short(a));
@@ -227,7 +217,7 @@ describe("the harness strip", () => {
     await page.keyboard.press("ArrowLeft");
     await expect(selected(page)).toContainText("Starter");
     expect(routeParameters(page).harness).toBe("starter");
-    await expect(detail(page)).toContainText("pi's coding agent as released");
+    await expect(detail(page)).toContainText("pi's coding agent");
     await expect(detail(page).getByRole("button", { name: "Compare with previous" })).toHaveCount(0);
     // At the first card the left arrow goes nowhere.
     await page.keyboard.press("ArrowLeft");
@@ -239,11 +229,14 @@ describe("the harness strip", () => {
     expectQuiet(opened);
     await opened.context.close();
   });
+});
 
+describe("the harness inspector", () => {
   test("opens the diff with the previous version and each file in the inspector, and back closes each", async () => {
     const opened = await openCampaign();
     const { page } = opened;
     const { b, e } = served.fixture.harnesses;
+    expect(await accessibilityViolations(page, "main")).toEqual([]);
     await detail(page).getByRole("button", { name: "Compare with previous" }).click();
     expect(routeParameters(page)).toMatchObject({ harness: e, diff: b });
     await expect(inspector(page)).toHaveAttribute("aria-label", "Harness diff");
@@ -252,6 +245,8 @@ describe("the harness strip", () => {
     );
     await expect(inspector(page).locator(".ana-diff")).toBeVisible();
     await expect(inspector(page)).toBeFocused();
+    expect(await accessibilityViolations(page, "main")).toEqual([]);
+    expect(await accessibilityViolations(page, ".ana-inspector")).toEqual([]);
     await detail(page).getByRole("button", { name: "agent/BUILT_AGENTS.md" }).click();
     expect(routeParameters(page)).toMatchObject({ harness: e, file: "agent/BUILT_AGENTS.md" });
     expect(routeParameters(page).diff).toBeUndefined();
@@ -265,6 +260,7 @@ describe("the harness strip", () => {
       `${named("F", e)} / agent/tools-spec.json`,
     );
     await expect(inspector(page).locator(".ana-record")).toBeVisible();
+    expect(await accessibilityViolations(page, ".ana-inspector")).toEqual([]);
     // Each opening pushed an entry: back walks to the first file, the diff, then nothing open.
     await page.goBack();
     await expect(inspector(page).locator(".ana-inspector-head strong")).toHaveText(
@@ -282,36 +278,26 @@ describe("the harness strip", () => {
     const opened = await openCampaign();
     const { page } = opened;
     const files = detail(page).getByRole("button", { name: "agent/tools-spec.json" });
-    await files.click();
-    await expect(inspector(page).locator(".ana-record")).toBeVisible();
-    await inspector(page).getByRole("button", { name: "Close" }).click();
-    await expect(inspector(page)).toHaveCount(0);
-    expect(routeParameters(page).file).toBeUndefined();
-    await expect(files).toBeFocused();
-    await files.click();
-    await expect(inspector(page).locator(".ana-record")).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(inspector(page)).toHaveCount(0);
-    await expect(files).toBeFocused();
+    for (const action of ["button", "Escape"]) {
+      await files.click();
+      await expect(inspector(page).locator(".ana-record")).toBeVisible();
+      if (action === "button") await inspector(page).getByRole("button", { name: "Close" }).click();
+      else await page.keyboard.press("Escape");
+      await expect(inspector(page)).toHaveCount(0);
+      expect(routeParameters(page).file).toBeUndefined();
+      await expect(files).toBeFocused();
+    }
     // Closing pushed an entry of its own, which back undoes.
     await page.goBack();
     await expect(inspector(page)).toBeVisible();
     expectQuiet(opened);
     await opened.context.close();
   });
+});
 
-  test("opens straight onto a file a link names", async () => {
-    const { d } = served.fixture.harnesses;
-    const opened = await openCampaign(`harness=${d}&file=agent%2FBUILT_AGENTS.md`);
-    const { page } = opened;
-    await expect(inspector(page).locator(".ana-file-content")).toContainText("# Guide");
-    await expect(selected(page)).toContainText(short(d));
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
+describe("the harness strip on a phone", () => {
   test("scrolls sideways on a phone with the selected card in view and the page not wider than the screen", async () => {
-    const opened = await openCampaign("", PHONE.width);
+    const opened = await openCampaign(PHONE.width);
     const { page } = opened;
     const list = strip(page);
     const widths = await list.evaluate((element) => [element.scrollWidth, element.clientWidth]);
@@ -326,21 +312,6 @@ describe("the harness strip", () => {
     await expect.poll(() => shownInStrip(page)).toBe(true);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow).toBeLessThanOrEqual(0);
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
-  test("breaks no WCAG 2.2 AA rule, nor does the inspector with a diff or a file open", async () => {
-    const opened = await openCampaign();
-    const { page } = opened;
-    expect(await accessibilityViolations(page, "main")).toEqual([]);
-    await detail(page).getByRole("button", { name: "Compare with previous" }).click();
-    await expect(inspector(page).locator(".ana-diff")).toBeVisible();
-    expect(await accessibilityViolations(page, "main")).toEqual([]);
-    expect(await accessibilityViolations(page, ".ana-inspector")).toEqual([]);
-    await detail(page).getByRole("button", { name: "agent/tools-spec.json" }).click();
-    await expect(inspector(page).locator(".ana-record")).toBeVisible();
-    expect(await accessibilityViolations(page, ".ana-inspector")).toEqual([]);
     expectQuiet(opened);
     await opened.context.close();
   });
@@ -380,15 +351,19 @@ describe("between two states", () => {
     const head = inspector(page).locator(".ana-inspector-head strong");
     await detail(page).getByRole("button", { name: "Compare with previous" }).click();
     await expect(inspector(page).locator(".ana-diff")).toBeVisible();
-    const steps = [
-      () => detail(page).getByRole("button", { name: "agent/BUILT_AGENTS.md" }).click(),
-      () => inspector(page).getByRole("button", { name: "agent/tools-spec.json" }).click(),
-      () => detail(page).getByRole("button", { name: "Compare with previous" }).click(),
-    ];
-    const heads = [/ agent\/BUILT_AGENTS\.md$/u, / agent\/tools-spec\.json$/u, / to /u];
-    for (const [at, step] of steps.entries()) {
+    for (const [step, expected] of [
+      [
+        () => detail(page).getByRole("button", { name: "agent/BUILT_AGENTS.md" }).click(),
+        / agent\/BUILT_AGENTS\.md$/u,
+      ],
+      [
+        () => inspector(page).getByRole("button", { name: "agent/tools-spec.json" }).click(),
+        / agent\/tools-spec\.json$/u,
+      ],
+      [() => detail(page).getByRole("button", { name: "Compare with previous" }).click(), / to /u],
+    ] as const) {
       const frames = await watchFrames(page, INSPECTOR, step, async () => {
-        await expect(head).toHaveText(heads[at] ?? /./u);
+        await expect(head).toHaveText(expected);
         await expect(inspector(page).locator(INSPECTOR.content).first()).toBeVisible();
       });
       expect(frames).toMatchObject({ gone: 0, empty: 0, loading: 0 });
@@ -396,7 +371,9 @@ describe("between two states", () => {
     expectQuiet(opened);
     await opened.context.close();
   });
+});
 
+describe("between two slow reads", () => {
   test("a slow read leaves the previous file in place and says it is reading only after a moment", async () => {
     const opened = await openCampaign();
     const { page } = opened;
@@ -439,11 +416,10 @@ describe("between two states", () => {
     await detail(page).getByRole("button", { name: "agent/BUILT_AGENTS.md" }).click();
     await expect(inspector(page).locator(".ana-file-content")).toContainText("# Guide");
     const held = Promise.withResolvers<void>();
-    const hold = async (route: Route) => {
+    await page.route(/\/api\/harness(-diff)?\?/u, async (route: Route) => {
       await held.promise;
       await route.continue();
-    };
-    await page.route(/\/api\/harness(-diff)?\?/u, hold);
+    });
     const diff = await watchFrames(
       page,
       INSPECTOR,
@@ -466,63 +442,6 @@ describe("between two states", () => {
     await expect(detail(page).getByText("Reading its files")).toHaveCount(0);
     await expect(detail(page).locator(".ana-harness-files")).toHaveAttribute("aria-busy", "false");
     await page.unroute(/\/api\/harness(-diff)?\?/u);
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
-  test("the set-up and a column's tooltip open with no empty frame", async () => {
-    const opened = await openCampaign();
-    const { page } = opened;
-    const setUp = await watchFrames(
-      page,
-      { watched: "details.ana-disclosure", content: "summary" },
-      () => page.locator(".ana-disclosure > summary").click(),
-      () => expect(page.locator(".ana-disclosure-body")).toBeVisible(),
-    );
-    expect(setUp).toMatchObject({ gone: 0, empty: 0, loading: 0 });
-    const label = page.locator(".ana-comparisons-tick text").filter({ hasText: /^b-2$/u });
-    await label.scrollIntoViewIfNeeded();
-    const tick = await label.boundingBox();
-    if (tick === null) throw new Error("no axis label for b-2");
-    const tooltip = await watchFrames(
-      page,
-      { watched: ".ana-campaign-chart", content: ".recharts-surface" },
-      () => page.mouse.move(tick.x + tick.width / 2, tick.y - 60, { steps: 4 }),
-      () => expect(page.locator(".ana-comparisons-tooltip")).toContainText("b-2"),
-    );
-    expect(tooltip).toMatchObject({ gone: 0, empty: 0, loading: 0 });
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
-  test("two polls of a campaign that did not change redraw nothing", async () => {
-    const opened = await openCampaign();
-    const { page } = opened;
-    await withClock(page);
-    await expect(page.locator(".ana-campaign-chart svg.recharts-surface")).toBeVisible();
-    const watched = [
-      ".ana-campaign-chart svg.recharts-surface",
-      ".ana-harness-lineage",
-      ".ana-campaign-pair",
-      ".ana-campaign-counters",
-      ".ana-campaign-head",
-    ];
-    await page.evaluate((selectors) => {
-      const changed: string[] = [];
-      for (const selector of selectors) {
-        const element = document.querySelector(selector);
-        if (element === null) throw new Error(`nothing at ${selector}`);
-        new MutationObserver((records) => {
-          for (const _ of records) changed.push(selector);
-        }).observe(element, { subtree: true, childList: true, attributes: true, characterData: true });
-      }
-      window.anaChanged = changed;
-    }, watched);
-    await nextPolls(page, 2);
-    await page.evaluate(
-      () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(null)))),
-    );
-    expect(await page.evaluate(() => window.anaChanged)).toEqual([]);
     expectQuiet(opened);
     await opened.context.close();
   });

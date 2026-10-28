@@ -1,102 +1,16 @@
 /**
- * The simplify catchers that name a platform feature the code is spelling out by hand: a loop
- * that is `find`, a predicate that also records, a promise around a timer, a count that answers
- * yes or no, a key looked back up, and two walks where `flatMap` does one.
+ * The simplify catchers that name a platform feature the code is spelling out by hand: a promise
+ * around a timer, a key looked back up, and two walks where `flatMap` does one. A loop that is
+ * `find`, a predicate that also records and the count that answers yes or no have their own
+ * files.
  *
  * Each of these has a right answer, which is why they are worth catching deterministically, and
  * all of them gate as of 2026-09-20. What a test pins is the edge — the site the platform feature
  * would not actually reach, which is where a confident rewrite goes wrong, and which now refuses
  * a push rather than printing a line somebody skips.
  */
-import { describe, expect, it } from "bun:test";
-import { expectedLines, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
-
-/** Report the fixture's own `// REPORT` lines and nothing else. */
-async function pins(rule: string, fixture: string, count: number): Promise<void> {
-  const expected = expectedLines(fixture);
-  expect(expected).toHaveLength(count);
-  expect(await reportedLines("ana", rule, fixture)).toStrictEqual(expected);
-}
-
-const LOOPS = `
-declare const rows: { id: string }[];
-declare const byKey: Record<string, { id: string }>;
-declare function ready(row: { id: string }): Promise<boolean>;
-declare const allowed: Set<string>;
-
-export function firstMatch(id: string) {
-  for (const row of rows) { // REPORT a loop that returns its first match is find
-    if (row.id === id) return row;
-  }
-  return null;
-}
-export function anyMatch(id: string) {
-  for (const row of rows) { // REPORT returning true from the branch is some
-    if (row.id === id) return true;
-  }
-  return false;
-}
-export function reported(id: string) {
-  for (const row of rows) { // ADMITTED a built return needs the method and a second statement
-    if (row.id === id) return \`\${row.id} is already recorded\`;
-  }
-  return null;
-}
-export function owned(id: string) {
-  const owners = new Set(["brief", "tests"]);
-  for (const owner of owners) { // ADMITTED a Set declared here has no find
-    if (owner === id) return owner;
-  }
-  return null;
-}
-export function asked(id: string) {
-  if (!allowed.has(id)) return null;
-  for (const owner of allowed) { // ADMITTED a .has two lines up says this is not an array
-    if (owner === id) return owner;
-  }
-  return null;
-}
-export function counted(id: string) {
-  let seen = 0;
-  for (const row of rows) {
-    if (row.id === id) seen += 1; // ADMITTED the branch does not return, so the loop accumulates
-  }
-  return seen;
-}
-export async function awaited(id: string) {
-  for (const row of rows) {
-    if (await ready(row)) return row; // ADMITTED find takes no async predicate
-  }
-  return null;
-}
-export function paired(id: string) {
-  for (const [key, row] of Object.entries(byKey)) {
-    if (row.id === id) return key; // ADMITTED a destructured entry is not the element find passes
-  }
-  return null;
-}
-`.trimStart();
-
-const PREDICATES = `
-declare const rows: { id: string }[];
-declare const seen: Set<string>;
-
-export function deduped() {
-  return rows.filter((row) => { // REPORT the walk answers and records at the same time
-    if (seen.has(row.id)) return false;
-    seen.add(row.id);
-    return true;
-  });
-}
-export function asked() {
-  return rows.filter((row) => !seen.has(row.id)); // ADMITTED a predicate that only answers
-}
-export function collected() {
-  const kept: string[] = [];
-  for (const row of rows) kept.push(row.id); // ADMITTED a loop may do both, and says so
-  return kept;
-}
-`.trimStart();
+import { describe, it } from "bun:test";
+import { lintRules } from "./helpers/lint-rule.ts";
 
 const SLEEPS = `
 export function pause(ms: number) {
@@ -122,16 +36,6 @@ export function aborted(ms: number, controller: AbortController) {
 export function deferred(value: number) {
   return new Promise<number>((done) => setTimeout(() => done(value + 1), 0)); // ADMITTED a deferral past the current task
 }
-`.trimStart();
-
-const COUNTS = `
-declare const rows: number[];
-declare function large(row: number): boolean;
-
-export const any = rows.filter(large).length > 0; // REPORT counting to answer yes or no
-export const none = rows.filter(large).length === 0; // REPORT the same count read the other way
-export const many = rows.filter(large).length > 2; // ADMITTED a threshold needs the count
-export const filled = rows.length > 0; // ADMITTED no filter: the length is the answer
 `.trimStart();
 
 const KEYS = `
@@ -184,32 +88,13 @@ export function joined() {
 }
 `.trimStart();
 
-describe("the simplify platform catchers", () => {
-  it("reads a loop that returns its first match, with or without the element", async () => {
-    await pins("prefer-find-over-loop", LOOPS, 2);
-  });
-
-  it("reads a predicate that mutates a collection outliving the walk", async () => {
-    await pins("no-side-effect-in-predicate", PREDICATES, 1);
-  });
-
-  it("reads a promise wrapped around a timer", async () => {
-    await pins("no-hand-rolled-sleep", SLEEPS, 1);
-  });
-
-  it("reads a filtered length compared against zero, either way round", async () => {
-    await pins("prefer-some-over-filter-length", COUNTS, 2);
-  });
-
-  it("reads a key walk that looks the value back up", async () => {
-    await pins("prefer-entries-over-keys-lookup", KEYS, 1);
-  });
-
-  it("reads a map whose result is filtered for presence", async () => {
-    await pins("prefer-flatmap-over-map-filter", WALKS, 1);
-  });
-
-  it("reads a reduce whose whole step is written inline as a block", async () => {
-    await pins("no-inline-block-reducer", FOLDS, 1);
+describe("the simplify catchers platform", () => {
+  it("reports only the marked lines in every fixture and scope", async () => {
+    await lintRules("ana", [
+      ["no-hand-rolled-sleep", SLEEPS, 1],
+      ["prefer-entries-over-keys-lookup", KEYS, 1],
+      ["prefer-flatmap-over-map-filter", WALKS, 1],
+      ["no-inline-block-reducer", FOLDS, 1],
+    ]);
   });
 });

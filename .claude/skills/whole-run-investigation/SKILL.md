@@ -33,9 +33,9 @@ procedures; they are not commands to run inside a read-only investigation.
 
 ## The procedure
 
-Six steps. Keep the investigation's files in one directory, `<dir>`, under the
-ignored `.ana/wri/<date>-<campaign>/`. Do not start a step until the check named for the one before
-holds.
+Six steps. Keep the investigation's files in one directory, `<dir>`, under the ignored
+`.ana/wri/<date>-<campaign>/` of the central host (`ANA_CENTRAL`), beside the cycle's files. Do not
+start a step until the check named for the one before holds.
 
 1. **Start.** `wri.ts start --log <log>[,<log>...] --out <dir>` folds each log into the six rows and
    the triggers, writes them to `<dir>/overview.md`, and writes `<dir>/shared-instructions.md` with
@@ -117,6 +117,11 @@ smaller than the build, read the groups in this order, because each rests on the
 5. **The climb (26 to 28).** Once a promotion is on record, open it before a person is told the campaign
    improved a harness: it reads what the promotion rested on and what followed, and it rests on
    lanes 15, 19, 23 and 26 where they ran.
+
+In a release cycle the investigation shares the improvement window of twelve hours with the vetting
+and the stack's patches (run-improvement-campaign, "The improvement window"): launch every lane at
+once, and synthesise from the reports in hand rather than wait past the window for a lane that
+failed.
 
 `--lanes` takes whatever is asked for. A lane named without its trigger opens and is told so by its
 own overview. An isolated lane is refused without its trigger. The tool permits named isolated
@@ -216,7 +221,7 @@ of its `cycle.md`:
   from the events the row names. The reports of the lanes the row names are read first, as leads.
   A resolution already in the ledger, a lane's report or the synthesis is a lead to recount, never
   the evidence.
-- **Name the witness.** Say whether an event shows the pull request's mechanism ran in these runs
+- **Name the evidence.** Say whether an event shows the pull request's mechanism ran in these runs
   (`AGENTS.md`, section 9). A held row whose mechanism never ran held by chance, and is
   unreached for its pull request.
 - **Treat a falsified row as a finding.** Triage it to one owner (the pull request's code, the

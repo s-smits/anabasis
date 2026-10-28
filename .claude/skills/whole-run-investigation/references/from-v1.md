@@ -38,7 +38,7 @@ whose author is not the Builder.
 | B. Claim and promotion state | F. Sessions and harness chain; promotions are `harness.promoted` events |
 | C. Workspace and Git | Lane 15 reads kept states by digest; the launch receipt names the source commit |
 | D. Static conformance | Lanes 15 and 16 read `build.finished`, `broken` and harness checks |
-| E. Fingerprint and gate census | B. Checker identity and `checker.read` |
+| E. Fingerprint and task-admission census | B. Checker identity and `checker.read` |
 | F. F2 solvability | D. Task sets; lanes 9 and 10 read admission and unanswered tasks |
 | G. Case partition | E. Case partition |
 | H. Runtime identity and isolation | C. Conditions |
@@ -71,8 +71,8 @@ whose author is not the Builder.
 | 14. Finding routing and recurrence | 30. Rulings, labels and feedback | Referee rulings, blind labels and what each seat received |
 | 19. Semantic repair closure | 6. Checker identity and repair closure | Separate campaigns and the reading from `repaired.ts` |
 | 20. Task movement and attribution | 13. Harness delta | Kept harness states and the Builder's note |
-| 27. Gate rent and confidence | 7. Supply and the gate | Package refusals and `try_task` admission |
-| 33. Reference provenance and witness strength | 8. Tasks no harness answers | Recorded valid answers, including `task.feasible`, and infeasibility labels |
+| 27. Task-admission cost and confidence | 9. Supply and task admission | Package refusals and `try_task` admission |
+| 33. Reference provenance and author's answer strength | 8. Tasks no harness answers | Recorded valid answers, including `task.feasible`, and infeasibility labels |
 
 ## Merged (5)
 
@@ -94,7 +94,7 @@ Read these from the v1 archive. Their original mechanism has no current lane wit
 | 9. Rehearsal instrument reach | Practice uses the campaign's verifier |
 | 31. Brief against the request | A prompt can now open a campaign; lane 8 reads the drafted exam against it since 27 October |
 | 36. Difficulty pressure on the Builder | The Examiner writes tasks; lane 14 reads its inputs |
-| 37. Battery size and probe graduation | Lanes 9 and 23 read supply and statistical power |
+| 37. Scored-set size and probe graduation | Lanes 9 and 23 read supply and statistical power |
 | 12. Epoch Reviewer standing duties | The Referee reads rejected answers; lanes 6 and 7 read its work |
 | 16. Judge disagreement adjudication | There is no model Judge; lane 1 samples passes |
 | 32. Judge pass decidability | A person labels sampled passes in `settle.ts` |

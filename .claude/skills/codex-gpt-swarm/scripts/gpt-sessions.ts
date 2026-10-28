@@ -11,6 +11,10 @@
  * launch left incomplete, from that launch's own record. What each session leaves behind, and how
  * it is read back, is `gpt-receipts.ts`'s.
  *
+ * Each session runs with Codex's live web search (`codex --search`) unless its manifest says
+ * `"search": false`, as a whole-run investigation's does: until 27 October no session could search,
+ * and a literature question was answered from memory.
+ *
  * v1's launcher also held a parent Codex task open through a stop hook, and took a bare task list
  * beside a manifest. v2 registers no Codex hook and a manifest holds a task list whole, so both
  * went when the skill came over on 11 October.
@@ -26,7 +30,7 @@ import {
   realpathSync,
 } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
-import { asRecord, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
+import { asRecord, isBoolean, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { basename, delimiter, dirname, isAbsolute, join, resolve } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
@@ -127,12 +131,13 @@ const MANIFEST_FIELDS: ReadonlySet<string> = new Set([
   "instructionsFile",
   "instructions",
   "sandbox",
+  "search",
   "sessions",
 ]);
 const SESSION_FIELDS: ReadonlySet<string> = new Set(["name", "task", "workdir", "sandbox", "ownedPaths"]);
 const NAME = /^[a-z][a-z0-9_]{0,47}$/;
 const CODEX_CANDIDATES = ["/Applications/ChatGPT.app/Contents/Resources/codex", "/opt/homebrew/bin/codex"];
-const DEFAULT_START_INTERVAL_MS = 1_000;
+const DEFAULT_START_INTERVAL_MS = 1000;
 const MAX_START_INTERVAL_MS = 60_000;
 const MAX_RETRIES = 5;
 /** What a resumed session is told. Its thread already holds the task, so this is the whole turn. */
@@ -322,6 +327,7 @@ function codexArgs(
   reportPath: string,
   threadId: string | null,
 ): string[] {
+  const search = launch.search ? ["--search"] : [];
   const shared = [
     "--model",
     launch.model,
@@ -332,8 +338,9 @@ function codexArgs(
     ...(ownsAllItCanWrite(session) ? ["--skip-git-repo-check"] : []),
   ];
   const output = ["--json", "--output-last-message", reportPath];
-  if (threadId === null) return ["exec", ...shared, "--sandbox", session.sandbox, ...output, "-"];
+  if (threadId === null) return [...search, "exec", ...shared, "--sandbox", session.sandbox, ...output, "-"];
   return [
+    ...search,
     "exec",
     "resume",
     ...shared,
@@ -463,6 +470,8 @@ async function launchSessions(source: string, args: CommandArgs): Promise<number
   const manifest = asRecord(parseJsonAs<JsonValue>(readFileSync(source, "utf8")));
   if (manifest === null) throw new Error("--manifest must hold a JSON object");
   const sessions = sessionsOf(manifest);
+  const { search = true } = manifest;
+  if (!isBoolean(search)) throw new Error("search must be true or false");
   const policy = policyOf(args, sessions.length);
   const codex = codexBinary(args.value("codex-bin"));
   const outputDir = createOutputDir(args.required("output-dir"));
@@ -472,6 +481,7 @@ async function launchSessions(source: string, args: CommandArgs): Promise<number
     const launch: LaunchRecord = {
       type: LAUNCH_TYPE,
       ...condition,
+      search,
       runtime: environment.runtime,
       ...policy,
       outputDir,

@@ -3,8 +3,8 @@
 // keeps a person's labels blind.
 import { describe, expect, it } from "bun:test";
 import type { LogEvent } from "../src/kernel/log.ts";
-import { RULINGS } from "../src/referee/agreement.ts";
-import { drawn, labelled, rejections, repairReading } from "../src/referee/rejections.ts";
+import { drawn, rejections, repairReading } from "../src/referee/rejections.ts";
+import { arrayWith } from "./helpers/matchers.ts";
 
 const at = "2026-10-08T00:00:00.000Z";
 const refused = (solve: string, ...blocking: string[]): LogEvent => ({
@@ -48,20 +48,9 @@ describe("a checker's refused answers", () => {
     const sample = drawn(VERDICTS, 2, "seed");
     expect(sample).toHaveLength(2);
     expect(drawn(VERDICTS.toReversed(), 2, "seed")).toEqual(sample);
-    expect(["a", "b", "c", "d"]).toEqual(expect.arrayContaining(sample));
-    expect(() => drawn(VERDICTS, 5, "seed")).toThrow(
-      "5 labels need as many refused answers; the log holds 4",
-    );
-    expect(() => drawn([...VERDICTS, ruled("a", "earned")], 2, "seed")).toThrow("would not be made blind");
-  });
-
-  it("holds a label open until it is one of the three rulings", () => {
-    const { labels, open } = labelled({ a: "earned", b: "", c: "check-defect", d: "wrong answer" }, RULINGS);
-    expect([...labels]).toEqual([
-      ["a", "earned"],
-      ["c", "check-defect"],
-    ]);
-    expect(open).toEqual(["b", "d"]);
+    expect(["a", "b", "c", "d"]).toEqual(arrayWith(sample));
+    expect(() => drawn(VERDICTS, 5, "seed")).toThrow(/5.*4/u);
+    expect(() => drawn([...VERDICTS, ruled("a", "earned")], 2, "seed")).toThrow(/blind/u);
   });
 
   it("holds a repair to what was read: only an answer ruled a check defect may be let through", () => {
@@ -74,7 +63,7 @@ describe("a checker's refused answers", () => {
       row("e", "fail mass", "fail mass"),
       row("f", "pass", "fail span"),
       row("g", "pass", "pass"),
-      row("h", "fail mass", "fail mass"),
+      row("h", "fail mass", "pass"),
     ];
     const events = [
       ruled("a", "check-defect", "mass"),
@@ -84,13 +73,12 @@ describe("a checker's refused answers", () => {
       // A person's label stands over the Referee's ruling of the same answer.
       ruled("h", "check-defect", "mass"),
     ];
-    const reading = repairReading(rows, events, new Map([["h", "earned"]]));
-    expect(reading).toEqual({
-      withdrawn: { "check-defect": ["a"], earned: ["b"], unread: ["c", "d"] },
+    expect(repairReading(rows, events, new Map([["h", "earned"]]))).toEqual({
+      withdrawn: { "check-defect": ["a"], earned: ["b", "h"], unread: ["c", "d"] },
       tightened: ["f"],
       unrepaired: ["e"],
       against: [
-        "1 answer ruled an earned fail would pass: b",
+        "2 answers ruled an earned fail would pass: b, h",
         "2 answers refused before and read by nobody would pass: c, d",
         "1 answer accepted before would be refused: f",
       ],

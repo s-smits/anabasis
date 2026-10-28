@@ -296,6 +296,30 @@ it("S7: one zip collects campaigns from several hosts into a handover here", () 
   expect(made.recorded().filter((call) => call.tool === "rsync")).toHaveLength(2);
 });
 
+it("fetch with no name gathers the records of every campaign the other hosts hold, and copies only a grown log again", () => {
+  const made = fixture();
+  const first = campaign(made, "distant");
+  const second = campaign(made, "another", join(made.root, "other-remote"));
+  const gather = () => {
+    const bytes = (log: string) => readFileSync(log).length;
+    const fleet = {
+      [made.host.ssh]: { catalogue: [{ name: "distant", path: first.log, bytes: bytes(first.log) }] },
+      [made.other.ssh]: { catalogue: [{ name: "another", path: second.log, bytes: bytes(second.log) }] },
+    };
+    const result = made.runScript(CLI, ["fetch"], {
+      ANA_HOSTS: JSON.stringify([made.host, made.other]),
+      FAKE_FLEET: JSON.stringify(fleet),
+    });
+    expect(result.code).toBe(0);
+    expect(result.out.split("\n").filter((line) => line.endsWith("log.jsonl"))).toHaveLength(2);
+    return made.recorded().filter((call) => call.tool === "rsync").length;
+  };
+  expect(gather()).toBe(2);
+  append(second.log, "campaign.ended", { ending: "finished", why: "grown" });
+  // The grown log takes its earlier copy and the host's; the unchanged one takes nothing.
+  expect(gather()).toBe(4);
+});
+
 it("a batch sends its whole remote plan sequentially and stops on any failed launch exit", () => {
   const made = fixture();
   const packs = ["sample", "domain"];

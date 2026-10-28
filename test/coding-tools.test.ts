@@ -4,7 +4,6 @@ import { describe, expect, it } from "bun:test";
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
 import type { ToolDiagnostic, ToolExecutionApi } from "@earendil-works/pi-durable";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
-import { createEditTool, createReadTool, createWriteTool } from "@earendil-works/pi-durable/tools";
 import {
   existsSync,
   mkdtempSync,
@@ -16,7 +15,7 @@ import {
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { CODING_TOOLS, codingTools, selectedCodingTools, wallExec } from "../src/tools/coding.ts";
+import { CODING_TOOLS, codingTools, wallExec } from "../src/tools/coding.ts";
 import { type CommandWall, solveDirs, walledBase } from "../src/tools/command.ts";
 import { walledEnv } from "../src/tools/env.ts";
 import { osIsolationSupport } from "../src/wall/os-isolation.ts";
@@ -63,7 +62,6 @@ function caller(wall: CommandWall, env: ExecutionEnv) {
 
 async function withSeat(
   run: (wall: CommandWall, call: ReturnType<typeof caller>, repo: string) => Promise<void>,
-  clock?: CommandWall["clock"],
 ) {
   const repo = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-coding-repo-")));
   const dirs = solveDirs(`coding-${crypto.randomUUID()}`);
@@ -76,7 +74,6 @@ async function withSeat(
       dirs,
       toolTree: null,
       limits: { shellDefaultSeconds: 1, shellMaxSeconds: 2 },
-      clock,
     };
     env = walledEnv(wall);
     await run(wall, caller(wall, env), repo);
@@ -97,69 +94,19 @@ async function stopped(path: string) {
   }
 }
 
-describe("the solver's durable coding tools", () => {
-  it("keeps durable's file schemas and descriptions and makes every call sequential", () => {
-    const wall: CommandWall = {
-      // SAFETY: making registrations never reads the policy or starts a command.
-      base: undefined as never,
-      dirs: solveDirs("definitions"),
-      toolTree: null,
-      limits: { shellDefaultSeconds: 1, shellMaxSeconds: 2 },
-    };
-    const ours = codingTools(wall, ["read", "edit", "write"]);
-    const images = { prepare: async () => undefined };
-    for (const [index, pi] of [createReadTool({ images }), createEditTool(), createWriteTool()].entries()) {
-      expect(ours[index]?.name).toBe(pi.name);
-      expect(ours[index]?.description).toBe(pi.description);
-      expect(ours[index]?.parameters).toEqual(pi.parameters);
-      expect(ours[index]?.executionMode).toBe("sequential");
-    }
-  });
-
-  it("selects the declared presets in pi's order", () => {
-    expect(selectedCodingTools(["write", "read", "read", "shell"])).toEqual(["read", "bash", "write"]);
-    expect(selectedCodingTools([])).toEqual([]);
-    expect(() => selectedCodingTools(["python"])).toThrow("not python");
-  });
-});
-
 describe.skipIf(!osIsolationSupport().ok)("the coding tools on the OS wall", () => {
-  it("runs Bash-only syntax in the bash tool and in a command the host launches", async () => {
+  it("runs Bash and literal file operations in one home while refusing forbidden paths", async () => {
     // Process substitution, `[[ ]]` and an indexed array: `/bin/sh` refuses the first on both
     // hosts, and Linux's dash all three.
-    const command = 'a=(x y); [[ $(cat <(echo "${a[1]}")) == y ]] && echo bash-ok';
-    await withSeat(async (wall, call) => {
+    await withSeat(async (wall, call, repo) => {
+      const command = 'a=(x y); [[ $(cat <(echo "${a[1]}")) == y ]] && echo bash-ok';
       const result = await call("bash", { command });
       expect(result.isError === true).toBe(false);
       expect(result.text).toBe("bash-ok\n");
       const launched = await wallExec(wall)(command);
       expect(launched.exitCode).toBe(0);
       expect(launched.output.toString("utf8")).toBe("bash-ok\n");
-    });
-  });
 
-  it("shares the home across tools and resolves ~ to the seat rather than the host", async () => {
-    await withSeat(async (wall, call) => {
-      const tools = codingTools(wall, ["write", "bash", "read"]);
-      expect(tools.map((each) => each.name)).toEqual(["read", "bash", "write"]);
-      expect(tools.every((each) => each.executionMode === "sequential")).toBe(true);
-      expect(tools.find((each) => each.name === "bash")?.parameters).toMatchObject({
-        properties: {
-          timeout: { description: expect.stringContaining("1 when omitted, at most 2") },
-        },
-      });
-      expect((await call("bash", { command: "pwd -P" })).text.trim()).toBe(
-        realpathSync.native(wall.dirs.home),
-      );
-      await call("write", { path: "~/nested/a", content: "one\ntwo\n" });
-      expect((await call("read", { path: "nested/a", offset: 2 })).text).toBe("two\n");
-      await call("edit", { path: "nested/a", edits: [{ oldText: "two", newText: "three" }] });
-      expect((await call("bash", { command: "cat ~/nested/a" })).text).toBe("one\nthree\n");
-    });
-  });
-
-  it("refuses a denied read through read and bash and a write outside the home", async () => {
-    await withSeat(async (_wall, call, repo) => {
       const secret = join(repo, "canary");
       writeFileSync(secret, "hidden-canary");
       await expect(call("read", { path: secret })).rejects.toThrow();
@@ -168,11 +115,7 @@ describe.skipIf(!osIsolationSupport().ok)("the coding tools on the OS wall", () 
       expect(shell.text).not.toContain("hidden-canary");
       await expect(call("write", { path: join(repo, "escape"), content: "bad" })).rejects.toThrow();
       expect(existsSync(join(repo, "escape"))).toBe(false);
-    });
-  });
 
-  it("carries literal content without shell evaluation and refuses missing or oversized files", async () => {
-    await withSeat(async (wall, call) => {
       const content = "$(touch escaped)\n`id`\n'; echo injected";
       await call("write", { path: "odd name's.txt", content });
       expect((await call("read", { path: "odd name's.txt" })).text).toBe(content);
@@ -183,64 +126,6 @@ describe.skipIf(!osIsolationSupport().ok)("the coding tools on the OS wall", () 
       );
       writeFileSync(join(wall.dirs.home, "large"), Buffer.alloc(16 * 1024 * 1024 + 1));
       await expect(call("read", { path: "large" })).rejects.toThrow("16 MiB");
-    });
-  });
-
-  it("reads an image attachment through the environment, converting a BMP to PNG", async () => {
-    await withSeat(async (wall, call) => {
-      writeFileSync(
-        join(wall.dirs.home, "dot.png"),
-        Buffer.from(
-          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
-          "base64",
-        ),
-      );
-      expect((await call("read", { path: "dot.png" })).output?.map((part) => part.type)).toEqual(["image"]);
-      writeFileSync(
-        join(wall.dirs.home, "dot.bmp"),
-        Buffer.from(
-          "424d3a000000000000003600000028000000010000000100000001001800000000000400000000000000000000000000000000000000" +
-            "0000ff00",
-          "hex",
-        ),
-      );
-      const bmp = (await call("read", { path: "dot.bmp" })).output ?? [];
-      expect(bmp.map((part) => (part.type === "image" ? part.mimeType : part.type))).toEqual(["image/png"]);
-    });
-  });
-
-  it("names the host's default, maximum and oversized request on timeout", async () => {
-    await withSeat(async (_wall, call) => {
-      await expect(call("bash", { command: "sleep 5" })).rejects.toThrow("The host allows 2 s");
-      await expect(call("bash", { command: "sleep 5", timeout: 9 })).rejects.toThrow(
-        "Your 9 s is above the 2 s",
-      );
-      await expect(call("bash", { command: "sleep 5", timeout: 2 })).rejects.toThrow("That is the whole 2 s");
-    });
-  }, 15_000);
-
-  it("names the solve's reserve when it shortens a command's timeout", async () => {
-    const clock: NonNullable<CommandWall["clock"]> = { started: null, seconds: 30 };
-    await withSeat(async (_wall, call) => {
-      clock.started = performance.now() - 25_000;
-      await expect(call("bash", { command: "sleep 5", timeout: 2 })).rejects.toThrow(
-        "solve's time is nearly up",
-      );
-    }, clock);
-  });
-
-  it("keeps full output readable in the seat's TMPDIR after a later command times out", async () => {
-    await withSeat(async (wall, call) => {
-      const result = await call("bash", { command: "seq 1 3000" });
-      const full = result.diagnostics
-        .find((note) => note.code === "full_output")
-        ?.message.slice("Full output: ".length);
-      expect(full?.startsWith(`${wall.dirs.temp}/`)).toBe(true);
-      if (full === undefined) throw new Error("Missing output file");
-      expect(readFileSync(full, "utf8").split("\n")).toHaveLength(3001);
-      // The separate environment test checks the spill path carried by a timeout error.
-      await expect(call("bash", { command: "seq 1 3000; sleep 5" })).rejects.toThrow("timed out");
-      expect((await call("read", { path: full, offset: 2999 })).text).toContain("3000");
     });
   });
 

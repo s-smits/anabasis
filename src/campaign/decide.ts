@@ -8,14 +8,14 @@
  * content: what a harness holds, what a task asks and how it is solved stay a model's.
  *
  * The table is `ROWS`, asked in order of one reading of the log (`groundOf`, `ground.ts`): the
- * first row that names a move chose it, and a hold (`HOLDS`) may change the move a row named. A
- * decision carries the code of the row or the hold it came from. What the gate refuses a
- * comparison for is the gate's to say (`refusals`, `admission.ts`), and the rows read its codes.
+ * first row that names a move chooses it. The build row releases practice before asking for tasks
+ * after an unchanged session, preserving the `practice` and `unshown` codes. Comparison admission
+ * owns its refusals (`refusals`, `admission.ts`), and the rows read its codes.
  * Since 26 October its floor leaves one set-aside task and one tie above a sweep: g-1 of
  * truss-fresh-opus-v071 lost its chance to promote when one of six tasks was set aside. The
  * `short` row asks for tasks first; practice releases and Examiner counts keep the same floor.
  *
- * One count ends a campaign that cannot be given tasks or room (`roomless`), at its patience.
+ * One count ends a campaign that cannot be given tasks or room (`roomless`), at its supply patience.
  *
  * A setting is recorded once (`campaign.setting`) and does not change, so every comparison of the
  * log is read, at the one budget it names (`7f0add79:docs/simplify.md`, package A).
@@ -40,13 +40,16 @@ type Move<Each = Decided> = Each extends unknown ? Omit<Each, "code"> : never;
 type Reading = Ground["reports"][number];
 
 /** The table. A row names its move where it holds, and null where the next row is asked. */
-const ROWS: readonly { readonly code: string; readonly move: (ground: Ground) => Move | null }[] = [
+const ROWS: readonly {
+  readonly code: string;
+  readonly move: (ground: Ground) => (Move & { readonly code?: string }) | null;
+}[] = [
   // A stop the operator left ends the campaign, whatever the log holds.
   { code: "stop", move: stop },
   // The exam does not stand: it is drafted, read, or the campaign ends on it. Before the bounds,
   // since reading it bills nothing.
   { code: "exam", move: exam },
-  // A bound is spent: the total, the provider, the patience, the control, a comparison cut short.
+  // A bound is spent: the total, the provider, the improvement patience, a comparison cut short.
   { code: "bound", move: bound },
   // The tasks are not set up: taken in, released, written on the operator's word, or written up
   // to a comparison's and its practice's before the first session is paid for.
@@ -57,22 +60,21 @@ const ROWS: readonly { readonly code: string; readonly move: (ground: Ground) =>
   { code: "step", move: stepped },
   // The reference's last reading left it nothing to gain: the tasks change.
   { code: "no-room", move: noRoom },
-  // The gate would refuse the next comparison for want of tasks: they are written first, since a
+  // Comparison admission would refuse the next comparison for want of tasks: they are written first, since a
   // changed harness can only tie again on tasks the reference closed.
   { code: "short", move: wanting },
   // Something no comparison has read is compared before a Builder session is paid for.
   { code: "unread", move: unread },
   // Nothing new to read, and room to gain: the Builder builds.
-  { code: "build", move: (ground) => ({ move: "build", why: buildsOn(ground) }) },
-];
-
-/** The holds, asked of the move a row named: the first that holds names another in its place. */
-const HOLDS: readonly {
-  readonly code: string;
-  readonly hold: (ground: Ground, named: Move) => Move | null;
-}[] = [
-  { code: "practice", hold: toPractise },
-  { code: "unshown", hold: unshown },
+  {
+    code: "build",
+    move: (ground) => {
+      const practice = toPractise(ground);
+      if (practice !== null) return { ...practice, code: "practice" };
+      const unseen = unshown(ground);
+      return unseen === null ? { move: "build", why: buildsOn(ground) } : { ...unseen, code: "unshown" };
+    },
+  },
 ];
 
 /** The drafts of an exam the plan gives before the campaign ends on it. */
@@ -81,11 +83,11 @@ const DRAFTS = 3;
  *  environment: as many as drafts, so that a campaign is not built or examined against a dead
  *  provider without end, and no more, since each costs an id and the operator's wait. */
 export const CRASHES = DRAFTS;
-/** The gate's refusals that are a want of tasks (`refusals`, `admission.ts`). */
+/** Admission refusal codes caused by insufficient held-out tasks (`refusals`, `admission.ts`). */
 const SHORT = ["no-held", "held-short"] as const;
 
 const end = (ending: Ending, why: string): Move => ({ move: "end", ending, why });
-/** A comparison of the latest harness, or of the starter as a control, with the reference one. */
+/** A comparison of the latest harness, or of the starter, with the reference one (a starter comparison). */
 const compare = (why: string, fresh = "latest"): Move => ({
   move: "compare",
   fresh,
@@ -99,10 +101,7 @@ export function decide(events: readonly LogEvent[], plan: Plan): Decided {
   for (const row of ROWS) {
     const named = row.move(ground);
     if (named === null) continue;
-    const held = HOLDS.map(({ code, hold }) => ({ code, move: hold(ground, named) })).find(
-      (each) => each.move !== null,
-    );
-    return held?.move == null ? { ...named, code: row.code } : { ...held.move, code: held.code };
+    return { ...named, code: named.code ?? row.code };
   }
   throw new Error("the decision table's last row names a move for every log");
 }
@@ -125,8 +124,8 @@ export function heldAfter(events: readonly LogEvent[], after: number): number {
   ).length;
 }
 
-/** Whether tasks were held out since `reading` reported that the gate would admit a comparison
- *  on: the answer to a want of tasks or of room is then that comparison, and no session more. */
+/** Whether tasks were held out after `reading` and enough are now held to start a comparison.
+ *  If so, compare them before asking for another Examiner session. */
 function writtenSince({ events, refused }: Ground, reading: Reading): boolean {
   return heldAfter(events, reading.reported) > 0 && !SHORT.some((code) => refused.has(code));
 }
@@ -163,8 +162,8 @@ function roomless({ events, reports, reference }: Ground) {
 }
 
 /**
- * The campaign's ending where its patience of readings in a row left nothing to gain (`roomless`),
- * and null while it has patience left: on its exam where the campaign wants for tasks, which could
+ * The campaign's ending where its supply patience of readings in a row left nothing to gain (`roomless`),
+ * and null while it has supply patience left: on its exam where the campaign wants for tasks, which could
  * not be written, and on its room where the tasks it has leave none. A comparison that opens the
  * run raised the want and is no answer to it, so it is not counted: a comparison on the pack's
  * tasks ends nothing before the Examiner was asked. `why` is the reason the next Examiner session
@@ -185,7 +184,7 @@ function spent(ground: Ground, wants: "tasks" | "room", why: string): Move | nul
     : end("no-room", `${told} (${why}): the tasks could not be made to leave room`);
 }
 
-/** An Examiner session for the reason `why`, or the campaign's ending where its patience is spent. */
+/** An Examiner session for the reason `why`, or the campaign's ending where its supply patience is spent. */
 function examine(ground: Ground, wants: "tasks" | "room", why: string): Move {
   return spent(ground, wants, why) ?? { move: "examine", why };
 }
@@ -327,13 +326,11 @@ function tasks(ground: Ground): Move | null {
       answers: [asked.at],
     };
   }
-  // Before its first comparison a campaign holds the tasks it scores and the practice its release
-  // still draws, written before the first session is paid for, so that the Examiner is not on the
-  // critical path between the session and the comparison: campaigns that built first on three
-  // practice tasks cleared them in three to five harness versions, and then waited on an Examiner
-  // session. It is a wish and no refusal of the gate's, which admits a comparison by hand on fewer.
-  // Until 13 October it held a repeat's tasks as well, twice the target, and the two host-run
-  // campaigns of 12 October examined for 16 hours, held 41 and 31 of 48, and never compared.
+  // Before its first comparison a campaign needs the admission floor plus any tasks still to be
+  // released for practice. Until 28 October it held the target to keep the Examiner off the critical
+  // path. A comparison waits for the open Examiner session, and two buffer campaigns of 27 October held 9
+  // tasks at a floor of 8, examined 7 and 3 more hours towards 24, and stopped without comparing.
+  // Until 13 October it held twice the target, and two campaigns examined 16 hours and never compared.
   const missing = all.length > 0 ? 0 : shortBy(ground);
   if (missing === 0) return null;
   const before =
@@ -343,26 +340,24 @@ function tasks(ground: Ground): Move | null {
   return examine(
     ground,
     "tasks",
-    `the campaign is ${plural(missing, "held-out task")} short of a comparison's target and the practice its release draws, and ${before}: the Examiner writes more first`,
+    `the campaign is ${plural(missing, "held-out task")} short of the tasks a first comparison needs and the practice its release draws, and ${before}: the Examiner writes more first`,
   );
 }
 
 /**
- * How many held-out tasks the campaign is short of: its target or admission floor, whichever is
- * larger, and what the next release still draws for practice, less what it holds. The table's
- * examine before a comparison and the session's ask (`examTasks`, `campaign-terms.ts`) are this
- * count. Until 19 October a repeat that was due was short of a sweep at the level instead.
+ * How many held-out tasks the campaign is short of: its admission floor, or after its first
+ * comparison its target where that is larger, and what the next release still draws for practice,
+ * less what it holds. The table's examine before a comparison and the session's ask (`examTasks`,
+ * `campaign-terms.ts`) are this count. Until 19 October a due repeat was short of a sweep instead.
  */
 export function shortOf(events: readonly LogEvent[], plan: Plan): number {
   return shortBy(groundOf(events, plan));
 }
 
-function shortBy({ plan, supply }: Ground): number {
+function shortBy({ plan, supply, all }: Ground): number {
   const practice = Math.max(0, (plan.practice ?? 0) - supply.released);
-  return Math.max(
-    0,
-    practice + Math.max(plan.wanted.target, comparisonFloor(plan.wanted.level)) - supply.held,
-  );
+  const target = all.length === 0 ? 0 : plan.wanted.target;
+  return Math.max(0, practice + Math.max(target, comparisonFloor(plan.wanted.level)) - supply.held);
 }
 
 function unfinished({ all }: Ground): Move | null {
@@ -378,9 +373,9 @@ function unfinished({ all }: Ground): Move | null {
       };
 }
 
-/** Whether `harness` read a step against the reference: its comparison's own reading, at the level
- *  its start fixed (`stepOf`, `compare.ts`). A control is no candidate: the starter winning on new
- *  tasks is room by another name. Until 19 October a step bought a repeat on fresh solves, and the
+/** Whether `harness` read a step against the reference at the comparison's fixed level (`stepOf`,
+ *  `compare.ts`). A starter comparison names no candidate: a starter win on new tasks shows room,
+ *  rather than a candidate to promote. Until 19 October a step bought a repeat on fresh solves, and the
  *  two read together had to clear the level. */
 function steps({ reports, reference, starter }: Ground, harness: string): boolean {
   return (
@@ -423,15 +418,16 @@ function stepped(ground: Ground): Move | null {
  * none, and one valid on half of them is built against on the same tasks. A campaign runs at one
  * budget, and a task nobody answers at it is one for the Examiner to replace: on 9 October five
  * Examiner sessions wrote tasks for a budget of one turn, in which no solver can write an answer
- * and submit it. Tasks written since that the gate admits are compared on first (`unread`).
+ * and submit it. Tasks admitted since are compared on first (`unread`).
  *
  * A promoted reference is also written for once, room or none, before anything else is: the tasks
  * it was promoted on are the ones its Builder beat the last reference on. On 19 October r3's
  * Examiner sessions after its first two promotions held out 24 tasks informative for the new
  * reference, against r1's 3 and r2's 4, and its next two promotions were read on them; r1's
- * Builder compared six minutes after its promotion on 1 informative task of 25. Since the
- * objective has no margin (#242) the comparison a harness was promoted on reads room on it in
- * r1, r2 and r3's first (21, 24 and 6 tasks, against 0), so room alone would write nothing.
+ * Builder compared six minutes after its promotion on 1 informative task of 25. At the time,
+ * before the `ROOM` objective gap floor, those promotion comparisons read 21, 24 and 6 informative
+ * tasks for the new reference, against 0 before #242. The floor now applies; tasks are still
+ * written once for each promoted reference whatever its last reading left.
  */
 function noRoom(ground: Ground): Move | null {
   const { reports, reference, events } = ground;
@@ -467,12 +463,12 @@ function noRoom(ground: Ground): Move | null {
 }
 
 /**
- * Tasks, where the gate would refuse the next comparison for want of them, or the pair's last
+ * Tasks, where comparison admission would refuse the next comparison for want of them, or the pair's last
  * comparison tallied none. On tasks the reference harness answered in every solve a changed harness
  * can only tie again, so the next comparison has to have tasks to untie before a session is worth
  * its cost: on 10 October a comparison read 3-0-2 on 5 tasks, the new harness valid on every
  * solve; two sessions then left it unchanged, and the stop rule ended the campaign where an
- * Examiner session was the move. After a control as much: a simulated climb built three times on a
+ * Examiner session was the move. After a starter comparison as much: a simulated climb built three times on a
  * set of which the reference had closed all but two or three, 2-0-6 each time.
  */
 function wanting(ground: Ground): Move | null {
@@ -497,7 +493,7 @@ function unread(ground: Ground): Move | null {
  * A comparison on the tasks held out since the last reading, before anything is built: on
  * 10 October a campaign held out four on the supply row, then ran two sessions that left the
  * harness as it was, and stopped before any comparison on them. With a harness waiting it is
- * compared on them; with none but the reference, the starter is, as a control that says whether
+ * compared on them; with none but the reference, the starter is, in a starter comparison that says whether
  * they leave the reference room before a Builder session is paid for: on 10 October three
  * campaigns built three times on tasks every practice solve passed.
  */
@@ -550,7 +546,7 @@ function leftBySessions(ground: Ground): Move | null {
 /** Why the Builder builds: what the pair's last reading left, or what is still to run. */
 function buildsOn(ground: Ground): string {
   const { read, waiting, reference } = ground;
-  if (read?.control === true) {
+  if (read?.starterComparison === true) {
     return `comparison ${read.id} read the starter against harness ${short(reference ?? "")} on the tasks held out since, and they leave it room: the Builder builds`;
   }
   if (read !== null) {
@@ -579,40 +575,43 @@ export function epochReleased(events: readonly LogEvent[]) {
  *  epoch's scorable and released tasks, which bound alone in none of 35 releases on record.
  *  Since 26 October the allowance reads reference-only room: the comparison frontier can change
  *  with which task the other harness wins, and practice is visible to the Builder (rule 3). */
-export function practiceRoom(events: readonly LogEvent[], level: number): number {
+export function practiceAllowance(events: readonly LogEvent[], level: number): number {
   const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
   if (promotedAt === -1 && taskSets(events).released.length === 0) return Infinity;
   return Math.max(0, poolOf(events).practiceFrontier.length - comparisonFloor(level));
 }
 
 /** How many more tasks the epoch's practice is owed: the `practice` a campaign names less what it
- *  has released since the last promotion, as far as its room goes (`practiceRoom`). */
+ *  has released since the last promotion, as far as its allowance goes (`practiceAllowance`). */
 export function practiceOwed(events: readonly LogEvent[], practice: number, level: number): number {
-  return Math.min(practice - Math.min(practice, epochReleased(events).epoch), practiceRoom(events, level));
+  return Math.min(
+    practice - Math.min(practice, epochReleased(events).epoch),
+    practiceAllowance(events, level),
+  );
 }
 
 /** A release for practice before a Builder session, where the epoch holds fewer than the campaign
- *  names, tasks were held out since the last release, and it has room (`practiceRoom`): on
+ *  names, tasks were held out since the last release, and its allowance permits (`practiceAllowance`): on
  *  9 October two sessions practised on the same two tasks while sixteen more were held. */
-function toPractise({ events, plan, supply, read }: Ground, named: Move): Move | null {
+function toPractise({ events, plan, supply, read }: Ground): Move | null {
   const { practice } = plan;
   const released = events.findLastIndex(
     ({ kind, data }) => kind === "task.state" && data.state === "released",
   );
   const { promotedAt, epoch } = epochReleased(events);
-  const room = practiceRoom(events, plan.wanted.level);
-  if (
-    named.move !== "build" ||
-    practice === null ||
-    supply.held < 2 ||
-    heldAfter(events, Math.max(released, promotedAt)) === 0
-  ) {
+  const allowance = practiceAllowance(events, plan.wanted.level);
+  if (practice === null || supply.held < 2 || heldAfter(events, Math.max(released, promotedAt)) === 0) {
     return null;
   }
-  // After a control that read room, practice is brought up by as many again: the tasks that leave
+  // After a starter comparison that read room, practice is brought up by as many again: the tasks that leave
   // the reference room are what the Builder has to work on, and the ones it has it passes.
-  const again = Math.min(practice, room);
-  if (read?.control === true && read.reported > released && roomOf(read.report) !== "none" && again > 0) {
+  const again = Math.min(practice, allowance);
+  if (
+    read?.starterComparison === true &&
+    read.reported > released &&
+    roomOf(read.report) !== "none" &&
+    again > 0
+  ) {
     return {
       move: "prepare",
       practice: supply.released + again,
@@ -640,16 +639,11 @@ function toPractise({ events, plan, supply, read }: Ground, named: Move): Move |
  * table that built again on it did so three times in every campaign on record. The Examiner is
  * asked for tasks that leave room.
  */
-function unshown(ground: Ground, named: Move): Move | null {
+function unshown(ground: Ground): Move | null {
   const { events } = ground;
   const at = events.findLastIndex(({ kind }) => kind === "build.finished");
   const finished = events[at];
-  if (
-    named.move !== "build" ||
-    finished === undefined ||
-    cutShort(finished) ||
-    finished.data.changed !== false
-  ) {
+  if (finished === undefined || cutShort(finished) || finished.data.changed !== false) {
     return null;
   }
   const last = finished.data;

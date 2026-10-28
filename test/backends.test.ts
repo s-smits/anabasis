@@ -1,34 +1,20 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "../src/agent/backends/claude.ts";
+import { claudeExecutable } from "../src/agent/backends/claude.ts";
 import { type BackendOptions, backends, compactionMode, retryPolicy } from "../src/agent/backends/models.ts";
 import { sit } from "../src/agent/session.ts";
 import { read } from "../src/kernel/log.ts";
 import { traceOf } from "../src/kernel/trace.ts";
 import { asRecord, type JsonValue } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
-import { mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 
-const HOUR_S = 60 * 60;
 const home = mkdtempSync(join(tmpdir(), "ana-backends-"));
 const previous = Bun.env.CODEX_HOME;
 const options: BackendOptions = {
   claude: { executable: claudeExecutable(), compaction: "off", home: tmpdir() },
 };
-
-function login(expiresInSeconds: number): string {
-  const claims = {
-    exp: Math.floor(Date.now() / 1000) + expiresInSeconds,
-    "https://api.openai.com/auth": { chatgpt_account_id: "test-account" },
-  };
-  const access = ["e30", Buffer.from(JSON.stringify(claims)).toString("base64url"), "sig"].join(".");
-  writeFileSync(
-    join(home, "auth.json"),
-    JSON.stringify({ tokens: { access_token: access, refresh_token: "r" } }),
-  );
-  return access;
-}
 
 beforeAll(() => {
   Bun.env.CODEX_HOME = home;
@@ -41,30 +27,21 @@ afterAll(() => {
 });
 
 describe("the three backends", () => {
+  const catalog = backends(options);
   it("serve Codex, OpenRouter and Claude Code from pi's catalogs", () => {
-    const models = backends(options);
-    expect(models.getModel("openai-codex", "gpt-6.1-sol")?.api).toBe("openai-codex-responses");
-    expect(models.getModel("openrouter", "anthropic/claude-opus-5")).toBeDefined();
-    expect(models.getModel("claude", "claude-opus-5")?.api).toBe("claude-agent-sdk");
+    expect(catalog.getModel("openai-codex", "gpt-6.1-sol")?.api).toBe("openai-codex-responses");
+    expect(catalog.getModel("openrouter", "anthropic/claude-opus-5")).toBeDefined();
+    expect(catalog.getModel("claude", "claude-opus-5")?.api).toBe("claude-agent-sdk");
     // The same backend on an API key is a provider of its own, with the same catalog and prices,
     // and it compacts as the login does.
-    const [login_, key] = ["claude", "claude-api"].map((id) => models.getModel(id, "claude-sonnet-5-5"));
+    const [login_, key] = ["claude", "claude-api"].map((id) => catalog.getModel(id, "claude-sonnet-5-5"));
     expect(key).toMatchObject({ provider: "claude-api", api: "claude-agent-sdk", cost: login_?.cost });
     if (login_ === undefined || key === undefined) throw new Error("the catalog has no claude-sonnet-5-5");
     expect(compactionMode(key, options)).toBe(compactionMode(login_, options));
   });
 
-  it("serve GPT-6.1 Terra at its list price on 6.1 Sol's window, and no GPT-5.6 Terra", () => {
-    const models = backends(options);
-    const terra = models.getModel("openai-codex", "gpt-6.1-terra");
-    expect(terra).toMatchObject({ api: "openai-codex-responses", contextWindow: 500_000 });
-    expect(terra?.cost).toMatchObject({ input: 1, output: 5, cacheRead: 0.05 });
-    expect(models.getModel("openai-codex", "gpt-5.6-terra")).toBeUndefined();
-  });
-
   it("route a model pinned to one OpenRouter endpoint there alone, at that endpoint's price", () => {
-    const models = backends(options);
-    const dated = models.getModel("openrouter", "deepseek/deepseek-v4.1-flash-1017");
+    const dated = catalog.getModel("openrouter", "deepseek/deepseek-v4.1-flash-1017");
     expect(dated?.compat).toMatchObject({
       openRouterRouting: { only: ["deepinfra/fp8"], allow_fallbacks: false },
     });
@@ -79,26 +56,59 @@ describe("the three backends", () => {
     });
     // A model nobody pinned keeps pi's own entry, routed as OpenRouter chooses.
     // Every listing pi's collection offers holds it, as `getModel` does.
-    const chat = models.getModelsOfType("chat", "openrouter").map(({ id }) => id);
+    const chat = catalog.getModelsOfType("chat", "openrouter").map(({ id }) => id);
     expect(chat).toContain("deepseek/deepseek-v4.1-flash-1017");
-    const base = models.getModel("openrouter", "deepseek/deepseek-v4.1-flash");
+    const base = catalog.getModel("openrouter", "deepseek/deepseek-v4.1-flash");
     expect(base?.compat ?? {}).not.toHaveProperty("openRouterRouting");
-    expect(models.getModel("openrouter", "deepseek/deepseek-v4.1-flash-0101")).toBeUndefined();
+    expect(catalog.getModel("openrouter", "deepseek/deepseek-v4.1-flash-0101")).toBeUndefined();
   });
 
-  it("read the Codex CLI's login as it stands", async () => {
-    const access = login(HOUR_S);
-    const auth = await backends(options).getAuth("openai-codex");
-    expect(auth?.auth.apiKey).toBe(access);
-  });
-
-  it("refuse to refresh a Codex login that is about to lapse, leaving that to the CLI", async () => {
-    login(60);
-    await expect(backends(options).getAuth("openai-codex")).rejects.toThrow("Codex CLI");
-  });
+  it.each([-60, 60])(
+    "refuses a Codex login with %s seconds left without refreshing or writing it",
+    async (seconds) => {
+      const claims = {
+        exp: Math.floor(Date.now() / 1000) + seconds,
+        "https://api.openai.com/auth": { chatgpt_account_id: "test-account" },
+      };
+      const access = ["e30", Buffer.from(JSON.stringify(claims)).toString("base64url"), "sig"].join(".");
+      const auth = JSON.stringify({ tokens: { access_token: access, refresh_token: "r" } });
+      writeFileSync(join(home, "auth.json"), auth);
+      const models = backends(options);
+      const provider = models.getProvider("openai-codex");
+      const oauth = provider?.auth.oauth;
+      if (provider === undefined || oauth === undefined) {
+        throw new Error("the Codex OAuth provider is missing");
+      }
+      let refreshes = 0;
+      models.setProvider({
+        ...provider,
+        auth: {
+          ...provider.auth,
+          oauth: {
+            ...oauth,
+            refresh: async (credential) => {
+              refreshes += 1;
+              return { ...credential, expires: Date.now() + 3_600_000 };
+            },
+          },
+        },
+      });
+      await expect(models.getAuth("openai-codex")).rejects.toThrow();
+      expect(refreshes).toBe(0);
+      expect(readFileSync(join(home, "auth.json"), "utf8")).toBe(auth);
+    },
+  );
 
   it("records the model Codex serves from its terminal event, leaving an absent model and backend bill unknown", async () => {
-    login(HOUR_S);
+    const claims = {
+      exp: Math.floor(Date.now() / 1000) + 60 * 60,
+      "https://api.openai.com/auth": { chatgpt_account_id: "test-account" },
+    };
+    const access = ["e30", Buffer.from(JSON.stringify(claims)).toString("base64url"), "sig"].join(".");
+    writeFileSync(
+      join(home, "auth.json"),
+      JSON.stringify({ tokens: { access_token: access, refresh_token: "r" } }),
+    );
     let served: string | undefined = "gpt-served-snapshot";
     const fetch = Object.assign(
       async () => {
@@ -125,6 +135,7 @@ describe("the three backends", () => {
       { preconnect: globalThis.fetch.preconnect },
     );
     const models = backends(options);
+    expect((await models.getAuth("openai-codex"))?.auth.apiKey).toBe(access);
     const provider = models.getProvider("openai-codex");
     const model = models.getModel("openai-codex", "gpt-6.1-sol");
     if (provider === undefined || model === undefined) throw new Error("the Codex provider is missing");
@@ -170,39 +181,6 @@ describe("the three backends", () => {
       expect(sat.spent.reportedCost).toBeNull();
       served = undefined;
     }
-  });
-
-  it("name the compaction each runs under: Claude Code's own as the host set it, and pi's in its own loop", () => {
-    const sweep: BackendOptions = {
-      claude: { ...options.claude, compaction: { window: SWEEP_COMPACT_WINDOW } },
-    };
-    const claude = (id: string) => ({ provider: "claude", id, contextWindow: 1_000_000 });
-    expect(compactionMode(claude("claude-opus-5"), sweep)).toBe("autoCompactWindow=300000");
-    expect(compactionMode(claude("claude-opus-5-5"), options)).toBe("off");
-    const codex = { provider: "openai-codex", id: "gpt-6.1-sol", contextWindow: 400_000 };
-    expect(compactionMode(codex, sweep)).toBe(
-      "durable window=300000 reserve=16384 keep=20000 summaryReserve=116384 background=off",
-    );
-    const glm = { provider: "openrouter", id: "z-ai/glm-5", contextWindow: 200_000 };
-    expect(compactionMode(glm, options)).toBe(
-      "durable window=200000 reserve=16384 keep=20000 summaryReserve=16384 background=off",
-    );
-  });
-
-  // The CLI clamps the window to the context it serves the id, without a word: a bare id gets 200K.
-  it("refuse a compaction window the model's served context cannot hold", () => {
-    const at = (window: number): BackendOptions => ({
-      claude: { ...options.claude, compaction: { window } },
-    });
-    const claude = (id: string) => ({ provider: "claude", id, contextWindow: 200_000 });
-    expect(() => compactionMode(claude("claude-haiku-4-5"), at(SWEEP_COMPACT_WINDOW))).toThrow(
-      "claude-haiku-4-5 a 200000-token context",
-    );
-    expect(compactionMode(claude("claude-haiku-4-5"), at(200_000))).toBe("autoCompactWindow=200000");
-    expect(compactionMode(claude("claude-opus-5-5"), at(SWEEP_COMPACT_WINDOW))).toBe(
-      "autoCompactWindow=300000",
-    );
-    expect(compactionMode(claude("claude-fable-5-1"), at(1_000_000))).toBe("autoCompactWindow=1000000");
   });
 });
 

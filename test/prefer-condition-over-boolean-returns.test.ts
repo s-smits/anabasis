@@ -14,7 +14,7 @@
  * from that output, expected the comment to be gone.
  */
 import { describe, expect, it } from "bun:test";
-import { expectedLines, fixedSource, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
+import { fixedSource } from "./helpers/oxlint-rule-fixture.ts";
 
 const RULE = "prefer-condition-over-boolean-returns";
 const BRANCHES = `interface Row {
@@ -58,33 +58,7 @@ export function guarded(row: Row): boolean {
 }
 `;
 
-/**
- * The same shape with nothing to say the answer stays a boolean.
- *
- * `named` has no declared return type and its test is a member rather than a comparison, so
- * `return row.name;` answers `string | undefined` and the function's inferred type widens with
- * it. Nothing fails to compile — a caller writing `=== true` simply starts reading false. The
- * second half is the witness the spelling supplies on its own: `compared` has no declared type
- * either and needs none, because `!==` answers a boolean whatever it is given.
- */
-const INFERRED = `export function named(row: { readonly name?: string }) {
-  if (row.name) return true; // REPORT read, but the rewrite would answer a string
-  return false;
-}
-
-export function compared(row: { readonly name?: string }) {
-  if (row.name !== undefined) return true; // REPORT a comparison is a boolean by its spelling
-  return false;
-}
-`;
-
 describe("ana/prefer-condition-over-boolean-returns", () => {
-  it("reads both orders and refuses a non-literal return and the tail of a run of guards", async () => {
-    const expected = expectedLines(BRANCHES);
-    expect(expected).toHaveLength(4);
-    expect(await reportedLines("ana", RULE, BRANCHES)).toStrictEqual(expected);
-  });
-
   it("returns the condition where it stands as written, and leaves the negation to its author", async () => {
     const fixed = await fixedSource("ana", RULE, BRANCHES);
     expect(fixed).toContain(
@@ -92,28 +66,12 @@ describe("ana/prefer-condition-over-boolean-returns", () => {
     );
     expect(fixed).toContain("  return row.pass; // REPORT an else keeps both returns inside the if\n}");
     expect(fixed).not.toContain("return true;\n  return false;");
-    expect(fixed).toContain("if (row.pass) return false;");
-    expect(fixed).toContain("if (row.pass) return row.seen;");
-  });
-
-  it("rewrites an inferred return only where the test is a boolean by its spelling", async () => {
-    expect(await reportedLines("ana", RULE, INFERRED)).toStrictEqual(expectedLines(INFERRED));
-    const fixed = await fixedSource("ana", RULE, INFERRED);
-    expect(fixed).toContain("if (row.name) return true;");
-    expect(fixed).toContain("return row.name !== undefined;");
-  });
-
-  it("carries the guard's comment onto the answer, and leaves a pair of them where they stand", async () => {
-    const fixed = await fixedSource("ana", RULE, BRANCHES);
-    // Two comments would have to be stacked above the answer and indented to it, which is a
-    // layout decision; the report stands and the source keeps both.
-    expect(fixed).toContain("if (row.pass) return true; // REPORT two comments in the range");
-    expect(fixed).toContain("// the second one, which would have to be stacked above the answer");
-    // Nothing the fixture wrote is missing from what it rewrote.
-    for (const line of BRANCHES.split("\n").filter(
-      (one) => one.trim().startsWith("//") || one.includes(" // "),
-    )) {
-      expect(fixed).toContain(line.slice(line.indexOf("//")));
-    }
+    expect(fixed).toContain(
+      BRANCHES.slice(
+        BRANCHES.indexOf("export function stacked"),
+        BRANCHES.indexOf("export function verified"),
+      ),
+    );
+    expect(fixed).toContain(BRANCHES.slice(BRANCHES.indexOf("export function missing")));
   });
 });

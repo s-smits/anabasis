@@ -23,6 +23,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../
 import { isFunction, isString, type JsonObject } from "../../src/meta/json-shape.ts";
 import { tmpdir } from "../../src/meta/os.ts";
 import { join, resolve } from "../../src/meta/path.ts";
+import { present } from "./matchers.ts";
 
 export type Mode = ExamRequest["mode"];
 /** A request of each mode. */
@@ -138,6 +139,14 @@ export const condition = (task: string, harness: string): Condition => ({
   host: "h",
   side: "test",
 });
+
+/** The seat's tool of that name, or its first (the one that proposes tasks) where none is named. */
+export function toolOf(opened: { readonly tools: readonly SeatTool[] }, named?: string): SeatTool {
+  return present(
+    named === undefined ? opened.tools[0] : opened.tools.find(({ name }) => name === named),
+    `the seat's ${named ?? "first"} tool`,
+  );
+}
 
 /** Call only the Examiner's host tools: no Harness operations, and a gate may outlive this call. */
 export function invoke(tool: SeatTool, callId: string, args: JsonObject) {

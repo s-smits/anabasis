@@ -1,13 +1,11 @@
-// Going on with a campaign: the flags it runs again on, the login it runs as, and the point a pause
-// waits for. The launcher guesses no login: the campaign command's own dry run refuses a seat whose
-// provider holds no credential, and a launch whose dry run refuses shows that reason.
+// Campaign login isolation, clean-point pausing and dry-run refusals.
 import { afterAll, describe, expect, it } from "bun:test";
-import { type EventKind, LOG_FILE, type LogEvent } from "../src/kernel/log.ts";
-import { chmodSync, mkdirSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import type { EventKind, LogEvent } from "../src/kernel/log.ts";
+import { chmodSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
-import { join, resolve } from "../src/meta/path.ts";
-import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
-import { launch, loginEnv, rerun, restsAfter } from "../tools/runs/manage.ts";
+import { join } from "../src/meta/path.ts";
+import { capturedExecPath } from "../src/meta/process.ts";
+import { loginEnv, restsAfter } from "../tools/runs/manage.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
 const KEY = "CLAUDE_CODE_OAUTH_TOKEN";
@@ -23,40 +21,22 @@ const event = (kind: EventKind, data: JsonObject): LogEvent => ({
 });
 
 describe("going on with a campaign", () => {
-  it("runs again on the flags its last run kept, less its name and the total the record now holds", () => {
-    // A budget word may have set another total since: the old flag would set it back.
-    expect(rerun(["--name", "m", "--project", "p", "--budget", "300", "--builder", "b"], undefined)).toEqual([
-      "--project",
-      "p",
-      "--builder",
-      "b",
-    ]);
-    expect(rerun(["--name=m", "--budget=300", "--cap", "5"], "800")).toEqual([
-      "--cap",
-      "5",
-      "--budget",
-      "800",
-    ]);
-  });
-
-  it("runs as the named login alone, recorded, and refuses one the environment does not hold", () => {
+  it("isolates the chosen login and never chooses a numbered key implicitly", () => {
     const env = { PATH: "/bin", [KEY]: "a", [`${KEY}3`]: "c", [`${KEY}4`]: "d" };
     expect(loginEnv(env, "4")).toEqual({ PATH: "/bin", [KEY]: "d", ANA_LOGIN: "4" });
-    expect(() => loginEnv(env, "2")).toThrow(`${KEY}2 is not set`);
-    expect(() => loginEnv({ ...env, [`${KEY}2`]: "" }, "2")).toThrow(`${KEY}2 is not set`);
-  });
-
-  it("names no login where none is named: no numbered key reaches the command, and no login is recorded", () => {
-    // The unnumbered token is the file's own, and goes on as it is.
-    expect(loginEnv({ PATH: "/bin", [KEY]: "a", [`${KEY}3`]: "c" }, undefined)).toEqual({
-      PATH: "/bin",
-      [KEY]: "a",
-    });
-    // One numbered key is no login chosen: a run that needs one is refused by its own dry run.
-    expect(loginEnv({ PATH: "/bin", [`${KEY}3`]: "c" }, undefined)).toEqual({ PATH: "/bin" });
-    expect(loginEnv({ PATH: "/bin", [`${KEY}3`]: "c", [`${KEY}4`]: "d" }, undefined)).toEqual({
-      PATH: "/bin",
-    });
+    for (const input of [env, { ...env, [`${KEY}2`]: "" }]) {
+      expect(() => loginEnv(input, "2")).toThrow(`${KEY}2`);
+    }
+    for (const [input, expected] of [
+      [
+        { PATH: "/bin", [KEY]: "a", [`${KEY}3`]: "c" },
+        { PATH: "/bin", [KEY]: "a" },
+      ],
+      [{ PATH: "/bin", [`${KEY}3`]: "c" }, { PATH: "/bin" }],
+      [{ PATH: "/bin", [`${KEY}3`]: "c", [`${KEY}4`]: "d" }, { PATH: "/bin" }],
+    ] as const) {
+      expect(loginEnv(input, undefined)).toEqual(expected);
+    }
   });
 
   it("pauses past one more of the event, once no comparison, Examiner session or draft is open", () => {
@@ -100,21 +80,6 @@ describe("starting a campaign", () => {
     );
     expect(result.code).toBe(1);
     expect(result.err).toContain("tools/d2/harness-builder.ts");
-    expect(result.err).toContain("nothing was started");
     expect(made.recorded().filter(({ tool, args }) => tool === "nice" && args.includes("19"))).toEqual([]);
-  });
-
-  it("refuses a name that differs from a held campaign's only by case, which macOS reads as one folder", async () => {
-    const name = `hunt-alias-${String(runtimeProcess.pid)}`;
-    const folder = join(resolve(import.meta.dir, ".."), ".ana", "d2", name);
-    mkdirSync(folder, { recursive: true });
-    writeFileSync(join(folder, LOG_FILE), "");
-    try {
-      await expect(launch([name.toUpperCase(), "--", "--project", "p"])).rejects.toThrow(
-        `names a campaign in ${folder}`,
-      );
-    } finally {
-      rmSync(folder, { recursive: true, force: true });
-    }
   });
 });

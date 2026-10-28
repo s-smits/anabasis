@@ -31,7 +31,7 @@ import { checkProgram, contractOf, packControls, readPack, toolOnPath } from "..
 export interface Staged {
   /** The pack, laid out as a stored bundle is. */
   readonly bundle: string;
-  /** Its check program, staged without the tasks and the controls, as a verifier opens it. */
+  /** Its check program, staged without the tasks and the control answers, as a verifier opens it. */
   readonly checks: string;
 }
 

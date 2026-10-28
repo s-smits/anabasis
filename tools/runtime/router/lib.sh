@@ -1,5 +1,5 @@
 # What both sides of the runner share. The bun shim and run.sh source it here, and run.sh ships it
-# ahead of host.sh to every host, so this machine and each host pin, reap and wall a task the same
+# ahead of host.sh to every host, so this machine and each host pin, reap and time-limit a task the same
 # way. It defines functions and runs nothing, and stays within bash 3.2, the M1's /bin/bash: no
 # associative arrays, no `${x,,}`, and an empty array needs the `${a[@]+...}` form.
 
@@ -121,7 +121,7 @@ kill_tree() {
   done
 }
 
-# run_walled <seconds> <cmd...>: the one wall, on every side. The task runs as a child, so a
+# run_walled <seconds> <cmd...>: the one deadline, on every side. The task runs as a child, so a
 # watchdog can end its whole tree after <seconds>, and so does a HUP, INT or TERM to this shell: a
 # dropped ssh delivers HUP through its PTY, and ^C delivers INT. Returns the task's status.
 run_walled() {

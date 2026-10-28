@@ -4,9 +4,9 @@
  * `.claude/skills/whole-run-investigation/references/lanes.md` have something to read.
  *
  * v1's readers walked a campaign folder of some forty record kinds: claims, promotions, epochs,
- * batteries, case records, Builder executions, reviews. v2 keeps one append-only log, and everything
- * a lane starts from is a fold of it, so this file replaces v1's thirteen readers and reads nothing
- * else: no harness state, no pack, no file beside the log.
+ * task sets, case records, Builder executions, reviews. v2 keeps one append-only log, and everything
+ * a lane starts from is a fold of it. This file replaces v1's thirteen readers; the overview also
+ * reads launch receipts for host and launch provenance, without reading a harness or a pack.
  *
  * A trigger is a capitalised name, the lane it starts and one line of counts. It says a lane has
  * something to read and never what the answer is: a lane that contradicts its trigger from the
@@ -35,7 +35,7 @@ import { differenceOf, readsStepEitherWay } from "#src/kernel/compare.ts";
 import type { Condition } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { pairsReported } from "#src/kernel/reports.ts";
-import { billedAll, costLine } from "#src/kernel/trace.ts";
+import { billedAll, costLine, spendOf } from "#src/kernel/trace.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
@@ -55,9 +55,8 @@ import {
   practiceOf,
   REPORTED,
   share,
-  SMALL_WALL_SHARE,
+  SMALL_DEADLINE_SHARE,
   type Solve,
-  spendOf,
   strings,
   tally,
   taskTriggers,
@@ -69,7 +68,7 @@ import { safeguardTriggers } from "./climb.ts";
 import { promotionTriggers, testedOf } from "./promotion.ts";
 import { runTriggers } from "./run.ts";
 import type { Receipt } from "../runs/receipt.ts";
-import { costTriggers, hoursLine, wallTriggers } from "./time.ts";
+import { costTriggers, hoursLine, deadlineTriggers } from "./time.ts";
 
 export interface Row {
   readonly id: string;
@@ -165,7 +164,7 @@ function practiceTriggers(log: Index, { build, changed, child, read, round }: Pr
       solve.harness === child &&
       solve.outcome === "pass" &&
       wonTasks.has(`${String(solve.comparison)} ${solve.version}`) &&
-      solve.seconds < solve.wallSeconds * SMALL_WALL_SHARE &&
+      solve.seconds < solve.wallSeconds * SMALL_DEADLINE_SHARE &&
       solve.calls.length <= FEW_CALLS,
   ).length;
   return [
@@ -307,7 +306,7 @@ function harnessTriggers(log: Index): Trigger[] {
     // where a shell command named it: esp32's b-1 kept 9 tool files on 12 October, its file tools none.
     const written = [
       ...new Set(calls.flatMap(({ tool, args }) => (FILE_WRITERS.has(tool) ? [text(args?.path)] : []))),
-      ...new Set(calls.flatMap(({ args }) => text(args?.command).match(/\.toolchain/) ?? [])),
+      ...new Set(calls.flatMap(({ args }) => /\.toolchain/.exec(text(args?.command)) ?? [])),
     ];
     const toolFiles = written.filter((path) => /tools|\.toolchain/.test(path));
     // A stop writes no end record, so a session it cut says nothing of what it changed: recode's
@@ -378,11 +377,11 @@ function practiceCandidates(
 ): PracticeCandidate[] {
   const child = text(build.finished?.harness);
   const read: PracticeCandidate[] = comparisons.flatMap(({ id, at, fresh, report }) => {
-    const checkpoint = log.events.some(
+    const snapshot = log.events.some(
       ({ kind, data }, index) =>
         kind === "build.checkpoint" && data.session === build.session && data.harness === fresh && index < at,
     );
-    return build.from < at && (fresh === child || checkpoint)
+    return build.from < at && (fresh === child || snapshot)
       ? [{ harness: fresh, began: at, origin: "comparison", id, reported: report !== null }]
       : [];
   });
@@ -546,7 +545,7 @@ function solveTriggers(log: Index, steps: readonly Handover[]): Trigger[] {
         ];
   });
   return [
-    ...wallTriggers(log),
+    ...deadlineTriggers(log),
     ...(non.length > 0
       ? [
           fired(
@@ -709,7 +708,7 @@ function rowsOf(log: Index, steps: readonly Handover[]): Row[] {
         `${plural(log.events.length, "event")}, ${log.events[0]?.at ?? ""} to ${log.events.at(-1)?.at ?? ""}`,
         `${plural(log.builds.length, "Builder session")}, ${plural(log.of(EXAM_START).length, "Examiner session")}, ${plural(log.of(REPORTED).length, "report")}`,
         `billed dollars: ${
-          spendOf(log)
+          spendOf(log.events)
             .map(([role, dollars]) => `${role} ${dollars.toFixed(2)}`)
             .join(", ") || "none"
         }${admittedCost(log, steps)

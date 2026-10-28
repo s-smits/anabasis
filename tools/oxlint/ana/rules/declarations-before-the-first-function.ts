@@ -325,7 +325,7 @@ function throughBlankLines(text: string, end: number): number {
   if (first === -1) return end;
   // A second statement written on the same line is not part of this one, and the move would
   // carry it to the front without ever deciding it could go. A trailing comment may follow.
-  if (/\S/u.test(text.slice(end, first).replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//gu, ""))) return end;
+  if (/\S/u.test(text.slice(end, first).replaceAll(/\/\/[^\n]*|\/\*[\s\S]*?\*\//gu, ""))) return end;
   let at = first + 1;
   for (let next = text.indexOf("\n", at); next !== -1; next = text.indexOf("\n", at)) {
     if (/\S/u.test(text.slice(at, next))) break;

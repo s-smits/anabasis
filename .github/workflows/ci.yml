@@ -55,6 +55,9 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       - run: bun run format:check
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      # Every tracked file, where the pre-push hook scans only what a push adds.
+      - run: bun run secrets
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       - run: bun run test
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
 

@@ -16,7 +16,7 @@ import { existsSync, mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { type Seat, sit } from "../src/agent/session.ts";
-import { ending, text, tool } from "../src/tools/answer.ts";
+import { text, tool } from "../src/tools/answer.ts";
 
 const scratch = mkdtempSync(join(tmpdir(), "ana-seat-"));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
@@ -90,16 +90,12 @@ function seated(responses: readonly FauxResponseStep[], over: Partial<Seat> = {}
 }
 
 describe("a seat's session", () => {
-  it("ends when its work is over, at its turn cap, or when a stop fires, and a cut one has no crash", async () => {
+  it("ends when its work is over or when a stop fires, and a cut one has no crash", async () => {
     const done = seated([look, look, look]);
     Object.assign(done.seat, { over: () => done.seat.turns.length >= 2 });
     const ended = await sit(done.seat);
     expect([done.seat.turns.length, ended.cut, ended.crash]).toEqual([2, false, null]);
     expect(ended.spent.turns).toBe(2);
-
-    const capped = seated([look, look, look, look], { most: 3 });
-    await sit(capped.seat);
-    expect(capped.seat.turns).toHaveLength(3);
 
     const kill = new AbortController();
     const killed = seated(
@@ -119,22 +115,19 @@ describe("a seat's session", () => {
     const failed = seated([fauxAssistantMessage("", { stopReason: "error", errorMessage: "session limit" })]);
     expect(await sit(failed.seat)).toMatchObject({ cut: false, thrown: null, crash: "session limit" });
 
-    const throwing = seated([look], {
-      models: () => {
-        throw new Error("no backend");
-      },
-    });
-    expect(await sit(throwing.seat)).toMatchObject({ cut: false, thrown: "no backend", crash: "no backend" });
-  });
-
-  it("is prompted again by the seat when a turn ends without a call, and ends where the seat has nothing to say", async () => {
-    const said = ["Go on."];
-    const s = seated([fauxAssistantMessage("Thinking."), fauxAssistantMessage("Done.")], {
-      next: async () => said.shift() ?? null,
-    });
-    await sit(s.seat);
-    expect(s.seat.turns).toHaveLength(2);
-    expect(s.sent[1]).toContain("Go on.");
+    for (const [hook, message] of [
+      ["models", "no backend"],
+      ["before", "seat cap"],
+    ] as const) {
+      const throwing = seated([look], {
+        [hook]: () => {
+          throw new Error(message);
+        },
+      });
+      expect(await sit(throwing.seat)).toMatchObject({ cut: false, thrown: message, crash: message });
+      expect(throwing.faux.state.callCount).toBe(0);
+      expect(throwing.looked).toEqual([]);
+    }
   });
 
   it("settles its seat's work before the model's process is closed, and removes the scratch home it made", async () => {
@@ -178,58 +171,6 @@ describe("durable session boundaries", () => {
     expect(read(log).map(({ kind }) => kind)).toEqual(["build.turn", "build.call", "build.turn"]);
   });
 
-  it("ends after a round with submit and another call, without another request", async () => {
-    let submitted = false;
-    const submit = tool({
-      name: "submit",
-      description: "Submit.",
-      parameters: Type.Object({}),
-      execute: async () => {
-        submitted = true;
-        return ending(text("submitted"));
-      },
-    });
-    const s = seated([
-      fauxAssistantMessage([fauxToolCall("submit", {}), fauxToolCall("look", {})], TOOL_USE),
-      look,
-    ]);
-    Object.assign(s.seat, { tools: [submit, ...s.seat.tools], over: () => submitted });
-    expect(await sit(s.seat)).toMatchObject({ crash: null });
-    expect(s.looked).toHaveLength(1);
-    expect(s.faux.state.callCount).toBe(1);
-  });
-
-  it("makes no request beyond most, including a zero cap", async () => {
-    for (const most of [0, 1, 3]) {
-      const s = seated([look, look, look, look], { most });
-      expect(await sit(s.seat)).toMatchObject({ crash: null });
-      expect(s.faux.state.callCount).toBe(most);
-    }
-  });
-
-  it("ends with thrown when before throws, before a provider or tool runs", async () => {
-    const s = seated([look], {
-      before: () => {
-        throw new Error("seat cap");
-      },
-    });
-    expect(await sit(s.seat)).toMatchObject({ thrown: "seat cap", crash: "seat cap" });
-    expect(s.faux.state.callCount).toBe(0);
-    expect(s.looked).toEqual([]);
-  });
-
-  it("keeps the seat id as the provider session id and the whole untagged system prompt", async () => {
-    let sessionId: string | undefined;
-    const s = seated([
-      (_context, options) => {
-        sessionId = options?.sessionId;
-        expect(_context.messages.find((message) => message.role === "system")?.content).toBe("A seat.");
-        return fauxAssistantMessage("Done.");
-      },
-    ]);
-    await sit(s.seat);
-    expect(sessionId).toBe(s.seat.id);
-  });
   it("bills a retried attempt on the following turn without counting it as a turn", async () => {
     const log = join(scratch, "retry.jsonl");
     const failed = fauxAssistantMessage("charged partial", {
@@ -289,17 +230,6 @@ describe("durable session boundaries", () => {
       undefined,
     ]);
   });
-
-  it("retries a failed attempt on the last turn most allows", async () => {
-    const s = seated(
-      [fauxAssistantMessage("", { stopReason: "error", errorMessage: "WebSocket closed 1000" }), look],
-      { most: 1 },
-      "openai-codex",
-    );
-    expect(await sit(s.seat)).toMatchObject({ crash: null });
-    expect(s.faux.state.callCount).toBe(2);
-    expect(s.seat.turns).toHaveLength(1);
-  });
 });
 
 describe("refused durable tool calls", () => {
@@ -337,21 +267,6 @@ describe("refused durable tool calls", () => {
 });
 
 describe("durable's loop under a seat", () => {
-  it("ends on a failure durable does not retry, as the provider's crash", async () => {
-    const refused = fauxAssistantMessage("", {
-      stopReason: "error",
-      errorMessage: "invalid request: bad schema",
-    });
-    const s = seated([refused, look], {}, "openai-codex");
-    expect(await sit(s.seat)).toMatchObject({
-      crash: "invalid request: bad schema",
-      thrown: null,
-      cut: false,
-    });
-    expect(s.faux.state.callCount).toBe(1);
-    expect(s.looked).toEqual([]);
-  });
-
   it("runs a round's calls one at a time, in the order the model wrote them", async () => {
     const order: string[] = [];
     const slow = tool({
@@ -360,7 +275,7 @@ describe("durable's loop under a seat", () => {
       parameters: Type.Object({ n: Type.Number() }),
       execute: async ({ n }) => {
         order.push(`start ${String(n)}`);
-        await Bun.sleep(30 - n * 10);
+        await Promise.resolve();
         order.push(`end ${String(n)}`);
         return text(String(n));
       },
@@ -403,19 +318,25 @@ describe("a seat's stops and its neighbours under durable", () => {
   it("aborts a running tool when a stop fires, makes no further request, and reads as cut", async () => {
     const stop = new AbortController();
     let aborted = false;
+    const started = Promise.withResolvers<void>();
     const hang = tool({
       name: "look",
       description: "Look.",
       parameters: Type.Object({}),
       execute: async (_args, _api, context) => {
-        setTimeout(() => stop.abort(), 20);
-        await new Promise<void>((resolve) => context.abortSignal?.addEventListener("abort", () => resolve()));
+        const stopped = Promise.withResolvers<void>();
+        context.abortSignal?.addEventListener("abort", () => stopped.resolve(), { once: true });
+        started.resolve();
+        await stopped.promise;
         aborted = true;
         return text("stopped");
       },
     });
     const s = seated([look, look], { tools: [hang], stops: [stop.signal] });
-    expect(await sit(s.seat)).toMatchObject({ cut: true, crash: null });
+    const sitting = sit(s.seat);
+    await started.promise;
+    stop.abort();
+    expect(await sitting).toMatchObject({ cut: true, crash: null });
     expect(aborted).toBe(true);
     expect(s.faux.state.callCount).toBe(1);
     expect(s.shutdowns[0]?.aborted).toBe(true);

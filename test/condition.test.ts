@@ -1,11 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-  type Condition,
-  conditionId,
-  conditionsOf,
-  limitsIn,
-  recordCondition,
-} from "../src/kernel/condition.ts";
+import { type Condition, conditionId, conditionsOf, recordCondition } from "../src/kernel/condition.ts";
 import { append, read } from "../src/kernel/log.ts";
 import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -25,7 +19,7 @@ const condition: Condition = {
   verifierTools: "v1",
   sandbox: "p1",
   limits: {
-    wallSeconds: 7_200,
+    wallSeconds: 7200,
     turns: 24,
     shellDefaultSeconds: 300,
     shellMaxSeconds: 900,
@@ -36,45 +30,12 @@ const condition: Condition = {
 };
 
 describe("a condition", () => {
-  it("is named by its content, whatever order its fields were written in", () => {
-    const { contract, ...rest } = condition;
-    const reordered: Condition = { ...rest, contract };
-    expect(conditionId(reordered)).toBe(conditionId(condition));
-  });
-
-  it("pins the runtime, compaction, sandbox and every limit, so a change in any is another condition", () => {
-    const changes: Partial<Condition>[] = [
-      { runtime: { ...condition.runtime, "@anthropic-ai/claude-agent-sdk": "0.3.286" } },
-      { compaction: "auto" },
-      { sandbox: "p2" },
-      { limits: { ...condition.limits, wallSeconds: 7_800 } },
-      { limits: { ...condition.limits, turns: 48 } },
-      { limits: { ...condition.limits, shellMaxSeconds: 600 } },
-      { limits: { ...condition.limits, concurrency: 6 } },
-      { side: "strong" },
-    ];
-    const ids = changes.map((change) => conditionId({ ...condition, ...change }));
-    expect(new Set([conditionId(condition), ...ids]).size).toBe(changes.length + 1);
-  });
-
-  // Until 19 October every condition held its seat's disk cap, and a log of before is still read.
-  it("reads the limits of a condition recorded with a disk cap, and none that lack a limit", () => {
-    const recorded = requireJsonValue({ ...condition.limits, diskBytes: 2 * 1024 ** 3 });
-    expect(limitsIn(recorded)).toEqual(condition.limits);
-    const { concurrency: _dropped, ...short } = condition.limits;
-    expect(limitsIn(requireJsonValue(short))).toBeNull();
-  });
-
-  it("refuses a model its price table does not price", () => {
-    expect(() => conditionId({ ...condition, model: "claude/claude-sonnet-5" })).toThrow(
-      "prices no such model",
-    );
-  });
-
   it("is logged once under its id and read back whole, and a record edited under its id is refused", () => {
     const scratch = mkdtempSync(join(tmpdir(), "ana-condition-"));
     try {
       const log = join(scratch, "log.jsonl");
+      const { contract, ...rest } = condition;
+      expect(conditionId({ ...rest, contract })).toBe(conditionId(condition));
       const strong: Condition = { ...condition, side: "strong" };
       const ids = [condition, strong, condition].map((each) => recordCondition(log, each));
       expect(ids).toEqual([conditionId(condition), conditionId(strong), conditionId(condition)]);

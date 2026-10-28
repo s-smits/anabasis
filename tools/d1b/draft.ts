@@ -5,13 +5,13 @@
  *
  * The campaign opened from a prompt (`tools/d2/harness-builder.ts --prompt`), and its opening
  * holds that prompt. The Examiner drafts the public rules with a source for each, the answer
- * format, one check a rule, example tasks and controls (`src/examiner/draft.ts`). Each draft it
- * puts is read without a model (`draftReading`, `tools/d2/exam.ts`): its shape, every control
+ * format, one check a rule, example tasks and control answers (`src/examiner/draft.ts`). Each draft it
+ * puts is read without a model (`draftReading`, `tools/d2/exam.ts`): its shape, every control answer
  * through the checks twice, and the do-nothing answer on every example. A draft with no fault
  * stands and is the campaign's exam from then on (`exam.drafted`), and the session ends.
  *
  * A draft with no fault is then measured before it stands: the reference harness, the starter
- * until a campaign promotes one, solves each example afresh through the launcher the gate of
+ * until a campaign promotes one, solves each example afresh through the launcher the task admission of
  * `try_task` uses (`probing`, `examine.ts`), up to `TRIED` times and stopping at the first reading
  * that leaves it room (`measured`, `src/examiner/write.ts`), under the campaign's setting, which
  * the first such solve records (`--solver` and the rest, as every command that solves takes them).
@@ -20,11 +20,11 @@
  * solve's start names the session, so it is the Examiner's: never scored and on no task's record
  * (`examinerSessions`, `src/kernel/solves.ts`). On 22 October the drafted exams of two fresh
  * campaigns were measured only afterwards: one campaign's reference answered 965 of 971 solves
- * validly, at a median of 3 of 20 turns, and the other's gate found 36 of the 49 drafts it read
+ * validly, at a median of 3 of 20 turns, and the other's task admission found 36 of the 49 drafts it read
  * whole answered in all three solves.
  *
  * The session stops at a draft that stands, at `--tries` drafts put to the reading, or at its
- * minutes and turns. A measure its wall or a kill cuts short lets the draft stand, as the last put
+ * deadline and model turn limit. A measure its deadline or a kill cuts short lets the draft stand, as the last put
  * does. The Examiner has a shell in a walled home of its own (`examine`, with a wall), under the
  * disk cap of a campaign's solves, closed to this repository and its other worktrees. A caller
  * that stands in for the session with a script seats no solver, and its drafts stand unmeasured.
@@ -39,7 +39,7 @@ import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { openingOf } from "#src/campaign/opening.ts";
 import type { Draft, Measured } from "#src/examiner/draft.ts";
 import { type Examined, examine, type Session } from "#src/examiner/session.ts";
-import { measured } from "#src/examiner/write.ts";
+import { measured as measureRoom } from "#src/examiner/write.ts";
 import { read } from "#src/kernel/log.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname } from "#src/meta/path.ts";
@@ -49,7 +49,7 @@ import { draftReading } from "../d2/exam.ts";
 import { COMPARISON_OPTIONS, refereeNamed, type Seated, solved } from "../d2/round.ts";
 import { recordedSetting, SETTING_OPTIONS, settingAsked } from "../d2/setting.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
-import { budgetOf, probing } from "./examine.ts";
+import { budgetOf, probing as launchRoomSolve } from "./examine.ts";
 
 const OPTIONS = {
   name: { type: "string" },
@@ -88,18 +88,18 @@ export async function draftCommand(
       `campaign ${name} did not open from a prompt, so there is nothing to draft its exam from: open it with tools/d2/harness-builder.ts --prompt`,
     );
   }
-  // The examples of a draft with no fault, each put to the gate's reference solves as a draft task
-  // is, with no answer of the author's read: its controls passed the reading already.
+  // The examples of a draft with no fault, each put to task admission's reference solves as a draft task
+  // is, with no answer of the author's read: its control answers passed the reading already.
   const measuring =
     (by: Seated) =>
     async (draft: Draft, stop: AbortSignal): Promise<Measured | null> => {
       const setting = settingAsked(values, recordedSetting(read(log)));
       const campaign = await openCampaign({ name, draft, ...setting.named });
-      const probe = await probing(campaign, by, setting, values);
-      const gate = { contract: campaign.contract, log, id, probe, planted: new Set<string>() };
+      const probe = await launchRoomSolve(campaign, by, setting, values);
+      const admission = { contract: campaign.contract, log, id, probe, planted: new Set<string>() };
       const examples = await Promise.all(
         campaign.tasks.map(async (task) => {
-          const { reason, said } = await measured(gate, campaign.pack(task), stop, () =>
+          const { reason, said } = await measureRoom(admission, campaign.pack(task), stop, () =>
             Promise.resolve(null),
           );
           return said === "" ? (reason ?? "not measured") : said;

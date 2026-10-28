@@ -9,11 +9,12 @@ const FORBIDDEN_WORDS = new Set(["shape", "shapes", "shaped"]);
  *  capital run before a capitalised word (`JSONShape` is `JSON`, `Shape`). */
 const WORD_BREAK = /[_$\d]+|(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/u;
 
-/** Return whether an identifier names a statically accessed member owned by another value. */
+/** Return whether an identifier names a statically accessed member owned by another value or namespace. */
 function isBorrowedMemberName(node: ESTree.Node): boolean {
   const { parent } = node;
-  if (parent?.type !== "MemberExpression") return false;
-  return parent.property === node && parent.computed === false;
+  if (parent?.type === "MemberExpression") return parent.property === node && !parent.computed;
+  if (parent?.type === "TSQualifiedName") return parent.right === node;
+  return parent?.type === "JSXMemberExpression" && parent.property === node;
 }
 
 /**

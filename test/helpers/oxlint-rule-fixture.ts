@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "../../src/m
 import type { JsonValue } from "../../src/meta/json-shape.ts";
 import { tmpdir } from "../../src/meta/os.ts";
 import { dirname, join, resolve } from "../../src/meta/path.ts";
+import { capturedExecPath } from "../../src/meta/process.ts";
 
 /** Long enough for oxlint and its plugin to load on a crowded host, short of the per-test wall. */
 const RUN_TIMEOUT_MS = 30_000;
@@ -56,7 +57,7 @@ function stage(plugin: string, rule: string, fixtureText: string, at: string, st
   const run = async (...extra: string[]): Promise<string> => {
     const child = Bun.spawn(
       [
-        Bun.argv[0]!,
+        capturedExecPath,
         "--no-env-file",
         "node_modules/oxlint/bin/oxlint",
         "-c",
@@ -98,7 +99,7 @@ async function runRule(
   // was `[^/:]+\.tsx?:`, which matched no row at all once `at` named a `.mjs` file — and `.claude`
   // joined the lint scope on 2026-09-20 carrying a whole tree of them. A test placing its fixture
   // there read back an empty list and passed, having asked the rule nothing.
-  const escaped = fixture.replace(/[.*+?^\\${}()|[\]]/gu, String.raw`\$&`);
+  const escaped = fixture.replaceAll(/[.*+?^\\${}()|[\]]/gu, String.raw`\$&`);
   const tagged = new RegExp(`${escaped}:(?<row>\\d+:\\d+: .*\\(${rule}\\)\\])`, "gu");
   return [...(await run()).matchAll(tagged)].map(([, row]) => row ?? "");
 }
@@ -114,16 +115,6 @@ export async function reportedLines(
   return (await runRule(plugin, rule, fixtureText, at, staging))
     .map((row) => Number(row.split(":")[0]))
     .sort((a, b) => a - b);
-}
-
-/** The message text `plugin/rule` reported over `fixtureText`, in report order. */
-export async function reportedMessages(
-  plugin: string,
-  rule: string,
-  fixtureText: string,
-  at = "fixture.ts",
-): Promise<string[]> {
-  return (await runRule(plugin, rule, fixtureText, at, {})).map((row) => row.split(": ").slice(1).join(": "));
 }
 
 /**

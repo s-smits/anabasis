@@ -2,19 +2,19 @@
  * What a campaign waits for, each through one host (`Host`), so that a test stands in a host whose
  * sleeps it counts.
  *
- * - **The load, before a solve.** A solve's wall counts the clock, so a solve started into a loaded
- *   host reaches walls an idle one would not: on 9 October one harness answered the same seven tasks
+ * - **The load, before a solve.** A solve's deadline measures elapsed time. Under load, it may run
+ *   out of time on work it would finish on an idle host: on 9 October one harness answered the same seven tasks
  *   in a median of 105 s under a load of 31 and of 40 s under a load of 6 (`docs/transfer.md`). A
  *   solve starts once the one-minute load is at or under the cores, or after `LOOKS` looks: on 15
  *   October, three campaigns on a host of 8 cores held one of them 104 and 107 minutes. Until 12
- *   October the gate was at a move's start, and a comparison of hours ran on whatever came after.
+ *   October the solve queue waited at a move's start, and a comparison of hours ran on whatever came after.
  *   `--loaded` is the operator's word that the solves' times will not be compared.
  * - **The reserve, beside the solves in flight.** A solve waits while others fly and the budget
  *   holds no reserve for it (`affords`); until 14 October each kind of solve held its own.
  * - **The solve slots, shared by every seat.** The same in-flight count holds comparison workers,
- *   practice and admission probes to the concurrency the condition records. On 26 October,
- *   buffer-fresh-opus-v072 showed 13 overlapping admission solves at a recorded concurrency of 4:
- *   each draft and its remaining probes could start together, outside the comparison's workers.
+ *   practice and room solves to the concurrency the condition records. On 26 October,
+ *   buffer-fresh-opus-v072 showed 13 overlapping room solves at a recorded concurrency of 4:
+ *   each draft and its remaining room solves could start together, outside the comparison's workers.
  * - **A provider's named reset.** A usage limit that names when it lifts is slept out, not a crash:
  *   on 12 October one login's limit, an hour and forty minutes from its reset, ended five campaigns
  *   on two hosts at once (`waitOut`, `src/solver/run.ts`, which a solve also calls).
@@ -48,8 +48,8 @@ export interface Host {
   readonly sleep?: ((ms: number) => Promise<void>) | undefined;
 }
 
-/** What the gate is put on: who solves, the host where a test stands one in, and `--loaded`. */
-interface Gate {
+/** What the solve queue is put on: who solves, the host where a test stands one in, and `--loaded`. */
+interface Queue {
   readonly seated: Seated;
   readonly host?: Host | undefined;
   readonly loaded: boolean;
@@ -69,14 +69,15 @@ const NETWORK =
   /\b(?:ENOTFOUND|EAI_AGAIN|ECONNRESET|ECONNREFUSED|ENETUNREACH|ETIMEDOUT|ConnectionRefused|FailedToOpenSocket)\b/;
 const WAITED = "campaign.waited";
 
+// External tests and skills still import this public name.
+export { queued as gated };
+
 /**
  * `seated` with each solve held at the load, reserve and shared slots. A rehearsal's scripts, whose
- * times nobody compares and which bill nothing, are seated ungated unless a test stands in a host.
+ * times nobody compares and which bill nothing, are seated without the solve queue unless a test stands in a
+ * host.
  */
-export function gated(
-  { seated, loaded, host = seated === solved ? HOST : undefined }: Gate,
-  log: string,
-): Seated {
+function queued({ seated, loaded, host = seated === solved ? HOST : undefined }: Queue, log: string): Seated {
   if (host === undefined) return seated;
   return (campaign, given) => {
     const seats = seated(campaign, given);
@@ -90,7 +91,7 @@ export function gated(
             `a solve of ${task.taskId} waits for the campaign's reserve while others are in flight`,
           );
         }
-        // The load is read at every look until the solve starts: on 27 October three admission probes
+        // The load is read at every look until the solve starts: on 27 October three room solves
         // of esp32-fresh-opus-terra read 3.2 on 12 cores, waited a minute for a slot, and began at 15.9.
         let [looks, since, load] = [0, 0, 0];
         for (;;) {

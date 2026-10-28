@@ -31,7 +31,7 @@
  *   wrote the controller's line on how a workspace was seeded, and a v2 home is always seeded the
  *   same way.
  * - The starters name what a v2 Builder works with: programs where v1 had a verifier in reach,
- *   a session where v1 had a build, a comparison where v1 had a battery.
+ *   a session where v1 had a build, a comparison where v1 had an exam.
  */
 import {
   cpSync,
@@ -68,8 +68,8 @@ export const SCRATCHPAD_FILE = "SCRATCHPAD.md";
  *  file bounds both the inherited write and the prompt read, including a read after the Builder has
  *  edited the file directly, because two constants would mean the write path and the read path
  *  disagreeing about what fits. */
-export const MEMORY_CAP_BYTES = 8_000;
-const SCRATCHPAD_CAP_BYTES = 2_000;
+export const MEMORY_CAP_BYTES = 8000;
+const SCRATCHPAD_CAP_BYTES = 2000;
 
 /** Headings keyed to what the Builder actually decides, so a pass finds its own section. */
 export const STARTER_MEMORY = `# Builder memory
@@ -106,7 +106,7 @@ const FILES: ReadonlyArray<readonly [string, string, number]> = [
  *  second cut folds their counts into its own line instead of stacking bookkeeping. */
 const CUT_MARKER_PATTERN = /<!-- memory cut to \d+ bytes: (\d+) bytes dropped here -->\n?/g;
 
-/** Room reserved inside the ceiling for that marker line, which is about 60 bytes. Reserving it is
+/** Space reserved inside the ceiling for that marker line, which is about 60 bytes. Reserving it is
  *  what keeps a cut file inside the limit it was cut to. */
 const CUT_MARKER_RESERVE_BYTES = 96;
 

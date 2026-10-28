@@ -28,6 +28,7 @@ import { barsOf } from "../../../../src/campaign/climb.ts";
 import { openSteps } from "../../../../src/campaign/handover.ts";
 import { reported } from "../../../../src/campaign/comparison.ts";
 import { namesOf } from "../../../../src/campaign/names.ts";
+import { budgetLeft } from "../../../../src/campaign/opening.ts";
 import { readsStepEitherWay } from "../../../../src/kernel/compare.ts";
 import { patienceOf } from "../../../../src/kernel/reports.ts";
 import { billedAll, billedParts } from "../../../../src/kernel/trace.ts";
@@ -184,11 +185,11 @@ function riskIn(log: Log): Counters["risk"] {
 
 /** What is left of the campaign's total, and what the last comparison the cap did not cut billed. */
 function runwayIn(log: Log): Counters["runway"] {
-  const budget = openingIn(log)?.budget?.dollars;
+  const left = budgetLeft(log.events);
   const last = reportsIn(log).findLast(({ data }) => data.capped !== true);
-  if (budget === undefined || last === undefined) return null;
+  if (left === null || last === undefined) return null;
   const each = billedParts(log.events, last.session).comparison;
-  return { left: budget - billedAll(log.events), each, comparison: last.session };
+  return { left: left.dollars, each, comparison: last.session };
 }
 
 /** Everything of the reading that the tier does not change. */

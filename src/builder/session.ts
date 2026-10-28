@@ -1,7 +1,7 @@
 /**
  * One Builder session: the agent that changes a Built Harness, and the host around it.
  * Continuations share finish's counted practice evidence for the current exact digest, including
- * states restored after a different snapshot was frozen.
+ * states restored after a different harness snapshot was frozen.
  *
  * The plan's D2 is "one Builder session scored on tasks it never saw". A session is given a copy of
  * the harness it starts from, a walled shell over that copy, practice solves on released tasks,
@@ -12,9 +12,9 @@
  * (`src/kernel/compare.ts`), on tasks this session never saw.
  *
  * What v1's Builder (harness-builder-v4 at 7af7315) did and this one does not: write tasks and
- * checks, set its solver's limits, and submit through gates on a candidate. The Examiner writes
+ * checks, set its solver's limits, and submit a candidate through checks. The Examiner writes
  * tasks, the checks are fixed, the host owns every limit, and a harness is judged by a comparison
- * rather than gated.
+ * rather than refused at submission.
  *
  * The walls, each with the test that holds it:
  * - Practice is on released tasks only. The task fold says which those are, at the session's start
@@ -34,29 +34,24 @@
  * Builder that went wrong is a reader of that record, and the model's own transcript is deleted
  * with the session's scratch.
  *
- * The session ends at `finish`, at its wall, at its turns, at its dollar cap, or when a practice solve
- * could not be run at all. A solve's turn cap counts prompts, as v1's did; here it counts the model's turns, since a
- * Builder that never stops calling tools would otherwise have no cap but its wall. The wall, the
- * kill and the halt reach a practice solve in flight, so the session ends when they fall and not a
- * solve's whole wall later; one still queued at the host's gate leaves on them unstarted, which is
+ * The session ends at `finish`, at its deadline, session turn limit or dollar cap, or when a
+ * practice solve could not be run. A solve's prompt limit counts prompts, as v1's did; the session
+ * turn limit counts model turns, since a Builder that keeps calling tools would otherwise have
+ * only its deadline. The deadline, kill and halt reach a practice solve in flight, so the session
+ * ends when they fall rather than a solve's whole time limit later. A solve still waiting in the
+ * solve queue leaves on them unstarted, which is
  * the session's end and no host fault. A practice solve that throws anything else is the verifier
  * failing to decide, which stops a run: the session writes its record, freezes what it has, and
  * throws it again.
  */
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
-import {
-  type Api,
-  type AssistantMessage,
-  type Model,
-  type Models,
-  type ThinkingLevel,
-} from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { conditionsOf, type Limits } from "../kernel/condition.ts";
 import type { Contract } from "../kernel/contract.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { priceKey } from "../kernel/meter.ts";
 import type { Ending } from "../kernel/solve.ts";
-import { type Cap } from "../kernel/reports.ts";
+import type { Cap } from "../kernel/reports.ts";
 import { billedParts, ownedBy } from "../kernel/trace.ts";
 import { ended as endedSolves, practiceRan, solvesIn } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
@@ -74,7 +69,7 @@ import { openHarness } from "../harness/open.ts";
 import { type PublicTask, publicView } from "../solver/prompt.ts";
 import { HARNESS_ACCOUNT } from "../harness/starter.ts";
 import { type SolveRequest, solve } from "../solver/run.ts";
-import { type Sat, type SeatTool, sit } from "../agent/session.ts";
+import { type Sat, type SeatTool, sessionClock, sit } from "../agent/session.ts";
 import { claimRoot } from "../wall/seat-root.ts";
 import { campaignOf } from "../campaign/handover.ts";
 import { copyHarness, seedKept } from "./kept.ts";
@@ -100,7 +95,7 @@ import {
   practiceLeft,
   practiceTool,
   record,
-  type Snapshot,
+  type HarnessSnapshot,
   snapshot,
   traceTool,
   walledTools,
@@ -121,20 +116,14 @@ export interface Practised {
   readonly ending: Ending;
 }
 
-/** The host's limits on a session: a solve's, read for the Builder's own wall, turns and shell, and
- *  the practice solves it may spend. `turns` caps the model's turns, where a solve's caps its
+/** The host's limits on a session: its deadline, session turn limit, shell limits and practice solves.
+ *  `turns` caps the model's turns, where a solve's caps its
  *  prompts. `concurrency` is how many practice solves run at once. */
 interface BuildLimits extends Limits {
   readonly practiceSolves: number;
 }
 
-interface BuildClock {
-  readonly began: number;
-  readonly signal: AbortSignal;
-  readonly seconds: () => number;
-  readonly arm: () => void;
-  readonly close: () => void;
-}
+type BuildClock = ReturnType<typeof sessionClock>;
 
 export interface BuildRequest {
   /** Names the session in the log. */
@@ -158,7 +147,7 @@ export interface BuildRequest {
   readonly effort: ThinkingLevel;
   readonly limits: BuildLimits;
   /** What a practice solve is held to, which `preview_harness` shows a solver being told. The
-   *  session's own wall, turns and command limits are `limits`. */
+   *  session's own deadline, session turn limit and command limits are `limits`. */
   readonly solve: Limits;
   /** Who solves with the harness, in practice and in every comparison: the campaign's setting, as a
    *  condition names the model. The opening tells it, since a guide that serves one solver well can
@@ -206,7 +195,7 @@ export interface BuildRequest {
      *  message carries, or nothing: the campaign's first Examiner session (14 October). */
     readonly start?: () => Promise<string>;
     /** What `finish` tells the Builder where no comparison has read harness `digest` against the
-     *  reference, or null (`standing`, `tools.ts`). */
+     *  reference, or null (`finishNotice`, `tools.ts`). */
     readonly unmeasured?: (digest: string) => Promise<string | null>;
   };
 }
@@ -247,7 +236,7 @@ function endedBy(by: Record<(typeof ENDINGS)[number], boolean>): Built["ended"] 
   return ENDINGS.find((reason) => by[reason]) ?? "stopped";
 }
 
-/** Keep the state an interrupted session's own practice solve last ran on as a checkpoint, once,
+/** Keep the state an interrupted session's own practice solve last ran on as a harness snapshot, once,
  *  where it changed the parent and its saved state opens. A cut harness is passed over
  *  (`latestBuilt`) as one left half way through an edit, but a practised state is no half-edit: on
  *  13 October buffer-149's b-1 crashed with a harness it had practised three of three on, and b-2
@@ -257,17 +246,17 @@ function endedBy(by: Record<(typeof ENDINGS)[number], boolean>): Built["ended"] 
 export async function keepPractised(log: string, id: string, states: string): Promise<void> {
   const events = read(log);
   const mine = events.filter(ownedBy(events, id));
-  // A practice under the parent or the reference is a control (`under`, `tools.ts`): every session's
+  // Practice under the parent or reference is not this session's edit (`under`, `tools.ts`): every session's
   // parent and every harness promoted stand before this session's own. One that ran before the
-  // session's last checkpoint ran a harness that checkpoint already keeps or supersedes.
-  const controls = new Set(
+  // session's last harness snapshot ran a harness that snapshot already keeps or supersedes.
+  const earlierHarnesses = new Set(
     events.flatMap(({ kind, data }) =>
       kind === BUILD_STARTED ? [data.parent] : kind === "harness.promoted" ? [data.harness] : [],
     ),
   );
   const since = mine.findLastIndex(({ kind }) => kind === "build.checkpoint");
   const harness = practiceRan(mine).findLast(
-    ({ started, under }) => started > since && !controls.has(under.harness),
+    ({ started, under }) => started > since && !earlierHarnesses.has(under.harness),
   )?.under.harness;
   if (harness === undefined) return;
   if (mine.some(({ kind, data }) => kind === "build.checkpoint" && data.harness === harness)) return;
@@ -297,7 +286,7 @@ export function layPractice(home: string, tasks: readonly PracticeTask[]): void 
   mkdirSync(folder, { recursive: true });
   for (const { task } of tasks) {
     writeFileSync(
-      join(folder, `${task.taskId.replace(/[^A-Za-z0-9._-]+/g, "-")}.json`),
+      join(folder, `${task.taskId.replaceAll(/[^A-Za-z0-9._-]+/g, "-")}.json`),
       `${capturedJsonStringify(publicView(task), null, 2)}\n`,
     );
   }
@@ -346,20 +335,10 @@ export async function session(
     effort: request.effort,
     limits: { ...limits },
   });
-  const wall = new AbortController();
-  // The wall counts the Builder's own time: its clock stops while a campaign action runs, which is
-  // the host's time (`Bench.within`), and `aside` is what the actions took.
-  let aside = 0;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const ownSeconds = () => (performance.now() - began - aside) / 1000;
-  // One timer at a time: until 14 October the opening's `within` armed one that the session's own
-  // arming overwrote, and it cut main0_5_1's Builder four hours on, a comparison in flight.
-  let closed = false;
-  const arm = () => {
-    clearTimeout(timer);
-    if (closed) return;
-    timer = setTimeout(() => wall.abort(), (limits.wallSeconds - ownSeconds()) * 1000);
-  };
+  // The deadline counts the Builder's own time: its clock stops while a campaign action runs, which is
+  // the host's time (`Bench.within`). Until 14 October the opening armed a second timer that the
+  // session's own arming overwrote, and it cut main0_5_1's Builder four hours on, a comparison in flight.
+  const clock = sessionClock(began, limits.wallSeconds);
   const bench: Bench = {
     request,
     said: SAID[request.campaign === undefined ? "host" : "builder"],
@@ -378,33 +357,9 @@ export async function session(
     halt: new AbortController(),
     fatal: null,
     note: null,
-    within: async (action) => {
-      clearTimeout(timer);
-      const since = performance.now();
-      try {
-        return await action();
-      } finally {
-        aside += performance.now() - since;
-        arm();
-      }
-    },
+    within: clock.within,
   };
-  return await converse(
-    bench,
-    dirs.host,
-    {
-      began,
-      signal: wall.signal,
-      seconds: ownSeconds,
-      arm,
-      close: () => {
-        closed = true;
-        clearTimeout(timer);
-      },
-    },
-    walled,
-    env,
-  );
+  return await converse(bench, dirs.host, clock, walled, env);
 }
 
 /** Rebuilt from public facts, including tasks released while the conversation stays open. */
@@ -492,7 +447,6 @@ async function converse(
     if (bench.halt.signal.aborted) throw new Error("The session has ended at a bound.");
   };
   const started = (await campaign?.start?.()) ?? "";
-  clock.arm();
   const sat = await sit({
     models: request.models,
     home: join(host, "model"),
@@ -508,7 +462,7 @@ async function converse(
     // host ran is held to its dollar cap, before a request and again after a compaction, which
     // bills too. Until 19 October the cap held practice alone: a session the host ran opened on
     // what was left of a campaign's total and could bill turns past it until its finish, its
-    // turns or its wall, as two reviews of the host-led loop found (#202, closed). A led
+    // session turn limit or its deadline, as two reviews of the host-led loop found (#202, closed). A led
     // session's cap is what was left when it opened, and the operator's word can raise the
     // total after: the table's reading of the budget is the one that holds it, as `practiceLeft`
     // already has it.
@@ -545,16 +499,16 @@ async function finishSession(bench: Bench, sat: Sat, clock: BuildClock, turns: n
   const { request } = bench;
   const { log, limits } = request;
   const crash = (sat.cut ? null : sat.thrown) ?? bench.fatal?.message ?? sat.crash;
-  // Whatever ended the session, what `harness/` holds is frozen: a session cut at its wall still
+  // Whatever ended the session, what `harness/` holds is frozen: a session cut at its deadline still
   // made its edits, and the comparison is what says whether they count.
   //
   // Where what it holds does not open, the session is not lost with it: the last state it
   // practised with is what is measured, and `broken` says why the final one was not. That a harness
-  // opens is all that is left of v1's submit gate, and there a round that ended refused measured
-  // nothing: 13 firmware rounds, 3,803 minutes, by v1 #113's count. A session cut at its wall half way
+  // opens is all that is left of v1's submission check, and there a round that ended refused measured
+  // nothing: 13 firmware rounds, 3,803 minutes, by v1 #113's count. A session cut at its deadline half way
   // through an edit ends so, and the state before it was one real solves ran on. A session that
   // never practised has no such state, and leaves none.
-  let frozen: Snapshot | null;
+  let frozen: HarnessSnapshot | null;
   let broken: string | null = null;
   try {
     frozen = await snapshot(bench);
@@ -653,8 +607,8 @@ async function left(events: readonly LogEvent[], request: BuildRequest, parent: 
  * Run session `request.id` once, and say what it left. A session the log already holds is not run
  * again: it is read from the log, whether it ran now or in an earlier run of the command, and one
  * that did not end whole is refused (`spent`). It is the session of a round, which then compares
- * what it left, and the whole of a session run with no comparison after it: the plan's checkpoint
- * is several sessions and then one comparison (`7f0add79:docs/plan.md`, Phase 5).
+ * what it left, and the whole of a session run with no comparison after it: the plan measures
+ * several sessions together in one standalone comparison (`7f0add79:docs/plan.md`, Phase 5).
  */
 export async function sessionOnce(
   request: BuildRequest,

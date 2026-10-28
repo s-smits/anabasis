@@ -7,8 +7,8 @@
  * local function as well — to the library. A forwarding function that parses by hand is the case
  * that separates following a parameter from trusting a name.
  */
-import { describe, expect, it } from "bun:test";
-import { expectedLines, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
+import { describe, it } from "bun:test";
+import { lintRules } from "./helpers/lint-rule.ts";
 
 const SCRIPT = `
 import { exitWith, parseOrDie, runCommand } from "#skills/main/cli.ts";
@@ -39,31 +39,14 @@ console.log(command, rest, spec, bun);
 `.trimStart();
 
 describe("ana/no-hand-read-argv", () => {
-  const reports = (at: string): Promise<number[]> => reportedLines("ana", "no-hand-read-argv", SCRIPT, at);
-
-  it("reports a hand read and admits the executable and every path into the library", async () => {
-    const expected = expectedLines(SCRIPT);
-    expect(expected).toHaveLength(5);
-    expect(await reports(".claude/skills/launch-run/scripts/example.mjs")).toStrictEqual(expected);
-    expect(await reports(".claude/skills/launch-run/scripts/example.mts")).toStrictEqual(expected);
-  });
-
-  it("speaks to skill scripts only, and never to the parser itself or a skill's test", async () => {
-    expect(await reports(".claude/skills/main/cli.ts")).toStrictEqual([]);
-    expect(await reports(".claude/skills/launch-run/scripts/example.test.ts")).toStrictEqual([]);
-    expect(await reports("src/example.ts")).toStrictEqual([]);
-    expect(await reports("tools/example.ts")).toStrictEqual([]);
-  });
-
-  it("does not take a local function named like the library for the library", async () => {
-    const local = `
-function parseOrDie(argv) {
-  return argv.slice(1);
-}
-parseOrDie(Bun.argv.slice(2)); // REPORT not imported from main/cli.ts, so it is a second parser
-`.trimStart();
-    expect(
-      await reportedLines("ana", "no-hand-read-argv", local, ".claude/skills/zip-run/scripts/a.mjs"),
-    ).toStrictEqual(expectedLines(local));
+  it("reports only the marked lines in every fixture and scope", async () => {
+    await lintRules("ana", [
+      ["no-hand-read-argv", SCRIPT, 5, ".claude/skills/launch-run/scripts/example.mjs"],
+      ["no-hand-read-argv", SCRIPT, 5, ".claude/skills/launch-run/scripts/example.mts"],
+      ["no-hand-read-argv", SCRIPT, 0, ".claude/skills/main/cli.ts"],
+      ["no-hand-read-argv", SCRIPT, 0, ".claude/skills/launch-run/scripts/example.test.ts"],
+      ["no-hand-read-argv", SCRIPT, 0, "src/example.ts"],
+      ["no-hand-read-argv", SCRIPT, 0, "tools/example.ts"],
+    ]);
   });
 });

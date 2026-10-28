@@ -28,5 +28,5 @@ evidence against those steps and supplies no additional authority.
 | Kind | Record |
 | --- | --- |
 | Armed timer | Name, id, schedule with UTC offset, purpose and authority link |
-| Firing | Time with UTC offset, finding, usefulness, skill step after, timer change |
+| Firing | Time with UTC offset, finding, `Predictions.md` rows resolved, usefulness, skill step after, timer change |
 | Primary log | Dated append-only line for work between firings |

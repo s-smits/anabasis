@@ -260,11 +260,13 @@ function lanes(): number {
       ownedPaths: [report],
     };
   });
+  // A lane reads campaign logs, which hold hidden values, so its sessions search nothing: a query
+  // leaves the machine (`AGENTS.md`, section 5). Every other Codex launch searches by default.
   const launch = join(out, "launch.json");
   if (sessions.length > 0) {
     writeFileSync(
       launch,
-      `${JSON.stringify({ workdir: REPO, sandbox: "workspace-write", sessions }, null, 2)}\n`,
+      `${JSON.stringify({ workdir: REPO, sandbox: "workspace-write", search: false, sessions }, null, 2)}\n`,
     );
   }
   console.log(`${plural(built.length, "lane")} built: ${built.map((lane) => lane.number).join(", ")}`);

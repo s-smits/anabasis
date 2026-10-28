@@ -42,7 +42,7 @@
  *
  * `ANA_LOGINS` in the environment, such as `2,3,4`, names the logins a run may take (`allowedLogins`),
  * every login the environment holds where it is unset. Until 15 October this was a script of the
- * operator's, which read the checkout's `.env` itself, and a shell loop applied the room rule.
+ * operator's, which read the checkout's `.env` itself, and a shell loop applied the capacity rule.
  */
 import { openingOf, SEATS } from "#src/campaign/opening.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
@@ -206,7 +206,7 @@ async function viaOAuthUsage(token: string, agent: string): Promise<Read | Faile
     const percent = limit?.percent;
     if (isString(model) && isNumber(percent)) {
       const group = [limit?.group, limit?.kind].find(isString) ?? "";
-      notes.push(`${model} ${group} ${String(Math.round(percent))}%`.replace(/\s+/g, " "));
+      notes.push(`${model} ${group} ${String(Math.round(percent))}%`.replaceAll(/\s+/g, " "));
     }
   }
   const extra = asRecord(body.extra_usage);
@@ -370,7 +370,7 @@ function shown(window: Window, length: number, now: number): string {
       : `resets in ${spanOf(Math.max(0, Math.round((reset - now) / 60_000))).padEnd(6)} (${clock(reset)})`;
   const status = window.status !== undefined && window.status !== "allowed";
   const tail = status
-    ? `  ${pace(window, length, now).padEnd(26)}  [${String(window.status)}]`
+    ? `  ${pace(window, length, now).padEnd(26)}  [${window.status}]`
     : `  ${pace(window, length, now)}`;
   return `[${bar}] ${pct}  ${until}${tail.trimEnd()}`;
 }

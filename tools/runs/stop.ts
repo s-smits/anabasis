@@ -90,7 +90,7 @@ function after(run: Run, ran: readonly string[]): string {
   const session = at === -1 ? undefined : ran[at + 1];
   return (
     (session === undefined ? null : spent(logEvents(run.path), session)) ??
-    "A round or a checkpoint goes on from it when started again under the same id"
+    "A round or a standalone comparison goes on from it when started again under the same id"
   );
 }
 

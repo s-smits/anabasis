@@ -11,7 +11,7 @@
  * how much of each login is used (`logins.ts`), `keep` keeps a run going across logins (`keep.ts`),
  * `copy` takes a stopped campaign whole to another worktree (`move.ts`), `move` takes one to another
  * machine and goes on with it there (`move.ts`), and `on` and `hosts` run a verb on another machine
- * (`hosts.ts`), `fetch` takes a copy of a run another machine holds into the archive, to read here (`move.ts`), and `retire` moves
+ * (`hosts.ts`), `fetch` takes a copy of a run another machine holds into the archive, or with no name the records of every one, to read here (`move.ts`), and `retire` moves
  * each idle campaign into the archive, deletes each idle seed and the worktrees nothing uses, here and on every host (`retire.ts`). A verb that names a run no worktree here holds runs on the host that holds it
  * (`routed`), and `holds` is what that host is asked. `active` names each login's live runs on every
  * host, which `usage` counts on each login's line (`logins.ts`). `search` finds text across

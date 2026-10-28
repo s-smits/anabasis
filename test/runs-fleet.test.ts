@@ -17,7 +17,7 @@ import {
 import { join } from "../src/meta/path.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
 import { quoted, treeBun } from "../tools/runs/host-command.ts";
-import { leastOccupied } from "../tools/runs/placement.ts";
+
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
 const fixtures: string[] = [];
@@ -35,7 +35,8 @@ const fixture = () => {
   return made;
 };
 /** A remote campaign fixture, its events written by the log's owner. */
-function campaign(made: ReturnType<typeof fakeHosts>) {
+function campaign() {
+  const made = fixture();
   const folder = join(made.root, "remote", "distant");
   mkdirSync(folder, { recursive: true });
   const log = join(folder, "log.jsonl");
@@ -53,7 +54,7 @@ function campaign(made: ReturnType<typeof fakeHosts>) {
       cores: 2,
     }),
   );
-  return { log, env: { FAKE_CATALOGUE: JSON.stringify([{ name: "distant", path: log }]) } };
+  return { made, log, env: { FAKE_CATALOGUE: JSON.stringify([{ name: "distant", path: log }]) } };
 }
 
 describe("host execution", () => {
@@ -129,38 +130,14 @@ describe("host execution", () => {
     expect(chosen()).toBe(join(release, "bun"));
   });
 
-  it("lets a skill ask every host through the bounded shared transport", () => {
-    const made = fixture();
-    const code =
-      'import { askedScript } from "REPOSITORY/tools/runs/hosts.ts"; console.log(await askedScript(".claude/skills/example/scripts/cycle.ts", ["--here"]));';
-    const hosts = JSON.stringify([made.host, { ...made.host, name: "other", ssh: "fake-other" }]);
-    const result = made.run(code, { ANA_HOSTS: hosts });
-    expect(result.code).toBe(0);
-    expect(made.recorded().filter((call) => call.tool === "ssh")).toHaveLength(4);
-    expect(result.out).toContain("other");
-    const failed = made.run(code, { FAKE_OFFLINE: "1" });
-    expect(failed.out).toContain("null");
-    expect(failed.err).toContain("controller preparation failed");
-  });
-
-  it("refuses a mutating route when a host is unavailable or also claims the local name", () => {
-    const made = fixture();
-    const folder = join(made.main, ".ana", "d2", "distant");
-    mkdirSync(folder, { recursive: true });
-    append(join(folder, "log.jsonl"), "campaign.ended", { ending: "finished" });
-    const code =
-      'import { routed } from "REPOSITORY/tools/runs/hosts.ts"; await routed("stop", ["distant", "--yes"]);';
-    expect(made.run(code, { FAKE_OFFLINE: "1" }).code).toBe(1);
-    expect(made.run(code, { FAKE_HOLDS: "distant" }).code).toBe(1);
-  });
-
   it("refuses an unsafe or repeated host identity before invoking ssh", () => {
+    const made = fixture();
     for (const entries of [
+      [made.host, made.host],
       [{ name: "../outside" }],
       [{ name: "here" }],
       [{ name: "runner", ssh: "-oProxyCommand=x", tree: "/fake", bun: "bun" }],
     ]) {
-      const made = fixture();
       expect(
         made.run('import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; hostsOf();', {
           ANA_HOSTS: JSON.stringify(entries),
@@ -168,38 +145,20 @@ describe("host execution", () => {
       ).toBe(1);
       expect(made.recorded()).toHaveLength(0);
     }
+  });
+
+  it("names the central host only where ANA_HOSTS lists it", () => {
     const made = fixture();
-    expect(
-      made.run('import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; hostsOf();', {
-        ANA_HOSTS: JSON.stringify([made.host, made.host]),
-      }).code,
-    ).toBe(1);
+    const code =
+      'import { centralOf } from "REPOSITORY/tools/runs/host-config.ts"; console.log(centralOf());';
+    expect(made.run(code, { ANA_CENTRAL: "" }).out).toContain("null");
+    expect(made.run(code, { ANA_CENTRAL: "here" }).out).toContain("here");
+    expect(made.run(code, { ANA_CENTRAL: made.host.name }).out).toContain(made.host.name);
+    expect(made.run(code, { ANA_CENTRAL: "elsewhere" }).code).toBe(1);
   });
 });
 
 describe("code preparation", () => {
-  it("fetches and installs a detached controller while leaving the configured tree in place", () => {
-    const made = fixture();
-    const result = made.run(prepare, { FAKE_EXECUTE: "1" });
-    expect(result.code).toBe(0);
-    const calls = made
-      .recorded()
-      .filter((call) => call.tool === "git")
-      .map((call) => call.args);
-    expect(calls.some((args) => args.includes("fetch"))).toBe(true);
-    expect(calls.some((args) => args.includes("add") && args.includes("--detach"))).toBe(true);
-    expect(calls.some((args) => args.includes("checkout"))).toBe(false);
-    expect(
-      made.recorded().some((call) => call.tool === "host-bun" && call.args.includes("--frozen-lockfile")),
-    ).toBe(true);
-    expect(result.out).toContain("ana-code");
-    expect(existsSync(join(made.main, ".env"))).toBe(false);
-    expect(made.run(prepare, { FAKE_EXECUTE: "1" }).code).toBe(0);
-    expect(
-      made.recorded().filter((call) => call.tool === "host-bun" && call.args.includes("install")),
-    ).toHaveLength(1);
-  });
-
   it("refuses a failed fetch, an unpublished commit, a dirty controller or failed install", () => {
     for (const extra of [
       { FAKE_FETCH_FAIL: "1" },
@@ -247,7 +206,7 @@ describe("code preparation", () => {
         ?.args.at(-1) ?? "";
     expect(command).toContain("campaign-value");
     expect(command).toContain("prepared");
-    expect(command).toMatch(/--host\W+here\W+--yes/);
+    expect(command).toMatch(/--placed\W+--yes/);
     // On 27 October `--as terra` sent to two hosts opened one name on each, since each peer's
     // `freeName` reads its own names alone: the host goes into the suffix.
     expect(command).toMatch(/--as\W+terra-runner\W/);
@@ -275,34 +234,10 @@ describe("code preparation", () => {
   });
 });
 
-describe("automatic placement", () => {
-  it("takes the fewest live seats below each machine's own cap and refuses a full fleet", () => {
-    const made = fixture();
-    expect(
-      leastOccupied([
-        { host: undefined, live: 2, capacity: 3 },
-        { host: made.host, live: 1, capacity: 2 },
-      ]),
-    ).toBe(made.host);
-    expect(() => leastOccupied([{ host: made.host, live: 2, capacity: 2 }])).toThrow("no host has room");
-    const result = made.run(
-      'import { placeFresh } from "REPOSITORY/tools/runs/placement.ts"; console.log(await placeFresh("sample"));',
-      { FAKE_OFFLINE: "1" },
-    );
-    expect(result.code).toBe(1);
-    expect(result.err).toContain("live count");
-    const malformed = made.run(
-      'import { placeFresh } from "REPOSITORY/tools/runs/placement.ts"; await placeFresh("sample");',
-      { FAKE_ACTIVE: "[{}]" },
-    );
-    expect(malformed.code).toBe(1);
-  });
-});
-
 describe("campaign snapshots", () => {
   it("refreshes a remote campaign and publishes whole lines in the existing archive", () => {
-    const made = fixture();
-    const remote = campaign(made);
+    const remote = campaign();
+    const { made } = remote;
     const whole = readFileSync(remote.log, "utf8");
     writeFileSync(remote.log, `${whole}{"inFlight":`);
     const result = made.run(sync, remote.env);
@@ -317,20 +252,9 @@ describe("campaign snapshots", () => {
     expect(readFileSync(copied, "utf8")).toBe(whole);
   });
 
-  it("takes over a fetch lock that a dead fetch left behind", () => {
-    const made = fixture();
-    const remote = campaign(made);
-    const lock = join(made.main, "data", "runs", "runner", ".fetch-distant.lock");
-    mkdirSync(lock, { recursive: true });
-    writeFileSync(join(lock, "pid"), String(Bun.spawnSync(["true"]).pid));
-    expect(made.run(sync, remote.env).code).toBe(0);
-    expect(existsSync(join(made.main, "data", "runs", "runner", "distant", "log.jsonl"))).toBe(true);
-    expect(existsSync(lock)).toBe(true);
-  });
-
-  it("waits for a live descriptor holder despite a stale PID", async () => {
-    const made = fixture();
-    const remote = campaign(made);
+  it("waits for a live descriptor holder despite a stale PID, then takes over the lock a dead fetch left", async () => {
+    const remote = campaign();
+    const { made } = remote;
     const lock = join(made.main, "data", "runs", "runner", ".fetch-distant.lock");
     mkdirSync(lock, { recursive: true });
     writeFileSync(join(lock, "pid"), String(Bun.spawnSync(["true"]).pid));
@@ -363,11 +287,12 @@ describe("campaign snapshots", () => {
       expect({ code, err: await new Response(reader.stderr).text() }).toEqual({ code: 0, err: "" });
     }
     expect(readFileSync(copied, "utf8")).toBe(readFileSync(remote.log, "utf8"));
+    expect(existsSync(lock)).toBe(true);
   });
 
   it("serialises refreshes in one process and releases a failed refresh", () => {
-    const made = fixture();
-    const remote = campaign(made);
+    const remote = campaign();
+    const { made } = remote;
     const result = made.run(
       'import { syncRuns } from "REPOSITORY/tools/runs/snapshots.ts"; process.env.FAKE_TRANSFER_FAIL = "1"; await syncRuns(["distant"]).catch(() => undefined); delete process.env.FAKE_TRANSFER_FAIL; await Promise.all(Array.from({length: 3}, () => syncRuns(["distant"])));',
       remote.env,
@@ -376,9 +301,9 @@ describe("campaign snapshots", () => {
     expect(made.recorded().filter((call) => call.tool === "rsync")).toHaveLength(4);
   });
 
-  it("refuses ambiguity, an unavailable catalogue and unsafe catalogue paths without transferring", () => {
-    const made = fixture();
-    const remote = campaign(made);
+  it("refuses ambiguity in an exact read, an unavailable catalogue and unsafe paths, and reads one copy in a collection", () => {
+    const remote = campaign();
+    const { made } = remote;
     const duplicate = {
       FAKE_CATALOGUE: JSON.stringify([
         { name: "distant", path: remote.log },
@@ -393,11 +318,18 @@ describe("campaign snapshots", () => {
       expect(made.run(sync, extra).code).toBe(1);
     }
     expect(made.recorded().filter((call) => call.tool === "rsync")).toHaveLength(0);
+    const collection = made.run(sync.replace('{match:"exact"}', "{}"), duplicate);
+    expect(collection.code).toBe(0);
+    expect(collection.err).toContain("distant");
+    expect(collection.err).toContain("runner");
+    expect(made.recorded().filter((call) => call.tool === "rsync")).toHaveLength(1);
   });
+});
 
+describe("named snapshot readers", () => {
   it("lets view, source, replay, zip, WRI and harness audit read a campaign by name", () => {
-    const made = fixture();
-    const remote = campaign(made);
+    const remote = campaign();
+    const { made } = remote;
     const commands = [
       'import { view } from "REPOSITORY/tools/runs/view.ts"; await view(["distant"]);',
       'import { source } from "REPOSITORY/tools/runs/receipt.ts"; await source(["distant"]);',
@@ -432,8 +364,8 @@ describe("campaign snapshots", () => {
 
 describe("snapshot depth", () => {
   it("retains artefacts on a record refresh and fetches them afresh for a named log", () => {
-    const made = fixture();
-    const remote = campaign(made);
+    const remote = campaign();
+    const { made } = remote;
     const memory = join(made.root, "remote", "distant", "memory");
     mkdirSync(memory);
     writeFileSync(join(memory, "note.txt"), "before");

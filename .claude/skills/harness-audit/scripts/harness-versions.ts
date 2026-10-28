@@ -12,16 +12,22 @@
  * `promoted`, `latest`, a whole digest or its unambiguous letter. The states sit beside the log,
  * under `states/`.
  *
- * v1's final-harness-audit joined each workspace commit to its iteration, its battery and its claim
+ * v1's final-harness-audit joined each workspace commit to its iteration, its scored set and its claim
  * through four scripts of 1,246 lines. v2 writes those joins as events, `harness.version`,
  * `harness.imported`, `harness.promoted` and the comparisons' own, and `campaignOf`
  * (`src/campaign/handover.ts`) folds them. This lists the states, opens each as a solve would
  * (`openHarness`), counts its parts, and leaves the joining to the fold. Whole-run-investigation's
  * lane 15 diffs a parent and a child part by part; `--diff` is that count, and quotes no line.
+ *
+ * The list reads only the folders of `states/` named by a digest, and the counts leave out the
+ * bytecode caches the digest leaves out (`BYTECODE`). On 28 October, in buffer-fresh-gpt-v071, the
+ * list showed each shared `tree-*` folder as a harness that does not open, with all 6,158 files of
+ * one tree on a single line, and `--diff` counted 405 changed files where the digest saw one: the
+ * other 404 were caches.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { type Handover, campaignOf } from "#src/campaign/handover.ts";
-import { namesOf } from "#src/campaign/names.ts";
+import { DIGEST, namesOf } from "#src/campaign/names.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { AGENT_DIR, GENERATED_TOOLS_FILE, GUIDE_FILE, TOOLS_SPEC_FILE } from "#src/meta/bundle-layout.ts";
 import {
@@ -37,7 +43,7 @@ import { type JsonValue, asRecord, isString } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { openHarness, pathsUnder, treeContent } from "#src/harness/open.ts";
+import { BYTECODE, openHarness, pathsUnder, treeContent } from "#src/harness/open.ts";
 import { writeStarter } from "#src/harness/starter.ts";
 import { keptAs } from "#tools/d2/campaign.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
@@ -114,7 +120,10 @@ async function partsOf(dir: string): Promise<Parts> {
   const spec = asRecord(capturedJsonParse((await own(dir, TOOLS_SPEC_FILE)) ?? "null"));
   const tree = join(dir, TOOL_TREE);
   const real = existsSync(tree) ? realpathSync(tree) : null;
-  const files = real === null ? [] : pathsUnder(real).filter((path) => lstatSync(join(real, path)).isFile());
+  const files =
+    real === null
+      ? []
+      : pathsUnder(real).filter((path) => !BYTECODE.test(path) && lstatSync(join(real, path)).isFile());
   const guide = await own(dir, GUIDE);
   const rows = Array.isArray(spec?.tools) ? spec.tools : [];
   return {
@@ -160,7 +169,7 @@ function madeOf(events: readonly LogEvent[], digest: string, starter: string) {
   )?.data;
   if (imported !== undefined) return { made: `imported from ${recorded(imported.from)}`, parent: null };
   // A Builder that leads its campaign freezes a harness with `build.checkpoint` and no parent: its
-  // parent is the session's checkpoint before it, or what the session began from. Until 27 October
+  // parent is the session's harness snapshot before it, or what the session began from. Until 27 October
   // this read only `harness.version`, and every harness compared in a led campaign read as made by
   // no record.
   const at = events.findIndex(({ kind, data }) => kind === "build.checkpoint" && data.harness === digest);
@@ -214,7 +223,12 @@ export async function versionsOf(keeping: Keeping): Promise<Version[]> {
   const events = read(keeping.log);
   const { steps, reference, latest } = campaignOf(events);
   const starter = await starterDigest();
-  const states = existsSync(keeping.states) ? readdirSync(keeping.states).sort() : [];
+  // `states/` also holds the tool trees the states link to (`tree-*`) and a control's scratch.
+  const states = existsSync(keeping.states)
+    ? readdirSync(keeping.states)
+        .filter((each) => DIGEST.test(each))
+        .sort()
+    : [];
   const named = namesOf(events).keys();
   const digests = [...new Set([...(states.includes(starter) ? [starter] : []), ...named, ...states])];
   return await Promise.all(
@@ -265,7 +279,7 @@ function entries(dir: string, only: (path: string) => boolean): Map<string, stri
   if (!existsSync(dir)) return new Map();
   return new Map(
     treeContent(realpathSync(dir)).flatMap(({ path, mode, content }) =>
-      content === null || !only(path) ? [] : [[path, `${mode}:${content}`]],
+      content === null || BYTECODE.test(path) || !only(path) ? [] : [[path, `${mode}:${content}`]],
     ),
   );
 }

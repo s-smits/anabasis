@@ -5,18 +5,19 @@
  * prompt (`7f0add79:docs/plan.md`, row F53). Here the operator's prompt names a domain, and one session
  * drafts what a campaign needs before its first task is solved: the public rules, each with the
  * source that states it, the answer format, one check for each rule, a few example tasks, and
- * controls, which are answers to those examples with a known label.
+ * control answers, which are answers to those examples with a known label.
  *
  * The session is `examine`'s in its drafting mode (`session.ts`), and this file is what that mode
  * is made of (`drafting`): what the Examiner is told, the tool it puts a whole draft by, and the two
  * readings a draft is held to without a model. The first is its shape (`draftFaults`), which the
  * session reads itself, so no caller can let a draft out of shape stand. The second is the
- * caller's (`reading`, `tools/d2/exam.ts`): every control through the checks, twice, and the
+ * caller's (`reading`, `tools/d2/exam.ts`): every control answer through the checks, twice, and the
  * smallest answer the format allows on every example. The Examiner is told the faults and puts the
  * draft again. A draft with no fault stands: it goes into the log whole, as `exam.drafted`, and the
  * session ends. The campaign reads its exam from that event (`draftOf`).
  *
- * The last measured draft and its status share one identity record. An identical resubmission
+ * Validation and acceptance stay together here because only drafting submits a whole exam
+ * (28 October). The last measured draft and its status share one identity record. An identical resubmission
  * reuses a complete measure; acceptance records that status, an interruption with its first
  * cancellation source, or not-run when the accepted draft has no matching measure.
  *
@@ -34,15 +35,15 @@
  * The Examiner is told the prompt, its limits and what the host found in each draft. It is told
  * no count of tasks, since an author told a target writes towards it. Of the solver it is told one
  * measured fact, that it answers every time a task whose rules can each be met alone: on 16 October
- * five fresh campaigns' gates refused 74 of 95 drafts, 67 of them as answered in all three solves,
+ * five fresh campaigns' task admissions refused 74 of 95 drafts, 67 of them as answered in all three solves,
  * and esp32-fresh-opus-zbook held out none in six sessions. Where the caller can solve, a draft with
  * no fault is then measured before it stands (`measure`): the reference harness, which is the
- * starter at drafting, solves each example as the gate of `try_task` solves a draft task, and the
+ * starter at drafting, solves each example as the task admission of `try_task` solves a draft task, and the
  * Examiner is told the budget and, an example a line, how many solves were valid and the turns each
  * valid one took. The same draft put again stands. Until 22 October the budget and those solves
  * were first met by the first writing session, after the scope that bounds every task was fixed:
  * the drafted exams of two fresh campaigns of that day were answered at a median of 3 of 20 turns. Where it has a shell (`shell.ts`) it is told what the shell is
- * and what the wall's probe found of the network, and not what to use it for. Nothing hidden
+ * and what the wall test found of the network, and not what to use it for. Nothing hidden
  * exists at drafting, and the wall closes the repository, where the log lies.
  *
  * It is told that the prompt's requirements stay in the exam at the strength the prompt states.
@@ -59,11 +60,12 @@ import { capturedJsonStringify, decodedJsonText, parseJsonAs } from "../meta/jso
 import { asRecord, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { plural } from "../meta/text.ts";
+import { ending, text, tool } from "../tools/answer.ts";
 import { budgetLine } from "./prompt.ts";
 import { TRIED } from "./record.ts";
 
 /** Measurement of the accepted draft, independent of whether the draft stands. */
-export type Measurement =
+type Measurement =
   | { readonly status: "complete" }
   | { readonly status: "interrupted"; readonly cancelledBy: CancellationOrigin }
   | { readonly status: "not-run" };
@@ -99,10 +101,24 @@ export interface Draft {
     readonly publicInput: JsonValue;
     readonly hidden: JsonValue;
   }[];
-  /** Controls, by the example each answers: answers every check passes, and answers the named
+  /** Control answers, by the example each answers: answers every check passes, and answers the named
    *  check refuses. */
   readonly accept: readonly { readonly task: number; readonly answer: JsonValue }[];
   readonly reject: readonly { readonly task: number; readonly answer: JsonValue; readonly check: string }[];
+}
+
+interface DraftingTerms {
+  readonly limits: { readonly wallSeconds: number; readonly turns: number; readonly puts: number };
+  readonly id: string;
+  readonly log: string;
+  /** The operator's prompt, as the campaign's opening holds it. */
+  readonly prompt: string;
+  /** What the host reads of a draft whose shape holds, without a model: its control answers through its
+   *  checks. One sentence a fault, none where the draft stands. */
+  readonly reading: (draft: Draft) => Promise<readonly string[]>;
+  /** The reference harness's solves of the examples of a draft with no fault, under the campaign's
+   *  budget, or null where they were cut short. Absent, a draft with no fault stands at once. */
+  readonly measure?: ((draft: Draft, stop: AbortSignal) => Promise<Measured | null>) | undefined;
 }
 
 /** The fewest example tasks a draft holds: the reading needs each check seen to pass and to
@@ -194,7 +210,7 @@ const DRAFT_PARAMETERS = Type.Object({
 });
 
 /** What the host measured of a draft's examples (`drafting`): the budget every solve was held to,
- *  and one line an example in its order, as the gate says it of a draft task (`measured`,
+ *  and one line an example in its order, as the task admission says it of a draft task (`measured`,
  *  `write.ts`). */
 export interface Measured {
   readonly budget: { readonly modelTurns: number | null; readonly minutes: number };
@@ -212,7 +228,7 @@ const PUT = {
 const systemPrompt = (put: string) =>
   [
     "You are the Examiner. An operator has named a technical domain in a prompt, and you draft the exam on which a solving model will be measured in that domain: its public rules, its answer format, one check for each rule, a few example tasks, and controls. You do this once, at the opening of a campaign. Later sessions write further tasks against what you draft here, and a draft that stands is not changed afterwards.",
-    "A task is a family, a public input, which with the public rules is all a solver reads, and hidden values, which only the checks receive. A solver answers a task with one JSON value that follows the answer format. A check is a program that reads one answer with its task and returns whether the answer keeps one rule, and an answer every check passes is valid. Two sets of tools for the solver are then compared by how many valid answers each gives on tasks neither has seen. No reference answer exists for those tasks, so a check has to be right on a task nobody has solved: it verifies the property its rule states, and never compares an answer with one you worked out.",
+    "A task is a family, a public input, which with the public rules is all a solver reads, and hidden values, which only the checks receive. A solver answers a task with one JSON value that follows the answer format. A check is a program that reads one answer with its task and returns whether the answer keeps one rule, and an answer every check passes is valid. Two harnesses for the solver are then compared on tasks neither has seen, scoring validity first and, between valid answers, the objective where the domain declares one and the solve's bill. A check must also be right on a task with no known valid answer: it verifies the property its rule states, and never compares an answer with one you worked out.",
     "Take the rules from the field's own public standard, and give each its source: the standard, specification, reference manual or textbook that states it, named precisely enough to look up, and one that states the limit as your rule does: a nominal or typical value is no limit. A limit, state or duty the field does not hold measures your wording and no solver, so add none. A solver that follows every public rule must never be rejected for something it could not read: whatever a check enforces is stated in a rule, the scope or the conventions, with its units and tolerances, and nothing a solver needs is in the hidden values. A check holds its rule exactly: it allows no tolerance the rule does not state, so a check of a quantity a rule calls zero or absent refuses any trace of it. Choose rules that act together on one answer, so that a task can make meeting one spend the margin another needs. The solver measured on this exam is a capable model with a shell and time to compute: where each rule can be met on its own, by a lookup, a matching or a value chosen part by part, it answers every task correctly every time, and the exam then measures nothing. Take in the field's requirements that bind the parts of one answer to each other, such as a capacity several parts draw on or a quantity one part sets and another has to meet, as the field states them.",
     "The operator's prompt outranks your choice of rules. Every requirement it names, such as a limit, a quantity to meet or an analysis an answer has to pass, stays in the exam at the strength the prompt states, as a rule with its check, and a quantity it asks to minimise or maximise is the objective. Where no check can decide such a requirement from its argument alone, say so in the scope, and do not check a weaker property under its name.",
     "Where the field has an objective, a quantity every valid answer has and practitioners minimise or maximise, such as a mass, a cost or a length, declare it: two valid answers to one task are then compared by it, and a task on which both tools find a valid answer still tells them apart. The check program then also exports `objective`, a function that takes the same `request` and returns that quantity of the answer as a finite number, computed from the answer and the public input alone; it is told nothing hidden. A field with no such quantity declares none.",
@@ -363,69 +379,98 @@ export function draftOf(events: readonly LogEvent[]): Draft | null {
   return draft === null ? null : parseJsonAs<Draft>(capturedJsonStringify(draft));
 }
 
-/** The drafting mode as `examine` seats it (`putting`, `session.ts`): what the session is told, the
+/** The drafting mode as `examine` seats it (`session.ts`): what the session is told, the
  *  tool it puts a draft by, the shape a draft is held to before the caller's reading, and the event
  *  a draft that stands is kept in. */
-export function drafting(terms: {
-  readonly id: string;
-  readonly log: string;
-  /** The operator's prompt, as the campaign's opening holds it. */
-  readonly prompt: string;
-  /** What the host reads of a draft whose shape holds, without a model: its controls through its
-   *  checks. One sentence a fault, none where the draft stands. */
-  readonly reading: (draft: Draft) => Promise<readonly string[]>;
-  /** The reference harness's solves of the examples of a draft with no fault, under the campaign's
-   *  budget, or null where they were cut short. Absent, a draft with no fault stands at once. */
-  readonly measure?: ((draft: Draft, stop: AbortSignal) => Promise<Measured | null>) | undefined;
-}) {
-  const { measure } = terms;
+export function drafting(terms: DraftingTerms, stop: AbortSignal) {
+  const { measure, limits } = terms;
   // Only the same draft can reuse the last complete measure.
   let told: { readonly draft: string; readonly measurement: Measurement } | null = null;
+  const kind = "draft";
+  const desk: { tries: number; stands: boolean; measurement?: Measurement } = { tries: 0, stands: false };
+  const none = `This session can put no further ${kind}. Call finish.`;
+  const put = tool({
+    name: "draft_exam",
+    description:
+      "Put a whole draft of the exam to the host's reading, which uses no model. It returns the faults it found, or that the draft stands. A draft that stands is the campaign's exam.",
+    parameters: DRAFT_PARAMETERS,
+    executionMode: "sequential",
+    execute: async (args, _api, context) => {
+      // Latch the first cancellation source before the agent loop aborts this invocation.
+      const signal = context.abortSignal === undefined ? stop : AbortSignal.any([stop, context.abortSignal]);
+      if (desk.tries >= limits.puts) throw new Error(none);
+      desk.tries += 1;
+      const draft = draftedFrom(args);
+      const unformed = draftFaults(draft);
+      const faults = unformed.length > 0 ? unformed : await terms.reading(draft);
+      const left = limits.puts - desk.tries;
+      const seen = capturedJsonStringify(draft);
+      // The last put stands without measurement, leaving a put to answer every completed measure.
+      if (
+        faults.length === 0 &&
+        left > 0 &&
+        measure !== undefined &&
+        !(seen === told?.draft && told.measurement.status === "complete")
+      ) {
+        const solved = await measure(draft, signal);
+        const reason: unknown = signal.reason;
+        told = {
+          draft: seen,
+          measurement:
+            solved === null
+              ? {
+                  status: "interrupted",
+                  cancelledBy: reason instanceof Cancellation ? reason.cancelledBy : "invocation",
+                }
+              : { status: "complete" },
+        };
+        if (solved !== null) {
+          return text(
+            [
+              `The draft has no fault. The reference harness solved its examples afresh. ${budgetLine(solved.budget)}`,
+              ...solved.examples.map((line, index) => `- example ${String(index)}: ${line}`),
+              "Put the same draft again and it stands; a revised draft is read and measured in turn.",
+            ].join("\n") + `\nThis session can put ${plural(left, `more ${kind}`)}.`,
+          );
+        }
+      }
+      if (faults.length === 0) {
+        append(terms.log, "exam.drafted", {
+          session: terms.id,
+          draft: parseJsonAs<JsonObject>(capturedJsonStringify(draft)),
+        });
+        desk.measurement = told?.draft === seen ? told.measurement : { status: "not-run" };
+        desk.stands = true;
+        return ending(text("The draft stands: it is the campaign's exam. The session ends here."));
+      }
+      return text(
+        [
+          `The ${kind} does not stand. ${plural(faults.length, "fault")}:`,
+          ...faults.map((fault) => `- ${fault}`),
+          left > 0
+            ? `Mend them and put the whole ${kind} again. This session can put ${plural(left, `more ${kind}`)}.`
+            : none,
+        ].join("\n"),
+      );
+    },
+  });
   return {
-    kind: "draft",
+    kind,
     system: systemPrompt(measure === undefined ? PUT.read : PUT.measured),
-    opening: `The operator's prompt:\n\n${terms.prompt}`,
-    started: { prompt: terms.prompt },
-    put: {
-      name: "draft_exam",
-      description:
-        "Put a whole draft of the exam to the host's reading, which uses no model. It returns the faults it found, or that the draft stands. A draft that stands is the campaign's exam.",
-      parameters: DRAFT_PARAMETERS,
+    opening: `The operator's prompt:\n\n${terms.prompt}\n\nThis session has ${plural(Math.round(limits.wallSeconds / 60), "minute")}, ${plural(limits.turns, "turn")} and ${plural(limits.puts, kind)}.`,
+    started: {
+      limits: { wallSeconds: limits.wallSeconds, turns: limits.turns, tries: limits.puts },
+      prompt: terms.prompt,
     },
-    thing: draftedFrom,
-    unformed: draftFaults,
-    reading: terms.reading,
-    stood: (draft: Draft): Measurement => {
-      append(terms.log, "exam.drafted", {
-        session: terms.id,
-        draft: parseJsonAs<JsonObject>(capturedJsonStringify(draft)),
-      });
-      return told?.draft === capturedJsonStringify(draft) ? told.measurement : { status: "not-run" };
-    },
-    stands: "The draft stands: it is the campaign's exam.",
-    measure:
-      measure &&
-      (async (draft: Draft, stop: AbortSignal) => {
-        const seen = capturedJsonStringify(draft);
-        if (seen === told?.draft && told.measurement.status === "complete") return null;
-        const solved = await measure(draft, stop);
-        const reason: unknown = stop.reason;
-        const measurement: Measurement =
-          solved === null
-            ? {
-                status: "interrupted",
-                cancelledBy: reason instanceof Cancellation ? reason.cancelledBy : "invocation",
-              }
-            : { status: "complete" };
-        told = { draft: seen, measurement };
-        if (solved === null) return null;
-        return [
-          `The draft has no fault. The reference harness solved its examples afresh. ${budgetLine(solved.budget)}`,
-          ...solved.examples.map((line, index) => `- example ${String(index)}: ${line}`),
-          "Put the same draft again and it stands; a revised draft is read and measured in turn.",
-        ].join("\n");
-      }),
+    tools: [put],
+    enters: `a ${kind} enters it through ${put.name} alone`,
+    nudge: `Put a ${kind} with ${put.name}`,
     finish: "End the session without an exam. Say in one or two sentences why none could be drafted.",
-    reads: [],
+    declined: null,
+    done: (): "stands" | null => (desk.stands ? "stands" : null),
+    heard: undefined,
+    settle: undefined,
+    counted: () => ({ ...desk }),
+    result: () => ({ puts: desk.tries, held: [], refused: [] }),
   } as const;
 }

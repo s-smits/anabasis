@@ -1,7 +1,7 @@
 ## How to read this bundle
 
 A run is its log. `log.jsonl` holds one event a line, `{at, kind, data}`, appended in order, and it
-is the whole record: every gate, session, turn, tool call, verdict and reading. A run with no ending
+is the whole record: every task admission, session, turn, tool call, verdict and reading. A run with no ending
 in its log was still running when it was zipped, or is of a kind that reports none, and its last line
 may be cut. `NOTES.md`, when the bundle has one, is the sender's own reading: check it against the
 log before repeating it.
@@ -17,11 +17,11 @@ not in the log.
 1. `MANIFEST.json`, `runs`: each run's worktree, commit and ending. Two runs at different commits
    differ by that source before they differ by anything a model did.
 2. `task.proposed`, `task.gate`, `task.state`, `task.feasible`: which task versions entered the exam
-   and have a valid answer on record. A later author proof (`task.feasible`) keeps the version
-   and session, never the answer, and since 19 October, where the contract declares an objective,
-   an optional `objective` with its quantity, direction and the answer's measure. The remaining gates below describe older runs. Gate 1 is the
-   package's shape, gate 2 a pass by the stronger condition (a fail there is `too-hard`), gate 3 the
-   check rerun on that pass, gate 4 the three reject controls. Gate 5 is screening, logged as the
+   and have a valid answer on record. A known valid answer record (`task.feasible`) keeps the version
+   and session, with the answer where recorded, and since 19 October, where the contract declares an objective,
+   an optional `objective` with its quantity, direction and the answer's measure. Older runs use numbered `gate` fields: 1 is the
+   shape check, 2 a pass by the stronger condition (a fail there is `too-hard`), 3 the
+   check rerun on that pass, 4 the three reject control answers. The value 5 is screening, logged as the
    state it gives: `admitted` tasks are the scored set. `anchor.drawn` names the anchor's tasks and
    `released` ones are the Builder's practice; neither is ever scored.
 3. `build.started` to `build.finished`: one Builder session from the harness `parent`. Its

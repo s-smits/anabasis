@@ -20,8 +20,8 @@
  *
  * There is no fixer. Which two words name the states is the change.
  */
-import { describe, expect, it } from "bun:test";
-import { expectedLines, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
+import { describe, it } from "bun:test";
+import { lintRules } from "./helpers/lint-rule.ts";
 
 const PARAMETERS = `
 export function close(handle: string, failed: boolean) { // REPORT true says nothing at the call site
@@ -97,16 +97,7 @@ export function sentence(handle: string, everyBattery: boolean) { // REPORT expo
 `.trimStart();
 
 describe("ana/no-positional-boolean-parameter", () => {
-  const reports = (at: string): Promise<number[]> =>
-    reportedLines("ana", "no-positional-boolean-parameter", PARAMETERS, at);
-
-  it("reports an annotated boolean on a function and a method, and admits the union that replaces it", async () => {
-    const expected = expectedLines(PARAMETERS);
-    expect(expected).toHaveLength(10);
-    expect(await reports("src/example.ts")).toStrictEqual(expected);
-  });
-
-  it("says nothing in a test, where both arguments are read beside each other", async () => {
-    expect(await reports("test/example.test.ts")).toStrictEqual([]);
+  it("reports only the marked lines in every fixture and scope", async () => {
+    await lintRules("ana", [["no-positional-boolean-parameter", PARAMETERS, 10, "src/example.ts"]]);
   });
 });

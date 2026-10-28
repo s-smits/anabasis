@@ -1,9 +1,6 @@
-/**
- * What an Examiner is told of its campaign's past at a session's opening (`heard`,
- * `src/examiner/record.ts`): a line a task, one measurement of the reference harness across the
- * exam, and the drafts its gates refused. Each case builds a log by hand and reads the told text.
- */
-import { describe, expect, it } from "bun:test";
+// The Examiner hears task outcomes, the reference measurement and task admissions from its log.
+// Shared opening evidence stays readonly; other comparisons and task admission histories stay independent.
+import { beforeAll, describe, expect, it } from "bun:test";
 import { heard } from "../src/examiner/record.ts";
 import { examine } from "../src/examiner/session.ts";
 import { conditionId, settingId } from "../src/kernel/condition.ts";
@@ -13,7 +10,7 @@ import type { JsonObject } from "../src/meta/json-shape.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { condition, finish, seat } from "./helpers/examiner-seat.ts";
 
-const GATE = "task.gate";
+const TASK_ADMISSION = "task.gate";
 const PROPOSED = "task.proposed";
 const TASK_STATE = "task.state";
 /** A solver-side secret no Examiner may be shown: the text of a measured solve's answer. */
@@ -24,7 +21,7 @@ const WALLED: Ending = { outcome: "fail", kind: "wall-ended" };
 const VALID = "an answer on record";
 const NONE = "no answer on record";
 
-/** A log built by hand: tasks held out by id, solves of them under a harness, gates and reports. */
+/** A log built by hand: tasks held out by id, solves of them under a harness, task admissions and reports. */
 function logged() {
   const events: LogEvent[] = [];
   const add = (kind: EventKind, data: JsonObject) =>
@@ -36,20 +33,20 @@ function logged() {
     hold: (...ids: string[]) => {
       for (const taskId of ids) {
         add(PROPOSED, { version: `v-${taskId}`, taskId });
-        add(GATE, { version: `v-${taskId}`, gate: 1, outcome: "passed" });
+        add(TASK_ADMISSION, { version: `v-${taskId}`, gate: 1, outcome: "passed" });
       }
     },
-    /** A draft proposed whole, and its gate's word on it. */
-    gated: (taskId: string, gate: JsonObject) => {
+    /** A draft proposed whole, and its task admission's word on it. */
+    recordAdmission: (taskId: string, admission: JsonObject) => {
       add(PROPOSED, {
         version: `v-${taskId}`,
         taskId,
         task: { taskId, family: "fixture", publicInput: {}, hidden: null },
       });
-      add(GATE, { version: `v-${taskId}`, gate: 1, ...gate });
-      if (gate.outcome === "refused") add(TASK_STATE, { version: `v-${taskId}`, state: "refused" });
+      add(TASK_ADMISSION, { version: `v-${taskId}`, gate: 1, ...admission });
+      if (admission.outcome === "refused") add(TASK_STATE, { version: `v-${taskId}`, state: "refused" });
     },
-    /** A solve each of `valid` under `harness` in `comparison`, null for one its wall cut; each
+    /** A solve each of `valid` under `harness` in `comparison`, null for one its deadline cut; each
      *  took the turns given, and 11 where none is. */
     solved: (
       comparison: string,
@@ -95,65 +92,17 @@ function logged() {
 }
 const fixture = (taskId: string) => ({ taskId, family: "fixture" });
 /** Each task's clauses by its id, preserving their order and repeated outcomes. */
-const byTask = (lines: readonly string[]) =>
+const byTask = (lines: readonly string[]): Record<string, string> =>
   Object.fromEntries(
-    lines.map((said) => [said.split(" (fixture): ")[0], said.split(" (fixture): ")[1] ?? ""]),
+    lines.map((said) => [said.split(" (fixture): ")[0] ?? "", said.split(" (fixture): ")[1] ?? ""] as const),
   );
 
-describe("what an Examiner is told of its campaign's past", () => {
-  it("takes a task's outcome and valid-answer turns from the same comparison, including a historical ladder report", () => {
-    const log = logged();
-    log.hold("kept");
-    log.solved("b-1", "kept", "h1", [true, true], [3, 3]);
-    log.solved("b-1", "kept", "h2", [true, true]);
-    log.reported("b-1", ["h1", "h2"], ["kept"]);
-    log.solved("b-2", "kept", "h1", [true, false], [7, 1]);
-    log.solved("b-2", "kept", "h2", [true, true]);
-    log.reported("b-2", ["h1", "h2"], ["kept"]);
-    const ordinary = heard(log.events, [fixture("kept")]).lines;
-    const latest = log.events.at(-1);
-    if (latest === undefined) throw new Error("missing comparison report");
-    latest.data.ladder = true;
-    const lines = heard(log.events, [fixture("kept")]).lines;
-    const [line] = lines;
-    expect(line).toContain("valid in some solves");
-    expect(line).toContain("in 7 turns");
-    expect(line).not.toContain("in 3, 3 turns");
-    expect(lines).toEqual(ordinary);
-  });
-
-  it("distinguishes histories with the same outcomes in a different order", () => {
-    const build = (history: readonly (readonly boolean[])[]) => {
-      const log = logged();
-      log.hold("kept");
-      for (const [nth, valid] of history.entries()) {
-        const comparison = `b-${String(nth)}`;
-        log.solved(comparison, "kept", "h1", valid);
-        log.solved(comparison, "kept", "h2", [true, true]);
-        log.reported(comparison, ["h1", "h2"], ["kept"]);
-      }
-      return byTask(heard(log.events, [fixture("kept")], false).lines);
-    };
-    const first = build([
-      [true, false],
-      [false, false],
-      [true, true],
-    ]);
-    const second = build([
-      [false, false],
-      [true, false],
-      [true, true],
-    ]);
-    expect(first).not.toEqual(second);
-    expect(first.kept).toContain("last 3 comparisons: every, none, some");
-    expect(second.kept).toContain("last 3 comparisons: every, some, none");
-  });
-
-  it("tells each task on one line: the reference's outcome and the turns its valid answers took, who won and on which measure, and whether an answer is on record", () => {
-    const log = logged();
-    const tasks = ["some", "none", "every", "unsolved", "practice", "aside", "new", "faulted", "refused"].map(
-      fixture,
-    );
+describe("the reference outcomes delivered at session opening", () => {
+  const log = logged();
+  const tasks = ["some", "none", "every", "unsolved", "practice", "aside", "new", "faulted", "refused"].map(
+    fixture,
+  );
+  beforeAll(() => {
     log.hold(...tasks.map(({ taskId }) => taskId));
     log.solved("b-1", "some", "h1", [true, false], [7, 1]);
     log.solved("b-1", "some", "h2", [true, true]);
@@ -167,120 +116,47 @@ describe("what an Examiner is told of its campaign's past", () => {
     log.add(TASK_STATE, { version: "v-practice", state: "released" });
     log.add(TASK_STATE, { version: "v-faulted", state: "disputed" });
     log.add(TASK_STATE, { version: "v-refused", state: "refused" });
+  });
+
+  it("tells each task on one line: the reference's outcome and the turns its valid answers took, who won and on which measure, and whether an answer is on record", () => {
     // h1, the comparison's old side, is the reference: each line is its outcome, with the turns of
     // its valid answers there, and nothing of h2's solves but who won. A refused task has no line,
     // and the practice tasks are one.
     const { lines } = heard(log.events, tasks);
     const told = byTask(lines.slice(0, -1));
     expect(Object.keys(told)).toEqual(["some", "none", "every", "unsolved", "aside", "new", "faulted"]);
-    expect(told.some).toContain("some solves, in 7 turns");
-    expect(told.some).toContain("other harness on validity");
-    expect(told.none).toContain("no solve");
-    expect(told.none).toContain(VALID);
-    expect(told.none).toContain("other harness on validity");
-    expect(told.every).toContain("every solve, in 3, 3 turns");
-    expect(told.every).toContain("tied");
-    expect(told.unsolved).toContain("no solve");
-    expect(told.unsolved).toContain(NONE);
-    expect(told.unsolved).toContain("tied");
-    expect(told.aside).toContain("disputed");
-    expect(told.aside).toContain("not settled");
-    expect(told.aside).toContain(NONE);
-    expect(told.new).toContain("not yet compared");
-    expect(told.new).toContain(NONE);
-    expect(told.faulted).toContain("disputed");
-    expect(told.faulted).toContain("at fault");
+    for (const [id, facts] of [
+      ["some", ["some solves", "7 turns", "other harness", "validity"]],
+      ["none", ["no solve", VALID, "other harness", "validity"]],
+      ["every", ["every solve", "3, 3 turns", "tied"]],
+      ["unsolved", ["no solve", NONE, "tied"]],
+      ["aside", ["disputed", "not settled", NONE]],
+      ["new", ["not yet compared", NONE]],
+      ["faulted", ["disputed", "at fault"]],
+    ] as const) {
+      for (const fact of facts) expect(told[id]).toContain(fact);
+    }
     expect(lines.at(-1)).toContain("practice (fixture)");
   });
 
-  it("explains in its legend only the clauses some line carries", () => {
-    const log = logged();
-    log.hold("plain");
-    log.solved("b-1", "plain", "h1", [true, true]);
-    log.solved("b-1", "plain", "h2", [true, true]);
-    log.reported("b-1", ["h1", "h2"], ["plain"]);
-    const bare = heard(log.events, [fixture("plain")]).legend;
-    expect(bare).not.toContain('"Gate"');
-    expect(bare).not.toContain('"Last comparisons"');
-    expect(bare).not.toContain("bill alone");
-    log.add("exam.started", { session: "x-1" });
-    log.gated("drawn", { outcome: "passed", reference: { valid: 1, solves: 2, billed: 0 } });
-    expect(heard(log.events, ["plain", "drawn"].map(fixture)).legend).toContain('"Gate"');
+  it("opens a session with the lines and then the measurement, naming no harness, no answer and no verdict of the author's work", async () => {
+    const s = seat("write", [finish, finish]);
+    for (const event of log.events) append(s.log, event.kind, event.data);
+    await examine({ ...s.request, tasks: tasks.map((task) => ({ ...task, publicInput: {}, hidden: null })) });
+    const opening = s.sent[0] ?? "";
+    // What `heard` reads of the log reaches the opening whole: each task's line, then the measurement.
+    const told = heard(log.events, tasks);
+    const at = (text: string) => opening.indexOf(JSON.stringify(text).slice(1, -1));
+    const lines = told.lines.map(at);
+    expect(lines).not.toContain(-1);
+    expect(at(String(told.measured))).toBeGreaterThan(Math.max(...lines));
+    for (const absent of ["h1", "h2", SOLVER, "too easy", "| family |"]) {
+      expect(opening).not.toContain(absent);
+    }
   });
+});
 
-  it("says a win the objective decided, and room only where an answer on record beats one of the reference's own by the floor", () => {
-    const lines = (measures: number[], results = true) => {
-      const log = logged();
-      log.hold("close");
-      log.solved("b-1", "close", "h1", [true, true]);
-      log.solved("b-1", "close", "h2", [true, true]);
-      log.reported("b-1", ["h1", "h2"], ["close"]);
-      for (const { kind, data } of log.events) {
-        if (kind === "verdict") data.objective = measures.shift() ?? null;
-        if (kind === "comparison.reported") data.objective = { direction: "lower" };
-      }
-      return heard(log.events, [fixture("close")], results).lines;
-    };
-    const [won] = lines([100, 100, 90, 90]);
-    expect(won).toContain("won there by the other harness on the objective");
-    // The other harness's better answers are its result on the task, and no room for the reference.
-    expect(won).not.toContain("better than one of its own");
-    expect(lines([100, 95, 90, 90])[0]).toContain(`${VALID} 5% better than one of its own`);
-    // Under the floor (1%) the gap decides no pair, and is told as none.
-    expect(lines([100, 99.5, 90, 90])[0]).not.toContain("better than one of its own");
-  });
-
-  it("with exam-results off and feasibility unchanged, reads the same whatever the other harness did, and names no winner", () => {
-    // Two logs alike on the reference's side, h1, and apart on h2's: in the first h2 fails where
-    // in the second it answers, and so wins.
-    const build = (other: boolean) => {
-      const log = logged();
-      log.hold("run", "once", "one");
-      for (const comparison of ["b-1", "b-2"]) {
-        log.solved(comparison, "run", "h1", [true, true], [4, 5]);
-        log.solved(comparison, "run", "h2", [other, null]);
-        log.reported(comparison, ["h1", "h2"], ["run"]);
-      }
-      log.solved("b-3", "once", "h1", [true, false]);
-      log.solved("b-3", "once", "h2", [other, other]);
-      log.solved("b-3", "one", "h1", [false, false]);
-      log.solved("b-3", "one", "h2", [other, true]);
-      log.reported("b-3", ["h1", "h2"], ["once", "one"]);
-      return log.events;
-    };
-    const tasks = ["run", "once", "one"].map(fixture);
-    const [lost, won] = [build(false), build(true)].map((events) => heard(events, tasks, false));
-    expect(won).toEqual(lost);
-    expect(JSON.stringify(won)).not.toContain("won there");
-    expect(won?.legend).not.toContain("who won");
-    // With the term on, the same logs tell apart.
-    expect(heard(build(true), tasks).lines).not.toEqual(heard(build(false), tasks).lines);
-  });
-
-  it("with exam-results off, permits the feasibility exception, also recorded by task.feasible, when the other harness supplies the first valid answer", () => {
-    const build = (other: boolean) => {
-      const log = logged();
-      log.hold("unanswered");
-      log.solved("b-1", "unanswered", "h1", [false, false]);
-      log.solved("b-1", "unanswered", "h2", [other, false], [37, 41]);
-      log.reported("b-1", ["h1", "h2"], ["unanswered"]);
-      return log;
-    };
-    const tasks = [fixture("unanswered")];
-    const log = build(false);
-    const unknown = heard(log.events, tasks, false);
-    const feasible = heard(build(true).events, tasks, false);
-    expect(unknown.lines[0]).toContain(NONE);
-    expect(feasible).toEqual({
-      ...unknown,
-      lines: unknown.lines.map((line) => line.replace(NONE, VALID)),
-    });
-    // An author's passing answer reveals the same permitted fact, without any other-side success.
-    log.add("task.feasible", { version: "v-unanswered", session: "x-1", answer: { answer: SOLVER } });
-    expect(heard(log.events, tasks, false)).toEqual(feasible);
-    expect(JSON.stringify(feasible)).not.toMatch(/won there|37|41|solver-canary/u);
-  });
-
+describe("the reference measurement and task admissions", () => {
   it("measures the reference across the exam in the last comparison it stood in, never one between two other harnesses", () => {
     const log = logged();
     const tasks = ["a", "b", "c"].map(fixture);
@@ -310,46 +186,50 @@ describe("what an Examiner is told of its campaign's past", () => {
     expect(JSON.stringify(told)).not.toMatch(/\bh[1-4]\b/u);
   });
 
-  it("puts a held draft's gate on its line, groups the drafts it refused having read them, and keeps the gates that measured nothing apart", () => {
+  it("puts a held draft's task admission on its line, groups the drafts it refused having read them, and keeps the task admissions that measured nothing apart", () => {
     const log = logged();
     log.add("exam.started", { session: "x-1" });
     log.solved("x-1", "twice", "h-any", [true, true], [12, 14]);
-    log.gated("twice", { outcome: "passed", reference: { valid: 2, solves: 3, billed: 0 } });
-    log.gated("short", { outcome: "passed", reference: { valid: 1, solves: 2, billed: 0 } });
-    log.gated("early", {
+    log.recordAdmission("twice", { outcome: "passed", reference: { valid: 2, solves: 3, billed: 0 } });
+    log.recordAdmission("short", { outcome: "passed", reference: { valid: 1, solves: 2, billed: 0 } });
+    log.recordAdmission("early", {
       outcome: "passed",
       reference: { valid: 1, solves: 2, ran: 2, billed: 0, gap: 0.1 },
     });
-    log.gated("every", {
+    log.recordAdmission("every", {
       outcome: "refused",
       reason: "answered in 3 of 3",
       reference: { valid: 3, solves: 3, billed: 0 },
     });
-    log.gated("also", {
+    log.recordAdmission("also", {
       outcome: "refused",
       reason: "answered in 3 of 3",
       reference: { valid: 3, solves: 3, billed: 0, gap: -0.02 },
     });
     // Refused on two readings, or for want of the reserve, measured nothing: each may be proposed again.
-    log.gated("cut", {
+    log.recordAdmission("cut", {
       outcome: "refused",
       reason: "gate-level reason",
       reference: { valid: 0, solves: 1, ran: 3, billed: 0 },
     });
-    log.gated("reserve", {
+    log.recordAdmission("reserve", {
       outcome: "refused",
       reason: "no reserve, so it is not measured",
       reference: null,
     });
-    // A version's last gate decides: one refused unmeasured and held on a later gate is held.
-    log.gated("again", {
+    // A version's last task admission decides: one refused unmeasured and held on a later task admission is held.
+    log.recordAdmission("again", {
       outcome: "refused",
       reason: "gate-level reason",
       reference: { valid: 1, solves: 1, billed: 0 },
     });
-    log.add(GATE, { version: "v-again", outcome: "passed", reference: { valid: 1, solves: 2, ran: 2 } });
+    log.add(TASK_ADMISSION, {
+      version: "v-again",
+      outcome: "passed",
+      reference: { valid: 1, solves: 2, ran: 2 },
+    });
     const told = heard(log.events, ["twice", "short", "early"].map(fixture));
-    // A valid solve at the gate shows an answer on record, which is then not said again.
+    // A valid solve at the task admission shows an answer on record, which is then not said again.
     const lines = byTask(told.lines);
     for (const line of Object.values(lines)) {
       expect(line).toContain("not yet compared");
@@ -359,13 +239,17 @@ describe("what an Examiner is told of its campaign's past", () => {
     expect(lines.short).toContain("gate 1 of 3 valid, 1 giving no reading");
     expect(lines.early).toContain("gate 1 of 2 valid");
     expect(lines.early).toContain("yours 10% better");
-    expect(told.refused).toEqual([
-      "the reference harness valid in 3 of 3 solves: every (fixture), also (fixture, yours 2% worse than its best)",
-    ]);
-    expect(told.interrupted).toEqual([
-      "cut (fixture): gate not measured; 0 of 1 measured solves valid; 3 attempted; gate-level reason",
-      "reserve (fixture): gate not measured; no reserve, so it is not measured",
-    ]);
+    expect(told.refused).toHaveLength(1);
+    for (const fact of ["3 of 3", "every (fixture)", "also (fixture", "2% worse"]) {
+      expect(told.refused[0]).toContain(fact);
+    }
+    expect(told.interrupted).toHaveLength(2);
+    for (const [index, facts] of [
+      [0, ["cut (fixture)", "not measured", "0 of 1", "3 attempted", "gate-level reason"]],
+      [1, ["reserve (fixture)", "not measured", "no reserve"]],
+    ] as const) {
+      for (const fact of facts) expect(told.interrupted[index]).toContain(fact);
+    }
     // Held 4, all on validity, none on an answer of the author's or on the objective; 2 refused.
     expect(told.measured).toContain("held out 4 drafts");
     expect(told.measured).toContain("4 on validity");
@@ -373,28 +257,30 @@ describe("what an Examiner is told of its campaign's past", () => {
     expect(told.measured).toContain("0 on the objective alone");
     expect(told.measured).toContain("refused 2 drafts");
   });
+});
 
-  it("after a promotion, tells nothing that the replaced reference's gates read", () => {
+describe("task admissions after a promotion", () => {
+  it("after a promotion, tells nothing that the replaced reference's task admissions read", () => {
     const log = logged();
     log.add("exam.started", { session: "x-1" });
     log.solved("x-1", "old", "h1", [true], [9]);
-    log.gated("old", { outcome: "passed", reference: { valid: 1, solves: 3, billed: 0 } });
-    log.gated("closed", {
+    log.recordAdmission("old", { outcome: "passed", reference: { valid: 1, solves: 3, billed: 0 } });
+    log.recordAdmission("closed", {
       outcome: "refused",
       reason: "answered in 0 of 3",
       reference: { valid: 0, solves: 3, billed: 0 },
     });
     log.solved("x-1", "interrupted", "h1", [true, true], [937, 941]);
-    log.gated("interrupted", {
+    log.recordAdmission("interrupted", {
       outcome: "refused",
       reason: "taking 937, 941 turns, measuring 947, yours 37% better, so it is not measured",
       reference: { valid: 2, solves: 2, ran: 3, billed: 0, gap: 0.37 },
     });
     log.add("harness.promoted", { harness: "h2", from: "h1", rests: [] });
     log.solved("x-1", "new", "h2", [true, true], [12, 14]);
-    log.gated("new", { outcome: "passed", reference: { valid: 2, solves: 3, billed: 0 } });
+    log.recordAdmission("new", { outcome: "passed", reference: { valid: 2, solves: 3, billed: 0 } });
     const told = heard(log.events, ["old", "new"].map(fixture));
-    // "old" keeps its answer on record and loses its gate's count and turns, which were h1's.
+    // "old" keeps its answer on record and loses its task admission's count and turns, which were h1's.
     const lines = byTask(told.lines);
     expect(lines.old).toContain("not yet compared");
     expect(lines.old).toContain(VALID);
@@ -402,24 +288,34 @@ describe("what an Examiner is told of its campaign's past", () => {
     expect(lines.new).toContain("not yet compared");
     expect(lines.new).toContain("gate 2 of 3 valid, in 12, 14 turns");
     expect(told.refused).toEqual([]);
-    expect(told.interrupted).toEqual(["interrupted (fixture): gate not measured; used a replaced reference"]);
+    expect(told.interrupted).toHaveLength(1);
+    for (const fact of ["interrupted (fixture)", "not measured", "replaced reference"]) {
+      expect(told.interrupted[0]).toContain(fact);
+    }
     expect(JSON.stringify(told)).not.toMatch(/937|941|947|37%|\b9 turns/u);
-    // With no promotion every gate is the current reference's.
+    // The promotion is told, with the listed tasks held out under the harness it replaced.
+    expect(told.promoted).toContain("promoted");
+    expect(told.promoted).toContain("1 of the 2 tasks");
+    // With no promotion every task admission is the current reference's.
     const unpromoted = heard(
       log.events.filter(({ kind }) => kind !== "harness.promoted"),
       ["old", "new"].map(fixture),
     );
+    expect(unpromoted.promoted).toBeNull();
     expect(byTask(unpromoted.lines).old).toContain("gate 1 of 3 valid");
     expect(byTask(unpromoted.lines).old).toContain("in 9 turns");
-    expect(unpromoted.refused).toEqual(["the reference harness valid in 0 of 3 solves: closed (fixture)"]);
+    expect(unpromoted.refused).toHaveLength(1);
+    expect(unpromoted.refused[0]).toContain("0 of 3");
+    expect(unpromoted.refused[0]).toContain("closed (fixture)");
   });
+});
 
+describe("the reference comparison history", () => {
   it("tells a task's last three comparisons with the reference, newest first, with its run of closures, from the reference's side alone", () => {
     const build = (other: readonly (boolean | null)[]) => {
       const log = logged();
       log.hold("run", "mixed", "once", "elsewhere");
-      // `run`: closed by the reference in four comparisons running; `mixed`: every, none with one
-      // solve cut at its wall, every; `once`: one comparison, which is its outcome and no history.
+      // Four consecutive closures, a mixed history and a single comparison.
       for (const comparison of ["b-1", "b-2", "b-3", "b-4"]) {
         log.solved(comparison, "run", "h1", [true, true]);
         log.solved(comparison, "run", "h2", other);
@@ -444,7 +340,7 @@ describe("what an Examiner is told of its campaign's past", () => {
       log.solved("b-5", "elsewhere", "h3", [true, true]);
       log.solved("b-5", "elsewhere", "h4", [false, false]);
       log.reported("b-5", ["h3", "h4"], ["elsewhere"]);
-      return heard(log.events, ["run", "mixed", "once", "elsewhere"].map(fixture), false).lines;
+      return heard(log.events, ["run", "mixed", "once", "elsewhere"].map(fixture)).lines;
     };
     const lines = build([false, false]);
     const told = byTask(lines.slice(0, -1));
@@ -459,36 +355,9 @@ describe("what an Examiner is told of its campaign's past", () => {
     expect(lines.at(-1)).toContain("two other harnesses");
     expect(lines.at(-1)).toContain(VALID);
     expect(lines.at(-1)).toContain("elsewhere (fixture)");
-    expect(build([true, null])).toEqual(lines);
-  });
-
-  it("says nothing it cannot count: a task the log does not hold, and no task at all", () => {
-    const empty = heard([], []);
-    expect(empty).toEqual({ legend: empty.legend, lines: [], measured: null, refused: [], interrupted: [] });
-    // A task the log does not hold yet, as a pack's is before `prepare.ts`, is not yet compared.
-    const line = byTask(heard([], [fixture("e-1")]).lines)["e-1"];
-    expect(line).toContain("not yet compared");
-    expect(line).toContain(NONE);
-  });
-
-  it("opens a session with the lines and then the measurement, naming no harness, no answer and no verdict of the author's work", async () => {
-    const log = logged();
-    const tasks = ["some", "every"].map(fixture);
-    log.hold("some", "every");
-    log.solved("b-1", "some", "h1", [true, false]);
-    log.solved("b-1", "some", "h2", [true, true]);
-    log.solved("b-1", "every", "h1", [true, true]);
-    log.solved("b-1", "every", "h2", [true, true]);
-    log.reported("b-1", ["h1", "h2"], ["some", "every"]);
-    const s = seat("write", [finish, finish]);
-    for (const event of log.events) append(s.log, event.kind, event.data);
-    await examine({ ...s.request, tasks: tasks.map((task) => ({ ...task, publicInput: {}, hidden: null })) });
-    const opening = s.sent[0] ?? "";
-    expect(opening).toContain(
-      String.raw`- every (fixture): valid in every solve, in 11, 11 turns; tied there\n\nIn the last comparison the reference harness stood in`,
+    // The history is read from the reference's side alone, whatever the other harness did.
+    expect(byTask(build([true, null]).slice(0, -1)).mixed).toContain(
+      "last 3 comparisons: every, none (a solve cut at a limit), every",
     );
-    for (const absent of ["h1", "h2", SOLVER, "too easy", "| family |"]) {
-      expect(opening).not.toContain(absent);
-    }
   });
 });

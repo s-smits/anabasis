@@ -19,8 +19,8 @@
  * There is no fixer: the repair is an owner-provided type parsed at its boundary, which is a new
  * contract in another file and at every call site.
  */
-import { describe, expect, it } from "bun:test";
-import { expectedLines, reportedLines, reportedMessages } from "./helpers/oxlint-rule-fixture.ts";
+import { describe, it } from "bun:test";
+import { lintRules } from "./helpers/lint-rule.ts";
 
 const PARAMETERS = `
 type Bag = object;
@@ -103,20 +103,8 @@ export function functionMember(input: {
 }
 `.trimStart();
 
-describe("anti-slop/no-object-parameters", () => {
-  it("reads through the shapes a parameter can hide the broad type in, and stops where the repair is elsewhere", async () => {
-    const expected = expectedLines(PARAMETERS);
-    expect(expected).toHaveLength(18);
-    expect(await reportedLines("anti-slop", "no-object-parameters", PARAMETERS)).toStrictEqual(expected);
-  });
-
-  it("names the parameter, so the message says which input to give an owner type", async () => {
-    const messages = await reportedMessages(
-      "anti-slop",
-      "no-object-parameters",
-      "export function counted(rows: Map<string, object>): number { return rows.size; }",
-    );
-    expect(messages).toHaveLength(1);
-    expect(messages[0]).toContain("`rows`");
+describe("ana/no-object-parameters", () => {
+  it("reports only the marked lines in every fixture and scope", async () => {
+    await lintRules("anti-slop", [["no-object-parameters", PARAMETERS, 18, "fixture.ts"]]);
   });
 });

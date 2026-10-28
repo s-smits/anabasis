@@ -43,7 +43,7 @@ Do not strip files by hand inside a zip.
 ## What each level holds
 
 Levels are cumulative. A v2 run is its log, so every level holds each run's whole `log.jsonl`: every
-gate, session, turn, tool call, verdict and reading.
+task admission, session, turn, tool call, verdict and reading.
 
 - **light** holds the log, launch receipts and output, each harness a session kept
   (`states/<digest>/`, less a checker copy), the brief and Builder memory (`memory/`).

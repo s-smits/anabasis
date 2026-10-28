@@ -12,7 +12,7 @@
  * itself failed on the request (it threw, returned no boolean, or is missing), or a non-result when
  * the wall, a tool or the program's loading could not decide. No answer is a fail. A faulty check is
  * the task's defect and drops the task; a non-result is the verifier's and stops the run.
- * On 20 October triage found that the reader wall aborted the model loop while an executing probe
+ * On 20 October triage found that the reader deadline aborted the model loop while an executing answer probe
  * ignored it, and a detached check child could hold stderr open. The verifier now accepts the
  * reader's abort signal, races a check's result against it, reaps the check group and its cell's
  * holders, and returns a non-result.
@@ -64,7 +64,7 @@ import type { Objective } from "./contract.ts";
 // requiredToolsOf, applicableTruthChecks, projectPaths, projectJsonPaths and checkPublicInputs from
 // vendor/correctness-model-bundle/evaluation-public-task.ts, and checkEvaluationRequest from
 // vendor/correctness-model-bundle/evaluate.ts. Departure: the five types they read are declared
-// here, cut to the fields those functions and the shape gate read, in place of v1's brief, contract
+// here, cut to the fields those functions and the shape check read, in place of v1's brief, contract
 // and task-split modules, which did not come over.
 
 type CheckExecution = {

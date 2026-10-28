@@ -4,15 +4,15 @@
  *
  * The home is in a root of its own as a Builder's is, under the solver's command wall (`walledBase`,
  * `src/tools/command.ts`): the repository, its other worktrees and a stored pack are closed to it,
- * and the wall is probed before its first command. Nothing in the home enters the exam: a session
+ * and the wall is tested before its first command. Nothing in the home enters the exam: a session
  * puts a task or a draft through its own tool, and the host reads that alone.
  *
- * A task-writing session has one because, without it, its notes said that a task's feasibility
- * rested on hand estimates. A drafting session has one so that it can look up the source it names
+ * A task-writing session has one because, without it, its notes estimated by hand
+ * whether a task had a valid answer. A drafting session has one so that it can look up the source it names
  * for each rule, and run its own check program on its own controls before it puts a draft
  * (`7f0add79:docs/plan.md`, row F57). One wall and one sentence serve every mode, so that their walls
  * cannot drift apart, and the wall says when the seat began to be set up: a session's time is
- * counted from then, so the claim of its root and the wall's probe are inside its limit in every mode.
+ * counted from then, so the claim of its root and the wall test are inside its limit in every mode.
  *
  * A session with a campaign's exam before it also has the field's engines: the programs the
  * campaign's check program names (`requiredToolsOf`), each as the verifier's tool tree resolves it,
@@ -26,7 +26,7 @@
  * its checks run, since a v1 Builder installed its own tools beside them, so a program no check
  * names stays off the path: the Examiner computes with the instruments, and is never given a
  * solver. The tree itself is open to read, since an engine runs from it, so such a program is off
- * the path and not out of reach. Its tasks still enter through the gate alone (`propose_tasks`, or
+ * the path and not out of reach. Its tasks still enter through the task admission alone (`propose_tasks`, or
  * `try_task` where the reference harness solves a draft task), and its answers are ruled on by
  * `try_answer` alone.
  */
@@ -61,7 +61,7 @@ export interface Wall extends Walled {
    *  carried, as a test may want. */
   readonly keep?: string | undefined;
   /** The reference harness's kept directory, laid in a task-writing session's home as
-   *  `reference-harness/` where the campaign's term `exam-reference` is on, and never kept. */
+   *  `reference-harness/`, and never kept. */
   readonly reference?: string | undefined;
 }
 
@@ -83,7 +83,7 @@ export const examinerDirs = (log: string, id: string): SolveDirs =>
 
 /**
  * The shell's three tools where the session has one, and none where it has not. `bash` carries
- * what the session is told of its wall, after pi's own description: the network as the wall's probe
+ * what the session is told of its wall, after pi's own description: the network as the wall test
  * found it (`networkReach`), the engines it runs by name where it has them (`inExaminerWall`), and
  * `enters`, how something of the session does enter the exam.
  */
@@ -133,7 +133,8 @@ export async function inExaminerWall<T>(
       limits: { shellDefaultSeconds: 120, shellMaxSeconds: 600 },
     };
     const { home } = dirs;
-    if (keep !== undefined && existsSync(keep)) cpSync(keep, home, { recursive: true });
+    const carry = { recursive: true, verbatimSymlinks: true } as const;
+    if (keep !== undefined && existsSync(keep)) cpSync(keep, home, carry);
     // A kept state names its programs by a link to the campaign's store, which the wall closes, so
     // they are laid as files, as in a Builder's `kept/`; every other link stays a link. Until
     // 26 October every link was followed by the host, so one a Builder left in a harness that was
@@ -142,17 +143,19 @@ export async function inExaminerWall<T>(
     const result = await run({ shell, pinned, began });
     // The campaign's copy of a session's home, made whole when the session ends and replacing the
     // one before: it is the exam side's, under the campaign's folder beside the log, which every
-    // wall closes. No link is followed, as the Builder's carry follows none. Not a session that
-    // crashed with a command running, whose home is as no command left it, as its last event says.
-    // Until 12 October every crashed session's home replaced the kept one, and on buffer the next
-    // session opened in the working files of one whose turn the provider failed; from then until
-    // 14 October none did, and a crashed Examiner's work was lost to the provider.
+    // wall closes. Each link is carried as it stands, as the Builder's carry does: until 28 October
+    // a relative one was read through the session's root, removed with it, so every kept venv's
+    // `python` dangled in the next home. Not a session that crashed with a command running, whose
+    // home is as no command left it, as its last event says. Until 12 October every crashed
+    // session's home replaced the kept one, and on buffer the next session opened in the working
+    // files of one whose turn the provider failed; from then until 14 October none did, and a
+    // crashed Examiner's work was lost to the provider.
     const ended = read(log).findLast(
       ({ kind, data }) => kind === "exam.finished" && data.session === id,
     )?.data;
     if (keep !== undefined && !(ended?.ended === "crashed" && Number(ended.running) > 0)) {
       rmSync(keep, { recursive: true, force: true });
-      cpSync(home, keep, { recursive: true });
+      cpSync(home, keep, carry);
       // The copy is the session's own, so a session with the term off never opens on one.
       rmSync(join(keep, REFERENCE_HOME), { recursive: true, force: true });
     }

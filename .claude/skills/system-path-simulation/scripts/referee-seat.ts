@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * The Referee seated alone: one ruling on a rejection a seed holds, through the campaign's own
- * wiring (`openCampaign`, `reviewersNamed`, `packaged`), as a round or a gate hands it one. Run it
+ * wiring (`openCampaign`, `reviewersNamed`, `packaged`), as a round or a task admission hands it one. Run it
  * as the command of `live-seat.ts start`, which names the seed, the login and the cap:
  *
  *   bun --env-file=<file> .claude/skills/system-path-simulation/scripts/live-seat.ts start --tree <fork>
@@ -36,12 +36,14 @@ async function main(args: CommandArgs): Promise<number> {
   const solve = args.required("solve");
   if (!name.startsWith("sim-")) args.die(`${name} is no seed: the Referee here rules only on sim-<what>`);
   const tree = runtimeProcess.cwd();
-  const { openCampaign }: typeof import("#tools/d2/campaign.ts") = await import(
+  // SAFETY: the seed's worktree is the one this script runs from, so its modules are this tree's.
+  const { openCampaign } = (await import(
     join(tree, "tools/d2/campaign.ts")
-  );
-  const { packaged, reviewersNamed }: typeof import("#tools/d2/round.ts") = await import(
+  )) as typeof import("#tools/d2/campaign.ts");
+  // SAFETY: as above.
+  const { packaged, reviewersNamed } = (await import(
     join(tree, "tools/d2/round.ts")
-  );
+  )) as typeof import("#tools/d2/round.ts");
   const campaign = await openCampaign({ name });
   const reviewers = reviewersNamed(campaign, {
     reviewer: args.required("reviewer"),

@@ -1,16 +1,14 @@
-import { describe, expect, it } from "bun:test";
-import { expectedLines, reportedLines, reportedMessages } from "./helpers/oxlint-rule-fixture.ts";
+import { describe, it } from "bun:test";
+import { lintRules } from "./helpers/lint-rule.ts";
 
 /**
  * The representation owner, `src/meta/json-shape.ts`, is where `no-runtime-typeof` and
- * `no-unsafe-dictionary-type` admit one written shape each. Each fixture is staged twice: at the
- * owner's path, where only the admitted shape passes, and at an ordinary source path, where the
- * same text is reported line for line. The second staging is the one that matters most: a copy of
- * `isString` in another file is the slop the owner exists to prevent.
+ * `no-unsafe-dictionary-type` admit one written shape each. Each fixture is staged at the owner's
+ * path, where only the admitted shape passes, and at an ordinary source path, where every
+ * occurrence reports.
  */
 
 const OWNER = "src/meta/json-shape.ts";
-const ELSEWHERE = "src/solve/example.ts";
 
 const PREDICATES = `
 export type Callable = (...args: never[]) => void;
@@ -52,39 +50,18 @@ export type AnyRecord = Record<string, any>; // REPORT any is not the open view
 export type Rows = { rows: Record<string, unknown> }; // REPORT a member, not the alias itself
 `;
 
-describe("anti-slop/no-runtime-typeof in the representation owner", () => {
-  it("admits the owner's whole-body primitive predicates and nothing else there", async () => {
-    const expected = expectedLines(PREDICATES);
-    expect(expected).toHaveLength(6);
-    expect(await reportedLines("anti-slop", "no-runtime-typeof", PREDICATES, OWNER)).toStrictEqual(expected);
-  });
-
-  it("reports the same predicates anywhere else, and names the owner", async () => {
-    const everyTypeof = PREDICATES.split("\n").flatMap((line, index) =>
-      line.includes("typeof") ? [index + 1] : [],
-    );
-    expect(everyTypeof).toHaveLength(9);
-    expect(await reportedLines("anti-slop", "no-runtime-typeof", PREDICATES, ELSEWHERE)).toStrictEqual(
-      everyTypeof,
-    );
-    expect((await reportedMessages("anti-slop", "no-runtime-typeof", PREDICATES, ELSEWHERE))[0]).toContain(
-      OWNER,
-    );
-  });
-});
-
-describe("anti-slop/no-unsafe-dictionary-type in the representation owner", () => {
-  it("admits the exported open record alias and nothing else there", async () => {
-    const expected = expectedLines(OPEN_RECORD);
-    expect(expected).toHaveLength(3);
-    expect(await reportedLines("anti-slop", "no-unsafe-dictionary-type", OPEN_RECORD, OWNER)).toStrictEqual(
-      expected,
-    );
-  });
-
-  it("reports the same alias anywhere else", async () => {
-    expect(
-      await reportedLines("anti-slop", "no-unsafe-dictionary-type", OPEN_RECORD, ELSEWHERE),
-    ).toStrictEqual([2, 3, 4, 5]);
+describe("the representation owner exemptions", () => {
+  it("reports only the marked lines in every fixture and scope", async () => {
+    await lintRules("anti-slop", [
+      ["no-runtime-typeof", PREDICATES, 6, OWNER],
+      ["no-unsafe-dictionary-type", OPEN_RECORD, 3, OWNER],
+      ["no-runtime-typeof", PREDICATES.replaceAll("// ADMITTED", "// REPORT"), 9, "src/solve/example.ts"],
+      [
+        "no-unsafe-dictionary-type",
+        OPEN_RECORD.replaceAll("// ADMITTED", "// REPORT"),
+        4,
+        "src/solve/example.ts",
+      ],
+    ]);
   });
 });

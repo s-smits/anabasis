@@ -2,7 +2,7 @@
  * What move 7 reads its rows from: a campaign's plan, and its log read once (`groundOf`).
  *
  * The table (`decide.ts`) asks one question after another of the same reading of the log: the
- * supply and the gate's refusals of the next comparison (`admission.ts`), every comparison in the
+ * supply and comparison admission's refusals (`admission.ts`), every comparison in the
  * order it began, the reference harness and the one a session left that waits to be read, and the
  * pair's last reading. It adds no fold of its own beside the owners it reads.
  *
@@ -18,8 +18,8 @@ import { refusals, supplyOf, type Wanted } from "./admission.ts";
 export interface Plan {
   /** Builder sessions before a comparison, after set-up stands, which each session's follows. */
   readonly sessions: number;
-  /** The moves without a gain (`stopRule`) and the readings that left nothing to gain
-   *  (`roomless`, `decide.ts`) the campaign bears in a row before it ends (`PATIENCE`). */
+  /** The improvement patience (`stopRule`) and supply patience (`roomless`, `decide.ts`):
+   *  moves without a gain and readings that left nothing to gain before it ends (`PATIENCE`). */
   readonly patience: number;
   /** Whether the campaign's pack holds a task its log does not. */
   readonly unprepared: boolean;
@@ -117,7 +117,7 @@ export function crashedRun(events: readonly LogEvent[]) {
   // A session moved the campaign whatever its ending where an Examiner's held a task out: one that
   // did and then lost a turn to the provider is `crashed` with its tasks held (`exam.finished.held`
   // is written whatever `ended` says). A Builder's moved it where its harness is one the campaign
-  // goes on from (`latestBuilt`), which a crashed session's is only where it was checkpointed: one
+  // goes on from (`latestBuilt`), which a crashed session's is only where a harness snapshot was kept: one
   // that edited and then crashed leaves the next session the same parent, so it counts as a crash.
   const kept = new Set(
     events.slice(since + 1).flatMap(({ kind, data }) => (kind === "build.checkpoint" ? [data.session] : [])),
@@ -140,7 +140,7 @@ export function crashedRun(events: readonly LogEvent[]) {
 
 /**
  * What the table's rows are read from, for a log and its plan: the supply folded once, the codes
- * the gate would refuse the next comparison with, the comparisons, the harnesses in question, and
+ * comparison admission would refuse the next comparison with, the comparisons, the harnesses in question, and
  * the pair's last reading.
  */
 export function groundOf(events: readonly LogEvent[], plan: Plan) {
@@ -153,18 +153,18 @@ export function groundOf(events: readonly LogEvent[], plan: Plan) {
   const latest = latestBuilt(events);
   const waiting = latest === reference ? null : latest;
   const last = reports.at(-1);
-  // With no harness waiting, the reading in question is a control's, the starter against the
+  // With no harness waiting, the reading in question is a starter comparison's, the starter against the
   // reference, where that is the last comparison made: it says whether the tasks leave the
   // reference room before a Builder session is paid for.
-  const control =
+  const starterComparison =
     last?.fresh === starter && last.old === reference && starter !== reference ? last : undefined;
   const pair = reports.findLast(({ fresh, old }) => fresh === waiting && old === reference);
-  const read = waiting === null ? control : pair;
+  const read = waiting === null ? starterComparison : pair;
   return {
     events,
     plan,
     supply,
-    /** The codes the gate would refuse the next comparison with (`refusals`). */
+    /** The codes comparison admission would refuse the next comparison with (`refusals`). */
     refused: new Set<string>(refusals(supply, asked).map(({ code }) => code)),
     /** Every comparison in the order it began, and those of them that reported. */
     all,
@@ -177,7 +177,7 @@ export function groundOf(events: readonly LogEvent[], plan: Plan) {
     /** The harness a session left that is not the reference, which waits to be read against it. */
     waiting,
     /** The last reading of the pair in question: the waiting harness's against the reference, or
-     *  with none waiting a control's; null where the pair has none. */
-    read: read === undefined ? null : { ...read, control: waiting === null },
+     *  with none waiting a starter comparison's; null where the pair has none. */
+    read: read === undefined ? null : { ...read, starterComparison: waiting === null },
   };
 }

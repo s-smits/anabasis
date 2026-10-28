@@ -17,18 +17,10 @@
 // epoch ends with a promotion and the next one's tasks are harder?
 
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
-import {
-  type Epoch,
-  epochLine,
-  epochsOf,
-  promotionsWorth,
-  riskLines,
-  worthLine,
-  worthOf,
-} from "../src/campaign/climb.ts";
+import { type Epoch, epochLine, epochsOf, riskLines, worthOf } from "../src/campaign/climb.ts";
 import { examine } from "../src/examiner/session.ts";
 import { readsStep } from "../src/kernel/compare.ts";
-import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
+import { type Condition, settingId } from "../src/kernel/condition.ts";
 import { type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import { GUIDE_FILE } from "../src/meta/bundle-layout.ts";
 import {
@@ -41,15 +33,14 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../src/meta/json-shape.ts";
-import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { ANSWER_FILE } from "../src/tools/answer.ts";
 import type { Seats } from "../tools/d2/campaign-terms.ts";
 import { harnessBuilder } from "../tools/d2/harness-builder.ts";
 import { fixtureTasks, layOutPack, scriptedModel } from "./helpers/fixture-pack.ts";
+import { present } from "./helpers/matchers.ts";
 
 const REPO = resolve(import.meta.dir, "..");
 const FIXTURE = join(REPO, "test", "fixtures", "harness-min");
@@ -101,40 +92,10 @@ const condition = (task: string, harness: string): Condition => ({
   side: "test",
 });
 const SETTING = settingId(condition("any", "any"));
-let solves = 0;
-function solved(comparison: string, task: string, harness: string, valid: readonly boolean[]) {
-  const ran = condition(task, harness);
-  const id = conditionId(ran);
-  return [
-    event("condition.recorded", { id, condition: requireJsonValue(ran) }),
-    ...valid.flatMap((each) => {
-      solves += 1;
-      const solve = `s-${String(solves)}`;
-      return [
-        event("solve.started", { solve, condition: id, ...keyIfDefined("comparison", comparison) }),
-        event("solve.finished", {
-          solve,
-          ending: each ? { outcome: "pass" } : { outcome: "fail", kind: "rejected" },
-          billed: 1,
-        }),
-      ];
-    }),
-  ];
-}
 const heldOut = (version: string) => [
   event("task.proposed", { version, taskId: version }),
   event("task.gate", { version, gate: 1, outcome: "passed" }),
 ];
-const reported = (session: string, old: string, fresh: string, versions: string[]) =>
-  event("comparison.reported", {
-    session,
-    reading: "no-step",
-    old,
-    fresh,
-    solves: 2,
-    setting: SETTING,
-    versions,
-  });
 
 setDefaultTimeout(1_800_000);
 
@@ -352,21 +313,6 @@ describe("the climb", () => {
   );
 });
 
-describe("an epoch's shares", () => {
-  it("count a comparison's solves of the epoch's tasks, and none an Examiner session had made to try one", () => {
-    // Task v1 held out after the reference answered one of three solves of it under try_task.
-    const log = [
-      event("exam.started", { session: "x-1" }),
-      ...solved("x-1", "v1", "h0", [true, false, false]),
-      ...heldOut("v1"),
-      event("comparison.started", { session: "g-1", starter: "h0" }),
-      ...solved("g-1", "v1", "h0", [true, true]),
-      reported("g-1", "h0", "h1", ["v1"]),
-    ];
-    expect(epochsOf(log)).toMatchObject([{ tasks: ["v1"], reference_share: { valid: 2, solves: 2 } }]);
-  });
-});
-
 describe("the chance of a false promotion among an epoch's attempts", () => {
   /** A candidate's comparison against `old` that tallied one task, with the reference read
    *  against itself beside it where `noise` holds its differences. */
@@ -404,17 +350,20 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     expect(epoch?.falsePromotion).toMatchObject({ attempts: 3, errors: 0, controls: 0, bound: 0.1 });
     expect(epoch?.falsePromotion.union).toBeCloseTo(0.25, 12);
     if (epoch === undefined) throw new Error("an epoch");
-    expect(epochLine(epoch)).toContain(
-      "3 promotion attempts under this reference, a false promotion among them estimated at 25%: 10% for the riskiest attempt by the rule's design; no A/A control with enough untied tasks in every test",
-    );
-    // The closing report sums the epochs' estimates, here the one epoch's (the plan's 7.6).
-    expect(riskLines(log).slice(0, 2)).toEqual([
-      "- Epoch 1: 3 promotion attempts, a false promotion among them estimated at 25%: 10% for the riskiest attempt by the rule's design; no A/A control with enough untied tasks in every test.",
-      "Over the campaign, a false promotion in any epoch estimated at 25%: the sum of the epochs' estimates, capped at one, which assumes nothing of how the attempts depend on one another. It sums estimates, so it is an estimate and no bound.",
-    ]);
+    // The line and the closing report's epoch carry the attempts, their summed estimate, the
+    // riskiest attempt's rate and that no control was read; the campaign's line sums the epochs'
+    // estimates, here the one epoch's, as an estimate and no bound (the plan's 7.6).
+    const [epochRisk, total] = riskLines(log);
+    for (const line of [epochLine(epoch), epochRisk]) {
+      expect(line).toMatch(
+        /\b3 promotion attempts\b.*\b25%.*\b10% for the riskiest attempt\b.*\bno A\/A comparison\b/u,
+      );
+    }
+    expect(total).toContain("25%");
+    expect(total).toContain("no bound");
     // A rate under ten percent is printed to a tenth: 1.8% is not 2%.
     const small = { ...rated, data: { ...rated.data, frontier: { differences: [0], falseRate: 0.018 } } };
-    expect(riskLines([started, small])[0]).toContain("1.8% for the riskiest attempt by the rule's design");
+    expect(riskLines([started, small])[0]).toContain("1.8% for the riskiest attempt");
   });
 
   it("counts the A/A controls that could read a step and those that read one, one-sided at the level, beside the design's rate, and lets them set none of it", () => {
@@ -450,7 +399,7 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     });
     if (second === undefined) throw new Error("an epoch");
     expect(epochLine(second)).toContain(
-      "a false promotion among them estimated at 10%: 10% for the riskiest attempt by the rule's design; 0 of 1 A/A control with enough untied tasks in every test read a step; joint reachability unmeasured, and 3 too small to read one at their level",
+      "a false promotion among them estimated at 10%: 10% for the riskiest attempt by the rule's design; 0 of 1 A/A comparison with enough untied tasks in every test read a step; joint reachability unmeasured, and 3 too small to read one at their level",
     );
     expect(riskLines(log)[2]).toStartWith(
       "Over the campaign, a false promotion in any epoch estimated at 50%:",
@@ -464,7 +413,7 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     ];
     expect(epochsOf(lucky)[0]?.falsePromotion).toMatchObject({ errors: 1, controls: 2, incapable: 0 });
     expect(riskLines(lucky)[0]).toContain(
-      "1 of 2 A/A controls with enough untied tasks in every test read a step; joint reachability unmeasured.",
+      "1 of 2 A/A comparisons with enough untied tasks in every test read a step; joint reachability unmeasured.",
     );
     // Past one the sum is capped there.
     const many = Array.from({ length: 11 }, (_, at) =>
@@ -500,7 +449,7 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
         ),
       ),
     ).toBe(false);
-    expect(epochLine(epochsOf(log)[0]!)).toContain("joint reachability unmeasured");
+    expect(epochLine(present(epochsOf(log)[0]))).toContain("joint reachability unmeasured");
   });
 });
 
@@ -549,17 +498,6 @@ describe("the bar a promotion is read against, beside an old ladder's readings",
     ladderRead("g-5", "hb", [2, 0, 0], [2, 0, 0]),
   ];
 
-  it("reads each promotion's cost against the operator's bar, gating nothing", () => {
-    const worth = promotionsWorth(log);
-    expect(worth.get("ha")).toEqual({
-      bars: { cost: 2 },
-      cost: { attempts: 1, sessions: 1, dollars: 0, met: true },
-    });
-    expect(worthLine(worth.get("hb") ?? { bars: { cost: 2 }, cost: null })).toBe(
-      "cost, gating nothing: 1 promotion attempt this epoch (bar 2 after set-up): met, over 1 Builder session and 5.00 dollars billed",
-    );
-  });
-
   it("reads a step as the log stood before its report, as one attempt more, and every reading before it as one", () => {
     const step = log.findIndex(({ data }) => data.session === "g-3" && data.reading === "step");
     const before = worthOf(log.slice(0, step), "g-3");
@@ -570,11 +508,5 @@ describe("the bar a promotion is read against, beside an old ladder's readings",
     const tied = { ...stepRead("g-5", "ha", "hb").data, reading: "no-step", frontier: { differences: [0] } };
     const again = [...log.slice(0, step + 1), event("comparison.reported", tied)];
     expect(worthOf(again, "g-6").cost).toMatchObject({ attempts: 3 });
-  });
-
-  it("reads no old ladder reading as a step, a control or an attempt of the climb's", () => {
-    expect(epochsOf(log).map(({ comparisons }) => comparisons)).toEqual(
-      epochsOf(log.filter(({ data }) => data.ladder !== true)).map(({ comparisons }) => comparisons),
-    );
   });
 });

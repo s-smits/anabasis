@@ -1,8 +1,8 @@
 /**
- * The lanes of a whole-run investigation that read the clock: the solver's walls, limits and load
+ * The lanes of a whole-run investigation that read the clock: the solver's deadlines, limits and load
  * (lane 29), and where the campaign's hours, dollars and silences went (lane 31).
  * Role hours are elapsed open spans and can overlap. Every recorded wait, a provider's reset
- * (its grace minute included), a network wait and a load-gate wait, joins one union, and the hours
+ * (its grace minute included), a network wait and a solve-queue wait, joins one union, and the hours
  * a promotion stand with and without it. Until 25 October only provider waits were read, then load
  * waits alone were subtracted: on recode forkedPR345 that left 17.4 h a promotion where every
  * recorded wait leaves 10.8, provider waits being the larger part on most runs.
@@ -13,7 +13,7 @@
  * missing:
  *
  * - a miss is read at every limit the kernel calls one (`AT_A_LIMIT`), by comparison and by side,
- *   where it was read at the wall alone; recode's 41 of 58 scored misses that ended on turns read
+ *   where it was read at the deadline alone; recode's 41 of 58 scored misses that ended on turns read
  *   none;
  * - a silence is read against the campaign's own median solve and labelled by what ran through
  *   it, where it was read at twenty minutes and only the first was given, by its time; buffer's
@@ -25,7 +25,7 @@
  * report can supply a scoring set.
  */
 import { AT_A_LIMIT } from "#src/kernel/reports.ts";
-import { type Turn, tracesIn } from "#src/kernel/trace.ts";
+import { roleOf, spendOf, type Turn, tracesIn } from "#src/kernel/trace.ts";
 import { isNumber, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy, median } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
@@ -35,21 +35,19 @@ import {
   type Index,
   measured,
   percent,
-  roleOf,
   type Solve,
   share,
-  spendOf,
   strings,
   tally,
   text,
   type Trigger,
 } from "./folds.ts";
 
-/** The share of a wall past which a miss is read as bound by it, as v1's climb read it. */
-const WALL_BOUND_SHARE = 0.95;
+/** The share of a deadline past which a miss is read as bound by it, as v1's climb read it. */
+const DEADLINE_BOUND_SHARE = 0.95;
 /** The factor between the loads two comparisons ran under from which they are read as made on
  *  different hosts, and the load under which no factor is worth a line: a load of four moves no
- *  wall on a host of four cores or more. On 2026-10-09 one harness answered the same tasks in a
+ *  deadline on a host of four cores or more. On 2026-10-09 one harness answered the same tasks in a
  *  median of 105 s under a load of 31 and of 40 s under a load of 6. */
 const LOAD_MOVED = 2;
 const LOAD_WORTH_A_LINE = 4;
@@ -67,7 +65,7 @@ const SILENCE_FLOOR_SECONDS = 600;
 const SILENCES_NAMED = 5;
 /** Events written within this many milliseconds of a gap's end are the one move that ended it: an
  *  Examiner's turn is logged a few milliseconds after the task it proposed. */
-const BURST_MS = 1_000;
+const BURST_MS = 1000;
 /** Where each part of the campaign's hours starts and ends. A part a stop cut ends at the
  *  campaign's ending, or at the log's last event. */
 const SPANS = [
@@ -89,15 +87,15 @@ interface Span {
 }
 
 /** Whether a miss ended at a limit of its own: the kernel's kinds, every turn its bound allowed used
- *  (`limit`), as 5 of buffer's 17 on 12 October, or past the share of its wall read as bound by it. */
+ *  (`limit`), as 5 of buffer's 17 on 12 October, or past the share of its deadline read as bound by it. */
 const atALimit = (solve: Solve) =>
   AT_A_LIMIT.has(solve.kind) ||
   solve.limit !== null ||
-  (solve.wallSeconds > 0 && solve.seconds > solve.wallSeconds * WALL_BOUND_SHARE);
+  (solve.wallSeconds > 0 && solve.seconds > solve.wallSeconds * DEADLINE_BOUND_SHARE);
 const limitOf = (solve: Solve) => (AT_A_LIMIT.has(solve.kind) ? solve.kind : solve.limit) ?? "wall share";
 
 /** A comparison's solves of the tasks it tallied. A task set aside, short or withdrawn stands in no
- *  pair, and read with them main0_5_1's g-1 had 5 of 20 misses at a limit and a 52.3% wall share,
+ *  pair, and read with them main0_5_1's g-1 had 5 of 20 misses at a limit and a 52.3% deadline share,
  *  where its tallied solves held 4 of 16 and 54.2% (lane 26, 15 October). */
 const tallied = ({ own, scoring }: Compared) => {
   const versions = new Set(strings(own.versions));
@@ -105,7 +103,7 @@ const tallied = ({ own, scoring }: Compared) => {
 };
 
 /** The misses at a limit by comparison and side: recode on 10 October ended 41 of its 58 scored
- *  misses on turns, and a read of the wall alone saw none. A miss at a limit says the budget was
+ *  misses on turns, and a read of the deadline alone saw none. A miss at a limit says the budget was
  *  short and nothing of the task, so a side whose misses are all there was cut and not beaten. */
 function limitTriggers(log: Index): Trigger[] {
   const misses = (solves: readonly Solve[]) => solves.filter((solve) => solve.outcome === "fail");
@@ -150,12 +148,12 @@ function limitTriggers(log: Index): Trigger[] {
 }
 
 /** Lane 29: the misses at a limit, and over the solves each comparison measured, not the non-results
- *  it reran, the share of the wall each harness used and the host's load when they started. */
-export function wallTriggers(log: Index): Trigger[] {
+ *  it reran, the share of the deadline each harness used and the host's load when they started. */
+export function deadlineTriggers(log: Index): Trigger[] {
   const results = log.compared.map((each) => ({ ...each, scoring: tallied(each).filter(measured) }));
-  const wallShares = results.flatMap(({ session, own, scoring }) => {
-    // The median share of its wall a harness's solves used, or null for none under a wall. v1 read
-    // this share as the measure that moves on every battery and leads a fail (lane 29).
+  const deadlineShares = results.flatMap(({ session, own, scoring }) => {
+    // The median share of its deadline a harness's solves used, or null for none under a deadline. v1 read
+    // this share as the measure that moves on every task set and leads a fail (lane 29).
     const under = (harness: JsonValue | undefined) =>
       median(
         scoring.flatMap((solve) =>
@@ -172,10 +170,9 @@ export function wallTriggers(log: Index): Trigger[] {
           ),
         ];
   });
-  // The one-minute load each comparison's solves started under. A wall counts the clock, so the
-  // same wall holds less work on a loaded host: a comparison made there reaches walls an idle host
-  // would not, and solves under different loads were not made under one budget, whatever their
-  // settings say. Each comparison's halves, by start, are read apart: esp32's one comparison started
+  // The one-minute load at each solve's start. The same elapsed-time limit allows less work on a
+  // loaded host, so identical settings need not give solves equal computing time. Read the first
+  // and second halves of each comparison separately: esp32's one comparison started
   // its solves at loads from 5.8 to 56.0 on 12 October, where a reading across comparisons was silent.
   const loads = results.flatMap(({ session, scoring }) => {
     const at = scoring.flatMap((solve) => (solve.load === null ? [] : [solve.load]));
@@ -247,7 +244,7 @@ export function wallTriggers(log: Index): Trigger[] {
   const moved = busiest >= LOAD_WORTH_A_LINE && busiest >= calmest * LOAD_MOVED;
   return [
     ...limitTriggers(log),
-    ...wallShares,
+    ...deadlineShares,
     ...loaded,
     ...outOfTurn,
     ...otherModel,
@@ -320,7 +317,7 @@ export function hoursLine(log: Index): string {
     if (kind === "campaign.ended") boundary = from;
     if (kind === "harness.promoted") promotions += 1;
     if (kind !== "campaign.waited" || !isNumber(data.ms)) continue;
-    // The load gate writes no `for`, older logs' included, and records its wait once it is over.
+    // The solve queue writes no `for`, older logs' included, and records its wait once it is over.
     if (data.for === undefined) waits.push({ from: from - data.ms, until: from, kind: "load" });
     else if (data.for === "provider" || data.for === "network") {
       waits.push({ from, until: Math.min(from + data.ms, boundary), kind: data.for });
@@ -368,7 +365,7 @@ export function costTriggers(log: Index): Trigger[] {
   // median at 6.2 minutes against 24.6 over its passes and rejections.
   const done = log.solves.filter(measured).map((solve) => solve.seconds);
   const scaled = (median(done) ?? 0) * SILENCE_SOLVES;
-  const threshold = Math.max(scaled, SILENCE_FLOOR_SECONDS) * 1_000;
+  const threshold = Math.max(scaled, SILENCE_FLOOR_SECONDS) * 1000;
   const why =
     scaled > SILENCE_FLOOR_SECONDS
       ? `${String(SILENCE_SOLVES)} times the median measured solve`
@@ -382,7 +379,7 @@ export function costTriggers(log: Index): Trigger[] {
   const named = gaps
     .slice(0, SILENCES_NAMED)
     .map(({ index, gap }) => `${(gap / MINUTE_MS).toFixed(1)} min ${causeOf(log, spans, index, gap)}`);
-  const spend = spendOf(log);
+  const spend = spendOf(log.events);
   const total = spend.reduce((sum, [, dollars]) => sum + dollars, 0);
   const [[leader, most] = ["", 0]] = spend;
   return [

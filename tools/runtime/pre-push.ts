@@ -1,15 +1,18 @@
 /**
- * What `.githooks/pre-push` checks before anything leaves this clone: every step of the CI gate but the
- * tests. It reads Git's ref lines on stdin. A pushed commit is unproved until
- * `bun run land -- <top> --sanitize` or `--merge` has run its static steps and nearby tests over its
- * own checkout, and the whole CI gate, the full suite among it, on the top's head
- * (`tools/runtime/land.ts`).
+ * What `.githooks/pre-push` checks before anything leaves this clone: every step of the CI gate, with
+ * the suite replaced by the tests one import away from what each pushed head changed (`--static`). It
+ * reads Git's ref lines on stdin. A commit below a pushed head is unproved until
+ * `bun run land -- <top> --sanitize` or `--merge` has run its own static pass, and the whole CI gate,
+ * the full suite among it, on the top's head (`tools/runtime/land.ts`). A static pass is remembered by
+ * its tree and its parent's, so `land` does not run a pushed head's again.
  *
  * Until 25 October the hook was that proof: every commit a push added got the static steps and its
  * nearby tests over a checkout of its own, and the pushed head holding the newest the whole CI gate. In
  * this clone the six-commit push of #372 to #377 on 25 October took 591 seconds of CI gate, the whole
  * CI gate alone 315 of them, and a one-commit push 311 to 696; `bun run land` then ran the same proof
- * again over the stack. Tests are now run where the stack is proved, once, when its author chooses.
+ * again over the stack. From 25 October the hook ran every step but the tests (`--checks`), and a push
+ * then proved nothing a test holds until the stack was sanitized; on 28 October the operator asked
+ * for the nearby tests back, on the pushed heads only, so a restack still pays one pass a head.
  *
  * What a push adds is the commits along each pushed head's first parents that neither a
  * remote-tracking ref of this clone nor the branch the push replaces holds (`addedLine`), so a
@@ -17,10 +20,10 @@
  * every commit new to the remote, 444 of them v2's history merged into PR #141. Each added commit gets
  * `git diff --check` against its first parent, and the lines each pushed head that no other pushed
  * head holds adds since the remote get the secret scan (`scanAdded`), documentation included. Where
- * one of them changes more than documentation, each such head gets the CI gate's `--checks` pass over a
- * checkout of its own (`proveCommits`): the install, the UI's install and build, the format check,
- * typecheck, strict lint, and the simplify census, whose count is printed and refuses nothing. The
- * working tree may hold anything. A pass is remembered by the head's tree, so a push its lease
+ * one of them changes more than documentation, each such head gets the CI gate's `--static` pass over a
+ * checkout of its own (`proveCommits`): the install, the UI's steps as far as they are due, the
+ * format check, typecheck, strict lint, and the tests near what the head's own commit changed. The
+ * working tree may hold anything. A pass is remembered by content, so a push its lease
  * refused goes out again without paying twice.
  *
  * The push queue and the refusal of a push stacked on a base the push before it replaced went with
@@ -111,13 +114,13 @@ async function main(): Promise<number> {
     return 0;
   }
   say(
-    `git diff --check and the secret scan passed on ${plural(line.length, "commit")}; the tests wait for bun run land -- <top> --sanitize.`,
+    `git diff --check and the secret scan passed on ${plural(line.length, "commit")}; the suite waits for bun run land -- <top> --sanitize.`,
   );
   const failed = await proveCommits(
     root,
     tips
       .filter((tip) => source.some((commit) => holds(commit, tip)))
-      .map((commit) => ({ commit, pass: "checks" })),
+      .map((commit) => ({ commit, pass: "static" })),
     { who: "pre-push", jobs: 1, say, mark: () => undefined },
   );
   if (failed === null) return 0;

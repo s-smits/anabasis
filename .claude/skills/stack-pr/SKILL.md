@@ -183,13 +183,15 @@ still pushes the previous head (20 October).
 Read a refusal and correct its cause within your authority. Pass `--no-verify` only where the
 operator says so, and never push to `main`.
 
-The pre-push hook runs every check but the tests. What a push adds is the commits along each
+The pre-push hook runs every check, with the tests near each pushed head's own change in place of
+the suite. What a push adds is the commits along each
 pushed head's first parents that no remote-tracking ref of the clone holds; each gets
 `git diff --check`, and what each pushed head that no other pushed head holds adds gets the secret
 scan. Where one of them changes more than `AGENTS.md`, `README.md`, `docs/` or a `.md` under
-`.claude/`, each such head gets `bun run gate -- --checks` over a scratch checkout: the install, the
-UI's install and build, the format check, the secret scan, typecheck, strict lint, and the simplify census, whose
-count it prints and which refuses nothing. The working tree may hold anything. A
+`.claude/`, each such head gets `bun run gate -- --static` over a scratch checkout: the install, the
+UI's steps as far as they are due, the format check, the secret scan, typecheck, strict lint, and
+the test files one import away from what the head's own commit changed. `bun run land` reads that
+pass back and does not run it again. The working tree may hold anything. A
 history brought in through a merge's other parent is counted and left alone, and the merge is
 checked: 444 of v2's commits came into this repository that way on 11 October, and v1's hook, which
 ran the CI gate on every commit new to the remote, could not pass one of them. To push another repository's

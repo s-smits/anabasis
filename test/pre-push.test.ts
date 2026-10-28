@@ -21,13 +21,12 @@ const bin = join(fixture, "bin");
 const log = join(fixture, "gates.log");
 const fake = (mkdirSync(bin), fakeBun(bin, log));
 const absent = "0".repeat(40);
-const CHECKS = [
+const STATIC = [
   "install --frozen-lockfile",
   "run format:check",
   "run secrets",
   "run typecheck",
   "run lint -- --strict",
-  "run simplify",
 ];
 
 const git = (...args: string[]): string => execTextSync("git", args, { cwd: work }).trim();
@@ -137,13 +136,15 @@ describe("pre-push", () => {
     expect(gatesRun(log)).toEqual([]);
   });
 
-  it("gives the pushed head every step but the tests over its own checkout, and prints the census count", () => {
+  it("gives the pushed head its static steps and the tests near its own change, over its own checkout", () => {
     const result = push([update(second, docs)]);
     expect(result.status).toBe(0);
-    expect(result.stderr).toContain(`pre-push: ${short(second)}: simplify census: no count printed;`);
     expect(gatesRun(log)).toEqual([`${second} -`]);
-    expect(stepsOver(second)).toEqual(CHECKS);
+    expect(stepsOver(second)).toEqual(STATIC);
     expect(stepsOver(source)).toEqual([]);
+    rmSync(log, { force: true });
+    expect(push([update(source, docs)]).status).toBe(0);
+    expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`]);
   });
 
   it("refuses a push whose head fails the strict lint, and names the step and its log", () => {

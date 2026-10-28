@@ -1484,7 +1484,7 @@ or recovery write (`pinFault`, `tools/d2/harness-builder.ts`).
 | `bun run test -- <paths...>` | The suite through its wrapper. Never bare `bun test` |
 | `bun run simplify` | The whole-tree scans, as a census to read |
 | `bun run not-slop` | The ledger of answered findings: status, `-- answer <id> "<why>"`, `-- prune` |
-| `bun run gate` | The CI gate in one command: a frozen install, the UI's own CI gate, the format check, the secret scan over every tracked file, typecheck, the strict lint and the suite. `-- --static` runs the tests one import away from what HEAD changed instead of the suite, and the UI's CI gate without its browser test files unless HEAD changed `packages/ui` or its install, run or lint setup (`UI_SETUP`). `-- --checks` runs every step but the tests, the UI's install and build and the simplify census among them, as the pre-push hook does |
+| `bun run gate` | The CI gate in one command: a frozen install, the UI's own CI gate, the format check, the secret scan over every tracked file, typecheck, the strict lint and the suite. `-- --static` runs the tests one import away from what HEAD changed instead of the suite, and the UI's CI gate without its browser test files unless HEAD changed `packages/ui` or its install, run or lint setup (`UI_SETUP`). The pre-push hook runs `--static` over each pushed head |
 | `bun run hooks:install` | Points this clone's `core.hooksPath` at `.githooks`, once; every worktree shares it |
 | `bun run commit:check` | What the pre-commit hook runs, also by hand: author email, format and lint of staged files, the slop report, the secret scan |
 | `bun run secrets` | The secret scan |
@@ -1503,14 +1503,14 @@ claims them.
 
 **Keep the hooks enabled.** `bun run hooks:install` sets them up once per clone. Without them a commit
 and a push go unchecked, silently (`git config core.hooksPath` tells you which). The
-pre-commit hook runs `bun run commit:check`. The pre-push hook runs no test
-(`tools/runtime/pre-push.ts`): each commit the push adds gets `git diff --check`, what each pushed
-head that no other pushed head holds adds gets the secret scan, and where one of them changes more
-than documentation, each such head gets `bun run gate -- --checks` over a checkout of its own: every
-step but the tests, with the simplify census printed and refusing nothing. A pushed commit is therefore
-unproved until `bun run land -- <top> --sanitize` or `--merge` has given every commit of the stack
-its static steps and nearby tests and the top the whole CI gate, the full suite among it; run
-`--sanitize` whenever the stack is worth proving. A pass is remembered by content: a whole or checks
+pre-commit hook runs `bun run commit:check`. In the pre-push hook (`tools/runtime/pre-push.ts`)
+each commit the push adds gets `git diff --check`, what each pushed head that no other pushed head
+holds adds gets the secret scan, and where one of them changes more than documentation, each such
+head gets `bun run gate -- --static` over a checkout of its own: every step, with the suite replaced
+by the tests one import away from what the head's own commit changed. A commit below a pushed head
+is therefore unproved until `bun run land -- <top> --sanitize` or `--merge` has given every commit
+of the stack its static steps and nearby tests and the top the whole CI gate, the full suite among
+it; run `--sanitize` whenever the stack is worth proving. A pass is remembered by content: a whole
 pass by the commit's tree, and a static one by its tree and its parent's, each with the CI gate that
 ran and the Bun version, so a restack that keeps every tree runs nothing again. Each proof stops at
 its first failed test (`ANA_TEST_BAIL`), where CI runs every test to name every failure.

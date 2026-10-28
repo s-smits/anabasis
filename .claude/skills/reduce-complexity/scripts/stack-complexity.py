@@ -4,6 +4,9 @@
 Whether a branch bought its behaviour with more machinery or less. It reads every revision through
 git plumbing, so it needs no second worktree and never touches the working tree.
 
+    git complexity                  # HEAD against its parent; `bun run hooks:install` adds the alias
+    git complexity <commit>         # one commit against its parent
+    git complexity <base> <head>
     python3 stack-complexity.py origin/main HEAD
     python3 stack-complexity.py origin/main '#<bottom>' '#<top>'
     python3 stack-complexity.py --repo /abs/worktree --per-file origin/main HEAD
@@ -383,15 +386,17 @@ def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("revs", nargs="+", help="base and head, or a stack bottom-to-top")
+    ap.add_argument("revs", nargs="*", default=["HEAD"],
+                    help="base and head, a stack bottom-to-top, or one commit against its parent (HEAD)")
     ap.add_argument("--repo", default=".")
     ap.add_argument("--per-file", action="store_true", help="also list the files whose line count moved most")
     ap.add_argument("--literal-base", action="store_true", help="compare the tips as given, not from where they diverged")
     args = ap.parse_args()
-    if len(args.revs) < 2:
-        sys.exit("name at least two revisions")
 
     revs = [resolve_rev(args.repo, rev) for rev in args.revs]
+    if len(revs) == 1:
+        args.revs.insert(0, f"{args.revs[0]}^")
+        revs.insert(0, f"{revs[0]}^")
     if not args.literal_base:
         merged = git(args.repo, "merge-base", revs[0], revs[-1]).strip()
         if merged and merged != git(args.repo, "rev-parse", revs[0]).strip():

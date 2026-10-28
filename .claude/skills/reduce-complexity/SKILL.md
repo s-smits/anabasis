@@ -26,12 +26,16 @@ and a rewrite would not.
 ## The whole stack, on seventeen measures
 
 ```sh
+git complexity                      # HEAD against its parent
+git complexity <commit>             # one commit against its parent
+git complexity <base> <head>        # any two revisions, or more for a stack
 python3 .claude/skills/reduce-complexity/scripts/stack-complexity.py origin/main HEAD
 python3 .claude/skills/reduce-complexity/scripts/stack-complexity.py origin/main '#<bottom>' '#<top>'
 python3 .claude/skills/reduce-complexity/scripts/stack-complexity.py --repo /abs/worktree --per-file origin/main HEAD
 ```
 
-It reads revisions through Git plumbing, so it needs no extra worktree and changes no working
+`git complexity` is this script under a Git alias, which `bun run hooks:install` sets once per
+clone. It reads revisions through Git plumbing, so it needs no extra worktree and changes no working
 files. A `#<n>` argument is a pull request number in the repository this checkout's `origin` names,
 resolved through `gh` and fetched if this checkout has not seen it.
 

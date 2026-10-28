@@ -1485,7 +1485,7 @@ or recovery write (`pinFault`, `tools/d2/harness-builder.ts`).
 | `bun run simplify` | The whole-tree scans, as a census to read |
 | `bun run not-slop` | The ledger of answered findings: status, `-- answer <id> "<why>"`, `-- prune` |
 | `bun run gate` | The CI gate in one command: a frozen install, the UI's own CI gate, the format check, the secret scan over every tracked file, typecheck, the strict lint and the suite. `-- --static` runs the tests one import away from what HEAD changed instead of the suite, and the UI's CI gate without its browser test files unless HEAD changed `packages/ui` or its install, run or lint setup (`UI_SETUP`). The pre-push hook runs `--static` over each pushed head |
-| `bun run hooks:install` | Points this clone's `core.hooksPath` at `.githooks`, once; every worktree shares it |
+| `bun run hooks:install` | Points this clone's `core.hooksPath` at `.githooks` and adds `git complexity`, the complexity diff of a commit or of two revisions (the skill `reduce-complexity`), once; every worktree shares both |
 | `bun run commit:check` | What the pre-commit hook runs, also by hand: author email, format and lint of staged files, the slop report, the secret scan |
 | `bun run secrets` | The secret scan |
 | `bun run runs <verb>` | `fresh`, `launch`, `continue`, `keep`, `pause`, `copy`, `fetch`, `retire`, `stop`, `source`, `status`, `usage`, `active`, `on`, `hosts`, `pulse`, `rehearse`, `seed`, `replay`, `zip`, `view`. Mutating named verbs route to their machine; readers refresh remote records. `fresh` admits a login below its fleet cap and prefers a pack's prior machine with capacity. `hosts --health` reads fleet resources and live work. `holds` and `catalogue` serve discovery |

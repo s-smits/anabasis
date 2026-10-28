@@ -154,7 +154,7 @@ model-visible text against the wall tests. A missed budget is reported as missed
 ## Report
 
 For each compartment give the hypothesis; budget before, expected and measured (`measure.py`'s
-budget lines and `stack-complexity.py <base> HEAD`'s decision points, import edges, exports and
+budget lines and `git complexity <base> HEAD`'s decision points, import edges, exports and
 optional fields); squashed commit and saved branch; test counts and failure classes; any test
 edited after production began, with its reason; oracle differences on the old tests and on real
 input, with their disposition and the two times; the copy run where there was one, and what it

@@ -146,9 +146,9 @@ Moving a helper's body into three callers is no removal.
 ## 5. Prove it
 
 - `measure.py` again, with the budget lines: production and test lines net, new functions net of
-  moved ones, and the names each import source gained. For a pull request or a stack, give
-  `stack-complexity.py`'s structural rows beside them: decision points, import edges, exported
-  symbols and optional fields. A pass that moved lines and none of those has moved mass.
+  moved ones, and the names each import source gained. For a commit, a pull request or a stack,
+  give `git complexity <base> HEAD`'s structural rows beside them (`git complexity` alone reads
+  HEAD against its parent): decision points, import edges, exported symbols and optional fields. A pass that moved lines and none of those has moved mass.
 - **A producer or a reader is replayed.** Code that writes events, rows, reports or prompts is
   measured on recorded input: `bun run runs replay` reads every campaign log in the repository's
   worktrees and reports selected folds. Count the changed output before and after with its owning

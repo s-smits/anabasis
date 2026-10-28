@@ -1,20 +1,25 @@
 /**
  * The bun router (`tools/runtime/router/`) as a machine meets it: installed by its own `install.ts`
- * into a scratch home, then run as `bun` and as `run.sh` over a real Git tree, with ssh and rsync
- * replaced by stand-ins that map each host to a home of its own, so the transfer, the locks and the
- * queue are real. The cases were ported on 25 October from the runner's `test.py`, which stijn-pro
- * kept beside the runner and nothing ran in CI; they keep its order and its hostile halves, and add
- * the router's choice for each command line, the pin it resolves, the hosts read from `ANA_HOSTS`,
- * and the installer. A stand-in `ps` lists no other process to the reaper, so no case can reap an
- * orphan of the machine running the suite; the reaper's own cases name what they list.
+ * into a scratch home, then run as `bun` and as `run.sh` over a real Git tree. The stand-in ssh models
+ * the transport and the hosts, never the runner's commands: a host is a folder whose state is a file
+ * in it, a master is its socket file, every command runs in the host's home under bash with HOME and
+ * PATH alone, since ssh carries no environment, and rsync goes through it to a real rsync server.
+ * Each host's pinned Bun records how host.sh called it, so the settings, the status and the deadline
+ * are read where the task ran. A task holds or exits through its own arguments (`hold:<path>`,
+ * `exit:<n>`). A stand-in `ps` lists no other process to the reaper, so no case can reap an orphan of
+ * the machine running the suite; the reaper's own case names what it lists.
+ *
+ * Rewritten on 29 October: the earlier stand-in knew each exchange by its text, cut host.sh before
+ * the task ran, and passed the caller's whole environment to the host, so a forwarded setting could
+ * not fail to arrive.
  */
 import {
   chmodSync,
+  closeSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   openSync,
-  closeSync,
   readFileSync,
   readdirSync,
   realpathSync,
@@ -37,94 +42,61 @@ const realRsync = Bun.which("rsync");
 const realPs = Bun.which("ps") ?? "/bin/ps";
 const MACHINE = execTextSync("uname", ["-n"]).trim().split(".")[0] ?? "";
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-router-")));
+
 const SSH = `#!/bin/bash
-# A master, its close and each exchange over it are recorded apart, with the master's socket.
-control=""
-for arg in "$@"; do [[ "$arg" != ControlPath=* || "$arg" == ControlPath=none ]] || control="\${arg#ControlPath=}"; done
-if [[ " $* " == *" -O exit "* ]]; then
-  rm -f "$control"
-  printf 'exit %s\\n' "$control" >>"$FAKE_MASTERS"
-  exit 0
-fi
-if [[ " $* " == *" ControlMaster=auto "* && ! -e "$control" ]]; then
-  [[ -z "\${FAKE_DOWN:-}" ]] || exit 255
-  : >"$control"
-  printf 'open %s\\n' "$control" >>"$FAKE_MASTERS"
-  [[ " $* " != *" -fN "* ]] || exit 0
-elif [[ -n "$control" ]]; then
-  printf 'use %s\\n' "$control" >>"$FAKE_MASTERS"
-fi
-args=("$@")
+# The ssh client and every host it reaches. Host state, a file in its home: down refuses every
+# connection, drops drops a session with a terminal before it runs, zero reports 0 for every session
+# as Tailscale SSH does, flaky holds which connection from now drops once. A master is its socket.
+args=("$@") options=() tty=0
 while [[ "\${args[0]}" == -* ]]; do
-  if [[ "\${args[0]}" == -o ]]; then args=("\${args[@]:2}"); else args=("\${args[@]:1}"); fi
+  case "\${args[0]}" in
+    -o) options+=("\${args[1]}") args=("\${args[@]:2}") ;;
+    -tt) tty=1 args=("\${args[@]:1}") ;;
+    *) args=("\${args[@]:1}") ;;
+  esac
 done
-host="\${args[0]}" command="\${args[\${#args[@]}-1]}"
-home="$FAKE_HOMES/$host"
-mkdir -p "$home"
-printf '%s %s\\n' "$host" "\${command%% *}" >>"$FAKE_LOG"
-[[ -z "\${FAKE_COMMANDS:-}" ]] || printf '%s\\n' "$command" >>"$FAKE_COMMANDS"
-case "$command" in
-  'n="$(getconf'*)
-    load="FAKE_LOAD_\${host//-/_}"
-    printf '%s\\n' "\${!load:-0.00 4}"
-    exit 0
-    ;;
-  "df "*)
-    [[ -z "\${FAKE_DOWN:-}" ]] || exit 255
-    cd "$home" && HOME="$home" exec /bin/sh -c "$command"
-    ;;
-  *"cat > "*)
-    body="$(cat; printf x)"
-    body="\${body%x}"
-    [[ -n "\${FAKE_FULL:-}" ]] || body="\${body%%bun install --frozen-lockfile >*}"
-    cd "$home" && printf '%s' "$body" | HOME="$home" /bin/sh -c "$command"
-    exit $?
-    ;;
-esac
-status=0
-cd "$home" && HOME="$home" /bin/sh -c "$command" || status=$?
-# Tailscale SSH reports 0 as every session's exit status.
-[[ -z "\${FAKE_TAILSCALE:-}" ]] || status=0
-if ((status == 0)) && [[ -n "\${FAKE_JOB:-}" && "$command" != "mkdir "* ]]; then
-  touch "$FAKE_JOB.ready"
-  while [[ ! -e "$FAKE_JOB.release" ]]; do sleep 0.05; done
+control="" auto=""
+for option in "\${options[@]}"; do
+  case "$option" in
+    ControlPath=*) [[ -n "$control" ]] || control="\${option#ControlPath=}" ;;
+    ControlMaster=*) [[ -n "$auto" ]] || auto="\${option#ControlMaster=}" ;;
+  esac
+done
+[[ "$control" != none ]] || control=""
+if [[ -n "$control" ]] && ((\${#control} + 17 >= 104)); then said too-long; exit 255; fi
+host="\${args[0]}" home="$FAKE_HOMES/\${args[0]}"
+said() { printf '%s %s %s %s\\n' "$host" "$1" "\${control:-none}" "\${options[*]}" >>"$FAKE_LOG"; }
+if [[ -e "$home/down" ]]; then said refused; exit 255; fi
+if [[ -e "$home/flaky" ]]; then
+  left="$(cat "$home/flaky")"
+  if ((left <= 1)); then rm -f "$home/flaky"; said dropped; exit 255; fi
+  printf '%s\\n' "$((left - 1))" >"$home/flaky"
 fi
+if [[ -n "$control" && -e "$control" ]]; then said use
+elif [[ -n "$control" && "$auto" == auto ]]; then : >"$control"; said open
+else said direct; fi
+if ((tty == 1)) && [[ -e "$home/drops" ]]; then exit 255; fi
+status=0
+(cd "$home" && exec env -i HOME="$home" PATH="$home/.local/bin:$FAKE_PATH" /bin/bash -c "\${args[*]:1}") || status=$?
+[[ ! -e "$home/zero" ]] || status=0
 exit "$status"
 `;
 
-const RSYNC = `#!/bin/bash
-# Local rsync starts its own server side through PATH, which is this stand-in again.
-remote=0
-for arg in "$@"; do [[ "$arg" != -e ]] || remote=1; done
-((remote == 1)) || exec ${realRsync ?? "rsync"} "$@"
-if [[ -n "\${FAKE_RSYNC_FAIL_ONCE:-}" && ! -e "$FAKE_RSYNC_FAIL_ONCE" ]]; then
-  : >"$FAKE_RSYNC_FAIL_ONCE"
-  exit 1
-fi
-kept=() skip=0
-for arg in "$@"; do
-  if ((skip == 1)); then skip=0; continue; fi
-  if [[ "$arg" == -e ]]; then skip=1; continue; fi
-  kept+=("$arg")
-done
-last="\${kept[\${#kept[@]}-1]}"
-kept[\${#kept[@]}-1]="$FAKE_HOMES/\${last%%:*}/\${last#*:}"
-exec ${realRsync ?? "rsync"} "\${kept[@]}"
-`;
-
-/** A Bun that records how it was called, and hands the router's host lister to the real one. */
+/** A Bun that records how it was called in its HOME's bun.log, and hands the host lister to Bun. */
 const RECORDING_BUN = `#!/bin/bash
 case "$*" in *hosts.js*) exec ${capturedExecPath} "$@" ;; esac
 if [[ "\${1-}" == --version ]]; then echo 1.4.2; exit 0; fi
 [[ "\${1-}" != install ]] || exit 0
-{
-  printf 'args=%s\\n' "$*"
-  printf 'workers=%s\\n' "\${ANA_TEST_WORKERS-}"
-  printf 'bun=%s\\n' "$0"
-  printf 'strict=%s\\n' "\${ANA_LINT_STRICT-}"
-  printf 'active=%s\\n' "\${ANA_RUNNER_ACTIVE-}"
-} >"\${FAKE_CALL:-/dev/null}"
-exit "\${FAKE_EXIT:-0}"
+printf 'bun=%s\\tactive=%s\\tstrict=%s\\tworkers=%s\\tbail=%s\\targs=%s\\n' "$0" "\${ANA_RUNNER_ACTIVE-}" \\
+  "\${ANA_LINT_STRICT-}" "\${ANA_TEST_WORKERS-}" "\${ANA_TEST_BAIL-}" "$*" >>"$HOME/bun.log"
+status=0
+for arg in "$@"; do
+  case "$arg" in
+    hold:*) : >"\${arg#hold:}.ready"; until [[ -e "\${arg#hold:}.release" ]]; do sleep 0.05; done ;;
+    exit:*) status="\${arg#exit:}" ;;
+  esac
+done
+exit "$status"
 `;
 
 const QUIET_PS = `#!/bin/sh
@@ -133,6 +105,21 @@ case "$*" in
   *) exec ${realPs} "$@" ;;
 esac
 `;
+
+/** A host's own tools: its load and cores from \`load\`, its performance cores from \`perf\`, and a
+ *  free-space reading that \`garbled\` spoils. */
+const HOST_TOOLS = {
+  sysctl: `#!/bin/sh
+case "$*" in
+  "-n vm.loadavg") awk '{ print "{ " $1 " 0.00 0.00 }" }' "$HOME/load" ;;
+  "-n hw.perflevel0.logicalcpu") cat "$HOME/perf" 2>/dev/null ;;
+  *) exit 1 ;;
+esac
+`,
+  getconf: `#!/bin/sh\nawk '{ print $2 }' "$HOME/load"\n`,
+  df: `#!/bin/sh\nif [ -e "$HOME/garbled" ]; then echo nonsense; else exec /bin/df "$@"; fi\n`,
+  ps: QUIET_PS,
+};
 
 const PEER = { name: "peer", ssh: "fake-peer", tree: "~/anabasis", bun: "~/.bun/bin/bun" };
 const HOSTS = JSON.stringify([
@@ -150,11 +137,14 @@ const source = folder("source");
 const plain = folder("plain");
 const homes = folder("homes");
 const bins = folder("bin");
-const tmp = folder("tmp");
+// A control socket's path must stay under 104 bytes, which the suite's own temp root may not leave room for.
+const tmp = realpathSync(mkdtempSync(join("/tmp", "ana-router-")));
 const home = folder("home");
-const runner = join(home, ".local", "share", "ana-runner", "run.sh");
+const runnerDir = join(home, ".local", "share", "ana-runner");
+const runner = join(runnerDir, "run.sh");
 const shim = join(home, ".local", "bin", "bun");
 const log = join(root, "ssh.log");
+const pinned = join(home, ".bun", "releases", "1.4.2", "bin", "bun");
 
 function script(path: string, body: string): void {
   mkdirSync(join(path, ".."), { recursive: true });
@@ -192,25 +182,22 @@ const env: Record<string, string | undefined> = {
   HOME: home,
   SHELL: "/bin/sh",
   TMPDIR: tmp,
+  ANA_TEST_TMPDIR: tmp,
   FAKE_HOMES: homes,
   FAKE_LOG: log,
-  FAKE_MASTERS: join(root, "masters.log"),
+  FAKE_PATH: Bun.env.PATH ?? "",
   ANA_HOSTS: HOSTS,
   ANA_RUNNER_RETRY_DELAY: "0",
   ANA_RUNNER_MIN_FREE_GB: "1",
 };
 
 script(join(bins, "ssh"), SSH);
-script(join(bins, "rsync"), RSYNC);
 script(join(bins, "ps"), QUIET_PS);
-for (const bun of [join(home, ".bun", "releases", "1.4.2", "bin", "bun"), join(home, ".bun", "bin", "bun")]) {
-  script(bun, RECORDING_BUN);
-}
-for (const host of ["fake-mac", "fake-linux"]) {
-  script(
-    join(homes, host, ".bun/releases/1.4.2/bin/bun"),
-    '#!/bin/sh\n[ "$1" = --version ] || exit 90\necho 1.4.2\n',
-  );
+for (const bun of [pinned, join(home, ".bun", "bin", "bun")]) script(bun, RECORDING_BUN);
+for (const host of ["fake-mac", "fake-linux", "fake-peer"]) {
+  script(join(homes, host, ".bun/releases/1.4.2/bin/bun"), RECORDING_BUN);
+  for (const [name, body] of Object.entries(HOST_TOOLS)) script(join(homes, host, ".local/bin", name), body);
+  writeFileSync(join(homes, host, "load"), "0.00 4\n");
 }
 tree(source, {
   "package.json": '{\n  "name": "t",\n  "packageManager": "bun@1.4.2"\n}\n',
@@ -220,34 +207,69 @@ tree(source, {
   "tools/runs/discover.ts": "tracked",
   "tools/runtime/gate.ts": "the gate",
 });
-tree(plain, { "package.json": '{\n  "name": "anabasis"\n}\n' });
+tree(plain, { "package.json": '{\n  "name": "anabasis"\n}\n', "tools/runtime/gate.ts": "the gate" });
 execTextSync(capturedExecPath, [join(ROUTER, "install.ts")], { env: { ...env, ANA_HOSTS: undefined } });
 
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+afterAll(() => {
+  for (const path of [root, tmp]) rmSync(path, { recursive: true, force: true });
+});
 
-function run(args: readonly string[], extra: Record<string, string | undefined> = {}) {
-  return spawnTextSync("bash", [runner, ...args], {
-    cwd: source,
-    env: { ...env, ...extra },
-    timeout: 50_000,
-  });
+function run(args: readonly string[], extra: Record<string, string | undefined> = {}, cwd = source) {
+  return spawnTextSync("bash", [runner, ...args], { cwd, env: { ...env, ...extra }, timeout: 50_000 });
 }
 
 const slot = (host: string, k: number): string =>
   join(homes, host, ".cache/ana-runner", `${MACHINE}-slot-${String(k)}`);
-const logged = (): string[] =>
-  readFileSync(log, "utf8")
-    .split("\n")
-    .filter((line) => line !== "");
+const queueOf = (host: string): string => join(tmp, "ana-runner", host);
 
-/** The fields a recording Bun left, by name. */
-function callAt(path: string): Record<string, string> {
-  return Object.fromEntries(
-    readFileSync(path, "utf8")
-      .split("\n")
-      .filter((line) => line.includes("="))
-      .map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]),
-  );
+/** Each connection the stand-in ssh saw: its host, how it was carried, its socket and options. */
+function connections(): { host: string; how: string; socket: string; options: string[] }[] {
+  return readFileSync(log, "utf8")
+    .split("\n")
+    .filter((line) => line !== "")
+    .map((line) => {
+      const [host = "", how = "", socket = "", ...options] = line.split(" ");
+      return { host, how, socket, options };
+    });
+}
+
+/** The calls the recording Bun in `at` (a host's home, or this machine's) took, by field. */
+function calls(at: string): Record<string, string>[] {
+  const path = join(at, "bun.log");
+  if (!existsSync(path)) return [];
+  return readFileSync(path, "utf8")
+    .split("\n")
+    .filter((line) => line !== "")
+    .map((line) =>
+      Object.fromEntries(
+        line
+          .split("\t")
+          .map((field) => [field.slice(0, field.indexOf("=")), field.slice(field.indexOf("=") + 1)]),
+      ),
+    );
+}
+const lastCall = (at: string): Record<string, string> | undefined => calls(at).at(-1);
+const hostHome = (host: string): string => join(homes, host);
+
+/** Clears every record and host state a case may have left. */
+function fresh(): void {
+  writeFileSync(log, "");
+  for (const host of ["fake-mac", "fake-linux", "fake-peer"]) {
+    for (const state of ["down", "drops", "zero", "flaky", "garbled", "perf", "bun.log"]) {
+      rmSync(join(hostHome(host), state), { force: true });
+    }
+    writeFileSync(join(hostHome(host), "load"), "0.00 4\n");
+  }
+  rmSync(join(home, "bun.log"), { force: true });
+}
+
+/** The options src/meta/ssh.ts gives the runs verbs for `destination`, in this fixture's temp root. */
+function verbOptions(destination: string): string[] {
+  const code = `import { sshOptions } from ${JSON.stringify(join(import.meta.dir, "..", "src", "meta", "ssh.ts"))};
+console.log(JSON.stringify(sshOptions(${JSON.stringify(destination)})));`;
+  const printed = execTextSync(capturedExecPath, ["-e", code], { env: { ...env, ANA_HOSTS: undefined } });
+  // SAFETY: the child prints sshOptions' own string[] through JSON.stringify.
+  return (JSON.parse(printed) as string[]).filter((_, index) => index % 2 === 1);
 }
 
 async function waitFor(check: () => boolean, seconds = 20): Promise<void> {
@@ -260,18 +282,17 @@ async function waitFor(check: () => boolean, seconds = 20): Promise<void> {
 
 describe("the router on the command line", () => {
   /** What `bun <args>` ran: whether run.sh queued it here, and the Bun that was called with what. */
-  function routed(args: readonly string[], cwd = source, extra: Record<string, string> = {}) {
+  function routed(args: readonly string[], cwd = source) {
     const scratch = mkdtempSync(join(root, "route-"));
-    const call = join(scratch, "call");
+    rmSync(join(home, "bun.log"), { force: true });
     const result = spawnTextSync(shim, args, {
       cwd,
-      env: { ...env, TMPDIR: scratch, FAKE_CALL: call, RUN_REMOTE: "0", ...extra },
+      env: { ...env, TMPDIR: scratch, RUN_REMOTE: "0" },
       timeout: 30_000,
     });
     expect(result.status, result.stderr).toBe(0);
-    return { queued: existsSync(join(scratch, "ana-runner", "local")), ...callAt(call) };
+    return { queued: existsSync(join(scratch, "ana-runner", "local")), ...lastCall(home) };
   }
-  const pinned = join(home, ".bun", "releases", "1.4.2", "bin", "bun");
 
   it("sends the five check tasks to run.sh and runs everything else on the pinned Bun", () => {
     const cases: [readonly string[], boolean, string][] = [
@@ -294,13 +315,109 @@ describe("the router on the command line", () => {
       });
     }
   });
+
+  it("puts aside what it replaces, changes nothing when installed again, and puts it back on uninstall", () => {
+    const other = folder("install-home");
+    const foreign = join(other, ".local", "bin", "bun");
+    script(foreign, "foreign bun\n");
+    const install = (...args: string[]) =>
+      spawnTextSync(capturedExecPath, [join(ROUTER, "install.ts"), ...args], {
+        env: { ...env, HOME: other },
+      });
+    const files = () => readdirSync(join(other, ".local", "bin")).toSorted();
+    expect(install().status).toBe(0);
+    const installed = join(other, ".local", "share", "ana-runner");
+    for (const name of ["lib.sh", "run.sh", "host.sh"]) {
+      expect(readFileSync(join(installed, name), "utf8")).toBe(readFileSync(join(ROUTER, name), "utf8"));
+    }
+    expect(readFileSync(foreign, "utf8")).toBe(readFileSync(join(ROUTER, "bun"), "utf8"));
+    const after = files();
+    expect(after.filter((name) => name.startsWith("bun.before-router-"))).toHaveLength(1);
+    expect(install().status).toBe(0);
+    expect(files()).toEqual(after);
+    expect(install("--uninstall").status).toBe(0);
+    expect(readFileSync(foreign, "utf8")).toBe("foreign bun\n");
+    expect(files()).toEqual(["bun"]);
+    expect(existsSync(join(installed, "run.sh"))).toBe(false);
+  });
 });
 
-describe.skipIf(realRsync === null)("run.sh", () => {
+describe.skipIf(realRsync === null)("which host runs a task", () => {
+  const ran = (host: string): boolean =>
+    calls(hostHome(host)).some((call) => call.args?.startsWith("run test") === true);
+
+  it("gives an unnamed task to the first host that is not busy by load or by this machine's slots, and never asks a host without checks", () => {
+    const held = [1, 2].map((k) => join(queueOf("fake-mac"), `slot-${String(k)}`));
+    const cases: [Record<string, string>, boolean, string, string[]][] = [
+      [{ "fake-mac": "9.50 8" }, false, "fake-linux", ["fake-mac", "9.50", "8"]],
+      [{}, true, "fake-linux", ["fake-mac", "0.00", "4", "2 of 2"]],
+      [{ "fake-mac": "garbled" }, false, "fake-linux", ["fake-mac"]],
+      [{ "fake-mac": "7.90 8" }, false, "fake-mac", []],
+      [{ "fake-mac": "9.50 8", "fake-linux": "6.00 4" }, false, "fake-mac", []],
+    ];
+    for (const [loads, holds, expected, facts] of cases) {
+      fresh();
+      for (const [host, load] of Object.entries(loads)) {
+        writeFileSync(join(hostHome(host), "load"), `${load}\n`);
+      }
+      for (const path of holds ? held : []) {
+        mkdirSync(path, { recursive: true });
+        writeFileSync(join(path, "pid"), `${String(runtimeProcess.pid)}\n`);
+      }
+      const picked = run(["test"]);
+      for (const path of holds ? held : []) rmSync(path, { recursive: true });
+      expect(picked.status, picked.stderr).toBe(0);
+      expect(["fake-mac", "fake-linux"].filter(ran), picked.stderr).toEqual([expected]);
+      expect(connections().filter((each) => each.host === "fake-peer")).toEqual([]);
+      for (const fact of facts) expect(picked.stderr).toContain(fact);
+    }
+  });
+
+  it("takes a host by its place, name or ssh destination, and refuses one without checks or not listed", () => {
+    for (const choice of ["2", "zbook", "fake-linux"]) {
+      fresh();
+      expect(run(["test"], { RUN_REMOTE: choice }).status).toBe(0);
+      expect(["fake-mac", "fake-linux"].filter(ran), choice).toEqual(["fake-linux"]);
+    }
+    for (const choice of ["peer", "9"]) {
+      fresh();
+      expect(run(["test"], { RUN_REMOTE: choice }).status, choice).toBe(2);
+      expect(connections()).toEqual([]);
+    }
+  });
+
+  it("runs here where no host sets checks, and refuses a list it cannot read or one from an older hosts.js", () => {
+    fresh();
+    expect(run(["test"], { ANA_HOSTS: JSON.stringify([PEER]) }).status).toBe(0);
+    expect(connections()).toEqual([]);
+    expect(lastCall(home)).toMatchObject({ args: "run test", active: "1" });
+    expect(run(["test"], { ANA_HOSTS: "not a list" }).status).toBe(2);
+    const lister = join(runnerDir, "hosts.js");
+    const current = readFileSync(lister, "utf8");
+    writeFileSync(lister, 'console.log("m1 fake-mac 2");\n');
+    try {
+      const stale = run(["test"], { RUN_REMOTE: "m1", ANA_RUNNER_QUEUE_WAIT: "5" });
+      expect(stale.status).toBe(2);
+      expect(stale.stderr).toContain("install.ts");
+    } finally {
+      writeFileSync(lister, current);
+    }
+  });
+
+  it("refuses an unknown task, a setting that is no count, and a tree that pins no Bun, before any host is asked", () => {
+    fresh();
+    expect(run(["bogus"]).status).toBe(2);
+    expect(run(["test"], { ANA_RUNNER_WALL: "soon" }).status).toBe(2);
+    expect(run(["test"], { RUN_REMOTE: "m1" }, plain).status).toBe(2);
+    expect(connections()).toEqual([]);
+  });
+});
+
+describe.skipIf(realRsync === null)("what reaches the host", () => {
   const target = slot("fake-mac", 1);
-  const queue = join(tmp, "ana-runner", "fake-mac");
 
   it("sends the working tree as it stands, without credentials, run state or ignored files, and keeps the caches", () => {
+    fresh();
     const head = git(source, "rev-parse", "HEAD").trim();
     writeFileSync(join(source, "edited"), "unstaged");
     unlinkSync(join(source, "deleted"));
@@ -326,9 +443,8 @@ describe.skipIf(realRsync === null)("run.sh", () => {
     // A test's scratch tree links the dependency cache; deletion must not stall on the link.
     mkdirSync(join(target, ".scratch/old/workspace"), { recursive: true });
     symlinkSync(join(target, "node_modules"), join(target, ".scratch/old/workspace/node_modules"));
-    writeFileSync(log, "");
 
-    const sent = run(["test", "test/example.test.ts"]);
+    const sent = run(["test", "test/example.test.ts"], { RUN_REMOTE: "m1" });
     expect(sent.status, sent.stderr).toBe(0);
     const arrived = {
       edited: "unstaged",
@@ -358,196 +474,167 @@ describe.skipIf(realRsync === null)("run.sh", () => {
     for (const name of caches) expect(readFileSync(join(target, name), "utf8")).toBe("old");
     expect(git(source, "rev-parse", "HEAD").trim()).toBe(head);
     expect(git(target, "ls-files")).not.toContain("node_modules");
+    expect(lastCall(hostHome("fake-mac"))).toMatchObject({
+      args: "run test test/example.test.ts",
+      active: "1",
+    });
 
     unlinkSync(join(source, "new file"));
-    expect(run(["test"]).status).toBe(0);
+    rmSync(join(target, ".git"), { recursive: true });
+    writeFileSync(join(target, ".git"), "gitdir: /nowhere\n");
+    expect(run(["test"], { RUN_REMOTE: "m1" }).status).toBe(0);
     expect(existsSync(join(target, "new file"))).toBe(false);
     expect(git(target, "ls-files")).not.toContain("new file");
   });
 
-  it("gives an unnamed task to the first host that is not busy by load or by this machine's slots", () => {
-    const held = [1, 2].map((k) => join(queue, `slot-${String(k)}`));
-    const cases: [Record<string, string>, boolean, string, string[]][] = [
-      [{ FAKE_LOAD_fake_mac: "9.50 8" }, false, "fake-linux", ["fake-mac", "9.50", "8"]],
-      [{}, true, "fake-linux", ["fake-mac", "0.00", "4", "2 of 2"]],
-      [{ FAKE_LOAD_fake_mac: "garbled" }, false, "fake-linux", ["fake-mac"]],
-      [{ FAKE_LOAD_fake_mac: "7.90 8" }, false, "fake-mac", []],
-      [{ FAKE_LOAD_fake_mac: "9.50 8", FAKE_LOAD_fake_linux: "6.00 4" }, false, "fake-mac", []],
+  it("runs the task on the host's pinned Bun with the settings it is sent and the host's performance cores", () => {
+    fresh();
+    writeFileSync(join(hostHome("fake-mac"), "perf"), "4\n");
+    const cases: [Record<string, string>, Record<string, string>][] = [
+      [{}, { strict: "", workers: "4", bail: "" }],
+      [
+        { ANA_TEST_BAIL: "1", ANA_TEST_WORKERS: "3", ANA_LINT_STRICT: "1" },
+        { strict: "1", workers: "3", bail: "1" },
+      ],
     ];
-    for (const [loads, holds, expected, facts] of cases) {
-      writeFileSync(log, "");
-      if (holds) {
-        for (const path of held) {
-          mkdirSync(path, { recursive: true });
-          writeFileSync(join(path, "pid"), `${String(runtimeProcess.pid)}\n`);
-        }
-      }
-      const picked = run(["test"], loads);
-      if (holds) for (const path of held) rmSync(path, { recursive: true });
-      const sent = new Set(
-        logged()
-          .filter((line) => !line.includes("getconf"))
-          .map((line) => line.split(" ")[0]),
-      );
-      expect(sent, picked.stderr).toEqual(new Set([expected]));
-      expect(logged().filter((line) => line.startsWith("fake-peer "))).toEqual([]);
-      expect(picked.status).toBe(0);
-      for (const fact of facts) expect(picked.stderr).toContain(fact);
-    }
-  });
-
-  it("sends checks only to hosts that set them, forwards the bail and the workers, and runs here where none does", () => {
-    const refused = run(["test"], { RUN_REMOTE: "peer" });
-    expect(refused.status).toBe(2);
-    expect(refused.stderr).toContain("names no host ANA_HOSTS lists with checks");
-    const commands = join(root, "commands");
-    const sent = run(["test"], {
-      RUN_REMOTE: "1",
-      ANA_TEST_BAIL: "1",
-      ANA_TEST_WORKERS: "3",
-      FAKE_COMMANDS: commands,
-    });
-    expect(sent.status, sent.stderr).toBe(0);
-    expect(readFileSync(commands, "utf8")).toContain("ANA_TEST_BAIL=1 ANA_TEST_WORKERS=3 /bin/bash --norc");
-    writeFileSync(log, "");
-    const call = join(root, "unlisted-call");
-    const here = run(["test"], { ANA_HOSTS: JSON.stringify([PEER]), FAKE_CALL: call });
-    expect(here.status, here.stderr).toBe(0);
-    expect(logged()).toEqual([]);
-    expect(callAt(call)).toMatchObject({ active: "1" });
-  });
-
-  it("retries a dropped transfer, and starts nothing on a host that does not answer or lacks room", () => {
-    writeFileSync(join(source, "retried"), "after a dropped transfer");
-    const retried = run(["test"], { RUN_REMOTE: "1", FAKE_RSYNC_FAIL_ONCE: join(root, "failed-once") });
-    expect(retried.status).toBe(0);
-    expect(existsSync(join(root, "failed-once"))).toBe(true);
-    expect(readFileSync(join(target, "retried"), "utf8")).toBe("after a dropped transfer");
-    unlinkSync(join(source, "retried"));
-    writeFileSync(join(target, "edited"), "untouched");
-    const refusals: [Record<string, string>, number][] = [
-      [{ FAKE_DOWN: "1" }, 2],
-      [{ ANA_RUNNER_MIN_FREE_GB: "1000000" }, 0],
-    ];
-    for (const [extra, retries] of refusals) {
-      writeFileSync(log, "");
-      const refused = run(["test"], { RUN_REMOTE: "1", ...extra });
-      expect(refused.status).toBe(69);
-      expect(logged()).toEqual(Array.from({ length: retries + 1 }, () => "fake-mac df"));
-      expect(refused.stderr.split("on_host failed").length - 1).toBe(retries);
-      expect(readFileSync(join(target, "edited"), "utf8")).toBe("untouched");
-    }
-  });
-
-  it("carries every exchange of a task over the connection its probe or preflight opened, closes the rest, and connects each alone where none opens", () => {
-    const masters = join(root, "masters.log");
-    writeFileSync(masters, "");
-    expect(run(["test"], { RUN_REMOTE: "1" }).status).toBe(0);
-    const [opened, ...rest] = readFileSync(masters, "utf8").trim().split("\n");
-    const socket = opened?.replace(/^open /u, "") ?? "";
-    expect(socket.startsWith(join(tmp, "ana-ssh."))).toBe(true);
-    expect(rest).toEqual(["use", "use", "use", "use", "exit"].map((kind) => `${kind} ${socket}`));
-    expect(readdirSync(tmp).filter((name) => name.startsWith("ana-ssh."))).toEqual([]);
-    writeFileSync(masters, "");
-    expect(run(["test"]).status).toBe(0);
-    const picked = readFileSync(masters, "utf8").trim().split("\n");
-    const probed = picked.slice(0, 2).toSorted();
-    const [kept, other] = probed.map((line) => line.replace(/^open /u, ""));
-    expect(probed).toEqual([`open ${kept}`, `open ${other}`]);
-    expect([kept?.endsWith("/0"), other?.endsWith("/1")]).toEqual([true, true]);
-    expect(picked.slice(2)).toEqual([
-      `exit ${other}`,
-      ...["use", "use", "use", "use", "exit"].map((kind) => `${kind} ${kept}`),
-    ]);
-    expect(readdirSync(tmp).filter((name) => name.startsWith("ana-ssh."))).toEqual([]);
-    writeFileSync(masters, "");
-    expect(run(["test"], { RUN_REMOTE: "1", FAKE_DOWN: "1" }).status).toBe(69);
-    expect(readFileSync(masters, "utf8")).toBe("");
-    expect(readdirSync(tmp).filter((name) => name.startsWith("ana-ssh."))).toEqual([]);
-  });
-
-  it("refuses at once a host list from a hosts.js older than run.sh, instead of waiting for a slot", () => {
-    const lister = join(home, ".local", "share", "ana-runner", "hosts.js");
-    const current = readFileSync(lister, "utf8");
-    writeFileSync(lister, 'console.log("m1 fake-mac");\n');
-    try {
-      const stale = run(["test"], { RUN_REMOTE: "1", ANA_RUNNER_QUEUE_WAIT: "5" });
-      expect(stale.status).toBe(2);
-      expect(stale.stderr).toContain("hosts.js gave m1 no count of checks");
-    } finally {
-      writeFileSync(lister, current);
-    }
-  });
-
-  it("runs each host's slots apart, queues the next in order with its own host unhindered, and frees a dead holder's slot", async () => {
-    const jobs: [Bun.Subprocess, string][] = [];
-    async function start(name: string, extra: Record<string, string>, wait = true) {
-      const job = join(root, name);
-      const stderr = openSync(`${job}.log`, "w");
-      const child = capturedSpawn(["bash", runner, "test"], {
-        cwd: source,
-        env: { ...env, FAKE_JOB: job, ...extra },
-        stdin: "ignore",
-        stdout: "ignore",
-        stderr,
+    for (const [sent, received] of cases) {
+      expect(run(["test"], { RUN_REMOTE: "m1", ...sent }).status).toBe(0);
+      expect(lastCall(hostHome("fake-mac"))).toMatchObject({
+        bun: join(hostHome("fake-mac"), ".bun/releases/1.4.2/bin/bun"),
+        ...received,
       });
-      closeSync(stderr);
-      jobs.push([child, job]);
-      if (wait) {
-        await waitFor(() => existsSync(`${job}.ready`) || child.exitCode !== null);
-        expect(child.exitCode, readFileSync(`${job}.log`, "utf8")).toBeNull();
-      }
-      return [child, job] as const;
     }
-    async function finish([child, job]: readonly [Bun.Subprocess, string]) {
-      writeFileSync(`${job}.release`, "");
-      expect(await child.exited).toBe(0);
-    }
+    git(source, "config", "ana.lintStrict", "true");
     try {
-      const first = await start("first", { RUN_REMOTE: "1" });
+      expect(run(["test"], { RUN_REMOTE: "m1" }).status).toBe(0);
+      expect(lastCall(hostHome("fake-mac"))).toMatchObject({ strict: "1" });
+    } finally {
+      git(source, "config", "--unset", "ana.lintStrict");
+    }
+  });
+
+  it("returns the task's exit status where the server reports 0 for every session, and no verdict where the session drops", () => {
+    const cases: [string | null, number][] = [
+      [null, 3],
+      ["zero", 3],
+      ["drops", 255],
+    ];
+    for (const [state, status] of cases) {
+      fresh();
+      if (state !== null) writeFileSync(join(hostHome("fake-mac"), state), "");
+      expect(run(["test", "exit:3"], { RUN_REMOTE: "m1" }).status, state ?? "plain").toBe(status);
+    }
+  });
+});
+
+describe.skipIf(realRsync === null)("the connections to a host", () => {
+  it("reaches a host with the runs verbs' own options and its shared master, which the next task reuses", () => {
+    const expected = verbOptions("fake-mac");
+    const socket =
+      expected.find((option) => option.startsWith("ControlPath="))?.slice("ControlPath=".length) ?? "";
+    rmSync(socket, { force: true });
+    fresh();
+    expect(run(["test"], { RUN_REMOTE: "m1" }).status).toBe(0);
+    const first = connections();
+    expect(first.map((each) => [each.host, each.how, each.socket])).toEqual([
+      ["fake-mac", "open", socket],
+      ...first.slice(1).map(() => ["fake-mac", "use", socket]),
+    ]);
+    for (const each of first) expect(expected.filter((option) => !each.options.includes(option))).toEqual([]);
+    fresh();
+    expect(run(["test"], { RUN_REMOTE: "m1" }).status).toBe(0);
+    expect(new Set(connections().map((each) => `${each.how} ${each.socket}`))).toEqual(
+      new Set([`use ${socket}`]),
+    );
+    rmSync(socket, { force: true });
+    fresh();
+    expect(run(["test"], { RUN_REMOTE: "m1" }).status).toBe(0);
+    expect(connections().filter((each) => each.how === "open")).toHaveLength(1);
+  });
+
+  it("connects each exchange alone, and still runs the task, where the temp root is too deep for a socket", () => {
+    const deep = join(root, "a-temp-root-deep-enough-that-no-control-socket-fits-under-it");
+    mkdirSync(deep);
+    fresh();
+    expect(run(["test"], { RUN_REMOTE: "m1", TMPDIR: deep, ANA_TEST_TMPDIR: deep }).status).toBe(0);
+    expect(new Set(connections().map((each) => `${each.how} ${each.socket}`))).toEqual(
+      new Set(["direct none"]),
+    );
+  });
+
+  it("retries a dropped connection before the task, and starts nothing on a host that does not answer, reads no free space, or lacks room", () => {
+    fresh();
+    writeFileSync(join(source, "retried"), "after a dropped transfer");
+    writeFileSync(join(hostHome("fake-mac"), "flaky"), "3\n");
+    expect(run(["test"], { RUN_REMOTE: "m1" }).status).toBe(0);
+    expect(connections().filter((each) => each.how === "dropped")).toHaveLength(1);
+    expect(readFileSync(join(slot("fake-mac", 1), "retried"), "utf8")).toBe("after a dropped transfer");
+    unlinkSync(join(source, "retried"));
+    writeFileSync(join(slot("fake-mac", 1), "edited"), "untouched");
+    const refusals: [string | null, Record<string, string>, number][] = [
+      ["down", {}, 3],
+      ["garbled", {}, 1],
+      [null, { ANA_RUNNER_MIN_FREE_GB: "1000000" }, 1],
+    ];
+    for (const [state, extra, tries] of refusals) {
+      fresh();
+      if (state !== null) writeFileSync(join(hostHome("fake-mac"), state), "");
+      const refused = run(["test"], { RUN_REMOTE: "m1", ...extra });
+      expect(refused.status, state ?? "room").toBe(69);
+      expect(connections(), state ?? "room").toHaveLength(tries);
+      expect(readFileSync(join(slot("fake-mac", 1), "edited"), "utf8")).toBe("untouched");
+      expect(calls(hostHome("fake-mac"))).toEqual([]);
+    }
+  });
+});
+
+describe.skipIf(realRsync === null)("the queue", () => {
+  const queue = queueOf("fake-mac");
+  const jobs: [Bun.Subprocess, string][] = [];
+  function start(name: string, extra: Record<string, string>): readonly [Bun.Subprocess, string] {
+    const job = join(root, name);
+    const stderr = openSync(`${job}.log`, "w");
+    const child = capturedSpawn(["bash", runner, "test", `hold:${job}`], {
+      cwd: source,
+      env: { ...env, ...extra },
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr,
+    });
+    closeSync(stderr);
+    jobs.push([child, job]);
+    return [child, job] as const;
+  }
+  async function started(name: string, extra: Record<string, string>) {
+    const [child, job] = start(name, extra);
+    await waitFor(() => existsSync(`${job}.ready`) || child.exitCode !== null);
+    expect(child.exitCode, readFileSync(`${job}.log`, "utf8")).toBeNull();
+    return [child, job] as const;
+  }
+  async function finish([child, job]: readonly [Bun.Subprocess, string]) {
+    writeFileSync(`${job}.release`, "");
+    expect(await child.exited).toBe(0);
+  }
+  const tickets = (): string[] => readdirSync(queue).filter((name) => name.startsWith("wait."));
+
+  it("runs each host's slots apart, serves waiters in order with another host unhindered, and frees a dead holder's slot", async () => {
+    fresh();
+    try {
+      const first = await started("first", { RUN_REMOTE: "m1" });
       writeFileSync(join(source, "edited"), "second snapshot");
-      const second = await start("second", {});
-      expect(readFileSync(join(target, "edited"), "utf8")).toBe("unstaged");
+      const second = await started("second", { RUN_REMOTE: "m1" });
+      expect(readFileSync(join(slot("fake-mac", 1), "edited"), "utf8")).not.toBe("second snapshot");
       expect(readFileSync(join(slot("fake-mac", 2), "edited"), "utf8")).toBe("second snapshot");
-      const other = await start("other", { RUN_REMOTE: "zbook" });
+      const other = await started("other", { RUN_REMOTE: "zbook" });
       expect(run(["test"], { RUN_REMOTE: "zbook", ANA_RUNNER_QUEUE_WAIT: "0" }).status).toBe(75);
-      const refused = run(["test"], { RUN_REMOTE: "1", ANA_RUNNER_QUEUE_WAIT: "0" });
-      expect(refused.status).toBe(75);
-      expect(existsSync(join(queue, "slot-1"))).toBe(true);
-      expect(existsSync(join(queue, "slot-2"))).toBe(true);
+      expect(run(["test"], { RUN_REMOTE: "m1", ANA_RUNNER_QUEUE_WAIT: "0" }).status).toBe(75);
       const stale = join(queue, "wait.stale");
       writeFileSync(stale, "99999999\n");
       utimesSync(stale, 1, 1);
-      const waitingFirst = await start(
-        "waiting-first",
-        { RUN_REMOTE: "1", ANA_RUNNER_QUEUE_WAIT: "60" },
-        false,
-      );
-      await waitFor(
-        () =>
-          readdirSync(queue).filter((name) => name.startsWith("wait.")).length ===
-          1 + Number(existsSync(stale)),
-      );
-      const waitingSecond = await start(
-        "waiting-second",
-        { RUN_REMOTE: "1", ANA_RUNNER_QUEUE_WAIT: "60" },
-        false,
-      );
-      // Both waiters must have reported; the second can print before the first under load.
-      await waitFor(
-        () =>
-          (
-            [
-              ["waiting-first", "0"],
-              ["waiting-second", "1"],
-            ] as const
-          ).every(
-            ([name, ahead]) =>
-              /(\d+) tasks ahead/.exec(readFileSync(join(root, `${name}.log`), "utf8"))?.[1] === ahead,
-          ),
-        25,
-      );
-      expect(existsSync(stale)).toBe(false);
+      const waitingFirst = start("waiting-first", { RUN_REMOTE: "m1", ANA_RUNNER_QUEUE_WAIT: "60" });
+      await waitFor(() => !existsSync(stale) && tickets().length === 1);
+      const waitingSecond = start("waiting-second", { RUN_REMOTE: "m1", ANA_RUNNER_QUEUE_WAIT: "60" });
+      await waitFor(() => tickets().length === 2);
       const released = performance.now();
       await finish(first);
       await waitFor(() => existsSync(`${waitingFirst[1]}.ready`), 4);
@@ -559,7 +646,7 @@ describe.skipIf(realRsync === null)("run.sh", () => {
       await finish(waitingFirst);
       mkdirSync(join(queue, "slot-1"));
       writeFileSync(join(queue, "slot-1", "pid"), "99999999\n");
-      await finish(await start("third", { RUN_REMOTE: "1" }));
+      await finish(await started("third", { RUN_REMOTE: "m1" }));
       await finish(waitingSecond);
       expect(readdirSync(queue)).toEqual([]);
     } finally {
@@ -569,7 +656,9 @@ describe.skipIf(realRsync === null)("run.sh", () => {
       }
     }
   });
+});
 
+describe("this machine", () => {
   it("runs RUN_REMOTE=0 here on the pinned Bun, reaps an orphaned test worker and spares an orphan that names the checkout", async () => {
     const token = source;
     const orphan = (argv0: string): number =>
@@ -597,19 +686,11 @@ esac
       spawnTextSync(realPs, ["-o", "ppid=", "-p", String(pid)]).stdout.trim();
     try {
       await waitFor(() => parentOf(worker) === "1", 5);
-      const call = join(root, "local-call");
-      writeFileSync(log, "");
-      const local = run(["test"], {
-        RUN_REMOTE: "0",
-        FAKE_CALL: call,
-        PATH: `${filtered}:${env.PATH ?? ""}`,
-      });
-      expect(callAt(call)).toMatchObject({
-        bun: join(home, ".bun", "releases", "1.4.2", "bin", "bun"),
-        active: "1",
-      });
-      expect(logged()).toEqual([]);
-      expect(local.stderr).toContain(`reaped process ${String(worker)} from a dead test run`);
+      fresh();
+      const local = run(["test"], { RUN_REMOTE: "0", PATH: `${filtered}:${env.PATH ?? ""}` });
+      expect(lastCall(home)).toMatchObject({ bun: pinned, active: "1" });
+      expect(connections()).toEqual([]);
+      expect(local.stderr).toContain(String(worker));
       expect(local.stderr).not.toContain(String(simulator));
       expect(parentOf(simulator)).toBe("1");
       await waitFor(() => parentOf(worker) === "", 5);
@@ -622,5 +703,16 @@ esac
         }
       }
     }
+  });
+
+  it("ends a task at its deadline and returns at once from one that ends before it", () => {
+    const hung = join(root, "hung");
+    const started = performance.now();
+    expect(run(["test", `hold:${hung}`], { RUN_REMOTE: "0", ANA_RUNNER_WALL: "1" }).status).not.toBe(0);
+    expect(performance.now() - started).toBeLessThan(4000);
+    const quick = performance.now();
+    expect(run(["test", "exit:4"], { RUN_REMOTE: "0", ANA_RUNNER_WALL: "30" }).status).toBe(4);
+    expect(performance.now() - quick).toBeLessThan(3000);
+    expect(readdirSync(queueOf("local"))).toEqual([]);
   });
 });

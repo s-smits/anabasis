@@ -128,6 +128,13 @@ export function allowedLogins(env: Readonly<Record<string, string | undefined>>)
   return named === undefined || named.length === 0 ? loginsIn(env) : named;
 }
 
+/** Whether a run goes on the plain `CLAUDE_CODE_OAUTH_TOKEN` alone: no numbered login is allowed
+ *  and the plain one is set, as on a machine with one Claude login. Until 28 October `fresh` and
+ *  `keep` refused such a machine for want of a numbered login. */
+export function plainOnly(env: Readonly<Record<string, string | undefined>>): boolean {
+  return allowedLogins(env).length === 0 && (env[TOKEN] ?? "") !== "";
+}
+
 /** Whether a run bills a Claude login: whether an effective seat is a `claude/` model. The last
  *  flag for each seat overrides its opening, with the setting as the solver's fallback. The pickers
  *  that choose a login (`fresh`, `keep`) ask it; the launcher names only the login it is given. */

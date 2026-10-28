@@ -34,8 +34,8 @@
  *
  * Each reading keeps that count beside each login's week, and the rises between readings over the
  * runs counted give the share of a week a run spends an hour (`perRunRate`). The most a login
- * carries is then the lower of its cap and the runs its week left fits until its reset, each run
- * active 16 of 24 hours (`fitOf`), and a login with more live runs than that reads oversubscribed
+ * carries is then the lower of its cap and the runs its week left fits over a run's twelve hours, or
+ * until the reset where that comes sooner, each run active 16 of 24 hours (`fitOf`), and a login with more live runs than that reads oversubscribed
  * (`carried`): a cap of two read 0/2 on a login at 92% of its week with 11 hours of it left.
  * Until that rate is measured, a login with live runs reads its own week's pace shared over them
  * (`perRunHour`).
@@ -104,6 +104,11 @@ const KEPT_MS = 8 * 24 * HOUR;
 /** The share of a day a run is taken to be active when a week is read for how many runs it fits:
  *  16 of 24 hours (operator, 22 October). */
 const ACTIVE_SHARE = 16 / 24;
+/** The hours a run is read to live: the release cycle stops its runs twelve hours after their
+ *  opening (`AGENTS.md`, section 1). Until 29 October each run was read to live until its login's
+ *  reset, so login 1 at 84% of its week with 83 hours to go read 2/0 and oversubscribed while its two
+ *  runs needed about 7% of the 16% left before their stop, and a fresh week read 1/1. */
+const RUN_HOURS = 12;
 /** Fewer run-hours than this on record measure no rate a run spends (`perRunRate`). */
 const LEAST_RUN_HOURS = 6;
 const NOTED = [
@@ -501,11 +506,11 @@ export function perRunHour(week: Week, on: number, rate: number | null, now: num
   return on > 0 ? paceOf(week, now) / on : null;
 }
 
-/** How many runs `week` carries to its reset, each spending `perHour` of it an hour; null without
- *  a rate. */
+/** How many runs `week` carries for `RUN_HOURS`, or to its reset where that is sooner, each spending
+ *  `perHour` of it an hour; null without a rate. */
 export function fitOf(week: Week, perHour: number | null, now: number): number | null {
   if (perHour === null) return null;
-  const need = perHour * Math.max(0, (week.reset - now) / HOUR);
+  const need = perHour * Math.max(0, Math.min(RUN_HOURS, (week.reset - now) / HOUR));
   return need <= 0 ? Number.POSITIVE_INFINITY : Math.floor(Math.max(0, 100 - week.pct) / need);
 }
 
@@ -635,7 +640,7 @@ export async function logins(args: readonly string[]): Promise<void> {
     console.log(
       rate === null
         ? `  a run       no measured rate yet (under ${String(LEAST_RUN_HOURS)} run-hours): each login's week pace over its live runs`
-        : `  a run       ~${rate.toFixed(2)}% of a login's week an hour, active ${String(Math.round(ACTIVE_SHARE * 24))} of 24h: the most each login carries to its reset`,
+        : `  a run       ~${rate.toFixed(2)}% of a login's week an hour, active ${String(Math.round(ACTIVE_SHARE * 24))} of 24h: the most each login carries for ${String(RUN_HOURS)}h`,
     );
   }
   if (weeks.length === 0) return;

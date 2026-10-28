@@ -54,19 +54,22 @@ describe("how many runs a login's week carries", () => {
     }
   });
 
-  it("fits as many runs as the week left carries to its reset, active 16 of 24 hours", () => {
+  it("fits as many runs as the week left carries for a run's 12 hours, or to a sooner reset, active 16 of 24 hours", () => {
     const now = 0;
     const active = perRunHour({ login: "2", pct: 0, reset: 0 }, 1, 1, now);
-    expect(fitOf({ login: "3", pct: 92, reset: 42 * HOUR }, active, now)).toBe(0);
+    // 8% left carries one run of 12 hours at 2/3% an hour, however far off the reset is.
+    expect(fitOf({ login: "3", pct: 92, reset: 42 * HOUR }, active, now)).toBe(1);
+    expect(fitOf({ login: "1", pct: 84, reset: 83 * HOUR }, active, now)).toBe(2);
+    expect(fitOf({ login: "3", pct: 95, reset: 42 * HOUR }, active, now)).toBe(0);
     expect(fitOf({ login: "2", pct: 33, reset: 9 * HOUR }, active, now)).toBe(11);
     expect(fitOf({ login: "2", pct: 33, reset: 9 * HOUR }, null, now)).toBeNull();
   });
 
   it("reads a week's own pace over its live runs until a rate is measured", () => {
-    // 70% in the first 4 days, 3 days left: two runs need about 52%, one about 26%, of the 30% left.
+    // 70% in the first 4 days: shared over two runs, a run of 12 hours needs about 4.4% of the 30% left.
     const week = { login: "2", pct: 70, reset: 72 * HOUR };
     const now = 0;
-    expect(fitOf(week, perRunHour(week, 2, null, now), now)).toBe(1);
+    expect(fitOf(week, perRunHour(week, 2, null, now), now)).toBe(6);
     expect(perRunHour(week, 0, null, now)).toBeNull();
     expect(perRunHour(week, 2, 1, now)).toBeCloseTo(16 / 24);
   });

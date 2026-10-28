@@ -46,11 +46,14 @@ describe("the resolver an open network needs", () => {
     expect(args.filter((arg) => arg.endsWith("resolv.conf"))).toEqual([]);
   });
 
+  // A resolver that is a file under /etc already reads through the root bind; GitHub's Ubuntu
+  // runner had one by 28 October, where on 27 October it still pointed into /run.
   it.if(runtimeProcess.platform === "linux")("binds the resolved resolver when the network is open", () => {
     const args = bwrapOpenReadArgs({ network: true });
     expect(args).not.toContain("--unshare-net");
     const resolver = realpathSync("/etc/resolv.conf");
-    expect(args.filter((arg) => arg === resolver)).toEqual([resolver, resolver]);
+    const own = resolver.startsWith("/run/") ? [resolver, resolver] : [];
+    expect(args.filter((arg) => arg === resolver)).toEqual(own);
   });
 });
 

@@ -127,8 +127,14 @@ if [[ "${RUN_REMOTE:-}" != 0 ]]; then
     printf "runner: ANA_HOSTS could not be read; RUN_REMOTE=0 runs the task here\n" >&2
     exit 2
   fi
+  # A line without its count comes from a hosts.js older than this run.sh, and would wait for a slot
+  # that cannot exist while holding the queue for every task behind it (28 October).
   while read -r name ssh_name checks; do
     [[ -n "$name" ]] || continue
+    if ! [[ "$checks" =~ ^[1-9][0-9]*$ ]]; then
+      printf "runner: hosts.js gave %s no count of checks; run tools/runtime/router/install.ts again\n" "$name" >&2
+      exit 2
+    fi
     host_names+=("$name") host_sshs+=("$ssh_name") host_slots+=("$checks")
   done <<<"$listed"
 fi
@@ -154,6 +160,26 @@ if [[ "$choice" != 0 ]]; then
 fi
 on_host() { ssh "${ssh_options[@]}" "$host" "$@"; }
 
+# One connection a task: the master opens before the preflight, every exchange after it rides on it,
+# and release_queue closes it. Until 28 October each exchange opened its own, and the handshakes of
+# the preflight, the script, the transfer, the run and its status took 3 s of a 5 s remote secret
+# scan. The master holds none of this script's output, so nothing that reads run.sh's output to its
+# end waits on it, and after a kill it lingers a minute idle at most. An exchange whose master is gone
+# connects on its own, as every exchange did before.
+master_dir=""
+open_master() {
+  local master
+  master_dir="$(mktemp -d "${TMPDIR:-/tmp}/ana-ssh.XXXXXX")"
+  trap release_queue EXIT
+  master=("${ssh_options[@]/ControlPath=none/ControlPath=$master_dir/m}")
+  if ssh "${master[@]/ControlMaster=no/ControlMaster=yes}" -o ControlPersist=60 -fN "$host" </dev/null >/dev/null 2>&1; then
+    ssh_options=("${ssh_options[@]/ControlPath=none/ControlPath=$master_dir/m}")
+  else
+    rm -rf "$master_dir"
+    master_dir=""
+  fi
+}
+
 # The queue. A waiter's ticket names its PID; it takes a slot only when no live ticket is older,
 # and a slot is a folder whose creation is the lock, with its holder's PID inside. A ticket or a
 # slot whose PID is gone is removed by whoever reads it. Only the oldest waiter tries the slots,
@@ -165,6 +191,10 @@ ticket=""
 release_queue() {
   [[ -z "$ticket" ]] || rm -f "$ticket"
   [[ -z "$held_slot" ]] || rm -rf "$queue_dir/slot-$held_slot"
+  if [[ -n "$master_dir" ]]; then
+    ssh -o ControlPath="$master_dir/m" -O exit "$host" >/dev/null 2>&1 || true
+    rm -rf "$master_dir"
+  fi
 }
 
 tickets_ahead() {
@@ -266,7 +296,11 @@ push_tree() {
     -e "ssh ${ssh_options[*]}" "$1/" "$host:$2/"
 }
 
-ship_script() { cat "$runner_dir/lib.sh" "$runner_dir/host.sh" | on_host "cat > '$1.run.sh'"; }
+# ship_script <dir>: the slot's folder made, its last status cleared and the task's script written, in
+# one exchange.
+ship_script() {
+  cat "$runner_dir/lib.sh" "$runner_dir/host.sh" | on_host "mkdir -p '$1' && rm -f '$1.status' && cat > '$1.run.sh'"
+}
 
 # remote_run <root> <pin> [args...]: the task in the slot's folder on the host. The folder names
 # this machine too, so two machines that share a host never share a slot.
@@ -274,7 +308,7 @@ remote_run() {
   local root=$1 pin=$2 dir quoted="" strict="" forwarded="" setting plain="" status=0
   shift 2
   dir=".cache/ana-runner/$(uname -n | cut -d. -f1)-slot-$held_slot"
-  with_retries on_host "mkdir -p '$dir' && rm -f '$dir.status'"
+  with_retries ship_script "$dir"
   with_retries push_tree "$root" "$dir"
   printf "runner: sent %s to %s, slot %s\n" "$root" "$host" "$held_slot" >&2
   # With no arguments printf would send one empty one, which changes the suite's routing.
@@ -291,7 +325,6 @@ remote_run() {
   for setting in ANA_TEST_BAIL ANA_TEST_WORKERS; do
     if [[ -n "${!setting:-}" ]]; then printf -v forwarded "%s%s=%q " "$forwarded" "$setting" "${!setting}"; fi
   done
-  with_retries ship_script "$dir"
   # The forced terminal is what delivers a HUP to the host when ssh drops, so it stays. Where this
   # end is no terminal, the task writes into a pipe instead, so the host's tools draw no progress
   # bars into a log or an agent's output (operator, 27 October).
@@ -318,6 +351,7 @@ if [[ -n "$host" ]]; then
     printf "%s pins no Bun in package.json's packageManager\n" "$root" >&2
     exit 2
   fi
+  open_master
   preflight
   queue_enter
   # A plain call: under `||` bash switches `set -e` off inside it, and a sync that failed for good

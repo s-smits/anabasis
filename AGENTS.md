@@ -1401,6 +1401,7 @@ procedure:
 | Doubting a reading, or asking what a fail was | `whole-run-investigation` |
 | Reading the harnesses a campaign keeps, before a promotion or a handover | `harness-audit` |
 | Reading the promotions on record, and tuning the promotion rule | `promotion-tuner` |
+| Tuning a seat's prompt or terms (the Examiner, the Referee, the Builder) in rounds of live control and arm pairs, and reading such a round | `system-path-simulation`, its case `optimize` |
 | Asking whether a cheap solver inside the domain's built harness reaches a dear solver inside the starter | `compare-systems` |
 | Handing runs, or a question, to someone outside | `zip-run`, `oracle-handover` |
 

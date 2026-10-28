@@ -123,7 +123,9 @@ its end, and carry on in the same order; the window gives no step a reason to sk
    line under "Not done" in the release. A peer session's open pull request is never changed; stack
    above it. Each patch is also simulated before and after (system-path-simulation,
    `cases/before-after.md`): its commit against the commit beneath it, on the same logs or the same
-   seed cut from the run that showed the defect, at the smallest layer that shows it. The pull
+   seed cut from the run that showed the defect, at the smallest layer that shows it. A change to
+   what a model seat reads, which one draw cannot read, is tuned in rounds of pairs
+   (`cases/optimize.md`). The pull
    request states what moved against what was predicted. A fix is measured by the next cycle's
    runs, never by the runs it was found in. When a Codex swarm implements the rows, the primary
    commits what its sandbox cannot (no nested verifier wall, no git directories), stacks the patches

@@ -1,6 +1,6 @@
 ---
 name: system-path-simulation
-description: "Test an uncertain Anabasis v2 path at the smallest real layer that can decide it: one fact from a log or a dry run, a walk of one value across the layers, a replay through this tree's readers, a round or campaign rehearsed on a seed with scripted seats and no Referee, one live seat from a seed, or rounds of before-and-after seats that tune a prompt or a term against one count. Use to test a join, revisit a recorded position, size a comparison, check what a kill or stop leaves, or optimise a seat's prompt by live draws. Not for reading a finished run (whole-run-investigation) or starting a paid one (run-management)."
+description: "Test an uncertain Anabasis v2 path at the smallest real layer that can decide it: one fact from a log or a dry run, a walk of one value across the layers, a replay through this tree's readers, a round or campaign rehearsed on a seed with scripted seats and no Referee, one live seat from a seed, or rounds of before-and-after seats that tune a prompt or a term against one count. Use to test a join, revisit a recorded position, size a comparison, check what a kill or stop leaves, or tune the Examiner's, the Referee's or the Builder's prompt or terms in rounds of paired live seats and read such a round: holds at equal gates, against two draws of one commit, on the bar of a gain or of as good and simpler (cases/optimize.md). Not for reading a finished run (whole-run-investigation) or starting a paid one (run-management)."
 ---
 
 # System path simulation
@@ -27,7 +27,7 @@ reads its later tasks and answers from there (`draftedSource`, `tools/runs/rehea
 | The real run | everything a script cannot say | hours, tens of dollars | run-management, then `bun run runs pulse` |
 | Before and after | whether a change moves what its pull request says, and nothing else, against the commit without it | twice the case it wraps | [before-after](cases/before-after.md) |
 | The open stack | which of a stack's changes hold with a real model before it lands, while its other fixes go on | one live seat a change, one after the other | [stack](cases/stack.md), `scripts/referee-seat.ts` |
-| Optimise by simulation | whether a prompt or a term moves one count a live seat produces, read with a graded loss beside it and tuned in rounds of control and arm pairs over one fixed outline, read against two draws of one commit | two seats a position, a few rounds | [optimize](cases/optimize.md), `live-seat.ts prompt`, `compare`, `pairs`, `calls`, `stop` |
+| Tune a seat (optimise by simulation): the Examiner, the Referee, the Builder | whether a prompt or a term moves one count a live seat produces, read with a graded loss beside it and tuned in rounds of control and arm pairs over one fixed outline, read against two draws of one commit | two seats a position, a few rounds | [optimize](cases/optimize.md), `live-seat.ts prompt`, `compare`, `pairs`, `calls`, `stop` |
 
 A cheaper case that answers the question cancels every dearer one. Say which case you stopped at,
 and why the next was not needed.

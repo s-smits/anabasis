@@ -45,7 +45,7 @@ the other, with the same cut flags. A script (`--held`, `--starter`, `--supply`)
 | A reader | `runs view <name>`, `wri.ts read --log <log>`, `runs replay [<name>]`, `close.ts --to <dir>` over the same logs | the lines that moved, counted, over how many logs |
 | A decision | `bun tools/d2/harness-builder.ts --name <seed> --dry-run` on the seed of each arm | the table's row and move, and the facts it read |
 | A path | `bun run runs rehearse` with the same script on each arm's seed | the readings, the endings and the count of each event kind (`wri.ts read`) |
-| A model seat | `scripts/live-seat.ts start` from each arm's seed, on the operator's word for both seats | one draw per arm (rule 6 of `AGENTS.md`): a difference is a lead unless it is one the change forces |
+| A model seat | `scripts/live-seat.ts start` from each arm's seed, on the operator's word for both seats | one draw per arm (rule 6 of `AGENTS.md`): a difference is a lead unless it is one the change forces. Rounds of pairs that tune a prompt until a count moves are [optimize](optimize.md) |
 
 Before diffing a reader's output, run each arm twice. A reader that prints the time, the load or a
 process's state differs from itself, and those lines are no effect of the change. On 21 October

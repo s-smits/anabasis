@@ -24,8 +24,8 @@ import { type Condition, conditionsOf } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { unsolved as noneAnswered } from "#src/kernel/compare.ts";
 import { lastReports, poolOf, pairsReported, referenceOf } from "#src/kernel/reports.ts";
-import { billedAll, type Traced, traced, tracesIn } from "#src/kernel/trace.ts";
-import { examinerSessions, type Judged, refusedBy, solvesIn, verdictsOf } from "#src/kernel/solves.ts";
+import { spendOf, type Traced, traced, tracesIn } from "#src/kernel/trace.ts";
+import { type Judged, refusedBy, solvesIn, verdictsOf } from "#src/kernel/solves.ts";
 import { heldAtGate, taskSets } from "#src/kernel/task.ts";
 import { OBJECTIVE } from "#src/kernel/verify.ts";
 import type { Handover } from "#src/campaign/handover.ts";
@@ -135,19 +135,6 @@ export const BUILD_END = "build.finished";
 export const EXAM_START = "exam.started";
 export const EXAM_END = "exam.finished";
 export const REPORTED = "comparison.reported";
-/** The role whose work an event kind's prefix holds, as `billedAll` reads its dollars: what it was
- *  billed where it ended, and the turns of a session that never ended. A drafting session is the
- *  Examiner's, as the host's budget counts it: esp32's d-1 billed $1.57 that read as no role's on
- *  12 October. The Diagnoser was a seat until 11 October (`7f0add79:docs/simplify.md`, E1): a log
- *  of before holds what it billed. */
-const ROLES = new Map([
-  ["solve", "solver"],
-  ["build", "builder"],
-  ["exam", "examiner"],
-  ["draft", "examiner"],
-  ["referee", "referee"],
-  ["diagnosis", "diagnoser"],
-]);
 
 /** Every trigger this reader can print, and the lane it starts. `lanes.md` names each one in the
  *  `Starts from` paragraph of that lane, and `test/wri-catalogue.test.ts` holds the two together. */
@@ -409,35 +396,6 @@ function comparedOf(events: readonly LogEvent[], log: Pick<Index, "solves" | "bu
   });
 }
 
-/** The role of kind `kind`, or of a seat by its prefix alone. */
-export const roleOf = (kind: string): string | undefined => ROLES.get(kind.split(".")[0] ?? "");
-
-/** Billed dollars by role, the largest first, counted as the campaign's own budget counts them:
- *  a session a stop cut has no end record, and its turns were read as nothing. Buffer's Examiner
- *  session x-1 read 0.00 against $1.68 billed, and the builder's share of the campaign read 71.3%
- *  where it was 42.2% (2026-10-10). A role the log holds no event of is left out: every log since
- *  11 October printed "diagnoser 0.00" for a seat that no longer exists. */
-export function spendOf(log: Index): [string, number][] {
-  // A solve an Examiner session asked for to try a draft task (`try_task`) names the session where a
-  // comparison's names the comparison, and is the Examiner's, as `countedSolves` keeps it out of
-  // every tally: about seven reference solves an admitted task at three a draft (the overhaul plan,
-  // 4b), which until 12 October read as the solver's. A drafting session's solves of its examples
-  // are the Examiner's too: until 27 October this reader took only `exam.started`, and $2.23 of
-  // buffer-fresh-opus-v072's drafting read as the solver's.
-  const sessions = examinerSessions(log.events);
-  const tried = new Set(log.solves.flatMap(({ id, comparison }) => (sessions.has(comparison) ? [id] : [])));
-  const whose = ({ kind, data }: LogEvent) => {
-    const role = roleOf(kind);
-    return role === "solver" && tried.has(text(data.solve)) ? "examiner" : role;
-  };
-  return [...new Set(ROLES.values())]
-    .flatMap((role): [string, number][] => {
-      const own = log.events.filter((event) => whose(event) === role);
-      return own.length === 0 ? [] : [[role, billedAll(own)]];
-    })
-    .sort(([, a], [, b]) => b - a);
-}
-
 /** The Examiner's billed dollars over the tasks its sessions held out, the solves they asked for
  *  included (`spendOf`); none where no task was held out. The count is the handover's (`campaignOf`,
  *  `src/campaign/handover.ts`), an open session's by its admitted proposals: until 25 October this
@@ -445,7 +403,7 @@ export function spendOf(log: Index): [string, number][] {
  *  among them, where row D says the tasks held out now, the pack's among them. */
 export function admittedCost(log: Index, steps: readonly Handover[]): string[] {
   const admitted = steps.reduce((sum, step) => sum + (step.step === "examiner" ? step.held : 0), 0);
-  const [, dollars = 0] = spendOf(log).find(([role]) => role === "examiner") ?? [];
+  const [, dollars = 0] = spendOf(log.events).find(([role]) => role === "examiner") ?? [];
   return admitted === 0
     ? []
     : [

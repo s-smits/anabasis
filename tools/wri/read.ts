@@ -35,7 +35,7 @@ import { differenceOf, readsStepEitherWay } from "#src/kernel/compare.ts";
 import type { Condition } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { pairsReported } from "#src/kernel/reports.ts";
-import { billedAll, costLine } from "#src/kernel/trace.ts";
+import { billedAll, costLine, spendOf } from "#src/kernel/trace.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
@@ -57,7 +57,6 @@ import {
   share,
   SMALL_DEADLINE_SHARE,
   type Solve,
-  spendOf,
   strings,
   tally,
   taskTriggers,
@@ -709,7 +708,7 @@ function rowsOf(log: Index, steps: readonly Handover[]): Row[] {
         `${plural(log.events.length, "event")}, ${log.events[0]?.at ?? ""} to ${log.events.at(-1)?.at ?? ""}`,
         `${plural(log.builds.length, "Builder session")}, ${plural(log.of(EXAM_START).length, "Examiner session")}, ${plural(log.of(REPORTED).length, "report")}`,
         `billed dollars: ${
-          spendOf(log)
+          spendOf(log.events)
             .map(([role, dollars]) => `${role} ${dollars.toFixed(2)}`)
             .join(", ") || "none"
         }${admittedCost(log, steps)

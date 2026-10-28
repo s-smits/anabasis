@@ -31,6 +31,7 @@ import {
 } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
 import type { LogEvent } from "./log.ts";
+import { examinerSessions } from "./solves.ts";
 
 /** Each seat whose trace the log holds, in the order a stopped run's open sessions are ended
  *  (`unfinished`, `src/kernel/reports.ts`). `repair` is a seat a log of before 11 October holds
@@ -97,6 +98,20 @@ interface Compaction extends Mark {
 }
 
 export type Traced = Turn | Call | Compaction;
+
+/** The role whose work an event kind's prefix holds, as `billedAll` reads its dollars: what it was
+ *  billed where it ended, and the turns of a session that never ended. A drafting session is the
+ *  Examiner's, as the host's budget counts it: esp32's d-1 billed $1.57 that read as no role's on
+ *  12 October. The Diagnoser was a seat until 11 October (`7f0add79:docs/simplify.md`, E1): a log
+ *  of before holds what it billed. */
+const ROLES = new Map([
+  ["solve", "solver"],
+  ["build", "builder"],
+  ["exam", "examiner"],
+  ["draft", "examiner"],
+  ["referee", "referee"],
+  ["diagnosis", "diagnoser"],
+]);
 
 /** What a call list shows of a call's arguments: about one terminal line. */
 const ARGUMENT_HEAD = 100;
@@ -437,4 +452,39 @@ function billedSplit(events: readonly LogEvent[], id: string) {
     else if (of === "solve" && isString(which) && owners.get(which)?.by === id) billed.session += dollars;
   }
   return billed;
+}
+
+/** The role of kind `kind`, or of a seat by its prefix alone. */
+export const roleOf = (kind: string): string | undefined => ROLES.get(kind.split(".")[0] ?? "");
+
+/** Billed dollars by role, the largest first, counted as the campaign's own budget counts them:
+ *  a session a stop cut has no end record, and its turns were read as nothing. Buffer's Examiner
+ *  session x-1 read 0.00 against $1.68 billed, and the builder's share of the campaign read 71.3%
+ *  where it was 42.2% (2026-10-10). A role the log holds no event of is left out: every log since
+ *  11 October printed "diagnoser 0.00" for a seat that no longer exists. The closing report
+ *  (`economyLines`, `tools/d2/close.ts`) and the investigation read the Examiner's share here: until
+ *  28 October the closing report summed it again from the sessions' parts. */
+export function spendOf(events: readonly LogEvent[]): [string, number][] {
+  // A solve an Examiner session asked for to try a draft task (`try_task`) names the session where a
+  // comparison's names the comparison, and is the Examiner's, as `countedSolves` keeps it out of
+  // every tally: about seven reference solves an admitted task at three a draft (the overhaul plan,
+  // 4b), which until 12 October read as the solver's. A drafting session's solves of its examples
+  // are the Examiner's too: until 27 October this reader took only `exam.started`, and $2.23 of
+  // buffer-fresh-opus-v072's drafting read as the solver's.
+  const sessions = examinerSessions(events);
+  const tried = new Set(
+    events.flatMap(({ kind, data }) =>
+      kind === "solve.started" && sessions.has(data.comparison) ? [data.solve] : [],
+    ),
+  );
+  const roleOfEvent = ({ kind, data }: LogEvent) => {
+    const role = roleOf(kind);
+    return role === "solver" && tried.has(data.solve) ? "examiner" : role;
+  };
+  return [...new Set(ROLES.values())]
+    .flatMap((role): [string, number][] => {
+      const own = events.filter((event) => roleOfEvent(event) === role);
+      return own.length === 0 ? [] : [[role, billedAll(own)]];
+    })
+    .sort(([, a], [, b]) => b - a);
 }

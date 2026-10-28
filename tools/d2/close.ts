@@ -66,9 +66,8 @@ import { frozenChecker, unadmitted } from "#src/kernel/acceptance.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { comparisonsOf } from "#src/campaign/ground.ts";
-import { examinerSessions } from "#src/kernel/solves.ts";
 import { promoted } from "#src/kernel/reports.ts";
-import { billedAll, billedParts, costLine } from "#src/kernel/trace.ts";
+import { billedAll, billedParts, costLine, spendOf } from "#src/kernel/trace.ts";
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
@@ -234,10 +233,7 @@ function economyLines(events: readonly LogEvent[], steps: readonly Handover[]): 
   const per = (dollars: number, count: number, what: string) =>
     count > 0 ? `$${(dollars / count).toFixed(2)} a ${what} (${String(count)})` : `no ${what}`;
   const held = steps.reduce((sum, step) => sum + (step.step === "examiner" ? step.held : 0), 0);
-  const unruled = events.filter(({ kind }) => !kind.startsWith("referee."));
-  const own = billedAll(events.filter(({ kind }) => /^(exam|draft)\./.test(kind)));
-  const sessions = [...examinerSessions(events)].filter(isString);
-  const examined = sessions.reduce((sum, id) => sum + billedParts(unruled, id).comparison, own);
+  const [, examined = 0] = spendOf(events).find(([role]) => role === "examiner") ?? [];
   const all = comparisonsOf(events);
   const reported = all.filter(({ report }) => report !== null);
   const compared = reported.reduce((sum, { id }) => sum + billedParts(events, id).comparison, 0);

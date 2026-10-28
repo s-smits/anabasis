@@ -25,7 +25,7 @@
  * report can supply a scoring set.
  */
 import { AT_A_LIMIT } from "#src/kernel/reports.ts";
-import { type Turn, tracesIn } from "#src/kernel/trace.ts";
+import { roleOf, spendOf, type Turn, tracesIn } from "#src/kernel/trace.ts";
 import { isNumber, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy, median } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
@@ -35,10 +35,8 @@ import {
   type Index,
   measured,
   percent,
-  roleOf,
   type Solve,
   share,
-  spendOf,
   strings,
   tally,
   text,
@@ -381,7 +379,7 @@ export function costTriggers(log: Index): Trigger[] {
   const named = gaps
     .slice(0, SILENCES_NAMED)
     .map(({ index, gap }) => `${(gap / MINUTE_MS).toFixed(1)} min ${causeOf(log, spans, index, gap)}`);
-  const spend = spendOf(log);
+  const spend = spendOf(log.events);
   const total = spend.reduce((sum, [, dollars]) => sum + dollars, 0);
   const [[leader, most] = ["", 0]] = spend;
   return [

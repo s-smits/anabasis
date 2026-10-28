@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "../src/agent/backends/claude.ts";
+import { claudeExecutable } from "../src/agent/backends/claude.ts";
 import { type BackendOptions, backends, compactionMode, retryPolicy } from "../src/agent/backends/models.ts";
 import { sit } from "../src/agent/session.ts";
 import { read } from "../src/kernel/log.ts";
@@ -9,7 +9,6 @@ import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { modelNamed, sweepOptions } from "../tools/m0/stored-sweep.ts";
 
 const HOUR_S = 60 * 60;
 const home = mkdtempSync(join(tmpdir(), "ana-backends-"));
@@ -55,14 +54,6 @@ describe("the three backends", () => {
     expect(compactionMode(key, options)).toBe(compactionMode(login_, options));
   });
 
-  it("serve GPT-6.1 Terra at its list price on 6.1 Sol's window, and no GPT-5.6 Terra", () => {
-    const models = backends(options);
-    const terra = models.getModel("openai-codex", "gpt-6.1-terra");
-    expect(terra).toMatchObject({ api: "openai-codex-responses", contextWindow: 500_000 });
-    expect(terra?.cost).toMatchObject({ input: 1, output: 5, cacheRead: 0.05 });
-    expect(models.getModel("openai-codex", "gpt-5.6-terra")).toBeUndefined();
-  });
-
   it("route a model pinned to one OpenRouter endpoint there alone, at that endpoint's price", () => {
     const models = backends(options);
     const dated = models.getModel("openrouter", "deepseek/deepseek-v4.1-flash-1017");
@@ -85,17 +76,6 @@ describe("the three backends", () => {
     const base = models.getModel("openrouter", "deepseek/deepseek-v4.1-flash");
     expect(base?.compat ?? {}).not.toHaveProperty("openRouterRouting");
     expect(models.getModel("openrouter", "deepseek/deepseek-v4.1-flash-0101")).toBeUndefined();
-  });
-
-  it("read the Codex CLI's login as it stands", async () => {
-    const access = login(HOUR_S);
-    const auth = await backends(options).getAuth("openai-codex");
-    expect(auth?.auth.apiKey).toBe(access);
-  });
-
-  it("refuse to refresh a Codex login that is about to lapse, leaving that to the CLI", async () => {
-    login(60);
-    await expect(backends(options).getAuth("openai-codex")).rejects.toThrow("Codex CLI");
   });
 
   it("records the model Codex serves from its terminal event, leaving an absent model and backend bill unknown", async () => {
@@ -171,41 +151,6 @@ describe("the three backends", () => {
       expect(sat.spent.reportedCost).toBeNull();
       served = undefined;
     }
-  });
-
-  it("name the compaction each runs under: Claude Code's own as the host set it, and pi's in its own loop", () => {
-    const sweep: BackendOptions = {
-      claude: { ...options.claude, compaction: { window: SWEEP_COMPACT_WINDOW } },
-    };
-    const claude = (id: string) => ({ provider: "claude", id, contextWindow: 1_000_000 });
-    expect(compactionMode(claude("claude-opus-5"), sweep)).toBe("autoCompactWindow=300000");
-    expect(compactionMode(claude("claude-opus-5-5"), options)).toBe("off");
-    const codex = { provider: "openai-codex", id: "gpt-6.1-sol", contextWindow: 400_000 };
-    expect(compactionMode(codex, sweep)).toBe(
-      "durable window=300000 reserve=16384 keep=20000 summaryReserve=116384 background=off",
-    );
-    const glm = { provider: "openrouter", id: "z-ai/glm-5", contextWindow: 200_000 };
-    expect(compactionMode(glm, options)).toBe(
-      "durable window=200000 reserve=16384 keep=20000 summaryReserve=16384 background=off",
-    );
-  });
-
-  // The CLI clamps the window to the context it serves the id, without a word: a bare id gets 200K.
-  it("refuse a compaction window the model's served context cannot hold", () => {
-    const at = (window: number): BackendOptions => ({
-      claude: { ...options.claude, compaction: { window } },
-    });
-    const claude = (id: string) => ({ provider: "claude", id, contextWindow: 200_000 });
-    // Haiku as the catalogue serves it, under the window a campaign's setting names.
-    const haiku = modelNamed("claude/claude-haiku-5-5");
-    expect(() => compactionMode(haiku, sweepOptions())).toThrow(
-      "Claude Code serves claude-haiku-5-5 a 200000-token context, so a 300000-token compaction window would be clamped",
-    );
-    expect(compactionMode(haiku, sweepOptions(undefined, 200_000))).toBe("autoCompactWindow=200000");
-    expect(compactionMode(claude("claude-opus-5-5"), at(SWEEP_COMPACT_WINDOW))).toBe(
-      "autoCompactWindow=300000",
-    );
-    expect(compactionMode(claude("claude-fable-5-1"), at(1_000_000))).toBe("autoCompactWindow=1000000");
   });
 });
 

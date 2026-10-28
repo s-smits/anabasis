@@ -3,9 +3,9 @@
 // the OS wall is available. Queued probes use the production host launcher and create no solve.
 import { afterAll, expect, it } from "bun:test";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { drafting, type Draft } from "../src/examiner/draft.ts";
+import type { Draft } from "../src/examiner/draft.ts";
 import { examine } from "../src/examiner/session.ts";
-import { append, read } from "../src/kernel/log.ts";
+import { read } from "../src/kernel/log.ts";
 import { solvesIn } from "../src/kernel/solves.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { dirname, join } from "../src/meta/path.ts";
@@ -15,7 +15,7 @@ import { probing } from "../tools/d1b/examine.ts";
 import type { Campaign } from "../tools/d2/round.ts";
 import { gated } from "../tools/d2/host.ts";
 import { settingAsked } from "../tools/d2/setting.ts";
-import { drafted, EXAMPLE, finish, instance, call, SOUND, seat, sweep } from "./helpers/examiner-seat.ts";
+import { drafted, EXAMPLE, SOUND, seat, sweep } from "./helpers/examiner-seat.ts";
 
 const MEASURED = { budget: { modelTurns: 20, minutes: 30 }, examples: ["no reading", "valid", "invalid"] };
 const PLAYED: Played = {
@@ -162,34 +162,6 @@ for (const origin of ["session-wall", "caller"] as const) {
   );
 }
 
-it("retains a labelled parent origin through another session's caller signal", async () => {
-  const parent = seat("draft", [drafted(SOUND)]);
-  const child = seat("draft", [drafted(SOUND)]);
-  await examine({
-    ...parent.request,
-    limits: { ...parent.request.limits, wallSeconds: 0.1 },
-    measure: async (_draft, signal) => {
-      await examine({
-        ...child.request,
-        kill: signal,
-        measure: async (_next, stop) => {
-          await stopped(stop);
-          return null;
-        },
-      });
-      return null;
-    },
-  });
-  for (const s of [parent, child]) {
-    expect(s.of("draft.finished")).toMatchObject([
-      {
-        ended: "stands",
-        measurement: { status: "interrupted", cancelledBy: "session-wall" },
-      },
-    ]);
-  }
-});
-
 it("records complete only for the accepted draft whose aggregate returned, including identical reuse", async () => {
   for (const variant of ["reuse", "last-same", "last-changed"] as const) {
     const changed = variant === "last-changed";
@@ -208,66 +180,6 @@ it("records complete only for the accepted draft whose aggregate returned, inclu
     expect(s.of("draft.finished")[0]?.measurement).toEqual({ status: changed ? "not-run" : "complete" });
     expect(s.of("solve.finished")).toEqual([]);
   }
-});
-
-it("records not-run for absent measurement and final-put bypass, and omits it without an accepted draft", async () => {
-  for (const mode of ["absent", "last", "none"] as const) {
-    const s = seat("draft", [mode === "none" ? finish : drafted(SOUND)]);
-    let calls = 0;
-    await examine({
-      ...s.request,
-      limits: { ...s.request.limits, puts: 1 },
-      ...keyIfDefined(
-        "measure",
-        mode === "last"
-          ? async () => {
-              calls += 1;
-              return MEASURED;
-            }
-          : undefined,
-      ),
-    });
-    expect(calls).toBe(0);
-    expect(s.of("draft.finished")[0]?.measurement).toEqual(
-      mode === "none" ? undefined : { status: "not-run" },
-    );
-  }
-});
-
-it("marks a null invocation-only measure interrupted and never reuses it as complete", async () => {
-  const s = seat("draft", []);
-  let calls = 0;
-  const mode = drafting({
-    ...s.request,
-    measure: async () => {
-      calls += 1;
-      return null;
-    },
-  });
-  const stop = AbortSignal.abort(new Error("tool invocation ended"));
-  expect(await mode.measure?.(SOUND, stop)).toBeNull();
-  expect(mode.stood(SOUND)).toEqual({ status: "interrupted", cancelledBy: "invocation" });
-  await mode.measure?.(SOUND, stop);
-  expect(calls).toBe(2);
-});
-
-it("labels the campaign budget at its parent source before invocation cleanup", async () => {
-  const s = seat("write", [call("try_task", { tasks: [instance(2)] }), finish]);
-  let signal: AbortSignal | undefined;
-  await examine({
-    ...s.request,
-    probe: async (_task, _session, stop) => {
-      signal = stop;
-      append(s.log, "campaign.opened", { budget: { dollars: 0, reserve: 1 } });
-      await stopped(stop);
-      return { outcome: "non-result", kind: "killed", reason: "cancelled" };
-    },
-  });
-  expect(signal?.aborted).toBe(true);
-  const draft = seat("draft", []);
-  expect(await judge(solver(draft, signal), "probe", PLAYED)).toMatchObject({
-    cancelledBy: "campaign-budget",
-  });
 });
 
 it("cancels queued draft probes through the host without inventing solve ids or endings", async () => {

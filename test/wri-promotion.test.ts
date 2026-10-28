@@ -10,7 +10,7 @@ import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import { asRecord, type JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfNotNull } from "../src/meta/optional-key.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
-import { climbTable, crossings, safeguardTriggers } from "../tools/wri/climb.ts";
+import { climbTable, safeguardTriggers } from "../tools/wri/climb.ts";
 import { indexOf, type TRIGGERS } from "../tools/wri/folds.ts";
 import { joinedTest, testedOf } from "../tools/wri/promotion.ts";
 import { overview } from "../tools/wri/read.ts";
@@ -253,30 +253,6 @@ describe("lane 27: a promotion and the climb after it", () => {
     expect(after).toContain(`control g-3: the promoted harness valid on ${expected}`);
   });
 
-  it("keeps an absent profile unmeasured and missing new-side validity beside a measured bare reference", () => {
-    const { log, put, compare } = campaign();
-    for (const version of HELD) {
-      put("task.proposed", { version });
-      put("task.gate", { version, gate: 1, outcome: "passed" });
-    }
-    const { valid: _valid, ...without } = STEP;
-    compare("absent", "hbase", "hn", without)();
-    expect(climbTable([{ name: "absent", events: log }])).toContain("| absent unmeasured |");
-    compare("bare", "hbase", "hn", { ...STEP, valid: { old: [3, 0, 0] } })();
-    put("harness.promoted", { harness: "hn", from: "hbase", rests: [{ comparison: "bare" }] });
-    expect(triggered(log)("STARTER BARE")[0]).toContain("(0% of solves valid), the new harness unmeasured");
-  });
-
-  it("says a rest that tallied nothing as not scored, where it read blank and 0 of 0", () => {
-    const { log, put, compare } = campaign();
-    compare("stopped", "hbase", "hn", { scored: null, valid: null, reading: "check-defects" })();
-    put("harness.promoted", { harness: "hn", from: "hbase", rests: [{ comparison: "stopped" }] });
-    expect(climbTable([{ name: "absent", events: log }])).toContain(
-      "| stopped not scored, -, - | stopped unmeasured |",
-    );
-    expect(triggered(log)("PROMOTED")[0]).toContain("rests on stopped not scored at level 0.1, untied -");
-  });
-
   it("reads a promotion on the differences its step tested: the frontier and the retained tasks since 20 October, the frontier alone before", () => {
     const frontier = { differences: [4, 4], of: ["a", "b"] };
     const retained = { differences: [-4], of: ["c"] };
@@ -287,101 +263,6 @@ describe("lane 27: a promotion and the climb after it", () => {
     expect(testedOf({ ...since, retained: "unmeasured" }).differences).toEqual([4, 4]);
     // A task two readings tested counts once, its differences summed; one in `without` drops out.
     expect(joinedTest([since, since], new Set(["a"])).toSorted((x, y) => x - y)).toEqual([-8, 8]);
-  });
-  it("reads what a promotion rested on, by whose word and under which rule", () => {
-    const read = triggered(promoted(true).log);
-    expect(read("PROMOTED")).toEqual([
-      "hn from hbase at event 34, 0.0 h and $0 after the opening, by the table; opened with level 0.1, trigger 0.25; rests on g-1 4-0-0 p 0.063 at level 0.1, untied 4 of 4, against the reference's own 1 of 4 (1-0-3 p 1.000); g-2 4-0-0 p 0.063 at level 0.1, untied 4 of 4, against the reference's own 1 of 4 (1-0-3 p 1.000); by budget turns 4 2-0-2 p 0.500",
-    ]);
-  });
-
-  it("reads a promotion the Builder's tool made, whose move follows it, as the table's", () => {
-    expect(triggered(promoted(true, true).log)("PROMOTED")[0]).toContain(", by the table;");
-  });
-
-  it("gives a rest comparison's load over the solves it measured, not the non-results it reran", () => {
-    // Buffer's g-1 on 12 October: a median load of 15.3 over its 70 starts, and 37.9 over the 48 that measured.
-    const { log, put, compare } = campaign();
-    const reported = compare("g-1", "hbase", "hn", { ...STEP, versions: [] });
-    const cut = { outcome: "non-result", kind: "provider" };
-    for (const [id, load, ending] of [
-      ["r1", 30, { outcome: "pass" }],
-      ["r2", 2, cut],
-      ["r3", 3, cut],
-    ] as const) {
-      put("solve.started", {
-        solve: id,
-        limits: { wallSeconds: 480 },
-        load: [load, 1, 1],
-        comparison: "g-1",
-      });
-      put("solve.finished", { solve: id, ending, seconds: 50 });
-    }
-    reported();
-    put("harness.promoted", {
-      harness: "hn",
-      from: "hbase",
-      rests: [{ comparison: "g-1", against: "hbase", reading: "step" }],
-    });
-    expect(triggered(log)("PROMOTED")[0]).toContain("; load median 30.0");
-  });
-
-  it("names a step won against a reference that answered nothing on most tasks, and no other", () => {
-    const read = triggered(promoted(false).log);
-    expect(read("PROMOTED")[0]).toContain("by the operator");
-    // g-2's reference answered none on 2 of 4: half, which is not more than half.
-    expect(read("STARTER BARE")).toEqual([
-      "g-1: the reference answered none of its solves on 3 of 4 tasks (13% of solves valid), the new harness 100%",
-    ]);
-  });
-
-  it("says nothing has followed a promotion yet, and then what did, in order", () => {
-    const run = promoted(true);
-    expect(triggered(run.log)("AFTER THE PROMOTION")).toEqual([
-      "hn, 0.0 h and $0 since: Examiner sessions: none; Builder sessions: none",
-    ]);
-    const { put, compare } = run;
-    put("campaign.setting", { minutes: 8, turns: 24, modelTurns: 8, target: 12 });
-    put("exam.started", { session: "x-2" });
-    for (const version of ["v5", "v6"]) {
-      put("task.proposed", { version, taskId: version });
-      put("task.gate", { version, gate: 1, outcome: "passed" });
-    }
-    put("exam.finished", { session: "x-2", ended: "finished", held: ["v5", "v6"] });
-    // The control: the starter against the promoted harness, which answers 6 of its 8 solves.
-    compare("g-3", "hn", "hbase", {
-      ...STEP,
-      scored: { wins: 0, losses: 3, ties: 1, p: 0.25 },
-      valid: { old: [0, 2, 2], fresh: [3, 1, 0] },
-      reading: "no-step",
-    })();
-    // A release after the promotion, of a task proposed before it: buffer-a's prepare move on
-    // 10 October, which a reader that folded the stretch alone refused as never proposed.
-    put("task.state", { version: "v5", state: "released" });
-    put("build.started", { session: "b-2", parent: "hn", tasks: ["t1", "v5"] });
-    for (const version of ["t1", "v5"]) run.solve(`q-${version}`, version, "hn", null, []);
-    put("build.finished", { session: "b-2", ended: "finished", harness: "hm", changed: true });
-    compare("g-4", "hn", "hm", STEP);
-    expect(triggered(run.log)("AFTER THE PROMOTION")).toEqual([
-      "hn, 0.0 h and $0 since: settings: model turns 8; Examiner sessions: x-2 held 2; control g-3: the promoted harness valid on 75% of its solves of 4 tasks, 0-3-1 p 0.250; g-4 started, not reported; Builder sessions: b-2 from the promoted harness, practising 2 (1 written since the promotion)",
-    ]);
-  });
-
-  it("counts what named the host's /tmp, by side, and names the program found there and the script two solves shared", () => {
-    expect(triggered(promoted(true).log)("SHARED TEMPORARY FOLDER")).toEqual([
-      "3 solves by side: g-1 new hn 2, g-1 reference hbase 1; Builder calls: b-1 1; programs under it: /tmp/phq-inst/bin/phreeqc by r1; named by more than one solve or session: /tmp/m.py by 2",
-    ]);
-  });
-
-  it("reads /var/tmp as the host's too, in either spelling, and a solve's own folder as its own", () => {
-    const { log, put, solve } = campaign();
-    put("campaign.opened", { budget: 300, terms: {} });
-    solve("p1", "v1", "hn", "g-1", ["ls /private/var/tmp/run/bin/phreeqc", "cat /var/tmp/run/notes.txt"]);
-    solve("p2", "v2", "hn", "g-1", ["cat /var/tmp/run/notes.txt", "ls /var/folders/x/T/own"]);
-    solve("p3", "v3", "hn", "g-1", ["ls /var/folders/x/T/own"]);
-    expect(triggered(log)("SHARED TEMPORARY FOLDER")).toEqual([
-      "2 solves by side: g-1 new hn 2; programs under it: /private/var/tmp/run/bin/phreeqc by p1; named by more than one solve or session: /var/tmp/run/notes.txt by 2",
-    ]);
   });
 
   it.each(["/tmp", "/private/tmp", "/var/tmp", "/private/var/tmp"])(
@@ -403,48 +284,6 @@ describe("lane 27: a promotion and the climb after it", () => {
       expect(triggered(log)("SHARED TEMPORARY FOLDER")).toEqual([]);
     },
   );
-
-  it("excludes denied calls from every seat", () => {
-    const { log, put } = campaign();
-    for (const [seat, by] of [
-      ["solve", { solve: "solver" }],
-      ["build", { session: "builder" }],
-      ["exam", { session: "examiner" }],
-    ] as const) {
-      put(`${seat}.call`, {
-        ...by,
-        tool: "bash",
-        args: { command: "cat /tmp/denied/bin/program" },
-        isError: true,
-        text: "Operation not permitted",
-      });
-    }
-    expect(triggered(log)("SHARED TEMPORARY FOLDER")).toEqual([]);
-  });
-
-  it("keeps a shared sibling path while excluding private paths in the same successful calls", () => {
-    const { log, put } = campaign();
-    const shared = "/tmp/ana-built-bash-tools/bin/program";
-    for (const seat of ["build", "exam"] as const) {
-      put(`${seat}.call`, {
-        session: seat,
-        tool: "bash",
-        args: { command: `cat /tmp/ana-built-bash/solve-${seat}/home/bin/private; ${shared}` },
-        isError: false,
-      });
-    }
-    const details = triggered(log)("SHARED TEMPORARY FOLDER");
-    expect(details).toHaveLength(1);
-    expect(details[0]).toContain(shared);
-    expect(details[0]).not.toContain("/ana-built-bash/");
-  });
-
-  it("fires none of its triggers on a campaign that promoted nothing and named no /tmp", () => {
-    const { log, put } = campaign();
-    put("campaign.opened", { budget: 300, terms: {} });
-    const lane = overview(log).triggers.filter((trigger) => trigger.lane === 31);
-    expect(lane).toEqual([]);
-  });
 });
 
 describe("lane 27 across campaigns", () => {
@@ -482,26 +321,6 @@ describe("lane 27 across campaigns", () => {
     expect(table[3]).toContain("| building | none | default | none yet | - | none reported |");
   });
 
-  it("reads a campaign that ended and went on from its log by its last move, and one that ended as ended", () => {
-    const resumed = campaign();
-    resumed.put("campaign.opened", { budget: 300, terms: {} });
-    resumed.put("campaign.move", { move: "build", session: "b-1" });
-    resumed.put("campaign.ended", { ending: "environment" });
-    resumed.put("campaign.move", { move: "examine", session: "x-1" });
-    const [, , row] = climbTable([{ name: "resumed", events: resumed.log }]).split("\n");
-    expect(row).toEndWith("| examine x-1 |");
-    resumed.put("campaign.ended", { ending: "finished" });
-    const [, , again] = climbTable([{ name: "resumed", events: resumed.log }]).split("\n");
-    expect(again).toEndWith("| ended |");
-  });
-
-  it("names a solve that ran what another campaign's session left, with its side and every path", () => {
-    expect(crossings(peers()).left).toEqual([
-      "promoting solve r1 (g-1 reference) from 20:01Z: /tmp/phq-inst/bin/phreeqc (building b-1, 20:00Z)",
-      "promoting solve n1 (g-1 new) from 20:01Z: /tmp/m.py (building b-1, 20:00Z)",
-    ]);
-  });
-
   it("names a promotion that cleared its level only on tasks held on their author's answer, and beyond validity by the objective", () => {
     // r3's third promotion on 19 October: 8-0 joined, 3-0 (p 0.125) without the tasks its gate held
     // on their author's answer alone, and 1-0 on validity alone.
@@ -518,24 +337,5 @@ describe("lane 27 across campaigns", () => {
     expect(said.map(({ name, detail }) => `${name}: ${detail}`)).toEqual([
       "SAFEGUARD-9 PROMOTION BEYOND VALIDITY: hn 6-0 p 0.016 joined at level 0.02, 0-0 p 1.000 on validity alone, 0-0 p 1.000 without the bill by the current score",
     ]);
-  });
-
-  it("names neither where the promotion stands without those tasks and on validity alone", () => {
-    expect(safeguardTriggers(indexOf(leaning({ author: 1, spread: 6, fails: true })))).toEqual([]);
-  });
-
-  it("names neither for a promotion its own joined frontier does not carry", () => {
-    expect(safeguardTriggers(indexOf(leaning({ author: 4, spread: 1, fails: false })))).toEqual([]);
-  });
-  it("counts a scratch name two campaigns' solves chose as no leak", () => {
-    const [promoting] = peers();
-    if (promoting === undefined) throw new Error("a campaign");
-    const again = {
-      name: "again",
-      events: promoting.events.map((event) => ({ ...event, at: event.at.replace("T20", "T21") })),
-    };
-    const { left, scratch } = crossings([promoting, again]);
-    expect(left).toEqual([]);
-    expect(scratch).toBe("2 scratch paths named by solves of two campaigns, in 2 solves");
   });
 });

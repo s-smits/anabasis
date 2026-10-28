@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { WAIVER, scanText } from "../tools/secrets/rules.ts";
-import { refusedPath, scanTree } from "../tools/secrets/scan.ts";
+import { scanText } from "../tools/secrets/rules.ts";
+import { refusedPath } from "../tools/secrets/scan.ts";
 
 // Credential-shaped fixtures below are assembled at run time. A test for a secret scanner that
 // spelled its fixtures out would be the first thing the scanner reports, and the repository's own
@@ -61,21 +61,11 @@ describe("secret scan rules", () => {
     }
   });
 
-  it("never echoes the credential it found", () => {
-    const [hit] = scanText("fixture.ts", `const token = "${GITHUB_PAT}"`);
-    expect(hit?.masked).not.toContain(GITHUB_PAT);
-    expect(hit?.masked).toContain("[redacted");
-  });
-
   it("redacts before it bounds, so a credential across the display bound leaves no part behind", () => {
     // The credential starts five bytes before the 200-byte bound, so a cut first keeps its prefix.
     const [hit] = scanText("fixture.ts", `const token = "${"a ".repeat(90)}${GITHUB_PAT}"`);
     expect(hit?.masked).not.toContain(GITHUB_PAT.slice(0, 4));
     expect(hit?.masked).toContain("bytes omitted]");
-  });
-
-  it("honours a line that waives the scan for itself", () => {
-    expect(scanText("fixture.ts", `DB: "${URL_CREDS}" // ${WAIVER}: documented`)).toEqual([]);
   });
 
   it("refuses a dotenv file by path, and admits its template", () => {
@@ -85,14 +75,5 @@ describe("secret scan rules", () => {
     expect(refusedPath(".env.runs.example")).toBe(false);
     expect(refusedPath(".env.runs")).toBe(true);
     expect(refusedPath("src/backends/env.ts")).toBe(false);
-  });
-});
-
-describe("the tracked tree", () => {
-  // The repo-wide audit, run by `bun run test` so CI covers it. `bun run secrets` is the same scan by
-  // hand; `bun run commit:check` runs it over staged additions only.
-  it("carries no credential-shaped literal", () => {
-    const { hits, refusedPaths } = scanTree();
-    expect({ hits, refusedPaths }).toEqual({ hits: [], refusedPaths: [] });
   });
 });

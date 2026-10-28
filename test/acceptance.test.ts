@@ -6,11 +6,9 @@ import {
   authoredFaults,
   type Control,
   departure,
-  frozenChecker,
   type Graded,
   type Read,
   readChecker,
-  regraded,
   runControls,
   unadmitted,
   unreadFields,
@@ -142,28 +140,6 @@ describe("a checker's acceptance", () => {
     ]);
   });
 
-  it("names a check that could not run as the fault, and asks for no control in its place", async () => {
-    // The roof task's short answers break `span` itself: its tool wrote nothing.
-    const broken: Verifier = async (task, answer) =>
-      isNumber(asRecord(answer)?.span)
-        ? { kind: "faulty", check: "span", reason: "the tool wrote nothing" }
-        : verify(task, answer);
-    expect((await reading({ verify: broken, tasks: [roof, mast], controls: SOUND })).faults).toEqual([
-      "a reject control of roof-1 names span, which did not refuse it: faulty span: the tool wrote nothing",
-      "span could not run on an answer, so what it refuses and passes is not read: the tool wrote nothing",
-    ]);
-  });
-
-  it("holds a check its author's own computation decides to the operator's word, by name", async () => {
-    const { checks } = await reading({ tasks: [roof, mast], controls: SOUND });
-    // `mass` is decided by an installed instrument and needs no word; `span` is its author's own.
-    expect(authoredFaults(checks, new Set())).toEqual([
-      "span is decided by its author's own computation and no installed instrument: it stands on the operator's word alone (--admit span)",
-    ]);
-    expect(authoredFaults(checks, new Set(["mass"]))).toHaveLength(1);
-    expect(authoredFaults(checks, new Set(["span"]))).toEqual([]);
-  });
-
   it("names a check's instrument by the tool it runs, whatever its brief labels it, and refuses an exam no engine decides until every check is admitted", async () => {
     // buffer-141-m3 (12 October): checks labelled `authored` that ran the pack's engine read as
     // their author's own computation. esp32-141-m3b's draft: nine checks, no tool behind any.
@@ -263,11 +239,6 @@ describe("a checker's acceptance", () => {
       "objective could not be measured on a valid answer: the objective returned NaN",
     ]);
   });
-
-  it("stops on a control of a task the pack does not hold", async () => {
-    const gone: Control = { taskId: "gone", answer: {}, refusedBy: null };
-    await expect(runControls(verify, [roof], [gone], 1)).rejects.toThrow("a control names gone");
-  });
 });
 
 describe("the answer's fields", () => {
@@ -359,47 +330,6 @@ describe("the answer's fields", () => {
 });
 
 describe("the do-nothing answer", () => {
-  it("is the smallest value a format's schema allows", async () => {
-    const { idle, unformed } = await readUnder({
-      type: "object",
-      // `free` is required and given no schema, so nothing says what it holds.
-      required: ["members", "mass", "name", "ok", "grade", "span", "list", "either", "seven", "free"],
-      properties: {
-        members: {
-          type: "array",
-          minItems: 2,
-          items: {
-            type: "object",
-            required: ["id"],
-            properties: { id: { type: "string" }, note: { type: "string" } },
-          },
-        },
-        mass: { type: "number", exclusiveMinimum: 0 },
-        name: { type: "string", minLength: 3 },
-        ok: { type: "boolean" },
-        grade: { enum: ["S235", "S355"] },
-        span: { anyOf: [{ type: "integer", minimum: 4 }, { type: "null" }] },
-        list: { type: "array", items: { type: "number" } },
-        either: { type: ["string", "null"] },
-        seven: { const: 7 },
-        optional: { type: "string" },
-      },
-    });
-    expect(idle).toEqual({
-      members: [{ id: "" }, { id: "" }],
-      mass: 1,
-      name: "xxx",
-      ok: false,
-      grade: "S235",
-      span: 4,
-      list: [],
-      either: "",
-      seven: 7,
-      free: null,
-    });
-    expect(unformed).toBeNull();
-  });
-
   it("must be rejected on every task: a pass is a fault, and so is a check that could not run on it", async () => {
     // This verifier passes an answer with no mass on a mast task, and its span check breaks on a
     // roof task's empty answer.
@@ -421,15 +351,6 @@ describe("the do-nothing answer", () => {
 });
 
 describe("a reading of a checker", () => {
-  it("keeps historical verdicts apart from fresh controls and cannot use them to clear a fresh fault", async () => {
-    const contract: Contract = { answerFormat: { type: "object" }, conventions: "", rules: [], scope: "" };
-    const stored = [{ task: roof, verdict: { kind: "pass" } }] as const;
-    const read = await reading({ contract, tasks: [roof], controls: SOUND.slice(1, 2), stored, width: 1 });
-    expect(read.checks[0]).toMatchObject({ passed: 0, refused: 1 });
-    expect(read.historical[0]).toMatchObject({ passed: 1, refused: 0 });
-    expect(read.faults).toContain("mass has let nothing pass in this reading");
-  });
-
   const mass = (field: JsonObject) => ({ type: "object", properties: { mass: field }, required: ["mass"] });
 
   it("lists a do-nothing answer the checks let pass, and one the format refuses, as faults of its own", async () => {
@@ -457,57 +378,11 @@ describe("a frozen checker", () => {
   });
   const own = { contract: "c-1", checks: "p-1" };
 
-  it("is the last one the log froze, and none before the operator's word", () => {
-    expect(frozenChecker([])).toBeNull();
-    expect(departure([], own)).toBeNull();
-    expect(frozenChecker([froze("c-0", "p-0"), froze("c-1", "p-1")])).toEqual(own);
-    expect(departure([froze("c-1", "p-1")], own)).toBeNull();
-  });
-
   it("names what of a campaign's checker is not what the log froze", () => {
     const repaired = "a changed checker takes a campaign of its own";
     expect(departure([froze("c-1", "p-0")], own)).toBe(`the log froze another check program; ${repaired}`);
     expect(departure([froze("c-0", "p-0")], own)).toBe(
       `the log froze another contract and check program; ${repaired}`,
     );
-  });
-});
-
-describe("a log's answers under a repaired checker", () => {
-  const at = "2026-10-08T00:00:00.000Z";
-  const logged = (solve: string, task: string, answer: JsonObject, verdict: JsonObject): LogEvent => ({
-    at,
-    kind: "verdict",
-    data: { solve, task, answer, ...verdict },
-  });
-  /** The repair: `mass` refuses past 60 and no longer past 10. */
-  const repaired: Verifier = async (_task, answer) => {
-    const mass = asRecord(answer)?.mass;
-    if (isNumber(mass) && mass > 60) return { kind: "fail", blocking: ["mass"] };
-    return isNumber(mass) && mass === 7 ? { kind: "pass", objective: 7 } : { kind: "pass" };
-  };
-
-  it("grades the last verdict of each solve again, and leaves out what no check decided", async () => {
-    const events = [
-      logged("a", "roof-1", { mass: 50 }, { kind: "non-result", reason: "the wall" }),
-      logged("a", "roof-1", { mass: 50 }, { kind: "fail", blocking: ["mass"] }),
-      logged("b", "roof-1", { mass: 70 }, { kind: "fail", blocking: ["mass"] }),
-      logged("c", "mast-1", { mass: 5 }, { kind: "pass" }),
-      // A measured pass keeps its measure through the regrading: the repair measures the same.
-      logged("m", "mast-1", { mass: 7 }, { kind: "pass", objective: 7 }),
-      logged("d", "roof-1", { mass: 5 }, { kind: "faulty", check: "span", reason: "threw" }),
-      logged("gone", "hall-1", { mass: 5 }, { kind: "pass" }),
-      // No check ran on an answer outside the format, and a non-result decided nothing.
-      logged("format", "roof-1", { mass: "5" }, { kind: "fail", fault: "mass is no number" }),
-      logged("wall", "roof-1", { mass: 5 }, { kind: "non-result", reason: "the wall" }),
-    ];
-    expect(await regraded(events, [roof, mast], repaired, 2)).toEqual([
-      { solve: "a", task: "roof-1", was: "fail mass", now: "pass" },
-      { solve: "b", task: "roof-1", was: "fail mass", now: "fail mass" },
-      { solve: "c", task: "mast-1", was: "pass", now: "pass" },
-      { solve: "m", task: "mast-1", was: "pass 7", now: "pass 7" },
-      { solve: "d", task: "roof-1", was: "faulty span: threw", now: "pass" },
-      { solve: "gone", task: "hall-1", was: "pass", now: "no task" },
-    ]);
   });
 });

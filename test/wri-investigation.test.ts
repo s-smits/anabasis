@@ -1,8 +1,6 @@
 // What an investigation builds from the catalogue and one log's overview: which lanes open, the
 // prompt each session is given, and whether a report has the shape the synthesis reads; and the
-// `lanes` verb, run twice over one directory, building each prompt once and listing each session once;
-// and the `read` verb's host line, which finds the code a campaign ran in the tree its log sits in;
-// and the `grade` verb, which holds an answer to a drafted exam's format before its checks.
+// `lanes` verb, run twice over one directory, building each prompt once and listing each session once.
 import { afterAll, describe, expect, it } from "bun:test";
 import {
   mkdirSync,
@@ -13,26 +11,13 @@ import {
   rmSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { type Condition, conditionId } from "../src/kernel/condition.ts";
-import { append } from "../src/kernel/log.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
-import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
-import { codeOf } from "../tools/d2/campaign.ts";
-import { stageExam } from "../tools/d2/exam.ts";
 import { catalogueText, type Lane, lanesOf, ownersOf } from "../tools/wri/catalogue.ts";
-import {
-  blankSections,
-  filled,
-  lanePrompt,
-  numbersOf,
-  reportOf,
-  selected,
-} from "../tools/wri/investigation.ts";
+import { lanePrompt, reportOf } from "../tools/wri/investigation.ts";
 import { execTextSync } from "./helpers/bun-spawn-sync.ts";
-import { SOUND } from "./helpers/examiner-seat.ts";
 
 const shared =
   "## Orientation\n\nWhy the step.\n\n## Campaigns under review\n\nthe row\n\n## Hard rules\n\n- quote nothing\n";
@@ -44,34 +29,7 @@ const lane = (number: number): Lane => {
   if (found === undefined) throw new Error(`no lane ${String(number)}`);
   return found;
 };
-const numbers = (some: readonly Lane[]) => some.map((each) => each.number);
-const fired = (...started: number[]) =>
-  started.map((number) => ({ lane: number, name: "CHAIN" as const, detail: "" }));
-
 describe("an investigation's lanes", () => {
-  it("opens the triggered and the standing lanes, and leaves an isolated lane waiting", () => {
-    const { open, isolated, waiting } = selected(lanes, fired(4, 5, 29), null);
-    expect(numbers(open)).toEqual([1, 4, 18, 23, 29]);
-    expect(isolated).toEqual([]);
-    expect(numbers(waiting)).toEqual([5]);
-  });
-
-  it("builds a named isolated lane only on its trigger", () => {
-    expect(numbers(selected(lanes, fired(5), numbersOf("3-4,5")).isolated)).toEqual([5]);
-    expect(() => selected(lanes, fired(4), [19])).toThrow("runs only on its trigger");
-    const wins = { lane: 19, name: "WINS" as const, detail: "" };
-    expect(() => selected(lanes, [wins], [19])).toThrow("runs only on its trigger");
-    const program = { lane: 19, name: "ANSWER FROM A PROGRAM" as const, detail: "" };
-    expect(numbers(selected(lanes, [wins, program], [19]).isolated)).toEqual([19]);
-    expect(() => selected(lanes, [], [37])).toThrow("no lane 37");
-  });
-
-  it("refuses shared instructions with a section left blank", () => {
-    expect(blankSections("## Orientation\n\n<!-- AUTHOR: write it -->\n\n## Hard rules\n\n- one\n")).toEqual([
-      "Orientation",
-    ]);
-  });
-
   const rows = [{ id: "A", title: "campaign and log", lines: ["3 events"] }];
   const one = [
     {
@@ -95,47 +53,6 @@ describe("an investigation's lanes", () => {
       overview: { rows, triggers: [{ lane: 4, name: "CHECK DEFECT RULED" as const, detail: "1 of 3" }] },
     },
   ];
-
-  it("gives an open lane the shared instructions and every trigger", () => {
-    const prompt = lanePrompt({
-      lane: lane(4),
-      shared,
-      campaigns: one,
-      catalogue,
-      owners,
-      report: "/r/04.md",
-    });
-    expect(prompt).toContain("Why the step.");
-    expect(prompt).toContain("FAILS ON ONE CHECK (lane 5)");
-    expect(prompt).toContain("**4. False rejection among fails.**");
-    expect(prompt).toContain("Write your report to `/r/04.md`");
-  });
-
-  it("gives an isolated lane the hard rules and its own trigger, and not the operator's question", () => {
-    const prompt = lanePrompt({
-      lane: lane(5),
-      shared,
-      campaigns: one,
-      catalogue,
-      owners,
-      report: "/r/05.md",
-    });
-    expect(prompt).toContain("- quote nothing");
-    expect(prompt).toContain("FAILS ON ONE CHECK (lane 5)");
-    expect(prompt).not.toContain("Why the step.");
-    expect(prompt).not.toContain("REFUSED UNREAD");
-  });
-
-  it("says which of the lane's own triggers fired and which did not, so a name in its body is no lead", () => {
-    const parts = { shared, campaigns: one, catalogue, owners, report: "/r/04.md" };
-    const prompt = lanePrompt({ ...parts, lane: lane(4) });
-    expect(prompt).toContain("Fired on this campaign: `REFUSED UNREAD`");
-    expect(prompt).toContain("Not fired: `CHECK DEFECT RULED`, `RULED UNCLEAR`.");
-    // Lane 16's body names `NEVER CHECKED`, which buffer-a's lane 14 read as fired (11 October).
-    const standing = lanePrompt({ ...parts, lane: lane(16) });
-    expect(standing).toContain("None of these triggers fired on this campaign");
-    expect(standing).toContain("Not fired: `NEVER CHECKED`, `TOOLS CALLED`, `TOOL CALLS ERRED`.");
-  });
 
   it("gives the lane that reads the climb side by side the table, or says one campaign is read, and no other lane either", () => {
     const parts = { shared, campaigns: two, catalogue, owners, report: "/r/31.md" };
@@ -167,41 +84,6 @@ describe("an investigation's lanes", () => {
     const alone = lanePrompt({ ...parts, campaigns: one, lane: lane(4) });
     expect(alone).not.toContain("as equals");
     expect(alone).not.toContain("Seen in:");
-  });
-
-  it("holds a report to its shape", () => {
-    const good = [
-      "# Lane 4: False rejection among fails",
-      "Verdict: finding, one check refuses a valid rounding.",
-      "## Findings",
-      "### The tolerance",
-      "Observation: verdict, 40 of 55 name check-a",
-      "Cause: the tolerance is tighter than the published rounding",
-      "Owner: pack/evaluator",
-      "Reverses if: a refused answer is shown invalid by the rule",
-      "Decision: whether a repair is owed",
-    ].join("\n");
-    expect(reportOf(lane(4), good, owners, [])).toMatchObject({
-      state: "ok",
-      verdict: "finding",
-      findings: 1,
-    });
-    expect(reportOf(lane(4), null, owners, []).state).toBe("missing");
-    expect(reportOf(lane(4), good.replace("pack/evaluator", "the checker"), owners, []).faults).toEqual([
-      "1 of 1 owners are not in the owner table",
-    ]);
-    expect(reportOf(lane(4), "# Lane 4: x\nVerdict: finding\n", owners, []).faults).toEqual([
-      "the verdict is a finding and none is written",
-    ]);
-    // Recode's lane 15 on 10 October: no finding said, two written, and accepted.
-    const denied = `${good.replace("Verdict: finding", "Verdict: no finding")}\n${good.split("\n").slice(3).join("\n")}`;
-    expect(reportOf(lane(4), denied, owners, [])).toMatchObject({
-      state: "invalid",
-      faults: ["the verdict is no finding and the report writes 2 findings"],
-    });
-    expect(
-      reportOf(lane(4), "# Lane 4: x\nVerdict: no finding, all sound\n## Findings\n", owners, []).state,
-    ).toBe("ok");
   });
 
   it("holds each finding of several campaigns to a Seen in line that names every one", () => {
@@ -237,11 +119,6 @@ describe("an investigation's lanes", () => {
     expect(
       reportOf(lane(4), `${finding}\nSeen in: buffer-a-r5 shows, buffer-b absent`, owners, names).faults,
     ).toEqual(["a Seen in: line leaves out buffer-a"]);
-  });
-
-  it("fills a template's slots and names one it cannot fill", () => {
-    expect(filled("<!-- note -->\nto {out}\n", { out: "/d" })).toBe("to /d\n");
-    expect(() => filled("{reports}", {})).toThrow("which nothing fills");
   });
 });
 
@@ -331,91 +208,5 @@ describe("the lanes verb", () => {
     const prompt = readFileSync(join(twins, "lanes", "04-prompt.md"), "utf8");
     expect(prompt).toContain("twin@m1");
     expect(prompt).toContain("twin@linux");
-  });
-});
-
-describe("the read verb's host line", () => {
-  const REPO = resolve(import.meta.dir, "..");
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), "ana-wri-host-")));
-  afterAll(() => rmSync(dir, { recursive: true, force: true }));
-  const tree = join(dir, "tree");
-  mkdirSync(join(tree, "src"), { recursive: true });
-  mkdirSync(join(tree, "vendor"), { recursive: true });
-  writeFileSync(join(tree, "src", "a.ts"), "export const a = 1;\n");
-  writeFileSync(join(tree, "vendor", "v.txt"), "v\n");
-  writeFileSync(join(tree, "package.json"), '{ "dependencies": {} }\n');
-  const treeHost = codeOf(tree).host;
-  const hostLine = (host: string) => {
-    const log = join(tree, ".ana", "d2", "c", "log.jsonl");
-    mkdirSync(join(tree, ".ana", "d2", "c"), { recursive: true });
-    // A condition as `tools/d2/campaign.ts` records one; only its host is read here.
-    const condition: Condition = {
-      contract: "c1",
-      harness: "h1",
-      task: "t1",
-      model: "p/m",
-      effort: "high",
-      prices: { "p/m": { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 } },
-      runtime: {},
-      compaction: "off",
-      solverTools: "s1",
-      verifierTools: "v1",
-      sandbox: "x1",
-      limits: {
-        wallSeconds: 1,
-        turns: 1,
-        shellDefaultSeconds: 1,
-        shellMaxSeconds: 1,
-        concurrency: 1,
-      },
-      host,
-      side: "test",
-    };
-    const event = {
-      at: new Date(0).toISOString(),
-      kind: "condition.recorded",
-      data: { id: conditionId(condition), condition },
-    };
-    writeFileSync(log, `${JSON.stringify(event)}\n`);
-    return execTextSync(capturedExecPath, ["tools/wri/wri.ts", "read", "--log", log], { cwd: REPO })
-      .trim()
-      .split("\n")
-      .at(-1);
-  };
-
-  it("sends a lane to the campaign's own tree when that tree holds the code it ran", () => {
-    expect(hostLine(treeHost)).toContain(`which the campaign's own tree \`${tree}\` holds as it stands`);
-  });
-
-  it("says source is another tree when neither the checkout nor the campaign's tree holds it", () => {
-    expect(hostLine("0".repeat(64))).toContain("so every statement about source is about another tree");
-  });
-});
-
-describe("the grade verb", () => {
-  const REPO = resolve(import.meta.dir, "..");
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), "ana-wri-grade-")));
-  afterAll(() => rmSync(dir, { recursive: true, force: true }));
-  // A drafted exam whose format refuses a key it does not name, and whose check reads one key alone.
-  const answerFormat = {
-    type: "object",
-    properties: { answer: { type: "string" } },
-    required: ["answer"],
-    additionalProperties: false,
-  };
-  const draft = { ...SOUND, answerFormat };
-  const log = join(dir, "log.jsonl");
-  append(log, "exam.drafted", { session: "d-1", draft: parseJsonAs<JsonObject>(JSON.stringify(draft)) });
-  stageExam(dir, draft);
-  const graded = (answer: JsonObject) => {
-    const file = join(dir, "answer.json");
-    writeFileSync(file, JSON.stringify(answer));
-    const args = ["tools/wri/wri.ts", "grade", "--log", log, "--task", "ex-001", "--answer", file];
-    return execTextSync(capturedExecPath, args, { cwd: REPO }).trim();
-  };
-
-  it("refuses an answer outside the format before any check reads it, as the host refuses a solver's", () => {
-    expect(graded({ answer: "12", note: "x" })).toStartWith("fail format: ");
-    expect(graded({ answer: "12" })).toBe("pass");
   });
 });

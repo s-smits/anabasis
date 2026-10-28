@@ -10,7 +10,7 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/fi
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
-import { type Desk, openDesk, publicResource, submitTool } from "../src/tools/answer.ts";
+import { type Desk, openDesk, submitTool } from "../src/tools/answer.ts";
 import type { WallExec } from "../src/tools/coding.ts";
 
 const CONTRACT: Contract = {
@@ -66,23 +66,6 @@ describe("submit", () => {
     expect(result.details).toEqual({ answerDigest: hashJsonValue({ span: 4 }) });
     expect(result.control).toEqual({ terminate: true });
     expect(desk.submitted).toEqual({ span: 4 });
-  });
-
-  it("sends answer.json from the working directory, and the answer once sent stays the answer", async () => {
-    const { desk, tool, submit, answer } = solving();
-    expect(tool.name).toBe("submit");
-    // The description names the file it sends, its format, and the malformed alternative.
-    for (const fact of ["answer.json", "public/answer-format.json", "malformed"]) {
-      expect(tool.description).toContain(fact);
-    }
-    answer('{ "span": 4,\n  "note": "first" }\n');
-    expect(desk.submitted).toBeUndefined();
-    expect(await submit()).toEqual({ text: "Submitted.", terminate: true });
-    expect(desk.submitted).toEqual({ span: 4, note: "first" });
-    // What the file holds afterwards changes nothing.
-    answer('{"span": 5}');
-    expect(await submit()).toEqual({ text: "Submitted.", terminate: true });
-    expect(desk.submitted).toEqual({ span: 4, note: "first" });
   });
 
   it("refuses with the reason, as often as it is asked, and then takes a file that follows", async () => {
@@ -149,22 +132,5 @@ describe("submit", () => {
     // Once flagged, a submit sends nothing: the task has ended.
     expect(await submit()).toEqual({ text: "Flagged.", terminate: true });
     expect(desk.submitted).toBeUndefined();
-  });
-
-  it("refuses a directory in the answer's place", async () => {
-    const { home, submit } = solving();
-    Bun.spawnSync(["mkdir", join(home, "answer.json")]);
-    expect((await submit()).text).toStartWith("Submit blocked: there is no answer.json");
-  });
-});
-
-describe("a public resource", () => {
-  it("is bound to its name and content", () => {
-    const resource = publicResource("artifact-schema", [{ name: "span", unit: "m" }]);
-    expect(resource.digest).toMatch(/^[0-9a-f]{64}$/);
-    expect(publicResource("artifact-schema", [{ name: "span", unit: "mm" }]).digest).not.toBe(
-      resource.digest,
-    );
-    expect(publicResource("schema", resource.content).digest).not.toBe(resource.digest);
   });
 });

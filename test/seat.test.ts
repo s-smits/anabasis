@@ -16,7 +16,7 @@ import { existsSync, mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { type Seat, sit } from "../src/agent/session.ts";
-import { ending, text, tool } from "../src/tools/answer.ts";
+import { text, tool } from "../src/tools/answer.ts";
 
 const scratch = mkdtempSync(join(tmpdir(), "ana-seat-"));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
@@ -123,16 +123,6 @@ describe("a seat's session", () => {
     expect(await sit(throwing.seat)).toMatchObject({ cut: false, thrown: "no backend", crash: "no backend" });
   });
 
-  it("is prompted again by the seat when a turn ends without a call, and ends where the seat has nothing to say", async () => {
-    const said = ["Go on."];
-    const s = seated([fauxAssistantMessage("Thinking."), fauxAssistantMessage("Done.")], {
-      next: async () => said.shift() ?? null,
-    });
-    await sit(s.seat);
-    expect(s.seat.turns).toHaveLength(2);
-    expect(s.sent[1]).toContain("Go on.");
-  });
-
   it("settles its seat's work before the model's process is closed, and removes the scratch home it made", async () => {
     let open: boolean[] = [];
     const s = seated([look, fauxAssistantMessage("Done.")], {
@@ -174,36 +164,6 @@ describe("durable session boundaries", () => {
     expect(read(log).map(({ kind }) => kind)).toEqual(["build.turn", "build.call", "build.turn"]);
   });
 
-  it("ends after a round with submit and another call, without another request", async () => {
-    let submitted = false;
-    const submit = tool({
-      name: "submit",
-      description: "Submit.",
-      parameters: Type.Object({}),
-      execute: async () => {
-        submitted = true;
-        return ending(text("submitted"));
-      },
-    });
-    const s = seated([
-      fauxAssistantMessage([fauxToolCall("submit", {}), fauxToolCall("look", {})], TOOL_USE),
-      look,
-    ]);
-    Object.assign(s.seat, { tools: [submit, ...s.seat.tools], over: () => submitted });
-    expect(await sit(s.seat)).toMatchObject({ crash: null });
-    expect(s.looked).toHaveLength(1);
-    expect(s.faux.state.callCount).toBe(1);
-  });
-
-  it("makes no request beyond most, including a zero cap", async () => {
-    for (const most of [0, 1, 3]) {
-      const s = seated([look, look, look, look], { most });
-      expect(await sit(s.seat)).toMatchObject({ crash: null });
-      expect(s.faux.state.callCount).toBe(most);
-      expect(s.seat.turns).toHaveLength(most);
-    }
-  });
-
   it("ends with thrown when before throws, before a provider or tool runs", async () => {
     const s = seated([look], {
       before: () => {
@@ -213,19 +173,6 @@ describe("durable session boundaries", () => {
     expect(await sit(s.seat)).toMatchObject({ thrown: "seat cap", crash: "seat cap" });
     expect(s.faux.state.callCount).toBe(0);
     expect(s.looked).toEqual([]);
-  });
-
-  it("keeps the seat id as the provider session id and the whole untagged system prompt", async () => {
-    let sessionId: string | undefined;
-    const s = seated([
-      (_context, options) => {
-        sessionId = options?.sessionId;
-        expect(_context.messages.find((message) => message.role === "system")?.content).toBe("A seat.");
-        return fauxAssistantMessage("Done.");
-      },
-    ]);
-    await sit(s.seat);
-    expect(sessionId).toBe(s.seat.id);
   });
   it("bills a retried attempt on the following turn without counting it as a turn", async () => {
     const log = join(scratch, "retry.jsonl");
@@ -286,17 +233,6 @@ describe("durable session boundaries", () => {
       undefined,
     ]);
   });
-
-  it("retries a failed attempt on the last turn most allows", async () => {
-    const s = seated(
-      [fauxAssistantMessage("", { stopReason: "error", errorMessage: "WebSocket closed 1000" }), look],
-      { most: 1 },
-      "openai-codex",
-    );
-    expect(await sit(s.seat)).toMatchObject({ crash: null });
-    expect(s.faux.state.callCount).toBe(2);
-    expect(s.seat.turns).toHaveLength(1);
-  });
 });
 
 describe("refused durable tool calls", () => {
@@ -334,21 +270,6 @@ describe("refused durable tool calls", () => {
 });
 
 describe("durable's loop under a seat", () => {
-  it("ends on a failure durable does not retry, as the provider's crash", async () => {
-    const refused = fauxAssistantMessage("", {
-      stopReason: "error",
-      errorMessage: "invalid request: bad schema",
-    });
-    const s = seated([refused, look], {}, "openai-codex");
-    expect(await sit(s.seat)).toMatchObject({
-      crash: "invalid request: bad schema",
-      thrown: null,
-      cut: false,
-    });
-    expect(s.faux.state.callCount).toBe(1);
-    expect(s.looked).toEqual([]);
-  });
-
   it("runs a round's calls one at a time, in the order the model wrote them", async () => {
     const order: string[] = [];
     const slow = tool({

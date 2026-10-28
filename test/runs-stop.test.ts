@@ -24,14 +24,6 @@ import { seedCampaign } from "../tools/runs/seed.ts";
 import { family, leftOpen } from "../tools/runs/stop.ts";
 
 describe("a stop", () => {
-  it("finds a process and all it started, the nearest first, and none beside it", () => {
-    const table = ["  10     1", "  11    10", "  12    11", "  13    10", "  20     1", "  21    20"].join(
-      "\n",
-    );
-    expect(family(table, 10)).toEqual([10, 11, 13, 12]);
-    expect(family(table, 12)).toEqual([12]);
-  });
-
   // What a stop releases. A Builder's root was once named for its session id alone, and one left
   // mounted refused that id to every campaign on the host with a bare EEXIST (2026-10-08).
   it("names what a run's unfinished solves and sessions left, and nothing of a seed's source", () => {

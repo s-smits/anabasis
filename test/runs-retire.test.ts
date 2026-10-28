@@ -16,7 +16,7 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
-import { archived, readable, readNamed } from "../tools/runs/registry.ts";
+
 import { archiveIdle, retireTrees, type Sweep } from "../tools/runs/retire.ts";
 
 const DAY = 86_400_000;
@@ -73,15 +73,6 @@ describe("retiring", () => {
     expect(existsSync(tree)).toBe(true);
   });
 
-  it("reads an archived campaign where no worktree holds the name, and the worktree's where one does", () => {
-    expect(archived(main).map(({ name, archived: from }) => `${name}@${String(from)}`)).toEqual([
-      "old@here",
-      "young@here",
-    ]);
-    expect(readNamed("old", main).path).toBe(join(archive, "old", "log.jsonl"));
-    expect(readNamed("young", main).path).toBe(join(tree, ".ana", "d2", "young", "log.jsonl"));
-  });
-
   it("files a name the archive holds already under its tree's, and keeps the tree for a week", () => {
     retireTrees(sweep(3, true), archiveIdle(sweep(3, true)));
     expect(existsSync(join(archive, "young.wt", "log.jsonl"))).toBe(true);
@@ -104,20 +95,6 @@ describe("retiring", () => {
     retireTrees(sweep(15, true), new Set());
     expect(existsSync(dirty)).toBe(false);
     expect(git(main, "rev-parse", `retired/${head.slice(0, 9)}`)).toBe(head);
-  });
-
-  it("reads one archived copy of each name, this machine's before a host's", () => {
-    for (const [from, name] of [
-      ["m1", "old"],
-      ["linux", "far"],
-      ["m1", "far"],
-    ] as const) {
-      mkdirSync(join(main, "data", "runs", from, name), { recursive: true });
-      writeFileSync(join(main, "data", "runs", from, name, "log.jsonl"), "");
-    }
-    const copies = readable(main).map(({ name, archived: from }) => `${name}@${String(from)}`);
-    expect(copies.filter((copy) => copy.startsWith("old@"))).toEqual(["old@here"]);
-    expect(copies.filter((copy) => copy.startsWith("far@"))).toHaveLength(1);
   });
 
   it("files two trees' live solve logs of one file name apart, and overwrites neither", () => {

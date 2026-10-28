@@ -124,7 +124,7 @@ export function HarnessFiles({
 
 /** Two harnesses' files compared, one unified diff a changed file, each line signed as well as
  *  tinted so that an addition and a removal read apart without colour. */
-export function DiffView({ diff }: { diff: HarnessDiff }) {
+function DiffView({ diff }: { diff: HarnessDiff }) {
   return (
     <div className="ana-diff">
       <p className="ana-faint">{plural(diff.files.length, "file")} changed.</p>

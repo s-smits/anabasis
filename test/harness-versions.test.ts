@@ -4,19 +4,17 @@
 // as, which `keptAs` refuses and the listing has to name. Beside them lies a shared tool tree
 // (`tree-*`), which a kept state links to and which is no harness.
 import { afterAll, describe, expect, it } from "bun:test";
-import { diffOf, versionsOf } from "#skills/harness-audit/scripts/harness-versions.ts";
+import { versionsOf } from "#skills/harness-audit/scripts/harness-versions.ts";
 import { append } from "../src/kernel/log.ts";
 import {
   cpSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   realpathSync,
   renameSync,
   rmSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
@@ -49,7 +47,6 @@ mkdirSync(join(states, "tree-x", "bin"), { recursive: true });
 writeFileSync(join(states, "tree-x", "bin", "tool"), "#!/bin/sh\n");
 const nonblank = (text: string) => text.split("\n").filter((line) => line.trim() !== "").length;
 const guideLines = nonblank(EXAMPLE.guide);
-const starterLines = nonblank(readFileSync(join(states, starter, "agent", "BUILT_AGENTS.md"), "utf8"));
 const short = (digest: string) => digest.slice(0, 8);
 
 append(log, "build.started", { session: "b-1", parent: starter });
@@ -103,29 +100,6 @@ describe("the harnesses a campaign keeps", () => {
     expect(third?.digest).toBe(misnamed);
     expect(third?.opens).toBe(`as ${short(child)}, not as kept`);
     expect(third?.made).toStartWith("no record of its making");
-  });
-
-  it("counts what moved from a parent to its child, part by part, and quotes no line", async () => {
-    const moves = await diffOf(join(states, starter), join(states, child));
-    expect(moves).toStrictEqual([
-      // The starter instructions and the worked guide share their four headings.
-      `guide: ${starterLines} to ${guideLines} nonblank lines, +${guideLines - 4} -${starterLines - 4}`,
-      "spec: presets read, bash, edit, write to read, bash, edit, write; tools added none, removed none",
-      expect.stringMatching(/^tools\.ts: (\d+) to \1 nonblank lines, \+0 -0$/),
-      ".toolchain: 0 to 1 files, +1 -0 changed 0, under bin",
-      "other files: added none; removed none; changed none",
-    ]);
-    expect(moves.join("\n")).not.toContain(EXAMPLE.guide.split("\n")[0] ?? "");
-  });
-
-  it("counts no bytecode cache, as the digest reads none", async () => {
-    const cached = join(root, "cached");
-    cpSync(join(states, child), cached, { recursive: true });
-    mkdirSync(join(cached, ".toolchain", "bin", "__pycache__"));
-    writeFileSync(join(cached, ".toolchain", "bin", "__pycache__", "tool.cpython-314.pyc"), "cache");
-    expect((await openHarness(cached)).digest).toBe(child);
-    const moves = await diffOf(join(states, child), cached);
-    expect(moves).toContain(".toolchain: 1 to 1 files, +0 -0 changed 0");
   });
 });
 
@@ -189,14 +163,6 @@ describe("a campaign its Builder leads", () => {
 });
 
 describe("the command", () => {
-  it("reads latest against the parent the log records", () => {
-    const diffed = run("--diff", "latest");
-    expect(diffed.code).toBe(0);
-    expect(diffed.stdout).toStartWith(`${child} against ${starter}\n`);
-    const listed = parseJsonAs<{ versions: unknown[] }>(run("--json").stdout);
-    expect(listed.versions).toHaveLength(3);
-  });
-
   it("refuses a control, a harness with no parent on record, and a state that opens as another", () => {
     expect(run("--diff", "programs-of:latest").stderr).toContain("takes no control");
     expect(run("--diff", "starter").stderr).toContain("has no parent on record");

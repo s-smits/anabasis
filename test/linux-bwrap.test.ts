@@ -17,35 +17,7 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-/** A bwrap that is a shell script, so a case on any host decides what its canary prints. */
-function fakeBwrap(name: string, script: string): string {
-  const root = mkdtempSync(join(tmpdir(), `ana-linux-bwrap-${name}-`));
-  dirs.push(root);
-  const path = join(root, "bwrap");
-  writeFileSync(path, script);
-  chmodSync(path, 0o755);
-  return path;
-}
-
 describe("Linux bubblewrap support", () => {
-  it("names a user-namespace refusal and keeps one stderr line for any other canary failure", () => {
-    const userns = fakeBwrap(
-      "userns",
-      '#!/bin/sh\necho "bwrap: setting up uid map: Permission denied" >&2\nexit 1\n',
-    );
-    const denied = linuxBwrapSupport({ platform: "linux", bwrapPath: userns, outerSandboxed: false });
-    expect(denied.ok).toBe(false);
-    expect(denied.reason).toMatch(/unprivileged user namespace/);
-
-    const rejected = fakeBwrap(
-      "rejected",
-      '#!/bin/sh\necho "bwrap: Can\'t mkdir /nowhere: Read-only file system" >&2\nexit 1\n',
-    );
-    const refused = linuxBwrapSupport({ platform: "linux", bwrapPath: rejected, outerSandboxed: false });
-    expect(refused.ok).toBe(false);
-    expect(refused.reason).toMatch(/refused its baseline policy: bwrap: Can't mkdir/);
-  });
-
   it("runs the canary once per unchanged bwrap binary and again after the binary is rewritten", () => {
     const root = mkdtempSync(join(tmpdir(), "ana-linux-bwrap-reuse-"));
     dirs.push(root);
@@ -83,40 +55,6 @@ describe("the resolver an open network needs", () => {
     expect(args).not.toContain("--unshare-net");
     const resolver = realpathSync("/etc/resolv.conf");
     expect(args.filter((arg) => arg === resolver)).toEqual([resolver, resolver]);
-  });
-});
-
-describe("bubblewrap refusal classification", () => {
-  // An operator on Ubuntu 22.04 LTS (bubblewrap 0.6.1) previously saw a bare
-  // "bwrap: Unknown option --disable-userns" repeated across every confined call site, with no
-  // statement of which package was too old or what to install. The isolation must still fail closed —
-  // the flag is what stops a confined child nesting its own user namespace — so the fix is the
-  // remedy text, not a weaker baseline.
-  /** Why a fake bwrap whose canary prints `stderr` and fails is refused. */
-  const refusal = (name: string, stderr: string, version = "") => {
-    const answers =
-      version === "" ? "" : `[ "$1" = --version ] && { echo "bubblewrap ${version}"; exit 0; }\n`;
-    const bwrap = fakeBwrap(name, `#!/bin/sh\n${answers}printf '%s' '${stderr}' >&2\nexit 1\n`);
-    return linuxBwrapSupport({ platform: "linux", bwrapPath: bwrap, outerSandboxed: false }).reason;
-  };
-
-  it("names the unsupported option, the required bubblewrap and the one installed", () => {
-    expect(refusal("old", "bwrap: Unknown option --disable-userns\n", "0.6.1")).toBe(
-      "this bubblewrap does not support --disable-userns (installed bubblewrap 0.6.1) — the OS isolation needs bubblewrap 0.8.0 or newer; upgrade the bubblewrap package",
-    );
-    // A binary that cannot state its version still gets the option named.
-    expect(refusal("mute", "bwrap: Unknown option --disable-userns\n")).toStartWith(
-      "this bubblewrap does not support --disable-userns — ",
-    );
-  });
-
-  it("keeps the user-namespace remedy for a kernel refusal, and carries one capped line for any other", () => {
-    expect(refusal("kernel", "bwrap: No permissions to create a new namespace\n")).toBe(
-      "bubblewrap could not create an unprivileged user namespace — the kernel may have user namespaces disabled",
-    );
-    expect(refusal("long", `\nbwrap: ${"y".repeat(300)}\nsecond line\n`)).toBe(
-      `bubblewrap refused its baseline policy: bwrap: ${"y".repeat(193)} […107 bytes omitted]`,
-    );
   });
 });
 

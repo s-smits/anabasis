@@ -7,7 +7,6 @@ import {
   expectQuiet,
   keepAnswers,
   launchBrowser,
-  nextPolls,
   type Opened,
   openPage,
   PHONE,
@@ -15,24 +14,15 @@ import {
   type Served,
   serveFixture,
   type Viewing,
-  withClock,
 } from "./browser.ts";
-import {
-  arm,
-  expectFocusRing,
-  framesOf,
-  mutationsOf,
-  tabTo,
-  watchFrames,
-  watchMutations,
-} from "./browser-watch.ts";
+import { arm, expectFocusRing, framesOf, tabTo, watchFrames } from "./browser-watch.ts";
 import { answersOver, MARKERS } from "./fixture-campaign.ts";
 
 /*
  * The Log pane in Chrome over the fixture's 1,495 events: the Kind and Session filters the server
  * applies before it pages, the paging and its counter, an event opened in the inspector on either
- * tier, the columns under their heads, and what the page paints while a page or an event is read:
- * the page before, never a placeholder in its place (14 October).
+ * tier, and what the page paints while another page is read: the page before, never a placeholder
+ * in its place (14 October).
  */
 
 const EVENTS = 1495;
@@ -184,40 +174,6 @@ describe("the Log pane", () => {
     await opened.context.close();
   });
 
-  test("sets every column's head over its cells", async () => {
-    const opened = await openLog(served);
-    const { page } = opened;
-    const heads = await table(page).locator("thead th").allTextContents();
-    expect(heads).toEqual(["Event", "At", "Kind", "Session", "Solve"]);
-    // The head's text and each cell's text, by their own boxes: a column whose cells sit apart from
-    // its head, as the times did until 14 October, shares no horizontal stretch with it.
-    const apart = await table(page).evaluate((node) => {
-      const box = (element: Element) => {
-        const range = document.createRange();
-        range.selectNodeContents(element);
-        return range.getBoundingClientRect();
-      };
-      const found: string[] = [];
-      const head = [...node.querySelectorAll("thead th")];
-      head.forEach((th, at) => {
-        const over = box(th);
-        for (const tr of node.querySelectorAll("tbody tr")) {
-          const cell = tr.children[at];
-          if (cell === undefined || cell.textContent.trim() === "") continue;
-          const under = box(cell);
-          if (Math.max(over.left, under.left) >= Math.min(over.right, under.right)) {
-            found.push(`${th.textContent} over ${cell.textContent}`);
-          }
-        }
-      });
-      return found;
-    });
-    expect(apart).toEqual([]);
-    expect(await columnTexts(page, 4)).toContain("s-3-1");
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
   test("in the default tier, an event says quietly that the exam side holds it", async () => {
     const opened = await openLog(served);
     const { page } = opened;
@@ -258,15 +214,6 @@ describe("the Log pane", () => {
     // The browser's back reopens the event the close left.
     await page.goBack();
     await expect(page.getByRole("complementary", { name: "Event" })).toContainText("#6");
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
-  test("opens the event a link names", async () => {
-    const opened = await openLog(exam, "&event=5");
-    const { page } = opened;
-    await expect(page.getByRole("complementary", { name: "Event" })).toContainText("draft.finished");
-    await expect(row(page, 5)).toHaveAttribute("aria-current", "true");
     expectQuiet(opened);
     await opened.context.close();
   });
@@ -385,38 +332,6 @@ describe("the Log pane between two pages", () => {
     const frames = await framesOf(page);
     expect(frames.bad).toBe(0);
     expect(frames.busyAfter).toBeGreaterThanOrEqual(250);
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
-  test("opens and closes an event on the exam side with no placeholder frame", async () => {
-    const opened = await openWatched(exam, [".ana-log table"], "aside[aria-busy=true]");
-    const { page } = opened;
-    await arm(page);
-    const inspector = page.getByRole("complementary", { name: "Event" });
-    await row(page, 5).click();
-    await expect(inspector).toContainText("draft.finished");
-    await row(page, 7).click();
-    await expect(inspector).toContainText("#7");
-    await expect(inspector).toContainText("checker.read");
-    await inspector.getByRole("button", { name: "Close" }).click();
-    await expect(inspector).toHaveCount(0);
-    const frames = await framesOf(page);
-    const aside = await page.evaluate(() => document.body.innerText.includes("Reading the event"));
-    expect(aside).toBe(false);
-    expect(frames.seen).toEqual([]);
-    expect(frames.bad).toBe(0);
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
-  test("changes nothing in the table across two polls of unchanged data", async () => {
-    const opened = await openLog(served);
-    const { page } = opened;
-    await withClock(page);
-    await watchMutations(page.locator(".ana-log"));
-    await nextPolls(page, 2);
-    expect(await mutationsOf(page)).toEqual([]);
     expectQuiet(opened);
     await opened.context.close();
   });

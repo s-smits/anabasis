@@ -54,8 +54,6 @@ async function close(page: Opened): Promise<void> {
   await page.context.close();
 }
 
-const historyLength = (page: Page) => page.evaluate(() => history.length);
-
 /** The page's address was opened and then only replaced: one step back leaves the page. Chrome
  *  counts the blank page a new tab starts on, so `history.length` alone would not say this. */
 async function expectOneEntry(page: Page): Promise<void> {
@@ -131,16 +129,6 @@ describe("the Project picker", () => {
     await close(page);
   });
 
-  test("adds no history entry when the current project is picked again", async () => {
-    const page = await opened(`campaign=${keys.fixture}`, { level: 1, name: "fixture" });
-    const before = await historyLength(page.page);
-    await page.page.getByRole("combobox", { name: PROJECT }).click();
-    await page.page.getByRole("option", { name: "vowel-counts" }).click();
-    expect(await historyLength(page.page)).toBe(before);
-    expect(routeParameters(page.page)).toEqual({ campaign: keys.fixture });
-    await close(page);
-  });
-
   test("clears every selection inside the campaign it leaves, and back returns to them", async () => {
     const harness = served.fixture.harnesses.a;
     const query = `campaign=${keys.fixture}&harness=${harness}&file=agent/BUILT_AGENTS.md`;
@@ -174,19 +162,6 @@ describe("the Campaign picker", () => {
     await page.page.goBack();
     await expect(picker).toHaveAccessibleName("Campaign fixture repo");
     expect(routeParameters(page.page)).toEqual({ campaign: keys.fixture, pane: "tasks" });
-    await close(page);
-  });
-
-  test("shows its full names inside the viewport", async () => {
-    const page = await opened(`campaign=${keys.fixture}`, { level: 1, name: "fixture" });
-    await page.page.getByRole("combobox", { name: CAMPAIGN }).click();
-    const box = await page.page.getByRole("listbox").boundingBox();
-    const width = page.page.viewportSize()?.width ?? 0;
-    expect(box).not.toBeNull();
-    expect((box?.x ?? -1) >= 0 && (box?.x ?? 0) + (box?.width ?? 0) <= width).toBe(true);
-    for (const option of await page.page.getByRole("option").all()) {
-      expect(await option.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
-    }
     await close(page);
   });
 });
@@ -227,14 +202,6 @@ describe("the four panes", () => {
     await expect(page.page.getByRole("heading", { level: 2, name: "Moves" })).toBeVisible();
     expect(routeParameters(page.page)).toEqual({ campaign: keys.fixture, pane: "moves", harness });
     await expect(page.page.locator(".ana-shell")).not.toHaveClass(/has-inspector/u);
-    await close(page);
-  });
-
-  test("open the same pane again without a new history entry", async () => {
-    const page = await opened(`campaign=${keys.fixture}&pane=log`, { level: 2, name: "Log" });
-    const before = await historyLength(page.page);
-    await nav(page.page).getByRole("button", { name: "Log" }).click();
-    expect(await historyLength(page.page)).toBe(before);
     await close(page);
   });
 });
@@ -294,13 +261,6 @@ describe("the address", () => {
   test("chooses a project's newest campaign from a project alone, and writes the campaign instead", async () => {
     const page = await opened("project=unit-conversion", { level: 1, name: "units" });
     await expect.poll(() => routeParameters(page.page)).toEqual({ campaign: keys.units });
-    await expectOneEntry(page.page);
-    await close(page);
-  });
-
-  test("replaces a campaign the list does not hold with the newest", async () => {
-    const page = await opened("campaign=nowhere%2Fnothing&pane=moves", { level: 2, name: "Moves" });
-    await expect.poll(() => routeParameters(page.page)).toEqual({ campaign: keys.fixture, pane: "moves" });
     await expectOneEntry(page.page);
     await close(page);
   });

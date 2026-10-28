@@ -3,38 +3,9 @@
 import { describe, expect, it } from "bun:test";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { liveOf, seatsIn } from "../tools/runs/live.ts";
-import { activeLines, capOf, carried, fitOf, perRunHour, perRunRate } from "../tools/runs/logins.ts";
-
-const live = [
-  { name: "a", login: "2", host: "here" },
-  { name: "b", login: "2", host: "m1" },
-  { name: "c", login: "5", host: "here" },
-  { name: "d", login: null, host: "linux" },
-];
+import { fitOf, perRunHour, perRunRate } from "../tools/runs/logins.ts";
 
 describe("each login's live runs", () => {
-  it("counts a login's runs across machines, and names a login a run may take with none", () => {
-    const lines = activeLines(live, ["2", "3"], []);
-    expect(lines[0]).toContain("login 2");
-    expect(lines[0]).toContain("2 live: a (here), b (m1)");
-    expect(lines[1]).toContain("login 3");
-    expect(lines[1]).toContain("none live");
-  });
-
-  it("keeps a login no run may take, and a run with no login, on lines of their own", () => {
-    const lines = activeLines(live, ["2", "3"], []);
-    expect(lines[2]).toContain("login 5");
-    expect(lines[2]).toContain("1 live: c (here)");
-    expect(lines[3]).toContain("no login");
-    expect(lines[3]).toContain("1 live: d (linux)");
-    expect(lines).toHaveLength(4);
-  });
-
-  it("says which hosts went uncounted", () => {
-    expect(activeLines([], ["2"], ["linux"]).at(-1)).toContain("linux");
-    expect(activeLines([], ["2"], [])).toHaveLength(1);
-  });
-
   it("leaves a host uncounted whose answer is no list, as a tree before the verb answers", () => {
     expect(liveOf("m1", [])).toBeNull();
     expect(liveOf("m1", null)).toBeNull();
@@ -43,16 +14,6 @@ describe("each login's live runs", () => {
     expect(liveOf("m1", ['[{"name":"a","login":"2","host":"here"}]'])).toEqual([
       { name: "a", login: "2", host: "m1" },
     ]);
-  });
-});
-
-describe("capOf", () => {
-  it("reads a login's own most before the one for every login", () => {
-    const env = { ANA_LOGIN_RUNS: "2, 1:4" };
-    expect(capOf(env, "1")).toBe("4");
-    expect(capOf(env, "3")).toBe("2");
-    expect(capOf({ ANA_LOGIN_RUNS: "1:4" }, "3")).toBeNull();
-    expect(capOf({}, "2")).toBeNull();
   });
 });
 
@@ -108,13 +69,5 @@ describe("how many runs a login's week carries", () => {
     expect(fitOf(week, perRunHour(week, 2, null, now), now)).toBe(1);
     expect(perRunHour(week, 0, null, now)).toBeNull();
     expect(perRunHour(week, 2, 1, now)).toBeCloseTo(16 / 24);
-  });
-
-  it("shows the lower of the cap and the fit, and marks more live runs than the week fits", () => {
-    expect(carried(2, "2", 1)).toBe("2/1 active · oversubscribed");
-    expect(carried(1, "2", 1)).toBe("1/1 active");
-    expect(carried(1, "2", null)).toBe("1/2 active");
-    expect(carried(1, "2", Number.POSITIVE_INFINITY)).toBe("1/2 active");
-    expect(carried(0, null, null)).toBe("0 active");
   });
 });

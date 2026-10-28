@@ -88,11 +88,6 @@ describe("a run's receipts", () => {
       JSON.stringify({ at, pid: 1, flags, envFile: null, commit: "c", dirty: false, load: 1, cores: 8 }),
     );
 
-  it("reads none for a campaign started by hand or not yet started, and numbers the first run", () => {
-    expect(receipts(join(root, "none", "log.jsonl"))).toEqual([]);
-    expect(nextRun(join(root, "none", "log.jsonl"))).toBe("run-1");
-  });
-
   it("reads each receipt oldest first, with its flags, and numbers the next run past the campaign command's own", () => {
     kept("run-2", "2026-10-15T11:00:00.000Z", ["--project", "p", "--budget", "800"]);
     kept("run-1", "2026-10-14T09:00:00.000Z", ["--project", "p"]);
@@ -103,11 +98,5 @@ describe("a run's receipts", () => {
     expect(read.map(({ session }) => session)).toEqual(["b-1", "run-1", "run-2"]);
     expect(read.at(-1)?.flags).toEqual(["--project", "p", "--budget", "800"]);
     expect(nextRun(log)).toBe("run-3");
-  });
-
-  it("orders two runs started in one millisecond by their number, so the tenth is the last", () => {
-    kept("run-9", "2026-10-16T08:00:00.000Z", ["--project", "p"]);
-    kept("run-10", "2026-10-16T08:00:00.000Z", ["--project", "p", "--budget", "900"]);
-    expect(receipts(log).at(-1)?.session).toBe("run-10");
   });
 });

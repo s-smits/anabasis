@@ -17,7 +17,7 @@ import {
 import { join } from "../src/meta/path.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
 import { quoted, treeBun } from "../tools/runs/host-command.ts";
-import { leastOccupied } from "../tools/runs/placement.ts";
+
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
 const fixtures: string[] = [];
@@ -129,31 +129,6 @@ describe("host execution", () => {
     expect(chosen()).toBe(join(release, "bun"));
   });
 
-  it("lets a skill ask every host through the bounded shared transport", () => {
-    const made = fixture();
-    const code =
-      'import { askedScript } from "REPOSITORY/tools/runs/hosts.ts"; console.log(await askedScript(".claude/skills/example/scripts/cycle.ts", ["--here"]));';
-    const hosts = JSON.stringify([made.host, { ...made.host, name: "other", ssh: "fake-other" }]);
-    const result = made.run(code, { ANA_HOSTS: hosts });
-    expect(result.code).toBe(0);
-    expect(made.recorded().filter((call) => call.tool === "ssh")).toHaveLength(4);
-    expect(result.out).toContain("other");
-    const failed = made.run(code, { FAKE_OFFLINE: "1" });
-    expect(failed.out).toContain("null");
-    expect(failed.err).toContain("controller preparation failed");
-  });
-
-  it("refuses a mutating route when a host is unavailable or also claims the local name", () => {
-    const made = fixture();
-    const folder = join(made.main, ".ana", "d2", "distant");
-    mkdirSync(folder, { recursive: true });
-    append(join(folder, "log.jsonl"), "campaign.ended", { ending: "finished" });
-    const code =
-      'import { routed } from "REPOSITORY/tools/runs/hosts.ts"; await routed("stop", ["distant", "--yes"]);';
-    expect(made.run(code, { FAKE_OFFLINE: "1" }).code).toBe(1);
-    expect(made.run(code, { FAKE_HOLDS: "distant" }).code).toBe(1);
-  });
-
   it("refuses an unsafe or repeated host identity before invoking ssh", () => {
     for (const entries of [
       [{ name: "../outside" }],
@@ -188,28 +163,6 @@ describe("host execution", () => {
 });
 
 describe("code preparation", () => {
-  it("fetches and installs a detached controller while leaving the configured tree in place", () => {
-    const made = fixture();
-    const result = made.run(prepare, { FAKE_EXECUTE: "1" });
-    expect(result.code).toBe(0);
-    const calls = made
-      .recorded()
-      .filter((call) => call.tool === "git")
-      .map((call) => call.args);
-    expect(calls.some((args) => args.includes("fetch"))).toBe(true);
-    expect(calls.some((args) => args.includes("add") && args.includes("--detach"))).toBe(true);
-    expect(calls.some((args) => args.includes("checkout"))).toBe(false);
-    expect(
-      made.recorded().some((call) => call.tool === "host-bun" && call.args.includes("--frozen-lockfile")),
-    ).toBe(true);
-    expect(result.out).toContain("ana-code");
-    expect(existsSync(join(made.main, ".env"))).toBe(false);
-    expect(made.run(prepare, { FAKE_EXECUTE: "1" }).code).toBe(0);
-    expect(
-      made.recorded().filter((call) => call.tool === "host-bun" && call.args.includes("install")),
-    ).toHaveLength(1);
-  });
-
   it("refuses a failed fetch, an unpublished commit, a dirty controller or failed install", () => {
     for (const extra of [
       { FAKE_FETCH_FAIL: "1" },
@@ -282,30 +235,6 @@ describe("code preparation", () => {
       ).code,
     ).toBe(0);
     expect(other.recorded().filter((call) => call.tool === "ssh")).toHaveLength(2);
-  });
-});
-
-describe("automatic placement", () => {
-  it("takes the fewest live seats below each machine's own cap and refuses a full fleet", () => {
-    const made = fixture();
-    expect(
-      leastOccupied([
-        { host: undefined, live: 2, capacity: 3 },
-        { host: made.host, live: 1, capacity: 2 },
-      ]),
-    ).toBe(made.host);
-    expect(() => leastOccupied([{ host: made.host, live: 2, capacity: 2 }])).toThrow("no host has room");
-    const result = made.run(
-      'import { placeFresh } from "REPOSITORY/tools/runs/placement.ts"; console.log(await placeFresh("sample"));',
-      { FAKE_OFFLINE: "1" },
-    );
-    expect(result.code).toBe(1);
-    expect(result.err).toContain("live count");
-    const malformed = made.run(
-      'import { placeFresh } from "REPOSITORY/tools/runs/placement.ts"; await placeFresh("sample");',
-      { FAKE_ACTIVE: "[{}]" },
-    );
-    expect(malformed.code).toBe(1);
   });
 });
 

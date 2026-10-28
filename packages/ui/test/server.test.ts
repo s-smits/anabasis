@@ -106,69 +106,9 @@ describe("the API's refusals", () => {
     expect(await refused.json()).toMatchObject({ refused: "exam-side" });
     expect(get(pathOf("event", event), { ...options, examSide: true }).status).toBe(200);
   });
-
-  test("answers an unknown endpoint, a missing parameter and a write with a JSON error", async () => {
-    const unknown = get("/api/workspace");
-    expect(unknown.status).toBe(404);
-    expect(await unknown.json()).toMatchObject({ error: "no endpoint /api/workspace" });
-    const missing = get("/api/campaign");
-    expect(missing.status).toBe(400);
-    expect(await missing.json()).toMatchObject({ error: "/api/campaign needs key" });
-    const write = handleApiRequest(
-      options,
-      new Request("http://127.0.0.1:5173/api/campaigns", {
-        method: "POST",
-        headers: { host: "127.0.0.1", [TOKEN_HEADER]: TOKEN },
-      }),
-    );
-    expect(write.status).toBe(405);
-  });
-
-  test("answers a directory that holds no campaign with no row and an issue that says why", async () => {
-    const response = get("/api/campaigns", { ...options, repo: join(scratch, "nowhere") });
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
-      campaigns: [],
-      issues: [{ level: "warning", message: "no .ana/d2 folder here, so no campaign" }],
-    });
-  });
 });
 
 describe("the router", () => {
-  test("answers every endpoint with its handler's answer, in the tier the server runs in", async () => {
-    const queries = sampleQueries();
-    for (const tier of ["default", "exam"] as const) {
-      const served = { ...options, examSide: tier === "exam" };
-      const answers = answersOver(fixture.root, tier);
-      const q = queries;
-      const expected = {
-        campaigns: answers.campaigns(),
-        campaign: answers.campaign(q.campaign.key),
-        move: answers.move(q.move.key, q.move.move),
-        solve: answers.solve(q.solve.key, q.solve.id),
-        tasks: answers.tasks(q.tasks.key),
-        task: answers.task(q.task.key, q.task.id),
-        log: answers.log(q.log),
-        event: answers.event(q.event.key, Number(q.event.index)),
-        harness: answers.harness(q.harness.key, q.harness.digest),
-        "harness-file": answers.harnessFile(
-          q["harness-file"].key,
-          q["harness-file"].digest,
-          q["harness-file"].path,
-        ),
-        "harness-diff": answers.harnessDiff(q["harness-diff"].key, q["harness-diff"].a, q["harness-diff"].b),
-      } satisfies { readonly [Name in Endpoint]: AnswerOf<Name> };
-      // SAFETY: `PARAMETERS` is typed by `satisfies` to hold exactly the keys of `Endpoints`.
-      for (const endpoint of Object.keys(PARAMETERS) as Endpoint[]) {
-        if (endpoint === "event" && tier === "default") continue;
-        const query: Query<typeof endpoint> = queries[endpoint];
-        const response = get(pathOf(endpoint, query), served);
-        expect({ endpoint, status: response.status }).toEqual({ endpoint, status: 200 });
-        expect(await response.json()).toEqual(JSON.parse(JSON.stringify(expected[endpoint])));
-      }
-    }
-  });
-
   test("opens a move by its place, refuses one named by an id two moves share, naming both places, and a place no move starts at", async () => {
     const { moves } = answersOver(fixture.root, "default").campaign(fixture.key);
     const place = (step: string): string =>

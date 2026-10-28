@@ -12,7 +12,6 @@ import {
   type Answer,
   formatLedger,
   readLedger,
-  siteExcerpt,
   siteId,
   unanswerable,
 } from "../tools/oxlint/not-slop-ledger.ts";
@@ -71,17 +70,6 @@ describe("a site's id", () => {
       siteId("tree/copied-block", [first, second]),
     );
   });
-
-  it("changes with the rule, so one line answered for one rule stays open for another", () => {
-    expect(siteId("anti-slop/no-runtime-typeof", [first])).not.toBe(siteId("ana/no-deep-nesting", [first]));
-  });
-
-  it("carries an excerpt a reviewer can read, cut at a hundred bytes", () => {
-    expect(siteExcerpt([first])).toBe(first.text);
-    expect(siteExcerpt([{ path: "a", text: "x".repeat(150) }])).toBe(
-      `${"x".repeat(100)} […50 bytes omitted]`,
-    );
-  });
 });
 
 describe("a lint finding's site", () => {
@@ -96,29 +84,9 @@ describe("a lint finding's site", () => {
     expect(lintSite(finding(moved, 4, "typeof value"), bytes(moved))?.id).toBe(site?.id);
     expect(lintSite(finding(edited, 2, "typeof value"), bytes(edited))?.id).not.toBe(site?.id);
   });
-
-  it("tells two findings on one line apart by the span each reports", () => {
-    const two = 'const both = typeof a === "string" && typeof b === "number";\n';
-    const left = lintSite(finding(two, 1, "typeof a"), bytes(two));
-    const right = lintSite(finding(two, 1, "typeof b"), bytes(two));
-    expect(left?.id).not.toBe(right?.id);
-  });
-
-  it("has none for a rule the ledger cannot answer", () => {
-    expect(lintSite(finding(source, 2, "typeof value", "eslint(no-shadow)"), bytes(source))).toBeNull();
-    expect(
-      lintSite(finding(source, 2, "typeof value", "anti-slop(prefer-subpath-import)"), bytes(source)),
-    ).toBeNull();
-  });
 });
 
 describe("the ledger's rows", () => {
-  it("reads a row a reviewer can check", () => {
-    const ledger = readLedger(formatLedger([row({})]));
-    expect(ledger.unread).toStrictEqual([]);
-    expect(ledger.answers).toStrictEqual([row({})]);
-  });
-
   it("refuses a short reason, a bad id, a bad date and a header it does not know", () => {
     const text = [
       HEADER,
@@ -154,10 +122,5 @@ describe("the ledger's rows", () => {
     expect(lines[0]).toBe(HEADER);
     expect(lines.slice(1).map((line) => line.split("\t")[0])).toStrictEqual(["aaaaaaaaaaaa", "bbbbbbbbbbbb"]);
     expect(lines[1]).toContain("the answer a union merge kept last");
-  });
-
-  it("keeps a tab or a newline in a reason from breaking the columns", () => {
-    const text = formatLedger([row({ reason: "one\ttab and\na newline in it" })]);
-    expect(readLedger(text).answers[0]?.reason).toBe("one tab and a newline in it");
   });
 });

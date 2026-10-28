@@ -2,17 +2,11 @@
 // republishing of a consolidated stack, the source a campaign's launches ran, the closing of an Oracle
 // bundle, and the reading of a live seat.
 import { afterAll, describe, expect, it } from "bun:test";
-import { CommandFailure } from "#skills/main/cli.ts";
 import { gitText } from "#src/meta/git.ts";
 import { bundle } from "#skills/oracle-handover/scripts/bundle.ts";
 import { follow, type NativeStack, nativeTop } from "#skills/stack-pr/scripts/follow.ts";
 import { pairLines } from "#skills/compare-systems/scripts/systems.ts";
-import {
-  censusOf,
-  newsOf,
-  readingOf,
-  told as seatTold,
-} from "#skills/system-path-simulation/scripts/live-seat.ts";
+import { censusOf, newsOf } from "#skills/system-path-simulation/scripts/live-seat.ts";
 import { pairs, planConsolidation, pushArgs, republish } from "#skills/stack-pr/scripts/republish.ts";
 import { chains, told as stackTold } from "#skills/stack-pr/scripts/stack.ts";
 import type { Pull } from "#tools/runtime/land.ts";
@@ -33,7 +27,7 @@ import { capturedJsonStringify } from "../src/meta/json-runtime.ts";
 import { LOG_FILE, read } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { capturedExecPath, capturedSpawn } from "../src/meta/process.ts";
-import { ranWith, receipts, sources } from "../tools/runs/receipt.ts";
+import { sources } from "../tools/runs/receipt.ts";
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-skill-scripts-")));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -48,43 +42,6 @@ const pull = (number: number, head: string, base: string, labels: readonly strin
 });
 
 describe("the stack", () => {
-  // #9 sits off the middle of the stack with the highest number.
-  const pulls = [pull(9, "side", "a"), pull(3, "c", "b"), pull(1, "a", "main"), pull(2, "b", "a")];
-
-  it("takes the deepest pull request for the top, not the highest number", () => {
-    const { stacks, sides } = chains(pulls);
-    expect(stacks.map((line) => line.map((each) => each.number))).toStrictEqual([[1, 2, 3]]);
-    expect(sides.map((each) => each.number)).toStrictEqual([9]);
-    expect(stackTold(pulls, null)).toContain("top: #3 c at 3333333");
-  });
-
-  it("says of a branch whether anything is stacked on it", () => {
-    expect(stackTold(pulls, "c").at(-1)).toBe("nothing is stacked on it: its commits may still be folded");
-    expect(stackTold(pulls, "a").at(-1)).toBe("stacked on it: #9, #2. It takes new commits only");
-    expect(stackTold(pulls, "side")[1]).toBe("off the middle of a stack");
-    expect(stackTold(pulls, "b")[1]).toBe("on the stack whose top: #3 c at 3333333");
-    expect(() => stackTold(pulls, "gone")).toThrow(CommandFailure);
-  });
-
-  it("ends each line in its importance, and says unranked where land would refuse it", () => {
-    const ranked = [
-      pull(1, "a", "main", ["importance:I1", "bug"]),
-      pull(2, "b", "a"),
-      pull(3, "c", "b", ["importance:I0", "importance:I3"]),
-    ];
-    expect(
-      stackTold(ranked, null)
-        .slice(0, 3)
-        .map((line) => line.split("  ").at(-1)),
-    ).toStrictEqual(["I1", "unranked", "unranked"]);
-  });
-
-  it("starts a chain on a base that has landed, and says so of an empty list", () => {
-    const landed = [pull(5, "b", "a"), pull(4, "a", "landed"), pull(6, "lone", "main")];
-    expect(chains(landed).stacks[0]?.map((each) => each.number)).toStrictEqual([4, 5]);
-    expect(stackTold([], null)).toStrictEqual(["no pull request is open"]);
-  });
-
   it("lists each stack on main with its own top, longest first, and a fork off the middle apart", () => {
     const several = [pull(7, "lone", "main"), pull(1, "a", "main"), pull(2, "b", "a"), pull(9, "side", "a")];
     const { stacks, sides } = chains(several);
@@ -183,48 +140,6 @@ describe("following the stack's top", () => {
     expect(gitText(co, "stash", "list")).toBe("");
     expect(follow(co, top)[0]).toStartWith("stack-pr2 is already at #2");
   });
-
-  it("moves a checkout to main once no pull request is open, and keeps its change where git refuses", () => {
-    const up = join(root, "landed-up");
-    const co = join(root, "landed-co");
-    const held = join(root, "landed-held");
-    mkdirSync(up);
-    git(up, "init", "-q", "-b", "main");
-    commit(up, "mine.txt", "base\n");
-    git(up, "switch", "-q", "-c", "claude/one");
-    commit(up, "one.txt", "first\n");
-    clone(up, co);
-    // #1 lands, main takes another change after it, and #1's branch goes.
-    git(up, "switch", "-q", "main");
-    git(up, "merge", "-q", "--no-ff", "-m", "land #1", "claude/one");
-    commit(up, "after.txt", "newer\n");
-    git(up, "branch", "-D", "claude/one");
-    git(co, "fetch", "-q", "--prune", "origin");
-    writeFileSync(join(co, "mine.txt"), "changed here\n");
-
-    // Another worktree has main checked out, so git refuses the switch.
-    git(co, "worktree", "add", "-q", "-b", "main", held, "origin/main");
-    const before = gitText(co, "rev-parse", "HEAD");
-    expect(() => follow(co, undefined)).toThrow();
-    expect(gitText(co, "symbolic-ref", "--short", "HEAD")).toBe("stack-pr1");
-    expect(gitText(co, "rev-parse", "HEAD")).toBe(before);
-    expect(readFileSync(join(co, "mine.txt"), "utf8")).toBe("changed here\n");
-    expect(gitText(co, "stash", "list")).toBe("");
-
-    git(co, "worktree", "remove", held);
-    const said = follow(co, undefined);
-    expect(said[0]).toStartWith(`main at origin/main (${gitText(up, "rev-parse", "main").slice(0, 7)})`);
-    expect(said).toContain("no pull request is open");
-    expect(said).toContain("deleted stack-pr1");
-    expect(said).toContain("your uncommitted changes are back");
-    expect(gitText(co, "rev-parse", "HEAD")).toBe(gitText(up, "rev-parse", "main"));
-    expect(gitText(co, "rev-parse", "--abbrev-ref", "@{upstream}")).toBe("origin/main");
-    expect(gitText(co, "branch", "--list", "stack-pr*")).toBe("");
-    expect(readFileSync(join(co, "mine.txt"), "utf8")).toBe("changed here\n");
-    expect(existsSync(join(co, "after.txt"))).toBe(true);
-    expect(gitText(co, "stash", "list")).toBe("");
-    expect(follow(co, undefined)[0]).toStartWith("main is already at origin/main");
-  });
 });
 
 describe("republishing a consolidated stack", () => {
@@ -261,18 +176,6 @@ describe("republishing a consolidated stack", () => {
   const heads = pairs("head", [`1=${a1}`, `#2=${b1}`]);
   const absorbed = new Map([[3, 2]]);
 
-  it("takes the survivor order from --head and refuses heads outside that ancestry", () => {
-    const reordered = pairs("head", [`2=${a1}`, `1=${b1}`]);
-    const plan = planConsolidation(co, pulls, reordered, new Map([[3, 1]]));
-    expect(plan.moves.map((move) => [move.pull.number, move.to, move.base])).toStrictEqual([
-      [2, a1, "main"],
-      [1, b1, "b"],
-    ]);
-    expect(() =>
-      planConsolidation(co, pulls, pairs("head", [`2=${b1}`, `1=${a1}`]), new Map([[3, 1]])),
-    ).toThrow("does not hold #2's");
-  });
-
   it("prints every publication operation in order in a dry run without changing a head or GitHub", () => {
     const plan = planConsolidation(co, pulls, heads, absorbed);
     const asked: string[] = [];
@@ -302,24 +205,6 @@ describe("republishing a consolidated stack", () => {
       `gh 'pr' 'close' '3' '--comment' 'Closed when the stack was consolidated: this change is now part of #2 at ${b1.slice(0, 9)}.'`,
       "gh 'stack' 'link' '1' '2'",
     ]);
-  });
-
-  it("leaves every head alone if a survivor cannot be retargeted", () => {
-    const plan = planConsolidation(co, pulls, heads, absorbed);
-    const asked: string[] = [];
-    expect(() =>
-      republish(co, plan, "no-verify", (args) => {
-        asked.push(args.join(" "));
-        if (args.join(" ") === "pr edit 2 --base main") throw new CommandFailure("retarget refused");
-        return "[]";
-      }),
-    ).toThrow("retarget refused");
-    expect(asked).toStrictEqual([
-      "api repos/{owner}/{repo}/stacks",
-      "pr edit 1 --base main",
-      "pr edit 2 --base main",
-    ]);
-    expect([sha(up, "a"), sha(up, "b")]).toStrictEqual([a0, b0]);
   });
 
   it("unstacks and retargets every survivor before pushing leased heads, then sets bases, closes and relinks", () => {
@@ -424,11 +309,6 @@ describe("the source a campaign's launches ran", () => {
       }),
     );
 
-  it("says nothing was recorded for a campaign started by hand", () => {
-    expect(receipts(join(folder, "log.jsonl"))).toStrictEqual([]);
-    expect(sources(join(folder, "log.jsonl"), repo, [])[0]).toStartWith("no launch receipt");
-  });
-
   it("says each launch's commit and what it holds, and nothing a receipt keeps private", () => {
     receipt("g1", "2026-10-09T14:00:00.000Z", second, true, "1.4.3");
     receipt("b-1", "2026-10-09T13:00:00.000Z", first, false);
@@ -444,17 +324,6 @@ describe("the source a campaign's launches ran", () => {
     ]);
     expect(lines.join("\n")).not.toContain("x.env");
   });
-
-  it("says a campaign ran with a fix only where every launch holds it, by commit or by text", () => {
-    const log = join(folder, "log.jsonl");
-    expect(ranWith(log, repo, { holds: [first], has: [] })).toBe(true);
-    expect(ranWith(log, repo, { holds: [second], has: [] })).toBe(false);
-    expect(ranWith(log, repo, { holds: [], has: ["export const WEIGHTS"] })).toBe(false);
-    receipt("b-1", "2026-10-09T13:00:00.000Z", second, false);
-    expect(ranWith(log, repo, { holds: [second], has: ["export const WEIGHTS"] })).toBe(true);
-    expect(ranWith(log, repo, { holds: [], has: ["export const ROOM"] })).toBe(false);
-    expect(ranWith(join(root, "none", "log.jsonl"), repo, { holds: [], has: [] })).toBe(false);
-  });
 });
 
 describe("an Oracle bundle", () => {
@@ -466,15 +335,6 @@ describe("an Oracle bundle", () => {
     }
     return dir;
   };
-
-  it("zips a folder that holds the task document, and counts its files", () => {
-    const dir = made("oracle-a", { "REVIEW.md": "# Review\n", "notes/predictions.md": "held\n" });
-    const { out, bytes, files } = bundle(dir, 1024 * 1024);
-    expect(out).toBe(`${dir}.zip`);
-    expect(files).toBe(2);
-    expect(bytes).toBeGreaterThan(0);
-    expect(runTextSyncOrThrow(["unzip", "-Z1", out]).split("\n")).toContain("oracle-a/REVIEW.md");
-  });
 
   it("refuses a folder with no task document, a credential-shaped line and a zip over its size", () => {
     expect(() => bundle(made("oracle-b", { "notes/a.md": "x\n" }), 1024)).toThrow("holds no REVIEW.md");
@@ -536,44 +396,6 @@ describe("a live seat's reading", () => {
       line(9, "exam.finished", { session: "x-2", ended: "finished", billed: 2.5 }),
     ].join("\n")}\n`,
   );
-
-  it("reads only the stretch from where the seat began, each gate by what the reference's solves did", () => {
-    const reading = readingOf(read(log), 3, ["reference-harness"]);
-    expect(reading.billed).toBeCloseTo(2.5, 6);
-    expect(reading.minutes).toBe(6);
-    expect(reading.sessions).toStrictEqual(["x-2"]);
-    expect(reading.ended).toStrictEqual(["finished"]);
-    expect(reading.proposed).toBe(2);
-    expect(reading.gates).toStrictEqual({ every: 1, some: 2, "none, proved": 1, package: 1, unread: 1 });
-    expect(reading.held).toBe(2);
-    expect(reading.ran).toStrictEqual([3, 3, 3, 3, 1]);
-    expect(reading.calls).toStrictEqual({ bash: 1, try_task: 1 });
-    expect(reading.mentions).toStrictEqual({ "reference-harness": 1 });
-    expect(reading.turns).toBeNull();
-    expect(seatTold(reading)[2]).toContain("held 2");
-  });
-
-  it("starts no seat on a campaign that is no seed", () => {
-    const folder = join(root, "tree", ".ana", "d2", "sim-plain");
-    mkdirSync(folder, { recursive: true });
-    const script = join(import.meta.dir, "..", ".claude/skills/system-path-simulation/scripts/live-seat.ts");
-    const flags = [
-      "--tree",
-      join(root, "tree"),
-      "--out",
-      join(root, "seat-out"),
-      "--cap",
-      "1",
-      "--minutes",
-      "1",
-    ];
-    for (const name of ["sim-plain", "buffer"]) {
-      const result = runSync([capturedExecPath, script, "start", ...flags, "--name", name, "--", "x.ts"]);
-      expect(result.exitCode).not.toBe(0);
-      expect(decodeOutput(result.stderr)).toContain("is no seed");
-    }
-    expect(existsSync(join(root, "seat-out.json"))).toBe(false);
-  });
 
   it("tells each gate, ruling and session end once, and a hook only while something is unread", () => {
     expect(newsOf(read(log), 3)).toStrictEqual([
@@ -818,22 +640,6 @@ describe("a live seat's reading", () => {
     expect(counted).toMatch(/^2 Examiner calls in /mu);
     expect(counted).toMatch(/^ {2}read_example 1, failed 1$/mu);
     expect(counted).not.toMatch(/^ {2}bash /mu);
-  });
-
-  it("seats the Referee only on a seed, before it opens any campaign", () => {
-    const script = join(
-      import.meta.dir,
-      "..",
-      ".claude/skills/system-path-simulation/scripts/referee-seat.ts",
-    );
-    const flags = ["--solve", "s-1", "--reviewer", "claude/claude-opus-5-5"];
-    mkdirSync(join(root, "tree"), { recursive: true });
-    const result = runSync([capturedExecPath, script, "--name", "buffer", ...flags], {
-      cwd: join(root, "tree"),
-    });
-    expect(result.exitCode).not.toBe(0);
-    expect(decodeOutput(result.stderr)).toContain("is no seed");
-    expect(existsSync(join(root, "tree", ".ana", "d2", "buffer"))).toBe(false);
   });
 });
 

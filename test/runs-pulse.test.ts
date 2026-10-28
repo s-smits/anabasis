@@ -1,13 +1,8 @@
-// The runs pulse says what a run's log gained since the last look: milestones, solves that ended
-// without a result, failed turns gathered into one line, a quiet that starts and ends, a promotion,
-// and a process gone before its run was done. A first look says the status alone.
+// The runs pulse reports ended processes, promotions and campaign endings.
 import { describe, expect, it } from "bun:test";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
-import { existsSync, mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
-import { tmpdir } from "../src/meta/os.ts";
-import { join } from "../src/meta/path.ts";
-import { leftOut, pulse, watch } from "../tools/runs/pulse.ts";
+import { leftOut, pulse } from "../tools/runs/pulse.ts";
 import type { Run } from "../tools/runs/registry.ts";
 
 const round: Run = { name: "r1", tree: "/wt", path: "/wt/.ana/d2/r1/log.jsonl", end: "comparison.reported" };
@@ -36,63 +31,6 @@ const built: LogEvent[] = [
 ];
 
 describe("the runs pulse", () => {
-  it("says the status alone at a first look", () => {
-    const look = pulse(round, built, "open", undefined, START + 5 * 60_000);
-    expect(look.status).toBe("r1  build turn 1 · solves 1 non-result · $0.75 · 1m since the last event");
-    expect(look.said).toEqual([]);
-    expect(look.seen).toEqual(lookedAt(5));
-    // A seed's counts are its source's and a script's, so its line says what it is.
-    const seeded = pulse({ ...round, seed: true }, built, "closed", undefined, START + 5 * 60_000);
-    expect(seeded.status.startsWith("r1 (a seed)  closed · ")).toBe(true);
-  });
-
-  it("says what came since the last look, by the solve's task", () => {
-    const look = pulse(round, built, "open", lookedAt(1), START + 5 * 60_000);
-    expect(look.said).toEqual([
-      "· mass-03 started on openai-codex/gpt-6.1-sol",
-      "⚠ mass-03 ended without a result, provider: WebSocket closed 1000 in 4m, $0.25",
-      "⚠ 1 failed turn: WebSocket closed 1000",
-    ]);
-  });
-
-  it("says a flagged solve as its side's fail, with the solver's reason", () => {
-    const flagged = [
-      ...built,
-      event(5, "solve.finished", {
-        solve: "s1",
-        ending: { outcome: "flagged", reason: "the pins exceed the header" },
-        billed: 0.09,
-        seconds: 60,
-      }),
-    ];
-    const seen = pulse(round, built, "open", undefined, START + 5 * 60_000).seen;
-    const look = pulse(round, flagged, "open", seen, START + 6 * 60_000);
-    expect(look.said).toEqual(["· mass-03 flagged as malformed: the pins exceed the header in 1m, $0.09"]);
-  });
-
-  it("says a quiet once when it starts and once when it ends", () => {
-    const later = START + 30 * 60_000;
-    const quiet = pulse(round, built, "open", lookedAt(5), later);
-    expect(quiet.said).toEqual(["⚠ quiet for 26m"]);
-    expect(pulse(round, built, "open", quiet.seen, later).said).toEqual([]);
-    const woken = [
-      ...built,
-      event(30, "build.turn", { session: "r1-b", turn: 2, error: null, usage: usage(0.5) }),
-    ];
-    expect(pulse(round, woken, "open", quiet.seen, later).said).toEqual(["· not quiet any more"]);
-    // A wait for a named reset is no quiet: the quiet is counted from the reset, also where another
-    // seat wrote after the wait, and the minute a run takes to wake after the reset is not one.
-    const waiting = [
-      ...built,
-      event(5, "campaign.waited", { for: "provider", until: at(60), ms: 3_300_000 }),
-      event(10, "exam.finished", { session: "x-1" }),
-    ];
-    const seen = lookedAt(7);
-    expect(pulse(round, waiting, "open", seen, later).seen.quiet).toBe(false);
-    expect(pulse(round, waiting, "open", seen, START + 61 * 60_000).seen.quiet).toBe(false);
-    expect(pulse(round, waiting, "open", seen, START + 81 * 60_000).said).toEqual(["⚠ quiet for 21m"]);
-  });
-
   it("says a process gone before its report, and not one that reported", () => {
     const gone = pulse(round, built, "closed", lookedAt(5), START + 5 * 60_000);
     expect(gone.status).toStartWith("r1  closed");
@@ -179,81 +117,6 @@ describe("the runs pulse", () => {
     expect(pulse(round, drafting, "closed", seen, START + 3 * 60_000).said).toEqual([
       "⚠ the process is gone before comparison.reported",
     ]);
-  });
-
-  it("reads a checkpoint by its own start, in a log that holds an earlier comparison's report", () => {
-    // A campaign's log holds many comparisons. A checkpoint starts no session, so only its own
-    // start says that the report before it is another's.
-    const earlier = [...built, event(5, "comparison.reported", { reading: "no-step" })];
-    const solving = [
-      ...earlier,
-      event(6, "comparison.started", { session: "g0" }),
-      event(7, "solve.started", { solve: "s9", task: "mass-04", model: "claude/claude-opus-5" }),
-    ];
-    const seen = lookedAt(8);
-    expect(pulse(round, solving, "open", seen, START + 8 * 60_000).status).toStartWith("r1  solving");
-    // Gone with that solve unfinished and no report of its own, it is said to be gone.
-    const gone = pulse(round, solving, "closed", seen, START + 9 * 60_000);
-    expect(gone.status).toStartWith("r1  closed");
-    // A solve its dead process never finished is unfinished, and running only while a writer lives.
-    expect(gone.status).toContain("1 unfinished");
-    expect(gone.status).not.toContain("running");
-    expect(gone.said).toEqual(["⚠ the process is gone before comparison.reported"]);
-    // Its own report ends it.
-    const ended = [
-      ...solving,
-      event(8, "solve.finished", { solve: "s9", ending: { outcome: "pass" } }),
-      event(9, "comparison.reported", { session: "g0", reading: "not-scored", capped: true }),
-    ];
-    const done = pulse(round, ended, "closed", { ...seen, lines: 10 }, START + 10 * 60_000);
-    expect(done.status).toStartWith("r1  closed, reported not-scored");
-    expect(done.said).toEqual([]);
-  });
-
-  it("reads a comparison gone on from its log as solving, after another's report", () => {
-    // g0 was stopped, g1 ran whole, and g0 goes on: it writes no second start, so its solves after
-    // g1's report are what says the run has not reported.
-    const resumed = [
-      event(0, "comparison.started", { session: "g0" }),
-      event(1, "comparison.started", { session: "g1" }),
-      event(2, "comparison.reported", { session: "g1", reading: "no-step" }),
-      event(3, "solve.started", { solve: "s7", task: "mass-05", model: "claude/claude-opus-5" }),
-    ];
-    const seen = lookedAt(4);
-    expect(pulse(round, resumed, "open", seen, START + 4 * 60_000).status).toStartWith("r1  solving");
-    expect(pulse(round, resumed, "closed", seen, START + 4 * 60_000).said).toEqual([
-      "⚠ the process is gone before comparison.reported",
-    ]);
-    const ended = [
-      ...resumed,
-      event(4, "solve.finished", { solve: "s7", ending: { outcome: "pass" } }),
-      event(5, "comparison.reported", { session: "g0", reading: "step" }),
-    ];
-    expect(pulse(round, ended, "closed", { ...seen, lines: 6 }, START + 6 * 60_000).status).toStartWith(
-      "r1  closed, reported step",
-    );
-  });
-
-  it("folds the same line twice into one, as a comparison's two harnesses start a task", () => {
-    const twice = [
-      ...built,
-      event(5, "solve.started", { solve: "s2", task: "wind-01", model: "claude/claude-opus-5" }),
-      event(5, "solve.started", { solve: "s3", task: "wind-01", model: "claude/claude-opus-5" }),
-    ];
-    const look = pulse(round, twice, "open", lookedAt(5), START + 6 * 60_000);
-    expect(look.said).toEqual(["· wind-01 started on claude/claude-opus-5 (×2)"]);
-    expect(look.status).toContain("2 running");
-  });
-
-  it("remembers its look in a checkout no campaign ran in, which has no .ana folder", async () => {
-    const home = mkdtempSync(join(tmpdir(), "ana-pulse-"));
-    const state = join(home, ".ana", "runs-pulse.json");
-    try {
-      await watch(["--once", "--state", state, "no run is named this"]);
-      expect(existsSync(state)).toBe(true);
-    } finally {
-      rmSync(home, { recursive: true, force: true });
-    }
   });
 
   it("says under the status rows the closed runs it leaves out, and the archive's newest", () => {

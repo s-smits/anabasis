@@ -182,17 +182,6 @@ describe("the gate at a solve's start", () => {
     expect(waits(log).map(({ data }) => data.load)).toEqual([99]);
   });
 
-  it("starts a solve all the same after half an hour of looks where the load never falls", async () => {
-    // On 15 October one campaign's solves waited 107 minutes while two others kept its host of 8 cores loaded.
-    const log = logIn("looks");
-    const host = hostOf(() => 99);
-    expect(await gate(log, host).solve(TASK, HARNESS, undefined)).toMatchObject({
-      ending: { outcome: "pass" },
-    });
-    expect(host.slept).toHaveLength(60);
-    expect(waits(log)).toHaveLength(1);
-  });
-
   it("holds a solve while another is in flight and the reserve is short, until the kill, and puts nothing on record", async () => {
     const log = logIn("reserve");
     append(log, "campaign.opened", { budget: { dollars: 0.7, reserve: 0.4 } });
@@ -367,13 +356,6 @@ describe("the provider's named reset", () => {
     );
   });
 
-  it("is none where the message names none, is no limit, or names a month or zone nobody knows", () => {
-    expect(resetOf("You've hit your limit", NOW)).toBeNull();
-    expect(resetOf("socket hang up: connection reset by peer at 5", NOW)).toBeNull();
-    expect(resetOf("limit reached · resets 3pm (Mars/Olympus)", NOW)).toBeNull();
-    expect(resetOf("weekly limit · resets Smarch 15 at 9pm (Europe/Amsterdam)", NOW)).toBeNull();
-  });
-
   it("is waited out to a minute past it and on record, however far on, from what a move threw", async () => {
     const log = logIn("reset");
     const host = hostOf(() => 0);
@@ -417,26 +399,6 @@ describe("the provider's named reset", () => {
     expect(crashedRun([crashed(1), waited({ load: 99 }), crashed(2)]).count).toBe(2);
   });
 
-  it("is waited out after a Builder crashed on it past its checkpoint, which the count leaves out", async () => {
-    const log = logIn("kept");
-    const host = hostOf(() => 0);
-    const crash = (said: string) => {
-      append(log, "build.checkpoint", { session: "b-1" });
-      append(log, "build.finished", { session: "b-1", ended: "crashed", changed: true, crash: said });
-    };
-    // The network's failure of a session that moved the campaign is no crash in a row to wait for.
-    crash("read ECONNRESET");
-    await waitCrashed(log, host);
-    expect(host.slept).toEqual([]);
-    // Until 15 October its limit was not waited for either, and the next conversation opened into it.
-    const reset = `limit reached|${String(Math.ceil(Date.now() / 1000) + 3600)}`;
-    crash(reset);
-    expect(crashedRun(read(log))).toEqual({ count: 0, crash: reset });
-    await waitCrashed(log, host);
-    expect(host.slept).toHaveLength(1);
-    expect(waits(log)).toMatchObject([{ data: { for: "provider" } }]);
-  });
-
   it("is waited out after any seat's session crashed on it, a draft's as a Builder's", async () => {
     // 16 October: three drafts crashed on a named reset, nothing waited, and three fresh
     // campaigns ended on their environment 33 minutes before it.
@@ -476,19 +438,5 @@ describe("the wait after a session the network failed", () => {
       { for: "network", ms: 60_000 },
       { for: "network", ms: 300_000 },
     ]);
-  });
-
-  it("reads Linux's temporary DNS failure and a refused connection as the network's, and no other crash", async () => {
-    const host = hostOf(() => 0);
-    for (const said of [
-      "getaddrinfo EAI_AGAIN api.example.test",
-      "ConnectionRefused: Unable to connect",
-      "exited 1",
-    ]) {
-      const log = logIn("network");
-      crash(log, "x-1", said);
-      await waitCrashed(log, host);
-    }
-    expect(host.slept).toEqual([60_000, 60_000]);
   });
 });

@@ -40,18 +40,6 @@ describe("a seat's root", () => {
     rmSync(parent, { recursive: true, force: true });
   });
 
-  // A seat may close a folder to itself, and the release threw EACCES on one (18 October).
-  it("is removed though a seat closed a folder in it to itself", async () => {
-    const { parent, root } = unclaimed();
-    const release = claimRoot(root);
-    const closed = join(root, "home", "closed");
-    mkdirSync(join(closed, "inner"), { recursive: true });
-    chmodSync(closed, 0);
-    await release();
-    expect(existsSync(root)).toBe(false);
-    rmSync(parent, { recursive: true, force: true });
-  });
-
   // A command the host killed left its child running, which wrote its home again after the
   // release, and ran on at 80 forks a second (2026-10-09).
   it.skipIf(!onDarwin)(

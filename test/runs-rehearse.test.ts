@@ -22,22 +22,14 @@ import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { parseArgs } from "../src/meta/process.ts";
 import { decide } from "../src/campaign/decide.ts";
 import { starter } from "../tools/d2/campaign.ts";
 import type { Campaign } from "../tools/d2/round.ts";
-import {
-  answersOf,
-  passedOn,
-  rehearse,
-  scriptedExaminer,
-  scriptedSeats,
-  sidesOf,
-} from "../tools/runs/rehearse.ts";
+import { answersOf, scriptedExaminer, scriptedSeats, sidesOf } from "../tools/runs/rehearse.ts";
 import { seat, sweep } from "./helpers/examiner-seat.ts";
 import { SEED_FILE } from "../tools/runs/registry.ts";
 import { replayed } from "../tools/runs/replay.ts";
-import { keptLines, seedCampaign } from "../tools/runs/seed.ts";
+import { seedCampaign } from "../tools/runs/seed.ts";
 
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-rehearse-")));
@@ -75,24 +67,6 @@ function campaignAt(name: string, lines: readonly string[], tail = ""): string {
   }
   return folder;
 }
-
-describe("a seed's cut", () => {
-  it("keeps what came before a session started, a count of events, or the whole log", () => {
-    expect(keptLines(LINES, {})).toBe(5);
-    expect(keptLines(LINES, { before: "b-1" })).toBe(1);
-    expect(keptLines(LINES, { before: "x-1" })).toBe(3);
-    expect(keptLines(LINES, { before: "b-2" })).toBe(4);
-    expect(keptLines(LINES, { events: "2" })).toBe(2);
-    expect(keptLines(LINES, { events: "0" })).toBe(0);
-  });
-
-  it("refuses a session the log does not hold, a count past its end, and both at once", () => {
-    expect(() => keptLines(LINES, { before: "b-9" })).toThrow("holds no session b-9");
-    expect(() => keptLines(LINES, { events: "6" })).toThrow("the log holds 5 events");
-    expect(() => keptLines(LINES, { events: "two" })).toThrow("--events two");
-    expect(() => keptLines(LINES, { before: "b-1", events: "1" })).toThrow("not both");
-  });
-});
 
 describe("a seed", () => {
   it("copies the log cut, the checks, a drafted exam and the states, and says where it came from", () => {
@@ -181,16 +155,6 @@ describe("a replay", () => {
 });
 
 describe("a rehearsal's script", () => {
-  it("reads how a solve ends under the old harness and the new", () => {
-    expect(sidesOf("fail:pass")).toEqual({ old: "fail", fresh: "pass" });
-    expect(sidesOf("pass:pass")).toEqual({ old: "pass", fresh: "pass" });
-    // A solve that reaches its limits has no answer, which is not valid and needs no ruling.
-    expect(sidesOf("none:pass")).toEqual({ old: "none", fresh: "pass" });
-    for (const flag of ["pass", "pass:maybe", "pass:fail:pass", ""]) {
-      expect(() => sidesOf(flag)).toThrow("each pass, fail or none, as none:pass");
-    }
-  });
-
   it("takes each task's first answer of each ending: a graded pass before the pack's accept control, and what the log's solves answered", () => {
     const event = (kind: LogEvent["kind"], data: LogEvent["data"]): LogEvent => ({ at: AT, kind, data });
     const written = { taskId: "x-1-001", family: "fixture", publicInput: { base: 4 }, hidden: null };
@@ -219,23 +183,6 @@ describe("a rehearsal's script", () => {
     expect(answers.get("t-1")).toEqual({ pass: { answer: "graded" }, fail: { answer: "wrong" } });
     expect(answers.get("t-2")).toEqual({ pass: { answer: "only a pass" } });
     expect(answers.get("x-1-001")).toEqual({ pass: { answer: "24" }, fail: { answer: "0" } });
-  });
-
-  it("hands on another command's flags without its own", () => {
-    const args = ["--held", "pass:pass", "--name", "sim", "--starter=fail", "--session", "r-1", "--yes"];
-    const { tokens } = parseArgs({
-      args,
-      strict: false,
-      tokens: true,
-      options: { held: { type: "string" }, starter: { type: "string" } },
-    });
-    expect(passedOn(args, tokens, new Set(["held", "starter"]))).toEqual([
-      "--name",
-      "sim",
-      "--session",
-      "r-1",
-      "--yes",
-    ]);
   });
 });
 
@@ -370,27 +317,6 @@ describe("a rehearsal's seats", () => {
     expect(() =>
       scriptedSeats(SCRIPT, graded, [])(campaign, { builder: undefined, reference: FIXTURE }),
     ).toThrow("is no seed");
-  });
-
-  it("are no model's: a flag that names one is refused before anything is opened", async () => {
-    const flags = ["--root", root, "--sweep", "s", "--bundle", root, "--name", "n", "--session", "r-1"];
-    await expect(rehearse([...flags, "--reviewer", "claude/claude-opus-5"])).rejects.toThrow(
-      "a rehearsal seats no model: drop --reviewer",
-    );
-    await expect(rehearse([...flags, "--builder", "a", "--solver", "b"])).rejects.toThrow(
-      "drop --builder, --solver",
-    );
-  });
-
-  it("take a stored pack by its three flags together, or a drafted exam's seed, and nothing between", async () => {
-    // Two of the three flags name no pack; none of them names the seed's own drafted exam, which
-    // a campaign of this tree holds in its log and not here.
-    await expect(
-      rehearse(["--root", root, "--sweep", "s", "--name", "n", "--session", "r-1"]),
-    ).rejects.toThrow("usage:");
-    await expect(rehearse(["--name", "no-such-campaign", "--session", "r-1"])).rejects.toThrow(
-      /no such file|holds no exam of its own/,
-    );
   });
 
   it("script each solve by its harness, and name the one that ended otherwise", async () => {

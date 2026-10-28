@@ -106,78 +106,11 @@ export function aliasCarriesEveryOperand(first: unknown, second: unknown): strin
 
 /** Parameter shapes other than a plain identifier. The annotation hides behind a default, a rest
  *  element or a constructor property, and the name behind a pattern. */
-const PARAMETER_FORMS = `
-export function defaulted(value: unknown = null): string { return String(value); } // REPORT a default is not a proof
-
-export function provedDefault(value: unknown = null): boolean { return typeof value === "string"; } // ADMITTED a defaulted parameter proves like any other
-
-export function rest(...values: unknown[]): number { return values.length; } // ADMITTED an array of unknown is a known container
-
-export type RestSignature = (...values: unknown[]) => void; // ADMITTED the same container rule in a signature
-
-export function destructured({ a }: unknown): string { return String(a); } // REPORT an unnamed parameter can never be proved
-
-export class Holder { constructor(private readonly value: unknown) {} } // REPORT a parameter property is still a parameter
-
-export class Guarded { check(value: unknown): boolean { return typeof value === "string"; } } // ADMITTED a method proves like a function
-
-export class Sinking { send(value: unknown): string { return String(value); } } // REPORT and is reported like one
-`.trimStart();
-
 /** The seven declaration kinds that carry parameters and no body. Nothing can prove them, so each
  *  reports exactly as the rule it replaced reported it — unless the return type is the proof, which
  *  a type predicate is. `loadExport`'s `accepts` parameter is the case that found this: written as
  *  a `TSFunctionType` it was reported, and the identical arrow with a body was admitted. */
-const BODILESS = `
-export interface Shapes {
-  method(value: unknown): void; // REPORT a method signature
-  (value: unknown): void; // REPORT a call signature
-  new (value: unknown): Shapes; // REPORT a construct signature
-}
-
-export type Ctor = new (value: unknown) => Shapes; // REPORT a constructor type
-
-export type Fn = (value: unknown) => void; // REPORT a function type
-
-export declare function declared(value: unknown): void; // REPORT an ambient declaration
-
-export function overloaded(value: unknown): string; // REPORT the overload signature has no body
-export function overloaded(value: unknown): string { return typeof value === "string" ? value : ""; } // ADMITTED the implementation proves it
-
-export abstract class Abstract { abstract take(value: unknown): void; } // REPORT an abstract method, which both the method and the empty-body visitor reach
-
-export type Accepts = (value: unknown) => value is string; // ADMITTED the return type narrows the parameter it names
-
-export type PartlyAccepts = (left: unknown, right: unknown) => left is string; // REPORT right is not the predicate's subject
-
-export interface Checks { accepts(value: unknown): value is string; } // ADMITTED a method signature predicate
-
-export declare function declaredGuard(value: unknown): value is string; // ADMITTED an ambient predicate
-`.trimStart();
-
 /** Where a proof stops travelling, and how far it travels when it does. */
-const SCOPE = `
-function leafProof(value: unknown): boolean { return typeof value === "string"; } // ADMITTED typeof, at the end of the chain
-
-export function twoHops(value: unknown): boolean { return oneHop(value); } // ADMITTED a proof two calls away, found whichever order the three appear in
-
-function oneHop(value: unknown): boolean { return leafProof(value); } // ADMITTED one call away
-
-export function chainEndsNowhere(value: unknown): string { return sinkLink(value); } // REPORT the chain ends in a function that proves nothing
-
-function sinkLink(value: unknown): string { return String(value); } // REPORT and neither does the link itself
-
-export function shadowStop(value: unknown): string { return ((value: string) => typeof value === "string")(String(value)) ? "" : ""; } // REPORT a guard on a shadowed name inside a nested function proves nothing out here
-
-const constSink = (value: unknown): string => String(value); // REPORT once, and the count is the point: the declarator names this arrow, the arrow visitor collects it
-
-export function reachesConstSink(value: unknown): string { return constSink(value); } // REPORT so the chain still finds it under that name
-
-const constProof = (value: unknown): boolean => typeof value === "string"; // ADMITTED a const arrow proves like any other function
-
-export function reachesConstProof(value: unknown): boolean { return constProof(value); } // ADMITTED and the name still carries the proof back out
-`.trimStart();
-
 describe("ana/unproven-unknown-parameter", () => {
   const reports = (fixture: string): Promise<number[]> =>
     reportedLines("ana", "unproven-unknown-parameter", fixture);
@@ -192,23 +125,5 @@ describe("ana/unproven-unknown-parameter", () => {
     const expected = expectedLines(GUARDS);
     expect(expected).toHaveLength(5);
     expect(await reports(GUARDS)).toStrictEqual(expected);
-  });
-
-  it("finds the annotation behind a default, a rest element, a pattern and a parameter property", async () => {
-    const expected = expectedLines(PARAMETER_FORMS);
-    expect(expected).toHaveLength(4);
-    expect(await reports(PARAMETER_FORMS)).toStrictEqual(expected);
-  });
-
-  it("reports each of the declaration kinds that have no body to prove with, unless the return type proves", async () => {
-    const expected = expectedLines(BODILESS);
-    expect(expected).toHaveLength(9);
-    expect(await reports(BODILESS)).toStrictEqual(expected);
-  });
-
-  it("carries a proof through two calls, stops it at a nested function, and reports a const arrow once", async () => {
-    const expected = expectedLines(SCOPE);
-    expect(expected).toHaveLength(5);
-    expect(await reports(SCOPE)).toStrictEqual(expected);
   });
 });

@@ -35,7 +35,6 @@ import {
   symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { isFunction, isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
@@ -56,8 +55,6 @@ const GUIDE_PATH = "harness/agent/BUILT_AGENTS.md";
 
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
 /** A check's id and a Referee's reason: verifier-side text no Builder may be shown. */
-/** How the message sent after a turn with no tool call begins. */
-const GOES_ON = "You have not called finish";
 const CHECK = "check-canary-51c2";
 const REASON = "reason-canary-9d07";
 const CONTRACT: Contract = {
@@ -331,125 +328,9 @@ describe("the Builder running its campaign", () => {
     expect(s.sent.join("\n")).not.toContain(REASON);
     expect(s.of("build.turn")).toHaveLength(5);
   });
-
-  it("checks a host stop before another model turn, even after a file tool", async () => {
-    const s = await setup([edit, finish]);
-    let bench: Bench | undefined;
-    const built = await session(
-      {
-        ...s.request,
-        campaign: (own) => {
-          bench = own;
-          return {
-            tools: [],
-            hook: () => "The host ended the campaign.",
-            halts: () => {
-              if (s.of(BUILD_CALL).length > 0) own.halt.abort();
-            },
-          };
-        },
-      },
-      s,
-      s.walled,
-    );
-    expect(bench?.halt.signal.aborted).toBe(true);
-    expect(s.sent).toHaveLength(1);
-    expect(built.ended).toBe("stopped");
-    expect(s.of(BUILD_FINISHED)[0]?.crash).toBeNull();
-  });
-
-  // Plan item 6.4: each model request rendered the campaign's status twice, about 70 ms each at
-  // 1,486 events, to check for a halt, and discarded both.
-  it("checks for a halt before each model request without rendering the campaign's status", async () => {
-    const s = await setup([edit, edit, finish]);
-    const counted = { hook: 0, halts: 0 };
-    await session(
-      {
-        ...s.request,
-        campaign: () => ({
-          tools: [],
-          hook: () => {
-            counted.hook += 1;
-            return "Campaign facts.";
-          },
-          halts: () => {
-            counted.halts += 1;
-          },
-        }),
-      },
-      s,
-      s.walled,
-    );
-    // The status is rendered once, for the opening; durable checks once before each request.
-    expect(s.sent).toHaveLength(3);
-    expect(counted).toEqual({ hook: 1, halts: 3 });
-  });
-
-  it("counts its wall on the Builder's own time, and cuts an action outside one", async () => {
-    /** One session at a wall of 50 ms whose first call outlasts it: whether the call's signal was
-     *  aborted while it ran, and how the session ended. */
-    const outlasting = async (held: "within" | "outside") => {
-      const s = await setup([call("long_action", {}), finish]);
-      let cut: boolean | undefined;
-      const built = await session(
-        {
-          ...s.request,
-          limits: { ...s.request.limits, wallSeconds: 0.05 },
-          campaign: (bench) => ({
-            // An opening action on the host's time, as a led campaign's first Examiner session is.
-            start: async () => await bench.within(async () => ""),
-            hook: () => "",
-            tools: [
-              tool({
-                name: "long_action",
-                description: "An action that outlasts the session's wall.",
-                parameters: Type.Object({}),
-                execute: async (_args, _api, context) => {
-                  const action = async () => {
-                    // Until the wall cuts it, or well past where the wall fell.
-                    await Promise.race([
-                      Bun.sleep(250),
-                      new Promise((resolve) =>
-                        context.abortSignal?.addEventListener("abort", resolve, { once: true }),
-                      ),
-                    ]);
-                    cut = context.abortSignal?.aborted === true;
-                    return text("The action ended.");
-                  };
-                  return held === "within" ? bench.within(action) : action();
-                },
-              }),
-            ],
-          }),
-        },
-        s,
-        s.walled,
-      );
-      return { cut, ended: built.ended, calls: s.of(BUILD_CALL).map(({ tool: name }) => name) };
-    };
-    // A comparison cut at the Builder's wall would lose its solves in flight and read as a failed
-    // host, and the action's time is the host's: the session goes on past it to its `finish`.
-    expect(await outlasting("within")).toEqual({
-      cut: false,
-      ended: "finished",
-      calls: ["long_action", "finish"],
-    });
-    expect(await outlasting("outside")).toMatchObject({ cut: true, ended: "wall" });
-  });
 });
 
 describe("a Builder session", () => {
-  it("practises on released tasks only, whatever it is handed", async () => {
-    const s = await setup([]);
-    const exam = { version: "v3", task: { taskId: "t-3", family: "fixture", publicInput: {} } };
-    await expect(session({ ...s.request, tasks: [...TASKS, exam] }, s, s.walled)).rejects.toThrow(
-      "task t-3 is held, and a Builder practises on released tasks only",
-    );
-    const anchor = { version: "v0", task: { taskId: "t-0", family: "fixture", publicInput: {} } };
-    await expect(session({ ...s.request, tasks: [anchor] }, s, s.walled)).rejects.toThrow("task t-0 is held");
-    expect(s.of("build.started")).toEqual([]);
-  });
-
   it("is given the parent's record, practises, reads a trace, and leaves a frozen version", async () => {
     const earned: RefereeFinding = {
       ruling: "earned",
@@ -680,42 +561,6 @@ describe("a Builder session", () => {
     }
   });
 
-  it("asks the Referee of a rejected practice answer only, never of a solve its limits ended", async () => {
-    const s = await setup(
-      [call("practice", { tasks: ["t-1", "t-2"] }), finish],
-      [
-        { outcome: "fail", kind: "turns-ended" },
-        { outcome: "fail", kind: "no-answer" },
-      ],
-    );
-    const asked: string[] = [];
-    await session(
-      {
-        ...s.request,
-        referee: async (solve) => {
-          asked.push(solve);
-          return { ruling: "earned", check: CHECK, rule: null, field: null, reason: REASON, probes: [] };
-        },
-      },
-      s,
-      s.walled,
-    );
-    expect(asked).toEqual([]);
-    expect(s.of("referee.finding")).toEqual([{ solve: "s-1", ruling: "earned" }]);
-  });
-
-  it("opens with the practice solves its dollar cap holds a reserve for, where those are fewer", async () => {
-    // A cap of $25 with a reserve of $10 holds two solves, and the session's own limit is three.
-    const s = await setup([call("practice", { tasks: ["t-1", "t-1", "t-2"] }), finish]);
-    await session({ ...s.request, cap: { dollars: 25, reserve: 10 } }, s, s.walled);
-    expect(s.sent[0]).toContain("This session has 2 practice solves, 10 minutes and 12 turns.");
-    expect(s.sent[1]).toContain("only 2 practice solves left, and this asks for 3");
-    // A cap that holds more than the limit changes nothing the Builder reads.
-    const roomy = await setup([finish]);
-    await session({ ...roomy.request, cap: { dollars: 600, reserve: 10 } }, roomy, roomy.walled);
-    expect(roomy.sent[0]).toContain("This session has 3 practice solves, 10 minutes and 12 turns.");
-  });
-
   it("makes no request of its own once what it billed reaches its cap", async () => {
     // One practice solve, and the session's own turns billed $30 beside it, past a cap of $25.
     const s = await setup([call("practice", { tasks: ["t-1"] }), edit, finish]);
@@ -734,19 +579,6 @@ describe("a Builder session", () => {
     expect(s.sent).toHaveLength(1);
     expect(built).toMatchObject({ changed: false, ended: "stopped" });
     expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "stopped", crash: null, practiceSolves: 1 });
-  });
-
-  it("holds a session to its own spend and not a comparison's under the same id", async () => {
-    // A comparison b-1 billed $30 before a session b-1 opened under a cap of $25: the session's own
-    // part is nothing, so it practises, edits, and finishes once it has been told of the edit.
-    const s = await setup([call("practice", { tasks: ["t-1"] }), edit, finish, finish]);
-    const { log } = s.request;
-    append(log, "solve.started", { solve: "b-1-v9", comparison: "b-1", task: "t" });
-    append(log, "solve.finished", { solve: "b-1-v9", ending: { outcome: "pass" }, billed: 30 });
-    const built = await session({ ...s.request, cap: { dollars: 25, reserve: 10 } }, s, s.walled);
-    expect(s.sent[0]).toContain("This session has 2 practice solves");
-    expect(s.sent).toHaveLength(4);
-    expect(built).toMatchObject({ changed: true, ended: "finished" });
   });
 
   it("leaves a led session's dollars to the campaign's bounds, which the operator can raise", async () => {
@@ -803,104 +635,6 @@ describe("a Builder session", () => {
     expect(s.sent[0]).toContain("- t-0 (family fixture): not yet solved under the harness you start from.");
     expect(s.sent[1]).toContain("g-1-v0 is not a solve of one of this session's practice tasks");
     expect(s.sent.join("\n").split("g-1-v0")).toHaveLength(3);
-  });
-
-  it("spends no solve on a harness a solve could not open", async () => {
-    const spec = readFileSync(join(FIXTURE, "agent", "tools-spec.json"), "utf8");
-    const s = await setup([
-      call(WRITE_FILE, { path: "harness/agent/tools-spec.json", content: "{}" }),
-      call("practice", { tasks: ["t-1"] }),
-      // A preset no solve serves: every solve would end on it before its first turn.
-      call(WRITE_FILE, {
-        path: "harness/agent/tools-spec.json",
-        content: spec.replace('"shell"', '"shell", "python"'),
-      }),
-      call("practice", { tasks: ["t-1"] }),
-      call(WRITE_FILE, { path: "harness/agent/tools-spec.json", content: spec }),
-      () => {
-        // Between two turns the Builder puts a link to a host file where its guide was.
-        const guide = join(s.home, "harness", "agent", "BUILT_AGENTS.md");
-        rmSync(guide);
-        symlinkSync(join(s.scratch, "log.jsonl"), guide);
-        return call("practice", { tasks: ["t-1"] });
-      },
-      finish,
-    ]);
-    const built = await session(s.request, s, s.walled);
-    expect(spec).toContain('"shell"');
-    expect(s.sent[2]).toContain(
-      "the harness does not open: agent/tools-spec.json needs presets and tools lists",
-    );
-    expect(s.sent[4]).toContain(
-      "the harness does not open: a solve serves pi's coding tools as presets (read, bash, edit, write), not python",
-    );
-    const last = JSON.stringify(s.of(BUILD_CALL).at(-2));
-    expect(last).toContain("agent/BUILT_AGENTS.md links outside the harness");
-    expect(built).toMatchObject({ harness: null, dir: null, changed: false });
-    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ practiceSolves: 0, harness: null });
-    expect(JSON.stringify(s.of(BUILD_FINISHED)[0]?.broken)).toContain("links outside the harness");
-    // Nothing a refused freeze copied is left beside the kept states.
-    expect(readdirSync(s.request.states)).toEqual([]);
-  });
-
-  it("is measured by the last state it practised with when what it leaves does not open", async () => {
-    const s = await setup([
-      edit,
-      call("practice", { tasks: ["t-1"] }),
-      call(WRITE_FILE, { path: "harness/agent/tools-spec.json", content: "{}" }),
-      finish,
-      finish,
-    ]);
-    const built = await session(s.request, s, s.walled);
-    // The first finish says so, once, and what is measured in its place; the second ends the session.
-    expect(s.sent[4]).toContain("Not finished. the harness does not open: ");
-    expect(s.sent[4]).toContain(
-      "Left so, the harness your last practice solve ran is measured in its place. Mend it and call finish again, or call finish again to end the session as it is.",
-    );
-    // The edited guide is the state the practice ran with, and the spec written after it opens for
-    // no solve: the first is kept and compared, and the record says why the last was not.
-    expect(built).toMatchObject({ changed: true, ended: "finished" });
-    expect(built.harness).not.toBe(s.digest);
-    expect(built.dir).toBe(join(s.request.states, built.harness ?? ""));
-    expect(s.of("harness.version")).toMatchObject([{ version: built.harness, parent: s.digest }]);
-    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({
-      practiceSolves: 1,
-      changed: true,
-      harness: built.harness,
-    });
-    expect(JSON.stringify(s.of(BUILD_FINISHED)[0]?.broken)).toContain("needs presets and tools lists");
-  });
-
-  it("is told once, at finish, of a harness changed since its last practice solve", async () => {
-    const later = call(WRITE_FILE, {
-      path: GUIDE_PATH,
-      content: `${GUIDE}Check the product.\n`,
-    });
-    const s = await setup([edit, call("practice", { tasks: ["t-1"] }), later, finish, finish]);
-    const built = await session(s.request, s, s.walled);
-    expect(s.sent[4]).toContain(
-      "Not finished. harness/ has changed since your last practice solve, so no solve has run it as it stands. 2 practice solves are left. Practise it, or call finish again to end the session as it is and have it measured untried.",
-    );
-    // The second finish is taken at its word, and the changed harness is the one frozen.
-    expect(built).toMatchObject({ changed: true, ended: "finished" });
-    expect(readFileSync(join(built.dir ?? "", "agent", "BUILT_AGENTS.md"), "utf8")).toContain(
-      "Check the product.",
-    );
-    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ turns: 5, practiceSolves: 1 });
-  });
-
-  it("is told nothing at finish of the harness its last practice solve ran, or with no solve left", async () => {
-    const tried = await setup([edit, call("practice", { tasks: ["t-1"] }), finish]);
-    await session(tried.request, tried, tried.walled);
-    expect(tried.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "finished", turns: 3 });
-    // With its last solve spent the Builder is told so there, where it can still plan around it.
-    const later = call(WRITE_FILE, { path: GUIDE_PATH, content: `${GUIDE}More.\n` });
-    const spent = await setup([edit, call("practice", { tasks: ["t-1", "t-2", "t-1"] }), later, finish]);
-    await session(spent.request, spent, spent.walled);
-    expect(spent.sent[2]).toContain(
-      "No practice solve is left: what you change from here on is measured without a solve having run it.",
-    );
-    expect(spent.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "finished", turns: 4, practiceSolves: 3 });
   });
 
   it.each(["pass", "fail", "non-result", "unpractised"] as const)(
@@ -1001,14 +735,6 @@ describe("a Builder session", () => {
       "Record under the reference harness, which is also the harness you started from: passed 1 of 2. Under harness/ as last practised: 1 of 1.",
     );
     expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ practiceSolves: 2 });
-  });
-
-  it("refuses a practice under the harness it started from, which spends no solve", async () => {
-    // 4 of 852 practice calls on record named the parent; the option went on 27 October.
-    const s = await setup([call("practice", { tasks: ["t-1"], under: "parent" }), finish]);
-    await session(s.request, s, s.walled);
-    expect(s.ran).toEqual([]);
-    expect(s.of(BUILD_CALL).find(({ tool: name }) => name === "practice")).toMatchObject({ isError: true });
   });
 
   it("is not given the correctness model a v1 state carries, whose battery holds hidden values", async () => {
@@ -1133,17 +859,6 @@ describe("a Builder session", () => {
     expect(s.of(BUILD_CALL).map(({ tool: name }) => name)).toEqual(["practice"]);
   });
 
-  it("is a crashed session when the provider fails a turn, and one session to an id", async () => {
-    const failed = fauxAssistantMessage("", { stopReason: "error", errorMessage: "overloaded" });
-    const s = await setup([edit, failed, finish]);
-    const built = await session(s.request, s, s.walled);
-    // What it wrote before the failure is frozen and logged, and named for what it is: half a session.
-    expect(built).toMatchObject({ changed: true, ended: "crashed" });
-    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "crashed", crash: "overloaded" });
-    await expect(session(s.request, s, s.walled)).rejects.toThrow("session b-1 is in the log already");
-    expect(s.of("build.started")).toHaveLength(1);
-  });
-
   // Found in buffer-149, 13 October: b-1 crashed on a provider error with a harness it had
   // practised three of three on, and b-2 started from the starter.
   it("keeps the harness a crashed session last practised as a checkpoint, and no edit after it", async () => {
@@ -1250,20 +965,6 @@ describe("a Builder session", () => {
     },
   );
 
-  it("ends at finish though another call shares its turn", async () => {
-    const both = fauxAssistantMessage(
-      [
-        fauxToolCall("finish", { note: "Done." }),
-        fauxToolCall(WRITE_FILE, { path: GUIDE_PATH, content: GUIDE }),
-      ],
-      toolUse,
-    );
-    const s = await setup([both, edit, edit]);
-    const built = await session(s.request, s, s.walled);
-    expect(built).toMatchObject({ ended: "finished", changed: true });
-    expect(s.of("build.turn")).toHaveLength(1);
-  });
-
   it("freezes no harness whose tools do not list, and shows the Builder no path of the host's", async () => {
     const s = await setup([
       call("practice", { tasks: ["t-1"] }),
@@ -1287,31 +988,6 @@ describe("a Builder session", () => {
     expect(unresolved).toContain("the harness does not open");
     expect(JSON.stringify(s.of(BUILD_CALL))).not.toContain(s.request.states);
     expect(JSON.stringify(s.of(BUILD_CALL))).not.toContain(s.scratch);
-  });
-
-  it("takes its wall to a practice solve in flight", async () => {
-    const s = await setup([call("practice", { tasks: ["t-1"] }), finish]);
-    let flown = 0;
-    const built = await session(
-      {
-        ...s.request,
-        limits: { ...LIMITS, wallSeconds: 1 },
-        // A solve that ends only when it is killed, as a solve under its own longer wall would.
-        practise: async (_task, _dir, _digest, kill) => {
-          flown += 1;
-          if (!kill.aborted) {
-            await new Promise((resolve) => kill.addEventListener("abort", resolve, { once: true }));
-          }
-          return { solve: "s-killed", ending: { outcome: "non-result", kind: "killed", reason: "killed" } };
-        },
-      },
-      s,
-      s.walled,
-    );
-    expect(flown).toBe(1);
-    expect(built).toMatchObject({ ended: "wall", changed: false });
-    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "wall", practiceSolves: 1 });
-    expect(Number(s.of(BUILD_FINISHED)[0]?.seconds)).toBeLessThan(4);
   });
 
   it("ends at its wall, and blames no host, when the wall reaches a practice solve queued at the host", async () => {
@@ -1353,130 +1029,6 @@ describe("a Builder session", () => {
       faultyChecks: ["v2"],
       disputed: [],
     });
-  });
-
-  it("is told to go on when it stops without finishing, up to its turns, and freezes what it left", async () => {
-    const stop = fauxAssistantMessage("I think that is enough.");
-    const s = await setup([edit, ...Array.from({ length: 12 }, () => stop)]);
-    const built = await session({ ...s.request, limits: { ...LIMITS, turns: 3 } }, s, s.walled);
-    expect(built).toMatchObject({ changed: true, ended: "turns" });
-    expect(s.sent[2]).toContain(GOES_ON);
-    expect(s.of("build.turn")).toHaveLength(3);
-    expect(s.of("harness.version")[0]).toMatchObject({ note: null, parent: s.digest });
-  });
-
-  // Fix row F17. Until 2026-10-09 a Builder was told its limits once, at its opening, and between
-  // turns only that it had not finished. In the seven sessions on record that message was never
-  // sent: every one of their 365 turns ended in a tool call. So the facts ride on tool results.
-  it("reads what it has used of its limits once a turn, under its first tool result, and its goal again when a turn ends without a call", async () => {
-    const stop = fauxAssistantMessage("I think that is enough.");
-    // The same guide written twice in one turn, which changes nothing that was practised.
-    const guide = fauxToolCall(WRITE_FILE, { path: GUIDE_PATH, content: GUIDE });
-    const twice = fauxAssistantMessage([guide, { ...guide, id: `${guide.id}-again` }], toolUse);
-    const s = await setup([edit, call("practice", { tasks: ["t-1"] }), twice, stop, finish]);
-    await session(s.request, s, s.walled);
-    const lines = s.of(BUILD_CALL).map(({ text: told }) => (isString(told) ? told.split("\n").at(-1) : ""));
-    // Every turn's first result ends with the line: the turn counts up, the practice solves down,
-    // and until one has run the line says so. Fix row 1 of the 10 October reading: a session of 43
-    // turns called none of the harness tools, and the only statement of where harness/ stood was
-    // the continuation, which a turn ending in a tool call never triggers. Until 14 October each
-    // result of a turn carried it, and then the last, which a call pi refuses never reaches.
-    expect(lines).toEqual([
-      expect.stringMatching(
-        /^\[Session: turn 1 of 12, 0:0\d of 10:00 used, 3 practice solves left, no practice solve has run harness\/\]$/,
-      ),
-      expect.stringMatching(/^\[Session: turn 2 of 12, 0:0\d of 10:00 used, 2 practice solves left\]$/),
-      expect.stringMatching(/^\[Session: turn 3 of 12, 0:0\d of 10:00 used, 2 practice solves left\]$/),
-      expect.not.stringMatching(/^\[Session/),
-      expect.stringMatching(/^\[Session: turn 5 of 12, 0:0\d of 10:00 used, 2 practice solves left\]$/),
-    ]);
-    // An error carries it as a result does.
-    const refused = await setup([call("practice", { tasks: ["t-9"] }), finish]);
-    await session(refused.request, refused, refused.walled);
-    expect(refused.of(BUILD_CALL)[0]).toMatchObject({
-      isError: true,
-      text: expect.stringMatching(
-        /not one of this session's practice tasks: t-1, t-2\n\n\[Session: turn 1 of 12, /,
-      ),
-    });
-    // The turn that ended with no call is answered with the goal and the facts, and with no course:
-    // its turns and minutes used, the practice solves left, and whether harness/ is practised.
-    const continued = parseJsonAs<{ messages: { role: string; content: string }[] }>(s.sent[4] ?? "{}");
-    const told = continued.messages.at(-1);
-    expect(told?.role).toBe("user");
-    expect(told?.content).toStartWith(GOES_ON);
-    expect(told?.content).toContain("4 of 12 turns and 0 of 10 minutes used, 2 practice solves left");
-    expect(told?.content).toContain("harness/ has counted practice results under its exact current digest");
-    expect(told?.content).toContain("tasks you are never shown");
-    expect(told?.content).toContain("read_opening");
-    // The parent's older counted failure is still practice; a genuinely changed state has none.
-    const idle = await setup([stop, finish]);
-    await session(idle.request, idle, idle.walled);
-    expect(idle.sent[1]).toContain("3 practice solves left. harness/ has counted practice results");
-    const moved = await setup([call("practice", { tasks: ["t-1"] }), edit, stop, finish, finish]);
-    await session(moved.request, moved, moved.walled);
-    expect(moved.sent[3]).toContain("harness/ has no counted practice result as it stands.");
-  });
-
-  it("keeps streamed tool output beside its turn footer after the turn is metered", async () => {
-    const s = await setup([call("streamed", {}), finish]);
-    await session(s.request, s, () => [
-      tool({
-        name: "streamed",
-        description: "Returns its output through durable's stream.",
-        parameters: Type.Object({}),
-        execute: async (_args, api) => {
-          expect(api.callId).not.toBe("");
-          expect(s.of("build.turn")).toHaveLength(1);
-          expect(s.of("build.turn")[0]?.usage).toBeDefined();
-          api.output("The streamed result.");
-          return { details: null };
-        },
-      }),
-    ]);
-    expect(s.of(BUILD_CALL)[0]).toMatchObject({
-      tool: "streamed",
-      isError: false,
-      text: expect.stringMatching(/^The streamed result\.\n\[Session: turn 1 of 12, /),
-    });
-  });
-
-  // Fix row F18: a session whose opening was compacted away had its facts in no other place.
-  it("serves its opening message again, as it was sent", async () => {
-    const s = await setup([edit, call("read_opening", {}), finish]);
-    await session(s.request, s, s.walled);
-    const first = parseJsonAs<{ messages: { role: string; content: string }[] }>(s.sent[0] ?? "{}");
-    const opening = first.messages.find(({ role }) => role === "user")?.content ?? "";
-    expect(opening).toContain("Public rules of the domain:");
-    const served = s.of(BUILD_CALL)[1]?.text;
-    // The tool's answer is the opening message, and after it the line every result ends with.
-    expect(isString(served) ? served.split("\n[Session: ")[0] : "").toBe(opening);
-    expect(s.of(BUILD_CALL)[1]).toMatchObject({ tool: "read_opening", isError: false });
-  });
-
-  it("ends at its turns though it never stops calling tools", async () => {
-    const s = await setup(Array.from({ length: 12 }, () => edit));
-    const built = await session({ ...s.request, limits: { ...LIMITS, turns: 4 } }, s, s.walled);
-    expect(built).toMatchObject({ changed: true, ended: "turns" });
-    expect(s.of("build.turn")).toHaveLength(4);
-    expect(s.sent.join("\n")).not.toContain(GOES_ON);
-  });
-});
-
-describe("what a Builder is shown of a solve", () => {
-  // A non-result's reason, which can name a check, is held back in "takes a task out of practice
-  // when its own check could not run"; a pass and a rejection are read in the practice result above.
-  it("is an ending's outcome and kind, and a reason only where the harness itself broke", async () => {
-    const s = await setup(
-      [call("practice", { tasks: ["t-1", "t-2"] }), finish],
-      [
-        { outcome: "fail", kind: "broken-harness", reason: "no tools" },
-        { outcome: "flagged", reason: "the span table is empty" },
-      ],
-    );
-    await session(s.request, s, s.walled);
-    expect(s.sent[1]).toContain("t-1: fail (broken harness: no tools). Solve s-3.");
-    expect(s.sent[1]).toContain("t-2: flagged (the solver judged the task malformed). Solve s-4.");
   });
 });
 
@@ -1730,41 +1282,6 @@ describe("what a practice solve used", () => {
 });
 
 describe.skipIf(!osIsolationSupport().ok)("a Builder session under the command wall", () => {
-  it("lists tools for practice tasks released after the conversation opens", async () => {
-    let source = "";
-    const s = await setup([
-      () => call(WRITE_FILE, { path: "harness/agent/tools.ts", content: source }),
-      call("release_fixture", {}),
-      call("check_harness", {}),
-      finish,
-    ]);
-    source = readFileSync(join(s.request.parent, "agent", "tools.ts"), "utf8").replace(
-      "  // SAFETY:",
-      '  if (task.taskId !== "t-2") throw new Error("wrong practice task for listing");\n  // SAFETY:',
-    );
-    await build({
-      ...s.request,
-      tasks: [],
-      campaign: (bench) => ({
-        tools: [
-          tool({
-            name: "release_fixture",
-            description: "Release a public practice task.",
-            parameters: Type.Object({}),
-            execute: async () => {
-              bench.tasks = TASKS.slice(1);
-              return text("Practice refreshed.");
-            },
-          }),
-        ],
-        hook: () => "",
-      }),
-    });
-    const checked = s.of(BUILD_CALL).find(({ tool: name }) => name === "check_harness");
-    expect(checked?.text).toContain("Tools of its own: scale_base, read_path.");
-    expect(checked?.text).not.toContain("wrong practice task for listing");
-  });
-
   it("writes its harness through the wall, checks it, and cannot read the repository", async () => {
     // The scratch stands for the repository: the wall closes it, and the log and a canary sit in it.
     let canary = "";

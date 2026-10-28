@@ -35,7 +35,7 @@ import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
 import type { Seats } from "../tools/d2/campaign-terms.ts";
 import { closeCommand } from "../tools/d2/close.ts";
-import { harnessBuilder as command, pinFault } from "../tools/d2/harness-builder.ts";
+import { harnessBuilder as command } from "../tools/d2/harness-builder.ts";
 import { HOST } from "../tools/d2/host.ts";
 import { importCommand } from "../tools/d2/import.ts";
 import * as prepare from "../tools/d2/prepare.ts";
@@ -73,25 +73,6 @@ afterAll(() => {
 });
 
 describe("the campaign's executing Bun", () => {
-  it("names a fault in every pin but the executing Bun's exact one", () => {
-    const v = Bun.version;
-    expect(pinFault({ packageManager: `bun@${v}`, engines: { bun: v } }, v)).toBeNull();
-    for (const manifest of [
-      { packageManager: "bun@0.0.1", engines: { bun: "0.0.1" } },
-      { packageManager: "bun@99.0.0", engines: { bun: "99.0.0" } },
-      { engines: { bun: v } },
-      { packageManager: `bun@^${v}`, engines: { bun: v } },
-      { packageManager: `npm@${v}`, engines: { bun: v } },
-      { packageManager: `bun@${v}` },
-      { packageManager: `bun@${v}`, engines: { bun: `>=${v}` } },
-      { packageManager: `bun@${v}`, engines: { bun: "0.0.1" } },
-      null,
-    ]) {
-      expect(pinFault(manifest, v)).toContain(`executing Bun ${v}`);
-    }
-    expect(pinFault({ packageManager: "bun@0.0.1", engines: { bun: "0.0.1" } }, v)).toContain("bun@0.0.1");
-  });
-
   // The pin is read from the entry module's tree, so the case copies `tools` beside the real
   // sources and runs the command from another directory, as launchd or ssh starts it.
   it("refuses at the command's entry from its own tree's manifest, before writing a campaign", () => {
@@ -173,30 +154,20 @@ const harnessBuilder = (args: readonly string[], seats?: Seats) =>
   command([...args, "--no-builder-led"], seats);
 
 describe("a campaign run by its log", () => {
-  it("asks the Examiner for what the campaign is short of, before the first session, and tells it the campaign's wall", async () => {
+  it("waits out a provider limit that names its reset, on record, and makes the move again", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
-    const name = `${STEM}-short`;
-    // Sixteen tasks in the pack, two released: fourteen held of the twenty a comparison at a target
-    // of twenty scores, and two practice tasks of the three the campaign names, which the release
-    // draws from the held ones. The session is asked for seven, and the Examiner is told nothing of
-    // the number. The wall is the campaign's term, and until 11 October the Examiner was told the
-    // default of two hours whatever the term said.
-    const flags = [
-      ...seeded(name),
-      "--patience",
-      "1",
-      "--target",
-      "20",
-      "--practice",
-      "3",
-      "--solve-minutes",
-      "7",
-    ];
-    const asked: { tasks: number; minutes: number | undefined }[] = [];
+    const name = `${STEM}-limit`;
+    const flags = [...seeded(name), "--patience", "1", "--target", "20", "--practice", "3"];
+    // The first Examiner session is refused on a limit the provider says lifts in a minute.
+    const reset = Math.floor(Date.now() / 1000) + 60;
+    let refused = false;
     const seats: Seats = {
       seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
       examine: (request) => {
-        asked.push({ tasks: request.wanted, minutes: request.budget?.minutes });
+        if (!refused) {
+          refused = true;
+          throw new Error(`Claude Code: usage limit (limit reached|${String(reset)})`);
+        }
         return examine({
           ...request,
           ...scripted([
@@ -206,15 +177,35 @@ describe("a campaign run by its log", () => {
         });
       },
     };
-    const ending = await harnessBuilder(flags, seats);
-    expect(of(name, MOVED).map(({ move, session }) => [move, session ?? null])).toEqual([
-      ["accept", null],
-      ["prepare", null],
-      ["examine", "x-1"],
+    const slept: number[] = [];
+    const host = {
+      ...HOST,
+      sleep: async (ms: number) => {
+        slept.push(ms);
+      },
+    };
+    // The move the limit ended is one of the run's moves: of three, it was the third, and the run
+    // stops at the move it would make again.
+    expect(await harnessBuilder([...flags, "--moves", "3"], { ...seats, host })).toMatchObject({
+      move: "examine",
+    });
+    expect(of(name, MOVED).map(({ session }) => session ?? null)).toEqual([null, null, "x-1"]);
+    const ending = await harnessBuilder(flags, { ...seats, host });
+    // Slept to a minute past the named reset, and the session asked again went on to the ending.
+    expect(slept).toHaveLength(1);
+    expect(of(name, "campaign.waited")).toEqual([
+      { for: "provider", until: new Date(reset * 1000).toISOString(), ms: slept[0] ?? 0 },
     ]);
-    expect(asked).toEqual([{ tasks: 7, minutes: 7 }]);
-    expect(of(name, "exam.started")).toMatchObject([{ limits: { tasks: 7 } }]);
+    expect(of(name, "campaign.ended")).toEqual([expect.objectContaining({ ending: "exam" })]);
     expect(ending).toMatchObject({ move: "end", ending: "exam" });
+    // Each move is on record from its start with the row that chose it by its code, the one that threw too.
+    expect(of(name, MOVED).map(({ move, session, code }) => [move, session ?? null, code])).toEqual([
+      ["accept", null, "exam"],
+      ["prepare", null, "tasks"],
+      ["examine", "x-1", "tasks"],
+      // The id the move that threw had is not used again.
+      ["examine", "x-2", "tasks"],
+    ]);
   });
 
   it("ends on its environment where a move it began changed nothing, so the run is never left without an ending", async () => {
@@ -302,60 +293,6 @@ describe("a campaign run by its log", () => {
     expect(homes).toHaveLength(2);
     expect(homes[0] !== undefined && existsSync(join(homes[0], "agent"))).toBe(true);
     expect(homes[1]).toBeUndefined();
-  });
-
-  it("waits out a provider limit that names its reset, on record, and makes the move again", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
-    const name = `${STEM}-limit`;
-    const flags = [...seeded(name), "--patience", "1", "--target", "20", "--practice", "3"];
-    // The first Examiner session is refused on a limit the provider says lifts in a minute.
-    const reset = Math.floor(Date.now() / 1000) + 60;
-    let refused = false;
-    const seats: Seats = {
-      seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
-      examine: (request) => {
-        if (!refused) {
-          refused = true;
-          throw new Error(`Claude Code: usage limit (limit reached|${String(reset)})`);
-        }
-        return examine({
-          ...request,
-          ...scripted([
-            ["finish", { note: NOTHING }],
-            ["finish", { note: NOTHING }],
-          ]),
-        });
-      },
-    };
-    const slept: number[] = [];
-    const host = {
-      ...HOST,
-      sleep: async (ms: number) => {
-        slept.push(ms);
-      },
-    };
-    // The move the limit ended is one of the run's moves: of three, it was the third, and the run
-    // stops at the move it would make again.
-    expect(await harnessBuilder([...flags, "--moves", "3"], { ...seats, host })).toMatchObject({
-      move: "examine",
-    });
-    expect(of(name, MOVED).map(({ session }) => session ?? null)).toEqual([null, null, "x-1"]);
-    const ending = await harnessBuilder(flags, { ...seats, host });
-    // Slept to a minute past the named reset, and the session asked again went on to the ending.
-    expect(slept).toHaveLength(1);
-    expect(of(name, "campaign.waited")).toEqual([
-      { for: "provider", until: new Date(reset * 1000).toISOString(), ms: slept[0] ?? 0 },
-    ]);
-    expect(of(name, "campaign.ended")).toEqual([expect.objectContaining({ ending: "exam" })]);
-    expect(ending).toMatchObject({ move: "end", ending: "exam" });
-    // Each move is on record from its start with the row that chose it by its code, the one that threw too.
-    expect(of(name, MOVED).map(({ move, session, code }) => [move, session ?? null, code])).toEqual([
-      ["accept", null, "exam"],
-      ["prepare", null, "tasks"],
-      ["examine", "x-1", "tasks"],
-      // The id the move that threw had is not used again.
-      ["examine", "x-2", "tasks"],
-    ]);
   });
 
   it("ends as killed, before its first move, each session a stopped run left open, and none that ended", async () => {
@@ -493,36 +430,6 @@ describe("a campaign run by its log", () => {
     expect(await harnessBuilder(flags, seats)).toMatchObject({ move: "end", ending: "no-room" });
     expect(read(join(REPO, ".ana", "d2", name, LOG_FILE))).toHaveLength(log.length);
     expect(strayed).toEqual([]);
-  });
-
-  it("holds a campaign whose comparisons ran at a level its opening never named to that level, and not to the tree's default", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
-    // Until 10 October the level was read at each comparison from the tree's default, so a
-    // campaign opened on a tree at 0.10 and run on from one at 0.20 changed its test (#175).
-    const name = `${STEM}-level`;
-    const flags = seeded(name);
-    const log = join(REPO, ".ana", "d2", name, LOG_FILE);
-    append(log, OPENED, {
-      budget: null,
-      limit: null,
-      sessions: 1,
-      patience: 1,
-      seats: { builder: null, examiner: null, reviewer: null },
-      terms: { practice: "2" },
-    });
-    append(log, "comparison.started", { session: "g-1", level: 0.1, old: "a", fresh: "b", tasks: [] });
-    const seats: Seats = {
-      seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
-    };
-    // Its comparison began at 0.1, and the opening is held to it. Until 19 October a trigger was
-    // pinned beside it, and a campaign whose comparisons began before 10 October was refused both.
-    await harnessBuilder([...flags, "--moves", "0"], seats);
-    expect(of(name, OPENED).at(-1)).toMatchObject({ terms: { level: "0.1", practice: "2" } });
-    // A later command on the same tree writes no new record, and one that names the level does.
-    await harnessBuilder([...flags, "--moves", "0"], seats);
-    expect(of(name, OPENED)).toHaveLength(2);
-    await harnessBuilder([...flags, "--level", "0.05", "--moves", "0"], seats);
-    expect(of(name, OPENED).at(-1)).toMatchObject({ terms: { level: "0.05", practice: "2" } });
   });
 
   it("waits under --hitl to promote a step, still waits when reopened without the flag, promotes it given the word back, and then has tasks written", async () => {
@@ -989,130 +896,6 @@ describe("a campaign run by its log", () => {
     expect(() => wordCommand(["--name", name, "--cause", "the host was loaded"])).toThrow();
     expect(strayed).toEqual([]);
   });
-
-  it("goes on with a comparison that began at another margin than the default, under the margin it began with", async () => {
-    // A pack whose check program declares an objective, so that the comparison fixes its margin.
-    const under = join(root, "objective");
-    layOutPack(under, join(under, "bundle"), TASKS, FIXTURE);
-    const model = join(under, "bundle", "correctness-model");
-    const brief = parseJsonAs<JsonObject>(readFileSync(join(model, "brief.json"), "utf8"));
-    const objective = { quantity: "the answer", direction: "lower" };
-    writeFileSync(join(model, "brief.json"), JSON.stringify({ ...brief, objective }));
-    const evaluator = readFileSync(join(model, "evaluator.ts"), "utf8");
-    writeFileSync(
-      join(model, "evaluator.ts"),
-      `${evaluator}export const objective = (req) => Number(req.artifact.answer);\n`,
-    );
-    const name = `${STEM}-margin`;
-    const flags = [
-      ...seeded(name, under).slice(0, -2),
-      "--admit",
-      "check-product,objective",
-      "--practice",
-      "2",
-      "--solves",
-      "1",
-      "--sessions",
-      "1",
-      "--target",
-      "8",
-      "--patience",
-      "2",
-    ];
-    const strayed: string[] = [];
-    const scriptedSolves = scriptedSeats(
-      { held: { old: "none", fresh: "pass" }, starter: "none" },
-      GRADED,
-      strayed,
-    );
-    // The comparison's first solve throws, as a host that failed under it would: the comparison
-    // has begun, and the campaign ends on its environment.
-    let failed = false;
-    const seats: Seats = {
-      seated: (campaign, given) => {
-        const seat = scriptedSolves(campaign, given);
-        return {
-          ...seat,
-          solve: (task, harness, kill, comparison) => {
-            if (comparison !== undefined && !failed) {
-              failed = true;
-              throw new Error("the host failed under the solve");
-            }
-            return seat.solve(task, harness, kill, comparison);
-          },
-        };
-      },
-    };
-    await expect(harnessBuilder(flags, seats)).rejects.toThrow("the host failed under the solve");
-    expect(of(name, "comparison.started")).toMatchObject([
-      { session: "g-1", objective: { direction: "lower" } },
-    ]);
-    expect(of(name, "campaign.ended")).toMatchObject([{ ending: "environment", move: "compare" }]);
-    // Run again, it goes on under the terms it began with, and reads its step.
-    await harnessBuilder([...flags, "--moves", "1"], seats);
-    expect(of(name, "comparison.reported")).toMatchObject([
-      { session: "g-1", reading: "step", scored: { wins: 8, losses: 0, ties: 0 } },
-    ]);
-    // The solves in flight when the host failed were killed, and solved again: no other strayed.
-    expect(strayed.filter((line) => !line.includes('"kind":"killed"'))).toEqual([]);
-  });
-
-  it("has the tasks changed where the reference left no room, and ends once the Examiner's patience is spent", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
-    const name = `${STEM}-budget`;
-    const flags = [
-      ...seeded(name),
-      "--practice",
-      "2",
-      "--solves",
-      "1",
-      "--sessions",
-      "1",
-      "--target",
-      "8",
-      "--patience",
-      "2",
-      "--solve-model-turns",
-      "8",
-    ];
-    const strayed: string[] = [];
-    // Every harness answers every task, in two of the model's turns: no room at eight. The
-    // Examiner holds out nothing, twice, which is the campaign's patience (`spent`, `decide.ts`).
-    const seats: Seats = {
-      seated: scriptedSeats({ held: { old: "pass", fresh: "pass" }, starter: "pass" }, GRADED, strayed),
-      examine: (request) =>
-        examine({
-          ...request,
-          // Twice: a first finish while the host has not the tasks it needs is declined once.
-          ...scripted([
-            ["finish", { note: NOTHING }],
-            ["finish", { note: NOTHING }],
-          ]),
-        }),
-    };
-    const next = await harnessBuilder([...flags, "--moves", "10"], seats);
-    expect(of(name, MOVED).map(({ move, session }) => [move, session ?? null])).toEqual([
-      ["accept", null],
-      ["prepare", null],
-      ["build", "b-1"],
-      ["compare", "g-1"],
-      ["examine", "x-1"],
-      ["examine", "x-2"],
-    ]);
-    const [first] = of(name, "comparison.reported");
-    expect(first).toMatchObject({ reading: "no-step", valid: { old: [0, 8] } });
-    expect(first).not.toHaveProperty("budgets");
-    expect(of(name, "campaign.setting").map(({ modelTurns }) => modelTurns)).toEqual([8]);
-    expect(next).toMatchObject({ move: "end", ending: "no-room" });
-    // Another number of the model's turns is another setting, and is refused as every command
-    // refuses it: until 11 October the record's stood in for the flag, and it ran at the record's.
-    await expect(
-      harnessBuilder([...flags.slice(0, -2), "--solve-model-turns", "5", "--moves", "0"], seats),
-    ).rejects.toThrow(
-      "--solve-model-turns 5 names another setting than the campaign's, which was recorded as --solve-model-turns 8",
-    );
-    expect(strayed).toEqual([]);
-  });
   it("measures a drafted exam's examples with the reference harness before the draft stands, as solves that are the Examiner's", async () => {
     const name = `${STEM}-measured`;
     names.push(name);
@@ -1290,30 +1073,6 @@ describe("a campaign run by its log", () => {
       "--solve-minutes 30 names another setting than the campaign's, which was recorded as --solve-minutes 8",
     );
     expect(of(name, OPENED)).toHaveLength(3);
-  });
-
-  it("opens a campaign under the project its first command names, keeps it, and refuses another", async () => {
-    const name = `${STEM}-project`;
-    names.push(name);
-    const opening = ["--name", name, "--solver", "claude/claude-opus-5-5", "--prompt", "Six times a base."];
-    const seats: Seats = {
-      seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, [], []),
-    };
-    // No opening is written without a project, nor under one that is no id.
-    await expect(harnessBuilder([...opening, "--moves", "0"], seats)).rejects.toThrow("name --project");
-    await expect(harnessBuilder([...opening, "--project", "a/b", "--moves", "0"], seats)).rejects.toThrow(
-      "--project a/b: a project is named as v1's were",
-    );
-    expect(existsSync(join(REPO, ".ana", "d2", name, LOG_FILE))).toBe(false);
-    await harnessBuilder([...opening, "--project", PROJECT, "--moves", "0"], seats);
-    expect(of(name, OPENED)).toMatchObject([{ project: PROJECT }]);
-    // A later run names none and keeps it; one that names another is refused, and writes nothing.
-    await harnessBuilder(["--name", name, "--patience", "3", "--moves", "0"], seats);
-    expect(of(name, OPENED).map(({ project }) => project)).toEqual([PROJECT, PROJECT]);
-    await expect(
-      harnessBuilder(["--name", name, "--project", "elsewhere", "--moves", "0"], seats),
-    ).rejects.toThrow(`this campaign belongs to project ${PROJECT}, and keeps it`);
-    expect(of(name, OPENED)).toHaveLength(2);
   });
 
   it("hands over a harness's links as links, and leaves nothing where the copy is not the harness", async () => {

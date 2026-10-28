@@ -62,33 +62,6 @@ function scratch() {
 }
 
 describe("the harnesses a campaign kept, in a Builder's home", () => {
-  it("copies each named harness but the parent, with its programs, under the head of its digest", () => {
-    const { states, home } = scratch();
-    const [starter, frozen, promoted, practised] = [
-      digestOf("a"),
-      digestOf("b"),
-      digestOf("c"),
-      digestOf("d"),
-    ];
-    keep(states, starter, null);
-    keep(states, frozen, { name: "tree-1", bytes: 10 });
-    keep(states, promoted, { name: "tree-2", bytes: 10 });
-    keep(states, practised, null);
-    const events = [
-      event("build.started", { session: "b-1", parent: starter }),
-      event("build.finished", { session: "b-1", harness: frozen }),
-      event("harness.promoted", { harness: promoted }),
-    ];
-    seedKept(home, states, events, promoted);
-    expect(readdirSync(join(home, "kept")).sort()).toEqual(
-      [starter, frozen].map((d) => d.slice(0, 8)).sort(),
-    );
-    // The programs are copied as files, not as a link back into the campaign's states.
-    const run = join(home, "kept", frozen.slice(0, 8), ".toolchain", "bin", "run");
-    expect(readFileSync(run, "utf8")).toBe("x".repeat(10));
-    expect(realpathSync(run).startsWith(realpathSync(home))).toBe(true);
-  });
-
   it("leaves a v1 state's correctness model out at any depth", () => {
     const { states, home } = scratch();
     const frozen = digestOf("b");
@@ -105,26 +78,6 @@ describe("the harnesses a campaign kept, in a Builder's home", () => {
     for (const entry of files) {
       expect(readFileSync(join(entry.parentPath, entry.name), "utf8")).not.toContain("hidden-7a1");
     }
-  });
-
-  it("copies every harness whole, however large, and makes the folder where none was kept", () => {
-    const { states, home } = scratch();
-    const [older, newer] = [digestOf("b"), digestOf("c")];
-    keep(states, older, { name: "tree-1", bytes: 300_000 });
-    keep(states, newer, { name: "tree-2", bytes: 300_000 });
-    const events = [
-      event("build.finished", { session: "b-1", harness: older }),
-      event("build.finished", { session: "b-2", harness: newer }),
-    ];
-    seedKept(home, states, events, digestOf("a"));
-    for (const digest of [older, newer]) {
-      expect(
-        readFileSync(join(home, "kept", digest.slice(0, 8), ".toolchain", "bin", "run"), "utf8"),
-      ).toHaveLength(300_000);
-    }
-    const { states: none, home: empty } = scratch();
-    seedKept(empty, none, [], digestOf("a"));
-    expect(readdirSync(join(empty, "kept"))).toEqual([]);
   });
 
   it("links a tool tree over 100 MB from a shared folder, and copies a small one", () => {

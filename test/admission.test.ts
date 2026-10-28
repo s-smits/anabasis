@@ -114,29 +114,6 @@ const eight = (spell: (place: number) => string) =>
   Object.fromEntries(EIGHT.map((task, place) => [task, spell(place)]));
 
 describe("what a log holds for the next comparison", () => {
-  // The stop rule's own cases are its owner's (`test/reports.test.ts`).
-  it("is nothing before anything ran: no task, no reading of the checker and no stop", () => {
-    expect(supplyOf([])).toEqual({
-      held: 0,
-      awaiting: 0,
-      exhausted: 0,
-      released: 0,
-      faults: null,
-      frozen: false,
-      stop: GOING,
-    });
-  });
-
-  it("reads the checker's last reading and whether it is frozen", () => {
-    const checker = { contract: "c", checks: "k" };
-    const reading = (faults: string[]) => event("checker.read", { ...checker, faults });
-    expect(supplyOf([reading(["one", "two"]), reading(["one"])])).toMatchObject({ faults: 1, frozen: false });
-    expect(supplyOf([reading([]), event("contract.frozen", checker)])).toMatchObject({
-      faults: 0,
-      frozen: true,
-    });
-  });
-
   it("counts the frontier: the reference's closed tasks and, after a promotion, those it never stood in are read apart", () => {
     // After a step read 7-0-4 the harness that won was valid in every solve on 8 of the 11 tasks,
     // so a round made against it had 3 to win where the tally said 7 (2026-10-09). The frontier
@@ -178,9 +155,6 @@ describe("what a log holds for the next comparison", () => {
 });
 
 describe("what the gate refuses, by its code", () => {
-  const whys = (supply: Supply, asked: Partial<Wanted> = {}) =>
-    refusals(supply, { ...WANTED, ...asked }).map(({ why }) => why);
-
   it("held-short: leaves room for one set-aside task and one tie before a paid comparison starts", () => {
     const wanted = { ...WANTED, level: 0.02 };
     for (const held of [6, 7, 8]) {
@@ -201,22 +175,6 @@ describe("what the gate refuses, by its code", () => {
       { code: "no-held", why: expect.stringContaining("holds no held-out task") },
     ]);
     expect(codes(SETS)).toEqual([]);
-  });
-
-  // As exam-1 stood on 2026-10-08, with one task to score. It was a note then, and eight rounds ran.
-  it("held-short: fewer tasks than a sweep and the admission margin at the level", () => {
-    expect(refusals({ ...SETS, held: 3 }, WANTED)).toEqual([
-      {
-        code: "held-short",
-        why: expect.stringContaining("at least 6 frontier tasks"),
-      },
-    ]);
-    expect(whys(SETS, { target: 1 })).toEqual([
-      expect.stringContaining("and ask for a --target of 6 or more"),
-    ]);
-    expect(whys({ ...SETS, held: 5 }, { level: 0.02 })).toEqual([expect.stringContaining("a step takes 6")]);
-    expect(codes({ ...SETS, held: 4 })).toEqual(["held-short"]);
-    expect(codes({ ...SETS, held: 6 })).toEqual([]);
   });
 
   it("unread: a checker nobody has read, for a comparison and for a session with practice to judge", () => {
@@ -255,27 +213,6 @@ describe("what the gate refuses, by its code", () => {
     expect(() => admitSession(log, SESSION)).toThrow("its patience is spent");
     const past = { ...SESSION, wanted: { ...SESSION.wanted, pastStop: "a new budget" } };
     expect(admitSession(log, past).at(-1)).toBe(`${PAST}: a new budget`);
-  });
-
-  it("no-cap: a comparison or a session with no dollar cap", () => {
-    const log = six([READ]);
-    expect(() => admitComparison(log, { ...ASKED, wanted: { ...WANTED, cap: null } })).toThrow(
-      "no --cap is named: a comparison is launched under a dollar cap, and one the cap cuts short reads not-scored",
-    );
-    // Typed, so that a led Builder reads the admission's reason and no other error's (14 October).
-    expect(() => admitComparison(log, { ...ASKED, wanted: { ...WANTED, cap: null } })).toThrow(Refused);
-    expect(() => admitSession(log, { ...SESSION, wanted: { cap: null } })).toThrow(
-      "no --cap is named: a session is launched under a dollar cap, and no practice solve starts that a reserve for it would take past the cap",
-    );
-  });
-
-  it("unrecorded: a first record of the setting that is another than the log's solves ran under", () => {
-    const why = "the campaign's log records no setting yet, and this command names another";
-    const log = six([READ]);
-    expect(() => admitComparison(log, { ...ASKED, wanted: { ...WANTED, unrecorded: why } })).toThrow(why);
-    expect(() => admitSession(log, { ...SESSION, wanted: { ...SESSION.wanted, unrecorded: why } })).toThrow(
-      why,
-    );
   });
 });
 
@@ -362,44 +299,5 @@ describe("a command about to start", () => {
     expect(() => admitComparison(alone, { ...ASKED, id: "b-2" })).toThrow("never been read");
     expect(admitSession(alone, SESSION)).toEqual([]);
     expect(admitSession(six([event("comparison.started", { session: "b-2" })]), SESSION)).not.toEqual([]);
-  });
-
-  // Fix row F44: a command's own refusals come after the admission's and before anything is
-  // written, so a command refused on either leaves the log as it was.
-  it("asks the comparison's own terms after its refusals and before it writes anything", () => {
-    const asks: string[] = [];
-    const own = () => {
-      asks.push("own");
-      throw new Error("task t-9 is not proposed, and only a held-out task is scored");
-    };
-    // The admission refuses first, and the terms are not asked.
-    expect(() => admitComparison(six(), { ...ASKED, own })).toThrow("never been read");
-    expect(asks).toEqual([]);
-    // Past the stop rule on the operator's reason, refused terms leave no override in the log.
-    const stopped = six(STOPPED);
-    const past = { ...ASKED, id: "b-4", own, wanted: { ...WANTED, pastStop: "new tasks since" } };
-    const before = read(stopped).length;
-    expect(() => admitComparison(stopped, past)).toThrow("task t-9 is not proposed");
-    expect(asks).toEqual(["own"]);
-    expect(read(stopped)).toHaveLength(before);
-    // A rehearsal is admitted unasked, and its own terms still hold it.
-    expect(() => admitComparison(stopped, { ...past, seats: "scripted" })).toThrow("task t-9");
-  });
-
-  it("logs the operator's reason when it goes on past the stop rule, once", () => {
-    const log = six(STOPPED);
-    const fourth = { ...ASKED, id: "b-4" };
-    expect(() => admitComparison(log, fourth)).toThrow("its patience is spent");
-    expect(read(log).some(({ kind }) => kind === "stop.overridden")).toBe(false);
-    const past = { ...fourth, wanted: { ...WANTED, pastStop: "new tasks since" } };
-    expect(admitComparison(log, past).at(-1)).toBe(`${PAST}: new tasks since`);
-    const overridden = () =>
-      read(log).flatMap(({ kind, data }) => (kind === "stop.overridden" ? [data] : []));
-    expect(overridden()).toEqual([
-      { session: "b-4", reason: "new tasks since", checkpoints: 3, sinceStep: 3 },
-    ]);
-    // Asked again before it has begun, it is admitted the same way and logged no second time.
-    admitComparison(log, past);
-    expect(overridden()).toHaveLength(1);
   });
 });

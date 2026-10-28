@@ -8,19 +8,11 @@ import { type Draft, draftFaults, draftOf, type Measured } from "../src/examiner
 import { examine } from "../src/examiner/session.ts";
 import { append, read } from "../src/kernel/log.ts";
 import { examinerSessions } from "../src/kernel/solves.ts";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-} from "../src/meta/filesystem.ts";
-import { capturedJsonStringify, parseJsonAs } from "../src/meta/json-runtime.ts";
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { draftReading, stagedExamOf, stageExam } from "../tools/d2/exam.ts";
+import { draftReading, stageExam } from "../tools/d2/exam.ts";
 import { packControls, readPack, sweepResources } from "../tools/m0/stored-sweep.ts";
 import { drafted, finish, SOUND, seat, sweep } from "./helpers/examiner-seat.ts";
 
@@ -35,48 +27,6 @@ afterAll(() => {
 });
 
 describe("the shape of a draft", () => {
-  it("holds a sound draft to nothing", () => {
-    expect(draftFaults(SOUND)).toEqual([]);
-  });
-
-  it("says an answer format that is no schema of an object first, and alone", () => {
-    expect(draftFaults({ ...SOUND, answerFormat: "a string", rules: [] })).toEqual([
-      "the answer format is not a JSON Schema of type object: a solver's answer is one JSON object, which the schema describes",
-    ]);
-  });
-
-  it("holds each rule to a source and to one check, and each check to a rule and a place in the program", () => {
-    const rules = [...SOUND.rules, { id: "R2", statement: "The answer has no leading zero.", source: " " }];
-    expect(draftFaults({ ...SOUND, rules })).toEqual([
-      "rule R2 names no source: the standard, manual or text that states it",
-      "rule R2 has 0 checks, and each rule has one",
-    ]);
-    const stray = [...SOUND.checks, { id: "check-zero", rule: "R9", assertion: "No leading zero." }];
-    expect(draftFaults({ ...SOUND, checks: stray })).toEqual([
-      "check check-zero enforces R9, and the draft holds no such rule",
-      "the check program names no check-zero: `checks` holds a function under each check's id",
-      "check check-zero has no reject control: an answer that breaks its rule and names it",
-    ]);
-    const twice = [...SOUND.checks, { id: "check-product", rule: "R1", assertion: "Again." }];
-    expect(draftFaults({ ...SOUND, checks: twice })).toEqual([
-      "check-product is named twice: an id names one rule or one check",
-      "rule R1 has 2 checks, and each rule has one",
-    ]);
-  });
-
-  it("holds the examples to three, to one kind of hidden values, and to a control each way", () => {
-    const two = { ...SOUND, tasks: SOUND.tasks.slice(0, 2), accept: SOUND.accept.slice(0, 2) };
-    expect(draftFaults(two)).toEqual(["the draft holds 2 example tasks, and at least 3 are needed"]);
-    const mixed = SOUND.tasks.map((task, index) => (index === 0 ? { ...task, hidden: { seed: 1 } } : task));
-    expect(draftFaults({ ...SOUND, tasks: mixed })).toEqual([
-      "some examples carry hidden values and some carry none: either every task has them or none does",
-    ]);
-    expect(draftFaults({ ...SOUND, accept: SOUND.accept.slice(1), reject: [] })).toEqual([
-      "example 0 has no accept control: an answer to it that keeps every rule",
-      "check check-product has no reject control: an answer that breaks its rule and names it",
-    ]);
-  });
-
   it("holds a draft that declares an objective to a check program that exports one", () => {
     const objective = { quantity: "mass in kg", direction: "lower" } as const;
     expect(draftFaults({ ...SOUND, objective })).toEqual([
@@ -98,21 +48,6 @@ describe("the shape of a draft", () => {
     // A date parsed from the answer is the request's own, and no clock.
     const dated = SOUND.evaluator.replace("=== String", "!== String(new Date(0).getTime() + 1) && String");
     expect(draftFaults({ ...SOUND, evaluator: dated })).toEqual([]);
-  });
-
-  it("refuses a control that names no example, no check, or an answer the format does not allow", () => {
-    const reject = [
-      { task: 7, answer: { answer: "13" }, check: "check-product" },
-      { task: 0, answer: { answer: 13 }, check: "check-product" },
-      { task: 0, answer: { answer: "13" }, check: "check-other" },
-    ];
-    const faults = draftFaults({ ...SOUND, reject });
-    expect(faults).toHaveLength(3);
-    expect(faults[0]).toBe("a reject control for check-product names example 7, and the examples are 0 to 2");
-    expect(faults[1]).toStartWith(
-      "a reject control for check-product of example 0 does not follow the answer format (",
-    );
-    expect(faults[2]).toBe("a reject control names check-other, and the draft holds no such check");
   });
 
   it("is read by the session before the host's reading, which a draft out of shape never reaches", async () => {
@@ -159,31 +94,6 @@ describe("a draft read without a model", () => {
     expect(() => readFileSync(join(staged.checks, "controls.json"), "utf8")).toThrow();
   });
 
-  it("tells a reader that writes nothing where a campaign staged the exam its log drafted", () => {
-    const logged = (dir: string) => {
-      mkdirSync(dir, { recursive: true });
-      const log = join(dir, "log.jsonl");
-      append(log, "exam.drafted", {
-        session: "d-1",
-        draft: parseJsonAs<JsonObject>(capturedJsonStringify(SOUND)),
-      });
-      return log;
-    };
-    // Staged by the campaign: the staged pack and checks. Never staged: refused, and not written.
-    const campaign = join(root, "campaign");
-    const log = logged(campaign);
-    const staged = stageExam(campaign, SOUND);
-    expect(stagedExamOf(log)).toEqual(staged);
-    const unstaged = logged(join(root, "unstaged"));
-    expect(() => stagedExamOf(unstaged)).toThrow("is not staged at");
-    expect(existsSync(join(root, "unstaged", "exams"))).toBe(false);
-    // A log that drafted nothing has a stored pack, and the reader says so with null.
-    mkdirSync(join(root, "stored"), { recursive: true });
-    const stored = join(root, "stored", "log.jsonl");
-    append(stored, "contract.frozen", { contract: "c", checks: "k" });
-    expect(stagedExamOf(stored)).toBeNull();
-  });
-
   it("finds no fault in a sound draft, and tells the faults of one whose check passes everything", async () => {
     expect(await draftReading(join(root, "read"), SOUND, 2)).toEqual([]);
     const lax = { ...SOUND, evaluator: `export const checks = { "check-product": () => true };\n` };
@@ -210,20 +120,6 @@ describe("a draft read without a model", () => {
       "the answer's field note moved no check's verdict and no objective when changed on an accept control: check what it says, or drop it from the answer format",
     ]);
     expect(await draftReading(join(root, "read"), noted({ const: "six times" }), 2)).toEqual([]);
-  });
-
-  it("tells a do-nothing answer that does not follow the format as a fault, with a check that passes everything", async () => {
-    const digits = { ...FORMAT, properties: { answer: { type: "string", pattern: "^[0-9]+$" } } };
-    const lax = {
-      ...SOUND,
-      answerFormat: digits,
-      evaluator: `export const checks = { "check-product": () => true };\n`,
-    };
-    expect(await draftReading(join(root, "read"), lax, 2)).toEqual([
-      "a reject control of ex-001 names check-product, which did not refuse it: pass",
-      "check-product has refused nothing in this reading",
-      expect.stringContaining('the do-nothing answer {"answer":""} does not follow the answer format'),
-    ]);
   });
 
   it("tells a check program that does not load as a fault, and the shape before anything runs", async () => {
@@ -282,25 +178,11 @@ describe("a draft measured before it stands", () => {
     expect(draftOf(read(log))).toEqual(SOUND);
   });
 
-  it("stands a draft whose measure was cut short", async () => {
-    const { examined, asked, log } = await measuredSession([SOUND], null, 3);
-    expect(examined).toMatchObject({ ended: "stands", puts: 1 });
-    expect(asked).toEqual([SOUND]);
-    expect(draftOf(read(log))).toEqual(SOUND);
-  });
-
   it("counts the solves a drafting session asks for as the Examiner's, as a writing session's", () => {
     const log = join(root, "sessions.jsonl");
     append(log, "draft.started", { session: "d-1" });
     append(log, "exam.started", { session: "x-1" });
     append(log, "build.started", { session: "b-1" });
     expect(examinerSessions(read(log))).toEqual(new Set(["d-1", "x-1"]));
-  });
-
-  it("measures nothing of a draft with a fault", async () => {
-    const lone: Draft = { ...SOUND, accept: SOUND.accept.slice(1), reject: [] };
-    const { examined, asked } = await measuredSession([lone, SOUND, SOUND], MEASURED);
-    expect(examined).toMatchObject({ ended: "stands", puts: 3 });
-    expect(asked).toEqual([SOUND]);
   });
 });

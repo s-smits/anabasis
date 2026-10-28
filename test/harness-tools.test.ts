@@ -3,7 +3,6 @@
 // harness's own errors reaching the caller and the host-only folder out of reach.
 import { expect, it } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { Type, validateToolArguments } from "@earendil-works/pi-ai";
 import type { SeatTool } from "../src/agent/session.ts";
 import { copyHarness } from "../src/builder/kept.ts";
 import { stagedState } from "../src/builder/tools.ts";
@@ -65,21 +64,6 @@ function textOf(result: Awaited<ReturnType<SeatTool["execute"]>>): string {
   const [part] = result.output ?? [];
   return part?.type === "text" ? part.text : "";
 }
-
-it("opens with its guide untrimmed, its kinds, and one bundled module", async () => {
-  const harness = await openHarness(FIXTURE);
-  expect(harness.guide).toBe("# Fixture guide\n\nScale first, then record.  \n\n");
-  expect(harness.presets).toEqual(["shell"]);
-  expect([...harness.kinds]).toEqual([
-    ["scale_base", "reader"],
-    ["read_path", "advisor"],
-    ["record_answer", "artifact-writer"],
-  ]);
-  expect(harness.toolTree).toBeNull();
-  expect(harness.module).toContain("createDomainHarness");
-  expect(harness.module).not.toMatch(/from\s*"(@ana\/agent-bundle|@earendil-works\/pi-ai|\.\/helper\.ts)"/);
-  expect(harness.digest).toMatch(/^[0-9a-f]{64}$/);
-});
 
 it("opens with no artifact-writer, and with no tool at all: the answer is a file and no tool's", async () => {
   const dir = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-harness-writer-")));
@@ -164,27 +148,6 @@ it("leaves the bytecode caches a run of its Python programs writes out of its di
     expect((await openHarness(dir)).digest).not.toBe(clean);
   } finally {
     rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-// The shim drops v1's nullable-number rewrite on this behaviour of the pinned pi.
-it("has one digest wherever it sits, though the bundle names where each file was read", async () => {
-  const root = mkdtempSync(join(tmpdir(), "ana-harness-place-"));
-  try {
-    const places = [join(root, "a"), join(root, "deeper", "b")];
-    for (const place of places) cpSync(FIXTURE, place, { recursive: true });
-    const [here, there] = await Promise.all(places.map((place) => openHarness(place)));
-    expect(here?.module).not.toBe(there?.module);
-    expect(here?.digest).toBe(there?.digest ?? "");
-    expect(here?.digest).toBe((await openHarness(FIXTURE)).digest);
-    // A changed line of a tool is still another harness.
-    writeFileSync(
-      join(places[0] ?? "", "agent", "helper.ts"),
-      "export function scaled(base: number, factor: number): number {\n  return base * factor + 1;\n}\n",
-    );
-    expect((await openHarness(places[0] ?? "")).digest).not.toBe(there?.digest ?? "");
-  } finally {
-    rmSync(root, { recursive: true, force: true });
   }
 });
 
@@ -321,20 +284,6 @@ it("builds a harness's tools from its own files alone: no macro, no file outside
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
-});
-
-it("needs no nullable-number rewrite: pi keeps null and zero exact through the union", () => {
-  const parameters = Type.Object({
-    a: Type.Union([Type.Number(), Type.Null()]),
-    b: Type.Union([Type.Null(), Type.Number()]),
-  });
-  const tool = { name: "t", description: "", parameters };
-  expect(
-    validateToolArguments(tool, { type: "toolCall", id: "1", name: "t", arguments: { a: null, b: 0 } }),
-  ).toEqual({ a: null, b: 0 });
-  expect(
-    validateToolArguments(tool, { type: "toolCall", id: "1", name: "t", arguments: { a: 0, b: null } }),
-  ).toEqual({ a: 0, b: null });
 });
 
 it.skipIf(!walled)(

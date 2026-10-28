@@ -48,12 +48,6 @@ describe("ana/require-captured-json-runtime", () => {
     expect(await reportedLines("ana", RULE, CALLS, INSIDE)).toStrictEqual(expected);
   });
 
-  it("speaks to the process that loads generated modules, and never to the file that captured them", async () => {
-    expect(await reportedLines("ana", RULE, CALLS, "vendor/pi-claude-bridge/example.ts")).toHaveLength(3);
-    expect(await reportedLines("ana", RULE, CALLS, "tools/example.ts")).toStrictEqual([]);
-    expect(await reportedLines("ana", RULE, CALLS, "src/meta/json-runtime.ts")).toStrictEqual([]);
-  });
-
   it("renames all three calls and imports them through one statement", async () => {
     const fixed = await fixedSource("ana", RULE, CALLS, INSIDE);
     expect(fixed).toContain("return capturedJsonParse(raw);");

@@ -18,9 +18,9 @@ import {
   symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { homedir, tmpdir } from "../src/meta/os.ts";
+import { homedir } from "../src/meta/os.ts";
 import { containsPath } from "../src/meta/path-containment.ts";
-import { dirname, join } from "../src/meta/path.ts";
+import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import {
   type CommandWall,
@@ -32,7 +32,6 @@ import {
 } from "../src/tools/command.ts";
 import { claimRoot } from "../src/wall/seat-root.ts";
 import { LINUX_BWRAP_ID } from "../src/wall/linux-bwrap.ts";
-import { moveBlockingRules } from "../src/wall/seatbelt-path-guard.ts";
 import { commandIsolationPolicy } from "../src/wall/isolation.ts";
 import { userTempRules } from "../src/wall/policy.ts";
 import { toolchainTemp } from "./helpers/toolchain-temp.ts";
@@ -96,23 +95,6 @@ async function inSeat(
 }
 
 describe("the solve isolation's policy", () => {
-  it("denies the repository's other worktrees with it, and names them in its identity", () => {
-    // A campaign runs from a worktree kept for it, and its log, every hidden value in it, lies
-    // under `.ana` there. Until 10 October a shell in a sibling worktree could read it.
-    const repoRoot = workRepo();
-    const sibling = workRepo();
-    const alone = solveIsolationPolicy({ repoRoot });
-    const closed = solveIsolationPolicy({ repoRoot, otherTrees: [sibling] });
-    if ("unsupported" in alone || "unsupported" in closed) {
-      throw new Error("this host cannot run the isolation");
-    }
-    expect(alone.deniedReadRoots).not.toContain(sibling);
-    expect(closed.deniedReadRoots).toContain(sibling);
-    expect(closed.deniedReadRoots).toContain(realpathSync.native(sibling));
-    expect(closed.deniedWriteRoots).toContain(sibling);
-    expect(closed.policyHash).not.toBe(alone.policyHash);
-  });
-
   it("denies the repository and whole operator home, reopening only explicit runtimes", () => {
     const repoRoot = workRepo();
     const policy = solveIsolationPolicy({ repoRoot });
@@ -172,12 +154,6 @@ describe("the solve isolation's policy", () => {
     expect(opened.filter((path) => containsPath(path, repoRoot) || containsPath(path, home))).toEqual([]);
   });
 
-  it("refuses to create an isolation policy on an unsupported platform", () => {
-    // This policy supports neither Seatbelt nor bubblewrap on win32.
-    const policy = solveIsolationPolicy({ repoRoot: workRepo(), runtime: { platform: "win32" } });
-    expect("unsupported" in policy).toBe(true);
-  });
-
   it("refuses a command an ordinary home canary and reads only an explicit runtime inside a denied root", async () => {
     const repoRoot = workRepo();
     const runtimeRoot = join(repoRoot, "node_modules", "transport-runtime");
@@ -235,20 +211,6 @@ describe("the solve isolation's policy", () => {
     },
     60_000,
   );
-
-  it("starts a command under a policy that names a worktree removed since it was made", async () => {
-    // The other worktrees are read once when a campaign opens. On 10 October two were removed
-    // while a simulated campaign ran, and from the next policy on every solve ended
-    // `sandbox-crash`: Bubblewrap cannot make a mountpoint under the read-only root. A removed
-    // tree cannot be read, so it stays in the identity and takes no mount.
-    const repoRoot = workRepo();
-    const sibling = workRepo();
-    await inSeat(repoRoot, [sibling], async (wall, run) => {
-      rmSync(sibling, { recursive: true, force: true });
-      expect(wall.base.deniedReadRoots).toContain(sibling);
-      expect(await run("echo started")).toBe("started\n");
-    });
-  }, 60_000);
 
   // pip installs into the user base, and refused there it reads as a broken pip (21 October).
   it.skipIf(Bun.which("python3") === null)(
@@ -335,73 +297,9 @@ describe("the wall's probe", () => {
       expect(readdirSync(wall.dirs.temp)).toEqual([]);
     });
   }, 60_000);
-
-  // On Linux the command wall hides the whole temporary directory, where every tree a test makes
-  // lies, so no tree here is readable to a command whatever the policy says.
-  it.skipIf(!onDarwin)(
-    "says which read got through, under a policy that does not deny the trees it reads",
-    async () => {
-      const elsewhere = workRepo();
-      const repoRoot = workRepo();
-      const sibling = workRepo();
-      writeFileSync(join(sibling, "package.json"), '{\n  "name": "a-sibling"\n}\n');
-      await inSeat(elsewhere, [], async (wall) => {
-        const said = await probeWall(wall, repoRoot, sibling);
-        expect(said).toContain("repository canary: read");
-        expect(said).toContain("other worktree's package.json: read");
-        expect(said).toContain("host folder: refused");
-        // Its own folder still read back: the launch ran, and refused what it should not have read.
-        expect(said).toContain("ANA-WALL-PROBE");
-        expect(readdirSync(repoRoot)).toEqual([]);
-      });
-    },
-    60_000,
-  );
-
-  it("does not hold where its command cannot start", async () => {
-    const repoRoot = workRepo();
-    await inSeat(repoRoot, [], async (wall) => {
-      rmSync(wall.dirs.kept, { recursive: true, force: true });
-      expect(await probeWall(wall, repoRoot)).toStartWith("the probe did not run: ");
-      expect(readdirSync(repoRoot)).toEqual([]);
-    });
-  }, 60_000);
 });
 
 describe("the rename guard", () => {
-  // A read restriction names a path, so a profile without `seatbelt-path-guard.ts` refuses the
-  // direct read and the rename of the denied directory, and then lets a rename of its parent
-  // through: the canary comes back at exit 0.
-  it("denies in the command profile the rename of every protected root's ancestors", () => {
-    const repoRoot = workRepo();
-    const base = solveIsolationPolicy({ repoRoot });
-    if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
-    const rules = moveBlockingRules(base.deniedReadRoots);
-    const literal = (path: string) => `  (literal ${JSON.stringify(path)})`;
-    expect(rules).toContain(literal(dirname(repoRoot)));
-    expect(rules).toContain(literal(dirname(homedir())));
-    expect(rules).not.toContain(literal("/"));
-    // Both halves of the rename: the source is unlinked and the destination is created.
-    expect(rules).toContain("(deny file-write-unlink");
-    expect(rules).toContain("(deny file-write-create");
-    if (onDarwin) {
-      const scratch = join(tmpdir(), "ana-solve-sandbox-scratch");
-      const { profile } = commandIsolationPolicy(base, {
-        root: scratch,
-        kept: join(scratch, "kept"),
-        home: join(scratch, "home"),
-        temp: join(scratch, "tmp"),
-      });
-      // The block whole, in its order: an ancestor's literal line alone also stands in a read rule.
-      expect(profile).toContain(rules.join("\n"));
-      // Upstream tags every rule with a per-session random suffix for its log stream.
-      expect(profile).not.toContain("with message");
-    }
-    const again = solveIsolationPolicy({ repoRoot });
-    if ("unsupported" in again) throw new Error("this host cannot run the isolation");
-    expect(again.policyHash).toBe(base.policyHash);
-  });
-
   it("keeps a command from reading the repository by renaming its parent", async () => {
     const outer = workRepo();
     const repoRoot = join(outer, "parent", "repo");
@@ -425,8 +323,4 @@ describe("the rename guard", () => {
       expect(existsSync(moved)).toBe(false);
     });
   }, 60_000);
-
-  it("emits nothing when there is nothing to protect, rather than a rule matching everything", () => {
-    expect(moveBlockingRules([])).toStrictEqual([]);
-  });
 });

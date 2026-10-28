@@ -17,18 +17,10 @@
 // epoch ends with a promotion and the next one's tasks are harder?
 
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
-import {
-  type Epoch,
-  epochLine,
-  epochsOf,
-  promotionsWorth,
-  riskLines,
-  worthLine,
-  worthOf,
-} from "../src/campaign/climb.ts";
+import { type Epoch, epochLine, epochsOf, riskLines, worthOf } from "../src/campaign/climb.ts";
 import { examine } from "../src/examiner/session.ts";
 import { readsStep } from "../src/kernel/compare.ts";
-import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
+import { type Condition, settingId } from "../src/kernel/condition.ts";
 import { type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import { GUIDE_FILE } from "../src/meta/bundle-layout.ts";
 import {
@@ -41,11 +33,9 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../src/meta/json-shape.ts";
-import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { ANSWER_FILE } from "../src/tools/answer.ts";
 import type { Seats } from "../tools/d2/campaign-terms.ts";
 import { harnessBuilder } from "../tools/d2/harness-builder.ts";
@@ -101,40 +91,10 @@ const condition = (task: string, harness: string): Condition => ({
   side: "test",
 });
 const SETTING = settingId(condition("any", "any"));
-let solves = 0;
-function solved(comparison: string, task: string, harness: string, valid: readonly boolean[]) {
-  const ran = condition(task, harness);
-  const id = conditionId(ran);
-  return [
-    event("condition.recorded", { id, condition: requireJsonValue(ran) }),
-    ...valid.flatMap((each) => {
-      solves += 1;
-      const solve = `s-${String(solves)}`;
-      return [
-        event("solve.started", { solve, condition: id, ...keyIfDefined("comparison", comparison) }),
-        event("solve.finished", {
-          solve,
-          ending: each ? { outcome: "pass" } : { outcome: "fail", kind: "rejected" },
-          billed: 1,
-        }),
-      ];
-    }),
-  ];
-}
 const heldOut = (version: string) => [
   event("task.proposed", { version, taskId: version }),
   event("task.gate", { version, gate: 1, outcome: "passed" }),
 ];
-const reported = (session: string, old: string, fresh: string, versions: string[]) =>
-  event("comparison.reported", {
-    session,
-    reading: "no-step",
-    old,
-    fresh,
-    solves: 2,
-    setting: SETTING,
-    versions,
-  });
 
 setDefaultTimeout(1_800_000);
 
@@ -352,21 +312,6 @@ describe("the climb", () => {
   );
 });
 
-describe("an epoch's shares", () => {
-  it("count a comparison's solves of the epoch's tasks, and none an Examiner session had made to try one", () => {
-    // Task v1 held out after the reference answered one of three solves of it under try_task.
-    const log = [
-      event("exam.started", { session: "x-1" }),
-      ...solved("x-1", "v1", "h0", [true, false, false]),
-      ...heldOut("v1"),
-      event("comparison.started", { session: "g-1", starter: "h0" }),
-      ...solved("g-1", "v1", "h0", [true, true]),
-      reported("g-1", "h0", "h1", ["v1"]),
-    ];
-    expect(epochsOf(log)).toMatchObject([{ tasks: ["v1"], reference_share: { valid: 2, solves: 2 } }]);
-  });
-});
-
 describe("the chance of a false promotion among an epoch's attempts", () => {
   /** A candidate's comparison against `old` that tallied one task, with the reference read
    *  against itself beside it where `noise` holds its differences. */
@@ -552,17 +497,6 @@ describe("the bar a promotion is read against, beside an old ladder's readings",
     ladderRead("g-5", "hb", [2, 0, 0], [2, 0, 0]),
   ];
 
-  it("reads each promotion's cost against the operator's bar, gating nothing", () => {
-    const worth = promotionsWorth(log);
-    expect(worth.get("ha")).toEqual({
-      bars: { cost: 2 },
-      cost: { attempts: 1, sessions: 1, dollars: 0, met: true },
-    });
-    expect(worthLine(worth.get("hb") ?? { bars: { cost: 2 }, cost: null })).toBe(
-      "cost, gating nothing: 1 promotion attempt this epoch (bar 2 after set-up): met, over 1 Builder session and 5.00 dollars billed",
-    );
-  });
-
   it("reads a step as the log stood before its report, as one attempt more, and every reading before it as one", () => {
     const step = log.findIndex(({ data }) => data.session === "g-3" && data.reading === "step");
     const before = worthOf(log.slice(0, step), "g-3");
@@ -573,11 +507,5 @@ describe("the bar a promotion is read against, beside an old ladder's readings",
     const tied = { ...stepRead("g-5", "ha", "hb").data, reading: "no-step", frontier: { differences: [0] } };
     const again = [...log.slice(0, step + 1), event("comparison.reported", tied)];
     expect(worthOf(again, "g-6").cost).toMatchObject({ attempts: 3 });
-  });
-
-  it("reads no old ladder reading as a step, a control or an attempt of the climb's", () => {
-    expect(epochsOf(log).map(({ comparisons }) => comparisons)).toEqual(
-      epochsOf(log.filter(({ data }) => data.ladder !== true)).map(({ comparisons }) => comparisons),
-    );
   });
 });

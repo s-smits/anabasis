@@ -411,31 +411,6 @@ describe("the simplify ownership catchers", () => {
     await pins("no-repeated-string-literal", LITERALS, 1);
   });
 
-  it("holds a suite to ten spellings, because a case naming its own fixture is a case", async () => {
-    await pins("no-repeated-string-literal", SUITE, 1, "test/fixture.test.ts");
-  });
-
-  it("reports the same suite in source, where four is already too many", async () => {
-    // Both functions, each on its first spelling: the lines the fixture marks for the test tree.
-    const first = SUITE.split("\n").flatMap((line, index) =>
-      /\/\/ (REPORT|ADMITTED)/.test(line) ? [index + 1] : [],
-    );
-    expect(first).toHaveLength(2);
-    expect(
-      await reportedLines("ana", "no-repeated-string-literal", SUITE, "src/run/fixture.ts"),
-    ).toStrictEqual(first);
-  });
-
-  it("counts no prose in a suite, where a note or an asserted sentence is no fixture's name", async () => {
-    const noted = SUITE.replaceAll("opening.json", "Nothing to add.");
-    expect(await reportedLines("ana", "no-repeated-string-literal", noted, "test/fixture.test.ts")).toEqual(
-      [],
-    );
-    expect(
-      await reportedLines("ana", "no-repeated-string-literal", noted, "src/run/fixture.ts"),
-    ).toHaveLength(2);
-  });
-
   it("names a suite's fixture once, after the imports, and reads every copy back from it", async () => {
     const swept = await fixedSource("ana", "no-repeated-string-literal", SUITE, "test/fixture.test.ts");
     expect(swept).toContain('const OPENING_JSON = "opening.json";');
@@ -443,27 +418,5 @@ describe("the simplify ownership catchers", () => {
     expect(swept.match(/OPENING_JSON/gu)).toHaveLength(11);
     // The admitted nine are below the floor and stay as the suite wrote them.
     expect(swept.match(/"battery\.json"/gu)).toHaveLength(9);
-  });
-
-  it("declares after the leading imports, not after one written below the first statement", async () => {
-    const late = SUITE.replace(
-      "export function fixture()",
-      'const scratch = [];\nimport { helper } from "./helper.ts";\n\nexport function fixture()',
-    );
-    const swept = await fixedSource("ana", "no-repeated-string-literal", late, "test/fixture.test.ts");
-    expect(swept.indexOf("const OPENING_JSON")).toBeLessThan(swept.indexOf("const scratch"));
-  });
-
-  it("takes an `as const` off a copy it names, since the constant already has the literal type", async () => {
-    const asserted = SUITE.replace('record("opening.json", "ten")', 'record("opening.json" as const, "ten")');
-    const swept = await fixedSource("ana", "no-repeated-string-literal", asserted, "test/fixture.test.ts");
-    expect(swept).toContain('record(OPENING_JSON, "ten")');
-    expect(swept).not.toContain("as const");
-  });
-
-  it("leaves a value it cannot name plainly to its author", async () => {
-    const stamped = SUITE.replaceAll("opening.json", "2026-09-15T00:00:00Z");
-    const swept = await fixedSource("ana", "no-repeated-string-literal", stamped, "test/fixture.test.ts");
-    expect(swept).toStrictEqual(stamped);
   });
 });

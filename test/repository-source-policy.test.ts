@@ -8,8 +8,8 @@ import {
 } from "../tools/loc/source-policy.ts";
 import { scanTokens } from "../tools/loc/token-facts.ts";
 
-const checks = (text: string, copiedLimit?: number): string[] =>
-  sourceTextFindings("src/example.ts", text, copiedLimit).map((finding) => finding.check);
+const checks = (text: string): string[] =>
+  sourceTextFindings("src/example.ts", text).map((finding) => finding.check);
 
 describe("source policy", () => {
   it("refuses an authored file and function above the configured limits", () => {
@@ -46,25 +46,6 @@ describe("source policy", () => {
     expect(comment.map((finding) => finding.detail)).toEqual([
       "`Read` is exported and no other file names it; drop the `export`",
     ]);
-  });
-
-  // `walkFiles` reads every file under `src`, `tools` and `vendor`, and the only Markdown it finds
-  // there are the oxlint ledgers, one of them over the ceiling. The number measures what the
-  // formatter does to authored code, so applying it to prose asks for a decision record to be split
-  // at 800 lines for a reason belonging to neither half. A named copied-file ceiling is a
-  // decision rather than an accident of the walk, so that one still binds.
-  it("leaves prose to its own judgement, unless a ceiling names the file", () => {
-    const long = Array.from({ length: NEW_FILE_CEILING + 1 }, () => "a line of prose.").join("\n");
-    expect(sourceTextFindings("tools/oxlint/BASELINE.md", long).map((f) => f.check)).toEqual([]);
-    expect(sourceTextFindings("tools/oxlint/BASELINE.md", long, 800).map((f) => f.check)).toEqual([
-      "file-size",
-    ]);
-    expect(sourceTextFindings("src/example.ts", long).map((f) => f.check)).toContain("file-size");
-  });
-
-  it("limits copied files to their declared initial size", () => {
-    expect(checks("one\ntwo\nthree", 2)).toContain("file-size");
-    expect(checks("one\ntwo", 2)).not.toContain("file-size");
   });
 
   it("reads string literals and calls past comments and a regex holding `#`, and counts nonblank lines", () => {

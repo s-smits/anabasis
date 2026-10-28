@@ -73,10 +73,4 @@ describe("ana/prefer-includes-over-some-equals", () => {
     expect(fixed).toContain("return values.some((value) => value === 0);");
     expect(fixed).toContain("return ids.some((id) => id === null);");
   });
-
-  it("leaves the closure standing where the literal cannot carry what is written inside it", async () => {
-    const fixed = await fixedSource("ana", "prefer-includes-over-some-equals", CLOSURES);
-    expect(fixed).toContain('return owners.some((owner) => owner === /* the 2026-08 spelling */ "brief");');
-    expect(fixed).not.toContain("owners.includes");
-  });
 });

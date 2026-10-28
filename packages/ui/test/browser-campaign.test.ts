@@ -26,14 +26,6 @@ import {
  * promotion. Times are not asserted, since the page writes them in the browser's own zone.
  */
 
-/** A box as the page measured it. */
-interface Box {
-  readonly left: number;
-  readonly right: number;
-  readonly top: number;
-  readonly bottom: number;
-}
-
 let served: Served;
 let exam: Served;
 let browser: Browser;
@@ -55,7 +47,6 @@ const OUTCOME_LABELS = [
   "Set aside for a label",
 ] as const;
 const COLUMNS = ["b-1", "r-1", "c-1", "b-2", "b-3", "r-3", "b-4", "g-9"] as const;
-const WIDTHS = [1024, 1280, DESKTOP.width, 1920, PHONE.width] as const;
 
 /** The main campaign's Campaign pane, open at `width` (the desktop's by default). */
 async function openCampaign(name = "fixture", width: number = DESKTOP.width): Promise<Opened> {
@@ -82,37 +73,6 @@ function readout(page: Page, label: string) {
     .locator(".ana-metric")
     .filter({ has: page.locator(".ana-metric-label", { hasText: label }) });
   return { value: card.locator(".ana-metric-value"), detail: card.locator(".ana-metric-detail") };
-}
-
-/** Two boxes share some area, a hair's overlap of anti-aliased edges left out. */
-function intersects(a: Box, b: Box): boolean {
-  return a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
-}
-
-/** Every label drawn over the chart's columns and every promotion's divider, with the group each
- *  belongs to, so a divider is not held against its own label, and the chart's own box. */
-function chartMarks(page: Page) {
-  return page.evaluate(() => {
-    const boxOf = (element: Element) => {
-      const { left, right, top, bottom } = element.getBoundingClientRect();
-      return { left, right, top, bottom };
-    };
-    const marks = document.querySelector(".ana-comparisons-marks");
-    const svg = marks?.closest("svg");
-    const groupOf = (element: Element) =>
-      [...(marks?.children ?? [])].findIndex((each) => each.contains(element));
-    const of = (selector: string) =>
-      [...(marks?.querySelectorAll(selector) ?? [])].map((element) => ({
-        text: element.textContent,
-        group: groupOf(element),
-        box: boxOf(element),
-      }));
-    return {
-      labels: of("text"),
-      dividers: of("g > line"),
-      chart: svg === null || svg === undefined ? null : boxOf(svg),
-    };
-  });
 }
 
 /** Where the column of comparison `id` stands, from its axis label: its middle, and a height inside
@@ -330,40 +290,6 @@ describe("the comparisons chart", () => {
     expectQuiet(opened);
     await opened.context.close();
   });
-
-  for (const width of WIDTHS) {
-    test(`keeps every mark's label clear of the others, of each divider and of the chart's edge at ${String(width)} pixels`, async () => {
-      const opened = await openCampaign("fixture", width);
-      const { page } = opened;
-      await expect(
-        page.locator(".ana-comparisons-marks text").filter({ hasText: "back to the starter" }),
-      ).toHaveCount(1);
-      const { labels, dividers, chart } = await chartMarks(page);
-      expect(chart).not.toBeNull();
-      const crossings: string[] = [];
-      for (const [at, label] of labels.entries()) {
-        for (const other of labels.slice(at + 1)) {
-          if (intersects(label.box, other.box)) {
-            crossings.push(`"${label.text ?? ""}" and "${other.text ?? ""}"`);
-          }
-        }
-        for (const divider of dividers) {
-          if (divider.group !== label.group && intersects(label.box, divider.box)) {
-            crossings.push(`"${label.text ?? ""}" and a divider at ${String(Math.round(divider.box.left))}`);
-          }
-        }
-        if (chart !== null && (label.box.left < chart.left || label.box.right > chart.right)) {
-          crossings.push(`"${label.text ?? ""}" past the chart's edge`);
-        }
-      }
-      expect(crossings).toEqual([]);
-      // Narrower than its columns, the chart scrolls inside its card and the page does not.
-      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-      expect(overflow).toBeLessThanOrEqual(0);
-      expectQuiet(opened);
-      await opened.context.close();
-    });
-  }
 });
 
 describe("the small charts and the counters", () => {

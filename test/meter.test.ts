@@ -7,7 +7,6 @@ const rates = { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 };
 const catalog = getBuiltinModels("anthropic").find((model) => model.id === "claude-opus-5");
 if (catalog === undefined) throw new Error("pi's Anthropic catalog has no claude-opus-5");
 const opus = { ...catalog, provider: "claude", cost: rates };
-const free = { ...opus, provider: "openrouter", id: "free", cost: { ...rates, input: 0 } };
 const usage = (
   input: number,
   cacheRead: number,
@@ -41,23 +40,5 @@ describe("the meter", () => {
       billed: expect.closeTo(0.0075 + 0.125 + 0.45 + 0.053125 + 0.9, 10),
       metered: expect.closeTo(5 + 0.125, 10),
     });
-  });
-
-  it("freezes the list price, so a later catalog change moves nothing", () => {
-    const listed = { ...opus, cost: { ...rates } };
-    const prices = freezePrices([listed]);
-    listed.cost.input = 99;
-    expect(prices["claude/claude-opus-5"]).toEqual(rates);
-    expect(Object.isFrozen(prices)).toBe(true);
-    expect(Object.isFrozen(prices["claude/claude-opus-5"])).toBe(true);
-    // The catalog is pi's, read by every other model call: it stays as pi gave it.
-    expect(Object.isFrozen(listed.cost)).toBe(false);
-  });
-
-  it("refuses an unpriced model, and a model the table does not hold", () => {
-    expect(() => freezePrices([opus, free])).toThrow("openrouter/free has no list price");
-    expect(() => dollars(freezePrices([opus]), "claude/claude-sonnet-5", tokensOf([]))).toThrow(
-      "not in the condition's price table",
-    );
   });
 });

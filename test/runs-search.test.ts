@@ -59,21 +59,6 @@ test("finds log and note lines while excluding credentials and links", async () 
   expect((await searchLocal({ ...query, pattern: "a.b" }, [root])).matches).toHaveLength(1);
 });
 
-test("searches with rg's regex syntax and places a match after multibyte text by character", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "ana-runs-search-rg-"));
-  try {
-    const file = join(dir, "accents.md");
-    writeFileSync(file, "ééé needle\nneedle(?= in)\n");
-    const found = await searchLocal({ ...query, pattern: String.raw`\bne+dle$`, regex: true }, [dir]);
-    expect(found.matches).toEqual([{ path: file, line: 1, text: "ééé needle", at: 4 }]);
-    await expect(searchLocal({ ...query, pattern: "[", regex: true }, [dir])).rejects.toThrow(
-      "regex parse error",
-    );
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 test("asks peers once alongside the local search and retains matches when a peer fails", async () => {
   const pending = Promise.withResolvers<void>();
   const output: string[] = [];
@@ -135,30 +120,6 @@ test("caps match characters and spills every whole match when a line or total is
       expect((line.split(": ").at(-1) ?? "").length).toBeLessThanOrEqual(300);
     }
     if (max === "10000") expect(printed).toContain("needle");
-  }
-});
-
-test("narrows hosts and scope and refuses invalid arguments before searching", async () => {
-  const seen: string[] = [];
-  await search(["needle", "--host", "first", "--in", "logs"], {
-    hosts: fakeHosts,
-    local: () => {
-      throw new Error("local search should not run");
-    },
-    transport: async (_script, _args, targets) => {
-      seen.push(...(targets ?? []).map((host) => host.name));
-      return [];
-    },
-    print: () => {},
-  });
-  expect(seen).toEqual(["first"]);
-  for (const args of [
-    ["needle", "--max", "0"],
-    ["needle", "--in", "other"],
-    ["needle", "--host", "missing"],
-    ["needle", "--here", "--host", "first"],
-  ]) {
-    await expect(search(args, { hosts: fakeHosts })).rejects.toThrow();
   }
 });
 

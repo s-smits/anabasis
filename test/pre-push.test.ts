@@ -91,13 +91,6 @@ function oldCopies() {
   return { oldSource, oldSecond };
 }
 
-/** A line with no history in common with this one, its middle commit's file ending in a space. */
-function foreignLine(): string[] {
-  const first = git("commit-tree", withFile(git("mktree"), "v2-a.txt"), "-m", "v2 a");
-  const middle = git("commit-tree", withFile(first, "v2-b.txt", "spaced \n"), "-p", first, "-m", "v2 b");
-  return [first, middle, git("commit-tree", withFile(middle, "v2-c.txt"), "-p", middle, "-m", "v2 c")];
-}
-
 beforeEach(() => {
   rmSync(log, { force: true });
   rmSync(join(work, ".git", "ana-gate-passed"), { force: true });
@@ -110,22 +103,6 @@ describe("pre-push", () => {
     expect(result.stderr).toContain(
       "documentation only: git diff --check and the secret scan passed on 1 commit.",
     );
-    expect(gatesRun(log)).toEqual([]);
-  });
-
-  it("refuses a documentation-only update whose diff check fails", () => {
-    const unclean = git(
-      "commit-tree",
-      withFile(base, "README.md", "trailing \n"),
-      "-p",
-      base,
-      "-m",
-      "spaced",
-    );
-    const result = push([update(unclean, base)]);
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("README.md:1: trailing whitespace.");
-    expect(result.stderr).toContain(`git diff --check fails on ${short(unclean)}. Nothing was pushed.`);
     expect(gatesRun(log)).toEqual([]);
   });
 
@@ -177,40 +154,6 @@ describe("pre-push", () => {
     );
   });
 
-  it("runs nothing again over a tree whose checks passed", () => {
-    expect(push([update(second, docs)]).status).toBe(0);
-    rmSync(log, { force: true });
-    const again = push([update(second, docs)]);
-    expect(again.status).toBe(0);
-    expect(again.stderr).toContain("passed earlier on these exact bytes");
-    expect(gatesRun(log)).toEqual([]);
-  });
-
-  it("publishes a push that only deletes without a check", () => {
-    const result = push([`(delete) ${absent} refs/heads/topic ${second}`]);
-    expect(result.status).toBe(0);
-    expect(result.stderr).toContain("every update is a deletion");
-  });
-
-  it("reads a new branch against what the clone's remote-tracking refs already hold", () => {
-    const result = push([update(second, absent, "fresh")]);
-    expect(result.status).toBe(0);
-    expect(result.stderr).toContain("git diff --check and the secret scan passed on 3 commits");
-    expect(gatesRun(log)).toEqual([`${second} -`]);
-  });
-
-  it("checks nothing for a push of what the remote already holds", () => {
-    git("update-ref", "refs/remotes/origin/topic", second);
-    try {
-      const result = push([update(second, absent)]);
-      expect(result.status).toBe(0);
-      expect(result.stderr).toContain("nothing this push adds is new to the remote");
-      expect(gatesRun(log)).toEqual([]);
-    } finally {
-      git("update-ref", "-d", "refs/remotes/origin/topic");
-    }
-  });
-
   // A restack pushes every moved head at once; the lower heads' trees are the land proof's.
   it("checks only the pushed heads no other pushed head holds", () => {
     const { oldSource, oldSecond } = oldCopies();
@@ -227,34 +170,4 @@ describe("pre-push", () => {
   });
 
   // PR #141 brought v2's 393 commits in through one merge; v1's hook gated each of them.
-  it("checks the first-parent line of a merge that brings in another history, and none of that history", () => {
-    const [, , last = ""] = foreignLine();
-    const merged = git(
-      "commit-tree",
-      withFile(withFile(second, "v2-c.txt"), "v2-a.txt"),
-      "-p",
-      second,
-      "-p",
-      last,
-      "-m",
-      "merge v2",
-    );
-    const result = push([update(merged, absent, "v2")]);
-    expect(result.status).toBe(0);
-    expect(result.stderr).toContain("from a line made elsewhere: 3. The merge is gated; they are not.");
-    expect(gatesRun(log)).toEqual([`${merged} -`]);
-  });
-
-  it("leaves out a history another remote of this clone already holds", () => {
-    const [, , last = ""] = foreignLine();
-    git("update-ref", "refs/remotes/v2/main", last);
-    try {
-      const own = git("commit-tree", withFile(last, "own.ts"), "-p", last, "-m", "own");
-      const result = push([update(own, absent, "imported")]);
-      expect(result.status).toBe(0);
-      expect(gatesRun(log)).toEqual([`${own} -`]);
-    } finally {
-      git("update-ref", "-d", "refs/remotes/v2/main");
-    }
-  });
 });

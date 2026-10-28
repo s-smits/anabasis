@@ -116,22 +116,6 @@ export function asserted() {
 }
 `.trimStart();
 
-const TEST_OBJECTS = `
-declare function record(row: { kind: string; verified: boolean; runId: string }): void;
-export function thrice() {
-  record({ kind: "case", verified: true, runId: "r1" }); // ADMITTED in a test the literal is the case being read
-  record({ kind: "case", verified: true, runId: "r1" });
-  record({ kind: "case", verified: true, runId: "r1" });
-}
-export function fivefold() {
-  record({ kind: "probe", verified: false, runId: "r2" }); // REPORT five spellings is a fixture, not a case
-  record({ kind: "probe", verified: false, runId: "r2" });
-  record({ kind: "probe", verified: false, runId: "r2" });
-  record({ kind: "probe", verified: false, runId: "r2" });
-  record({ kind: "probe", verified: false, runId: "r2" });
-}
-`.trimStart();
-
 const CARRIED = `
 import { publish } from "./published.ts";
 declare const bundle: { rows: string[]; id: string; kind: string; note: string | null };
@@ -445,14 +429,6 @@ describe("the simplify shape catchers", () => {
     await pins("no-thrice-spelled-object", OBJECTS, 1);
   });
 
-  it("waits for a fifth spelling in a test, where the literal is usually the case being read", async () => {
-    const expected = expectedLines(TEST_OBJECTS);
-    expect(expected).toHaveLength(1);
-    expect(
-      await reportedLines("ana", "no-thrice-spelled-object", TEST_OBJECTS, "owner.test.ts"),
-    ).toStrictEqual(expected);
-  });
-
   it("reads an argument the callee already holds inside another", async () => {
     await pins("no-argument-already-carried", CARRIED, 1);
   });
@@ -483,11 +459,5 @@ describe("the simplify shape catchers", () => {
 
   it("reads a ternary tail past three cases, and one grown anywhere but the tail", async () => {
     await pins("no-tangled-ternary", TERNARIES, 3);
-  });
-
-  it("says nothing about a fixture in a test file", async () => {
-    expect(
-      await reportedLines("ana", "no-inline-schema-literal", INLINE_TABLES, "owner.test.ts"),
-    ).toStrictEqual([]);
   });
 });

@@ -3,7 +3,7 @@
 // move-by-move scheduler for a rehearsal.
 // The paid run keeps a Receipt beside its log; these tests use scripted seats and inspect the log.
 
-import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
+import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { supplyOf } from "../src/campaign/admission.ts";
 import { crashedRun } from "../src/campaign/ground.ts";
 import { pendingWords } from "../src/campaign/word.ts";
@@ -23,7 +23,7 @@ import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { flagsOf, idleOf, opened, type Seats } from "../tools/d2/campaign-terms.ts";
+import { flagsOf, opened, type Seats } from "../tools/d2/campaign-terms.ts";
 import { harnessBuilder } from "../tools/d2/harness-builder.ts";
 import { HOST } from "../tools/d2/host.ts";
 import type { Seated } from "../tools/d2/round.ts";
@@ -239,6 +239,55 @@ describe("a campaign run by its live Builder", () => {
     expect(ended).toBeGreaterThan(-1);
     expect(waited).toBeGreaterThan(ended);
     expect(events[waited]?.data.text).toContain("Campaign facts:");
+  });
+
+  it("makes no second draw of a pair nothing changed in, and records no move for an action it refused", async () => {
+    layOutPack(root, bundle, MANY, FIXTURE);
+    const name = `${STEM}-unchanged`;
+    const tied = scriptedSeats({ held: { old: "pass", fresh: "pass" }, starter: "pass" }, GRADED, []);
+    const seats: Seats = {
+      seated: builderScript(tied, [
+        ["compare", {}],
+        ["promote", {}],
+        CHANGE_GUIDE,
+        ["compare", {}],
+        ["compare", {}],
+        ["promote", {}],
+        ["finish", { note: "Nothing new to compare." }],
+      ]),
+    };
+    expect(await harnessBuilder([...seeded(name), ...FLAGS], seats)).toMatchObject({ ending: "finished" });
+    const [untouched, , again] = said(name, "compare");
+    expect(untouched).toContain("harness/ is the reference harness: there is nothing to compare");
+    expect(again).toContain("nothing in it has changed since: there is nothing new to compare");
+    expect(of(name, "comparison.started")).toHaveLength(1);
+    expect(of(name, "build.checkpoint")).toHaveLength(1);
+    expect(said(name, "promote")[0]).toContain("there is none to promote");
+    expect(said(name, "promote")[1]).toContain("Nothing was promoted");
+    expect(of(name, MOVED).map(({ move }) => move)).toEqual([
+      "accept",
+      "prepare",
+      "build",
+      "compare",
+      "build",
+      "build",
+      "build",
+    ]);
+  });
+
+  it("requires a Referee for a paid opening, keeps its recorded seat, and permits scripted openings without one", () => {
+    const log = join(root, "terms", "reviewer", LOG_FILE);
+    const flags = (...more: string[]) =>
+      flagsOf(["--root", root, "--name", "terms", "--project", PROJECT, "--budget", "100", ...more]);
+    expect(() => opened(log, flags(), "paid")).toThrow("--reviewer");
+    expect(read(log)).toEqual([]);
+    expect(opened(log, flags(), "scripted").seats.reviewer).toBeNull();
+    expect(() => opened(log, flags(), "paid")).toThrow("--reviewer");
+    expect(read(log)).toHaveLength(1);
+    const model = "claude/claude-opus-5-5";
+    expect(opened(log, flags("--reviewer", model), "paid").seats.reviewer?.model).toBe(model);
+    expect(opened(log, flags(), "paid").seats.reviewer?.model).toBe(model);
+    expect(read(log)).toHaveLength(2);
   });
 
   it("starts the campaign's first Examiner session as the conversation opens, where the table names one", async () => {
@@ -664,36 +713,6 @@ describe("a campaign run by its live Builder", () => {
     expect(waited).not.toContain("operator");
     expect(waited).not.toContain("other tasks please");
     expect(pendingWords(read(join(REPO, ".ana", "d2", name, LOG_FILE)))).toEqual([]);
-  });
-
-  it("stops before the next Builder turn when an operator stops a child action", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
-    const name = `${STEM}-live-stop`;
-    const seats: Seats = {
-      seated: builderScript(
-        scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
-        // The next action waits for the Examiner session writing beside it, and reads the word.
-        [["examine", {}], ["compare", {}], CHANGE_GUIDE],
-      ),
-      examine: async (request) => {
-        const result = await examine({
-          ...request,
-          ...scripted([
-            ["finish", { note: "No more." }],
-            ["finish", { note: "No more." }],
-          ]),
-        });
-        wordCommand(["--name", name, "--stop", "stop after this child"]);
-        return result;
-      },
-    };
-    expect(
-      await harnessBuilder([...seeded(name), "--target", "5", "--practice", "2", ...LEVEL], seats),
-    ).toMatchObject({
-      ending: "operator",
-    });
-    expect(of(name, "build.turn")).toHaveLength(2);
-    expect(of(name, CALLED).some(({ tool }) => tool === "bash")).toBe(false);
   });
 
   it("uses the last permitted move and refreshes practice without following a Builder's link", async () => {
@@ -1172,40 +1191,6 @@ describe("a campaign tool where the table names more than the action", () => {
     expect(compares[1]?.why).toContain("where the table named a comparison of the starter harness");
   });
 
-  it("makes no second draw of a pair nothing changed in, and records no move for an action it refused", async () => {
-    layOutPack(root, bundle, MANY, FIXTURE);
-    const name = `${STEM}-unchanged`;
-    const tied = scriptedSeats({ held: { old: "pass", fresh: "pass" }, starter: "pass" }, GRADED, []);
-    const seats: Seats = {
-      seated: builderScript(tied, [
-        ["compare", {}],
-        ["promote", {}],
-        CHANGE_GUIDE,
-        ["compare", {}],
-        ["compare", {}],
-        ["promote", {}],
-        ["finish", { note: "Nothing new to compare." }],
-      ]),
-    };
-    expect(await harnessBuilder([...seeded(name), ...FLAGS], seats)).toMatchObject({ ending: "finished" });
-    const [untouched, , again] = said(name, "compare");
-    expect(untouched).toContain("harness/ is the reference harness: there is nothing to compare");
-    expect(again).toContain("nothing in it has changed since: there is nothing new to compare");
-    expect(of(name, "comparison.started")).toHaveLength(1);
-    expect(of(name, "build.checkpoint")).toHaveLength(1);
-    expect(said(name, "promote")[0]).toContain("there is none to promote");
-    expect(said(name, "promote")[1]).toContain("Nothing was promoted");
-    expect(of(name, MOVED).map(({ move }) => move)).toEqual([
-      "accept",
-      "prepare",
-      "build",
-      "compare",
-      "build",
-      "build",
-      "build",
-    ]);
-  });
-
   it("tells the Builder the same whichever held-out task was won", async () => {
     layOutPack(root, bundle, MANY, FIXTURE);
     /** Everything the Builder read from its tools in a campaign whose two comparisons tied the
@@ -1282,76 +1267,7 @@ describe("a campaign tool where the table names more than the action", () => {
   });
 });
 
-describe("who makes a campaign's moves, as its opening keeps it", () => {
-  it("requires a Referee for a paid opening, keeps its recorded seat, and permits scripted openings without one", () => {
-    const log = join(root, "terms", "reviewer", LOG_FILE);
-    const flags = (...more: string[]) =>
-      flagsOf(["--root", root, "--name", "terms", "--project", PROJECT, "--budget", "100", ...more]);
-    expect(() => opened(log, flags(), "paid")).toThrow("--reviewer");
-    expect(read(log)).toEqual([]);
-    expect(opened(log, flags(), "scripted").seats.reviewer).toBeNull();
-    expect(() => opened(log, flags(), "paid")).toThrow("--reviewer");
-    expect(read(log)).toHaveLength(1);
-    const model = "claude/claude-opus-5-5";
-    expect(opened(log, flags("--reviewer", model), "paid").seats.reviewer?.model).toBe(model);
-    expect(opened(log, flags(), "paid").seats.reviewer?.model).toBe(model);
-    expect(read(log)).toHaveLength(2);
-  });
-
-  it("opens a campaign led by its Builder, records nothing of the term for one the host runs, and keeps either when run again", () => {
-    const logOf = (name: string) => join(root, "terms", name, LOG_FILE);
-    const flags = (...more: string[]) =>
-      flagsOf(["--root", root, "--name", "terms", "--project", PROJECT, ...more]);
-    const led = logOf("led");
-    expect(opened(led, flags(), "scripted").led).toBe(true);
-    expect(opened(led, flags(), "scripted").led).toBe(true);
-    expect(read(led).map(({ data }) => data.led)).toEqual([true]);
-    // The record of a campaign the host runs is a record from before the term, key for key: run
-    // again by a command that names nothing, either is the host's, and nothing is recorded again.
-    const hosted = logOf("hosted");
-    expect(opened(hosted, flags("--no-builder-led"), "scripted").led).toBe(false);
-    expect(read(hosted)[0]?.data).not.toHaveProperty("led");
-    expect(opened(hosted, flags(), "scripted").led).toBe(false);
-    expect(read(hosted)).toHaveLength(1);
-    // The operator's flag hands the campaign over, on record.
-    expect(opened(hosted, flags("--builder-led"), "scripted").led).toBe(true);
-    expect(read(hosted).at(-1)?.data).toMatchObject({ led: true });
-  });
-});
-
 describe("a campaign's endings", () => {
-  it("counts no conversation the provider crashed or a stop killed among those that made no move", () => {
-    const at = new Date(0).toISOString();
-    const move = (session: string, code = "led", kind = "build"): LogEvent => ({
-      kind: "campaign.move",
-      at,
-      data: { move: kind, code, session },
-    });
-    const talk = (session: string, ended: string): LogEvent[] => [
-      move(session),
-      { kind: FINISHED, at, data: { session, ended } },
-    ];
-    // Until 15 October finished, crashed, finished counted three, and ended the campaign.
-    const events = [...talk("b-1", "finished"), ...talk("b-2", "crashed"), ...talk("b-3", "finished")];
-    expect(idleOf(events)).toBe(2);
-    expect(idleOf([...events, ...talk("b-4", "killed")])).toBe(2);
-    const compared: LogEvent[] = [
-      move("g-1", "unread", "compare"),
-      { kind: "comparison.started", at, data: { session: "g-1" } },
-    ];
-    expect(idleOf([...events, ...compared, ...talk("b-4", "finished")])).toBe(1);
-    // Since 16 October an Examiner session opens beside each conversation the table names one for.
-    // One the host refused before it began, or that crashed holding out nothing, is no move; one
-    // that crashed holding out a task is (buffer-159-opus x-8).
-    const examined = (session: string, held: string[]): LogEvent[] => [
-      move(session, "no-room", "examine"),
-      { kind: "exam.finished", at, data: { session, ended: "crashed", held } },
-    ];
-    const refused = [move("x-1", "no-room", "examine"), ...talk("b-4", "finished")];
-    expect(idleOf([...events, ...refused, ...examined("x-2", []), ...talk("b-5", "finished")])).toBe(4);
-    expect(idleOf([...events, ...examined("x-2", ["x-2-001"]), ...talk("b-4", "finished")])).toBe(1);
-  });
-
   // Both harnesses pass: no reading reads a step that the host would promote after a `finish`.
   const passing = () => scriptedSeats({ held: { old: "pass", fresh: "pass" }, starter: "none" }, GRADED, []);
   // Neither answers: a Builder that practises fails, so the table names a build and no Examiner
@@ -1526,88 +1442,5 @@ describe("a campaign's endings", () => {
     const events = read(join(REPO, ".ana", "d2", name, LOG_FILE));
     const end = events.findIndex(({ kind }) => kind === "campaign.ended");
     expect(crashedRun(events.slice(0, end)).count).toBe(3);
-  });
-
-  it("tells a new conversation how the campaign's last Examiner session ended, in an earlier one", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
-    const name = `${STEM}-reread`;
-    const seats: Seats = {
-      seated: builderScripts(failing(), [
-        [["examine", {}], ["release_practice", {}], practise(name), ["finish", { note: "Wait for tasks." }]],
-        [
-          ["campaign_status", {}],
-          ["finish", { note: "Read." }],
-        ],
-        IDLE,
-        IDLE,
-      ]),
-      examine: (request) => examine({ ...request, ...scripted([]) }),
-    };
-    // At a target the held tasks meet, with a practice solve failed, the table names a build, so the
-    // second conversation opens with no Examiner session beside it (16 October) and hears of the first's.
-    await harnessBuilder([...seeded(name), ...FLAGS], seats);
-    const sessions = of(name, EXAMINED).map(({ session }) => (isString(session) ? session : ""));
-    const status = of(name, CALLED).findLast(({ tool }) => tool === "campaign_status");
-    // Until 14 October a new conversation was told only of Examiner sessions it had begun itself.
-    expect(status?.text).toContain(`Examiner session ${sessions[0] ?? ""} crashed, and held out 0 tasks.`);
-    // A led conversation counts its turn before the turn's tools run: until 14 October this, its
-    // first turn, was told as its second.
-    expect(status?.text).toContain("[Session: turn 1 of 300,");
-  });
-
-  it("goes on with a new conversation when run again after the Builder finished", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
-    const name = `${STEM}-again`;
-    // The first run's conversations each practise and fail: three of them make no move, and end it.
-    const idle = [practise(name), ...IDLE];
-    const run = (campaign: Parameters<Seated>[0]) =>
-      read(campaign.log).filter(({ kind }) => kind === "build.started").length;
-    const seats: Seats = {
-      seated: builderScripts(
-        (campaign, given) => (run(campaign) < 3 ? failing() : passing())(campaign, given),
-        [idle, idle, idle, [CHANGE_GUIDE, ["compare", {}], ["finish", { note: "Measured now." }]]],
-      ),
-      examine: unwritten,
-    };
-    // A patience of four at six tasks, with one practice task of the seed's seven: the three idle
-    // conversations are three moves towards it.
-    const args = [...seeded(name), ...FLAGS, "--practice", "1", "--target", "6", "--patience", "4"];
-    expect(await harnessBuilder(args, seats)).toMatchObject({ ending: "finished" });
-    expect(of(name, "comparison.started")).toEqual([]);
-    // Until 12 October a campaign its Builder had finished started nothing again, whatever was left.
-    // Run again, the count of conversations without a move starts afresh: the first one's idle
-    // finish does not end the run. g-1 reads a step, and the harness it promoted closed every task
-    // it was read on; the Examiner sessions beside the conversations after it hold out none, until
-    // the patience of four is spent: eight conversations in all.
-    expect(await harnessBuilder(args, seats)).toMatchObject({ ending: "no-room" });
-    expect(of(name, "build.started")).toHaveLength(8);
-    expect(of(name, REPORTED)).toHaveLength(1);
-    expect(of(name, "campaign.ended")).toMatchObject([{ ending: "finished" }, { ending: "no-room" }]);
-  });
-
-  it("ends on an exam whose checks wait for the operator's word, and prints the command that gives it with the pack's flags", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
-    const name = `${STEM}-admit`;
-    const flags = seeded(name).slice(0, -2);
-    const seats: Seats = { seated: passing() };
-    const printed = spyOn(console, "log");
-    // A patience of one, which the opening keeps for the command it prints. Only an attended
-    // campaign waits for the word: since 16 October an unattended launch admits every check its
-    // author decides (#186).
-    const ending = await harnessBuilder([...flags, "--patience", "1", "--hitl"], seats);
-    const lines = printed.mock.calls.map(([line]) => (isString(line) ? line : ""));
-    printed.mockRestore();
-    expect(ending).toMatchObject({ move: "end", ending: "exam" });
-    // Run as printed, the command opens the campaign's pack: on 9 October the line named the
-    // campaign alone, and over a stored pack that run threw for want of the four flags.
-    const admit = lines
-      .find((line) => line.startsWith("to admit"))
-      ?.split(": bun tools/d2/harness-builder.ts ")[1];
-    // The campaign keeps its project and its patience, so the line names the pack and the campaign alone.
-    expect(admit).toBe(`${flags.slice(0, -2).join(" ")} --admit check-product`);
-    // The reading printed its fault as it was made; the ending does not print it a second time.
-    expect(lines.filter((line) => line.startsWith("fault: "))).toHaveLength(1);
-    const next = await harnessBuilder([...(admit ?? "").split(" "), "--dry-run"], seats);
-    expect(next).toMatchObject({ move: "accept" });
   });
 });

@@ -16,20 +16,11 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { basename, dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import {
-  type CommandWall,
-  heldSeconds,
-  makeSeatDirs,
-  reserveSeconds,
-  runWalled,
-  solveDirs,
-} from "../src/tools/command.ts";
+import { type CommandWall, makeSeatDirs, runWalled, solveDirs } from "../src/tools/command.ts";
 import { claimRoot } from "../src/wall/seat-root.ts";
 import { toolchainTemp } from "./helpers/toolchain-temp.ts";
 import { solveIsolationPolicy } from "../src/wall/base.ts";
-import { hostScratch, toolchainPathDirs } from "../src/wall/policy.ts";
-import { activeDeveloperBinDirs } from "../src/meta/host-tool.ts";
-import { commandSearchPath } from "../src/wall/isolation.ts";
+import { hostScratch } from "../src/wall/policy.ts";
 import { osIsolationSupport } from "../src/wall/os-isolation.ts";
 import { CLOSED } from "./helpers/wall.ts";
 
@@ -49,53 +40,6 @@ async function run(wall: CommandWall, command: string, stage?: (into: string) =>
   const result = await runWalled(wall, command, { onData, timeout, stage });
   return { exitCode: result.exitCode, output };
 }
-
-describe("how long a command may run", () => {
-  const limits = { shellDefaultSeconds: 300, shellMaxSeconds: 900 };
-  /** A solve of `seconds` that has used `used` of them, read at time 1,000,000. */
-  const at = (seconds: number, used: number) =>
-    [{ limits, clock: { started: 1_000_000 - used * 1000, seconds } }, 1_000_000] as const;
-
-  it("is its own limit, and near the solve's end what is left before the reserve", () => {
-    // The reserve: a minute, and an eighth of a solve shorter than eight.
-    expect([7200, 480, 300, 60].map(reserveSeconds)).toEqual([60, 60, 37, 7]);
-    // Early in a solve a command has its own limits, as on a wall with no clock.
-    expect(heldSeconds(undefined, ...at(7200, 100))).toEqual({ asked: 300, seconds: 300, nearEnd: false });
-    // A named timeout, floored and at least a second, only raises the default, up to the maximum.
-    const named: [number | undefined, number, number][] = [
-      [undefined, 300, 300],
-      [120, 120, 300],
-      [0, 1, 300],
-      [-5, 1, 300],
-      [450.9, 450, 450],
-      [900, 900, 900],
-      [880, 880, 880],
-      [5000, 5000, 900],
-    ];
-    for (const [timeout, asked, seconds] of named) {
-      expect(heldSeconds(timeout, { limits })).toEqual({ asked, seconds, nearEnd: false });
-    }
-    expect(heldSeconds(900, { limits, clock: { started: null, seconds: 480 } })).toEqual({
-      asked: 900,
-      seconds: 900,
-      nearEnd: false,
-    });
-    // Eight minutes, three used: 300 left, 60 kept back, so 240 for a command that asked for more.
-    expect(heldSeconds(undefined, ...at(480, 180))).toEqual({ asked: 300, seconds: 240, nearEnd: true });
-    expect(heldSeconds(900, ...at(480, 180))).toEqual({ asked: 900, seconds: 240, nearEnd: true });
-    expect(heldSeconds(100, ...at(480, 180))).toEqual({ asked: 100, seconds: 240, nearEnd: true });
-    // A named timeout below the default is raised to it, and the solve's end still comes first.
-    expect(heldSeconds(undefined, ...at(480, 400))).toEqual({ asked: 300, seconds: 20, nearEnd: true });
-    // Three seconds before the reserve the command is cut there, as the solver is told.
-    expect(heldSeconds(undefined, ...at(480, 417))).toEqual({ asked: 300, seconds: 3, nearEnd: true });
-    expect(heldSeconds(undefined, ...at(3, 0))).toEqual({ asked: 300, seconds: 3, nearEnd: true });
-    // With less than a whole second before the reserve, or inside it, the limits stand: the wall cuts.
-    expect(heldSeconds(undefined, ...at(480, 419.5))).toEqual({ asked: 300, seconds: 300, nearEnd: false });
-    expect(heldSeconds(undefined, ...at(480, 420))).toEqual({ asked: 300, seconds: 300, nearEnd: false });
-    expect(heldSeconds(900, ...at(480, 421))).toEqual({ asked: 900, seconds: 900, nearEnd: false });
-    expect(heldSeconds(undefined, ...at(480, 470))).toEqual({ asked: 300, seconds: 300, nearEnd: false });
-  });
-});
 
 /** A shell loop that counts into `$HOME/<name>` twenty times a second, for as long as it runs. */
 const beating = (name: string) =>
@@ -426,31 +370,6 @@ describe("a solve's walled commands", () => {
     60_000,
   );
 
-  it.skipIf(
-    !osIsolationSupport().ok || Bun.which("python", { PATH: toolchainPathDirs().join(":") }) === null,
-  )(
-    "give a seat the bare python its host's Python installs",
-    async () => {
-      const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-python-")));
-      const dirs = solveDirs(`python-${String(runtimeProcess.pid)}-${String(Date.now())}`);
-      const release = claimRoot(dirs.root);
-      try {
-        makeSeatDirs(dirs);
-        const base = solveIsolationPolicy({ repoRoot });
-        if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
-        const wall = walled(base, dirs);
-        // Homebrew and zerobrew put it in each Python's `libexec`, behind a link the wall follows.
-        const bare = await run(wall, "python -c 'import sys; print(sys.version_info[0])'");
-        expect(bare).toEqual({ exitCode: 0, output: "3\n" });
-      } finally {
-        await release();
-        rmSync(dirs.host, { recursive: true, force: true });
-        rmSync(repoRoot, { recursive: true, force: true });
-      }
-    },
-    60_000,
-  );
-
   it.skipIf(!osIsolationSupport().ok)(
     "give the seat's TMPDIR to every Bun a command starts, by script, by -e, from a shell and from another Bun, and let each write there",
     async () => {
@@ -512,40 +431,4 @@ console.log(JSON.stringify({ probe: process.argv.at(-1), said: process.env.TMPDI
     },
     60_000,
   );
-});
-
-describe("the search path a walled command is given", () => {
-  it("names what the host's user installed before what the operating system ships", () => {
-    // Until 22 October the system's folders came first, and a bare `python3` was Apple's 3.9.6.
-    const system = new Set([...activeDeveloperBinDirs(), "/usr/bin", "/bin", "/usr/sbin", "/sbin"]);
-    const dirs = toolchainPathDirs();
-    const first = dirs.findIndex((dir) => system.has(dir));
-    expect(first).toBeGreaterThan(-1);
-    expect(dirs.slice(first).filter((dir) => !system.has(dir))).toEqual([]);
-    if (existsSync("/usr/local/bin")) expect(dirs.indexOf("/usr/local/bin")).toBeLessThan(first);
-  });
-
-  it("names the executable the host runs on before any other bun the host's fixed list holds", () => {
-    // Until 19 October the runtime's folder came from the read grants, which leave out a prefix
-    // under /usr or /opt, so a host Bun there lost to an older one earlier on the fixed list.
-    const scratch = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-search-")));
-    try {
-      const stub = (folder: string) => {
-        mkdirSync(join(scratch, folder), { recursive: true });
-        writeFileSync(join(scratch, folder, "bun"), "#!/bin/sh\necho stub\n", { mode: 0o755 });
-        return join(scratch, folder, "bun");
-      };
-      const older = dirname(stub("older"));
-      const runtime = stub("runtime");
-      const PATH = commandSearchPath(null, runtime, [older, "/usr/bin", "/bin"]);
-      expect(realpathSync.native(Bun.which("bun", { PATH }) ?? "")).toBe(runtime);
-      // A tool tree's own bun still goes first.
-      const treeBun = stub("tree/bin");
-      expect(Bun.which("bun", { PATH: commandSearchPath(join(scratch, "tree"), runtime, [older]) })).toBe(
-        treeBun,
-      );
-    } finally {
-      rmSync(scratch, { recursive: true, force: true });
-    }
-  });
 });

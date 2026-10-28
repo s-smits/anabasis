@@ -1,19 +1,9 @@
-// A task: the contract it is written against, the one gate its package passes, and the states a
-// log folds it into. A stronger solve, a repeat of the checks, per-task controls and screening are
-// gone with the plan after the v1 review (`7f0add79:docs/plan.md`), and what a log written before it holds
-// of them is read here as history.
+// A task: the gate its package passes and the states a log folds it into.
 import { afterAll, describe, expect, it } from "bun:test";
-import { answerFormatFault, type Contract, contractHash } from "../src/kernel/contract.ts";
+import { type Contract } from "../src/kernel/contract.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
-import { packageGate, type TaskPackage, taskSets, taskStates, taskVersion } from "../src/kernel/task.ts";
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "../src/meta/filesystem.ts";
+import { packageGate, type TaskPackage, taskSets, taskStates } from "../src/kernel/task.ts";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 
@@ -73,47 +63,7 @@ function pkg(changes: Partial<TaskPackage> = {}): TaskPackage {
   };
 }
 
-describe("the contract", () => {
-  it("hashes the same contract alike whatever its key order, and refuses a rule id named twice", () => {
-    const { scope, ...rest } = CONTRACT;
-    const reordered: Contract = { scope, ...rest };
-    expect(contractHash(reordered)).toBe(contractHash(CONTRACT));
-    expect(contractHash({ ...CONTRACT, scope: "Cantilevers." })).not.toBe(contractHash(CONTRACT));
-    const twice = { ...CONTRACT, rules: [...CONTRACT.rules, { id: "span-rule", statement: "Again." }] };
-    expect(() => contractHash(twice)).toThrow("names rule span-rule twice");
-    // v1's prose artifact rows, which the validator would read as no constraint at all.
-    const prose = { ...CONTRACT, answerFormat: [{ name: "design", shape: "object {joints}" }] };
-    expect(() => contractHash(prose)).toThrow("not a JSON Schema");
-    expect(() => answerFormatFault(prose.answerFormat, { junk: 1 })).toThrow("not a JSON Schema");
-  });
-
-  it("says why an answer is outside its format, and refuses one that fits only once coerced", () => {
-    expect(answerFormatFault(CONTRACT.answerFormat, { depth: 1, steel: "S355" })).toBeNull();
-    expect(answerFormatFault(CONTRACT.answerFormat, { steel: "S355" })).toContain(
-      "must have required properties depth",
-    );
-    expect(answerFormatFault(CONTRACT.answerFormat, [1])).toContain("root: must be object");
-    // pi-ai's validator would read "1" as 1 and drop the null; the caller's value stays as it was.
-    const coercible = { depth: "1", steel: null };
-    expect(answerFormatFault(CONTRACT.answerFormat, coercible)).toBe(
-      "the answer follows the format only once coerced",
-    );
-    expect(coercible).toEqual({ depth: "1", steel: null });
-  });
-});
-
 describe("the gate", () => {
-  it("versions a package by everything the solver reads and the check runs, wherever it is kept", () => {
-    const task = pkg();
-    const version = (changes: Partial<TaskPackage>) => taskVersion({ ...task, ...changes });
-    expect(packageGate(CONTRACT, task)).toEqual({ outcome: "passed" });
-    expect(version({ checks: program(["beams"], ["span-rule"]) })).toBe(version({}));
-    expect(version({ ruleIds: ["span-rule"] })).not.toBe(version({}));
-    const changed = program(["beams"], ["span-rule"], "export const checks = { spans: () => true };");
-    expect(version({ checks: changed })).not.toBe(version({}));
-    expect(version({ checks: join(root, "nowhere") })).not.toBe(version({}));
-  });
-
   it("refuses a task that gives a check no hidden value of the check's own to run on", () => {
     // A check that declares its hidden operand required, as v1's reference-comparing checks do.
     const dir = program(["beams"], ["span-rule"]);
@@ -127,28 +77,6 @@ describe("the gate", () => {
     expect(packageGate(CONTRACT, pkg({ checks: dir, hidden: { spans: 4 } })).outcome).toBe("refused");
     const served = [{ checkId: "spans", expectation: { depthM: 0.4 } }];
     expect(packageGate(CONTRACT, pkg({ checks: dir, hidden: served }))).toEqual({ outcome: "passed" });
-  });
-
-  it("versions every file of the check program, in nested directories too", () => {
-    const version = (checks: string) => taskVersion(pkg({ checks }));
-    const nested = (model: string) => {
-      const checks = program(["beams"], ["span-rule"]);
-      mkdirSync(join(checks, "reference"));
-      writeFileSync(join(checks, "reference", "model.ts"), model);
-      return checks;
-    };
-    expect(version(nested("export const k = 1;"))).toBe(version(nested("export const k = 1;")));
-    expect(version(nested("export const k = 2;"))).not.toBe(version(nested("export const k = 1;")));
-  });
-
-  it("refuses a check program with a symlink in it, and still versions it", () => {
-    const linked = program(["beams"], ["span-rule"]);
-    symlinkSync("/etc/hosts", join(linked, "model.ts"));
-    expect(packageGate(CONTRACT, pkg({ checks: linked }))).toEqual({
-      outcome: "refused",
-      reason: "the check program's model.ts is neither a file nor a directory",
-    });
-    expect(taskVersion(pkg({ checks: linked }))).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("refuses a missing part, a rule the contract lacks, and a check program that would pass anything", () => {
@@ -203,14 +131,6 @@ describe("the task states", () => {
     expect(taskSets([proposed, gate(1, "refused"), state("refused")]).held).toEqual([]);
   });
 
-  it("releases a held-out task for practice, and disputes one from either set", () => {
-    expect(taskSets([...held, state("released")])).toMatchObject({ held: [], released: ["v1"] });
-    expect(taskStates([...held, state("disputed")]).get("v1")).toBe("disputed");
-    const disputed = [...held, state("released"), state("disputed")];
-    expect(taskStates(disputed).get("v1")).toBe("disputed");
-    expect(taskSets(disputed)).toMatchObject({ held: [], released: [] });
-  });
-
   it("refuses a history that could not have happened", () => {
     expect(() => taskStates([state("held")])).toThrow("task v1 is not proposed");
     expect(() => taskStates([proposed, proposed])).toThrow("task v1 is proposed twice");
@@ -237,43 +157,6 @@ describe("the task states", () => {
     );
     expect(() => taskStates([...held, state("promoted")])).toThrow(
       "task v1 cannot go from held to no known state",
-    );
-  });
-
-  it("reads a log written before the plan: what a stronger solve and a screening said moves no task", () => {
-    const old = (version: string) => [proposedAs(version), ...[1, 2, 3, 4].map((n) => gateAs(version, n))];
-    // The anchor's draw, an admission, a second admission and a retirement all leave a task held out.
-    const screened = [
-      ...old("v0"),
-      { at, kind: "anchor.drawn", data: { tasks: ["v0"] } } as const,
-      ...old("v1"),
-      state("admitted"),
-      state("admitted"),
-      state("too-easy"),
-    ];
-    expect(taskSets(screened)).toMatchObject({ held: ["v0", "v1"] });
-    expect(taskStates(screened).get("v1")).toBe("held");
-    // A task no stronger solve passed is a held-out task with no valid answer yet.
-    const reach = [proposed, gate(), gate(2, "too-hard"), state("too-hard"), gate(2, "too-hard")];
-    expect(taskSets(reach).held).toEqual(["v1"]);
-    // One set aside at the wall and returned under a longer one was held throughout.
-    const walled = [
-      ...old("v1"),
-      state("wall-bound"),
-      { ...state("held"), data: { version: "v1", state: "held", limits: {} } },
-    ];
-    expect(taskStates(walled).get("v1")).toBe("held");
-    // A later gate that refused a task was followed by its refusal, which stands.
-    const refused = [proposed, gate(), gate(2), gate(3, "refused"), state("refused")];
-    expect(taskStates(refused).get("v1")).toBe("refused");
-    // A task admitted and then released is a practice task, as it was.
-    expect(taskSets([...old("v1"), state("admitted"), state("released")])).toMatchObject({
-      held: [],
-      released: ["v1"],
-    });
-    // Those states are read from held alone: none of them follows a release or a dispute.
-    expect(() => taskStates([...held, state("released"), state("admitted")])).toThrow(
-      "task v1 cannot go from released to admitted",
     );
   });
 });

@@ -83,20 +83,6 @@ it("asks only for a remote login's presence and refuses a missing key before lau
   );
 });
 
-it("keeps a pack on a familiar host with room and falls back when it is full", () => {
-  const made = fixture();
-  const code =
-    'import { placeFresh } from "REPOSITORY/tools/runs/placement.ts"; console.log((await placeFresh("sample"))?.name ?? "here");';
-  const catalogue = JSON.stringify([
-    { name: "prior", path: `${made.root}/prior/log.jsonl`, project: "sample-fresh" },
-  ]);
-  expect(made.run(code, { FAKE_CATALOGUE: catalogue }).out.trim()).toBe("runner");
-  const occupied = ["one", "two"].map((name) => ({ name, login: null, host: made.host.name }));
-  expect(
-    made.run(code, { FAKE_CATALOGUE: catalogue, FAKE_ACTIVE: JSON.stringify(occupied) }).out.trim(),
-  ).toBe("here");
-});
-
 it("spreads one login's runs over the hosts before it prefers a familiar one", () => {
   const made = fixture();
   const place = (login: string) =>

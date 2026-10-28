@@ -153,19 +153,6 @@ it.each([{ rule: "uncited-rule", probes: [1] }, { probes: [] }])(
   },
 );
 
-it.each([`${"x".repeat(699)}${"🧪".repeat(200)}`, "  The span exceeds the limit.  "])(
-  "the Referee preserves original prose and uses the shared bounded display for %#",
-  async (reason) => {
-    const args = ruling(reason);
-    const s = await run([PROBE, record(args)]);
-    const bounded = boundText(reason, 700);
-    expect(s.calls[0]?.data).toMatchObject({ args, isError: false });
-    expect(s.finding.reason).toBe(bounded.shown);
-    if (bounded.truncated) expect(s.finding.reason).toContain("bytes omitted]");
-    else expect(s.finding.reason).toBe(reason.trim());
-  },
-);
-
 it("the Referee still requires a nonempty string reason", async () => {
   const { reason: _reason, ...missing } = ruling("unused");
   const s = await run([

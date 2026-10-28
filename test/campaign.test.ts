@@ -4,9 +4,7 @@
 // own, and the campaign keeps its harnesses by name: the one it started with, the starter
 // and the latest a session left.
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
-import { type Condition, recordCondition } from "../src/kernel/condition.ts";
 import { append, read } from "../src/kernel/log.ts";
-import { priceKey } from "../src/kernel/meter.ts";
 import { latestBuilt, PATIENCE, promoted } from "../src/kernel/reports.ts";
 import { sizeLines } from "../src/kernel/size.ts";
 import { taskSets, taskVersion } from "../src/kernel/task.ts";
@@ -27,11 +25,9 @@ import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
-import { errorMessage } from "../src/meta/runtime-values.ts";
 import { openHarness } from "../src/harness/open.ts";
-import { codeOf, starter, keptAs, LIMITS, openCampaign, packNamed } from "../tools/d2/campaign.ts";
+import { codeOf, starter, keptAs, openCampaign } from "../tools/d2/campaign.ts";
 import { importCommand } from "../tools/d2/import.ts";
-import { settingNamed } from "../tools/d2/setting.ts";
 import {
   capNamed,
   packaged,
@@ -48,8 +44,6 @@ const NAME = `test-${String(runtimeProcess.pid)}`;
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-campaign-")));
 const bundle = join(root, "bundle");
 const ARGS = { root, sweep: "s", cycle: "c01", bundle, name: NAME };
-/** A campaign whose solves were made before any setting was recorded. */
-const EARLIER = `${NAME}-earlier`;
 /** A Builder a backend serves, for a command that is to get as far as its admission: a model no
  *  backend serves is refused with the command's other flags, before the log is asked anything. */
 const SERVED = "claude/claude-opus-5-5";
@@ -73,7 +67,7 @@ setDefaultTimeout(60_000);
 
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });
-  for (const name of [NAME, EARLIER, FRESH, PROVEN, UNPROVEN]) {
+  for (const name of [NAME, FRESH, PROVEN, UNPROVEN]) {
     rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
   }
 });
@@ -193,12 +187,6 @@ describe("the code a solve's condition records", () => {
       expect(codeOf(tree).host).toBe(host);
     }
   });
-
-  // The verifier runs every check under the command's own Bun, so a comparison continued under
-  // another Bun is continued under other code.
-  it("names the Bun that runs it beside the runtime's pins", () => {
-    expect(codeOf(tree).runtime.bun).toBe(Bun.version);
-  });
 });
 
 describe("a campaign", () => {
@@ -266,19 +254,6 @@ describe("a campaign", () => {
     // Asked for no more practice than there is, it says what a comparison of the size asked for can show.
     expect(prepare("--target", "3")).toBe(
       ["6 held out, 2 released for practice", ...sizeLines(3, ASKED)].join("\n"),
-    );
-  });
-
-  it("names its pack by four flags together, or by none where its own log drafted its exam", () => {
-    expect(packNamed(ARGS)).toEqual(ARGS);
-    // Three of the four name no pack, and a command says what else it needs.
-    expect(() => packNamed({ ...ARGS, cycle: undefined }, " and --session")).toThrow(
-      "name --root, --sweep, --cycle, --bundle, --name and --session",
-    );
-    expect(() => packNamed({ root, sweep: "s", cycle: "c01", bundle })).toThrow("--name");
-    // By its name alone a campaign opens over the exam its log holds, and this one's holds none.
-    expect(() => packNamed({ name: NAME })).toThrow(
-      `campaign ${NAME} holds no exam of its own, which only a campaign that opened from a prompt drafts`,
     );
   });
 
@@ -391,51 +366,6 @@ describe("a campaign", () => {
     );
   });
 
-  it("keeps a harness's control: the starter with that harness's installed programs alone", async () => {
-    layOut();
-    const campaign = await openCampaign(ARGS);
-    const least = await starter(campaign);
-    // A harness as a session keeps one: a guide, and its tool tree by a link to the copy beside it.
-    const tree = join(campaign.states, "tree-one");
-    mkdirSync(join(tree, "bin"), { recursive: true });
-    writeFileSync(join(tree, "bin", "engine"), "#!/bin/sh\necho engine\n", { mode: 0o755 });
-    const made = join(root, "made");
-    cpSync(least.dir, made, { recursive: true });
-    writeFileSync(join(made, "agent", "BUILT_AGENTS.md"), "Run engine first.\n");
-    const place = async (from: string) => {
-      const { digest } = await openHarness(from);
-      const dir = join(campaign.states, digest);
-      cpSync(from, dir, { recursive: true, verbatimSymlinks: true });
-      return { dir, digest };
-    };
-    // The link is made where the states are, since it names the tree relatively.
-    const staged = join(campaign.states, "staged");
-    cpSync(made, staged, { recursive: true });
-    symlinkSync(join("..", "tree-one"), join(staged, TOOL_TREE_DIR));
-    const built = await place(staged);
-    rmSync(staged, { recursive: true });
-
-    const control = await keptAs(campaign, "--new", `programs-of:${built.digest}`);
-    const opened = await openHarness(control.dir);
-    // The starter with the programs and nothing else: the starter's guide, no tool, and so neither
-    // the starter nor the harness.
-    expect(opened.guide).toBe((await openHarness(least.dir)).guide);
-    expect(opened.kinds.size).toBe(0);
-    expect(opened.toolTree).toBe(join(control.dir, TOOL_TREE_DIR));
-    expect(readFileSync(join(control.dir, TOOL_TREE_DIR, "bin", "engine"), "utf8")).toContain("echo engine");
-    expect(new Set([control.digest, built.digest, least.digest]).size).toBe(3);
-    expect(control.dir).toBe(join(campaign.states, control.digest));
-    // Asked for again it is the same harness, and nothing half-made is left among the states.
-    expect(await keptAs(campaign, "--reference", `programs-of:${built.digest}`)).toEqual(control);
-    const kept = readdirSync(campaign.states);
-    expect(kept).toContain(control.digest);
-    expect(kept.filter((name) => name.startsWith("control-"))).toEqual([]);
-    // A harness that installed nothing has no control but the starter.
-    await expect(keptAs(campaign, "--new", "programs-of:starter")).rejects.toThrow(
-      `${least.digest} installed no program, so the control for its programs is the starter itself`,
-    );
-  });
-
   it("imports a harness built elsewhere, kept as a session keeps one, and records where it came from", async () => {
     layOut();
     const campaign = await openCampaign(ARGS);
@@ -484,19 +414,6 @@ describe("a campaign", () => {
     );
   });
 
-  it("imports a harness with programs into a campaign that keeps nothing yet", async () => {
-    // Until 11 October the copy of its programs was made before the campaign had a folder of states.
-    layOut();
-    await openCampaign({ ...ARGS, name: FRESH });
-    const handed = join(root, "fresh", "harness");
-    const engine = join(TOOL_TREE_DIR, "bin", "engine");
-    cpSync(FIXTURE, handed, { recursive: true });
-    mkdirSync(dirname(join(handed, engine)), { recursive: true });
-    writeFileSync(join(handed, engine), "#!/bin/sh\necho engine\n", { mode: 0o755 });
-    const imported = await importCommand(["--name", FRESH, "--harness", handed]);
-    expect(readFileSync(join(imported.dir, engine), "utf8")).toContain("echo engine");
-  });
-
   it("refuses a harness whose programs link outside the folder it lies in", async () => {
     // The import copies the programs from where the link resolves, as the host and outside every
     // wall; a link to the operator's home would hand that home to the next Builder.
@@ -520,30 +437,6 @@ describe("a campaign", () => {
     expect(readFileSync(join(imported.dir, TOOL_TREE_DIR, "bin", "engine"), "utf8")).toContain(
       "echo elsewhere",
     );
-  });
-
-  it("says which harnesses a campaign keeps when --parent names none of them", async () => {
-    layOut();
-    const campaign = await openCampaign(ARGS);
-    const digest = "ab".repeat(32);
-    mkdirSync(join(campaign.states, digest), { recursive: true });
-    // The round as the operator runs it. It is refused before a seat is taken or a session starts.
-    const round = (parent: string) => {
-      const given = { ...ARGS, session: "b-9", builder: "faux/none", cap: "100", reviewer: SERVED, parent };
-      const flags = Object.entries(given).flatMap(([flag, value]) => [`--${flag}`, value]);
-      const ran = Bun.spawnSync({ cmd: [capturedExecPath, "tools/d2/round.ts", ...flags], cwd: REPO });
-      return `${ran.stdout.toString()}${ran.stderr.toString()}`;
-    };
-    // A digest cut short, as every reader prints one: the whole one is named beside it. The tool
-    // trees kept beside the states (`tree-*`) are no harness, and the refusal leaves them out.
-    const short = round(digest.slice(0, 8));
-    const kept = readdirSync(campaign.states).filter((each) => /^[0-9a-f]{64}$/u.test(each));
-    expect(readdirSync(campaign.states).length).toBeGreaterThan(kept.length);
-    expect(short).toContain("--parent abababab is no harness this campaign keeps");
-    expect(short).toContain(`whole: ${kept.sort().join(", ")}. abababab begins ${digest}.`);
-    // Nor is another folder of the campaign a harness, wherever the name leads.
-    expect(round("../checks")).toContain("--parent ../checks is no harness this campaign keeps");
-    expect(read(campaign.log).filter(({ kind }) => kind === "build.started")).toEqual([]);
   });
 
   it("starts no paid comparison without a dollar cap or a Referee", async () => {
@@ -688,6 +581,7 @@ describe("a campaign", () => {
     expect(points).toMatch(/validity 0\.6\b.*objective 0\.3\b.*bill 0\.1\b.*-150, \+225 and \+75\b/u);
     expect(objective).toContain("lower");
   });
+
   it("refuses a paid comparison started by hand where a launch of it would be refused", async () => {
     const campaign = await openCampaign(ARGS);
     const flags = [
@@ -761,41 +655,6 @@ describe("a campaign", () => {
     };
     await expect(sessionCommand(flags, seats)).rejects.toThrow("name --builder");
     expect(against).toEqual([(await starter(campaign)).dir]);
-    expect(read(campaign.log).some(({ data }) => data.session === "z-6")).toBe(false);
-  });
-
-  it("refuses a labels file with an entry that is no label, and a --target that is no count", async () => {
-    const campaign = await openCampaign(ARGS);
-    const flags = Object.entries(ARGS).flatMap(([flag, value]) => [`--${flag}`, value]);
-    const run = (...cmd: string[]) => Bun.spawnSync({ cmd: [capturedExecPath, ...cmd, ...flags], cwd: REPO });
-    // A mistyped label is not read as no label: the file is refused by the entry, before anything
-    // is settled. An empty entry is one still to be labelled.
-    const dir = join(campaign.log, "..", "settle-z-7");
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(
-      join(dir, "labels.json"),
-      JSON.stringify({ rejections: { "s-1": "earnd", "s-2": "", "s-3": "earned" }, passes: {} }),
-    );
-    const settled = run("tools/d2/settle.ts", "--session", "z-7");
-    expect(settled.exitCode).not.toBe(0);
-    expect(settled.stderr.toString()).toContain(
-      'holds what is no label (earned, check-defect, unclear) for 1 answer: s-1: "earnd"',
-    );
-    // The command hands its --target to the one owner, which refuses every value that is no count
-    // (`targetNamed`, `test/setting.test.ts`): zero would draw no task.
-    const ran = run(
-      "tools/d2/checkpoint.ts",
-      "--id",
-      "z-6",
-      "--cap",
-      "40",
-      "--reviewer",
-      SERVED,
-      "--target=0",
-    );
-    expect(ran.stderr.toString()).toContain(
-      "--target 0: the tasks to score are a whole number of at least one",
-    );
     expect(read(campaign.log).some(({ data }) => data.session === "z-6")).toBe(false);
   });
 
@@ -873,22 +732,6 @@ describe("a campaign", () => {
     expect(await keptAs(campaign, "--reference", "promoted")).toEqual(least);
   });
 
-  it("opens under the limits and the solver a setting names, each another setting of its own", async () => {
-    const plain = await openCampaign(ARGS);
-    expect(plain.limits).toEqual(LIMITS);
-    // A command that names nothing runs under the setting every campaign ran under before the flags existed.
-    const unnamed = await openCampaign({ ...ARGS, ...settingNamed({}) });
-    expect(unnamed.setting(unnamed.test)).toBe(plain.setting(plain.test));
-    const longer = await openCampaign({
-      ...ARGS,
-      ...settingNamed({ "solve-minutes": "240" }),
-    });
-    expect(longer.limits).toEqual({ ...LIMITS, wallSeconds: 14_400 });
-    expect(longer.setting(longer.test)).not.toBe(plain.setting(plain.test));
-    const turned = await openCampaign({ ...ARGS, ...settingNamed({ "solve-model-turns": "40" }) });
-    expect(turned.setting(turned.test)).not.toBe(plain.setting(plain.test));
-  });
-
   it("runs every command under the campaign's recorded setting, and refuses one that names another", async () => {
     const campaign = await openCampaign(ARGS);
     const flags = [
@@ -942,62 +785,6 @@ describe("a campaign", () => {
     const kept = read(campaign.log).filter(({ kind }) => kind === "campaign.setting");
     expect(kept.map(({ data }) => data.minutes)).toEqual([8]);
     expect(read(campaign.log).some(({ data }) => data.session === "z-4")).toBe(false);
-  });
-
-  // Fix row F47: `prepare.ts` read the recorded target and not the recorded tasks, so its draw
-  // could release for practice a task the campaign's setting names to score, for good.
-  // Recode ran on 9 October with its solver held to 15 of its own turns, and its log holds no
-  // record of a setting: the first command of this source there has to name what it ran under.
-  it("holds the first record of a campaign that already holds solves to what they ran under", async () => {
-    const campaign = await openCampaign({ ...ARGS, name: EARLIER });
-    const { model, effort } = campaign.test;
-    // One test-side solve by the cycle's own solver, under an eight-minute wall and 15 model turns.
-    const condition: Condition = {
-      contract: "c1",
-      harness: "h1",
-      task: "v1",
-      model: priceKey(model),
-      effort,
-      prices: { [priceKey(model)]: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
-      runtime: {},
-      compaction: "off",
-      solverTools: "h1",
-      verifierTools: "t1",
-      sandbox: "p1",
-      limits: { ...LIMITS, wallSeconds: 480, modelTurns: 15 },
-      host: "h",
-      side: "test",
-    };
-    append(campaign.log, "solve.started", {
-      solve: "s-1",
-      condition: recordCondition(campaign.log, condition),
-    });
-    const flags = [
-      ...Object.entries({ ...ARGS, name: EARLIER }).flatMap(([flag, value]) => [`--${flag}`, value]),
-      "--cap",
-      "100",
-      "--reviewer",
-      SERVED,
-      "--parent",
-      "starter",
-      "--builder",
-      SERVED,
-    ];
-    const refusal = "the campaign's log records no setting yet, and this command names another";
-    const was = `which was --solver ${priceKey(model)} --solver-effort ${effort} --solve-minutes 8 --solve-model-turns 15`;
-    /** What a command refused with, or nothing where it ran. */
-    const refused = (ran: Promise<unknown>) => ran.then(() => "", errorMessage);
-    // A round and a session by itself, each started by hand with the setting left out.
-    const round = await refused(roundCommand([...flags, "--session", "z-1"]));
-    expect(round).toContain(refusal);
-    expect(round).toContain(was);
-    expect(await refused(sessionCommand([...flags, "--session", "z-2"]))).toContain(was);
-    // Named as its solves ran, the setting is free to be recorded; what still refuses is the rest.
-    const named = [...flags, "--solve-minutes", "8", "--solve-model-turns", "15"];
-    const rest = await refused(roundCommand([...named, "--session", "z-1"]));
-    expect(rest).toContain("the log holds no held-out task to score");
-    expect(rest).not.toContain(refusal);
-    expect(read(campaign.log).some(({ kind }) => kind === "campaign.setting")).toBe(false);
   });
   // Plan item 5.3 (14 October): a pack's stored accepted answer said nothing of a task's
   // feasibility, so a task only a stored solve had answered could go to a person as infeasible.

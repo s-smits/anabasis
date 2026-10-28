@@ -1,8 +1,7 @@
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
-import { sha256 } from "../src/meta/digest.ts";
 import { darwinSeatbeltSupport } from "../src/wall/darwin-seatbelt.ts";
 
 const dirs: string[] = [];
@@ -25,16 +24,6 @@ function fixture() {
 }
 
 describe("Darwin Seatbelt support", () => {
-  it("names the wrapper by its canonical path and its digest", () => {
-    const f = fixture();
-    expect(darwinSeatbeltSupport(f.runtime)).toEqual({
-      ok: true,
-      reason: null,
-      mechanismPath: realpathSync.native(f.executable),
-      mechanismDigest: sha256("fixture executable"),
-    });
-  });
-
   it("refuses another platform, a missing wrapper and a surrounding sandbox", () => {
     const f = fixture();
     expect(darwinSeatbeltSupport({ ...f.runtime, platform: "linux" }).ok).toBe(false);

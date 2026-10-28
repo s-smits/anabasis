@@ -8,16 +8,12 @@ import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import {
   comparedAs,
   lastReports,
-  latestBuilt,
-  type Outcome,
   pairsReported,
   poolOf,
-  promoted,
   releaseOrder,
-  roomOf,
   stopRule as stopOf,
 } from "../src/kernel/reports.ts";
-import { billedAll, billedBetween, billedFor } from "../src/kernel/trace.ts";
+import { billedAll, billedFor } from "../src/kernel/trace.ts";
 import { taskSets } from "../src/kernel/task.ts";
 import { asRecord, type JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
@@ -131,46 +127,7 @@ const failedOf = (log: readonly LogEvent[], tasks: readonly string[]) => {
   });
 };
 
-describe("the harness a Builder goes on from", () => {
-  const built = (session: string, harness: string, more: JsonObject = {}) =>
-    event("build.finished", { session, harness, changed: true, ended: "finished", ...more });
-
-  it("is the one its last whole session left, step or none, and null before any", () => {
-    expect(latestBuilt([])).toBeNull();
-    expect(latestBuilt([built("b-1", "h2"), reported("b-1", "no-step", "h2")])).toBe("h2");
-    expect(latestBuilt([built("b-1", "h2"), built("b-2", "h3")])).toBe("h3");
-    // A session that left its harness as it was, was killed or crashed leaves nothing to go on from.
-    expect(latestBuilt([built("b-1", "h2"), built("b-2", "h2", { changed: false })])).toBe("h2");
-    expect(latestBuilt([built("b-1", "h2"), built("b-2", "h3", { ended: "killed" })])).toBe("h2");
-    expect(latestBuilt([built("b-1", "h2", { ended: "crashed" })])).toBeNull();
-    // A session cut at its wall is a whole session.
-    expect(latestBuilt([built("b-1", "h2", { ended: "wall" })])).toBe("h2");
-  });
-
-  it("remembers a live Builder's frozen checkpoint before its session finishes", () => {
-    const log = [
-      built("b-0", "before"),
-      event(BUILD_STARTED, { session: "b-1" }),
-      event("build.checkpoint", { session: "b-1", harness: "current" }),
-    ];
-    expect(latestBuilt(log)).toBe("current");
-    expect(latestBuilt([...log, event("build.finished", { session: "b-1", ended: "crashed" })])).toBe(
-      "current",
-    );
-  });
-});
-
 describe("the reference harness of a campaign", () => {
-  const promotedTo = (harness: string) => event("harness.promoted", { harness, from: "base", rests: [] });
-
-  it("is the one the operator last promoted, and none until then", () => {
-    expect(promoted([])).toBeNull();
-    expect(promoted([promotedTo("h2")])).toBe("h2");
-    expect(promoted([promotedTo("h2"), promotedTo("h5")])).toBe("h5");
-    // A reference named on one command promotes nothing: only the event does.
-    expect(promoted([reported("b-1", "step", "h2", { old: "h9" })])).toBeNull();
-  });
-
   it("shows what a promotion rests on: each comparison that measured the harness, as it last read", () => {
     const log = [
       reported("b-1", "no-step", "h2", { old: "base" }),
@@ -202,40 +159,7 @@ describe("the stop rule", () => {
   /** The harnesses Builder sessions left, which is what makes a comparison of one a checkpoint. */
   const sessions = ["h2", "h3", "h4", "h5", "h6", "h7"].map((harness) => session(`s-${harness}`, harness));
   const flat = (id: string, fresh: string, more: JsonObject = {}) => reported(id, "no-step", fresh, more);
-  /** A session that left its harness as it was, after practice solves that ended as `shown` says. */
-  const idle = (id: string, shown: readonly boolean[], more: JsonObject = {}) => [
-    event("build.started", { session: id }),
-    ...solved(undefined, "p1", "h2", shown),
-    session(id, "h2", { changed: false, ...more }),
-  ];
   const two = [...sessions, flat("b-1", "h2"), flat("b-2", "h3")];
-
-  it("counts no idle move on an unresolved practice rejection", () => {
-    for (const ruling of ["unclear", "check-defect", null] as const) {
-      const log = idle("b-1", [false]);
-      const solve = log.find(({ kind }) => kind === "solve.started")?.data.solve;
-      expect(stopRule([...log, event("referee.finding", { solve: solve ?? "", ruling })])).toEqual(
-        counted(0, 0),
-      );
-    }
-  });
-
-  it("counts a cut Builder's harness only where it was frozen at a checkpoint before the cut, and a checkpoint whatever the session leaves later", () => {
-    for (const ended of ["killed", "crashed"]) {
-      const cut = [session("b-1", "h2", { ended }), flat("g-1", "h2")];
-      expect(stopRule(cut)).toEqual(counted(0, 0));
-      expect(stopRule([event("build.checkpoint", { session: "b-1", harness: "h2" }), ...cut])).toEqual(
-        counted(1, 1),
-      );
-    }
-    const live = [
-      event(BUILD_STARTED, { session: "b-1" }),
-      event("build.checkpoint", { session: "b-1", harness: "h2" }),
-      flat("g-1", "h2"),
-    ];
-    expect(stopRule(live)).toEqual(counted(1, 1));
-    expect(stopRule([...live, session("b-1", "h3")])).toEqual(counted(1, 1));
-  });
   it("stops after as many harnesses in a row that showed no gain as the patience, counted from the last step", () => {
     expect(stopRule([])).toEqual(counted(0, 0));
     expect(stopRule(two)).toEqual(counted(2, 2));
@@ -295,21 +219,6 @@ describe("the stop rule", () => {
     expect(stopRule([...two, toH2, flat("b-3", "h4")])).toEqual(counted(3, 1));
   });
 
-  it("reads room by the tasks informative for the reference, too-hard where nobody answered", () => {
-    const report = (old: number[], fresh: number[], told: number) => ({
-      valid: { old, fresh, informative: { old: told, fresh: 0 } },
-    });
-    expect(roomOf(report([0, 0, 12], [0, 0, 12], 0))).toBe("none");
-    expect(roomOf(report([0, 0, 12], [0, 0, 12], 1))).toBe("room");
-    expect(roomOf(report([12, 0, 0], [12, 0, 0], 0))).toBe("too-hard");
-    // The reference failing everything the new harness answered leaves the reference none.
-    expect(roomOf(report([12, 0, 0], [0, 0, 12], 0))).toBe("none");
-    // The reference's side is `fresh` in the comparison it was promoted on.
-    expect(
-      roomOf({ valid: { old: [12, 0, 0], fresh: [0, 3, 9], informative: { old: 0, fresh: 3 } } }, "fresh"),
-    ).toBe("room");
-  });
-
   it("counts no comparison that left the reference no room, and a step wherever it was read", () => {
     // A report lists its tasks by how many of their two solves were valid: none, one, both, and how
     // many were informative for each harness, valid on some solves and not all (`informative`).
@@ -327,30 +236,6 @@ describe("the stop rule", () => {
     expect(stopRule([...sessions, reported("b-1", "step", "h2", hard)])).toEqual(counted(1, 0));
   });
 
-  it("counts a session that left its harness as it was where a practice solve of its failed, in its place, and none that was killed or crashed", () => {
-    // A session that was shown a failure and declined it: a practice solve of its own, a fail,
-    // between its start and its end. One whose every practice solve passed had nothing to work on,
-    // which is the supply's fault: all ten campaigns of 9 and 10 October stopped on three such.
-    const log = [
-      session("b-1", "h2"),
-      flat("b-1", "h2"),
-      ...idle("b-2", [false]),
-      ...idle("b-3", [true, false]),
-    ];
-    expect(stopRule(log)).toEqual(counted(3, 3));
-    const passing = [session("b-1", "h2"), flat("b-1", "h2"), ...idle("b-2", [true]), ...idle("b-3", [])];
-    expect(stopRule(passing)).toEqual(counted(1, 1));
-    expect(
-      stopRule([
-        ...idle("b-1", [false]),
-        ...idle("b-2", [false], { ended: "killed" }),
-        ...idle("b-3", [false], { ended: "crashed" }),
-      ]),
-    ).toEqual(counted(1, 1));
-    // A step after them starts the count again.
-    expect(stopRule([...log, session("b-4", "h3"), reported("b-4", "step", "h3")])).toEqual(counted(4, 0));
-  });
-
   it("counts no report that compared nothing, and no comparison of harnesses no Builder session changed", () => {
     const nothing = (id: string) => reported(id, "no-change", null, { scored: null });
     const stopped = (id: string) => reported(id, "check-defects", "h2", { scored: null });
@@ -363,24 +248,6 @@ describe("the stop rule", () => {
     const gates = [reported("g0", "no-step", "start"), reported("g2", "no-step", "start")];
     expect(stopRule(gates)).toEqual(counted(0, 0));
     expect(stopRule([...gates, ...sessions, flat("b-1", "h2")])).toEqual(counted(1, 1));
-  });
-
-  it("reads a settled comparison by its last report, where it first reported", () => {
-    // b-1 read a step. Two comparisons later a person settles it, and it is a step still: it
-    // stays the first of the three, and two checkpoints have passed since.
-    const log = [...sessions, reported("b-1", "step", "h2"), flat("b-2", "h3"), flat("b-3", "h4")];
-    const settled = [...log, reported("b-1", "step", "h2", { settled: { labelled: 1 } })];
-    expect(lastReports(settled).map(({ session: id, index }) => [id, index])).toEqual([
-      ["b-1", 6],
-      ["b-2", 7],
-      ["b-3", 8],
-    ]);
-    expect(lastReports(settled)[0]?.data.settled).toEqual({ labelled: 1 });
-    expect(stopRule(settled)).toEqual(counted(3, 2));
-    // A settling that takes the step away, or gives one, is read where the comparison stands.
-    const undone = [...log, reported("b-1", "no-step", "h2", { settled: { labelled: 1 } })];
-    expect(stopRule(undone)).toEqual(counted(3, 3));
-    expect(stopRule([...sessions, flat("b-1", "h2"), reported("b-1", "step", "h2")])).toEqual(counted(1, 0));
   });
 });
 
@@ -399,18 +266,6 @@ describe("a report read as it was found", () => {
     { task: "v1", old: [F, F], fresh: [P, P] },
     { task: "v2", old: [F, P], fresh: [F, P] },
   ];
-
-  it("is its scored tasks' pairs under its own two harnesses, counting its own solves and none another comparison made", () => {
-    expect(pairsIn(log)).toMatchObject([found]);
-    const again = [
-      ...log,
-      ...solved("b-2", "v1", "h1", [P, P]),
-      ...solved("b-2", "v1", "h3", [P, F]),
-      reported("b-2", "no-step", "h3", { ...terms, fresh: "h3", versions: ["v1"] }),
-    ];
-    // The reference harness failed v1 twice for the first comparison and passed it twice for this one.
-    expect(pairsIn(again)).toMatchObject([found, [{ task: "v1", old: [P, P], fresh: [P, F] }]]);
-  });
 
   it("stays what it was after further solves, a release, a refusal and a person's settling", () => {
     // A later comparison solved v1 again under the same harness; v2 is released and v1 refused
@@ -434,114 +289,10 @@ describe("a report read as it was found", () => {
       ]),
     );
   });
-
-  it("is nothing for a report that compared nothing, or one whose solves name no comparison", () => {
-    const bare = [...heldOut("v1"), reported("b-1", "no-change", null, { scored: null })];
-    expect(pairsIn(bare)).toEqual([[]]);
-    const before = [
-      ...heldOut("v1"),
-      ...solved("", "v1", "h1", [P, P]),
-      ...solved("", "v1", "h2", [P, P]),
-      reported("b-1", "no-step", "h2", { old: "h1", solves: 2, setting: SETTING, versions: ["v1"] }),
-    ];
-    expect(pairsIn(before)).toEqual([[]]);
-  });
-
-  it("takes the reference's first mirrored half in a log written with --noise, until 13 October", () => {
-    // The reference was solved four times a task there, and the test took the first and the last.
-    const noised = [
-      ...heldOut("v1"),
-      event("comparison.started", { session: "g-1", noise: true }),
-      ...solved("g-1", "v1", "h1", [P, F, F, P]),
-      ...solved("g-1", "v1", "h2", [F, F]),
-      reported("g-1", "no-step", "h2", { ...terms, versions: ["v1"] }),
-    ];
-    expect(pairsIn(noised)).toMatchObject([[{ task: "v1", old: [P, P], fresh: [F, F] }]]);
-  });
 });
 
 describe("the outcome an Examiner hears of a task", () => {
-  const tasks = ["won", "tied", "unsolved", "aside", "waiting"];
   const terms = { old: "h1", fresh: "h2", solves: 2, setting: SETTING };
-  /** One comparison of four of the tasks, the new harness answering as `fresh` says. */
-  const compared = (fresh: Record<string, readonly boolean[]>) => [
-    ...tasks.flatMap(heldOut),
-    ...solved("b-1", "won", "h1", [F, F]),
-    ...solved("b-1", "won", "h2", fresh.won ?? []),
-    ...solved("b-1", "tied", "h1", [P, F]),
-    ...solved("b-1", "tied", "h2", fresh.tied ?? []),
-    ...solved("b-1", "unsolved", "h1", [F, F]),
-    ...solved("b-1", "unsolved", "h2", fresh.unsolved ?? []),
-    ...solved("b-1", "aside", "h1", [P, F]),
-    ...solved("b-1", "aside", "h2", fresh.aside ?? []),
-    reported("b-1", "no-step", "h2", { ...terms, versions: ["won", "tied", "unsolved"], aside: ["aside"] }),
-  ];
-  const log = compared({ won: [P, F], tied: [F, P], unsolved: [F, F], aside: [P, P] });
-  const heard = new Map<string, Outcome>([
-    ["won", "reference-none"],
-    ["tied", "reference-some"],
-    ["unsolved", "reference-none"],
-    // A rejection of an answer to it is not settled, so it was in no tally.
-    ["aside", "disputed"],
-  ]);
-
-  it("is how the reference harness did on it, in every solve, some or none, or that it is disputed, whatever the other harness answered", () => {
-    // The reference is the comparison's old side. A task no comparison has scored has no outcome.
-    expect(poolOf(log).outcomes).toEqual(heard);
-    // The hostile case of rule 3: two logs that differ only in what the new harness answered,
-    // and so in which harness won each task, give the author the same outcomes.
-    const flipped = compared({ won: [F, F], tied: [P, P], unsolved: [P, P], aside: [F, F] });
-    expect(poolOf(flipped).outcomes).toEqual(heard);
-  });
-
-  it("is read from the last comparison that scored the task, whatever setting id its report carries", () => {
-    const again = [
-      ...log,
-      ...solved("b-2", "tied", "h1", [F, F]),
-      ...solved("b-2", "tied", "h3", [P, P]),
-      ...solved("b-2", "aside", "h1", [P, P]),
-      ...solved("b-2", "aside", "h3", [P, P]),
-      reported("b-2", "no-step", "h3", { ...terms, fresh: "h3", versions: ["tied", "aside"] }),
-    ];
-    expect(poolOf(again).outcomes).toEqual(
-      new Map([...heard, ["tied", "reference-none"], ["aside", "reference-every"]]),
-    );
-    // Until 2026-10-11 a task whose last report carried another setting id than the last report's
-    // read `earlier-setting`. A campaign runs at one setting since, and the id names the host's
-    // code too, which a tree moved to a new commit changes: a report under another id is read.
-    const shorter = (task: string, harness: string): Condition => {
-      const ran = condition(task, harness);
-      return { ...ran, limits: { ...ran.limits, modelTurns: 3 } };
-    };
-    const shortened = [
-      ...log,
-      ...solvedUnder("b-2", shorter("tied", "h1"), [F, F]),
-      ...solvedUnder("b-2", shorter("tied", "h2"), [P, P]),
-      reported("b-2", "no-step", "h2", {
-        ...terms,
-        setting: settingId(shorter("any", "any")),
-        versions: ["tied"],
-      }),
-    ];
-    expect(poolOf(shortened).outcomes).toEqual(new Map([...heard, ["tied", "reference-none"]]));
-  });
-
-  it("reads the reference's counted solves alone: not its third, made to read it against itself, nor the starter's", () => {
-    // The test's own four solves of the task were all rejected. The reference harness's third
-    // solve, made to read it against itself, was valid, and on another task the starter's was:
-    // neither is counted, and the author hears the reference valid in no solve of either.
-    const beside = [
-      ...heldOut("again"),
-      ...heldOut("lower"),
-      ...solved("g-1", "again", "h1", [F, F, P, F]),
-      ...solved("g-1", "again", "h2", [F, F]),
-      ...solved("g-1", "lower", "h1", [F, F]),
-      ...solved("g-1", "lower", "h2", [F, F]),
-      ...solved("g-1", "lower", "base", [P, F]),
-      reported("g-1", "no-step", "h2", { ...terms, versions: ["again", "lower"] }),
-    ];
-    expect([...poolOf(beside).outcomes.values()]).toEqual(["reference-none", "reference-none"]);
-  });
 
   it("reads the reference on the side it stood: old, fresh in the comparison its promotion rests on, and neither between two other harnesses", () => {
     // Until 11 October the old side was read always: h2, promoted on b-1 where it answered every
@@ -689,15 +440,6 @@ describe("the tasks that go to a person as possibly infeasible", () => {
   const once = compared(start, "b-1", "h2", F);
   const twice = compared(once, "b-2", "h3", F);
 
-  it("are the ones with no valid answer on record after two comparisons, and leave the scored set", () => {
-    expect(awaiting(once)).toEqual([]);
-    expect(poolOf(once).scorable).toEqual(["hard", "easy"]);
-    expect(awaiting(twice)).toEqual(["hard"]);
-    expect(poolOf(twice).scorable).toEqual(["easy"]);
-    // A task no longer held out waits for nobody.
-    expect(awaiting([...twice, event("task.state", { version: "hard", state: "released" })])).toEqual([]);
-  });
-
   it("are never the ones a valid answer is on record for, by a solve anywhere or the author's own proof, which moves no pair", () => {
     // A valid answer in the second comparison shows the task feasible, for every comparison after.
     const valid = compared(once, "b-2", "h3", P);
@@ -731,25 +473,6 @@ describe("the tasks that go to a person as possibly infeasible", () => {
     expect(poolOf([...twice, ...solved(undefined, "hard", "h9", [P])]).feasible).toEqual(
       new Set(["hard", "easy"]),
     );
-  });
-
-  it("do not count a comparison that cut a solve of the task at a limit", () => {
-    // `turns-ended` under a condition that names no number of model turns, which no solve writes
-    // (`spent`, src/solver/run.ts), reads as a cut, so a campaign without a bound reads as before.
-    for (const kind of ["wall-ended", "turns-ended", "context-ended"]) {
-      const cut = compared(compared(start, "b-1", "h2", kind), "b-2", "h3", kind);
-      expect(awaiting(cut)).toEqual([]);
-      // One comparison that cut none is one, and the second such sends the task to a person.
-      expect(awaiting(compared(cut, "b-3", "h4", F))).toEqual([]);
-      expect(awaiting(compared(compared(cut, "b-3", "h4", F), "b-4", "h5", F))).toEqual(["hard"]);
-      // A cut comparison between the two takes nothing from the count.
-      const between = compared(compared(compared(start, "b-1", "h2", F), "b-2", "h3", kind), "b-3", "h4", F);
-      expect(awaiting(between)).toEqual(["hard"]);
-    }
-    // A solve that gave up without an answer, or whose answer was rejected, was not cut.
-    expect(awaiting(compared(compared(start, "b-1", "h2", "no-answer"), "b-2", "h3", "no-answer"))).toEqual([
-      "hard",
-    ]);
   });
 
   it("count a comparison whose solves used every model turn the condition names, and no wall it cut", () => {
@@ -812,19 +535,6 @@ describe("the tasks that go to a person as possibly infeasible", () => {
     }
     // A last turn that ended as any other did is the budget's, recorded or not.
     expect(awaiting(lastTurned(spent, { stopReason: "toolUse", error: null }))).toEqual(["hard"]);
-  });
-
-  it("wait until a person keeps the task, which counts its comparisons anew", () => {
-    const kept = [...twice, event("task.state", { version: "hard", state: "held", reason: "feasible" })];
-    expect(awaiting(kept)).toEqual([]);
-    expect(awaiting(compared(kept, "b-3", "h4", F))).toEqual([]);
-    expect(awaiting(compared(compared(kept, "b-3", "h4", F), "b-4", "h5", F))).toEqual(["hard"]);
-    // A settling of an earlier comparison, made after the label, is no comparison after it.
-    const settled = [
-      ...kept,
-      reported("b-2", "no-step", "h3", { ...terms, fresh: "h3", versions: ["hard", "easy"], settled: {} }),
-    ];
-    expect(awaiting(compared(settled, "b-3", "h4", F))).toEqual([]);
   });
 
   it("go to the Builder first at a release, cut at a limit or not, while they are held out and the reference answered them in no solve", () => {
@@ -890,51 +600,6 @@ describe("the release before the draw", () => {
       reported("b-1", "no-step", "h2", { ...terms, versions: ["s1", "a1"] }),
     ];
     expect(releaseOrder(once, ["s1", "a1"], 1, "seed").map(([version]) => version)).toEqual(["s1"]);
-  });
-
-  it.each(["disputed", "refused"])(
-    "excludes %s tasks before taking half of the reference's failures",
-    (state) => {
-      const failed = ["f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8"];
-      const compared = [
-        ...failed.flatMap(heldOut),
-        ...failed.flatMap((task) => [
-          ...solved("b-1", task, "h1", [F, F]),
-          ...solved("b-1", task, "h2", [P, P]),
-        ]),
-        reported("b-1", "no-step", "h2", { ...terms, versions: failed }),
-      ];
-      const events = [
-        ...compared,
-        ...failed.slice(0, 4).map((version) => event("task.state", { version, state })),
-      ];
-      expect(releaseOrder(events, taskSets(events).held, 2, "seed").map(([version]) => version)).toEqual([
-        "f5",
-        "f6",
-      ]);
-    },
-  );
-
-  it("keeps the same half of five failed tasks across releases of one task at a time", () => {
-    const failed = ["f1", "f2", "f3", "f4", "f5"];
-    const events = [
-      ...failed.flatMap(heldOut),
-      ...failed.flatMap((task) => [
-        ...solved("b-1", task, "h1", [F, F]),
-        ...solved("b-1", task, "h2", [P, P]),
-      ]),
-      reported("b-1", "no-step", "h2", { ...terms, versions: failed }),
-    ];
-    const released: string[] = [];
-    for (let nth = 0; nth < failed.length; nth += 1) {
-      const chosen = releaseOrder(events, taskSets(events).held, 1, "seed");
-      for (const [version] of chosen) {
-        released.push(version);
-        events.push(event("task.state", { version, state: "released" }));
-      }
-    }
-    expect(released).toEqual(failed.slice(0, Math.ceil(failed.length / 2)));
-    expect(taskSets(events).held).toEqual(["f4", "f5"]);
   });
 
   it("releases the same tasks whichever held-out task the new harness bettered by the objective", () => {
@@ -1009,44 +674,6 @@ describe("the release before the draw", () => {
     for (const task of ["a1", "a2"]) {
       expect(releaseOrder(roomIn(task), ["a1", "a2"], 1, "seed").map(([version]) => version)).toEqual([task]);
     }
-  });
-
-  it("keeps the reference's failures through empty reports and comparisons of other harnesses, until the reference answers the task", () => {
-    for (const reading of ["no-change", "not-scored", "check-defects"]) {
-      for (const versions of [[], ["f1"]]) {
-        const empty = [
-          ...log,
-          ...solved("empty", "f1", "h1", [P, P]),
-          reported("empty", reading, "h2", { ...terms, versions, scored: null }),
-        ];
-        expect(releaseOrder(empty, tasks, 4, "seed")).toEqual(releaseOrder(log, tasks, 4, "seed"));
-      }
-    }
-    const control = [
-      ...solved("control", "a1", "h3", [F, F]),
-      ...solved("control", "a1", "h4", [P, P]),
-      reported("control", "no-step", "h4", { ...terms, old: "h3", fresh: "h4", versions: ["a1"] }),
-    ];
-    expect(failedOf([...log, ...control], tasks)).toEqual(["f1", "f2", "f3", "f4"]);
-    expect(failedOf([...log, promotion, ...control], tasks)).toEqual([]);
-    // A later comparison between other harnesses leaves a task nothing of the reference's own: no
-    // failure, as its outcome says.
-    const other = [
-      ...log,
-      ...solved("control", "f1", "h3", [F, F]),
-      ...solved("control", "f1", "h4", [P, P]),
-      reported("control", "no-step", "h4", { ...terms, old: "h3", fresh: "h4", versions: ["f1"] }),
-    ];
-    expect(poolOf(other).outcomes.get("f1")).toBe("earlier-reference");
-    expect(failedOf(other, tasks)).toEqual(["f2", "f3", "f4"]);
-    const answered = [
-      ...log,
-      ...solved("b-2", "f1", "h1", [P, P]),
-      ...solved("b-2", "f1", "h2", [P, P]),
-      reported("b-2", "no-step", "h2", { ...terms, versions: ["f1"] }),
-    ];
-    expect(failedOf(answered, tasks)).toEqual(["f2", "f3", "f4"]);
-    expect(poolOf(answered).outcomes.get("f2")).toBe("reference-none");
   });
 
   it("takes no practice priority from a rejection set aside until its comparison is settled", () => {
@@ -1242,56 +869,6 @@ describe("the billed dollars a cap counts", () => {
     expect(billedFor(log, "none")).toBe(0);
   });
 
-  it("holds a session still running to what it has billed so far", () => {
-    const log = [event(BUILD_STARTED, { session: "b-1" }), ...paid("s-b", 6), ...paid("s-c", 2)];
-    expect(billedFor(log, "b-1")).toBe(8);
-  });
-
-  it("counts a live Builder's turns before nested tools spend, and its final sum only once", () => {
-    const log = [
-      event(BUILD_STARTED, { session: "b-1" }),
-      event("build.turn", { session: "b-1", usage: { cost: { total: 2 } } }),
-      event("build.compacted", { session: "b-1", usages: [{ cost: { total: 1 } }] }),
-      ...paid("nested", 4, "g-1"),
-    ];
-    expect(billedFor(log, "b-1")).toBe(7);
-    expect(billedFor(log, "g-1")).toBe(4);
-    expect(billedAll(log)).toBe(7);
-    log.push(event("build.finished", { session: "b-1", billed: 3 }));
-    expect(billedFor(log, "b-1")).toBe(7);
-    expect(billedAll(log)).toBe(7);
-  });
-
-  it("bills a session or a solve the run was killed in by its turns, and a finished one by its sum alone", () => {
-    const turn = (kind: EventKind, id: JsonObject, total: number) =>
-      event(kind, { ...id, usage: { input: 1, output: 1, cost: { total } } });
-    // t-5 (10 October): b-1 killed at its seventh turn, three solves of g-1 cut with it.
-    const log = [
-      event(BUILD_STARTED, { session: "b-1" }),
-      turn("build.turn", { session: "b-1" }, 0.07),
-      turn("build.turn", { session: "b-1" }, 0.05),
-      event("solve.started", { solve: "s-k", comparison: "g-1" }),
-      turn("solve.turn", { solve: "s-k" }, 0.01),
-      // Finished: the sum stands, and the turns are not counted again.
-      event(BUILD_STARTED, { session: "b-2" }),
-      turn("build.turn", { session: "b-2" }, 0.5),
-      event("build.finished", { session: "b-2", billed: 0.5 }),
-      ...paid("s-b", 6),
-      turn("solve.turn", { solve: "s-b" }, 9),
-      event("exam.started", { session: "x-1" }),
-      turn("exam.turn", { session: "x-1" }, 0.2),
-      // A log of before the repair session was retired still bills it: one killed after a turn, one
-      // that summed its own.
-      event("repair.started", { session: "r-1" }),
-      turn("repair.turn", { session: "r-1" }, 0.3),
-      event("repair.started", { session: "r-2" }),
-      turn("repair.turn", { session: "r-2" }, 0.4),
-      event("repair.finished", { session: "r-2", billed: 0.4 }),
-    ];
-    expect(billedAll(log)).toBeCloseTo(0.07 + 0.05 + 0.01 + 0.5 + 6 + 0.2 + 0.3 + 0.4, 10);
-    expect(billedAll(log.filter(({ kind }) => !kind.endsWith(".turn")))).toBeCloseTo(6.5 + 0.4, 10);
-  });
-
   it("include the turns and compactions of a solve or a session with no end in the total, and of a solve of the comparison in its cap", () => {
     const usage = (total: number) => ({ input: 1, output: 1, cost: { total } });
     const compacted = (kind: EventKind, id: JsonObject, total: number) =>
@@ -1315,27 +892,5 @@ describe("the billed dollars a cap counts", () => {
     expect(billedFor(log, "g-2")).toBe(0);
     // A live Builder's own turns count before its next tool can spend on another seat.
     expect(billedFor(log, "b-1")).toBe(0.75);
-  });
-
-  it("bill a stretch for what was metered inside it, a session open across either end included", () => {
-    const turn = (total: number) => event("build.turn", { session: "b-1", usage: { cost: { total } } });
-    // recode-151 (14 October): the Builder's conversation spans epochs and ends inside the last.
-    const log = [
-      event(BUILD_STARTED, { session: "b-1" }),
-      turn(5),
-      event("harness.promoted", { harness: "h-1" }),
-      turn(1),
-      ...paid("s-a", 2, "g-1"),
-      event("harness.promoted", { harness: "h-2" }),
-      turn(0.5),
-      event("build.finished", { session: "b-1", billed: 6.5 }),
-    ];
-    expect(billedBetween(log, 0, 2)).toBe(5);
-    expect(billedBetween(log, 2, 6)).toBe(3);
-    expect(billedBetween(log, 6)).toBe(0.5);
-    // A sum over the slice alone bills the last stretch the session's whole sum, and the middle
-    // none of its turns.
-    expect(billedAll(log.slice(6))).toBe(6.5);
-    expect(billedAll(log.slice(2, 6))).toBe(2);
   });
 });

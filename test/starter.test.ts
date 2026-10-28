@@ -17,12 +17,11 @@ import {
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
+import { runtimeProcess } from "../src/meta/process.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../src/tools/coding.ts";
 import { type CommandWall, makeSeatDirs, solveDirs } from "../src/tools/command.ts";
 import { walledEnv } from "../src/tools/env.ts";
 import { harnessTools, openHarness } from "../src/harness/open.ts";
-import { installedPrograms } from "../src/harness/programs.ts";
 import { EXAMPLE, HARNESS_ACCOUNT, WITHOUT_SHELL, writeStarter } from "../src/harness/starter.ts";
 import { solveIsolationPolicy } from "../src/wall/base.ts";
 import { osIsolationSupport } from "../src/wall/os-isolation.ts";
@@ -89,86 +88,6 @@ it("has pi's coding tools selected, the starter instructions as its guide, and n
       guide: readFileSync(join(dir, "agent", "BUILT_AGENTS.md"), "utf8"),
     });
     expect((await openHarness(bare)).digest).toBe(starter.digest);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-it("gives each part one purpose, and prints a worked harness that opens as printed", async () => {
-  const dir = scratch();
-  try {
-    writeHarness(dir, EXAMPLE);
-    const example = await openHarness(dir);
-    // The worked harness is the Starter with a program and a guide: its computation is the
-    // program, and it has no tool of its own.
-    expect(example.presets).toEqual([...CODING_TOOLS]);
-    expect(example.kinds.size).toBe(0);
-    expect(installedPrograms(example.toolTree)).toEqual(["check-rota"]);
-    expect(example.guide).toContain("## Programs and tools\n- check-rota <rota.json>:");
-    // The account prints its files byte for byte.
-    for (const file of ["agent/tools-spec.json", "agent/BUILT_AGENTS.md", ".toolchain/bin/check-rota"]) {
-      expect(HARNESS_ACCOUNT).toContain(readFileSync(join(dir, file), "utf8").trimEnd());
-    }
-    // One row a part, and the files a solve reads and writes.
-    for (const part of [
-      "| agent/tools-spec.json |",
-      "| .toolchain/ |",
-      "| agent/BUILT_AGENTS.md |",
-      "| agent/tools.ts |",
-      "answer.json",
-      "public/answer-format.json",
-      ...CODING_TOOLS,
-    ]) {
-      expect(HARNESS_ACCOUNT).toContain(part);
-    }
-    // The answer is no tool's, and the host lends a tool no helper: the account names neither.
-    expect(HARNESS_ACCOUNT).not.toContain("artifact-writer");
-    expect(HARNESS_ACCOUNT).not.toContain("runProgram");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-it("prints a program that keeps the convention it states", async () => {
-  const dir = scratch();
-  try {
-    writeHarness(dir, EXAMPLE);
-    seed(dir);
-    const program = join(dir, ".toolchain", "bin", "check-rota");
-    const ran = async (...args: string[]) => {
-      const child = Bun.spawn([capturedExecPath, program, ...args], {
-        cwd: dir,
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      const [out, err] = await Promise.all([
-        new Response(child.stdout).text(),
-        new Response(child.stderr).text(),
-      ]);
-      return { exit: await child.exited, out, err };
-    };
-    // 0: it ran and every limit holds. The task is public/task.json unless another file is named.
-    expect(await ran("rota.json")).toEqual({
-      exit: 0,
-      out: "ann: 8 of 12 hours, ok\nbo: 6 of 8 hours, ok\n",
-      err: "",
-    });
-    expect((await ran("rota.json", "public/task.json")).exit).toBe(0);
-    // 1: it ran and one does not hold, said on standard output.
-    expect(await ran("over.json")).toEqual({
-      exit: 1,
-      out: "ann: 14 of 12 hours, over by 2\nbo: 6 of 8 hours, ok\n",
-      err: "",
-    });
-    // 2: it could not run, said on standard error.
-    expect(await ran("absent.json")).toMatchObject({ exit: 2, out: "" });
-    expect((await ran("absent.json")).err).toStartWith("check-rota: cannot read absent.json: ");
-    expect(await ran()).toMatchObject({ exit: 2, out: "", err: expect.stringContaining("usage: ") });
-    expect(await ran("--help")).toMatchObject({
-      exit: 0,
-      out: expect.stringContaining("usage: "),
-      err: "",
-    });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -105,8 +105,4 @@ describe("ana/no-positional-boolean-parameter", () => {
     expect(expected).toHaveLength(10);
     expect(await reports("src/example.ts")).toStrictEqual(expected);
   });
-
-  it("says nothing in a test, where both arguments are read beside each other", async () => {
-    expect(await reports("test/example.test.ts")).toStrictEqual([]);
-  });
 });

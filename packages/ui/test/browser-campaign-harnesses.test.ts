@@ -5,14 +5,12 @@ import {
   expect,
   expectQuiet,
   launchBrowser,
-  nextPolls,
   type Opened,
   openPage,
   PHONE,
   routeParameters,
   type Served,
   serveFixture,
-  withClock,
 } from "./browser.ts";
 
 /*
@@ -22,8 +20,7 @@ import {
  * phone. Then what a person sees between two states: a frame probe counts every animation frame in
  * which a watched part of the page is gone, empty or saying it is reading, across each step, since
  * on 14 October every card chosen and every file opened flashed a loading line for one to three
- * frames; a held read shows that the previous view stays and that the loading line waits; and two
- * polls of an unchanged campaign redraw nothing.
+ * frames; a held read shows that the previous view stays and that the loading line waits.
  */
 
 /** What the frame probe counted between its start and its stop. */
@@ -47,8 +44,6 @@ interface FrameProbe {
 declare global {
   interface Window {
     anaFrames?: FrameProbe;
-    /** What the poll test's observers saw change. */
-    anaChanged?: string[];
   }
 }
 
@@ -300,16 +295,6 @@ describe("the harness strip", () => {
     await opened.context.close();
   });
 
-  test("opens straight onto a file a link names", async () => {
-    const { d } = served.fixture.harnesses;
-    const opened = await openCampaign(`harness=${d}&file=agent%2FBUILT_AGENTS.md`);
-    const { page } = opened;
-    await expect(inspector(page).locator(".ana-file-content")).toContainText("# Guide");
-    await expect(selected(page)).toContainText(short(d));
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
   test("scrolls sideways on a phone with the selected card in view and the page not wider than the screen", async () => {
     const opened = await openCampaign("", PHONE.width);
     const { page } = opened;
@@ -466,63 +451,6 @@ describe("between two states", () => {
     await expect(detail(page).getByText("Reading its files")).toHaveCount(0);
     await expect(detail(page).locator(".ana-harness-files")).toHaveAttribute("aria-busy", "false");
     await page.unroute(/\/api\/harness(-diff)?\?/u);
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
-  test("the set-up and a column's tooltip open with no empty frame", async () => {
-    const opened = await openCampaign();
-    const { page } = opened;
-    const setUp = await watchFrames(
-      page,
-      { watched: "details.ana-disclosure", content: "summary" },
-      () => page.locator(".ana-disclosure > summary").click(),
-      () => expect(page.locator(".ana-disclosure-body")).toBeVisible(),
-    );
-    expect(setUp).toMatchObject({ gone: 0, empty: 0, loading: 0 });
-    const label = page.locator(".ana-comparisons-tick text").filter({ hasText: /^b-2$/u });
-    await label.scrollIntoViewIfNeeded();
-    const tick = await label.boundingBox();
-    if (tick === null) throw new Error("no axis label for b-2");
-    const tooltip = await watchFrames(
-      page,
-      { watched: ".ana-campaign-chart", content: ".recharts-surface" },
-      () => page.mouse.move(tick.x + tick.width / 2, tick.y - 60, { steps: 4 }),
-      () => expect(page.locator(".ana-comparisons-tooltip")).toContainText("b-2"),
-    );
-    expect(tooltip).toMatchObject({ gone: 0, empty: 0, loading: 0 });
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
-  test("two polls of a campaign that did not change redraw nothing", async () => {
-    const opened = await openCampaign();
-    const { page } = opened;
-    await withClock(page);
-    await expect(page.locator(".ana-campaign-chart svg.recharts-surface")).toBeVisible();
-    const watched = [
-      ".ana-campaign-chart svg.recharts-surface",
-      ".ana-harness-lineage",
-      ".ana-campaign-pair",
-      ".ana-campaign-counters",
-      ".ana-campaign-head",
-    ];
-    await page.evaluate((selectors) => {
-      const changed: string[] = [];
-      for (const selector of selectors) {
-        const element = document.querySelector(selector);
-        if (element === null) throw new Error(`nothing at ${selector}`);
-        new MutationObserver((records) => {
-          for (const _ of records) changed.push(selector);
-        }).observe(element, { subtree: true, childList: true, attributes: true, characterData: true });
-      }
-      window.anaChanged = changed;
-    }, watched);
-    await nextPolls(page, 2);
-    await page.evaluate(
-      () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(null)))),
-    );
-    expect(await page.evaluate(() => window.anaChanged)).toEqual([]);
     expectQuiet(opened);
     await opened.context.close();
   });

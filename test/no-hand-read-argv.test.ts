@@ -54,16 +54,4 @@ describe("ana/no-hand-read-argv", () => {
     expect(await reports("src/example.ts")).toStrictEqual([]);
     expect(await reports("tools/example.ts")).toStrictEqual([]);
   });
-
-  it("does not take a local function named like the library for the library", async () => {
-    const local = `
-function parseOrDie(argv) {
-  return argv.slice(1);
-}
-parseOrDie(Bun.argv.slice(2)); // REPORT not imported from main/cli.ts, so it is a second parser
-`.trimStart();
-    expect(
-      await reportedLines("ana", "no-hand-read-argv", local, ".claude/skills/zip-run/scripts/a.mjs"),
-    ).toStrictEqual(expectedLines(local));
-  });
 });

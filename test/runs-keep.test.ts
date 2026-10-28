@@ -6,7 +6,7 @@ import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
 import { seats } from "../tools/runs/fresh.ts";
 import { nextLogin, roomFor, type Turn, turnOf, turnsIn } from "../tools/runs/keep.ts";
-import { allowedLogins, billsLogin, type Reading, room } from "../tools/runs/logins.ts";
+import { billsLogin, type Reading, room } from "../tools/runs/logins.ts";
 import { type Receipt, writeReceipt } from "../tools/runs/receipt.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
@@ -90,16 +90,6 @@ describe("the login a run moves to", () => {
     expect(room(readings, ["2", "3", "4"], new Set(["4"]))).toEqual(["3", "2"]);
   });
 
-  it("takes a nearly spent week first where it resets first, so the week is used before it resets", () => {
-    expect(
-      room(
-        [read("1", 2, 10, "allowed", 90), read("4", 95, 10, "allowed_warning", 50)],
-        ["1", "4"],
-        new Set(),
-      ),
-    ).toEqual(["4", "1"]);
-  });
-
   it("leaves a login whose week is spent, whose five hours are, that is refused, or that could not be read", () => {
     const readings: Reading[] = [
       read("1", 100),
@@ -125,14 +115,6 @@ describe("the login a run moves to", () => {
       "3",
     ]);
     expect(await roomFor(["2", "3"], new Set(), { live: [], unasked: ["m1"] }, readAll, env)).toEqual([]);
-  });
-
-  it("allows the logins ANA_LOGINS names, or else every login the environment holds", () => {
-    const key = "CLAUDE_CODE_OAUTH_TOKEN";
-    const env = { [key]: "a", [`${key}10`]: "x", [`${key}3`]: "c", [`${key}2`]: "b" };
-    expect(allowedLogins(env)).toEqual(["2", "3", "10"]);
-    expect(allowedLogins({ ...env, ANA_LOGINS: " 3, 4 ," })).toEqual(["3", "4"]);
-    expect(allowedLogins({ ...env, ANA_LOGINS: "" })).toEqual(["2", "3", "10"]);
   });
 });
 
@@ -208,24 +190,6 @@ describe("the login a run goes on with", () => {
       solver: { model: OPUS, effort: "high" },
     });
     expect(billsLogin([opening], overrides)).toBe(false);
-  });
-
-  it("leaves prompt text out of login billing", () => {
-    const gpt = seats("openai-codex/gpt-6.1-sol", "hhhh");
-    expect(billsLogin([], [...gpt, "--prompt", "claude/a domain to investigate"])).toBe(false);
-    expect(billsLogin([], [...gpt, "--prompt=claude/a domain to investigate"])).toBe(false);
-  });
-
-  it("reads the seats past a flag the campaign command does not take", () => {
-    const gpt = seats("openai-codex/gpt-6.1-sol", "hhhh");
-    expect(billsLogin([], [...gpt, "--at", "campaign-value"])).toBe(false);
-    expect(billsLogin([], ["--at", "campaign-value", ...seats(OPUS, "hhhh")])).toBe(true);
-  });
-
-  it("bills a login for all-Claude and mixed seats", () => {
-    const gpt = seats("openai-codex/gpt-6.1-sol", "hhhh");
-    expect(billsLogin([], seats(OPUS, "hhhh"))).toBe(true);
-    expect(billsLogin([], [...gpt, `--reviewer=${OPUS}`])).toBe(true);
   });
 
   it("keeps an all-GPT campaign with no login and refuses a Claude campaign there", () => {

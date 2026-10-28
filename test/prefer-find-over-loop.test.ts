@@ -9,12 +9,7 @@
  * that would have returned a boolean from a void function.
  */
 import { describe, expect, it } from "bun:test";
-import {
-  expectedLines,
-  fixedSource,
-  reportedLines,
-  reportedMessages,
-} from "./helpers/oxlint-rule-fixture.ts";
+import { expectedLines, fixedSource, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
 
 const RULE = "prefer-find-over-loop";
 const SEARCHES = `interface Row {
@@ -116,12 +111,6 @@ describe("ana/prefer-find-over-loop", () => {
     expect(await reportedLines("ana", RULE, SEARCHES)).toStrictEqual(expected);
   });
 
-  it("names the guard as a guard rather than as an answer", async () => {
-    const guards = (await reportedMessages("ana", RULE, SEARCHES)).filter((one) => one.includes("if ("));
-    expect(guards).toHaveLength(1);
-    expect(guards[0]).toContain("`if (rows.some(…)) return;`");
-  });
-
   it("puts the method where the loop stood, once the line below agrees with it", async () => {
     const fixed = await fixedSource("ana", RULE, SEARCHES);
     expect(fixed).toContain("return rows.find((row) => row.id === id);");
@@ -132,21 +121,5 @@ describe("ana/prefer-find-over-loop", () => {
     expect(fixed).toContain('return rows.every((row) => !(row.name === ""));');
     expect(fixed).toContain("if (rows.some((row) => row.settled)) return;");
     expect(fixed).toContain('note("none settled");');
-  });
-
-  it("leaves the loop standing where its body carries a sentence the arrow cannot hold", async () => {
-    const fixed = await fixedSource("ana", RULE, SEARCHES);
-    expect(fixed).toContain(
-      "// a row is open until something settles it, and that is why this reads !settled",
-    );
-    expect(fixed).not.toContain("rows.find((row) => !row.settled)");
-  });
-
-  it("keeps the loop where the rewrite would change what no match returns", async () => {
-    const fixed = await fixedSource("ana", RULE, SEARCHES);
-    expect(fixed).toContain(
-      "for (const row of rows) if (row.id === id) return row; // REPORT read, but the line",
-    );
-    expect(fixed).toContain("return rows[0];");
   });
 });

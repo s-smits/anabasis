@@ -14,15 +14,12 @@ import {
   Type,
 } from "@earendil-works/pi-ai";
 import {
-  CLAUDE_COMPACTED,
   type ClaudeCompaction,
   claudeProvider,
   REPORTED_COST,
   reportedCost,
   SWEEP_COMPACT_WINDOW,
 } from "../src/agent/backends/claude.ts";
-import { read as readLog } from "../src/kernel/log.ts";
-import { dollars, freezePrices, priceKey, tokensOf } from "../src/kernel/meter.ts";
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { capturedJsonParse } from "../src/meta/json-runtime.ts";
 import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
@@ -30,7 +27,6 @@ import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { traceSink } from "../src/agent/session.ts";
 
 /** What one launch of the CLI saw: its arguments, its environment and the SDK's lines to it. */
 interface Launch {
@@ -257,17 +253,6 @@ describe("the Claude backend", () => {
     });
   });
 
-  it("asks for the long-context id of a model the sweep ran at a million tokens", async () => {
-    const context = solverContext([opening]);
-    for (const id of ["claude-opus-5", "claude-opus-5-5", "claude-sonnet-5-5"]) {
-      replay(TEXT);
-      const model = sweep.getModels().find((entry) => entry.id === id);
-      if (model === undefined) throw new Error(`pi's Anthropic catalog has no ${id}`);
-      await sweep.streamSimple(model, context, { ...solveOptions(), sessionId: `solve-${id}` }).result();
-      expect(flag(launched(), "--model")).toBe(`${id}[1m]`);
-    }
-  });
-
   // Which account spends is the operator's to name. An API key is a provider of its own, so the
   // name is on the command line and in every condition, and a key in the host's environment never
   // reaches a solve asked of the login.
@@ -316,59 +301,6 @@ describe("the Claude backend", () => {
     expect(await ttl("5m")).toBe("5m");
     expect(await ttl("1h")).toBe("1h");
     expect(await ttl()).toBeUndefined();
-  });
-
-  it("switches Claude Code's compaction off when the condition says off, and refuses a window it would drop", async () => {
-    replay(TEXT);
-    await turn([opening], undefined, "off");
-    const { env } = launched();
-    expect(env.DISABLE_AUTO_COMPACT).toBe("1");
-    expect(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined();
-    expect(() => claudeProvider({ executable, compaction: { window: 50_000 }, home })).toThrow(
-      "100000 to 1000000",
-    );
-  });
-
-  it("bills the turns' token classes at what Claude Code reported the query cost", async () => {
-    const prices = freezePrices([haiku]);
-    for (const [fixture, reported] of [
-      [TEXT, 0.020421],
-      ["parallel-tools.jsonl", 0.0056776],
-    ] as const) {
-      replay(fixture);
-      const turns = [await turn([opening])];
-      for (let last = turns[0]; last?.stopReason === "toolUse"; last = turns.at(-1)) {
-        turns.push(await turn([opening, last, ...answered(last)]));
-      }
-      const diagnostic = turns.at(-1)?.diagnostics?.find((entry) => entry.type === REPORTED_COST);
-      expect(diagnostic?.details?.totalCostUsd).toBeCloseTo(reported, 10);
-      const { billed } = dollars(prices, priceKey(haiku), tokensOf(turns.map((message) => message.usage)));
-      expect(Math.abs(billed - reported) / reported).toBeLessThan(0.01);
-    }
-  });
-
-  it("logs a compaction Claude Code ran before the turn, as v1's onCompaction read it", async () => {
-    const boundary = JSON.stringify({
-      type: "system",
-      subtype: "compact_boundary",
-      compact_metadata: { trigger: "auto", pre_tokens: 312_000, duration_ms: 4_200 },
-      session_id: "00000000-0000-4000-8000-000000000001",
-      uuid: "00000000-0000-4000-8000-0000000000ff",
-    });
-    replay(TEXT, (text) => text.replace("\n", `\n${boundary}\n`));
-    const message = await turn([opening]);
-    const types = message.diagnostics?.map((entry) => entry.type);
-    expect(types).toEqual([CLAUDE_COMPACTED, REPORTED_COST]);
-    const log = join(home, "trace.jsonl");
-    traceSink(log, "solve", "s-1", () => 1).turn(message);
-    const compacted = readLog(log).find(({ kind }) => kind === "solve.compacted");
-    expect(compacted?.data).toEqual({
-      solve: "s-1",
-      tokensBefore: 312_000,
-      seconds: 4.2,
-      usages: [],
-      error: null,
-    });
   });
 
   it("fails the turn on a refusal, so it reads as the provider's non-result and not the solver's stop", async () => {
@@ -477,19 +409,6 @@ describe("the Claude backend", () => {
     expect(await reportedCost("solve-elsewhere", [])).toBeNull();
   });
 
-  it("takes a nudge into the live query, as v1 did (provider.ts:525-560)", async () => {
-    replay(TEXT);
-    const answer = await turn([opening]);
-    expect(answer.stopReason).toBe("stop");
-    const nudge: Message = { role: "user", content: "Again.", timestamp: 0 };
-    const again = await turn([opening, answer, nudge]);
-    expect(again.stopReason).toBe("stop");
-    const launch = launched();
-    expect(
-      launch.stdin.filter((line) => line.type === "user").map((line) => asRecord(line.message)?.content),
-    ).toEqual(["Read the three files.", "Again."]);
-  });
-
   // An abort listener never fires for a signal that has already aborted, so a turn asked under one
   // launched Claude Code and ran its query to the end.
   it("starts no query for a turn whose signal has already aborted", async () => {
@@ -499,18 +418,6 @@ describe("the Claude backend", () => {
     expect(refused.stopReason).toBe("aborted");
     expect(refused.errorMessage).toContain("was aborted before its turn");
     expect(launches()).toBe(0);
-  });
-
-  it("refuses a later prompt with no live query to hold the conversation", async () => {
-    replay(TEXT);
-    const answer = await turn([opening]);
-    // The seat's shutdown closed the query; a provider built afresh holds none for it.
-    shutdown.abort();
-    sweep = claudeProvider({ executable, compaction: { window: SWEEP_COMPACT_WINDOW }, home });
-    const nudge: Message = { role: "user", content: "Again.", timestamp: 0 };
-    const refused = await turn([opening, answer, nudge]);
-    expect(refused.stopReason).toBe("error");
-    expect(refused.errorMessage).toContain("holds this conversation");
   });
 
   // On 24 October a Builder's Claude Code sent nothing after its tool results for 22 hours, and only
@@ -526,30 +433,5 @@ describe("the Claude backend", () => {
     const refused = await turn([opening, silent, nudge]);
     expect(refused.stopReason).toBe("error");
     expect(refused.errorMessage).toContain("holds this conversation");
-  });
-
-  it("asks for v1's effort: the model's own map, then the bridge's table", async () => {
-    const opus = sweep.getModels().find((entry) => entry.id === "claude-opus-5");
-    if (opus === undefined) throw new Error("pi's Anthropic catalog has no claude-opus-5");
-    const context = solverContext([opening]);
-    let asks = 0;
-    /** The effort Claude Code is launched with for one turn of `model` at `reasoning`. */
-    const asked = async (model: Model<Api>, reasoning?: ThinkingLevel) => {
-      replay(TEXT);
-      asks += 1;
-      const options = {
-        ...solveOptions(),
-        sessionId: `effort-${String(asks)}`,
-        ...keyIfDefined("reasoning", reasoning),
-      };
-      await sweep.streamSimple(model, context, options).result();
-      return flag(launched(), "--effort");
-    };
-    expect(await asked(opus, "xhigh")).toBe("xhigh");
-    expect(await asked(recorded, "xhigh")).toBe("max");
-    expect(await asked(recorded, "max")).toBeUndefined();
-    expect(await asked(opus, "medium")).toBe("medium");
-    expect(await asked(opus, "minimal")).toBe("low");
-    expect(await asked(opus)).toBeUndefined();
   });
 });

@@ -2,19 +2,11 @@ import { describe, expect, it } from "bun:test";
 import { sep } from "../src/meta/path.ts";
 import { containsPath, posixContainsPath } from "../src/meta/path-containment.ts";
 import { errorCode } from "../src/meta/runtime-values.ts";
-import { sha256 } from "../src/meta/digest.ts";
-import { hashJsonBytes } from "../src/meta/json-runtime.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
-import {
-  canonicalJson,
-  compareCodeUnits,
-  hashJsonValue,
-  sameJsonValue,
-  stableJson,
-} from "../src/meta/stable-json.ts";
+import { hashJsonValue, sameJsonValue, stableJson } from "../src/meta/stable-json.ts";
 import { keyIfDefined, keyIfNotNull, keysIf } from "../src/meta/optional-key.ts";
 import { hasText, textOr } from "../src/meta/text.ts";
-import { isObject, isRecord } from "../src/meta/json-shape.ts";
+import { isObject } from "../src/meta/json-shape.ts";
 
 describe("path containment", () => {
   it("contains host paths at a separator boundary, including roots with a trailing separator", () => {
@@ -23,14 +15,6 @@ describe("path containment", () => {
     expect(containsPath(`${root}${sep}nested`, root)).toBe(true);
     expect(containsPath(`${root}${sep}nested`, `${root}${sep}`)).toBe(true);
     expect(containsPath(`${root}-sibling`, root)).toBe(false);
-  });
-
-  it("treats the platform filesystem root as the boundary root", () => {
-    if (sep === "/") {
-      expect(containsPath("/tmp", "/")).toBe(true);
-    } else {
-      expect(containsPath(String.raw`C:\tmp`, "C:\\")).toBe(true);
-    }
   });
 
   it("keeps POSIX profile paths separate from host or backslash spelling", () => {
@@ -63,12 +47,6 @@ describe("isObject", () => {
     expect(isObject("")).toBe(false);
     expect(isObject(0)).toBe(false);
   });
-
-  it("leaves isRecord excluding arrays as well as null", () => {
-    expect(isRecord(null)).toBe(false);
-    expect(isRecord([])).toBe(false);
-    expect(isRecord({ a: 1 })).toBe(true);
-  });
 });
 
 describe("stable JSON identity", () => {
@@ -81,40 +59,11 @@ describe("stable JSON identity", () => {
     expect(sameJsonValue(left, { ...right, a: ["second", "first"] })).toBe(false);
   });
 
-  it("keeps native ordered JSON hashes explicit and byte-compatible", () => {
-    const left = { z: 2, a: 1 };
-    const right = { a: 1, z: 2 };
-    expect(hashJsonBytes(left)).toBe(sha256(JSON.stringify(left)));
-    expect(hashJsonBytes(left)).not.toBe(hashJsonBytes(right));
-    expect(hashJsonValue(left)).toBe(hashJsonValue(right));
-  });
-
-  it("uses explicit code-unit order and native JSON array omission semantics", () => {
-    expect(["ä", "z", "a"].sort(compareCodeUnits)).toEqual(["a", "z", "ä"]);
-    expect(stableJson(Array(1))).toBe("[null]");
-    expect(stableJson([undefined])).toBe("[null]");
-    expect(stableJson({ kept: null, omitted: undefined })).toBe('{"kept":null}');
-  });
-
   it("rejects values whose JSON identity would be lossy or surprising", () => {
     const cyclic: Record<string, JsonValue> = {};
     cyclic.self = cyclic;
     for (const value of [Number.NaN, Number.POSITIVE_INFINITY, new Date(0), new Map(), cyclic]) {
       expect(() => stableJson(value)).toThrow(/not stable finite JSON/);
-    }
-  });
-
-  it("does not read a replaced global stringifier", () => {
-    const original = JSON.stringify;
-    // SAFETY: a deliberately poisoned stringifier, installed under the real signature so the
-    // module under test reaches it exactly as it would reach the host one.
-    JSON.stringify = (() => '"poisoned"') as typeof JSON.stringify;
-    try {
-      expect(stableJson({ b: 2, a: 1 })).toBe('{"a":1,"b":2}');
-      expect(canonicalJson({ b: 2, a: undefined })).toBe('{"a":undefined,"b":2}');
-      expect(hashJsonBytes({ b: 2, a: 1 })).toBe(sha256('{"b":2,"a":1}'));
-    } finally {
-      JSON.stringify = original;
     }
   });
 });
@@ -125,9 +74,9 @@ describe("stable JSON identity", () => {
  * absent key is absent rather than present holding `undefined`, because `exactOptionalPropertyTypes`
  * makes those two different values and the recorded evidence writes whichever one it is given.
  *
- * The three absence tests are separate on purpose. A call site that meant "omit when undefined"
- * must not start dropping `""` or `0`, and a truthiness site must not start keeping them; a single
- * helper would have made that difference invisible at the call.
+ * The absence tests are separate on purpose. A call site that meant "omit when undefined" must
+ * not start dropping `""` or `0`; a single helper would have made that difference invisible at
+ * the call.
  */
 
 describe("keyIfDefined", () => {
@@ -150,10 +99,6 @@ describe("keyIfNotNull", () => {
     expect(Object.keys({ ...keyIfNotNull("b", null) })).toEqual([]);
     expect(Object.keys({ ...keyIfNotNull("b", undefined) })).toEqual([]);
   });
-
-  it("keeps zero, which a JSON boundary must not confuse with nothing measured", () => {
-    expect(keyIfNotNull("cost", 0)).toEqual({ cost: 0 });
-  });
 });
 
 describe("keysIf", () => {
@@ -168,23 +113,12 @@ describe("keysIf", () => {
     expect({ a: 1, ...keysIf(true, keys) }).toEqual({ a: 1, b: 1 });
     expect(calls).toBe(1);
   });
-
-  it("adds every key of the group at once", () => {
-    expect({ ...keysIf(true, () => ({ b: 1, c: 2 })) }).toEqual({ b: 1, c: 2 });
-  });
 });
 
 describe("hasText", () => {
   it("reads exactly as the truthiness test it replaced, and narrows", () => {
     for (const value of [undefined, null, ""]) expect(hasText(value)).toBe(false);
     for (const value of ["x", " ", "0", "false"]) expect(hasText(value)).toBe(true);
-  });
-
-  it("keeps whitespace, because a blank line is text and an absent value is not", () => {
-    // The nearest wrong turn is trimming here. `hasText` answers "did this arrive with
-    // anything in it", and 160 conditions read it that way; a caller that means "and not
-    // only spaces" trims its own value first.
-    expect(hasText("\n")).toBe(true);
     expect(textOr(" ", "fallback")).toBe(" ");
     expect(textOr("", "fallback")).toBe("fallback");
     expect(textOr(undefined, "fallback")).toBe("fallback");

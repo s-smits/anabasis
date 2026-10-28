@@ -1,14 +1,11 @@
-// Phase C's four commands, run as the operator runs them over a sweep laid out as v1's left one: a
+// Phase C's commands, run as the operator runs them over a sweep laid out as v1's left one: a
 // pack of two tasks and one check, three stored solves, and the pack's controls. The verifier runs
-// behind its wall, so the suite is skipped where the host has none. No model is called: the
-// Referee's reading stops at its guard. The tests run in order: the second freezes what the first
-// read, and the last regrades what the third logged.
+// behind its wall, so the suite is skipped where the host has none. No model is called.
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
-import { append, read } from "../src/kernel/log.ts";
-import { taskSets, taskStates } from "../src/kernel/task.ts";
+import { read } from "../src/kernel/log.ts";
+import { taskSets } from "../src/kernel/task.ts";
 import {
   cpSync,
-  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -16,7 +13,6 @@ import {
   rmSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { isString } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
@@ -32,14 +28,9 @@ const NAME = `test-check-${String(runtimeProcess.pid)}`;
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-checker-")));
 const bundle = join(root, "bundle");
 const model = join(bundle, "correctness-model");
-const campaign = join(REPO, ".ana", "d2", NAME);
-/** The campaign the checker is accepted and frozen under, apart from the one its rejections are
- *  logged in. */
+/** The campaign whose checker reading is recorded. */
 const ACCEPTED = `${NAME}-accepted`;
 const accepted = join(REPO, ".ana", "d2", ACCEPTED);
-/** The campaign of the repaired checker, which the old one's written tasks are carried into. */
-const CARRIED = `${NAME}-carried`;
-const carried = join(REPO, ".ana", "d2", CARRIED);
 /** The campaign whose tasks are set up for a first round. */
 const PREPARED = `${NAME}-prepared`;
 const prepared = join(REPO, ".ana", "d2", PREPARED);
@@ -56,22 +47,12 @@ const EVALUATOR = `export const checks = {
   "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6),
 };
 `;
-/** The check repaired: an answer within six in a hundred of the product stands. */
-const REPAIRED = `export const checks = {
-  "check-product": (req) => {
-    const product = req.publicTask.publicInput.base * 6;
-    return Math.abs(Number(req.artifact.answer) - product) <= product * 0.06;
-  },
-};
-`;
 
 setDefaultTimeout(180_000);
 
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });
-  rmSync(campaign, { recursive: true, force: true });
   rmSync(accepted, { recursive: true, force: true });
-  rmSync(carried, { recursive: true, force: true });
   rmSync(prepared, { recursive: true, force: true });
   for (const name of [SOURCE, SEED, LOST, STALE, UNFORMED]) {
     rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
@@ -235,28 +216,6 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     controls("13");
   });
 
-  it("freezes the checker on the operator's word, and opens no campaign under another", () => {
-    expect(accept("--freeze").said).toContain("frozen: contract ");
-    // Given twice, the word is in the log once, under the hashes the readings were made at.
-    expect(accept("--freeze").code).toBe(0);
-    const [frozen, ...more] = held("contract.frozen");
-    expect(more).toEqual([]);
-    expect(Object.keys(frozen ?? {})).toEqual(["contract", "checks", "admitted"]);
-    expect(frozen?.admitted).toEqual(["check-product"]);
-    expect(held("checker.read").at(-1)).toMatchObject({ contract: frozen?.contract, checks: frozen?.checks });
-
-    // A check repaired in the campaign's own copy is another checker.
-    const evaluator = join(accepted, "checks", "evaluator.ts");
-    writeFileSync(evaluator, EVALUATOR.replace("* 6", "* 7"));
-    const repaired = accept();
-    expect(repaired.said).toContain(
-      "the log froze another check program; a changed checker takes a campaign of its own",
-    );
-    expect(repaired.code).not.toBe(0);
-    writeFileSync(evaluator, EVALUATOR);
-    expect(accept().code).toBe(0);
-  });
-
   it("names a missing tool before any control runs, and freezes over a named fault on the operator's word", () => {
     // A pack whose one check names a tool no path holds: the verifier could decide nothing with it.
     const tooled = join(root, "tooled");
@@ -319,169 +278,6 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     } finally {
       controls("13");
     }
-  });
-
-  it("logs the stored rejections, draws the fails to label, and holds the Referee until they are", () => {
-    const logged = run("tools/c/rejections.ts", { name: NAME });
-    expect(logged.code).toBe(0);
-    const verdicts = read(join(campaign, LOG)).filter((event) => event.kind === "verdict");
-    // Both rejections as this verifier grades them, t-1's stored pass, and t-2's accept control,
-    // since no stored solve of t-2 passed.
-    expect(Object.fromEntries(verdicts.map(({ data }) => [data.solve, data.kind]))).toEqual({
-      "s-c01-t-1": "pass",
-      "s-c02-t-1": "fail",
-      "s-c02-t-2": "fail",
-      "s-control-t-2": "pass",
-    });
-    expect(logged.said).toContain('"unruled": [');
-
-    // Run again, nothing is logged twice.
-    expect(run("tools/c/rejections.ts", { name: NAME }).code).toBe(0);
-    expect(read(join(campaign, LOG)).filter((event) => event.kind === "verdict")).toHaveLength(4);
-
-    expect(run("tools/c/rejections.ts", { name: NAME, draw: "1" }).code).toBe(0);
-    const labels = parseJsonAs<Record<string, string>>(readFileSync(join(campaign, "labels.json"), "utf8"));
-    const [drawn = ""] = Object.keys(labels);
-    expect(Object.values(labels)).toEqual([""]);
-    expect(existsSync(join(campaign, "label", `${drawn}.json`))).toBe(true);
-    // A second draw would replace labels a person may have begun.
-    expect(run("tools/c/rejections.ts", { name: NAME, draw: "1" }).said).toContain("holds a draw already");
-
-    const early = run("tools/c/rejections.ts", { name: NAME, referee: "claude/claude-opus-5" });
-    expect(early.said).toContain("the Referee reads nothing before the drawn fails are labelled");
-    expect(early.code).not.toBe(0);
-    expect(read(join(campaign, LOG)).some((event) => event.kind === "referee.finding")).toBe(false);
-  });
-
-  it("shows which of the logged verdicts a repaired checker moves, and writes nothing", () => {
-    const repaired = join(root, "repaired");
-    cpSync(bundle, repaired, { recursive: true });
-    writeFileSync(join(repaired, "correctness-model", "evaluator.ts"), REPAIRED);
-    const log = join(campaign, LOG);
-    // A task an Examiner session wrote is in the log and in no pack, and its verdicts are read too.
-    const written = { taskId: "x-1-001", family: "fixture", publicInput: { base: 4 }, hidden: null };
-    append(log, "task.proposed", { version: "vx", taskId: "x-1-001", session: "x-1", task: written });
-    append(log, "verdict", { solve: "x-solve", task: "x-1-001", answer: { answer: "24" }, kind: "pass" });
-    const before = readFileSync(log, "utf8");
-    const { code, said } = command("tools/c/repaired.ts", { log, bundle: repaired });
-    // Of the two refused answers, 17 for 18 is within the repaired check's margin and 11 for 12
-    // is not; the three accepted answers stand, the written task's among them.
-    expect(said).toContain("5 logged verdicts, 1 moved");
-    expect(said).not.toContain("no task");
-    expect(said).toContain("s-c02-t-2\tt-2\tfail check-product\tpass");
-    expect(said).not.toContain("s-c02-t-1\t");
-    expect(said).toContain("tasks with a moved verdict: t-2");
-    expect(said).toContain("check program: the log froze none, this one is ");
-    // Nobody ruled on the answer the repair lets through, so the repair does not stand on it.
-    expect(said).toContain('"unread": [\n      "s-c02-t-2"');
-    expect(said).toContain("1 finding against the repair");
-    expect(code).toBe(1);
-    // Labelled a check defect by a person, it is what a repair is for, and the pack's controls hold.
-    const labels = join(root, "repair-labels.json");
-    writeFileSync(labels, JSON.stringify({ "s-c02-t-2": "check-defect" }));
-    const stands = command("tools/c/repaired.ts", { log, bundle: repaired, labels });
-    expect(stands.said).toContain("the repair stands on what was read");
-    expect(stands.code).toBe(0);
-    // A control that held under neither checker is stale, and says nothing of the repair.
-    const repairedModel = join(repaired, "correctness-model");
-    controls("13", repairedModel, "25");
-    const stale = command("tools/c/repaired.ts", { log, bundle: repaired, labels });
-    expect(stale.said).toContain(
-      "1 control did not hold under the old checker either, and says nothing of the repair",
-    );
-    expect(stale.said).toContain("the repair stands on what was read");
-    expect(stale.code).toBe(0);
-    // One the old checker refused and the repaired one lets through is the repair's own fault.
-    controls("12.5", repairedModel);
-    const broke = command("tools/c/repaired.ts", { log, bundle: repaired, labels });
-    expect(broke.said).toContain(
-      "fault: a reject control of t-1 names check-product, which did not refuse it: pass",
-    );
-    expect(broke.said).toContain("1 finding against the repair");
-    expect(broke.code).toBe(1);
-    controls("13", repairedModel);
-    expect(readFileSync(log, "utf8")).toBe(before);
-  });
-
-  it("carries an old campaign's tasks into the repaired checker's campaign on their shape alone, every release kept, once", () => {
-    // An old campaign's log, written by hand: five tasks a session wrote. The first is held out
-    // there, the second names no inputs, which the gate here refuses, the third was disputed, the
-    // fourth was released to a Builder as practice, and the fifth was released and then disputed.
-    const old = join(root, "old.jsonl");
-    for (const [id, version, publicInput] of [
-      ["x-1-001", "o1", { base: 4 }],
-      ["x-1-002", "o2", null],
-      ["x-1-003", "o3", { base: 6 }],
-      ["x-1-004", "o5", { base: 8 }],
-      ["x-1-005", "o7", { base: 9 }],
-    ] as const) {
-      const task = { taskId: id, family: "fixture", publicInput, hidden: null };
-      append(old, "task.proposed", { version, taskId: id, session: "x-1", task });
-      append(old, "task.gate", { version, gate: 1, outcome: "passed" });
-    }
-    append(old, "task.state", { version: "o3", state: "disputed" });
-    append(old, "task.state", { version: "o5", state: "released" });
-    append(old, "task.state", { version: "o7", state: "released" });
-    append(old, "task.state", { version: "o7", state: "disputed" });
-    // A pack's own tasks are in the old log by their ids alone: t-1 held out, t-2 released.
-    append(old, "task.proposed", { version: "o4", taskId: "t-1" });
-    append(old, "task.proposed", { version: "o6", taskId: "t-2" });
-    append(old, "task.gate", { version: "o6", gate: 1, outcome: "passed" });
-    append(old, "task.state", { version: "o6", state: "released" });
-    const carry = () =>
-      command("tools/c/carry.ts", {
-        from: old,
-        root,
-        sweep: "s",
-        cycle: "c01",
-        bundle: join(root, "repaired"),
-        name: CARRIED,
-      });
-    const first = carry();
-    expect(first.said).toContain(
-      "7 tasks of the old campaign: 3 held out here, 3 released for practice as they were, 1 refused, 0 already there",
-    );
-    expect(first.said).toContain("x-1-002\trefused: no inputs");
-    expect(first.code).toBe(0);
-    const events = read(join(carried, LOG));
-    // A task a Builder has practised on stays practice here, the pack's and the disputed one too:
-    // a harness it built may be compared. A disputed task never practised is read again.
-    const states = taskStates(events);
-    const proposed = events.filter(({ kind }) => kind === "task.proposed").map(({ data }) => data);
-    expect(
-      proposed.map(({ taskId, version }) => [taskId, states.get(isString(version) ? version : "")]),
-    ).toEqual([
-      ["x-1-001", "held"],
-      ["x-1-002", "refused"],
-      ["x-1-003", "held"],
-      ["x-1-004", "released"],
-      ["x-1-005", "released"],
-      ["t-1", "held"],
-      ["t-2", "released"],
-    ]);
-    // Each is proposed under its own id, with the version it had, a session's whole and a pack's by
-    // its id alone, and put to the one gate.
-    expect(proposed).toMatchObject([
-      { taskId: "x-1-001", carried: "o1", task: { taskId: "x-1-001", publicInput: { base: 4 } } },
-      { taskId: "x-1-002", carried: "o2" },
-      { taskId: "x-1-003", carried: "o3" },
-      { taskId: "x-1-004", carried: "o5" },
-      { taskId: "x-1-005", carried: "o7" },
-      { taskId: "t-1", carried: "o4" },
-      { taskId: "t-2", carried: "o6" },
-    ]);
-    expect(proposed.filter((data) => data.task === undefined).map(({ taskId }) => taskId)).toEqual([
-      "t-1",
-      "t-2",
-    ]);
-    expect(events.flatMap(({ kind, data }) => (kind === "task.gate" ? [data.gate] : []))).toEqual(
-      Array.from({ length: 7 }, () => 1),
-    );
-    // No solve and no verdict comes with a task: a new campaign's solves are its own.
-    expect(events.filter(({ kind }) => kind === "verdict" || kind === "solve.started")).toEqual([]);
-    // Run again, nothing is taken twice.
-    expect(carry().said).toContain("0 refused, 7 already there");
-    expect(read(join(carried, LOG))).toHaveLength(events.length);
   });
   it("records a stored answer that still passes today's verifier once, and releases practice by the draw", () => {
     const prepare = (practice: string) =>

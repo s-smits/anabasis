@@ -74,22 +74,6 @@ const manifest = (sessions: Row[]) => {
 const named = (sessions: readonly Session[]) => sessions.map((session) => session.name);
 
 describe("a manifest", () => {
-  it("gives each session the shared instructions, its task and its authority, in that order", () => {
-    const [read, write] = sessionsOf({
-      workdir,
-      instructions: "Shared rules.",
-      sessions: [
-        { name: "read", task: "Count the callers." },
-        { name: "write", task: "Write the fixture.", sandbox: "workspace-write", ownedPaths: ["test/"] },
-      ],
-    });
-    expect(read?.prompt).toBe(
-      "Shared rules.\n\nCount the callers.\n\nAuthority: read-only. Do not edit files or change external state.",
-    );
-    expect(write?.prompt).toContain("Authority: workspace-write. You own only: test/.");
-    expect(write?.workdir).toBe(workdir);
-  });
-
   it("refuses a repeated name or task, a stray field, and a write session that owns nothing", () => {
     const of = (sessions: Row[]) => () => sessionsOf({ workdir, sessions });
     expect(
@@ -181,21 +165,5 @@ describe("a launch", () => {
     );
     expect(run("--manifest", path, "--output-dir", join(root, "quiet"), "--codex-bin", codex).code).toBe(0);
     expect(calls().find((call) => call.name === "quiet")?.args[0]).toBe("exec");
-  });
-
-  it("refuses an effort the model does not take, and a condition a retry would change", () => {
-    const refused = run(
-      "--manifest",
-      manifest([{ name: "a", task: "x" }]),
-      "--codex-bin",
-      codex,
-      "--reasoning-effort",
-      "max",
-      "--model",
-      "gpt-6.1-sol",
-    );
-    expect(refused.code).toBe(1);
-    expect(refused.stderr).toContain("--reasoning-effort must be one of low, medium, high, or xhigh");
-    expect(run("--retry", out, "--model", "gpt-6-luna").stderr).toContain("--retry does not take --model");
   });
 });

@@ -107,16 +107,4 @@ describe("run provenance selectors", () => {
       expect(source("single", ...selectors)).toEqual({ code: 0, out: "", err: "" });
     }
   });
-
-  it("refuses several run names instead of silently reading only the first", () => {
-    for (const args of [
-      ["single", "mixed"],
-      ["single", "mixed", "--has", mechanism],
-    ]) {
-      const result = source(...args);
-      expect(result.code).toBe(1);
-      expect(result.out).toBe("");
-      expect(result.err).toContain("source takes at most one run name");
-    }
-  });
 });

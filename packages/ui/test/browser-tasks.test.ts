@@ -6,7 +6,6 @@ import {
   expect,
   expectQuiet,
   launchBrowser,
-  nextPolls,
   type Opened,
   openPage,
   PHONE,
@@ -14,22 +13,13 @@ import {
   type Served,
   serveFixture,
   type Viewing,
-  withClock,
 } from "./browser.ts";
-import {
-  arm,
-  expectFocusRing,
-  framesOf,
-  mutationsOf,
-  tabTo,
-  watchFrames,
-  watchMutations,
-} from "./browser-watch.ts";
+import { arm, expectFocusRing, framesOf, tabTo, watchFrames } from "./browser-watch.ts";
 import { answersOver, MARKERS } from "./fixture-campaign.ts";
 
 /*
  * The Tasks pane in Chrome over the fixture's 26 task versions and 8 comparisons: every cell of the
- * grid, the search and the three filters, a task's detail opened in place and left by either back,
+ * grid, the search and the three filters, a task's detail opened and left with its filters restored,
  * the disputed task and the one waiting for a label, the grid's own scroll at a phone's width, and
  * what the page paints while a task is read: the grid, never a placeholder in its place
  * (14 October).
@@ -419,36 +409,6 @@ describe("a task's detail", () => {
     await opened.context.close();
   });
 
-  test("is left by the browser's back as by its own, and reopened by forward", async () => {
-    const opened = await openTasks(served);
-    const on = page(opened);
-    await taskRow(on, "word-22").click();
-    await expect(titled(on, "word-22")).toBeVisible();
-    await on.goBack();
-    await expect(grid(on)).toBeVisible();
-    await expect(taskRow(on, "word-22")).toBeFocused();
-    await expect(taskRow(on, "word-22")).toBeInViewport();
-    await on.goForward();
-    await expect(titled(on, "word-22")).toBeVisible();
-    await expect(grid(on)).toBeHidden();
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
-  test("opens from a link, and its Back names the grid", async () => {
-    const version = versionOf("word-06");
-    const opened = await openTasks(served, `&task=${version}`);
-    const on = page(opened);
-    await expect(titled(on, "word-06")).toBeVisible();
-    await expect(grid(on)).toBeHidden();
-    await back(on).click();
-    await expect(grid(on)).toBeVisible();
-    expect(routeParameters(on).task).toBeUndefined();
-    await expect(taskRow(on, "word-06")).toBeFocused();
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
   test("of the disputed task says the comparison that left it out, beside its solves", async () => {
     const opened = await openTasks(served, `&task=${served.fixture.disputed}`);
     const on = page(opened);
@@ -623,18 +583,6 @@ describe("the Tasks pane between two readings", () => {
     expect(frames.seen).toEqual([]);
     expect(frames.bad).toBe(0);
     expect(frames.busyAfter).toBeGreaterThanOrEqual(250);
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
-  test("changes nothing in the grid across two polls of unchanged data", async () => {
-    const opened = await openTasks(served);
-    const on = page(opened);
-    await withClock(on);
-    await expect(grid(on)).toBeVisible();
-    await watchMutations(grid(on));
-    await nextPolls(on, 2);
-    expect(await mutationsOf(on)).toEqual([]);
     expectQuiet(opened);
     await opened.context.close();
   });

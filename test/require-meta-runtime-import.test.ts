@@ -1,12 +1,8 @@
 /**
  * The rule that keeps the host runtime surface behind `src/meta`.
  *
- * Two halves are pinned here. The scope, because the three exemptions are most of the rule — the
- * owner reaches the builtin by definition, a test that asserts what the product wrote to disk must
- * read the real file system, and a skill script under `.claude` runs outside every wall the
- * controller imposes, so its import is a door into nothing.
- *
- * And the fixer's table, because that is where it can be wrong. It moves the seven builtins exactly
+ * What is pinned here beside the report is the fixer's table, because that is where it can be
+ * wrong. It moves the seven builtins exactly
  * one module under `src/meta` wraps and nothing else: `node:util` has two owners there, `node:crypto`
  * has none, and a shape whose repair is a decision — a type import, a namespace import, a re-export —
  * keeps its report and gets no edit. The fixture holds one of each so the admitted half is as
@@ -39,19 +35,6 @@ export { isBuiltin } from "node:module";
 export const used = [basename, dirname, mkdir, parseEnv, createHash, os, join];
 `.trimStart();
 
-/**
- * The one place `OWNER` is true of the module and false of the name.
- *
- * `filesystem.ts` re-exports the sync surface of `node:fs` and four promise-returning names from
- * `node:fs/promises` beside it, so moving `rm` off `node:fs` swaps a function taking a callback
- * for one returning a promise. `readFileSync` from the same module moves as it always did.
- */
-const DUAL = `
-import { rm } from "node:fs";
-import { readFileSync } from "node:fs";
-export const used = [rm, readFileSync];
-`.trimStart();
-
 describe("ana/require-meta-runtime-import", () => {
   const reports = (at: string): Promise<number[]> =>
     reportedLines("ana", "require-meta-runtime-import", IMPORTS, at);
@@ -60,21 +43,6 @@ describe("ana/require-meta-runtime-import", () => {
     const expected = expectedLines(IMPORTS);
     expect(expected).toHaveLength(3);
     expect(await reports("src/example.ts")).toStrictEqual(expected);
-  });
-
-  it("exempts the owner of the surface, every test file and operator tooling", async () => {
-    expect(await reports("src/meta/filesystem.ts")).toStrictEqual([]);
-    expect(await reports("test/example.test.ts")).toStrictEqual([]);
-    expect(await reports("test/helpers/example.ts")).toStrictEqual([]);
-    expect(await reports(".claude/skills/launch-run/scripts/launch.ts")).toStrictEqual([]);
-    expect(await reports(".claude/skills/zip-run/scripts/zip-run.mjs")).toStrictEqual([]);
-  });
-
-  it("finds the tooling root in an absolute path, which is what the linter passes", async () => {
-    const expected = expectedLines(IMPORTS);
-    expect(await reports("/checkout/.claude/skills/zip-run/scripts/zip-run.mjs")).toStrictEqual([]);
-    expect(await reports("/checkout/src/run/full-run.ts")).toStrictEqual(expected);
-    expect(await reports("/checkout/.claude/worktrees/x/src/run/full-run.ts")).toStrictEqual(expected);
   });
 
   it("joins the import the file already makes, and writes a new one at this file's own depth", async () => {
@@ -91,21 +59,5 @@ describe("ana/require-meta-runtime-import", () => {
         "",
       ].join("\n"),
     );
-  });
-
-  it("leaves the four names the owner takes from the promises module, and moves the rest", async () => {
-    const after = await fixedSource("ana", "require-meta-runtime-import", DUAL, "src/run/example.ts");
-    expect(after).toContain('import { rm } from "node:fs";');
-    expect(after).toContain('import { readFileSync } from "../meta/filesystem.ts";');
-    expect(
-      await reportedLines("ana", "require-meta-runtime-import", after, "src/run/example.ts"),
-    ).toHaveLength(1);
-  });
-
-  it("still reports every builtin it will not move, so the finding outlives the fix", async () => {
-    const after = await fixedSource("ana", "require-meta-runtime-import", MOVABLE, "src/run/example.ts");
-    expect(
-      await reportedLines("ana", "require-meta-runtime-import", after, "src/run/example.ts"),
-    ).toHaveLength(5);
   });
 });

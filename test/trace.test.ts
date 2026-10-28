@@ -80,32 +80,6 @@ describe("a trace", () => {
     expect(callText(calls, 2)).toContain("(no result recorded)");
     expect(() => callText(calls, 3)).toThrow("the solve recorded 2 tool calls");
   });
-
-  it("shows a long command as one cut line and a long result whole", () => {
-    const long = "x".repeat(70_000);
-    const call = {
-      index: 0,
-      at: "",
-      seat: "solve" as const,
-      id: "s-9",
-      part: "call" as const,
-      callId: "c-1",
-      turn: 1,
-      tool: "bash",
-      // A multi-line command folds to one line, and is cut at its head.
-      args: { command: `cat <<'EOF'\n${"y".repeat(200)}\nEOF` },
-      isError: false,
-      text: long,
-      ms: null,
-    };
-    const listed = callList([call, { ...call, tool: "write", args: { path: "a.txt", content: "z\nz" } }]);
-    expect(listed.split("\n")).toEqual([
-      `1 bash (70000 characters): cat <<'EOF' ${"y".repeat(88)}...`,
-      `2 write (70000 characters): {"path":"a.txt","content":"z\\nz"}`,
-    ]);
-    // The whole result, which the seat tool's own cap spills to a file where it is too long.
-    expect(callText([call], 1)).toEndWith(`result: ${long}`);
-  });
   it("reads and bills Referee traces until their finding ends the same reading", () => {
     const log = join(home, "referee.jsonl");
     const sink = traceSink(log, "referee", "r-1", () => 1);

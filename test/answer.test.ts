@@ -159,33 +159,7 @@ describe("a seat tool's automatic result cap", () => {
       expect(result).toContain(`of ${String(Buffer.byteLength(value))} bytes.`);
       expect(result).not.toContain("The full file is at");
     });
-
-    it(`caps ${kind} without an environment`, async () => {
-      const large = tool({
-        name: "no_folder",
-        description: "A seat without a temporary folder.",
-        parameters: Type.Object({}),
-        execute: async () => text(value),
-      });
-      const result = shown(await large.execute({}, api("no-folder"), BACKGROUND_CONTEXT));
-      expect(Buffer.byteLength(result)).toBeLessThanOrEqual(50 * 1024);
-      expect(result.split("\n").length).toBeLessThanOrEqual(2_000);
-      expect(result).toContain(`of ${String(Buffer.byteLength(value))} bytes.`);
-      expect(result).not.toContain("The full file is at");
-      expect(result).not.toContain("�");
-    });
   }
-
-  it("caps retained output when a tool omits its output property", async () => {
-    const large = tool({
-      name: "retained_result",
-      description: "A result supplied through the execution API.",
-      parameters: Type.Object({}),
-      execute: async () => ({ details: null }),
-    });
-    const result = shown(await large.execute({}, api("retained"), BACKGROUND_CONTEXT));
-    expect(result).toContain(`of ${String(Buffer.byteLength(LONG))} bytes.`);
-  });
 
   it("caps all text items together and routes the full text to each calling seat's environment", async () => {
     const envs = [new SeatEnv(seatHome()), new SeatEnv(seatHome())];

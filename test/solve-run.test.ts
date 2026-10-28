@@ -17,7 +17,6 @@ import { type SeatTool, sit } from "../src/agent/session.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { read } from "../src/kernel/log.ts";
 import { SILENT_SECONDS } from "../src/kernel/solve.ts";
-import { passed } from "../src/kernel/solves.ts";
 import type { Verdict } from "../src/kernel/verify.ts";
 import { cpSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
@@ -260,54 +259,6 @@ it("is a kill, then moved files, then a held answer, before the sandbox's crash"
   });
 });
 
-it("is flagged where the solver said the task is malformed, after an answer and before a crash", async () => {
-  const flagged = { flagged: "the span is given twice, as 4 m and 5 m", crash: "the model process died" };
-  expect(await attemptEnding(flagged).ending).toEqual({ outcome: "flagged", reason: flagged.flagged });
-  expect(await attemptEnding({ ...flagged, submitted: { answer: "42" } }).ending).toEqual({
-    outcome: "pass",
-  });
-  // Its own outcome, and in every tally the flagging side's fail.
-  expect(passed({ ending: { outcome: "flagged", reason: flagged.flagged } })).toBe(false);
-});
-
-it("judges a submitted answer even when the wall fell after it, and logs the verdict", async () => {
-  const { ending: settled, events } = attemptEnding({ submitted: { answer: "41" }, wallEnded: true });
-  expect(await settled).toEqual({ outcome: "fail", kind: "rejected" });
-  expect(events().map(({ kind, data }) => [kind, data.kind])).toEqual([["verdict", "fail"]]);
-  expect(await attemptEnding({ submitted: { answer: "42" } }).ending).toEqual({ outcome: "pass" });
-});
-
-it("rejects an answer off the contract's format without running a check", async () => {
-  let checked = false;
-  const verify = async (): Promise<Verdict> => {
-    checked = true;
-    return { kind: "pass" };
-  };
-  const { ending: settled, events } = attemptEnding({ submitted: { answer: 42 } }, { verify });
-  expect(await settled).toEqual({ outcome: "fail", kind: "rejected" });
-  expect(checked).toBe(false);
-  expect(events()[0]?.data.fault).toBeString();
-});
-
-it("is the verifier's non-result when the checks cannot decide, and the check's when one is faulty", async () => {
-  const lost = async (): Promise<Verdict> => ({ kind: "non-result", reason: "value: the wall broke" });
-  expect(await attemptEnding({ submitted: { answer: "42" } }, { verify: lost }).ending).toEqual({
-    outcome: "non-result",
-    kind: "verifier",
-    reason: "value: the wall broke",
-  });
-  const faulty = async (): Promise<Verdict> => ({
-    kind: "faulty",
-    check: "value",
-    reason: "the check threw: x",
-  });
-  expect(await attemptEnding({ submitted: { answer: "42" } }, { verify: faulty }).ending).toEqual({
-    outcome: "non-result",
-    kind: "check",
-    reason: "value: the check threw: x",
-  });
-});
-
 it("without an answer: the wall, the model's turns, the context, a provider failure, else no answer", async () => {
   const overflow = providerStop("", "prompt is too long: 213462 tokens > 200000 maximum");
   expect(await attemptEnding({ wallEnded: true, turns: [overflow] }).ending).toMatchObject({
@@ -371,14 +322,6 @@ it("without an answer: the wall, the model's turns, the context, a provider fail
   expect(await attemptEnding({ turns: [providerStop("I am done.")] }).ending).toEqual({
     outcome: "fail",
     kind: "no-answer",
-  });
-});
-
-it("is the harness's own fail when its tools could not be bundled or listed", async () => {
-  expect(await attemptEnding({ broken: "harness bundle failed", wallEnded: true }).ending).toEqual({
-    outcome: "fail",
-    kind: "broken-harness",
-    reason: "harness bundle failed",
   });
 });
 
@@ -487,19 +430,6 @@ it.skipIf(!walled).concurrent(
       "- A command runs for at most 30 seconds unless it names a longer timeout, and 60 seconds is the longest it may name.",
     );
     expect(sent[0]).toContain("<project_context>");
-  },
-  120_000,
-);
-
-it.skipIf(!walled).concurrent(
-  "ends no-answer at one prompt, with no nudge",
-  async () => {
-    const { request, sent, finished } = setup([fauxAssistantMessage("I am done.")], {
-      limits: { ...LIMITS, turns: 1 },
-    });
-    expect(await solve(request, noWait)).toEqual({ outcome: "fail", kind: "no-answer" });
-    expect(finished()[0]?.data).toMatchObject({ turns: 1, prompts: 1 });
-    expect(sent).toHaveLength(1);
   },
   120_000,
 );

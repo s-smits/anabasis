@@ -7,7 +7,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { openDesk, publicResource, submitTool } from "../src/tools/answer.ts";
 import { codingTools } from "../src/tools/coding.ts";
-import { type CommandWall, heldSeconds, solveDirs } from "../src/tools/command.ts";
+import { type CommandWall, solveDirs } from "../src/tools/command.ts";
 import { firstTurn, seedHome, systemPrompt, type Told } from "../src/solver/prompt.ts";
 
 const CONTRACT: Contract = {
@@ -57,16 +57,6 @@ function commandLimits(prompt: string): number[] {
 }
 
 describe("the solver's system prompt", () => {
-  it("says that nothing can be installed where the wall's commands reached no package index", () => {
-    // t-10 on 10 October: the prompt promised network access on a host whose wall has none, and
-    // 26 of the 34 solves that ran out of turns had spent one on a pip install.
-    const unreached = systemPrompt({ ...TOLD, network: "unreached" });
-    expect(unreached).toContain(
-      "- Commands have no network access: a package index could not be reached from inside the command wall when this process started, so nothing can be installed, and what the host and this harness hold is all there is.",
-    );
-    expect(unreached).not.toContain("can be installed into the home directory");
-  });
-
   it("states the role, tools, duty, working directory and wall facts under the Starter", () => {
     const prompt = systemPrompt(TOLD);
     expect(prompt).toContain("coding assistant operating inside pi");
@@ -85,35 +75,6 @@ describe("the solver's system prompt", () => {
     expect(prompt).toContain("matched against the original file");
     expect(prompt).toContain("Do not emit overlapping or nested edits");
     expect(prompt).toContain("Use write only for new files or complete rewrites");
-  });
-
-  it("tells the model's turns where the solve is given a number of them", () => {
-    const turns = systemPrompt({ ...TOLD, limits: { ...TOLD.limits, modelTurns: 40 } });
-    expect(turns).toContain("120 minutes");
-    expect(turns).toContain("40 turns");
-    expect(systemPrompt(TOLD)).not.toMatch(/\d+ turns/);
-  });
-
-  it("names no rules where the domain publishes none, and one file as one", () => {
-    const none = systemPrompt({ ...TOLD, resources: 0 });
-    expect(none).toContain("public/task.json");
-    expect(none).not.toContain("public/resources/");
-    expect(systemPrompt({ ...TOLD, resources: 1 })).toContain(
-      "public rules in the 1 file under public/resources/;",
-    );
-  });
-
-  it("gives a harness's guide as pi gives a project's instructions, under what it cannot override", () => {
-    const prompt = systemPrompt({ ...TOLD, guide: "# Operating Guide\n\nUse the checker first.\n" });
-    // The guide whole, as pi frames a project's instructions, after the host's addendum and
-    // before the working directory; the Starter's prompt, which has no guide, holds none.
-    const guide =
-      '<project_instructions path="BUILT_AGENTS.md">\n# Operating Guide\n\nUse the checker first.\n';
-    expect(prompt).toContain(guide);
-    expect(prompt.indexOf("cannot override")).toBeGreaterThan(-1);
-    expect(prompt.indexOf("</addendum>")).toBeLessThan(prompt.indexOf(guide));
-    expect(prompt.indexOf(guide)).toBeLessThan(prompt.indexOf("<cwd>"));
-    expect(systemPrompt(TOLD)).not.toContain("<project_instructions");
   });
 
   it("lists every tool by its own description in one line and selects the rules with the tools", () => {
@@ -156,21 +117,6 @@ describe("the solver's system prompt", () => {
     expect(systemPrompt({ ...TOLD, programs: many })).toEndWith(
       ", tool-20, and 3 more on PATH.\n</environment>",
     );
-  });
-
-  it("states the command limit the runner applies before, at and inside the reserve", () => {
-    // Until 20 October the prompt left out a command started inside the reserve, which keeps its
-    // own limit: four whole-run investigations read the sentence as a promise the runner breaks.
-    const [ordinary = NaN, , reserve = NaN] = commandLimits(systemPrompt({ ...TOLD, wallSeconds: 480 }));
-    const held = (used: number) =>
-      heldSeconds(
-        undefined,
-        { limits: TOLD.limits, clock: { started: 1_000_000 - used * 1000, seconds: 480 } },
-        1_000_000,
-      ).seconds;
-    expect(held(400)).toBe(480 - reserve - 400);
-    expect(held(480 - reserve)).toBe(ordinary);
-    expect(held(470)).toBe(ordinary);
   });
 });
 

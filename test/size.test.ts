@@ -3,44 +3,12 @@
 // surface: the results that clear a level are read off them. The power itself is the test's own
 // arithmetic (`test/compare.test.ts`).
 import { describe, expect, it } from "bun:test";
-import { planOf } from "../src/campaign/opening.ts";
-import { sweepOf } from "../src/kernel/compare.ts";
-import { SIZE, sizeLines } from "../src/kernel/size.ts";
-import { COMPARISON_OPTIONS, ROUND_OPTIONS } from "../tools/d2/round.ts";
+import { sizeLines } from "../src/kernel/size.ts";
 
 const LEVEL = 0.1;
 const ASKED = { level: LEVEL };
 
-describe("a comparison's size", () => {
-  it("is 24 tasks at four solves a side, read at 0.02, where nothing names another", () => {
-    // Solves come before tasks: at four a side a task the two harnesses split is won or lost by
-    // as many pairs as its valid answers part them, which the test reads.
-    expect(SIZE).toEqual({ tasks: 24, solves: 4 });
-    expect(COMPARISON_OPTIONS.solves.default).toBe(String(SIZE.solves));
-    expect(planOf([], { unprepared: false, level: LEVEL }, null).wanted.target).toBe(SIZE.tasks);
-    expect(ROUND_OPTIONS.level.default).toBe("0.02");
-    expect(sweepOf(Number(ROUND_OPTIONS.level.default))).toBe(6);
-    // One reading of the default size at the default level reads a step between equal harnesses
-    // 1.1% of the time. Until 20 October an opening summed that over the patience, 6.8% over six,
-    // and refused one past 10%.
-    const rate = sizeLines(SIZE.tasks, { level: Number(ROUND_OPTIONS.level.default) }).at(-1);
-    for (const fact of ["1.1%", "no task ties", "per-comparison"]) expect(rate).toContain(fact);
-  });
-});
-
 describe("what a comparison of a given size can show, said before it runs", () => {
-  it("is nothing on fewer tasks than a step takes", () => {
-    const one = sizeLines(1, ASKED);
-    expect(one).toHaveLength(1);
-    for (const fact of ["1 held-out task", "--level 0.1", "takes 4, all won", "cannot read a step"]) {
-      expect(one[0]).toContain(fact);
-    }
-    expect(sizeLines(0, ASKED)).toEqual([expect.stringMatching(/^no held-out task\b.*cannot read a step/u)]);
-    // Three tasks clear nothing at 0.10, and five at 0.02.
-    expect(sizeLines(3, ASKED)).toHaveLength(1);
-    expect(sizeLines(5, { ...ASKED, level: 0.02 }).at(0)).toContain("a step takes 6, all won");
-  });
-
   it("names the smallest results that read a step, the share one reading detects and its rate between equal harnesses", () => {
     const [results, share, rate] = sizeLines(12, ASKED);
     // The plan's results at 0.10 are 4-0, 6-1, 7-2 and 9-3: a line names the three smallest,

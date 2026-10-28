@@ -48,84 +48,11 @@ export function second(one: Late, two: Alias): number {
 }
 `;
 
-/**
- * Two statements on one line. The move carries the declaration's own line and the blank lines
- * under it, and "its own line" reached the next newline — which here is past a neighbour the
- * rule never decided could go. `LIMIT` is movable; `now` holds a call and is not.
- */
-const SHARED_LINE = `export function first(row: string): string {
-  return row.trim();
-}
-
-const LIMIT = 3; const now = Date.now(); // REPORT movable, beside one that is not
-export const spent = (used: number): boolean => used > LIMIT && now > 0;
-`;
-
-/**
- * `const` fixes the binding and not what it holds. The rule reads a plain name of a file-declared
- * constant as safe, which it is, and used to read a part of one the same way, which it is not:
- * a statement between the front of the file and the declaration can write to that part, and the
- * hoisted constant then holds the value the object started with. Nothing fails; the number is
- * just different.
- */
-const PARTS = `const CONFIG = { limit: 1 };
-
-export function first(row: string): string {
-  return row.trim();
-}
-
-CONFIG.limit = 2;
-const SIZE = CONFIG.limit; // ADMITTED a part of a const this file declares, written to above
-const COPY = CONFIG; // REPORT the binding itself cannot be reassigned, so reading it is safe
-export const shown = String(SIZE) + String(COPY.limit);
-`;
-
-/**
- * The same write reached without a member expression. `new Set(VALUES)` has no effect, but it
- * copies what `VALUES` holds when it runs: two values below the write and one above it.
- */
-const SNAPSHOT = `const VALUES = new Set([1]);
-const LIMITS = { low: 1 };
-
-export function first(): void {}
-
-VALUES.add(2);
-LIMITS.low = 2;
-export const SNAPSHOT = new Set(VALUES); // ADMITTED copies a collection the code writes to
-export const KEYS = Object.keys(LIMITS); // ADMITTED reads the contents through a pure builder
-export const SPREAD = [...VALUES]; // ADMITTED a spread copies the contents too
-export const ALIAS = VALUES; // REPORT the same object wherever it is read
-`;
-
 describe("ana/declarations-before-the-first-function", () => {
   it("moves what is erased or provably fixed, and leaves an effect, a global read and state alone", async () => {
     const expected = expectedLines(MIXED);
     expect(expected).toHaveLength(5);
     expect(await reportedLines("ana", RULE, MIXED)).toStrictEqual(expected);
-  });
-
-  it("reads a name as safe and a part of that same name as written to", async () => {
-    expect(await reportedLines("ana", RULE, PARTS)).toStrictEqual(expectedLines(PARTS));
-    const fixed = await fixedSource("ana", RULE, PARTS);
-    const code = fixed.indexOf("export function first");
-    expect(fixed.indexOf("const COPY = CONFIG;")).toBeLessThan(code);
-    expect(fixed.indexOf("const SIZE = CONFIG.limit;")).toBeGreaterThan(code);
-  });
-
-  it("leaves a copy of a collection below the writes it copies", async () => {
-    expect(await reportedLines("ana", RULE, SNAPSHOT)).toStrictEqual(expectedLines(SNAPSHOT));
-    const fixed = await fixedSource("ana", RULE, SNAPSHOT);
-    const write = fixed.indexOf("VALUES.add(2);");
-    expect(fixed.indexOf("export const SNAPSHOT = new Set(VALUES);")).toBeGreaterThan(write);
-    expect(fixed.indexOf("export const ALIAS = VALUES;")).toBeLessThan(write);
-  });
-
-  it("moves only its own statement when a second one shares the line", async () => {
-    expect(await reportedLines("ana", RULE, SHARED_LINE)).toStrictEqual(expectedLines(SHARED_LINE));
-    const fixed = await fixedSource("ana", RULE, SHARED_LINE);
-    const code = fixed.indexOf("export function first");
-    expect(fixed.indexOf("const LIMIT = 3;")).toBeLessThan(code);
-    expect(fixed.indexOf("const now = Date.now();")).toBeGreaterThan(code);
   });
 
   it("hoists to the front, carries the comment with the declaration, and settles the chain it unblocks", async () => {

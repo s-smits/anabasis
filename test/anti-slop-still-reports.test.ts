@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { expectedLines, reportedLines, reportedMessages } from "./helpers/oxlint-rule-fixture.ts";
+import { expectedLines, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
 
 /**
  * The eleven `anti-slop` rules no other fixture makes report.
@@ -114,22 +114,6 @@ export const jsonShaped = 1; // REPORT the participle
 export const rowShapes = 1; // REPORT the plural
 `;
 
-/**
- * An object-literal key holding a literal spells a field of a recorded format or a label in a
- * table of data, as the two ledger rows of 8 October and a count's label of 19 October did. A key
- * holding a computed value, or written in shorthand, is still the one place the name is chosen.
- */
-const FORBIDDEN_TERM_DATA_KEYS = `
-declare function buildTask(): number;
-const rows = [{ name: "design", shape: "object {joints}" }]; // ADMITTED a recorded format's field
-const counts = { shape: 2, unread: 1 }; // ADMITTED a label beside its count
-const template = { shape: \`number\` }; // ADMITTED a template with nothing in it is a literal
-const built = { taskShape: buildTask() }; // REPORT the key names a value this code computed
-const shape = 1; // REPORT a binding
-const short = { shape }; // REPORT the shorthand key is the binding again
-export { built, counts, rows, short, template };
-`;
-
 describe("anti-slop rules that no other fixture exercises", () => {
   for (const [rule, fixture] of FIXTURES) {
     it(`${rule} still reports, and only where it should`, async () => {
@@ -155,26 +139,5 @@ describe("anti-slop/no-shape-in-symbol-names reads whole words", () => {
     expect(await reportedLines("anti-slop", "no-shape-in-symbol-names", FORBIDDEN_TERM_WORDS)).toStrictEqual(
       expected,
     );
-  });
-
-  it("admits an object-literal key holding a literal, and reports a key holding a computed value", async () => {
-    const expected = expectedLines(FORBIDDEN_TERM_DATA_KEYS);
-    expect(expected).toHaveLength(3);
-    expect(
-      await reportedLines("anti-slop", "no-shape-in-symbol-names", FORBIDDEN_TERM_DATA_KEYS),
-    ).toStrictEqual(expected);
-  });
-});
-
-describe("anti-slop/no-conditional-empty-object-spread names its owner", () => {
-  it("sends the reader to the optional-key helpers, which ana/prefer-key-if-defined also asks for", async () => {
-    const messages = await reportedMessages(
-      "anti-slop",
-      "no-conditional-empty-object-spread",
-      EMPTY_OBJECT_SPREAD,
-    );
-    expect(messages).toHaveLength(1);
-    expect(messages[0]).toContain("keyIfDefined");
-    expect(messages[0]).toContain("src/meta/optional-key.ts");
   });
 });

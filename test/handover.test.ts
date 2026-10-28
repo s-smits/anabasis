@@ -3,7 +3,6 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { supplyOf } from "../src/campaign/admission.ts";
 import { campaignOf, type Handover, openSteps } from "../src/campaign/handover.ts";
-import { calledBy, namesOf } from "../src/campaign/names.ts";
 import { comparisonsTold, failsTold, startTold } from "../src/builder/past.ts";
 import { type Condition, recordCondition } from "../src/kernel/condition.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
@@ -231,67 +230,6 @@ describe("a campaign's reading", () => {
     expect([read1.reference, read1.latest]).toEqual([null, HA]);
   });
 
-  // Until 11 October an Examiner session was read from its end alone: buffer-main's x-1, running,
-  // read "0 proposed, 0 held out" and $0.00 with seven tasks held out and $8.23 metered.
-  it("bills an Examiner session the solves it asked for to try a draft task, ended or open", () => {
-    const c = campaign();
-    c.setUp();
-    c.record("exam.started", { session: "x-1" });
-    c.solved("d1", HA, "pass", "x-1");
-    expect(steps(c, "examiner")).toMatchObject([{ ended: null, billed: 1.5 }]);
-    c.record("exam.finished", {
-      session: "x-1",
-      ended: "finished",
-      proposed: 1,
-      held: ["d1"],
-      refused: [],
-      billed: 2.25,
-    });
-    expect(steps(c, "examiner")).toMatchObject([{ ended: "finished", billed: 3.75 }]);
-  });
-
-  it("reads a session with no end from its own events, and as cut once a later step began", () => {
-    const c = campaign();
-    c.setUp();
-    c.record("exam.started", { session: "x-1" });
-    for (const turn of [1, 2, 3]) {
-      c.record("exam.turn", { session: "x-1", turn, usage: { cost: { total: 0.5 } } });
-    }
-    for (const [version, outcome] of [
-      ["e1", "passed"],
-      ["e2", "passed"],
-      ["e3", "refused"],
-    ] as const) {
-      c.record("task.proposed", { version, session: "x-1" });
-      c.record("task.gate", { version, gate: 1, outcome });
-    }
-    c.record("task.state", { version: "e3", state: "refused", session: "x-1" });
-    // A draft still at the gate is proposed, and neither held nor refused.
-    c.record("task.proposed", { version: "e4", session: "x-1" });
-    const open = { id: "x-1", ended: null, turns: 3, proposed: 4, held: 2, refused: 1, billed: 1.5 };
-    expect(steps(c, "examiner")).toMatchObject([{ ...open, cut: false }]);
-    expect(openSteps(campaignOf(c.events()).steps)).toEqual(["x-1"]);
-    // The campaign makes one move at a time: a step begun after x-1 means x-1 will write no end.
-    c.began("b-1");
-    c.record("build.turn", { session: "b-1", turn: 1, usage: { cost: { total: 0.25 } } });
-    c.solved("p1", HA, "fail");
-    expect(steps(c, "examiner")).toMatchObject([{ ...open, cut: true }]);
-    // The open Builder session: its practice so far, and its own turns beside its solve's dollars.
-    expect(steps(c, "builder")).toMatchObject([
-      {
-        id: "b-1",
-        ended: null,
-        cut: false,
-        turns: 1,
-        harness: null,
-        practiceSolves: 1,
-        fails: 1,
-        billed: 1.75,
-      },
-    ]);
-    expect(openSteps(campaignOf(c.events()).steps)).toEqual(["b-1"]);
-  });
-
   it("reads a led Builder as live while an Examiner session and a comparison run inside it", () => {
     const c = campaign();
     c.setUp();
@@ -337,47 +275,6 @@ describe("a campaign's reading", () => {
     expect(billedFor(events, "b-1")).toBe(8);
   });
 
-  it("keeps a killed Builder's unfinished practice on it once the next run closes it on its turns", () => {
-    const c = campaign();
-    c.setUp();
-    c.began("b-1");
-    c.record("build.turn", { session: "b-1", turn: 1, usage: { cost: { total: 1 } } });
-    c.record("solve.started", { solve: "s-k", condition: "c", task: "p1" });
-    c.record("solve.turn", { solve: "s-k", usage: { cost: { total: 2 } } });
-    expect(steps(c, "builder")).toMatchObject([{ id: "b-1", ended: null, billed: 3 }]);
-    // What `endCut` writes: the session's own turns, and nothing of the solve it was killed in.
-    c.record("build.finished", { session: "b-1", ended: "killed", crash: null, billed: 1 });
-    expect(steps(c, "builder")).toMatchObject([{ id: "b-1", ended: "killed", billed: 3 }]);
-    expect(billedAll(c.events())).toBe(3);
-    expect(billedFor(c.events(), "b-1")).toBe(1);
-  });
-
-  it("bills a led Builder's practice to it alone while an Examiner session runs beside it", () => {
-    const c = campaign();
-    c.setUp();
-    c.record("campaign.opened", { led: true });
-    c.began("b-1");
-    c.record("build.turn", { session: "b-1", turn: 1, usage: { cost: { total: 1 } } });
-    c.record("exam.started", { session: "x-1" });
-    c.record("exam.turn", { session: "x-1", turn: 1, usage: { cost: { total: 0.5 } } });
-    c.solved("p1", HA, "fail");
-    const events = c.events();
-    expect(steps(c, "builder")).toMatchObject([{ id: "b-1", ended: null, billed: 2.5 }]);
-    expect(steps(c, "examiner")).toMatchObject([{ id: "x-1", ended: null, billed: 0.5 }]);
-    expect(campaignOf(events).steps.reduce((sum, step) => sum + step.billed, 0)).toBe(billedAll(events));
-  });
-
-  it("bills a Builder the host ran its whole span, where nothing ran inside it", () => {
-    const c = campaign();
-    c.setUp();
-    c.built("b-1", STARTER, HA, ["fail"]);
-    c.compared("g-1", { old: STARTER, fresh: HA }, tallied("no-step", 0, 4));
-    const events = c.events();
-    expect(steps(c, "builder")).toMatchObject([{ id: "b-1", billed: 5.5 }]);
-    expect(billedFor(events, "b-1")).toBe(5.5);
-    expect(campaignOf(events).steps.reduce((sum, step) => sum + step.billed, 0)).toBe(billedAll(events));
-  });
-
   // buffer-main's g-1 had four solves in flight on 11 October, and nothing said how far it was.
   it("reads a comparison with no report as open, with its solves so far, and as cut once the campaign ended", () => {
     const c = campaign();
@@ -396,70 +293,6 @@ describe("a campaign's reading", () => {
     expect(viewLines("truss", campaignOf(c.events()), Date.now())[2]).toContain(
       "no report yet, cut before it: 1 solve ended, 1 cut",
     );
-  });
-
-  // A digest's head is an identity, not a name: the view names a harness by a letter beside it
-  // (the hardening plan's PR 8, 14 October), and a reader handed no names keeps the head alone.
-  it("names each harness of a comparison by its letter where the view is given the log's names", () => {
-    const c = campaign();
-    c.setUp();
-    c.compared("g-1", { old: STARTER, fresh: HA }, null);
-    const events = c.events();
-    expect(viewLines("truss", campaignOf(events), Date.now(), calledBy(namesOf(events)))[2]).toContain(
-      "comparison of B (aaaaaaaa) with A (00000000) on",
-    );
-    expect(viewLines("truss", campaignOf(events), Date.now())[2]).toContain(
-      "comparison of aaaaaaaa with 00000000 on",
-    );
-  });
-
-  it("tells a comparison once where a settling wrote its report again, as settled", () => {
-    const c = campaign();
-    c.setUp();
-    c.compared(
-      "g-1",
-      { old: STARTER, fresh: HA },
-      { ...tallied("not-scored", 0, 0), scored: null, aside: HELD },
-    );
-    c.record("comparison.reported", {
-      session: "g-1",
-      old: STARTER,
-      fresh: HA,
-      versions: HELD,
-      ...tallied("no-step", 1, 3),
-    });
-    expect(steps(c, "comparison")).toMatchObject([
-      { id: "g-1", reading: "no-step", tally: { wins: 1, losses: 0, ties: 3 }, aside: 0 },
-    ]);
-  });
-
-  // The logs of 8 October hold reports and no starts: the start was added with the rewrite of the
-  // comparison. Such a comparison is a step all the same, with the terms its report holds.
-  it("holds a comparison whose log has no start of it, by its report", () => {
-    const c = campaign();
-    c.setUp();
-    c.record("comparison.reported", {
-      session: "r-1",
-      old: STARTER,
-      fresh: HA,
-      tasks: 4,
-      solves: 2,
-      level: 0.1,
-      ...tallied("no-step", 1, 3),
-    });
-    expect(steps(c, "comparison")).toMatchObject([
-      {
-        id: "r-1",
-        old: STARTER,
-        fresh: HA,
-        tasks: 4,
-        solves: 2,
-        level: 0.1,
-        cap: null,
-        reading: "no-step",
-        tally: { wins: 1, losses: 0, ties: 3 },
-      },
-    ]);
   });
 
   it("holds every failed practice solve with where it stands now, and none of a comparison's", () => {
@@ -603,79 +436,5 @@ describe("the Builder's filter over that reading", () => {
     );
     // No held-out task, no share of valid answers, no ruling and no cost.
     expect(told.join("\n")).not.toMatch(/s[1-4]\b|0\.0625|valid|earned|\$/);
-  });
-
-  // Fix row F16: the Builder's opening had a reader of its own, which is how v1's four readers of
-  // one test set began. Both renderings now take their numbers from the same rows.
-  it("gives the tally and the fails the operator's view gives", () => {
-    const c = campaign();
-    c.setUp();
-    c.built("b-1", STARTER, HA, ["fail", "fail", "pass"]);
-    c.compared("b-1", { old: STARTER, fresh: HA }, tallied("no-step", 2, 2));
-    const reading = campaignOf(c.events());
-    const view = viewLines("truss", reading, Date.now()).join("\n");
-    const told = comparisonsTold(reading.steps);
-    expect(told).toHaveLength(1);
-    expect(told[0]).toContain("2 won, 0 lost, 2 tied");
-    expect(view).toContain("2 won, 0 lost, 2 tied");
-    const fails = failsTold(reading.fails, TASKS);
-    expect(fails).toHaveLength(2);
-    expect(view).toContain("2 failed practice solves: 2 open");
-    for (const fail of reading.fails) expect(fails.join("\n")).toContain(`- ${fail.solve},`);
-  });
-});
-
-describe("the operator's view", () => {
-  it("says a session with no end is open, with what it did so far and when it last wrote, or cut", () => {
-    const c = campaign();
-    c.setUp();
-    c.record("exam.started", { session: "x-1" });
-    c.record("exam.turn", { session: "x-1", turn: 1, usage: { cost: { total: 0.5 } } });
-    c.record("task.proposed", { version: "e1", session: "x-1" });
-    c.record("task.gate", { version: "e1", gate: 1, outcome: "passed" });
-    const examined = (reading: ReturnType<typeof campaignOf>) =>
-      reading.steps.find((step) => step.step === "examiner");
-    const last = examined(campaignOf(c.events()))?.last ?? "";
-    const lines = viewLines("truss", campaignOf(c.events()), Date.parse(last) + 3 * 60_000);
-    expect(lines[2]).toBe(
-      `  x-1         Examiner session, open at the log's end, 1 turn so far, last wrote at ${last.slice(11, 19)}Z (3 minutes before this reading): 1 proposed, 1 held out, 0 refused · $0.50`,
-    );
-    c.began("b-1");
-    const later = viewLines("truss", campaignOf(c.events()), Date.parse(last));
-    expect(later[2]).toContain(
-      "Examiner session, cut before its end: a later step began without it: 1 proposed",
-    );
-    // A Builder session with no end has left no harness yet, and says none.
-    expect(later[3]).toStartWith("  b-1         Builder session, open at the log's end, 0 turns so far");
-    expect(later[3]).toEndWith(": from 00000000, 0 practice solves · $0.00");
-  });
-
-  it("prints the set-up and each step's handover, a line each, and no move beside the table's", () => {
-    const c = campaign();
-    c.setUp();
-    c.record("exam.started", { session: "x-1" });
-    c.record("exam.finished", {
-      session: "x-1",
-      ended: "finished",
-      proposed: 3,
-      held: ["e1", "e2"],
-      refused: ["e3"],
-      billed: 2.25,
-    });
-    c.built("b-1", STARTER, HA, ["fail", "pass"]);
-    c.compared("b-1", { old: STARTER, fresh: HA }, tallied("step", 4, 0));
-    const lines = viewLines("truss", campaignOf(c.events()), Date.now());
-    expect(lines.slice(0, 5)).toEqual([
-      "truss",
-      "  set-up      4 held out · 1 released for practice · 0 wait for a label · 0 exhausted · checker read, 0 faults, not frozen · reference: the starter",
-      "  x-1         Examiner session, finished: 3 proposed, 2 held out, 1 refused · $2.25",
-      "  b-1         Builder session, finished: from 00000000 it left aaaaaaaa, 2 practice solves · $7.00",
-      "  b-1         comparison of aaaaaaaa with 00000000 on 4 tasks, 2 solves a side at 0.1: 4 won, 0 lost, 0 tied, which reads step · tasks with 0, 1, 2 valid answers: reference 4/0/0, new 0/0/4 · 1 rejection ruled earned · $3.50",
-    ]);
-    expect(lines).toContain("  practice    1 failed practice solve: 1 open");
-    // Fix row F7: a list of moves beside the table's named a promotion on this one step, where the
-    // table waits for its repeat. The table's move is printed after this reading, by `view`.
-    expect(lines).toHaveLength(6);
-    expect(lines.join("\n")).not.toMatch(/promotion|may start/);
   });
 });

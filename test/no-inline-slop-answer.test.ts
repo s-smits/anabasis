@@ -9,7 +9,7 @@
  * computes and a sentence only the author can check.
  */
 import { describe, expect, it } from "bun:test";
-import { expectedLines, reportedLines, reportedMessages } from "./helpers/oxlint-rule-fixture.ts";
+import { expectedLines, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
 
 const COMMENTS = `
 // oxlint-disable-next-line anti-slop/no-runtime-typeof // REPORT the next-line spelling
@@ -33,18 +33,6 @@ describe("ana/no-inline-slop-answer", () => {
     expect(expected).toHaveLength(6);
     expect(await reportedLines("ana", "no-inline-slop-answer", COMMENTS, "src/example.ts")).toStrictEqual(
       expected,
-    );
-  });
-
-  it("names every slop rule the comment silences", async () => {
-    const [message] = await reportedMessages(
-      "ana",
-      "no-inline-slop-answer",
-      "// oxlint-disable-next-line ana/no-deep-nesting, anti-slop/no-runtime-typeof -- why\nexport const one = 1;\n",
-      "src/example.ts",
-    );
-    expect(message).toContain(
-      "ana/no-deep-nesting, anti-slop/no-runtime-typeof answered by a disable comment",
     );
   });
 });

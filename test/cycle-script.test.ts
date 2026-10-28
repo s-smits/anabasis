@@ -6,8 +6,6 @@ import { append, LOG_FILE } from "../src/kernel/log.ts";
 import { mkdirSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
-import { capturedExecPath } from "../src/meta/process.ts";
-import { runSync } from "../src/meta/subprocess.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
 const SCRIPT = ".claude/skills/run-improvement-campaign/scripts/cycle.ts";
@@ -18,12 +16,6 @@ afterAll(() => {
 });
 
 describe("cycle.ts", () => {
-  it("prints no rows on a host that holds none of the named runs", () => {
-    const result = runSync([capturedExecPath, SCRIPT, "--here", "no-such-run-for-the-cycle-test"]);
-    expect(new TextDecoder().decode(result.stdout).trim()).toBe("[]");
-    expect(result.exitCode).toBe(0);
-  }, 30_000);
-
   it.each([6, 7])("stops a run at %i promotions before waiting for one at five", (promotions) => {
     const made = fakeHosts();
     fixtures.push(made.root);

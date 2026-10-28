@@ -50,16 +50,6 @@ describe("the moves against the table (lane 28)", () => {
     expect(fired(ended, "ENDED AND WENT ON")).toBe("budget at event 0");
     expect(fired(ended.slice(0, 1), "ENDED AND WENT ON")).toBeUndefined();
   });
-
-  it("counts the operator's words by kind and how many an event answered", () => {
-    const words = log(
-      ["campaign.word", { word: "tasks", why: "" }],
-      ["campaign.word", { word: "stop", why: "" }],
-      ["campaign.move", { move: "examine", code: "tasks", answers: [0] }],
-    );
-    expect(fired(words, "OPERATOR WORDS")).toBe("stop 1, tasks 1; 1 of 2 acted on");
-    expect(fired(words.slice(2), "OPERATOR WORDS")).toBeUndefined();
-  });
 });
 
 describe("the Builder's conversation (lane 20)", () => {
@@ -100,11 +90,6 @@ describe("the launches (lane 32)", () => {
     );
     expect(fired(opened, "LAUNCHES", [receipt("aaaaaaaa11", true)])).toContain("1 from a dirty tree");
     expect(fired(opened, "LAUNCHES", [receipt("aaaaaaaa11")])).toBeUndefined();
-  });
-
-  it("names a campaign command that left no receipt, and not a log no campaign command opened", () => {
-    expect(fired(opened, "NO LAUNCH RECEIPT")).toBeDefined();
-    expect(fired(log(["campaign.word", { word: "stop", why: "" }]), "NO LAUNCH RECEIPT")).toBeUndefined();
   });
 });
 

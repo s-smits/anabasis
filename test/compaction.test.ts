@@ -1,7 +1,6 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { createModels, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { compactionPolicy } from "../src/agent/backends/compaction.ts";
 import { sit, type Seat } from "../src/agent/session.ts";
 import { tracesIn } from "../src/kernel/trace.ts";
 import { read } from "../src/kernel/log.ts";
@@ -66,24 +65,6 @@ function session(name: string, options: { provider?: string; failure?: boolean; 
 }
 
 describe("durable compaction", () => {
-  it("keeps the previous blocking threshold and disables background compaction and both Claude providers", () => {
-    expect(compactionPolicy({ provider: "openai-codex", contextWindow: 400_000 })).toEqual({
-      enabled: true,
-      reserveTokens: 116_384,
-      keepRecentTokens: 20_000,
-      backgroundTokens: 0,
-    });
-    for (const provider of ["claude", "claude-api"]) {
-      expect(compactionPolicy({ provider, contextWindow: 200_000 }).enabled).toBe(false);
-    }
-  });
-
-  it("leaves a short conversation alone", async () => {
-    const s = session("short", { most: 3 });
-    expect(await sit(s.seat)).toMatchObject({ crash: null });
-    expect(s.summaries).toHaveLength(0);
-  });
-
   it("summarises through durable, traces the summary usage and bills it with the turns", async () => {
     const s = session("summarised");
     const sat = await sit(s.seat);

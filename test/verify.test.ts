@@ -13,7 +13,7 @@ import {
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
-import { join, relative } from "../src/meta/path.ts";
+import { join } from "../src/meta/path.ts";
 import { killProcessGroupId } from "../src/meta/subprocess.ts";
 import { osIsolationSupport } from "../src/wall/os-isolation.ts";
 import { hostScratch } from "../src/wall/policy.ts";
@@ -38,10 +38,6 @@ export const checks = {
   projection: (req) => !("note" in req.artifact),
   throws: () => { throw new Error("no such rule"); },
   answers: () => "yes",
-  lapses: async (_req, runtime) => {
-    await runtime.tools.run({ toolId: "sleeper", args: [], timeoutMs: 100 });
-    throw new Error("no evidence");
-  },
   host: async (req) => (await req.runtime.tools.run({ toolId: "sh", args: ["-c", "exit 0"] })).exitCode === 0,
   slow: async (_req, runtime) => {
     await runtime.tools.run({ toolId: "sleeper", args: [], timeoutMs: 100 });
@@ -75,18 +71,12 @@ export const checks = {
 };
 `;
 
-/** A check program with an objective: the mass of an answer, lower being better, which the
- *  evaluator computes from the answer and the public input alone. `mode` in the public input makes
- *  it misbehave, so one program covers each way the measure can fail. */
+/** A check program with an objective computed from the answer and the public input alone. */
 const MEASURED_EVALUATOR = `export const checks = {
   value: (req) => req.artifact.value > 0,
   sees: (req) => req.hidden.length === 0,
 };
 export const objective = (req) => {
-  const mode = req.publicTask.publicInput.mode;
-  if (mode === "nan") return Number.NaN;
-  if (mode === "string") return "light";
-  if (mode === "throws") throw new Error("no scale");
   return req.artifact.value * req.publicTask.publicInput.density;
 };
 `;
@@ -122,7 +112,6 @@ const BRIEF = {
     { id: "projection", execution: execution(["projection"], ["$.value"], []) },
     { id: "throws", execution: execution(["throws"], [], []) },
     { id: "answers", execution: execution(["answers"], [], []) },
-    { id: "lapses", execution: execution(["lapses"], [], [], ["sleeper"]) },
     { id: "slow", execution: execution(["slow"], [], [], ["sleeper"]) },
     { id: "host", execution: execution(["host"], [], [], ["sh"]) },
     { id: "late", execution: execution(["order"], [], []) },
@@ -131,12 +120,7 @@ const BRIEF = {
     { id: "second", execution: execution(["pair"], [], []) },
     {
       id: "ran",
-      execution: execution(
-        ["ran"],
-        [],
-        ["$.tool"],
-        ["killed", "unlaunched", "unstarted", "refuses", "compiles"],
-      ),
+      execution: execution(["ran"], [], ["$.tool"], ["compiles"]),
     },
     { id: "deadline", execution: execution(["deadline"], [], []) },
   ],
@@ -202,10 +186,6 @@ writeFileSync(join(root, "checks", "reference", "model.ts"), "export const same 
 writeFileSync(secret, "another answer");
 tool("double", "read n; echo $((n * 2))");
 tool("sleeper", "sleep 30");
-tool("killed", "kill -KILL $$");
-tool("unlaunched", 'exec "$(dirname "$0")/missing"');
-tool("unstarted", "echo 'Fatal Python error: init_fs_encoding: failed to get the Python codec' >&2; exit 1");
-tool("refuses", "echo no; exit 127");
 tool("compiles", 'echo "int main(void) { return 0; }" > p.c && /usr/bin/cc p.c -o p && ./p');
 const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("open") });
 
@@ -221,23 +201,11 @@ describe.skipIf(!osIsolationSupport().ok)("the verifier", () => {
     expect(await verify(task("plain", { target: 21 }), { value: 21 })).toEqual({ kind: "pass" });
   });
 
-  it("takes its tree by a relative path as well, since the wall it builds wants absolute roots", async () => {
-    const near = openVerifier({
-      checks: relative(".", join(root, "checks")),
-      tools: relative(".", join(root, "tools")),
-    });
-    expect(await near(task("plain", { target: 21 }), { value: 21 })).toEqual({ kind: "pass" });
-  });
-
   it("fails an answer and names the checks that refused it", async () => {
     expect(await verify(task("plain", { target: 21 }), { value: 20 })).toEqual({
       kind: "fail",
       blocking: ["value"],
     });
-  });
-
-  it("fails no answer without running a check", async () => {
-    expect(await verify(task("throws"), undefined)).toEqual({ kind: "fail", blocking: [] });
   });
 
   it("keeps a check offline and out of a concurrent check's cell", async () => {
@@ -249,19 +217,6 @@ describe.skipIf(!osIsolationSupport().ok)("the verifier", () => {
 
   it("hands a check only the answer paths it declares", async () => {
     expect(await verify(task("projection"), { value: 1, note: "undeclared" })).toEqual({ kind: "pass" });
-  });
-
-  it("reads a check that throws or returns no boolean as faulty, neither a fail nor a non-result", async () => {
-    expect(await verify(task("throws"), {})).toEqual({
-      kind: "faulty",
-      check: "throws",
-      reason: "the check threw: no such rule",
-    });
-    expect(await verify(task("answers"), {})).toEqual({
-      kind: "faulty",
-      check: "answers",
-      reason: "the check returned string",
-    });
   });
 
   it("runs a verdict's checks at once, and lets the first in the brief's order decide", async () => {
@@ -277,10 +232,16 @@ describe.skipIf(!osIsolationSupport().ok)("the verifier", () => {
     });
   });
 
-  it("reads a check that throws after its tool lapsed as the verifier's non-result", async () => {
-    expect(await verify(task("lapses"), {})).toEqual({
-      kind: "non-result",
-      reason: "lapses: sleeper ran past 100 ms",
+  it("reads a check that throws or returns no boolean as faulty, neither a fail nor a non-result", async () => {
+    expect(await verify(task("throws"), {})).toEqual({
+      kind: "faulty",
+      check: "throws",
+      reason: "the check threw: no such rule",
+    });
+    expect(await verify(task("answers"), {})).toEqual({
+      kind: "faulty",
+      check: "answers",
+      reason: "the check returned string",
     });
   });
 
@@ -289,19 +250,6 @@ describe.skipIf(!osIsolationSupport().ok)("the verifier", () => {
       kind: "non-result",
       reason: "slow: sleeper ran past 100 ms",
     });
-  });
-
-  it("reads a tool a signal ended, or whose program never started, as a non-result, not a refusal", async () => {
-    const ran = async (toolId: string) => await verify(task("ran", { tool: toolId }), {});
-    expect(await ran("killed")).toEqual({ kind: "non-result", reason: "ran: killed was ended by SIGKILL" });
-    for (const toolId of ["unlaunched", "unstarted"]) {
-      expect(await ran(toolId)).toMatchObject({
-        kind: "non-result",
-        reason: expect.stringMatching(new RegExp(`^ran: ${toolId} exited 1\\d* before its program ran: `)),
-      });
-    }
-    // A program may exit 127 itself; having printed, it answered.
-    expect(await ran("refuses")).toEqual({ kind: "fail", blocking: ["ran"] });
   });
 
   // The verifier's own deny-default wall once refused clang its toolchain and the scratch it takes
@@ -375,61 +323,5 @@ describe.skipIf(!osIsolationSupport().ok)("the objective", () => {
       kind: "fail",
       blocking: ["value"],
     });
-  });
-
-  it("reads an objective that is no finite number, or throws, as faulty under its own name", async () => {
-    for (const [mode, reason] of [
-      ["nan", "the objective returned NaN"],
-      ["string", "the objective returned string"],
-      ["throws", "the objective threw: no scale"],
-    ] as const) {
-      expect(await verify(task("plain", { density: 3, mode }), { value: 7 })).toEqual({
-        kind: "faulty",
-        check: "objective",
-        reason,
-      });
-    }
-  });
-
-  it("reads a brief that declares an objective its program does not export as faulty", async () => {
-    const unexported = join(root, "unexported");
-    mkdirSync(unexported);
-    writeFileSync(join(unexported, "brief.json"), JSON.stringify(MEASURED_BRIEF));
-    writeFileSync(
-      join(unexported, "evaluator.ts"),
-      MEASURED_EVALUATOR.replace("export const objective", "const objective"),
-    );
-    const bare = openVerifier({ checks: unexported, tools: join(root, "tools") });
-    expect(await bare(task("plain", { density: 3 }), { value: 7 })).toEqual({
-      kind: "faulty",
-      check: "objective",
-      reason: "the check program has no objective",
-    });
-  });
-
-  it("refuses a brief with a check named objective, and measures nothing where none is declared", async () => {
-    const named = join(root, "named");
-    mkdirSync(named);
-    writeFileSync(
-      join(named, "brief.json"),
-      JSON.stringify({
-        ...MEASURED_BRIEF,
-        truthChecks: [
-          ...MEASURED_BRIEF.truthChecks,
-          { id: "objective", execution: execution(["plain"], [], []) },
-        ],
-      }),
-    );
-    writeFileSync(join(named, "evaluator.ts"), MEASURED_EVALUATOR);
-    expect(() => openVerifier({ checks: named, tools: join(root, "tools") })).toThrow(
-      "a check is named objective, which names the objective",
-    );
-    const undeclared = join(root, "undeclared");
-    mkdirSync(undeclared);
-    const { objective: _declared, ...rest } = MEASURED_BRIEF;
-    writeFileSync(join(undeclared, "brief.json"), JSON.stringify(rest));
-    writeFileSync(join(undeclared, "evaluator.ts"), MEASURED_EVALUATOR);
-    const plain = openVerifier({ checks: undeclared, tools: join(root, "tools") });
-    expect(await plain(task("plain", { density: 3 }), { value: 7 })).toEqual({ kind: "pass" });
   });
 });

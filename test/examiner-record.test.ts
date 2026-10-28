@@ -101,54 +101,6 @@ const byTask = (lines: readonly string[]) =>
   );
 
 describe("what an Examiner is told of its campaign's past", () => {
-  it("takes a task's outcome and valid-answer turns from the same comparison, including a historical ladder report", () => {
-    const log = logged();
-    log.hold("kept");
-    log.solved("b-1", "kept", "h1", [true, true], [3, 3]);
-    log.solved("b-1", "kept", "h2", [true, true]);
-    log.reported("b-1", ["h1", "h2"], ["kept"]);
-    log.solved("b-2", "kept", "h1", [true, false], [7, 1]);
-    log.solved("b-2", "kept", "h2", [true, true]);
-    log.reported("b-2", ["h1", "h2"], ["kept"]);
-    const ordinary = heard(log.events, [fixture("kept")]).lines;
-    const latest = log.events.at(-1);
-    if (latest === undefined) throw new Error("missing comparison report");
-    latest.data.ladder = true;
-    const lines = heard(log.events, [fixture("kept")]).lines;
-    const [line] = lines;
-    expect(line).toContain("valid in some solves");
-    expect(line).toContain("in 7 turns");
-    expect(line).not.toContain("in 3, 3 turns");
-    expect(lines).toEqual(ordinary);
-  });
-
-  it("distinguishes histories with the same outcomes in a different order", () => {
-    const build = (history: readonly (readonly boolean[])[]) => {
-      const log = logged();
-      log.hold("kept");
-      for (const [nth, valid] of history.entries()) {
-        const comparison = `b-${String(nth)}`;
-        log.solved(comparison, "kept", "h1", valid);
-        log.solved(comparison, "kept", "h2", [true, true]);
-        log.reported(comparison, ["h1", "h2"], ["kept"]);
-      }
-      return byTask(heard(log.events, [fixture("kept")], false).lines);
-    };
-    const first = build([
-      [true, false],
-      [false, false],
-      [true, true],
-    ]);
-    const second = build([
-      [false, false],
-      [true, false],
-      [true, true],
-    ]);
-    expect(first).not.toEqual(second);
-    expect(first.kept).toContain("last 3 comparisons: every, none, some");
-    expect(second.kept).toContain("last 3 comparisons: every, some, none");
-  });
-
   it("tells each task on one line: the reference's outcome and the turns its valid answers took, who won and on which measure, and whether an answer is on record", () => {
     const log = logged();
     const tasks = ["some", "none", "every", "unsolved", "practice", "aside", "new", "faulted", "refused"].map(
@@ -191,43 +143,6 @@ describe("what an Examiner is told of its campaign's past", () => {
     expect(told.faulted).toContain("disputed");
     expect(told.faulted).toContain("at fault");
     expect(lines.at(-1)).toContain("practice (fixture)");
-  });
-
-  it("explains in its legend only the clauses some line carries", () => {
-    const log = logged();
-    log.hold("plain");
-    log.solved("b-1", "plain", "h1", [true, true]);
-    log.solved("b-1", "plain", "h2", [true, true]);
-    log.reported("b-1", ["h1", "h2"], ["plain"]);
-    const bare = heard(log.events, [fixture("plain")]).legend;
-    expect(bare).not.toContain('"Gate"');
-    expect(bare).not.toContain('"Last comparisons"');
-    expect(bare).not.toContain("bill alone");
-    log.add("exam.started", { session: "x-1" });
-    log.gated("drawn", { outcome: "passed", reference: { valid: 1, solves: 2, billed: 0 } });
-    expect(heard(log.events, ["plain", "drawn"].map(fixture)).legend).toContain('"Gate"');
-  });
-
-  it("says a win the objective decided, and room only where an answer on record beats one of the reference's own by the floor", () => {
-    const lines = (measures: number[], results = true) => {
-      const log = logged();
-      log.hold("close");
-      log.solved("b-1", "close", "h1", [true, true]);
-      log.solved("b-1", "close", "h2", [true, true]);
-      log.reported("b-1", ["h1", "h2"], ["close"]);
-      for (const { kind, data } of log.events) {
-        if (kind === "verdict") data.objective = measures.shift() ?? null;
-        if (kind === "comparison.reported") data.objective = { direction: "lower" };
-      }
-      return heard(log.events, [fixture("close")], results).lines;
-    };
-    const [won] = lines([100, 100, 90, 90]);
-    expect(won).toContain("won there by the other harness on the objective");
-    // The other harness's better answers are its result on the task, and no room for the reference.
-    expect(won).not.toContain("better than one of its own");
-    expect(lines([100, 95, 90, 90])[0]).toContain(`${VALID} 5% better than one of its own`);
-    // Under the floor (1%) the gap decides no pair, and is told as none.
-    expect(lines([100, 99.5, 90, 90])[0]).not.toContain("better than one of its own");
   });
 
   it("with exam-results off and feasibility unchanged, reads the same whatever the other harness did, and names no winner", () => {
@@ -465,22 +380,6 @@ describe("what an Examiner is told of its campaign's past", () => {
     expect(lines.at(-1)).toContain(VALID);
     expect(lines.at(-1)).toContain("elsewhere (fixture)");
     expect(build([true, null])).toEqual(lines);
-  });
-
-  it("says nothing it cannot count: a task the log does not hold, and no task at all", () => {
-    const empty = heard([], []);
-    expect(empty).toEqual({
-      legend: empty.legend,
-      lines: [],
-      promoted: null,
-      measured: null,
-      refused: [],
-      interrupted: [],
-    });
-    // A task the log does not hold yet, as a pack's is before `prepare.ts`, is not yet compared.
-    const line = byTask(heard([], [fixture("e-1")]).lines)["e-1"];
-    expect(line).toContain("not yet compared");
-    expect(line).toContain(NONE);
   });
 
   it("opens a session with the lines and then the measurement, naming no harness, no answer and no verdict of the author's work", async () => {

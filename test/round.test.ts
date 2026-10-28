@@ -675,6 +675,142 @@ describe("a round", () => {
     expect(s.of(COMPARISON_REPORTED)).toHaveLength(1);
   });
 
+  it("runs the plan's first round: the Builder forks the starter, and its harness is compared with the starter", async () => {
+    // The starter answers s4 in both solves, the second late, and s3 in one; the new harness
+    // answers everything early.
+    const s = await setup([edit, finish], (version, side, nth) => {
+      if (side !== "starter") return { ending: PASS, turns: 5 };
+      if (version === "s4") return { ending: PASS, turns: nth === 0 ? 5 : 11 };
+      return version === "s3" && nth === 0 ? { ending: PASS, turns: 11 } : LATE;
+    });
+    const first: RoundRequest = {
+      ...s.request,
+      setting: s.request.setting,
+      session: { ...s.request.session, parent: s.starter.dir },
+      reference: s.starter,
+    };
+    const report = await round(first);
+    expect(report).toMatchObject({
+      old: s.starter.digest,
+      starter: s.starter.digest,
+      scored: { wins: 3, losses: 0, ties: 1, p: 0.125 },
+      // How the starter does by itself is read from the same comparison: no valid answer on two
+      // tasks, one on a third, two on the fourth. That is the plan's first gate.
+      valid: { old: [2, 1, 1], fresh: [0, 0, 4] },
+      reading: NO_STEP,
+    });
+    expect(s.of("build.started")[0]).toMatchObject({ parent: s.starter.digest });
+    // Four tasks, two harnesses, two solves: no solve under any other harness.
+    expect(s.asked).toHaveLength(16);
+    expect(s.asked.every(({ side }) => side !== "old")).toBe(true);
+    // The first round is a checkpoint of the stop rule: its harness is one a session built, and
+    // its 3-0 (p 0.125) left room and showed no gain.
+    expect(stopRule(read(s.log))).toEqual({ checkpoints: 1, sinceStep: 1, stop: false });
+    // One harness on both sides is no comparison.
+    await expect(checkpoint(s.compare("aa", { fresh: { dir: s.parent, digest: s.old } }))).rejects.toThrow(
+      "a comparison sets two harnesses against each other, and both sides are",
+    );
+  });
+
+  it("writes the operator's prediction with the terms, before the first solve, and keeps it", async () => {
+    const s = await setup([], step);
+    const prediction = "no step: the starter is valid on most of these at this budget";
+    const report = await checkpoint(s.compare("g0", { prediction }));
+    const events = read(s.log);
+    const began = events.findIndex(({ kind }) => kind === COMPARISON_STARTED);
+    expect(events[began]?.data.prediction).toBe(prediction);
+    expect(began).toBeLessThan(events.findIndex(({ kind }) => kind === "solve.started"));
+    expect(predicted(events, "g0")).toBe(prediction);
+    // A comparison that predicted nothing has none, and its start holds no such key. The prediction
+    // decides nothing: both read what their tallies read.
+    const plain = await checkpoint(s.compare("g1"));
+    expect(report.reading).toBe(plain.reading);
+    expect(predicted(read(s.log), "g1")).toBeNull();
+    expect(s.of(COMPARISON_STARTED)[1]).not.toHaveProperty("prediction");
+  });
+
+  it("reports a task short when its solves end in nothing countable, and tallies the rest", async () => {
+    const s = await setup([edit, finish], (version, side, nth, digest) =>
+      version === "s4" && side === "fresh"
+        ? { outcome: "non-result", kind: "sandbox-crash", reason: "x" }
+        : step(version, side, nth, digest),
+    );
+    expect(await round(s.request)).toMatchObject({
+      scored: { wins: 3, losses: 0 },
+      versions: ["s1", "s2", "s3"],
+      short: ["s4"],
+      reading: NO_STEP,
+    });
+    // s4's first slot and its retry fail, so no later slot of that task is started.
+    const ran = s.asked.flatMap(({ version }, at) => (version === "s4" ? [at] : []));
+    expect(ran).toHaveLength(2);
+    expect((ran.at(-1) ?? 0) - (ran[0] ?? 0)).toBe(1);
+    expect(s.asked.filter(({ version, side }) => version === "s4" && side === "fresh")).toHaveLength(2);
+  });
+
+  it("sets every rejection aside where no reviewer is seated, which reads not scored and is no test that found no gain, and reads it once a person has labelled them", async () => {
+    // The plan's first round is read this way: hand labels stand in for the Judge.
+    const s = await setup([edit, finish], rejecting);
+    const report = await round(s.request);
+    expect(report).toMatchObject({
+      scored: { wins: 0, losses: 0, ties: 0, p: 1 },
+      counted: { wins: 4, losses: 0, p: 0.0625 },
+      versions: [],
+      aside: HELD,
+      reading: NOT_SCORED,
+    });
+    expect(s.asked).toHaveLength(16);
+    expect(s.of(COMPARISON_REPORTED)[0]).toMatchObject({ tasks: 4, reading: NOT_SCORED });
+    // It tallied nothing, and is no checkpoint of the stop rule.
+    expect(stopRule(read(s.log))).toMatchObject({ checkpoints: 0 });
+    const asked = toLabel(read(s.log), "b-1");
+    expect(asked.aside).toHaveLength(8);
+    expect(asked.others).toEqual([]);
+    const settled = settleReading(
+      s.log,
+      "b-1",
+      new Map(asked.aside.map((solve) => [solve, "earned"] as const)),
+    );
+    // The labels restore every task, and the test clears its level: a settling makes no solve.
+    expect(settled).toMatchObject({
+      scored: { wins: 4, losses: 0 },
+      counted: null,
+      versions: HELD,
+      aside: [],
+      reading: "step",
+      settled: { labelled: 8, defects: 0, disputed: [], restored: HELD },
+    });
+    expect(s.asked).toHaveLength(16);
+    // The new harness is then compared with the starter in a comparison of its own.
+    const fresh = { dir: join(s.request.session.states, settled.fresh ?? ""), digest: settled.fresh ?? "" };
+    expect(await checkpoint(s.compare("g5", { old: s.starter, fresh }))).toMatchObject({
+      scored: { wins: 4, losses: 0 },
+      reading: "step",
+    });
+  });
+
+  it("compares nothing a killed or a crashed session froze", async () => {
+    const s = await setup([edit, finish], step);
+    const killed = new AbortController();
+    killed.abort();
+    await expect(
+      round({ ...s.request, session: { ...s.request.session, kill: killed.signal } }),
+    ).rejects.toThrow("session b-1 was killed, so what it froze is not compared");
+    // Run again, the round reads the same from the log and runs no second session.
+    await expect(round(s.request)).rejects.toThrow("session b-1 was killed");
+    expect(spent(read(s.log), "b-1")).toContain("a round under a new session id starts again");
+    expect(s.sessions()).toBe(1);
+    expect(s.asked).toEqual([]);
+    // A turn the provider failed leaves half a session too.
+    const failed = fauxAssistantMessage("", { stopReason: "error", errorMessage: "overloaded" });
+    const crashed = await setup([edit, failed], step);
+    await expect(round(crashed.request)).rejects.toThrow(
+      "session b-1 crashed, so what it froze is not compared",
+    );
+    expect(crashed.asked).toEqual([]);
+    expect(crashed.of(COMPARISON_REPORTED)).toEqual([]);
+  });
+
   it("calls two valid answers even, counts a solver's flag as its side's fail, and reports the turns of each valid answer in no test", async () => {
     {
       // v1's batteries mostly passed whole. Nothing here weighs one valid answer against another: no
@@ -785,46 +921,6 @@ describe("a round", () => {
       });
       expect(s.asked).toHaveLength(16);
       expect(s.solved()).toHaveLength(16);
-    }
-  });
-
-  it("compares with the reference harness whatever harness the session started from, and reports no change, solving nothing, where the session left its parent or a harness no solve could open", async () => {
-    {
-      const original = readFileSync(join(FIXTURE, "agent", "BUILT_AGENTS.md"), "utf8");
-      const back = call("write", { path: "harness/agent/BUILT_AGENTS.md", content: original });
-      const s = await setup([edit, finish, again, finish, back, finish], () => PASS);
-      const one = await round(s.request);
-      // The Builder goes on from its latest harness, and the comparison is against the first.
-      const latest = join(s.request.session.states, one.fresh ?? "");
-      const two = await round(s.next("b-2", latest));
-      expect(two.old).toBe(s.old);
-      expect(two.fresh).not.toBe(one.fresh);
-      expect(s.of("build.started")[1]).toMatchObject({ parent: one.fresh });
-      expect(latestBuilt(read(s.log))).toBe(two.fresh);
-      // A session that leaves the reference harness itself has left nothing to compare it with.
-      const three = await round(s.next("b-3", join(s.request.session.states, two.fresh ?? "")));
-      expect(three).toMatchObject({ old: s.old, fresh: null, scored: null, reading: "no-change" });
-      expect(s.asked).toHaveLength(32);
-    }
-    {
-      const s = await setup([finish], step);
-      expect(await round(s.request)).toMatchObject({ fresh: null, scored: null, reading: "no-change" });
-      expect(s.asked).toEqual([]);
-      expect(s.of(COMPARISON_REPORTED)).toMatchObject([
-        { session: "b-1", old: s.old, fresh: null, scored: null, broken: null, reading: "no-change" },
-      ]);
-    }
-    {
-      const s = await setup(
-        // The first finish says the harness does not open, once; the second ends the session so.
-        [call("write", { path: "harness/agent/tools-spec.json", content: "{}" }), finish, finish],
-        step,
-      );
-      expect(await round(s.request)).toMatchObject({ fresh: null, reading: "no-change" });
-      expect(JSON.stringify(s.of(COMPARISON_REPORTED)[0]?.broken)).toContain(
-        "agent/tools-spec.json needs presets",
-      );
-      expect(s.asked).toEqual([]);
     }
   });
 
@@ -1004,47 +1100,6 @@ describe("a round", () => {
     expect(await round({ ...t.request, referee: referee(t.log) })).toMatchObject({
       scored: { wins: 4, losses: 0 },
       aside: [],
-    });
-  });
-
-  it("sets every rejection aside where no reviewer is seated, which reads not scored and is no test that found no gain, and reads it once a person has labelled them", async () => {
-    // The plan's first round is read this way: hand labels stand in for the Judge.
-    const s = await setup([edit, finish], rejecting);
-    const report = await round(s.request);
-    expect(report).toMatchObject({
-      scored: { wins: 0, losses: 0, ties: 0, p: 1 },
-      counted: { wins: 4, losses: 0, p: 0.0625 },
-      versions: [],
-      aside: HELD,
-      reading: NOT_SCORED,
-    });
-    expect(s.asked).toHaveLength(16);
-    expect(s.of(COMPARISON_REPORTED)[0]).toMatchObject({ tasks: 4, reading: NOT_SCORED });
-    // It tallied nothing, and is no checkpoint of the stop rule.
-    expect(stopRule(read(s.log))).toMatchObject({ checkpoints: 0 });
-    const asked = toLabel(read(s.log), "b-1");
-    expect(asked.aside).toHaveLength(8);
-    expect(asked.others).toEqual([]);
-    const settled = settleReading(
-      s.log,
-      "b-1",
-      new Map(asked.aside.map((solve) => [solve, "earned"] as const)),
-    );
-    // The labels restore every task, and the test clears its level: a settling makes no solve.
-    expect(settled).toMatchObject({
-      scored: { wins: 4, losses: 0 },
-      counted: null,
-      versions: HELD,
-      aside: [],
-      reading: "step",
-      settled: { labelled: 8, defects: 0, disputed: [], restored: HELD },
-    });
-    expect(s.asked).toHaveLength(16);
-    // The new harness is then compared with the starter in a comparison of its own.
-    const fresh = { dir: join(s.request.session.states, settled.fresh ?? ""), digest: settled.fresh ?? "" };
-    expect(await checkpoint(s.compare("g5", { old: s.starter, fresh }))).toMatchObject({
-      scored: { wins: 4, losses: 0 },
-      reading: "step",
     });
   });
 
@@ -1238,46 +1293,6 @@ describe("a round", () => {
     ).toMatchObject({ decided: NO_STEP, swapped: NO_STEP, scored: { wins: 0, losses: 4, ties: 0 } });
   });
 
-  it("keeps a ruling across a stop, and puts to the Referee again the rejections an earlier run left unruled", async () => {
-    {
-      let stop = 10;
-      const s = await setup([edit, finish], (version, side, nth, digest) => {
-        stop -= 1;
-        if (stop === 0) throw new Error(STOPS);
-        return rejecting(version, side, nth, digest);
-      });
-      await expect(round({ ...s.request, referee: referee(s.log, { s1: "check-defect" }) })).rejects.toThrow(
-        STOPS,
-      );
-      // Run again, with a Referee that rules every rejection earned: what the first run ruled stands.
-      expect(await round({ ...s.request, referee: referee(s.log) })).toMatchObject({
-        aside: ["s1"],
-        versions: ["s2", "s3", "s4"],
-      });
-    }
-    {
-      let stop = 10;
-      const s = await setup([edit, finish], (version, side, nth, digest) => {
-        stop -= 1;
-        if (stop === 0) throw new Error(STOPS);
-        return rejecting(version, side, nth, digest);
-      });
-      // The first run's reader fails on every rejection, so each is left with no ruling.
-      const failing = async (): Promise<RefereeFinding> => {
-        throw new Error("the reader is down");
-      };
-      await expect(round({ ...s.request, referee: failing })).rejects.toThrow(STOPS);
-      const left = read(s.log).filter(({ kind }) => kind === "verdict").length;
-      expect(s.of("referee.finding")).toEqual([]);
-      // Run again with a reader that answers: the earlier rejections are ruled, and no task is set
-      // aside for want of a ruling the comparison could have had.
-      const report = await round({ ...s.request, referee: referee(s.log) });
-      expect(report).toMatchObject({ scored: { wins: 4, losses: 0 }, aside: [], versions: HELD });
-      expect(left).toBeGreaterThan(0);
-      expect(s.of("referee.finding")).toHaveLength(8);
-    }
-  });
-
   it("stops, to go on from its log, when no solve of three tasks in a row ran: a provider that answers none, or a wall that refuses every solve", async () => {
     {
       // exam-1, 2026-10-08: the login reached its session limit mid-run and every solve after it
@@ -1359,25 +1374,6 @@ describe("a round", () => {
     });
     await expect(checkpoint(request)).rejects.toThrow("the comparison was killed");
     expect(s.of(COMPARISON_REPORTED)).toEqual([]);
-  });
-
-  it("reports a task short when its solves end in nothing countable, and tallies the rest", async () => {
-    const s = await setup([edit, finish], (version, side, nth, digest) =>
-      version === "s4" && side === "fresh"
-        ? { outcome: "non-result", kind: "sandbox-crash", reason: "x" }
-        : step(version, side, nth, digest),
-    );
-    expect(await round(s.request)).toMatchObject({
-      scored: { wins: 3, losses: 0 },
-      versions: ["s1", "s2", "s3"],
-      short: ["s4"],
-      reading: NO_STEP,
-    });
-    // s4's first slot and its retry fail, so no later slot of that task is started.
-    const ran = s.asked.flatMap(({ version }, at) => (version === "s4" ? [at] : []));
-    expect(ran).toHaveLength(2);
-    expect((ran.at(-1) ?? 0) - (ran[0] ?? 0)).toBe(1);
-    expect(s.asked.filter(({ version, side }) => version === "s4" && side === "fresh")).toHaveLength(2);
   });
 
   it("leaves out and names a task a person released or refused while the comparison ran or was stopped, and disputes no task a person refused", async () => {
@@ -1543,105 +1539,9 @@ describe("a round", () => {
     append(s.log, TASK_STATE, { version: "s2", state: "disputed" });
     expect(() => refuseTerms(s.request, { log: s.log, id: "b-9", practised: new Set() })).not.toThrow();
   });
-
-  it("compares nothing a killed or a crashed session froze", async () => {
-    const s = await setup([edit, finish], step);
-    const killed = new AbortController();
-    killed.abort();
-    await expect(
-      round({ ...s.request, session: { ...s.request.session, kill: killed.signal } }),
-    ).rejects.toThrow("session b-1 was killed, so what it froze is not compared");
-    // Run again, the round reads the same from the log and runs no second session.
-    await expect(round(s.request)).rejects.toThrow("session b-1 was killed");
-    expect(spent(read(s.log), "b-1")).toContain("a round under a new session id starts again");
-    expect(s.sessions()).toBe(1);
-    expect(s.asked).toEqual([]);
-    // A turn the provider failed leaves half a session too.
-    const failed = fauxAssistantMessage("", { stopReason: "error", errorMessage: "overloaded" });
-    const crashed = await setup([edit, failed], step);
-    await expect(round(crashed.request)).rejects.toThrow(
-      "session b-1 crashed, so what it froze is not compared",
-    );
-    expect(crashed.asked).toEqual([]);
-    expect(crashed.of(COMPARISON_REPORTED)).toEqual([]);
-  });
 });
 
 describe("a checkpoint with no session", () => {
-  it("runs the plan's first round: the Builder forks the starter, and its harness is compared with the starter", async () => {
-    // The starter answers s4 in both solves, the second late, and s3 in one; the new harness
-    // answers everything early.
-    const s = await setup([edit, finish], (version, side, nth) => {
-      if (side !== "starter") return { ending: PASS, turns: 5 };
-      if (version === "s4") return { ending: PASS, turns: nth === 0 ? 5 : 11 };
-      return version === "s3" && nth === 0 ? { ending: PASS, turns: 11 } : LATE;
-    });
-    const first: RoundRequest = {
-      ...s.request,
-      setting: s.request.setting,
-      session: { ...s.request.session, parent: s.starter.dir },
-      reference: s.starter,
-    };
-    const report = await round(first);
-    expect(report).toMatchObject({
-      old: s.starter.digest,
-      starter: s.starter.digest,
-      scored: { wins: 3, losses: 0, ties: 1, p: 0.125 },
-      // How the starter does by itself is read from the same comparison: no valid answer on two
-      // tasks, one on a third, two on the fourth. That is the plan's first gate.
-      valid: { old: [2, 1, 1], fresh: [0, 0, 4] },
-      reading: NO_STEP,
-    });
-    expect(s.of("build.started")[0]).toMatchObject({ parent: s.starter.digest });
-    // Four tasks, two harnesses, two solves: no solve under any other harness.
-    expect(s.asked).toHaveLength(16);
-    expect(s.asked.every(({ side }) => side !== "old")).toBe(true);
-    // The first round is a checkpoint of the stop rule: its harness is one a session built, and
-    // its 3-0 (p 0.125) left room and showed no gain.
-    expect(stopRule(read(s.log))).toEqual({ checkpoints: 1, sinceStep: 1, stop: false });
-    // One harness on both sides is no comparison.
-    await expect(checkpoint(s.compare("aa", { fresh: { dir: s.parent, digest: s.old } }))).rejects.toThrow(
-      "a comparison sets two harnesses against each other, and both sides are",
-    );
-  });
-
-  // Fix row F46: a settling reads the comparison's terms back from its start. A comparison that
-  // began with shorter budgets reported rows this source reads no longer, and the settled report
-  // would drop them in place of the report the comparison began with.
-  it("refuses to settle a comparison that began with shorter budgets, and leaves its report as written", async () => {
-    const s = await setup([edit, finish], rejecting);
-    await round(s.request);
-    const labels = new Map(toLabel(read(s.log), "b-1").aside.map((solve) => [solve, "earned"] as const));
-    // The same comparison as a source of 10 October began it: read also at 12 turns.
-    const older = join(dirname(s.log), "older.jsonl");
-    for (const { kind, data } of read(s.log)) {
-      const began = kind === COMPARISON_STARTED ? { budgets: [{ turns: 12 }] } : {};
-      append(older, kind, { ...data, ...began });
-    }
-    expect(() => settleReading(older, "b-1", labels)).toThrow(
-      "comparison b-1 began with 1 shorter budgets, which this source reads no longer: its report stands as it was written",
-    );
-    expect(read(older).filter(({ kind }) => kind === COMPARISON_REPORTED)).toHaveLength(1);
-    expect(settleReading(s.log, "b-1", labels)).not.toHaveProperty("budgets");
-  });
-
-  it("writes the operator's prediction with the terms, before the first solve, and keeps it", async () => {
-    const s = await setup([], step);
-    const prediction = "no step: the starter is valid on most of these at this budget";
-    const report = await checkpoint(s.compare("g0", { prediction }));
-    const events = read(s.log);
-    const began = events.findIndex(({ kind }) => kind === COMPARISON_STARTED);
-    expect(events[began]?.data.prediction).toBe(prediction);
-    expect(began).toBeLessThan(events.findIndex(({ kind }) => kind === "solve.started"));
-    expect(predicted(events, "g0")).toBe(prediction);
-    // A comparison that predicted nothing has none, and its start holds no such key. The prediction
-    // decides nothing: both read what their tallies read.
-    const plain = await checkpoint(s.compare("g1"));
-    expect(report.reading).toBe(plain.reading);
-    expect(predicted(read(s.log), "g1")).toBeNull();
-    expect(s.of(COMPARISON_STARTED)[1]).not.toHaveProperty("prediction");
-  });
-
   it("reads the reference harness against itself as it reads two harnesses, on its own solves at four a side", async () => {
     // The plan's section 4b: at four solves a side every comparison carries its A/A, the
     // reference's four solves of a task split by slot two against two, read as the test is. The
@@ -1663,22 +1563,6 @@ describe("a checkpoint with no session", () => {
     expect(s.asked.filter(({ side }) => side === "starter")).toHaveLength(16);
     // Two solves a side split one against one, too few for an A/A.
     expect((await checkpoint(s.compare("g3"))).noise).toBeNull();
-  });
-
-  it("reads no step on either tier where the reference meets itself, and carries no margin", async () => {
-    // The A/A rehearsal of the overhaul plan's P2: every solve of the reference is valid, and its
-    // objective 10 or 10.4 by turns, which halves mirrored in time hold one of each on every task.
-    const s = await setup([], (_version, side, nth) =>
-      side === "starter" ? LATE : { ending: PASS, objective: nth % 2 === 0 ? 10 : 10.4 },
-    );
-    const objective = { direction: "lower" } as const;
-    const report = await checkpoint({ ...s.compare("g2", { solves: 4 }), objective });
-    // The objective tells its answers apart, pairing by pairing, and decides no
-    // task: on validity and on the objective alike, the reference ties itself.
-    expect(report.noise).toMatchObject({ wins: 0, losses: 0, ties: 4, p: 1, flips: 0 });
-    // Until 18 October the A/A set the next comparison's margin from this spread, 0.4 in 10.4;
-    // there has been no margin since 19 October, and the report carries none.
-    expect(report.noise).not.toHaveProperty("margin");
   });
 
   it("reads the frontier and the retained tasks in one test, on sets fixed before its first solve", async () => {
@@ -1715,24 +1599,6 @@ describe("a checkpoint with no session", () => {
       // Four won and one lost by four pairs each is p 0.1875 in the one test, over the level 0.1.
       scored: { wins: 4, losses: 1, ties: 0, p: 0.1875 },
       reading: "no-step",
-    });
-  });
-
-  it("reads a step whose untied tasks all fall in one family of the two or more its set holds as a step", async () => {
-    const s = await setup([], (version, side) => (side === "old" && version !== "s1" ? LATE : PASS));
-    for (const version of ["s6", "s7", "s8", "s9"]) {
-      append(s.log, "task.proposed", { version, family: "f3" });
-      append(s.log, "task.gate", gatePassed(version));
-    }
-    const report = await checkpoint(s.compare("g1", { tasks: ["s1", "s6", "s7", "s8", "s9"] }));
-    expect(report).toMatchObject({
-      frontier: { wins: 4, losses: 0, ties: 1, p: 0.0625 },
-      families: {
-        f1: { frontier: { wins: 0, losses: 0, ties: 1 } },
-        f3: { frontier: { wins: 4, losses: 0, ties: 0 } },
-      },
-      // Until 16 October it read `narrow`, which never fired on record.
-      reading: "step",
     });
   });
 
@@ -1806,15 +1672,6 @@ describe("a checkpoint with no session", () => {
     await expect(checkpoint(request)).rejects.toThrow("does not name comparison g0 at its start");
     expect(s.asked).toHaveLength(1);
   });
-
-  it("counts a round's cap from its session's first event, so the session's spend is under it", async () => {
-    const s = await setup([edit, finish], step);
-    const report = await round({ ...s.request, cap: { dollars: 3, reserve: 3 } });
-    // The session billed something, and with it one reserve is past the cap: no solve starts.
-    expect(Number(s.of("build.finished")[0]?.billed)).toBeGreaterThan(0);
-    expect(report).toMatchObject({ scored: null, capped: true, reading: NOT_SCORED });
-    expect(s.asked).toEqual([]);
-  });
 });
 
 describe("a session with no comparison after it", () => {
@@ -1846,19 +1703,6 @@ describe("a session with no comparison after it", () => {
     expect(report).toMatchObject({ reading: "step", fresh: second.kept?.digest, old: s.old });
     expect(s.of(COMPARISON_STARTED)).toHaveLength(1);
     expect(stopRule(read(s.log))).toMatchObject({ checkpoints: 1, sinceStep: 0, stop: false });
-  });
-
-  it("refuses a second run of a session that did not end whole, as a round does", async () => {
-    const s = await setup([edit, finish], step);
-    const { session: build, builder } = s.request;
-    append(s.log, "build.started", { session: "b-1", parent: s.old });
-    await expect(sessionOnce(build, builder)).rejects.toThrow(
-      "session b-1 started and never finished; a round does not run a second session under one id",
-    );
-    await expect(sessionOnce({ ...build, parent: s.starter.dir }, builder)).rejects.toThrow(
-      "session b-1 started from another harness",
-    );
-    expect(s.sessions()).toBe(0);
   });
 
   it("starts no practice solve its dollar cap holds no reserve for, and says so as a count", async () => {
@@ -1925,16 +1769,6 @@ describe("the scored set", () => {
     // Nothing is retained before the reference has closed a task twice.
     expect(scoredSet(heldOut(held), 12, "contract-a").retained).toEqual([]);
     expect(scoredSet([], 12, "contract-a")).toEqual({ tasks: [], retained: [] });
-  });
-
-  it("draws a task an old ladder held as any held-out task, since the ladder was retired on 16 October", () => {
-    const laddered = [
-      ...heldOut(held),
-      { at, kind: "task.proposed", data: { version: "l1" } } as const,
-      { at, kind: "task.gate", data: { version: "l1", gate: 1, outcome: "ladder" } } as const,
-      { at, kind: TASK_STATE, data: { version: "l1", state: "ladder" } } as const,
-    ];
-    expect(drawn(laddered, 12).toSorted()).toEqual([...held, "l1"].toSorted());
   });
 
   it("takes the newest epoch's tasks first, and reads the epochs before the reference never stood in as retained", () => {

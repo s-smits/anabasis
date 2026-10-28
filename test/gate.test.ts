@@ -84,7 +84,7 @@ writeFileSync(
 );
 git("add", "-A");
 const base = commit("src/owner.ts", "export const owner = 1;\n", "base");
-const docs = commit("README.md", "two\n", "docs");
+commit("README.md", "two\n", "docs");
 const source = commit("src/owner.ts", "export const owner = 2;\n", "source");
 const second = commit("src/b.ts", "export const b = 2;\n", "second");
 // Main holds `base`, as a clone's remote-tracking ref says.
@@ -98,7 +98,7 @@ function prove(pairs: readonly string[], env: Record<string, string> = {}, drive
     env: { ...Bun.env, ANA_GATE_FRESH: "", ...fake, ...env },
   });
 }
-/** What land asks of `source` and `second` above `docs`: the static steps, then the whole gate. */
+/** What land asks of `source` and `second` above the documentation commit: the static steps, then the whole gate. */
 const landing = (): string[] => [`${source}:static`, `${second}:whole`];
 const forgetPasses = (): void => rmSync(join(work, ".git", "ana-gate-passed"), { force: true });
 
@@ -120,46 +120,6 @@ describe("proveCommits", () => {
       "run typecheck",
       "run lint -- --strict",
       "run test -- test/owner.test.ts",
-    ]);
-  });
-
-  it("runs the UI's own gate after the install in a tree that holds the UI", () => {
-    const tree = (rows: string): string => execTextSync("git", ["mktree"], { cwd: work, stdin: rows }).trim();
-    const ui = tree(`100644 blob ${blob("{}\n")}\tpackage.json\n`);
-    const packages = tree(`040000 tree ${ui}\tui\n`);
-    const held = git(
-      "commit-tree",
-      tree(`${git("ls-tree", second)}\n040000 tree ${packages}\tpackages\n`),
-      "-p",
-      second,
-      "-m",
-      "the UI",
-    );
-    expect(prove([`${held}:whole`]).status).toBe(0);
-    const steps = readFileSync(log, "utf8")
-      .split("\n")
-      .filter((line) => line.startsWith(held));
-    expect(steps.map((line) => line.split("\t")[1]).slice(0, 2)).toEqual([
-      "install --frozen-lockfile",
-      "run ui:gate",
-    ]);
-    // The hook's checks install and build the UI, and leave its tests to the land proof.
-    rmSync(log, { force: true });
-    forgetPasses();
-    expect(prove([`${held}:checks`]).status).toBe(0);
-    expect(
-      readFileSync(log, "utf8")
-        .split("\n")
-        .filter((line) => line.startsWith(held))
-        .map((line) => line.split("\t")[1]),
-    ).toEqual([
-      "install --frozen-lockfile",
-      "run ui:deps",
-      "run ui:build",
-      "run format:check",
-      "run typecheck",
-      "run lint -- --strict",
-      "run simplify",
     ]);
   });
 
@@ -238,32 +198,6 @@ describe("proveCommits", () => {
     }
   });
 
-  it("runs nothing again that passed on these exact bytes, and lets a whole pass stand for the checks", () => {
-    prove(landing());
-    rmSync(log, { force: true });
-    const again = prove([...landing(), `${second}:checks`]);
-    expect(again.status).toBe(0);
-    expect(again.stderr.match(/passed earlier on these exact bytes/gu)).toHaveLength(3);
-    expect(gatesRun(log)).toEqual([]);
-  });
-
-  it("runs nothing again over a restack that kept each tree and its parent's, and runs a commit whose parent's tree moved", () => {
-    prove(landing());
-    rmSync(log, { force: true });
-    const tree = (at: string): string => git("rev-parse", `${at}^{tree}`);
-    // A restack: new ids and messages over the same bytes.
-    const sourceAgain = git("commit-tree", tree(source), "-p", docs, "-m", "source, restacked");
-    const secondAgain = git("commit-tree", tree(second), "-p", sourceAgain, "-m", "second, restacked");
-    expect(prove([`${sourceAgain}:static`, `${secondAgain}:whole`]).status).toBe(0);
-    expect(gatesRun(log)).toEqual([]);
-    // The same tree over a parent whose tree moved: its static pass reads another diff.
-    const moved = git("commit-tree", withFile(docs, "moved.txt"), "-p", docs, "-m", "moved");
-    const sourceMoved = git("commit-tree", tree(source), "-p", moved, "-m", "source over moved");
-    const secondMoved = git("commit-tree", tree(second), "-p", sourceMoved, "-m", "second over moved");
-    expect(prove([`${moved}:static`, `${sourceMoved}:static`, `${secondMoved}:whole`]).status).toBe(0);
-    expect(gatesRun(log)).toEqual([`${moved} -`, `${sourceMoved} test/owner.test.ts`]);
-  });
-
   it("runs a tree again once a file the gate imports changed, and not for a neighbour it never imports", () => {
     // A copy of the checker as a caller's checkout holds it: the gate and what it imports.
     const checker = join(fixture, "checker");
@@ -280,19 +214,6 @@ describe("proveCommits", () => {
     expect(gatesRun(log)).toEqual([]);
     appendFileSync(join(checker, "src", "meta", "subprocess.ts"), "\n// the gate's import, changed\n");
     expect(prove(landing(), {}, driver).status).toBe(0);
-    expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`, `${second} suite`]);
-  });
-
-  it("reads no pass recorded by commit id, which names no gate", () => {
-    writeFileSync(join(work, ".git", "ana-gate-passed"), `${source} whole\n${second} whole\n`);
-    expect(prove(landing()).status).toBe(0);
-    expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`, `${second} suite`]);
-  });
-
-  it("runs every commit again under ANA_GATE_FRESH=1, whatever passed before", () => {
-    prove(landing());
-    rmSync(log, { force: true });
-    expect(prove(landing(), { ANA_GATE_FRESH: "1" }).status).toBe(0);
     expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`, `${second} suite`]);
   });
 

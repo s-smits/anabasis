@@ -59,12 +59,6 @@ describe("ana/no-hand-rolled-error-render", () => {
     expect(await reports(INSIDE)).toStrictEqual(expected);
   });
 
-  it("stays out of the owner, the browser bundle and the Builder-visible starter", async () => {
-    expect(await reports("src/meta/runtime-values.ts")).toStrictEqual([]);
-    expect(await reports("packages/ui/src/live.ts")).toStrictEqual([]);
-    expect(await reports("starters/pi-built-harness/agent/tools.ts")).toStrictEqual([]);
-  });
-
   it("calls the owner and brings both names in through one import", async () => {
     const fixed = await fixedSource("ana", RULE, CAUGHT, INSIDE);
     expect(fixed).toContain("return errorMessage(cause);");

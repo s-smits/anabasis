@@ -104,7 +104,7 @@ const listeners = new Set<() => void>();
 
 /** The route a query string names. An unknown pane reads as the Campaign pane, and a move or an
  *  event that is not a whole number from zero as none. */
-export function routeOf(search: string): Route {
+function routeOf(search: string): Route {
   const query = new URLSearchParams(search);
   const named = (key: (typeof KEYS)[number]) => {
     const value = query.get(key);

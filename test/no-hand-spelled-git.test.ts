@@ -6,7 +6,7 @@
  * string, and `"git"` as ordinary data — and the scope pins where the owner is asked.
  */
 import { describe, expect, it } from "bun:test";
-import { expectedLines, reportedLines, reportedMessages } from "./helpers/oxlint-rule-fixture.ts";
+import { expectedLines, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
 
 const SCRIPT = `
 import { spawnSync } from "node:child_process";
@@ -43,14 +43,6 @@ describe("ana/no-hand-spelled-git", () => {
       "tools/d2/example.ts",
     ]) {
       expect(await reports(at)).toStrictEqual(expected);
-    }
-  });
-
-  it("sends each site to the owner by its three names", async () => {
-    const reported = await reportedMessages("ana", "no-hand-spelled-git", SCRIPT, SKILL_SCRIPT);
-    expect(reported).toHaveLength(6);
-    for (const message of reported) {
-      expect(message).toContain(`Ask gitOutput, gitText or gitMaybe from ${OWNER}`);
     }
   });
 

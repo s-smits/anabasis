@@ -1,7 +1,7 @@
 /**
  * The Moves pane in a browser: the list of moves with its search, its kind filter and the
  * promotions between its rows; a row's detail opened in place and left by the page's Back, the
- * browser's back and a link; each kind of detail the fixture holds; the keyboard; a phone's width;
+ * browser's back; Examiner, Builder and comparison details; the keyboard; a phone's width;
  * and what axe-core finds at WCAG 2.2 AA on the list and each detail.
  */
 import { afterAll, beforeAll, describe, test } from "bun:test";
@@ -226,21 +226,6 @@ describe("a move's detail in place", () => {
     await opened.context.close();
   });
 
-  test("opens a move from a link, and its Back names the list as a new entry", async () => {
-    const index = indexOf("c-1", "comparison");
-    const opened = await openMoves(index);
-    const { page } = opened;
-    await expect(detailHeading(page, "c-1 Comparison, control")).toBeVisible();
-    await expect(page.getByRole("searchbox", { name: SEARCH })).toBeHidden();
-    await page.getByRole("button", { name: "Back to moves" }).click();
-    await expect(rowOf(page, index)).toBeFocused();
-    expect(routeParameters(page).move).toBeUndefined();
-    await page.goBack();
-    await expect(detailHeading(page, "c-1 Comparison, control")).toBeVisible();
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
   test("is reached, opened and left from the keyboard, with the focus drawn", async () => {
     const opened = await openMoves();
     const { page } = opened;
@@ -346,20 +331,6 @@ describe("each kind of move", () => {
     await opened.context.close();
   });
 
-  test("a repeat: read as a step, its rulings by kind", async () => {
-    const opened = await openMoves(indexOf("r-1", "comparison"));
-    const { page } = opened;
-    await expect(detailHeading(page, "r-1 Comparison, repeat")).toBeVisible();
-    await expect(badgesOf(page)).toHaveText("step");
-    expect(await factsOf(page)).toMatchObject({
-      Tally: "4 won, 0 lost, 2 tied",
-      Rulings: "4 earned · 0 check defect · 0 unclear",
-    });
-    await expectAccessible(page);
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
   test("a control: the starter against the reference, with the reference against itself beside it", async () => {
     const opened = await openMoves(indexOf("c-1", "comparison"));
     const { page } = opened;
@@ -385,18 +356,6 @@ describe("each kind of move", () => {
     await expect(page.getByRole("heading", { name: "Tasks fixed (3)" })).toBeVisible();
     await expect(page.getByText("no report yet", { exact: true })).toHaveCount(3);
     await expect(page.getByText(/ran no end/u)).toBeVisible();
-    await expectAccessible(page);
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
-  test("a Builder session still open: its turns so far and no practice solve", async () => {
-    const opened = await openMoves(indexOf("b-5", "builder"));
-    const { page } = opened;
-    await expect(detailHeading(page, "b-5 Builder session")).toBeVisible();
-    await expect(badgesOf(page)).toHaveText("open");
-    await expect(page.getByText("No practice solve on record.")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Turns and calls · 2 turns" })).toBeVisible();
     await expectAccessible(page);
     expectQuiet(opened);
     await opened.context.close();

@@ -345,6 +345,24 @@ describe("the do-nothing answer", () => {
     expect(fault).toContain(unformed.unformed ?? "missing");
     expect(unformed.unformed).toContain("pattern");
   });
+
+  it("follows a local reference as the inline schema it points to, and ends on a recursive one", async () => {
+    const cites = { type: "array", items: { type: "string" } };
+    const inline = await readUnder(mass({ type: "object", required: ["cites"], properties: { cites } }));
+    const referred = await readUnder({
+      ...mass({ type: "object", required: ["cites"], properties: { cites: { $ref: "#/$defs/cites" } } }),
+      $defs: { cites },
+    });
+    expect(referred.idle).toEqual({ mass: { cites: [] } });
+    expect([referred.idle, referred.unformed]).toEqual([inline.idle, inline.unformed]);
+    // A node that requires itself has no finite answer: the reference ends in null, which the
+    // format refuses as a fault of its own instead of a reading that never returns.
+    const looped = await readUnder({
+      $defs: { node: { $ref: "#/$defs/node" } },
+      ...mass({ $ref: "#/$defs/node" }),
+    });
+    expect(looped.idle).toEqual({ mass: null });
+  });
 });
 
 describe("a frozen checker", () => {

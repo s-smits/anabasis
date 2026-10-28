@@ -253,27 +253,45 @@ export function runControls(
 /**
  * The do-nothing answer: the smallest value a JSON Schema allows, built from the schema alone. An
  * object holds its required properties and no other, an array its fewest items, a string its
- * fewest characters, a number its minimum or zero; an enumeration gives its first value, and a
- * choice of schemas its first. A keyword outside these is not read, so the value may miss the
- * format, which the caller asks (`answerFormatFault`) before it puts the answer to a check.
+ * fewest characters, a number its minimum or zero; an enumeration gives its first value, a choice
+ * of schemas its first, and a local reference (`#/...`) the schema it points to from the root. A
+ * reference already being followed gives null, so a recursive format ends. A keyword outside these
+ * is not read, so the value may miss the format, which the caller asks (`answerFormatFault`)
+ * before it puts the answer to a check. Job's drafts of 28 October referred to `#/$defs/...`, and
+ * the answer built without following them missed their own format twice.
  */
-function doNothingAnswer(schema: JsonValue | undefined): JsonValue {
+function doNothingAnswer(
+  schema: JsonValue | undefined,
+  root: JsonValue | undefined = schema,
+  following: readonly string[] = [],
+): JsonValue {
   const held = asRecord(schema);
   if (held === null) return null;
+  const smallest = (inner: JsonValue | undefined) => doNothingAnswer(inner, root, following);
+  if (isString(held.$ref) && held.$ref.startsWith("#")) {
+    if (following.includes(held.$ref)) return null;
+    const target = held.$ref
+      .slice(1)
+      .split("/")
+      .slice(1)
+      .reduce<JsonValue | undefined>(
+        (at, step) => asRecord(at)?.[step.replaceAll("~1", "/").replaceAll("~0", "~")],
+        root,
+      );
+    return doNothingAnswer(target, root, [...following, held.$ref]);
+  }
   if (held.const !== undefined) return held.const;
   if (Array.isArray(held.enum)) return held.enum[0] ?? null;
   const choice = [held.anyOf, held.oneOf].find((options) => Array.isArray(options));
-  if (Array.isArray(choice)) return doNothingAnswer(choice[0]);
+  if (Array.isArray(choice)) return smallest(choice[0]);
   const type = Array.isArray(held.type) ? held.type[0] : held.type;
   if (type === "object") {
     const properties = asRecord(held.properties) ?? {};
     const required = Array.isArray(held.required) ? held.required.filter(isString) : [];
-    return Object.fromEntries(required.map((name) => [name, doNothingAnswer(properties[name])]));
+    return Object.fromEntries(required.map((name) => [name, smallest(properties[name])]));
   }
   if (type === "array") {
-    return Array.from({ length: isNumber(held.minItems) ? held.minItems : 0 }, () =>
-      doNothingAnswer(held.items),
-    );
+    return Array.from({ length: isNumber(held.minItems) ? held.minItems : 0 }, () => smallest(held.items));
   }
   if (type === "string") return "x".repeat(isNumber(held.minLength) ? held.minLength : 0);
   if (type === "number" || type === "integer") {
@@ -453,7 +471,7 @@ export async function readChecker(given: Read) {
       ...(unformed === null
         ? doNothingFaults(rejected)
         : [
-            `the do-nothing answer ${capturedJsonStringify(idle)} does not follow the answer format (${unformed}), so no check was seen to refuse it: the host builds it from the schema's types, required properties, minimums, least lengths and counts, first enumerated or constant values and first choices, and reads no other keyword`,
+            `the do-nothing answer ${capturedJsonStringify(idle)} does not follow the answer format (${unformed}), so no check was seen to refuse it: the host builds it from the schema's types, required properties, minimums, least lengths and counts, first enumerated or constant values, first choices and local references, and reads no other keyword`,
           ]),
     ],
     idle,

@@ -22,7 +22,9 @@
  * names on every rejection, which counts as a fail only once ruled earned and otherwise sets its task
  * aside for every system (`rejectionAside`), as a comparison's does. At four solves or more the
  * baseline is read against itself on halves of its solves mirrored in time, the comparison's A/A,
- * so a reading has its own noise beside it. The trial logs hold hidden values, so they stay under
+ * so a reading has its own noise beside it. A table sets the systems side by side on averages a solve
+ * (cost, wall time, slowest solve, model turns), since the operator asked on 28 October for time
+ * beside cost: a built system that costs a fifteenth can still take twice as long. The trial logs hold hidden values, so they stay under
  * `.ana/compare/`, behind the wall and outside `.ana/d2/`, where `runs retire` sweeps idle seeds.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
@@ -70,6 +72,9 @@ interface Solved {
   readonly valid: boolean[];
   readonly measure: (number | null)[];
   readonly billed: (number | null)[];
+  /** The solve's wall seconds and its model turns, as its ending records them. */
+  readonly seconds: (number | null)[];
+  readonly turns: (number | null)[];
   /** A rejection not ruled earned, which sets its task aside (`rejectionAside`). */
   readonly aside: boolean[];
 }
@@ -100,11 +105,20 @@ function solvedIn(log: string): Map<string, Solved> {
   for (const solve of ended(ranUnder(events)).sort((a, b) => a.started - b.started)) {
     const valid = passed(solve);
     if (valid === null) continue;
-    const task = out.get(solve.under.task) ?? { valid: [], measure: [], billed: [], aside: [] };
+    const task = out.get(solve.under.task) ?? {
+      valid: [],
+      measure: [],
+      billed: [],
+      seconds: [],
+      turns: [],
+      aside: [],
+    };
     const checker = verdicts.get(solve.id)?.checker;
     task.valid.push(valid);
     task.measure.push(checker?.kind === "pass" ? (checker.objective ?? null) : null);
     task.billed.push(isNumber(solve.end.billed) ? solve.end.billed : null);
+    task.seconds.push(isNumber(solve.end.seconds) ? solve.end.seconds : null);
+    task.turns.push(isNumber(solve.end.turns) ? solve.end.turns : null);
     task.aside.push(rejectionAside(events, solve));
     out.set(solve.under.task, task);
   }
@@ -112,9 +126,32 @@ function solvedIn(log: string): Map<string, Solved> {
 }
 
 const dollars = (value: number) => `$${value.toFixed(2)}`;
+const mean = (values: readonly (number | null)[]) => {
+  const counted = values.filter(isNumber);
+  return counted.length === 0 ? null : counted.reduce((sum, one) => sum + one, 0) / counted.length;
+};
+
+/** The systems side by side, each on the average of its counted solves. The cost is the log's whole
+ *  bill over those solves, the Referee's rulings included, so it runs a little over the solves' own;
+ *  the time is a solve's wall, which a harness's own programs can fill (`improve-truss` searched to
+ *  a deadline in all 12 solves of the truss reading of 28 October). */
+function tableLines(rows: readonly { system: System; own: Map<string, Solved>; billed: number }[]): string[] {
+  const minutes = (seconds: number | null) => (seconds === null ? "n/a" : `${(seconds / 60).toFixed(1)} min`);
+  return [
+    "| system | valid solves | average cost a solve | average time a solve | slowest solve | average model turns |",
+    "| --- | --- | --- | --- | --- | --- |",
+    ...rows.map(({ system, own, billed }) => {
+      const solves = [...own.values()];
+      const valid = solves.flatMap((row) => row.valid);
+      const seconds = solves.flatMap((row) => row.seconds).filter(isNumber);
+      const turns = mean(solves.flatMap((row) => row.turns));
+      return `| ${system.name} | ${String(valid.filter(Boolean).length)} of ${String(valid.length)} | ${valid.length === 0 ? "n/a" : dollars(billed / valid.length)} | ${minutes(mean(seconds))} | ${minutes(seconds.length === 0 ? null : Math.max(...seconds))} | ${turns === null ? "n/a" : turns.toFixed(1)} |`;
+    }),
+  ];
+}
 
 /** What one system did on the tasks, on its own. */
-function systemLines(system: System, digest: string, own: Map<string, Solved>, billed: number): string[] {
+function systemLines(system: System, digest: string, own: Map<string, Solved>): string[] {
   const rows = [...own.values()];
   const valid = rows.flatMap((row) => row.valid).filter(Boolean).length;
   const solves = rows.flatMap((row) => row.valid).length;
@@ -125,7 +162,6 @@ function systemLines(system: System, digest: string, own: Map<string, Solved>, b
     `${system.name}: ${system.model} at ${system.effort}, inside ${digest.slice(0, 8)}`,
     `  valid in ${String(valid)} of ${String(solves)} solves; of ${String(rows.length)} tasks, every solve valid on ${String(every)}, some on ${String(rows.length - every - none)}, none on ${String(none)}`,
     `  ${String(aside)} of its ${String(solves - valid)} fails are rejections the Referee did not rule earned, which set their tasks aside`,
-    `  billed ${dollars(billed)}${solves === 0 ? "" : `, ${dollars(billed / solves)} a solve`}${valid === 0 ? "" : `, ${dollars(billed / valid)} a valid answer`}`,
   ];
 }
 
@@ -196,6 +232,8 @@ function itself(baseline: System, own: Map<string, Solved>, at: Parameters<typeo
             valid: pick(row.valid),
             measure: pick(row.measure),
             billed: pick(row.billed),
+            seconds: pick(row.seconds),
+            turns: pick(row.turns),
             aside: pick(row.aside),
           },
         ];
@@ -330,8 +368,16 @@ async function main(args: CommandArgs): Promise<number> {
     `${String(tasks.length)} of the ${String(held.length)} held-out tasks of ${seed}, drawn by its contract's hash. Its Examiner gated them under ${recorded.solver === null ? "the stored cycle's solver" : `${recorded.solver.model} at ${recorded.solver.effort}`} against its references, so a system with that solver met their selection.`,
     `Every solve: ${String(recorded.minutes)} minutes and ${recorded.modelTurns === null ? "unlimited" : String(recorded.modelTurns)} model turns, the campaign's checks, and the Referee on every rejection.`,
     "",
-    ...opened.flatMap(({ system, harness, log }, index) =>
-      systemLines(system, harness.digest, solvedBy[index] ?? new Map(), billed(log)),
+    ...opened.flatMap(({ system, harness }, index) =>
+      systemLines(system, harness.digest, solvedBy[index] ?? new Map()),
+    ),
+    "",
+    ...tableLines(
+      opened.map(({ system, log }, index) => ({
+        system,
+        own: solvedBy[index] ?? new Map(),
+        billed: billed(log),
+      })),
     ),
     "",
     ...itself(baseline, solvedBy[0] ?? new Map(), { solves, level, direction }),

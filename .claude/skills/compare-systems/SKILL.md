@@ -77,8 +77,14 @@ of its solves mirrored in time, at four times the price; take it only on the ope
 1. **The tasks.** How many of the seed's held-out tasks were drawn, and under which solver its
    Examiner gated them.
 2. **One block a system, on its own.** Valid solves of all solves; tasks where every, some or no
-   solve was valid; fails the Referee did not rule earned; dollars billed, per solve and per valid
-   answer.
+   solve was valid; fails the Referee did not rule earned.
+   **One table for all systems**, on averages a solve: valid solves, cost, wall time, the slowest
+   solve and model turns. The cost is the log's whole bill over the solves, the Referee's rulings
+   included, so it runs a little over the solves' own. Show the table with the verdict, and quote no
+   cost per valid answer. When a system's time is high, split its calls into the model's turns and
+   the tools it ran (`solve.call` carries `ms`): a harness whose own programs search up to a
+   deadline fills the wall (Terra in the truss harness: 28.1 of 28.6 minutes a solve on 28 October),
+   and a slower system is then a harness cost, not a slower model.
 3. **The A/A**, only at four solves or more.
 4. **One block a candidate.** Wins, losses and ties against the baseline; which measure carried the
    untied tasks (validity, the objective, or the bill alone); p each way; and one verdict:
@@ -88,8 +94,8 @@ of its solves mirrored in time, at four times the price; take it only on the ope
 
 At one solve a task, each task's result rests on one solve a side, and one solve is weak evidence
 (`AGENTS.md`, rule 6): say so beside the reading. "Reaches equal scores" is said only as: no step
-either way, at this size, with that detectable share, and each system's dollars per valid answer
-beside it.
+either way, at this size, with that detectable share, and each system's average cost and time a
+solve beside it.
 
 ## Limits
 

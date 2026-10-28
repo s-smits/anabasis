@@ -652,7 +652,14 @@ describe("compare-systems reads a candidate against the baseline as a comparison
     new Map(
       ["t1", "t2", "t3", "t4", "t5", "t6"].map((task) => [
         task,
-        { valid: [valid, valid], measure: [null, null], billed: [1, 1], aside: [aside, aside] },
+        {
+          valid: [valid, valid],
+          measure: [null, null],
+          billed: [1, 1],
+          seconds: [60, 60],
+          turns: [4, 4],
+          aside: [aside, aside],
+        },
       ]),
     );
   const at = { solves: 2, level: 0.02, direction: undefined };

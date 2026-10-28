@@ -11,6 +11,11 @@ test over those scores and another without the bill must both clear the level to
 weights, another level or a candidate tree read the same solves. A replay starts no solve, calls no
 model and writes nothing of a campaign's.
 
+It tunes how a comparison scores the solves it bought. What a seat is told (the Examiner's prompt,
+a gate's reply) is tuned by seating it in rounds of live pairs, system-path-simulation's
+[optimize](../system-path-simulation/cases/optimize.md), which reads its rounds in the same order
+as this skill reads a replay.
+
 ## What can be tuned, and whose it is
 
 | Term | Where it lives | How the replay changes it |
@@ -103,19 +108,30 @@ evidence (`AGENTS.md`, factor 2). Where only one score supports a promotion, nam
 
 ## Tuning the score
 
-1. Run the baseline on `main`'s tree, whole and with `--totals`, into the scratchpad, with the host
+1. Write the prediction first, in the investigation's folder (`.ana/wri/<date>-<what>/`): for each
+   candidate and each weight or level to be swept, the counts of step 5 it should move and which
+   way. A sweep read before its prediction invites the setting that reads best, which is a
+   description of the record, never a tuning of it.
+2. Run the baseline on `main`'s tree, whole and with `--totals`, into the scratchpad, with the host
    environment loaded. Default discovery refreshes every host's records; use the same explicit
    offline `--logs` input for both trees when a frozen comparison is needed.
-2. Sweep `--weights` and `--level` first where they answer the question. Keep each set of weights
+3. Sweep `--weights` and `--level` first where they answer the question. Keep each set of weights
    in steps of five.
-3. For a floor or the test, make a candidate worktree from `origin/main`, following
+4. For a floor or the test, make a candidate worktree from `origin/main`, following
    [stack-pr](../stack-pr/SKILL.md), that changes one thing, and run the same table on it close to
    the baseline.
-4. Recommend a candidate only where promotions rise or hours per promotion fall, no A/A reads a
-   step, and no added promotion is contradicted by a later reading of its pair. Count an added
-   promotion with no later reading as untested, and give the won-by counts beside every candidate.
-5. Deliver both tables in the pull request as counts, with the reconciliation explained.
-6. Confirm live only on the operator's word, with a fresh campaign from a prompt at the candidate's
+5. Recommend a candidate on one of two bars, and name which:
+   - **a gain**: promotions rise or hours per promotion fall, no A/A reads a step, and no added
+     promotion is contradicted by a later reading of its pair. Count an added promotion with no
+     later reading as untested;
+   - **as good, and simpler**: a candidate that removes a floor, a measure or a branch of the test
+     reads the same promotions as rightful, adds no A/A step and leaves hours per promotion where
+     they were, and is simpler by reduce-complexity's measures.
+
+   Give the won-by counts beside every candidate, and resolve each prediction of step 1 as held or
+   missed with its count.
+6. Deliver both tables in the pull request as counts, with the reconciliation explained.
+7. Confirm live only on the operator's word, with a fresh campaign from a prompt at the candidate's
    commit and a prediction recorded before the first solve (`AGENTS.md`, section 10, item 9).
    Continuing a campaign at another commit measures no climb.
 
@@ -143,6 +159,6 @@ Report, in order:
 1. The trees, their commits, the weights and level each read, and the minute each was read.
 2. The reconciliation counts on each.
 3. Recorded promotions: rightful, in doubt with reasons, and rejected by the score.
-4. Each candidate's totals beside the baseline, with each condition of tuning step 4 and its count,
-   and the won-by counts.
+4. Each candidate's totals beside the baseline: the bar of tuning step 5, each of its conditions
+   with its count, each prediction held or missed, and the won-by counts.
 5. Campaigns left out, reports read from stored differences, and live counts that may move.

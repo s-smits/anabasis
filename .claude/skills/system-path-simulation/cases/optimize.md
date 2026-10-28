@@ -15,6 +15,10 @@ gates, so most single rounds are noise. And the seat is prompted, never trained,
 shown can change it: a mechanism that works through a reward in the literature carries over only
 where it can be restated as a fact in the seat's prompt, opening, tool results or home.
 
+How a comparison scores the solves it bought is no seat's, and is tuned without seating anything,
+from the record, by [promotion-tuner](../../promotion-tuner/SKILL.md). This case borrows its order
+of reading: identity and delivery first, then the counts beside an A/A, then a bar named.
+
 ## What a round can tune, and whose it is
 
 A round changes one thing the seat is given and reads whether the count moves. For the Examiner:

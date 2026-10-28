@@ -157,7 +157,7 @@ describe("pre-push", () => {
     const result = push([update(second, docs)], { ANA_FAKE_FAIL: `${second} lint` });
     expect(result.status).toBe(1);
     const last = result.stderr.trimEnd().split("\n").at(-1) ?? "";
-    expect(last).toStartWith(`pre-push: ${short(second)} FAILS lint. Nothing was pushed. Log: `);
+    expect(last).toStartWith(`pre-push: ${short(second)} FAILS lint ON ITS OWN. Nothing was pushed. Log: `);
     expect(readFileSync(last.slice(last.indexOf("Log: ") + 5), "utf8")).toContain(
       "gate: step lint failed (exit 1)",
     );

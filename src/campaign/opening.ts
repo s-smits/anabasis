@@ -112,13 +112,19 @@ export function inFlight(log: string): number {
   return FLYING.get(log) ?? 0;
 }
 
+/** What is left of the campaign's total once every billed dollar in `events` is subtracted, with
+ *  its reserve, or null where the opening names no budget. The one reading of it for the plan, a
+ *  solve's admission, the Builder's practice, the Examiner's next request and the page's runway. */
+export function budgetLeft(events: readonly LogEvent[]): Cap | null {
+  const budget = openingOf(events)?.budget;
+  return budget == null ? null : { dollars: budget.dollars - billedAll(events), reserve: budget.reserve };
+}
+
 /** Whether the campaign whose log is `log` holds a reserve for `count` more solves beside those in
  *  flight. A log whose opening names no budget holds every one. */
 export function affords(log: string, count: number): boolean {
-  const events = read(log);
-  const budget = openingOf(events)?.budget;
-  if (budget == null) return true;
-  return budget.dollars - billedAll(events) >= (inFlight(log) + count) * budget.reserve;
+  const left = budgetLeft(read(log));
+  return left === null || left.dollars >= (inFlight(log) + count) * left.reserve;
 }
 
 /** `run`, counted in flight for the campaign whose log is `log` while it runs. */
@@ -193,10 +199,7 @@ export function planOf(
       target: isNumber(named) ? named : (beside.target ?? SIZE.tasks),
       level: beside.level,
     },
-    left:
-      opening?.budget == null
-        ? null
-        : { dollars: opening.budget.dollars - billedAll(events), reserve: opening.budget.reserve },
+    left: budgetLeft(events),
     prompted: opening?.prompt != null,
     pastStop: beside.pastStop ?? null,
     // A launch without `--hitl` is the operator's word for every check its author decides

@@ -49,7 +49,7 @@ import { type LogEvent, read } from "../kernel/log.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { limitsIn } from "../kernel/condition.ts";
 import type { Contract } from "../kernel/contract.ts";
-import { billedAll, billedParts, callList, callText, closingOf, traceOf } from "../kernel/trace.ts";
+import { billedParts, callList, callText, closingOf, traceOf } from "../kernel/trace.ts";
 import { ended, passed, practiceRan, rejectionAside, solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import {
@@ -83,7 +83,7 @@ import { systemPrompt } from "../solver/prompt.ts";
 import { clockText, solverTools } from "../solver/run.ts";
 import { memoryOverCapNotice } from "./memory.ts";
 import { STARTED as COMPARISON_STARTED } from "../campaign/comparison.ts";
-import { openingOf } from "../campaign/opening.ts";
+import { budgetLeft } from "../campaign/opening.ts";
 import { type Said, shellWalls } from "./prompt.ts";
 import type { BuildRequest, PracticeTask } from "./session.ts";
 
@@ -416,8 +416,8 @@ async function practise(bench: Bench, task: PracticeTask, kept: HarnessSnapshot,
  * The Builder is told a count and never a sum.
  */
 export function practiceLeft({ request, spent }: Bench, events: readonly LogEvent[]): number {
-  const budget = request.campaign === undefined ? null : openingOf(events)?.budget;
-  if (budget != null) return Math.max(0, Math.floor((budget.dollars - billedAll(events)) / budget.reserve));
+  const left = request.campaign === undefined ? null : budgetLeft(events);
+  if (left !== null) return Math.max(0, Math.floor(left.dollars / left.reserve));
   const counted = request.limits.practiceSolves - spent;
   if (request.cap === undefined) return counted;
   const afforded = Math.floor(

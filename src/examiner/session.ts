@@ -31,12 +31,11 @@ import {
 import { Type } from "typebox";
 import { type SeatTool, sessionClock, sit } from "../agent/session.ts";
 import { endingWith, openingTool } from "../builder/tools.ts";
-import { openingOf } from "../campaign/opening.ts";
+import { budgetLeft } from "../campaign/opening.ts";
 import { append, read } from "../kernel/log.ts";
 import { priceKey } from "../kernel/meter.ts";
 import { Cancellation } from "../kernel/solve.ts";
 import { examinerSessions } from "../kernel/solves.ts";
-import { billedAll } from "../kernel/trace.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { JsonObject } from "../meta/json-shape.ts";
@@ -155,10 +154,8 @@ const ENDINGS = ["stands", "finished", "supplied", "killed", "wall", "crashed", 
  * holds nothing.
  */
 function withinBudget(log: string, spent: AbortController): boolean {
-  const events = read(log);
-  const budget = openingOf(events)?.budget;
-  if (budget === null || budget === undefined) return true;
-  if (budget.dollars - billedAll(events) >= budget.reserve) return true;
+  const left = budgetLeft(read(log));
+  if (left === null || left.dollars >= left.reserve) return true;
   spent.abort(new Cancellation("campaign-budget"));
   return false;
 }

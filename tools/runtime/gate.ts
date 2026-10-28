@@ -14,7 +14,8 @@
  * then marks the commit with an error rather than a failure and prints no fix, since nothing was
  * learnt about the commit (`NO_VERDICT`).
  *
- * `--static` is what the pre-push hook runs over a pushed head (`tools/runtime/pre-push.ts`), and
+ * `--static` is what the pre-push hook runs over a pushed head where the push asks (`ANA_PUSH_VERIFY=1`,
+ * `tools/runtime/pre-push.ts`), and
  * what each commit below the one that gets the whole CI gate receives: v1's rule of 24
  * September 2026 that every published commit passes alone, because a session reading the history
  * copies a red commit and its repair as the way work is done. "Near" is one import, v1's depth: at

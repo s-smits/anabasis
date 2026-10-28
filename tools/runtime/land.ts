@@ -13,8 +13,9 @@
  * it, and follows its top (`oldestStack`; operator, 27 October). It never follows into another
  * chain on main.
  *
- * A push runs no test: the pre-push hook runs every other step of the CI gate over the pushed head
- * (`tools/runtime/pre-push.ts`), so a pushed commit is unproved until it lands here. This is where
+ * A plain push runs no step of the CI gate, and one with `ANA_PUSH_VERIFY=1` only the static steps
+ * and nearby tests over the pushed head (`tools/runtime/pre-push.ts`), so a pushed commit is unproved
+ * until it lands here. This is where
  * each landing head's first-parent line above main is proved over its own checkout: the static
  * steps and its nearby tests, and the whole CI gate, the full suite among it, on the top's head
  * (`tools/runtime/gate.ts`), each pass already recorded skipped. `--sanitize` runs that proof when

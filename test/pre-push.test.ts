@@ -21,6 +21,7 @@ const bin = join(fixture, "bin");
 const log = join(fixture, "gates.log");
 const fake = (mkdirSync(bin), fakeBun(bin, log));
 const absent = "0".repeat(40);
+const verify = { ANA_PUSH_VERIFY: "1" };
 const STATIC = [
   "install --frozen-lockfile",
   "run format:check",
@@ -136,25 +137,25 @@ describe("pre-push", () => {
     expect(gatesRun(log)).toEqual([]);
   });
 
-  it("gives the pushed head its static steps and the tests near its own change, over its own checkout", () => {
+  it("checks a plain push of source with git diff --check and the secret scan, and runs no gate step", () => {
     const result = push([update(second, docs)]);
+    expect(result.status).toBe(0);
+    expect(gatesRun(log)).toEqual([]);
+  });
+
+  it("gives the pushed head its static steps and the tests near its own change where the push asks", () => {
+    const result = push([update(second, docs)], verify);
     expect(result.status).toBe(0);
     expect(gatesRun(log)).toEqual([`${second} -`]);
     expect(stepsOver(second)).toEqual(STATIC);
     expect(stepsOver(source)).toEqual([]);
     rmSync(log, { force: true });
-    expect(push([update(source, docs)]).status).toBe(0);
+    expect(push([update(source, docs)], verify).status).toBe(0);
     expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`]);
   });
 
-  it("runs the whole suite on the pushed head where the push asks for a full verify", () => {
-    const result = push([update(source, docs)], { ANA_PUSH_VERIFY: "full" });
-    expect(result.status).toBe(0);
-    expect(gatesRun(log)).toEqual([`${source} suite`]);
-  });
-
   it("refuses a push whose head fails the strict lint, and names the step and its log", () => {
-    const result = push([update(second, docs)], { ANA_FAKE_FAIL: `${second} lint` });
+    const result = push([update(second, docs)], { ...verify, ANA_FAKE_FAIL: `${second} lint` });
     expect(result.status).toBe(1);
     const last = result.stderr.trimEnd().split("\n").at(-1) ?? "";
     expect(last).toStartWith(`pre-push: ${short(second)} FAILS lint ON ITS OWN. Nothing was pushed. Log: `);
@@ -172,11 +173,10 @@ describe("pre-push", () => {
     const edited = git("commit-tree", withFile(source, "extra.ts"), "-p", docs, "-m", "source");
     const replayed = git("commit-tree", withFile(second, "extra.ts"), "-p", edited, "-m", "second");
     const beside = git("commit-tree", withFile(source, "beside.ts"), "-p", source, "-m", "beside");
-    const result = push([
-      update(edited, oldSource, "parent"),
-      update(replayed, oldSecond),
-      update(beside, absent, "beside"),
-    ]);
+    const result = push(
+      [update(edited, oldSource, "parent"), update(replayed, oldSecond), update(beside, absent, "beside")],
+      verify,
+    );
     expect(result.status).toBe(0);
     expect(gatesRun(log)).toEqual([`${replayed} -`, `${beside} -`]);
   });

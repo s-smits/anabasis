@@ -29,7 +29,7 @@ import {
   type ThinkingLevel,
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { type SeatTool, sit } from "../agent/session.ts";
+import { type SeatTool, sessionClock, sit } from "../agent/session.ts";
 import { endingWith, openingTool } from "../builder/tools.ts";
 import { openingOf } from "../campaign/opening.ts";
 import { append, read } from "../kernel/log.ts";
@@ -187,64 +187,6 @@ function finishTool(mode: Mode, said: Said, told: (last: boolean, line: string) 
       return ending(text(told(true, "Finished.")));
     },
   });
-}
-
-/** One author timer, paused only while host settlement is awaited. Overlapping waits share one
- *  interval; the last finally resumes the remaining allowance, unless the owner has closed it.
- *  Through that interval one `look` runs at its start and `every` milliseconds after: with the
- *  clock paused, a budget a peer spent would otherwise wait for the room solves to end. */
-function sessionClock(
-  began: number,
-  seconds: number,
-  look: { readonly every: number; readonly run: () => void },
-) {
-  const deadline = new AbortController();
-  let aside = 0;
-  let since = 0;
-  let depth = 0;
-  let closed = false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let looking: ReturnType<typeof setInterval> | undefined;
-  const hostMilliseconds = () => aside + (depth === 0 ? 0 : performance.now() - since);
-  const ownSeconds = () => (performance.now() - began - hostMilliseconds()) / 1000;
-  const arm = () => {
-    clearTimeout(timer);
-    if (closed || deadline.signal.aborted) return;
-    timer = setTimeout(
-      () => deadline.abort(new Cancellation("session-wall")),
-      Math.max(0, (seconds - ownSeconds()) * 1000),
-    );
-  };
-  arm();
-  return {
-    signal: deadline.signal,
-    seconds: ownSeconds,
-    hostSeconds: () => hostMilliseconds() / 1000,
-    within: async (action: () => Promise<void>) => {
-      if (depth === 0) {
-        if (ownSeconds() >= seconds) deadline.abort(new Cancellation("session-wall"));
-        clearTimeout(timer);
-        since = performance.now();
-        look.run();
-        looking = setInterval(look.run, look.every);
-      }
-      depth += 1;
-      try {
-        await action();
-      } finally {
-        depth -= 1;
-        if (depth === 0) {
-          clearInterval(looking);
-          aside += performance.now() - since;
-          arm();
-        }
-      }
-    },
-    close: () => {
-      closed = true;
-      clearTimeout(timer);
-    },
-  };
 }
 
 /**

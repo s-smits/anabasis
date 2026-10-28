@@ -75,7 +75,7 @@ import { openHarness } from "../harness/open.ts";
 import { type PublicTask, publicView } from "../solver/prompt.ts";
 import { HARNESS_ACCOUNT } from "../harness/starter.ts";
 import { type SolveRequest, solve } from "../solver/run.ts";
-import { type Sat, type SeatTool, sit } from "../agent/session.ts";
+import { type Sat, type SeatTool, sessionClock, sit } from "../agent/session.ts";
 import { claimRoot } from "../wall/seat-root.ts";
 import { campaignOf } from "../campaign/handover.ts";
 import { copyHarness, seedKept } from "./kept.ts";
@@ -129,13 +129,7 @@ interface BuildLimits extends Limits {
   readonly practiceSolves: number;
 }
 
-interface BuildClock {
-  readonly began: number;
-  readonly signal: AbortSignal;
-  readonly seconds: () => number;
-  readonly arm: () => void;
-  readonly close: () => void;
-}
+type BuildClock = ReturnType<typeof sessionClock>;
 
 export interface BuildRequest {
   /** Names the session in the log. */
@@ -347,20 +341,10 @@ export async function session(
     effort: request.effort,
     limits: { ...limits },
   });
-  const deadline = new AbortController();
   // The deadline counts the Builder's own time: its clock stops while a campaign action runs, which is
-  // the host's time (`Bench.within`), and `aside` is what the actions took.
-  let aside = 0;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const ownSeconds = () => (performance.now() - began - aside) / 1000;
-  // One timer at a time: until 14 October the opening's `within` armed one that the session's own
-  // arming overwrote, and it cut main0_5_1's Builder four hours on, a comparison in flight.
-  let closed = false;
-  const arm = () => {
-    clearTimeout(timer);
-    if (closed) return;
-    timer = setTimeout(() => deadline.abort(), (limits.wallSeconds - ownSeconds()) * 1000);
-  };
+  // the host's time (`Bench.within`). Until 14 October the opening armed a second timer that the
+  // session's own arming overwrote, and it cut main0_5_1's Builder four hours on, a comparison in flight.
+  const clock = sessionClock(began, limits.wallSeconds);
   const bench: Bench = {
     request,
     said: SAID[request.campaign === undefined ? "host" : "builder"],
@@ -379,33 +363,9 @@ export async function session(
     halt: new AbortController(),
     fatal: null,
     note: null,
-    within: async (action) => {
-      clearTimeout(timer);
-      const since = performance.now();
-      try {
-        return await action();
-      } finally {
-        aside += performance.now() - since;
-        arm();
-      }
-    },
+    within: clock.within,
   };
-  return await converse(
-    bench,
-    dirs.host,
-    {
-      began,
-      signal: deadline.signal,
-      seconds: ownSeconds,
-      arm,
-      close: () => {
-        closed = true;
-        clearTimeout(timer);
-      },
-    },
-    walled,
-    env,
-  );
+  return await converse(bench, dirs.host, clock, walled, env);
 }
 
 /** Rebuilt from public facts, including tasks released while the conversation stays open. */
@@ -493,7 +453,6 @@ async function converse(
     if (bench.halt.signal.aborted) throw new Error("The session has ended at a bound.");
   };
   const started = (await campaign?.start?.()) ?? "";
-  clock.arm();
   const sat = await sit({
     models: request.models,
     home: join(host, "model"),

@@ -1,12 +1,15 @@
-// The Starter Pack: the Starter Built Harness, which has no program or tool of its own and the
-// starter instructions as its guide, and the account of a harness's files a Builder is handed. The
-// account gives each part one purpose, and its two worked harnesses open and run as they are
-// printed: one whose computation is a program the solver runs from its shell, and one without the
-// shell, whose computation is a tool.
+// The Starter Pack: the Starter Built Harness, pi's coding tools with the board programs as its one
+// computation and the starter instructions as its guide, and the account of a harness's files a
+// Builder is handed. The account gives each part one purpose, and its two worked harnesses open and
+// run as they are printed: one whose computation is a program the solver runs from its shell, and
+// one without the shell, whose computation is a tool.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ToolExecutionApi } from "@earendil-works/pi-durable";
 import type { SeatTool } from "../src/agent/session.ts";
+import { harnessTools, openHarness } from "../src/harness/open.ts";
+import { installedPrograms } from "../src/harness/programs.ts";
+import { EXAMPLE, HARNESS_ACCOUNT, WITHOUT_SHELL, writeStarter } from "../src/harness/starter.ts";
 import {
   mkdirSync,
   mkdtempSync,
@@ -21,8 +24,6 @@ import { runtimeProcess } from "../src/meta/process.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../src/tools/coding.ts";
 import { type CommandWall, makeSeatDirs, solveDirs } from "../src/tools/command.ts";
 import { walledEnv } from "../src/tools/env.ts";
-import { harnessTools, openHarness } from "../src/harness/open.ts";
-import { EXAMPLE, HARNESS_ACCOUNT, WITHOUT_SHELL, writeStarter } from "../src/harness/starter.ts";
 import { solveIsolationPolicy } from "../src/wall/base.ts";
 import { osIsolationSupport } from "../src/wall/os-isolation.ts";
 import { writeHarness } from "./helpers/write-harness.ts";
@@ -63,17 +64,24 @@ beforeAll(async () => {
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 describe("the Starter and its worked harnesses", () => {
-  it("has pi's coding tools selected, the starter instructions as its guide, and no tool or program", async () => {
+  it("has pi's coding tools selected, the board programs as its computation, and the starter instructions as its guide", async () => {
     expect(starter.presets).toEqual([...CODING_TOOLS]);
     expect(selectedCodingTools(starter.presets)).toEqual(["read", "bash", "edit", "write"]);
     expect(starter.kinds.size).toBe(0);
-    expect(starter.toolTree).toBeNull();
+    // Its one computation is the five board programs the solver runs from its shell, not a tool.
+    expect(installedPrograms(starter.toolTree)).toEqual([
+      "cairn-fact",
+      "cairn-hint",
+      "cairn-init",
+      "cairn-intent",
+      "cairn-show",
+    ]);
     // Its guide keeps the outline the account asks of every guide, and the account prints it whole
     // as the starter instructions, so a Builder reads what it starts from.
     const headings = (guide: string | null) => guide?.split("\n").filter((line) => line.startsWith("#"));
     expect(headings(starter.guide)).toEqual(headings(EXAMPLE.guide));
     expect(HARNESS_ACCOUNT).toContain(`\`\`\`markdown\n${starter.guide?.trimEnd()}\n\`\`\``);
-    // Its three files are the whole of it, so it is one harness wherever it is written.
+    // Its files are the whole of it, so it is one harness wherever it is written.
     const again = join(dir, "again");
     writeStarter(again);
     expect((await openHarness(again)).digest).toBe(starter.digest);
@@ -84,9 +92,80 @@ describe("the Starter and its worked harnesses", () => {
       spec: { presets: [...CODING_TOOLS], tools: [] },
       tools: file.replaceAll(/^\/\/.*\n/gm, ""),
       guide: readFileSync(join(dir, "agent", "BUILT_AGENTS.md"), "utf8"),
+      programs: Object.fromEntries(
+        installedPrograms(starter.toolTree).map((name) => [
+          name,
+          readFileSync(join(dir, ".toolchain", "bin", name), "utf8"),
+        ]),
+      ),
     });
     expect((await openHarness(uncommented)).digest).toBe(starter.digest);
   });
+
+  it.skipIf(!osIsolationSupport().ok)(
+    "runs the board programs the Starter installs, and the graph they keep, under the command wall",
+    async () => {
+      const starterDir = join(root, "board");
+      const dirs = solveDirs(`board-${String(runtimeProcess.pid)}-${String(Date.now())}`);
+      try {
+        writeStarter(starterDir);
+        makeSeatDirs(dirs);
+        const base = solveIsolationPolicy({ repoRoot: starterDir });
+        if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
+        const wall: CommandWall = {
+          base,
+          dirs,
+          toolTree: join(starterDir, ".toolchain"),
+          limits: { shellDefaultSeconds: 60, shellMaxSeconds: 60 },
+        };
+        const [shell] = codingTools(wall, ["bash"]);
+        if (shell === undefined) throw new Error("the coding tools serve bash");
+        const run = async (command: string) => {
+          const chunks: string[] = [];
+          const api: Pick<
+            ToolExecutionApi,
+            "callId" | "env" | "output" | "outputWindow" | "retainedOutput" | "diagnostic"
+          > = {
+            callId: "call",
+            env: walledEnv(wall),
+            output: (chunk) => {
+              chunks.push(Buffer.from(chunk).toString("utf8"));
+            },
+            outputWindow: undefined,
+            retainedOutput: () => ({ text: chunks.join(""), truncated: false }),
+            diagnostic: () => undefined,
+          };
+          // SAFETY: bash uses this API subset, with no document or task methods.
+          const result = await shell.execute({ command }, api as ToolExecutionApi, BACKGROUND_CONTEXT);
+          return { ...result, out: chunks.join("") };
+        };
+        // The board's programs run by name from the solver's home, and keep the graph append-only.
+        expect((await run("cairn-init target flag")).out).toContain("the board holds origin and goal");
+        expect((await run("cairn-intent origin -- scan")).out).toContain("i001: scan");
+        expect((await run("cairn-fact port-80-open --intent i001")).out).toContain("f001: port-80-open");
+        // A Fact with no Intent is found by checking the goal, and needs no edge.
+        expect((await run("cairn-fact found-flag")).out).toContain("f002: found-flag");
+        expect((await run("cairn-hint prefer-web")).out).toContain("h001: prefer-web");
+        // An Intent must name a Fact on the board: an unknown one fails and writes nothing.
+        expect((await run("cairn-intent f999 -- nope")).isError).toBe(true);
+        // cairn-show prints the whole graph, which is what the solver observes before deciding.
+        const shown = (await run("cairn-show")).out;
+        for (const line of [
+          "origin: target",
+          "goal: flag",
+          "  f002: found-flag",
+          "  i001 [origin] -> f001: scan",
+          "  h001: prefer-web",
+        ]) {
+          expect(shown).toContain(line);
+        }
+      } finally {
+        rmSync(dirs.root, { recursive: true, force: true });
+        rmSync(dirs.host, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
 
   it("prints a harness without the shell, whose computation is a tool, and it opens as printed", async () => {
     expect(selectedCodingTools(shellless.presets)).toEqual(["read", "edit", "write"]);

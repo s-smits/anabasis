@@ -4,6 +4,8 @@
 // own, and the campaign keeps its harnesses by name: the one it started with, the starter
 // and the latest a session left.
 import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
+import { openHarness } from "../src/harness/open.ts";
+import { installedPrograms } from "../src/harness/programs.ts";
 import { append, read } from "../src/kernel/log.ts";
 import { latestBuilt, PATIENCE, promoted } from "../src/kernel/reports.ts";
 import { sizeLines } from "../src/kernel/size.ts";
@@ -21,14 +23,13 @@ import {
   symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
+import { gitText } from "../src/meta/git.ts";
+import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { errorMessage } from "../src/meta/runtime-values.ts";
-import type { JsonObject } from "../src/meta/json-shape.ts";
-import { openHarness } from "../src/harness/open.ts";
-import { codeOf, FOLLOWED, starter, keptAs, openCampaign, treeFault } from "../tools/d2/campaign.ts";
-import { gitText } from "../src/meta/git.ts";
+import { codeOf, FOLLOWED, keptAs, openCampaign, starter, treeFault } from "../tools/d2/campaign.ts";
 import { checkpointCommand } from "../tools/d2/checkpoint.ts";
 import { importCommand } from "../tools/d2/import.ts";
 import { prepareCommand } from "../tools/d2/prepare.ts";
@@ -36,10 +37,10 @@ import { promoteCommand } from "../tools/d2/promote.ts";
 import {
   capNamed,
   packaged,
-  refereeNamed,
   ROUND_OPTIONS,
-  roundCommand,
+  refereeNamed,
   reportLines,
+  roundCommand,
 } from "../tools/d2/round.ts";
 import { sessionCommand } from "../tools/d2/session.ts";
 
@@ -355,15 +356,21 @@ describe("a campaign", () => {
   it("starts from the Starter Built Harness, and keeps it and the latest a session left, each by name", async () => {
     const campaign = await openCampaign(ARGS);
     // The starter is a harness like any other: it opens, with pi's four coding tools selected, the
-    // starter instructions as its guide and no tool of its own, and it is kept under its digest
-    // among the campaign's states.
+    // board programs as its one computation and the starter instructions as its guide, and it is
+    // kept under its digest among the campaign's states.
     const least = await starter(campaign);
     const opened = await openHarness(least.dir);
     expect(least).toEqual({ dir: join(campaign.states, opened.digest), digest: opened.digest });
     expect(opened.guide).toContain("# Operating Guide");
     expect(opened.presets).toEqual(["read", "bash", "edit", "write"]);
     expect(opened.kinds.size).toBe(0);
-    expect(opened.toolTree).toBeNull();
+    expect(installedPrograms(opened.toolTree)).toEqual([
+      "cairn-fact",
+      "cairn-hint",
+      "cairn-init",
+      "cairn-intent",
+      "cairn-show",
+    ]);
     expect(await starter(campaign)).toEqual(least);
     expect(readdirSync(campaign.states)).toEqual([least.digest]);
     // It is the reference harness, and until a session has left a harness it is the latest too:

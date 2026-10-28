@@ -275,6 +275,11 @@ function spansOf(log: Index): Span[] {
   for (const { at, kind, data } of log.events) {
     const time = Date.parse(at);
     for (const [key, { part }] of cut.splice(0)) open.set(key, { part, from: time });
+    // A campaign drafts one exam at a time, so a draft that starts ends any draft still open: the
+    // process that ran it is gone. truss-fresh-opus-terra073v4-m1-air's d-1, cut 90 seconds in and
+    // relaunched as d-2, counted until the log's end, 21.5 hours of an Examiner that never turned.
+    const superseded = kind === "draft.started" ? [...open.keys()].filter((key) => key.startsWith(kind)) : [];
+    for (const key of superseded) close(key, time);
     for (const [part, start, end] of SPANS) {
       const key = `${start}:${text(data.session)}`;
       if (kind === start && !open.has(key)) open.set(key, { part, from: time });

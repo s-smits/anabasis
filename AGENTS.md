@@ -42,9 +42,9 @@ one question:
 > Is the new harness better than the reference harness, for this solver, on tasks neither was
 > built on?
 
-The point of the climb lies outside it: a cheap solver inside the harness built for its domain
-should reach what a dear solver reaches inside the starter. A campaign cannot read that, since its
-setting fixes the solver; the skill `compare-systems` reads it on a campaign's held-out tasks.
+The point of the climb lies outside it: a built system with a cheap solver should reach what a bare
+system with a dear solver reaches. A campaign cannot read that, since its setting fixes the solver;
+the skill `compare-systems` reads it on a campaign's held-out tasks.
 
 A comparison in code answers it. Both harnesses solve the same held-out tasks afresh, under the
 same limits. A hidden check program decides whether each answer is valid. Each task then counts as
@@ -1402,7 +1402,7 @@ procedure:
 | Reading the harnesses a campaign keeps, before a promotion or a handover | `harness-audit` |
 | Reading the promotions on record, and tuning the promotion rule | `promotion-tuner` |
 | Tuning a seat's prompt or terms (the Examiner, the Referee, the Builder) in rounds of live control and arm pairs, and reading such a round | `system-path-simulation`, its case `optimize` |
-| Asking whether a cheap solver inside the domain's built harness reaches a dear solver inside the starter | `compare-systems` |
+| Asking whether a built system with a cheap solver reaches a bare system with a dear solver | `compare-systems` |
 | Handing runs, or a question, to someone outside | `zip-run`, `oracle-handover` |
 
 `/goal` (`.claude/commands/goal.md`, kept from v1) carries one of the operator's objectives across a
@@ -1766,6 +1766,7 @@ read the conversation.
 | Hand label | A person's verdict on one rejection: `earned`, `check-defect` or `unclear`; or on one answer that passed: `sound`, `wrong` or `unclear` |
 | Built Harness | The directory the Builder edits (section 3), a harness for short: the part of a solving system that is built, compared and promoted. The Starter Built Harness is the first, and every reference after it is one a promotion named: a harness a Builder built, or one the operator imported (`import.ts`) |
 | Solver | The model that answers a task, fixed by the setting. It runs only inside a harness, and the two are one system |
+| System | One solver in one harness. A bare system has the Starter, a built system a harness a Builder wrote. A campaign compares two harnesses under one solver; `compare-systems` compares systems |
 | Reference harness | The harness a new one is compared with: the starter until a step is promoted |
 | Comparison | Both harnesses solve the same held-out tasks; each task is a win, a loss or a tie |
 | Round | One Builder session followed by one comparison. A session may also run on its own, without a comparison after it |

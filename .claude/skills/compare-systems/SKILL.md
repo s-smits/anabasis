@@ -1,16 +1,17 @@
 ---
 name: compare-systems
-description: Compare a cheap solver inside the harness built for its domain with a dear solver inside the starter, on one campaign's held-out tasks, one solve a task and system, outside the campaign's readings. Answers "can Terra with our truss harness reach Opus", and, when asked, how the harnesses of one domain stand under one solver. One script joins production primitives (a seed, the campaign's paid solve in a trial log, the comparison's tally and step rule) and prints one plain reading. Use when the operator asks to compare models, a cheap model against a dear one, harnesses, or "can X reach equal scores".
+description: Compare a built system with a cheap solver against a bare system with a dear solver, on one campaign's held-out tasks, one solve a task and system, outside the campaign's readings. Answers "can Terra with our truss harness reach Opus", and, when asked, how the harnesses of one domain stand under one solver. One script joins production primitives (a seed, the campaign's paid solve in a trial log, the comparison's tally and step rule) and prints one plain reading. Use when the operator asks to compare models, a cheap model against a dear one, harnesses, or "can X reach equal scores".
 ---
 
 # Compare systems
 
-Building a harness pays off when a cheap solver inside it does what a dear solver does without it.
-This skill measures that: a **system** is a solver inside a harness, and the default reading is
+Building a harness pays off when a cheap solver in it does what a dear solver does in the starter.
+This skill measures that. A **system** is a solver in a harness (`AGENTS.md`, section 14): a **bare
+system** has the starter, a **built system** a harness a Builder wrote. The default reading is
 
 ```text
-dear  = claude/claude-opus-5-5:medium   inside the starter (A)
-cheap = openai-codex/gpt-6.1-terra:high inside the domain's built harness
+bare  = claude/claude-opus-5-5:medium   inside the starter (A)
+built = openai-codex/gpt-6.1-terra:high inside the domain's built harness
 ```
 
 on every held-out task of one campaign, **one solve a task and system**. A campaign cannot make this
@@ -47,8 +48,8 @@ one ruled a check defect or unclear, or left unruled, sets its task aside for ev
    ```sh
    bun .claude/skills/compare-systems/scripts/systems.ts --seed cmp-truss \
      --root <root> --sweep <sweep> --cycle <cycle> --bundle <bundle> \
-     --baseline opus=claude/claude-opus-5-5:medium@A \
-     --candidate terra=openai-codex/gpt-6.1-terra:high@<digest of the truss harness> --read
+     --baseline bare-opus=claude/claude-opus-5-5:medium@A \
+     --candidate built-terra=openai-codex/gpt-6.1-terra:high@<digest of the truss harness> --read
    ```
    A harness is `starter` (or `A`), `promoted`, or a whole digest or a letter the seed keeps.
 4. **Solve, on the operator's word.** The same command with `--cap <dollars>`, `--reviewer <model>`,

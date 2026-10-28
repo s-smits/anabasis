@@ -2,10 +2,9 @@
  * Two or more solving systems, each a solver inside a harness, read against each other on one
  * campaign's held-out tasks. A campaign cannot make this reading: its setting fixes the solver, and
  * every comparison it makes sets two harnesses under that one solver (`tools/d2/setting.ts`). The
- * operator asked for it on 27 October: does a cheap solver inside the harness built for its domain
- * reach what a dear solver reaches inside the starter, as `gpt-6.1-terra` at high inside the truss
- * campaign's harness against `claude-opus-5-5` at medium inside the starter? That is the point of
- * building a harness. On the same day a reading of Terra in the starter against Terra in the built
+ * operator asked for it on 27 October: does a built system with a cheap solver reach what a bare
+ * system with a dear solver reaches, as `gpt-6.1-terra` at high inside the truss campaign's harness
+ * against `claude-opus-5-5` at medium inside the starter? That is the point of building a harness. On the same day a reading of Terra in the starter against Terra in the built
  * harness answered a campaign's question instead, and the operator asked for one solve of every
  * held-out task a system, so a reading is one run per task and system unless `--solves` names more.
  * `--login N` puts the login `CLAUDE_CODE_OAUTH_TOKEN<N>` in the plain token's place for a Claude
@@ -88,7 +87,7 @@ function systemOf(flag: string, die: CommandArgs["die"]): System {
     harness === "" ||
     [...more, ...after, ...extra].length > 0
   ) {
-    return die(`${flag}: name=model:effort@harness, as cheap=openai-codex/gpt-6.1-terra:high@promoted`);
+    return die(`${flag}: name=model:effort@harness, as built-terra=openai-codex/gpt-6.1-terra:high@promoted`);
   }
   return { name, model, effort, harness };
 }

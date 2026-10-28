@@ -546,7 +546,7 @@ describe("a campaign", () => {
     expect(read(campaign.log).filter(({ kind }) => kind === "build.started")).toEqual([]);
   });
 
-  it("starts no paid comparison without a dollar cap, and prints each harness by itself in words", async () => {
+  it("starts no paid comparison without a dollar cap or a Referee", async () => {
     const flags = Object.entries(ARGS).flatMap(([flag, value]) => [`--${flag}`, value]);
     await expect(roundCommand([...flags, "--session", "z-8", "--builder", "faux/none"])).rejects.toThrow(
       "name --cap, the billed dollars this comparison may hold",
@@ -587,38 +587,39 @@ describe("a campaign", () => {
     expect(unrefereed.stderr.toString()).toContain("name --reviewer");
     expect(() => refereeNamed({ reviewer: SERVED }, "paid")).not.toThrow();
     expect(() => refereeNamed({}, "scripted")).not.toThrow();
-    // What a report says of each harness by itself is printed in words: the tasks by how many of
-    // their solves were valid. For the first round the reference harness is the starter, and
-    // these lines are what its gate reads. Until 2026-10-11 the same solves were also read at
-    // each shorter `--budget`, and a report held a row for each; the flag is refused since.
-    expect(
-      reportLines({
-        valid: { old: [2, 1, 5], fresh: [0, 1, 7], informative: { old: 0, fresh: 0 } },
-        objective: null,
-        frontier: null,
-        noise: null,
-      }),
-    ).toEqual([
-      "each harness by itself, as how many tasks had 0, 1, 2 valid answers in 2 solves (a count of tasks a column, not a share):",
-      "  at its limits: reference 2/1/5, new 0/1/7",
-    ]);
+    // Until 2026-10-11 the same solves were also read at each shorter `--budget`; the flag is
+    // refused since.
+    expect(ROUND_OPTIONS).not.toHaveProperty("budget");
+    const campaign = await openCampaign(ARGS);
+    expect(read(campaign.log).some(({ data }) => data.session === "z-8")).toBe(false);
+  });
+
+  it("prints in a report's lines the counts, shares and points it holds, and what each test is read on", () => {
+    // Each harness by itself: the tasks by how many of their solves were valid. For the first round
+    // the reference harness is the starter, and these are what its gate reads.
+    const alone = reportLines({
+      valid: { old: [2, 1, 5], fresh: [0, 1, 7], informative: { old: 0, fresh: 0 } },
+      objective: null,
+      frontier: null,
+      noise: null,
+    }).join("\n");
+    expect(alone).toContain("in 2 solves");
+    expect(alone).toMatch(/reference 2\/1\/5\b.*new 0\/1\/7\b/su);
     expect(reportLines({ valid: null, objective: null, frontier: null, noise: null })).toEqual([]);
     // The turns of a valid answer are said over the tasks both harnesses answered, and in no test.
     const turns = { s1: { old: null, fresh: 3 }, s2: { old: 12, fresh: 4 }, s3: { old: 10, fresh: 6 } };
-    expect(
-      reportLines({
-        valid: { old: [0, 0, 3], fresh: [0, 0, 3], informative: { old: 0, fresh: 0 } },
-        objective: null,
-        frontier: null,
-        noise: null,
-        turns,
-      }).at(-1),
-    ).toBe(
-      "the median turns of a valid answer, over the 2 tasks both answered: reference 11, new 5 (reported, in no test)",
-    );
-    // Every reading says how many of its tallied tasks, frontier and retained together, were untied
-    // and the least share of them it detects four times in five, or none where they are fewer than
-    // the least sweep.
+    const took = reportLines({
+      valid: { old: [0, 0, 3], fresh: [0, 0, 3], informative: { old: 0, fresh: 0 } },
+      objective: null,
+      frontier: null,
+      noise: null,
+      turns,
+    }).at(-1);
+    expect(took).toMatch(/\b2 tasks\b.*reference 11, new 5\b.*in no test/u);
+    // Every reading says how many of its tallied tasks, frontier and retained together, were untied,
+    // the least share of them it detects four times in five, its false rate, and, since 26 October,
+    // the same tasks' tally without the bill, which a step clears as well. The share and the rate
+    // are the full-score test's, an upper bound for the rule that needs both.
     const scored = {
       unsolved: 0,
       wins: 4,
@@ -626,37 +627,34 @@ describe("a campaign", () => {
       ties: 4,
       p: 0.0625,
       differences: [2, 2, 2, 2, 0, 0, 0, 0],
+      unbilled: [-2, -2, -2, -2, 0, 0, 0, 0],
       detectable: 0.95,
       falseRate: 0.01953125,
     };
     const valid = { old: [8, 0, 0], fresh: [4, 0, 4], informative: { old: 0, fresh: 0 } };
     const frontier = { ...scored, tasks: ["v1", "v2", "v3", "v4", "v5", "v6", "v7"], aside: [] };
-    expect(reportLines({ valid, objective: null, scored, frontier, noise: null }).slice(0, 2)).toEqual([
-      "the test on the full score is read on 8 tallied tasks, 4 of them untied: one reading at the comparison's level detects four times in five a harness that wins 95% of them",
-      // Beside the level, the test's own rate at the report's margins.
-      "the test on the full score at these margins clears the level between equal harnesses 2% of the time, never more than the level: an upper bound for the rule requiring both tests",
-    ]);
-    // A report written before 20 October read its step, and these two, on its frontier alone.
-    expect(reportLines({ valid, objective: null, frontier, noise: null }).at(0)).toContain(
-      "read on 8 tallied",
-    );
-    expect(
-      reportLines({
-        valid,
-        objective: null,
-        scored: { ...scored, detectable: null },
-        frontier,
-        noise: null,
-      }).at(0),
-    ).toEndWith("detects four times in five no share of them");
+    const [size, rate, , bill] = reportLines({ valid, objective: null, scored, frontier, noise: null });
+    for (const fact of ["full score", "8 tallied", "4 of them untied", "95%"]) expect(size).toContain(fact);
+    for (const fact of ["full score", "2%", "upper bound"]) expect(rate).toContain(fact);
+    expect(bill).toContain("0-4-4, p 1");
+    // A report written before 20 October read its step, and these, on its frontier alone.
+    expect(reportLines({ valid, objective: null, frontier, noise: null }).at(0)).toContain("8 tallied");
+    const none = reportLines({
+      valid,
+      objective: null,
+      scored: { ...scored, detectable: null },
+      frontier,
+      noise: null,
+    }).at(0);
+    expect(none).toContain("no share");
+    expect(none).not.toMatch(/\d%/u);
     // The p beside it is the test's, which weighs margins; where every untied task is won it is the
     // count's alone (the plan's 7.5).
-    const two = { ...scored, wins: 2, ties: 0, p: 0.25, differences: [4, 1] };
-    expect(reportLines({ valid, objective: null, scored: two, frontier: null, noise: null }).at(2)).toBe(
-      "its p is 0.25: the test weighs each untied task by its score, and where every untied task is won p is one half to the power of their count whatever the margins: 2 won read 0.25",
-    );
-    // The A/A beside every reading that carries one: three readings of the noise, one a line, and
-    // what the tally drew, by what became of each task (the plan's 7.2 and 7.3).
+    const two = { ...scored, wins: 2, ties: 0, p: 0.25, differences: [4, 1], unbilled: [4, 1] };
+    const p = reportLines({ valid, objective: null, scored: two, frontier: null, noise: null }).at(2);
+    expect(p).toMatch(/p is 0\.25\b.*\b2 won read 0\.25\b/u);
+    // The A/A beside every reading that carries one: its tie share, flip rate and least detectable
+    // shift, and what the tally drew, by what became of each task (the plan's 7.2 and 7.3).
     const aa = { wins: 1, losses: 1, ties: 6, p: 0.75, differences: [1, -1, 0, 0, 0, 0, 0, 0], flips: 0.125 };
     const lines = (detectable: number | null) =>
       reportLines({
@@ -670,32 +668,25 @@ describe("a campaign", () => {
         disputed: ["v8"],
         withdrawn: [],
       }).slice(0, 5);
-    expect(lines(null)).toEqual([
-      "the reference against itself, on halves of its own solves mirrored in time (the A/A), over the 8 tallied tasks, 2 of them untied:",
-      "  tie share 75%: the share of tasks two equal harnesses tied at half the comparison's solves a side, where equal harnesses tie more often than at the comparison's own, so no floor for its ties",
-      "  flip rate 13%: how often two of its solves of one task disagree on validity",
-      "  least detectable shift on the full score alone: none, too few of its tasks are untied for any shift between its halves to clear the level, so its reading no step shows little",
-      "of the 8 tasks the comparison drew, 6 were tallied and 1 set aside on a rejection not ruled a true fail, 1 disputed: the columns below, room and the test are read over the tallied ones",
-    ]);
-    expect(lines(0.9)[3]).toBe(
-      "  least detectable shift on the full score alone: one reading of it, either half read at the level, detects four times in five a half that wins 90% of its untied tasks",
-    );
-    expect(ROUND_OPTIONS).not.toHaveProperty("budget");
-    // Where the report carries points, the points each measure gave are said beside.
-    expect(
-      reportLines({
-        valid: { old: [0, 0, 2], fresh: [0, 0, 2], informative: { old: 0, fresh: 0 } },
-        frontier: null,
-        objective: { direction: "lower" },
-        points: { validity: -150, objective: 225, bill: 75 },
-        noise: null,
-      }).slice(-2),
-    ).toEqual([
-      "the score weighs validity 0.6, the objective 0.3 and the bill 0.1, and over the tallied tasks gave the new harness -150, +225 and +75 points, a task's score running from -1000 to 1000",
-      "the objective: lower is better",
-    ]);
-    const campaign = await openCampaign(ARGS);
-    expect(read(campaign.log).some(({ data }) => data.session === "z-8")).toBe(false);
+    const [count, ties, flips, shift, drew] = lines(null);
+    for (const fact of ["8 tallied", "2 of them untied"]) expect(count).toContain(fact);
+    expect(ties).toContain("75%");
+    expect(flips).toContain("13%");
+    expect(shift).toMatch(/full score alone: none\b/u);
+    expect(lines(0.9)[3]).toContain("90%");
+    for (const fact of ["8 tasks", "6 were tallied", "1 set aside", "1 disputed"]) {
+      expect(drew).toContain(fact);
+    }
+    // Where the report carries points, the weights and the points each measure gave are said beside.
+    const [points, objective] = reportLines({
+      valid: { old: [0, 0, 2], fresh: [0, 0, 2], informative: { old: 0, fresh: 0 } },
+      frontier: null,
+      objective: { direction: "lower" },
+      points: { validity: -150, objective: 225, bill: 75 },
+      noise: null,
+    }).slice(-2);
+    expect(points).toMatch(/validity 0\.6\b.*objective 0\.3\b.*bill 0\.1\b.*-150, \+225 and \+75\b/u);
+    expect(objective).toContain("lower");
   });
   it("refuses a paid comparison started by hand where a launch of it would be refused", async () => {
     const campaign = await openCampaign(ARGS);

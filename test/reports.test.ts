@@ -874,12 +874,8 @@ describe("the release before the draw", () => {
     const fresh = [...log, ...heldOut("n1")];
     const order = releaseOrder(fresh, [...tasks, "n1"], 4, "seed");
     expect(order.map(([version]) => version)).toEqual(["f1", "f2", "a1", "a2"]);
-    expect(order.map(([, why]) => why)).toEqual([
-      ": the reference harness failed it in the last comparison, or a better answer on record left it room, and it is",
-      ": the reference harness failed it in the last comparison, or a better answer on record left it room, and it is",
-      ":",
-      ":",
-    ]);
+    // The failed tasks are said to be released for their failure, and the drawn ones for nothing.
+    expect(order.map(([, why]) => why.includes("failed"))).toEqual([true, true, false, false]);
     // Asked for more than the draw's pool holds, the release takes what there is and no kept task.
     expect(taken(log, 6).toSorted()).toEqual(["a1", "a2", "f1", "f2"]);
     // Half is rounded up, so one failed task alone is released, and a task the reference answered

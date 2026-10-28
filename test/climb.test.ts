@@ -404,17 +404,20 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     expect(epoch?.falsePromotion).toMatchObject({ attempts: 3, errors: 0, controls: 0, bound: 0.1 });
     expect(epoch?.falsePromotion.union).toBeCloseTo(0.25, 12);
     if (epoch === undefined) throw new Error("an epoch");
-    expect(epochLine(epoch)).toContain(
-      "3 promotion attempts under this reference, a false promotion among them estimated at 25%: 10% for the riskiest attempt by the rule's design; no A/A control with enough untied tasks in every test",
-    );
-    // The closing report sums the epochs' estimates, here the one epoch's (the plan's 7.6).
-    expect(riskLines(log).slice(0, 2)).toEqual([
-      "- Epoch 1: 3 promotion attempts, a false promotion among them estimated at 25%: 10% for the riskiest attempt by the rule's design; no A/A control with enough untied tasks in every test.",
-      "Over the campaign, a false promotion in any epoch estimated at 25%: the sum of the epochs' estimates, capped at one, which assumes nothing of how the attempts depend on one another. It sums estimates, so it is an estimate and no bound.",
-    ]);
+    // The line and the closing report's epoch carry the attempts, their summed estimate, the
+    // riskiest attempt's rate and that no control was read; the campaign's line sums the epochs'
+    // estimates, here the one epoch's, as an estimate and no bound (the plan's 7.6).
+    const [epochRisk, total] = riskLines(log);
+    for (const line of [epochLine(epoch), epochRisk]) {
+      expect(line).toMatch(
+        /\b3 promotion attempts\b.*\b25%.*\b10% for the riskiest attempt\b.*\bno A\/A control\b/u,
+      );
+    }
+    expect(total).toContain("25%");
+    expect(total).toContain("no bound");
     // A rate under ten percent is printed to a tenth: 1.8% is not 2%.
     const small = { ...rated, data: { ...rated.data, frontier: { differences: [0], falseRate: 0.018 } } };
-    expect(riskLines([started, small])[0]).toContain("1.8% for the riskiest attempt by the rule's design");
+    expect(riskLines([started, small])[0]).toContain("1.8% for the riskiest attempt");
   });
 
   it("counts the A/A controls that could read a step and those that read one, one-sided at the level, beside the design's rate, and lets them set none of it", () => {

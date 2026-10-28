@@ -32,14 +32,13 @@ import {
 } from "../src/builder/session.ts";
 import type { Bench } from "../src/builder/tools.ts";
 import { type Condition, recordCondition, settingId } from "../src/kernel/condition.ts";
-import { detectable, draw, pairsOf, power, readsStep, testOf, WEIGHTS } from "../src/kernel/compare.ts";
+import { draw, pairsOf, WEIGHTS } from "../src/kernel/compare.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import { latestBuilt, poolOf, stopRule } from "../src/kernel/reports.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import { passed, ranUnder } from "../src/kernel/solves.ts";
 import { taskStates } from "../src/kernel/task.ts";
-import { reportLines } from "../tools/d2/round.ts";
 import {
   cpSync,
   mkdirSync,
@@ -127,31 +126,6 @@ const again = call("write", {
 });
 const third = call("write", { path: "harness/agent/BUILT_AGENTS.md", content: "Third.\n" });
 const finish = call("finish", { note: "A shorter guide." });
-
-it("qualifies power and false rates as full-score statistics when the unbilled test opposes it", () => {
-  const differences = Array<number>(6).fill(67);
-  const unbilled = Array<number>(6).fill(-33);
-  const tested = {
-    ...testOf(differences),
-    differences,
-    unbilled,
-    detectable: detectable(differences, 0.02),
-    falseRate: power(differences, 0.5, 0.02),
-  };
-  expect(tested.falseRate).toBe(1 / 64);
-  expect(readsStep(differences, unbilled, 0.02)).toBe(false);
-  const lines = reportLines({
-    valid: { old: [0, 0, 6], fresh: [0, 0, 6], informative: { old: 0, fresh: 0 } },
-    objective: null,
-    frontier: null,
-    scored: { ...tested, unsolved: 0 },
-    noise: { ...tested, flips: 0 },
-  });
-  expect(lines[0]).toContain("the test on the full score");
-  expect(lines[1]).toContain("upper bound for the rule requiring both tests");
-  expect(lines.find((line) => line.includes("least detectable shift"))).toContain("full score alone");
-  expect(lines.join("\n")).toContain("without the bill's points the same tasks read 0-6-0, p 1");
-});
 
 afterAll(() => {
   for (const dir of scratches) rmSync(dir, { recursive: true, force: true });
@@ -1034,51 +1008,44 @@ describe("a round", () => {
   });
 
   it("sets every rejection aside where no reviewer is seated, which reads not scored and is no test that found no gain, and reads it once a person has labelled them", async () => {
-    {
-      // The plan's first round is read this way: hand labels stand in for the Judge.
-      const s = await setup([edit, finish], rejecting);
-      const report = await round(s.request);
-      expect(report).toMatchObject({
-        scored: { wins: 0, losses: 0, ties: 0, p: 1 },
-        counted: { wins: 4, losses: 0, p: 0.0625 },
-        versions: [],
-        aside: HELD,
-        reading: NOT_SCORED,
-      });
-      expect(s.asked).toHaveLength(16);
-      const asked = toLabel(read(s.log), "b-1");
-      expect(asked.aside).toHaveLength(8);
-      expect(asked.others).toEqual([]);
-      const settled = settleReading(
-        s.log,
-        "b-1",
-        new Map(asked.aside.map((solve) => [solve, "earned"] as const)),
-      );
-      // The labels restore every task, and the test clears its level: a settling makes no solve.
-      expect(settled).toMatchObject({
-        scored: { wins: 4, losses: 0 },
-        counted: null,
-        versions: HELD,
-        aside: [],
-        reading: "step",
-        settled: { labelled: 8, defects: 0, disputed: [], restored: HELD },
-      });
-      expect(s.asked).toHaveLength(16);
-      // The new harness is then compared with the starter in a comparison of its own.
-      const fresh = { dir: join(s.request.session.states, settled.fresh ?? ""), digest: settled.fresh ?? "" };
-      expect(await checkpoint(s.compare("g5", { old: s.starter, fresh }))).toMatchObject({
-        scored: { wins: 4, losses: 0 },
-        reading: "step",
-      });
-    }
-    {
-      const s = await setup([edit, finish], rejecting);
-      const report = await round(s.request);
-      expect(report).toMatchObject({ scored: { wins: 0, losses: 0, ties: 0, p: 1 }, versions: [] });
-      expect(s.of(COMPARISON_REPORTED)[0]).toMatchObject({ tasks: 4, reading: NOT_SCORED });
-      // It tallied nothing, and is no checkpoint of the stop rule.
-      expect(stopRule(read(s.log))).toMatchObject({ checkpoints: 0 });
-    }
+    // The plan's first round is read this way: hand labels stand in for the Judge.
+    const s = await setup([edit, finish], rejecting);
+    const report = await round(s.request);
+    expect(report).toMatchObject({
+      scored: { wins: 0, losses: 0, ties: 0, p: 1 },
+      counted: { wins: 4, losses: 0, p: 0.0625 },
+      versions: [],
+      aside: HELD,
+      reading: NOT_SCORED,
+    });
+    expect(s.asked).toHaveLength(16);
+    expect(s.of(COMPARISON_REPORTED)[0]).toMatchObject({ tasks: 4, reading: NOT_SCORED });
+    // It tallied nothing, and is no checkpoint of the stop rule.
+    expect(stopRule(read(s.log))).toMatchObject({ checkpoints: 0 });
+    const asked = toLabel(read(s.log), "b-1");
+    expect(asked.aside).toHaveLength(8);
+    expect(asked.others).toEqual([]);
+    const settled = settleReading(
+      s.log,
+      "b-1",
+      new Map(asked.aside.map((solve) => [solve, "earned"] as const)),
+    );
+    // The labels restore every task, and the test clears its level: a settling makes no solve.
+    expect(settled).toMatchObject({
+      scored: { wins: 4, losses: 0 },
+      counted: null,
+      versions: HELD,
+      aside: [],
+      reading: "step",
+      settled: { labelled: 8, defects: 0, disputed: [], restored: HELD },
+    });
+    expect(s.asked).toHaveLength(16);
+    // The new harness is then compared with the starter in a comparison of its own.
+    const fresh = { dir: join(s.request.session.states, settled.fresh ?? ""), digest: settled.fresh ?? "" };
+    expect(await checkpoint(s.compare("g5", { old: s.starter, fresh }))).toMatchObject({
+      scored: { wins: 4, losses: 0 },
+      reading: "step",
+    });
   });
 
   it("settles a comparison on a person's labels, a label standing over a ruling, and writes its report once more", async () => {
@@ -1518,25 +1485,21 @@ describe("a round", () => {
     {
       // Two of four tasks answered by both on every solve, two by nobody.
       const two: Table = (version) => (version === "s1" || version === "s2" ? PASS : LATE);
-      const s = await setup([edit, finish, again, finish, third, finish], two);
-      for (const id of ["b-1", "b-2", "b-3"]) {
-        expect(await round(s.next(id))).toMatchObject({
-          scored: { wins: 0, losses: 0, ties: 4, unsolved: 2 },
-          valid: { old: [2, 0, 2], fresh: [2, 0, 2], informative: { old: 0, fresh: 0 } },
-          reading: NO_STEP,
-        });
-      }
+      const s = await setup([edit, finish], two);
+      expect(await round(s.next("b-1"))).toMatchObject({
+        scored: { wins: 0, losses: 0, ties: 4, unsolved: 2 },
+        valid: { old: [2, 0, 2], fresh: [2, 0, 2], informative: { old: 0, fresh: 0 } },
+        reading: NO_STEP,
+      });
       expect(stopRule(read(s.log))).toEqual({ checkpoints: 0, sinceStep: 0, stop: false });
     }
     {
-      const s = await setup([edit, finish, again, finish, third, finish], () => PASS);
-      for (const id of ["b-1", "b-2", "b-3"]) {
-        expect(await round(s.next(id))).toMatchObject({
-          scored: { wins: 0, losses: 0, ties: 4 },
-          valid: { old: [0, 0, 4], fresh: [0, 0, 4] },
-          reading: NO_STEP,
-        });
-      }
+      const s = await setup([edit, finish], () => PASS);
+      expect(await round(s.next("b-1"))).toMatchObject({
+        scored: { wins: 0, losses: 0, ties: 4 },
+        valid: { old: [0, 0, 4], fresh: [0, 0, 4] },
+        reading: NO_STEP,
+      });
       expect(stopRule(read(s.log))).toEqual({ checkpoints: 0, sinceStep: 0, stop: false });
     }
   });

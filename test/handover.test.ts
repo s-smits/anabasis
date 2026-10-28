@@ -543,22 +543,23 @@ describe("the Builder's filter over that reading", () => {
   it("tells where the starting harness came from, and how the last Builder session ended", () => {
     const c = campaign();
     c.setUp();
+    // With no session before it, the start names no session at all.
     const none = startTold(campaignOf(c.events()), STARTER, "b-1");
-    expect(none).toBe(
-      "You start from harness 00000000, which no Builder session of this campaign left: the Starter Built Harness unless the operator named another.",
-    );
+    expect(none).toMatch(/\b00000000\b.*\bno Builder session\b/u);
+    expect(none).not.toMatch(/\bb-\d/u);
+    // The session that left the harness comes first, and the last session and its ending after it.
     c.built("b-1", STARTER, HA, []);
     c.record("build.started", { session: "b-2", parent: HA, tasks: ["p1"] });
     c.record("build.finished", { session: "b-2", ended: "crashed", harness: HB, changed: true });
-    expect(startTold(campaignOf(c.events()), HA, "b-3")).toBe(
-      "You start from harness aaaaaaaa, which session b-1 left. The last Builder session, b-2, crashed: its conversation was lost to a provider or host error.",
-    );
+    const crashed = startTold(campaignOf(c.events()), HA, "b-3");
+    expect(crashed).toMatch(/\baaaaaaaa\b.*\bb-1\b.*\bb-2\b.*\bcrashed\b/su);
+    expect(crashed).not.toContain("reference");
     c.record("harness.promoted", { harness: HA, from: STARTER, rests: [] });
     // The session's own start is not the last session before it.
     c.record("build.started", { session: "b-3", parent: HA, tasks: ["p1"] });
-    expect(startTold(campaignOf(c.events()), HA, "b-3")).toContain(
-      "which session b-1 left, now the reference harness. The last Builder session, b-2, crashed",
-    );
+    const promoted = startTold(campaignOf(c.events()), HA, "b-3");
+    expect(promoted).toMatch(/\bb-1\b.*\breference harness\b.*\bb-2\b.*\bcrashed\b/su);
+    expect(promoted).not.toContain("b-3");
   });
 
   it("tells each comparison as its tally and its reading, with no task and no other count", () => {

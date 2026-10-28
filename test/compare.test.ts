@@ -53,31 +53,13 @@ const units = (wins: number, losses: number, by = 1, ties = 0): number[] => [
   ...Array.from({ length: losses }, () => -by),
   ...Array.from({ length: ties }, () => 0),
 ];
-/** A comparison's report as the log holds what its step reads: each frontier task's difference; the
- *  retained tasks', or `unmeasured` where none was tallied; and each family's tallies on the two.
- *  Each task's score without the bill is its score, as where no bill differed. */
-const report = (
-  frontier: readonly number[],
-  retained: readonly number[] | null = null,
-  families: JsonObject = {},
-): JsonObject => ({
+/** A comparison's report as the log holds what its step reads: each frontier task's difference, and
+ *  the retained tasks', or `unmeasured` where none was tallied. Each task's score without the bill
+ *  is its score, as where no bill differed. */
+const report = (frontier: readonly number[], retained: readonly number[] | null = null): JsonObject => ({
   frontier: { differences: [...frontier], unbilled: [...frontier] },
   retained: retained === null ? "unmeasured" : { differences: [...retained], unbilled: [...retained] },
-  families,
 });
-/** Each family's frontier tally, from its wins and losses, as a report holds it: `tied` families
- *  hold one tied task each. */
-const spread = (untied: Readonly<Record<string, readonly [number, number]>>, tied: readonly string[] = []) =>
-  Object.fromEntries([
-    ...Object.entries(untied).map(([name, [wins, losses]]) => [
-      name,
-      { frontier: { wins, losses, ties: 0 }, retained: { wins: 0, losses: 0, ties: 0 } },
-    ]),
-    ...tied.map((name) => [
-      name,
-      { frontier: { wins: 0, losses: 0, ties: 1 }, retained: { wins: 0, losses: 0, ties: 0 } },
-    ]),
-  ]);
 /** Every multiset of `tasks` draws from `each`, a task's difference in pair wins beside its chance. */
 function outcomes(tasks: number, each: readonly (readonly [number, number])[]): Outcome[] {
   const found: Outcome[] = [];
@@ -392,11 +374,6 @@ describe("one reading", () => {
     expect(readsStepEitherWay(losses, STRICT, losses)).toBe(true);
     expect(readsStepEitherWay(wins, STRICT)).toBe(true);
     expect(readsStepEitherWay(losses, STRICT)).toBe(true);
-  });
-
-  it("reads a step whose untied frontier tasks all fall in one family of the two the sets hold as any other", () => {
-    // Until 16 October such a step read `narrow` and promoted nothing; it never fired.
-    expect(stepOf(report(units(4, 0, 16), null, spread({ a: [4, 0] }, ["b"])), LEVEL)).toBe("step");
   });
 
   it("reads a step between equal harnesses at the test's own rate: 1.13% on 24 untied tasks at 0.02, 6.8% over a patience of six", () => {

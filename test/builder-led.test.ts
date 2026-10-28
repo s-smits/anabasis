@@ -570,12 +570,13 @@ describe("a campaign run by its live Builder", () => {
         }),
     };
     expect(await harnessBuilder([...seeded(name), ...FLAGS], seats)).toMatchObject({ move: "end" });
+    // The first finish is declined once, saying the harness is unmeasured and naming the Examiner
+    // session still writing; the second is taken.
+    const finishes = of(name, CALLED).filter(({ tool }) => tool === "finish");
+    expect(finishes.slice(0, 2).map(({ isError }) => isError)).toEqual([true, false]);
     const [first, second] = said(name, "finish");
-    expect(first).toContain(
-      "Not finished. No comparison has read harness/ as it stands against the reference, and finish leaves it unmeasured.",
-    );
-    expect(first).toContain("Examiner session x-1 is still writing tasks beside this conversation");
-    expect(second).not.toContain("No comparison has read");
+    for (const fact of ["unmeasured", "x-1"]) expect(first).toContain(fact);
+    expect(second).not.toContain("unmeasured");
     // The host compares what the Builder left before another conversation opens. Until 15 October
     // three conversations that finished so ended the campaign with no comparison made.
     const [left] = of(name, FINISHED);
@@ -1089,35 +1090,6 @@ describe("a campaign tool where the table names more than the action", () => {
     });
   });
 
-  it("promotes each harness as its step reports, and the Builder's own call finds none left", async () => {
-    layOutPack(root, bundle, MANY, FIXTURE);
-    const name = `${STEM}-owed`;
-    const seats: Seats = {
-      seated: builderScript(passing(), [
-        CHANGE_GUIDE,
-        ["compare", {}],
-        // The promoted harness closed the tasks it was read on: the next step is read on new ones.
-        ["examine", {}],
-        CHANGE_AGAIN,
-        ["compare", {}],
-        ["promote", {}],
-        ["finish", { note: "Both steps were promoted." }],
-      ]),
-      examine: writer,
-    };
-    await harnessBuilder([...seeded(name), ...FLAGS, "--moves", "10"], seats);
-    const [first, later] = of(name, REPORTED);
-    expect(later?.fresh).not.toBe(first?.fresh);
-    // The later harness is read against the promoted one, and the Builder's own call finds nothing
-    // to promote: until 12 October the tool named the last harness frozen.
-    expect(later?.old).toBe(first?.fresh);
-    expect(said(name, "promote")[0]).toContain("Nothing was promoted");
-    expect(of(name, "harness.promoted")).toMatchObject([
-      { harness: first?.fresh },
-      { harness: later?.fresh },
-    ]);
-  });
-
   it("reads the starter against a promoted reference while harness/ is that reference", async () => {
     layOutPack(root, bundle, MANY, FIXTURE);
     const name = `${STEM}-control`;
@@ -1162,26 +1134,37 @@ describe("a campaign tool where the table names more than the action", () => {
     expect(of(name, FINISHED)[0]).toMatchObject({ session: "b-1", ended: "finished" });
   });
 
-  it("records the Builder's comparison of a changed harness/ as its own where the table named the control", async () => {
+  it("records the Builder's comparison of a changed harness/ as its own where the table named the control, and promotes each harness as its step reports", async () => {
     layOutPack(root, bundle, MANY, FIXTURE);
     const name = `${STEM}-asked`;
     const seats: Seats = {
       seated: builderScript(passing(), [
         CHANGE_GUIDE,
         ["compare", {}],
+        // The promoted harness closed the tasks it was read on: the next step is read on new ones.
         ["examine", {}],
         CHANGE_AGAIN,
         ["compare", {}],
+        ["promote", {}],
         ["finish", { note: "The change was read." }],
         ["finish", { note: "The change was read." }],
       ]),
       examine: writer,
     };
-    await harnessBuilder([...seeded(name), ...FLAGS, "--exam-tasks", "6", "--moves", "7"], seats);
+    await harnessBuilder([...seeded(name), ...FLAGS, "--exam-tasks", "6", "--moves", "10"], seats);
     const [first, second] = of(name, REPORTED);
     const checkpoints = of(name, "build.checkpoint");
-    // The changed working copy is what was measured, not the starter the table named.
+    // The changed working copy is what was measured, not the starter the table named, and it is
+    // read against the promoted harness.
     expect(second).toMatchObject({ old: first?.fresh, fresh: checkpoints[1]?.harness });
+    expect(second?.fresh).not.toBe(first?.fresh);
+    // Each step is promoted as it reports, so the Builder's own call finds nothing to promote:
+    // until 12 October the tool named the last harness frozen.
+    expect(of(name, "harness.promoted")).toMatchObject([
+      { harness: first?.fresh },
+      { harness: second?.fresh },
+    ]);
+    expect(said(name, "promote")[0]).toContain("Nothing was promoted");
     const compares = of(name, MOVED).filter(({ move }) => move === "compare");
     // Each of the Builder's comparisons measured its working copy, and is recorded as asked.
     expect(compares.map(({ code }) => code)).toEqual(["asked", "asked"]);

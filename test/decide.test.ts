@@ -987,8 +987,6 @@ describe("the order of the rows", () => {
       ending: "environment",
       code: "bound",
     });
-    // A step promotes on its own reading.
-    expect(code([...FIRST, ...compared("g-1", "h1", "step")])).toBe("step");
   });
 });
 

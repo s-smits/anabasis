@@ -38,6 +38,16 @@ const realPs = Bun.which("ps") ?? "/bin/ps";
 const MACHINE = execTextSync("uname", ["-n"]).trim().split(".")[0] ?? "";
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-router-")));
 const SSH = `#!/bin/bash
+# A master, its close and each exchange over it are recorded apart, with the master's socket.
+control=""
+for arg in "$@"; do [[ "$arg" != ControlPath=* || "$arg" == ControlPath=none ]] || control="\${arg#ControlPath=}"; done
+if [[ " $* " == *" -O exit "* ]]; then printf 'exit %s\\n' "$control" >>"$FAKE_MASTERS"; exit 0; fi
+if [[ " $* " == *" ControlMaster=yes "* ]]; then
+  [[ -z "\${FAKE_DOWN:-}" ]] || exit 255
+  printf 'open %s\\n' "$control" >>"$FAKE_MASTERS"
+  exit 0
+fi
+[[ -z "$control" ]] || printf 'use %s\\n' "$control" >>"$FAKE_MASTERS"
 args=("$@")
 while [[ "\${args[0]}" == -* ]]; do
   if [[ "\${args[0]}" == -o ]]; then args=("\${args[@]:2}"); else args=("\${args[@]:1}"); fi
@@ -57,7 +67,7 @@ case "$command" in
     [[ -z "\${FAKE_DOWN:-}" ]] || exit 255
     cd "$home" && HOME="$home" exec /bin/sh -c "$command"
     ;;
-  "cat > "*)
+  *"cat > "*)
     body="$(cat; printf x)"
     body="\${body%x}"
     [[ -n "\${FAKE_FULL:-}" ]] || body="\${body%%bun install --frozen-lockfile >*}"
@@ -178,6 +188,7 @@ const env: Record<string, string | undefined> = {
   TMPDIR: tmp,
   FAKE_HOMES: homes,
   FAKE_LOG: log,
+  FAKE_MASTERS: join(root, "masters.log"),
   ANA_HOSTS: HOSTS,
   ANA_RUNNER_RETRY_DELAY: "0",
   ANA_RUNNER_MIN_FREE_GB: "1",
@@ -419,6 +430,34 @@ describe.skipIf(realRsync === null)("run.sh", () => {
       expect(logged()).toEqual(Array.from({ length: retries + 1 }, () => "fake-mac df"));
       expect(refused.stderr.split("on_host failed").length - 1).toBe(retries);
       expect(readFileSync(join(target, "edited"), "utf8")).toBe("untouched");
+    }
+  });
+
+  it("carries every exchange of a task over one connection and closes it, and connects each alone where none opens", () => {
+    const masters = join(root, "masters.log");
+    writeFileSync(masters, "");
+    expect(run(["test"], { RUN_REMOTE: "1" }).status).toBe(0);
+    const [opened, ...rest] = readFileSync(masters, "utf8").trim().split("\n");
+    const socket = opened?.replace(/^open /u, "") ?? "";
+    expect(socket.startsWith(join(tmp, "ana-ssh."))).toBe(true);
+    expect(rest).toEqual(["use", "use", "use", "use", "exit"].map((kind) => `${kind} ${socket}`));
+    expect(readdirSync(tmp).filter((name) => name.startsWith("ana-ssh."))).toEqual([]);
+    writeFileSync(masters, "");
+    expect(run(["test"], { RUN_REMOTE: "1", FAKE_DOWN: "1" }).status).toBe(69);
+    expect(readFileSync(masters, "utf8")).toBe("");
+    expect(readdirSync(tmp).filter((name) => name.startsWith("ana-ssh."))).toEqual([]);
+  });
+
+  it("refuses at once a host list from a hosts.js older than run.sh, instead of waiting for a slot", () => {
+    const lister = join(home, ".local", "share", "ana-runner", "hosts.js");
+    const current = readFileSync(lister, "utf8");
+    writeFileSync(lister, 'console.log("m1 fake-mac");\n');
+    try {
+      const stale = run(["test"], { RUN_REMOTE: "1", ANA_RUNNER_QUEUE_WAIT: "5" });
+      expect(stale.status).toBe(2);
+      expect(stale.stderr).toContain("hosts.js gave m1 no count of checks");
+    } finally {
+      writeFileSync(lister, current);
     }
   });
 

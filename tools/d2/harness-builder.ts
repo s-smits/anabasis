@@ -135,7 +135,7 @@ import { draftCommand } from "../d1b/draft.ts";
 import { examineCommand } from "../d1b/examine.ts";
 import { nextRun, writeReceipt } from "../runs/receipt.ts";
 import { standing } from "../runs/registry.ts";
-import { campaignLog, openCampaign, packNamed, REPO } from "./campaign.ts";
+import { campaignLog, openCampaign, packNamed, REPO, treeFault } from "./campaign.ts";
 import { type CampaignContext, campaignTools } from "./campaign-actions.ts";
 import {
   comparisonOf,
@@ -562,11 +562,15 @@ export async function harnessBuilder(
   args: readonly string[],
   seats: Seats = { seated: solved },
 ): Promise<Decided> {
-  // Runtime drift is refused before any opening, receipt or recovery can write to the campaign.
+  // Runtime drift, and a tree checked out again under paid seats (a dry run seats none), are
+  // refused before any opening, receipt or recovery can write to the campaign.
   const manifest = join(REPO, "package.json");
   const fault = pinFault(capturedJsonParse(readFileSync(manifest, "utf8")), Bun.version);
   if (fault !== null) throw new Error(`${manifest}: ${fault}`);
   const given = flagsOf(args);
+  const paid = seats.seated === solved ? "paid" : "scripted";
+  const moved = paid === "paid" && !given["dry-run"] ? treeFault(REPO) : null;
+  if (moved !== null) throw new Error(moved);
   const { name } = given;
   if (name === undefined) throw new Error("name --name, the campaign");
   const most = given.moves === undefined ? Number.POSITIVE_INFINITY : Number(given.moves);
@@ -577,7 +581,6 @@ export async function harnessBuilder(
   // Opening a campaign stages its check program, and refuses one the log froze otherwise. One that
   // opens from a prompt has no exam to open over until its first draft stands.
   let campaign = packed(given) ? await openCampaign(packNamed(given)) : null;
-  const paid = seats.seated === solved ? "paid" : "scripted";
   settingHeld(log, given);
   let opening = await served(opened(log, given, paid), paid, given.solver);
   if (paid === "paid" && !given["dry-run"]) keepReceipt(log, args);

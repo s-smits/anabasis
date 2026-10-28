@@ -30,7 +30,7 @@
  * the Mac's command wall, the pack and the sweep on disk, and a model login.
  */
 import type { Api, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
-import { backends, compactionMode } from "#src/agent/backends/models.ts";
+import { type BackendOptions, backends, compactionMode } from "#src/agent/backends/models.ts";
 import { type Practised, practised } from "#src/builder/session.ts";
 import { DIGEST, namesOf } from "#src/campaign/names.ts";
 import { type Opening, openingOf } from "#src/campaign/opening.ts";
@@ -68,7 +68,7 @@ import { tmpdir } from "#src/meta/os.ts";
 import { plural } from "#src/meta/text.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
-import { worktrees } from "#src/meta/git.ts";
+import { gitMaybe, worktrees } from "#src/meta/git.ts";
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import type { Reader } from "#src/referee/reader.ts";
@@ -181,6 +181,10 @@ export const LIMITS = {
 } as const satisfies Limits;
 /** The repository a campaign's folder lies in: the worktree whose source the command runs. */
 export const REPO = resolve(import.meta.dir, "..", "..");
+/** The file in a worktree's own git folder that marks a checkout a job keeps moving to the top of
+ *  the open stack (`bun run follow`), so that no paid seat runs from it (`treeFault`). */
+export const FOLLOWED = "ana-followed";
+
 /** The flags that name a stored pack together. */
 const PACK_FLAGS = 4;
 /** The agent runtime's packages, pinned in `package.json`; the SDK pins the Claude Code binary. */
@@ -197,6 +201,34 @@ export function worktreesOf(repo: string): string[] {
   return worktrees(repo)
     .map((tree) => resolve(tree))
     .filter((tree) => tree !== own && existsSync(tree));
+}
+
+/**
+ * Why `tree` runs no paid seat, or null. A seat executes the source of the tree it started in for
+ * hours, so a tree that is checked out again under it runs the seat on two commits, and a tree
+ * holding a live seat cannot be moved. On 28 October a live solve of a candidate harness ran from
+ * the main checkout, and the job that keeps that checkout at the stack's top skipped twice on its
+ * uncommitted files. A repository's main worktree, and a worktree that job marked, are such trees.
+ */
+export function treeFault(tree: string): string | null {
+  const own = gitMaybe(tree, "rev-parse", "--path-format=absolute", "--git-dir");
+  if (own === null) return null;
+  const moved =
+    own === gitMaybe(tree, "rev-parse", "--path-format=absolute", "--git-common-dir")
+      ? "is its repository's main worktree"
+      : existsSync(join(own, FOLLOWED))
+        ? `is kept at the top of the open stack (${FOLLOWED})`
+        : null;
+  return moved === null
+    ? null
+    : `${tree} ${moved}, which is checked out again under a running seat; start a run or a simulation from a worktree of its own (\`git worktree add --detach <path> <commit>\`, as \`runs fresh\` makes one)`;
+}
+
+/** A paid seat's backends, refused in a tree that is checked out again under it (`treeFault`). */
+export function seatBackends(options: BackendOptions): ReturnType<typeof backends> {
+  const fault = treeFault(REPO);
+  if (fault !== null) throw new Error(fault);
+  return backends(options);
 }
 
 /** Where campaign `name` keeps its log: what a command reads before it opens the campaign, for the
@@ -416,7 +448,7 @@ export async function openCampaign(args: CampaignArgs) {
       model: by.model,
       effort: by.effort,
       limits,
-      models: by.models ?? ((home, shutdown) => backends(sweepOptions(home, by.window, shutdown))),
+      models: by.models ?? ((home, shutdown) => seatBackends(sweepOptions(home, by.window, shutdown))),
       verify,
       log: written,
       repoRoot: REPO,
@@ -608,7 +640,7 @@ export function awaitingLines(campaign: {
  */
 function hostSession(seat: { readonly webSearch: boolean; readonly cacheTtl: "5m" | "1h" }) {
   return (home: string, shutdown: AbortSignal) =>
-    backends({ claude: { ...sweepOptions(home, undefined, shutdown).claude, ...seat } });
+    seatBackends({ claude: { ...sweepOptions(home, undefined, shutdown).claude, ...seat } });
 }
 
 /** An Examiner's backends, for the session that drafts an exam before there is a campaign to

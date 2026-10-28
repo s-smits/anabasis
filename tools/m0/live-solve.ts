@@ -25,7 +25,7 @@
  * since the policy names each solve's own directories.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
-import { backends, compactionMode } from "#src/agent/backends/models.ts";
+import { compactionMode } from "#src/agent/backends/models.ts";
 import { type Condition, conditionId, type Limits, recordCondition } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
@@ -48,7 +48,7 @@ import { firstTurn, NUDGE, seedHome, systemPrompt } from "#src/solver/prompt.ts"
 import { type SolveRequest, solve, solverTools } from "#src/solver/run.ts";
 import { claimRoot } from "#src/wall/seat-root.ts";
 import { HOST_SOLVE_ISOLATION_PROFILE_ID } from "#src/wall/base.ts";
-import { codeOf, worktreesOf } from "../d2/campaign.ts";
+import { codeOf, seatBackends, worktreesOf } from "../d2/campaign.ts";
 import {
   checkProgram,
   contractOf,
@@ -173,7 +173,7 @@ async function main(): Promise<number> {
       model,
       effort,
       limits: LIMITS,
-      models: (home, shutdown) => backends(sweepOptions(home, undefined, shutdown)),
+      models: (home, shutdown) => seatBackends(sweepOptions(home, undefined, shutdown)),
       verify: openVerifier({
         checks,
         tools: join(bundle, ".toolchain"),

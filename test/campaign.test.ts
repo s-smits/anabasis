@@ -27,7 +27,8 @@ import { runtimeProcess } from "../src/meta/process.ts";
 import { errorMessage } from "../src/meta/runtime-values.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { openHarness } from "../src/harness/open.ts";
-import { codeOf, starter, keptAs, openCampaign } from "../tools/d2/campaign.ts";
+import { codeOf, FOLLOWED, starter, keptAs, openCampaign, treeFault } from "../tools/d2/campaign.ts";
+import { gitText } from "../src/meta/git.ts";
 import { checkpointCommand } from "../tools/d2/checkpoint.ts";
 import { importCommand } from "../tools/d2/import.ts";
 import { prepareCommand } from "../tools/d2/prepare.ts";
@@ -215,6 +216,29 @@ describe("the code a solve's condition records", () => {
       writeFileSync(file, "export const a = 2;\n");
       expect(codeOf(tree).host !== host).toBe(moves);
     }
+  });
+});
+
+describe("the trees a paid seat refuses", () => {
+  // 28 October: a live solve ran from the main checkout, which a job keeps at the stack's top.
+  const trees = realpathSync(mkdtempSync(join(tmpdir(), "ana-tree-fault-")));
+  afterAll(() => rmSync(trees, { recursive: true, force: true }));
+  const main = join(trees, "main");
+  const own = join(trees, "own");
+  const followed = join(trees, "followed");
+  const loose = join(trees, "loose");
+  mkdirSync(main);
+  mkdirSync(loose);
+  gitText(main, "init", "-q");
+  gitText(main, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "c");
+  for (const tree of [own, followed]) gitText(main, "worktree", "add", "-q", "--detach", tree, "HEAD");
+  writeFileSync(join(gitText(followed, "rev-parse", "--path-format=absolute", "--git-dir"), FOLLOWED), "");
+
+  it("refuses a main worktree and a marked one, and runs in a worktree of its own or outside git", () => {
+    expect(treeFault(main)).toContain("main worktree");
+    expect(treeFault(followed)).toContain(FOLLOWED);
+    expect(treeFault(own)).toBeNull();
+    expect(treeFault(loose)).toBeNull();
   });
 });
 

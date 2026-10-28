@@ -1413,8 +1413,12 @@ Builder continuation restates its goal (`src/builder/prompt.ts`).
 
 What holds in all of them:
 
-1. **The worktree is the condition.** A run executes the source of the worktree it started in.
-   Launch from a clean worktree at a published commit, kept for that run alone. Do not edit `src/`
+1. **The worktree is the condition.** A run or a simulation executes the source of the worktree it
+   started in. Start each from a clean worktree at a published commit, kept for it alone, and never
+   from a checkout that is moved under it: a paid seat refuses a repository's main worktree and a
+   worktree whose git folder holds `ana-followed`, which a job that keeps a checkout at the stack's
+   top writes (`treeFault`, `tools/d2/campaign.ts`). `runs fresh` makes such a worktree; a live
+   solve or seat takes one from `git worktree add --detach <path> <commit>`. Do not edit `src/`
    there while the run lives, and move its folder only as section 5 says.
 2. **Prove the path first, without a model**: a dry run of the campaign command
    (`bun tools/d2/harness-builder.ts --name <name> --dry-run`), a replay for a changed reader

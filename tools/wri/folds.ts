@@ -644,8 +644,15 @@ export function taskTriggers(log: Index): Trigger[] {
       : [`${session}, opened after ${plural(before, "report")}: ${tally(said)}`];
   });
   return [
-    ...(proposed.length > 0 && passed * 2 < proposed.length
-      ? [fired("SUPPLY THIN", `${share(passed, proposed.length)} proposed tasks passed task admission`)]
+    // A proposal still at the gate has passed nothing yet, and failed nothing either: until
+    // 28 October it counted as a fail, and N's six pending drafts read as thin supply.
+    ...(passed * 2 < admissions.length
+      ? [
+          fired(
+            "SUPPLY THIN",
+            `${share(passed, admissions.length)} tasks the gate decided passed task admission; ${share(written.size - admissions.length, written.size)} proposed tasks are still at the gate`,
+          ),
+        ]
       : []),
     ...(Object.keys(reasons).length > 0 ? [fired("GATE REFUSED", tally(reasons))] : []),
     ...(unanswered > 0

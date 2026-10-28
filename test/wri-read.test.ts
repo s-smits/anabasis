@@ -366,6 +366,29 @@ describe("the reader of a round compared with another harness than its session s
     expect(line).toContain(live.at(-3)?.at ?? "MISSING_TIMESTAMP");
   });
 
+  // N on 28 October: twelve proposals, five held and one refused, six still at the gate.
+  it("reads thin supply on the tasks the gate decided, and counts those still at the gate apart", () => {
+    const thin = (held: number, refused: number, pending: number) => {
+      const exam: LogEvent[] = [];
+      const more = appendTo(exam);
+      more(EXAM_STARTED, { session: "x-1" });
+      const outcomes = [
+        ...Array.from({ length: held }, () => "passed"),
+        ...Array.from({ length: refused }, () => "refused"),
+        ...Array.from({ length: pending }, () => null),
+      ];
+      for (const [index, outcome] of outcomes.entries()) {
+        more(PROPOSED, { version: `w${String(index)}`, session: "x-1" });
+        if (outcome !== null) more(GATE, { version: `w${String(index)}`, gate: 1, outcome, reason: "room" });
+      }
+      return overview(exam).triggers.find(({ name }) => name === "SUPPLY THIN")?.detail;
+    };
+    expect(thin(5, 1, 6)).toBeUndefined();
+    expect(thin(1, 3, 2)).toBe(
+      "1 of 4 tasks the gate decided passed task admission; 2 of 6 proposed tasks are still at the gate",
+    );
+  });
+
   // buffer-main's g-1 had four solves in flight on 11 October, and lane 27 read them as killed.
   it("reads a solve with no end as open while its comparison is, and as never finished once the campaign ended", () => {
     const live = [...log];

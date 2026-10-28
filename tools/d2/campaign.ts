@@ -35,6 +35,8 @@ import { type Practised, practised } from "#src/builder/session.ts";
 import { DIGEST, namesOf } from "#src/campaign/names.ts";
 import { type Opening, openingOf } from "#src/campaign/opening.ts";
 import { type Draft, draftOf } from "#src/examiner/draft.ts";
+import { openHarness, treeContent } from "#src/harness/open.ts";
+import { writeStarter } from "#src/harness/starter.ts";
 import { departure } from "#src/kernel/acceptance.ts";
 import {
   type Condition,
@@ -50,6 +52,7 @@ import { freezePrices, priceKey } from "#src/kernel/meter.ts";
 import { latestBuilt, poolOf, promoted } from "#src/kernel/reports.ts";
 import { type TaskPackage, taskVersion } from "#src/kernel/task.ts";
 import { checkProgramVersion, openVerifier, type Task, type Verifier } from "#src/kernel/verify.ts";
+import { TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
 import {
   cpSync,
   existsSync,
@@ -61,36 +64,34 @@ import {
   rmSync,
   writeFileSync,
 } from "#src/meta/filesystem.ts";
+import { gitMaybe, worktrees } from "#src/meta/git.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, type JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { tmpdir } from "#src/meta/os.ts";
-import { plural } from "#src/meta/text.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
-import { gitMaybe, worktrees } from "#src/meta/git.ts";
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
+import { plural } from "#src/meta/text.ts";
 import type { Reader } from "#src/referee/reader.ts";
 import { referee } from "#src/referee/referee.ts";
-import { writeStarter } from "#src/harness/starter.ts";
-import { stageExam } from "./exam.ts";
-import type { NamedSolver } from "./setting.ts";
-import { openHarness, treeContent } from "#src/harness/open.ts";
 import { HOST_SOLVE_ISOLATION_PROFILE_ID } from "#src/wall/base.ts";
 import {
   checkProgram,
   contractOf,
+  modelNamed,
   packageOf,
   readPack,
   recordedAnswerFormat,
-  modelNamed,
   rowModel,
   storedRuntime,
   sweepOptions,
   sweepResources,
   sweepRows,
 } from "../m0/stored-sweep.ts";
+import { stageExam } from "./exam.ts";
+import type { NamedSolver } from "./setting.ts";
 
 interface CampaignArgs {
   /** The stored pack a campaign opens over, which the four name together. A campaign that
@@ -413,7 +414,7 @@ export async function openCampaign(args: CampaignArgs) {
   const moved = departure(read(log), checker);
   if (moved !== null) throw new Error(`${log}: ${moved}`);
   const resources = sweepResources(brief);
-  const tools = join(bundle, ".toolchain");
+  const tools = join(bundle, TOOL_TREE_DIR);
   const trees = worktreesOf(REPO);
   // A stored pack's root and bundle, closed to every command and every check as the repository is.
   // A campaign opened from a prompt drafted its exam under `.ana` here, inside the repository.
@@ -588,7 +589,7 @@ export async function keptAs(campaign: Keeping, flag: string, asked: string): Pr
  * be read from one comparison of the whole.
  */
 async function programsAblation(campaign: Keeping, source: Kept): Promise<Kept> {
-  const tree = join(source.dir, ".toolchain");
+  const tree = join(source.dir, TOOL_TREE_DIR);
   if (!existsSync(tree)) {
     throw new Error(
       `${source.digest} installed no program, so the control for its programs is the starter itself`,
@@ -598,7 +599,10 @@ async function programsAblation(campaign: Keeping, source: Kept): Promise<Kept> 
   const scratch = mkdtempSync(join(campaign.states, "control-"));
   try {
     writeStarter(scratch);
-    cpSync(tree, join(scratch, ".toolchain"), { recursive: true, verbatimSymlinks: true });
+    // The Starter carries its own board programs; the control is the Starter with this harness's
+    // tree alone, so the Starter's is removed before the harness's is copied in its place.
+    rmSync(join(scratch, TOOL_TREE_DIR), { recursive: true, force: true });
+    cpSync(tree, join(scratch, TOOL_TREE_DIR), { recursive: true, verbatimSymlinks: true });
     const { digest } = await openHarness(scratch);
     const dir = join(campaign.states, digest);
     if (!existsSync(dir)) renameSync(scratch, dir);

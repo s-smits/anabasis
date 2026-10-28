@@ -3,10 +3,11 @@
  * is handed beside it.
  *
  * The Starter Built Harness is pi's coding agent as pi releases it, with pi's four coding tools
- * selected, no domain program or tool, and the starter instructions as its guide. Its three files
- * are there as the places a Builder extends. Everything else a solver is given under it is the
- * host's, the same under every harness: the command wall behind the tools, the answer file and
- * `submit`, and the prompt's addendum and environment (`run.ts`, `answer.ts`, `prompt.ts`).
+ * selected, the board programs under `.toolchain/` as its one computation, and the starter
+ * instructions as its guide. Those files are the places a Builder extends. Everything else a
+ * solver is given under it is the host's, the same under every harness: the command wall behind
+ * the tools, the answer file and `submit`, and the prompt's addendum and environment (`run.ts`,
+ * `answer.ts`, `prompt.ts`).
  *
  * Every campaign starts from it (`7f0add79:docs/plan.md`, Terms and Phase 0). The Builder forks it in its
  * first session, since a session copies the harness it starts from whole. It is the first
@@ -31,8 +32,8 @@
  * of its practice.
  *
  * It is written out in v1's on-disk format like any other harness state, and is named by its digest
- * like any other: the three files below are the whole of it, so a change to any is another harness,
- * and solves under the old one are not counted for the new.
+ * like any other: a change to any of its files is another harness, and solves under the old one are
+ * not counted for the new.
  *
  * The account, `HARNESS.md`, stands where v1's starter pack carried `contract.md`. A Builder without
  * it wrote three tool files whose only purpose was to print `defineDraftTool`'s source through tool
@@ -48,11 +49,221 @@ import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { join } from "../meta/path.ts";
 import { CODING_TOOLS } from "../tools/coding.ts";
 
+/** The board the Starter's programs keep: one JSON file in the solver's home, appended to by the
+ *  programs, never edited by hand. The file is the graph; a program is the only writer. */
+const BOARD = "cairn-board.json";
+
 /**
- * The Starter's three files. Its tools file is the place a harness adds tools of its own, and says
- * so; under the Starter it adds none. A comment is not in the bundle a harness is named by, so a
+ * The Starter's programs, which carry a search discipline into one solver's turn: a blackboard of
+ * Facts, Intents and Hints the solver grows from the origin toward the goal, the way Cairn
+ * (`https://github.com/oritera/Cairn`) grows one across many workers. Cairn's server, dispatcher
+ * and worker containers are orchestration the host owns and the wall denies (AGENTS.md rules 2 and
+ * 11), and a solve is one solver inside one harness, so none of that runtime is taken. What is
+ * taken is the discipline and the small programs that carry it:
+ *
+ * - **Facts are append-only.** A state change is a new Fact, so the graph is both the knowledge and
+ *   the history of why the solver believed it.
+ * - **An Intent is an edge.** It names the Facts it reasons from and the Fact it produced, or stands
+ *   open while unexplored.
+ * - **A Hint is judgement outside the graph:** strategy, not evidence, kept beside the Facts.
+ * - **The loop is OODA.** Observe the whole graph, orient to what the goal still lacks, decide on one
+ *   Intent, act, and write the finding back as a Fact.
+ *
+ * Every campaign's first harness carries these five programs, so a Builder starts from a discipline
+ * rather than a blank guide, and evolves it on its practice. The programs are the board's only
+ * writers, so every Fact, Intent and Hint is well-formed. They keep to the convention the account
+ * states and read and write `cairn-board.json` in the solver's home.
+ */
+const STARTER_PROGRAMS = {
+  "cairn-init": `#!/usr/bin/env bun
+// cairn-init <origin> <goal>
+// Starts the board: the origin and goal as the graph's two special Facts. Refuses a board that
+// already exists, so a re-run never loses what has been found.
+// Exit 0: the board was written. 2: it could not run, or a board is already there.
+import { existsSync, writeFileSync } from "node:fs";
+
+const USAGE = "usage: cairn-init <origin> <goal>";
+const BOARD = "${BOARD}";
+const [origin, goal] = process.argv.slice(2);
+if (origin === "--help") {
+  console.log(USAGE);
+  process.exit(0);
+}
+if (origin === undefined || goal === undefined) {
+  console.error(USAGE);
+  process.exit(2);
+}
+if (existsSync(BOARD)) {
+  console.error("cairn-init: " + BOARD + " already exists; read it with cairn-show");
+  process.exit(2);
+}
+const board = {
+  origin,
+  goal,
+  facts: [
+    { id: "origin", description: origin },
+    { id: "goal", description: goal },
+  ],
+  intents: [],
+  hints: [],
+};
+writeFileSync(BOARD, JSON.stringify(board, null, 2) + "\\n");
+console.log("the board holds origin and goal");
+`,
+  "cairn-fact": `#!/usr/bin/env bun
+// cairn-fact <description> [--intent <intent-id>]
+// Adds one Fact: a confirmed finding. With --intent, it concludes that open Intent with the Fact.
+// Without it, it is a Fact found by checking the goal, which needs no edge.
+// Exit 0: the Fact was added, with its id. 2: it could not run, or the Intent is not open.
+import { readFileSync, writeFileSync } from "node:fs";
+
+const USAGE = "usage: cairn-fact <description> [--intent <intent-id>]";
+const BOARD = "${BOARD}";
+const argv = process.argv.slice(2);
+if (argv[0] === "--help") {
+  console.log(USAGE);
+  process.exit(0);
+}
+const text = argv[0];
+if (text === undefined || text.startsWith("--")) {
+  console.error(USAGE);
+  process.exit(2);
+}
+let intent = null;
+for (let i = 1; i < argv.length; i++) {
+  if (argv[i] === "--intent") intent = argv[++i];
+  else {
+    console.error("cairn-fact: unknown argument " + argv[i]);
+    process.exit(2);
+  }
+}
+let board;
+try {
+  board = JSON.parse(readFileSync(BOARD, "utf8"));
+} catch (error) {
+  console.error("cairn-fact: cannot read " + BOARD + ": " + error.message);
+  process.exit(2);
+}
+const id = "f" + String(board.facts.length - 1).padStart(3, "0");
+if (intent !== null) {
+  const open = board.intents.find((it) => it.id === intent && it.to === null);
+  if (open === undefined) {
+    console.error("cairn-fact: no open Intent " + intent);
+    process.exit(2);
+  }
+  open.to = id;
+  open.concluded = text;
+}
+board.facts.push({ id, description: text });
+writeFileSync(BOARD, JSON.stringify(board, null, 2) + "\\n");
+console.log(id + ": " + text);
+`,
+  "cairn-intent": `#!/usr/bin/env bun
+// cairn-intent <from-fact-id>... -- <description>
+// Declares an open Intent: a direction to explore, from one or more Facts, not yet concluded.
+// Exit 0: the Intent was declared, with its id. 2: it could not run, or a Fact is unknown.
+import { readFileSync, writeFileSync } from "node:fs";
+
+const USAGE = "usage: cairn-intent <from-fact-id>... -- <description>";
+const BOARD = "${BOARD}";
+const argv = process.argv.slice(2);
+if (argv[0] === "--help") {
+  console.log(USAGE);
+  process.exit(0);
+}
+const split = argv.indexOf("--");
+if (split < 1 || split === argv.length - 1) {
+  console.error(USAGE);
+  process.exit(2);
+}
+const from = argv.slice(0, split);
+const description = argv.slice(split + 1).join(" ");
+let board;
+try {
+  board = JSON.parse(readFileSync(BOARD, "utf8"));
+} catch (error) {
+  console.error("cairn-intent: cannot read " + BOARD + ": " + error.message);
+  process.exit(2);
+}
+const known = new Set(board.facts.map((f) => f.id));
+for (const id of from) {
+  if (!known.has(id)) {
+    console.error("cairn-intent: no such Fact " + id);
+    process.exit(2);
+  }
+}
+const id = "i" + String(board.intents.length + 1).padStart(3, "0");
+board.intents.push({ id, from, to: null, description, concluded: null });
+writeFileSync(BOARD, JSON.stringify(board, null, 2) + "\\n");
+console.log(id + ": " + description);
+`,
+  "cairn-hint": `#!/usr/bin/env bun
+// cairn-hint <content>
+// Adds one Hint: strategy or a judgement of the situation, kept beside the Facts and not a finding.
+// Exit 0: the Hint was added. 2: it could not run, or empty.
+import { readFileSync, writeFileSync } from "node:fs";
+
+const USAGE = "usage: cairn-hint <content>";
+const BOARD = "${BOARD}";
+const content = process.argv.slice(2).join(" ");
+if (content === "--help") {
+  console.log(USAGE);
+  process.exit(0);
+}
+if (content.trim() === "") {
+  console.error(USAGE);
+  process.exit(2);
+}
+let board;
+try {
+  board = JSON.parse(readFileSync(BOARD, "utf8"));
+} catch (error) {
+  console.error("cairn-hint: cannot read " + BOARD + ": " + error.message);
+  process.exit(2);
+}
+const id = "h" + String(board.hints.length + 1).padStart(3, "0");
+board.hints.push({ id, content });
+writeFileSync(BOARD, JSON.stringify(board, null, 2) + "\\n");
+console.log(id + ": " + content);
+`,
+  "cairn-show": `#!/usr/bin/env bun
+// cairn-show
+// Prints the whole graph: origin and goal, every Fact, every Intent with its edges and state, and
+// every Hint. This is what a solver observes before it decides what to explore.
+// Exit 0: it printed the graph. 2: it could not run, or no board.
+import { readFileSync } from "node:fs";
+
+const BOARD = "${BOARD}";
+if (process.argv.includes("--help")) {
+  console.log("usage: cairn-show  (prints the board in " + BOARD + ")");
+  process.exit(0);
+}
+let board;
+try {
+  board = JSON.parse(readFileSync(BOARD, "utf8"));
+} catch (error) {
+  console.error("cairn-show: cannot read " + BOARD + ": " + error.message);
+  process.exit(2);
+}
+console.log("origin: " + board.origin);
+console.log("goal: " + board.goal);
+console.log("\\nfacts (" + String(board.facts.length) + "):");
+for (const f of board.facts) console.log("  " + f.id + ": " + f.description);
+console.log("\\nintents (" + String(board.intents.length) + "):");
+for (const it of board.intents) {
+  const state = it.to === null ? "open" : "-> " + it.to;
+  console.log("  " + it.id + " [" + it.from.join(", ") + "] " + state + ": " + it.description);
+}
+console.log("\\nhints (" + String(board.hints.length) + "):");
+for (const h of board.hints) console.log("  " + h.id + ": " + h.content);
+`,
+} as const;
+
+/**
+ * The Starter's files. Its tools file is the place a harness adds tools of its own, and says so;
+ * under the Starter it adds none. A comment is not in the bundle a harness is named by, so a
  * change to the comment leaves the Starter the harness it was. Its guide is the starter
- * instructions, in `EXAMPLE`'s outline with its entries empty.
+ * instructions, in `EXAMPLE`'s outline with its entries filled by the board programs.
  */
 const STARTER = {
   spec: { presets: [...CODING_TOOLS], tools: [] },
@@ -67,20 +278,27 @@ export const createDomainHarness: DomainHarnessFactory = () => ({
 `,
   guide: `# Operating Guide
 
-These are the starter instructions, the same in every domain.
+The board is a search over an unknown path from the origin to the goal. Its graph is what is known
+and what is left to try; the programs are its only writers.
 
 ## Programs and tools
-None yet.
+- cairn-init <origin> <goal>: starts ${BOARD}, with the origin and goal as its two special Facts.
+- cairn-show: prints the whole graph, every Fact, Intent and Hint. Read it before deciding.
+- cairn-intent <from-fact-id>... -- <description>: declares an open Intent, a direction to explore.
+- cairn-fact <description> [--intent <intent-id>]: adds a Fact, and with --intent concludes that
+  open Intent with it.
+- cairn-hint <content>: adds a Hint, strategy or a judgement that is not a finding.
 
 ## Working with them
-- A check you run shows only what it tests: the published requirements it does not cover are
-  still open.
-- A command that could not run has found no requirement broken: its exit code and its error say
-  which happened.
+Observe with cairn-show; orient to the goal and what still separates the last Facts from it; decide
+on one Intent and declare it; act; then write the finding back as a Fact. Append, never rewrite: a
+Fact that a direction failed is itself a finding, and the next reader needs it.
 
 ## Domain notes
-None yet.
+A check shows only what it tests. A Fact is a finding worth keeping, not raw output: keep the data
+in a file and describe where it is. A Hint is judgement, never evidence.
 `,
+  programs: STARTER_PROGRAMS,
 };
 
 const CHECKER = "check-rota";
@@ -347,4 +565,9 @@ export function writeStarter(dir: string): void {
   writeFileSync(join(dir, TOOLS_SPEC_FILE), `${capturedJsonStringify(STARTER.spec, null, 2)}\n`);
   writeFileSync(join(dir, GENERATED_TOOLS_FILE), STARTER.tools);
   writeFileSync(join(dir, AGENT_DIR, GUIDE_FILE), STARTER.guide);
+  const bin = join(dir, ".toolchain", "bin");
+  mkdirSync(bin, { recursive: true });
+  for (const [name, source] of Object.entries(STARTER_PROGRAMS)) {
+    writeFileSync(join(bin, name), source, { mode: 0o755 });
+  }
 }

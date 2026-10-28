@@ -206,7 +206,9 @@ export async function holders(names: readonly string[]): Promise<Map<string, Hos
 /** Find every original before a mutation: a local match cannot hide a remote duplicate. */
 export async function routed(verb: string, args: readonly string[]): Promise<Routes> {
   const here = new Set(runs().map(({ name }) => name));
-  const names = namedAt(verb, args).map((at) => args[at] ?? "");
+  // `--here` names this machine, as the keeper `keep` starts does: until 29 October it asked every peer
+  // first, and one peer that did not answer ended the keeper at its start.
+  const names = args.includes("--here") ? [] : namedAt(verb, args).map((at) => args[at] ?? "");
   const held = await holders(names);
   const duplicate = names.find((name) => here.has(name) && held.has(name));
   if (duplicate !== undefined) throw new Error(`${duplicate}: more than one original campaign`);

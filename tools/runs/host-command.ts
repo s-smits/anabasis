@@ -9,12 +9,16 @@ import { sshOptions } from "#src/meta/ssh.ts";
  */
 export function rsync(from: string, to: string, ...flags: readonly string[]): string {
   const remote = [from, to].find((side) => !side.startsWith("/") && side.includes(":"));
-  const transport =
-    remote === undefined
-      ? []
-      : ["-e", ["ssh", ...sshOptions(remote.split(":")[0] ?? "")].map(quoted).join(" ")];
+  const transport = remote === undefined ? [] : ["-e", sshCommand(remote.split(":")[0] ?? "")];
   return runTextSyncOrThrow(["rsync", "-az", ...transport, ...flags, from, to]);
 }
+
+/**
+ * The ssh command rsync runs to reach `destination`, as one `-e` value, each word quoted: rsync splits
+ * it on spaces, and the check runner, which joined its options bare until 29 October, cut a control
+ * socket under a temp root with a space into two arguments.
+ */
+export const sshCommand = (destination: string) => ["ssh", ...sshOptions(destination)].map(quoted).join(" ");
 
 /** The shell text that lists the worktrees of the repository `repo`, a shell word, the main first. */
 export const worktreesIn = (repo: string) =>

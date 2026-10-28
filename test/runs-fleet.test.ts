@@ -58,6 +58,21 @@ function campaign() {
 }
 
 describe("host execution", () => {
+  it("keeps a verb that names this machine here while a peer is down, and asks the peers otherwise", () => {
+    const made = fixture();
+    const routing = (args: string) =>
+      made.run(
+        `import { routed } from "REPOSITORY/tools/runs/hosts.ts"; const r = await routed("keep", ${args}); console.log(JSON.stringify([r.here, r.away.length]));`,
+        { FAKE_OFFLINE: "1" },
+      );
+    const kept = routing('["far", "--here"]');
+    expect(kept.code).toBe(0);
+    expect(JSON.parse(kept.out)).toEqual([["far", "--here"], 0]);
+    expect(made.recorded().filter((call) => call.tool === "ssh")).toEqual([]);
+    expect(routing('["far"]').code).toBe(1);
+    expect(made.recorded().filter((call) => call.tool === "ssh").length).toBeGreaterThan(0);
+  });
+
   it("keeps paths and arguments literal and clears the peer list for any repository script", () => {
     const made = fixture();
     const result = made.run(

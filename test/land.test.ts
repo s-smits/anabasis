@@ -12,7 +12,14 @@
  * refusing the asking, with ANA_FAKE_STACK_SHA as its commit, by default the top's.
  * Nothing here reaches GitHub, and nothing is pushed but to the fixture's own bare origin.
  */
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
@@ -47,6 +54,8 @@ fi ;;
 elif [ -z "$ANA_FAKE_CI_AFTER" ] || [ -e "$ANA_FAKE_CI_AFTER" ]; then
   if [ -n "$ANA_FAKE_CI" ]; then printf '%s\n' "$ANA_FAKE_CI"; else printf 'completed\tsuccess\t1\thttps://ci/1\n'; fi
 fi ;;
+"run view"*"--log-failed") printf 'darwin\tRun the suite\t(fail) a test that broke on the clean runner\n' ;;
+"run view"*) echo "darwin: Run the suite" ;;
 "workflow run"*) [ -z "$ANA_FAKE_CI_AFTER" ] || touch "$ANA_FAKE_CI_AFTER" ;;
 "api -X PUT"*"/merge-async"*) [ "$ANA_FAKE_STACK_END" != refused ] || { echo "gh: Stack is not mergeable (HTTP 422)" >&2; exit 1; }
   printf 'pending\t%s\t\t\n' "$ANA_FAKE_STACK_UUID" ;;
@@ -157,7 +166,10 @@ const statuses = (context: string): string[] =>
   });
 const described = (context: string): string[] =>
   logLines(ghLog).flatMap((line) => {
-    const match = /\/statuses\/(\w+) -f state=\w+ -f context=(\S+) -f description=(.+) --silent$/u.exec(line);
+    const match =
+      /\/statuses\/(\w+) -f state=\w+ -f context=(\S+) -f description=(.+) --silent( -f target_url=\S+)?$/u.exec(
+        line,
+      );
     return match?.[2] === context ? [`${match[1]} ${match[3]}`] : [];
   });
 const writes = (): string[] =>
@@ -237,7 +249,13 @@ describe("bun run land", () => {
       ANA_FAKE_PULLS: JSON.stringify([pull(11, "a", "main", lowerDocs), pull(12, "merged", "a", merged)]),
     });
     expect(result.status).toBe(0);
-    expect(statuses("mergeable")).toEqual([`success ${lowerDocs}`, `success ${merged}`]);
+    // A head reads pending from the moment a commit it holds is proved afresh, until it passes.
+    expect(statuses("mergeable")).toEqual([
+      `pending ${merged}`,
+      `pending ${lowerDocs}`,
+      `success ${lowerDocs}`,
+      `success ${merged}`,
+    ]);
     expect(statuses("ana/commit")).toContain(`success ${lowerDocs}`);
     expect(gatesRun(gateLog)).toContain(`${lowerMore} test/owner.test.ts`);
     expect(gatesRun(gateLog).at(-1)).toBe(`${merged} suite`);
@@ -254,9 +272,38 @@ describe("bun run land", () => {
     expect(result.stderr).toContain("then replay #12 on it, bottom-up, and push them together");
     const last = result.stderr.trimEnd().split("\n").at(-1) ?? "";
     expect(last).toStartWith(`land: ${short(lower)} FAILS lint ON ITS OWN. Nothing was merged. Log: `);
-    expect(statuses("ana/commit")).toEqual([`failure ${lower}`]);
-    expect(statuses("mergeable")).toEqual([`failure ${lowerDocs}`, `failure ${upper}`]);
+    expect(statuses("ana/commit")).toEqual([`pending ${lower}`, `failure ${lower}`]);
+    expect(statuses("mergeable")).toEqual([
+      `pending ${lowerDocs}`,
+      `pending ${upper}`,
+      `failure ${lowerDocs}`,
+      `failure ${upper}`,
+    ]);
     expect(statuses("ana/stack-gate")).toEqual([]);
+  });
+
+  it("runs a step again where its runner dropped, and passes on the second run", () => {
+    const result = runLand(["12", "--sanitize"], { ANA_FAKE_DROP: `${upper} test` });
+    expect(result.status).toBe(0);
+    expect(logLines(gateLog).filter((line) => line === `${upper}\trun test`)).toHaveLength(2);
+    expect(statuses("ana/commit")).toContain(`success ${upper}`);
+  });
+
+  it("reads two drops as no verdict: an error status, no fix recipe, and land again", () => {
+    const result = runLand(["12", "--sanitize"], { ANA_FAKE_DROP: `${upper} test`, ANA_FAKE_DROPS: "2" });
+    expect(result.status).toBe(1);
+    const last = result.stderr.trimEnd().split("\n").at(-1) ?? "";
+    expect(last).toStartWith(
+      `land: ${short(upper)} GAVE NO VERDICT ON test: its runner dropped twice. Nothing was merged. Land again. Log: `,
+    );
+    expect(result.stderr).not.toContain("the fix belongs in");
+    expect(statuses("ana/commit")).toContain(`error ${upper}`);
+    expect(statuses("mergeable")).toEqual([
+      `pending ${lowerDocs}`,
+      `pending ${upper}`,
+      `success ${lowerDocs}`,
+      `error ${upper}`,
+    ]);
   });
 
   it("refuses a head that does not contain the pull request beneath it", () => {
@@ -399,6 +446,27 @@ describe("bun run land", () => {
     expect(calls.some((line) => /pulls\/\d+\/merge -f/u.test(line) || line.includes("-X PATCH"))).toBe(false);
   });
 
+  it("cuts the release at the merge it made with --tag, with notes GitHub writes, and refuses a tag origin holds before gating", () => {
+    const result = runLand(["12", "--merge", "--tag", "v9.9.9"], {
+      ANA_FAKE_STACK: "7 11,12,14",
+      ANA_FAKE_STACK_END: "merged",
+      ANA_FAKE_STACK_UUID: "u1",
+      ANA_FAKE_STACK_SHA: upper,
+    });
+    expect(result.status).toBe(0);
+    const calls = logLines(ghLog);
+    const cut = calls.findIndex((line) => line.startsWith("release create"));
+    expect(calls[cut]).toBe(`release create v9.9.9 --target ${upper} --title v9.9.9 --generate-notes`);
+    expect(cut).toBeGreaterThan(calls.findIndex((line) => line.startsWith(askedStack)));
+
+    execTextSync("git", ["-C", origin, "tag", "v9.9.8", upper]);
+    writeFileSync(ghLog, "");
+    const taken = runLand(["12", "--merge", "--tag", "v9.9.8"]);
+    expect(taken.status).toBe(1);
+    expect(taken.stderr).toContain("v9.9.8 is already a tag on origin.");
+    expect(writes()).toEqual([]);
+  });
+
   it("takes the status back from every head when GitHub refuses or fails a stack's merge, and says nothing merged", () => {
     for (const [end, why] of [
       ["failed", "its merge ended failed: failed"],
@@ -441,34 +509,98 @@ describe("bun run land", () => {
       calls.filter((line) => line.startsWith("run list")).every((line) => line.includes(`--commit ${upper}`)),
     ).toBe(true);
     expect(result.stdout).toContain(`ci.yml passed on #12's head ${short(upper)}: https://ci/1`);
+    expect(statuses("ci.yml")).toEqual([`success ${upper}`]);
   });
 
-  it("refuses to merge when ci.yml failed on the top's head, and does not dispatch it again", () => {
+  it("shows on the top's head that it waits for the ci.yml run it reuses, linked, until that run passes", () => {
+    const result = runLand(["12", "--merge"], {
+      ANA_CI_POLL_MS: "10",
+      ANA_FAKE_CI_STATES: ciStates(
+        "in_progress\t\t5\thttps://ci/5\t2026-10-28T19:49:13Z",
+        "in_progress\t\t5\thttps://ci/5\t2026-10-28T19:49:13Z",
+        "completed\tsuccess\t5\thttps://ci/5\t2026-10-28T19:49:13Z",
+      ),
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(
+      `ci.yml run 5 of 2026-10-28T19:49:13Z is already on #12's head ${short(upper)}, in_progress; its verdict stands`,
+    );
+    expect(statuses("ci.yml")).toEqual([`pending ${upper}`, `success ${upper}`]);
+    expect(
+      logLines(ghLog)
+        .filter((line) => line.includes("context=ci.yml"))
+        .every((line) => line.endsWith("-f target_url=https://ci/5")),
+    ).toBe(true);
+    const calls = logLines(ghLog);
+    expect(calls.findLastIndex((line) => line.includes("context=ci.yml"))).toBeLessThan(
+      calls.findIndex((line) => line.includes("/merge-async")),
+    );
+  });
+
+  it("refuses to merge when ci.yml failed on the top's head, brings its failed log home, and does not dispatch it again", () => {
     const result = runLand(["12", "--merge"], { ANA_FAKE_CI: "completed\tfailure\t9\thttps://ci/9" });
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain(
-      `ci.yml ended failure on #12's head ${short(upper)}: https://ci/9. Fix the commit it names, ` +
-        "or run gh run rerun 9 if the runner was at fault, and land again. Nothing was merged.",
+    const log = join(
+      git("rev-parse", "--path-format=absolute", "--git-path", "ana-gate"),
+      `land-ci-${short(upper)}.log`,
     );
+    expect(result.stderr).toContain("darwin: Run the suite");
+    expect(result.stderr).toContain("(fail) a test that broke on the clean runner");
+    expect(readFileSync(log, "utf8")).toContain("(fail) a test that broke on the clean runner");
+    expect(result.stderr).toContain(
+      `ci.yml ended failure on #12's head ${short(upper)}: https://ci/9. Its failed jobs' log: ${log}. Fix the ` +
+        "commit it names, or run gh run rerun 9 if the runner was at fault, and land again. Nothing was merged.",
+    );
+    expect(statuses("ci.yml")).toEqual([`failure ${upper}`]);
     expect(logLines(ghLog).some((line) => line.startsWith("workflow run") || line.includes("/merge"))).toBe(
       false,
     );
     expect(statuses("ana/stack-gate")).toEqual([]);
   });
-  it("refuses to restore green when a parent moves while its unchanged child is being proved", () => {
+  it("refuses to restore green when a parent moves off its child while the child is being proved", () => {
     const next = join(fixture, "moved-pulls");
-    for (const [head, reason] of [
-      [beside, "does not contain #11's head"],
-      [lowerMore, "a pull request's head moved"],
-    ] as const) {
-      rmSync(ghLog, { force: true });
-      rmSync(`${next}.read`, { force: true });
-      writeFileSync(next, JSON.stringify([pull(11, "a", "main", head), pull(12, "b", "a", upper)]));
-      const result = runLand(["12", "--sanitize"], { ANA_FAKE_PULLS_NEXT: next });
-      expect(statuses("mergeable")).toEqual([`success ${lowerDocs}`]);
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain(reason);
-    }
+    writeFileSync(next, JSON.stringify([pull(11, "a", "main", beside), pull(12, "b", "a", upper)]));
+    const result = runLand(["12", "--sanitize"], { ANA_FAKE_PULLS_NEXT: next });
+    expect(statuses("mergeable")).toEqual([
+      `pending ${lowerDocs}`,
+      `pending ${upper}`,
+      `success ${lowerDocs}`,
+    ]);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("does not contain #11's head");
+  });
+
+  it("lands again on the heads as they stand when a head moves while it is proved", () => {
+    const next = join(fixture, "moved-pulls");
+    rmSync(`${next}.read`, { force: true });
+    writeFileSync(next, JSON.stringify([pull(11, "a", "main", lowerMore), pull(12, "b", "a", upper)]));
+    const result = runLand(["12", "--sanitize"], { ANA_FAKE_PULLS_NEXT: next });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(
+      "a pull request's head moved while its commits were gated. Landing again on the heads as they stand.",
+    );
+    expect(statuses("mergeable")).toEqual([
+      `pending ${lowerDocs}`,
+      `pending ${upper}`,
+      `success ${lowerDocs}`,
+      `success ${lowerMore}`,
+      `pending ${upper}`,
+      `success ${upper}`,
+    ]);
+    expect(gatesRun(gateLog).filter((gate) => gate.startsWith(upper))).toEqual([`${upper} suite`]);
+  });
+
+  it("reads the chain again before each proof starts, so a head moved on proves its new commits and not the old head", () => {
+    const next = join(fixture, "moved-pulls");
+    rmSync(`${next}.read`, { force: true });
+    writeFileSync(next, JSON.stringify([pull(11, "a", "main", lowerDocs), pull(12, "b", "a", stacked)]));
+    const result = runLand(["12", "--sanitize"], { ANA_FAKE_PULLS_NEXT: next });
+    expect(result.status).toBe(0);
+    const gates = gatesRun(gateLog);
+    expect(gates).not.toContain(`${upper} suite`);
+    expect(gates.filter((gate) => gate.startsWith(upper))).toHaveLength(1);
+    expect(gates.at(-1)).toBe(`${stacked} suite`);
+    expect(statuses("mergeable").at(-1)).toBe(`success ${stacked}`);
   });
 
   it("refuses before gating when no run exists and ci.yml takes no dispatch", () => {

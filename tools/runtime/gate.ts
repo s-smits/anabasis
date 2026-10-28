@@ -9,7 +9,10 @@
  * The steps are `ci.yml`'s two Darwin jobs, cheapest first, so a format slip fails in a second
  * rather than after the linter. The strict lint fails on everything a plain one does, so it runs
  * once. Every step fails in one spelling, `gate: step <name> failed (exit <n>)`, which the pre-push
- * hook and `bun run land` repeat without knowing each tool's wording.
+ * hook and `bun run land` repeat without knowing each tool's wording. A step whose runner dropped
+ * its connection (exit 255) runs once more, and a second drop reads `gave no verdict`: the landing
+ * then marks the commit with an error rather than a failure and prints no fix, since nothing was
+ * learnt about the commit (`NO_VERDICT`).
  *
  * `--static` is what the pre-push hook runs over a pushed head (`tools/runtime/pre-push.ts`), and
  * what each commit below the one that gets the whole CI gate receives: v1's rule of 24
@@ -49,7 +52,6 @@ import {
   readFileSync,
 } from "../../src/meta/filesystem.ts";
 import { sha256, sha256OfFile } from "../../src/meta/digest.ts";
-import { isString } from "../../src/meta/json-shape.ts";
 import { keysIf } from "../../src/meta/optional-key.ts";
 import { availableParallelism, tmpdir } from "../../src/meta/os.ts";
 import { basename, dirname, isAbsolute, join, relative } from "../../src/meta/path.ts";
@@ -65,11 +67,13 @@ export interface Proof {
   readonly pass: Pass | null;
 }
 
-/** The lowest commit that failed, the step it failed and the log that holds the output. */
+/** The lowest commit that failed, the step it failed and the log that holds the output; `verdict`
+ *  false where the step's runner dropped twice and so said nothing about the commit. */
 interface Failure {
   readonly commit: string;
   readonly step: string;
   readonly log: string;
+  readonly verdict: boolean;
 }
 
 interface Prover {
@@ -77,8 +81,13 @@ interface Prover {
   readonly who: string;
   readonly jobs: number;
   readonly say: (line: string) => void;
-  /** Told every verdict, recorded earlier or new, so land can post it as a status. */
-  readonly mark: (commit: string, state: "success" | "failure", description: string) => void;
+  /** Told every verdict, recorded earlier or new, so land can post it as a status, and `pending` when
+   *  a commit's proof starts, so a red left by an earlier landing clears once it is proved again. */
+  readonly mark: (
+    commit: string,
+    state: "pending" | "success" | "failure" | "error",
+    description: string,
+  ) => void;
 }
 
 /** The documentation set. A commit changing nothing beyond it gets no static steps, and a push of
@@ -162,6 +171,9 @@ const RERUNS: readonly (readonly [RegExp, (said: string) => string])[] = [
 /** A pass keeps its output in a log and prints nothing for minutes, which reads like a hung push. */
 const PULSE_MS = (Number(runtimeProcess.env.ANA_GATE_PULSE_SECONDS) || 60) * 1000;
 const LOG_DAYS = 14;
+/** ssh's own exit for a dropped connection, which the check runner passes on as no verdict
+ *  (`tools/runtime/router/run.sh`). */
+const NO_VERDICT = 255;
 
 export const lines = (text: string): string[] => text.split("\n").filter((line) => line.length > 0);
 export const short = (sha: string): string => sha.slice(0, 9);
@@ -337,10 +349,16 @@ function uiStep(root: string, pass: Pass): number {
   return 0;
 }
 
-/** One step, its output where the caller's goes; its exit code. */
+/** One step, its output where the caller's goes; its exit code. A step routed to a runner exits
+ *  `NO_VERDICT` where the connection dropped, which says nothing about the commit, so it runs once
+ *  more: on 28 October a dropped connection after 201 passing tests failed #502's landing. */
 function step(root: string, name: string, args: readonly string[]): number {
-  const code = Bun.spawnSync(["bun", ...args], { cwd: root, stdout: "inherit", stderr: "inherit" }).exitCode;
-  if (code !== 0) console.error(`gate: step ${name} failed (exit ${String(code)})`);
+  const run = (): number =>
+    Bun.spawnSync(["bun", ...args], { cwd: root, stdout: "inherit", stderr: "inherit" }).exitCode;
+  let code = run();
+  if (code === NO_VERDICT) code = run();
+  if (code === NO_VERDICT) console.error(`gate: step ${name} gave no verdict (exit ${String(code)})`);
+  else if (code !== 0) console.error(`gate: step ${name} failed (exit ${String(code)})`);
   return code;
 }
 
@@ -381,6 +399,12 @@ function pulse(log: string, started: number): string {
   const failed = text.match(/\(fail\)/gu)?.length ?? 0;
   return `still running after ${String(minutes)} min: ${String(passed)} tests passed, ${String(failed)} failed so far${rerun[0] ?? ""}.`;
 }
+
+/** One line for a failure, the same for every caller. */
+export const failedLine = (failure: Failure): string =>
+  failure.verdict
+    ? `${short(failure.commit)} FAILS ${failure.step} ON ITS OWN`
+    : `${short(failure.commit)} GAVE NO VERDICT ON ${failure.step}: its runner dropped twice`;
 
 /**
  * Runs each commit's pass over a checkout of it, up to `jobs` at once, and returns the lowest
@@ -442,6 +466,7 @@ export async function proveCommits(
     git(tree, ["clean", "-fdq"]);
     const log = join(logs, `${who}-${short(commit)}-${pass}.log`);
     say(`${at}: ${WHAT[pass]}. Log: ${log}`);
+    mark(commit, "pending", WHAT[pass]);
     const fd = openSync(log, "w");
     const started = Date.now();
     const pulsing = setInterval(() => say(`${short(commit)} ${pulse(log, started)}`), PULSE_MS);
@@ -469,11 +494,17 @@ export async function proveCommits(
       return;
     }
     const output = lines(readFileSync(log, "utf8"));
-    const failed = output.map((line) => /^gate: step (\S+) failed/u.exec(line)?.[1]).findLast(isString);
-    failures.push({ index, commit, step: failed ?? "the gate", log });
-    mark(commit, "failure", "failed on its own checkout");
+    const [, failedStep = "the gate", said = "failed"] =
+      output.map((line) => /^gate: step (\S+) (failed|gave no verdict)/u.exec(line)).findLast(Boolean) ?? [];
+    const failure = { commit, step: failedStep, log, verdict: said === "failed" };
+    failures.push({ index, ...failure });
+    mark(
+      commit,
+      failure.verdict ? "failure" : "error",
+      failure.verdict ? "failed on its own checkout" : "its runner gave no verdict",
+    );
     console.error(output.slice(-30).join("\n"));
-    console.error(`${who}: ${short(commit)} FAILS ${failed ?? "the gate"} ON ITS OWN. Log: ${log}`);
+    console.error(`${who}: ${failedLine(failure)}. Log: ${log}`);
   };
   const running = new Set<Promise<void>>();
   try {

@@ -46,6 +46,7 @@ host="\${args[0]}" command="\${args[\${#args[@]}-1]}"
 home="$FAKE_HOMES/$host"
 mkdir -p "$home"
 printf '%s %s\\n' "$host" "\${command%% *}" >>"$FAKE_LOG"
+[[ -z "\${FAKE_COMMANDS:-}" ]] || printf '%s\\n' "$command" >>"$FAKE_COMMANDS"
 case "$command" in
   'n="$(getconf'*)
     load="FAKE_LOAD_\${host//-/_}"
@@ -117,9 +118,11 @@ case "$*" in
 esac
 `;
 
+const PEER = { name: "peer", ssh: "fake-peer", tree: "~/anabasis", bun: "~/.bun/bin/bun" };
 const HOSTS = JSON.stringify([
-  { name: "m1", ssh: "fake-mac", tree: "~/anabasis", bun: "~/.bun/bin/bun" },
-  { name: "zbook", ssh: "fake-linux", tree: "~/anabasis", bun: "~/.bun/bin/bun" },
+  PEER,
+  { name: "m1", ssh: "fake-mac", tree: "~/anabasis", bun: "~/.bun/bin/bun", checks: 2 },
+  { name: "zbook", ssh: "fake-linux", tree: "~/anabasis", bun: "~/.bun/bin/bun", checks: 1 },
 ]);
 
 function folder(name: string): string {
@@ -370,9 +373,31 @@ describe.skipIf(realRsync === null)("run.sh", () => {
           .map((line) => line.split(" ")[0]),
       );
       expect(sent, picked.stderr).toEqual(new Set([expected]));
+      expect(logged().filter((line) => line.startsWith("fake-peer "))).toEqual([]);
       expect(picked.status).toBe(0);
       for (const fact of facts) expect(picked.stderr).toContain(fact);
     }
+  });
+
+  it("sends checks only to hosts that set them, forwards the bail and the workers, and runs here where none does", () => {
+    const refused = run(["test"], { RUN_REMOTE: "peer" });
+    expect(refused.status).toBe(2);
+    expect(refused.stderr).toContain("names no host ANA_HOSTS lists with checks");
+    const commands = join(root, "commands");
+    const sent = run(["test"], {
+      RUN_REMOTE: "1",
+      ANA_TEST_BAIL: "1",
+      ANA_TEST_WORKERS: "3",
+      FAKE_COMMANDS: commands,
+    });
+    expect(sent.status, sent.stderr).toBe(0);
+    expect(readFileSync(commands, "utf8")).toContain("ANA_TEST_BAIL=1 ANA_TEST_WORKERS=3 /bin/bash --norc");
+    writeFileSync(log, "");
+    const call = join(root, "unlisted-call");
+    const here = run(["test"], { ANA_HOSTS: JSON.stringify([PEER]), FAKE_CALL: call });
+    expect(here.status, here.stderr).toBe(0);
+    expect(logged()).toEqual([]);
+    expect(callAt(call)).toMatchObject({ active: "1" });
   });
 
   it("retries a dropped transfer, and starts nothing on a host that does not answer or lacks room", () => {
@@ -428,6 +453,7 @@ describe.skipIf(realRsync === null)("run.sh", () => {
       expect(readFileSync(join(target, "edited"), "utf8")).toBe("unstaged");
       expect(readFileSync(join(slot("fake-mac", 2), "edited"), "utf8")).toBe("second snapshot");
       const other = await start("other", { RUN_REMOTE: "zbook" });
+      expect(run(["test"], { RUN_REMOTE: "zbook", ANA_RUNNER_QUEUE_WAIT: "0" }).status).toBe(75);
       const refused = run(["test"], { RUN_REMOTE: "1", ANA_RUNNER_QUEUE_WAIT: "0" });
       expect(refused.status).toBe(75);
       expect(existsSync(join(queue, "slot-1"))).toBe(true);

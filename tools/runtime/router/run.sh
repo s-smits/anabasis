@@ -43,11 +43,6 @@ done
 wall_seconds="${ANA_RUNNER_WALL:-3600}"
 ((wall_seconds > 0)) || wall_seconds=3600
 
-ssh_options=(
-  -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3
-  -o ControlMaster=no -o ControlPath=none
-)
-
 alive() { [[ "$1" =~ ^[1-9][0-9]*$ ]] && kill -0 "$1" 2>/dev/null; }
 
 # taken_here <host>: the slots this machine's tasks hold on <host>, and the tasks waiting for one.
@@ -69,12 +64,12 @@ taken_here() {
 # answered, where the task queues as before. On 22 October the M1, the first line, carried two
 # campaigns and every CI gate while the Linux runner sat idle.
 pick_host() {
-  local names=("${host_sshs[@]}") i probes load cores percent taken reading slots
+  local names=("${host_sshs[@]}") i probes load cores percent taken reading slots ssh_options
   local busy_at="${ANA_RUNNER_BUSY:-100}" pick="" fallback="" best="" best_percent="" first_said=""
   probes="$(mktemp -d "${TMPDIR:-/tmp}/ana-runner-probe.XXXXXX")"
   for i in "${!names[@]}"; do
-    as_master "$master_dir/$i"
-    ssh -o ConnectTimeout=5 "${master[@]}" "${names[$i]}" \
+    options_of "$i"
+    ssh -o ConnectTimeout=5 "${ssh_options[@]}" "${names[$i]}" \
       'n="$(getconf _NPROCESSORS_ONLN)"; l="$( (sysctl -n vm.loadavg 2>/dev/null || cat /proc/loadavg) | tr -d "{}" | awk "{ print \$1 }")"; echo "$l $n"' \
       >"$probes/$i" 2>/dev/null </dev/null &
   done
@@ -112,11 +107,12 @@ pick_host() {
 # The hosts are the machines ANA_HOSTS lists, read by its one reader (tools/runs/host-config.ts)
 # through hosts.js, which install.ts bundles from hosts.ts: from the environment, or else from
 # .env.runs in the main worktree, where `bun run runs` finds them, each that sets `checks` with that
-# many slots. Until 25 October the runner kept a hosts file of its own, which on stijn-pro named the
-# same two machines, in the same order, as its ANA_HOSTS, each with two slots. The lister runs in
-# this folder, so Bun loads no .env of the tree.
+# many slots, and the ssh options every connection to it takes (`sshOptions`, src/meta/ssh.ts), which the
+# runs verbs take too. Until 25 October the runner kept a hosts file of its own, which on the operator's
+# laptop named the same two machines, in the same order, as its ANA_HOSTS, each with two slots. The
+# lister runs in this folder, so Bun loads no .env of the tree.
 root="$(git rev-parse --show-toplevel)"
-host_names=() host_sshs=() host_slots=() slots=1
+host_names=() host_sshs=() host_slots=() host_options=() slots=1
 list_hosts() {
   local main env_file=()
   main="$(dirname "$(git -C "$root" rev-parse --path-format=absolute --git-common-dir)")"
@@ -128,48 +124,20 @@ if [[ "${RUN_REMOTE:-}" != 0 ]]; then
     printf "runner: ANA_HOSTS could not be read; RUN_REMOTE=0 runs the task here\n" >&2
     exit 2
   fi
-  # A line without its count comes from a hosts.js older than this run.sh, and would wait for a slot
-  # that cannot exist while holding the queue for every task behind it (28 October).
-  while read -r name ssh_name checks; do
+  # A line without its count or its options comes from a hosts.js older than this run.sh: without the
+  # count it waited for a slot that cannot exist while holding the queue for every task behind it
+  # (28 October).
+  while IFS=$'\t' read -r name ssh_name checks options; do
     [[ -n "$name" ]] || continue
-    if ! [[ "$checks" =~ ^[1-9][0-9]*$ ]]; then
-      printf "runner: hosts.js gave %s no count of checks; run tools/runtime/router/install.ts again\n" "$name" >&2
+    if ! [[ "$checks" =~ ^[1-9][0-9]*$ && -n "$options" ]]; then
+      printf "runner: hosts.js gave %s no count of checks or ssh options; run tools/runtime/router/install.ts again\n" "$name" >&2
       exit 2
     fi
-    host_names+=("$name") host_sshs+=("$ssh_name") host_slots+=("$checks")
+    host_names+=("$name") host_sshs+=("$ssh_name") host_slots+=("$checks") host_options+=("$options")
   done <<<"$listed"
 fi
-
-# One connection a task. Each probe of `pick_host` opens its host's master, the chosen host keeps
-# its own and the others close at once; a host RUN_REMOTE names opens one before the preflight. Every
-# exchange after it rides on it, and the master closes when the task ends. Until 28 October each
-# exchange opened its own, and the handshakes of the preflight, the script, the transfer, the run and
-# its status took 3 s of a 3.1 s remote secret scan. A master's output goes nowhere, so nothing that
-# reads run.sh's output to its end waits on it, and after a kill it lingers a minute idle at most. An
-# exchange whose master is gone connects on its own, as every exchange did before.
-master_dir="" socket=""
-# as_master <socket>: the options of a master on <socket>, in `master`.
-as_master() {
-  local with=("${ssh_options[@]/ControlPath=none/ControlPath=$1}")
-  master=("${with[@]/ControlMaster=no/ControlMaster=auto}" -o ControlPersist=60)
-}
-# close_masters [<kept socket>]: every master this task opened but the one kept.
-close_masters() {
-  local open
-  for open in "$master_dir"/*; do
-    [[ -e "$open" && "$open" != "${1:-}" ]] || continue
-    ssh -o ControlPath="$open" -O exit "${host:-localhost}" >/dev/null 2>&1 || true
-  done
-}
-drop_masters() {
-  [[ -n "$master_dir" ]] || return 0
-  close_masters
-  rm -rf "$master_dir"
-}
-if [[ "${RUN_REMOTE:-}" != 0 ]] && ((${#host_sshs[@]} > 0)); then
-  master_dir="$(mktemp -d "${TMPDIR:-/tmp}/ana-ssh.XXXXXX")"
-  trap drop_masters EXIT
-fi
+# options_of <i>: the ssh options of host <i>, in `ssh_options`.
+options_of() { IFS=$'\t' read -r -a ssh_options <<<"${host_options[$1]}"; }
 
 # The host: none for RUN_REMOTE=0, else the host whose place (from 1), name or ssh destination it
 # gives, and for an unset RUN_REMOTE the one `pick_host` names, or none where the list is empty.
@@ -181,7 +149,8 @@ fi
 if [[ "$choice" != 0 ]]; then
   for ((i = 0; i < ${#host_sshs[@]}; i++)); do
     if [[ "$choice" == "$((i + 1))" || "$choice" == "${host_names[$i]}" || "$choice" == "${host_sshs[$i]}" ]]; then
-      host="${host_sshs[$i]}" slots="${host_slots[$i]}" socket="$master_dir/$i"
+      host="${host_sshs[$i]}" slots="${host_slots[$i]}"
+      options_of "$i"
       break
     fi
   done
@@ -190,16 +159,11 @@ if [[ "$choice" != 0 ]]; then
     exit 2
   fi
 fi
+# Every connection to the host takes its options, so the first opens the host's master and every later
+# one, a runs verb's included, rides on it until five minutes after the last. Until 28 October each of
+# a task's six exchanges opened its own connection, and their handshakes took 3 s of a 3.1 s remote
+# secret scan; until 29 October a task opened and closed a master of its own.
 on_host() { ssh "${ssh_options[@]}" "$host" "$@"; }
-
-open_master() {
-  if [[ ! -e "$socket" ]]; then
-    as_master "$socket"
-    ssh "${master[@]}" -fN "$host" </dev/null >/dev/null 2>&1 || true
-  fi
-  close_masters "$socket"
-  [[ ! -e "$socket" ]] || ssh_options=("${ssh_options[@]/ControlPath=none/ControlPath=$socket}")
-}
 
 # The queue. A waiter's ticket names its PID; it takes a slot only when no live ticket is older,
 # and a slot is a folder whose creation is the lock, with its holder's PID inside. A ticket or a
@@ -212,7 +176,6 @@ ticket=""
 release_queue() {
   [[ -z "$ticket" ]] || rm -f "$ticket"
   [[ -z "$held_slot" ]] || rm -rf "$queue_dir/slot-$held_slot"
-  drop_masters
 }
 
 tickets_ahead() {
@@ -369,7 +332,6 @@ if [[ -n "$host" ]]; then
     printf "%s pins no Bun in package.json's packageManager\n" "$root" >&2
     exit 2
   fi
-  open_master
   preflight
   queue_enter
   # A plain call: under `||` bash switches `set -e` off inside it, and a sync that failed for good

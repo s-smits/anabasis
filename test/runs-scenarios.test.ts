@@ -4,6 +4,7 @@ import { append } from "../src/kernel/log.ts";
 import {
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -413,9 +414,13 @@ it("S10: a WAN timeout reports its duration and preserves the other host's answe
   const hosts = JSON.stringify([made.host, made.other]);
   const fleet = { [made.host.ssh]: { health: HEALTH }, [made.other.ssh]: { timeout: true } };
   const started = performance.now();
+  // A control socket's path must stay under 104 bytes, which the suite's own temp root may not leave room for.
+  const controlRoot = mkdtempSync(join("/tmp", "ana-s10-"));
+  fixtures.push(controlRoot);
   const result = made.runScript(CLI, ["hosts", "--health"], {
     ANA_HOSTS: hosts,
     FAKE_FLEET: JSON.stringify(fleet),
+    ANA_TEST_TMPDIR: controlRoot,
   });
   expect(performance.now() - started).toBeLessThan(35_000);
   expect(result.code).toBe(1);

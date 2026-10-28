@@ -527,6 +527,9 @@ export async function proveCommits(
     }
     await Promise.all(running);
   } finally {
+    // A rejected mark (land's `Moved`) leaves other proofs running in their checkouts: each is let
+    // finish, and its pass recorded for the retry, before any checkout is removed (28 October).
+    await Promise.allSettled(running);
     for (const tree of made) runSync(["git", "worktree", "remove", "--force", tree], { cwd: root });
   }
   return failures.toSorted((a, b) => a.index - b.index)[0] ?? null;

@@ -34,6 +34,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
@@ -315,6 +316,26 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
     });
     expect(laid).toEqual({ engine: "#!/bin/sh\necho engine\n", tree: false, notes: true });
     expect(readdirSync(keep)).toEqual(["kept.txt"]);
+  });
+
+  it("carries a relative link as it stands, into the home and out of it", async () => {
+    // A venv's `python` names `python3.14` beside it; read through the session's root, which is
+    // removed when the session ends, it dangles in the next session's home.
+    const s = seat("write", []);
+    const keep = join(dirname(s.log), "examiner-home");
+    mkdirSync(keep);
+    writeFileSync(join(keep, "python3.14"), "python\n");
+    symlinkSync("python3.14", join(keep, "python"));
+    const seen = await inExaminerWall(s.request, { ...WALL, keep }, async ({ shell }) => {
+      symlinkSync("python3.14", join(shell.dirs.home, "python3"));
+      append(s.log, EXAM_FINISHED, { session: s.request.id, ended: "finished", running: 0 });
+      return readlinkSync(join(shell.dirs.home, "python"));
+    });
+    expect([seen, readlinkSync(join(keep, "python")), readlinkSync(join(keep, "python3"))]).toEqual([
+      "python3.14",
+      "python3.14",
+      "python3.14",
+    ]);
   });
 
   it("carries a writing session's home into the next, whole, and lays no harness in a drafting session's", async () => {

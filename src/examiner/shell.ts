@@ -133,7 +133,8 @@ export async function inExaminerWall<T>(
       limits: { shellDefaultSeconds: 120, shellMaxSeconds: 600 },
     };
     const { home } = dirs;
-    if (keep !== undefined && existsSync(keep)) cpSync(keep, home, { recursive: true });
+    const carry = { recursive: true, verbatimSymlinks: true } as const;
+    if (keep !== undefined && existsSync(keep)) cpSync(keep, home, carry);
     // A kept state names its programs by a link to the campaign's store, which the wall closes, so
     // they are laid as files, as in a Builder's `kept/`; every other link stays a link. Until
     // 26 October every link was followed by the host, so one a Builder left in a harness that was
@@ -142,17 +143,19 @@ export async function inExaminerWall<T>(
     const result = await run({ shell, pinned, began });
     // The campaign's copy of a session's home, made whole when the session ends and replacing the
     // one before: it is the exam side's, under the campaign's folder beside the log, which every
-    // wall closes. No link is followed, as the Builder's carry follows none. Not a session that
-    // crashed with a command running, whose home is as no command left it, as its last event says.
-    // Until 12 October every crashed session's home replaced the kept one, and on buffer the next
-    // session opened in the working files of one whose turn the provider failed; from then until
-    // 14 October none did, and a crashed Examiner's work was lost to the provider.
+    // wall closes. Each link is carried as it stands, as the Builder's carry does: until 28 October
+    // a relative one was read through the session's root, removed with it, so every kept venv's
+    // `python` dangled in the next home. Not a session that crashed with a command running, whose
+    // home is as no command left it, as its last event says. Until 12 October every crashed
+    // session's home replaced the kept one, and on buffer the next session opened in the working
+    // files of one whose turn the provider failed; from then until 14 October none did, and a
+    // crashed Examiner's work was lost to the provider.
     const ended = read(log).findLast(
       ({ kind, data }) => kind === "exam.finished" && data.session === id,
     )?.data;
     if (keep !== undefined && !(ended?.ended === "crashed" && Number(ended.running) > 0)) {
       rmSync(keep, { recursive: true, force: true });
-      cpSync(home, keep, { recursive: true });
+      cpSync(home, keep, carry);
       // The copy is the session's own, so a session with the term off never opens on one.
       rmSync(join(keep, REFERENCE_HOME), { recursive: true, force: true });
     }

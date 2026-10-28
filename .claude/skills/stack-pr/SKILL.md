@@ -219,9 +219,10 @@ A pull request opens as a draft. `bun run land -- <top> --sanitize` moves each o
 review as it posts `mergeable` success on its head, so a draft is one no landing has proved yet.
 
 Every pull request carries exactly one importance label, defined in the repository's labels:
-`importance:I0` blocks a release or further operation, `I1` protects comparison validity or prevents
-a serious run failure, `I2` is a bounded functional improvement, and `I3` is reporting, wording or
-convenience. The title carries no "Ix:" prefix; the label replaced it on 25 October. `bun run land`
+`importance:I0` blocks a release or further operation, `I1` protects comparison validity, prevents
+a serious run failure, or broadly simplifies the tree or the suite, `I2` is a bounded functional
+improvement, and `I3` is reporting, wording or convenience (AGENTS.md section 11 owns the
+definitions). The title carries no "Ix:" prefix; the label replaced it on 25 October. `bun run land`
 refuses a stack in which any pull request has no importance label or more than one, or no category
 label, naming each, before it gates anything, so `--sanitize` shows such a stack as not ready
 (`gh pr edit <number> --add-label <label>` repairs it). The categories are the subjects a pull request

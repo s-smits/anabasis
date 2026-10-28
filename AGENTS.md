@@ -1598,7 +1598,10 @@ In practice:
 - **Every commit passes alone.** Fold a fix into the unpublished commit it corrects. The pre-commit
   hook runs `bun run commit:check`; run it by hand where the hooks are not installed.
 - **Label every pull request** with exactly one of `importance:I0` to `importance:I3`, with no "Ix:"
-  prefix in its title, and at least one category label, the subject it belongs to (`CATEGORIES`,
+  prefix in its title. `I0` blocks a release or further operation; `I1` protects comparison validity,
+  prevents a serious run failure, or broadly simplifies the tree or the suite, so that every later
+  change and proof is cheaper; `I2` is a functional improvement with bounded impact; `I3` is
+  reporting, diagnostics, wording or convenience. Add at least one category label, the subject it belongs to (`CATEGORIES`,
   `tools/runtime/land.ts`; each label's description in the repository says what it holds);
   `bun run land` refuses a stack in which either is missing or the importance doubled.
 - **Push your own branch**, never `main`. Push with `--no-verify` only where the operator says so.

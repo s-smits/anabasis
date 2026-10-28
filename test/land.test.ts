@@ -54,7 +54,8 @@ fi ;;
 elif [ -z "$ANA_FAKE_CI_AFTER" ] || [ -e "$ANA_FAKE_CI_AFTER" ]; then
   if [ -n "$ANA_FAKE_CI" ]; then printf '%s\n' "$ANA_FAKE_CI"; else printf 'completed\tsuccess\t1\thttps://ci/1\n'; fi
 fi ;;
-"run view"*"--log-failed") printf 'darwin\tRun the suite\t(fail) a test that broke on the clean runner\n' ;;
+"run view"*"--log-failed") [ -z "$ANA_FAKE_LOG_DOWN" ] || { echo "gh: Bad Gateway (HTTP 502)" >&2; exit 1; }
+  printf 'darwin\tRun the suite\t(fail) a test that broke on the clean runner\n' ;;
 "run view"*) echo "darwin: Run the suite" ;;
 "workflow run"*) [ -z "$ANA_FAKE_CI_AFTER" ] || touch "$ANA_FAKE_CI_AFTER" ;;
 "api -X PUT"*"/merge-async"*) [ "$ANA_FAKE_STACK_END" != refused ] || { echo "gh: Stack is not mergeable (HTTP 422)" >&2; exit 1; }
@@ -465,6 +466,17 @@ describe("bun run land", () => {
     expect(taken.status).toBe(1);
     expect(taken.stderr).toContain("v9.9.8 is already a tag on origin.");
     expect(writes()).toEqual([]);
+
+    // An origin that cannot be asked is no proof that the tag is free.
+    git("remote", "set-url", "origin", join(fixture, "nowhere.git"));
+    try {
+      const unasked = runLand(["12", "--merge", "--tag", "v9.9.7"]);
+      expect(unasked.status).toBe(1);
+      expect(unasked.stderr).toContain("origin could not be asked whether it holds v9.9.7.");
+      expect(writes()).toEqual([]);
+    } finally {
+      git("remote", "set-url", "origin", origin);
+    }
   });
 
   it("takes the status back from every head when GitHub refuses or fails a stack's merge, and says nothing merged", () => {
@@ -556,6 +568,17 @@ describe("bun run land", () => {
       false,
     );
     expect(statuses("ana/stack-gate")).toEqual([]);
+
+    // A log GitHub refuses to give is said to be missing, never saved as an empty log.
+    expect(
+      runLand(["12", "--merge"], {
+        ANA_FAKE_CI: "completed\tfailure\t9\thttps://ci/9",
+        ANA_FAKE_LOG_DOWN: "1",
+      }).status,
+    ).toBe(1);
+    expect(readFileSync(log, "utf8")).toContain(
+      "gh could not fetch the failed jobs' log: gh: Bad Gateway (HTTP 502)",
+    );
   });
   it("refuses to restore green when a parent moves off its child while the child is being proved", () => {
     const next = join(fixture, "moved-pulls");

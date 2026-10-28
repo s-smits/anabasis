@@ -117,6 +117,7 @@ describe("proveCommits", () => {
     expect(steps.map((line) => line.split("\t")[1])).toEqual([
       "install --frozen-lockfile",
       "run format:check",
+      "run secrets",
       "run typecheck",
       "run lint -- --strict",
       "run test -- test/owner.test.ts",

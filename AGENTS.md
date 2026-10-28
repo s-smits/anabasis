@@ -1483,7 +1483,7 @@ or recovery write (`pinFault`, `tools/d2/harness-builder.ts`).
 | `bun run test -- <paths...>` | The suite through its wrapper. Never bare `bun test` |
 | `bun run simplify` | The whole-tree scans, as a census to read |
 | `bun run not-slop` | The ledger of answered findings: status, `-- answer <id> "<why>"`, `-- prune` |
-| `bun run gate` | The gate in one command: a frozen install, the UI's own gate, the format check, typecheck, the strict lint and the suite. `-- --static` runs the tests one import away from what HEAD changed instead of the suite, and the UI's gate without its browser test files unless HEAD changed `packages/ui`. `-- --checks` runs every step but the tests, the UI's install and build and the simplify census among them, as the pre-push hook does |
+| `bun run gate` | The gate in one command: a frozen install, the UI's own gate, the format check, the secret scan over every tracked file, typecheck, the strict lint and the suite. `-- --static` runs the tests one import away from what HEAD changed instead of the suite, and the UI's gate without its browser test files unless HEAD changed `packages/ui`. `-- --checks` runs every step but the tests, the UI's install and build and the simplify census among them, as the pre-push hook does |
 | `bun run hooks:install` | Points this clone's `core.hooksPath` at `.githooks`, once; every worktree shares it |
 | `bun run commit:check` | What the pre-commit hook runs, also by hand: author email, format and lint of staged files, the slop report, the secret scan |
 | `bun run secrets` | The secret scan |

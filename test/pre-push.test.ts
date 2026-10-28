@@ -24,6 +24,7 @@ const absent = "0".repeat(40);
 const CHECKS = [
   "install --frozen-lockfile",
   "run format:check",
+  "run secrets",
   "run typecheck",
   "run lint -- --strict",
   "run simplify",

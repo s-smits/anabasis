@@ -1,7 +1,7 @@
 // The secret scan before a commit, v1's tools/secrets/scan.ts. Two modes, one vocabulary:
 //   --staged   the lines this commit ADDS (what `bun run commit:check` runs)
 //   the lines a range of commits adds, through `scanAdded` (what the pre-push hook runs)
-//   default    every tracked file (what test/secret-scan.test.ts runs, so CI covers it)
+//   default    every tracked file (`bun run secrets`, a step of the gate and of CI's darwin job)
 // The staged mode reads added lines only. A check before a commit cannot repair history, and
 // re-reporting a line that is already committed teaches the operator to skip the check, which is
 // the one outcome that makes it worthless.

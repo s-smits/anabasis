@@ -2,10 +2,11 @@
  * The gate: what CI runs, as one command over the tree it is run in, and the same gate run over each
  * commit a landing would publish, or over a pushed head, in a checkout of its own.
  *
- *   bun run gate                 install, the UI's own gate as far as it is due, format, typecheck, strict lint, the suite
+ *   bun run gate                 install, the UI's own gate as far as it is due, format, the secret scan,
+ *                                typecheck, strict lint, the suite
  *   bun run gate -- --static     the same, with the suite replaced by the tests near what HEAD changed
- *   bun run gate -- --checks     install, the UI's install and build, format, typecheck, strict lint and the
- *                                simplify census, which gates nothing: no test
+ *   bun run gate -- --checks     install, the UI's install and build, format, the secret scan, typecheck,
+ *                                strict lint and the simplify census, which gates nothing: no test
  *
  * The steps are `ci.yml`'s two Darwin jobs, cheapest first, so a format slip fails in a second
  * rather than after the linter. The strict lint fails on everything a plain one does, so it runs
@@ -137,6 +138,7 @@ const STEPS = [
   ["install", ["install", "--frozen-lockfile"]],
   ["ui", ["run", "ui:gate"]],
   ["format", ["run", "format:check"]],
+  ["secrets", ["run", "secrets"]],
   ["typecheck", ["run", "typecheck"]],
   ["lint", ["run", "lint", "--", "--strict"]],
 ] as const;

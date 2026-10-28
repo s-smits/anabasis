@@ -138,7 +138,7 @@ install to pass.
 
 | job | steps |
 | --- | --- |
-| Darwin (macOS 15) | `bun install --frozen-lockfile`, `bun run ui:deps`, `bun run typecheck`, `bun run lint -- --strict`, `bun run format:check`, `bun run test` |
+| Darwin (macOS 15) | `bun install --frozen-lockfile`, `bun run ui:deps`, `bun run typecheck`, `bun run lint -- --strict`, `bun run format:check`, `bun run secrets`, `bun run test` |
 | Darwin UI (macOS 15) | `bun install --frozen-lockfile`, then separate steps for `bun run ui:deps`, `bun run ui:build` and `bun run test -- packages/ui/test` |
 | Linux (Ubuntu 24.04 VM) | install `bubblewrap`, `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`, `bun install --frozen-lockfile`, `bun run test`, `ANA_CLIMB=1 bun run test -- test/climb.test.ts` |
 
@@ -187,7 +187,7 @@ pushed head's first parents that no remote-tracking ref of the clone holds; each
 `git diff --check`, and what each pushed head that no other pushed head holds adds gets the secret
 scan. Where one of them changes more than `AGENTS.md`, `README.md`, `docs/` or a `.md` under
 `.claude/`, each such head gets `bun run gate -- --checks` over a scratch checkout: the install, the
-UI's install and build, the format check, typecheck, strict lint, and the simplify census, whose
+UI's install and build, the format check, the secret scan, typecheck, strict lint, and the simplify census, whose
 count it prints and which gates nothing. The working tree may hold anything. A
 history brought in through a merge's other parent is counted and left alone, and the merge is
 checked: 444 of v2's commits came into this repository that way on 11 October, and v1's hook, which

@@ -6,7 +6,7 @@ import { read } from "../src/kernel/log.ts";
 import { traceOf } from "../src/kernel/trace.ts";
 import { asRecord, type JsonValue } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
-import { mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 
@@ -62,6 +62,42 @@ describe("the three backends", () => {
     expect(base?.compat ?? {}).not.toHaveProperty("openRouterRouting");
     expect(catalog.getModel("openrouter", "deepseek/deepseek-v4.1-flash-0101")).toBeUndefined();
   });
+
+  it.each([-60, 60])(
+    "refuses a Codex login with %s seconds left without refreshing or writing it",
+    async (seconds) => {
+      const claims = {
+        exp: Math.floor(Date.now() / 1000) + seconds,
+        "https://api.openai.com/auth": { chatgpt_account_id: "test-account" },
+      };
+      const access = ["e30", Buffer.from(JSON.stringify(claims)).toString("base64url"), "sig"].join(".");
+      const auth = JSON.stringify({ tokens: { access_token: access, refresh_token: "r" } });
+      writeFileSync(join(home, "auth.json"), auth);
+      const models = backends(options);
+      const provider = models.getProvider("openai-codex");
+      const oauth = provider?.auth.oauth;
+      if (provider === undefined || oauth === undefined) {
+        throw new Error("the Codex OAuth provider is missing");
+      }
+      let refreshes = 0;
+      models.setProvider({
+        ...provider,
+        auth: {
+          ...provider.auth,
+          oauth: {
+            ...oauth,
+            refresh: async (credential) => {
+              refreshes += 1;
+              return { ...credential, expires: Date.now() + 3_600_000 };
+            },
+          },
+        },
+      });
+      await expect(models.getAuth("openai-codex")).rejects.toThrow();
+      expect(refreshes).toBe(0);
+      expect(readFileSync(join(home, "auth.json"), "utf8")).toBe(auth);
+    },
+  );
 
   it("records the model Codex serves from its terminal event, leaving an absent model and backend bill unknown", async () => {
     const claims = {

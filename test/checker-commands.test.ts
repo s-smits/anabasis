@@ -1,9 +1,9 @@
 // Phase C's commands, run as the operator runs them over a sweep laid out as v1's left one: a
 // pack of two tasks and one check, three stored solves, and the pack's controls. The verifier runs
-// behind its wall, so the suite is skipped where the host has none. No model is called.
+// behind its wall, so those suites are skipped where the host has none. Carrying runs no solve.
 import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout } from "bun:test";
-import { read } from "../src/kernel/log.ts";
-import { taskSets } from "../src/kernel/task.ts";
+import { append, read } from "../src/kernel/log.ts";
+import { taskSets, taskStates } from "../src/kernel/task.ts";
 import {
   cpSync,
   mkdirSync,
@@ -31,6 +31,8 @@ const model = join(bundle, "correctness-model");
 /** The campaign whose checker reading is recorded. */
 const ACCEPTED = `${NAME}-accepted`;
 const accepted = join(REPO, ".ana", "d2", ACCEPTED);
+/** The campaign receiving tasks under a repaired checker. */
+const CARRIED = `${NAME}-carried`;
 /** The campaign whose tasks are set up for a first round. */
 const PREPARED = `${NAME}-prepared`;
 const prepared = join(REPO, ".ana", "d2", PREPARED);
@@ -56,7 +58,7 @@ afterAll(() => {
   rmSync(root, { recursive: true, force: true });
   rmSync(accepted, { recursive: true, force: true });
   rmSync(prepared, { recursive: true, force: true });
-  for (const name of [SOURCE, SEED, LOST, STALE, UNFORMED]) {
+  for (const name of [SOURCE, SEED, LOST, STALE, UNFORMED, CARRIED]) {
     rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
   }
 });
@@ -269,6 +271,68 @@ suite("acceptance and freezing over a stored pack", () => {
     } finally {
       controls("13");
     }
+  });
+});
+
+describe("carrying tasks into a repaired checker's campaign", () => {
+  it("gates carried tasks, preserves every practice release after disputes, and takes nothing twice", () => {
+    const repaired = join(root, "carry-repaired");
+    cpSync(bundle, repaired, { recursive: true });
+    writeFileSync(
+      join(repaired, "correctness-model", "evaluator.ts"),
+      EVALUATOR.replace(
+        "req.artifact.answer === String(req.publicTask.publicInput.base * 6)",
+        "Math.abs(Number(req.artifact.answer) / (req.publicTask.publicInput.base * 6) - 1) < 0.06",
+      ),
+    );
+    const old = join(root, "carry-old.jsonl");
+    for (const [version, publicInput, states] of [
+      ["held", { base: 4 }, []],
+      ["invalid", null, []],
+      ["disputed", { base: 6 }, ["disputed"]],
+      ["practice", { base: 8 }, ["released"]],
+      ["practice-disputed", { base: 9 }, ["released", "disputed"]],
+    ] as const) {
+      const task = { taskId: version, family: "fixture", publicInput, hidden: null };
+      append(old, "task.proposed", { version, taskId: version, task });
+      append(old, "task.gate", { version, gate: 1, outcome: "passed" });
+      for (const state of states) append(old, "task.state", { version, state });
+    }
+    append(old, "task.proposed", { version: "pack", taskId: "t-2" });
+    append(old, "task.gate", { version: "pack", gate: 1, outcome: "passed" });
+    append(old, "task.state", { version: "pack", state: "released" });
+    append(old, "verdict", { solve: "old-solve", task: "held", kind: "pass", answer: { answer: "24" } });
+    const carry = () =>
+      command("tools/c/carry.ts", {
+        from: old,
+        root,
+        sweep: "s",
+        cycle: "c01",
+        bundle: repaired,
+        name: CARRIED,
+      });
+    expect(carry().code).toBe(0);
+    const log = join(REPO, ".ana", "d2", CARRIED, LOG);
+    const events = read(log);
+    const states = taskStates(events);
+    expect(
+      events.flatMap(({ kind, data }) =>
+        kind === "task.proposed"
+          ? [[data.taskId, states.get(isString(data.version) ? data.version : "")]]
+          : [],
+      ),
+    ).toEqual([
+      ["held", "held"],
+      ["invalid", "refused"],
+      ["disputed", "held"],
+      ["practice", "released"],
+      ["practice-disputed", "released"],
+      ["t-2", "released"],
+    ]);
+    expect(events.filter(({ kind }) => kind === "task.gate")).toHaveLength(6);
+    expect(events.filter(({ kind }) => kind === "verdict" || kind === "solve.started")).toEqual([]);
+    expect(carry().code).toBe(0);
+    expect(read(log)).toEqual(events);
   });
 });
 

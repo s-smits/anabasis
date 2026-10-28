@@ -2,7 +2,7 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { type Contract } from "../src/kernel/contract.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
-import { packageGate, type TaskPackage, taskSets, taskStates } from "../src/kernel/task.ts";
+import { packageGate, type TaskPackage, taskSets, taskStates, taskVersion } from "../src/kernel/task.ts";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
@@ -62,6 +62,17 @@ function pkg(changes: Partial<TaskPackage> = {}): TaskPackage {
 }
 
 describe("the gate", () => {
+  it("changes task identity when a nested checker file changes, wherever the checker is kept", () => {
+    const versions = ["one", "one", "two"].map((content) => {
+      const dir = program(["beams"], ["span-rule"]);
+      mkdirSync(join(dir, "reference"));
+      writeFileSync(join(dir, "reference", "model.ts"), content);
+      return taskVersion(pkg({ checks: dir }));
+    });
+    expect(versions[0]).toBe(versions[1]);
+    expect(versions[2]).not.toBe(versions[0]);
+  });
+
   it("refuses a task that gives a check no hidden value of the check's own to run on", () => {
     // A check that declares its hidden operand required, as v1's reference-comparing checks do.
     const dir = program(["beams"], ["span-rule"]);

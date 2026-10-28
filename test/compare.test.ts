@@ -18,6 +18,7 @@ import {
   stepOf,
   sweepOf,
   tally,
+  wholePoints,
 } from "../src/kernel/compare.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
@@ -295,6 +296,11 @@ describe("one reading", () => {
 });
 
 describe("a task's pairings", () => {
+  it("rounds half points away from zero and normalises rounded zeros", () => {
+    expect([32.5, -32.5, 0.5, -0.5, -32.4].map(wholePoints)).toEqual([33, -33, 1, -1, -32]);
+    expect(Object.is(wholePoints(-0.4), 0)).toBe(true);
+  });
+
   it("names the measure that carried a result: the bill where the score without it ties or loses, which no step reads", () => {
     const even = { task: "carried", old: [P], fresh: [P] };
     const cheaper = { used: { old: [{ billed: 0.4 }], fresh: [{ billed: 0.1 }] } };
@@ -311,11 +317,12 @@ describe("a task's pairings", () => {
     expect(carriedBy({ ...even, fresh: [F] })).toBe("validity");
   });
 
-  it("negates validity and bill scores when exchanged and normalises rounded zeros", () => {
+  it("negates validity, objective and bill scores when exchanged and normalises rounded zeros", () => {
     const even = { task: "exchange", old: [P], fresh: [P] };
     const cases: { pair: Paired; expected: number }[] = [
       { pair: { ...even, old: [F] }, expected: 600 },
       { pair: { ...even, used: { old: [{ billed: 0.2 }], fresh: [{ billed: 0.1 }] } }, expected: 100 },
+      { pair: { ...even, objective: { ...lowerRule, old: [1200], fresh: [1187] } }, expected: 33 },
       { pair: even, expected: 0 },
       {
         pair: {

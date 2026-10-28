@@ -3,7 +3,7 @@
 // keeps a person's labels blind.
 import { describe, expect, it } from "bun:test";
 import type { LogEvent } from "../src/kernel/log.ts";
-import { drawn, rejections } from "../src/referee/rejections.ts";
+import { drawn, rejections, repairReading } from "../src/referee/rejections.ts";
 
 const at = "2026-10-08T00:00:00.000Z";
 const refused = (solve: string, ...blocking: string[]): LogEvent => ({
@@ -50,5 +50,39 @@ describe("a checker's refused answers", () => {
     expect(["a", "b", "c", "d"]).toEqual(expect.arrayContaining(sample));
     expect(() => drawn(VERDICTS, 5, "seed")).toThrow(/5.*4/u);
     expect(() => drawn([...VERDICTS, ruled("a", "earned")], 2, "seed")).toThrow(/blind/u);
+  });
+
+  it("holds a repair to what was read: only an answer ruled a check defect may be let through", () => {
+    const row = (solve: string, was: string, now: string) => ({ solve, task: `task-${solve}`, was, now });
+    const rows = [
+      row("a", "fail mass", "pass"),
+      row("b", "fail mass,span", "pass"),
+      row("c", "fail span", "pass"),
+      row("d", "fail mass", "pass"),
+      row("e", "fail mass", "fail mass"),
+      row("f", "pass", "fail span"),
+      row("g", "pass", "pass"),
+      row("h", "fail mass", "pass"),
+    ];
+    const events = [
+      ruled("a", "check-defect", "mass"),
+      ruled("b", "earned"),
+      ruled("c", "unclear"),
+      ruled("e", "check-defect", "mass"),
+      // A person's label stands over the Referee's ruling of the same answer.
+      ruled("h", "check-defect", "mass"),
+    ];
+    expect(repairReading(rows, events, new Map([["h", "earned"]]))).toEqual({
+      withdrawn: { "check-defect": ["a"], earned: ["b", "h"], unread: ["c", "d"] },
+      tightened: ["f"],
+      unrepaired: ["e"],
+      against: [
+        "2 answers ruled an earned fail would pass: b, h",
+        "2 answers refused before and read by nobody would pass: c, d",
+        "1 answer accepted before would be refused: f",
+      ],
+    });
+    // A repair that moves only what was ruled the old checker's fault has nothing against it.
+    expect(repairReading(rows.slice(0, 1), events, new Map()).against).toEqual([]);
   });
 });

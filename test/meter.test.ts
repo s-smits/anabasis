@@ -42,4 +42,14 @@ describe("the meter", () => {
       metered: expect.closeTo(5 + 0.125, 10),
     });
   });
+
+  it("refuses an unpriced model, and a model the table does not hold", () => {
+    for (const cost of [
+      { ...rates, input: 0 },
+      { ...rates, output: 0 },
+    ]) {
+      expect(() => freezePrices([{ ...opus, cost }])).toThrow();
+    }
+    expect(() => dollars(freezePrices([opus]), "claude/missing", tokensOf([]))).toThrow();
+  });
 });

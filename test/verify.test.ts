@@ -77,6 +77,11 @@ const MEASURED_EVALUATOR = `export const checks = {
   sees: (req) => req.hidden.length === 0,
 };
 export const objective = (req) => {
+  const mode = req.publicTask.publicInput.mode;
+  if (mode === "nan") return Number.NaN;
+  if (mode === "infinity") return Number.POSITIVE_INFINITY;
+  if (mode === "string") return "light";
+  if (mode === "throws") throw new Error("no scale");
   return req.artifact.value * req.publicTask.publicInput.density;
 };
 `;
@@ -120,7 +125,12 @@ const BRIEF = {
     { id: "second", execution: execution(["pair"], [], []) },
     {
       id: "ran",
-      execution: execution(["ran"], [], ["$.tool"], ["compiles"]),
+      execution: execution(
+        ["ran"],
+        [],
+        ["$.tool"],
+        ["compiles", "killed", "unlaunched", "unstarted", "refuses"],
+      ),
     },
     { id: "deadline", execution: execution(["deadline"], [], []) },
   ],
@@ -191,6 +201,13 @@ beforeAll(() => {
   writeFileSync(secret, "another answer");
   tool("double", "read n; echo $((n * 2))");
   tool("sleeper", "sleep 30");
+  tool("killed", "kill -KILL $$");
+  tool("unlaunched", 'exec "$(dirname "$0")/missing"');
+  tool(
+    "unstarted",
+    "echo 'Fatal Python error: init_fs_encoding: failed to get the Python codec' >&2; exit 1",
+  );
+  tool("refuses", "echo no; exit 127");
   tool("compiles", 'echo "int main(void) { return 0; }" > p.c && /usr/bin/cc p.c -o p && ./p');
   verify = openVerifier({ checks: join(root, "checks"), tools: join(root, "tools") });
 });
@@ -248,6 +265,18 @@ describe.skipIf(!osIsolationSupport().ok)("the verifier", () => {
       kind: "non-result",
       reason: "slow: sleeper ran past 100 ms",
     });
+  });
+
+  it("distinguishes tools ended by a signal or unable to start from a program that refuses with exit 127", async () => {
+    for (const [name, kind] of [
+      ["killed", "non-result"],
+      ["unlaunched", "non-result"],
+      ["unstarted", "non-result"],
+      ["refuses", "fail"],
+    ] as const) {
+      const verdict = await verify(task("ran", { tool: name }), {});
+      expect(verdict).toMatchObject(kind === "fail" ? { kind, blocking: ["ran"] } : { kind });
+    }
   });
 
   // The verifier's own deny-default wall once refused clang its toolchain and the scratch it takes
@@ -324,5 +353,14 @@ describe.skipIf(!osIsolationSupport().ok)("the objective", () => {
       kind: "fail",
       blocking: ["value"],
     });
+  });
+
+  it("reads an objective that is no finite number or throws as faulty under its own name", async () => {
+    for (const mode of ["nan", "infinity", "string", "throws"]) {
+      expect(await measured(task("plain", { density: 3, mode }), { value: 7 })).toMatchObject({
+        kind: "faulty",
+        check: "objective",
+      });
+    }
   });
 });

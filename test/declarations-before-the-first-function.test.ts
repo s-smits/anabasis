@@ -49,9 +49,22 @@ export function second(one: Late, two: Alias): number {
 }
 `;
 
+const SNAPSHOT = `const VALUES = new Set([1]); // ADMITTED already above the code
+export function first(): void {}
+VALUES.add(2);
+export const SNAPSHOT = new Set(VALUES); // ADMITTED copies the contents after the write
+`;
+
 describe("ana/declarations-before-the-first-function", () => {
   it("moves what is erased or provably fixed, and leaves an effect, a global read and state alone", async () => {
-    await lintRules("ana", [[RULE, MIXED, 5]]);
+    await lintRules("ana", [
+      [RULE, MIXED, 5],
+      [RULE, SNAPSHOT, 0],
+    ]);
+  });
+
+  it("keeps a collection snapshot below the write it copies", async () => {
+    expect(await fixedSource("ana", RULE, SNAPSHOT)).toBe(SNAPSHOT);
   });
 
   it("hoists to the front, carries the comment with the declaration, and settles the chain it unblocks", async () => {

@@ -332,6 +332,15 @@ describe("the Builder running its campaign", () => {
 });
 
 describe("a Builder session", () => {
+  it("refuses a held task handed to a session before showing it to the Builder", async () => {
+    const s = await setup([]);
+    const held = { version: "v3", task: { taskId: "t-3", family: "fixture", publicInput: {} } };
+    await expect(session({ ...s.request, tasks: [...TASKS, held] }, s, s.walled)).rejects.toThrow();
+    expect(s.of("build.started")).toEqual([]);
+    expect(s.sent).toEqual([]);
+    expect(existsSync(join(s.home, "practice", "t-3.json"))).toBe(false);
+  });
+
   it("is given the parent's record, practises, reads a trace, and leaves a frozen version", async () => {
     const earned: RefereeFinding = {
       ruling: "earned",

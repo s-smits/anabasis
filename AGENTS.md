@@ -148,8 +148,8 @@ tested as a comparison is (`src/campaign/comparison.ts`). At four solves a side 
 carries one, on the solves its test reads, two against two; at fewer solves there is none. A step
 in an A/A comparison is a false positive by construction. How often two of its solves of a task disagree
 is the flip rate. Bar: no step in the ten A/A comparisons after the six on record. Ten A/A comparisons still only
-bound the rate loosely. The same A/A comparison gives the tie share on half samples; their smaller size gives
-no floor for a full comparison.
+bound the rate loosely. Its tie share describes the half-sized samples used by the A/A comparison;
+it does not establish a lower bound on the tie share of a full comparison.
 
 A campaign makes many promotion attempts under one reference. An attempt is one reading, and the
 exact test reads a step between equal harnesses at most as often as its level: at 0.02, 1.1% of
@@ -387,20 +387,20 @@ What the **Examiner** reads:
 - for such a task, how much better a measure on record is than one of the reference's answers,
   where another of its own or its author's is (`roomLeft`). The other harness's answers are left
   out of it, so it reads the same whatever that harness measured;
-- one line of what the reference was measured to do across the exam: its tasks in the last
-  comparison it stood in, by every, some or none of its solves valid, with those set aside counted
-  apart, and the drafts its task admissions held under it, by where their room came from
+- one summary of the reference across the exam: tasks in its last comparison, grouped by every,
+  some or no solve valid, with set-aside tasks counted separately; and drafts admitted under that
+  reference, grouped by source of room
   (`measuredLine`, `heldOn`, `src/examiner/record.ts`);
 - what the last session under the current reference said at its `finish`;
 - the home the last session left, with a copy of the reference harness in it;
-- how many of its room solves each held task passed on, with their turns, and the drafts a task admission
-  refused after reading them, with the reason, each with how far its author's answer stood from the
-  reference's best by the objective (`reference.gap` of `task.gate`). Task admissions read on a replaced
-  reference are not told;
+- how many reference solves were valid during each held task's admission, with their turns; drafts
+  refused after evaluation, with the reason; and each author's objective gap from the reference's
+  best answer (`reference.gap` of `task.gate`). Admission results under an earlier reference are
+  omitted;
 - interrupted task admissions separately by draft, including across a promotion, since they did
-  not decide room. Only a task admission under the current reference carries its counts and admission-level
-  reason. `read_example` also returns earlier authored drafts from the log; their content may be
-  proposed afresh unless a later task admission has read it;
+  not decide room. Only admissions under the current reference include counts and reasons.
+  `read_example` also returns earlier authored drafts from the log; their content may be proposed
+  afresh unless a later admission has evaluated it;
 - the checks, through `try_answer`, on an instance with an answer of its own;
 - when it drafts an exam: the operator's prompt, what the host's reading found in each draft, and
   a walled home of its own, empty when it starts.
@@ -422,15 +422,14 @@ The tools of each model seat, as its source names them:
 - Examiner: `propose_tasks`, or `try_task` and `wait` where the host can have the reference harness
   solve a draft task, then `read_example`, `try_answer`, `read_opening`, `bash`, `read`, `write`
   and `finish`. `read_opening` serves the session's opening message again, for a context that was
-  compacted. `try_task` returns at once with the ids it submitted for task admission. The task admission's word on each
-  instance comes with the session's next tool result. `wait`, and the reminder after a turn that
-  made no call, wait for that word where the task admission has said nothing new (`settled`), and `finish`
-  and the session's end wait
-  for every instance still awaiting task admission (`putAside`, `src/examiner/write.ts`), so a session goes on
-  writing while its drafts are solved. The writing session's four-hour clock pauses only while it
-  awaits the task admission result, including `wait`, the no-call reminder, `finish` and shutdown; background
-  task admission work leaves it running. Kill and campaign budget remain live, and `exam.finished` records
-  elapsed `seconds` and aggregate `hostSeconds`.
+  compacted. `try_task` returns submitted ids immediately, while admission runs in the background.
+  Completed results accompany later tool results. If no new result is available, `wait` and the
+  reminder after a turn with no call await one (`settled`). Both `finish` and session shutdown await
+  every pending admission (`putAside`, `src/examiner/write.ts`). The session can therefore keep
+  writing while its drafts are solved. Its four-hour clock pauses only while awaiting admission,
+  including `wait`, the no-call reminder, `finish` and shutdown; background admission work leaves
+  it running. Kill and campaign budget remain live. `exam.finished` records elapsed `seconds` and
+  aggregate `hostSeconds`.
   `propose_tasks` runs no solve and answers in its own result.
   `try_answer` runs the checks on an instance with an answer of the Examiner's own. Where the checks
   pass, the session holds the answer in memory until the task has its final id. A task proposed with
@@ -903,7 +902,7 @@ bun run runs fresh | launch | continue | keep | pause | copy | fetch | retire | 
 - 4 solves per side (`--solves`; `SIZE` in `src/kernel/size.ts`);
 - level 0.02 (`--level`), with improvement patience of 6 (`--patience`): one comparison that reads a step at
   the level promotes;
-- a objective gap floor of 1% (`ROOM`), the least improvement by the objective worth counting, as
+- an objective gap floor of 1% (`ROOM`), the least improvement by the objective worth counting, as
   a share of the larger measure. Two valid answers closer than it tie in a pair, and an answer on
   record better than one of the reference's by less leaves that task no room, during task admission, on the
   frontier and in `roomOf`. It is a constant, the same for every campaign and every comparison;
@@ -1089,9 +1088,9 @@ reading at a shorter budget would describe a solver that was told the longer one
 - the points each measure gave, which the closing report prints beside each promotion's tally.
 
 Beside every comparison of four solves per side stands the reference read against itself, on
-halves of its own solves mirrored in time. It should read no step; its tie share describes those half samples,
-whose smaller size gives no floor for a full comparison. Its flip rate is how often two solves of
-a task disagree. The A/A comparison is
+halves of its own solves mirrored in time. It should read no step. Its tie share describes those
+half-sized samples and does not establish a lower bound for a full comparison. Its flip rate is
+how often two solves of a task disagree. The A/A comparison is
 read either way, each half at the comparison's level by the step's own rule, both tests clearing in
 the same direction (`readsStepEitherWay`), since which half is which is arbitrary; a report written
 before 26 October holds no scores without the bill and keeps its scored-only reading. Every A/A comparison
@@ -1120,9 +1119,9 @@ So the two routes to room are the tasks and the objective.
 **After the test.** A comparison that wrote its report is finished: run again, it returns that
 report.
 
-The **improvement patience** rule stops the campaign after as many moves in a row that could have shown a gain and did not as the
-campaign's improvement patience (`stopRule`, `src/kernel/reports.ts`; `--patience`, six by default). A move that
-counts is one of two kinds:
+The **improvement patience** rule stops the campaign after a fixed number of consecutive eligible
+moves show no gain (`stopRule`, `src/kernel/reports.ts`; `--patience`, six by default). Two kinds of
+move count:
 
 - a harness a session changed, once against one reference, read by the last comparison of the two,
   where that comparison tallied a task and left room;

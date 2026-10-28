@@ -2,21 +2,22 @@
  * What an Examiner is told of its campaign's past at a session's opening: a view of the log, with
  * no store of its own (`heard`).
  *
- * - A line a task, in the order the tasks come, except those last compared between two other
- *   harnesses with nothing more to say, which share one line: how the reference harness did on it in the last
- *   comparison that scored it (every, some or no solve valid, or disputed) and the solver's turns
- *   each valid answer took; who won it there and on which measure (`carriedBy`); how far an answer on record beat one of the reference's
- *   own by the objective (`roomLeft`); its task admission's count and turns; its last comparisons where it
- *   stood in two or more; and whether a valid answer is on record where nothing on the line shows
- *   one (`poolOf`). An author told only "one harness won" could not tell where the room was
+ * - One line per task, in task order. Tasks last compared between two other harnesses share a line
+ *   where there is nothing more to report. Each line gives the current reference's result in the
+ *   last comparison that scored the task (every, some or no solve valid, or disputed), the turns
+ *   each valid answer took, the winner and deciding measure (`carriedBy`), any objective improvement
+ *   on record over a reference answer (`roomLeft`), and the admission counts and turns. It also
+ *   gives comparison history where there are at least two readings, and whether a valid answer is
+ *   on record where the other facts show none (`poolOf`). An author told only "one harness won"
+ *   could not tell where the room was
  *   (`7f0add79:docs/simplify.md`, F3), and one told each win alike could not tell the 25 wins the
  *   bill alone carried in buffer-fresh-opus-v065-a's g-3 from wins by method (26 October).
- * - One measurement of the reference across the exam (`measuredLine`): its tasks in the last
- *   comparison it stood in, by every, some or none of its solves valid, and the drafts its task admissions held by where their room came from. Across
- *   26 October's buffer runs it was valid in 93 to 100% of each comparison's solves while most
+ * - One summary of the reference across the exam (`measuredLine`): tasks in its last comparison,
+ *   grouped by every, some or no solve valid; and drafts admitted under it, grouped by source of
+ *   room. Across 26 October's buffer runs it was valid in 93 to 100% of each comparison's solves while most
  *   drafts were held on the objective alone, and an author reading sixty lines saw neither.
- * - The drafts a task admission refused having read them, by reason (`refusedLines`), and the task admissions that
- *   measured nothing, by draft (`interruptedLines`).
+ * - Drafts refused after evaluation, grouped by reason (`refusedLines`), and interrupted admissions,
+ *   listed by draft (`interruptedLines`).
  *
  * Until 26 October the opening also held a table of the tasks by family where winners were hidden, a
  * count of the task admissions read on a replaced reference, and the turns by family in a block of their
@@ -24,8 +25,8 @@
  * sessions cited it; the turns now stand on the line of the task they were taken on.
  *
  * Reference measurements are told by epoch: on 16 October a session after a promotion read the
- * starter's task admission counts as the new reference's, so a task admission read before the last promotion gives no
- * count or turns. Nothing here names a harness, a check or a target, and no count carries a band or
+ * starter's admission counts as the new reference's. Admissions before the last promotion therefore
+ * contribute no counts or turns. Nothing here names a harness, a check or a target, and no count carries a band or
  * a number to reach (the operator's decision of 11 October).
  */
 import { proposalsOf } from "../kernel/history.ts";
@@ -121,7 +122,7 @@ export function gapSaid(gap: number, of: "best" | "worst" = "best"): string {
     : `${percent(gap)} ${gap > 0 ? "better" : "worse"} than its ${of}`;
 }
 
-/** Where the room of a draft its task admission held came from, by how many of the solves it read were valid. */
+/** Classify an admitted draft's room from the number of valid reference solves. */
 export function heldOn(valid: number, solves: number): string {
   if (valid === 0) return HELD_ON.yours;
   return valid < solves ? HELD_ON.validity : HELD_ON.objective;
@@ -178,7 +179,7 @@ export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "t
   const compared = referenceTurns(events);
   const roomAnswers = gateAnswers(events, since);
   const practice: string[] = [];
-  // The listed tasks the current reference's own task admissions held, and the rest, held under one it replaced.
+  // Count listed tasks admitted under the current reference separately from those admitted before it.
   let under = 0;
   let listed = 0;
   const carried: Carried = { admission: false, history: false, bill: false };
@@ -268,9 +269,9 @@ function lastAdmissions(
   );
 }
 
-/** How many of the reference harness's solves at a held task's task admission were valid, with their turns,
- *  as one clause, or nothing where the task admission read no solves. It is of the solves the task admission ran, which
- *  since 20 October stop at the first that leaves room; a task admission before then ran `TRIED`. */
+/** Summarise a held task's admission: valid reference solves, their turns and any non-results.
+ *  Omit the clause where no solve counts were recorded. Since 20 October admission stops once the
+ *  completed solves leave room; earlier admissions ran all `TRIED` solves. */
 function admissionLine(admission: JsonObject | undefined, turns: readonly number[]) {
   const reference = asRecord(admission?.reference);
   const { valid, solves, ran = TRIED } = reference ?? {};
@@ -328,10 +329,10 @@ function historyLine(history: History | undefined): string {
   return `; last ${String(reads.length)} comparisons: ${reads.join(", ")}${run}`;
 }
 
-/** What the current reference harness was measured to do across the exam: its tasks in the last
- *  comparison it stood in, on either side, by every, some or none of its solves valid, with those
- *  set aside counted apart, and never a count of solves, which with one task tallied would be that
- *  task's; and the drafts its task admissions held by where their room came from (`heldOn`), with those they refused having read them; null where neither is on record. */
+/** Summarise the current reference's last comparison, whichever side it took: tasks with every,
+ *  some or no solve valid, with set-aside tasks counted separately. Report task counts, never solve
+ *  counts, which could reveal one task's result. Also summarise drafts admitted under this
+ *  reference by source of room (`heldOn`), and measured refusals. Null where neither is recorded. */
 function measuredLine(
   events: readonly LogEvent[],
   admissions: ReadonlyMap<string, JsonObject>,
@@ -369,11 +370,10 @@ function measuredLine(
   return said.length === 0 ? null : `${said.join(" ")} These are measurements and no target.`;
 }
 
-/** The drafts a task admission under the current reference refused having read them, a line a reason: until
- *  14 October a later session was told nothing of them, and could not tell a draft refused at none
- *  of three valid solves from one never written. A draft refused on the reference's solves is said
- *  by their count, the rule being the system prompt's; one refused on its package, by the task admission's
- *  reason. */
+/** Drafts refused under the current reference after evaluation, grouped by reason. Report solve
+ *  counts for refusals based on reference solves, and the admission reason for package refusals.
+ *  Until 14 October later sessions saw none of these drafts, so they could not distinguish a draft
+ *  with no valid answer in three reference solves from one never proposed. */
 function refusedLines(
   events: readonly LogEvent[],
   admissions: ReadonlyMap<string, JsonObject>,
@@ -403,9 +403,9 @@ function refusedLines(
   return [...why].map(([reason, drafts]) => `${reason}: ${drafts.join(", ")}`);
 }
 
-/** Each proposed version whose last task admission refused it unmeasured, whether or not its author received
- *  the tool result. Across a promotion only the draft and its status are told; under the current
- *  reference, the task admission's counts and its reason, never a solver's answer or a review. */
+/** Draft versions whose latest admission ended without a complete measurement, whether or not the
+ *  author received the result. For an earlier reference, report only the draft and status. For the
+ *  current reference, include admission counts and the reason, never a solver's answer or review. */
 function interruptedLines(
   events: readonly LogEvent[],
   admissions: ReadonlyMap<string, { readonly data: JsonObject; readonly at: number }>,

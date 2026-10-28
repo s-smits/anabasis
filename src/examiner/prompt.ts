@@ -15,7 +15,7 @@
  *
  * A task needs a valid answer, and the prompt says how to be sure of one: plant it, put it to
  * `try_answer`, and grow the task around it. Nothing solves a task before it is held but the
- * reference harness at the task admission (`AGENTS.md`, rule 9), so the author alone stands between the
+ * reference harness during task admission (`AGENTS.md`, rule 9), so the author alone stands between the
  * exam and a task no answer satisfies: in the first campaign opened from a prompt, two of seven
  * tasks pressed to the margin had none. The planted answer never reaches a solver: the task admission
  * refuses a task that carries it (`write.ts`).
@@ -23,19 +23,20 @@
  * The solve is described as one system, the model inside the harness, because an Examiner that read
  * the reference harness's programs wrote against them: at esp32-fresh-opus-terra's x-4 (27 October)
  * ten drafts made `plan-pins` fail, the solver repaired each in 3 to 7 of its 20 turns, and the
- * task admission refused all ten. The three kinds of room are listed apart. No kind of draft is named: a list
- * of the three kinds the v0.7.2 task admissions held stood here until 28 October, and in sessions where
- * fifteen holds bore fifteen family labels the author called them one construction. Without it, an
- * Opus seat from one recorded position held 12 of 12 drafts put to task admission as the seat with it did, at 11%
- * fewer dollars a task admission (28 October). The home's copy
- * of the reference harness is said to compute what its solver reaches: at buffer-fresh-gpt-v071's
+ * task admission refused all ten. The prompt separates the three kinds of room, but names no kind
+ * of draft. Until 28 October it listed three constructions admitted in v0.7.2; in later sessions,
+ * the author described fifteen held drafts with fifteen family labels as one construction. In one
+ * paired trial from a recorded position, both Opus seats held 12 of 12 drafts. The seat without the
+ * list billed 11% less per task admission (28 October). The prompt also explains that the solver
+ * can reach answers computed by the home's copy of the reference harness: at buffer-fresh-gpt-v071's
  * x-3 the Examiner computed its answers with the reference's own optimiser, and in 9 refusals that
  * compared them its answer equalled the reference's best or was up to 0.59% worse (27 October).
  *
  * Each fact is stated once, in the section that owns it (17 October, #191: 1,088 words to 793).
  * What the host enforces is said by the tool result that enforces it and not beforehand: a declined
  * first finish (195 of 417 finishes in the record), an instance not taken again, a planted answer
- * carried whole (refused by the task admission, never once on record), and what a passing try shows (28 October).
+ * carried whole (forbidden by task admission, but never observed on record), and what a passing try
+ * shows (28 October).
  * The opening separates interrupted task admissions from measured refusals: incomplete admission leaves
  * room undecided, and its draft can be recovered and proposed afresh unless a later task admission read it.
  */
@@ -59,8 +60,8 @@ export interface CheckRow {
 export function systemPrompt(tried: number | undefined, reference: "in-home" | "unseen"): string {
   const tool = tried === undefined ? "propose_tasks" : "try_task";
   const floor = `${String(ROOM * 100)}%`;
-  // The task admission a task enters the exam by: its package's shape check alone, or that and `tried` fresh solves
-  // of it by the reference harness, held where they leave the room the scoring section names.
+  // A task enters the exam after its package passes the shape check and, where `tried` is set,
+  // fresh reference solves leave room as defined in the scoring section.
   const solved =
     tried === undefined
       ? " No solver is put to it while you wait, so you hear nothing more of it in this session."

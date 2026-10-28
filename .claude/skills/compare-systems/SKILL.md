@@ -99,8 +99,8 @@ solve beside it.
 
 ## Limits
 
-- **Selection.** The tasks were admitted under the campaign's own solver against its references. A
-  system with that solver, or that campaign's reference harness, met their selection first.
+- **Selection.** Task admission used the campaign's own solver and reference harnesses. The
+  evaluation set therefore depends on those systems, which limits comparisons with other systems.
 - **No person's labels.** The Referee is a model, and its rulings stand until a person labels them.
 - **Another campaign's harness** is read under this campaign's contract and answer format. A
   harness built for another exam of the same domain may lose on the format alone.

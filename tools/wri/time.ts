@@ -172,10 +172,9 @@ export function deadlineTriggers(log: Index): Trigger[] {
           ),
         ];
   });
-  // The one-minute load each comparison's solves started under. A deadline counts elapsed time, so the
-  // same deadline holds less work on a loaded host: a comparison made there reaches deadlines an idle host
-  // would not, and solves under different loads were not made under one budget, whatever their
-  // settings say. Each comparison's halves, by start, are read apart: esp32's one comparison started
+  // The one-minute load at each solve's start. The same elapsed-time limit allows less work on a
+  // loaded host, so identical settings need not give solves equal computing time. Read the first
+  // and second halves of each comparison separately: esp32's one comparison started
   // its solves at loads from 5.8 to 56.0 on 12 October, where a reading across comparisons was silent.
   const loads = results.flatMap(({ session, scoring }) => {
     const at = scoring.flatMap((solve) => (solve.load === null ? [] : [solve.load]));

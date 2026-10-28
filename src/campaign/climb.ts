@@ -280,6 +280,8 @@ function sourceOf(risk: FalsePromotion): string {
  * The campaign's chance of a false promotion, for its closing report (the plan's 7.6): each epoch's
  * summed estimate with what it rests on, and their sum capped at one: estimates all, and no bound.
  * An epoch's sum restarts at its promotion, so no epoch's alone describes the campaign.
+ * The rule-of-three illustration assumes independent trials with one binomial rate:
+ * https://doi.org/10.1111/j.1751-5823.2009.00078.x. The log does not establish those conditions.
  */
 export function riskLines(events: readonly LogEvent[]): string[] {
   const epochs = epochsOf(events);
@@ -293,7 +295,7 @@ export function riskLines(events: readonly LogEvent[]): string[] {
       return `- Epoch ${String(nth)}: ${attempts}, a false promotion among them estimated at ${percent(risk.union)}: ${sourceOf(risk)}.`;
     }),
     `Over the campaign, a false promotion in any epoch estimated at ${percent(total)}: the sum of the epochs' estimates, capped at one, which assumes nothing of how the attempts depend on one another. It sums estimates, so it is an estimate and no bound.`,
-    "The rule's design assumes each untied task is as likely won as lost between two equal harnesses, which a solver whose solves drift can break. The A/A comparisons test that assumption: one that reads a step is a false promotion between equal harnesses, and the design's rate then does not hold. No step in n A/A comparisons bounds an attempt only near 3 in n, so the A/A comparisons on record count against the design and bound nothing by themselves. Each line counts the attempts on record: a campaign that goes on makes more, and its estimate grows with them.",
+    "The rule assumes each untied task is as likely won as lost between equal harnesses; solver drift can violate that assumption. A/A comparisons provide an empirical check: each step is an observed false positive, but one alone does not establish miscalibration. With no steps in n independent comparisons sharing one false-positive rate, the approximate 95% upper limit is 3/n. The recorded comparisons do not establish those conditions, so they give no such bound by themselves. These estimates cover only recorded attempts; further attempts increase the campaign's estimate.",
   ];
 }
 
@@ -342,7 +344,7 @@ export function promotionsWorth(events: readonly LogEvent[]): ReadonlyMap<string
   );
 }
 
-/** A worth as one line: what the bar read, and that it decides no admission. */
+/** Summarise the reported cost target; it does not affect admission. */
 export function worthLine({ bars, cost }: Worth): string {
   return cost === null
     ? "cost unread"

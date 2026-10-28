@@ -125,8 +125,8 @@ export interface Bench {
   lists: ((harness: Harness) => Promise<string[] | null>) | null;
   /** Aborted when the host stops the session at a bound or a campaign action fails. */
   readonly halt: AbortController;
-  /** Runs a campaign action, whose time is the host's: the session's deadline clock stops while one runs.
-   *  Until 13 October it counted them, and a led Builder had 45 of its 240 minutes to build and
+  /** Run a campaign action without charging its elapsed time to the session's deadline.
+   *  Until 13 October the clock included actions, and a led Builder had 45 of its 240 minutes to build and
    *  ended one second after the comparison it bought reported, which it never read. */
   readonly within: <T>(action: () => Promise<T>) => Promise<T>;
   /** What that practice solve threw; the session throws it again once its record is written. */

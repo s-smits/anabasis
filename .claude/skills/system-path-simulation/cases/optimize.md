@@ -10,10 +10,11 @@ in rounds of live seats from seeds, each round a [before-after](before-after.md)
 Read it as training. The seeds are the training set, the composed prompt is the parameter, and the
 count is the loss. A change tuned on one seed has been fitted to that seed, as a harness is fitted
 to its practice tasks, so it holds only once a seed from another campaign shows the same move. Two
-more things follow from the analogy. A round is a very small batch: one draw an arm, read at a few
-task admissions, so most single rounds are noise. And the seat is prompted, never trained, so only what it is
-shown can change it: a mechanism that works through a reward in the literature carries over only
-where it can be restated as a fact in the seat's prompt, opening, tool results or home.
+more things follow from the analogy. A round is a very small batch: one draw per arm, evaluated
+after a few admission attempts, so a single round gives little evidence. These trials vary the
+seat's context while keeping model weights fixed. A mechanism that uses rewards to train weights
+does not transfer directly; its effect here must come through facts in the prompt, opening, tool
+results or home.
 
 How a comparison scores the solves it bought is no seat's, and is tuned without seating anything,
 from the record, by [promotion-tuner](../../promotion-tuner/SKILL.md). This case borrows its order
@@ -44,21 +45,23 @@ weights and the level. The exam is no term: it is drafted once, and no seat repa
 Pick one count that `live-seat.ts read` prints, or one a reader over the stretch gives, and say
 which way is better. Where that count is a rare event (a held draft, a ruling that disagrees), name
 beside it a **graded** measure of how close each attempt came, read on every attempt: at a hold
-rate of one in ten, six task admissions give an arm 0.6 holds on average, and no difference of one hold
-means anything, while a distance to the threshold moves on every task admission. Name the guards too: counts
-the change must leave where they were. Write all three in the ledger (step 7) before anything runs.
+rate of one in ten, six admission attempts yield 0.6 holds on average. One additional hold is weak
+evidence on its own, while distance to the threshold can be measured on every attempt. Name the
+guards too: counts the change must leave where they were. Write all three in the ledger (step 7)
+before anything runs.
 
 | seat | count | graded loss | guards |
 | --- | --- | --- | --- |
-| Examiner after a promotion | drafts held, by where their room came from (`some`, `none, proved`, an objective) | the author's gain over the reference's best answer at each task admission (`reference.gap`; `compare`'s `gap >= 1%` and `median gap`), and the share of task admissions that read `some` | dollars per admitted draft, room solves per draft |
-| Examiner at an opening | drafts held before the first comparison | drafts refused on their package | dollars per admitted draft |
+| Examiner after a promotion | drafts held, by where their room came from (`some`, `none, proved`, an objective) | the author's gain over the reference's best answer at each task admission (`reference.gap`; `compare`'s `gap >= 1%` and `median gap`), and the share of task admissions that read `some` | dollars per admission attempt, room solves per draft |
+| Examiner at an opening | drafts held before the first comparison | drafts refused on their package | dollars per admission attempt |
 | Referee | rulings that agree with a recorded hand label | evidence refusals per ruling | rulings refused for their evidence |
 | Builder | practice solves before its first edit, edits that reach a comparison | practice solves that fail on the same check twice | dollars per session |
 
 A measure the change moves is no graded loss unless it moves with the count. In round 8 of
 27 October one sentence of the opening moved the Opus Examiner's drafts to tasks the reference took
-longer on, its median room-solve turns from 2 to 6, while its holds fell from 14 to 10 at 14 task admissions: every
-one of the 28 task admissions was valid in every reference solve, and longer for the reference was not room.
+longer on: median reference turns rose from 2 to 6, while holds fell from 14 to 10 over 14 admission
+attempts per arm. Every reference solve returned a valid answer on those 28 drafts. Longer solves
+alone did not establish room.
 
 Size each arm from the base rate the survey (step 2) reads: enough task admissions that the prediction's
 difference is two events or more, or a graded loss whose spread on the control is known.
@@ -245,13 +248,15 @@ waiting for load seated a fresh pair of round 8 twenty minutes after the round w
 to draw as a solver's solves do (rule 6), so an arm's difference means something only beside the
 difference between two seats of one commit at one position. A series holds such a pair wherever a
 round seats code that an earlier round seated at the same position. At the Opus buffer position,
-round 7's code held 14 of 14 task admissions in round 8 and 12 of 13 in round 9, at $0.57 and $0.63 a task admission;
-round 9's arm and round 10's control, one commit, held 12 of 13 and 12 of 12, at $0.45 and $0.53.
-So at about 13 task admissions two draws of one commit differed by up to two holds, and by 11% and 18% in
-dollars a task admission; the cost guard of 30% sits just outside that. A difference inside the series'
-spread is no difference. Keep the spread in the ledger, and widen it with each repeat.
+round 7's code held 14 of 14 evaluated drafts in round 8 and 12 of 13 in round 9, at $0.57 and $0.63
+per admission attempt; round 9's arm and round 10's control, one commit, held 12 of 13 and 12 of 12,
+at $0.45 and $0.53.
+So at about 13 admission attempts two draws of one commit differed by up to two holds, and by 11%
+and 18% in dollars per attempt; the cost guard of 30% sits just outside that. A difference within
+this observed spread is not enough to distinguish an effect from variation between sessions.
+Keep the spread in the ledger, and update it with each repeat.
 
-**The position's ceiling and floor.** Where the control holds nearly every task admission, a round can read
+**The position's ceiling and floor.** Where the control holds nearly every evaluated draft, a round can read
 harm and no gain; where it holds none, gain and no harm. Round 10's control held 12 of 12 at the
 Opus buffer position, so its prediction of more holds could not be met there; the job position of
 round 11 had held 0 of 30 drafts in its source. Seat a "no harm" bar (step 8) where the control
@@ -263,8 +268,8 @@ with the ties apart, and sums dollars per task admission on each side. Pool only
 and of one Examiner model and effort: the models hold and refuse at different rates, so a GPT pair
 and an Opus pair in one sign measure the models as much as the change. A tie counts against a
 prediction of "more in at least 4 of 5", and five of five is the least a sign test reads at 0.05.
-Report the count of pairs with each result, never a sum of holds over pairs that admitted at different
-paces.
+Report the count of pairs with each result, never a sum of holds over pairs that evaluated different
+numbers of drafts.
 
 ## 7. Keep a ledger of rounds
 
@@ -280,7 +285,7 @@ why:        the diagnosis or report it comes from, with the count that showed it
 arms:       sim-<what>-<arm> in <tree>, from <campaign> cut before <session>; the control arm and
             when each started
 predict:    P1 <arm> holds at least 1 by its sixth task admission; P2 <arm>'s gap >= 1% count exceeds <arm>'s ...
-guards:     dollars per admitted draft within 30% of the control arm
+guards:     dollars per admission attempt within 30% of the control arm
 result:     (after) who ran and what reached the seat; pairs at the task admission count beside the series'
             spread; the pairs the decision rests on, the thin ones; each prediction held or missed,
             with the count; the bar taken (step 8)
@@ -335,7 +340,7 @@ What no round reaches:
 - A seed reads the first session after its cut. What the change does in later sessions, across a
   promotion or over a campaign's supply, only a fresh campaign at the change's commit reads.
 - A position's count rests on the exam its source drafted. On one pack and solver, campaigns on
-  record held from a fifth to two thirds of their admitted drafts, a wider range than any round has
+  record held from a fifth to two thirds of their evaluated drafts, a wider range than any round has
   moved, so a round compares only within one position, and a change tuned on one is fitted to it
   until a second confirms it.
 - The task admission's reference solves are fresh draws in each arm, so a task admission's word varies with them; the

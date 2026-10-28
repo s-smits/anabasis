@@ -2,8 +2,8 @@
  * What a campaign waits for, each through one host (`Host`), so that a test stands in a host whose
  * sleeps it counts.
  *
- * - **The load, before a solve.** A solve's deadline counts the clock, so a solve started into a loaded
- *   host reaches deadlines an idle one would not: on 9 October one harness answered the same seven tasks
+ * - **The load, before a solve.** A solve's deadline measures elapsed time. Under load, it may run
+ *   out of time on work it would finish on an idle host: on 9 October one harness answered the same seven tasks
  *   in a median of 105 s under a load of 31 and of 40 s under a load of 6 (`docs/transfer.md`). A
  *   solve starts once the one-minute load is at or under the cores, or after `LOOKS` looks: on 15
  *   October, three campaigns on a host of 8 cores held one of them 104 and 107 minutes. Until 12

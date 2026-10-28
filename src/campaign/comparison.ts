@@ -44,13 +44,12 @@ import type { Ruling } from "../referee/referee.ts";
 import { type Worth, worthOf } from "./climb.ts";
 
 /**
- * How the plan's rules read a comparison. A step is the new harness's test against the reference one
- * clearing its level, on the tasks' scores and on their scores without the bill. A comparison that
- * tallied no task is named apart: it tested nothing, and `no-step` would say a test was made and found
- * no gain. Eight rounds of 8 October scored no task and read `no-step` eight times. `check-defects` is
- * the comparison stopped on its check defects, and `no-change` a session that left nothing new to
- * compare. `regressed` is a report's of 12 to 20 October, when the retained tasks were a second test
- * (`readsStep`, `compare.ts`).
+ * A `step` requires the new harness to clear the fixed level against the reference on both task
+ * scores and scores without the bill (`readsStep`, `compare.ts`). A comparison that tallied no task
+ * is `not-scored`: it tested nothing. Calling it `no-step` would imply a test found no gain.
+ * Eight unscored rounds were labelled `no-step` on 8 October. `check-defects` marks a comparison
+ * stopped for check defects; `no-change` marks a session with no new harness to compare. Historical reports from
+ * 12 to 20 October may read `regressed`, when retained tasks had a separate test.
  *
  * A report written before 11 October may hold `below-starter` or `starter-unread` and an
  * `against`: readings of a third arm that solved the starter on a step. The starter is now the

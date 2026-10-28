@@ -83,7 +83,7 @@ const DRAFTS = 3;
  *  environment: as many as drafts, so that a campaign is not built or examined against a dead
  *  provider without end, and no more, since each costs an id and the operator's wait. */
 export const CRASHES = DRAFTS;
-/** Comparison admission's refusals that are a want of tasks (`refusals`, `admission.ts`). */
+/** Admission refusal codes caused by insufficient held-out tasks (`refusals`, `admission.ts`). */
 const SHORT = ["no-held", "held-short"] as const;
 
 const end = (ending: Ending, why: string): Move => ({ move: "end", ending, why });
@@ -124,8 +124,8 @@ export function heldAfter(events: readonly LogEvent[], after: number): number {
   ).length;
 }
 
-/** Whether tasks were held out since `reading` reported that comparison admission would allow a comparison
- *  on: the answer to a want of tasks or of room is then that comparison, and no session more. */
+/** Whether tasks were held out after `reading` and enough are now held to start a comparison.
+ *  If so, compare them before asking for another Examiner session. */
 function writtenSince({ events, refused }: Ground, reading: Reading): boolean {
   return heldAfter(events, reading.reported) > 0 && !SHORT.some((code) => refused.has(code));
 }
@@ -326,10 +326,9 @@ function tasks(ground: Ground): Move | null {
       answers: [asked.at],
     };
   }
-  // Before its first comparison a campaign holds the comparison admission floor and the practice its release
-  // still
-  // draws. Until 28 October it held the target, so that the Examiner was off the critical path; but a
-  // comparison waits for the open Examiner session, and two buffer campaigns of 27 October held 9
+  // Before its first comparison a campaign needs the admission floor plus any tasks still to be
+  // released for practice. Until 28 October it held the target to keep the Examiner off the critical
+  // path. A comparison waits for the open Examiner session, and two buffer campaigns of 27 October held 9
   // tasks at a floor of 8, examined 7 and 3 more hours towards 24, and stopped without comparing.
   // Until 13 October it held twice the target, and two campaigns examined 16 hours and never compared.
   const missing = all.length > 0 ? 0 : shortBy(ground);
@@ -374,10 +373,9 @@ function unfinished({ all }: Ground): Move | null {
       };
 }
 
-/** Whether `harness` read a step against the reference: its comparison's own reading, at the level
- *  its start fixed (`stepOf`, `compare.ts`). A starter comparison names no candidate: the starter winning on
- * new
- *  tasks is room by another name. Until 19 October a step bought a repeat on fresh solves, and the
+/** Whether `harness` read a step against the reference at the comparison's fixed level (`stepOf`,
+ *  `compare.ts`). A starter comparison names no candidate: a starter win on new tasks shows room,
+ *  rather than a candidate to promote. Until 19 October a step bought a repeat on fresh solves, and the
  *  two read together had to clear the level. */
 function steps({ reports, reference, starter }: Ground, harness: string): boolean {
   return (

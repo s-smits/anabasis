@@ -9,10 +9,9 @@
  *
  * Room is defined once, in the scoring section, as a comparison reads it (`informative`,
  * `src/kernel/compare.ts`), with the objective's floor (`ROOM`); the gate section and the opening
- * refer to it. What v1's prompt said of tasks is kept: requirements that share one limit (on the
- * truss packs the same requirements passed 22 of 23 one at a time and 7 of 20 inside one shared
- * limit), no limit the field does not hold, nothing a solver needs in the hidden values, and no
- * growth by size or a moved limit alone (limits reset at a 3.4-hour search's best passed 5 of 6).
+ * refer to it. What v1's prompt said of tasks is kept: no limit the field does not hold, nothing a
+ * solver needs in the hidden values, and no growth by size or a moved limit alone (limits reset at
+ * a 3.4-hour search's best passed 5 of 6).
  *
  * A task needs a valid answer, and the prompt says how to be sure of one: plant it, put it to
  * `try_answer`, and grow the task around it. Nothing solves a task before it is held but the
@@ -24,12 +23,14 @@
  * The solve is described as one system, the model inside the harness, because an Examiner that read
  * the reference harness's programs wrote against them: at esp32-fresh-opus-terra's x-4 (27 October)
  * ten drafts made `plan-pins` fail, the solver repaired each in 3 to 7 of its 20 turns, and the
- * gate refused all ten. The three kinds of room are listed apart, and beside them the three kinds
- * of draft the gates of the v0.7.2 runs held: requirements sharing a limit, rules that together
- * rule out the usual answer, and an objective's best in a narrow region. The home's copy of the
- * reference harness is said to compute what its solver reaches: at buffer-fresh-gpt-v071's x-3 the
- * Examiner computed its answers with the reference's own optimiser, and in 9 refusals that compared
- * them its answer equalled the reference's best or was up to 0.59% worse (27 October).
+ * gate refused all ten. The three kinds of room are listed apart. No kind of draft is named: a list
+ * of the three kinds the v0.7.2 gates held stood here until 28 October, and in sessions where
+ * fifteen holds bore fifteen family labels the author called them one construction. Without it, an
+ * Opus seat from one recorded position held 12 of 12 gated drafts as the seat with it did, at 11%
+ * fewer dollars a gate (28 October). The home's copy
+ * of the reference harness is said to compute what its solver reaches: at buffer-fresh-gpt-v071's
+ * x-3 the Examiner computed its answers with the reference's own optimiser, and in 9 refusals that
+ * compared them its answer equalled the reference's best or was up to 0.59% worse (27 October).
  *
  * Each fact is stated once, in the section that owns it (17 October, #191: 1,088 words to 793).
  * What the host enforces is said by the tool result that enforces it and not beforehand: a declined
@@ -72,7 +73,7 @@ export function systemPrompt(tried: number | undefined, reference: "in-home" | "
         : "You never see the solver: not its tools, its guide, its answers or its mistakes."
     }`,
     `## How a task is scored\n\nEach task is solved several times under the reference harness and several times under the new one, each solve fresh and held to the budget. An answer that passes every check within the budget is valid. Each task is scored over every pairing of a solve of each harness: by validity first and most, a valid answer beating one that is not, and between two valid answers by how much better one is by the objective, where the domain declares one, and by how much less its solve billed. The harness the score favours wins the task. A comparison scores only tasks the gate held out.\n\nA task leaves the reference harness room in one of three ways:\n- on validity: its solves are valid in some and not all. A solve fails where the model's method misses something the public rules require, or reaches no answer within the budget.\n- on an answer of yours: none of its solves is valid, while a valid answer is on record, such as yours that passed try_answer on the same instance.\n- on the objective, where the domain declares one: an answer on record, another of its own or yours among them, is better by the objective than one of its own by at least ${floor} of the larger measure, even where every one of its solves is valid.\n\nA task it answers every time, with no answer on record that much better than its own, leaves none: a smaller difference decides no pair of a comparison, the gate does not hold such a task, and a comparison takes it off the frontier. One nobody has answered may have no valid answer.`,
-    "## What the exam needs\n\nTasks within the domain's scope that leave the reference harness room and still have a valid answer, demanding and fair as a practitioner of the domain would judge them. Harder is yours to judge. You are not told how many tasks are wanted.\n- On record, the drafts that gates held have been of three kinds: several of the domain's requirements share one limit, so that meeting one spends the margin another needs; the public rules, read together, rule out the answer a usual method reaches first; and, where the domain declares an objective, the best answer lies in a narrow region that a broad search passes over, so that an answer planted there is better than the reference's. Requirements that only stand side by side are met one at a time.\n- The turns a valid answer took are what its method cost. An answer in a few of the budget's turns is one the method reaches directly. A change of size or of the numbers neither leaves room nor closes it by itself: the relative values and how they combine can change what a method chooses, and the gate measures what results.\n- A limit, state or duty the field does not hold measures your wording rather than the solver. Add none.\n- Everything a task demands is in its public input and the public rules, so that a solver that follows every public rule never fails on one it could not read. Nothing a solver needs is in the hidden values.",
+    "## What the exam needs\n\nTasks within the domain's scope that leave the reference harness room and still have a valid answer, demanding and fair as a practitioner of the domain would judge them. Harder is yours to judge. You are not told how many tasks are wanted.\n- The turns a valid answer took are what its method cost. An answer in a few of the budget's turns is one the method reaches directly. A change of size or of the numbers neither leaves room nor closes it by itself: the relative values and how they combine can change what a method chooses, and the gate measures what results.\n- A limit, state or duty the field does not hold measures your wording rather than the solver. Add none.\n- Everything a task demands is in its public input and the public rules, so that a solver that follows every public rule never fails on one it could not read. Nothing a solver needs is in the hidden values.",
     "## A valid answer must exist\n\nA task with no valid answer measures nothing, since every harness fails it alike. Make sure one exists by planting it: start from an answer that keeps every rule, derive the task from it, and put both to try_answer. Where the domain's instances scale, grow a planted task: add requirements around the planted answer that bear on the limit it already meets, and try it again at each step.",
     `## The gate\n\n${tool} takes instances and puts each to the host's gate${tried === undefined ? "" : ", and returns at once: the gate works while you go on, what it says of each instance comes with a later tool result, wait returns with the next of them, and finish waits for every instance still at it"}. The gate reads the shape of its package first: its family, its inputs, and that the checks have what they need to run on it.${solved} Of each it says held out, with the kind of room it left, or refused with its reason. A task held out is in the exam from then on.`,
     "## The session\n\nPropose in rounds: put drafts to the gate, read what it said, and propose more. When you have no more tasks worth proposing, call finish. The session also ends at its limits, and when the host has the tasks it needs.",

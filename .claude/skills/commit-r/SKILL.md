@@ -47,12 +47,22 @@ so it is in `git log` before anything is removed and survives a compaction.
 - **The budget**, measured, never estimated: the compartment's nonblank lines, decision points and
   exports now (`.claude/skills/reduce-complexity/scripts/measure.py <files...>`), and the numbers
   the hypothesis expects after. The report says met or missed.
-- **The boundaries**: every case the old tests hold, read whole, one line each. The rewrite keeps
-  each one or retires it with a reason.
+- **The boundaries**: every case the old tests hold, read whole, one line each, and every guard in
+  the old code that no test holds: a refusal, a check before something is deleted, a fallback. The
+  rewrite keeps each one or retires it with a reason. A guard no test holds is the one a rewrite
+  drops unseen: the check that no process works in a worktree before `retire` removes it had no
+  test until the rewrite of 28 October.
 
 Two compartments carry two hypotheses, or they are one compartment.
 
 ## The sequence
+
+The order has two fixed points. **The tests are written again and committed before any production
+line is removed**, and **production is written after them, to make them pass.** Tests written
+first cannot be shaped by the new code, and running them on the old code shows which of them test
+the change at all. Once production is being written, a test edit is a test bent to the code unless
+its commit names why: a boundary written down wrongly, or an interface the hypothesis did not name.
+Every other step may move, merge or be skipped, with the reason in the report.
 
 Every step ends in a local commit. Resume from `git log` since the first `R:` commit after a
 compaction. Only the squashed commit passes alone.
@@ -61,9 +71,13 @@ compaction. Only the squashed commit passes alone.
    where the operator says so ([stack-pr](../stack-pr/SKILL.md)). The pass then removes the
    compartment and nothing else. Call this commit the base.
 2. **Capture the oracle** while the old code still runs. The old tests come back from the base
-   with `git show`. Where the compartment reads logs, save the old tree's output of
-   `bun run runs replay` (or the reader's own command) over the logs it touches. Where it drives a
-   campaign, save a rehearsal's events (`bun run runs rehearse`). Keep these in the scratchpad.
+   with `git show`; they only hold what someone thought to test. The stronger oracle is the old
+   code on real input, in a mode that changes nothing, with its output and its time saved:
+   `bun run runs replay` (or the reader's own command) over the logs a reader touches, a
+   rehearsal's events (`bun run runs rehearse`) for what drives a campaign, the dry run of a
+   command that deletes or moves things. Keep these in the scratchpad. Where the hypothesis
+   promises speed, profile the old run here and put where its time goes in the frame: a speed
+   target with no profile behind it is a guess.
 3. **`R: <test paths>`**: `git rm` the tests, and commit with that subject and the frame as its body.
 4. **Write the tests from the hypothesis**, for the outcome and not the old shape. Keep each
    boundary, fold cases that now assert one thing, and add the cases the hypothesis predicts. Hold
@@ -71,7 +85,10 @@ compaction. Only the squashed commit passes alone.
    nearest hostile one, a name that is a sentence about the system, a script in every model seat.
    Run them against the old code and sort the failures:
    - a new case failing on behaviour is the hypothesis, failing on purpose;
-   - a failure to import or to call a changed interface says nothing yet, and is listed once;
+   - a failure to import or to call a changed interface says nothing yet. Where only names or
+     argument shapes changed, run the tests again through a scratch copy that maps them onto the
+     old code (a `sed` of the import into `test/_sort-<name>.test.ts`, moved to the Trash after),
+     so each failure says something about behaviour; list the rest once;
    - a kept boundary failing on behaviour is a boundary written down wrongly, so fix the test;
    - unchanged behavioural tests may all pass in a structural rewrite; measure its simpler form;
    - a case meant to expose changed behaviour that already passes needs sharpening or dropping.
@@ -92,11 +109,22 @@ compaction. Only the squashed commit passes alone.
    exit code.
 8. **Put it to the oracle.** Restore each old test beside its original file as
    `<original directory>/_old-<name>.test.ts`, so its relative imports keep resolving. Run these
-   files through `bun run test --`, then move them to the Trash; compare the saved replay or
-   rehearsal with the new tree's. Each difference is intended (the hypothesis named it), a boundary
-   retired (name it and why), or a regression (fix it in step 7's commit with `git commit --fixup`
-   and `GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <base>`). Import failures from the
-   changed interface are expected and listed once.
+   files through `bun run test --`, then move them to the Trash. Run the new code on the same real
+   input as step 2 and diff the two outputs line by line, and the two times. Each difference is
+   intended (the hypothesis named it), a boundary retired (name it and why), or a regression (fix
+   it in step 7's commit with `git commit --fixup` and
+   `GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <base>`). Import failures from the changed
+   interface are expected and listed once. A speed target missed is reported with a profile of
+   where the remaining time goes.
+
+   Where the compartment deletes or moves things, run it for real on a full copy before it runs
+   anywhere that matters: copy the input whole (`cp -cRp` clones on APFS) and point the copy's
+   links at itself. For worktrees, rewrite each copied tree's `.git` file and its admin `gitdir`
+   by hand, then restore their times with `touch -h -r` from the originals, since idle readings
+   read them; `git worktree repair` follows the copied links back and rewrites the real
+   repository's admin files. Check that no link leaves the copy, run the dry run there and compare
+   it with the real tree's, then the real run, and check that what went is exactly what the dry
+   run named. Name what the copy lacks, such as live processes or other hosts, as untested.
 9. **Measure and squash.** Use reduce-complexity's full [One diff command](../reduce-complexity/SKILL.md#one-diff-and-a-functions-branch-count),
    with the pass's base, and compare its budget lines with the frame. Save the working steps as
    `git branch commit-r/<compartment> HEAD`, then
@@ -127,6 +155,8 @@ model-visible text against the wall tests. A missed budget is reported as missed
 
 For each compartment give the hypothesis; budget before, expected and measured (`measure.py`'s
 budget lines and `stack-complexity.py <base> HEAD`'s decision points, import edges, exports and
-optional fields); squashed commit and saved branch; test counts and failure classes; oracle
-differences and their disposition; what the simpler form gave up, including nothing; and anything
-left for the operator.
+optional fields); squashed commit and saved branch; test counts and failure classes; any test
+edited after production began, with its reason; oracle differences on the old tests and on real
+input, with their disposition and the two times; the copy run where there was one, and what it
+could not test; what the simpler form gave up, including nothing; and anything left for the
+operator.

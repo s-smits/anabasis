@@ -918,8 +918,9 @@ bun run runs fresh | launch | continue | keep | pause | copy | fetch | retire | 
 
 An Examiner session ends when the Examiner calls `finish` a second time, or a first time once the
 host has the tasks it asked for, or at the end of a turn once it has them. Those are what the
-campaign is short of for a comparison's target and its practice (`shortOf`,
-`src/campaign/decide.ts`), or `--exam-tasks` where the operator names a count. `finish` and the
+campaign is short of for its practice and, before its first comparison, the admission floor, and
+after it a comparison's target (`shortOf`, `src/campaign/decide.ts`), or `--exam-tasks` where the
+operator names a count. `finish` and the
 session's end first wait for every instance still at the gate, so each reads the whole count, and a
 session can hold out more than it asked for. A first `finish` that falls short is declined once,
 with the need and without a count, because an Examiner left alone proposes one small batch and
@@ -1163,8 +1164,7 @@ a move chooses it, and the decision carries that row's code:
    check defects or cut by its cap.
 4. `tasks`: the tasks are not set up yet. A pack's tasks are taken in, practice is released, and
    tasks are written where the campaign has none or the operator asked for others, and before the
-   first comparison up to a comparison's target plus the practice the release still draws from
-   them.
+   first comparison up to the admission floor plus the practice the release still draws from them.
 5. `unfinished`: a comparison that began and has not reported continues. An Examiner session that
    holds out no task counts towards the patience.
 6. `step`: a comparison against the reference that read `step` names the harness to promote, the

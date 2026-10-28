@@ -179,7 +179,8 @@ describe("a campaign run by its log", () => {
   it("waits out a provider limit that names its reset, on record, makes the move again, and lays the reference harness in the Examiner's home unless the campaign names the term off", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-limit`;
-    const terms = ["--patience", "1", "--target", "20", "--practice", "3"];
+    // A level whose floor (16) is above the 13 tasks held, so the first comparison waits for tasks.
+    const terms = ["--patience", "1", "--target", "20", "--level", "0.0001", "--practice", "3"];
     const flags = [...seeded(name), ...terms];
     // The first Examiner session is refused on a limit the provider says lifts in a minute. Each
     // session asked records the reference harness its home's wall names.

@@ -327,13 +327,11 @@ function tasks(ground: Ground): Move | null {
       answers: [asked.at],
     };
   }
-  // Before its first comparison a campaign holds the tasks it scores and the practice its release
-  // still draws, written before the first session is paid for, so that the Examiner is not on the
-  // critical path between the session and the comparison: campaigns that built first on three
-  // practice tasks cleared them in three to five harness versions, and then waited on an Examiner
-  // session. It is a wish and no refusal of the gate's, which admits a comparison by hand on fewer.
-  // Until 13 October it held a repeat's tasks as well, twice the target, and the two host-run
-  // campaigns of 12 October examined for 16 hours, held 41 and 31 of 48, and never compared.
+  // Before its first comparison a campaign holds the gate's floor and the practice its release still
+  // draws. Until 28 October it held the target, so that the Examiner was off the critical path; but a
+  // comparison waits for the open Examiner session, and two buffer campaigns of 27 October held 9
+  // tasks at a floor of 8, examined 7 and 3 more hours towards 24, and stopped without comparing.
+  // Until 13 October it held twice the target, and two campaigns examined 16 hours and never compared.
   const missing = all.length > 0 ? 0 : shortBy(ground);
   if (missing === 0) return null;
   const before =
@@ -343,26 +341,24 @@ function tasks(ground: Ground): Move | null {
   return examine(
     ground,
     "tasks",
-    `the campaign is ${plural(missing, "held-out task")} short of a comparison's target and the practice its release draws, and ${before}: the Examiner writes more first`,
+    `the campaign is ${plural(missing, "held-out task")} short of the tasks a first comparison needs and the practice its release draws, and ${before}: the Examiner writes more first`,
   );
 }
 
 /**
- * How many held-out tasks the campaign is short of: its target or admission floor, whichever is
- * larger, and what the next release still draws for practice, less what it holds. The table's
- * examine before a comparison and the session's ask (`examTasks`, `campaign-terms.ts`) are this
- * count. Until 19 October a repeat that was due was short of a sweep at the level instead.
+ * How many held-out tasks the campaign is short of: its admission floor, or after its first
+ * comparison its target where that is larger, and what the next release still draws for practice,
+ * less what it holds. The table's examine before a comparison and the session's ask (`examTasks`,
+ * `campaign-terms.ts`) are this count. Until 19 October a due repeat was short of a sweep instead.
  */
 export function shortOf(events: readonly LogEvent[], plan: Plan): number {
   return shortBy(groundOf(events, plan));
 }
 
-function shortBy({ plan, supply }: Ground): number {
+function shortBy({ plan, supply, all }: Ground): number {
   const practice = Math.max(0, (plan.practice ?? 0) - supply.released);
-  return Math.max(
-    0,
-    practice + Math.max(plan.wanted.target, comparisonFloor(plan.wanted.level)) - supply.held,
-  );
+  const target = all.length === 0 ? 0 : plan.wanted.target;
+  return Math.max(0, practice + Math.max(target, comparisonFloor(plan.wanted.level)) - supply.held);
 }
 
 function unfinished({ all }: Ground): Move | null {

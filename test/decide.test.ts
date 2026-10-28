@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { decide, practiceRoom, unpromoted } from "../src/campaign/decide.ts";
+import { decide, practiceRoom, shortOf, unpromoted } from "../src/campaign/decide.ts";
 import type { Plan } from "../src/campaign/ground.ts";
 import { pendingWords } from "../src/campaign/word.ts";
 import { tally as tallyPairs } from "../src/kernel/compare.ts";
@@ -46,6 +46,8 @@ const SET_UP = [READ, ...HELD.flatMap(heldOut), ...REPEAT.flatMap(heldOut), ...R
 /** The same with one target's worth held out, and with six of the twelve a comparison scores. */
 const ONE = SET_UP.filter(({ data }) => !(isString(data.version) && REPEAT.includes(data.version)));
 const SIX = [READ, ...HELD.slice(0, 6).flatMap(heldOut), ...RELEASED];
+/** One short of the admission floor at the plan's level, six. */
+const FIVE = SIX.filter(({ data }) => data.version !== HELD[5]);
 /** A Builder session that left `harness`, changed unless `more` says otherwise. */
 const built = (id: string, harness: string, more: JsonObject = {}) =>
   event("build.finished", { session: id, harness, changed: true, ended: "finished", ...more });
@@ -353,18 +355,22 @@ describe("task supply", () => {
       { at: FIRST.length, word: "budget", dollars: 50 },
     ]);
     expect(move([...ONE, built("b-1", "h1")])).toMatchObject({ move: "compare" });
-    expect(move(ONE, { ...PLAN, practice: 3 })).toEqual({
+    expect(move(SIX, { ...PLAN, practice: 3 })).toEqual({
       move: "examine",
     });
-    expect(decide(SIX, PLAN)).toMatchObject({
+    expect(decide(FIVE, PLAN)).toMatchObject({
       move: "examine",
       code: "tasks",
     });
-    expect(move([...SIX, built("b-1", "h1")])).toEqual({ move: "examine" });
-    expect(decide([...SIX, built("b-1", "h1")], PLAN).why.match(/\d+/g)).toEqual(["6", "1"]);
-    expect(decide(ONE, { ...PLAN, practice: 3 }).why.match(/\d+/g)).toEqual(["2"]);
-    expect(decide(SIX, PLAN).why.match(/\d+/g)).toEqual(["6"]);
-    expect(decide([...SIX, built("b-1", "h1")], PLAN).why).toContain("h1");
+    expect(move([...FIVE, built("b-1", "h1")])).toEqual({ move: "examine" });
+    expect(decide([...FIVE, built("b-1", "h1")], PLAN).why.match(/\d+/g)).toEqual(["1", "1"]);
+    expect(decide(SIX, { ...PLAN, practice: 3 }).why.match(/\d+/g)).toEqual(["2"]);
+    expect(decide(FIVE, PLAN).why.match(/\d+/g)).toEqual(["1"]);
+    expect(decide([...FIVE, built("b-1", "h1")], PLAN).why).toContain("h1");
+    // The first comparison waits for the floor alone; the target of twelve binds after it.
+    expect(move([...SIX, built("b-1", "h1")])).toMatchObject({ move: "compare" });
+    expect([shortOf(FIVE, PLAN), shortOf(SIX, PLAN)]).toEqual([1, 0]);
+    expect(shortOf([...SIX, ...compared("g-1", "h1", "no-step")], PLAN)).toBe(6);
     expect(move([...SIX, built("b-1", "h1"), ...HELD.slice(6).flatMap(heldOut)])).toMatchObject({
       move: "compare",
     });
@@ -693,7 +699,7 @@ describe("the one count", () => {
       ending: "exam",
       code: "tasks",
     });
-    expect(move([...SIX, built("b-1", "h1"), ...idle(3)])).toMatchObject({ move: "end", ending: "exam" });
+    expect(move([...FIVE, built("b-1", "h1"), ...idle(3)])).toMatchObject({ move: "end", ending: "exam" });
     const tied = [...FIRST, ...full("g-1")];
     expect(move([...tied, ...idle(2)])).toMatchObject({ move: "examine" });
     expect(decide([...tied, ...idle(3)], PLAN).why.match(/\d+/g)).toEqual(["4", "1", "3", "1"]);

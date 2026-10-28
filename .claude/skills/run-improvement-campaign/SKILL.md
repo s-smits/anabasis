@@ -6,9 +6,9 @@ description: "Run the Anabasis v2 improvement loop, the Super Loop, and the rele
 # Run improvement campaign (the Super Loop)
 
 Two loops, one inside the other. The **release cycle** runs fresh campaigns at a release until
-each has six promotions, then stops them, investigates them, patches what the
-investigation and the predictions found, and lands the patches as the next release, which the next
-cycle's campaigns run. Inside it, each **pass** is **score → walk → choose → prove → predict →
+each has six promotions or has run twelve hours, then stops them, investigates them, patches what
+the investigation and the predictions found within twelve hours more, and lands the patches as the
+next release on the operator's word, which the next cycle's campaigns run. Inside it, each **pass** is **score → walk → choose → prove → predict →
 launch → watch → read → decide**: it asks what stands between a campaign and its next promotion,
 fixes that link's owner, and leaves the fix to be measured by the next cycle's runs. One pass
 answers one question.
@@ -33,7 +33,7 @@ the checkpoints, and a log line per step. Every step below reads that file first
 **The order is fixed, and nothing moves a step ahead of the one before it:**
 
 ```text
-run (6 promotions a run) → stop → investigate → vet → plan → implement → consolidate → land and release → predict → fork → run
+run (6 promotions or 12 hours a run) → stop → investigate → vet → plan → implement → consolidate → land and release → predict → fork → run
 ```
 
 A run is evidence about the code it ran (`AGENTS.md`, section 9), so a run left going while its
@@ -44,7 +44,7 @@ read; the operator stopped five of the six 20 minutes later, and the investigati
 became v0.6.5. A deadline does not reorder the steps: where the investigation cannot be read in
 time, tell the operator and ask, rather than land first.
 
-### The running window, until six promotions a run
+### The running window, until six promotions or twelve hours a run
 
 1. **Predict in `Predictions.md`**, a file of its own beside the cycle's `cycle.md`, written before
    step 2's `runs fresh ... --yes`: a fresh campaign makes its first solve minutes after it opens,
@@ -91,6 +91,11 @@ time, tell the operator and ask, rather than land first.
    is not stopped to fix it (`AGENTS.md`, section 10, item 6).
 
 ### The improvement window, in this order
+
+Steps 4 to 9 share one window of **twelve hours** from the last stop (operator, 28 October): stop,
+investigate, vet, plan, implement and consolidate, so the stack is proved by its end. Step 10 waits
+for the operator's word to land. Where a step cannot finish inside the window, say what is left at
+its end, and carry on in the same order; the window gives no step a reason to skip the one before.
 
 4. **Stop** each run `scripts/cycle.ts` names at the step `stop`, those at or past the threshold,
    with the `runs stop` it prints, which names each run's host (`runs on <host> stop`), since two
@@ -145,8 +150,10 @@ time, tell the operator and ask, rather than land first.
 11. **Predict and fork** the next cycle at the release's merge commit: steps 1 and 2 again.
 
 **The threshold.** Stop each run at **six promotions** (operator, 25 October, matching the
-milestone). The running window ends when every run the cycle stops has ended, never at a time on
-the clock. The #306 forks
+milestone) or **twelve hours after its opening**, whichever comes first (operator, 28 October).
+`scripts/cycle.ts` names the step `stop` at either, and times a live run to now, so a run in a long
+wait still reaches its hours. The running window ends when every run the cycle stops has ended. The
+#306 forks
 reached their first promotion at 11.9 and 14.4 hours after their opening and their third at 17.8
 and 19.1 hours (`wri.ts start`, lane 27); no run has yet been timed to its sixth. The A/A of every promoting
 reading should read no step; the release says where one did. No seat is told the threshold and no
@@ -537,7 +544,7 @@ At step 4 of the cycle every row still open is marked `unreached`.
 | watch | hourly, off the hour and the half hour (`13 * * * *`) | every run's milestone and possible stall on every host |
 | pass (the cycle's driver) | every three hours (`17 */3 * * *`) | the first cycle step not done, ended runs closed out, `runs usage`, and the timers reviewed from the ledger alone |
 | milestone | one-shot at a predicted event, or at a prediction's deadline | the named milestone or row, and any investigation it owes |
-| cycle checkpoint | one-shot at each step of the release cycle | the step `cycle.ts` names |
+| cycle checkpoint | one-shot at each step of the release cycle: the stop at the latest opening plus twelve hours, and the end of the improvement window at the last stop plus twelve hours | the step `cycle.ts` names; at the window's end, what is proved and what is left |
 | handover | one-shot at the agreed handover time | five points, changes and decisions waiting, and which timers were useful by their ledger rows |
 
 Review the Firings rows in the pass: three empty watches may justify two-hour spacing, and M3 or M5

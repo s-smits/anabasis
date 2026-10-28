@@ -130,8 +130,8 @@ A small movement is read against the solver's measured variation before it is ca
 Milestone: six confirmed promotions in one real campaign, then the same in a second domain. This is
 the operator's milestone for observation, and it is no quota, promotion rule or stop: no seat's
 prompt or tool and no row of the move table names a count of promotions, and the campaign keeps its
-own endings. The release cycle stops its runs at the milestone from outside
-(run-improvement-campaign). The stop rule's patience marks a possible plateau, which is evidence
+own endings. The release cycle stops its runs from outside, at the milestone or twelve hours after
+their opening (run-improvement-campaign). The stop rule's patience marks a possible plateau, which is evidence
 that progress stalled and no proof that no step is left. A campaign that ended before six because
 of its budget, its environment or as `finished` (three Builder conversations in a row made no
 campaign move) reads "reached N promotions; further improvement unresolved". One ended by its

@@ -50,6 +50,27 @@ describe("cycle.ts", () => {
     expect(closed.out).toContain(join("data", "runs", "runner", "reached", LOG_FILE));
   });
 
+  it("stops a run short of the threshold once its hours since opening reach the cap", () => {
+    const row = (name: string, hours: number) => ({
+      name,
+      host: "here",
+      live: true,
+      promotions: 2,
+      compared: 3,
+      ending: null,
+      hours,
+    });
+    const read = (...extra: string[]) =>
+      made.runScript(SCRIPT, ["late", "early", ...extra], {
+        FAKE_PREPARED: JSON.stringify([row("late", 12.5), row("early", 3)]),
+      });
+    const stop = read();
+    expect(stop.code).toBe(0);
+    expect(stop.out).toContain("step: stop · late 2/6 at 12.5 h");
+    expect(stop.out).not.toContain("stop late early");
+    expect(read("--hours", "24").out).toContain("step: run · late 2/6, early 2/6");
+  });
+
   it("reads a run in a peer's quoted tree, and leaves it unread where the peer fails or is silent", () => {
     const tree = join(made.root, "peer's tree");
     const folder = join(tree, ".ana", "d2", "distant");

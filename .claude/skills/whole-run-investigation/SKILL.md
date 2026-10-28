@@ -118,6 +118,11 @@ smaller than the build, read the groups in this order, because each rests on the
    improved a harness: it reads what the promotion rested on and what followed, and it rests on
    lanes 15, 19, 23 and 26 where they ran.
 
+In a release cycle the investigation shares the improvement window of twelve hours with the vetting
+and the stack's patches (run-improvement-campaign, "The improvement window"): launch every lane at
+once, and synthesise from the reports in hand rather than wait past the window for a lane that
+failed.
+
 `--lanes` takes whatever is asked for. A lane named without its trigger opens and is told so by its
 own overview. An isolated lane is refused without its trigger. The tool permits named isolated
 lanes in one selection, so the primary must build and launch each alone.

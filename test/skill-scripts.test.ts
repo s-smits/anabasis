@@ -32,7 +32,7 @@ import { decodeOutput, runSync, runTextSyncOrThrow } from "../src/meta/subproces
 import { capturedJsonStringify } from "../src/meta/json-runtime.ts";
 import { LOG_FILE, read } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
-import { capturedExecPath } from "../src/meta/process.ts";
+import { capturedExecPath, capturedSpawn } from "../src/meta/process.ts";
 import { ranWith, receipts, sources } from "../tools/runs/receipt.ts";
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-skill-scripts-")));
@@ -602,7 +602,7 @@ describe("a live seat's reading", () => {
     expect(decodeOutput(again.stderr)).toBe("");
   });
 
-  it("compares two arms at the same count of gates, and stops only a seat running here", () => {
+  it("compares two arms at the same count of gates, stops only a seat running here, and closes one not seated", () => {
     const folder = join(root, "arms", ".ana", "d2", "sim-arms");
     mkdirSync(folder, { recursive: true });
     writeFileSync(join(folder, "log.jsonl"), readFileSync(log, "utf8"));
@@ -624,12 +624,76 @@ describe("a live seat's reading", () => {
     );
     expect(cut).toMatch(/^gated\s+2\s+2\s*$/mu);
     expect(cut).toMatch(/^held\s+0\s+0\s*$/mu);
-    const stopped = runSync([capturedExecPath, script, "stop", "--seat", late]);
+    const pending = join(root, "arm-pending");
+    const stopped = runSync([capturedExecPath, script, "stop", late, pending]);
     expect(stopped.exitCode).not.toBe(0);
     expect(decodeOutput(stopped.stderr)).toContain("no process group running on this host");
+    expect(existsSync(`${late}.stopped`)).toBe(false);
+    // The pending seat is closed, so a seating script that comes to it later seats nothing.
+    const seated = runSync([
+      capturedExecPath,
+      script,
+      "start",
+      "--tree",
+      join(root, "arms"),
+      "--name",
+      "sim-arms",
+      "--out",
+      pending,
+      "--cap",
+      "1",
+      "--minutes",
+      "1",
+      "--",
+      "x.ts",
+    ]);
+    expect(seated.exitCode).not.toBe(0);
+    expect(decodeOutput(seated.stderr)).toContain("was stopped");
+    expect(existsSync(`${pending}.json`)).toBe(false);
   });
 
-  it("reads pairs at the shorter arm's gates, signs each measure, and refuses a pair of two seats or two cuts", () => {
+  it("ends a stopped seat's start as soon as its group is gone, with the reading", async () => {
+    const tree = join(root, "running");
+    const folder = join(tree, ".ana", "d2", "sim-running");
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, LOG_FILE), readFileSync(log, "utf8"));
+    writeFileSync(join(folder, "seed.json"), JSON.stringify({ from: "/runs/job", events: 3 }));
+    writeFileSync(join(tree, "idle.ts"), "await Bun.sleep(120_000);\n");
+    runTextSyncOrThrow(["git", "init", "-q", tree]);
+    runTextSyncOrThrow([
+      "git",
+      "-C",
+      tree,
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@t",
+      "commit",
+      "-q",
+      "--allow-empty",
+      "-m",
+      "seed",
+    ]);
+    const script = join(import.meta.dir, "..", ".claude/skills/system-path-simulation/scripts/live-seat.ts");
+    const seat = join(root, "running-seat");
+    const flags = ["--tree", tree, "--name", "sim-running", "--out", seat, "--cap", "5", "--minutes", "5"];
+    const started = capturedSpawn([capturedExecPath, script, "start", ...flags, "--", "idle.ts"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    while (!existsSync(`${seat}.json`) && started.exitCode === null) await Bun.sleep(50);
+    await Bun.sleep(500);
+    const stoppedAt = Date.now();
+    // Spawned rather than run in step, so this process reaps the start as soon as it ends.
+    const stopped = capturedSpawn([capturedExecPath, script, "stop", seat], { stdout: "pipe" });
+    expect(await started.exited).toBe(1);
+    // The start wakes on its group's end, well inside its 30-second tick.
+    expect(Date.now() - stoppedAt).toBeLessThan(10_000);
+    expect(await stopped.exited).toBe(0);
+    expect(await new Response(started.stdout).text()).toContain("stopped at live-seat stop");
+  });
+
+  it("reads pairs at the shorter arm's gates, signs each measure past thin pairs, and refuses a pair of two seats or two cuts", () => {
     const script = join(import.meta.dir, "..", ".claude/skills/system-path-simulation/scripts/live-seat.ts");
     const head = readFileSync(log, "utf8").split("\n").slice(0, 3);
     const seed = (name: string, lines: readonly string[], events = 3) => {
@@ -646,11 +710,14 @@ describe("a live seat's reading", () => {
       );
       return join(root, prefix);
     };
-    seed("sim-control", readFileSync(log, "utf8").trimEnd().split("\n"));
+    // Four gates the reference closes take the arm to six, past THIN.
+    const closed = Array.from({ length: 4 }, () => gate("refused", { valid: 3, solves: 3 }));
+    seed("sim-control", [...readFileSync(log, "utf8").trimEnd().split("\n"), ...closed]);
     seed("sim-arm", [
       ...head,
       gate("passed", { valid: 1, solves: 3, gap: 0.05 }),
       gate("passed", { valid: 0, solves: 3 }, { proved: true }),
+      ...closed,
     ]);
     seed("sim-other-cut", head, 2);
     const control = seat("p-control", "sim-control", "openai-codex/gpt-6.1-sol");
@@ -658,12 +725,20 @@ describe("a live seat's reading", () => {
     const result = runSync([capturedExecPath, script, "pairs", `${control},${arm}`]);
     expect(result.exitCode).toBe(0);
     const out = decodeOutput(result.stdout);
-    // Two gates each: the control refused an every and a some, the arm held a some and a proved none.
+    // At the arm's six gates the control has held two of its own; only the arm's author beat the room floor.
     expect(out).toMatch(
-      /^p-control,p-arm\s+openai-codex\/gpt-6\.1-sol high\s+2\s+0 \/ 2\s+1 \/ 2\s+0 \/ 1\s/mu,
+      /^p-control,p-arm\s+openai-codex\/gpt-6\.1-sol high\s+6\s+2 \/ 2\s+3 \/ 2\s+0 \/ 1\s/mu,
     );
-    expect(out).toMatch(/^\s+held\s+more in 1, fewer in 0, the same in 0$/mu);
+    expect(out).toMatch(/^\s+held\s+more in 0, fewer in 0, the same in 1$/mu);
+    expect(out).toMatch(/^\s+gap >= 1%\s+more in 1, fewer in 0, the same in 0$/mu);
     expect(out).toMatch(/^\s+median turns\s+more in 0, fewer in 0, the same in 0$/mu);
+    const thin = decodeOutput(
+      runSync([capturedExecPath, script, "pairs", `${control},${arm}`, "--gates", "2"]).stdout,
+    );
+    // At two gates the control refused an every and a some, the arm held a some and a proved none.
+    expect(thin).toMatch(/^p-control,p-arm\s+\S+ high\s+2 thin\s+0 \/ 2\s+1 \/ 2\s+0 \/ 1\s/mu);
+    expect(thin).toMatch(/^\s+held\s+more in 0, fewer in 0, the same in 0$/mu);
+    expect(thin).toContain("thin, not counted: p-control,p-arm");
     const opus = seat("p-opus", "sim-arm", "claude/claude-opus-5-5");
     const models = runSync([capturedExecPath, script, "pairs", `${control},${opus}`]);
     expect(models.exitCode).not.toBe(0);
@@ -733,6 +808,16 @@ describe("a live seat's reading", () => {
       "read_example: x-N-N is not one of the tasks: ex-N",
     ]);
     expect(census.finishes).toStrictEqual([2, 1]);
+    // On a seed only the calls after its cut are the seat's: the two before it are its source's.
+    const script = join(import.meta.dir, "..", ".claude/skills/system-path-simulation/scripts/live-seat.ts");
+    const folder = join(root, "census", ".ana", "d2", "sim-census");
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, LOG_FILE), `${events.map((each) => JSON.stringify(each)).join("\n")}\n`);
+    writeFileSync(join(folder, "seed.json"), JSON.stringify({ from: "/runs/job", events: 3 }));
+    const counted = decodeOutput(runSync([capturedExecPath, script, "calls", folder]).stdout);
+    expect(counted).toMatch(/^2 Examiner calls in /mu);
+    expect(counted).toMatch(/^ {2}read_example 1, failed 1$/mu);
+    expect(counted).not.toMatch(/^ {2}bash /mu);
   });
 
   it("seats the Referee only on a seed, before it opens any campaign", () => {

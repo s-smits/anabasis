@@ -88,7 +88,7 @@ any edit. Three questions find most defects:
   confounds nothing, and it can ride with any round.
 
   `live-seat.ts calls <log or campaign folder>...` is that census over any number of logs: every
-  Examiner call once, however many seeds copied it, the failed ones by tool and by the line that
+  Examiner call once, however many seeds copied it, and a seed's only from its cut, the failed ones by tool and by the line that
   names the error, and the `finish` calls the session went on after. On 28 October, over the 213
   campaign logs that the scratch census of 27 October read, it counted 42,146 calls, as that census had; among
   them 31 failed `read_example` and 23 failed `finish` calls, 217 of 418 finishes the session went
@@ -124,24 +124,44 @@ mean. This step costs nothing, so repeat it after every edit.
 
 ## 5. Run the arms
 
+**A series fixes one outline before its first round**: the positions (each a source campaign and
+its cut), the Examiner and Referee models with their efforts, each pair's cap and minutes, the gate
+count every pair is read at, and the host class. Every round seats each position of the outline as
+a fresh control and arm pair, and only the variable moves. A round that changes the outline starts
+a new series, and its readings are not set beside the earlier rounds. Rounds 8 and 9 of 27 and
+28 October seated different positions and models, so only two of round 9's three pairs could be
+set beside round 8. A position that cannot reach the gate count within its cap leaves the outline
+between series, never within one.
+
 - **Two seeds, two names, one cut.** `sim-<what>-<arm>` in each arm's tree, both cut at the same
   session with `bun run runs seed --from <campaign> --name <name> --before <session>`. One name for
   two arms collides on the seat's root (before-after, "Make the two arms").
 - **The same seat in both.** The source campaign's Examiner model and effort, its reviewer, and
   each arm on a login with room (`bun run runs usage`). A seat counts against its login like a run.
-- **Chain the controls, and share them.** A round's after arm is the next round's before arm when
-  the next edit goes on top of it, so each later round seats one new arm instead of two. Several
-  candidate edits can run at once, each its own arm against one shared control. Both save hours,
-  and both mean the arms started at different times under different load: read them at equal
-  gates (step 6), never at equal minutes, and say in the ledger when each started.
+- **The next control is the code the round decided for, on fresh seeds.** A round whose arm lost
+  seats the next round's control at the old control's commit, and one whose arm won at the arm's,
+  each position seeded afresh: round 9's control `c9` ran round 7's code. Several candidate edits
+  can run at once, each its own arm against one shared control; arms started at different times
+  under different load are read at equal gates (step 6), never at equal minutes, and the ledger says
+  when each started.
 - **A seed on another host is seeded there.** `bun run runs seed --from <campaign> --name <name>`
   on that host fetches the source across `ANA_HOSTS` and cuts it in place. A seed copied by hand
   keeps its links as links: on 27 October two seats on another host crashed on a missing file
   after `rsync -a`, and `rsync -aL` worked. `start` refuses a seed whose `checks/`, `exams/` or
-  `states/` hold a link that points at nothing, and names the first.
-- **A host with room.** Each arm's gate runs the reference's solves, three to a draft, and they wait
-  on the host's load as a campaign's do (`campaign.waited`). Read `bun run runs hosts --health`
-  and seat where the load leaves the most cores free; never pass `--loaded`.
+  `states/` hold a link that points at nothing, and names the first. Where a pair's seeds must be
+  copied, copy one: the two are the same cut in two trees. Create the target tree's `.ana/d2`
+  first, copy the seed once with `rsync -aL`, check it there (its log's line count against the
+  source's, no links left, `seed.json` present), then copy it on the target under the other arm's
+  name with `cp -a`. Delete nothing before that check: on 28 October a copy loop trashed each local
+  seed after its `rsync`, a `rsync` into a tree with no `.ana/d2` failed, and both arm seeds went,
+  over a link that took 20 minutes for one 523 MB seed.
+- **A host with room, both arms at once.** Each arm's gate runs the reference's solves, three to a
+  draft, and they wait on the host's load as a campaign's do (`campaign.waited`). Read
+  `bun run runs hosts --health`, pick the host whose five-minute load leaves the most cores free,
+  and start a pair's two arms together there, so both share whatever load follows; never pass
+  `--loaded`. Seat now rather than wait for a load threshold: a seating script that waited for the
+  one-minute load to fall seated a pair on a brief dip, after which the load rose again, and one that
+  waited for a quiet host never seated, since the round's own seats kept it loaded.
 - **One cap and one clock for each arm**: `start --cap <dollars> --minutes <n>`, sized from the
   source's gated drafts at about $0.25 to $0.50 each (live-seat, "Size it in drafts").
 
@@ -158,10 +178,20 @@ bun .claude/skills/system-path-simulation/scripts/live-seat.ts compare <scratch>
 billed, proposed, gated by word, held, dollars per held draft, gate solves, the median turns of the
 reference's valid gate answers, and the graded loss: how many gates measured an author's answer at
 least the room floor ahead of the reference's best (`gap >= 1%`), and the median gap. Each is cut
-after the arm's first N gates. A round is answered when every arm has gated the count the ledger
-named, or when one arm's ending is certain. Then end the arms with `live-seat.ts stop --seat
-<prefix>`, which ends the group and lets `start` print its reading, instead of paying for gates
-that cannot change the round's answer.
+after the arm's first N gates.
+
+The pair is the unit. Read every pair at the outline's gate count, and stop both arms of a pair
+together once both have reached it, rather than waiting for their cap. A pair that cannot reach it
+within its cap is **thin**: reported, and left out of the round's sign (`pairs` marks a pair under
+6 gates `thin`). A round is decided when every pair of the outline has reached the count or ended
+thin, or when the pairs that reached it already fix the sign whatever the rest read; round 8 was
+decided on its Opus pair at 14 and 16 gates, and its GPT pairs at 2 and 8 gates, with nothing held
+on either side, were stopped as thin. The ledger names the pairs a decision rests on. Then close
+the round in one command, `live-seat.ts stop <prefix>...` over every prefix the round's seating
+scripts name, seated or not: it ends each running group, lets each `start` print its reading, and
+closes the prefixes not yet seated, so a script still waiting to seat one seats nothing. On
+28 October a script still waiting for load seated a fresh pair of round 8 twenty minutes after the
+round was decided.
 
 A round of several pairs reads them together:
 
@@ -187,8 +217,8 @@ session or a seat on another provider, the model and effort its own records name
 A single round reads one draw an arm. Where several rounds or seeds compared the same pair of
 prompts, read them together: count the pairs in which the after arm did better on the count or the
 graded loss, and the pairs in which it did worse (`pairs` prints both, with the ties apart, and a
-tie counts against a prediction of "more in at least 4 of 5"). Pool only pairs of one Examiner model
-and effort: the models hold and refuse at different rates, so a GPT pair and an Opus pair in one
+tie counts against a prediction of "more in at least 4 of 5"). Pool only pairs of one series (step
+5) and of one Examiner model and effort: the models hold and refuse at different rates, so a GPT pair and an Opus pair in one
 sign measure the models as much as the change. Five of five pairs one way is the least that a
 sign test reads at 0.05. Report the count of pairs with each result, never a sum of holds over
 seeds that gated at different paces.
@@ -200,13 +230,16 @@ with one section a round written before its arms start:
 
 ```text
 ## Round <n>, <date> <time>
+series:     <name>; its outline once, in the series' first round: positions, models and efforts,
+            cap, minutes, gate count, host class
 variable:   <after sha> on <before sha>; the diff of step 4 in one line a change
 why:        the diagnosis or report it comes from, with the count that showed it
 arms:       sim-<what>-<arm> in <tree>, from <campaign> cut before <session>; the control arm and
             when each started
 predict:    P1 <arm> holds at least 1 by its 6th gate; P2 <arm>'s gap >= 1% count exceeds <arm>'s ...
 guards:     dollars per gated draft within 30% of the control arm
-result:     (after) compare at 6 gates; each prediction held or missed, with the count
+result:     (after) pairs at the gate count; the pairs the decision rests on, the thin ones; each
+            prediction held or missed, with the count
 next:       (after) the edit, the next seed, or the end of the loop
 ```
 

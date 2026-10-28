@@ -41,8 +41,8 @@ bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat <scra
 - `start` refuses a campaign that is no seed (rule 4), keeps the event the seat began at, the
   commit and the command in `<out>.json`, runs the command niced in a process group of its own on
   the login named, ends the group at `--cap` dollars billed since that event or at `--minutes`, and
-  prints the reading when the group is gone. It checks every 30 seconds, so an in-flight request
-  can take it past the named bound. It prints each gate, ruling and session end as it lands. An abrupt end can leave
+  prints the reading when the group is gone. It reads the log every 30 seconds, so an in-flight
+  request can take it past the named bound, and notices within a second that the group has ended. It prints each gate, ruling and session end as it lands. An abrupt end can leave
   roots; inspect them with `bun run runs stop sim-<what>` and follow run-management for cleanup.
 - Run `start` as one background command and wait for its end. It is the seat's end, so nothing
   re-arms a monitor every 30 minutes, and no turn ends with a seat running unwatched: the
@@ -54,7 +54,8 @@ bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat <scra
   arguments name a text. It quotes no task and no answer.
 - `watch --seat <prefix>` prints the same lines for a seat already running, from where it began,
   until its process group is gone, then the reading: one Monitor in Claude Code, or any agent's
-  line reader, follows a seat that another command started.
+  line reader, follows a seat that another command started. It returns only when the seat ends, so
+  a script of `watch` then `stop` never reaches the `stop`; take one look with `read` or `compare`.
 - `due <prefix>...` prints what each seat wrote since `due` last looked (kept in `<prefix>.seen`).
   With `--hook` it writes them to stderr and exits 2 when there is any, so an agent harness that
   reads exit codes stops the agent from ending its turn with a seat's events unread. In Claude Code
@@ -65,8 +66,12 @@ bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat <scra
     "command": "bun .claude/skills/system-path-simulation/scripts/live-seat.ts due <scratch>/arm-a <scratch>/arm-b --hook" }] }] } }
   ```
 
-- `stop --seat <prefix>` ends a seat this host started once its question is answered, and its
-  `start` prints the reading with that reason. `compare <prefix>...` sets several seats' counts in
+- `stop <prefix>...` ends the seats this host started once their question is answered, and each
+  `start` prints the reading with that reason and exits; a `start` still there 30 seconds after its
+  group is ended too. A prefix nothing has seated yet is closed: `start` refuses an `--out` that
+  holds a stop, so a seating script still waiting for load seats nothing for a round already read.
+  End a seat with `stop` on the host that runs it, never `pkill -f <script>` over ssh: the pattern
+  matches the ssh session's own command line, and ends that session. `compare <prefix>...` sets several seats' counts in
   columns, each cut after its first N gates with `--gates N`. `prompt --tree <worktree> --name
   sim-<what> -- tools/d1b/examine.ts <its flags>` prints what that Examiner session would be told,
   composed by the tree's own code, and seats nothing. All three serve rounds of arms

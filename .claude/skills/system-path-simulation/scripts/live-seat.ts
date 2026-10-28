@@ -7,14 +7,15 @@
  * and `due` tell an agent what a seat wrote as it lands (`newsOf`): `watch` one line an event for a
  * line reader such as Claude Code's Monitor, `due` what is unread since it last looked, and with
  * `--hook` an exit of 2 that a Claude Code Stop hook turns into a turn the agent must take. `stop`
- * ends a seat whose question is answered, and `start` says so in its reading. `compare` sets the
+ * ends seats whose question is answered, and `start` says so in its reading; a seat it names that is
+ * not seated yet is closed, so a seating script still waiting to seat it is refused. `compare` sets the
  * readings of several seats side by side, each cut at the same count of gates where `--gates` names
  * one, since two arms gate at different paces. `pairs` reads several pairs of seats, a control and an
  * arm each, each pair at the shorter arm's count of gates, and counts over the pairs of one Examiner
- * model which way the arm moved. `calls` counts the Examiner's tool calls and their failures over any
- * logs, each call once however many seeds copied it. `prompt` prints what an Examiner session would
- * be told, composed by a tree's own code with no model, so two arms' prompts are diffed before either
- * is paid.
+ * model which way the arm moved, leaving out a pair thinner than `THIN` gates. `calls` counts the
+ * Examiner's tool calls and their failures over any logs, a seed's from its cut, each call once
+ * however many logs hold it. `prompt` prints what an Examiner session would be told, composed by a
+ * tree's own code with no model, so two arms' prompts are diffed before either is paid.
  *
  *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts start --tree <worktree> --name sim-<what>
  *     --out <prefix> --cap <dollars> --minutes <n> [--login N] [--mention <text>]... -- <command> <its flags>
@@ -22,7 +23,7 @@
  *     | --log <path> --from <event> [--mention <text>]... [--json]
  *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts watch --seat <prefix>
  *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts due <prefix>... [--hook]
- *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts stop --seat <prefix>
+ *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts stop <prefix>...
  *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts compare <prefix>... [--gates N]
  *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts pairs <control>,<arm>... [--gates N]
  *   bun .claude/skills/system-path-simulation/scripts/live-seat.ts calls <log or campaign folder>...
@@ -55,6 +56,13 @@
  * its source campaign's gates as the seat's, and a seed copied to another host with its links
  * unresolved crashed its seat twice on a missing file. `pairs`, `calls`, `read --log` on a seed
  * from its cut, and `start`'s refusal of a seed with a broken link answer those four.
+ *
+ * Round 8 was decided on its Opus pair at 00:45 on 28 October, and its arms were stopped; a seating
+ * script still waiting for load on another host seated a fresh pair of the round 20 minutes later.
+ * `stop` on a prefix nothing has seated now leaves its `.stopped` word, and `start` refuses a prefix
+ * that holds one. The stopped seats' `start` wrappers were seen alive minutes after their groups
+ * ended; `start` now wakes as its group ends rather than at its next tick, keeps its own pid, and
+ * `stop` ends it where it outlives its reading.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { EXAMINE } from "#src/campaign/admission.ts";
@@ -85,7 +93,7 @@ const USAGE = `usage:
   live-seat.ts read --seat <prefix> | --log <path> --from <event> [--mention <text>]... [--json]
   live-seat.ts watch --seat <prefix>
   live-seat.ts due <prefix>... [--hook]
-  live-seat.ts stop --seat <prefix>
+  live-seat.ts stop <prefix>...
   live-seat.ts compare <prefix>... [--gates N]
   live-seat.ts pairs <control>,<arm>... [--gates N]
   live-seat.ts calls <log or campaign folder>...
@@ -95,13 +103,14 @@ start runs <command> with --name in <tree>, on a seed only, and prints the readi
 watch prints one line for each event worth reading as it lands, until the seat's process is gone.
 due prints what landed in each seat since due last looked; with --hook it writes that to stderr and
 exits 2 when there is any, as a Claude Code Stop hook keeps the session from stopping.
-stop ends a running seat's process group; its start then prints the reading.
+stop ends each running seat's process group, and its start then prints the reading; a prefix not
+seated yet is closed, and start refuses it.
 compare prints each seat's counts in a column, each cut after its first N gates with --gates.
 pairs reads each pair of seats, a control and an arm on the same seed cut under the same models, at
 the shorter arm's count of gates (or N), and counts for each Examiner model in how many pairs the arm
-did more, fewer or as many.
+did more, fewer or as many; a pair under 6 gates is marked thin and left out of that count.
 calls counts the Examiner's tool calls, failed calls by tool and kind, and finishes the session
-went on after, over every log named, each call once however many seeds copied it.
+went on after, over every log named, a seed's from its cut, each call once however many logs hold it.
 prompt prints the system prompt, opening, tools and nudges the Examiner command would seat, and
 seats nothing.`;
 const OPTIONS = {
@@ -128,6 +137,11 @@ const GAP = `gap >= ${String(ROOM * 100)}%`;
 const ERROR_LINE = /error|denied|not found|no such|not permitted|timed out|refused|invalid|cannot|failed/iu;
 /** The flags that say who sits in an Examiner seat: a pair is read only within one of them. */
 const SEATED = ["--examiner", "--examiner-effort", "--reviewer", "--reviewer-effort"] as const;
+/** Fewer gates than this leave a pair thin: shown, and left out of the sign over pairs. Round 8's GPT
+ *  pairs reached 2 and 8 gates with nothing held on either side, against its Opus pair's 14. */
+const THIN = 6;
+/** How long `stop` gives a seat's `start` to print its reading once the group is gone. */
+const WRAPPER_GRACE_MS = 30_000;
 
 /** A log, and the event a seat began at in it. */
 interface Stretch {
@@ -357,6 +371,8 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
   const minutes = args.int("minutes") ?? args.die("--minutes is required");
   if (!Number.isFinite(cap) || cap <= 0) args.die("--cap is a number of dollars above 0");
   if (command.length === 0) args.die("name the command after --");
+  const closed = existsSync(`${out}.stopped`) ? readFileSync(`${out}.stopped`, "utf8") : "";
+  if (closed !== "") args.die(`${out} was stopped (${closed}): its round is read; seat under another --out`);
   const log = seedLog(tree, name, args.die);
   const from = read(log).length;
   const env = {
@@ -376,7 +392,7 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
   const commit = gitText(tree, "rev-parse", "--short=9", "HEAD");
   writeFileSync(
     `${out}.json`,
-    `${capturedJsonStringify({ tree, name, commit, command, from, pid: child.pid, at: new Date().toISOString() }, null, 2)}\n`,
+    `${capturedJsonStringify({ tree, name, commit, command, from, pid: child.pid, wrapper: runtimeProcess.pid, at: new Date().toISOString() }, null, 2)}\n`,
   );
   console.log(`${name} at ${commit}: pid ${String(child.pid)}, from event ${String(from)}; ${out}.err`);
   const began = Date.now();
@@ -384,7 +400,11 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
   let quiet = 0;
   let stopped: string | null = null;
   while (processGroupExists(child.pid)) {
-    await Bun.sleep(TICK_MS);
+    // A second at a time, so a group ended from outside is read at once; `child.exited` of an
+    // unreferenced child did not resolve when `stop` ended its group.
+    for (let slept = 0; slept < TICK_MS && processGroupExists(child.pid); slept += 1000) {
+      await Bun.sleep(1000);
+    }
     const events = eventsNow(log);
     if (events === null) continue;
     const billed = billedBetween(events, from);
@@ -409,6 +429,9 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
   return stopped === null ? 0 : 1;
 }
 
+/** Where a seed's own events begin in its log, which opens with its source's; null outside a seed. */
+const cutOf = (log: string) => (existsSync(join(dirname(log), SEED_FILE)) ? seedCut(dirname(log)) : null);
+
 /** The log and the event a reading starts at: as `start` kept them beside a seat's output, or named. */
 function stretchOf(args: CommandArgs): Stretch {
   const seat = args.value("seat");
@@ -417,9 +440,8 @@ function stretchOf(args: CommandArgs): Stretch {
     // A seed's log begins with its source's events, whose gates are no seat's: read from its cut.
     const from =
       args.int("from") ??
-      (existsSync(join(dirname(log), SEED_FILE))
-        ? seedCut(dirname(log))
-        : args.die("--from is required with --log outside a seed: the event the seat began at"));
+      cutOf(log) ??
+      args.die("--from is required with --log outside a seed: the event the seat began at");
     return { log, from };
   }
   if (args.value("log") !== null || args.int("from") !== null) {
@@ -432,12 +454,13 @@ function stretchOf(args: CommandArgs): Stretch {
  *  tree's commit and the command it seated. */
 function keptSeat(seat: string, die: CommandArgs["die"]) {
   const kept = asRecord(capturedJsonParse(readFileSync(`${seat}.json`, "utf8")));
-  const { tree, name, from, pid, commit, command } = kept ?? {};
+  const { tree, name, from, pid, wrapper, commit, command } = kept ?? {};
   if (!isString(tree) || !isString(name) || !isNumber(from)) die(`${seat}.json is no seat start kept`);
   return {
     log: join(tree, ".ana", "d2", name, LOG_FILE),
     from,
     pid: isNumber(pid) ? pid : null,
+    wrapper: isNumber(wrapper) ? wrapper : null,
     commit: isString(commit) ? commit : "?",
     command: Array.isArray(command) ? command.filter(isString) : [],
   };
@@ -482,15 +505,40 @@ function due(args: CommandArgs, seats: readonly string[]): number {
   return 2;
 }
 
-/** Ends a seat this host started, as its cap would, and leaves `start` the word that it was stopped. */
-async function stop(args: CommandArgs): Promise<number> {
-  const seat = args.required("seat");
-  const { pid } = keptSeat(seat, args.die);
-  if (pid === null || !processGroupExists(pid)) args.die(`${seat} has no process group running on this host`);
-  writeFileSync(`${seat}.stopped`, "live-seat stop");
-  await terminateAndReapProcessGroupId(pid);
-  console.log(`${basename(seat)} stopped`);
-  return 0;
+/** Ends seats this host started, as a cap would, and leaves each `start` the word that it was
+ *  stopped. A prefix nothing has seated yet is closed with the same word, which `start` refuses, so a
+ *  round read and stopped takes the seats its scripts still wait to seat with it. */
+async function stop(args: CommandArgs, seats: readonly string[]): Promise<number> {
+  if (seats.length === 0) args.die("name the seats' prefixes");
+  let missed = 0;
+  for (const seat of seats) {
+    if (!existsSync(`${seat}.json`)) {
+      writeFileSync(`${seat}.stopped`, "live-seat stop, before it was seated");
+      console.log(`${basename(seat)} closed before it was seated: start refuses it`);
+      continue;
+    }
+    const { pid, wrapper } = keptSeat(seat, args.die);
+    if (pid === null || !processGroupExists(pid)) {
+      console.error(
+        `${basename(seat)} has no process group running on this host: it ended, or runs elsewhere`,
+      );
+      missed += 1;
+      continue;
+    }
+    writeFileSync(`${seat}.stopped`, "live-seat stop");
+    await terminateAndReapProcessGroupId(pid);
+    // Its start reads the log once more and prints the reading; one that outlives that is ended.
+    const starter = wrapper ?? 0;
+    for (let waited = 0; waited < WRAPPER_GRACE_MS && processGroupExists(starter); waited += 1000) {
+      await Bun.sleep(1000);
+    }
+    const lingered = processGroupExists(starter);
+    if (lingered) runtimeProcess.kill(starter, "SIGTERM");
+    console.log(
+      `${basename(seat)} stopped${lingered ? `, and its start (pid ${String(starter)}) ended` : ""}`,
+    );
+  }
+  return missed === 0 ? 0 : 1;
 }
 
 /** Where each gate from event `from` on stands in the log. */
@@ -609,7 +657,7 @@ function pairs(args: CommandArgs, specs: readonly string[]): number {
   const rows = readPairs.map(({ name, model, cut, before, after }) => [
     name,
     model,
-    String(cut),
+    cut < THIN ? `${String(cut)} thin` : String(cut),
     ...MEASURES.map(([, of]) => `${shown(of(before))} / ${shown(of(after))}`),
     `${perGate(before.billed, cut)} / ${perGate(after.billed, cut)}`,
   ]);
@@ -619,7 +667,8 @@ function pairs(args: CommandArgs, specs: readonly string[]): number {
     ),
   );
   for (const model of new Set(readPairs.map((pair) => pair.model))) {
-    const own = readPairs.filter((pair) => pair.model === model && pair.cut > 0);
+    const own = readPairs.filter((pair) => pair.model === model && pair.cut >= THIN);
+    const thin = readPairs.filter((pair) => pair.model === model && pair.cut < THIN).map(({ name }) => name);
     const signs = MEASURES.map(([label, of]) => {
       const moved = own.flatMap(({ before, after }) => {
         const [was, is] = [of(before), of(after)];
@@ -630,9 +679,12 @@ function pairs(args: CommandArgs, specs: readonly string[]): number {
     });
     const sum = (side: "before" | "after") => own.reduce((total, pair) => total + pair[side].billed, 0);
     const gated = own.reduce((total, { cut }) => total + cut, 0);
-    console.log(`\n${model}, the arm against its control over ${plural(own.length, "pair")} with a gate:`);
+    console.log(
+      `\n${model}, the arm against its control over ${plural(own.length, "pair")} of ${String(THIN)} gates or more:`,
+    );
     const dollars = `${perGate(sum("before"), gated)} against ${perGate(sum("after"), gated)}`;
     console.log(columns([...signs, ["  $ per gate", dollars]]).join("\n"));
+    if (thin.length > 0) console.log(`  thin, not counted: ${thin.join(" ")}`);
   }
   return 0;
 }
@@ -681,7 +733,9 @@ async function census(args: CommandArgs, named: readonly string[]): Promise<numb
   for (const each of named) {
     const log = existsSync(join(each, LOG_FILE)) ? join(each, LOG_FILE) : await logAcross(each);
     if (!existsSync(log)) args.die(`${log} does not exist`);
-    logs.push(read(log));
+    // A seed's history before its cut is its source's: on 28 October two seats read 537 and 521
+    // calls, of which they made 59 and 42.
+    logs.push(read(log).slice(cutOf(log) ?? 0));
   }
   const found = censusOf(logs);
   const most = (counts: Readonly<Record<string, number>>) =>
@@ -717,7 +771,7 @@ async function main(args: CommandArgs): Promise<number> {
   if (verb === "start") return start(args, command);
   if (verb === "watch") return watch(args);
   if (verb === "due") return due(args, command);
-  if (verb === "stop") return stop(args);
+  if (verb === "stop") return stop(args, command);
   if (verb === "compare") return compare(args, command);
   if (verb === "pairs") return pairs(args, command);
   if (verb === "calls") return census(args, command);

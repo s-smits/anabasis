@@ -27,7 +27,7 @@ reads its later tasks and answers from there (`draftedSource`, `tools/runs/rehea
 | The real run | everything a script cannot say | hours, tens of dollars | run-management, then `bun run runs pulse` |
 | Before and after | whether a change moves what its pull request says, and nothing else, against the commit without it | twice the case it wraps | [before-after](cases/before-after.md) |
 | The open stack | which of a stack's changes hold with a real model before it lands, while its other fixes go on | one live seat a change, one after the other | [stack](cases/stack.md), `scripts/referee-seat.ts` |
-| Optimise by simulation | whether a prompt or a term moves one count a live seat produces, read with a graded loss beside it and tuned in rounds of arms | two seats a round, a few rounds | [optimize](cases/optimize.md), `live-seat.ts prompt`, `compare`, `pairs`, `calls`, `stop` |
+| Optimise by simulation | whether a prompt or a term moves one count a live seat produces, read with a graded loss beside it and tuned in rounds of control and arm pairs over one fixed outline | two seats a position, a few rounds | [optimize](cases/optimize.md), `live-seat.ts prompt`, `compare`, `pairs`, `calls`, `stop` |
 
 A cheaper case that answers the question cancels every dearer one. Say which case you stopped at,
 and why the next was not needed.
@@ -54,6 +54,8 @@ that machine's seat records and process ids. Never interpret a remote pid as loc
    Production move commands have no such guard: use `sim-<what>` only for seeds.
 5. **One variable.** Two rehearsals compare when one flag moved between them. Two commits compare
    on the same input, and the commit is then the variable ([before-after](cases/before-after.md)).
+   Rounds of tuning compare only within one series, whose outline (positions, seats, caps, gate
+   count, host class) no round moves ([optimize](cases/optimize.md), step 5).
 6. **Change the position, never the prompt.** A live seat is seated by the production command with
    the production prompt, and nothing tells the model what the simulation hopes for. If a prompt is
    what you are testing, that edit is the one variable.

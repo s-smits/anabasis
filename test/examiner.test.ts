@@ -196,7 +196,10 @@ describe("a session of any mode", () => {
       expect(turned.of(`${KIND[mode]}.finished`)).toMatchObject([{ ended: "turns", turns: 1, crash: null }]);
 
       // The faux provider cannot be cut short, so a late reply ends the session at its deadline, and no crash.
-      const slow: FauxResponseStep = () => new Promise((settle) => setTimeout(() => settle(finish), 600));
+      const slow: FauxResponseStep = () =>
+        new Promise((settle) => {
+          setTimeout(() => settle(finish), 600);
+        });
       const walled = seat(mode, [slow, finish]);
       expect(await examine({ ...walled.request, limits: { ...limits, wallSeconds: 0.2 } })).toMatchObject({
         ended: "wall",
@@ -544,7 +547,7 @@ describe("a session that writes tasks", () => {
       expect(opening).not.toContain(unsaid);
     }
     // How many tasks are wanted is not the Examiner's to know: no prompt and no tool text says 24.
-    expect(opening.replace(/"timestamp":\d+/g, "")).not.toContain("24");
+    expect(opening.replaceAll(/"timestamp":\d+/g, "")).not.toContain("24");
     // A task is read whole, hidden values too, and a turn with no call is nudged.
     expect(s.sent[1]).toContain(String.raw`\"seed\": 5`);
     expect(s.sent[2]).toContain("You have not called finish. Propose further tasks, or call finish.");
@@ -818,7 +821,7 @@ describe("a session that writes tasks", () => {
       s
         .of(CALLED)
         .flatMap(({ text: said }) => (isString(said) ? said.split("\n") : []))
-        .filter((line) => / validly in /.test(line))
+        .filter((line) => line.includes(" validly in "))
         .map((line) => / validly in (\d+ of \d+) solves/.exec(line)?.[1]),
     ).toEqual(expect.arrayContaining(["0 of 1", "3 of 3"]));
   });
@@ -839,7 +842,9 @@ describe("a session that writes tasks", () => {
       await both.promise;
       if (nth === 2) return PASS;
       if (!kill.aborted) {
-        await new Promise((settle) => kill.addEventListener("abort", settle, { once: true }));
+        await new Promise((settle) => {
+          kill.addEventListener("abort", settle, { once: true });
+        });
       }
       const reason: unknown = kill.reason;
       reasons.push(reason);
@@ -918,7 +923,9 @@ describe("a session that writes tasks", () => {
     });
     try {
       await Promise.race([cancelled.promise, result]);
-      await new Promise<void>((resolve) => setImmediate(resolve));
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
       expect(asked).toBe(3);
       expect(aborted).toBe(true);
       expect(returned).toBe(false);
@@ -940,18 +947,12 @@ describe("a session that writes tasks", () => {
       const reviewing = Promise.withResolvers<void>();
       const stop = new AbortController();
       let checked = 0;
-      // SAFETY: probing uses these campaign fields with scripted solving and reviewing seats.
-      const campaign = {
-        log: s.log,
-        states: join(dirname(s.log), "states"),
-        test: { model: s.request.model, effort: s.request.effort },
-      } as Campaign;
-      campaign.reader = () => ({
+      const probeReader: Campaign["reader"] = () => ({
         model: review.request.model,
         effort: "medium",
         models: review.request.models,
       });
-      campaign.reviewers = (reader) => ({
+      const reviewers: Campaign["reviewers"] = (reader) => ({
         referee: (solve, task, kill) =>
           referee(
             { ...reader, kill },
@@ -966,12 +967,22 @@ describe("a session that writes tasks", () => {
                 if (checked === 1) return { kind: "fail", blocking: ["check-product"] };
                 if (signal === undefined) throw new Error("the Referee probe has no signal");
                 reviewing.resolve();
-                await new Promise((resolve) => signal.addEventListener("abort", resolve, { once: true }));
+                await new Promise((resolve) => {
+                  signal.addEventListener("abort", resolve, { once: true });
+                });
                 return { kind: "non-result", reason: "the Referee probe was cancelled" };
               },
             },
           ),
       });
+      // SAFETY: probing uses these campaign fields with scripted solving and reviewing seats.
+      const campaign = {
+        log: s.log,
+        states: join(dirname(s.log), "states"),
+        test: { model: s.request.model, effort: s.request.effort },
+        reader: probeReader,
+        reviewers,
+      } as Campaign;
       let asked = 0;
       const endings: Ending[] = [];
       const probe = await launchRoomSolve(
@@ -1123,7 +1134,7 @@ describe("a session that writes tasks", () => {
               first.resolve();
               await later.promise;
             }
-            return alreadyProved ? await measured(task, session) : REJECTED;
+            return alreadyProved ? measured(task, session) : REJECTED;
           },
         },
         undefined,
@@ -1612,9 +1623,9 @@ describe("a session that writes tasks", () => {
           await release.promise;
           return REJECTED;
         }
-        await new Promise<void>((resolve) =>
-          signal.addEventListener("abort", () => resolve(), { once: true }),
-        );
+        await new Promise<void>((resolve) => {
+          signal.addEventListener("abort", () => resolve(), { once: true });
+        });
         cancelled += 1;
         return { outcome: "non-result", kind: "killed", reason: "cut" };
       },
@@ -1702,7 +1713,7 @@ describe("a session that writes tasks", () => {
           append(s.log, FINISHED, { solve, ending });
           settle(ending);
         };
-        const late = setTimeout(() => end(PASS), 5_000);
+        const late = setTimeout(() => end(PASS), 5000);
         kill.addEventListener("abort", () => end({ outcome: "non-result", kind: "killed", reason: "wall" }));
       });
     const started = performance.now();
@@ -1712,7 +1723,7 @@ describe("a session that writes tasks", () => {
       probe,
     });
     expect(examined.ended).toBe("wall");
-    expect(performance.now() - started).toBeLessThan(4_000);
+    expect(performance.now() - started).toBeLessThan(4000);
     expect(running.size).toBe(0);
     expect(s.of(FINISHED).map(({ ending }) => asRecord(ending)?.kind)).toEqual(Array(2).fill("killed"));
     expect(s.of(TASK_ADMISSION)).toMatchObject(

@@ -1,6 +1,6 @@
 // A task: the shape check its package passes and the states a log folds it into.
 import { afterAll, describe, expect, it } from "bun:test";
-import { type Contract } from "../src/kernel/contract.ts";
+import type { Contract } from "../src/kernel/contract.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import { packageGate, type TaskPackage, taskSets, taskStates, taskVersion } from "../src/kernel/task.ts";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";

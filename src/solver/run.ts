@@ -24,13 +24,7 @@
  * - A failed model turn ends the attempt as the provider's non-result, which `solve` runs again whole;
  *   v1 nudged once more into the same session unless the failure repeated.
  */
-import {
-  type Api,
-  type AssistantMessage,
-  type Model,
-  type Models,
-  type ThinkingLevel,
-} from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { resetOf } from "../agent/backends/claude.ts";
 import type { Limits } from "../kernel/condition.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";

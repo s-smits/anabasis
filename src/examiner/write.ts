@@ -531,7 +531,7 @@ function proposeTool(desk: Desk, name: keyof typeof ADMISSION_TOOLS): SeatTool {
       }
       const lines = await Promise.all(
         instances.map(async (instance) =>
-          isString(instance) ? instance : await admitDraft(desk, instance, signal),
+          isString(instance) ? instance : admitDraft(desk, instance, signal),
         ),
       );
       const result = text(`${lines.join("\n")}\n${used}${supplied(desk) ? `\n\n${SUPPLIED}` : ""}`);
@@ -675,7 +675,7 @@ export function writing(
   walls: Pick<Walls, "pinned"> | undefined,
   reference: "unseen" | "in-home",
   stop = new AbortController().signal,
-  hostWait: (action: () => Promise<void>) => Promise<void> = async (action) => await action(),
+  hostWait: (action: () => Promise<void>) => Promise<void> = async (action) => action(),
 ) {
   const { limits, verify, wanted } = request;
   const before = read(request.log);
@@ -746,7 +746,7 @@ export function writing(
         last && desk.pending.size > 0 ? `${plural(desk.pending.size, "instance")} still at the gate.` : "";
       return [...desk.arrived.splice(0), waiting].filter((line) => line !== "").join("\n");
     },
-    settle: async (all: boolean) => await settled(desk, all ? "all" : "next", hostWait),
+    settle: async (all: boolean) => settled(desk, all ? "all" : "next", hostWait),
     counted: () => ({ proposed: desk.proposed, held: desk.held, refused: desk.refused }),
     result: () => ({ puts: desk.proposed, held: desk.held, refused: desk.refused }),
   };

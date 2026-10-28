@@ -19,7 +19,7 @@ const condition: Condition = {
   verifierTools: "v1",
   sandbox: "p1",
   limits: {
-    wallSeconds: 7_200,
+    wallSeconds: 7200,
     turns: 24,
     shellDefaultSeconds: 300,
     shellMaxSeconds: 900,

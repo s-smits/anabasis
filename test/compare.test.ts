@@ -48,7 +48,7 @@ const base: Condition = {
   verifierTools: "t1",
   sandbox: "p1",
   limits: {
-    wallSeconds: 7_200,
+    wallSeconds: 7200,
     turns: 60,
     shellDefaultSeconds: 300,
     shellMaxSeconds: 900,
@@ -114,11 +114,11 @@ function byDifference(rate: number, solves: number): [number, number][] {
     return ways * rate ** count * (1 - rate) ** (solves - count);
   });
   const found = new Map<number, number>();
-  valid.forEach((fresh, f) => {
-    valid.forEach((old, o) => {
+  for (const [f, fresh] of valid.entries()) {
+    for (const [o, old] of valid.entries()) {
       found.set(solves * (f - o), (found.get(solves * (f - o)) ?? 0) + fresh * old);
-    });
-  });
+    }
+  }
   return [...found];
 }
 describe("the paired sign-flip test", () => {

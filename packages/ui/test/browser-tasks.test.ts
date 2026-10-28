@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, test } from "bun:test";
-import { type Browser, type Locator, type Page } from "@playwright/test";
+import type { Browser, Locator, Page } from "@playwright/test";
 import {
   accessibilityViolations,
   DESKTOP,

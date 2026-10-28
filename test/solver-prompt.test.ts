@@ -73,7 +73,7 @@ describe("the solver's system prompt", () => {
   });
 
   it("lists every tool by its own description in one line and selects the rules with the tools", () => {
-    const [read, bash, , , submit] = TOLD.tools;
+    const { 0: read, 1: bash, 4: submit } = TOLD.tools;
     if (read === undefined || bash === undefined || submit === undefined) {
       throw new Error("the starter's tools");
     }

@@ -68,7 +68,7 @@ export function scanAdded(range: readonly string[]): ScanAddedResult {
       continue;
     }
     if (!row.startsWith("+")) continue;
-    if (path && scannable(path)) hits.push(...scanText(path, row.slice(1)).map((h) => ({ ...h, line })));
+    if (path && scannable(path)) for (const hit of scanText(path, row.slice(1))) hits.push({ ...hit, line });
     line += 1;
   }
   return { hits, refusedPaths };
@@ -93,8 +93,7 @@ export function report(hits: SecretHit[], refusedPaths: string[]): string {
     lines.push(`  ${path}: a dotenv file may not be committed — it is a credential store`);
   }
   for (const hit of hits) {
-    lines.push(`  ${hit.path}:${hit.line}: ${hit.what} (${hit.rule})`);
-    lines.push(`    ${hit.masked}`);
+    lines.push(`  ${hit.path}:${hit.line}: ${hit.what} (${hit.rule})`, `    ${hit.masked}`);
   }
   return lines.join("\n");
 }

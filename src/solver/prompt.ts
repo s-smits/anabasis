@@ -126,7 +126,7 @@ function environment({ limits, programs, wallSeconds, network }: Told): string {
 /** The solver's whole system prompt, with each tool listed by its registered description. */
 export function systemPrompt(told: Told): string {
   const tools = told.tools.map(
-    ({ name, description }) => `- ${name}: ${description.replace(/\s+/g, " ").trim()}`,
+    ({ name, description }) => `- ${name}: ${description.replaceAll(/\s+/g, " ").trim()}`,
   );
   const rules = [
     ...(told.tools.some(({ name }) => name === "bash") ? (TOOL_RULES.get("bash") ?? []) : []),
@@ -144,7 +144,7 @@ export function systemPrompt(told: Told): string {
       : [
           `<project_context>\nProject-specific instructions and guidelines:\n\n<project_instructions path="${GUIDE_FILE}">\n${told.guide}\n</project_instructions>\n</project_context>`,
         ]),
-    `<cwd>\n${told.home.replace(/\\/g, "/")}\n</cwd>`,
+    `<cwd>\n${told.home.replaceAll("\\", "/")}\n</cwd>`,
     `<environment>\n${environment(told)}\n</environment>`,
   ].join("\n\n");
 }
@@ -180,7 +180,7 @@ export function seedHome(
   for (const resource of resources) {
     // One flat readable name per resource. A name that sanitises onto one already used keeps both
     // files rather than overwriting the earlier one silently.
-    const base = resource.name.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "resource";
+    const base = resource.name.replaceAll(/[^A-Za-z0-9._-]+/g, "-").replaceAll(/^-+|-+$/g, "") || "resource";
     let name = base;
     for (let n = 2; used.has(name); n++) name = `${base}-${String(n)}`;
     used.add(name);

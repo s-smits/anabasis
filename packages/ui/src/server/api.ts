@@ -89,6 +89,7 @@ function sameToken(offered: string | null, token: string): boolean {
   if (offered === null || offered.length !== token.length) return false;
   let differs = 0;
   for (let index = 0; index < token.length; index += 1) {
+    // oxlint-disable-next-line unicorn/prefer-code-point -- compares UTF-16 code units one by one, in constant time
     differs |= offered.charCodeAt(index) ^ token.charCodeAt(index);
   }
   return differs === 0;

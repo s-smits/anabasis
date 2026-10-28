@@ -91,7 +91,7 @@ describe("a seat tool's automatic result cap", () => {
       expect(value).toContain(file);
       expect(Buffer.byteLength(value)).toBeGreaterThan(48 * 1024);
       expect(Buffer.byteLength(value)).toBeLessThanOrEqual(50 * 1024);
-      expect(value.split("\n").length).toBeLessThanOrEqual(2_000);
+      expect(value.split("\n").length).toBeLessThanOrEqual(2000);
       expect(result.details).toEqual({ kept: "details" });
       expect(result.control).toEqual({ terminate: true });
       expect(result.isError).toBe(true);
@@ -106,7 +106,7 @@ describe("a seat tool's automatic result cap", () => {
     const target = join(dir, "host-record");
     writeFileSync(target, "the host's\n");
     const env = new SeatEnv(dir, target);
-    const value = JSON.stringify({ values: Array.from({ length: 9_000 }, (_, at) => at) }, null, 2);
+    const value = JSON.stringify({ values: Array.from({ length: 9000 }, (_, at) => at) }, null, 2);
     const large = tool({
       name: "../read_example",
       description: "JSON larger than the model keeps.",

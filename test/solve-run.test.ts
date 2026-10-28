@@ -244,7 +244,7 @@ describe("a solve's wall activity", () => {
       },
     ]);
     expect(result.ending).toMatchObject({ outcome: "non-result", kind: "provider" });
-    expect("reason" in result.ending && result.ending.reason.match(/\d+/)?.[0]).toBe("30");
+    expect("reason" in result.ending && /\d+/.exec(result.ending.reason)?.[0]).toBe("30");
     expect(result.events.filter(({ kind }) => kind === "solve.turn")).toHaveLength(0);
   });
 });
@@ -318,7 +318,7 @@ describe("a solve's ending precedence", () => {
     }
     const silent = await attemptEnding({ wallEnded: true, silentSeconds: SILENT_SECONDS });
     expect(silent).toMatchObject({ outcome: "non-result", kind: "provider" });
-    expect("reason" in silent && silent.reason.match(/\d+/)?.[0]).toBe("10");
+    expect("reason" in silent && /\d+/.exec(silent.reason)?.[0]).toBe("10");
   });
 });
 
@@ -476,7 +476,7 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
     const said = spent
       .events()
       .flatMap(({ kind, data }) => (kind === "solve.call" && isString(data.text) ? [data.text] : []));
-    expect(said.map((text) => text.match(/Turn (\d+) of (\d+)/)?.slice(1))).toEqual([
+    expect(said.map((text) => /Turn (\d+) of (\d+)/.exec(text)?.slice(1))).toEqual([
       ["1", "3"],
       ["2", "3"],
       ["3", "3"],

@@ -284,8 +284,17 @@ export function bwrapEnvironmentArgs(environment: OptionalEnvValues): string[] {
  * bind, because a bind over `/` would otherwise cover them.
  */
 export function bwrapOpenReadArgs(options: { network: boolean }): string[] {
-  const args = [...bwrapIsolationArgs(options), "--clearenv"];
-  args.push("--ro-bind", "/", "/", "--proc", "/proc", "--dev", "/dev");
+  const args = [
+    ...bwrapIsolationArgs(options),
+    "--clearenv",
+    "--ro-bind",
+    "/",
+    "/",
+    "--proc",
+    "/proc",
+    "--dev",
+    "/dev",
+  ];
   if (options.network) for (const path of networkResolverReadPaths()) args.push("--ro-bind", path, path);
   return args;
 }

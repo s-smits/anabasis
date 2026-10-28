@@ -17,7 +17,7 @@
 import { runtimeProcess } from "#src/meta/process.ts";
 import { asked } from "./hosts.ts";
 import { type Host, hostsOf } from "./host-config.ts";
-import { type Live } from "./live.ts";
+import type { Live } from "./live.ts";
 import { allowedLogins, atCap, liveEverywhere, readLogins, room } from "./logins.ts";
 import { localCatalogue, remoteRuns } from "./snapshots.ts";
 

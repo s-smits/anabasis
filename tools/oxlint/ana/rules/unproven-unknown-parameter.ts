@@ -117,7 +117,7 @@ function calleeName(node: AnyNode): string | null {
   const callee = node["callee"];
   if (!isNode(callee)) return null;
   if (callee.type === "Identifier") return stringProperty(callee, "name");
-  if (callee.type !== "MemberExpression" || callee["computed"] === true) return null;
+  if (callee.type !== "MemberExpression" || callee["computed"]) return null;
   const property = callee["property"];
   return isNode(property) ? stringProperty(property, "name") : null;
 }
@@ -150,12 +150,12 @@ function readCall(node: AnyNode, evidence: BodyEvidence): void {
   if (callee === null) return;
   const proves = PROVING_NAME.test(callee) || PROVING_CALLS.has(callee);
   const args = Array.isArray(node["arguments"]) ? node["arguments"] : [];
-  args.forEach((argument, index) => {
+  for (const [index, argument] of args.entries()) {
     const name = identifierName(argument);
-    if (name === null) return;
+    if (name === null) continue;
     if (proves) evidence.proved.add(name);
     else evidence.calls.push({ argument: name, callee, index });
-  });
+  }
 }
 
 function readBody(body: AnyNode): BodyEvidence {

@@ -40,7 +40,7 @@ const STEP = {
 function campaign() {
   const log: LogEvent[] = [];
   const put = (kind: EventKind, data: JsonObject) => {
-    log.push({ at: new Date(START + log.length * 1_000).toISOString(), kind, data });
+    log.push({ at: new Date(START + log.length * 1000).toISOString(), kind, data });
   };
   /** A comparison's start and its report. */
   const compare = (session: string, old: string, fresh: string, reported: JsonObject) => {

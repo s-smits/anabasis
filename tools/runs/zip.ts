@@ -163,7 +163,7 @@ export function fit(root: string, names: readonly string[] = readdirSync(root).s
     } else {
       // A link is grouped with what it names, as a folder: a `.toolchain` with its `tree-*`.
       const named = lstatSync(full).isSymbolicLink() ? `${linkedIn(root, full) ?? path}/` : path;
-      const group = GROUPS.find(([, , , paths]) => paths.test(named))?.[0] ?? "rest";
+      const group = GROUPS.find((entry) => entry[3].test(named))?.[0] ?? "rest";
       held.push({ path, bytes: lstatSync(full).size, group });
     }
   };

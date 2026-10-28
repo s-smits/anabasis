@@ -23,7 +23,7 @@ export { Type };
 export type { Static, TSchema };
 
 /** v1's limits on a tool's text. */
-const TOOL_TEXT_LIMITS = { name: 128, label: 256, description: 4_000, evidence: 64 * 1024 } as const;
+const TOOL_TEXT_LIMITS = { name: 128, label: 256, description: 4000, evidence: 64 * 1024 } as const;
 
 /** v1's brand, which the caller checks a factory's tools for. */
 export const DRAFT_TOOL = Symbol.for("anabasis/draft-tool/v1");

@@ -35,7 +35,7 @@ const REPORT = {
 const events: LogEvent[] = [];
 /** A writer of events onto `log`, a second apart from the start. */
 const appendTo = (log: LogEvent[]) => (kind: EventKind, data: JsonObject) => {
-  log.push({ at: new Date(START + log.length * 1_000).toISOString(), kind, data });
+  log.push({ at: new Date(START + log.length * 1000).toISOString(), kind, data });
 };
 const record = appendTo(events);
 

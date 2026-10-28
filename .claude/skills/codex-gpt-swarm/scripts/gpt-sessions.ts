@@ -137,7 +137,7 @@ const MANIFEST_FIELDS: ReadonlySet<string> = new Set([
 const SESSION_FIELDS: ReadonlySet<string> = new Set(["name", "task", "workdir", "sandbox", "ownedPaths"]);
 const NAME = /^[a-z][a-z0-9_]{0,47}$/;
 const CODEX_CANDIDATES = ["/Applications/ChatGPT.app/Contents/Resources/codex", "/opt/homebrew/bin/codex"];
-const DEFAULT_START_INTERVAL_MS = 1_000;
+const DEFAULT_START_INTERVAL_MS = 1000;
 const MAX_START_INTERVAL_MS = 60_000;
 const MAX_RETRIES = 5;
 /** What a resumed session is told. Its thread already holds the task, so this is the whole turn. */

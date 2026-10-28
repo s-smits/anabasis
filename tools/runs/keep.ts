@@ -22,14 +22,14 @@
  * and ends: one keeper a run, and `runs stop`, `pause` or `continue --after` of the run end it. Until
  * 15 October this was three shell loops of the operator's and a wrapper a login, each moving one run.
  */
-import { type LogEvent } from "#src/kernel/log.ts";
+import type { LogEvent } from "#src/kernel/log.ts";
 import { openSync } from "#src/meta/filesystem.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { allowedLogins, atCap, billsLogin, liveEverywhere, readLogins, room } from "./logins.ts";
-import { type Live } from "./live.ts";
+import type { Live } from "./live.ts";
 import { lastRun, rerun, start } from "./manage.ts";
 import { KEEPING, keepers, logEvents, processes, type Run, runNamed, writers } from "./registry.ts";
 import { stop } from "./stop.ts";

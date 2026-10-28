@@ -114,7 +114,7 @@ export const noHandReadArgvRule = defineRule({
       Program(program) {
         library = new Set();
         for (const statement of program.body) {
-          if (statement.type !== "ImportDeclaration" || !LIBRARY.test(String(statement.source.value))) {
+          if (statement.type !== "ImportDeclaration" || !LIBRARY.test(statement.source.value)) {
             continue;
           }
           for (const specifier of statement.specifiers) library.add(specifier.local.name);

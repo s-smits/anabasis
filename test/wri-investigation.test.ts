@@ -147,7 +147,7 @@ describe("the lanes verb", () => {
     events
       .map(
         ([kind, data], index) =>
-          `${JSON.stringify({ at: new Date(index * 1_000).toISOString(), kind, data })}\n`,
+          `${JSON.stringify({ at: new Date(index * 1000).toISOString(), kind, data })}\n`,
       )
       .join(""),
   );

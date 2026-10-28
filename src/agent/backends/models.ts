@@ -158,7 +158,7 @@ function codexStream(
 
 /** Durable owns retries for the two providers previously wrapped here, with the same backoff. */
 export function retryPolicy(provider: string): ConversationRetryPolicy {
-  return { enabled: provider === CODEX || provider === "openrouter", maxRetries: 3, baseDelayMs: 2_000 };
+  return { enabled: provider === CODEX || provider === "openrouter", maxRetries: 3, baseDelayMs: 2000 };
 }
 
 /**

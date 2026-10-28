@@ -187,7 +187,7 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
   const ran: { dir: string; digest: string }[] = [];
   const request: BuildRequest = {
     id: "b-1",
-    parent: parent,
+    parent,
     // The reference harness is the parent here, as it is for a first session from the starter.
     reference: parent,
     states: join(scratch, "states"),
@@ -201,7 +201,7 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
     solver: { model: "faux/faux-solver", effort: "medium" },
     solve: { ...LIMITS, wallSeconds: 480 },
     models: () => models,
-    log: log,
+    log,
     repoRoot: scratch,
     practise: async (task, dir, harness) => {
       ran.push({ dir, digest: harness });
@@ -231,8 +231,8 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
   return {
     scratch,
     parent,
-    home: home,
-    host: host,
+    home,
+    host,
     request,
     walled,
     sent,
@@ -815,7 +815,9 @@ describe("a Builder session", () => {
           ...s.request,
           practise: async (task, _dir, _digest, kill) => {
             if (task.version === "v1") throw new Error(stop);
-            await new Promise((resolve) => kill.addEventListener("abort", resolve, { once: true }));
+            await new Promise((resolve) => {
+              kill.addEventListener("abort", resolve, { once: true });
+            });
             reached = true;
             return { solve: "s-killed", ending: { outcome: "non-result", kind: "killed", reason: "killed" } };
           },
@@ -975,7 +977,9 @@ describe("a Builder session", () => {
         // with its reason before any solve starts (`queued`, `tools/d2/host.ts`).
         practise: async (task, _dir, _digest, kill) => {
           if (!kill.aborted) {
-            await new Promise((resolve) => kill.addEventListener("abort", resolve, { once: true }));
+            await new Promise((resolve) => {
+              kill.addEventListener("abort", resolve, { once: true });
+            });
           }
           if (task.version === "v2") kill.throwIfAborted();
           return { solve: "s-killed", ending: { outcome: "non-result", kind: "killed", reason: "killed" } };

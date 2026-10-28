@@ -65,7 +65,7 @@ const SILENCE_FLOOR_SECONDS = 600;
 const SILENCES_NAMED = 5;
 /** Events written within this many milliseconds of a gap's end are the one move that ended it: an
  *  Examiner's turn is logged a few milliseconds after the task it proposed. */
-const BURST_MS = 1_000;
+const BURST_MS = 1000;
 /** Where each part of the campaign's hours starts and ends. A part a stop cut ends at the
  *  campaign's ending, or at the log's last event. */
 const SPANS = [
@@ -365,7 +365,7 @@ export function costTriggers(log: Index): Trigger[] {
   // median at 6.2 minutes against 24.6 over its passes and rejections.
   const done = log.solves.filter(measured).map((solve) => solve.seconds);
   const scaled = (median(done) ?? 0) * SILENCE_SOLVES;
-  const threshold = Math.max(scaled, SILENCE_FLOOR_SECONDS) * 1_000;
+  const threshold = Math.max(scaled, SILENCE_FLOOR_SECONDS) * 1000;
   const why =
     scaled > SILENCE_FLOOR_SECONDS
       ? `${String(SILENCE_SOLVES)} times the median measured solve`

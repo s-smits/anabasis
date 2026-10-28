@@ -68,7 +68,10 @@ describe("keyIfDefined", () => {
     const spread = { a: 1, ...keyIfDefined("b", undefined) };
     expect(Object.hasOwn(spread, "b")).toBe(false);
     expect(Object.keys(spread)).toEqual(["a"]);
-    for (const value of [null, "", 0, false]) expect<unknown>(keyIfDefined("b", value)).toEqual({ b: value });
+    for (const value of [null, "", 0, false]) {
+      const kept: unknown = keyIfDefined("b", value);
+      expect(kept).toEqual({ b: value });
+    }
   });
 });
 

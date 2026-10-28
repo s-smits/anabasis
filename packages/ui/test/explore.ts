@@ -115,7 +115,7 @@ async function controlsOf(page: Page): Promise<Control[]> {
       if (hidden || disabled || away) continue;
       const name =
         [element.getAttribute("aria-label"), element.textContent, element.getAttribute("title")]
-          .map((each) => (each ?? "").replace(/\s+/gu, " ").trim())
+          .map((each) => (each ?? "").replaceAll(/\s+/gu, " ").trim())
           .find((each) => each !== "") ?? "";
       const role = element.getAttribute("role") ?? element.tagName.toLowerCase();
       const base = `${role} "${name.slice(0, 60)}"`;
@@ -254,7 +254,7 @@ async function stepAndCheck(run: Run, step: Step): Promise<void> {
     .then(() => settle(run.opened.page, run.pending))
     .then(
       () => null,
-      (error: Error) => error.message,
+      (error: unknown) => (error instanceof Error ? error.message : String(error)),
     );
   const wrong = failed === null ? await unsound(run.opened, run.rules, run.checked) : [failed];
   if (wrong.length > 0) {
@@ -278,7 +278,7 @@ function stepFor(control: Control, random: () => number): Step {
 function representatives(described: readonly string[]): [number, string][] {
   const ends = new Map<string, [number, number]>();
   for (const [at, name] of described.entries()) {
-    const kind = name.replace(/ #\d+$/u, "").replace(/\d+/gu, "#");
+    const kind = name.replace(/ #\d+$/u, "").replaceAll(/\d+/gu, "#");
     ends.set(kind, [ends.get(kind)?.[0] ?? at, at]);
   }
   const chosen = new Set([...ends.values()].flat());

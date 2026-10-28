@@ -169,7 +169,7 @@ function markedProcesses(): string[] {
 }
 
 async function waitForMarkedProcess(present: boolean): Promise<void> {
-  const deadline = performance.now() + 2_000;
+  const deadline = performance.now() + 2000;
   while (performance.now() < deadline) {
     const found = markedProcesses().length > 0;
     if (found === present) return;
@@ -298,7 +298,7 @@ describe.skipIf(!osIsolationSupport().ok)("the verifier", () => {
     try {
       await waitForMarkedProcess(true);
       controller.abort();
-      const outcome = await Promise.race([pending, Bun.sleep(3_000).then(() => null)]);
+      const outcome = await Promise.race([pending, Bun.sleep(3000).then(() => null)]);
       if (outcome === null) {
         // Bound the old implementation, which ignored the signal and awaited the descendant's pipe.
         killMarkedProcesses();

@@ -107,30 +107,26 @@ beforeAll(async () => {
 }, 120_000);
 
 describe("each rule's examples", () => {
-  for (const [rule, pairs] of RULES) {
-    it(`${rule} shows a shape it reports and a repair every rule passes`, () => {
-      expect(pairs.length).toBeGreaterThan(0);
-      for (const [index, pair] of pairs.entries()) {
-        const at = `${rule}/${index}/${pair.path ?? DEFAULT_PATH}`;
-        expect([at, pair.before.split("\n").length <= MOST_LINES]).toStrictEqual([at, true]);
-        expect([at, pair.after.split("\n").length <= MOST_LINES]).toStrictEqual([at, true]);
-        expect([at, before.get(at)?.has(rule) === true]).toStrictEqual([at, true]);
-        expect([at, [...(after.get(at) ?? [])]]).toStrictEqual([at, []]);
-      }
-    });
-  }
+  it.each([...RULES])("%s shows a shape it reports and a repair every rule passes", (rule, pairs) => {
+    expect(pairs.length).toBeGreaterThan(0);
+    for (const [index, pair] of pairs.entries()) {
+      const at = `${rule}/${index}/${pair.path ?? DEFAULT_PATH}`;
+      expect([at, pair.before.split("\n").length <= MOST_LINES]).toStrictEqual([at, true]);
+      expect([at, pair.after.split("\n").length <= MOST_LINES]).toStrictEqual([at, true]);
+      expect([at, before.get(at)?.has(rule) === true]).toStrictEqual([at, true]);
+      expect([at, [...(after.get(at) ?? [])]]).toStrictEqual([at, []]);
+    }
+  });
 });
 
 describe("each tree scan's examples", () => {
-  for (const [kind, pairs] of TREES) {
-    it(`${kind} shows a repair every rule passes`, () => {
-      expect(pairs.length).toBeGreaterThan(0);
-      for (const [index, pair] of pairs.entries()) {
-        const at = `${kind}/${index}/${pair.path ?? DEFAULT_PATH}`;
-        expect([at, [...(after.get(at) ?? [])]]).toStrictEqual([at, []]);
-      }
-    });
-  }
+  it.each([...TREES])("%s shows a repair every rule passes", (kind, pairs) => {
+    expect(pairs.length).toBeGreaterThan(0);
+    for (const [index, pair] of pairs.entries()) {
+      const at = `${kind}/${index}/${pair.path ?? DEFAULT_PATH}`;
+      expect([at, [...(after.get(at) ?? [])]]).toStrictEqual([at, []]);
+    }
+  });
 });
 
 describe("fixture coverage", () => {

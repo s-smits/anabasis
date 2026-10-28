@@ -103,6 +103,22 @@ export const jsonShaped = 1; // REPORT the participle
 export const rowShapes = 1; // REPORT the plural
 `;
 
+/**
+ * A qualified type name and a JSX member name are borrowed the way a property read is: the name
+ * belongs to the namespace that declared it. The local declaration of the same word still reports.
+ */
+const BORROWED_NAMESPACE_MEMBER = `
+import type * as z from "zod";
+export type Fields = z.ZodRawShape; // ADMITTED the namespace declared the name
+export type ZodShape = z.ZodType; // REPORT a name chosen here
+`;
+
+const BORROWED_JSX_MEMBER = `
+import * as Library from "library";
+export const view = <Library.ShapeView />; // ADMITTED the library declared the name
+export const ShapeBox = () => <div />; // REPORT a name chosen here
+`;
+
 describe("the remaining anti-slop rule boundaries", () => {
   it("reports only the marked lines in every fixture and scope", async () => {
     await lintRules("anti-slop", [
@@ -116,6 +132,8 @@ describe("the remaining anti-slop rule boundaries", () => {
       ["no-shape-in-symbol-names", FORBIDDEN_TERM_IN_NAME, 1],
       ["no-unknown-returns", UNKNOWN_RETURN, 1],
       ["no-shape-in-symbol-names", FORBIDDEN_TERM_WORDS, 5],
+      ["no-shape-in-symbol-names", BORROWED_NAMESPACE_MEMBER, 1],
+      ["no-shape-in-symbol-names", BORROWED_JSX_MEMBER, 1, "fixture.tsx"],
     ]);
   });
 });

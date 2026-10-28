@@ -98,7 +98,7 @@ async function runRule(
   // was `[^/:]+\.tsx?:`, which matched no row at all once `at` named a `.mjs` file — and `.claude`
   // joined the lint scope on 2026-09-20 carrying a whole tree of them. A test placing its fixture
   // there read back an empty list and passed, having asked the rule nothing.
-  const escaped = fixture.replace(/[.*+?^\\${}()|[\]]/gu, String.raw`\$&`);
+  const escaped = fixture.replaceAll(/[.*+?^\\${}()|[\]]/gu, String.raw`\$&`);
   const tagged = new RegExp(`${escaped}:(?<row>\\d+:\\d+: .*\\(${rule}\\)\\])`, "gu");
   return [...(await run()).matchAll(tagged)].map(([, row]) => row ?? "");
 }

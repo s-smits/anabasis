@@ -1118,7 +1118,7 @@ describe("a round", () => {
       asked = toLabel(read(first.log), "b-1");
     });
     /** The round as it reported, on a log of its own, a later session's turns ready. */
-    const ruledOn = async () => await setup([again, finish], rejecting, first.log);
+    const ruledOn = async () => setup([again, finish], rejecting, first.log);
     const labelled = (solves: readonly string[], label: Ruling) =>
       new Map(solves.map((solve) => [solve, label] as const));
     const passes = (log: string, label: PassLabel) =>

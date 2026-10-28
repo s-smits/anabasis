@@ -150,11 +150,6 @@ const TIMED_OUT_NOTICE =
 /** Bun's line when `--bail` stopped the run, on stderr after the failure that tripped it. */
 const BAILED_OUT = /^Bailed out after \d+ failures?$/;
 
-/** Bun heads an error that belongs to no test with this banner and prints no result line for it:
- *  a module that would not load, a stray throw between tests. It reaches the suite on stderr, and
- *  Bun counts it in its own exit code. */
-const UNHANDLED_ERROR = /^# Unhandled error/;
-
 /** How long the coordinator has between the wall's SIGTERM and the group kill: the `gracefulTimeout`
  *  of Bun's own CI runner. */
 const GRACE_MS = 15_000;
@@ -483,8 +478,9 @@ function outputReader(cwd: string): OutputReader {
       if (awaitingNotice && TIMED_OUT_NOTICE.test(line)) {
         run.clockEnded++;
         awaitingNotice = false;
-      } else if (UNHANDLED_ERROR.test(line)) run.errors++;
-      else if (BAILED_OUT.test(line)) run.bailed = true;
+      } else if (line.startsWith("# Unhandled error")) {
+        run.errors++;
+      } else if (BAILED_OUT.test(line)) run.bailed = true;
       return;
     }
     run.reported.add(header);
@@ -612,14 +608,13 @@ async function main(): Promise<number> {
   // A test may name the root by either spelling: Darwin's `/var` is a link to `/private/var`.
   const roots = [temporaryRoot, realpathSync(temporaryRoot)];
   const requested = Bun.argv.slice(2);
-  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
-    runtimeProcess.once(signal, () => {
-      if (active !== null) killProcessGroup(active, signal);
-      endNaming(roots);
-      rmSync(temporaryRoot, { recursive: true, force: true });
-      runtimeProcess.exit(130);
-    });
-  }
+  const endOn = (signal: "SIGINT" | "SIGTERM" | "SIGHUP") => () => {
+    if (active !== null) killProcessGroup(active, signal);
+    endNaming(roots);
+    rmSync(temporaryRoot, { recursive: true, force: true });
+    runtimeProcess.exit(130);
+  };
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) runtimeProcess.once(signal, endOn(signal));
   const relative = (files: Iterable<string>) =>
     [...files]
       .map((file) => (file.startsWith(`${REPO_ROOT}/`) ? file.slice(REPO_ROOT.length + 1) : file))

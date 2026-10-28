@@ -31,7 +31,7 @@ import { CRASHES, decide, epochReleased, heldAfter, practiceOwed, unpromoted } f
 import { comparisonsOf, crashedRun } from "#src/campaign/ground.ts";
 import { campaignOf } from "#src/campaign/handover.ts";
 import { type Decided, short } from "#src/campaign/move.ts";
-import { type Opening } from "#src/campaign/opening.ts";
+import type { Opening } from "#src/campaign/opening.ts";
 import { comparisonsTold } from "#src/builder/past.ts";
 import { type BuildRequest, layPractice } from "#src/builder/session.ts";
 import { type Bench, endingWith, snapshot, waitTool } from "#src/builder/tools.ts";
@@ -183,8 +183,7 @@ function actionTool(context: CampaignContext, bench: Bench, move: ActionMove, ru
     }[move],
     parameters: Type.Object({}),
     executionMode: "sequential",
-    execute: async (_args, _api, execution) =>
-      await runAction(context, bench, move, run, execution.abortSignal),
+    execute: async (_args, _api, execution) => runAction(context, bench, move, run, execution.abortSignal),
   });
 }
 

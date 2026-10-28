@@ -306,7 +306,7 @@ function harnessTriggers(log: Index): Trigger[] {
     // where a shell command named it: esp32's b-1 kept 9 tool files on 12 October, its file tools none.
     const written = [
       ...new Set(calls.flatMap(({ tool, args }) => (FILE_WRITERS.has(tool) ? [text(args?.path)] : []))),
-      ...new Set(calls.flatMap(({ args }) => text(args?.command).match(/\.toolchain/) ?? [])),
+      ...new Set(calls.flatMap(({ args }) => /\.toolchain/.exec(text(args?.command)) ?? [])),
     ];
     const toolFiles = written.filter((path) => /tools|\.toolchain/.test(path));
     // A stop writes no end record, so a session it cut says nothing of what it changed: recode's

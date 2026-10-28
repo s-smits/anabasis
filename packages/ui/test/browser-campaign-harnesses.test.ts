@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, test } from "bun:test";
-import { type Browser, type Page, type Route } from "@playwright/test";
+import type { Browser, Page, Route } from "@playwright/test";
 import {
   accessibilityViolations,
   expect,
@@ -113,7 +113,10 @@ async function watchFrames(
   await act();
   await settled();
   await page.evaluate(
-    () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(null)))),
+    () =>
+      new Promise((done) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => done(null)));
+      }),
   );
   const frames = await page.evaluate(() => window.anaFrames?.stop());
   if (frames === undefined) throw new Error("the frame probe was not installed");

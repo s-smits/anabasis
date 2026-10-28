@@ -1,6 +1,6 @@
 // Campaign login isolation, clean-point pausing and dry-run refusals.
 import { afterAll, describe, expect, it } from "bun:test";
-import { type EventKind, type LogEvent } from "../src/kernel/log.ts";
+import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import { chmodSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";

@@ -29,11 +29,11 @@ describe("the meter", () => {
     opus.cost.input = 500;
     const tokens = tokensOf([usage(1_000, 600_000, 0, 2_000), usage(500, 300_000, 98_500, 3_000, 90_000)]);
     expect(tokens).toEqual({
-      input: 1_500,
+      input: 1500,
       cacheRead: 900_000,
       cacheWrite: 98_500,
       cacheWrite1h: 90_000,
-      output: 5_000,
+      output: 5000,
     });
     // Billed: 1,500 x $5 + 5,000 x $25 + 900,000 x $0.50 + 8,500 x $6.25 + 90,000 x $10, per million.
     // Metered: 1,000,000 input tokens x $5 + 5,000 x $25, per million.

@@ -290,7 +290,7 @@ export function copy(args: readonly string[]): void {
 /** Where a run's folder is set aside in `tree` once a copy of it went elsewhere: one copy a name,
  *  which `runNamed` asks, so the folder left is no run any registry reads (`runs copy`, `runs move`). */
 export function asideOf(tree: string, name: string): string {
-  return join(tree, ".ana", "moved", `${name}-${new Date().toISOString().replace(/[:.]/g, "")}`);
+  return join(tree, ".ana", "moved", `${name}-${new Date().toISOString().replaceAll(/[:.]/g, "")}`);
 }
 
 /** Moves `folder` to `aside`, making `.ana/moved/` where the tree has none yet. */

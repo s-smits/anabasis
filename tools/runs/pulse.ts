@@ -12,7 +12,7 @@
  * when it ends. Since 22 October each look also polls every configured host once, with a cursor for
  * this observer, unless --here is named. A missing peer is a warning and exit 1. No local state path is sent to another machine.
  */
-import { type EventKind, type LogEvent } from "#src/kernel/log.ts";
+import type { EventKind, LogEvent } from "#src/kernel/log.ts";
 import { billedAll, traceKind, tracesIn } from "#src/kernel/trace.ts";
 import { type Solve, solvesIn } from "#src/kernel/solves.ts";
 import {
@@ -84,7 +84,7 @@ const STARTS: ReadonlySet<string> = new Set(["build.started", "exam.started", "c
 
 const minutes = (ms: number) => `${String(Math.round(ms / 60_000))}m`;
 const dollars = (value: number) => `$${value.toFixed(2)}`;
-const short = (value: unknown) => (isString(value) ? value.replace(/\s+/g, " ").slice(0, 160) : "");
+const short = (value: unknown) => (isString(value) ? value.replaceAll(/\s+/g, " ").slice(0, 160) : "");
 const count = (log: readonly LogEvent[], kind: EventKind) =>
   log.filter((event) => event.kind === kind).length;
 /** A string or number field as written, and "?" for a field the event does not hold. */

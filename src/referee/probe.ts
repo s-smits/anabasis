@@ -23,7 +23,7 @@ import { text, tool } from "../tools/answer.ts";
  *  a second exam. */
 const PROBE_BUDGET = 8;
 /** Bound each replacement value and each half of a text edit, including within a coupled probe. */
-const VALUE_MAX_CHARS = 4_000;
+const VALUE_MAX_CHARS = 4000;
 
 /** The one passage of a text field that `find` names, rewritten to `replace`. */
 type ProbeEdit = {

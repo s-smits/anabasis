@@ -244,8 +244,7 @@ describe("the trees a paid seat refuses", () => {
 
 describe("a campaign", () => {
   /** `prepare.ts` as the operator runs it, with whatever flags `more` adds, and what it printed. */
-  const prepare = async (...more: string[]) =>
-    await said(prepareCommand, [...PACK, "--practice", "2", ...more]);
+  const prepare = async (...more: string[]) => said(prepareCommand, [...PACK, "--practice", "2", ...more]);
 
   it("opens over a stored sweep, takes the pack's tasks in at their gate, and releases practice once", async () => {
     layOut();
@@ -691,7 +690,7 @@ describe("a campaign", () => {
     writeFileSync(join(made, "agent", "BUILT_AGENTS.md"), "Multiply the base by six.\n");
     const { digest } = await openHarness(made);
     cpSync(made, join(campaign.states, digest), { recursive: true });
-    const promote = async (...more: string[]) => await said(promoteCommand, ["--name", NAME, ...more]);
+    const promote = async (...more: string[]) => said(promoteCommand, ["--name", NAME, ...more]);
     const promotions = () =>
       read(campaign.log).flatMap(({ kind, data }) => (kind === "harness.promoted" ? [data] : []));
     // Asked without the operator's word, it says what the log holds and records nothing.
@@ -748,7 +747,7 @@ describe("a campaign", () => {
     const refused = "--solve-minutes 0: a solve's wall is a whole number of minutes";
     await expect(roundCommand([...flags, "--solve-minutes", "0"])).rejects.toThrow(refused);
     const checkpoint = async (...more: string[]) =>
-      await checkpointCommand(["--id", "z-4", ...flags.slice(0, -4), ...more]);
+      checkpointCommand(["--id", "z-4", ...flags.slice(0, -4), ...more]);
     await expect(checkpoint("--solve-minutes", "0")).rejects.toThrow(refused);
     // The setting an earlier command recorded: an eight-minute wall and forty model turns.
     append(campaign.log, "campaign.setting", {

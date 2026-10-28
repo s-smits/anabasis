@@ -53,7 +53,7 @@ function session(name: string, options: { failure?: boolean } = {}) {
         name: "look",
         description: "Look.",
         parameters: Type.Object({}),
-        execute: async () => text("x".repeat(8_000)),
+        execute: async () => text("x".repeat(8000)),
       }),
     ],
     turns: [],

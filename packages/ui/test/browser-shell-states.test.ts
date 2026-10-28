@@ -6,7 +6,7 @@
  * `browser-shell.test.ts`'s.
  */
 import { afterAll, beforeAll, describe, test } from "bun:test";
-import { type Browser, type Page } from "@playwright/test";
+import type { Browser, Page } from "@playwright/test";
 import { append } from "../../../src/kernel/log.ts";
 import { mkdtempSync, realpathSync, rmSync } from "../../../src/meta/filesystem.ts";
 import { tmpdir } from "../../../src/meta/os.ts";

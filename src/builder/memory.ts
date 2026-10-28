@@ -68,8 +68,8 @@ export const SCRATCHPAD_FILE = "SCRATCHPAD.md";
  *  file bounds both the inherited write and the prompt read, including a read after the Builder has
  *  edited the file directly, because two constants would mean the write path and the read path
  *  disagreeing about what fits. */
-export const MEMORY_CAP_BYTES = 8_000;
-const SCRATCHPAD_CAP_BYTES = 2_000;
+export const MEMORY_CAP_BYTES = 8000;
+const SCRATCHPAD_CAP_BYTES = 2000;
 
 /** Headings keyed to what the Builder actually decides, so a pass finds its own section. */
 export const STARTER_MEMORY = `# Builder memory

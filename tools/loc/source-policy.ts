@@ -69,28 +69,6 @@ interface SourcePolicyFinding {
   detail: string;
 }
 
-/** Prose under a source root, which the authored-code ceiling does not describe.
- *
- *  `walkFiles` reads every file under `src`, `tools` and `vendor`, so the 800-line ceiling applied
- *  to Markdown too. That catches the oxlint decision ledgers and nothing else: no other non-`.ts`
- *  file under those roots reaches 400 lines, and the ledgers run to several times the ceiling.
- *
- *  So the finding asked for one thing: split the record of which lint rules were shipped or
- *  refused, at 800 lines, for a reason belonging to neither half. The number is derived from what
- *  `biome format` at lineWidth 110 does to authored code — the 90th percentile of its effect on
- *  file length — and says nothing about how long a decision ledger should be. A second file would
- *  give a reader two places to search and retire nothing, which is a gate changing a decision
- *  incorrectly (AGENTS.md rule 8).
- *
- *  What bounds those ledgers is retiring an entry whose rule is decided and whose mechanism has
- *  left the source, and that is a judgement a line count cannot make. A ledger growing because the
- *  work it records is current is not the same as one accumulating dead entries, and only a reader
- *  can tell the two apart. An explicit `copiedFileLimits` entry still binds a Markdown file,
- *  because naming one is a decision rather than an accident of the walk. A line count becomes the
- *  right instrument again when a fourth Markdown ledger appears under these roots, or when one
- *  keeps growing with the same entries still standing in it. */
-const PROSE = /\.md$/;
-
 function walkFiles(root: string): string[] {
   let entries: string[];
   try {
@@ -172,7 +150,10 @@ function sizeFindings(path: string, text: string, copiedLimit?: number): SourceP
   const findings: SourcePolicyFinding[] = [];
   const fileLimit = copiedLimit ?? NEW_FILE_CEILING;
   const lines = countNonBlank(text);
-  if (lines > fileLimit && !(copiedLimit === undefined && PROSE.test(path))) {
+  // Prose under a source root, the oxlint decision ledgers, is not authored code: what bounds one
+  // is retiring an entry whose mechanism has left the source, which a line count cannot judge.
+  // An explicit `copiedFileLimits` entry still binds a Markdown file.
+  if (lines > fileLimit && !(copiedLimit === undefined && path.endsWith(".md"))) {
     findings.push({
       check: "file-size",
       path,

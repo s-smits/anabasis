@@ -21,13 +21,7 @@
  * source before the agent loop aborts an invocation. A draft's end records the accepted draft's
  * measurement independently of acceptance, beside elapsed and host seconds.
  */
-import {
-  type Api,
-  type AssistantMessage,
-  type Model,
-  type Models,
-  type ThinkingLevel,
-} from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { type SeatTool, sessionClock, sit } from "../agent/session.ts";
 import { endingWith, openingTool } from "../builder/tools.ts";
@@ -320,7 +314,7 @@ export async function examine(request: ExamRequest, wall?: Wall): Promise<Examin
   }
   const reference = wall?.reference === undefined ? "unseen" : "in-home";
   const seated = async (walls?: Walls) =>
-    await examining(
+    examining(
       request,
       (stop, hostWait) =>
         request.mode === "draft"

@@ -234,7 +234,7 @@ describe("cancelling queued solves", () => {
         const bounded = Promise.race([
           pending.then(
             () => false,
-            (error: Error) => error === reason,
+            (error: unknown) => error instanceof Error && error === reason,
           ),
           new Promise<boolean>((resolve) => {
             deadline.addEventListener("abort", () => resolve(false), {
@@ -304,7 +304,7 @@ describe("cancelling queued solves", () => {
     const started = performance.now();
     const ran = Bun.spawnSync({ cmd: [capturedExecPath, "-e", script], cwd: REPO });
     expect(ran.exitCode).toBe(0);
-    expect(performance.now() - started).toBeLessThan(2_500);
+    expect(performance.now() - started).toBeLessThan(2500);
   });
 });
 

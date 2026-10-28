@@ -19,7 +19,7 @@ import { requireSafetyCommentForTypeAssertionRule } from "./rules/require-safety
  *  type nobody established, an assertion with no stated reason, a dictionary whose contents are
  *  anyone's guess.
  *
- *  The tree is copied from dmmulroy/anti-slop at commit c44ef22, with the differences recorded in
+ *  The tree is copied from dmmulroy/anti-slop at commit 13909c9, with the differences recorded in
  *  `THIRD_PARTY_NOTICES.md`: the plugin registers through `eslintCompatPlugin`, upstream's
  *  `no-unknown-parameters`, `require-readable-spacing`, `no-array-filter-map`, `no-reflect-apply`,
  *  `no-reflect-get` and Effect rules are left out, and

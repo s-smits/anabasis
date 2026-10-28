@@ -383,7 +383,10 @@ function open(
     handler: (toolCallId: string) =>
       new Promise<McpResult>((resolve) => {
         const ready = early.get(toolCallId);
-        if (!ready) return void parked.set(toolCallId, resolve);
+        if (!ready) {
+          parked.set(toolCallId, resolve);
+          return;
+        }
         early.delete(toolCallId);
         resolve(ready);
       }),

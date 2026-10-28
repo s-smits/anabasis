@@ -349,9 +349,9 @@ describe("a campaign run by its live Builder", () => {
             {
               wait: async () => {
                 await practised.promise;
-                return await new Promise((settle) =>
-                  setTimeout(() => settle(["finish", { note: "Nothing to add." }]), 500),
-                );
+                return await new Promise((settle) => {
+                  setTimeout(() => settle(["finish", { note: "Nothing to add." }]), 500);
+                });
               },
             },
             ["finish", { note: "Nothing to add." }],
@@ -629,9 +629,9 @@ describe("a campaign run by its live Builder", () => {
             {
               wait: async () => {
                 await stopped.promise;
-                return await new Promise((settle) =>
-                  setTimeout(() => settle(["finish", { note: "Nothing to add." }]), 500),
-                );
+                return await new Promise((settle) => {
+                  setTimeout(() => settle(["finish", { note: "Nothing to add." }]), 500);
+                });
               },
             },
             ["finish", { note: "Nothing to add." }],

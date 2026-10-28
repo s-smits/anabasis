@@ -4,7 +4,7 @@
  * frames (`watchFrames`); a resolver holds the detail endpoints until the loading state appears.
  */
 import { afterAll, beforeAll, describe, test } from "bun:test";
-import { type Browser, type Page } from "@playwright/test";
+import type { Browser, Page } from "@playwright/test";
 import type { Move } from "../src/models.ts";
 import {
   expect,

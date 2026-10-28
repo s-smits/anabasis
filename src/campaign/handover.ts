@@ -28,7 +28,7 @@
  * billed every move made inside its span, which those moves' own lines billed again.
  * The Referee triage of 20 October found unclear and unread practice rejections counted as failures.
  */
-import { type Measures, type Tally } from "../kernel/compare.ts";
+import type { Measures, Tally } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, latestBuilt, promoted } from "../kernel/reports.ts";
 import { billedAll, billedParts, ownedBy, traceKind } from "../kernel/trace.ts";

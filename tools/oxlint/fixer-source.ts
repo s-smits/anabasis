@@ -102,7 +102,7 @@ export function hold(path: string): Held {
     const code = text.codePointAt(char) ?? 0;
     const width = UTF8_WIDER_AT.filter((bound) => code >= bound).length + 1;
     for (let one = 0; one < width; one += 1) charAt.push(char);
-    char += code > 0xffff ? 2 : 1;
+    char += code > 0xff_ff ? 2 : 1;
   }
   charAt.push(text.length);
   return { source: ts.createSourceFile(path, text, ts.ScriptTarget.ESNext, true), text, charAt };
@@ -263,7 +263,7 @@ export function reportRun(run: FixRun): void {
   // a hundred singletons. With the operands blanked it reports the four or five shapes left.
   const remaining = new Map<string, number>();
   for (const one of run.manual) {
-    const key = one.message.replace(/`[^`]*`/gu, "X");
+    const key = one.message.replaceAll(/`[^`]*`/gu, "X");
     remaining.set(key, (remaining.get(key) ?? 0) + 1);
   }
   for (const [wording, count] of [...remaining].sort((a, b) => b[1] - a[1])) {

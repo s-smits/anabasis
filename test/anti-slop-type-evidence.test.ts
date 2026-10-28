@@ -267,6 +267,53 @@ export type Used = Record<string, A>;
 export type AlsoUsed = Record<string, Generic<unknown>>;
 `;
 
+/**
+ * An alias applied inside another alias binds its own parameters. A parameter of the outer alias
+ * that shares a name with one the inner alias names (T below) must not leak into it, and one
+ * instantiation of an alias inside another instantiation of the same alias is finite, so it is
+ * followed rather than taken for recursion.
+ */
+const ALIAS_SCOPES = `
+type T = User;
+type Body = T;
+type Outer<T> = Body;
+export type Unleaked = Outer<unknown>; // ADMITTED Body means User, whatever Outer is given
+type Maybe<U> = U | undefined;
+export type Nested = Maybe<Maybe<unknown>>; // REPORT a finite nesting still ends in unknown
+type Identity<V> = V;
+export type Deep = Identity<Identity<Identity<unknown>>>; // REPORT three levels, still unknown
+type Pair<A, B> = A | B;
+export type Second = Pair<string, Pair<number, unknown>>; // REPORT the inner argument is unknown
+export type Plain = Maybe<Maybe<string>>; // ADMITTED nothing unknown
+`;
+
+// Recursion ends: each of these must finish and report nothing.
+const RECURSIVE_ALIASES = `
+type Loop<T> = Loop<T>;
+export type Looped = Loop<string>;
+type Nested<T> = T | Nested<Nested<T>>;
+export type Grown = Nested<string>;
+type Tree<T> = { readonly value: T; readonly children: Tree<T>[] };
+export type Forest = Tree<unknown>;
+`;
+
+/**
+ * Three boundaries of the same walk. \`any\` is as broad a key as \`string\`; a generic alias in key
+ * position is applied to its argument before it is judged; and a class expression's own name
+ * is bound only inside the class, so it hides an outer alias of the same name there.
+ */
+const KEY_AND_SCOPE_EDGES = `
+export type Key<K> = K;
+export type Loose = unknown;
+export type AnyKeyed = { [K in any]: unknown }; // REPORT any is a broad key
+export type ViaGeneric = { [K in Key<string>]: unknown }; // REPORT the alias is applied to string
+export type Literal = { [K in Key<"id">]: unknown }; // ADMITTED a literal key stays narrow
+export const Holder = class Loose {
+  readonly field: Record<string, Loose> = {}; // ADMITTED Loose here is the class, not the alias
+};
+export type Outside = Record<string, Loose>; // REPORT outside the class the alias is unknown
+`;
+
 describe("type evidence and resolution", () => {
   it("reports only the marked lines in every fixture and scope", async () => {
     await lintRules("anti-slop", [
@@ -274,6 +321,10 @@ describe("type evidence and resolution", () => {
       ["no-widen-then-assert", WIDEN_THEN_ASSERT, 13],
       ["no-known-value-widening", KNOWN_VALUE_WIDENING, 17],
       ["no-unsafe-dictionary-type", CYCLIC, 0],
+      ["no-unknown-type-aliases", ALIAS_SCOPES, 3],
+      ["no-unsafe-dictionary-type", KEY_AND_SCOPE_EDGES, 3],
+      ["no-unknown-type-aliases", RECURSIVE_ALIASES, 0],
+      ["no-unknown-returns", RECURSIVE_ALIASES, 0],
     ]);
   });
 });

@@ -286,6 +286,6 @@ if (import.meta.main) {
     crash: errorMessage(error),
   }));
   writeFileSync(join(ask.logs, RESULT_FILE), `${capturedJsonStringify(result, null, 2)}\n`);
-  console.log(`pi-solve: ${String(result.ending)}`);
+  console.log(`pi-solve: ${result.ending}`);
   runtimeProcess.exitCode = 0;
 }

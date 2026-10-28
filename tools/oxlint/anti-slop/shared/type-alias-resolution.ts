@@ -12,7 +12,10 @@ type TypeBinding = {
   readonly scope: TypeScope;
 };
 
+type ResolvingAliases = ReadonlySet<ESTree.TSTypeAliasDeclaration>;
+
 type Substitution = {
+  readonly resolvingAliases: ResolvingAliases;
   readonly substitutions: Substitutions;
   readonly type: ESTree.TSType;
 };
@@ -30,6 +33,8 @@ type ResolvedTypeMatcher = (type: ESTree.TSType, matches: (child: ESTree.TSType)
 const environmentsByProgram = new WeakMap<ESTree.Program, TypeAliasEnvironment>();
 
 function enclosingTypeScope(node: ESTree.Node): TypeScope {
+  // A named class expression binds its name only inside the expression.
+  if (node.type === "ClassExpression") return node;
   let current: ESTree.Node | null = node.parent;
   while (current !== null) {
     if (
@@ -209,18 +214,23 @@ function aliasSubstitutions(
   alias: ESTree.TSTypeAliasDeclaration,
   reference: ESTree.TSTypeReference,
   base: Substitutions,
+  baseResolving: ResolvingAliases,
+  aliasResolving: ResolvingAliases,
 ): Substitutions | null {
   const parameters = alias.typeParameters?.params ?? [];
   const arguments_ = reference.typeArguments?.params ?? [];
-  const next = new Map(base);
+  // The alias's body sees its own parameters only: an outer binding of the same name must not leak in.
+  const next = new Map<string, Substitution>();
   for (const [index, parameter] of parameters.entries()) {
     const explicitArgument = arguments_[index];
     const argument = explicitArgument ?? parameter.default;
     if (argument === null) return null;
-    const argumentSubstitutions = explicitArgument === undefined ? next : base;
+    // Explicit arguments were written at the reference; defaults inside the alias.
+    const isDefault = explicitArgument === undefined;
     next.set(parameter.name.name, {
       type: argument,
-      substitutions: new Map(argumentSubstitutions),
+      substitutions: new Map(isDefault ? next : base),
+      resolvingAliases: isDefault ? aliasResolving : baseResolving,
     });
   }
   return next;
@@ -249,21 +259,28 @@ export function resolvedTypeMatches(
   const evaluate = (
     current: ESTree.TSType,
     substitutions: Substitutions,
-    resolvingAliases: ReadonlySet<ESTree.TSTypeAliasDeclaration>,
+    resolvingAliases: ResolvingAliases,
   ): boolean => {
     if (current.type === "TSTypeReference") {
       const name = typeReferenceName(current);
       if (name !== null) {
         const substitution = substitutions.get(name);
         if (substitution !== undefined && (current.typeArguments?.params.length ?? 0) === 0) {
-          return evaluate(substitution.type, substitution.substitutions, resolvingAliases);
+          // Resume in the argument's own context, so a finite instantiation of an alias that is
+          // still being expanded (`Maybe<Maybe<unknown>>`) is not mistaken for recursion.
+          return evaluate(substitution.type, substitution.substitutions, substitution.resolvingAliases);
         }
         const alias = visibleTypeAlias(name, current, environment);
         if (alias !== null && !resolvingAliases.has(alias)) {
-          const nextSubstitutions = aliasSubstitutions(alias, current, substitutions);
+          const nextResolving = new Set([...resolvingAliases, alias]);
+          const nextSubstitutions = aliasSubstitutions(
+            alias,
+            current,
+            substitutions,
+            resolvingAliases,
+            nextResolving,
+          );
           if (nextSubstitutions !== null) {
-            const nextResolving = new Set(resolvingAliases);
-            nextResolving.add(alias);
             return evaluate(alias.typeAnnotation, nextSubstitutions, nextResolving);
           }
         }

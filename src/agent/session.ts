@@ -24,14 +24,14 @@
  * model, the same endings come within 3 to 7% of Claude Code's totals.
  */
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import {
-  type Api,
-  type AssistantMessage,
-  type Message,
-  type Model,
-  type Models,
-  type ThinkingLevel,
-  type Usage,
+import type {
+  Api,
+  AssistantMessage,
+  Message,
+  Model,
+  Models,
+  ThinkingLevel,
+  Usage,
 } from "@earendil-works/pi-ai";
 import { isRetryableAssistantError } from "@earendil-works/pi-ai/utils/retry";
 import {
@@ -52,9 +52,8 @@ import {
   type HookApi,
   type CommitPublication,
 } from "@earendil-works/pi-durable";
-import type { Context, JsonValue } from "@earendil-works/chord";
+import type { Context } from "@earendil-works/chord";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
-import type { TSchema } from "typebox";
 import { CLAUDE_COMPACTED, reportedCost } from "./backends/claude.ts";
 import { retryPolicy } from "./backends/models.ts";
 import { compactionPolicy, compactionTrace } from "./backends/compaction.ts";
@@ -71,7 +70,7 @@ import { hostScratch } from "../wall/policy.ts";
 
 /** A tool as a seat registers one with pi-durable (`defineTool`): its result's `output` is what the
  *  model reads, and `control.terminate` asks that the run end after the round. */
-export type SeatTool = ToolRegistration<TSchema, JsonValue>;
+export type SeatTool = ToolRegistration;
 
 /** What a seat hands `sit`. */
 export interface Seat {

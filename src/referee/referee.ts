@@ -131,7 +131,7 @@ const READ_WINDOW = 12_000;
 const MODEL_TURN_LIMIT = 24;
 /** Half an hour: v1's ESP32 reviews spent 50 and 63 minutes inside answer probes
  *  (`review-probe.ts:84-86` at 3f93d06b). A Referee session reads one fail. */
-const DEADLINE_SECONDS = 1_800;
+const DEADLINE_SECONDS = 1800;
 
 const SYSTEM_PROMPT = [
   "You are the Referee for one failed solve. A solver submitted the answer below and the task's checks refused it. Decide one thing: does this fail count against the solver?",

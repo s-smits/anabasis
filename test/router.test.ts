@@ -460,7 +460,7 @@ describe.skipIf(realRsync === null)("run.sh", () => {
             ] as const
           ).every(
             ([name, ahead]) =>
-              readFileSync(join(root, `${name}.log`), "utf8").match(/(\d+) tasks ahead/)?.[1] === ahead,
+              /(\d+) tasks ahead/.exec(readFileSync(join(root, `${name}.log`), "utf8"))?.[1] === ahead,
           ),
         25,
       );

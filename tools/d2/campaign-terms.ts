@@ -10,7 +10,7 @@ import { shortOf } from "#src/campaign/decide.ts";
 import { cutShort, type Plan } from "#src/campaign/ground.ts";
 import type { Decided } from "#src/campaign/move.ts";
 import { type Opening, openingOf, planOf, SEATS, SESSIONS, type Seat, TERMS } from "#src/campaign/opening.ts";
-import { type Word } from "#src/campaign/word.ts";
+import type { Word } from "#src/campaign/word.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import type { Session } from "#src/examiner/session.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";

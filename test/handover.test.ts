@@ -394,13 +394,13 @@ describe("the Builder's filter over that reading", () => {
     const told = comparisonsTold(campaignOf(c.events()).steps);
     expect(told).toHaveLength(6);
     expect(told[0]).toMatch(/aaaaaaaa.*00000000.*4 tasks.*4 won.*0 lost.*0 tied.*a step/u);
-    readings.forEach(([, old, , wins, ties, meaning], index) => {
+    for (const [index, [, old, , wins, ties, meaning]] of readings.entries()) {
       const line = told[index + 1];
       for (const fact of ["bbbbbbbb", old.slice(0, 8), "4 tasks", `${wins} won`, "0 lost", `${ties} tied`]) {
         expect(line).toContain(fact);
       }
       expect(line).toMatch(meaning);
-    });
+    }
     // A comparison made after the budget was set again says the turns its solves were held to:
     // its tally is another setting's, and is not one series with the lines above it.
     c.record("campaign.setting", {

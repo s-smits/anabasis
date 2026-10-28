@@ -45,19 +45,13 @@
  * throws it again.
  */
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
-import {
-  type Api,
-  type AssistantMessage,
-  type Model,
-  type Models,
-  type ThinkingLevel,
-} from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { conditionsOf, type Limits } from "../kernel/condition.ts";
 import type { Contract } from "../kernel/contract.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { priceKey } from "../kernel/meter.ts";
 import type { Ending } from "../kernel/solve.ts";
-import { type Cap } from "../kernel/reports.ts";
+import type { Cap } from "../kernel/reports.ts";
 import { billedParts, ownedBy } from "../kernel/trace.ts";
 import { ended as endedSolves, practiceRan, solvesIn } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
@@ -292,7 +286,7 @@ export function layPractice(home: string, tasks: readonly PracticeTask[]): void 
   mkdirSync(folder, { recursive: true });
   for (const { task } of tasks) {
     writeFileSync(
-      join(folder, `${task.taskId.replace(/[^A-Za-z0-9._-]+/g, "-")}.json`),
+      join(folder, `${task.taskId.replaceAll(/[^A-Za-z0-9._-]+/g, "-")}.json`),
       `${capturedJsonStringify(publicView(task), null, 2)}\n`,
     );
   }

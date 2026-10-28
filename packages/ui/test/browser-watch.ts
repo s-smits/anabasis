@@ -1,4 +1,4 @@
-import { type BrowserContext, type Locator, type Page } from "@playwright/test";
+import type { BrowserContext, Locator, Page } from "@playwright/test";
 import { expect } from "./browser.ts";
 
 /*
@@ -114,7 +114,12 @@ export async function watchMutations(target: Locator): Promise<void> {
 
 /** The changes `watchMutations` recorded, once a frame has followed the last one. */
 export async function mutationsOf(page: Page): Promise<string[]> {
-  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+  await page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        requestAnimationFrame(resolve);
+      }),
+  );
   return page.evaluate(() => window.anaWatchedMutations ?? ["not watched"]);
 }
 

@@ -152,7 +152,7 @@ describe("the handover between sessions", () => {
 
   it.each([
     [MEMORY_FILE, MEMORY_CAP_BYTES],
-    [SCRATCHPAD_FILE, 2_000],
+    [SCRATCHPAD_FILE, 2000],
   ] as const)("caps carried %s and keeps its marker and newest lesson", (file, cap) => {
     const newest = "units are kN and the verifier rejects bare floats";
     const run = campaign("# Builder memory\n\nunits are kN\n");

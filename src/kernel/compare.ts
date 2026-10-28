@@ -230,10 +230,10 @@ function signed(sizes: readonly number[], share: number): number[] {
   let chances = [1];
   for (const size of sizes) {
     const next = Array.from({ length: chances.length + size }, () => 0);
-    chances.forEach((chance, at) => {
+    for (const [at, chance] of chances.entries()) {
       next[at] = (next[at] ?? 0) + chance * (1 - share);
       next[at + size] = (next[at + size] ?? 0) + chance * share;
-    });
+    }
     chances = next;
   }
   return chances;

@@ -668,7 +668,8 @@ async function main(argv: readonly string[]): Promise<number> {
     for (;;) {
       if (mode.auto) {
         const open = openPulls(root);
-        const from = open.find((pull) => pull.number === target);
+        const wanted = target;
+        const from = open.find((pull) => pull.number === wanted);
         if (from !== undefined) target = topAbove(open, from).number;
       }
       const ended = await landTo(root, target, mode);

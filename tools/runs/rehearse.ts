@@ -214,7 +214,7 @@ function scriptedBuilder() {
     const last = JSON.stringify(context.messages.at(-1));
     const suggested = /Suggested action: ([a-z_]+)\./u.exec(last ?? "")?.[1];
     let name = suggested ?? (changed ? "finish" : "build");
-    if (last?.includes("no Examiner") === true || name === "end") name = "finish";
+    if (last?.includes("no Examiner") || name === "end") name = "finish";
     if (name === "build") {
       name = changed ? "compare" : "bash";
       changed = true;

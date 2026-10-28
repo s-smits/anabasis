@@ -118,17 +118,13 @@ function invoke(tool: SeatTool, args: JsonObject) {
 describe("the probe", () => {
   it("the probe refuses object and array root replacements before running a check", async () => {
     let calls = 0;
+    const counted = async () => {
+      calls += 1;
+      return { kind: "pass" } as const;
+    };
     for (const answer of [ANSWER, [1, 2]]) {
       const rows: ProbeRow[] = [];
-      const tool = probeTool(
-        async () => {
-          calls += 1;
-          return { kind: "pass" };
-        },
-        TASK,
-        answer,
-        rows,
-      );
+      const tool = probeTool(counted, TASK, answer, rows);
       await expect(invoke(tool, { changes: [{ path: "$", value: "null" }] })).rejects.toThrow("scalar root");
       expect(rows).toHaveLength(0);
     }
@@ -170,7 +166,7 @@ describe("the probe", () => {
       [[{ path: SPAN, value: "ten" }], /JSON/u],
       [[{ path: "$.depth", value: "1" }], /\$\.depth.*existing field/u],
       [[{ path: SPAN, value: "12" }], /already.*value/u],
-      [[{ path: SPAN, value: JSON.stringify("x".repeat(4_000)) }], /4000/u],
+      [[{ path: SPAN, value: JSON.stringify("x".repeat(4000)) }], /4000/u],
       [[], /unchanged/u],
       [
         [
@@ -209,7 +205,7 @@ const ruling = (args: JsonObject) => fauxAssistantMessage(fauxToolCall("record_r
 
 describe("coupled and check-defect evidence", () => {
   it("the Referee accepts coupled edits only when their cited probe clears the deciding check", async () => {
-    const answer = { left: `${"x".repeat(4_001)}bad`, right: `${"x".repeat(4_001)}bad` };
+    const answer = { left: `${"x".repeat(4001)}bad`, right: `${"x".repeat(4001)}bad` };
     const change = (path: string) => ({ path, find: "bad", replace: "good" });
     const s = setup(
       [
@@ -350,10 +346,10 @@ describe("deciding check-defect probes", () => {
       { ruling: "check-defect", check: "depth", probes: [1] },
     ]);
     const reasons = [/two sides.*verdict/u, /earned.*\$\.span.*R1.*refusal/u, /refusing checks.*span/u];
-    refused.forEach(({ data }, index) => {
+    for (const [index, { data }] of refused.entries()) {
       expect(data.why).toMatch(reasons[index] ?? /missing refusal/u);
       expect(s.sent[index + 2]).toContain(JSON.stringify(data.why).slice(1, -1));
-    });
+    }
   });
 });
 
@@ -431,11 +427,13 @@ describe("earned evidence", () => {
       invalid.map((rest) => ({ ruling: "earned", reason: "Over the limit.", probes: [], ...rest })),
     );
     const reasons = [/rule.*R1/u, /rule.*R1/u, /exists.*answer/u, /R1.*\$\.members\[0\]\.area/u];
-    refused.forEach(({ data }, index) => expect(data.why).toMatch(reasons[index] ?? /missing refusal/u));
+    for (const [index, { data }] of refused.entries()) {
+      expect(data.why).toMatch(reasons[index] ?? /missing refusal/u);
+    }
     expect(refused.map(({ data }) => [data.solve, data.task])).toEqual(Array(4).fill(["s-1", "t-1"]));
-    refused.forEach(({ data }, index) =>
-      expect(s.sent[index + 1]).toContain(JSON.stringify(data.why).slice(1, -1)),
-    );
+    for (const [index, { data }] of refused.entries()) {
+      expect(s.sent[index + 1]).toContain(JSON.stringify(data.why).slice(1, -1));
+    }
     expect(read(s.log).at(-1)?.kind).toBe(FINDING);
   });
 
@@ -464,9 +462,9 @@ describe("earned evidence", () => {
     // Each of the three earned rulings is refused on record, and its reason reaches the reader next.
     const refused = read(s.log).filter(({ kind }) => kind === "referee.refused");
     expect(refused.map(({ data }) => asRecord(data.asked)?.probes)).toEqual([[], [1], [2]]);
-    refused.forEach(({ data }, index) => {
+    for (const [index, { data }] of refused.entries()) {
       expect(s.sent[[1, 3, 5][index] ?? 0]).toContain(JSON.stringify(data.why).slice(1, -1));
-    });
+    }
     expect(read(s.log).at(-1)?.data.probeRows).toEqual([
       expect.objectContaining({ id: 1, moved: [] }),
       expect.objectContaining({ id: 2, moved: [] }),

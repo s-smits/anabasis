@@ -97,7 +97,7 @@ type Resolution =
 const opaque: Resolution = { kind: "opaque" };
 
 /** The key keywords that admit keys the author never wrote down. */
-const broadKeyKeywords = new Set(["TSStringKeyword", "TSNumberKeyword", "TSSymbolKeyword"]);
+const broadKeyKeywords = new Set(["TSStringKeyword", "TSNumberKeyword", "TSSymbolKeyword", "TSAnyKeyword"]);
 
 /** The expressions whose written form already states what they denote. */
 const evidenceExpressions = new Set([
@@ -185,8 +185,7 @@ function resolvedSubstitutionArgument(
   if (name === null || resolving.has(name)) return type;
   const substitution = base.get(name);
   if (substitution === undefined) return type;
-  const nextResolving = new Set(resolving);
-  nextResolving.add(name);
+  const nextResolving = new Set([...resolving, name]);
   return resolvedSubstitutionArgument(substitution, base, nextResolving);
 }
 
@@ -234,8 +233,7 @@ function resolveReference(
   if (alias === null || from.visited.has(name)) return opaque;
   const substitutions = aliasSubstitution(alias, reference, from.substitutions);
   if (substitutions === null) return opaque;
-  const visited = new Set(from.visited);
-  visited.add(name);
+  const visited = new Set([...from.visited, name]);
   return {
     kind: "step",
     step: {
@@ -269,10 +267,8 @@ function isBroadMappedKey(
     }
     if (unwrapped.type !== "TSTypeReference") return false;
     const resolution = resolveReference(unwrapped, environment, state);
-    // A generic alias in key position says nothing about the key until it is applied,
-    // and this walk has no application to apply.
     if (resolution.kind === "builtin") return resolution.name === "PropertyKey";
-    if (resolution.kind !== "step" || resolution.step.aliasGeneric) return false;
+    if (resolution.kind !== "step") return false;
     state = resolution.step;
   }
 }
@@ -286,7 +282,7 @@ function isNeverType(type: ESTree.TSType): boolean {
 function isEffectivelyEmptyMember(member: ESTree.TSSignature): boolean {
   return (
     member.type === "TSPropertySignature" &&
-    member.optional === true &&
+    member.optional &&
     member.typeAnnotation !== null &&
     isNeverType(member.typeAnnotation.typeAnnotation)
   );

@@ -39,13 +39,8 @@ describe("isObject", () => {
   // those reached `part.type` on a null and threw a TypeError where its function declares
   // `Error("generated tool result must contain text content")`. The exclusion belongs here.
   it("excludes null while admitting every other object", () => {
-    expect(isObject(null)).toBe(false);
-    expect(isObject({})).toBe(true);
-    expect(isObject([])).toBe(true);
-    expect(isObject(new Date(0))).toBe(true);
-    expect(isObject(undefined)).toBe(false);
-    expect(isObject("")).toBe(false);
-    expect(isObject(0)).toBe(false);
+    for (const value of [null, undefined, "", 0]) expect(isObject(value)).toBe(false);
+    for (const value of [{}, [], new Date(0)]) expect(isObject(value)).toBe(true);
   });
 });
 
@@ -68,36 +63,18 @@ describe("stable JSON identity", () => {
   });
 });
 
-/**
- * Tests for src/meta/optional-key.ts, the helpers that replaced conditional empty-object
- * spreads. The property that matters is not "the key is there when the value is": it is that an
- * absent key is absent rather than present holding `undefined`, because `exactOptionalPropertyTypes`
- * makes those two different values and the recorded evidence writes whichever one it is given.
- *
- * The absence tests are separate on purpose. A call site that meant "omit when undefined" must
- * not start dropping `""` or `0`; a single helper would have made that difference invisible at
- * the call.
- */
-
 describe("keyIfDefined", () => {
-  it("omits the key rather than writing undefined", () => {
+  it("omits undefined while keeping null, empty string, zero and false", () => {
     const spread = { a: 1, ...keyIfDefined("b", undefined) };
     expect(Object.hasOwn(spread, "b")).toBe(false);
     expect(Object.keys(spread)).toEqual(["a"]);
-  });
-
-  it("keeps null, empty string, zero and false, which are values", () => {
-    expect<unknown>(keyIfDefined("b", null)).toEqual({ b: null });
-    expect(keyIfDefined("b", "")).toEqual({ b: "" });
-    expect(keyIfDefined("b", 0)).toEqual({ b: 0 });
-    expect(keyIfDefined("b", false)).toEqual({ b: false });
+    for (const value of [null, "", 0, false]) expect<unknown>(keyIfDefined("b", value)).toEqual({ b: value });
   });
 });
 
 describe("keyIfNotNull", () => {
   it("omits both spellings of absence at a JSON boundary", () => {
-    expect(Object.keys({ ...keyIfNotNull("b", null) })).toEqual([]);
-    expect(Object.keys({ ...keyIfNotNull("b", undefined) })).toEqual([]);
+    for (const value of [null, undefined]) expect(Object.keys(keyIfNotNull("b", value))).toEqual([]);
   });
 });
 

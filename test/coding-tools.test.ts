@@ -62,7 +62,6 @@ function caller(wall: CommandWall, env: ExecutionEnv) {
 
 async function withSeat(
   run: (wall: CommandWall, call: ReturnType<typeof caller>, repo: string) => Promise<void>,
-  clock?: CommandWall["clock"],
 ) {
   const repo = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-coding-repo-")));
   const dirs = solveDirs(`coding-${crypto.randomUUID()}`);
@@ -75,7 +74,6 @@ async function withSeat(
       dirs,
       toolTree: null,
       limits: { shellDefaultSeconds: 1, shellMaxSeconds: 2 },
-      clock,
     };
     env = walledEnv(wall);
     await run(wall, caller(wall, env), repo);
@@ -97,22 +95,18 @@ async function stopped(path: string) {
 }
 
 describe.skipIf(!osIsolationSupport().ok)("the coding tools on the OS wall", () => {
-  it("runs Bash-only syntax in the bash tool and in a command the host launches", async () => {
+  it("runs Bash and literal file operations in one home while refusing forbidden paths", async () => {
     // Process substitution, `[[ ]]` and an indexed array: `/bin/sh` refuses the first on both
     // hosts, and Linux's dash all three.
-    const command = 'a=(x y); [[ $(cat <(echo "${a[1]}")) == y ]] && echo bash-ok';
-    await withSeat(async (wall, call) => {
+    await withSeat(async (wall, call, repo) => {
+      const command = 'a=(x y); [[ $(cat <(echo "${a[1]}")) == y ]] && echo bash-ok';
       const result = await call("bash", { command });
       expect(result.isError === true).toBe(false);
       expect(result.text).toBe("bash-ok\n");
       const launched = await wallExec(wall)(command);
       expect(launched.exitCode).toBe(0);
       expect(launched.output.toString("utf8")).toBe("bash-ok\n");
-    });
-  });
 
-  it("refuses a denied read through read and bash and a write outside the home", async () => {
-    await withSeat(async (_wall, call, repo) => {
       const secret = join(repo, "canary");
       writeFileSync(secret, "hidden-canary");
       await expect(call("read", { path: secret })).rejects.toThrow();
@@ -121,11 +115,7 @@ describe.skipIf(!osIsolationSupport().ok)("the coding tools on the OS wall", () 
       expect(shell.text).not.toContain("hidden-canary");
       await expect(call("write", { path: join(repo, "escape"), content: "bad" })).rejects.toThrow();
       expect(existsSync(join(repo, "escape"))).toBe(false);
-    });
-  });
 
-  it("carries literal content without shell evaluation and refuses missing or oversized files", async () => {
-    await withSeat(async (wall, call) => {
       const content = "$(touch escaped)\n`id`\n'; echo injected";
       await call("write", { path: "odd name's.txt", content });
       expect((await call("read", { path: "odd name's.txt" })).text).toBe(content);

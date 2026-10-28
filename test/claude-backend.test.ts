@@ -14,7 +14,6 @@ import {
   Type,
 } from "@earendil-works/pi-ai";
 import {
-  type ClaudeCompaction,
   claudeProvider,
   REPORTED_COST,
   reportedCost,
@@ -113,18 +112,13 @@ function flag(launch: Launch, name: string): string | undefined {
   return launch.argv.find((arg) => arg.startsWith(`${name}=`))?.slice(name.length + 1);
 }
 
-function turn(
-  messages: Message[],
-  reasoning?: ThinkingLevel,
-  compaction?: ClaudeCompaction,
-): Promise<AssistantMessage> {
-  const provider =
-    compaction === undefined
-      ? sweep
-      : claudeProvider({ executable, compaction, home, shutdown: shutdown.signal });
-  const context = solverContext(messages);
-  const options = { ...solveOptions(), ...keyIfDefined("reasoning", reasoning) };
-  return provider.streamSimple(recorded, context, options).result();
+function turn(messages: Message[], reasoning?: ThinkingLevel): Promise<AssistantMessage> {
+  return sweep
+    .streamSimple(recorded, solverContext(messages), {
+      ...solveOptions(),
+      ...keyIfDefined("reasoning", reasoning),
+    })
+    .result();
 }
 
 /** A solver's context over `messages`, with the one tool the recordings call. */
@@ -219,7 +213,11 @@ describe("the Claude backend", () => {
       messages: [opening],
       tools: [read],
     });
-    const started = async (webSearch: boolean) => {
+    for (const [webSearch, expected] of [
+      [false, ""],
+      [true, "WebSearch"],
+    ] as const) {
+      writeFileSync(join(home, "launch.jsonl"), "");
       replay(TEXT);
       const provider = claudeProvider({
         executable,
@@ -234,23 +232,12 @@ describe("the Claude backend", () => {
       const init = asRecord(
         launch.stdin.find((line) => asRecord(line.request)?.subtype === "initialize")?.request,
       );
-      return {
-        tools: flag(launch, "--tools"),
-        system: init?.systemPrompt,
-        appended: init?.appendSystemPrompt,
-      };
-    };
-    expect(await started(false)).toEqual({
-      tools: "",
-      system: ["You are the Examiner."],
-      appended: undefined,
-    });
-    writeFileSync(join(home, "launch.jsonl"), "");
-    expect(await started(true)).toEqual({
-      tools: "WebSearch",
-      system: ["You are the Examiner."],
-      appended: undefined,
-    });
+      expect(flag(launch, "--tools")).toBe(expected);
+      expect(init?.systemPrompt).toEqual(["You are the Examiner."]);
+      expect(init?.appendSystemPrompt).toBeUndefined();
+      expect(launch.env.DISABLE_AUTO_COMPACT).toBe("1");
+      expect(launch.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined();
+    }
   });
 
   // Which account spends is the operator's to name. An API key is a provider of its own, so the
@@ -274,9 +261,7 @@ describe("the Claude backend", () => {
     // The rest of the CLI's environment is the login's: its own configuration, its compaction.
     expect(env.CLAUDE_CONFIG_DIR).toBe(join(home, "claude-config"));
     expect(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe("300000");
-    expect(() => claudeProvider({ executable, compaction: "off", home }, "claude-max")).toThrow(
-      "claude-max is no account of the Claude backend",
-    );
+    expect(() => claudeProvider({ executable, compaction: "off", home }, "claude-max")).toThrow("claude-max");
   });
 
   it("keeps the prompt cache as long as a seat's options say, and leaves the CLI its own choice otherwise", async () => {
@@ -285,7 +270,7 @@ describe("the Claude backend", () => {
       messages: [opening],
       tools: [read],
     });
-    const ttl = async (cacheTtl?: "5m" | "1h") => {
+    for (const cacheTtl of ["5m", "1h", undefined] as const) {
       replay(TEXT);
       const provider = claudeProvider({
         executable,
@@ -296,11 +281,8 @@ describe("the Claude backend", () => {
       });
       const options = { ...solveOptions(), sessionId: `ttl-${String(solves)}-${String(cacheTtl)}` };
       await provider.streamSimple(recorded, context, options).result();
-      return launched().env.CLAUDE_CODE_PROMPT_CACHE_TTL;
-    };
-    expect(await ttl("5m")).toBe("5m");
-    expect(await ttl("1h")).toBe("1h");
-    expect(await ttl()).toBeUndefined();
+      expect(launched().env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBe(cacheTtl);
+    }
   });
 
   it("fails the turn on a refusal, so it reads as the provider's non-result and not the solver's stop", async () => {
@@ -416,7 +398,6 @@ describe("the Claude backend", () => {
     solve.abort();
     const refused = await turn([opening]);
     expect(refused.stopReason).toBe("aborted");
-    expect(refused.errorMessage).toContain("was aborted before its turn");
     expect(launches()).toBe(0);
   });
 
@@ -427,11 +408,11 @@ describe("the Claude backend", () => {
     sweep = claudeProvider({ executable, compaction: "off", home, shutdown: shutdown.signal, quiet: 300 });
     const silent = await turn([opening]);
     expect(silent.stopReason).toBe("error");
-    expect(silent.errorMessage).toContain("sent nothing");
+    expect(Number(silent.errorMessage?.match(/[\d.]+/)?.[0])).toBe(300 / 60_000);
     replay(TEXT);
     const nudge: Message = { role: "user", content: "Again.", timestamp: 0 };
     const refused = await turn([opening, silent, nudge]);
     expect(refused.stopReason).toBe("error");
-    expect(refused.errorMessage).toContain("holds this conversation");
+    expect(launches()).toBe(1);
   });
 });

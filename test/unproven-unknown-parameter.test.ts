@@ -12,8 +12,8 @@
  * nothing and one that reports everything. The declarations stay on one line each because the
  * report lands on the `unknown` token itself.
  */
-import { describe, expect, it } from "bun:test";
-import { expectedLines, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
+import { describe, it } from "bun:test";
+import { lintRules } from "./helpers/lint-rule.ts";
 
 const PROVERS = `
 function isString(v: unknown): v is string { return typeof v === "string"; }
@@ -104,26 +104,11 @@ export function computedCallee(value: unknown): boolean { return checks["isStrin
 export function aliasCarriesEveryOperand(first: unknown, second: unknown): string { const joined = [first, second].join(""); return isString2(joined) ? joined : ""; } // ADMITTED proving a derived local admits every operand it came from
 `.trimStart();
 
-/** Parameter shapes other than a plain identifier. The annotation hides behind a default, a rest
- *  element or a constructor property, and the name behind a pattern. */
-/** The seven declaration kinds that carry parameters and no body. Nothing can prove them, so each
- *  reports exactly as the rule it replaced reported it — unless the return type is the proof, which
- *  a type predicate is. `loadExport`'s `accepts` parameter is the case that found this: written as
- *  a `TSFunctionType` it was reported, and the identical arrow with a body was admitted. */
-/** Where a proof stops travelling, and how far it travels when it does. */
 describe("ana/unproven-unknown-parameter", () => {
-  const reports = (fixture: string): Promise<number[]> =>
-    reportedLines("ana", "unproven-unknown-parameter", fixture);
-
-  it("reports an unknown parameter the function never proves, and admits one it does", async () => {
-    const expected = expectedLines(PROVERS);
-    expect(expected).toHaveLength(11);
-    expect(await reports(PROVERS)).toStrictEqual(expected);
-  });
-
-  it("accepts every narrowing it recognises and no name that merely resembles one", async () => {
-    const expected = expectedLines(GUARDS);
-    expect(expected).toHaveLength(5);
-    expect(await reports(GUARDS)).toStrictEqual(expected);
+  it("reports only the marked lines in every fixture and scope", async () => {
+    await lintRules("ana", [
+      ["unproven-unknown-parameter", PROVERS, 11],
+      ["unproven-unknown-parameter", GUARDS, 5],
+    ]);
   });
 });

@@ -3,7 +3,7 @@
 // the report path it is handed (`<out>/<name>.md`), since a resumed attempt's prompt does not carry
 // the task, and runs the next step of that session's plan on each call.
 import { afterAll, describe, expect, it } from "bun:test";
-import { type Session, sessionsOf } from "#skills/codex-gpt-swarm/scripts/gpt-sessions.ts";
+import { sessionsOf } from "#skills/codex-gpt-swarm/scripts/gpt-sessions.ts";
 import {
   mkdirSync,
   mkdtempSync,
@@ -66,46 +66,36 @@ const run = (...args: string[]) => {
   const result = runSync([capturedExecPath, launcher, ...args]);
   return { code: result.exitCode, stdout: decodeOutput(result.stdout), stderr: decodeOutput(result.stderr) };
 };
-const manifest = (sessions: Row[]) => {
-  const path = join(root, "manifest.json");
-  writeFileSync(path, capturedJsonStringify({ workdir, sessions }));
-  return path;
-};
-const named = (sessions: readonly Session[]) => sessions.map((session) => session.name);
 
 describe("a manifest", () => {
   it("refuses a repeated name or task, a stray field, and a write session that owns nothing", () => {
-    const of = (sessions: Row[]) => () => sessionsOf({ workdir, sessions });
-    expect(
-      of([
-        { name: "a", task: "x" },
-        { name: "a", task: "y" },
-      ]),
-    ).toThrow("duplicate session name: a");
-    expect(
-      of([
-        { name: "a", task: "x" },
-        { name: "b", task: " x " },
-      ]),
-    ).toThrow("repeats an earlier session's task");
-    expect(of([{ name: "a", task: "x", model: "gpt-6-luna" }])).toThrow("unsupported fields: model");
-    expect(of([{ name: "a", task: "x", sandbox: "workspace-write" }])).toThrow("must declare ownedPaths");
-    expect(named(sessionsOf({ workdir, sessions: [{ name: "a", task: "x" }] }))).toStrictEqual(["a"]);
+    const valid = { name: "a", task: "x" };
+    for (const [sessions, reason] of [
+      [[valid, { name: "a", task: "y" }], "duplicate session name: a"],
+      [[valid, { name: "b", task: " x " }], "repeats an earlier session's task"],
+      [[{ ...valid, model: "gpt-6-luna" }], "unsupported fields: model"],
+      [[{ ...valid, sandbox: "workspace-write" }], "must declare ownedPaths"],
+    ] satisfies [Row[], string][]) {
+      expect(() => sessionsOf({ workdir, sessions })).toThrow(reason);
+    }
+    expect(sessionsOf({ workdir, sessions: [valid] }).map((session) => session.name)).toStrictEqual(["a"]);
   });
 });
 
 describe("a launch", () => {
   const out = join(root, "out");
 
-  it("resumes a session that stopped by its thread, and types a rate limit Codex reported", () => {
+  it("resumes stopped threads, drains settled reports once and retries only incomplete sessions", () => {
     plan({
       flaky: [{ thread: "thread_flaky_0001", exit: 1 }, { report: "report from flaky" }],
       limited: [{ stderr: "429 Too Many Requests", exit: 1 }],
     });
     const sessions = ["ok", "flaky", "limited"].map((name) => ({ name, task: `Task of ${name}.` }));
+    const manifest = join(root, "manifest.json");
+    writeFileSync(manifest, capturedJsonStringify({ workdir, sessions }));
     const launched = run(
       "--manifest",
-      manifest(sessions),
+      manifest,
       "--output-dir",
       out,
       "--codex-bin",
@@ -138,9 +128,6 @@ describe("a launch", () => {
     expect(resumed?.args.slice(0, 3)).toStrictEqual(["--search", "exec", "resume"]);
     expect(resumed?.args.at(-2)).toBe("thread_flaky_0001");
     expect(resumed?.stdin).toContain("Continue the task from where it stopped");
-  });
-
-  it("drains each settled report once, and retries only the session left incomplete", () => {
     const first = run("--drain", out);
     expect(first.stdout).toContain("## ok");
     expect(first.stdout).toContain("Failure kind: rate-limit");

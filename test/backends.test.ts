@@ -10,25 +10,11 @@ import { mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 
-const HOUR_S = 60 * 60;
 const home = mkdtempSync(join(tmpdir(), "ana-backends-"));
 const previous = Bun.env.CODEX_HOME;
 const options: BackendOptions = {
   claude: { executable: claudeExecutable(), compaction: "off", home: tmpdir() },
 };
-
-function login(expiresInSeconds: number): string {
-  const claims = {
-    exp: Math.floor(Date.now() / 1000) + expiresInSeconds,
-    "https://api.openai.com/auth": { chatgpt_account_id: "test-account" },
-  };
-  const access = ["e30", Buffer.from(JSON.stringify(claims)).toString("base64url"), "sig"].join(".");
-  writeFileSync(
-    join(home, "auth.json"),
-    JSON.stringify({ tokens: { access_token: access, refresh_token: "r" } }),
-  );
-  return access;
-}
 
 beforeAll(() => {
   Bun.env.CODEX_HOME = home;
@@ -41,22 +27,21 @@ afterAll(() => {
 });
 
 describe("the three backends", () => {
+  const catalog = backends(options);
   it("serve Codex, OpenRouter and Claude Code from pi's catalogs", () => {
-    const models = backends(options);
-    expect(models.getModel("openai-codex", "gpt-6.1-sol")?.api).toBe("openai-codex-responses");
-    expect(models.getModel("openrouter", "anthropic/claude-opus-5")).toBeDefined();
-    expect(models.getModel("claude", "claude-opus-5")?.api).toBe("claude-agent-sdk");
+    expect(catalog.getModel("openai-codex", "gpt-6.1-sol")?.api).toBe("openai-codex-responses");
+    expect(catalog.getModel("openrouter", "anthropic/claude-opus-5")).toBeDefined();
+    expect(catalog.getModel("claude", "claude-opus-5")?.api).toBe("claude-agent-sdk");
     // The same backend on an API key is a provider of its own, with the same catalog and prices,
     // and it compacts as the login does.
-    const [login_, key] = ["claude", "claude-api"].map((id) => models.getModel(id, "claude-sonnet-5-5"));
+    const [login_, key] = ["claude", "claude-api"].map((id) => catalog.getModel(id, "claude-sonnet-5-5"));
     expect(key).toMatchObject({ provider: "claude-api", api: "claude-agent-sdk", cost: login_?.cost });
     if (login_ === undefined || key === undefined) throw new Error("the catalog has no claude-sonnet-5-5");
     expect(compactionMode(key, options)).toBe(compactionMode(login_, options));
   });
 
   it("route a model pinned to one OpenRouter endpoint there alone, at that endpoint's price", () => {
-    const models = backends(options);
-    const dated = models.getModel("openrouter", "deepseek/deepseek-v4.1-flash-1017");
+    const dated = catalog.getModel("openrouter", "deepseek/deepseek-v4.1-flash-1017");
     expect(dated?.compat).toMatchObject({
       openRouterRouting: { only: ["deepinfra/fp8"], allow_fallbacks: false },
     });
@@ -71,15 +56,23 @@ describe("the three backends", () => {
     });
     // A model nobody pinned keeps pi's own entry, routed as OpenRouter chooses.
     // Every listing pi's collection offers holds it, as `getModel` does.
-    const chat = models.getModelsOfType("chat", "openrouter").map(({ id }) => id);
+    const chat = catalog.getModelsOfType("chat", "openrouter").map(({ id }) => id);
     expect(chat).toContain("deepseek/deepseek-v4.1-flash-1017");
-    const base = models.getModel("openrouter", "deepseek/deepseek-v4.1-flash");
+    const base = catalog.getModel("openrouter", "deepseek/deepseek-v4.1-flash");
     expect(base?.compat ?? {}).not.toHaveProperty("openRouterRouting");
-    expect(models.getModel("openrouter", "deepseek/deepseek-v4.1-flash-0101")).toBeUndefined();
+    expect(catalog.getModel("openrouter", "deepseek/deepseek-v4.1-flash-0101")).toBeUndefined();
   });
 
   it("records the model Codex serves from its terminal event, leaving an absent model and backend bill unknown", async () => {
-    login(HOUR_S);
+    const claims = {
+      exp: Math.floor(Date.now() / 1000) + 60 * 60,
+      "https://api.openai.com/auth": { chatgpt_account_id: "test-account" },
+    };
+    const access = ["e30", Buffer.from(JSON.stringify(claims)).toString("base64url"), "sig"].join(".");
+    writeFileSync(
+      join(home, "auth.json"),
+      JSON.stringify({ tokens: { access_token: access, refresh_token: "r" } }),
+    );
     let served: string | undefined = "gpt-served-snapshot";
     const fetch = Object.assign(
       async () => {
@@ -106,6 +99,7 @@ describe("the three backends", () => {
       { preconnect: globalThis.fetch.preconnect },
     );
     const models = backends(options);
+    expect((await models.getAuth("openai-codex"))?.auth.apiKey).toBe(access);
     const provider = models.getProvider("openai-codex");
     const model = models.getModel("openai-codex", "gpt-6.1-sol");
     if (provider === undefined || model === undefined) throw new Error("the Codex provider is missing");

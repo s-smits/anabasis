@@ -7,9 +7,9 @@ import { fitOf, perRunHour, perRunRate } from "../tools/runs/logins.ts";
 
 describe("each login's live runs", () => {
   it("leaves a host uncounted whose answer is no list, as a tree before the verb answers", () => {
-    expect(liveOf("m1", [])).toBeNull();
-    expect(liveOf("m1", null)).toBeNull();
-    expect(liveOf("m1", ["usage: bun run runs pulse|zip ..."])).toBeNull();
+    for (const lines of [[], null, ["usage: bun run runs pulse|zip ..."]]) {
+      expect(liveOf("m1", lines)).toBeNull();
+    }
     expect(liveOf("m1", ["[]"])).toEqual([]);
     expect(liveOf("m1", ['[{"name":"a","login":"2","host":"here"}]'])).toEqual([
       { name: "a", login: "2", host: "m1" },
@@ -42,16 +42,16 @@ describe("how many runs a login's week carries", () => {
     ...keyIfDefined("runs", runs === undefined ? undefined : { "2": runs }),
   });
 
-  it("measures a run's share of a week an hour from rises over the runs the earlier reading counted", () => {
-    const history = [reading(0, 10, 2), reading(1, 12, 2), reading(2, 14, 2), reading(3, 16, 2)];
-    expect(perRunRate(history)).toBe(1);
-  });
-
-  it("measures nothing from readings that counted no runs, too few run-hours, or a window that reset", () => {
-    expect(perRunRate([reading(0, 10), reading(1, 12), reading(2, 14), reading(3, 16)])).toBeNull();
-    expect(perRunRate([reading(0, 10, 2), reading(1, 12, 2)])).toBeNull();
+  it("measures a run's hourly share only across enough counted run-hours in one week", () => {
     const reset = { at: 2 * HOUR, weeks: { "2": { pct: 0, reset: 268 * HOUR } }, runs: { "2": 2 } };
-    expect(perRunRate([reading(0, 10, 2), reading(1, 12, 2), reset])).toBeNull();
+    for (const [history, expected] of [
+      [[reading(0, 10, 2), reading(1, 12, 2), reading(2, 14, 2), reading(3, 16, 2)], 1],
+      [[reading(0, 10), reading(1, 12), reading(2, 14), reading(3, 16)], null],
+      [[reading(0, 10, 2), reading(1, 12, 2)], null],
+      [[reading(0, 10, 2), reading(1, 12, 2), reset], null],
+    ] as const) {
+      expect(perRunRate(history)).toBe(expected);
+    }
   });
 
   it("fits as many runs as the week left carries to its reset, active 16 of 24 hours", () => {

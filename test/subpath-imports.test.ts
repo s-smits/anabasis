@@ -56,15 +56,14 @@ describe("prefer-subpath-import", () => {
   });
 
   it("has the fixers that write an import write the alias under this repository's own options", () => {
-    const at = (path: string): string => `${REPO}/${path}`;
-    expect(importSpecifier(at(SKILL_SCRIPT), "src/meta/os.ts")).toBe("#src/meta/os.ts");
-    expect(importSpecifier(at("tools/oxlint/strict-boolean-fix.ts"), "src/meta/os.ts")).toBe(
-      "../../src/meta/os.ts",
-    );
-    expect(importSpecifier(at("src/a/b/c/x.ts"), "src/meta/os.ts")).toBe("../../../meta/os.ts");
-    expect(importSpecifier(at("vendor/pi-built/a/b/x.ts"), "src/meta/os.ts")).toBe(
-      "../../../../src/meta/os.ts",
-    );
+    for (const [path, specifier] of [
+      [SKILL_SCRIPT, "#src/meta/os.ts"],
+      ["tools/oxlint/strict-boolean-fix.ts", "../../src/meta/os.ts"],
+      ["src/a/b/c/x.ts", "../../../meta/os.ts"],
+      ["vendor/pi-built/a/b/x.ts", "../../../../src/meta/os.ts"],
+    ] as const) {
+      expect(importSpecifier(`${REPO}/${path}`, "src/meta/os.ts")).toBe(specifier);
+    }
   });
 });
 
@@ -96,18 +95,22 @@ describe("the tree scans read an alias as the module it names", () => {
   });
 
   it("reads a name quoted inside a backtick span as prose, and the same name bare as an identity", () => {
-    const rows = (line: string) =>
-      identitiesWithoutOwner(
-        new Map([
-          ["a/probe.ts", line],
-          ["b/probe.ts", line],
-        ]),
-      ).map((row) => row.detail);
-    expect(rows("const help = 'such as `type T = \"sandbox-level/v1\"` in a type';")).toStrictEqual([]);
-    expect(rows('const help = `such as type T = "sandbox-level/v1" in a type`;')).toStrictEqual([]);
-    expect(rows('const level = "sandbox-level/v1";')).not.toStrictEqual([]);
-    // A literal in a template's `${…}` is code, and so is one after a string that holds a backtick.
-    expect(rows('const level = `at ${"sandbox-level/v1"}`;')).not.toStrictEqual([]);
-    expect(rows('const tick = "`", level = "sandbox-level/v1";')).not.toStrictEqual([]);
+    for (const [line, identity] of [
+      ["const help = 'such as `type T = \"sandbox-level/v1\"` in a type';", false],
+      ['const help = `such as type T = "sandbox-level/v1" in a type`;', false],
+      ['const level = "sandbox-level/v1";', true],
+      ['const level = `at ${"sandbox-level/v1"}`;', true],
+      ['const tick = "`", level = "sandbox-level/v1";', true],
+    ] as const) {
+      expect(
+        identitiesWithoutOwner(
+          new Map([
+            ["a/probe.ts", line],
+            ["b/probe.ts", line],
+          ]),
+        ).length > 0,
+        line,
+      ).toBe(identity);
+    }
   });
 });

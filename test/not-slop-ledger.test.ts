@@ -57,14 +57,11 @@ describe("a site's id", () => {
   const first = { path: "src/a.ts", text: "const kept = rows.filter(Boolean);" };
   const second = { path: "src/b.ts", text: "const kept = rows.filter(Boolean);" };
 
-  it("is the same whichever order a scan found the places in, and however the text is spaced", () => {
+  it("ignores order and spacing, but changes when the second place changes", () => {
     expect(siteId("tree/copied-block", [second, first])).toBe(siteId("tree/copied-block", [first, second]));
     expect(siteId("tree/copied-block", [{ ...first, text: `  ${first.text}\n` }, second])).toBe(
       siteId("tree/copied-block", [first, second]),
     );
-  });
-
-  it("changes when the second place changes, not only the first", () => {
     const edited = { ...second, text: "const kept = rows.filter(isString);" };
     expect(siteId("tree/copied-block", [first, edited])).not.toBe(
       siteId("tree/copied-block", [first, second]),
@@ -94,8 +91,9 @@ describe("the ledger's rows", () => {
       Object.values(row({ id: "b468e7f2" })).join("\t"),
       Object.values(row({ answered: "yesterday" })).join("\t"),
     ].join("\n");
-    expect(readLedger(text).answers).toStrictEqual([]);
-    expect(readLedger(text).unread.map((problem) => problem.split(":")[0])).toStrictEqual([
+    const ledger = readLedger(text);
+    expect(ledger.answers).toStrictEqual([]);
+    expect(ledger.unread.map((problem) => problem.split(":")[0])).toStrictEqual([
       "line 2",
       "line 3",
       "line 4",
@@ -104,12 +102,16 @@ describe("the ledger's rows", () => {
   });
 
   it("refuses a core rule, a rule with a fixer, an unknown rule and the rule that keeps the ledger", () => {
-    expect(unanswerable("eslint/no-shadow")).toContain("core rule");
-    expect(unanswerable("anti-slop/prefer-subpath-import")).toContain("fixer");
-    expect(unanswerable("ana/no-such-rule")).toContain("not a rule");
-    expect(unanswerable("ana/no-inline-slop-answer")).toContain("only store");
-    expect(unanswerable("anti-slop/no-runtime-typeof")).toBeNull();
-    expect(unanswerable("tree/copied-block")).toBeNull();
+    for (const [rule, refused] of [
+      ["eslint/no-shadow", true],
+      ["anti-slop/prefer-subpath-import", true],
+      ["ana/no-such-rule", true],
+      ["ana/no-inline-slop-answer", true],
+      ["anti-slop/no-runtime-typeof", false],
+      ["tree/copied-block", false],
+    ] as const) {
+      expect(unanswerable(rule) !== null, rule).toBe(refused);
+    }
   });
 
   it("writes one row per id, sorted, with the later of two answers to one site", () => {
@@ -121,6 +123,6 @@ describe("the ledger's rows", () => {
     const lines = text.trimEnd().split("\n");
     expect(lines[0]).toBe(HEADER);
     expect(lines.slice(1).map((line) => line.split("\t")[0])).toStrictEqual(["aaaaaaaaaaaa", "bbbbbbbbbbbb"]);
-    expect(lines[1]).toContain("the answer a union merge kept last");
+    expect(readLedger(text).answers[0]?.reason).toBe("the answer a union merge kept last");
   });
 });

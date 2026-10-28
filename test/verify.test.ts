@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { type Task, openVerifier } from "../src/kernel/verify.ts";
 import {
   chmodSync,
@@ -175,44 +175,46 @@ function killMarkedProcesses(): void {
   }
 }
 
-// The tree is written at load, because the suite below opens its verifier when it is collected.
-mkdirSync(join(root, "checks"));
-mkdirSync(join(root, "tools", "bin"), { recursive: true });
-writeFileSync(join(root, "checks", "brief.json"), JSON.stringify(BRIEF));
-writeFileSync(join(root, "checks", "evaluator.ts"), EVALUATOR);
-// As both check programs v1 wrote on 7 October do, the program imports a module from a directory.
-mkdirSync(join(root, "checks", "reference"));
-writeFileSync(join(root, "checks", "reference", "model.ts"), "export const same = (a, b) => a === b;\n");
-writeFileSync(secret, "another answer");
-tool("double", "read n; echo $((n * 2))");
-tool("sleeper", "sleep 30");
-tool("compiles", 'echo "int main(void) { return 0; }" > p.c && /usr/bin/cc p.c -o p && ./p');
-const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("open") });
-
-afterAll(async () => {
-  await server.stop(true);
+afterAll(() => {
   for (const dir of [root, sibling]) rmSync(dir, { recursive: true, force: true });
 });
 
+let verify: ReturnType<typeof openVerifier>;
+beforeAll(() => {
+  mkdirSync(join(root, "checks"));
+  mkdirSync(join(root, "tools", "bin"), { recursive: true });
+  writeFileSync(join(root, "checks", "brief.json"), JSON.stringify(BRIEF));
+  writeFileSync(join(root, "checks", "evaluator.ts"), EVALUATOR);
+  // As both check programs v1 wrote on 7 October do, the program imports a module from a directory.
+  mkdirSync(join(root, "checks", "reference"));
+  writeFileSync(join(root, "checks", "reference", "model.ts"), "export const same = (a, b) => a === b;\n");
+  writeFileSync(secret, "another answer");
+  tool("double", "read n; echo $((n * 2))");
+  tool("sleeper", "sleep 30");
+  tool("compiles", 'echo "int main(void) { return 0; }" > p.c && /usr/bin/cc p.c -o p && ./p');
+  verify = openVerifier({ checks: join(root, "checks"), tools: join(root, "tools") });
+});
+
 describe.skipIf(!osIsolationSupport().ok)("the verifier", () => {
-  const verify = openVerifier({ checks: join(root, "checks"), tools: join(root, "tools") });
-
-  it("passes an answer every check accepts, running a module the program imports and a tool from the verifier's tree", async () => {
-    expect(await verify(task("plain", { target: 21 }), { value: 21 })).toEqual({ kind: "pass" });
-  });
-
-  it("fails an answer and names the checks that refused it", async () => {
-    expect(await verify(task("plain", { target: 21 }), { value: 20 })).toEqual({
-      kind: "fail",
-      blocking: ["value"],
-    });
+  it("runs the imported check and tree tool, passing only the matching answer", async () => {
+    for (const [value, verdict] of [
+      [21, { kind: "pass" }],
+      [20, { kind: "fail", blocking: ["value"] }],
+    ] as const) {
+      expect(await verify(task("plain", { target: 21 }), { value })).toEqual(verdict);
+    }
   });
 
   it("keeps a check offline and out of a concurrent check's cell", async () => {
-    // Both are open to the host, so a pass is the wall refusing them.
-    expect(readFileSync(secret, "utf8")).toBe("another answer");
-    expect(await (await fetch(server.url)).text()).toBe("open");
-    expect(await verify(task("walled", { secret, url: server.url.href }), {})).toEqual({ kind: "pass" });
+    const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("open") });
+    try {
+      // Both are open to the host, so a pass is the wall refusing them.
+      expect(readFileSync(secret, "utf8")).toBe("another answer");
+      expect(await (await fetch(server.url)).text()).toBe("open");
+      expect(await verify(task("walled", { secret, url: server.url.href }), {})).toEqual({ kind: "pass" });
+    } finally {
+      await server.stop(true);
+    }
   });
 
   it("hands a check only the answer paths it declares", async () => {
@@ -233,16 +235,12 @@ describe.skipIf(!osIsolationSupport().ok)("the verifier", () => {
   });
 
   it("reads a check that throws or returns no boolean as faulty, neither a fail nor a non-result", async () => {
-    expect(await verify(task("throws"), {})).toEqual({
-      kind: "faulty",
-      check: "throws",
-      reason: "the check threw: no such rule",
-    });
-    expect(await verify(task("answers"), {})).toEqual({
-      kind: "faulty",
-      check: "answers",
-      reason: "the check returned string",
-    });
+    for (const [family, reason] of [
+      ["throws", "the check threw: no such rule"],
+      ["answers", "the check returned string"],
+    ] as const) {
+      expect(await verify(task(family), {})).toEqual({ kind: "faulty", check: family, reason });
+    }
   });
 
   it("reads a tool that runs out its time as a non-result, whatever the check returns", async () => {
@@ -308,18 +306,21 @@ describe.skipIf(!osIsolationSupport().ok)("the verifier", () => {
 });
 
 describe.skipIf(!osIsolationSupport().ok)("the objective", () => {
-  const checks = join(root, "measured");
-  mkdirSync(checks);
-  writeFileSync(join(checks, "brief.json"), JSON.stringify(MEASURED_BRIEF));
-  writeFileSync(join(checks, "evaluator.ts"), MEASURED_EVALUATOR);
-  const verify = openVerifier({ checks, tools: join(root, "tools") });
+  let measured: ReturnType<typeof openVerifier>;
+  beforeAll(() => {
+    const checks = join(root, "measured");
+    mkdirSync(checks);
+    writeFileSync(join(checks, "brief.json"), JSON.stringify(MEASURED_BRIEF));
+    writeFileSync(join(checks, "evaluator.ts"), MEASURED_EVALUATOR);
+    measured = openVerifier({ checks, tools: join(root, "tools") });
+  });
 
   it("measures a valid answer after its checks pass, and measures no refused answer", async () => {
-    expect(await verify(task("plain", { density: 3 }), { value: 7 })).toEqual({
+    expect(await measured(task("plain", { density: 3 }), { value: 7 })).toEqual({
       kind: "pass",
       objective: 21,
     });
-    expect(await verify(task("plain", { density: 3 }), { value: 0 })).toEqual({
+    expect(await measured(task("plain", { density: 3 }), { value: 0 })).toEqual({
       kind: "fail",
       blocking: ["value"],
     });

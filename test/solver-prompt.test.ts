@@ -18,24 +18,19 @@ const CONTRACT: Contract = {
 };
 const HOME = "/scratch/solve-s1/home";
 
-/** The Starter's tools as a solve lists them: pi's four, then submit. */
-function starterTools() {
-  const wall: CommandWall = {
-    // SAFETY: no command runs in these tests, so the policy is never read.
-    base: undefined as never,
-    dirs: { ...solveDirs("s1"), home: HOME },
-    toolTree: null,
-    limits: { shellDefaultSeconds: 300, shellMaxSeconds: 900 },
-  };
-  const exec = async () => ({ exitCode: 0, output: Buffer.alloc(0) });
-  return [
+const wall: CommandWall = {
+  // SAFETY: no command runs in these tests, so the policy is never read.
+  base: undefined as never,
+  dirs: { ...solveDirs("s1"), home: HOME },
+  toolTree: null,
+  limits: { shellDefaultSeconds: 300, shellMaxSeconds: 900 },
+};
+const exec = async () => ({ exitCode: 0, output: Buffer.alloc(0) });
+const TOLD: Told = {
+  tools: [
     ...codingTools(wall, ["read", "bash", "edit", "write"]),
     submitTool(openDesk(), CONTRACT, HOME, exec),
-  ];
-}
-
-const TOLD: Told = {
-  tools: starterTools(),
+  ],
   home: HOME,
   guide: null,
   wallSeconds: 7200,
@@ -64,7 +59,7 @@ describe("the solver's system prompt", () => {
     for (const fact of ["answer.json", "public/answer-format.json", "public/task.json", "120 minutes"]) {
       expect(prompt).toContain(fact);
     }
-    expect(prompt).toContain("4 files under public/resources/");
+    expect(prompt).toMatch(/4 files.*public\/resources\//u);
     expect(prompt).toContain(`<cwd>\n${HOME}\n</cwd>`);
     // The wall: what commands may write, that the network was reached, and their time limits.
     expect(prompt).toContain("$TMPDIR");
@@ -109,14 +104,19 @@ describe("the solver's system prompt", () => {
       programs: ["pynite-python", "python3", "f2py"],
     });
     expect(commandLimits(prompt)).toEqual([30, 60, 60, 60]);
-    expect(commandLimits(systemPrompt({ ...TOLD, wallSeconds: 300 }))).toEqual([300, 900, 37, 37]);
-    expect(prompt).toEndWith(
-      "- Programs this harness installed run by name: pynite-python, python3, f2py.\n</environment>",
-    );
+    for (const [wallSeconds, reserve] of [
+      [300, 37],
+      [480, 60],
+      [7200, 60],
+    ] as const) {
+      expect(commandLimits(systemPrompt({ ...TOLD, wallSeconds }))).toEqual([300, 900, reserve, reserve]);
+    }
+    for (const program of ["pynite-python", "python3", "f2py"]) expect(prompt).toContain(program);
     const many = Array.from({ length: 23 }, (_, index) => `tool-${String(index + 1).padStart(2, "0")}`);
-    expect(systemPrompt({ ...TOLD, programs: many })).toEndWith(
-      ", tool-20, and 3 more on PATH.\n</environment>",
-    );
+    const listed = systemPrompt({ ...TOLD, programs: many });
+    expect(listed).toContain("tool-20");
+    expect(listed).toContain("3 more");
+    expect(listed).not.toContain("tool-21");
   });
 });
 

@@ -1,5 +1,5 @@
-import { describe, expect, it } from "bun:test";
-import { expectedLines, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
+import { describe, it } from "bun:test";
+import { lintRules } from "./helpers/lint-rule.ts";
 
 /**
  * Three anti-slop rules decide whether a type still carries evidence:
@@ -259,44 +259,21 @@ export function spreadOfLiteralStaysKnown(): Record<string, string> {
 }
 `.trimStart();
 
-describe("anti-slop/no-unsafe-dictionary-type", () => {
-  it("reports dictionaries whose value type is an escape hatch and admits real contracts", async () => {
-    const expected = expectedLines(DICTIONARY);
-    expect(expected).toHaveLength(23);
-    expect(await reportedLines("anti-slop", "no-unsafe-dictionary-type", DICTIONARY)).toStrictEqual(expected);
-  });
-});
+const CYCLIC = `export type A = B;
+export type B = A;
+export type Direct = Direct;
+export type Generic<T> = Generic<T>;
+export type Used = Record<string, A>;
+export type AlsoUsed = Record<string, Generic<unknown>>;
+`;
 
-describe("anti-slop/no-widen-then-assert", () => {
-  it("reports evidence discarded and asserted back, and admits what never had it", async () => {
-    const expected = expectedLines(WIDEN_THEN_ASSERT);
-    expect(expected).toHaveLength(13);
-    expect(await reportedLines("anti-slop", "no-widen-then-assert", WIDEN_THEN_ASSERT)).toStrictEqual(
-      expected,
-    );
-  });
-});
-
-describe("anti-slop/no-known-value-widening", () => {
-  it("reports known values flowing into broad targets and admits genuine unknowns", async () => {
-    const expected = expectedLines(KNOWN_VALUE_WIDENING);
-    expect(expected).toHaveLength(17);
-    expect(await reportedLines("anti-slop", "no-known-value-widening", KNOWN_VALUE_WIDENING)).toStrictEqual(
-      expected,
-    );
-  });
-});
-
-describe("the type resolution the three rules share", () => {
-  it("stops at a cycle rather than resolving forever", async () => {
-    const cyclic = [
-      "export type A = B;",
-      "export type B = A;",
-      "export type Direct = Direct;",
-      "export type Generic<T> = Generic<T>;",
-      "export type Used = Record<string, A>;",
-      "export type AlsoUsed = Record<string, Generic<unknown>>;",
-    ].join("\n");
-    expect(await reportedLines("anti-slop", "no-unsafe-dictionary-type", cyclic)).toStrictEqual([]);
+describe("type evidence and resolution", () => {
+  it("reports only the marked lines in every fixture and scope", async () => {
+    await lintRules("anti-slop", [
+      ["no-unsafe-dictionary-type", DICTIONARY, 23],
+      ["no-widen-then-assert", WIDEN_THEN_ASSERT, 13],
+      ["no-known-value-widening", KNOWN_VALUE_WIDENING, 17],
+      ["no-unsafe-dictionary-type", CYCLIC, 0],
+    ]);
   });
 });

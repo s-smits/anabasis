@@ -27,13 +27,6 @@ afterAll(() => {
 });
 
 describe("the log", () => {
-  it("refuses a torn last line rather than reading around it", () => {
-    const path = fresh();
-    append(path, "verdict", { pass: true });
-    appendFileSync(path, '{"at":"2026-10-07T00:00:00.000Z","kind":"verd');
-    expect(() => read(path)).toThrow("the last line is torn");
-  });
-
   it("refuses a line that is not one of the plan's events", () => {
     const path = fresh();
     appendFileSync(path, '{"at":"2026-10-07T00:00:00.000Z","kind":"solve.retried","data":{}}\n');
@@ -45,11 +38,12 @@ describe("the log", () => {
     expect(read(before).map(({ kind }) => kind)).toEqual(["pass.labelled"]);
   });
 
-  it("appends nothing after a torn last line, whatever the event", () => {
+  it("refuses reading or appending after a torn last line, whatever the event", () => {
     const path = fresh();
     append(path, "verdict", { pass: true });
     appendFileSync(path, '{"at":"2026-10-07T00:00:00.000Z","kind":"verd');
     const torn = readFileSync(path, "utf8");
+    expect(() => read(path)).toThrow("the last line is torn");
     expect(() => append(path, "solve.started", { task: "t1" })).toThrow("the last line is torn");
     expect(() => append(path, "task.proposed", { version: "v1" })).toThrow("the last line is torn");
     expect(readFileSync(path, "utf8")).toBe(torn);

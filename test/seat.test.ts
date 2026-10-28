@@ -115,12 +115,19 @@ describe("a seat's session", () => {
     const failed = seated([fauxAssistantMessage("", { stopReason: "error", errorMessage: "session limit" })]);
     expect(await sit(failed.seat)).toMatchObject({ cut: false, thrown: null, crash: "session limit" });
 
-    const throwing = seated([look], {
-      models: () => {
-        throw new Error("no backend");
-      },
-    });
-    expect(await sit(throwing.seat)).toMatchObject({ cut: false, thrown: "no backend", crash: "no backend" });
+    for (const [hook, message] of [
+      ["models", "no backend"],
+      ["before", "seat cap"],
+    ] as const) {
+      const throwing = seated([look], {
+        [hook]: () => {
+          throw new Error(message);
+        },
+      });
+      expect(await sit(throwing.seat)).toMatchObject({ cut: false, thrown: message, crash: message });
+      expect(throwing.faux.state.callCount).toBe(0);
+      expect(throwing.looked).toEqual([]);
+    }
   });
 
   it("settles its seat's work before the model's process is closed, and removes the scratch home it made", async () => {
@@ -164,16 +171,6 @@ describe("durable session boundaries", () => {
     expect(read(log).map(({ kind }) => kind)).toEqual(["build.turn", "build.call", "build.turn"]);
   });
 
-  it("ends with thrown when before throws, before a provider or tool runs", async () => {
-    const s = seated([look], {
-      before: () => {
-        throw new Error("seat cap");
-      },
-    });
-    expect(await sit(s.seat)).toMatchObject({ thrown: "seat cap", crash: "seat cap" });
-    expect(s.faux.state.callCount).toBe(0);
-    expect(s.looked).toEqual([]);
-  });
   it("bills a retried attempt on the following turn without counting it as a turn", async () => {
     const log = join(scratch, "retry.jsonl");
     const failed = fauxAssistantMessage("charged partial", {
@@ -278,7 +275,7 @@ describe("durable's loop under a seat", () => {
       parameters: Type.Object({ n: Type.Number() }),
       execute: async ({ n }) => {
         order.push(`start ${String(n)}`);
-        await Bun.sleep(30 - n * 10);
+        await Promise.resolve();
         order.push(`end ${String(n)}`);
         return text(String(n));
       },
@@ -321,19 +318,25 @@ describe("a seat's stops and its neighbours under durable", () => {
   it("aborts a running tool when a stop fires, makes no further request, and reads as cut", async () => {
     const stop = new AbortController();
     let aborted = false;
+    const started = Promise.withResolvers<void>();
     const hang = tool({
       name: "look",
       description: "Look.",
       parameters: Type.Object({}),
       execute: async (_args, _api, context) => {
-        setTimeout(() => stop.abort(), 20);
-        await new Promise<void>((resolve) => context.abortSignal?.addEventListener("abort", () => resolve()));
+        const stopped = Promise.withResolvers<void>();
+        context.abortSignal?.addEventListener("abort", () => stopped.resolve(), { once: true });
+        started.resolve();
+        await stopped.promise;
         aborted = true;
         return text("stopped");
       },
     });
     const s = seated([look, look], { tools: [hang], stops: [stop.signal] });
-    expect(await sit(s.seat)).toMatchObject({ cut: true, crash: null });
+    const sitting = sit(s.seat);
+    await started.promise;
+    stop.abort();
+    expect(await sitting).toMatchObject({ cut: true, crash: null });
     expect(aborted).toBe(true);
     expect(s.faux.state.callCount).toBe(1);
     expect(s.shutdowns[0]?.aborted).toBe(true);

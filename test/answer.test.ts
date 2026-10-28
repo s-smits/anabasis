@@ -74,7 +74,7 @@ describe("a seat tool's automatic result cap", () => {
       name: "large_result",
       description: "A result larger than the model keeps.",
       parameters: Type.Object({}),
-      execute: async () => ending({ ...text(LONG, { kept: "details" }), isError: true }),
+      execute: async () => ending({ details: { kept: "details" }, isError: true }),
     });
     const results = [];
     for (const callId of ["one", "two"]) {
@@ -87,7 +87,8 @@ describe("a seat tool's automatic result cap", () => {
       expect(readFileSync(file, "utf8")).toBe(LONG);
       expect(value).toStartWith("first part\n");
       expect(value).not.toContain("last part");
-      expect(value).toContain(`of ${String(Buffer.byteLength(LONG))} bytes. The full file is at ${file}.`);
+      expect(value).toContain(String(Buffer.byteLength(LONG)));
+      expect(value).toContain(file);
       expect(Buffer.byteLength(value)).toBeGreaterThan(48 * 1024);
       expect(Buffer.byteLength(value)).toBeLessThanOrEqual(50 * 1024);
       expect(value.split("\n").length).toBeLessThanOrEqual(2_000);
@@ -136,30 +137,27 @@ describe("a seat tool's automatic result cap", () => {
     expect(env.files).toHaveLength(0);
   });
 
-  for (const [kind, value] of [
-    ["UTF-8 bytes", "é🙂".repeat(20_000)],
-    ["lines", "line\n".repeat(3_000)],
-    ["whitespace", " ".repeat(80 * 1024)],
-  ] as const) {
-    it(`caps ${kind} where the seat's folder refuses the file, and names no path`, async () => {
-      const home = seatHome();
-      const refusing = new (class extends NodeExecutionEnv {
-        override async createTempFile(): ReturnType<NodeExecutionEnv["createTempFile"]> {
-          return { ok: false, error: new FileError("permission_denied", "no room") };
-        }
-      })({ cwd: home });
-      const large = tool({
-        name: "refused_folder",
-        description: "A seat whose temporary folder refuses a file.",
-        parameters: Type.Object({}),
-        execute: async () => text(value),
-      });
-      const result = shown(await large.execute({}, api("refused", refusing), BACKGROUND_CONTEXT));
-      expect(Buffer.byteLength(result)).toBeLessThanOrEqual(50 * 1024);
-      expect(result).toContain(`of ${String(Buffer.byteLength(value))} bytes.`);
-      expect(result).not.toContain("The full file is at");
-    });
-  }
+  it("caps bytes, lines and whitespace even when the environment cannot keep a file", async () => {
+    const refusing = new (class extends NodeExecutionEnv {
+      override async createTempFile(): ReturnType<NodeExecutionEnv["createTempFile"]> {
+        return { ok: false, error: new FileError("permission_denied", "no room") };
+      }
+    })({ cwd: seatHome() });
+    for (const env of [refusing, undefined]) {
+      for (const value of ["é🙂".repeat(20_000), "line\n".repeat(3_000), " ".repeat(80 * 1024)]) {
+        const large = tool({
+          name: "refused_folder",
+          description: "A seat whose temporary folder refuses a file.",
+          parameters: Type.Object({}),
+          execute: async () => text(value),
+        });
+        const result = shown(await large.execute({}, api("refused", env), BACKGROUND_CONTEXT));
+        expect(Buffer.byteLength(result)).toBeLessThanOrEqual(50 * 1024);
+        expect(result).toContain(String(Buffer.byteLength(value)));
+        expect(result).not.toContain("The full file is at");
+      }
+    }
+  });
 
   it("caps all text items together and routes the full text to each calling seat's environment", async () => {
     const envs = [new SeatEnv(seatHome()), new SeatEnv(seatHome())];

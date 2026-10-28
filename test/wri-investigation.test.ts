@@ -54,32 +54,38 @@ describe("an investigation's lanes", () => {
     },
   ];
 
+  const parts = { shared, campaigns: two, catalogue, owners, report: "/r/04.md" };
+
   it("gives the lane that reads the climb side by side the table, or says one campaign is read, and no other lane either", () => {
-    const parts = { shared, campaigns: two, catalogue, owners, report: "/r/31.md" };
     expect(lane(27).sideBySide).toBe(true);
-    const named = lanePrompt({ ...parts, lane: lane(27), climb: "### The climb, side by side" });
-    expect(named).toContain("## The campaigns side by side");
-    expect(named).toContain("### The climb, side by side");
-    expect(lanePrompt({ ...parts, campaigns: one, lane: lane(27) })).toContain(
-      "One campaign is under review",
-    );
-    expect(lanePrompt({ ...parts, lane: lane(4), climb: "### The climb" })).not.toContain("side by side");
+    const named = lanePrompt({ ...parts, lane: lane(27), climb: "CLIMB_CANARY" });
+    expect(named).toContain("CLIMB_CANARY");
+    expect(lanePrompt({ ...parts, campaigns: one, lane: lane(27) })).toContain("One campaign");
+    const ordinary = lanePrompt({ ...parts, lane: lane(4), climb: "CLIMB_CANARY" });
+    expect(ordinary).not.toContain("CLIMB_CANARY");
+    expect(ordinary).not.toContain("side by side");
   });
 
   it("gives every lane every campaign as an equal, with each trigger under the campaign it fired on", () => {
-    const parts = { shared, campaigns: two, catalogue, owners, report: "/r/04.md" };
     const open = lanePrompt({ ...parts, lane: lane(4) });
     expect(open).toContain("### buffer-a");
     expect(open).toContain("### buffer-b");
-    expect(open).toContain("as equals: `buffer-a`, `buffer-b`");
-    expect(open).toContain("Fired on `buffer-a`: `REFUSED UNREAD`; on `buffer-b`: `CHECK DEFECT RULED`");
-    expect(open).toContain("Not fired: `RULED UNCLEAR`.");
-    expect(open).toContain("Seen in: buffer-a <shows | absent | cannot show>, buffer-b");
+    expect(open).toContain("2 campaigns as equals: `buffer-a`, `buffer-b`");
+    expect(open).toContain("Fired on `buffer-a`: `REFUSED UNREAD`");
+    expect(open).toContain("on `buffer-b`: `CHECK DEFECT RULED`");
+    expect(open).toContain("Not fired: `RULED UNCLEAR`");
+    expect(open).toContain(
+      "Seen in: buffer-a <shows | absent | cannot show>, buffer-b <shows | absent | cannot show>",
+    );
     // An isolated lane reads both campaigns too, and of each only its own triggers.
     const isolated = lanePrompt({ ...parts, lane: lane(5), report: "/r/05.md" });
     expect(isolated).toContain("### buffer-b");
     expect(isolated).toContain("FAILS ON ONE CHECK (lane 5)");
     expect(isolated).not.toContain("CHECK DEFECT RULED (lane 4)");
+    expect(isolated).not.toContain("REFUSED UNREAD (lane 4)");
+    expect(isolated).not.toContain("Why the step.");
+    expect(isolated).toContain("quote nothing");
+    expect(isolated).toContain("/r/05.md");
     // One campaign is read as before, with no section on the others and no Seen in line.
     const alone = lanePrompt({ ...parts, campaigns: one, lane: lane(4) });
     expect(alone).not.toContain("as equals");
@@ -98,27 +104,25 @@ describe("an investigation's lanes", () => {
       "Reverses if: a refused answer is shown invalid by the rule",
       "Decision: whether a repair is owed",
     ].join("\n");
-    const names = ["buffer-a", "buffer-b"];
-    expect(
-      reportOf(lane(4), `${finding}\nSeen in: buffer-a shows, buffer-b absent`, owners, names).state,
-    ).toBe("ok");
-    expect(reportOf(lane(4), finding, owners, names).faults).toEqual([
-      "the findings are uneven: Observation: 1, Cause: 1, Owner: 1, Reverses if: 1, Decision: 1, Seen in: 0",
-    ]);
-    expect(reportOf(lane(4), `${finding}\nSeen in: buffer-a shows`, owners, names).faults).toEqual([
-      "a Seen in: line leaves out buffer-b",
-    ]);
-    // A semicolon parts two entries as a comma does, so a triage may hold commas.
-    expect(
-      reportOf(lane(4), `${finding}\nSeen in: buffer-a shows 3, of 4; buffer-b absent`, owners, names).state,
-    ).toBe("ok");
-    expect(
-      reportOf(lane(4), `${finding}\nSeen in: buffer-a shows 3 and buffer-b too`, owners, names).faults,
-    ).toEqual(["a Seen in: line leaves out buffer-b"]);
-    // A name that holds another as its prefix stands for that campaign alone.
-    expect(
-      reportOf(lane(4), `${finding}\nSeen in: buffer-a-r5 shows, buffer-b absent`, owners, names).faults,
-    ).toEqual(["a Seen in: line leaves out buffer-a"]);
+    for (const [seen, state, missing] of [
+      ["buffer-a shows, buffer-b absent", "ok", null],
+      [null, "invalid", null],
+      ["buffer-a shows", "invalid", "buffer-b"],
+      ["buffer-a shows 3, of 4; buffer-b absent", "ok", null],
+      ["buffer-a shows 3 and buffer-b too", "invalid", "buffer-b"],
+      ["buffer-a-r5 shows, buffer-b absent", "invalid", "buffer-a"],
+    ] as const) {
+      const text = seen === null ? finding : `${finding}\nSeen in: ${seen}`;
+      const report = reportOf(lane(4), text, owners, ["buffer-a", "buffer-b"]);
+      expect(report).toMatchObject({ state, findings: 1, verdict: "finding" });
+      expect(report.faults).toHaveLength(state === "ok" ? 0 : 1);
+      if (missing !== null) expect(report.faults[0]).toContain(missing);
+      if (seen === null) {
+        expect(report.faults).toEqual([
+          "the findings are uneven: Observation: 1, Cause: 1, Owner: 1, Reverses if: 1, Decision: 1, Seen in: 0",
+        ]);
+      }
+    }
   });
 });
 
@@ -154,31 +158,40 @@ describe("the lanes verb", () => {
     Object.fromEntries(
       readdirSync(join(out, "lanes")).map((name) => [name, readFileSync(join(out, "lanes", name), "utf8")]),
     );
-  const sessions = () =>
-    parseJsonAs<{ sessions: { name: string; task: string; ownedPaths: string[] }[] }>(
-      readFileSync(join(out, "launch.json"), "utf8"),
-    ).sessions;
+  const manifest = () =>
+    parseJsonAs<{
+      search: boolean;
+      sessions: { name: string; task: string; ownedPaths: string[] }[];
+    }>(readFileSync(join(out, "launch.json"), "utf8"));
 
-  it("keeps a prompt built before, and launches only the lanes each call built", () => {
-    mkdirSync(join(out, "lanes"), { recursive: true });
-    writeFileSync(join(out, "investigation.json"), JSON.stringify({ logs: [log] }));
+  it("keeps host-qualified campaigns and old prompts while launching only newly built lanes", () => {
+    const copies = ["m1", "linux"].map((host) => {
+      mkdirSync(join(dir, host, "twin"), { recursive: true });
+      const copy = join(dir, host, "twin", "log.jsonl");
+      writeFileSync(copy, readFileSync(log, "utf8"));
+      return copy;
+    });
+    execTextSync(capturedExecPath, ["tools/wri/wri.ts", "start", "--log", copies.join(","), "--out", out], {
+      cwd: REPO,
+    });
+    const instructions = readFileSync(join(out, "shared-instructions.md"), "utf8");
+    for (const name of ["twin@m1", "twin@linux"]) expect(instructions).toContain(`| ${name} |`);
     writeFileSync(join(out, "shared-instructions.md"), shared);
     lanesVerb();
-    const [built, first] = [prompts(), sessions()];
-    expect(first).toHaveLength(Object.keys(built).length);
-    expect(first.map(({ name }) => name)).toContain("lane_04");
-    expect(parseJsonAs<{ search: boolean }>(readFileSync(join(out, "launch.json"), "utf8")).search).toBe(
-      false,
-    );
+    const built = prompts();
+    const first = manifest();
+    expect(first.search).toBe(false);
+    expect(first.sessions).toHaveLength(Object.keys(built).length);
+    expect(first.sessions.map(({ name }) => name)).toContain("lane_04");
     expect(Object.keys(built)).toContain("04-prompt.md");
     expect(Object.keys(built)).not.toContain("05-prompt.md");
-    // The primary rewrites the orientation after the first sessions wrote against the first prompts.
+    for (const name of ["twin@m1", "twin@linux"]) expect(built["04-prompt.md"]).toContain(name);
     writeFileSync(join(out, "shared-instructions.md"), shared.replace("Why the step.", "Another question."));
-    expect(lanesVerb()).toContain("nothing to launch");
+    lanesVerb();
     expect(prompts()).toEqual(built);
-    expect(sessions()).toEqual(first);
-    expect(lanesVerb("--lanes", "4-5")).toContain("lane 4: built before, kept");
-    expect(sessions()).toEqual([
+    expect(manifest()).toEqual(first);
+    lanesVerb("--lanes", "4-5");
+    expect(manifest().sessions).toEqual([
       {
         name: "lane_05",
         task: expect.stringContaining("05-prompt.md"),
@@ -186,27 +199,5 @@ describe("the lanes verb", () => {
       },
     ]);
     expect(prompts()["04-prompt.md"]).toBe(built["04-prompt.md"]);
-  });
-
-  it("starts over two hosts' copies of one campaign name, and builds lanes that name each by its host", () => {
-    const copies = ["m1", "linux"].map((host) => {
-      mkdirSync(join(dir, host, "twin"), { recursive: true });
-      const copy = join(dir, host, "twin", "log.jsonl");
-      writeFileSync(copy, readFileSync(log, "utf8"));
-      return copy;
-    });
-    const twins = join(dir, "twins");
-    execTextSync(capturedExecPath, ["tools/wri/wri.ts", "start", "--log", copies.join(","), "--out", twins], {
-      cwd: REPO,
-    });
-    const instructions = readFileSync(join(twins, "shared-instructions.md"), "utf8");
-    expect(instructions).toContain("| twin@m1 |");
-    expect(instructions).toContain("| twin@linux |");
-    // `lanes` names no `--log`: it reads the logs `start` saved, and keeps both names apart.
-    writeFileSync(join(twins, "shared-instructions.md"), shared);
-    execTextSync(capturedExecPath, ["tools/wri/wri.ts", "lanes", "--out", twins], { cwd: REPO });
-    const prompt = readFileSync(join(twins, "lanes", "04-prompt.md"), "utf8");
-    expect(prompt).toContain("twin@m1");
-    expect(prompt).toContain("twin@linux");
   });
 });

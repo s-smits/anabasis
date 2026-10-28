@@ -15,11 +15,8 @@ describe("parseCliArgs", () => {
     expect(parsed.positionals).toEqual(["a.json"]);
   });
 
-  test("refuses a misspelled option instead of ignoring it", () => {
+  test("refuses unknown options and positional bounds, and preserves bare positional spelling", () => {
     expect(() => parseCliArgs(["--rnu", "abc"], { values: ["run"] })).toThrow('unknown option "--rnu"');
-  });
-
-  test("counts positionals against the declared range, and a bare -- ends the options", () => {
     expect(() => parseCliArgs(["a", "b"], { positionals: 1 })).toThrow('unexpected positional argument "b"');
     expect(() => parseCliArgs([], { positionals: [1, 2] })).toThrow("expected at least 1 positional");
     expect(parseCliArgs(["--", "--x"], { positionals: 1 }).positionals).toEqual(["--x"]);

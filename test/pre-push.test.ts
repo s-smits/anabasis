@@ -82,15 +82,6 @@ function push(updates: readonly string[], env: Record<string, string> = {}) {
 const update = (local: string, remote: string, branch = "topic"): string =>
   `refs/heads/${branch} ${local} refs/heads/${branch} ${remote}`;
 
-/** The same patches as `source` and `second`, on a trunk that has since changed: what a rebase replaced. */
-function oldCopies() {
-  const oldTrunk = git("commit-tree", withFile(base, "gone.txt"), "-p", base, "-m", "old trunk");
-  const oldDocs = git("commit-tree", withFile(docs, "gone.txt"), "-p", oldTrunk, "-m", "docs");
-  const oldSource = git("commit-tree", withFile(source, "gone.txt"), "-p", oldDocs, "-m", "source");
-  const oldSecond = git("commit-tree", withFile(second, "gone.txt"), "-p", oldSource, "-m", "second");
-  return { oldSource, oldSecond };
-}
-
 beforeEach(() => {
   rmSync(log, { force: true });
   rmSync(join(work, ".git", "ana-gate-passed"), { force: true });
@@ -106,14 +97,24 @@ describe("pre-push", () => {
     expect(gatesRun(log)).toEqual([]);
   });
 
-  it("refuses a source push whose diff check fails below the head, before any step runs", () => {
-    const unclean = git("commit-tree", withFile(docs, "spaced.ts", "x \n"), "-p", docs, "-m", "spaced");
-    const head = git("commit-tree", withFile(unclean, "c.ts"), "-p", unclean, "-m", "head");
-    const result = push([update(head, docs)]);
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain(`git diff --check fails on ${short(unclean)}. Nothing was pushed.`);
-    expect(gatesRun(log)).toEqual([]);
-  });
+  it.each(["spaced.ts", "NOTES.md"])(
+    "refuses whitespace in %s below the head before any gate runs",
+    (file) => {
+      const unclean = git("commit-tree", withFile(docs, file, "x \n"), "-p", docs, "-m", "spaced");
+      const head = git(
+        "commit-tree",
+        withFile(unclean, file === "spaced.ts" ? "c.ts" : "NEXT.md"),
+        "-p",
+        unclean,
+        "-m",
+        "head",
+      );
+      const result = push([update(head, docs)]);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(`git diff --check fails on ${short(unclean)}. Nothing was pushed.`);
+      expect(gatesRun(log)).toEqual([]);
+    },
+  );
 
   it("refuses a push that adds a credential-shaped literal, documentation included, before any step runs", () => {
     const key = ["AKIA", "5J3KLMNOPQRSTUVW"].join("");
@@ -156,7 +157,10 @@ describe("pre-push", () => {
 
   // A restack pushes every moved head at once; the lower heads' trees are the land proof's.
   it("checks only the pushed heads no other pushed head holds", () => {
-    const { oldSource, oldSecond } = oldCopies();
+    const oldTrunk = git("commit-tree", withFile(base, "gone.txt"), "-p", base, "-m", "old trunk");
+    const oldDocs = git("commit-tree", withFile(docs, "gone.txt"), "-p", oldTrunk, "-m", "docs");
+    const oldSource = git("commit-tree", withFile(source, "gone.txt"), "-p", oldDocs, "-m", "source");
+    const oldSecond = git("commit-tree", withFile(second, "gone.txt"), "-p", oldSource, "-m", "second");
     const edited = git("commit-tree", withFile(source, "extra.ts"), "-p", docs, "-m", "source");
     const replayed = git("commit-tree", withFile(second, "extra.ts"), "-p", edited, "-m", "second");
     const beside = git("commit-tree", withFile(source, "beside.ts"), "-p", source, "-m", "beside");
@@ -168,6 +172,4 @@ describe("pre-push", () => {
     expect(result.status).toBe(0);
     expect(gatesRun(log)).toEqual([`${replayed} -`, `${beside} -`]);
   });
-
-  // PR #141 brought v2's 393 commits in through one merge; v1's hook gated each of them.
 });

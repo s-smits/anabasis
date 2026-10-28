@@ -9,7 +9,8 @@
  * which is why every report carries its fix.
  */
 import { describe, expect, it } from "bun:test";
-import { expectedLines, fixedSource, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
+import { fixedSource } from "./helpers/oxlint-rule-fixture.ts";
+import { lintRules } from "./helpers/lint-rule.ts";
 
 const CLOSURES = `
 export function hasEmpty(segments: string[]) {
@@ -59,9 +60,7 @@ export function listed(names: Record<string, string>) {
 
 describe("ana/prefer-includes-over-some-equals", () => {
   it("reports a string or boolean literal from either side and nothing whose type it cannot settle", async () => {
-    const expected = expectedLines(CLOSURES);
-    expect(expected).toHaveLength(5);
-    expect(await reportedLines("ana", "prefer-includes-over-some-equals", CLOSURES)).toStrictEqual(expected);
+    await lintRules("ana", [["prefer-includes-over-some-equals", CLOSURES, 5]]);
   });
 
   it("fixes every site it reports, and leaves the source of the others untouched", async () => {
@@ -69,6 +68,8 @@ describe("ana/prefer-includes-over-some-equals", () => {
     expect(fixed).toContain('return segments.includes("");');
     expect(fixed).toContain("return flags.includes(true);");
     expect(fixed).toContain('return segments.includes("done");');
+    expect(fixed).toContain('return owners.some((owner) => owner === /* the 2026-08 spelling */ "brief");');
+    expect(fixed).not.toContain("owners.includes");
     expect(fixed).toContain("return kinds.some((known) => known === kind);");
     expect(fixed).toContain("return values.some((value) => value === 0);");
     expect(fixed).toContain("return ids.some((id) => id === null);");

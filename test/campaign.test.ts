@@ -1,9 +1,9 @@
 // A campaign over a sweep laid out as v1's left one, as far as it goes without a model or a wall: it
-// opens, `prepare.ts`, run as the operator runs it, takes the pack's tasks in, releases the practice
+// opens, `prepare.ts`, run in this process as the operator runs it, takes the pack's tasks in, releases the practice
 // tasks once and takes a person's label of a task, a task a session wrote stands beside the pack's
 // own, and the campaign keeps its harnesses by name: the one it started with, the starter
 // and the latest a session left.
-import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
+import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
 import { append, read } from "../src/kernel/log.ts";
 import { latestBuilt, PATIENCE, promoted } from "../src/kernel/reports.ts";
 import { sizeLines } from "../src/kernel/size.ts";
@@ -23,11 +23,15 @@ import {
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join, resolve } from "../src/meta/path.ts";
-import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
+import { runtimeProcess } from "../src/meta/process.ts";
+import { errorMessage } from "../src/meta/runtime-values.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { openHarness } from "../src/harness/open.ts";
 import { codeOf, starter, keptAs, openCampaign } from "../tools/d2/campaign.ts";
+import { checkpointCommand } from "../tools/d2/checkpoint.ts";
 import { importCommand } from "../tools/d2/import.ts";
+import { prepareCommand } from "../tools/d2/prepare.ts";
+import { promoteCommand } from "../tools/d2/promote.ts";
 import {
   capNamed,
   packaged,
@@ -47,7 +51,6 @@ const ARGS = { root, sweep: "s", cycle: "c01", bundle, name: NAME };
 /** A Builder a backend serves, for a command that is to get as far as its admission: a model no
  *  backend serves is refused with the command's other flags, before the log is asked anything. */
 const SERVED = "claude/claude-opus-5-5";
-/** A campaign whose recorded setting names the tasks to score. */
 /** A campaign opened and given a harness before it keeps any. */
 const FRESH = `${NAME}-fresh`;
 /** Campaigns whose checks pass, and reject, the stored sweep's accepted answer. */
@@ -60,10 +63,38 @@ const TASKS = Array.from({ length: 7 }, (_, index) => ({
   publicInput: { base: index + 2 },
   hidden: null,
 }));
+/** The flags that name the campaign and its pack, as a command line carries them. */
+const flagsOf = (named: Record<string, string>) =>
+  Object.entries(named).flatMap(([flag, value]) => [`--${flag}`, value]);
+const PACK = flagsOf(ARGS);
 
-// A test here runs a campaign's commands as the operator does, and each start reads the host's
-// source tree whole: over a second, so three of them pass Bun's own five.
+// A test here runs a campaign's commands as the operator does, in this process, and each start
+// reads the host's source tree whole: over a second, so three of them pass Bun's own five.
 setDefaultTimeout(60_000);
+
+/** What a command printed, and the message it refused with where it did. */
+async function said(command: (args: readonly string[]) => Promise<number>, args: readonly string[]) {
+  const lines: string[] = [];
+  const log = spyOn(console, "log").mockImplementation((line: string) => {
+    lines.push(line);
+  });
+  try {
+    await command(args);
+  } catch (error) {
+    lines.push(errorMessage(error));
+  } finally {
+    log.mockRestore();
+  }
+  return lines.join("\n");
+}
+
+/** A rehearsal's seats, which get as far as the Builder's seat and note what the command opened. */
+const rehearsal =
+  (seen: (opened: Awaited<ReturnType<typeof openCampaign>>, given: { readonly reference: string }) => void) =>
+  (opened: Awaited<ReturnType<typeof openCampaign>>, given: { readonly reference: string }) => {
+    seen(opened, given);
+    return { builder: null, setting: "s", solve: () => Promise.reject(new Error("no solve is asked for")) };
+  };
 
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });
@@ -166,37 +197,31 @@ describe("the code a solve's condition records", () => {
     expect(codeOf(tree).host).toBe(host);
   });
 
-  it("moves when command code that executes a campaign changes", () => {
-    for (const part of ["tools/d2", "tools/c", "tools/d1b"]) {
+  it("moves when command code that executes a campaign changes, and not for a reader's or a development tool's", () => {
+    for (const [part, moves] of [
+      ["tools/d2", true],
+      ["tools/c", true],
+      ["tools/d1b", true],
+      ["tools/runs", false],
+      ["tools/wri", false],
+      ["tools/oxlint", false],
+      ["tools/loc", false],
+      ["tools/runtime", false],
+    ] as const) {
       mkdirSync(join(tree, part), { recursive: true });
       const file = join(tree, part, "command.ts");
       writeFileSync(file, "export const a = 1;\n");
       const host = codeOf(tree).host;
       writeFileSync(file, "export const a = 2;\n");
-      expect(codeOf(tree).host).not.toBe(host);
-    }
-  });
-
-  it("stays the same when reader or development command code changes", () => {
-    for (const part of ["tools/runs", "tools/wri", "tools/oxlint", "tools/loc", "tools/runtime"]) {
-      mkdirSync(join(tree, part), { recursive: true });
-      const file = join(tree, part, "command.ts");
-      writeFileSync(file, "export const a = 1;\n");
-      const host = codeOf(tree).host;
-      writeFileSync(file, "export const a = 2;\n");
-      expect(codeOf(tree).host).toBe(host);
+      expect(codeOf(tree).host !== host).toBe(moves);
     }
   });
 });
 
 describe("a campaign", () => {
   /** `prepare.ts` as the operator runs it, with whatever flags `more` adds, and what it printed. */
-  const prepare = (...more: string[]) => {
-    const flags = Object.entries({ ...ARGS, practice: "2" }).flatMap(([flag, value]) => [`--${flag}`, value]);
-    const cmd = [capturedExecPath, "tools/d2/prepare.ts", ...flags, ...more];
-    const ran = Bun.spawnSync({ cmd, cwd: REPO });
-    return `${ran.stdout.toString()}${ran.stderr.toString()}`.trim();
-  };
+  const prepare = async (...more: string[]) =>
+    await said(prepareCommand, [...PACK, "--practice", "2", ...more]);
 
   it("opens over a stored sweep, takes the pack's tasks in at their gate, and releases practice once", async () => {
     layOut();
@@ -231,12 +256,12 @@ describe("a campaign", () => {
     const versions = TASKS.map((task) => taskVersion(campaign.pack(task)));
     const summary = ["6 held out, 2 released for practice", ...sizeLines(6, ASKED)].join("\n");
     // Each release is said by its task: a release cannot be taken back.
-    const [proposed, ...said] = prepare().split("\n");
+    const [proposed, ...lines] = (await prepare()).split("\n");
     expect(proposed).toBe("7 of the pack's tasks proposed: 7 held out, 0 refused");
-    expect(said.slice(0, 2).every((line) => line.endsWith(": released for practice, and never scored"))).toBe(
-      true,
-    );
-    expect(said.slice(2).join("\n")).toBe(summary);
+    expect(
+      lines.slice(0, 2).every((line) => line.endsWith(": released for practice, and never scored")),
+    ).toBe(true);
+    expect(lines.slice(2).join("\n")).toBe(summary);
     const sets = taskSets(read(campaign.log));
     expect([sets.held.length, sets.released.length]).toEqual([6, 2]);
     expect([...sets.held, ...sets.released].toSorted()).toEqual([...versions, extra].toSorted());
@@ -249,10 +274,10 @@ describe("a campaign", () => {
     expect(packageOf(extra)).toMatchObject({ taskId: "x-1-001" });
     // A second run proposes and releases nothing.
     const events = read(campaign.log).length;
-    expect(prepare()).toBe(summary);
+    expect(await prepare()).toBe(summary);
     expect(read(campaign.log)).toHaveLength(events);
     // Asked for no more practice than there is, it says what a comparison of the size asked for can show.
-    expect(prepare("--target", "3")).toBe(
+    expect(await prepare("--target", "3")).toBe(
       ["6 held out, 2 released for practice", ...sizeLines(3, ASKED)].join("\n"),
     );
   });
@@ -262,8 +287,15 @@ describe("a campaign", () => {
     const packages = campaign.packages();
     const [kept = "", gone = ""] = taskSets(read(campaign.log)).held;
     const idOf = (version: string) => packages.get(version)?.taskId ?? "";
-    const said = prepare("--keep", idOf(kept), "--infeasible", idOf(gone), "--note", "no member carries it");
-    expect(said).toStartWith(
+    const told = await prepare(
+      "--keep",
+      idOf(kept),
+      "--infeasible",
+      idOf(gone),
+      "--note",
+      "no member carries it",
+    );
+    expect(told).toStartWith(
       `${idOf(kept)}: kept in the scored set\n${idOf(gone)}: refused as infeasible\n5 held out, 2 released`,
     );
     const sets = taskSets(read(campaign.log));
@@ -289,12 +321,12 @@ describe("a campaign", () => {
     ]);
     // A run that labels releases nothing, whatever --practice it carries: a release cannot be
     // taken back, and a person labelling one task has not asked for another to leave the set.
-    expect(prepare("--practice", "4", "--keep", idOf(kept))).toContain("5 held out, 2 released");
+    expect(await prepare("--practice", "4", "--keep", idOf(kept))).toContain("5 held out, 2 released");
     expect(taskSets(read(campaign.log)).released).toHaveLength(2);
     // Only a held-out task is labelled: not a refused one, a practice task or a name no task has.
-    expect(prepare("--keep", idOf(gone))).toContain("is no held-out task of this campaign");
-    expect(prepare("--infeasible", idOf(sets.released[0] ?? ""))).toContain("is no held-out task");
-    expect(prepare("--keep", "t-99")).toContain("t-99 is no held-out task of this campaign");
+    expect(await prepare("--keep", idOf(gone))).toContain("is no held-out task of this campaign");
+    expect(await prepare("--infeasible", idOf(sets.released[0] ?? ""))).toContain("is no held-out task");
+    expect(await prepare("--keep", "t-99")).toContain("t-99 is no held-out task of this campaign");
   });
 
   it("starts from the Starter Built Harness, and keeps it and the latest a session left, each by name", async () => {
@@ -440,15 +472,11 @@ describe("a campaign", () => {
   });
 
   it("starts no paid comparison without a dollar cap or a Referee", async () => {
-    const flags = Object.entries(ARGS).flatMap(([flag, value]) => [`--${flag}`, value]);
+    const flags = PACK;
     await expect(roundCommand([...flags, "--session", "z-8", "--builder", "faux/none"])).rejects.toThrow(
       "name --cap, the billed dollars this comparison may hold",
     );
-    const ran = Bun.spawnSync({
-      cmd: [capturedExecPath, "tools/d2/checkpoint.ts", "--id", "z-8", ...flags],
-      cwd: REPO,
-    });
-    expect(ran.stderr.toString()).toContain("name --cap");
+    await expect(checkpointCommand(["--id", "z-8", ...flags])).rejects.toThrow("name --cap");
     expect(capNamed({ cap: "375", reserve: "10" }, "paid")).toEqual({ dollars: 375, reserve: 10 });
     // Fix row F43: a cap that is no number above nothing held nothing, and is refused wherever a
     // cap is read: by a round, a checkpoint, a session by itself and the launcher.
@@ -473,11 +501,9 @@ describe("a campaign", () => {
     await expect(
       roundCommand([...flags, "--session", "z-8", "--builder", "faux/none", "--cap", "40"]),
     ).rejects.toThrow("name --reviewer, the Referee that rules each rejection");
-    const unrefereed = Bun.spawnSync({
-      cmd: [capturedExecPath, "tools/d2/checkpoint.ts", "--id", "z-8", "--cap", "40", ...flags],
-      cwd: REPO,
-    });
-    expect(unrefereed.stderr.toString()).toContain("name --reviewer");
+    await expect(checkpointCommand(["--id", "z-8", "--cap", "40", ...flags])).rejects.toThrow(
+      "name --reviewer",
+    );
     expect(() => refereeNamed({ reviewer: SERVED }, "paid")).not.toThrow();
     expect(() => refereeNamed({}, "scripted")).not.toThrow();
     // Until 2026-10-11 the same solves were also read at each shorter `--budget`; the flag is
@@ -584,33 +610,14 @@ describe("a campaign", () => {
 
   it("refuses a paid comparison started by hand where a launch of it would be refused", async () => {
     const campaign = await openCampaign(ARGS);
-    const flags = [
-      ...Object.entries(ARGS).flatMap(([flag, value]) => [`--${flag}`, value]),
-      // From the starter: an earlier case left the latest kept state one that no longer opens.
-      "--cap",
-      "100",
-      "--reviewer",
-      SERVED,
-      "--parent",
-      "starter",
-    ];
+    // From the starter: an earlier case left the latest kept state one that no longer opens.
+    const flags = [...PACK, "--cap", "100", "--reviewer", SERVED, "--parent", "starter"];
     // The campaign's checker has never been read, which only the launcher refused until 2026-10-09.
     const unread = "the campaign's checker has never been read: run tools/c/accept.ts";
     await expect(roundCommand([...flags, "--session", "z-5", "--builder", SERVED])).rejects.toThrow(unread);
-    const ran = Bun.spawnSync({
-      cmd: [
-        capturedExecPath,
-        "tools/d2/checkpoint.ts",
-        "--id",
-        "z-5",
-        "--new",
-        "starter",
-        ...flags.slice(0, -2),
-      ],
-      cwd: REPO,
-    });
-    expect(ran.exitCode).not.toBe(0);
-    expect(ran.stderr.toString()).toContain(unread);
+    await expect(
+      checkpointCommand(["--id", "z-5", "--new", "starter", ...flags.slice(0, -2)]),
+    ).rejects.toThrow(unread);
     // A rehearsal's seats are scripts, and it is exempt: it gets as far as its Builder's seat.
     await expect(
       roundCommand([...flags, "--session", "z-5"], () => ({
@@ -624,13 +631,7 @@ describe("a campaign", () => {
 
   it("runs a Builder session by itself under a cap, and refuses one by hand as a launch would", async () => {
     const campaign = await openCampaign(ARGS);
-    const flags = [
-      ...Object.entries(ARGS).flatMap(([flag, value]) => [`--${flag}`, value]),
-      "--parent",
-      "starter",
-      "--session",
-      "z-6",
-    ];
+    const flags = [...PACK, "--parent", "starter", "--session", "z-6"];
     await expect(sessionCommand([...flags, "--builder", "faux/none"])).rejects.toThrow(
       "name --cap, the billed dollars",
     );
@@ -648,11 +649,10 @@ describe("a campaign", () => {
     // A rehearsal's seats are scripts: it is exempt, and is seated against the campaign's
     // reference harness, which is the starter until a promotion.
     const against: string[] = [];
-    const seats = (opened: { readonly log: string }, given: { readonly reference: string }) => {
+    const seats = rehearsal((opened, given) => {
       expect(opened.log).toBe(campaign.log);
       against.push(given.reference);
-      return { builder: null, setting: "s", solve: () => Promise.reject(new Error("no solve is asked for")) };
-    };
+    });
     await expect(sessionCommand(flags, seats)).rejects.toThrow("name --builder");
     expect(against).toEqual([(await starter(campaign)).dir]);
     expect(read(campaign.log).some(({ data }) => data.session === "z-6")).toBe(false);
@@ -667,24 +667,20 @@ describe("a campaign", () => {
     writeFileSync(join(made, "agent", "BUILT_AGENTS.md"), "Multiply the base by six.\n");
     const { digest } = await openHarness(made);
     cpSync(made, join(campaign.states, digest), { recursive: true });
-    const promote = (...more: string[]) => {
-      const cmd = [capturedExecPath, "tools/d2/promote.ts", "--name", NAME, ...more];
-      const ran = Bun.spawnSync({ cmd, cwd: REPO });
-      return `${ran.stdout.toString()}${ran.stderr.toString()}`;
-    };
+    const promote = async (...more: string[]) => await said(promoteCommand, ["--name", NAME, ...more]);
     const promotions = () =>
       read(campaign.log).flatMap(({ kind, data }) => (kind === "harness.promoted" ? [data] : []));
     // Asked without the operator's word, it says what the log holds and records nothing.
-    const asked = promote("--harness", digest);
+    const asked = await promote("--harness", digest);
     expect(asked).toContain("the reference harness is the starter");
     // A harness the log has not named yet is said by its digest alone (`namesOf`).
     expect(asked).toContain(`no comparison on record measured harness ${digest}`);
     expect(asked).toContain("nothing is recorded without --yes");
     expect(promotions()).toEqual([]);
-    expect(promote("--harness", digest.slice(0, 8))).toContain("is no harness this campaign keeps");
+    expect(await promote("--harness", digest.slice(0, 8))).toContain("is no harness this campaign keeps");
     // Fix row F28: the plan promotes a harness a comparison against the reference read as a step,
     // and a harness no comparison measured is refused the word alone.
-    const refused = promote("--harness", digest, "--yes");
+    const refused = await promote("--harness", digest, "--yes");
     expect(refused).toContain(
       `the plan would not promote it now: harness ${digest.slice(0, 8)} has no comparison that read a step against the reference harness`,
     );
@@ -695,65 +691,41 @@ describe("a campaign", () => {
     // The choice stays the operator's, with a reason: the promotion is an event that keeps it,
     // and the reference harness is read from it.
     const despite = "the record is under test";
-    expect(promote("--harness", digest, "--yes", "--despite", despite)).toContain(
+    expect(await promote("--harness", digest, "--yes", "--despite", despite)).toContain(
       "is the reference harness from here on",
     );
     expect(promotions()).toEqual([{ harness: digest, from: least.digest, rests: [], despite }]);
     expect((await keptAs(campaign, "--reference", "promoted")).digest).toBe(digest);
     // The promotion named it, and from then on it is said by its letter beside its digest; the
     // suite's cases share one log, so which letter is theirs to say.
-    expect(promote("--harness", digest, "--yes")).toMatch(
+    expect(await promote("--harness", digest, "--yes")).toMatch(
       new RegExp(`^[A-Z]+ ${digest} is the campaign's reference harness already`, "mu"),
     );
     expect(promotions()).toHaveLength(1);
     // A round that names no --reference is made against it, where it was made against the starter.
     const against: string[] = [];
-    const flags = [
-      ...Object.entries(ARGS).flatMap(([flag, value]) => [`--${flag}`, value]),
-      "--cap",
-      "100",
-      "--reviewer",
-      SERVED,
-      "--parent",
-      "starter",
-      "--session",
-      "z-3",
-    ];
-    const seats = (opened: { readonly log: string }, given: { readonly reference: string }) => {
+    const flags = [...PACK, "--cap", "100", "--reviewer", SERVED, "--parent", "starter", "--session", "z-3"];
+    const seats = rehearsal((opened, given) => {
       expect(opened.log).toBe(campaign.log);
       against.push(given.reference);
-      return { builder: null, setting: "s", solve: () => Promise.reject(new Error("no solve is asked for")) };
-    };
+    });
     await expect(roundCommand(flags, seats)).rejects.toThrow("name --builder");
     await expect(roundCommand([...flags, "--reference", "starter"], seats)).rejects.toThrow("name --builder");
     expect(against).toEqual([join(campaign.states, digest), least.dir]);
     // The starter named again returns the campaign to it.
-    promote("--harness", "starter", "--yes");
+    await promote("--harness", "starter", "--yes");
     expect(await keptAs(campaign, "--reference", "promoted")).toEqual(least);
   });
 
   it("runs every command under the campaign's recorded setting, and refuses one that names another", async () => {
     const campaign = await openCampaign(ARGS);
-    const flags = [
-      ...Object.entries(ARGS).flatMap(([flag, value]) => [`--${flag}`, value]),
-      "--cap",
-      "100",
-      "--reviewer",
-      SERVED,
-      "--parent",
-      "starter",
-      "--session",
-      "z-4",
-    ];
+    const flags = [...PACK, "--cap", "100", "--reviewer", SERVED, "--parent", "starter", "--session", "z-4"];
     // A wall the owner refuses is refused by each command before a campaign is opened.
     const refused = "--solve-minutes 0: a solve's wall is a whole number of minutes";
     await expect(roundCommand([...flags, "--solve-minutes", "0"])).rejects.toThrow(refused);
-    const checkpoint = (...more: string[]) =>
-      Bun.spawnSync({
-        cmd: [capturedExecPath, "tools/d2/checkpoint.ts", "--id", "z-4", ...flags.slice(0, -4), ...more],
-        cwd: REPO,
-      });
-    expect(checkpoint("--solve-minutes", "0").stderr.toString()).toContain(refused);
+    const checkpoint = async (...more: string[]) =>
+      await checkpointCommand(["--id", "z-4", ...flags.slice(0, -4), ...more]);
+    await expect(checkpoint("--solve-minutes", "0")).rejects.toThrow(refused);
     // The setting an earlier command recorded: an eight-minute wall and forty model turns.
     append(campaign.log, "campaign.setting", {
       solver: null,
@@ -765,17 +737,16 @@ describe("a campaign", () => {
     });
     // A rehearsal's seats see the campaign the command opened: with no flag, it is the recorded one.
     const seen: number[] = [];
-    const seats = (opened: Awaited<ReturnType<typeof openCampaign>>) => {
+    const seats = rehearsal((opened) => {
       seen.push(opened.limits.wallSeconds, opened.limits.modelTurns ?? 0);
-      return { builder: null, setting: "s", solve: () => Promise.reject(new Error("no solve is asked for")) };
-    };
+    });
     await expect(roundCommand(flags, seats)).rejects.toThrow("name --builder");
     expect(seen).toEqual([480, 40]);
     // A flag that names another is refused by every command, before anything is opened or logged.
     const other =
       "--solve-minutes 5 names another setting than the campaign's, which was recorded as --solve-minutes 8";
     await expect(roundCommand([...flags, "--solve-minutes", "5"], seats)).rejects.toThrow(other);
-    expect(checkpoint("--solve-minutes", "5").stderr.toString()).toContain(other);
+    await expect(checkpoint("--solve-minutes", "5")).rejects.toThrow(other);
     // No word changes it: `--new-setting` is no flag since 2026-10-11, and another setting is
     // another campaign.
     await expect(roundCommand([...flags, "--solve-minutes", "5", "--new-setting"], seats)).rejects.toThrow(
@@ -800,17 +771,10 @@ describe("a campaign", () => {
         `export const checks = { "check-product": ${check} };\n`,
       );
       const args = { ...ARGS, bundle: under, name };
-      const flags = Object.entries({ ...args, practice: "0" }).flatMap(([flag, value]) => [
-        `--${flag}`,
-        value,
-      ]);
-      const said = () => {
-        const ran = Bun.spawnSync({ cmd: [capturedExecPath, "tools/d2/prepare.ts", ...flags], cwd: REPO });
-        return `${ran.stdout.toString()}${ran.stderr.toString()}`;
-      };
+      const flags = flagsOf({ ...args, practice: "0" });
       const campaign = await openCampaign(args);
-      const first = said();
-      return { first, again: said(), campaign };
+      const first = await said(prepareCommand, flags);
+      return { first, again: await said(prepareCommand, flags), campaign };
     };
     const right = "(req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6)";
     const passed = await preparedUnder(PROVEN, right);

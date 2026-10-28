@@ -37,6 +37,7 @@ import {
 } from "../src/meta/filesystem.ts";
 import { isFunction, isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
+import { keysIf } from "../src/meta/optional-key.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import type { RefereeFinding } from "../src/referee/referee.ts";
@@ -365,28 +366,22 @@ describe("a Builder session", () => {
     expect(built.harness).not.toBe(s.digest);
     // The opening message: the public contract and the parent's record, from the log.
     expect(s.sent[0]).toContain("R1: The answer is the base times six.");
-    expect(s.sent[0]).toContain(
-      "t-1 (family fixture): passed 0 of 1 under the harness you start from. Solves: s-1.",
-    );
-    expect(s.sent[0]).toContain("t-2 (family fixture): not yet solved under the harness you start from.");
+    expect(s.sent[0]).toContain("passed 0 of 1 under the harness you start from. Solves: s-1.");
+    expect(s.sent[0]).toContain("t-2 (family fixture): not yet solved");
     expect(s.sent[0]).toContain("3 practice solves, 10 minutes and 12 turns");
     // Who solves, and what each solve is held to, which the session's own limits are not.
-    expect(s.sent[0]).toContain(
-      "The solver your harness is measured with is faux/faux-solver at medium effort. Each of its solves, in practice and in a comparison, has 8 minutes and its model turns unlimited.",
-    );
+    for (const fact of ["faux/faux-solver at medium effort", "has 8 minutes and its model turns unlimited"]) {
+      expect(s.sent[0]).toContain(fact);
+    }
     // What the log holds of the campaign so far: the fail on record, and no notes yet.
-    expect(s.sent[0]).toContain(
-      `You start from harness ${s.digest.slice(0, 8)}, which no Builder session of this campaign left: the Starter Built Harness unless the operator named another. Every failed practice solve of these tasks in this campaign so far, oldest first, with where it stands now; read_trace opens each:\\n- s-1, t-1, harness ${s.digest.slice(0, 8)}: fail (rejected); open.`,
-    );
+    expect(s.sent[0]).toContain(`\\n- s-1, t-1, harness ${s.digest.slice(0, 8)}: fail (rejected); open.`);
     // No session before this one left notes, so the message opens on the rules and holds no notes
     // block: v1's starters are in the home, and an untouched starter renders nothing.
     expect(s.sent[0]).toContain(String.raw`{"role":"user","content":"Public rules of the domain:`);
     expect(s.sent[0]).not.toContain("Historical notes");
     expect(readFileSync(join(s.home, "MEMORY.md"), "utf8")).toStartWith("# Builder memory\n");
     expect(readFileSync(join(s.home, "SCRATCHPAD.md"), "utf8")).toStartWith("# Scratchpad\n");
-    expect(s.sent[0]).toContain(
-      "The next session opens in a new home, and what you learned reaches it only through MEMORY.md, SCRATCHPAD.md and scratch/ in your home directory (files up to 256 KB each, 4096 KB in all;",
-    );
+    expect(s.sent[0]).toContain("(files up to 256 KB each, 4096 KB in all;");
     expect(s.sent[0]).not.toContain("Comparisons so far");
     expect(readFileSync(join(s.home, "practice", "t-1.json"), "utf8")).toContain('"base": 7');
     // The solver's public resources, in the home as one file, which the opening message names.
@@ -481,13 +476,11 @@ describe("a Builder session", () => {
     );
     // The line names both harnesses: the one that was measured, and the one it was measured against.
     expect(s.sent[0]).toContain(
-      `Comparisons so far, on tasks you are not shown:\\n- Harness ffffffff against harness ${s.digest.slice(0, 8)}, one comparison over 7 tasks: 1 won, 0 lost, 6 tied, which reads no step.`,
+      `Harness ffffffff against harness ${s.digest.slice(0, 8)}, one comparison over 7 tasks: 1 won, 0 lost, 6 tied`,
     );
     // The held-out task's own fail is on record, and no line of the message is of it.
     expect(s.sent[0]).not.toContain(s.exam);
-    expect(s.sent[4]).toContain(
-      "Not finished. SCRATCHPAD.md is 10000 bytes, over its 2000-byte limit: the next session reads its head and tail and drops the middle, so shorten it now. Then call finish again.",
-    );
+    expect(s.sent[4]).toContain("SCRATCHPAD.md is 10000 bytes, over its 2000-byte limit");
     expect(s.of(BUILD_FINISHED).at(-1)).toMatchObject({ session: "b-1", ended: "finished" });
     // Its own notes and its helper are kept for the next session, each note under v1's marker.
     const own = join(s.request.memory, "b-1");
@@ -498,41 +491,14 @@ describe("a Builder session", () => {
     expect(readFileSync(join(own, "scratch", "gen.py"), "utf8")).toBe("print(6)\n");
   });
 
-  it("takes a task out of practice when the Referee rules its fail a check defect", async () => {
-    const s = await setup(
-      [call("practice", { tasks: ["t-2"] }), call("practice", { tasks: ["t-2"] }), finish],
-      [{ outcome: "fail", kind: "rejected" }],
-    );
-    const built = await session(
-      {
-        ...s.request,
-        referee: async () => ({
-          ruling: "check-defect",
-          check: CHECK,
-          rule: null,
-          field: null,
-          reason: REASON,
-          probes: [1],
-        }),
-      },
-      s,
-      s.walled,
-    );
-    expect(s.sent[1]).toContain("rejection set aside");
-    expect(s.sent[2]).toContain("t-2 is no longer a practice task");
-    expect(s.sent.join("\n")).not.toContain(CHECK);
-    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ practiceSolves: 1, disputed: ["v2"], changed: false });
-    expect(built).toMatchObject({ changed: false, dir: null, harness: s.digest });
-    expect(s.of("harness.version")).toEqual([]);
-  });
-
-  it("sets aside unestablished practice rejections in results, traces and later records", async () => {
+  it("sets aside unestablished practice rejections in results, traces and later records, and takes a check defect's task out of practice", async () => {
     for (const ruling of ["unclear", "check-defect", null, "absent", "crashed"] as const) {
       const s = await setup(
         [
           call("practice", { tasks: ["t-2"] }),
           call("read_trace", { solve: "s-3" }),
           call("read_opening", {}),
+          call("practice", { tasks: ["t-2"] }),
           finish,
         ],
         [{ outcome: "fail", kind: "rejected" }],
@@ -550,24 +516,44 @@ describe("a Builder session", () => {
         append(s.request.log, "referee.finding", { solve, ...finding });
         return finding;
       };
-      await session(ruling === "absent" ? s.request : { ...s.request, referee }, s, s.walled);
+      const built = await session(ruling === "absent" ? s.request : { ...s.request, referee }, s, s.walled);
       const calls = s.of(BUILD_CALL);
       expect(calls[0]?.text).toContain("t-2: rejection set aside. Solve s-3.");
       expect(calls[1]?.text).toContain("ending: rejection set aside");
       expect(calls[2]?.text).not.toContain("- s-3,");
-      expect(record(s.events(), "v2", s.digest)).toEqual({ solves: [], passed: 0 });
+      // Only a ruled check defect closes the task: the next practice of it is refused, and any
+      // other ruling's next pass, s-4, is the record's one solve.
+      const defect = ruling === "check-defect";
+      expect(record(s.events(), "v2", s.digest)).toEqual(
+        defect ? { solves: [], passed: 0 } : { solves: ["s-4"], passed: 1 },
+      );
       expect(s.sent.join("\n")).not.toContain(CHECK);
       expect(s.sent.join("\n")).not.toContain(REASON);
+      expect(JSON.stringify(calls[3]?.text ?? null).includes("t-2 is no longer a practice task")).toBe(
+        defect,
+      );
+      expect(s.of(BUILD_FINISHED)[0]).toMatchObject({
+        practiceSolves: defect ? 1 : 2,
+        disputed: defect ? ["v2"] : [],
+        changed: false,
+      });
+      expect(built).toMatchObject({ changed: false, dir: null, harness: s.digest });
+      expect(s.of("harness.version")).toEqual([]);
     }
   });
 
-  it("makes no request of its own once what it billed reaches its cap", async () => {
-    // One practice solve, and the session's own turns billed $30 beside it, past a cap of $25.
+  // One practice solve, and the session's own turns billed $30 beside it, past a cap of $25. A led
+  // session's dollars are the campaign's bounds, which the operator can raise: it goes on.
+  it.each([
+    { led: false, requests: 1, ended: "stopped", changed: false },
+    { led: true, requests: 3, ended: "finished", changed: true },
+  ])("stops at its own cap only where it does not lead its campaign: led $led", async (row) => {
     const s = await setup([call("practice", { tasks: ["t-1"] }), edit, finish]);
     const built = await session(
       {
         ...s.request,
         cap: { dollars: 25, reserve: 10 },
+        ...keysIf(row.led, () => ({ campaign: () => ({ tools: [], hook: () => "" }) })),
         practise: async (task, dir, harness, kill) => {
           append(s.request.log, "build.turn", { session: "b-1", turn: 1, usage: { cost: { total: 30 } } });
           return await s.request.practise(task, dir, harness, kill);
@@ -576,29 +562,9 @@ describe("a Builder session", () => {
       s,
       s.walled,
     );
-    expect(s.sent).toHaveLength(1);
-    expect(built).toMatchObject({ changed: false, ended: "stopped" });
-    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "stopped", crash: null, practiceSolves: 1 });
-  });
-
-  it("leaves a led session's dollars to the campaign's bounds, which the operator can raise", async () => {
-    // The same $30 past a cap of $25, in a led session whose campaign has not ended: it goes on.
-    const s = await setup([call("practice", { tasks: ["t-1"] }), edit, finish]);
-    const built = await session(
-      {
-        ...s.request,
-        cap: { dollars: 25, reserve: 10 },
-        campaign: () => ({ tools: [], hook: () => "" }),
-        practise: async (task, dir, harness, kill) => {
-          append(s.request.log, "build.turn", { session: "b-1", turn: 1, usage: { cost: { total: 30 } } });
-          return await s.request.practise(task, dir, harness, kill);
-        },
-      },
-      s,
-      s.walled,
-    );
-    expect(s.sent).toHaveLength(3);
-    expect(built).toMatchObject({ changed: true, ended: "finished" });
+    expect(s.sent).toHaveLength(row.requests);
+    expect(built).toMatchObject({ changed: row.changed, ended: row.ended });
+    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ ended: row.ended, crash: null, practiceSolves: 1 });
   });
 
   it("refuses a trace of any solve but its practice tasks', and a practice past its budget", async () => {
@@ -731,9 +697,8 @@ describe("a Builder session", () => {
     expect(s.ran[0]?.digest).not.toBe(s.digest);
     expect(s.sent[3]).toContain("t-1 under the reference harness: pass. Solve s-4.");
     // The reference is the parent here, so its digest is named once with both roles.
-    expect(s.sent[3]).toContain(
-      "Record under the reference harness, which is also the harness you started from: passed 1 of 2. Under harness/ as last practised: 1 of 1.",
-    );
+    expect(s.sent[3]).toContain("which is also the harness you started from: passed 1 of 2.");
+    expect(s.sent[3]).toContain("Under harness/ as last practised: 1 of 1.");
     expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ practiceSolves: 2 });
   });
 

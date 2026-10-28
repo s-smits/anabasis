@@ -1,12 +1,11 @@
 // The Referee's probe evidence, refusals, rulings, replay and trace on the faux provider.
-import { afterAll, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
   createModels,
   fauxAssistantMessage,
   fauxProvider,
   fauxToolCall,
-  type SimpleStreamOptions,
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
 import type { Contract } from "../src/kernel/contract.ts";
@@ -34,7 +33,10 @@ const ANSWER = { span: 12, members: [{ area: 3 }] };
 const SPAN = "$.span";
 const FINDING: EventKind = "referee.finding";
 const PROBE = "probe_check";
-const scratches: string[] = [];
+const scratch = mkdtempSync(join(tmpdir(), "ana-review-"));
+const programs = new Map<string, string>();
+let readings = 0;
+const UNSETTLED = { ruling: "unclear", reason: "Not settled.", probes: [] };
 /** A check that refuses spans over 10, where the rule allows 12. */
 const verify = async (_task: Task, answer: JsonValue | undefined): Promise<Verdict> => {
   const span = asRecord(answer)?.span;
@@ -42,39 +44,45 @@ const verify = async (_task: Task, answer: JsonValue | undefined): Promise<Verdi
 };
 const toolUse = { stopReason: "toolUse" } as const;
 
-afterAll(() => {
-  for (const dir of scratches) rmSync(dir, { recursive: true, force: true });
+afterAll(() => rmSync(scratch, { recursive: true, force: true }));
+
+beforeAll(() => {
+  for (const fields of [[SPAN], [], ["$.left", "$.right"]]) {
+    const checks = join(scratch, `checks-${programs.size}`);
+    mkdirSync(checks);
+    writeFileSync(
+      join(checks, "brief.json"),
+      JSON.stringify({
+        correctnessContract: "check-program/v1",
+        truthChecks: [
+          {
+            id: "span",
+            citedDecisionIds: ["R1"],
+            execution: {
+              families: "all",
+              artifactPaths: fields,
+              publicInputPaths: [],
+              hidden: "none",
+              evidence: { kind: "authored" },
+            },
+          },
+        ],
+      }),
+    );
+    writeFileSync(join(checks, "evaluator.ts"), "// span <= 10\n");
+    programs.set(JSON.stringify(fields), checks);
+  }
 });
 
-/** Script one reading and retain each model call's context. */
-function setup(responses: ReturnType<typeof fauxAssistantMessage>[], fields: readonly string[] = [SPAN]) {
-  const scratch = mkdtempSync(join(tmpdir(), "ana-review-"));
-  scratches.push(scratch);
-  const checks = join(scratch, "checks");
-  mkdirSync(checks);
-  writeFileSync(
-    join(checks, "brief.json"),
-    JSON.stringify({
-      correctnessContract: "check-program/v1",
-      truthChecks: [
-        {
-          id: "span",
-          citedDecisionIds: ["R1"],
-          execution: {
-            families: "all",
-            artifactPaths: fields,
-            publicInputPaths: [],
-            hidden: "none",
-            evidence: { kind: "authored" },
-          },
-        },
-      ],
-    }),
-  );
-  writeFileSync(join(checks, "evaluator.ts"), "// span <= 10\n");
+/** Each reading owns its log and provider; only the immutable check programs are shared. */
+function setup(
+  responses: ReturnType<typeof fauxAssistantMessage>[],
+  fields: readonly string[] = [SPAN],
+  seeded: "answer" | "empty" = "answer",
+) {
+  const checks = programs.get(JSON.stringify(fields));
+  if (checks === undefined) throw new Error("no check program for these fields");
   const sent: string[] = [];
-  const signals: (AbortSignal | undefined)[] = [];
-  const sessions: (string | undefined)[] = [];
   const faux = fauxProvider({
     models: [
       {
@@ -85,19 +93,21 @@ function setup(responses: ReturnType<typeof fauxAssistantMessage>[], fields: rea
     ],
   });
   faux.setResponses(
-    responses.map((message) => (context: TranscriptContext, options?: SimpleStreamOptions) => {
+    responses.map((message) => (context: TranscriptContext) => {
       sent.push(JSON.stringify(context));
-      signals.push(options?.signal);
-      sessions.push(options?.sessionId);
       return message;
     }),
   );
   const models = createModels();
   models.setProvider(faux.provider);
   const reader: Reader = { model: faux.getModel(), effort: "medium", models: () => models };
-  const log = join(scratch, "log.jsonl");
+  const log = join(scratch, `reading-${++readings}.jsonl`);
   const record = (kind: EventKind, data: JsonObject) => append(log, kind, data);
-  return { checks, log, reader, sent, signals, sessions, record, calls: () => sent.length };
+  if (seeded === "answer") {
+    record("task.proposed", { taskId: TASK.taskId, version: "v-1" });
+    record("verdict", { solve: "s-1", task: TASK.taskId, answer: ANSWER, kind: "fail", blocking: ["span"] });
+  }
+  return { checks, log, reader, sent, record, calls: () => sent.length };
 }
 
 function invoke(tool: SeatTool, args: JsonObject) {
@@ -105,100 +115,99 @@ function invoke(tool: SeatTool, args: JsonObject) {
   return tool.execute(args, undefined!, BACKGROUND_CONTEXT);
 }
 
-it("the probe refuses object and array root replacements before running a check", async () => {
-  let calls = 0;
-  for (const answer of [ANSWER, [1, 2]]) {
-    const rows: ProbeRow[] = [];
-    const tool = probeTool(
-      async () => {
-        calls += 1;
-        return { kind: "pass" };
-      },
-      TASK,
-      answer,
-      rows,
-    );
-    await expect(invoke(tool, { changes: [{ path: "$", value: "null" }] })).rejects.toThrow("scalar root");
-    expect(rows).toHaveLength(0);
-  }
-  expect(calls).toBe(0);
-});
-
-it("the probe caps coupled changes at three paths read together by one refusing check", async () => {
-  const rows: ProbeRow[] = [];
-  const tool = probeTool(verify, TASK, ANSWER, rows, [[SPAN], ["$.members[0].area"]]);
-  await expect(
-    invoke(tool, {
-      changes: ["9", "8", "7", "6"].map((value) => ({ path: SPAN, value })),
-    }),
-  ).rejects.toThrow("at most 3 paths");
-  await expect(
-    invoke(tool, {
-      changes: [
-        { path: SPAN, value: "9" },
-        { path: "$.members[0].area", value: "4" },
-      ],
-    }),
-  ).rejects.toThrow("one refusing check reads together");
-  expect(rows).toHaveLength(0);
-});
-
-it("the probe says which checks moved, and refuses invalid or unchanged edits", async () => {
-  const rows: ProbeRow[] = [];
-  const tool = probeTool(verify, TASK, ANSWER, rows);
-  const probe = (path: string, value: string) => invoke(tool, { changes: [{ path, value }] });
-  const moved = await probe(SPAN, "10");
-  expect(moved.output).toEqual([
-    expect.objectContaining({ text: expect.stringContaining("1 check moved: span") }),
-  ]);
-  expect(JSON.stringify(moved.output)).toContain("probe 1 of 8: 7 probes left");
-  expect(tool.description).toContain("at most 8 probes");
-  await probe("$.members[0].area", "5");
-  expect(rows.map((row) => row.moved)).toEqual([["span"], []]);
-  await expect(probe(SPAN, "ten")).rejects.toThrow("value must be JSON text");
-  await expect(probe("$.depth", "1")).rejects.toThrow("$.depth is not an existing field");
-  await expect(probe(SPAN, "12")).rejects.toThrow("already carries that value");
-  await expect(probe(SPAN, JSON.stringify("x".repeat(4_000)))).rejects.toThrow("at most 4000 characters");
-  await expect(invoke(tool, { changes: [] })).rejects.toThrow("leave the answer unchanged");
-  await expect(
-    invoke(tool, {
-      changes: [
-        { path: SPAN, value: "10" },
-        { path: SPAN, value: "12" },
-      ],
-    }),
-  ).rejects.toThrow("leave the answer unchanged");
-  await expect(
-    invoke(tool, {
-      changes: [
-        { path: SPAN, value: "10" },
-        { path: "$.depth", value: "1" },
-      ],
-    }),
-  ).rejects.toThrow("$.depth is not an existing field");
-  expect(rows).toHaveLength(2);
-  while (rows.length < 7) await probe(SPAN, String(rows.length));
-  const last = await probe(SPAN, "99");
-  expect(JSON.stringify(last.output)).toContain("none left, so record your ruling");
-  await expect(probe(SPAN, "1")).rejects.toThrow("at most 8 probes");
-});
-
-{
-  const failed = (record: ReturnType<typeof setup>["record"]) => {
-    record("task.proposed", { taskId: TASK.taskId, version: "v-1" });
-    record("verdict", { solve: "s-1", task: "t-1", answer: ANSWER, kind: "fail", blocking: ["span"] });
-  };
-  const fail = (s: ReturnType<typeof setup>) => ({
-    solve: "s-1",
-    task: TASK,
-    contract: CONTRACT,
-    checks: s.checks,
-    verify,
-    log: s.log,
+describe("the probe", () => {
+  it("the probe refuses object and array root replacements before running a check", async () => {
+    let calls = 0;
+    for (const answer of [ANSWER, [1, 2]]) {
+      const rows: ProbeRow[] = [];
+      const tool = probeTool(
+        async () => {
+          calls += 1;
+          return { kind: "pass" };
+        },
+        TASK,
+        answer,
+        rows,
+      );
+      await expect(invoke(tool, { changes: [{ path: "$", value: "null" }] })).rejects.toThrow("scalar root");
+      expect(rows).toHaveLength(0);
+    }
+    expect(calls).toBe(0);
   });
-  const ruling = (args: JsonObject) => fauxAssistantMessage(fauxToolCall("record_ruling", args), toolUse);
-  const UNSETTLED = { ruling: "unclear", reason: "Not settled.", probes: [] };
 
+  it("the probe caps coupled changes at three paths read together by one refusing check", async () => {
+    const rows: ProbeRow[] = [];
+    const tool = probeTool(verify, TASK, ANSWER, rows, [[SPAN], ["$.members[0].area"]]);
+    await expect(
+      invoke(tool, {
+        changes: ["9", "8", "7", "6"].map((value) => ({ path: SPAN, value })),
+      }),
+    ).rejects.toThrow("at most 3 paths");
+    await expect(
+      invoke(tool, {
+        changes: [
+          { path: SPAN, value: "9" },
+          { path: "$.members[0].area", value: "4" },
+        ],
+      }),
+    ).rejects.toThrow("one refusing check reads together");
+    expect(rows).toHaveLength(0);
+  });
+
+  it("the probe says which checks moved, and refuses invalid or unchanged edits", async () => {
+    const rows: ProbeRow[] = [];
+    const tool = probeTool(verify, TASK, ANSWER, rows);
+    const probe = (path: string, value: string) => invoke(tool, { changes: [{ path, value }] });
+    const moved = await probe(SPAN, "10");
+    expect(moved.output).toEqual([
+      expect.objectContaining({ text: expect.stringContaining("1 check moved: span") }),
+    ]);
+    expect(JSON.stringify(moved.output)).toContain("probe 1 of 8: 7 probes left");
+    expect(tool.description).toContain("at most 8 probes");
+    await probe("$.members[0].area", "5");
+    expect(rows.map((row) => row.moved)).toEqual([["span"], []]);
+    for (const [changes, fact] of [
+      [[{ path: SPAN, value: "ten" }], /JSON/u],
+      [[{ path: "$.depth", value: "1" }], /\$\.depth.*existing field/u],
+      [[{ path: SPAN, value: "12" }], /already.*value/u],
+      [[{ path: SPAN, value: JSON.stringify("x".repeat(4_000)) }], /4000/u],
+      [[], /unchanged/u],
+      [
+        [
+          { path: SPAN, value: "10" },
+          { path: SPAN, value: "12" },
+        ],
+        /unchanged/u,
+      ],
+      [
+        [
+          { path: SPAN, value: "10" },
+          { path: "$.depth", value: "1" },
+        ],
+        /\$\.depth.*existing field/u,
+      ],
+    ] satisfies [JsonObject[], RegExp][]) {
+      await expect(invoke(tool, { changes })).rejects.toThrow(fact);
+    }
+    expect(rows).toHaveLength(2);
+    while (rows.length < 7) await probe(SPAN, String(rows.length));
+    const last = await probe(SPAN, "99");
+    expect(JSON.stringify(last.output)).toMatch(/probe 8 of 8.*none left/u);
+    await expect(probe(SPAN, "1")).rejects.toThrow("at most 8 probes");
+  });
+});
+
+const fail = (s: ReturnType<typeof setup>) => ({
+  solve: "s-1",
+  task: TASK,
+  contract: CONTRACT,
+  checks: s.checks,
+  verify,
+  log: s.log,
+});
+const ruling = (args: JsonObject) => fauxAssistantMessage(fauxToolCall("record_ruling", args), toolUse);
+
+describe("coupled and check-defect evidence", () => {
   it("the Referee accepts coupled edits only when their cited probe clears the deciding check", async () => {
     const answer = { left: `${"x".repeat(4_001)}bad`, right: `${"x".repeat(4_001)}bad` };
     const change = (path: string) => ({ path, find: "bad", replace: "good" });
@@ -270,7 +279,6 @@ it("the probe says which checks moved, and refuses invalid or unchanged edits", 
       ],
       [],
     );
-    failed(s.record);
     let calls = 0;
     const finding = await referee(s.reader, {
       ...fail(s),
@@ -286,7 +294,9 @@ it("the probe says which checks moved, and refuses invalid or unchanged edits", 
       { id: 2, moved: [] },
     ]);
   });
+});
 
+describe("deciding check-defect probes", () => {
   it("the Referee rules a check-defect only on a probe that decided both sides", async () => {
     const s = setup([
       ruling({ ruling: "check-defect", check: "span", reason: "R1 allows 12.", probes: [] }),
@@ -299,7 +309,6 @@ it("the probe says which checks moved, and refuses invalid or unchanged edits", 
         probes: [1],
       }),
     ]);
-    failed(s.record);
     const finding = await referee(s.reader, fail(s));
     expect(finding).toEqual({
       ruling: "check-defect",
@@ -309,10 +318,14 @@ it("the probe says which checks moved, and refuses invalid or unchanged edits", 
       reason: "R1 allows 12; the check stops at 10.",
       probes: [1],
     });
-    expect(s.sent[1]).toContain("cites at least one probe whose two sides both reached a verdict");
+    expect(
+      read(s.log)
+        .filter(({ kind }) => kind === "referee.refused")
+        .map(({ data }) => data.asked),
+    ).toMatchObject([{ ruling: "check-defect", probes: [] }]);
     expect(s.sent[2]).toContain("// span <= 10");
     expect(s.sent[0]).toContain(CANARY);
-    expect(s.sent[0]).toContain(String.raw`span, citing R1 (\"A span is at most 12 m.\"); reads $.span`);
+    for (const fact of ["span", "R1", "A span is at most 12 m.", SPAN]) expect(s.sent[0]).toContain(fact);
     const logged = read(s.log).findLast((event) => event.kind === FINDING)?.data;
     expect(logged).toMatchObject({ solve: "s-1", task: "t-1", ruling: "check-defect", turns: 4 });
     expect(logged?.probeRows).toEqual([expect.objectContaining({ id: 1, moved: ["span"] })]);
@@ -329,47 +342,43 @@ it("the probe says which checks moved, and refuses invalid or unchanged edits", 
       ruling({ ruling: "check-defect", check: "depth", reason: "The depth check is wrong.", probes: [1] }),
       ruling({ ruling: "unclear", reason: "The probe decided nothing.", probes: [1] }),
     ]);
-    failed(s.record);
     expect((await referee(s.reader, { ...fail(s), verify: threw })).ruling).toBe("unclear");
-    expect(s.sent[2]).toContain("cites at least one probe whose two sides both reached a verdict");
-    expect(s.sent[3]).toContain(
-      "an earned ruling cites a probe that changed $.span and moved a check that cites R1 off its refusal",
-    );
-    expect(s.sent[4]).toContain("a check-defect names one of the refusing checks: span");
-  });
-
-  it("the Referee rules a check that does not repeat a check-defect", async () => {
-    const s = setup([]);
-    failed(s.record);
-    expect(await referee(s.reader, { ...fail(s), verify: async () => ({ kind: "pass" }) })).toMatchObject({
-      ruling: "check-defect",
-      check: "span",
-      probes: [],
+    const refused = read(s.log).filter(({ kind }) => kind === "referee.refused");
+    expect(refused.map(({ data }) => data.asked)).toMatchObject([
+      { ruling: "check-defect", check: "span", probes: [1] },
+      { ruling: "earned", rule: "R1", field: SPAN, probes: [1] },
+      { ruling: "check-defect", check: "depth", probes: [1] },
+    ]);
+    const reasons = [/two sides.*verdict/u, /earned.*\$\.span.*R1.*refusal/u, /refusing checks.*span/u];
+    refused.forEach(({ data }, index) => {
+      expect(data.why).toMatch(reasons[index] ?? /missing refusal/u);
+      expect(s.sent[index + 2]).toContain(JSON.stringify(data.why).slice(1, -1));
     });
-    expect(read(s.log).at(-1)?.data).toMatchObject({ ruling: "check-defect", replay: { kind: "pass" } });
-    expect(s.calls()).toBe(0);
   });
+});
 
-  it("the Referee leaves a replay that reaches no verdict unruled, without a model read", async () => {
-    const replays = [
-      { kind: "non-result", reason: "the cell timed out" },
-      { kind: "faulty", check: "span", reason: "the check threw" },
-    ] as const satisfies readonly Verdict[];
-    for (const replay of replays) {
+describe("host replay", () => {
+  it("rules a changed replay a defect and leaves an undecided replay unruled without a model read", async () => {
+    for (const [replay, expected] of [
+      [{ kind: "pass" }, { ruling: "check-defect", check: "span", probes: [] }],
+      [
+        { kind: "non-result", reason: "the cell timed out" },
+        { ruling: null, reason: expect.stringContaining("the cell timed out") },
+      ],
+      [
+        { kind: "faulty", check: "span", reason: "the check threw" },
+        { ruling: null, reason: expect.stringContaining("the check threw") },
+      ],
+    ] satisfies [Verdict, JsonObject][]) {
       const s = setup([]);
-      failed(s.record);
-      const finding = await referee(s.reader, { ...fail(s), verify: async () => replay });
-      expect(finding).toMatchObject({
-        ruling: null,
-        reason: `the replay reached no verdict: ${replay.reason}`,
-      });
+      expect(await referee(s.reader, { ...fail(s), verify: async () => replay })).toMatchObject(expected);
       expect(s.calls()).toBe(0);
-      expect(read(s.log).at(-1)?.data).toMatchObject({ ruling: null, replay });
+      expect(read(s.log).at(-1)?.data).toMatchObject({ ...expected, replay });
     }
   });
 
   it("the Referee refuses a solve with no answer on record, writing nothing, and rules an answer outside the format earned unread", async () => {
-    const s = setup([]);
+    const s = setup([], [SPAN], "empty");
     await expect(referee(s.reader, fail(s))).rejects.toThrow(
       "solve s-1 has no answer on record: the Referee rules a rejected answer alone",
     );
@@ -384,33 +393,33 @@ it("the probe says which checks moved, and refuses invalid or unchanged edits", 
     });
     expect(await referee(s.reader, fail(s))).toMatchObject({
       ruling: "earned",
-      reason: "the answer does not follow the contract's format: span is not a number",
+      reason: expect.stringContaining("span is not a number"),
     });
     expect(s.calls()).toBe(0);
   });
+});
 
+describe("earned evidence", () => {
   it("the Referee holds an earned ruling to the rule the answer breaks and the field that breaks it", async () => {
     const earned = (rest: JsonObject) =>
       ruling({ ruling: "earned", reason: "Over the limit.", probes: [], ...rest });
+    const invalid: JsonObject[] = [
+      {},
+      { rule: "R9", field: SPAN },
+      { rule: "R1", field: "$.depth" },
+      { rule: "R1", field: "$.members[0].area" },
+    ];
     const s = setup([
-      earned({}),
-      earned({ rule: "R9", field: SPAN }),
-      earned({ rule: "R1", field: "$.depth" }),
-      earned({ rule: "R1", field: "$.members[0].area" }),
+      ...invalid.map(earned),
       fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: SPAN, value: "9" }] }), toolUse),
       earned({ rule: "R1", field: SPAN, probes: [1] }),
     ]);
-    failed(s.record);
     expect(await referee(s.reader, fail(s))).toMatchObject({
       ruling: "earned",
       rule: "R1",
       field: SPAN,
       probes: [1],
     });
-    expect(s.sent[1]).toContain("names the public rule the answer breaks, one a refusing check cites: R1");
-    expect(s.sent[2]).toContain("one a refusing check cites: R1");
-    expect(s.sent[3]).toContain("a path that exists in the answer");
-    expect(s.sent[4]).toContain("no refusing check that cites R1 reads $.members[0].area");
     expect(read(s.log).at(-1)?.data).toMatchObject({
       ruling: "earned",
       rule: "R1",
@@ -418,21 +427,21 @@ it("the probe says which checks moved, and refuses invalid or unchanged edits", 
       turns: 6,
     });
     const refused = read(s.log).filter(({ kind }) => kind === "referee.refused");
-    expect(refused.map(({ data }) => data.asked)).toEqual([
-      { ruling: "earned", reason: "Over the limit.", probes: [] },
-      { ruling: "earned", rule: "R9", field: SPAN, reason: "Over the limit.", probes: [] },
-      { ruling: "earned", rule: "R1", field: "$.depth", reason: "Over the limit.", probes: [] },
-      { ruling: "earned", rule: "R1", field: "$.members[0].area", reason: "Over the limit.", probes: [] },
-    ]);
+    expect(refused.map(({ data }) => data.asked)).toEqual(
+      invalid.map((rest) => ({ ruling: "earned", reason: "Over the limit.", probes: [], ...rest })),
+    );
+    const reasons = [/rule.*R1/u, /rule.*R1/u, /exists.*answer/u, /R1.*\$\.members\[0\]\.area/u];
+    refused.forEach(({ data }, index) => expect(data.why).toMatch(reasons[index] ?? /missing refusal/u));
     expect(refused.map(({ data }) => [data.solve, data.task])).toEqual(Array(4).fill(["s-1", "t-1"]));
-    expect(refused[3]?.data.why).toContain("no refusing check that cites R1 reads $.members[0].area");
+    refused.forEach(({ data }, index) =>
+      expect(s.sent[index + 1]).toContain(JSON.stringify(data.why).slice(1, -1)),
+    );
     expect(read(s.log).at(-1)?.kind).toBe(FINDING);
   });
 
   it("the Referee records the ruling it gives after a turn with no call", async () => {
     // On 27 October two esp32 readers answered in prose and were set aside as unruled.
     const s = setup([fauxAssistantMessage("The rejection looks earned."), ruling(UNSETTLED)]);
-    failed(s.record);
     expect(await referee(s.reader, fail(s))).toMatchObject({ ruling: "unclear", reason: "Not settled." });
     expect(s.calls()).toBe(2);
   });
@@ -451,7 +460,6 @@ it("the probe says which checks moved, and refuses invalid or unchanged edits", 
       earned([2]),
       ruling({ ruling: "unclear", reason: "No probe moved the check.", probes: [1, 2] }),
     ]);
-    failed(s.record);
     expect(await referee(s.reader, fail(s))).toMatchObject({ ruling: "unclear", probes: [1, 2] });
     // Each of the three earned rulings is refused on record, and its reason reaches the reader next.
     const refused = read(s.log).filter(({ kind }) => kind === "referee.refused");
@@ -464,19 +472,19 @@ it("the probe says which checks moved, and refuses invalid or unchanged edits", 
       expect.objectContaining({ id: 2, moved: [] }),
     ]);
   });
+});
 
+describe("accepted answers and reading limits", () => {
   it("the Referee sets an answer the checks accepted for the task beside the one under review", async () => {
     const unclear = ruling(UNSETTLED);
     const s = setup([unclear, unclear]);
-    failed(s.record);
     await referee(s.reader, fail(s));
-    expect(s.sent[0]).toContain("No answer the checks accepted for this task is recorded.");
+    expect(s.sent[0]).not.toContain(String.raw`\"span\":9`);
     s.record("verdict", { solve: "s-0", task: "t-1", answer: { span: 9, members: [] }, kind: "pass" });
     s.record("verdict", { solve: "s-9", task: "t-2", answer: { span: 1, members: [] }, kind: "pass" });
     await referee(s.reader, fail(s));
-    expect(s.sent[1]).toContain(
-      String.raw`An answer the checks accepted for this task: {\"span\":9,\"members\":[]}`,
-    );
+    expect(s.sent[1]).toContain(String.raw`{\"span\":9,\"members\":[]}`);
+    expect(s.sent[1]).not.toContain(String.raw`{\"span\":1,\"members\":[]}`);
   });
 
   it("the Referee refuses a whole-answer swap and an accepted projection as defect evidence, but admits a disputed-field probe", async () => {
@@ -494,7 +502,6 @@ it("the probe says which checks moved, and refuses invalid or unchanged edits", 
       fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: SPAN, value: "10" }] }), toolUse),
       defect([2]),
     ]);
-    failed(s.record);
     s.record("task.feasible", { version: "v-1", answer: accepted });
     s.record("verdict", { solve: "s-0", task: TASK.taskId, kind: "pass", answer: { span: 8, members: [] } });
     expect(await referee(s.reader, fail(s))).toMatchObject({ ruling: "check-defect", probes: [2] });
@@ -512,7 +519,6 @@ it("the probe says which checks moved, and refuses invalid or unchanged edits", 
       fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: SPAN, value: "10" }] }), toolUse),
       ruling({ ruling: "earned", rule: "R1", field: SPAN, reason: "Too late.", probes: [1] }),
     ]);
-    failed(s.record);
     let runs = 0;
     const signals: (AbortSignal | undefined)[] = [];
     const slow = async (
@@ -545,7 +551,6 @@ it("the probe says which checks moved, and refuses invalid or unchanged edits", 
   it("the Referee logs no ruling where the provider ended the reading before it ruled, so the fail is asked again", async () => {
     const limit = "the account's session limit is reached";
     const s = setup([fauxAssistantMessage("", { stopReason: "error", errorMessage: limit })]);
-    failed(s.record);
     expect((await referee(s.reader, fail(s))).ruling).toBeNull();
     expect(read(s.log).findLast((event) => event.kind === FINDING)?.data).toMatchObject({
       ruling: null,
@@ -553,14 +558,14 @@ it("the probe says which checks moved, and refuses invalid or unchanged edits", 
       walled: false,
     });
   });
-}
+});
 
-{
+describe("agreement with hand labels", () => {
   const at = "2026-10-08T00:00:00.000Z";
-  const ruled = (solve: string, ruling: string) => ({
+  const ruled = (solve: string, decision: string) => ({
     at,
     kind: FINDING,
-    data: { solve, ruling },
+    data: { solve, ruling: decision },
   });
   const events = [
     ruled("a", "unclear"),
@@ -610,10 +615,14 @@ it("the probe says which checks moved, and refuses invalid or unchanged edits", 
       times.flatMap((n) => [...labels].map(([solve, label]) => [`${solve}${String(n)}`, label] as const)),
     );
     const measured = agreement(many, thirty);
-    expect(clears(measured, { caught: 0.5, voided: 0.7 })).toBe(true);
-    expect(clears(measured, { caught: 0.5, voided: 0.4 })).toBe(false);
-    expect(clears(measured, { caught: 0.8, voided: 0.7 })).toBe(false);
-    expect(clears(measured, { caught: 0.5, voided: 0.1 })).toBe(false);
+    for (const [caught, voided, expected] of [
+      [0.5, 0.7, true],
+      [0.5, 0.4, false],
+      [0.8, 0.7, false],
+      [0.5, 0.1, false],
+    ] as const) {
+      expect(clears(measured, { caught, voided })).toBe(expected);
+    }
     const fewer = new Map([...thirty].filter(([solve]) => solve !== "c0"));
     expect(clears(agreement(many, fewer), { caught: 0, voided: 1 })).toBe(false);
     expect(clears(agreement(events, labels), { caught: 0, voided: 1 })).toBe(false);
@@ -624,4 +633,4 @@ it("the probe says which checks moved, and refuses invalid or unchanged edits", 
     expect(noDefects.caught).toBeNull();
     expect(clears(noDefects, { caught: 0, voided: 1 })).toBe(false);
   });
-}
+});

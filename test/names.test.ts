@@ -8,8 +8,7 @@ import type { JsonObject } from "../src/meta/json-shape.ts";
 
 const at = "2026-10-14T00:00:00.000Z";
 const event = (kind: EventKind, data: JsonObject): LogEvent => ({ at, kind, data });
-const digest = (fill: string) => fill.repeat(64);
-const [starter, first, second, third] = [digest("a"), digest("b"), digest("c"), digest("d")];
+const [starter, first, second, third] = ["a".repeat(64), "b".repeat(64), "c".repeat(64), "d".repeat(64)];
 
 /** A session from `parent` that left `version`, then its comparison against `old`. */
 const round = (id: string, parent: string, version: string, old: string): LogEvent[] => [
@@ -22,6 +21,7 @@ const round = (id: string, parent: string, version: string, old: string): LogEve
 describe("harness names", () => {
   it("keeps each letter whatever is appended after, a harness named again and a promotion among it", () => {
     const log = [...round("b-1", starter, first, starter), ...round("b-2", first, second, starter)];
+    expect(namesOf(log.slice(0, 1)).get(starter)).toBe("A");
     const before = namesOf(log);
     const after = namesOf([
       ...log,

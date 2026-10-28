@@ -1,7 +1,7 @@
 /**
  * The Moves pane frame by frame: switching details, returning to the scrolled list, and keeping
  * evidence visible through delayed move and solve reads. Each transition is sampled on animation
- * frames (`watchFrames`); `slowed` holds the detail endpoints back.
+ * frames (`watchFrames`); a resolver holds the detail endpoints until the loading state appears.
  */
 import { afterAll, beforeAll, describe, test } from "bun:test";
 import { type Browser, type Page } from "@playwright/test";
@@ -28,7 +28,6 @@ interface Frames {
 
 /** Where evidence stands in the pane: the list's table, a detail, or a quiet "nothing" line. */
 const EVIDENCE = "main table, main .ana-detail, main .ana-nosignal";
-const SLOW_MS = 1_500;
 
 let served: Served;
 let browser: Browser;
@@ -128,14 +127,6 @@ function chipOf(page: Page, id: string) {
   return page.getByRole("button", { name: new RegExp(`solve ${id}$`, "u") });
 }
 
-/** Every answer to `endpoint` held back by `ms` before it goes on. */
-async function slowed(page: Page, endpoint: "move" | "solve", ms: number): Promise<void> {
-  await page.route(`**/api/${endpoint}?**`, async (route) => {
-    await Bun.sleep(ms);
-    await route.continue();
-  });
-}
-
 function expectSteady(frames: Frames): void {
   expect(frames.frames).toBeGreaterThan(0);
   expect({ blank: frames.blank, loading: frames.loading }).toEqual({ blank: 0, loading: 0 });
@@ -183,34 +174,37 @@ describe("the Moves pane between frames", () => {
     await opened.context.close();
   });
 
-  test("keeps the list on screen while a slow move is read, and shows that it waits only later", async () => {
-    const opened = await openWatched(listQuery());
-    const { page } = opened;
-    await slowed(page, "move", SLOW_MS);
-    await expect(rowOf(page, indexOf("x-1", "examiner"))).toBeVisible();
-    const read = await watchFrames(page);
-    await rowOf(page, indexOf("x-1", "examiner")).click();
-    await expect(page.getByRole("heading", { level: 2, name: /x-1/u })).toBeVisible();
-    const frames = await read();
-    expect(frames.blank).toBe(0);
-    expect(frames.firstLoading ?? SLOW_MS).toBeGreaterThanOrEqual(300);
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
-  test("keeps the move on screen while a slow solve is read, and shows that it waits only later", async () => {
-    const opened = await openWatched(`${listQuery()}&move=${String(indexOf("b-1", "comparison"))}`);
-    const { page } = opened;
-    const chip = chipOf(page, "s-5-1");
-    await expect(chip).toBeVisible();
-    await slowed(page, "solve", SLOW_MS);
-    const read = await watchFrames(page);
-    await chip.click();
-    await expect(page.getByRole("heading", { level: 2, name: /s-5-1/u })).toBeVisible();
-    const frames = await read();
-    expect(frames.blank).toBe(0);
-    expect(frames.firstLoading ?? SLOW_MS).toBeGreaterThanOrEqual(300);
-    expectQuiet(opened);
-    await opened.context.close();
-  });
+  test.each(["move", "solve"] as const)(
+    "keeps evidence while a slow %s is read, and delays its loading state",
+    async (endpoint) => {
+      const query =
+        endpoint === "move" ? listQuery() : `${listQuery()}&move=${String(indexOf("b-1", "comparison"))}`;
+      const opened = await openWatched(query);
+      const { page } = opened;
+      const trigger = endpoint === "move" ? rowOf(page, indexOf("x-1", "examiner")) : chipOf(page, "s-5-1");
+      const id = endpoint === "move" ? "x-1" : "s-5-1";
+      await expect(trigger).toBeVisible();
+      const held = Promise.withResolvers<void>();
+      await page.route(`**/api/${endpoint}?**`, async (route) => {
+        await held.promise;
+        await route.continue();
+      });
+      const read = await watchFrames(page);
+      await trigger.click();
+      await expect(page.locator("main .ana-nosignal")).toBeVisible();
+      await expect(page.locator("main .ana-nosignal")).toContainText(id);
+      const waiting = await read();
+      expect(waiting.blank).toBe(0);
+      expect(waiting.firstLoading ?? 0).toBeGreaterThanOrEqual(300);
+      held.resolve();
+      await expect(page.getByRole("heading", { level: 2, name: new RegExp(id, "u") })).toBeVisible();
+      expect((await read()).blank).toBe(0);
+      if (endpoint === "solve") {
+        await page.getByRole("button", { name: "Back to b-1" }).click();
+        await expect(trigger).toBeFocused();
+      }
+      expectQuiet(opened);
+      await opened.context.close();
+    },
+  );
 });

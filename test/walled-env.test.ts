@@ -61,20 +61,20 @@ async function stopped(path: string): Promise<void> {
 }
 
 describe.skipIf(!osIsolationSupport().ok)("the durable environment's OS wall", () => {
-  it("refuses the repository canary through commands and every file-reading entry point", async () => {
-    await withSeat(async (env, _wall, canary) => {
-      let output = "";
-      const shell = await env.exec(
+  it("runs literal commands and file operations in its home while refusing protected paths", async () => {
+    await withSeat(async (env, wall, canary) => {
+      let deniedOutput = "";
+      const deniedShell = await env.exec(
         ["cat", canary],
         {
           onOutput: (text) => {
-            output += text;
+            deniedOutput += text;
           },
         },
         context,
       );
-      expect(shell.ok && shell.value.exitCode === 0).toBe(false);
-      expect(output).not.toContain(SECRET);
+      expect(deniedShell.ok && deniedShell.value.exitCode === 0).toBe(false);
+      expect(deniedOutput).not.toContain(SECRET);
       const reads = await Promise.all([
         env.readTextFile(canary, context),
         env.readBinaryFile(canary, context),
@@ -89,11 +89,7 @@ describe.skipIf(!osIsolationSupport().ok)("the durable environment's OS wall", (
       for (const read of reads) expect(read.ok).toBe(false);
       const exists = await env.exists(canary, context);
       expect(exists.ok && exists.value).toBe(false);
-    });
-  });
 
-  it("refuses writes outside the root, into kept, and through links that escape the seat", async () => {
-    await withSeat(async (env, wall, canary) => {
       const outside = `${canary}.written`;
       expect((await env.writeFile(outside, "escape", context)).ok).toBe(false);
       expect((await env.appendFile(canary, "escape", context)).ok).toBe(false);
@@ -109,11 +105,7 @@ describe.skipIf(!osIsolationSupport().ok)("the durable environment's OS wall", (
       expect((await env.writeFile("link", "escape", context)).ok).toBe(false);
       expect(readFileSync(canary, "utf8")).toBe(SECRET);
       expect(existsSync(outside)).toBe(false);
-    });
-  });
 
-  it("quotes argv, honours cwd and environment, separates streams, and spills full output", async () => {
-    await withSeat(async (env, wall) => {
       value(await env.createDir("work", undefined, context));
       const output = { stdout: "", stderr: "" };
       const shell = await env.exec(

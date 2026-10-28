@@ -65,7 +65,7 @@ import { readableAcross } from "./snapshots.ts";
 
 const LEVELS = ["light", "medium", "verbose"] as const;
 const CAMPAIGN_ENDED = "campaign.ended";
-export type Level = (typeof LEVELS)[number];
+type Level = (typeof LEVELS)[number];
 
 /** A run folder's groups, the first match first, each with the level that starts to hold it. A
  *  harness's `correctness-model/` is the checker wherever it lies: six of the twenty runs zipped on

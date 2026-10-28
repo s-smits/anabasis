@@ -1,11 +1,11 @@
-import { describe, expect, it } from "bun:test";
-import { expectedLines, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
+import { describe, it } from "bun:test";
+import { lintRules } from "./helpers/lint-rule.ts";
 
 /**
  * The representation owner, `src/meta/json-shape.ts`, is where `no-runtime-typeof` and
  * `no-unsafe-dictionary-type` admit one written shape each. Each fixture is staged at the owner's
- * path, where only the admitted shape passes; each rule's own fixture shows the same shapes
- * reported at an ordinary source path.
+ * path, where only the admitted shape passes, and at an ordinary source path, where every
+ * occurrence reports.
  */
 
 const OWNER = "src/meta/json-shape.ts";
@@ -50,20 +50,18 @@ export type AnyRecord = Record<string, any>; // REPORT any is not the open view
 export type Rows = { rows: Record<string, unknown> }; // REPORT a member, not the alias itself
 `;
 
-describe("anti-slop/no-runtime-typeof in the representation owner", () => {
-  it("admits the owner's whole-body primitive predicates and nothing else there", async () => {
-    const expected = expectedLines(PREDICATES);
-    expect(expected).toHaveLength(6);
-    expect(await reportedLines("anti-slop", "no-runtime-typeof", PREDICATES, OWNER)).toStrictEqual(expected);
-  });
-});
-
-describe("anti-slop/no-unsafe-dictionary-type in the representation owner", () => {
-  it("admits the exported open record alias and nothing else there", async () => {
-    const expected = expectedLines(OPEN_RECORD);
-    expect(expected).toHaveLength(3);
-    expect(await reportedLines("anti-slop", "no-unsafe-dictionary-type", OPEN_RECORD, OWNER)).toStrictEqual(
-      expected,
-    );
+describe("the representation owner exemptions", () => {
+  it("reports only the marked lines in every fixture and scope", async () => {
+    await lintRules("anti-slop", [
+      ["no-runtime-typeof", PREDICATES, 6, OWNER],
+      ["no-unsafe-dictionary-type", OPEN_RECORD, 3, OWNER],
+      ["no-runtime-typeof", PREDICATES.replaceAll("// ADMITTED", "// REPORT"), 9, "src/solve/example.ts"],
+      [
+        "no-unsafe-dictionary-type",
+        OPEN_RECORD.replaceAll("// ADMITTED", "// REPORT"),
+        4,
+        "src/solve/example.ts",
+      ],
+    ]);
   });
 });

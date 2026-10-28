@@ -9,7 +9,8 @@
  * that would have returned a boolean from a void function.
  */
 import { describe, expect, it } from "bun:test";
-import { expectedLines, fixedSource, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
+import { fixedSource } from "./helpers/oxlint-rule-fixture.ts";
+import { lintRules } from "./helpers/lint-rule.ts";
 
 const RULE = "prefer-find-over-loop";
 const SEARCHES = `interface Row {
@@ -106,9 +107,7 @@ export function verdictFor(rows: Row[], id: string): boolean {
 
 describe("ana/prefer-find-over-loop", () => {
   it("reads a search and passes over a Set, an await, a built answer and an else", async () => {
-    const expected = expectedLines(SEARCHES);
-    expect(expected).toHaveLength(9);
-    expect(await reportedLines("ana", RULE, SEARCHES)).toStrictEqual(expected);
+    await lintRules("ana", [[RULE, SEARCHES, 9]]);
   });
 
   it("puts the method where the loop stood, once the line below agrees with it", async () => {
@@ -121,5 +120,13 @@ describe("ana/prefer-find-over-loop", () => {
     expect(fixed).toContain('return rows.every((row) => !(row.name === ""));');
     expect(fixed).toContain("if (rows.some((row) => row.settled)) return;");
     expect(fixed).toContain('note("none settled");');
+    expect(fixed).toContain("return rows[0];");
+    expect(fixed).toContain(
+      "for (const row of rows) if (row.id === id) return row; // REPORT read, but the line below is not undefined",
+    );
+    expect(fixed).toContain(
+      "// a row is open until something settles it, and that is why this reads !settled",
+    );
+    expect(fixed).not.toContain("rows.find((row) => !row.settled)");
   });
 });

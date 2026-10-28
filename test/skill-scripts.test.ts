@@ -23,7 +23,7 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "../src/meta/subprocess.ts";
-import { capturedJsonStringify } from "../src/meta/json-runtime.ts";
+import { capturedJsonStringify, parseJsonAs } from "../src/meta/json-runtime.ts";
 import { LOG_FILE, read } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { capturedExecPath, capturedSpawn } from "../src/meta/process.ts";
@@ -31,6 +31,9 @@ import { sources } from "../tools/runs/receipt.ts";
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-skill-scripts-")));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
+const script = join(import.meta.dir, "..", ".claude/skills/system-path-simulation/scripts/live-seat.ts");
+const git = (repo: string, ...args: string[]) =>
+  runTextSyncOrThrow(["git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@t.dev", ...args]);
 
 const pull = (number: number, head: string, base: string, labels: readonly string[] = []): Pull => ({
   number,
@@ -65,18 +68,10 @@ describe("following the stack's top", () => {
     open,
     pull_requests: pulls.map(([n, ref, state]) => ({ number: n, state, head: { ref } })),
   });
-  const git = (repo: string, ...args: string[]) =>
-    runTextSyncOrThrow(["git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@t.dev", ...args]);
   const commit = (repo: string, file: string, text: string) => {
     writeFileSync(join(repo, file), text);
     git(repo, "add", file);
     git(repo, "commit", "-q", "-m", `write ${file}`);
-  };
-  const clone = (up: string, co: string) => {
-    git(up, "clone", "-q", up, co);
-    git(co, "config", "user.name", "t");
-    git(co, "config", "user.email", "t@t.dev");
-    git(co, "switch", "-q", "--track", "-c", "stack-pr1", "origin/claude/one");
   };
 
   it("takes the last open pull request of the open native stack that holds the oldest one", () => {
@@ -114,7 +109,10 @@ describe("following the stack's top", () => {
     commit(up, "mine.txt", "base\n");
     git(up, "switch", "-q", "-c", "claude/one");
     commit(up, "one.txt", "first\n");
-    clone(up, co);
+    git(up, "clone", "-q", up, co);
+    git(co, "config", "user.name", "t");
+    git(co, "config", "user.email", "t@t.dev");
+    git(co, "switch", "-q", "--track", "-c", "stack-pr1", "origin/claude/one");
     // The stack is restacked: #1 is rewritten and #2 lands on it.
     git(up, "switch", "-q", "main");
     git(up, "branch", "-D", "claude/one");
@@ -143,8 +141,6 @@ describe("following the stack's top", () => {
 });
 
 describe("republishing a consolidated stack", () => {
-  const git = (repo: string, ...args: string[]) =>
-    runTextSyncOrThrow(["git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@t.dev", ...args]);
   const up = join(root, "over-up");
   const co = join(root, "over-co");
   const sha = (repo: string, ref: string) => gitText(repo, "rev-parse", ref);
@@ -282,16 +278,14 @@ describe("the source a campaign's launches ran", () => {
   const repo = join(root, "repo");
   const folder = join(repo, ".ana", "d2", "buffer");
   mkdirSync(folder, { recursive: true });
-  const git = (...args: string[]) =>
-    runTextSyncOrThrow(["git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@t.dev", ...args]);
-  git("init", "-q");
-  git("commit", "-q", "--allow-empty", "-m", "first");
+  git(repo, "init", "-q");
+  git(repo, "commit", "-q", "--allow-empty", "-m", "first");
   const first = gitText(repo, "rev-parse", "HEAD");
   mkdirSync(join(repo, "src"));
   writeFileSync(join(repo, "src", "score.ts"), "export const WEIGHTS = 1;\n");
   writeFileSync(join(repo, "plan.md"), "export const ROOM\n");
-  git("add", "src", "plan.md");
-  git("commit", "-q", "-m", "second");
+  git(repo, "add", "src", "plan.md");
+  git(repo, "commit", "-q", "-m", "second");
   const second = gitText(repo, "rev-parse", "HEAD");
   const receipt = (session: string, at: string, commit: string, dirty: boolean, bun?: string) =>
     writeFileSync(
@@ -415,7 +409,6 @@ describe("a live seat's reading", () => {
       `${seat}.json`,
       JSON.stringify({ tree: join(root, "due"), name: "sim-due", from: 3, pid: null }),
     );
-    const script = join(import.meta.dir, "..", ".claude/skills/system-path-simulation/scripts/live-seat.ts");
     const first = runSync([capturedExecPath, script, "due", seat, "--hook"]);
     expect(first.exitCode).toBe(2);
     expect(decodeOutput(first.stderr)).toContain("due-seat: x-2 ended finished");
@@ -437,7 +430,6 @@ describe("a live seat's reading", () => {
       return seat;
     };
     const [late, early] = [arm("arm-late", 3), arm("arm-early", 0)];
-    const script = join(import.meta.dir, "..", ".claude/skills/system-path-simulation/scripts/live-seat.ts");
     const whole = decodeOutput(runSync([capturedExecPath, script, "compare", late, early]).stdout);
     expect(whole).toMatch(/^gated\s+5\s+6\s*$/mu);
     expect(whole).toMatch(/^held\s+2\s+2\s*$/mu);
@@ -480,7 +472,11 @@ describe("a live seat's reading", () => {
     mkdirSync(folder, { recursive: true });
     writeFileSync(join(folder, LOG_FILE), readFileSync(log, "utf8"));
     writeFileSync(join(folder, "seed.json"), JSON.stringify({ from: "/runs/job", events: 3 }));
-    writeFileSync(join(tree, "idle.ts"), "await Bun.sleep(120_000);\n");
+    const ready = join(tree, "ready");
+    writeFileSync(
+      join(tree, "idle.ts"),
+      `await Bun.write(${JSON.stringify(ready)}, "ready"); await Bun.sleep(120_000);\n`,
+    );
     runTextSyncOrThrow(["git", "init", "-q", tree]);
     runTextSyncOrThrow([
       "git",
@@ -496,15 +492,20 @@ describe("a live seat's reading", () => {
       "-m",
       "seed",
     ]);
-    const script = join(import.meta.dir, "..", ".claude/skills/system-path-simulation/scripts/live-seat.ts");
     const seat = join(root, "running-seat");
     const flags = ["--tree", tree, "--name", "sim-running", "--out", seat, "--cap", "5", "--minutes", "5"];
     const started = capturedSpawn([capturedExecPath, script, "start", ...flags, "--", "idle.ts"], {
       stdout: "pipe",
       stderr: "pipe",
     });
-    while (!existsSync(`${seat}.json`) && started.exitCode === null) await Bun.sleep(50);
-    await Bun.sleep(500);
+    const deadline = Date.now() + 5000;
+    while (
+      (!existsSync(ready) || !existsSync(`${seat}.json`)) &&
+      started.exitCode === null &&
+      Date.now() < deadline
+    ) {
+      await Bun.sleep(10);
+    }
     const stoppedAt = Date.now();
     // Spawned rather than run in step, so this process reaps the start as soon as it ends.
     const stopped = capturedSpawn([capturedExecPath, script, "stop", seat], { stdout: "pipe" });
@@ -512,11 +513,11 @@ describe("a live seat's reading", () => {
     // The start wakes on its group's end, well inside its 30-second tick.
     expect(Date.now() - stoppedAt).toBeLessThan(10_000);
     expect(await stopped.exited).toBe(0);
+    expect(existsSync(ready)).toBe(true);
     expect(await new Response(started.stdout).text()).toContain("stopped at live-seat stop");
   });
 
   it("reads pairs at the shorter arm's gates, signs each measure past thin pairs, and refuses a pair of two seats or two cuts", () => {
-    const script = join(import.meta.dir, "..", ".claude/skills/system-path-simulation/scripts/live-seat.ts");
     const head = readFileSync(log, "utf8").split("\n").slice(0, 3);
     const seed = (name: string, lines: readonly string[], events = 3) => {
       const folder = join(root, "pairs", ".ana", "d2", name);
@@ -576,22 +577,25 @@ describe("a live seat's reading", () => {
   });
 
   it("reads a seed's log from its cut, and refuses to seat a seed whose links point at nothing", () => {
-    const script = join(import.meta.dir, "..", ".claude/skills/system-path-simulation/scripts/live-seat.ts");
     const folder = join(root, "cut", ".ana", "d2", "sim-cut");
     mkdirSync(join(folder, "states", "h"), { recursive: true });
     writeFileSync(join(folder, LOG_FILE), readFileSync(log, "utf8"));
     writeFileSync(join(folder, "seed.json"), JSON.stringify({ from: "/runs/job", events: 3 }));
     const reading = runSync([capturedExecPath, script, "read", "--log", join(folder, LOG_FILE), "--json"]);
     expect(reading.exitCode).toBe(0);
-    expect(decodeOutput(reading.stdout)).toContain('"sessions": [\n    "x-2"\n  ]');
+    expect(parseJsonAs<{ sessions: string[] }>(decodeOutput(reading.stdout)).sessions).toStrictEqual(["x-2"]);
     expect(runSync([capturedExecPath, script, "read", "--log", log]).exitCode).not.toBe(0);
     symlinkSync("../nowhere", join(folder, "states", "h", ".toolchain"));
-    const flags = ["--tree", join(root, "cut"), "--name", "sim-cut", "--out", join(root, "cut-seat")];
     const started = runSync([
       capturedExecPath,
       script,
       "start",
-      ...flags,
+      "--tree",
+      join(root, "cut"),
+      "--name",
+      "sim-cut",
+      "--out",
+      join(root, "cut-seat"),
       "--cap",
       "1",
       "--minutes",
@@ -631,7 +635,6 @@ describe("a live seat's reading", () => {
     ]);
     expect(census.finishes).toStrictEqual([2, 1]);
     // On a seed only the calls after its cut are the seat's: the two before it are its source's.
-    const script = join(import.meta.dir, "..", ".claude/skills/system-path-simulation/scripts/live-seat.ts");
     const folder = join(root, "census", ".ana", "d2", "sim-census");
     mkdirSync(folder, { recursive: true });
     writeFileSync(join(folder, LOG_FILE), `${events.map((each) => JSON.stringify(each)).join("\n")}\n`);
@@ -654,35 +657,18 @@ describe("compare-systems reads a candidate against the baseline as a comparison
     );
   const at = { solves: 2, level: 0.02, direction: undefined };
 
-  it("names the system that wins six untied tasks, baseline or candidate", () => {
-    const [fails, passes] = [solvedAs(false, false), solvedAs(true, false)];
-    const forward = pairLines([system("cheap"), fails], [system("dear"), passes], at).join("\n");
-    const backward = pairLines([system("dear"), passes], [system("cheap"), fails], at).join("\n");
-    expect(forward).toContain("dear won 6, lost 0, tied 0");
-    expect(forward).toContain("dear is better");
-    expect(backward).toContain("cheap won 0, lost 6, tied 0");
-    expect(backward).toContain("dear is better");
-    expect(forward).toContain("0 more tasks");
-  });
-
-  it("sets a task aside on a rejection the Referee did not rule earned, for both systems", () => {
-    const lines = pairLines(
-      [system("cheap"), solvedAs(false, true)],
-      [system("dear"), solvedAs(true, false)],
-      at,
-    ).join("\n");
-    expect(lines).toContain("on the 0 tasks");
-    expect(lines).toContain("6 more tasks");
-    expect(lines).toContain("no step either way");
-  });
-
-  it("reads equal systems as no step, never as equality", () => {
-    const lines = pairLines(
-      [system("a"), solvedAs(true, false)],
-      [system("b"), solvedAs(true, false)],
-      at,
-    ).join("\n");
-    expect(lines).toContain("b won 0, lost 0, tied 6");
-    expect(lines).toContain("no step either way");
+  it("reports the winner in either direction, excludes unsettled tasks and leaves ties undecided", () => {
+    const fails = solvedAs(false, false);
+    const passes = solvedAs(true, false);
+    const aside = solvedAs(false, true);
+    for (const [baseline, old, candidate, fresh, facts] of [
+      ["cheap", fails, "dear", passes, ["dear won 6, lost 0, tied 0", "dear is better", "0 more tasks"]],
+      ["dear", passes, "cheap", fails, ["cheap won 0, lost 6, tied 0", "dear is better"]],
+      ["cheap", aside, "dear", passes, ["on the 0 tasks", "6 more tasks", "no step either way"]],
+      ["a", passes, "b", passes, ["b won 0, lost 0, tied 6", "no step either way"]],
+    ] as const) {
+      const lines = pairLines([system(baseline), old], [system(candidate), fresh], at).join("\n");
+      for (const fact of facts) expect(lines).toContain(fact);
+    }
   });
 });

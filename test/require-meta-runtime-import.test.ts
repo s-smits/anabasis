@@ -9,7 +9,8 @@
  * visible as the moved half.
  */
 import { describe, expect, it } from "bun:test";
-import { expectedLines, fixedSource, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
+import { fixedSource } from "./helpers/oxlint-rule-fixture.ts";
+import { lintRules } from "./helpers/lint-rule.ts";
 
 const IMPORTS = `
 import { readFileSync } from "node:fs"; // REPORT a second door to the file system
@@ -36,13 +37,15 @@ export const used = [basename, dirname, mkdir, parseEnv, createHash, os, join];
 `.trimStart();
 
 describe("ana/require-meta-runtime-import", () => {
-  const reports = (at: string): Promise<number[]> =>
-    reportedLines("ana", "require-meta-runtime-import", IMPORTS, at);
-
   it("reports a direct builtin import and a direct builtin re-export", async () => {
-    const expected = expectedLines(IMPORTS);
-    expect(expected).toHaveLength(3);
-    expect(await reports("src/example.ts")).toStrictEqual(expected);
+    await lintRules("ana", [
+      ["require-meta-runtime-import", IMPORTS, 3, "src/example.ts"],
+      ["require-meta-runtime-import", IMPORTS, 0, "src/meta/filesystem.ts"],
+      ["require-meta-runtime-import", IMPORTS, 0, "test/example.test.ts"],
+      ["require-meta-runtime-import", IMPORTS, 0, "test/helpers/example.ts"],
+      ["require-meta-runtime-import", IMPORTS, 0, ".claude/skills/launch-run/scripts/launch.ts"],
+      ["require-meta-runtime-import", IMPORTS, 0, ".claude/skills/zip-run/scripts/zip-run.mjs"],
+    ]);
   });
 
   it("joins the import the file already makes, and writes a new one at this file's own depth", async () => {

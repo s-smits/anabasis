@@ -1,7 +1,7 @@
 // A v1 harness state opened for a v2 solve: bundled over the shim, listed and called one-shot under
 // the real command wall, with each tool's label and description as its factory states them, the
 // harness's own errors reaching the caller and the host-only folder out of reach.
-import { expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { SeatTool } from "../src/agent/session.ts";
 import { copyHarness } from "../src/builder/kept.ts";
@@ -32,11 +32,14 @@ import { osIsolationSupport } from "../src/wall/os-isolation.ts";
 import { CLOSED_CODE } from "./helpers/wall.ts";
 import { writeHarness } from "./helpers/write-harness.ts";
 
+const scratchRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-harness-tools-")));
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
 const TASK = { taskId: "t-1", family: "fixture", publicInput: { base: 7 } };
 const walled = osIsolationSupport().ok;
 // SAFETY: harness registrations use only the context's abort signal, no tool API methods.
 const UNUSED_API = undefined as never;
+
+afterAll(() => rmSync(scratchRoot, { recursive: true, force: true }));
 
 /** A solve wall in a claimed root for `body`, torn down after it. */
 async function withWall(body: (wall: CommandWall) => Promise<void>, toolTree: string | null = null) {
@@ -65,9 +68,9 @@ function textOf(result: Awaited<ReturnType<SeatTool["execute"]>>): string {
   return part?.type === "text" ? part.text : "";
 }
 
-it("opens with no artifact-writer, and with no tool at all: the answer is a file and no tool's", async () => {
-  const dir = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-harness-writer-")));
-  try {
+describe("opening and identifying a harness", () => {
+  it("opens with no artifact-writer, and with no tool at all: the answer is a file and no tool's", async () => {
+    const dir = join(scratchRoot, "writer");
     cpSync(FIXTURE, dir, { recursive: true });
     const spec = join(dir, "agent", "tools-spec.json");
     const { tools } = parseJsonAs<{ tools: { kind: string }[] }>(readFileSync(spec, "utf8"));
@@ -87,14 +90,10 @@ it("opens with no artifact-writer, and with no tool at all: the answer is a file
     await expect(openHarness(dir)).rejects.toThrow(
       "agent/tools-spec.json names a tool edit, submit: read, bash, edit, write, submit are the host's own",
     );
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
+  });
 
-it("changes its digest with any file or mode in the tool tree, as with the module, whatever its times say", async () => {
-  const dir = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-harness-tree-")));
-  try {
+  it("changes its digest with any file or mode in the tool tree, as with the module, whatever its times say", async () => {
+    const dir = join(scratchRoot, "tree");
     cpSync(FIXTURE, dir, { recursive: true });
     const bin = join(dir, ".toolchain", "bin");
     mkdirSync(bin, { recursive: true });
@@ -119,16 +118,12 @@ it("changes its digest with any file or mode in the tool tree, as with the modul
     digests.push((await openHarness(dir)).digest);
     expect(new Set(digests).size).toBe(4);
     expect(digests[3]).toBe((await openHarness(dir)).digest);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
+  });
 
-it("leaves the bytecode caches a run of its Python programs writes out of its digest, and a sourceless .pyc in", async () => {
-  // v065-b on 24 October: running its programs left `__pycache__` in 26 of the 54 states it kept,
-  // and two states that differed from the one practised by those caches alone read as unpractised.
-  const dir = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-harness-bytecode-")));
-  try {
+  it("leaves the bytecode caches a run of its Python programs writes out of its digest, and a sourceless .pyc in", async () => {
+    // v065-b on 24 October: running its programs left `__pycache__` in 26 of the 54 states it kept,
+    // and two states that differed from the one practised by those caches alone read as unpractised.
+    const dir = join(scratchRoot, "bytecode");
     cpSync(FIXTURE, dir, { recursive: true });
     const lib = join(dir, ".toolchain", "lib");
     mkdirSync(join(lib, "deeper"), { recursive: true });
@@ -146,16 +141,14 @@ it("leaves the bytecode caches a run of its Python programs writes out of its di
     // Python imports a `.pyc` outside `__pycache__` with no source beside it: it is code.
     writeFileSync(join(lib, "sourceless.pyc"), "bytecode");
     expect((await openHarness(dir)).digest).not.toBe(clean);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  });
 });
 
-it.each(["__dirname", "__filename"])(
-  "keeps its digest when a toolchain import uses %s through freezing and handover",
-  async (location) => {
-    const root = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-harness-toolchain-place-")));
-    try {
+describe("freezing a toolchain dependency", () => {
+  it.each(["__dirname", "__filename"])(
+    "keeps its digest when a toolchain import uses %s through freezing and handover",
+    async (location) => {
+      const root = join(scratchRoot, location);
       const source = join(root, "source");
       cpSync(FIXTURE, source, { recursive: true });
       const tools = join(source, "agent", "tools.ts");
@@ -180,15 +173,14 @@ it.each(["__dirname", "__filename"])(
       // Normalising the location must still leave a changed dependency as another harness.
       writeFileSync(join(handed, ".toolchain", "lib.cjs"), `module.exports = [${location}, 7];\n`);
       expect((await openHarness(handed)).digest).not.toBe(original.digest);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  },
-);
+    },
+  );
+});
 
-it("builds a harness's tools from its own files alone: no macro, no file outside it", async () => {
-  const root = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-harness-wall-")));
-  try {
+describe("a harness's allowed imports", () => {
+  it("builds a harness's tools from its own files alone: no macro, no file outside it", async () => {
+    const root = join(scratchRoot, "imports");
+    mkdirSync(root);
     const secret = join(root, "host-secret.txt");
     const mark = join(root, "macro-ran");
     writeFileSync(secret, "host-canary-4e1b");
@@ -281,39 +273,33 @@ it("builds a harness's tools from its own files alone: no macro, no file outside
     const moved = join(root, "moved");
     cpSync(honest, moved, { recursive: true });
     expect((await openHarness(moved)).digest).toBe(opened.digest);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  });
 });
 
 it.skipIf(!walled)(
   "keeps JSON details and termination while every domain tool stays sequential",
   async () => {
-    const dir = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-harness-control-")));
-    try {
-      writeHarness(dir, {
-        spec: { presets: [], tools: [{ name: "finish_advice", kind: "advisor" }] },
-        tools: `import { defineDraftTool } from "@ana/agent-bundle";
+    const dir = join(scratchRoot, "control");
+    writeHarness(dir, {
+      spec: { presets: [], tools: [{ name: "finish_advice", kind: "advisor" }] },
+      tools: `import { defineDraftTool } from "@ana/agent-bundle";
 import { Type } from "@earendil-works/pi-ai";
 export const createDomainHarness = () => ({ tools: [defineDraftTool({
   name: "finish_advice", label: "Finish advice", description: "Finish the advice.",
   parameters: Type.Object({}), executionMode: "parallel",
   run: () => ({ text: "Done.", details: [0, null], terminate: true }),
 })] });`,
+    });
+    const harness = await openHarness(dir);
+    await withWall(async (wall) => {
+      const [registered] = await harnessTools(harness, TASK, wall);
+      expect(registered?.executionMode).toBe("sequential");
+      expect(await registered?.execute({}, UNUSED_API, BACKGROUND_CONTEXT)).toMatchObject({
+        output: [{ type: "text", text: "Done." }],
+        details: [0, null],
+        control: { terminate: true },
       });
-      const harness = await openHarness(dir);
-      await withWall(async (wall) => {
-        const [registered] = await harnessTools(harness, TASK, wall);
-        expect(registered?.executionMode).toBe("sequential");
-        expect(await registered?.execute({}, UNUSED_API, BACKGROUND_CONTEXT)).toMatchObject({
-          output: [{ type: "text", text: "Done." }],
-          details: [0, null],
-          control: { terminate: true },
-        });
-      });
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+    });
   },
   120_000,
 );

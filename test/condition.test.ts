@@ -34,6 +34,8 @@ describe("a condition", () => {
     const scratch = mkdtempSync(join(tmpdir(), "ana-condition-"));
     try {
       const log = join(scratch, "log.jsonl");
+      const { contract, ...rest } = condition;
+      expect(conditionId({ ...rest, contract })).toBe(conditionId(condition));
       const strong: Condition = { ...condition, side: "strong" };
       const ids = [condition, strong, condition].map((each) => recordCondition(log, each));
       expect(ids).toEqual([conditionId(condition), conditionId(strong), conditionId(condition)]);

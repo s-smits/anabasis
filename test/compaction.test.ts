@@ -12,9 +12,9 @@ import { join } from "../src/meta/path.ts";
 const home = mkdtempSync(join(tmpdir(), "ana-compaction-"));
 afterAll(() => rmSync(home, { recursive: true, force: true }));
 
-function session(name: string, options: { provider?: string; failure?: boolean; most?: number } = {}) {
+function session(name: string, options: { failure?: boolean } = {}) {
   const faux = fauxProvider({
-    provider: options.provider ?? "faux",
+    provider: "faux",
     models: [
       {
         id: "compact",
@@ -58,7 +58,7 @@ function session(name: string, options: { provider?: string; failure?: boolean; 
     ],
     turns: [],
     stops: [],
-    most: options.most ?? 24,
+    most: 24,
     trace: { log, of: "solve" },
   };
   return { seat, log, summaries, after, faux };

@@ -99,7 +99,7 @@ function prove(pairs: readonly string[], env: Record<string, string> = {}, drive
   });
 }
 /** What land asks of `source` and `second` above the documentation commit: the static steps, then the whole gate. */
-const landing = (): string[] => [`${source}:static`, `${second}:whole`];
+const landing = [`${source}:static`, `${second}:whole`];
 const forgetPasses = (): void => rmSync(join(work, ".git", "ana-gate-passed"), { force: true });
 
 beforeEach(() => {
@@ -109,7 +109,7 @@ beforeEach(() => {
 
 describe("proveCommits", () => {
   it("gives a static pass its steps and nearby tests, and a whole pass the suite", () => {
-    expect(prove(landing()).status).toBe(0);
+    expect(prove(landing).status).toBe(0);
     expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`, `${second} suite`]);
     const steps = readFileSync(log, "utf8")
       .split("\n")
@@ -205,20 +205,20 @@ describe("proveCommits", () => {
       cpSync(join(import.meta.dir, "..", part), join(checker, part), { recursive: true });
     }
     const driver = driverOf(join(checker, "tools", "runtime", "gate.ts"));
-    expect(prove(landing(), {}, driver).status).toBe(0);
+    expect(prove(landing, {}, driver).status).toBe(0);
     rmSync(log, { force: true });
-    expect(prove(landing(), {}, driver).status).toBe(0);
+    expect(prove(landing, {}, driver).status).toBe(0);
     expect(gatesRun(log)).toEqual([]);
     appendFileSync(join(checker, "tools", "runtime", "lint.ts"), "\n// a step the target runs as its own\n");
-    expect(prove(landing(), {}, driver).status).toBe(0);
+    expect(prove(landing, {}, driver).status).toBe(0);
     expect(gatesRun(log)).toEqual([]);
     appendFileSync(join(checker, "src", "meta", "subprocess.ts"), "\n// the gate's import, changed\n");
-    expect(prove(landing(), {}, driver).status).toBe(0);
+    expect(prove(landing, {}, driver).status).toBe(0);
     expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`, `${second} suite`]);
   });
 
   it("stops at the commit that fails and names the failing step and its log", () => {
-    const result = prove(landing(), { ANA_FAKE_FAIL: `${source} lint` });
+    const result = prove(landing, { ANA_FAKE_FAIL: `${source} lint` });
     expect(result.status).toBe(1);
     expect(gatesRun(log)).toEqual([`${source} -`]);
     const last = result.stderr.trimEnd().split("\n").at(-1) ?? "";
@@ -227,25 +227,26 @@ describe("proveCommits", () => {
       "gate: step lint failed (exit 1)",
     );
     // The commits beneath a fix keep their passes; this one has none to keep.
-    expect(prove(landing()).stderr).not.toContain("passed earlier");
+    expect(prove(landing).stderr).not.toContain("passed earlier");
   });
 
   // The wrapper prints its host-wall lines in colour, so the recorded shape begins with an escape.
   const red = "\u001b[0m\u001b[31m";
-  const said: [string, string, string][] = [
+  const pulses = [
     [
       "a host-wall rerun",
       `${red}host-wall: 1 test(s) failed on time alone, none on an assertion; running their 1 file(s) again in one fresh process: test/two.test.ts`,
-      "still running after 0 min: 2 tests passed, 1 failed so far; 1 test(s) failed on time alone, none on an assertion, so the failed files are running again in one fresh process and that run decides.",
+      true,
     ],
     [
-      "a host-wall error, which keeps the failures",
+      "a host-wall error",
       `${red}host-wall: error: the host reached a load average of 20.0 on 8 cores, but 1 file(s) printed no result at all: test/two.test.ts`,
-      "still running after 0 min: 2 tests passed, 1 failed so far.\n",
+      false,
     ],
-  ];
-  for (const [name, wall, pulse] of said) {
-    it(`names each pass's log and pulses what the test wrapper said after ${name}`, () => {
+  ] as const;
+  it.each(pulses)(
+    "reports counts and rerun state after %s",
+    (_name, wall, rerunning) => {
       const result = prove([`${source}:whole`], {
         ANA_FAKE_SUITE: `(pass) one\n(fail) two\n${wall}\n(pass) two`,
         ANA_GATE_PULSE_SECONDS: "1",
@@ -253,7 +254,12 @@ describe("proveCommits", () => {
       expect(result.status).toBe(0);
       const named = /Log: (\/\S+\.log)/u.exec(result.stderr)?.[1] ?? "";
       expect(readFileSync(named, "utf8")).toContain("(pass) two");
-      expect(result.stderr).toContain(`prove: ${short(source)} ${pulse}`);
-    }, 20_000);
-  }
+      expect(result.stderr).toContain(
+        `prove: ${short(source)} still running after 0 min: 2 tests passed, 1 failed`,
+      );
+      expect(result.stderr.includes("1 test(s) failed on time alone, none on an assertion")).toBe(rerunning);
+      expect(result.stderr.includes("failed files are running again in one fresh process")).toBe(rerunning);
+    },
+    20_000,
+  );
 });

@@ -31,9 +31,33 @@ interface Outcome {
   readonly chance: number;
 }
 
+const AT = "2026-10-09T00:00:00.000Z";
+const base: Condition = {
+  contract: "c1",
+  harness: "old",
+  task: "v1",
+  model: "claude/claude-sonnet-5-5",
+  effort: "high",
+  prices: { "claude/claude-sonnet-5-5": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
+  runtime: {},
+  compaction: "off",
+  solverTools: "old",
+  verifierTools: "t1",
+  sandbox: "p1",
+  limits: {
+    wallSeconds: 7_200,
+    turns: 60,
+    shellDefaultSeconds: 300,
+    shellMaxSeconds: 900,
+    concurrency: 4,
+  },
+  host: "h1",
+  side: "test",
+};
 const [P, F] = [true, false];
 const [LEVEL, WIDE] = [0.1, 0.25];
 const lowerRule = { direction: "lower" } as const;
+const event = (kind: EventKind, data: JsonObject): LogEvent => ({ at: AT, kind, data });
 /** A task the new harness wins, loses or ties, on three solves a harness. */
 const pairs = (wins: number, losses: number, ties: number) => [
   ...Array.from({ length: wins }, (_, i) => ({ task: `w${String(i)}`, old: [F, F, P], fresh: [P, P, F] })),
@@ -331,238 +355,194 @@ describe("a task's pairings", () => {
       expect(differenceOf(swapped)).toBe(expected === 0 ? 0 : -expected);
     }
   });
+});
 
-  it("sets two valid answers apart by the objective from the room floor, and no invalid one", () => {
-    const lower = { direction: "lower" } as const;
-    // Two valid answers a side, the new harness's a tenth or more lighter in every pairing: the
-    // objective's whole 300 points.
-    expect(
-      differenceOf({
-        task: "t",
-        old: [P, P],
-        fresh: [P, P],
-        objective: { ...lower, old: [10, 11], fresh: [8, 9] },
-      }),
-    ).toBe(300);
-    // The same measures the other way up, where higher is better.
-    expect(
-      differenceOf({
-        task: "t",
-        old: [P, P],
-        fresh: [P, P],
-        objective: { direction: "higher", old: [10, 11], fresh: [8, 9] },
-      }),
-    ).toBe(-300);
-    // Two valid answers closer than the room floor tie: 10 against 10.05 is half a percent, and a
-    // measure missing on one side decides nothing.
-    expect(
-      differenceOf({
-        task: "t",
-        old: [P, P],
-        fresh: [P, P],
-        objective: { ...lower, old: [10.05, 10], fresh: [10, 8] },
-      }),
-    ).toBe(150);
-    expect(
-      differenceOf({
-        task: "t",
-        old: [P, P],
-        fresh: [P, P],
-        objective: { ...lower, old: [10.05, 10], fresh: [10, null] },
-      }),
-    ).toBe(0);
-    // Validity is read first: a refused answer loses to a valid one whatever either measures, and
-    // a measure on a refused answer is never read.
+describe("a task's measures", () => {
+  it("reads objective direction, the room floor and missing measures only between valid answers", () => {
+    const even = { task: "t", old: [P, P], fresh: [P, P] };
+    for (const [direction, old, fresh, expected] of [
+      ["lower", [10, 11], [8, 9], 300],
+      ["higher", [10, 11], [8, 9], -300],
+      ["lower", [10.05, 10], [10, 8], 150],
+      ["lower", [10.05, 10], [10, null], 0],
+    ] as const) {
+      expect(differenceOf({ ...even, objective: { direction, old, fresh } })).toBe(expected);
+    }
     expect(
       pointsOf({
-        task: "t",
+        ...even,
         old: [P, F],
         fresh: [F, P],
-        objective: { ...lower, old: [1, 1], fresh: [1, 100] },
+        objective: { ...lowerRule, old: [1, 1], fresh: [1, 100] },
       }),
     ).toEqual({ validity: 0, objective: -75, bill: 0 });
   });
 
-  it("scores a task by its measures over the pairings, weighed, with the objective full at a tenth better and the bill full at half, each from its floor", () => {
+  it("weighs validity, objective and bill from their floors to saturation", () => {
     const billed = (...each: number[]) => each.map((one) => ({ billed: one }));
-    const points = (pair: Paired) => {
-      const { validity, objective, bill } = pointsOf(pair);
-      return [validity, objective, bill].map((one) => Math.round(one));
-    };
     const even = { task: "c", old: [P, P], fresh: [P, P] };
-    // Half the bill on every solve, with answers alike: the bill's whole weight, 100 points.
     const cheap = { ...even, used: { old: billed(0.2, 0.2), fresh: billed(0.1, 0.1) } };
-    expect(points(cheap)).toEqual([0, 0, 100]);
-    expect(differenceOf({ ...cheap, used: { old: billed(0.4, 0.4), fresh: billed(0.1, 0.1) } })).toBe(100);
-    // A fifth less is at the floor, whatever the float of 0.5 against 0.4 reads; 13% less is under it.
-    expect(differenceOf({ ...cheap, used: { old: billed(0.5, 0.5), fresh: billed(0.4, 0.4) } })).toBe(32);
-    expect(differenceOf({ ...cheap, used: { old: billed(0.115, 0.115), fresh: billed(0.1, 0.1) } })).toBe(0);
-    // The objective: 5% better is half its weight, a tenth or more the whole, under 1% nothing.
+    expect(pointsOf(cheap)).toEqual({ validity: 0, objective: 0, bill: 100 });
+    for (const [old, fresh, expected] of [
+      [0.4, 0.1, 100],
+      [0.5, 0.4, 32],
+      [0.115, 0.1, 0],
+    ] as const) {
+      expect(differenceOf({ ...cheap, used: { old: billed(old, old), fresh: billed(fresh, fresh) } })).toBe(
+        expected,
+      );
+    }
     const measured = (old: number, fresh: number): Paired => ({
       ...even,
-      objective: { direction: "lower", old: [old, old], fresh: [fresh, fresh] },
+      objective: { ...lowerRule, old: [old, old], fresh: [fresh, fresh] },
     });
-    expect(differenceOf(measured(100, 95))).toBe(150);
-    expect(differenceOf(measured(100, 50))).toBe(300);
-    expect(differenceOf(measured(100, 99.5))).toBe(0);
-    expect(differenceOf(measured(95, 100))).toBe(-150);
-    // A dearer answer that measures a fifth better wins the task from a cheaper one.
-    expect(points({ ...measured(10, 8), used: { old: billed(0.1, 0.1), fresh: billed(0.2, 0.2) } })).toEqual([
-      0, 300, -100,
-    ]);
-    // An answer that fails fast is cheap, and its pairings read no bill; nor do two failed answers.
+    for (const [old, fresh, expected] of [
+      [100, 95, 150],
+      [100, 50, 300],
+      [100, 99.5, 0],
+      [95, 100, -150],
+    ] as const) {
+      expect(differenceOf(measured(old, fresh))).toBe(expected);
+    }
+    expect(
+      pointsOf({ ...measured(10, 8), used: { old: billed(0.1, 0.1), fresh: billed(0.2, 0.2) } }),
+    ).toEqual({ validity: 0, objective: 300, bill: -100 });
     const failed = { ...cheap, fresh: [F, F] };
-    expect(points(failed)).toEqual([-600, 0, 0]);
+    expect(pointsOf(failed)).toEqual({ validity: -600, objective: 0, bill: 0 });
     expect(differenceOf({ ...failed, old: [F, F] })).toBe(0);
-    // The measures trade: valid in 3 solves of 4 against 4 of 4, the new harness gives up 150 points
-    // of validity and gains 225 by measuring a fifth better and 75 by billing half on the twelve
-    // pairings of two valid answers, so it wins the task.
     const lapsed: Paired = {
       task: "l",
       old: [P, P, P, P],
       fresh: [P, P, P, F],
-      objective: { direction: "lower", old: [10, 10, 10, 10], fresh: [8, 8, 8, null] },
+      objective: { ...lowerRule, old: [10, 10, 10, 10], fresh: [8, 8, 8, null] },
       used: { old: billed(0.2, 0.2, 0.2, 0.2), fresh: billed(0.1, 0.1, 0.1, 0.1) },
     };
-    expect(points(lapsed)).toEqual([-150, 225, 75]);
+    const measuredPoints = pointsOf(lapsed);
+    expect(measuredPoints.validity).toBe(-150);
+    expect(measuredPoints.objective).toBeCloseTo(225, 10);
+    expect(measuredPoints.bill).toBeCloseTo(75, 10);
     expect(differenceOf(lapsed)).toBe(150);
-  });
-
-  it("calls a task informative for a side valid on some solves and not all, bettered by the objective, or on none where a valid answer is on record", () => {
-    const pair = (old: boolean[], measured: (number | null)[] = []) => ({
-      task: "t",
-      old,
-      fresh: [F, F],
-      objective: { direction: "lower" as const, old: measured, fresh: [null, null] },
-    });
-    const nobody = new Set<string>();
-    const known = new Set(["t"]);
-    expect(informative(pair([P, F]), "old", nobody)).toBe(true);
-    // Failed in every solve with no valid answer on record, or valid in every solve with no
-    // objective: nothing to gain on.
-    expect(informative(pair([F, F]), "old", nobody)).toBe(false);
-    expect(informative(pair([P, P]), "old", nobody)).toBe(false);
-    expect(informative(pair([P, P]), "old", known)).toBe(false);
-    // Failed in every solve where a valid answer is on record, another harness's or its author's
-    // (`poolOf`, feasible): the room a promotion leaves (15 October). Until then never informative,
-    // so a reference that passed every scored solve had room only on tasks it answered some of the time.
-    expect(informative(pair([F, F]), "old", known)).toBe(true);
-    expect(informative(pair([F, F]), "old", new Set(["u"]))).toBe(false);
-    // Valid in every solve at one measure, or within a billionth of it: no room (#144's hostile case).
-    expect(informative(pair([P, P], [100, 100]), "old", nobody)).toBe(false);
-    expect(informative(pair([P, P], [100, 100 + 1e-8]), "old", nobody)).toBe(false);
-    // Its own answers apart by the room floor or more: its better one is there to find. Closer than
-    // that, the task is closed, as r6's g-2 won its tasks by rounding (`ROOM`).
-    expect(informative(pair([P, P], [100, 102]), "old", nobody)).toBe(true);
-    expect(informative(pair([P, P], [100, 101]), "old", nobody)).toBe(false);
-    // Alike, where an author's answer on record is better: a better harness can reach it, and wins
-    // the pairs against them (19 October). One that is the same, or worse, leaves none.
-    expect(informative(pair([P, P], [100, 100]), "old", nobody, new Map([["t", 99]]))).toBe(true);
-    expect(informative(pair([P, P], [100, 100]), "old", nobody, new Map([["t", 99.5]]))).toBe(false);
-    expect(informative(pair([P, P], [100, 100]), "old", nobody, new Map([["t", 100]]))).toBe(false);
-    expect(informative(pair([P, P], [100, 100]), "old", nobody, new Map([["t", 120]]))).toBe(false);
-    expect(informative(pair([P, P], [100, 100]), "old", nobody, new Map([["u", 90]]))).toBe(false);
-    // Valid answers with no measure, or a pair with no objective, have nothing to be bettered on.
-    expect(informative(pair([P, P], [null, null]), "old", nobody, new Map([["t", 90]]))).toBe(false);
-    const { objective: _none, ...unmeasured } = pair([P, P], [100, 100]);
-    expect(informative(unmeasured, "old", nobody, new Map([["t", 90]]))).toBe(false);
-    // One valid answer measured and one not: the measured one is compared, the other with nothing.
-    expect(informative(pair([P, P], [100, null]), "old", nobody, new Map([["t", 90]]))).toBe(true);
-    expect(informative(pair([P, P], [100, null]), "old", nobody, new Map([["t", 100]]))).toBe(false);
-    // Under a higher objective the author's must be the larger, at zero and below as above.
-    const higher = (measured: number[]) => ({
-      ...pair([P, P], measured),
-      objective: { direction: "higher" as const, old: measured, fresh: [null, null] },
-    });
-    expect(informative(higher([100, 100]), "old", nobody, new Map([["t", 120]]))).toBe(true);
-    expect(informative(higher([100, 100]), "old", nobody, new Map([["t", 90]]))).toBe(false);
-    expect(informative(higher([-10, -10]), "old", nobody, new Map([["t", 0]]))).toBe(true);
-    // The other side's valid answer better than one of its own: room. One it beat, or one the same
-    // as its own, leaves none (19 October).
-    const against = (fresh: number[]) => ({
-      task: "t",
-      old: [P, P],
-      fresh: [P, P],
-      objective: { direction: "lower" as const, old: [100, 100], fresh },
-    });
-    expect(informative(against([90, 100]), "old", nobody)).toBe(true);
-    expect(informative(against([99.9, 99.9]), "old", nobody)).toBe(false);
-    expect(informative(against([120, 120]), "old", nobody)).toBe(false);
-    expect(informative(against([100, 100]), "old", nobody)).toBe(false);
-  });
-
-  it("closes a task to the side whose answers nothing on record bettered, its wins by the objective among them", () => {
-    const pair = (old: number[], fresh: number[]) => ({
-      task: "t",
-      old: [P, P],
-      fresh: [P, P],
-      objective: { direction: "lower" as const, old, fresh },
-    });
-    // The shape of buffer-fresh-opus-forkedPR223_v0_5_4-r2 after its promotion: the promoted
-    // harness won every pairing on the objective at one value. Until 19 October the pairings told
-    // apart kept the task open to it, and it stood on its frontier at an answer nobody had bettered.
-    expect(closedTo(pair([12, 12], [10, 10]), "fresh")).toBe(true);
-    // The side that lost them has a better answer to reach.
-    expect(closedTo(pair([12, 12], [10, 10]), "old")).toBe(false);
-    // Its own answers apart: its better one is there to find every time.
-    expect(closedTo(pair([12, 12], [10, 11]), "fresh")).toBe(false);
-    // Apart by less than the room floor is closed: the next harness can only win it by rounding.
-    expect(closedTo(pair([12, 12], [10, 10.05]), "fresh")).toBe(true);
-    // One better answer of the other side's opens it, as many as there are.
-    expect(closedTo(pair([12, 9], [10, 10]), "fresh")).toBe(false);
-    // Within a billionth is alike.
-    expect(closedTo(pair([10 - 1e-9, 10 - 1e-9], [10, 10]), "fresh")).toBe(true);
-    // A failed solve of its own leaves it open whatever the objective says.
-    expect(closedTo({ ...pair([12, 12], [10, 10]), fresh: [P, F] }, "fresh")).toBe(false);
   });
 });
 
-describe("the pairs a comparison reads from the log", () => {
-  const at = "2026-10-09T00:00:00.000Z";
-  const event = (kind: EventKind, data: JsonObject): LogEvent => ({ at, kind, data });
-  const base: Condition = {
-    contract: "c1",
-    harness: "old",
-    task: "v1",
-    model: "claude/claude-sonnet-5-5",
-    effort: "high",
-    prices: { "claude/claude-sonnet-5-5": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
-    runtime: {},
-    compaction: "off",
-    solverTools: "old",
-    verifierTools: "t1",
-    sandbox: "p1",
-    limits: {
-      wallSeconds: 7_200,
-      turns: 60,
-      shellDefaultSeconds: 300,
-      shellMaxSeconds: 900,
-      concurrency: 4,
-    },
-    host: "h1",
-    side: "test",
-  };
-  const heldOut = (version: string) => [
-    event("task.proposed", { version }),
-    event("task.gate", { version, gate: 1, outcome: "passed" }),
-  ];
-  let solves = 0;
-  /** One solve of `condition`'s task, recorded as the runner records one, for comparison `c-1`
-   *  unless `spent` names another. */
-  const solve = (condition: Condition, outcome: "pass" | "fail" | "non-result", spent: JsonObject = {}) => {
-    solves += 1;
-    const [id, name] = [conditionId(condition), `s-${String(solves)}`];
-    const { comparison = "c-1", ...end } = spent;
-    return [
-      event("condition.recorded", { id, condition: requireJsonValue(condition) }),
-      event("solve.started", { solve: name, condition: id, task: "t", comparison }),
-      event("solve.finished", { solve: name, ending: { outcome }, ...end }),
-    ];
-  };
-  const fresh: Condition = { ...base, harness: "new", solverTools: "new" };
-  const sides = { old: "old", fresh: "new", setting: settingId(base), comparison: "c-1" };
-  const held = [...heldOut("v0"), ...heldOut("v1")];
+describe("a task's room", () => {
+  it("requires mixed validity or a valid answer on record that leaves room", () => {
+    const nobody = new Set<string>();
+    for (const [old, known, expected] of [
+      [[P, F], [], true],
+      [[F, F], [], false],
+      [[P, P], [], false],
+      [[P, P], ["t"], false],
+      [[F, F], ["t"], true],
+      [[F, F], ["u"], false],
+    ] as const) {
+      expect(informative({ task: "t", old, fresh: [F, F] }, "old", new Set(known))).toBe(expected);
+    }
+    for (const [old, expected] of [
+      [[100, 100], false],
+      [[100, 100 + 1e-8], false],
+      [[100, 102], true],
+      [[100, 101], false],
+    ] as const) {
+      expect(
+        informative(
+          { task: "t", old: [P, P], fresh: [F, F], objective: { ...lowerRule, old, fresh: [null, null] } },
+          "old",
+          nobody,
+        ),
+      ).toBe(expected);
+    }
+    // An author's proof can improve an existing measure, in either direction, including below zero.
+    for (const [direction, old, version, author, expected] of [
+      ["lower", [100, 100], "t", 99, true],
+      ["lower", [100, 100], "t", 99.5, false],
+      ["lower", [100, 100], "t", 100, false],
+      ["lower", [100, 100], "t", 120, false],
+      ["lower", [100, 100], "u", 90, false],
+      ["lower", [null, null], "t", 90, false],
+      ["lower", [100, null], "t", 90, true],
+      ["lower", [100, null], "t", 100, false],
+      ["higher", [100, 100], "t", 120, true],
+      ["higher", [100, 100], "t", 90, false],
+      ["higher", [-10, -10], "t", 0, true],
+    ] as const) {
+      expect(
+        informative(
+          { task: "t", old: [P, P], fresh: [F, F], objective: { direction, old, fresh: [null, null] } },
+          "old",
+          nobody,
+          new Map([[version, author]]),
+        ),
+      ).toBe(expected);
+    }
+    expect(informative({ task: "t", old: [P, P], fresh: [F, F] }, "old", nobody, new Map([["t", 90]]))).toBe(
+      false,
+    );
+    for (const [fresh, expected] of [
+      [[90, 100], true],
+      [[99.9, 99.9], false],
+      [[120, 120], false],
+      [[100, 100], false],
+    ] as const) {
+      expect(
+        informative(
+          { task: "t", old: [P, P], fresh: [P, P], objective: { ...lowerRule, old: [100, 100], fresh } },
+          "old",
+          nobody,
+        ),
+      ).toBe(expected);
+    }
+  });
 
+  it("closes only a side whose every answer is valid and nothing on record betters", () => {
+    for (const [old, fresh, side, expected] of [
+      [[12, 12], [10, 10], "fresh", true],
+      [[12, 12], [10, 10], "old", false],
+      [[12, 12], [10, 11], "fresh", false],
+      [[12, 12], [10, 10.05], "fresh", true],
+      [[12, 9], [10, 10], "fresh", false],
+      [[10 - 1e-9, 10 - 1e-9], [10, 10], "fresh", true],
+    ] as const) {
+      expect(
+        closedTo({ task: "t", old: [P, P], fresh: [P, P], objective: { ...lowerRule, old, fresh } }, side),
+      ).toBe(expected);
+    }
+    expect(
+      closedTo(
+        {
+          task: "t",
+          old: [P, P],
+          fresh: [P, F],
+          objective: { ...lowerRule, old: [12, 12], fresh: [10, 10] },
+        },
+        "fresh",
+      ),
+    ).toBe(false);
+  });
+});
+
+const heldOut = (version: string) => [
+  event("task.proposed", { version }),
+  event("task.gate", { version, gate: 1, outcome: "passed" }),
+];
+let solves = 0;
+/** One solve of `condition`'s task, recorded as the runner records one, for comparison `c-1`
+ *  unless `spent` names another. */
+const solve = (condition: Condition, outcome: "pass" | "fail" | "non-result", spent: JsonObject = {}) => {
+  solves += 1;
+  const [id, name] = [conditionId(condition), `s-${String(solves)}`];
+  const { comparison = "c-1", ...end } = spent;
+  return [
+    event("condition.recorded", { id, condition: requireJsonValue(condition) }),
+    event("solve.started", { solve: name, condition: id, task: "t", comparison }),
+    event("solve.finished", { solve: name, ending: { outcome }, ...end }),
+  ];
+};
+const fresh: Condition = { ...base, harness: "new", solverTools: "new" };
+const sides = { old: "old", fresh: "new", setting: settingId(base), comparison: "c-1" };
+const held = [...heldOut("v0"), ...heldOut("v1")];
+
+describe("the pairs a comparison reads from the log", () => {
   it("counts every pass and fail of a held-out task under either harness, cut to the solves a side it asked, with what each cost", () => {
     const log = [
       ...held,
@@ -634,20 +614,19 @@ describe("the pairs a comparison reads from the log", () => {
   });
 
   it("refuses a practice task, a refused one, one never proposed, and a harness set against itself", () => {
-    const released = [...held, event("task.state", { version: "v1", state: "released" })];
-    expect(() => pairsOf(released, ["v1"], sides, 1)).toThrow(
-      "task v1 is released; only a held-out task is scored",
-    );
-    const ungated = [event("task.proposed", { version: "v2" })];
-    expect(() => pairsOf(ungated, ["v2"], sides, 1)).toThrow(
-      "task v2 has not passed its gate; only a held-out task is scored",
-    );
-    expect(() => pairsOf(held, ["v9"], sides, 1)).toThrow("task v9 is not proposed");
-    expect(() => pairsOf(held, ["v1"], { ...sides, fresh: "old" }, 1)).toThrow(
-      "a comparison sets two harnesses against each other, and both sides are old",
-    );
+    for (const [events, version, harnesses, reason] of [
+      [[...held, event("task.state", { version: "v1", state: "released" })], "v1", sides, /v1.*released/],
+      [[...held, event("task.state", { version: "v1", state: "refused" })], "v1", sides, /v1.*refused/],
+      [[event("task.proposed", { version: "v2" })], "v2", sides, /v2.*gate/],
+      [held, "v9", sides, /v9.*not proposed/],
+      [held, "v1", { ...sides, fresh: "old" }, /both sides are old/],
+    ] as const) {
+      expect(() => pairsOf(events, [version], harnesses, 1)).toThrow(reason);
+    }
   });
+});
 
+describe("the identity of a counted solve", () => {
   it("counts no solve that is not the comparison's own: one that opened another harness than its condition names, another solver's, another comparison's or none's", () => {
     const read = (log: readonly LogEvent[], as: Partial<typeof sides> = {}) => {
       const paired = pairsOf([...held, ...log], ["v1"], { ...sides, ...as }, 1);
@@ -687,7 +666,9 @@ describe("the pairs a comparison reads from the log", () => {
     expect(read(others, { comparison: "c-0" })).toEqual({ old: [F], fresh: [P] });
     expect(read(others, { comparison: "c-2" })).toEqual({ short: ["v1"] });
   });
+});
 
+describe("the order of counted solves", () => {
   it("orders a side's solves by when they started, so the first taken are not the quick ones", () => {
     // Two solves in flight at once: the one started second ends first, with a valid answer, as a
     // quick solve under a budget does. The first started is still the first of its side.

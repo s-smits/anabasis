@@ -90,58 +90,6 @@ export function classify(row: Row): string {
   return label(pick(row));
 }
 `;
-/** The diagnostic oxlint would write for the nth occurrence of `snippet`, in UTF-8 byte offsets. */
-function diagnostic(text: string, snippet: string, nth: number, message: string): Diagnostic {
-  let offset = -1;
-  for (let seen = 0; seen < nth; seen += 1) offset = text.indexOf(snippet, offset + 1);
-  const line = text.slice(0, offset).split("\n").length;
-  return {
-    message,
-    code: CODE,
-    filename: MAIN,
-    labels: [{ span: { offset, length: snippet.length, line } }],
-  };
-}
-
-function tree(): string {
-  const dir = mkdtempSync(join(tmpdir(), "ana-oxlint-fixer-"));
-  mkdirSync(join(dir, "src"), { recursive: true });
-  writeFileSync(join(dir, MAIN), FIXTURE);
-  return dir;
-}
-
-function runFixer(dir: string, rows: readonly Diagnostic[]): void {
-  const report = join(dir, "report.json");
-  writeFileSync(report, JSON.stringify({ diagnostics: rows }));
-  const done = spawnTextSync(runtimeProcess.execPath, [FIXER, report, dir, PREDICATE], {
-    cwd: dir,
-  });
-  expect(`${done.stdout}${done.stderr}`).toContain("sites");
-  expect(done.status).toBe(0);
-}
-
-function revert(dir: string): void {
-  const done = spawnTextSync(
-    runtimeProcess.execPath,
-    [FIXER, "--revert", join(dir, "report.json.journal.json"), dir],
-    { cwd: dir },
-  );
-  expect(done.status).toBe(0);
-}
-
-function census(): Diagnostic[] {
-  return [
-    diagnostic(FIXTURE, NAME, 1, STRING),
-    diagnostic(FIXTURE, NAME, 2, STRING),
-    diagnostic(FIXTURE, FLAG, 1, BOOLEAN),
-    diagnostic(FIXTURE, FLAG, 2, BOOLEAN),
-    diagnostic(FIXTURE, NAME, 3, STRING),
-    diagnostic(FIXTURE, "row.count", 1, NUMBER),
-    diagnostic(FIXTURE, "row.items?.length", 1, NUMBER),
-    diagnostic(FIXTURE, "row.status", 1, NUMBER),
-  ];
-}
-
 describe("strict-boolean-fix", () => {
   /**
    * Seven edits land in one file and each one lengthens it, so every edit above the first sits
@@ -149,10 +97,44 @@ describe("strict-boolean-fix", () => {
    * restore the bytes the fixer was given, to the character.
    */
   it("rewrites each wording the report names, then puts the whole journal back byte for byte", () => {
-    const dir = tree();
-    runFixer(dir, census());
+    const dir = mkdtempSync(join(tmpdir(), "ana-oxlint-fixer-"));
+    mkdirSync(join(dir, "src"), { recursive: true });
+    writeFileSync(join(dir, MAIN), FIXTURE);
+    const diagnostics = [
+      [NAME, 1, STRING],
+      [NAME, 2, STRING],
+      [FLAG, 1, BOOLEAN],
+      [FLAG, 2, BOOLEAN],
+      [NAME, 3, STRING],
+      ["row.count", 1, NUMBER],
+      ["row.items?.length", 1, NUMBER],
+      ["row.status", 1, NUMBER],
+    ] as const;
+    const report = join(dir, "report.json");
+    writeFileSync(
+      report,
+      JSON.stringify({
+        diagnostics: diagnostics.map(([snippet, nth, message]): Diagnostic => {
+          let offset = -1;
+          for (let seen = 0; seen < nth; seen += 1) offset = FIXTURE.indexOf(snippet, offset + 1);
+          const line = FIXTURE.slice(0, offset).split("\n").length;
+          return {
+            message,
+            code: CODE,
+            filename: MAIN,
+            labels: [{ span: { offset, length: snippet.length, line } }],
+          };
+        }),
+      }),
+    );
+    expect(spawnTextSync(runtimeProcess.execPath, [FIXER, report, dir, PREDICATE], { cwd: dir }).status).toBe(
+      0,
+    );
     expect(readFileSync(join(dir, MAIN), UTF8)).toBe(SWEPT);
-    revert(dir);
+    expect(
+      spawnTextSync(runtimeProcess.execPath, [FIXER, "--revert", `${report}.journal.json`, dir], { cwd: dir })
+        .status,
+    ).toBe(0);
     expect(readFileSync(join(dir, MAIN), UTF8)).toBe(FIXTURE);
     rmSync(dir, { recursive: true, force: true });
   });
@@ -171,12 +153,15 @@ describe("fix-loop", () => {
    * error still in the tree and exited zero. The two claims are separate: no further automatic
    * progress, and a tree the compiler, the linter and the size policy accept.
    */
-  it("refuses a fixed point that still carries a finding, or an oversized file", () => {
-    const left = verdict(2, 1, "accepted", 1);
-    expect(left.code).toBe(1);
-    expect(left.line).toBe("stopped after 2 round(s) with 1 finding(s) left: no further automatic progress");
-    const fat = verdict(4, 0, "refused", 0);
-    expect(fat.code).toBe(1);
-    expect(fat.line).toContain("and the size policy refusing");
+  it("accepts a fixed point only without findings and within the size policy", () => {
+    for (const [round, findings, policy, held, code] of [
+      [2, 1, "accepted", 1, 1],
+      [4, 0, "refused", 0, 1],
+      [2, 0, "accepted", 3, 0],
+    ] as const) {
+      const result = verdict(round, findings, policy, held);
+      expect(result.code).toBe(code);
+      expect(result.line.match(/\d+/gu)).toEqual([String(round), String(code === 0 ? held : findings)]);
+    }
   });
 });

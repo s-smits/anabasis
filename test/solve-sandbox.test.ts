@@ -64,7 +64,7 @@ let seats = 0;
 async function inSeat(
   repoRoot: string,
   otherTrees: readonly string[],
-  fn: (wall: CommandWall, run: (command: string) => Promise<string>) => Promise<void>,
+  fn: (wall: CommandWall, run: (command: string, under?: CommandWall) => Promise<string>) => Promise<void>,
 ) {
   const dirs = solveDirs(`sandbox-${String(runtimeProcess.pid)}-${String(Date.now())}-${String(seats++)}`);
   const release = claimRoot(dirs.root);
@@ -78,9 +78,9 @@ async function inSeat(
       toolTree: null,
       limits: { shellDefaultSeconds: 30, shellMaxSeconds: 30 },
     };
-    const run = async (command: string) => {
+    const run = async (command: string, under = wall) => {
       let output = "";
-      await runWalled(wall, command, {
+      await runWalled(under, command, {
         onData: (data) => {
           output += data.toString("utf8");
         },
@@ -168,13 +168,8 @@ describe("the solve isolation's policy", () => {
     if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
     expect(base.allowedReadRoots).toContain(runtimeRoot);
     // `inSeat` builds its own base without the runtime, so this case builds the wall it runs under.
-    await inSeat(repoRoot, [], async (wall) => {
-      let output = "";
-      await runWalled({ ...wall, base }, `cat ${homeCanary} 2>&1; cat ${runtimeCanary} 2>&1`, {
-        onData: (data) => {
-          output += data.toString("utf8");
-        },
-      });
+    await inSeat(repoRoot, [], async (wall, run) => {
+      const output = await run(`cat ${homeCanary} 2>&1; cat ${runtimeCanary} 2>&1`, { ...wall, base });
       expect(output).not.toContain("HOME-CANARY");
       expect(output).toContain("RUNTIME-CANARY");
     });
@@ -195,14 +190,9 @@ describe("the solve isolation's policy", () => {
       // The empty manifest a campaign's folder holds (`openCampaign`).
       writeFileSync(join(campaign, "package.json"), "{}\n");
       writeFileSync(join(tree, "bin", "list.js"), 'console.log(require("node:path").basename("/a/ran"));\n');
-      await inSeat(repoRoot, [], async (wall) => {
-        let output = "";
+      await inSeat(repoRoot, [], async (wall, run) => {
         const command = `node ${join(tree, "bin", "list.js")} 2>&1; cat ${join(repoRoot, "package.json")} 2>&1`;
-        await runWalled({ ...wall, toolTree: tree }, command, {
-          onData: (data) => {
-            output += data.toString("utf8");
-          },
-        });
+        const output = await run(command, { ...wall, toolTree: tree });
         expect(output).toStartWith("ran\n");
         // Seatbelt refuses the read; Bubblewrap leaves the path out of the mount, so it is not there.
         expect(output).toContain(CLOSED);

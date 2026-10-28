@@ -10,7 +10,8 @@
  * already applied, so a single carrier would be lost exactly when it was the one dropped.
  */
 import { describe, expect, it } from "bun:test";
-import { expectedLines, fixedSource, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
+import { fixedSource } from "./helpers/oxlint-rule-fixture.ts";
+import { lintRules } from "./helpers/lint-rule.ts";
 
 const RULE = "require-captured-json-runtime";
 const INSIDE = "src/example.ts";
@@ -43,9 +44,12 @@ export function spelled(): string {
 
 describe("ana/require-captured-json-runtime", () => {
   it("reports each ambient global and nothing that merely names one", async () => {
-    const expected = expectedLines(CALLS);
-    expect(expected).toHaveLength(3);
-    expect(await reportedLines("ana", RULE, CALLS, INSIDE)).toStrictEqual(expected);
+    await lintRules("ana", [
+      [RULE, CALLS, 3, INSIDE],
+      [RULE, CALLS, 3, "vendor/pi-claude-bridge/example.ts"],
+      [RULE, CALLS, 0, "tools/example.ts"],
+      [RULE, CALLS, 0, "src/meta/json-runtime.ts"],
+    ]);
   });
 
   it("renames all three calls and imports them through one statement", async () => {

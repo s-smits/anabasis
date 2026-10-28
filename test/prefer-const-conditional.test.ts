@@ -61,5 +61,6 @@ describe("ana/prefer-const-conditional", () => {
     );
     expect(fixed).toContain("let width = 80;");
     expect(fixed).toContain("if (options.width !== undefined) width = options.width;");
+    expect(fixed).toContain(DECIDED.slice(DECIDED.indexOf("export function statusOf")));
   });
 });

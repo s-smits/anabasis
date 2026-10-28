@@ -63,5 +63,6 @@ describe("ana/no-renaming-temporary", () => {
     expect(fixed).toContain("// REPORT a dotted path under a second name");
     expect(fixed).toContain('return describe("rows");');
     expect(fixed).toContain("const rows = bundle.rows; // REPORT read, but the only other mention is prose");
+    expect(fixed).toContain(TEMPORARIES.slice(TEMPORARIES.indexOf("export function firstOf")));
   });
 });

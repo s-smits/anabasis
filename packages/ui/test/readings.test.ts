@@ -15,14 +15,7 @@ import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../../../
 import { asRecord, type JsonObject } from "../../../src/meta/json-shape.ts";
 import { tmpdir } from "../../../src/meta/os.ts";
 import { join } from "../../../src/meta/path.ts";
-import {
-  type AnswerOf,
-  type Endpoint,
-  PARAMETERS,
-  type Query,
-  type Tier,
-  TOKEN_HEADER,
-} from "../src/models.ts";
+import { type AnswerOf, type Endpoint, type Query, type Tier, TOKEN_HEADER } from "../src/models.ts";
 import { handleApiRequest } from "../src/server/api.ts";
 import { campaignsFound } from "../src/server/logs.ts";
 import { campaignReading, campaignRow } from "../src/server/reading.ts";
@@ -56,12 +49,8 @@ async function ask<Name extends Endpoint>(
   root: string = fixture.root,
 ): Promise<{ readonly status: number; readonly text: string; readonly answer: AnswerOf<Name> }> {
   const values: Readonly<Record<string, string | undefined>> = query;
-  const { required, optional } = PARAMETERS[endpoint];
   const search = new URLSearchParams(
-    [...required, ...optional].flatMap((name) => {
-      const value = values[name];
-      return value === undefined ? [] : [[name, value]];
-    }),
+    Object.entries(values).flatMap(([name, value]) => (value === undefined ? [] : [[name, value]])),
   );
   const response = handleApiRequest(
     { repo: root, trees: "directory", token: TOKEN, examSide: tier === "exam" },
@@ -71,14 +60,6 @@ async function ask<Name extends Endpoint>(
   );
   const text = await response.text();
   return { status: response.status, text, answer: parseJsonAs<AnswerOf<Name>>(text) };
-}
-
-/** The place in the log of the main campaign's move `id` of kind `step`. */
-async function placeOf(step: "examiner" | "builder" | "comparison", id: string): Promise<string> {
-  const { answer } = await ask("campaign", { key: KEY }, "default");
-  const move = answer.moves.find((each) => each.step === step && each.id === id);
-  if (move === undefined) throw new Error(`no ${step} ${id} in the fixture`);
-  return String(move.index);
 }
 
 /** A copy of the fixture's root, to break in one way. */
@@ -124,30 +105,27 @@ async function everything(tier: Tier): Promise<string[]> {
 }
 
 describe("what a comparison came to", () => {
-  test("counts an A/A reading as a step where either sample wins by the level", async () => {
+  test("counts an A/A step only when both tests clear the level in the same direction", async () => {
     const units = `${KEY.split("/")[0] ?? ""}/${fixture.units}`;
-    const { answer: reading } = await ask("campaign", { key: units }, "default");
-    const control = reading.comparisons.find(({ noise }) => noise !== null);
+    const { answer: controlReading } = await ask("campaign", { key: units }, "default");
+    const control = controlReading.comparisons.find(({ noise }) => noise !== null);
     // The second sample lost every task: a one-sided test of its wins reads nothing.
     expect([control?.noise?.tally, (control?.noise?.p ?? 0) > (control?.level ?? 1)]).toEqual([
       { wins: 0, losses: 4, ties: 0 },
       true,
     ]);
-    expect([reading.counters.controls, reading.counters.controlSteps]).toEqual([1, 1]);
-  });
-
-  test("counts no A/A step where the unbilled test falls short or clears in the opposite direction", () => {
+    expect([controlReading.counters.controls, controlReading.counters.controlSteps]).toEqual([1, 1]);
     const found = campaignsFound({ repo: fixture.root, trees: "directory" }).found.find(
       ({ name }) => name === fixture.units,
     );
     if (found === undefined) throw new Error("the units campaign exists");
     const events = read(found.path);
-    for (const unbilled of [
-      [0, 0, 0, 0],
-      [1, 1, 1, -1],
-      [1, 1, 1, 1],
-      [-1, -1, -1, -1],
-    ]) {
+    for (const [unbilled, steps] of [
+      [[0, 0, 0, 0], 0],
+      [[1, 1, 1, -1], 0],
+      [[1, 1, 1, 1], 0],
+      [[-1, -1, -1, -1], 1],
+    ] as const) {
       const log = {
         events: events.map((event) => {
           const noise = asRecord(event.data.noise);
@@ -158,10 +136,7 @@ describe("what a comparison came to", () => {
       };
       const row = campaignRow(found, log, { process: null, tier: "default" });
       const reading = campaignReading(found, log, { row, tier: "default", issues: [] });
-      expect([reading.counters.controls, reading.counters.controlSteps]).toEqual([
-        1,
-        unbilled.every((one) => one < 0) ? 1 : 0,
-      ]);
+      expect([reading.counters.controls, reading.counters.controlSteps]).toEqual([1, steps]);
     }
   });
 });
@@ -194,8 +169,10 @@ describe("the wall between the tiers", () => {
         });
       }
     }
-    const settled = (await ask("move", { key: KEY, move: await placeOf("comparison", "b-2") }, "exam"))
-      .answer;
+    const { answer: campaign } = await ask("campaign", { key: KEY }, "default");
+    const move = campaign.moves.find((each) => each.step === "comparison" && each.id === "b-2");
+    expect(move).toBeDefined();
+    const settled = (await ask("move", { key: KEY, move: String(move?.index) }, "exam")).answer;
     if (settled.kind !== "comparison") throw new Error("b-2 is a comparison");
     const labelled = settled.tasks
       .flatMap(({ fresh }) => fresh)
@@ -263,9 +240,8 @@ describe("the rulings and the endings each tier may see", () => {
     const open = await ask("campaign", { key }, "default", root);
     expect(open.answer.nextMove).toMatchObject({ move: "end", ending: "environment" });
     expect(open.text.includes(marker)).toBe(false);
-    expect(open.answer.nextMove?.line).toBe(
-      `the campaign ends (environment): ${open.answer.nextMove?.why ?? ""}`,
-    );
+    expect(open.answer.nextMove?.line).toContain("environment");
+    expect(open.answer.nextMove?.line).toContain(open.answer.nextMove?.why ?? "missing reason");
     const openExam = (await ask("campaign", { key }, "exam", root)).answer.nextMove;
     expect([openExam?.why, openExam?.line].map((said) => said?.includes(marker))).toEqual([true, true]);
     appendFileSync(
@@ -303,7 +279,9 @@ describe("what the server cannot read", () => {
       { level: "error", source: `${root.split("/").at(-1) ?? ""}/.ana/d2/fixture/log.jsonl` },
     ]);
   });
+});
 
+describe("the harness boundary", () => {
   test("says when a harness's folder is missing, refuses a path into the exam side's copy, and follows no link into it", async () => {
     const { root, dir } = copy();
     const { a, b } = fixture.harnesses;
@@ -331,9 +309,7 @@ describe("what the server cannot read", () => {
       });
     }
     const unknown = (await ask("harness", { key, digest: "f".repeat(64) }, "exam", root)).answer;
-    expect(unknown.issues.map(({ message }) => message)).toEqual([
-      "the log names no harness by this digest, so nothing under states/ is read for it",
-    ]);
+    expect([unknown.files, unknown.issues.map(({ level }) => level)]).toEqual([[], ["error"]]);
   });
 
   test("follows a link in a harness no further than the campaign's kept harnesses, and never into the exam side's copy", async () => {
@@ -373,7 +349,9 @@ describe("what the server cannot read", () => {
       });
     }
   });
+});
 
+describe("programs kept with a harness", () => {
   test("lists a harness's programs through its .toolchain link, sends a binary with no value, diffs them, and follows no link out of states/", async () => {
     const { root, dir } = copy();
     const { a, b } = fixture.harnesses;

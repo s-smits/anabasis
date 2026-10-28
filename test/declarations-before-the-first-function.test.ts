@@ -17,7 +17,8 @@
  * boundary: an enum is not erased, so a read of one below the code stays refused.
  */
 import { describe, expect, it } from "bun:test";
-import { expectedLines, fixedSource, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
+import { fixedSource } from "./helpers/oxlint-rule-fixture.ts";
+import { lintRules } from "./helpers/lint-rule.ts";
 
 const RULE = "declarations-before-the-first-function";
 const MIXED = `export function first(row: string): string {
@@ -50,9 +51,7 @@ export function second(one: Late, two: Alias): number {
 
 describe("ana/declarations-before-the-first-function", () => {
   it("moves what is erased or provably fixed, and leaves an effect, a global read and state alone", async () => {
-    const expected = expectedLines(MIXED);
-    expect(expected).toHaveLength(5);
-    expect(await reportedLines("ana", RULE, MIXED)).toStrictEqual(expected);
+    await lintRules("ana", [[RULE, MIXED, 5]]);
   });
 
   it("hoists to the front, carries the comment with the declaration, and settles the chain it unblocks", async () => {

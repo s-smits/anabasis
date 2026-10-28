@@ -29,23 +29,19 @@ describe("source policy", () => {
       ["src/a.ts", "export type Read = 1;\nexport type Never = 2;\nexport function twice() {}\n"],
       ["src/b.ts", "export function twice() {}\n"],
     ]);
-    const detail = unusedExports(declaring, new Map([["test/a.test.ts", "const x: Read = 1;\n"]]));
-    expect(detail.map((finding) => finding.detail)).toEqual([
-      "`Never` is exported and no other file names it; drop the `export`",
-    ]);
-    expect(detail[0]?.path).toBe("src/a.ts");
-    // `twice` is declared in two files, so a mention cannot be attributed to either and neither is
-    // reported. A name its own file reads is still unread from outside.
-    const own = unusedExports(
-      new Map([["src/a.ts", "export type Read = 1;\nconst y: Read = 1;\n"]]),
-      new Map(),
-    );
-    expect(own).toHaveLength(1);
-    // The search fails open: a name spelled in a comment or a string elsewhere counts as read.
-    const comment = unusedExports(declaring, new Map([["scripts/x.mjs", "// Never mind\n"]]));
-    expect(comment.map((finding) => finding.detail)).toEqual([
-      "`Read` is exported and no other file names it; drop the `export`",
-    ]);
+    for (const [readers, name] of [
+      [new Map([["test/a.test.ts", "const x: Read = 1;\n"]]), "Never"],
+      [new Map([["scripts/x.mjs", "// Never mind\n"]]), "Read"],
+    ] as const) {
+      const findings = unusedExports(declaring, readers);
+      expect(findings).toHaveLength(1);
+      expect(findings[0]).toMatchObject({ check: "unused-export", path: "src/a.ts" });
+      expect(findings[0]?.detail.match(/`([^`]+)`/u)?.[1]).toBe(name);
+    }
+    // A file's own read does not make its export a public interface.
+    expect(
+      unusedExports(new Map([["src/a.ts", "export type Read = 1;\nconst y: Read = 1;\n"]]), new Map()),
+    ).toHaveLength(1);
   });
 
   it("reads string literals and calls past comments and a regex holding `#`, and counts nonblank lines", () => {

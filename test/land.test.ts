@@ -177,23 +177,19 @@ beforeEach(() => {
 });
 
 describe("bun run land", () => {
-  it("gates every commit where it sits and the top's head whole, and writes nothing to GitHub unasked", () => {
+  it("proves each commit once, then sanitizes cached verdicts only when asked", () => {
     const result = runLand(["12"]);
     expect(result.status).toBe(0);
     expect(gatesRun(gateLog)).toEqual([`${lower} -`, `${lowerMore} test/owner.test.ts`, `${upper} suite`]);
     expect(result.stdout).toContain(`3 of 4, ${short(lowerDocs)}: documentation only.`);
     expect(result.stdout).toContain("--sanitize shows it on GitHub");
     expect(writes()).toEqual([]);
-  });
-
-  it("runs nothing again that passed on these exact bytes, and --sanitize posts each verdict and stops", () => {
-    runLand(["12"]);
     rmSync(gateLog, { force: true });
-    const result = runLand(["12", "--sanitize"]);
-    expect(result.status).toBe(0);
+    const sanitized = runLand(["12", "--sanitize"]);
+    expect(sanitized.status).toBe(0);
     expect(gatesRun(gateLog)).toEqual([]);
-    expect(result.stdout).toContain("passed earlier on these exact bytes");
-    expect(result.stdout).toContain("every commit passed; each shows ana/commit on GitHub.");
+    expect(sanitized.stdout).toContain("passed earlier on these exact bytes");
+    expect(sanitized.stdout).toContain("every commit passed; each shows ana/commit on GitHub.");
     expect(described("ana/commit")).toEqual([
       `${lower} its static steps and nearby tests passed on its own checkout`,
       `${lowerMore} its static steps and nearby tests passed on its own checkout`,

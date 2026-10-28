@@ -8,8 +8,8 @@
  * mentions a directive is not one. There is no fixer: the answer needs an id only a lint run
  * computes and a sentence only the author can check.
  */
-import { describe, expect, it } from "bun:test";
-import { expectedLines, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
+import { describe, it } from "bun:test";
+import { lintRules } from "./helpers/lint-rule.ts";
 
 const COMMENTS = `
 // oxlint-disable-next-line anti-slop/no-runtime-typeof // REPORT the next-line spelling
@@ -28,11 +28,7 @@ export const said = "// oxlint-disable-next-line ana/no-deep-nesting"; // ADMITT
 `.trimStart();
 
 describe("ana/no-inline-slop-answer", () => {
-  it("reports a disable naming an ana or anti-slop rule, and leaves core rules and prose alone", async () => {
-    const expected = expectedLines(COMMENTS);
-    expect(expected).toHaveLength(6);
-    expect(await reportedLines("ana", "no-inline-slop-answer", COMMENTS, "src/example.ts")).toStrictEqual(
-      expected,
-    );
+  it("reports only the marked lines in every fixture and scope", async () => {
+    await lintRules("ana", [["no-inline-slop-answer", COMMENTS, 6, "src/example.ts"]]);
   });
 });

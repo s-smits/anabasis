@@ -7,19 +7,8 @@
  * while reporting nothing, and each test places its fixture in the tree on purpose.
  */
 import { describe, expect, it } from "bun:test";
-import {
-  expectedLines,
-  fixedSource,
-  reportedLines,
-  reportedMessages,
-} from "./helpers/oxlint-rule-fixture.ts";
-
-/** Report the fixture's own `// REPORT` lines and nothing else, from a named place in the tree. */
-async function pins(rule: string, fixture: string, count: number, at = "src/run/fixture.ts"): Promise<void> {
-  const expected = expectedLines(fixture);
-  expect(expected).toHaveLength(count);
-  expect(await reportedLines("ana", rule, fixture, at)).toStrictEqual(expected);
-}
+import { fixedSource } from "./helpers/oxlint-rule-fixture.ts";
+import { lintRules } from "./helpers/lint-rule.ts";
 
 const ALIASES = `
 declare interface Metrics { tools: { byName: string[]; calls: number }; runs: number }
@@ -352,63 +341,32 @@ export function useOnline(): boolean {
 `.trimStart();
 
 describe("the simplify ownership catchers", () => {
-  it("reads a local alias that only restates one function's return type", async () => {
-    await pins("no-alias-restating-return", ALIASES, 1);
-  });
-
-  it("reads a file that spawns a child and kills it, and names the owner and its reader that are in the tree", async () => {
-    await pins("no-lifetime-outside-owner", LIFETIME, 1);
-    await pins("no-lifetime-outside-owner", CAPTURED, 1);
-    const [message] = await reportedMessages(
-      "ana",
-      "no-lifetime-outside-owner",
-      LIFETIME,
-      "src/run/fixture.ts",
-    );
-    expect(message).toContain("`stageCommandIsolation` (src/wall/isolation.ts)");
-    expect(message).toContain(
-      "`killProcessGroup` or `terminateAndReapProcessGroupId` (src/meta/subprocess.ts)",
-    );
-  });
-
-  it("says nothing about the launch owner, its reader, a bare spawn, a liveness probe, or a reaper of found pids", async () => {
-    expect(
-      await reportedLines("ana", "no-lifetime-outside-owner", LIFETIME, "src/wall/isolation.ts"),
-    ).toStrictEqual([]);
-    expect(
-      await reportedLines("ana", "no-lifetime-outside-owner", LIFETIME, "src/meta/subprocess.ts"),
-    ).toStrictEqual([]);
-    expect(
-      await reportedLines("ana", "no-lifetime-outside-owner", SPAWN_ONLY, "src/run/fixture.ts"),
-    ).toStrictEqual([]);
-    expect(
-      await reportedLines("ana", "no-lifetime-outside-owner", PROBE, "src/run/fixture.ts"),
-    ).toStrictEqual([]);
-    expect(
-      await reportedLines("ana", "no-lifetime-outside-owner", REAPER, "tools/runtime/fixture.ts"),
-    ).toStrictEqual([]);
-  });
-
-  it("reads every effect a component or a hook calls, and no store read through useSyncExternalStore", async () => {
-    await pins("no-react-effect", EFFECT_COMPONENT, 3, "packages/ui/src/views/panel.tsx");
-    await pins("no-react-effect", EFFECT_HOOKS, 1, "packages/ui/src/views/later.ts");
-  });
-
-  it("says nothing of the one owner of useMountEffect, or of an effect in a test", async () => {
-    expect(
-      await reportedLines("ana", "no-react-effect", EFFECT_HOOKS, "packages/ui/src/mount.ts"),
-    ).toStrictEqual([]);
-    expect(
-      await reportedLines("ana", "no-react-effect", EFFECT_COMPONENT, "packages/ui/test/panel.test.tsx"),
-    ).toStrictEqual([]);
-  });
-
-  it("reads one pyramid a function, counting a callback from zero", async () => {
-    await pins("no-deep-nesting", NESTING, 4);
-  });
-
-  it("reads a meaningful string spelled four times, skipping keys, words, flags and stamps", async () => {
-    await pins("no-repeated-string-literal", LITERALS, 1);
+  it("reports only marked file ownership, lifetime, effect, nesting and repetition cases", async () => {
+    const reports = await lintRules("ana", [
+      ["no-alias-restating-return", ALIASES, 1, "src/run/fixture.ts"],
+      ["no-lifetime-outside-owner", LIFETIME, 1, "src/run/fixture.ts"],
+      ["no-lifetime-outside-owner", CAPTURED, 1, "src/run/fixture.ts"],
+      ["no-lifetime-outside-owner", LIFETIME, 0, "src/wall/isolation.ts"],
+      ["no-lifetime-outside-owner", LIFETIME, 0, "src/meta/subprocess.ts"],
+      ["no-lifetime-outside-owner", SPAWN_ONLY, 0, "src/run/fixture.ts"],
+      ["no-lifetime-outside-owner", PROBE, 0, "src/run/fixture.ts"],
+      ["no-lifetime-outside-owner", REAPER, 0, "tools/runtime/fixture.ts"],
+      ["no-react-effect", EFFECT_COMPONENT, 3, "packages/ui/src/views/panel.tsx"],
+      ["no-react-effect", EFFECT_HOOKS, 1, "packages/ui/src/views/later.ts"],
+      ["no-react-effect", EFFECT_HOOKS, 0, "packages/ui/src/mount.ts"],
+      ["no-react-effect", EFFECT_COMPONENT, 0, "packages/ui/test/panel.test.tsx"],
+      ["no-deep-nesting", NESTING, 4, "src/run/fixture.ts"],
+      ["no-repeated-string-literal", LITERALS, 1, "src/run/fixture.ts"],
+    ]);
+    for (const owner of [
+      "stageCommandIsolation",
+      "src/wall/isolation.ts",
+      "killProcessGroup",
+      "terminateAndReapProcessGroupId",
+      "src/meta/subprocess.ts",
+    ]) {
+      expect(reports).toContain(owner);
+    }
   });
 
   it("names a suite's fixture once, after the imports, and reads every copy back from it", async () => {

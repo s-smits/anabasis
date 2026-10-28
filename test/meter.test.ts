@@ -26,6 +26,7 @@ const usage = (
 describe("the meter", () => {
   it("stores each billing class, and bills each at its own price beside metering all input at full", () => {
     const prices = freezePrices([opus]);
+    opus.cost.input = 500;
     const tokens = tokensOf([usage(1_000, 600_000, 0, 2_000), usage(500, 300_000, 98_500, 3_000, 90_000)]);
     expect(tokens).toEqual({
       input: 1_500,

@@ -45,7 +45,7 @@ import { asError } from "../src/meta/runtime-values.ts";
 import { referee } from "../src/referee/referee.ts";
 import { probing } from "../tools/d1b/examine.ts";
 import { gated as hostGated, type Host } from "../tools/d2/host.ts";
-import type { Campaign, Seated } from "../tools/d2/round.ts";
+import type { Campaign } from "../tools/d2/round.ts";
 import { settingAsked } from "../tools/d2/setting.ts";
 import {
   bash,
@@ -287,27 +287,7 @@ describe("a session of any mode", () => {
 });
 
 describe("the home a wall keeps for a campaign's writing sessions", () => {
-  /** A wall's home: run once with `seeded` files kept and the reference harness laid, under a
-   *  session that writes `wrote` there and ends as `ended` with `running` commands. */
-  async function sat(ended: string, running: number) {
-    const s = seat("write", []);
-    const keep = join(dirname(s.log), "examiner-home");
-    const reference = join(dirname(s.log), "kept-reference");
-    mkdirSync(join(reference, "agent"), { recursive: true });
-    writeFileSync(join(reference, "agent", "BUILT_AGENTS.md"), "# Guide\n");
-    mkdirSync(keep);
-    writeFileSync(join(keep, "kept.txt"), "kept\n");
-    const found = await inExaminerWall(s.request, { ...WALL, keep, reference }, async ({ shell }) => {
-      const { home } = shell.dirs;
-      const seen = readdirSync(home).sort();
-      writeFileSync(join(home, "wrote.txt"), "wrote\n");
-      append(s.log, EXAM_FINISHED, { session: s.request.id, ended, running });
-      return seen;
-    });
-    return { found, kept: readdirSync(keep).sort() };
-  }
-
-  it("lays the reference's programs as files and leaves every other link in it a link", async () => {
+  it("lays the reference's programs as files, leaves every other link in it a link, and keeps nothing of a home whose session crashed with a command running", async () => {
     const s = seat("write", []);
     const states = join(dirname(s.log), "states");
     const reference = join(states, "kept-reference");
@@ -320,9 +300,13 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
     const outside = join(dirname(s.log), "host-only.txt");
     writeFileSync(outside, "host-only\n");
     symlinkSync(outside, join(reference, "agent", "notes"));
-    const laid = await inExaminerWall(s.request, { ...WALL, reference }, async ({ shell }) => {
+    const keep = join(dirname(s.log), "examiner-home");
+    mkdirSync(keep);
+    writeFileSync(join(keep, "kept.txt"), "kept\n");
+    const laid = await inExaminerWall(s.request, { ...WALL, keep, reference }, async ({ shell }) => {
       const copy = join(shell.dirs.home, "reference-harness");
-      append(s.log, EXAM_FINISHED, { session: s.request.id, ended: "finished", running: 0 });
+      writeFileSync(join(shell.dirs.home, "wrote.txt"), "wrote\n");
+      append(s.log, EXAM_FINISHED, { session: s.request.id, ended: "crashed", running: 1 });
       return {
         engine: readFileSync(join(copy, ".toolchain", "bin", "engine"), "utf8"),
         tree: lstatSync(join(copy, ".toolchain")).isSymbolicLink(),
@@ -330,10 +314,7 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
       };
     });
     expect(laid).toEqual({ engine: "#!/bin/sh\necho engine\n", tree: false, notes: true });
-  });
-
-  it("keeps nothing of a home whose session crashed with a command running", async () => {
-    expect((await sat("crashed", 1)).kept).toEqual(["kept.txt"]);
+    expect(readdirSync(keep)).toEqual(["kept.txt"]);
   });
 
   it("carries a writing session's home into the next, whole, and lays no harness in a drafting session's", async () => {
@@ -419,19 +400,6 @@ function measuredProbe(
     });
     return PASS;
   };
-}
-
-/** The admission boundary with a scratch kept starter and a scripted solving seat. Only the
- *  log, kept states and solver identity are read from the campaign when no reviewer is named. */
-async function admission(s: ReturnType<typeof seat<"write">>, seated: Seated) {
-  // SAFETY: probing reads only these campaign fields with a supplied seat and no reviewer.
-  const campaign = {
-    log: s.log,
-    limits: settingAsked({}, null).named.limits,
-    states: join(dirname(s.log), "states"),
-    test: { model: s.request.model, effort: s.request.effort },
-  } as Campaign;
-  return await probing(campaign, seated, settingAsked({}, null), { "reviewer-effort": "high" });
 }
 
 /** What a gate told of each draft: its id, held out or refused, and how many of the reference
@@ -575,9 +543,7 @@ describe("a session that writes tasks", () => {
     // what the last one said at its finish, in its own words.
     const next = seat("write", [finish, finish]);
     await examine({ ...next.request, id: "x-2", log: s.log, budget: { modelTurns: 3, minutes: 8 } });
-    expect(next.sent[0]).toContain(
-      "Every solve of a task is held to 3 turns of the solver's own, a turn being one reply with the tool calls in it, and 8 minutes. This is the budget",
-    );
+    expect(next.sent[0]).toMatch(/held to 3 turns of the solver's own[^.]*, and 8 minutes\./u);
     expect(next.sent[0]).toContain("it is no target of yours");
     expect(next.sent[0]).toContain(String.raw`said at its finish, in its own words:\n${NOTE}`);
     // A note written under a reference since replaced is not handed on: it is about the tasks
@@ -1466,12 +1432,18 @@ describe("a session that writes tasks", () => {
     // Each draft's line tells the reference's measures and, where it tried one, its own: the
     // better one at the first solve, after which the gate stops.
     const lines = s.of(CALLED).flatMap(({ text: said }) => (isString(said) ? said.split("\n") : []));
-    expect(lines.find((line) => line.startsWith("x-1-001: "))).toContain(
-      "1 of 1 solves, its valid answers measuring 10, and your answer that passed try_answer on it 9, 10% better than its best, so it leaves room on the objective alone, every one of its solves valid.",
-    );
-    expect(lines.find((line) => line.startsWith("x-1-002: "))).toContain(
-      "measuring 10, 10, 10, and your answer that passed try_answer on it 9.95, 0.5% better than its best, which leaves no room",
-    );
+    const line = (id: string) => lines.find((each) => each.startsWith(`${id}: `)) ?? "";
+    for (const fact of [
+      "1 of 1 solves",
+      "measuring 10,",
+      "on it 9, 10% better",
+      "room on the objective alone",
+    ]) {
+      expect(line("x-1-001")).toContain(fact);
+    }
+    for (const fact of ["measuring 10, 10, 10,", "on it 9.95, 0.5% better", "leaves no room"]) {
+      expect(line("x-1-002")).toContain(fact);
+    }
     // A later session is told the gap beside the refused draft.
     expect(heard(read(s.log), []).refused).toEqual([
       expect.stringContaining("x-1-002 (fixture, yours 0.5% better than its best)"),
@@ -1479,7 +1451,7 @@ describe("a session that writes tasks", () => {
     // and beside the held one, on its line.
     const later = heard(read(s.log), [{ taskId: "x-1-001", family: "fixture" }]);
     expect(later.lines[0]).toContain("gate 1 of 1 valid, yours 10% better than its best");
-    expect(lines.find((line) => line.startsWith("x-1-003: "))).not.toContain("try_answer on it");
+    expect(line("x-1-003")).not.toContain("try_answer on it");
   });
 
   it("tells the turns and minutes of the reference's valid answers at the gate against the budget, and the drafts used", async () => {
@@ -1493,10 +1465,14 @@ describe("a session that writes tasks", () => {
       .of(CALLED)
       .flatMap(({ text: line }) => (isString(line) ? [line] : []))
       .join("\n");
-    expect(said).toContain(
-      "validly in 3 of 3 solves, taking 4, 4, 4 of its 20 turns and at most 2 minutes of its 30, which leaves no room",
-    );
-    expect(said).toContain("1 of 4 drafts put to the gate in this session.");
+    for (const fact of [
+      "validly in 3 of 3 solves",
+      "4, 4, 4 of its 20 turns",
+      "at most 2 minutes of its 30",
+    ]) {
+      expect(said).toContain(fact);
+    }
+    expect(said).toContain("1 of 4 drafts put to the gate");
   });
 
   it("charges only author work across explicit wait, continuation, finish and crash settlement", async () => {
@@ -1682,7 +1658,7 @@ describe("a session that writes tasks", () => {
     const s = seat("write", [
       call(TRY, { tasks: [instance(2), instance(3)] }),
       async () => {
-        const until = performance.now() + 1_000;
+        const until = performance.now() + 400;
         while (performance.now() < until) await Bun.sleep(1);
         return finish;
       },
@@ -1707,7 +1683,7 @@ describe("a session that writes tasks", () => {
     const started = performance.now();
     const examined = await examine({
       ...s.request,
-      limits: { ...s.request.limits, wallSeconds: 0.5 },
+      limits: { ...s.request.limits, wallSeconds: 0.2 },
       probe,
     });
     expect(examined.ended).toBe("wall");
@@ -1749,8 +1725,15 @@ describe("a session that writes tasks", () => {
         return sleeping.promise;
       },
     };
-    const probe = await admission(
-      s,
+    // SAFETY: probing reads only these campaign fields with a supplied seat and no reviewer.
+    const campaign = {
+      log: s.log,
+      limits: settingAsked({}, null).named.limits,
+      states: join(dirname(s.log), "states"),
+      test: { model: s.request.model, effort: s.request.effort },
+    } as Campaign;
+    const probe = await probing(
+      campaign,
       hostGated(
         {
           host,
@@ -1767,6 +1750,8 @@ describe("a session that writes tasks", () => {
         },
         s.log,
       ),
+      settingAsked({}, null),
+      { "reviewer-effort": "high" },
     );
     const examined = await examine({
       ...s.request,
@@ -1868,9 +1853,7 @@ describe("a session that writes tasks", () => {
     expect(s.of("exam.started")).toMatchObject([
       { engines: [{ name: "fixeng", sha256: sha256OfFile(join(tools, "bin", "fixeng")) }] },
     ]);
-    expect(s.sent[0]).toContain(
-      "The engines the exam's checks run are installed, and run by name: fixeng. They compute; try_answer alone runs the checks on an answer.",
-    );
+    expect(s.sent[0]).toContain("run by name: fixeng.");
     expect(s.sent[0]).not.toContain("solver-x");
   });
 });

@@ -53,8 +53,6 @@ const OPENED = "campaign.opened";
 /** The project every campaign here is opened under. */
 const PROJECT = "fixture-products";
 const MOVED = "campaign.move";
-/** What a scripted Examiner says as it finishes having written nothing. */
-const NOTHING = "Nothing to add.";
 // Fourteen held once two are released. At the default level, 0.02 since 12 October, a step takes
 // six tasks all won (`sweepOf`), and a paid comparison starts on two more (`comparisonFloor`):
 // eight still read one after a pass labelled wrong turns one win into a tie.
@@ -148,42 +146,55 @@ const of = (name: string, kind: string): JsonObject[] =>
     event.kind === kind ? [event.data] : [],
   );
 
+/** The scripted seats a campaign here solves under: the new harness answers each held-out task,
+ *  and the reference and the starter none. */
+const answering = (strayed: string[] = []) =>
+  scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, strayed);
+
+/** An Examiner that holds out nothing. Its finish is said twice: a first finish while the host has
+ *  not the tasks it needs is declined once. */
+const idle: NonNullable<Seats["examine"]> = (request) =>
+  examine({
+    ...request,
+    ...scripted([
+      ["finish", { note: "Nothing to add." }],
+      ["finish", { note: "Nothing to add." }],
+    ]),
+  });
+
+/** The host with a sleep that returns at once and records what it was asked to sleep. */
+const sleepless = (slept: number[]) => ({
+  ...HOST,
+  sleep: async (ms: number) => {
+    slept.push(ms);
+  },
+});
+
 /** The campaign command with the host making every move the table names: a campaign that opens
  *  now is led by its Builder unless its command says otherwise (`test/builder-led.test.ts`). */
 const harnessBuilder = (args: readonly string[], seats?: Seats) =>
   command([...args, "--no-builder-led"], seats);
 
 describe("a campaign run by its log", () => {
-  it("waits out a provider limit that names its reset, on record, and makes the move again", async () => {
+  it("waits out a provider limit that names its reset, on record, makes the move again, and lays the reference harness in the Examiner's home unless the campaign names the term off", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-limit`;
-    const flags = [...seeded(name), "--patience", "1", "--target", "20", "--practice", "3"];
-    // The first Examiner session is refused on a limit the provider says lifts in a minute.
+    const terms = ["--patience", "1", "--target", "20", "--practice", "3"];
+    const flags = [...seeded(name), ...terms];
+    // The first Examiner session is refused on a limit the provider says lifts in a minute. Each
+    // session asked records the reference harness its home's wall names.
     const reset = Math.floor(Date.now() / 1000) + 60;
-    let refused = false;
+    const homes: (string | undefined)[] = [];
     const seats: Seats = {
-      seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
-      examine: (request) => {
-        if (!refused) {
-          refused = true;
-          throw new Error(`Claude Code: usage limit (limit reached|${String(reset)})`);
-        }
-        return examine({
-          ...request,
-          ...scripted([
-            ["finish", { note: NOTHING }],
-            ["finish", { note: NOTHING }],
-          ]),
-        });
+      seated: answering(),
+      examine: (request, wall) => {
+        homes.push(wall?.reference);
+        if (homes.length === 1) throw new Error(`Claude Code: usage limit (limit reached|${String(reset)})`);
+        return idle(request, wall);
       },
     };
     const slept: number[] = [];
-    const host = {
-      ...HOST,
-      sleep: async (ms: number) => {
-        slept.push(ms);
-      },
-    };
+    const host = sleepless(slept);
     // The move the limit ended is one of the run's moves: of three, it was the third, and the run
     // stops at the move it would make again.
     expect(await harnessBuilder([...flags, "--moves", "3"], { ...seats, host })).toMatchObject({
@@ -206,19 +217,26 @@ describe("a campaign run by its log", () => {
       // The id the move that threw had is not used again.
       ["examine", "x-2", "tasks"],
     ]);
+    // On unless named since 19 October: the supply ablation of that day held 4 of 8 drafts with the
+    // copy and 1 of 8 blind. A campaign that names `off` keeps the ruling of 12 October.
+    const blind = [...seeded(`${STEM}-home-off`), ...terms, "--exam-reference", "off"];
+    expect(await harnessBuilder(blind, seats)).toMatchObject({ move: "end", ending: "exam" });
+    expect(homes).toHaveLength(3);
+    expect(homes.slice(0, 2).every((home) => home !== undefined && existsSync(join(home, "agent")))).toBe(
+      true,
+    );
+    expect(homes[2]).toBeUndefined();
   });
-
   it("ends on its environment where a move it began changed nothing, so the run is never left without an ending", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-empty-move`;
     // The move that takes the pack's tasks in writes nothing, as the M1's release did on 20 October,
     // where the draw held no task and the process exited with no ending on record.
     const released = spyOn(prepare, "prepareCommand").mockResolvedValue(0);
-    const seats: Seats = {
-      seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
-    };
     try {
-      await expect(harnessBuilder(seeded(name), seats)).rejects.toThrow("the move changed nothing");
+      await expect(harnessBuilder(seeded(name), { seated: answering() })).rejects.toThrow(
+        "the move changed nothing",
+      );
     } finally {
       released.mockRestore();
     }
@@ -230,17 +248,8 @@ describe("a campaign run by its log", () => {
     const name = `${STEM}-small`;
     // At the default level of 0.02 a step takes six tasks, all won, and a paid comparison eight.
     const model = "claude/claude-opus-5-5";
-    const paid = [
-      ...seeded(name),
-      "--budget",
-      "100",
-      "--builder",
-      model,
-      "--examiner",
-      model,
-      "--reviewer",
-      model,
-    ];
+    const seats = ["builder", "examiner", "reviewer"].flatMap((seat) => [`--${seat}`, model]);
+    const paid = [...seeded(name), "--budget", "100", ...seats];
     const [token, key] = [Bun.env.CLAUDE_CODE_OAUTH_TOKEN, Bun.env.OPENROUTER_API_KEY];
     Bun.env.CLAUDE_CODE_OAUTH_TOKEN = "a-login";
     delete Bun.env.OPENROUTER_API_KEY;
@@ -267,49 +276,11 @@ describe("a campaign run by its log", () => {
     }
   });
 
-  it("lays the reference harness in the Examiner's home where the campaign names no term, and none where it names off", async () => {
-    // On unless named since 19 October: the supply ablation of that day held 4 of 8 drafts with the
-    // copy and 1 of 8 blind. A campaign that names `off` keeps the ruling of 12 October.
-    const homes: (string | undefined)[] = [];
-    for (const term of [[], ["--exam-reference", "off"]]) {
-      layOutPack(root, bundle, TASKS, FIXTURE);
-      const name = `${STEM}-home-${term.length === 0 ? "unnamed" : "off"}`;
-      const seats: Seats = {
-        seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
-        examine: (request, wall) => {
-          homes.push(wall?.reference);
-          return examine({
-            ...request,
-            ...scripted([
-              ["finish", { note: NOTHING }],
-              ["finish", { note: NOTHING }],
-            ]),
-          });
-        },
-      };
-      const flags = [...seeded(name), "--patience", "1", "--target", "20", "--practice", "3", ...term];
-      expect(await harnessBuilder(flags, seats)).toMatchObject({ move: "end", ending: "exam" });
-    }
-    expect(homes).toHaveLength(2);
-    expect(homes[0] !== undefined && existsSync(join(homes[0], "agent"))).toBe(true);
-    expect(homes[1]).toBeUndefined();
-  });
-
   it("ends as killed, before its first move, each session a stopped run left open, and none that ended", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-cut`;
     const flags = [...seeded(name), "--patience", "1", "--target", "10", "--practice", "3"];
-    const seats: Seats = {
-      seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
-      examine: (request) =>
-        examine({
-          ...request,
-          ...scripted([
-            ["finish", { note: NOTHING }],
-            ["finish", { note: NOTHING }],
-          ]),
-        }),
-    };
+    const seats: Seats = { seated: answering(), examine: idle };
     await harnessBuilder([...flags, "--moves", "2"], seats);
     // A run stopped from outside mid-session: an Examiner's and a Builder's start, a turn each.
     const log = join(REPO, ".ana", "d2", name, LOG_FILE);
@@ -344,7 +315,7 @@ describe("a campaign run by its log", () => {
     // session (11 and 12 October).
     const flags = [...seeded(name), "--patience", "2", "--target", "8"];
     const strayed: string[] = [];
-    const solves = scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, strayed);
+    const solves = answering(strayed);
     // A Builder that finishes with the harness as it was, having practised on nothing: it had
     // nothing to work on, which counts nothing towards the stop and sends the table to the
     // Examiner for tasks that leave room. An Examiner that holds out none, as many times as the
@@ -354,15 +325,7 @@ describe("a campaign run by its log", () => {
         ...solves(campaign, given),
         builder: scripted([["finish", { note: "Nothing to change." }]]),
       }),
-      examine: (request) =>
-        examine({
-          ...request,
-          // Twice: a first finish while the host has not the tasks it needs is declined once.
-          ...scripted([
-            ["finish", { note: NOTHING }],
-            ["finish", { note: NOTHING }],
-          ]),
-        }),
+      examine: idle,
     };
     // The host is loaded throughout: a solve would wait, and a move waits for nothing.
     const looks: number[] = [];
@@ -437,23 +400,12 @@ describe("a campaign run by its log", () => {
     const name = `${STEM}-climb`;
     // The seed holds fourteen tasks to score once two are released, and a comparison scores eight:
     // the row that writes tasks up to the target is tested in `test/decide.test.ts`.
-    const flags = [
-      ...seeded(name),
-      "--practice",
-      "2",
-      "--solves",
-      "1",
-      "--sessions",
-      "1",
-      "--target",
-      "8",
-      "--patience",
-      "1",
-    ];
+    const terms = ["--practice", "2", "--solves", "1", "--sessions", "1", "--target", "8", "--patience", "1"];
+    const flags = [...seeded(name), ...terms];
     const strayed: string[] = [];
     // Under the new harness every held-out task is answered, and under the reference none.
     const seats: Seats = {
-      seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, strayed),
+      seated: answering(strayed),
       examine: (request) => {
         const tasks = [41, 42, 43, 44, 45, 46, 47, 48].map((base) => ({
           family: "fixture",
@@ -706,10 +658,7 @@ describe("a campaign run by its log", () => {
       "--solve no-such-task: the campaign holds no task by that id",
     );
     rmSync(trial, { recursive: true, force: true });
-    const solved = await closeCommand(
-      [...pack, "--to", trial, "--solve", "t-1"],
-      scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, strayed),
-    );
+    const solved = await closeCommand([...pack, "--to", trial, "--solve", "t-1"], answering(strayed));
     expect(solved).toMatchObject({ harness: handed.harness, solved: ["pass"] });
     const trialled = read(join(REPO, ".ana", "d2", name, "handover", LOG_FILE));
     expect(trialled.filter(({ kind }) => kind === "solve.finished")).toMatchObject([
@@ -719,101 +668,112 @@ describe("a campaign run by its log", () => {
     expect(strayed).toEqual([]);
   });
 
-  it.each([{ versions: [] }, { versions: ["v1", "v2"] }])(
-    "prices scored versions rather than requested tasks: %j",
-    async ({ versions }) => {
+  describe("the closing report, read from a log alone", () => {
+    /** The closing report's lines over a seeded campaign whose log holds `events` alone. */
+    const reportOf = async (name: string, events: readonly (readonly [LogEvent["kind"], JsonObject])[]) => {
       layOutPack(root, bundle, TASKS, FIXTURE);
-      const name = `${STEM}-scored-${String(versions.length)}`;
       const pack = seeded(name).slice(0, -4);
       const log = join(REPO, ".ana", "d2", name, LOG_FILE);
-      const session = "scored-comparison";
-      append(log, "comparison.started", { session, old: "a", fresh: "b", tasks: [] });
-      append(log, "solve.started", { solve: "scored-solve", comparison: session });
-      append(log, "solve.finished", { solve: "scored-solve", billed: 42.495011 });
-      append(log, REPORTED, {
-        session,
-        tasks: 10,
-        versions,
-        valid: null,
-        reading: "check-defects",
-        scored: { wins: 0, losses: 0, ties: 0 },
-      });
-      const to = join(root, `handover-scored-${String(versions.length)}`);
+      for (const [kind, data] of events) append(log, kind, data);
+      const before = read(log);
+      const to = join(root, `handover-${name}`);
       await closeCommand([...pack, "--to", to]);
-      const row = readFileSync(join(to, "REPORT.md"), "utf8")
-        .split("\n")
-        .find((line) => line.startsWith("- Comparisons:"));
-      expect(row).toContain("1 of the 1 comparison that began reported");
-      expect(row).not.toContain("$4.25");
-      if (versions.length === 0) {
-        // The stopped report's bill stays in the dollars billed, and no unit price or $0.00 stands here.
-        expect(row).toContain("no task scored");
-        expect(row).not.toMatch(/\$[\d.]+/);
-      } else {
-        expect(row).toContain("$21.25 a task scored (2)");
-      }
-    },
-  );
+      // Closing writes nothing to the log.
+      expect(read(log)).toEqual(before);
+      return readFileSync(join(to, "REPORT.md"), "utf8").split("\n");
+    };
+    /** A comparison's start, one solve of it billed, and its report. */
+    const compared = (session: string, solve: JsonObject, report: JsonObject) =>
+      [
+        ["comparison.started", { session, old: "a", fresh: "b", tasks: [] }],
+        ["solve.started", { solve: "s", comparison: session }],
+        ["solve.finished", { solve: "s", ...solve }],
+        [REPORTED, { session, ...report }],
+      ] as const;
 
-  it("reports backend cost coverage beside calculated spend", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
-    const name = `${STEM}-cache`;
-    const pack = seeded(name).slice(0, -4);
-    const log = join(REPO, ".ana", "d2", name, LOG_FILE);
-    append(log, "exam.started", { session: "cost-exam" });
-    append(log, "exam.finished", { session: "cost-exam", billed: 10 });
-    append(log, "build.started", { session: "cost-build" });
-    append(log, "build.finished", { session: "cost-build", billed: 20, reportedCost: 25 });
-    append(log, "build.started", { session: "cost-open" });
-    append(log, "build.turn", { session: "cost-open", turn: 1, usage: { cost: { total: 5 } } });
-    // A comparison's report sums its solves' endings, which the check reads instead.
-    append(log, "comparison.started", { session: "cost-g", old: "a", fresh: "b", tasks: [] });
-    append(log, "solve.started", { solve: "cost-solve", comparison: "cost-g" });
-    append(log, "solve.finished", { solve: "cost-solve", billed: 5, reportedCost: 6 });
-    append(log, REPORTED, {
-      session: "cost-g",
-      tasks: 1,
-      billed: 5,
-      reportedCost: 6,
-      reading: "no-step",
-      scored: { wins: 0, losses: 1, ties: 0 },
+    it.each([{ versions: [] }, { versions: ["v1", "v2"] }])(
+      "prices scored versions rather than requested tasks: %j",
+      async ({ versions }) => {
+        const lines = await reportOf(
+          `${STEM}-scored-${String(versions.length)}`,
+          compared(
+            "scored-comparison",
+            { billed: 42.495011 },
+            {
+              tasks: 10,
+              versions,
+              valid: null,
+              reading: "check-defects",
+              scored: { wins: 0, losses: 0, ties: 0 },
+            },
+          ),
+        );
+        const row = lines.find((line) => line.startsWith("- Comparisons:"));
+        expect(row).toContain("1 of the 1 comparison that began reported");
+        expect(row).not.toContain("$4.25");
+        if (versions.length === 0) {
+          // The stopped report's bill stays in the dollars billed, and no unit price or $0.00 stands here.
+          expect(row).toContain("no task scored");
+          expect(row).not.toMatch(/\$[\d.]+/);
+        } else {
+          expect(row).toContain("$21.25 a task scored (2)");
+        }
+      },
+    );
+
+    it("reports backend cost coverage beside calculated spend", async () => {
+      const lines = await reportOf(`${STEM}-cache`, [
+        ["exam.started", { session: "cost-exam" }],
+        ["exam.finished", { session: "cost-exam", billed: 10 }],
+        ["build.started", { session: "cost-build" }],
+        ["build.finished", { session: "cost-build", billed: 20, reportedCost: 25 }],
+        ["build.started", { session: "cost-open" }],
+        ["build.turn", { session: "cost-open", turn: 1, usage: { cost: { total: 5 } } }],
+        // A comparison's report sums its solves' endings, which the check reads instead.
+        ...compared(
+          "cost-g",
+          { billed: 5, reportedCost: 6 },
+          {
+            tasks: 1,
+            billed: 5,
+            reportedCost: 6,
+            reading: "no-step",
+            scored: { wins: 0, losses: 1, ties: 0 },
+          },
+        ),
+      ]);
+      const spend = lines.find((line) => line.includes("Calculated spend"));
+      // Calculated $40 in all; the backend's $31 stands beside the $25 of the two endings that have it.
+      expect(spend?.match(/\d+(?:\.\d+)?/g)?.slice(-6)).toEqual([
+        "40.00",
+        "31.00",
+        "2",
+        "3",
+        "25.00",
+        "24.0",
+      ]);
     });
-    const before = read(log);
-    const to = join(root, "handover-cache");
-    await closeCommand([...pack, "--to", to]);
-    const spend = readFileSync(join(to, "REPORT.md"), "utf8")
-      .split("\n")
-      .find((line) => line.includes("Calculated spend"));
-    // Calculated $40 in all; the backend's $31 stands beside the $25 of the two endings that have it.
-    expect(spend?.match(/\d+(?:\.\d+)?/g)?.slice(-6)).toEqual(["40.00", "31.00", "2", "3", "25.00", "24.0"]);
-    expect(read(log)).toEqual(before);
-  });
 
-  it("bills the drafting session and the solves each Examiner session asked for to the tasks it held out", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
-    const name = `${STEM}-drafting`;
-    const pack = seeded(name).slice(0, -4);
-    const log = join(REPO, ".ana", "d2", name, LOG_FILE);
-    append(log, "draft.started", { session: "d-x" });
-    append(log, "solve.started", { solve: "draft-solve", comparison: "d-x" });
-    append(log, "solve.finished", { solve: "draft-solve", billed: 1 });
-    append(log, "draft.finished", { session: "d-x", billed: 3 });
-    append(log, "exam.started", { session: "x-x" });
-    append(log, "solve.started", { solve: "gate-solve", comparison: "x-x" });
-    append(log, "solve.finished", { solve: "gate-solve", billed: 2 });
-    append(log, "referee.finding", { solve: "gate-solve", ruling: "earned", billed: 6 });
-    append(log, "exam.finished", { session: "x-x", billed: 4, held: ["a", "b"] });
-    const to = join(root, "handover-drafting");
-    await closeCommand([...pack, "--to", to]);
-    const row = readFileSync(join(to, "REPORT.md"), "utf8")
-      .split("\n")
-      .find((line) => line.startsWith("- The Examiner:"));
-    // $10 over two tasks, the Referee's $6 left to the Referee: until 27 October the drafting session's
-    // $4 read as nobody's here, and the ruling of the gate's solve as the Examiner's, $6.00 a task.
-    expect(row).toContain("$5.00 a task held out (2)");
-    // The whole-run reader bills the same work to the Examiner.
-    const events = read(log);
-    expect(admittedCost(indexOf(events), campaignOf(events).steps).join("")).toContain("5.00 a task");
+    it("bills the drafting session and the solves each Examiner session asked for to the tasks it held out", async () => {
+      const name = `${STEM}-drafting`;
+      const lines = await reportOf(name, [
+        ["draft.started", { session: "d-x" }],
+        ["solve.started", { solve: "draft-solve", comparison: "d-x" }],
+        ["solve.finished", { solve: "draft-solve", billed: 1 }],
+        ["draft.finished", { session: "d-x", billed: 3 }],
+        ["exam.started", { session: "x-x" }],
+        ["solve.started", { solve: "gate-solve", comparison: "x-x" }],
+        ["solve.finished", { solve: "gate-solve", billed: 2 }],
+        ["referee.finding", { solve: "gate-solve", ruling: "earned", billed: 6 }],
+        ["exam.finished", { session: "x-x", billed: 4, held: ["a", "b"] }],
+      ]);
+      // $10 over two tasks, the Referee's $6 left to the Referee: until 27 October the drafting session's
+      // $4 read as nobody's here, and the ruling of the gate's solve as the Examiner's, $6.00 a task.
+      expect(lines.find((line) => line.startsWith("- The Examiner:"))).toContain("$5.00 a task held out (2)");
+      // The whole-run reader bills the same work to the Examiner.
+      const events = read(join(REPO, ".ana", "d2", name, LOG_FILE));
+      expect(admittedCost(indexOf(events), campaignOf(events).steps).join("")).toContain("5.00 a task");
+    });
   });
 
   it("reads a word the operator left during a comparison at the next move, and changes nothing in the comparison", async () => {
@@ -824,11 +784,7 @@ describe("a campaign run by its log", () => {
     const terms = ["--practice", "2", "--solves", "1", "--sessions", "1", "--target", "8", "--patience", "2"];
     const flags = [...seeded(name), ...terms];
     const strayed: string[] = [];
-    const scriptedSolves = scriptedSeats(
-      { held: { old: "none", fresh: "pass" }, starter: "none" },
-      GRADED,
-      strayed,
-    );
+    const scriptedSolves = answering(strayed);
     // The operator leaves a stop while the first comparison's first solve runs.
     let left = false;
     const seats: Seats = {
@@ -898,10 +854,8 @@ describe("a campaign run by its log", () => {
   });
   it("measures a drafted exam's examples with the reference harness before the draft stands, as solves that are the Examiner's", async () => {
     const name = `${STEM}-measured`;
-    names.push(name);
+    seeded(name);
     const folder = join(REPO, ".ana", "d2", name);
-    mkdirSync(folder, { recursive: true });
-    writeFileSync(join(folder, "seed.json"), `${JSON.stringify({ from: null, events: 0 })}\n`);
     const strayed: string[] = [];
     const { exam, examples } = draftedOf(TASKS.slice(0, 3));
     const solving = scriptedSeats(
@@ -953,10 +907,8 @@ describe("a campaign run by its log", () => {
 
   it("opens from a prompt: drafts its exam, waits under --hitl for the operator's word on its checks, takes its launch as that word without it, and reaches a comparison with no file written by hand", async () => {
     const name = `${STEM}-prompt`;
-    names.push(name);
+    seeded(name);
     const folder = join(REPO, ".ana", "d2", name);
-    mkdirSync(folder, { recursive: true });
-    writeFileSync(join(folder, "seed.json"), `${JSON.stringify({ from: null, events: 0 })}\n`);
     const prompt = "Multiplying a base by six, as a fixture.";
     const solver = ["--solver", "claude/claude-opus-5-5"];
     const terms = ["--practice", "2", "--solves", "1", "--solve-minutes", "8", "--practice-solves", "5"];
@@ -990,23 +942,18 @@ describe("a campaign run by its log", () => {
     // A campaign that opens from a prompt has no folder before its opening, which makes one.
     const fresh = `${STEM}-fresh`;
     names.push(fresh);
+    const opening = ["--name", fresh, ...solver, "--prompt", prompt, "--patience", "1", "--moves", "0"];
+    // No opening is written without a project, nor under one that is no id.
+    await expect(harnessBuilder(opening, seats)).rejects.toThrow("name --project");
+    await expect(harnessBuilder([...opening, "--project", "a/b"], seats)).rejects.toThrow("--project a/b");
     expect(existsSync(join(REPO, ".ana", "d2", fresh))).toBe(false);
-    const opened = [
-      "--name",
-      fresh,
-      "--project",
-      PROJECT,
-      "--solver",
-      "claude/claude-opus-5-5",
-      "--prompt",
-      prompt,
-      "--patience",
-      "1",
-      "--moves",
-      "0",
-    ];
-    expect(await harnessBuilder(opened, seats)).toMatchObject({ move: "draft" });
+    expect(await harnessBuilder([...opening, "--project", PROJECT], seats)).toMatchObject({ move: "draft" });
     expect(of(fresh, OPENED)).toMatchObject([{ prompt, project: PROJECT }]);
+    // A later run that names another project is refused, and writes nothing.
+    await expect(
+      harnessBuilder(["--name", fresh, "--project", "elsewhere", "--moves", "0"], seats),
+    ).rejects.toThrow(`this campaign belongs to project ${PROJECT}, and keeps it`);
+    expect(of(fresh, OPENED)).toHaveLength(1);
 
     // The Examiner drafts, the host reads each draft without a model, and the second stands. Its
     // one check is its author's own computation, so under `--hitl` the campaign waits for the
@@ -1061,10 +1008,11 @@ describe("a campaign run by its log", () => {
     expect(next).toMatchObject({ move: "promote", code: "step" });
     expect(strayed).toEqual([]);
 
-    // A term named again is recorded again, and a flag that names another setting than the
-    // campaign's is refused with both.
+    // A term named again is recorded again, under the project a run that names none keeps, and a
+    // flag that names another setting than the campaign's is refused with both.
     await harnessBuilder(["--name", name, "--practice-solves", "3", "--moves", "0"], seats);
     expect(of(name, OPENED).at(-1)).toMatchObject({
+      project: PROJECT,
       terms: { practice: "2", solves: "1", "solve-minutes": "8", "practice-solves": "3" },
     });
     await expect(

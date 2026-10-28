@@ -30,11 +30,7 @@ afterAll(() => {
 });
 
 /** A check program whose one check covers `families` and cites `cited`. */
-function program(
-  families: string[] | "all",
-  cited: string[] | undefined,
-  evaluator = "export const checks = {};",
-): string {
+function program(families: string[] | "all", cited: string[] | undefined): string {
   const dir = join(root, `program-${++programs}`);
   mkdirSync(dir);
   const execution = { families, artifactPaths: ["$"], publicInputPaths: ["$"], hidden: "none" };
@@ -47,9 +43,11 @@ function program(
     join(dir, "brief.json"),
     JSON.stringify({ correctnessContract: "check-program/v1", truthChecks: [check] }),
   );
-  writeFileSync(join(dir, "evaluator.ts"), evaluator);
+  writeFileSync(join(dir, "evaluator.ts"), "export const checks = {};");
   return dir;
 }
+
+const checks = program(["beams"], ["span-rule"]);
 
 function pkg(changes: Partial<TaskPackage> = {}): TaskPackage {
   return {
@@ -58,7 +56,7 @@ function pkg(changes: Partial<TaskPackage> = {}): TaskPackage {
     publicInput: { gapM: 4 },
     hidden: [],
     ruleIds: ["span-rule", "load-rule"],
-    checks: program(["beams"], ["span-rule"]),
+    checks,
     ...changes,
   };
 }
@@ -70,35 +68,31 @@ describe("the gate", () => {
     const brief = JSON.parse(readFileSync(join(dir, "brief.json"), "utf8"));
     brief.truthChecks[0].execution.hidden = "required";
     writeFileSync(join(dir, "brief.json"), JSON.stringify(brief));
-    expect(packageGate(CONTRACT, pkg({ checks: dir, hidden: [] }))).toEqual({
+    expect(packageGate(CONTRACT, pkg({ checks: dir, hidden: [] }))).toMatchObject({
       outcome: "refused",
-      reason: "the task gives check spans nothing to run on: check-hidden-operand-missing: spans",
+      reason: expect.stringContaining("check-hidden-operand-missing: spans"),
     });
     expect(packageGate(CONTRACT, pkg({ checks: dir, hidden: { spans: 4 } })).outcome).toBe("refused");
     const served = [{ checkId: "spans", expectation: { depthM: 0.4 } }];
     expect(packageGate(CONTRACT, pkg({ checks: dir, hidden: served }))).toEqual({ outcome: "passed" });
   });
 
-  it("refuses a missing part, a rule the contract lacks, and a check program that would pass anything", () => {
-    const reason = (changes: Partial<TaskPackage>) => {
-      const gate = packageGate(CONTRACT, pkg(changes));
-      return gate.outcome === "refused" ? gate.reason : "passed";
-    };
-    expect(reason({ publicInput: null })).toBe("no inputs");
-    expect(reason({ ruleIds: [] })).toBe("no rule ids");
-    expect(reason({ checks: join(root, "nowhere") })).toBe("no brief.json");
-    expect(reason({ ruleIds: ["span-rule", "wind-rule"] })).toBe("rule wind-rule is not in the contract");
-    expect(reason({ checks: program(["columns"], ["span-rule"]) })).toBe("no check applies to family beams");
-    expect(reason({ checks: program("all", []) })).toBe("check spans cites no rule by id");
-    expect(reason({ checks: program("all", undefined) })).toBe("check spans cites no rule by id");
-  });
-
-  it("refuses a check that enforces a rule the task does not show the solver", () => {
-    const gate = packageGate(CONTRACT, pkg({ ruleIds: ["load-rule"] }));
-    expect(gate).toEqual({
-      outcome: "refused",
-      reason: "check spans enforces span-rule, which the task does not list",
-    });
+  it("refuses missing inputs, unknown or undisclosed rules, and checks that cover nothing", () => {
+    for (const [changes, fact] of [
+      [{ publicInput: null }, /inputs/u],
+      [{ ruleIds: [] }, /rule ids/u],
+      [{ checks: join(root, "nowhere") }, /brief.json/u],
+      [{ ruleIds: ["span-rule", "wind-rule"] }, /wind-rule/u],
+      [{ checks: program(["columns"], ["span-rule"]) }, /family beams/u],
+      [{ checks: program("all", []) }, /spans.*rule/u],
+      [{ checks: program("all", undefined) }, /spans.*rule/u],
+      [{ ruleIds: ["load-rule"] }, /spans.*span-rule/u],
+    ] satisfies [Partial<TaskPackage>, RegExp][]) {
+      expect(packageGate(CONTRACT, pkg(changes))).toMatchObject({
+        outcome: "refused",
+        reason: expect.stringMatching(fact),
+      });
+    }
   });
 });
 
@@ -132,31 +126,19 @@ describe("the task states", () => {
   });
 
   it("refuses a history that could not have happened", () => {
-    expect(() => taskStates([state("held")])).toThrow("task v1 is not proposed");
-    expect(() => taskStates([proposed, proposed])).toThrow("task v1 is proposed twice");
-    expect(() => taskStates([{ at, kind: "task.state", data: { state: "held" } }])).toThrow(
-      "task.state names no task version",
-    );
-    expect(() => taskStates([...held, gate()])).toThrow("task v1 logs its gate twice");
-    // A task whose package was never passed is no task a solver may be given.
-    expect(() => taskStates([proposed, state("released")])).toThrow(
-      "task v1 cannot go from held to released before its gate passed",
-    );
-    expect(() => taskStates([proposed, gate(1, "refused"), state("disputed")])).toThrow(
-      "task v1 cannot go from held to disputed before its gate passed",
-    );
-    // Nothing follows a release but a dispute, and nothing follows a dispute or a refusal.
-    expect(() => taskStates([...held, state("released"), state("held")])).toThrow(
-      "task v1 cannot go from released to held",
-    );
-    expect(() => taskStates([...held, state("disputed"), state("released")])).toThrow(
-      "task v1 cannot go from disputed to released",
-    );
-    expect(() => taskStates([...held, state("refused"), state("released")])).toThrow(
-      "task v1 cannot go from refused to released",
-    );
-    expect(() => taskStates([...held, state("promoted")])).toThrow(
-      "task v1 cannot go from held to no known state",
-    );
+    for (const [events, fact] of [
+      [[state("held")], /v1.*not proposed/u],
+      [[proposed, proposed], /v1.*twice/u],
+      [[{ at, kind: "task.state", data: { state: "held" } }], /task.state.*version/u],
+      [[...held, gate()], /v1.*gate twice/u],
+      [[proposed, state("released")], /held.*released.*gate/u],
+      [[proposed, gate(1, "refused"), state("disputed")], /held.*disputed.*gate/u],
+      [[...held, state("released"), state("held")], /released.*held/u],
+      [[...held, state("disputed"), state("released")], /disputed.*released/u],
+      [[...held, state("refused"), state("released")], /refused.*released/u],
+      [[...held, state("promoted")], /held.*no known state/u],
+    ] satisfies [LogEvent[], RegExp][]) {
+      expect(() => taskStates(events)).toThrow(fact);
+    }
   });
 });

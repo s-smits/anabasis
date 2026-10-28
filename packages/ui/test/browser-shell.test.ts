@@ -64,7 +64,7 @@ async function expectOneEntry(page: Page): Promise<void> {
 const nav = (page: Page) => page.getByRole("navigation", { name: PANES });
 
 describe("the Project picker", () => {
-  test("opens on the current project, marks it, and closes on Escape with focus on its button", async () => {
+  test("marks the current project, opens and closes by pointer or keyboard, and adds no history for reselecting it", async () => {
     const page = await opened(`campaign=${keys.fixture}`, { level: 1, name: "fixture" });
     const picker = page.page.getByRole("combobox", { name: PROJECT });
     await expect(picker).toHaveAccessibleName("Project vowel-counts");
@@ -78,40 +78,6 @@ describe("the Project picker", () => {
     await page.page.keyboard.press("Escape");
     await expect(list).toHaveCount(0);
     await expect(picker).toBeFocused();
-    await close(page);
-  });
-
-  test("walks its options with the arrows, Home and End, and picks with Enter", async () => {
-    const page = await opened(`campaign=${keys.fixture}&pane=moves`, { level: 2, name: "Moves" });
-    const picker = page.page.getByRole("combobox", { name: PROJECT });
-    await picker.focus();
-    await page.page.keyboard.press("ArrowDown");
-    await expect(picker).toHaveAttribute("aria-activedescendant", /option-0$/u);
-    await page.page.keyboard.press("ArrowDown");
-    await expect(picker).toHaveAttribute("aria-activedescendant", /option-1$/u);
-    await page.page.keyboard.press("ArrowDown");
-    await expect(picker).toHaveAttribute("aria-activedescendant", /option-0$/u);
-    await page.page.keyboard.press("End");
-    await expect(picker).toHaveAttribute("aria-activedescendant", /option-1$/u);
-    await page.page.keyboard.press("Home");
-    await expect(picker).toHaveAttribute("aria-activedescendant", /option-0$/u);
-    await page.page.keyboard.press("ArrowUp");
-    await page.page.keyboard.press("Enter");
-    await expect(page.page.getByRole("listbox")).toHaveCount(0);
-    await expect(picker).toBeFocused();
-    await expect(picker).toHaveAccessibleName("Project unit-conversion");
-    // A new project chooses its newest campaign and keeps the pane.
-    await expect.poll(() => routeParameters(page.page)).toEqual({ campaign: keys.units, pane: "moves" });
-    await expect(page.page.getByRole("combobox", { name: CAMPAIGN })).toHaveAccessibleName(
-      /^Campaign units/u,
-    );
-    await close(page);
-  });
-
-  test("opens with Enter or Space and closes on Tab or a click outside", async () => {
-    const page = await opened(`campaign=${keys.fixture}`, { level: 1, name: "fixture" });
-    const picker = page.page.getByRole("combobox", { name: PROJECT });
-    const list = page.page.getByRole("listbox");
     await picker.focus();
     await page.page.keyboard.press("Enter");
     await expect(list).toBeVisible();
@@ -126,6 +92,37 @@ describe("the Project picker", () => {
     await picker.click();
     await expect(list).toHaveCount(0);
     expect(routeParameters(page.page)).toEqual({ campaign: keys.fixture });
+    await picker.click();
+    await page.page.getByRole("option", { name: "vowel-counts" }).click();
+    expect(routeParameters(page.page)).toEqual({ campaign: keys.fixture });
+    await expectOneEntry(page.page);
+    await close(page);
+  });
+
+  test("walks its options with the arrows, Home and End, and picks with Enter", async () => {
+    const page = await opened(`campaign=${keys.fixture}&pane=moves`, { level: 2, name: "Moves" });
+    const picker = page.page.getByRole("combobox", { name: PROJECT });
+    await picker.focus();
+    for (const [key, at] of [
+      ["ArrowDown", 0],
+      ["ArrowDown", 1],
+      ["ArrowDown", 0],
+      ["End", 1],
+      ["Home", 0],
+    ] as const) {
+      await page.page.keyboard.press(key);
+      await expect(picker).toHaveAttribute("aria-activedescendant", new RegExp(`option-${String(at)}$`, "u"));
+    }
+    await page.page.keyboard.press("ArrowUp");
+    await page.page.keyboard.press("Enter");
+    await expect(page.page.getByRole("listbox")).toHaveCount(0);
+    await expect(picker).toBeFocused();
+    await expect(picker).toHaveAccessibleName("Project unit-conversion");
+    // A new project chooses its newest campaign and keeps the pane.
+    await expect.poll(() => routeParameters(page.page)).toEqual({ campaign: keys.units, pane: "moves" });
+    await expect(page.page.getByRole("combobox", { name: CAMPAIGN })).toHaveAccessibleName(
+      /^Campaign units/u,
+    );
     await close(page);
   });
 
@@ -239,11 +236,16 @@ describe("the collapse", () => {
 });
 
 describe("the address", () => {
-  test("names the newest campaign when it names none, without a new history entry", async () => {
-    const page = await opened("", { level: 1, name: "fixture" });
-    await expect.poll(() => routeParameters(page.page)).toEqual({ campaign: keys.fixture });
-    await expectOneEntry(page.page);
-    await close(page);
+  test("normalises an empty address or a project into its newest campaign without adding history", async () => {
+    for (const [query, name, key] of [
+      ["", "fixture", keys.fixture],
+      ["project=unit-conversion", "units", keys.units],
+    ] as const) {
+      const page = await opened(query, { level: 1, name });
+      await expect.poll(() => routeParameters(page.page)).toEqual({ campaign: key });
+      await expectOneEntry(page.page);
+      await close(page);
+    }
   });
 
   test("opens each pane it names", async () => {
@@ -256,13 +258,6 @@ describe("the address", () => {
       await expect(nav(page.page).getByRole("button", { name })).toHaveAttribute("aria-current", "page");
       await close(page);
     }
-  });
-
-  test("chooses a project's newest campaign from a project alone, and writes the campaign instead", async () => {
-    const page = await opened("project=unit-conversion", { level: 1, name: "units" });
-    await expect.poll(() => routeParameters(page.page)).toEqual({ campaign: keys.units });
-    await expectOneEntry(page.page);
-    await close(page);
   });
 
   test("drops a pane, a move, an event or a parameter it does not read, without a new history entry", async () => {

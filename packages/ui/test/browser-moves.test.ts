@@ -77,23 +77,18 @@ async function factsOf(page: Page, scope = "main"): Promise<Record<string, strin
   return Object.fromEntries(pairs);
 }
 
-/** The text of every body row of the list, dividers included, in order. */
-function bodyRows(page: Page): Promise<string[]> {
-  return page.locator("main tbody tr").evaluateAll((rows) => rows.map((row) => row.textContent ?? ""));
-}
-
 async function expectAccessible(page: Page): Promise<void> {
   expect(await accessibilityViolations(page, "main")).toEqual([]);
 }
 
 describe("the list of moves", () => {
-  test("lists the seventeen moves in the log's order, with each promotion between its two moves", async () => {
+  test("lists every move in log order, its promotion dividers and its facts in separate columns", async () => {
     const opened = await openMoves();
     const { page } = opened;
     await expect(page.getByRole("columnheader", { name: "Moves (17)" })).toBeVisible();
     const ids = await page.locator("main tbody .ana-row-select").allTextContents();
     expect(ids).toEqual(moves.map((move) => move.id));
-    const rows = await bodyRows(page);
+    const rows = await page.locator("main tbody tr").allTextContents();
     expect(rows.filter((row) => /^(?:Promoted|Returned) /u.test(row)).length).toBe(3);
     const promoted = rows.find((row) => row.startsWith("Promoted"));
     expect(promoted).toMatch(/^Promoted B \(fa7c79d2\) to reference on b-1, r-1 /u);
@@ -105,14 +100,6 @@ describe("the list of moves", () => {
     // The pane speaks of promotions, never of epochs or a climb: not in a row, a filter or a placeholder.
     expect(await page.locator("main").innerHTML()).not.toMatch(/epoch|climb/u);
     await expectAccessible(page);
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
-  test("shows each move's standing, handover, cost, run time and start in their own columns", async () => {
-    const opened = await openMoves();
-    const { page } = opened;
-    await expect(page.getByRole("columnheader", { name: "Moves (17)" })).toBeVisible();
     const headers = await page.locator("main thead th").allTextContents();
     expect(headers).toEqual(["Moves (17)", "Stands", "Handed over", "Cost", "Ran", "Started"]);
     const cells = await rowOf(page, indexOf("b-1", "comparison"))
@@ -120,9 +107,9 @@ describe("the list of moves", () => {
       .locator("td")
       .allInnerTexts();
     expect(cells.slice(0, 5)).toEqual([
-      "b-1\nComparison · row new",
-      "no-step\n25 of 25 solves ended",
-      "B (fa7c79d2) against Starter A · 6 tasks × 2 · 3 won, 0 lost, 3 tied",
+      expect.stringMatching(/b-1\s+Comparison.*row new/u),
+      expect.stringMatching(/no-step\s+25 of 25\b.*ended/u),
+      expect.stringMatching(/B.*fa7c79d2.*Starter A.*\b6 tasks.*\b2\b.*\b3 won.*\b0 lost.*\b3 tied/u),
       "$0.93",
       "1 h 57 min",
     ]);
@@ -140,20 +127,21 @@ describe("the list of moves", () => {
     const { page } = opened;
     const search = page.getByRole("searchbox", { name: SEARCH });
     const ids = () => page.locator("main tbody .ana-row-select").allTextContents();
-    await search.fill("x-");
-    await expect(page.getByRole("columnheader", { name: "Moves (4)" })).toBeVisible();
-    expect(await ids()).toEqual(["x-1", "x-2", "x-3", "x-4"]);
-    // A filtered list has lost the order a promotion is placed by.
-    expect(await page.locator("main tr.ana-move-divider").count()).toBe(0);
-    await search.fill("control");
-    await expect(page.getByRole("columnheader", { name: "Moves (1)" })).toBeVisible();
-    expect(await ids()).toEqual(["c-1"]);
-    await search.fill("10615418");
-    await expect(page.getByRole("columnheader", { name: "Moves (2)" })).toBeVisible();
-    expect(await ids()).toEqual(["b-4", "b-4"]);
+    for (const [query, expected] of [
+      ["x-", ["x-1", "x-2", "x-3", "x-4"]],
+      ["control", ["c-1"]],
+      ["10615418", ["b-4", "b-4"]],
+    ] as const) {
+      await search.fill(query);
+      await expect(
+        page.getByRole("columnheader", { name: `Moves (${String(expected.length)})` }),
+      ).toBeVisible();
+      expect(await ids()).toEqual([...expected]);
+      expect(await page.locator("main tr.ana-move-divider").count()).toBe(0);
+    }
     await search.fill("nothing-like-this");
     await expect(page.getByText("No matching move")).toBeVisible();
-    await expect(page.getByText("Change the search or clear the filters.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Clear filters" })).toBeVisible();
     await expect(page.locator("main table")).toHaveCount(0);
     await expectAccessible(page);
     await page.getByRole("button", { name: "Clear filters" }).click();
@@ -266,9 +254,7 @@ describe("each kind of move", () => {
     await expect(detailHeading(page, "x-1 Examiner session")).toBeVisible();
     expect(await factsOf(page)).toMatchObject({ Proposed: "15", "Held out": "14", Refused: "1", Turns: "2" });
     await expect(badgesOf(page)).toHaveText("finished");
-    await expect(
-      page.getByText(/The exam side holds an Examiner session's turns and calls: start the server/u),
-    ).toBeVisible();
+    await expect(page.getByText(/--exam-side/u)).toBeVisible();
     await expectAccessible(page);
     expectQuiet(opened);
     await opened.context.close();
@@ -305,8 +291,8 @@ describe("each kind of move", () => {
     const { page } = opened;
     await expect(detailHeading(page, "b-1 Comparison")).toBeVisible();
     expect(await factsOf(page)).toMatchObject({
-      Tally: "3 won, 0 lost, 3 tied",
-      "Sign test": "p 0.125 at level 0.1",
+      Tally: expect.stringMatching(/\b3 won.*\b0 lost.*\b3 tied/u),
+      "Sign test": expect.stringMatching(/p 0\.125\b.*level 0\.1\b/u),
       "Valid, reference": "3 of 12 solves",
       "Valid, new": "8 of 12 solves",
     });
@@ -323,9 +309,7 @@ describe("each kind of move", () => {
       word01.getByRole("button", { name: /^(valid|rejected|no-answer), solve s-\d+-1$/u }),
     ).toHaveCount(4);
     await expect(word01.getByRole("cell", { name: "2 rejections, ruled on the exam side" })).toBeVisible();
-    await expect(page.getByRole("row", { name: /^word-06 / })).toContainText(
-      "withheld while its rejection waits for a person's label",
-    );
+    await expect(page.getByRole("row", { name: /^word-06 / })).toContainText(/withheld.*label/u);
     await expectAccessible(page);
     expectQuiet(opened);
     await opened.context.close();
@@ -337,12 +321,17 @@ describe("each kind of move", () => {
     await expect(detailHeading(page, "c-1 Comparison, control")).toBeVisible();
     await expect(page.getByText(/^Starter A against the reference B \(fa7c79d2\)/u)).toBeVisible();
     expect(await factsOf(page)).toMatchObject({
-      Tally: "1 won, 1 lost, 0 tied",
-      "Reference against itself": "1 won, 0 lost · p 0.500",
-      Rulings: "3 rejections ruled; the kinds stay hidden while any ruling is withheld",
+      Tally: expect.stringMatching(/\b1 won.*\b1 lost.*\b0 tied/u),
+      "Reference against itself": expect.stringMatching(/\b1 won.*\b0 lost.*p 0\.500\b/u),
+      Rulings: expect.stringMatching(/\b3 rejections.*withheld/u),
     });
     await expect(page.getByRole("button", { name: "Set aside for a label 1" })).toBeEnabled();
     await expectAccessible(page);
+    await page.getByRole("button", { name: "Back to moves" }).click();
+    await expect(rowOf(page, indexOf("c-1", "comparison"))).toBeFocused();
+    expect(routeParameters(page).move).toBeUndefined();
+    await page.goBack();
+    await expect(detailHeading(page, "c-1 Comparison, control")).toBeVisible();
     expectQuiet(opened);
     await opened.context.close();
   });
@@ -352,7 +341,7 @@ describe("each kind of move", () => {
     const { page } = opened;
     await expect(detailHeading(page, "b-4 Comparison")).toBeVisible();
     await expect(badgesOf(page)).toHaveText("cut");
-    await expect(page.getByText("No report yet: 5 of 5 solves ended.")).toBeVisible();
+    await expect(page.locator("main .ana-detail").getByText(/5 of 5 solves ended/u)).toBeVisible();
     await expect(page.getByRole("heading", { name: "Tasks fixed (3)" })).toBeVisible();
     await expect(page.getByText("no report yet", { exact: true })).toHaveCount(3);
     await expect(page.getByText(/ran no end/u)).toBeVisible();

@@ -8,19 +8,15 @@ import {
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 import { bwrapOpenReadArgs, linuxBwrapSupport, nodeRuntimeReadRoots } from "../src/wall/linux-bwrap.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 
-const dirs: string[] = [];
-afterEach(() => {
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
-});
+const root = mkdtempSync(join(tmpdir(), "ana-linux-bwrap-reuse-"));
+afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 describe("Linux bubblewrap support", () => {
   it("runs the canary once per unchanged bwrap binary and again after the binary is rewritten", () => {
-    const root = mkdtempSync(join(tmpdir(), "ana-linux-bwrap-reuse-"));
-    dirs.push(root);
     const bwrap = join(root, "bwrap");
     const log = join(root, "canary.log");
     const script = (marker: string) => `#!/bin/sh\n# ${marker}\necho ran >> "${log}"\nexit 0\n`;

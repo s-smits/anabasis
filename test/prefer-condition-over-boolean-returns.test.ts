@@ -66,7 +66,12 @@ describe("ana/prefer-condition-over-boolean-returns", () => {
     );
     expect(fixed).toContain("  return row.pass; // REPORT an else keeps both returns inside the if\n}");
     expect(fixed).not.toContain("return true;\n  return false;");
-    expect(fixed).toContain("if (row.pass) return false;");
-    expect(fixed).toContain("if (row.pass) return row.seen;");
+    expect(fixed).toContain(
+      BRANCHES.slice(
+        BRANCHES.indexOf("export function stacked"),
+        BRANCHES.indexOf("export function verified"),
+      ),
+    );
+    expect(fixed).toContain(BRANCHES.slice(BRANCHES.indexOf("export function missing")));
   });
 });

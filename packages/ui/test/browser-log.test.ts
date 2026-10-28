@@ -173,49 +173,44 @@ describe("the Log pane", () => {
     expectQuiet(opened);
     await opened.context.close();
   });
+});
 
-  test("in the default tier, an event says quietly that the exam side holds it", async () => {
-    const opened = await openLog(served);
-    const { page } = opened;
-    await row(page, 5).click();
-    expect(routeParameters(page)).toMatchObject({ event: "5" });
-    const inspector = page.getByRole("complementary", { name: "Event" });
-    await expect(inspector).toBeVisible();
-    await expect(inspector).toContainText("#5");
-    await expect(inspector).toContainText(
-      "The exam side holds a raw event's payload: start the server with --exam-side to open it.",
-    );
-    await expect(inspector).not.toContainText("draft.finished");
-    await expect(row(page, 5)).toHaveAttribute("aria-current", "true");
-    expect(await accessibilityViolations(page)).toEqual([]);
-    await inspector.getByRole("button", { name: "Close" }).click();
-    await expect(inspector).toHaveCount(0);
-    expect(routeParameters(page).event).toBeUndefined();
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
-  test("on the exam side opens an event's payload in the inspector and closes it", async () => {
-    const opened = await openLog(exam);
-    const { page } = opened;
-    await row(page, 5).click();
-    expect(routeParameters(page)).toMatchObject({ event: "5" });
-    const inspector = page.getByRole("complementary", { name: "Event" });
-    await expect(inspector).toContainText("draft.finished");
-    await expect(row(page, 5)).toHaveAttribute("aria-current", "true");
-    await row(page, 6).click();
-    expect(routeParameters(page)).toMatchObject({ event: "6" });
-    await expect(inspector).toContainText("#6");
-    await expect(row(page, 5)).not.toHaveAttribute("aria-current");
-    expect(await accessibilityViolations(page)).toEqual([]);
-    await inspector.getByRole("button", { name: "Close" }).click();
-    await expect(inspector).toHaveCount(0);
-    expect(routeParameters(page).event).toBeUndefined();
-    // The browser's back reopens the event the close left.
-    await page.goBack();
-    await expect(page.getByRole("complementary", { name: "Event" })).toContainText("#6");
-    expectQuiet(opened);
-    await opened.context.close();
+describe("the event inspector and keyboard", () => {
+  test("opens and closes event inspectors in both tiers, exposing payloads only on the exam side", async () => {
+    for (const [server, examSide] of [
+      [served, false],
+      [exam, true],
+    ] as const) {
+      const opened = await openLog(server);
+      const { page } = opened;
+      expect(await accessibilityViolations(page, "main")).toEqual([]);
+      await row(page, 5).click();
+      expect(routeParameters(page)).toMatchObject({ event: "5" });
+      const inspector = page.getByRole("complementary", { name: "Event" });
+      await expect(inspector).toBeVisible();
+      await expect(inspector).toContainText("#5");
+      await expect(row(page, 5)).toHaveAttribute("aria-current", "true");
+      if (examSide) {
+        await expect(inspector).toContainText("draft.finished");
+        await row(page, 6).click();
+        expect(routeParameters(page)).toMatchObject({ event: "6" });
+        await expect(inspector).toContainText("#6");
+        await expect(row(page, 5)).not.toHaveAttribute("aria-current");
+      } else {
+        await expect(inspector).toContainText("--exam-side");
+        await expect(inspector).not.toContainText("draft.finished");
+      }
+      expect(await accessibilityViolations(page)).toEqual([]);
+      await inspector.getByRole("button", { name: "Close" }).click();
+      await expect(inspector).toHaveCount(0);
+      expect(routeParameters(page).event).toBeUndefined();
+      if (examSide) {
+        await page.goBack();
+        await expect(inspector).toContainText("#6");
+      }
+      expectQuiet(opened);
+      await opened.context.close();
+    }
   });
 
   test("reaches the filters and the rows by keyboard, each with a visible ring", async () => {
@@ -239,16 +234,9 @@ describe("the Log pane", () => {
     expectQuiet(opened);
     await opened.context.close();
   });
+});
 
-  test("breaks no accessibility rule, on either tier", async () => {
-    for (const server of [served, exam]) {
-      const opened = await openLog(server);
-      expect(await accessibilityViolations(opened.page, "main")).toEqual([]);
-      expectQuiet(opened);
-      await opened.context.close();
-    }
-  });
-
+describe("the Log pane's layout and wall", () => {
   test("scrolls the table inside its card on a phone, never the page", async () => {
     const opened = await openLog(served, "", PHONE);
     const { page } = opened;
@@ -313,9 +301,9 @@ describe("the Log pane between two pages", () => {
     const { page } = opened;
     await expect(counter(page)).toHaveText("1–100 of 1495 events");
     const held = Promise.withResolvers<void>();
-    // A server that takes a second and a half, or until the test has seen what it waits for.
+    // Release only after the delayed loading state has been observed.
     await page.route(/\/api\/log\?/u, async (route) => {
-      await Promise.race([held.promise, Bun.sleep(1_500)]);
+      await held.promise;
       await route.continue();
     });
     await arm(page);

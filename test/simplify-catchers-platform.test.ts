@@ -9,15 +9,8 @@
  * would not actually reach, which is where a confident rewrite goes wrong, and which now refuses
  * a push rather than printing a line somebody skips.
  */
-import { describe, expect, it } from "bun:test";
-import { expectedLines, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
-
-/** Report the fixture's own `// REPORT` lines and nothing else. */
-async function pins(rule: string, fixture: string, count: number): Promise<void> {
-  const expected = expectedLines(fixture);
-  expect(expected).toHaveLength(count);
-  expect(await reportedLines("ana", rule, fixture)).toStrictEqual(expected);
-}
+import { describe, it } from "bun:test";
+import { lintRules } from "./helpers/lint-rule.ts";
 
 const SLEEPS = `
 export function pause(ms: number) {
@@ -95,20 +88,13 @@ export function joined() {
 }
 `.trimStart();
 
-describe("the simplify platform catchers", () => {
-  it("reads a promise wrapped around a timer", async () => {
-    await pins("no-hand-rolled-sleep", SLEEPS, 1);
-  });
-
-  it("reads a key walk that looks the value back up", async () => {
-    await pins("prefer-entries-over-keys-lookup", KEYS, 1);
-  });
-
-  it("reads a map whose result is filtered for presence", async () => {
-    await pins("prefer-flatmap-over-map-filter", WALKS, 1);
-  });
-
-  it("reads a reduce whose whole step is written inline as a block", async () => {
-    await pins("no-inline-block-reducer", FOLDS, 1);
+describe("the simplify catchers platform", () => {
+  it("reports only the marked lines in every fixture and scope", async () => {
+    await lintRules("ana", [
+      ["no-hand-rolled-sleep", SLEEPS, 1],
+      ["prefer-entries-over-keys-lookup", KEYS, 1],
+      ["prefer-flatmap-over-map-filter", WALKS, 1],
+      ["no-inline-block-reducer", FOLDS, 1],
+    ]);
   });
 });

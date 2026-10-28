@@ -13,6 +13,7 @@ import {
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
+import { processTable } from "../src/meta/process-table.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { claimRoot, endHolders, releaseRoot } from "../src/wall/seat-root.ts";
 
@@ -22,6 +23,12 @@ const onDarwin = runtimeProcess.platform === "darwin";
 function unclaimed(): { parent: string; root: string } {
   const parent = mkdtempSync(join(tmpdir(), "ana-seat-root-"));
   return { parent, root: join(parent, "solve") };
+}
+
+async function ready(check: () => boolean): Promise<void> {
+  const deadline = performance.now() + 1000;
+  while (!check() && performance.now() < deadline) await Bun.sleep(10);
+  expect(check()).toBe(true);
 }
 
 describe("a seat's root", () => {
@@ -59,7 +66,7 @@ describe("a seat's root", () => {
       const left = loop(home);
       const spared = loop(beside);
       try {
-        await Bun.sleep(300);
+        await ready(() => existsSync(join(home, "cache", "f")) && existsSync(join(beside, "cache", "f")));
         await releaseRoot(root);
         await left.exited;
         expect(left.signalCode).toBe("SIGKILL");
@@ -88,7 +95,9 @@ describe("a seat's root", () => {
         stdio: ["ignore", "ignore", "ignore"],
       });
       try {
-        await Bun.sleep(300);
+        await ready(() =>
+          processTable().some((row) => row.pid === left.pid && row.program === realpathSync(program)),
+        );
         endHolders(root);
         await left.exited;
         expect(left.signalCode).toBe("SIGKILL");
@@ -122,7 +131,7 @@ describe("a seat's root", () => {
         stdio: ["ignore", "ignore", "ignore"],
       });
       try {
-        await Bun.sleep(300);
+        await ready(() => alive() > 0);
         expect(alive()).toBeGreaterThan(0);
         await releaseRoot(root);
         await loop.exited;
@@ -130,6 +139,7 @@ describe("a seat's root", () => {
         expect(alive()).toBe(0);
       } finally {
         loop.kill("SIGKILL");
+        await releaseRoot(root);
         Bun.spawnSync(["/usr/bin/pkill", "-9", "-f", `sleep ${marker}`]);
         rmSync(parent, { recursive: true, force: true });
       }

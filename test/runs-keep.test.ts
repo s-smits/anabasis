@@ -28,20 +28,18 @@ const waited = (hours: number, reason = "provider") =>
   event("campaign.waited", { for: reason, until: new Date(NOW + hours * HOUR).toISOString() });
 
 describe("the turn a keeper takes", () => {
-  it("moves a live run off a provider wait longer than its bound, and watches it otherwise", () => {
-    expect(turnOf([waited(2)], "open", NOW, HOUR)).toBe("move");
-    // A wait of the bound exactly is waited out where the run is.
-    expect(turnOf([waited(1)], "open", NOW, HOUR)).toBe("watch");
-    expect(turnOf([waited(5, "load")], "open", NOW, HOUR)).toBe("watch");
-    expect(turnOf([waited(5), event("build.started", { session: "b-1" })], "open", NOW, HOUR)).toBe("watch");
-    expect(turnOf([], "open", NOW, HOUR)).toBe("watch");
-  });
-
-  it("goes on with a run that died or ended on its environment, and leaves one that ended on its own terms", () => {
-    expect(turnOf([event("build.started", { session: "b-1" })], "closed", NOW, HOUR)).toBe("continue");
-    expect(turnOf([event("campaign.ended", { ending: "environment" })], "closed", NOW, HOUR)).toBe(
-      "continue",
-    );
+  it("moves only a live provider wait past its bound and continues only interrupted runs", () => {
+    for (const [events, status, expected] of [
+      [[waited(2)], "open", "move"],
+      [[waited(1)], "open", "watch"],
+      [[waited(5, "load")], "open", "watch"],
+      [[waited(5), event("build.started", { session: "b-1" })], "open", "watch"],
+      [[], "open", "watch"],
+      [[event("build.started", { session: "b-1" })], "closed", "continue"],
+      [[event("campaign.ended", { ending: "environment" })], "closed", "continue"],
+    ] as const) {
+      expect(turnOf(events, status, NOW, HOUR)).toBe(expected);
+    }
     for (const ending of ["budget", "stop", "operator", "finished", "no-room"]) {
       expect(turnOf([event("campaign.ended", { ending })], "closed", NOW, HOUR)).toBe("done");
     }
@@ -82,7 +80,7 @@ describe("the login a run moves to", () => {
   it("takes the allowed logins with room, the week that resets soonest first", () => {
     const readings = [
       read("2", 40, 10, "allowed", 30),
-      read("3", 50, 10, "allowed_warning", 5),
+      read("3", 95, 10, "allowed_warning", 5),
       read("4", 10),
     ];
     expect(room(readings, ["2", "3", "4"], new Set())).toEqual(["4", "3", "2"]);
@@ -121,42 +119,35 @@ describe("the login a run moves to", () => {
 describe("the login a run goes on with", () => {
   const claude = ["--builder", OPUS, "--solver", OPUS];
   const codex = ["--builder", "openai-codex/gpt-6.1-sol", "--solver", "openai-codex/gpt-6.1-sol"];
-  const goOn = (
-    turn: Turn,
-    current: string | undefined,
-    flags: readonly string[],
-    {
-      spent = [],
-      roomy = [],
-      full = [],
-    }: { spent?: readonly string[]; roomy?: readonly string[]; full?: readonly string[] } = {},
-  ) =>
-    nextLogin(
-      turn,
-      { current, spent: new Set(spent), billed: billsLogin([], flags) },
-      async () => roomy,
-      async (login) => full.includes(login),
-    );
-
-  it("goes on with a dead run on its own login, and a Claude run waits once its own is spent and none has room", async () => {
-    expect(await goOn("continue", "2", claude)).toBe("2");
-    expect(await goOn("continue", "2", claude, { spent: ["2"] })).toBeNull();
-    expect(await goOn("move", "2", claude, { spent: ["2"], roomy: ["1"] })).toBe("1");
-    expect(await goOn("continue", undefined, claude)).toBeNull();
-  });
-
-  it("goes on with a dead run on another login once its own carries its cap of live runs elsewhere", async () => {
-    expect(await goOn("continue", "2", claude, { full: ["2"], roomy: ["3"] })).toBe("3");
-    expect(await goOn("continue", "2", claude, { full: ["2"] })).toBeNull();
-    expect(await goOn("continue", "2", claude, { full: ["3"], roomy: ["3"] })).toBe("2");
-  });
-
-  it("goes on with a run no Claude seat runs in without a login, so no login counts it", async () => {
-    // On 20 October two Codex runs kept on the M1 would have waited for one of three spent logins
-    // none of their seats used; a login named for them counted against its most.
-    expect(await goOn("continue", undefined, codex)).toBeUndefined();
-    expect(await goOn("continue", "2", codex, { spent: ["2"] })).toBeUndefined();
-    expect(await goOn("move", "2", codex, { roomy: ["1"] })).toBeUndefined();
+  it("keeps a Claude run on its own available login or takes room, and gives GPT none", async () => {
+    const cases: [
+      Turn,
+      string | undefined,
+      readonly string[],
+      { spent?: string[]; roomy?: string[]; full?: string[] },
+      string | null | undefined,
+    ][] = [
+      ["continue", "2", claude, {}, "2"],
+      ["continue", "2", claude, { spent: ["2"] }, null],
+      ["move", "2", claude, { spent: ["2"], roomy: ["1"] }, "1"],
+      ["continue", undefined, claude, {}, null],
+      ["continue", "2", claude, { full: ["2"], roomy: ["3"] }, "3"],
+      ["continue", "2", claude, { full: ["2"] }, null],
+      ["continue", "2", claude, { full: ["3"], roomy: ["3"] }, "2"],
+      ["continue", undefined, codex, {}, undefined],
+      ["continue", "2", codex, { spent: ["2"] }, undefined],
+      ["move", "2", codex, { roomy: ["1"] }, undefined],
+    ];
+    for (const [turn, current, flags, { spent = [], roomy = [], full = [] }, expected] of cases) {
+      expect(
+        await nextLogin(
+          turn,
+          { current, spent: new Set(spent), billed: billsLogin([], flags) },
+          async () => roomy,
+          async (login) => full.includes(login),
+        ),
+      ).toBe(expected);
+    }
   });
 
   it("bills a login for a Claude seat its flags name, by a space or a sign, or its record names", () => {
@@ -183,6 +174,7 @@ describe("the login a run goes on with", () => {
     const preset = seats(OPUS, "hhhh");
     const overrides = seats("openai-codex/gpt-6.1-sol", "hhhh");
     expect(billsLogin([], [...preset, ...overrides])).toBe(false);
+    expect(billsLogin([], [...overrides, "--prompt", "claude/a domain"])).toBe(false);
     const opening = event("campaign.opened", {
       seats: Object.fromEntries(
         ["builder", "examiner", "reviewer"].map((name) => [name, { model: OPUS, effort: "high" }]),

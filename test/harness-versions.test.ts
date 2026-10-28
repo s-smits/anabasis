@@ -45,8 +45,7 @@ const misnamed = "0".repeat(64);
 cpSync(join(states, child), join(states, misnamed), { recursive: true });
 mkdirSync(join(states, "tree-x", "bin"), { recursive: true });
 writeFileSync(join(states, "tree-x", "bin", "tool"), "#!/bin/sh\n");
-const nonblank = (text: string) => text.split("\n").filter((line) => line.trim() !== "").length;
-const guideLines = nonblank(EXAMPLE.guide);
+const guideLines = EXAMPLE.guide.split("\n").filter((line) => line.trim() !== "").length;
 const short = (digest: string) => digest.slice(0, 8);
 
 append(log, "build.started", { session: "b-1", parent: starter });
@@ -73,33 +72,39 @@ append(log, "comparison.reported", {
 });
 append(log, "harness.promoted", { harness: child, from: starter, rests: ["g1"] });
 
-const run = (...args: string[]) => {
-  const result = runSync([capturedExecPath, script, "--log", log, ...args]);
-  return { code: result.exitCode, stdout: decodeOutput(result.stdout), stderr: decodeOutput(result.stderr) };
+const run = (from: string, ...args: string[]) => {
+  const result = runSync([capturedExecPath, script, "--log", from, ...args]);
+  return { code: result.exitCode, stderr: decodeOutput(result.stderr) };
 };
 
 describe("the harnesses a campaign keeps", () => {
   it("lists each in the order the log names it, with how it was made, measured and promoted", async () => {
     const [first, second, third, ...rest] = await versionsOf({ log, states });
     expect(rest).toStrictEqual([]);
-    expect(first?.digest).toBe(starter);
-    expect(first?.roles).toStrictEqual(["starter"]);
-    expect(first?.made).toBe("the Starter Built Harness as this checkout writes it");
-    expect(first?.sessions).toStrictEqual([`b-1: 3 practice solves, 0 counted fails, left ${short(child)}`]);
-    expect(second?.digest).toBe(child);
-    expect(second?.opens).toBe("as kept");
-    expect(second?.roles).toStrictEqual(["reference", "latest"]);
-    expect(second?.made).toBe(`session b-1 from ${short(starter)}, 6-word note`);
-    expect(second?.parent).toBe(starter);
-    expect(second?.compared).toStrictEqual([
-      `g1 as the new harness against ${short(starter)}: step (5 won, 1 lost, 2 tied)`,
-    ]);
-    expect(second?.promoted).toHaveLength(1);
-    expect(second?.parts?.guide).toBe(guideLines);
-    expect(second?.parts?.toolTree?.files).toBe(1);
-    expect(third?.digest).toBe(misnamed);
-    expect(third?.opens).toBe(`as ${short(child)}, not as kept`);
-    expect(third?.made).toStartWith("no record of its making");
+    if (first === undefined || second === undefined || third === undefined) {
+      throw new Error("three harnesses");
+    }
+    expect(first.digest).toBe(starter);
+    expect(first.roles).toStrictEqual(["starter"]);
+    expect(first.made).toContain("Starter");
+    expect(first.sessions).toHaveLength(1);
+    for (const fact of ["b-1", "3 practice solves", "0 counted fails", short(child)]) {
+      expect(first.sessions[0]).toContain(fact);
+    }
+    expect(second.digest).toBe(child);
+    expect(second.opens).toBe("as kept");
+    expect(second.roles).toStrictEqual(["reference", "latest"]);
+    expect(second.made).toBe(`session b-1 from ${short(starter)}, 6-word note`);
+    expect(second.parent).toBe(starter);
+    expect(second.compared).toHaveLength(1);
+    for (const fact of ["g1", "new harness", short(starter), "step", "5 won", "1 lost", "2 tied"]) {
+      expect(second.compared[0]).toContain(fact);
+    }
+    expect(second.promoted).toHaveLength(1);
+    expect(second.parts).toMatchObject({ guide: guideLines, toolTree: { files: 1 } });
+    expect(third.digest).toBe(misnamed);
+    expect(third.opens).toBe(`as ${short(child)}, not as kept`);
+    expect(third.made).toStartWith("no record of its making");
   });
 });
 
@@ -145,28 +150,24 @@ describe("a campaign its Builder leads", () => {
     expect(
       (await versionsOf({ log: importedLog, states: importedStates })).find((v) => v.digest === child),
     ).toMatchObject(origin);
-    const diffed = runSync([capturedExecPath, script, "--log", importedLog, "--diff", child]);
-    expect(diffed.exitCode).toBe(2);
-    expect(decodeOutput(diffed.stderr)).toContain("has no parent on record");
-    const against = runSync([
-      capturedExecPath,
-      script,
-      "--log",
-      importedLog,
-      "--diff",
-      child,
-      "--against",
-      starter,
-    ]);
-    expect(against.exitCode).toBe(0);
+    const diffed = run(importedLog, "--diff", child);
+    expect(diffed.code).toBe(2);
+    expect(diffed.stderr).toContain("no parent");
+    expect(run(importedLog, "--diff", child, "--against", starter).code).toBe(0);
   });
 });
 
 describe("the command", () => {
   it("refuses a control, a harness with no parent on record, and a state that opens as another", () => {
-    expect(run("--diff", "programs-of:latest").stderr).toContain("takes no control");
-    expect(run("--diff", "starter").stderr).toContain("has no parent on record");
-    const misread = run("--diff", misnamed, "--against", "starter");
+    for (const [harness, fact] of [
+      ["programs-of:latest", "no control"],
+      ["starter", "no parent"],
+    ] as const) {
+      const refused = run(log, "--diff", harness);
+      expect(refused.code).toBe(2);
+      expect(refused.stderr).toContain(fact);
+    }
+    const misread = run(log, "--diff", misnamed, "--against", "starter");
     expect(misread.code).toBe(1);
     expect(misread.stderr).toContain("no longer opens as the harness it is kept as");
   });

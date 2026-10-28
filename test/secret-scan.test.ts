@@ -2,11 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { scanText } from "../tools/secrets/rules.ts";
 import { refusedPath } from "../tools/secrets/scan.ts";
 
-// Credential-shaped fixtures below are assembled at run time. A test for a secret scanner that
-// spelled its fixtures out would be the first thing the scanner reports, and the repository's own
-// three false-positive incidents came from exactly that: fixtures written for a reader instead of
-// for a scanner. Parts stay below the continuous-string threshold GitGuardian (and our own gate)
-// classify as a secret; the assembled bytes are what the rules see, so the coverage is unchanged.
+// Assemble credential fixtures below scanner thresholds; only the runtime value is a secret.
 const join = (...parts: string[]): string => parts.join("");
 const b64url = (value: string): string =>
   new TextEncoder().encode(value).toBase64({ alphabet: "base64url", omitPadding: true });
@@ -17,7 +13,6 @@ const JWT = [b64url('{"alg":"HS256","typ":"JWT"}'), b64url('{"sub":"1234"}'), b6
   ".",
 );
 const GITHUB_PAT = ["ghp", "16C7e42F292c6912E7710c838347Ae178B4a"].join("_");
-const HEX_KEY = join("9f8c2b1e4d7a", "6f3c0b5e8d1a", "2c4f6b9e");
 // Short stand-in (u:p) — our rules and remote scanners treat it as non-credential.
 const SHORT_URL = join("post", "gres", "://", "u", ":", "p", "@", "example.test/db");
 
@@ -29,7 +24,7 @@ const MUST_FIRE: ReadonlyArray<readonly [string, string]> = [
   ["provider-key", `const token = "${GITHUB_PAT}"`],
   ["aws-access-key-id", `aws: "${join("AKIA", "5J3KLMNOPQRSTUVW")}"`],
   ["private-key-block", join("-----BEGIN RSA PRIVATE ", "KEY-----")],
-  ["secret-assignment", `const apiKey = ${JSON.stringify(HEX_KEY)}`],
+  ["secret-assignment", `const apiKey = ${JSON.stringify(join("9f8c2b1e4d7a", "6f3c0b5e8d1a", "2c4f6b9e"))}`],
 ];
 
 // Every one of these was a live false positive on the tracked tree before the rules were tuned.

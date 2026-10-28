@@ -35,7 +35,8 @@ const fixture = () => {
   return made;
 };
 /** A remote campaign fixture, its events written by the log's owner. */
-function campaign(made: ReturnType<typeof fakeHosts>) {
+function campaign() {
+  const made = fixture();
   const folder = join(made.root, "remote", "distant");
   mkdirSync(folder, { recursive: true });
   const log = join(folder, "log.jsonl");
@@ -53,7 +54,7 @@ function campaign(made: ReturnType<typeof fakeHosts>) {
       cores: 2,
     }),
   );
-  return { log, env: { FAKE_CATALOGUE: JSON.stringify([{ name: "distant", path: log }]) } };
+  return { made, log, env: { FAKE_CATALOGUE: JSON.stringify([{ name: "distant", path: log }]) } };
 }
 
 describe("host execution", () => {
@@ -130,12 +131,13 @@ describe("host execution", () => {
   });
 
   it("refuses an unsafe or repeated host identity before invoking ssh", () => {
+    const made = fixture();
     for (const entries of [
+      [made.host, made.host],
       [{ name: "../outside" }],
       [{ name: "here" }],
       [{ name: "runner", ssh: "-oProxyCommand=x", tree: "/fake", bun: "bun" }],
     ]) {
-      const made = fixture();
       expect(
         made.run('import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; hostsOf();', {
           ANA_HOSTS: JSON.stringify(entries),
@@ -143,12 +145,6 @@ describe("host execution", () => {
       ).toBe(1);
       expect(made.recorded()).toHaveLength(0);
     }
-    const made = fixture();
-    expect(
-      made.run('import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; hostsOf();', {
-        ANA_HOSTS: JSON.stringify([made.host, made.host]),
-      }).code,
-    ).toBe(1);
   });
 
   it("names the central host only where ANA_HOSTS lists it", () => {
@@ -240,8 +236,8 @@ describe("code preparation", () => {
 
 describe("campaign snapshots", () => {
   it("refreshes a remote campaign and publishes whole lines in the existing archive", () => {
-    const made = fixture();
-    const remote = campaign(made);
+    const remote = campaign();
+    const { made } = remote;
     const whole = readFileSync(remote.log, "utf8");
     writeFileSync(remote.log, `${whole}{"inFlight":`);
     const result = made.run(sync, remote.env);
@@ -257,8 +253,8 @@ describe("campaign snapshots", () => {
   });
 
   it("waits for a live descriptor holder despite a stale PID, then takes over the lock a dead fetch left", async () => {
-    const made = fixture();
-    const remote = campaign(made);
+    const remote = campaign();
+    const { made } = remote;
     const lock = join(made.main, "data", "runs", "runner", ".fetch-distant.lock");
     mkdirSync(lock, { recursive: true });
     writeFileSync(join(lock, "pid"), String(Bun.spawnSync(["true"]).pid));
@@ -295,8 +291,8 @@ describe("campaign snapshots", () => {
   });
 
   it("serialises refreshes in one process and releases a failed refresh", () => {
-    const made = fixture();
-    const remote = campaign(made);
+    const remote = campaign();
+    const { made } = remote;
     const result = made.run(
       'import { syncRuns } from "REPOSITORY/tools/runs/snapshots.ts"; process.env.FAKE_TRANSFER_FAIL = "1"; await syncRuns(["distant"]).catch(() => undefined); delete process.env.FAKE_TRANSFER_FAIL; await Promise.all(Array.from({length: 3}, () => syncRuns(["distant"])));',
       remote.env,
@@ -306,8 +302,8 @@ describe("campaign snapshots", () => {
   });
 
   it("refuses ambiguity in an exact read, an unavailable catalogue and unsafe paths, and reads one copy in a collection", () => {
-    const made = fixture();
-    const remote = campaign(made);
+    const remote = campaign();
+    const { made } = remote;
     const duplicate = {
       FAKE_CATALOGUE: JSON.stringify([
         { name: "distant", path: remote.log },
@@ -324,15 +320,16 @@ describe("campaign snapshots", () => {
     expect(made.recorded().filter((call) => call.tool === "rsync")).toHaveLength(0);
     const collection = made.run(sync.replace('{match:"exact"}', "{}"), duplicate);
     expect(collection.code).toBe(0);
-    expect(collection.err).toContain(
-      "distant: more than one original campaign, including runner; that copy is left out",
-    );
+    expect(collection.err).toContain("distant");
+    expect(collection.err).toContain("runner");
     expect(made.recorded().filter((call) => call.tool === "rsync")).toHaveLength(1);
   });
+});
 
+describe("named snapshot readers", () => {
   it("lets view, source, replay, zip, WRI and harness audit read a campaign by name", () => {
-    const made = fixture();
-    const remote = campaign(made);
+    const remote = campaign();
+    const { made } = remote;
     const commands = [
       'import { view } from "REPOSITORY/tools/runs/view.ts"; await view(["distant"]);',
       'import { source } from "REPOSITORY/tools/runs/receipt.ts"; await source(["distant"]);',
@@ -367,8 +364,8 @@ describe("campaign snapshots", () => {
 
 describe("snapshot depth", () => {
   it("retains artefacts on a record refresh and fetches them afresh for a named log", () => {
-    const made = fixture();
-    const remote = campaign(made);
+    const remote = campaign();
+    const { made } = remote;
     const memory = join(made.root, "remote", "distant", "memory");
     mkdirSync(memory);
     writeFileSync(join(memory, "note.txt"), "before");

@@ -53,7 +53,7 @@ campaign(tree, "young", 0);
 const sweep = (days: number, yes: boolean): Sweep => ({ main, days: 1, now: Date.now() + days * DAY, yes });
 
 describe("retiring", () => {
-  it("says what it would move and moves nothing without --yes", () => {
+  it("archives idle campaigns and retires unused trees only after their grace periods", () => {
     expect(archiveIdle(sweep(0, false)).size).toBe(2);
     retireTrees(sweep(3, false), new Set());
     expect([existsSync(join(tree, ".ana", "d2", "old")), existsSync(tree), existsSync(archive)]).toEqual([
@@ -61,9 +61,7 @@ describe("retiring", () => {
       true,
       false,
     ]);
-  });
 
-  it("moves an idle campaign into the archive whole, and leaves one that wrote within the day", () => {
     archiveIdle(sweep(0, true));
     expect(existsSync(join(archive, "old", "launch-run-1.json"))).toBe(true);
     expect(existsSync(join(tree, ".ana", "d2", "old"))).toBe(false);
@@ -71,15 +69,11 @@ describe("retiring", () => {
     // A worktree that holds a run log stays, however long since its commit.
     retireTrees(sweep(3, true), new Set());
     expect(existsSync(tree)).toBe(true);
-  });
 
-  it("files a name the archive holds already under its tree's, and keeps the tree for a week", () => {
     retireTrees(sweep(3, true), archiveIdle(sweep(3, true)));
     expect(existsSync(join(archive, "young.wt", "log.jsonl"))).toBe(true);
     expect(existsSync(tree)).toBe(true);
-  });
 
-  it("deletes a tree nothing used for a week, and keeps one with a change no commit names", () => {
     // A host's controller is a worktree too, and only its own prune removes it.
     const controller = join(main, ".git", "ana-code", "c".repeat(40));
     git(main, "worktree", "add", "-q", "--detach", controller, "HEAD");
@@ -88,9 +82,7 @@ describe("retiring", () => {
     expect(existsSync(dirty)).toBe(true);
     expect(existsSync(controller)).toBe(true);
     expect(git(main, "worktree", "list")).not.toContain(tree);
-  });
 
-  it("deletes a tree with a change no commit names after two weeks, and tags the commit no branch holds", () => {
     const head = git(dirty, "rev-parse", "HEAD");
     retireTrees(sweep(15, true), new Set());
     expect(existsSync(dirty)).toBe(false);

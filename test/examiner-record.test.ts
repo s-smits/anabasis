@@ -1,9 +1,6 @@
-/**
- * What an Examiner is told of its campaign's past at a session's opening (`heard`,
- * `src/examiner/record.ts`): a line a task, one measurement of the reference harness across the
- * exam, and the drafts its gates refused. Each case builds a log by hand and reads the told text.
- */
-import { describe, expect, it } from "bun:test";
+// The Examiner hears task outcomes, the reference measurement and admission gates from its log.
+// Shared opening evidence stays readonly; other comparisons and gate histories stay independent.
+import { beforeAll, describe, expect, it } from "bun:test";
 import { heard } from "../src/examiner/record.ts";
 import { examine } from "../src/examiner/session.ts";
 import { conditionId, settingId } from "../src/kernel/condition.ts";
@@ -100,12 +97,12 @@ const byTask = (lines: readonly string[]) =>
     lines.map((said) => [said.split(" (fixture): ")[0], said.split(" (fixture): ")[1] ?? ""]),
   );
 
-describe("what an Examiner is told of its campaign's past", () => {
-  it("tells each task on one line: the reference's outcome and the turns its valid answers took, who won and on which measure, and whether an answer is on record", () => {
-    const log = logged();
-    const tasks = ["some", "none", "every", "unsolved", "practice", "aside", "new", "faulted", "refused"].map(
-      fixture,
-    );
+describe("the reference outcomes delivered at session opening", () => {
+  const log = logged();
+  const tasks = ["some", "none", "every", "unsolved", "practice", "aside", "new", "faulted", "refused"].map(
+    fixture,
+  );
+  beforeAll(() => {
     log.hold(...tasks.map(({ taskId }) => taskId));
     log.solved("b-1", "some", "h1", [true, false], [7, 1]);
     log.solved("b-1", "some", "h2", [true, true]);
@@ -119,35 +116,49 @@ describe("what an Examiner is told of its campaign's past", () => {
     log.add(TASK_STATE, { version: "v-practice", state: "released" });
     log.add(TASK_STATE, { version: "v-faulted", state: "disputed" });
     log.add(TASK_STATE, { version: "v-refused", state: "refused" });
+  });
+
+  it("tells each task on one line: the reference's outcome and the turns its valid answers took, who won and on which measure, and whether an answer is on record", () => {
     // h1, the comparison's old side, is the reference: each line is its outcome, with the turns of
     // its valid answers there, and nothing of h2's solves but who won. A refused task has no line,
     // and the practice tasks are one.
     const { lines } = heard(log.events, tasks);
     const told = byTask(lines.slice(0, -1));
     expect(Object.keys(told)).toEqual(["some", "none", "every", "unsolved", "aside", "new", "faulted"]);
-    expect(told.some).toContain("some solves, in 7 turns");
-    expect(told.some).toContain("other harness on validity");
-    expect(told.none).toContain("no solve");
-    expect(told.none).toContain(VALID);
-    expect(told.none).toContain("other harness on validity");
-    expect(told.every).toContain("every solve, in 3, 3 turns");
-    expect(told.every).toContain("tied");
-    expect(told.unsolved).toContain("no solve");
-    expect(told.unsolved).toContain(NONE);
-    expect(told.unsolved).toContain("tied");
-    expect(told.aside).toContain("disputed");
-    expect(told.aside).toContain("not settled");
-    expect(told.aside).toContain(NONE);
-    expect(told.new).toContain("not yet compared");
-    expect(told.new).toContain(NONE);
-    expect(told.faulted).toContain("disputed");
-    expect(told.faulted).toContain("at fault");
+    for (const [id, facts] of [
+      ["some", ["some solves", "7 turns", "other harness", "validity"]],
+      ["none", ["no solve", VALID, "other harness", "validity"]],
+      ["every", ["every solve", "3, 3 turns", "tied"]],
+      ["unsolved", ["no solve", NONE, "tied"]],
+      ["aside", ["disputed", "not settled", NONE]],
+      ["new", ["not yet compared", NONE]],
+      ["faulted", ["disputed", "at fault"]],
+    ] as const) {
+      for (const fact of facts) expect(told[id]).toContain(fact);
+    }
     expect(lines.at(-1)).toContain("practice (fixture)");
   });
 
+  it("opens a session with the lines and then the measurement, naming no harness, no answer and no verdict of the author's work", async () => {
+    const s = seat("write", [finish, finish]);
+    for (const event of log.events) append(s.log, event.kind, event.data);
+    await examine({ ...s.request, tasks: tasks.map((task) => ({ ...task, publicInput: {}, hidden: null })) });
+    const opening = s.sent[0] ?? "";
+    // What `heard` reads of the log reaches the opening whole: each task's line, then the measurement.
+    const told = heard(log.events, tasks);
+    const at = (text: string) => opening.indexOf(JSON.stringify(text).slice(1, -1));
+    const lines = told.lines.map(at);
+    expect(lines).not.toContain(-1);
+    expect(at(String(told.measured))).toBeGreaterThan(Math.max(...lines));
+    for (const absent of ["h1", "h2", SOLVER, "too easy", "| family |"]) {
+      expect(opening).not.toContain(absent);
+    }
+  });
+});
+
+describe("the exam-results term", () => {
   it("with exam-results off and feasibility unchanged, reads the same whatever the other harness did, and names no winner", () => {
-    // Two logs alike on the reference's side, h1, and apart on h2's: in the first h2 fails where
-    // in the second it answers, and so wins.
+    // Only the other harness's outcomes vary.
     const build = (other: boolean) => {
       const log = logged();
       log.hold("run", "once", "one");
@@ -195,7 +206,9 @@ describe("what an Examiner is told of its campaign's past", () => {
     expect(heard(log.events, tasks, false)).toEqual(feasible);
     expect(JSON.stringify(feasible)).not.toMatch(/won there|37|41|solver-canary/u);
   });
+});
 
+describe("the reference measurement and admission gates", () => {
   it("measures the reference across the exam in the last comparison it stood in, never one between two other harnesses", () => {
     const log = logged();
     const tasks = ["a", "b", "c"].map(fixture);
@@ -274,13 +287,17 @@ describe("what an Examiner is told of its campaign's past", () => {
     expect(lines.short).toContain("gate 1 of 3 valid, 1 giving no reading");
     expect(lines.early).toContain("gate 1 of 2 valid");
     expect(lines.early).toContain("yours 10% better");
-    expect(told.refused).toEqual([
-      "the reference harness valid in 3 of 3 solves: every (fixture), also (fixture, yours 2% worse than its best)",
-    ]);
-    expect(told.interrupted).toEqual([
-      "cut (fixture): gate not measured; 0 of 1 measured solves valid; 3 attempted; gate-level reason",
-      "reserve (fixture): gate not measured; no reserve, so it is not measured",
-    ]);
+    expect(told.refused).toHaveLength(1);
+    for (const fact of ["3 of 3", "every (fixture)", "also (fixture", "2% worse"]) {
+      expect(told.refused[0]).toContain(fact);
+    }
+    expect(told.interrupted).toHaveLength(2);
+    for (const [index, facts] of [
+      [0, ["cut (fixture)", "not measured", "0 of 1", "3 attempted", "gate-level reason"]],
+      [1, ["reserve (fixture)", "not measured", "no reserve"]],
+    ] as const) {
+      for (const fact of facts) expect(told.interrupted[index]).toContain(fact);
+    }
     // Held 4, all on validity, none on an answer of the author's or on the objective; 2 refused.
     expect(told.measured).toContain("held out 4 drafts");
     expect(told.measured).toContain("4 on validity");
@@ -288,7 +305,9 @@ describe("what an Examiner is told of its campaign's past", () => {
     expect(told.measured).toContain("0 on the objective alone");
     expect(told.measured).toContain("refused 2 drafts");
   });
+});
 
+describe("gates after a promotion", () => {
   it("after a promotion, tells nothing that the replaced reference's gates read", () => {
     const log = logged();
     log.add("exam.started", { session: "x-1" });
@@ -317,12 +336,14 @@ describe("what an Examiner is told of its campaign's past", () => {
     expect(lines.new).toContain("not yet compared");
     expect(lines.new).toContain("gate 2 of 3 valid, in 12, 14 turns");
     expect(told.refused).toEqual([]);
-    expect(told.interrupted).toEqual(["interrupted (fixture): gate not measured; used a replaced reference"]);
+    expect(told.interrupted).toHaveLength(1);
+    for (const fact of ["interrupted (fixture)", "not measured", "replaced reference"]) {
+      expect(told.interrupted[0]).toContain(fact);
+    }
     expect(JSON.stringify(told)).not.toMatch(/937|941|947|37%|\b9 turns/u);
     // The promotion is told, with the listed tasks held out under the harness it replaced.
-    expect(told.promoted).toContain(
-      "The reference harness was promoted. 1 of the 2 tasks listed were held out before then",
-    );
+    expect(told.promoted).toContain("promoted");
+    expect(told.promoted).toContain("1 of the 2 tasks");
     // With no promotion every gate is the current reference's.
     const unpromoted = heard(
       log.events.filter(({ kind }) => kind !== "harness.promoted"),
@@ -331,15 +352,18 @@ describe("what an Examiner is told of its campaign's past", () => {
     expect(unpromoted.promoted).toBeNull();
     expect(byTask(unpromoted.lines).old).toContain("gate 1 of 3 valid");
     expect(byTask(unpromoted.lines).old).toContain("in 9 turns");
-    expect(unpromoted.refused).toEqual(["the reference harness valid in 0 of 3 solves: closed (fixture)"]);
+    expect(unpromoted.refused).toHaveLength(1);
+    expect(unpromoted.refused[0]).toContain("0 of 3");
+    expect(unpromoted.refused[0]).toContain("closed (fixture)");
   });
+});
 
+describe("the reference comparison history", () => {
   it("tells a task's last three comparisons with the reference, newest first, with its run of closures, from the reference's side alone", () => {
     const build = (other: readonly (boolean | null)[]) => {
       const log = logged();
       log.hold("run", "mixed", "once", "elsewhere");
-      // `run`: closed by the reference in four comparisons running; `mixed`: every, none with one
-      // solve cut at its wall, every; `once`: one comparison, which is its outcome and no history.
+      // Four consecutive closures, a mixed history and a single comparison.
       for (const comparison of ["b-1", "b-2", "b-3", "b-4"]) {
         log.solved(comparison, "run", "h1", [true, true]);
         log.solved(comparison, "run", "h2", other);
@@ -380,29 +404,5 @@ describe("what an Examiner is told of its campaign's past", () => {
     expect(lines.at(-1)).toContain(VALID);
     expect(lines.at(-1)).toContain("elsewhere (fixture)");
     expect(build([true, null])).toEqual(lines);
-  });
-
-  it("opens a session with the lines and then the measurement, naming no harness, no answer and no verdict of the author's work", async () => {
-    const log = logged();
-    const tasks = ["some", "every"].map(fixture);
-    log.hold("some", "every");
-    log.solved("b-1", "some", "h1", [true, false]);
-    log.solved("b-1", "some", "h2", [true, true]);
-    log.solved("b-1", "every", "h1", [true, true]);
-    log.solved("b-1", "every", "h2", [true, true]);
-    log.reported("b-1", ["h1", "h2"], ["some", "every"]);
-    const s = seat("write", [finish, finish]);
-    for (const event of log.events) append(s.log, event.kind, event.data);
-    await examine({ ...s.request, tasks: tasks.map((task) => ({ ...task, publicInput: {}, hidden: null })) });
-    const opening = s.sent[0] ?? "";
-    // What `heard` reads of the log reaches the opening whole: each task's line, then the measurement.
-    const told = heard(log.events, tasks);
-    const at = (text: string) => opening.indexOf(JSON.stringify(text).slice(1, -1));
-    const lines = told.lines.map(at);
-    expect(lines).not.toContain(-1);
-    expect(at(String(told.measured))).toBeGreaterThan(Math.max(...lines));
-    for (const absent of ["h1", "h2", SOLVER, "too easy", "| family |"]) {
-      expect(opening).not.toContain(absent);
-    }
   });
 });

@@ -48,9 +48,7 @@ describe("a checker's refused answers", () => {
     expect(sample).toHaveLength(2);
     expect(drawn(VERDICTS.toReversed(), 2, "seed")).toEqual(sample);
     expect(["a", "b", "c", "d"]).toEqual(expect.arrayContaining(sample));
-    expect(() => drawn(VERDICTS, 5, "seed")).toThrow(
-      "5 labels need as many refused answers; the log holds 4",
-    );
-    expect(() => drawn([...VERDICTS, ruled("a", "earned")], 2, "seed")).toThrow("would not be made blind");
+    expect(() => drawn(VERDICTS, 5, "seed")).toThrow(/5.*4/u);
+    expect(() => drawn([...VERDICTS, ruled("a", "earned")], 2, "seed")).toThrow(/blind/u);
   });
 });

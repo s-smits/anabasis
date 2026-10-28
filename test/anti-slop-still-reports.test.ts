@@ -1,5 +1,5 @@
-import { describe, expect, it } from "bun:test";
-import { expectedLines, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
+import { describe, it } from "bun:test";
+import { lintRules } from "./helpers/lint-rule.ts";
 
 /**
  * The eleven `anti-slop` rules no other fixture makes report.
@@ -87,17 +87,6 @@ export function parsed(): { id: string } {
 }
 `;
 
-const FIXTURES: [string, string][] = [
-  ["no-reduce-accumulator-copy", ACCUMULATOR_COPY],
-  ["no-module-mocking", MODULE_MOCKING],
-  ["no-runtime-typeof", RUNTIME_TYPEOF],
-  ["no-unknown-type-aliases", UNKNOWN_ALIAS],
-  ["no-conditional-empty-object-spread", EMPTY_OBJECT_SPREAD],
-  ["no-chained-type-assertions", CHAINED_ASSERTIONS],
-  ["no-shape-in-symbol-names", FORBIDDEN_TERM_IN_NAME],
-  ["no-unknown-returns", UNKNOWN_RETURN],
-];
-
 /**
  * `no-shape-in-symbol-names` reads the word, not the letters. A name whose words include
  * "shape", "shapes" or "shaped" in any case or spelling convention is reported; a word that only
@@ -114,30 +103,19 @@ export const jsonShaped = 1; // REPORT the participle
 export const rowShapes = 1; // REPORT the plural
 `;
 
-describe("anti-slop rules that no other fixture exercises", () => {
-  for (const [rule, fixture] of FIXTURES) {
-    it(`${rule} still reports, and only where it should`, async () => {
-      const expected = expectedLines(fixture);
-      expect(expected).toHaveLength(1);
-      expect(await reportedLines("anti-slop", rule, fixture)).toStrictEqual(expected);
-    });
-  }
-});
-
-describe("anti-slop/no-module-mocking reads bun:test", () => {
-  it("reports mock.module from bun:test and no module method on another object", async () => {
-    expect(await reportedLines("anti-slop", "no-module-mocking", BUN_MODULE_MOCKING)).toStrictEqual(
-      expectedLines(BUN_MODULE_MOCKING),
-    );
-  });
-});
-
-describe("anti-slop/no-shape-in-symbol-names reads whole words", () => {
-  it("reports the word in every spelling convention, and admits a longer word holding its letters", async () => {
-    const expected = expectedLines(FORBIDDEN_TERM_WORDS);
-    expect(expected).toHaveLength(5);
-    expect(await reportedLines("anti-slop", "no-shape-in-symbol-names", FORBIDDEN_TERM_WORDS)).toStrictEqual(
-      expected,
-    );
+describe("the remaining anti-slop rule boundaries", () => {
+  it("reports only the marked lines in every fixture and scope", async () => {
+    await lintRules("anti-slop", [
+      ["no-reduce-accumulator-copy", ACCUMULATOR_COPY, 1],
+      ["no-module-mocking", MODULE_MOCKING, 1],
+      ["no-module-mocking", BUN_MODULE_MOCKING, 1],
+      ["no-runtime-typeof", RUNTIME_TYPEOF, 1],
+      ["no-unknown-type-aliases", UNKNOWN_ALIAS, 1],
+      ["no-conditional-empty-object-spread", EMPTY_OBJECT_SPREAD, 1],
+      ["no-chained-type-assertions", CHAINED_ASSERTIONS, 1],
+      ["no-shape-in-symbol-names", FORBIDDEN_TERM_IN_NAME, 1],
+      ["no-unknown-returns", UNKNOWN_RETURN, 1],
+      ["no-shape-in-symbol-names", FORBIDDEN_TERM_WORDS, 5],
+    ]);
   });
 });

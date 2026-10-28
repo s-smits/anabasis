@@ -116,16 +116,6 @@ export async function reportedLines(
     .sort((a, b) => a - b);
 }
 
-/** The message text `plugin/rule` reported over `fixtureText`, in report order. */
-export async function reportedMessages(
-  plugin: string,
-  rule: string,
-  fixtureText: string,
-  at = "fixture.ts",
-): Promise<string[]> {
-  return (await runRule(plugin, rule, fixtureText, at, {})).map((row) => row.split(": ").slice(1).join(": "));
-}
-
 /**
  * The fixture text after the rule's own fixer has run to convergence.
  *

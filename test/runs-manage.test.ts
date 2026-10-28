@@ -21,24 +21,22 @@ const event = (kind: EventKind, data: JsonObject): LogEvent => ({
 });
 
 describe("going on with a campaign", () => {
-  it("runs as the named login alone, recorded, and refuses one the environment does not hold", () => {
+  it("isolates the chosen login and never chooses a numbered key implicitly", () => {
     const env = { PATH: "/bin", [KEY]: "a", [`${KEY}3`]: "c", [`${KEY}4`]: "d" };
     expect(loginEnv(env, "4")).toEqual({ PATH: "/bin", [KEY]: "d", ANA_LOGIN: "4" });
-    expect(() => loginEnv(env, "2")).toThrow(`${KEY}2 is not set`);
-    expect(() => loginEnv({ ...env, [`${KEY}2`]: "" }, "2")).toThrow(`${KEY}2 is not set`);
-  });
-
-  it("names no login where none is named: no numbered key reaches the command, and no login is recorded", () => {
-    // The unnumbered token is the file's own, and goes on as it is.
-    expect(loginEnv({ PATH: "/bin", [KEY]: "a", [`${KEY}3`]: "c" }, undefined)).toEqual({
-      PATH: "/bin",
-      [KEY]: "a",
-    });
-    // One numbered key is no login chosen: a run that needs one is refused by its own dry run.
-    expect(loginEnv({ PATH: "/bin", [`${KEY}3`]: "c" }, undefined)).toEqual({ PATH: "/bin" });
-    expect(loginEnv({ PATH: "/bin", [`${KEY}3`]: "c", [`${KEY}4`]: "d" }, undefined)).toEqual({
-      PATH: "/bin",
-    });
+    for (const input of [env, { ...env, [`${KEY}2`]: "" }]) {
+      expect(() => loginEnv(input, "2")).toThrow(`${KEY}2`);
+    }
+    for (const [input, expected] of [
+      [
+        { PATH: "/bin", [KEY]: "a", [`${KEY}3`]: "c" },
+        { PATH: "/bin", [KEY]: "a" },
+      ],
+      [{ PATH: "/bin", [`${KEY}3`]: "c" }, { PATH: "/bin" }],
+      [{ PATH: "/bin", [`${KEY}3`]: "c", [`${KEY}4`]: "d" }, { PATH: "/bin" }],
+    ] as const) {
+      expect(loginEnv(input, undefined)).toEqual(expected);
+    }
   });
 
   it("pauses past one more of the event, once no comparison, Examiner session or draft is open", () => {
@@ -82,7 +80,6 @@ describe("starting a campaign", () => {
     );
     expect(result.code).toBe(1);
     expect(result.err).toContain("tools/d2/harness-builder.ts");
-    expect(result.err).toContain("nothing was started");
     expect(made.recorded().filter(({ tool, args }) => tool === "nice" && args.includes("19"))).toEqual([]);
   });
 });

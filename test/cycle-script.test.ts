@@ -9,16 +9,11 @@ import { join } from "../src/meta/path.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
 const SCRIPT = ".claude/skills/run-improvement-campaign/scripts/cycle.ts";
-const fixtures: string[] = [];
-
-afterAll(() => {
-  for (const root of fixtures) rmSync(root, { recursive: true, force: true });
-});
+const made = fakeHosts();
+afterAll(() => rmSync(made.root, { recursive: true, force: true }));
 
 describe("cycle.ts", () => {
   it.each([6, 7])("stops a run at %i promotions before waiting for one at five", (promotions) => {
-    const made = fakeHosts();
-    fixtures.push(made.root);
     const row = (name: string, live: boolean, count: number) => ({
       name,
       host: "here",
@@ -56,8 +51,6 @@ describe("cycle.ts", () => {
   });
 
   it("reads a run in a peer's quoted tree, and leaves it unread where the peer fails or is silent", () => {
-    const made = fakeHosts();
-    fixtures.push(made.root);
     const tree = join(made.root, "peer's tree");
     const folder = join(tree, ".ana", "d2", "distant");
     mkdirSync(folder, { recursive: true });
@@ -90,10 +83,13 @@ describe("cycle.ts", () => {
     expect(read.out).toContain("step: investigate");
     expect(read.code).toBe(0);
     const unread = "step: unread · not found on any host that answered: distant";
-    const failed = ask({ env: { FAKE_REPO: failing, FAKE_RUN_CLI: "1" } });
-    expect({ out: failed.out.trim(), code: failed.code }).toEqual({ out: unread, code: 1 });
-    expect(failed.err).toContain("exit 6");
-    const silent = ask({}, { FAKE_OFFLINE: "1" });
-    expect({ out: silent.out.trim(), code: silent.code }).toEqual({ out: unread, code: 1 });
+    for (const [peer, extra, error] of [
+      [{ env: { FAKE_REPO: failing, FAKE_RUN_CLI: "1" } }, {}, "exit 6"],
+      [{}, { FAKE_OFFLINE: "1" }, ""],
+    ] as const) {
+      const result = ask(peer, extra);
+      expect({ out: result.out.trim(), code: result.code }).toEqual({ out: unread, code: 1 });
+      if (error !== "") expect(result.err).toContain(error);
+    }
   }, 60_000);
 });

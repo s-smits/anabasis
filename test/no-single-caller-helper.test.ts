@@ -23,8 +23,8 @@
  * mechanical, and the result is the same density under a longer expression; where the lines go
  * and what the local is called are the reader's decisions, which is the whole point of the rule.
  */
-import { describe, expect, it } from "bun:test";
-import { expectedLines, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
+import { describe, it } from "bun:test";
+import { lintRules } from "./helpers/lint-rule.ts";
 
 const HELPERS = `
 function once(value: string) { // REPORT one statement reached from one place
@@ -95,18 +95,12 @@ export function caller(value: string) {
 `.trimStart();
 
 describe("ana/no-single-caller-helper", () => {
-  const reports = (at: string): Promise<number[]> =>
-    reportedLines("ana", "no-single-caller-helper", HELPERS, at);
-
-  it("reports a short module-scope helper with one caller and keeps the ones that earn a name", async () => {
-    const expected = expectedLines(HELPERS);
-    expect(expected).toHaveLength(4);
-    expect(await reports("src/example.ts")).toStrictEqual(expected);
-  });
-
-  it("stays out of tests and components, and holds the plugin tree to the same rule as src", async () => {
-    expect(await reports("test/example.test.ts")).toStrictEqual([]);
-    expect(await reports("packages/ui/src/view.tsx")).toStrictEqual([]);
-    expect(await reports("tools/oxlint/anti-slop/rules/example.ts")).toStrictEqual(expectedLines(HELPERS));
+  it("reports only the marked lines in every fixture and scope", async () => {
+    await lintRules("ana", [
+      ["no-single-caller-helper", HELPERS, 4, "src/example.ts"],
+      ["no-single-caller-helper", HELPERS, 4, "tools/oxlint/anti-slop/rules/example.ts"],
+      ["no-single-caller-helper", HELPERS, 0, "test/example.test.ts"],
+      ["no-single-caller-helper", HELPERS, 0, "packages/ui/src/view.tsx"],
+    ]);
   });
 });

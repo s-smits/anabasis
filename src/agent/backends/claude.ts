@@ -204,7 +204,7 @@ export const CLAUDE_COMPACTED = "claude-code-compaction";
  * How Claude Code fits a full context: its own auto-compaction at a window of this many tokens, or not
  * at all, in which case a context that outgrows the model ends the query on the API's refusal.
  */
-export type ClaudeCompaction = { readonly window: number } | "off";
+type ClaudeCompaction = { readonly window: number } | "off";
 
 /**
  * The sweep's window: v1's `CONTEXT_COMPACT_WINDOW`, which its Claude solves ran under.

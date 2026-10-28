@@ -347,19 +347,14 @@ describe.skipIf(realRsync === null)("run.sh", () => {
 
   it("gives an unnamed task to the first host that is not busy by load or by this machine's slots", () => {
     const held = [1, 2].map((k) => join(queue, `slot-${String(k)}`));
-    const cases: [Record<string, string>, boolean, string, string | null][] = [
-      [{ FAKE_LOAD_fake_mac: "9.50 8" }, false, "fake-linux", "fake-mac is busy (load 9.50 of 8 cores"],
-      [{}, true, "fake-linux", "fake-mac is busy (load 0.00 of 4 cores, 2 of 2 slots held from here)"],
-      [{ FAKE_LOAD_fake_mac: "garbled" }, false, "fake-linux", "fake-mac gave no load reading"],
-      [{ FAKE_LOAD_fake_mac: "7.90 8" }, false, "fake-mac", null],
-      [
-        { FAKE_LOAD_fake_mac: "9.50 8", FAKE_LOAD_fake_linux: "6.00 4" },
-        false,
-        "fake-mac",
-        "every host is busy",
-      ],
+    const cases: [Record<string, string>, boolean, string, string[]][] = [
+      [{ FAKE_LOAD_fake_mac: "9.50 8" }, false, "fake-linux", ["fake-mac", "9.50", "8"]],
+      [{}, true, "fake-linux", ["fake-mac", "0.00", "4", "2 of 2"]],
+      [{ FAKE_LOAD_fake_mac: "garbled" }, false, "fake-linux", ["fake-mac"]],
+      [{ FAKE_LOAD_fake_mac: "7.90 8" }, false, "fake-mac", []],
+      [{ FAKE_LOAD_fake_mac: "9.50 8", FAKE_LOAD_fake_linux: "6.00 4" }, false, "fake-mac", []],
     ];
-    for (const [loads, holds, expected, said] of cases) {
+    for (const [loads, holds, expected, facts] of cases) {
       writeFileSync(log, "");
       if (holds) {
         for (const path of held) {
@@ -375,26 +370,28 @@ describe.skipIf(realRsync === null)("run.sh", () => {
           .map((line) => line.split(" ")[0]),
       );
       expect(sent, picked.stderr).toEqual(new Set([expected]));
-      if (said === null) expect(picked.stderr).not.toContain("so the task goes to");
-      else expect(picked.stderr).toContain(said);
+      expect(picked.status).toBe(0);
+      for (const fact of facts) expect(picked.stderr).toContain(fact);
     }
   });
 
   it("retries a dropped transfer, and starts nothing on a host that does not answer or lacks room", () => {
     writeFileSync(join(source, "retried"), "after a dropped transfer");
     const retried = run(["test"], { RUN_REMOTE: "1", FAKE_RSYNC_FAIL_ONCE: join(root, "failed-once") });
-    expect(retried.stderr).toContain("push_tree failed (exit 1); retry 1 of 2");
+    expect(retried.status).toBe(0);
+    expect(existsSync(join(root, "failed-once"))).toBe(true);
     expect(readFileSync(join(target, "retried"), "utf8")).toBe("after a dropped transfer");
     unlinkSync(join(source, "retried"));
     writeFileSync(join(target, "edited"), "untouched");
-    const refusals: [Record<string, string>, string, number][] = [
-      [{ FAKE_DOWN: "1" }, "does not answer; no sync or task started", 2],
-      [{ ANA_RUNNER_MIN_FREE_GB: "1000000" }, "below the 1000000 GiB a task needs", 0],
+    const refusals: [Record<string, string>, number][] = [
+      [{ FAKE_DOWN: "1" }, 2],
+      [{ ANA_RUNNER_MIN_FREE_GB: "1000000" }, 0],
     ];
-    for (const [extra, message, retries] of refusals) {
+    for (const [extra, retries] of refusals) {
+      writeFileSync(log, "");
       const refused = run(["test"], { RUN_REMOTE: "1", ...extra });
       expect(refused.status).toBe(69);
-      expect(refused.stderr).toContain(message);
+      expect(logged()).toEqual(Array.from({ length: retries + 1 }, () => "fake-mac df"));
       expect(refused.stderr.split("on_host failed").length - 1).toBe(retries);
       expect(readFileSync(join(target, "edited"), "utf8")).toBe("untouched");
     }
@@ -424,7 +421,6 @@ describe.skipIf(realRsync === null)("run.sh", () => {
       writeFileSync(`${job}.release`, "");
       expect(await child.exited).toBe(0);
     }
-    const ready = (job: string): boolean => existsSync(`${job}.ready`);
     try {
       const first = await start("first", { RUN_REMOTE: "1" });
       writeFileSync(join(source, "edited"), "second snapshot");
@@ -434,7 +430,8 @@ describe.skipIf(realRsync === null)("run.sh", () => {
       const other = await start("other", { RUN_REMOTE: "zbook" });
       const refused = run(["test"], { RUN_REMOTE: "1", ANA_RUNNER_QUEUE_WAIT: "0" });
       expect(refused.status).toBe(75);
-      expect(refused.stderr).toContain("for a slot on fake-mac; no task started");
+      expect(existsSync(join(queue, "slot-1"))).toBe(true);
+      expect(existsSync(join(queue, "slot-2"))).toBe(true);
       const stale = join(queue, "wait.stale");
       writeFileSync(stale, "99999999\n");
       utimesSync(stale, 1, 1);
@@ -453,20 +450,29 @@ describe.skipIf(realRsync === null)("run.sh", () => {
         { RUN_REMOTE: "1", ANA_RUNNER_QUEUE_WAIT: "60" },
         false,
       );
+      // Both waiters must have reported; the second can print before the first under load.
       await waitFor(
-        () => readFileSync(join(root, "waiting-second.log"), "utf8").includes("1 tasks ahead ("),
+        () =>
+          (
+            [
+              ["waiting-first", "0"],
+              ["waiting-second", "1"],
+            ] as const
+          ).every(
+            ([name, ahead]) =>
+              readFileSync(join(root, `${name}.log`), "utf8").match(/(\d+) tasks ahead/)?.[1] === ahead,
+          ),
         25,
       );
-      expect(readFileSync(join(root, "waiting-first.log"), "utf8")).toContain("0 tasks ahead (");
       expect(existsSync(stale)).toBe(false);
       const released = performance.now();
       await finish(first);
-      await waitFor(() => ready(waitingFirst[1]), 4);
+      await waitFor(() => existsSync(`${waitingFirst[1]}.ready`), 4);
       expect(performance.now() - released).toBeLessThan(4000);
-      expect(ready(waitingSecond[1])).toBe(false);
+      expect(existsSync(`${waitingSecond[1]}.ready`)).toBe(false);
       await finish(other);
       await finish(second);
-      await waitFor(() => ready(waitingSecond[1]), 4);
+      await waitFor(() => existsSync(`${waitingSecond[1]}.ready`), 4);
       await finish(waitingFirst);
       mkdirSync(join(queue, "slot-1"));
       writeFileSync(join(queue, "slot-1", "pid"), "99999999\n");

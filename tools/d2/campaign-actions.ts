@@ -436,6 +436,13 @@ async function comparedOf(
         }
       : { refused: "harness/ is the reference harness: there is nothing to compare until it changes." };
   }
+  // The working copy that is the latest harness, where the table names the latest, is the table's
+  // own comparison and keeps its code: until 28 October it was logged `asked`, and three of the
+  // seventeen `asked` comparisons of buffer-fresh-opus-v072 and esp32-fresh-opus-terra read the
+  // very pair the table named.
+  if (decided.move === "compare" && decided.fresh === "latest" && working === latest) {
+    return { move: decided, note: "" };
+  }
   if (readAgainst(events, working, reference) && decided.move !== "compare") {
     return {
       refused: `harness/ is harness ${short(working)}, which a comparison has read against the reference, and nothing in it has changed since: there is nothing new to compare.`,

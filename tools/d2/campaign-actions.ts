@@ -27,7 +27,7 @@
 import { Type } from "typebox";
 import type { SeatTool } from "#src/agent/session.ts";
 import { Refused, supplyOf } from "#src/campaign/admission.ts";
-import { CRASHES, decide, heldAfter, practiceOwed, releasedSince, unpromoted } from "#src/campaign/decide.ts";
+import { CRASHES, decide, heldAfter, practiceDue, unpromoted } from "#src/campaign/decide.ts";
 import { comparisonsOf, crashedRun } from "#src/campaign/ground.ts";
 import { campaignOf } from "#src/campaign/handover.ts";
 import { type Decided, short } from "#src/campaign/move.ts";
@@ -68,7 +68,7 @@ import {
 } from "./campaign-terms.ts";
 import { checkpointCommand } from "./checkpoint.ts";
 import { waitCrashed } from "./host.ts";
-import { PRACTICE, prepareCommand } from "./prepare.ts";
+import { prepareCommand } from "./prepare.ts";
 import { promoteCommand } from "./promote.ts";
 import { type Campaign, type Seated, solved } from "./round.ts";
 
@@ -341,11 +341,12 @@ const examineAction =
 
 const releaseTool = (context: CampaignContext, bench: Bench): SeatTool =>
   actionTool(context, bench, RELEASE, async (turn, decided, begin) => {
-    // Where the table names no release, the practice named is brought up for the stretch since the
-    // last reading, as far as the room for practice goes (`practiceOwed`).
-    const before = taskSets(read(context.log)).released.length;
+    // Where the table names no count, practice is brought to what is owed (`practiceDue`).
+    const before = taskSets(turn.events).released.length;
     const practice =
-      (decided.move === "prepare" ? decided.practice : undefined) ?? before + owedOf(context, turn);
+      (decided.move === "prepare" ? decided.practice : undefined) ??
+      practiceDue(turn.events, turn.plan.practice, turn.plan.wanted.level)?.to ??
+      before;
     const released = await releaseTo(context, bench, practice);
     // A release that took nothing is no move (AGENTS.md, section 4): until 20 October it was
     // recorded and counted, and a conversation of such calls never read as idle.
@@ -355,10 +356,6 @@ const releaseTool = (context: CampaignContext, bench: Bench): SeatTool =>
     begin({});
     return { said: `Practice release completed: ${String(released)} tasks available.` };
   });
-
-/** The practice the campaign names that is still owed since the last reading (`practiceOwed`). */
-const owedOf = ({ values }: CampaignContext, { events, plan }: Turn): number =>
-  practiceOwed(events, Number(values.practice ?? PRACTICE), plan.wanted.level);
 
 /** Brings the released tasks up to `practice` through the release command, refreshes the
  *  Builder's workspace, and returns how many are released. */
@@ -388,19 +385,19 @@ async function releaseTo(context: CampaignContext, bench: Bench, practice: numbe
  * session's end, so a Builder in `wait` could not practise on tasks released only then. The
  * comparison's target adds no bound: after a promotion the default ask fills that target alone,
  * and a bound on it delays practice until the unbounded release at the session's end. The sweep
- * at the level still stays held (`practiceOwed`). Returns whether it released a task.
+ * at the level still stays held (`practiceDue`). Returns whether it released a task.
  */
 async function releaseOwed(context: CampaignContext, bench: Bench, session?: string): Promise<boolean> {
   if (context.failed !== null || bench.halt.signal.aborted || context.used >= context.maxMoves) return false;
   const { turn } = actionTurn(context);
   const before = taskSets(turn.events).released.length;
-  const owed = owedOf(context, turn);
-  if (owed <= 0 || (await releaseTo(context, bench, before + owed)) === before) return false;
+  const due = practiceDue(turn.events, turn.plan.practice, turn.plan.wanted.level);
+  if (due === null || (await releaseTo(context, bench, due.to)) === before) return false;
   context.used += 1;
   append(context.log, MOVED, {
     move: "prepare",
     code: "practice",
-    why: `${String(releasedSince(turn.events).count)} practice tasks were released since the last reading, and ${session === undefined ? "an Examiner session beside the conversation ended" : `Examiner session ${session} beside the conversation held a task out`}: the host releases the practice owed`,
+    why: `${due.said}, and ${session === undefined ? "an Examiner session beside the conversation ended" : `Examiner session ${session} beside the conversation held a task out`}: the host releases the practice owed`,
   });
   return true;
 }

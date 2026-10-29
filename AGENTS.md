@@ -835,11 +835,11 @@ that window and needs one it can hold.
 so a campaign that opens on a few tasks releases fewer than `--practice` names. Before a Builder
 session the table releases more where tasks have been held out since the last release.
 `--practice` is owed again after each reading, a comparison's report or a promotion
-(`releasedSince`, `src/campaign/decide.ts`), so a Builder whose practice no longer fails is given
+(`practiceDue`, `src/campaign/decide.ts`), so a Builder whose practice no longer fails is given
 new tasks while it climbs. Inside a Builder's conversation the host releases what is still owed as
 each Examiner session beside it holds a task and as it ends (`releaseOwed`,
 `tools/d2/campaign-actions.ts`). Once practice exists a release never leaves fewer frontier tasks, read on the
-reference's own solves alone, than a comparison needs (`comparisonFloor`, `practiceRoom`,
+reference's own solves alone, than a comparison needs (`comparisonFloor`, `practiceDue`,
 `src/campaign/decide.ts`). Each release is one task fewer to
 compare.
 

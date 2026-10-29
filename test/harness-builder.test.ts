@@ -509,7 +509,7 @@ describe("a campaign run by its log", () => {
     // eleven
     // frontier tasks, three more than a comparison at the level takes, and the starter comparison is a
     // reading, after which the practice named is owed again: the table releases up to three before the
-    // Builder builds (`practiceOwed`). Until 19 October a repeat came between, and the Builder built here.
+    // Builder builds (`practiceDue`). Until 19 October a repeat came between, and the Builder built here.
     expect(of(name, "comparison.reported").at(-1)).toMatchObject({
       session: "g-2",
       reading: "no-step",

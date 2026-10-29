@@ -25,7 +25,6 @@ import type { LogEvent } from "../kernel/log.ts";
 import { poolOf, practiceFailures, roomOf } from "../kernel/reports.ts";
 import { heldAtGate, taskSets } from "../kernel/task.ts";
 import { isNumber, isString } from "../meta/json-shape.ts";
-import { keyIfDefined } from "../meta/optional-key.ts";
 import { draftOf } from "../examiner/draft.ts";
 import { plural } from "../meta/text.ts";
 import { comparisonFloor } from "./admission.ts";
@@ -554,67 +553,65 @@ function buildsOn(ground: Ground): string {
   return `${String(run)} of ${plural(needed, "Builder session")} before the next comparison have run`;
 }
 
-/** The tasks released for practice since the last comparison reported or harness promoted, and
- *  where: the practice named is owed again after each reading. Until 16 October it was the
- *  campaign's, and three campaigns released none after their promotion, where every practice
- *  solve passed. Until 30 October it was the epoch's: buffer-fresh-opus-v072 held out 69 tasks
- *  after its second promotion and released six, its Builder passed all 103 practice solves on its
- *  18 tasks, and three `release_practice` calls released nothing while two more comparisons read
- *  the same candidate. Whether a comparison ran is on the Builder's side already, and which tasks
- *  a release takes reads the reference's own solves (rule 3). */
-export function releasedSince(events: readonly LogEvent[]) {
+/**
+ * The released total a release brings practice to now, and the sentence that says why, or null
+ * where practice is owed none. Two bounds decide it, and this is their one reader (rule 12): the
+ * table's release before a Builder session (`toPractise`), the host's inside a conversation and
+ * the Builder's own `release_practice` (`campaign-actions.ts`).
+ *
+ * The practice named is owed again after each reading, a comparison's report or a promotion.
+ * Until 16 October it was the campaign's, and three campaigns released none after their
+ * promotion, where every practice solve passed. Until 30 October it was the epoch's:
+ * buffer-fresh-opus-v072 held out 69 tasks after its second promotion and released six, its
+ * Builder passed all 103 practice solves on its 18 tasks, and three `release_practice` calls
+ * released nothing while two more comparisons read the same candidate.
+ *
+ * Each release is one task fewer to compare, so once practice exists or a promotion is on record
+ * it leaves the admission floor at `level` of frontier tasks held: top-ups before a promotion
+ * consumed esp32-r2's frontier (20 October, whole-run investigations of six campaigns). The
+ * frontier is read on the reference's own solves alone, since the comparison's can change with
+ * which task the other harness won, and practice is visible to the Builder (rule 3).
+ */
+export function practiceDue(
+  events: readonly LogEvent[],
+  practice: number | null,
+  level: number,
+): { readonly to: number; readonly said: string } | null {
+  if (practice === null) return null;
+  const released = taskSets(events).released.length;
   const since = events.findLastIndex(({ kind }) => kind === PROMOTED || kind === "comparison.reported");
   const count = events.filter(
     ({ kind, data }, at) => at > since && kind === "task.state" && data.state === "released",
   ).length;
-  return { since, count };
+  const allowance =
+    released === 0 && !events.some(({ kind }) => kind === PROMOTED)
+      ? Infinity
+      : Math.max(0, poolOf(events).practiceFrontier.length - comparisonFloor(level));
+  const owed = Math.min(Math.max(0, practice - count), allowance);
+  if (owed === 0) return null;
+  return {
+    to: released + owed,
+    said: `${String(count)} of the ${plural(practice, "practice task")} the campaign names are released${since === -1 ? "" : " since the last reading"}`,
+  };
 }
 
-/** How many more tasks a release may take for practice, each one fewer to compare: once practice
- *  exists or a promotion is on record, leave the admission floor at `level` of frontier tasks held.
- *  Top-ups before a promotion consumed esp32-r2's frontier (20 October 2026, whole-run
- *  investigations of six campaigns). Until 16 October it was also at most one in four of the
- *  epoch's scorable and released tasks, which bound alone in none of 35 releases on record.
- *  Since 26 October the allowance reads reference-only room: the comparison frontier can change
- *  with which task the other harness wins, and practice is visible to the Builder (rule 3). */
-export function practiceAllowance(events: readonly LogEvent[], level: number): number {
-  const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
-  if (promotedAt === -1 && taskSets(events).released.length === 0) return Infinity;
-  return Math.max(0, poolOf(events).practiceFrontier.length - comparisonFloor(level));
-}
-
-/** How many more tasks practice is owed: the `practice` a campaign names less what it has released
- *  since the last reading (`releasedSince`), as far as its allowance goes (`practiceAllowance`). */
-export function practiceOwed(events: readonly LogEvent[], practice: number, level: number): number {
-  return Math.min(
-    practice - Math.min(practice, releasedSince(events).count),
-    practiceAllowance(events, level),
-  );
-}
-
-/** A release for practice before a Builder session, where fewer than the campaign names were
- *  released since the last reading, tasks were held out since the last release and promotion, and
- *  its allowance permits (`practiceOwed`): on 9 October two sessions practised on the same two
- *  tasks while sixteen more were held. A starter comparison that read room is a reading like any
- *  other, so the practice it is owed needs no branch of its own; one that read none is row
- *  `no-room`'s before any build. */
+/** A release for practice before a Builder session, where practice is owed (`practiceDue`) and
+ *  tasks were held out since the last release and promotion: on 9 October two sessions practised
+ *  on the same two tasks while sixteen more were held. A starter comparison that read room is a
+ *  reading like any other, so the practice it is owed needs no branch of its own; one that read
+ *  none is row `no-room`'s before any build. */
 function toPractise({ events, plan, supply }: Ground): Move | null {
-  const { practice } = plan;
-  const released = events.findLastIndex(
-    ({ kind, data }) => kind === "task.state" && data.state === "released",
+  const last = events.findLastIndex(
+    ({ kind, data }) => kind === PROMOTED || (kind === "task.state" && data.state === "released"),
   );
-  const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
-  if (practice === null || supply.held < 2 || heldAfter(events, Math.max(released, promotedAt)) === 0) {
-    return null;
-  }
-  const { since, count } = releasedSince(events);
-  const owed = practiceOwed(events, practice, plan.wanted.level);
-  return owed <= 0
+  if (supply.held < 2 || heldAfter(events, last) === 0) return null;
+  const due = practiceDue(events, plan.practice, plan.wanted.level);
+  return due === null
     ? null
     : {
         move: "prepare",
-        ...keyIfDefined("practice", since === -1 ? undefined : supply.released + owed),
-        why: `${String(count)} of the ${plural(practice, "practice task")} the campaign names are released${since === -1 ? "" : " since the last reading"}, and tasks were held out since the last release: the contract's draw releases more before the Builder builds`,
+        practice: due.to,
+        why: `${due.said}, and tasks were held out since the last release: the contract's draw releases more before the Builder builds`,
       };
 }
 

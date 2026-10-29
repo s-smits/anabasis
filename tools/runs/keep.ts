@@ -28,6 +28,7 @@ import { isString } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
+import { providerWait } from "./diagnosis.ts";
 import { payerOf } from "./live.ts";
 import {
   allowedLogins,
@@ -71,7 +72,7 @@ export function turnOf(
 ): Turn {
   const last = events.at(-1);
   if (process === "open") {
-    const until = last?.kind === "campaign.waited" && last.data.for === "provider" ? last.data.until : null;
+    const until = providerWait(events)?.data.until;
     return isString(until) && Date.parse(until) - now > waitMs ? "move" : "watch";
   }
   if (last?.kind !== "campaign.ended") return "continue";
@@ -139,7 +140,7 @@ async function keepGoing(run: Run, logins: readonly string[], waitMs: number): P
     }
     if (turn === "watch") continue;
     const current = lastRun(run).login;
-    const until = events.at(-1)?.data.until;
+    const until = providerWait(events)?.data.until;
     if (turn === "move" && current !== undefined && isString(until)) {
       spentUntil.set(current, Date.parse(until));
     }

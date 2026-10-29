@@ -34,6 +34,13 @@ describe("the turn a keeper takes", () => {
       [[waited(1)], "open", "watch"],
       [[waited(5, "load")], "open", "watch"],
       [[waited(5), event("build.started", { session: "b-1" })], "open", "watch"],
+      // A seat that ran on after the wait writes its call and its failed turn; the wait stands.
+      [
+        [waited(2), event("exam.call", { session: "x-1" }), event("exam.turn", { stopReason: "error" })],
+        "open",
+        "move",
+      ],
+      [[waited(2), event("exam.turn", { session: "x-1", stopReason: "toolUse" })], "open", "watch"],
       [[], "open", "watch"],
       [[event("build.started", { session: "b-1" })], "closed", "continue"],
       [[event("campaign.ended", { ending: "environment" })], "closed", "continue"],

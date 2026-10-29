@@ -31,7 +31,8 @@
  * budget a solve, held in two places that disagreed.
  *
  * `gpt` seats GPT-6.1 Sol through the Codex CLI's login, which `--login` does not choose, at high in
- * every seat (the operator, 19 October). Any other model a backend serves is named by its id, so
+ * every seat (the operator, 19 October). That login is one a machine, and placement and a named
+ * `--host` hold it to one live GPT run a machine (`fullOn`, `logins.ts`). Any other model a backend serves is named by its id, so
  * `--model openrouter/deepseek/deepseek-v4.1-flash-1017` seats DeepSeek V4.1 Flash 1017 in every seat
  * as `<pack>-fresh-deepseek-v4.1-flash-1017`; on 21 October such a campaign needed four seat flags
  * after `--` under a name that said opus.
@@ -41,14 +42,15 @@ import { gitText, mainTree } from "#src/meta/git.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
-import { hostNamed, ownName } from "./host-config.ts";
+import { ownName } from "./host-config.ts";
 import { verbOn } from "./hosts.ts";
 import { preparedHost, publishedAt } from "./code.ts";
-import { freshFleet, freshLogin, placeFresh, loginPool, loginPresent, takes } from "./placement.ts";
+import { freshFleet, freshHost, freshLogin, loginPool, loginPresent } from "./placement.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 import { launch } from "./manage.ts";
 import { everyRun, harnessesOf } from "./registry.ts";
 import { batchFresh } from "./batch.ts";
+import { CODEX, seatsCodex } from "./live.ts";
 import { billsLogin, readLogins } from "./logins.ts";
 
 interface FreshStart {
@@ -144,6 +146,7 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
   const model = modelOf(values.model);
   const seated = seats(model.id, values.effort ?? model.effort);
   const billed = billsLogin([], [...seated, ...more]);
+  const codex = !billed && seatsCodex([...seated, ...more]);
   if (positionals.length > 1) {
     if (values.host !== undefined) throw new Error("a batch chooses its hosts automatically");
     return await batchFresh(
@@ -162,6 +165,7 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
         login: values.login,
         logins: values.logins,
         billed,
+        codex,
         yes: values.yes,
       },
       (words) => fresh(words, read),
@@ -173,15 +177,8 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
     values.login !== undefined || billed
       ? await freshLogin(values.login, fleet, read, loginPool(values.logins))
       : undefined;
-  const host =
-    values.host === undefined && !values.placed
-      ? await placeFresh(pack, fleet, undefined, login)
-      : values.placed || values.host === "here"
-        ? undefined
-        : hostNamed(values.host);
-  if (!takes(host, pack)) {
-    throw new Error(`${host?.name ?? "here"} does not take ${pack}, by the packs ANA_HOSTS reserves`);
-  }
+  const payer = login ?? (codex ? CODEX : undefined);
+  const host = await freshHost(pack, fleet, values.placed ? "here" : values.host, payer);
   const commit = publishedAt(here, values.at);
   if (host !== undefined) {
     console.log(`${host.name}: prepare a detached controller at ${commit.slice(0, 9)}, then fresh ${pack}`);

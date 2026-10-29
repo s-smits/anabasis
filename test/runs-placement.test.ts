@@ -109,6 +109,27 @@ console.log(String(await freshLogin(undefined, [], read)));`;
     }
   });
 
+  it("puts a GPT run on no machine that carries one, chosen or named, unless codex:N allows more", () => {
+    const made = fixture();
+    const place =
+      'import { placeFresh } from "REPOSITORY/tools/runs/placement.ts"; console.log((await placeFresh("sample", undefined, undefined, "codex"))?.name ?? "here", (await placeFresh("sample", undefined, undefined, "' +
+      LOGIN +
+      '"))?.name ?? "here");';
+    const gpt =
+      'import { fresh } from "REPOSITORY/tools/runs/fresh.ts"; await fresh(["sample", "--host", "runner", "--model", "gpt"]);';
+    const there = { FAKE_ACTIVE: JSON.stringify([{ name: "gpt-there", login: "codex", host: "x" }]) };
+    const reserved = { ANA_HOSTS: JSON.stringify([{ ...made.host, packs: ["sample"] }]) };
+    expect(made.run(place, reserved).out.trim()).toBe("runner runner");
+    expect(made.run(place, { ...reserved, ...there }).err).toContain("no host has room");
+    const named = made.run(gpt, there);
+    expect(named.code).toBe(1);
+    expect(named.err).toContain("runner carries 1 live codex run(s), at most 1 a machine");
+    expect(made.run(gpt).out).toContain("nothing is launched without --yes");
+    expect(made.run(gpt, { ...there, ANA_LOGIN_RUNS: "codex:2" }).out).toContain(
+      "nothing is launched without --yes",
+    );
+  });
+
   it("keeps a reserved pack on its host, and every other pack off it, chosen or named", () => {
     const made = fixture();
     const hosts = JSON.stringify([{ ...made.host, packs: ["truss"] }]);

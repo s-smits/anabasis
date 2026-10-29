@@ -47,6 +47,8 @@ import { dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, processGroupExists, runSync } from "#src/meta/subprocess.ts";
 import { lastLaunch, nextRun } from "./receipt.ts";
+import { payerOf } from "./live.ts";
+import { roomToStart } from "./logins.ts";
 import {
   BUILDER,
   campaignOf,
@@ -151,6 +153,7 @@ export async function start(
       `comparison ${open.join(", ")} began and has not reported: it goes on at ${commit.slice(0, 9)}`,
     );
   }
+  await roomToStart(payerOf(login, flags), "here", run.name);
   installAt(run.tree, target);
   const command = [capturedExecPath, BUILDER, "--name", run.name, ...flags];
   const dry = runSync([...command, "--dry-run"], { cwd: run.tree, env });
@@ -244,7 +247,11 @@ export async function continueRun(args: readonly string[]): Promise<void> {
   }
   // A commit no remote holds is refused before the pause, which would leave the run stopped.
   const target = values.at === undefined ? undefined : publishedAt(run.tree, values.at);
-  if (values.after !== undefined) await pauseAt(run, values.after);
+  if (values.after !== undefined) {
+    // Counted before the pause, which would leave the run stopped where `start` then refuses it.
+    await roomToStart(payerOf(values.login, flags), "here", run.name);
+    await pauseAt(run, values.after);
+  }
   await start(run, flags, values.login, target);
 }
 

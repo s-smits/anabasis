@@ -28,7 +28,17 @@ import { isString } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { allowedLogins, atCap, billsLogin, liveEverywhere, plainOnly, readLogins, room } from "./logins.ts";
+import { payerOf } from "./live.ts";
+import {
+  allowedLogins,
+  atCap,
+  billsLogin,
+  liveEverywhere,
+  plainOnly,
+  readLogins,
+  room,
+  startRefusal,
+} from "./logins.ts";
 import type { Live } from "./live.ts";
 import { lastRun, rerun, start } from "./manage.ts";
 import { KEEPING, keepers, logEvents, processes, type Run, runNamed, writers } from "./registry.ts";
@@ -148,8 +158,18 @@ async function keepGoing(run: Run, logins: readonly string[], waitMs: number): P
         return unasked.length > 0 || atCap(runtimeProcess.env, [login], live).size > 0;
       },
     );
-    if (target === null) {
-      if (!waiting) console.log(`${run.name}: no login with capacity; left waiting`);
+    const full =
+      target === null
+        ? null
+        : startRefusal(
+            runtimeProcess.env,
+            payerOf(target, lastRun(run).flags),
+            "here",
+            await counted(),
+            run.name,
+          );
+    if (target === null || full !== null) {
+      if (!waiting) console.log(`${run.name}: ${full ?? "no login with capacity"}; left waiting`);
       waiting = true;
       continue;
     }

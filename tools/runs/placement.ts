@@ -13,12 +13,17 @@
  * the M1 for one truss campaign, and an automatic choice put a buffer campaign there the same day,
  * because only a session's memory held the rule. A machine that lists packs takes no other pack, and
  * a pack some machine lists goes to no machine that does not, whether chosen here or named by `--host`.
+ *
+ * A GPT run is paid by the Codex CLI's login of its machine (`CODEX`, `live.ts`), at most one a
+ * machine unless `ANA_LOGIN_RUNS` names `codex:N` (29 October 2026). A machine that carries as many
+ * takes no other GPT run, chosen here or named by `--host` (`fullOn`): until then the operator's
+ * rule of one a machine was kept by hand, and only GPT runs' names showed which they were.
  */
 import { runtimeProcess } from "#src/meta/process.ts";
 import { asked } from "./hosts.ts";
-import { type Host, hostsOf } from "./host-config.ts";
+import { type Host, hostNamed, hostsOf } from "./host-config.ts";
 import type { Live } from "./live.ts";
-import { allowedLogins, atCap, liveEverywhere, plainOnly, readLogins, room } from "./logins.ts";
+import { allowedLogins, atCap, fullOn, liveEverywhere, plainOnly, readLogins, room } from "./logins.ts";
 import { localCatalogue, remoteRuns } from "./snapshots.ts";
 
 interface Occupancy {
@@ -105,10 +110,12 @@ export async function placeFresh(
   const fleet = counted ?? (await freshFleet());
   return leastOccupied(
     (choices ?? (await freshHosts())).map((choice) => {
-      const there = fleet.filter((run) => run.host === (choice.host?.name ?? "here"));
+      const name = choice.host?.name ?? "here";
+      const there = fleet.filter((run) => run.host === name);
+      const open = takes(choice.host, pack) && fullOn(runtimeProcess.env, login, name, fleet) === null;
       return {
         host: choice.host,
-        capacity: takes(choice.host, pack) ? choice.capacity : 0,
+        capacity: open ? choice.capacity : 0,
         live: there.length,
         familiar: choice.projects.includes(`${pack}-fresh`),
         sameLogin: login === undefined ? 0 : there.filter((run) => run.login === login).length,
@@ -158,4 +165,26 @@ export async function loginPresent(host: Host, login: string): Promise<boolean> 
   const answer = result.lines.join("\n");
   if (answer !== "true" && answer !== "false") throw new Error(`${host.name}: invalid login presence answer`);
   return answer === "true";
+}
+
+/** The host a fresh run of `pack` goes to: chosen where `named` is undefined, this machine for
+ *  `here`, and refused where it does not take the pack or carries as many runs of `payer` as it may. */
+export async function freshHost(
+  pack: string,
+  fleet: readonly Live[],
+  named: string | undefined,
+  payer: string | undefined,
+): Promise<Host | undefined> {
+  const host =
+    named === undefined
+      ? await placeFresh(pack, fleet, undefined, payer)
+      : named === "here"
+        ? undefined
+        : hostNamed(named);
+  const where = host?.name ?? "here";
+  const refused = takes(host, pack)
+    ? fullOn(runtimeProcess.env, payer, where, fleet)
+    : `${where} does not take ${pack}, by the packs ANA_HOSTS reserves`;
+  if (refused !== null) throw new Error(refused);
+  return host;
 }

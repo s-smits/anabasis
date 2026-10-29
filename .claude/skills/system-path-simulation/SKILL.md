@@ -1,6 +1,6 @@
 ---
 name: system-path-simulation
-description: "Test an uncertain Anabasis v2 path at the smallest real layer that can decide it: one fact from a log or a dry run, a walk of one value across the layers, a replay through this tree's readers, a round or campaign rehearsed on a seed with scripted seats and no Referee, one live seat from a seed, or rounds of before-and-after seats that tune a prompt or a term against one count. Use to test a join, revisit a recorded position, size a comparison, check what a kill or stop leaves, or tune the Examiner's, the Referee's or the Builder's prompt or terms in rounds of paired live seats and read such a round: holds at equal task admissions, against two draws of one commit, on the bar of a gain or of as good and simpler (cases/optimize.md). Not for reading a finished run (whole-run-investigation) or starting a paid one (run-management)."
+description: "Test an uncertain Anabasis v2 path at the smallest real layer that can decide it: one fact from a log or a dry run, a walk of one value across the layers, a replay through this tree's readers, a synthetic log built in memory and handed to any reader, a round or campaign rehearsed on a seed with scripted seats and no Referee, one live seat from a seed, or rounds of before-and-after seats that tune a prompt or a term against one count. Use to test a join, revisit a recorded position, size a comparison, check what a kill or stop leaves, or tune the Examiner's, the Referee's or the Builder's prompt or terms in rounds of paired live seats and read such a round: holds at equal task admissions, against two draws of one commit, on the bar of a gain or of as good and simpler (cases/optimize.md). Not for reading a finished run (whole-run-investigation) or starting a paid one (run-management)."
 ---
 
 # System path simulation
@@ -22,6 +22,7 @@ reads its later tasks and answers from there (`draftedSource`, `tools/runs/rehea
 | One fact | what a log, a campaign or the host says now | seconds | [one-fact](cases/one-fact.md) |
 | Layer walk | whether one value survives every layer a change touches | minutes, no model | [layer-walk](cases/layer-walk.md) |
 | Log replay | whether this tree still reads what real runs wrote | seconds for every log | [log-replay](cases/log-replay.md) |
+| Synthetic log | whether a reader turns a pattern no log holds yet into the intended step: a threshold's edge, a promotion between readings, what a seat is told, the next move, a count changed in one place | seconds, no model, nothing written | [synthetic](cases/synthetic.md), `scripts/synthetic.ts` |
 | Rehearsal | whether commands join, and what a position of this size can read | no model; time depends on the solves and limits | [rehearsal](cases/rehearsal.md) |
 | Live seat | what a real model does from a recorded position | a session's or a solve's dollars | [live-seat](cases/live-seat.md), `scripts/live-seat.ts` |
 | The real run | everything a script cannot say | hours, tens of dollars | run-management, then `bun run runs pulse` |
@@ -53,7 +54,8 @@ interpret a remote pid as local.
    tasks where the campaign released one".
 3. **Build a position with the campaign's own commands.** Every event has one writer. Never append
    a line by hand, edit one, or put a harness state into `states/`. For a position no run stood in,
-   cut earlier and run the real command with other flags.
+   cut earlier and run the real command with other flags. Events built by hand stay in memory
+   ([synthetic](cases/synthetic.md)) and reach no folder.
 4. **Write only to a seed.** `rehearse` and `scripts/live-seat.ts start` require `seed.json`.
    Production move commands have no such guard: use `sim-<what>` only for seeds.
 5. **One variable.** Two rehearsals compare when one flag moved between them. Two commits compare

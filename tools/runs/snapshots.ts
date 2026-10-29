@@ -37,6 +37,7 @@ import {
   wholeLines,
   logEvents,
   processes,
+  SEED_FILE,
   writers,
   type Run,
 } from "./registry.ts";
@@ -53,7 +54,14 @@ interface RemoteRun {
 
 type Depth = "record" | "whole";
 const EXCLUDED = ["--exclude=.env", "--exclude=.env.*", "--exclude=*.env", "--exclude=auth.json"];
-const RECORD = ["--include=/log.jsonl", "--include=/launch-*.json", "--exclude=/*"];
+// The seed's mark comes too, so a copy of a rehearsal's seed is no paid campaign to a reader: until
+// 29 October the gather left it out, and two compare-systems seeds counted as campaigns in a replay.
+const RECORD = [
+  "--include=/log.jsonl",
+  "--include=/launch-*.json",
+  `--include=/${SEED_FILE}`,
+  "--exclude=/*",
+];
 let fetching = Promise.resolve();
 
 /** One original campaign's identity and project, as a catalogue lists it. */

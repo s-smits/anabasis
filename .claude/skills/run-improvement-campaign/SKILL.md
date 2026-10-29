@@ -239,6 +239,11 @@ bun tools/d2/close.ts --name <name> --to <scratch dir>
 ```
 
 Point `--to` outside the repository, or under `data/harnesses/` of the main worktree, where a campaign `runs fresh` launched writes its own at its end. Without `--solve`, this writes a handover and runs no solve.
+
+To read this cycle's runs against the last cycle's, or a live run against the finished ones, use
+promotion-tuner's `scripts/table.ts`: `--rows recent` for the live runs beside the latest that
+promoted, `--rows groups` for time to the first promotion and hours and dollars a rung by release,
+pack and setting.
 Supply binds before a comparison can say anything; economy reports and refuses nothing.
 
 A different level, target or number of solves a side changes what the instrument can show. Name

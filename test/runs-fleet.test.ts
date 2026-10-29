@@ -387,7 +387,7 @@ describe("named snapshot readers", () => {
 });
 
 describe("snapshot depth", () => {
-  it("retains artefacts on a record refresh and fetches them afresh for a named log", () => {
+  it("retains artefacts on a record refresh, brings a seed's mark, and fetches them afresh for a named log", () => {
     const remote = campaign();
     const { made } = remote;
     const memory = join(made.root, "remote", "distant", "memory");
@@ -395,6 +395,9 @@ describe("snapshot depth", () => {
     writeFileSync(join(memory, "note.txt"), "before");
     expect(made.run(sync, remote.env).code).toBe(0);
     writeFileSync(join(memory, "note.txt"), "after");
+    // A record refresh runs only where the log grew.
+    append(remote.log, "campaign.word", { stop: "fixture" });
+    writeFileSync(join(made.root, "remote", "distant", "seed.json"), "{}");
     expect(
       made.run(
         'import { readAcross } from "REPOSITORY/tools/runs/snapshots.ts"; await readAcross("distant");',
@@ -403,6 +406,8 @@ describe("snapshot depth", () => {
     ).toBe(0);
     const copied = join(made.main, "data", "runs", "runner", "distant", "memory", "note.txt");
     expect(readFileSync(copied, "utf8")).toBe("before");
+    // A copy of a seed reads as one, so no reader counts it as a paid campaign.
+    expect(existsSync(join(made.main, "data", "runs", "runner", "distant", "seed.json"))).toBe(true);
     expect(made.recorded().findLast((call) => call.tool === "rsync")?.args).toContain("--exclude=/*");
     expect(
       made.run(

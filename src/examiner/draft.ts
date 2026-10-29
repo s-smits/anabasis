@@ -40,7 +40,9 @@
  * no fault is then measured before it stands (`measure`): the reference harness, which is the
  * starter at drafting, solves each example as the task admission of `try_task` solves a draft task, and the
  * Examiner is told the budget and, an example a line, how many solves were valid and the turns each
- * valid one took. The same draft put again stands. Until 22 October the budget and those solves
+ * valid one took. The same draft put again stands, unless no example left the reference room and it
+ * declares no objective (`CLOSED`): esp32-fresh-opus-stackedPR506's exam stood so on 28 October, and its
+ * task admission refused 70 of 73 drafts, 210 of 210 room solves valid. Until 22 October the budget and those solves
  * were first met by the first writing session, after the scope that bounds every task was fixed:
  * the drafted exams of two fresh campaigns of that day were answered at a median of 3 of 20 turns. Where it has a shell (`shell.ts`) it is told what the shell is
  * and what the wall test found of the network, and not what to use it for. Nothing hidden
@@ -215,13 +217,19 @@ const DRAFT_PARAMETERS = Type.Object({
 export interface Measured {
   readonly budget: { readonly modelTurns: number | null; readonly minutes: number };
   readonly examples: readonly string[];
+  /** No example left the reference room: each was answered in every solve, and no objective is declared. */
+  readonly closed: boolean;
 }
+
+/** Why a draft measured closed, with no objective, does not stand: no task like it leaves room. */
+const CLOSED =
+  "the reference harness answered every example validly in every solve, and the draft declares no objective, so a task like these leaves it no room and task admission refuses every such task";
 
 /** What `draft_exam` does with a draft, as the system prompt says it: with the reference harness's
  *  solves of the examples where the caller can make them, and without where it cannot. */
 const PUT = {
   read: "draft_exam puts a whole draft to the host, which reads it without a model: its shape, then every control through the checks, twice, and the smallest answer on every example. It returns the faults it found, or that the draft stands.",
-  measured: `draft_exam puts a whole draft to the host, which reads it without a model: its shape, then every control through the checks, twice, and the smallest answer on every example, and returns the faults it found. A draft with no fault is then measured: the reference harness, the starter every campaign begins from, solves each example afresh under the budget every later solve is held to, up to ${String(TRIED)} times, and you are told how many of its solves were valid and the turns each valid one took. The same draft put again stands, and so does the last draft a session can put; a revised draft is read and measured in turn.`,
+  measured: `draft_exam puts a whole draft to the host, which reads it without a model: its shape, then every control through the checks, twice, and the smallest answer on every example, and returns the faults it found. A draft with no fault is then measured: the reference harness, the starter every campaign begins from, solves each example afresh under the budget every later solve is held to, up to ${String(TRIED)} times, and you are told how many of its solves were valid and the turns each valid one took. The same draft put again stands, unless ${CLOSED}, and so does the last draft a session can put; a revised draft is read and measured in turn.`,
 } as const;
 
 /** The system prompt, with what `draft_exam` does (`PUT`). */
@@ -384,8 +392,12 @@ export function draftOf(events: readonly LogEvent[]): Draft | null {
  *  a draft that stands is kept in. */
 export function drafting(terms: DraftingTerms, stop: AbortSignal) {
   const { measure, limits } = terms;
-  // Only the same draft can reuse the last complete measure.
-  let told: { readonly draft: string; readonly measurement: Measurement } | null = null;
+  // Only the same draft can reuse the last complete measure; no draft reads as the empty string.
+  let told: { readonly draft: string; readonly measurement: Measurement; readonly closed: boolean } = {
+    draft: "",
+    measurement: { status: "not-run" },
+    closed: false,
+  };
   const kind = "draft";
   const desk: { tries: number; stands: boolean; measurement?: Measurement } = { tries: 0, stands: false };
   const none = `This session can put no further ${kind}. Call finish.`;
@@ -401,45 +413,37 @@ export function drafting(terms: DraftingTerms, stop: AbortSignal) {
       if (desk.tries >= limits.puts) throw new Error(none);
       desk.tries += 1;
       const draft = draftedFrom(args);
-      const unformed = draftFaults(draft);
-      const faults = unformed.length > 0 ? unformed : await terms.reading(draft);
-      const left = limits.puts - desk.tries;
       const seen = capturedJsonStringify(draft);
+      // A draft measured closed is refused again as it was put, without another reading.
+      const known = seen === told.draft && told.closed ? [CLOSED] : draftFaults(draft);
+      const faults = known.length > 0 ? known : await terms.reading(draft);
+      const left = limits.puts - desk.tries;
       // The last put stands without measurement, leaving a put to answer every completed measure.
-      if (
-        faults.length === 0 &&
-        left > 0 &&
-        measure !== undefined &&
-        !(seen === told?.draft && told.measurement.status === "complete")
-      ) {
+      if (faults.length === 0 && left > 0 && measure !== undefined && seen !== told.draft) {
         const solved = await measure(draft, signal);
-        const reason: unknown = signal.reason;
-        told = {
-          draft: seen,
-          measurement:
-            solved === null
-              ? {
-                  status: "interrupted",
-                  cancelledBy: reason instanceof Cancellation ? reason.cancelledBy : "invocation",
-                }
-              : { status: "complete" },
-        };
         if (solved !== null) {
+          told = { draft: seen, measurement: { status: "complete" }, closed: solved.closed };
           return text(
             [
               `The draft has no fault. The reference harness solved its examples afresh. ${budgetLine(solved.budget)}`,
               ...solved.examples.map((line, index) => `- example ${String(index)}: ${line}`),
-              "Put the same draft again and it stands; a revised draft is read and measured in turn.",
+              told.closed
+                ? `The draft does not stand: ${CLOSED}. Mend it and put the whole draft again.`
+                : "Put the same draft again and it stands; a revised draft is read and measured in turn.",
             ].join("\n") + `\nThis session can put ${plural(left, `more ${kind}`)}.`,
           );
         }
+        // A cut measure lets the draft stand below, so the same draft is never put after one.
+        const reason: unknown = signal.reason;
+        const cancelledBy = reason instanceof Cancellation ? reason.cancelledBy : "invocation";
+        told = { draft: seen, measurement: { status: "interrupted", cancelledBy }, closed: false };
       }
       if (faults.length === 0) {
         append(terms.log, "exam.drafted", {
           session: terms.id,
-          draft: parseJsonAs<JsonObject>(capturedJsonStringify(draft)),
+          draft: parseJsonAs<JsonObject>(seen),
         });
-        desk.measurement = told?.draft === seen ? told.measurement : { status: "not-run" };
+        desk.measurement = told.draft === seen ? told.measurement : { status: "not-run" };
         desk.stands = true;
         return ending(text("The draft stands: it is the campaign's exam. The session ends here."));
       }

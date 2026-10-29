@@ -16,7 +16,11 @@ import { gated } from "../tools/d2/host.ts";
 import { settingAsked } from "../tools/d2/setting.ts";
 import { drafted, EXAMPLE, SOUND, seat, sweep } from "./helpers/examiner-seat.ts";
 
-const MEASURED = { budget: { modelTurns: 20, minutes: 30 }, examples: ["no reading", "valid", "invalid"] };
+const MEASURED = {
+  budget: { modelTurns: 20, minutes: 30 },
+  examples: ["no reading", "valid", "invalid"],
+  closed: false,
+};
 const PLAYED: Played = {
   crash: null,
   broken: null,

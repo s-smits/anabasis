@@ -16,7 +16,8 @@
  * that leaves it room (`measured`, `src/examiner/write.ts`), under the campaign's setting, which
  * the first such solve records (`--solver` and the rest, as every command that solves takes them).
  * A rejection is ruled by the Referee before it counts (`--reviewer`). The Examiner is told how many
- * solves were valid and the turns each valid one took, and the same draft put again stands. Each
+ * solves were valid and the turns each valid one took, and the same draft put again stands unless
+ * none left it room and the draft declares no objective (`CLOSED`, `src/examiner/draft.ts`). Each
  * solve's start names the session, so it is the Examiner's: never scored and on no task's record
  * (`examinerSessions`, `src/kernel/solves.ts`). On 22 October the drafted exams of two fresh
  * campaigns were measured only afterwards: one campaign's reference answered 965 of 971 solves
@@ -39,8 +40,10 @@ import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { openingOf } from "#src/campaign/opening.ts";
 import type { Draft, Measured } from "#src/examiner/draft.ts";
 import { type Examined, examine, type Session } from "#src/examiner/session.ts";
+import { TRIED } from "#src/examiner/record.ts";
 import { measured as measureRoom } from "#src/examiner/write.ts";
 import { read } from "#src/kernel/log.ts";
+import { isString } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
@@ -82,8 +85,8 @@ export async function draftCommand(
   }
   refereeNamed(values, session === examine && seated !== null ? "paid" : "scripted");
   const log = campaignLog(name);
-  const prompt = openingOf(read(log))?.prompt ?? null;
-  if (prompt === null) {
+  const prompt = openingOf(read(log))?.prompt;
+  if (!isString(prompt)) {
     throw new Error(
       `campaign ${name} did not open from a prompt, so there is nothing to draft its exam from: open it with tools/d2/harness-builder.ts --prompt`,
     );
@@ -97,15 +100,17 @@ export async function draftCommand(
       const campaign = await openCampaign({ name, draft, ...setting.named });
       const probe = await launchRoomSolve(campaign, by, setting, values);
       const admission = { contract: campaign.contract, log, id, probe, planted: new Set<string>() };
+      let open = draft.objective !== undefined;
       const examples = await Promise.all(
         campaign.tasks.map(async (task) => {
-          const { reason, said } = await measureRoom(admission, campaign.pack(task), stop, () =>
+          const { reason, said, reference } = await measureRoom(admission, campaign.pack(task), stop, () =>
             Promise.resolve(null),
           );
+          open ||= reference?.valid !== TRIED;
           return said === "" ? (reason ?? "not measured") : said;
         }),
       );
-      return stop.aborted ? null : { budget: budgetOf(read(log), campaign, values), examples };
+      return stop.aborted ? null : { budget: budgetOf(read(log), campaign, values), examples, closed: !open };
     };
   stayAwake();
   const drafted = await session(

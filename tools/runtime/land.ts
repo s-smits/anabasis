@@ -73,8 +73,11 @@
  * A failure names the commit and the pull request it sits on. Its fix goes into that commit, the
  * pull requests above it are replayed on it (stack-pr, section 8), and a second landing runs only
  * what the replay moved. A commit whose runner gave no verdict is marked with an error instead, and
- * the landing asks only to be run again. A head that moves while its commits are gated is read
- * again and landed as it stands, up to `MOVES` times. `--jobs N` gates up to N commits at once; the
+ * the landing asks only to be run again. The chain is read again as each commit's proof starts and
+ * before each pull request turns green, so a head that moved is landed as it stands, its newer
+ * commits with it, before a stale commit is proved, up to `MOVES` times. Until 29 October it was read
+ * only as a pull request turned green, so a head pushed while its own commits were gated had its old
+ * commits proved first, its old top's whole gate among them. `--jobs N` gates up to N commits at once; the
  * top's whole CI gate runs alone.
  *
  * `ci.yml` is waited for in the open: the top's head carries a status of that name, pending while
@@ -555,7 +558,7 @@ async function mergeStack(
   return { ended: "unsure", sha };
 }
 
-/** Refuses a proof whose chain has moved before its success is published. */
+/** Refuses a proof whose chain has moved before a commit's proof starts or a success is published. */
 function checkCurrent(root: string, target: number, landing: Landing): void {
   const again = readLanding(root, target);
   checkChain(root, again);
@@ -702,6 +705,7 @@ async function landTo(root: string, target: number, mode: Mode): Promise<number 
     jobs: mode.jobs,
     say,
     mark: (commit, state, description) => {
+      if (state === "pending") checkCurrent(root, target, landing);
       if (!reach) return;
       postStatus(root, commit, { context: COMMIT_CONTEXT, state, description });
       // A head that holds a commit proved again reads pending until it passes, not an earlier red.

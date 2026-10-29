@@ -607,9 +607,23 @@ describe("bun run land", () => {
       `pending ${upper}`,
       `success ${lowerDocs}`,
       `success ${lowerMore}`,
+      `pending ${upper}`,
       `success ${upper}`,
     ]);
     expect(gatesRun(gateLog).filter((gate) => gate.startsWith(upper))).toEqual([`${upper} suite`]);
+  });
+
+  it("reads the chain again before each proof starts, so a head moved on proves its new commits and not the old head", () => {
+    const next = join(fixture, "moved-pulls");
+    rmSync(`${next}.read`, { force: true });
+    writeFileSync(next, JSON.stringify([pull(11, "a", "main", lowerDocs), pull(12, "b", "a", stacked)]));
+    const result = runLand(["12", "--sanitize"], { ANA_FAKE_PULLS_NEXT: next });
+    expect(result.status).toBe(0);
+    const gates = gatesRun(gateLog);
+    expect(gates).not.toContain(`${upper} suite`);
+    expect(gates.filter((gate) => gate.startsWith(upper))).toHaveLength(1);
+    expect(gates.at(-1)).toBe(`${stacked} suite`);
+    expect(statuses("mergeable").at(-1)).toBe(`success ${stacked}`);
   });
 
   it("refuses before gating when no run exists and ci.yml takes no dispatch", () => {

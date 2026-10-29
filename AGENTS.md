@@ -818,7 +818,8 @@ hand commands of rows 0 to 7 write no opening and so have no project.
 **The setting** (`campaign.setting`, `tools/d2/setting.ts`) is recorded once, by the first command
 that begins a comparison or a Builder session, and never changes. It says who solves and under
 which limits, named by five flags (`--solver`, `--solver-effort`, `--solver-window`,
-`--solve-minutes`, `--solve-model-turns`), and how many held-out tasks a comparison draws (`--target`).
+`--solve-minutes`, `--solve-model-turns`), how many held-out tasks a comparison draws (`--target`) and how many solves a side each gets
+(`--solves`).
 The first command records what it names and the defaults for the rest. From then on a command that
 names nothing runs under the record, and one whose flag names something different is refused with
 both values: a different setting is a different campaign. A campaign whose solves were made before
@@ -895,7 +896,8 @@ bun run runs fresh | launch | continue | keep | pause | copy | fetch | retire | 
 ### Defaults
 
 - 24 scored tasks (`--target`);
-- 2 solves per side, fixed in every domain and named by no flag (`SIZE` in `src/kernel/size.ts`);
+- 2 solves per side in every domain (`SIZE` in `src/kernel/size.ts`), which a campaign's setting
+  may name otherwise once (`--solves`);
 - level 0.02 (`--level`), with improvement patience of 6 (`--patience`): one comparison that reads a step at
   the level promotes;
 - an objective gap floor of 1% (`ROOM`), the least improvement by the objective worth counting, as
@@ -951,8 +953,8 @@ hash. The draw does two more things:
   **exhausted** for supply, though a bill saving can still win it (`poolOf`). A task is not closed
   where a valid answer on record (the reference's own, the other side's or its author's) is better
   by the objective than one of the reference's by at least the objective gap floor, since the next
-  harness can still win it (`bettered`). The solves a side and these counts of comparisons are set
-  in one place (`SIZE`, `RUNS`, `src/kernel/size.ts`), and every rule reads a side's every, some or
+  harness can still win it (`bettered`). The default solves a side and these counts of comparisons are
+  set in one place (`SIZE`, `RUNS`, `src/kernel/size.ts`), and every rule reads a side's every, some or
   none, so the rules read the same at any count of solves.
 
 An exhausted task stays in the draw as **retained**, so that a harness that breaks what the

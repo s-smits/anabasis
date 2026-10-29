@@ -71,12 +71,13 @@ export interface Opening {
 }
 
 /** The flags of a campaign's moves that its opening keeps: a solve's deadline and the scored tasks,
- *  which the first setting records; a comparison's solves a side, level and stop on check
+ *  and the solves a side, which the first setting records; a comparison's level and stop on check
  *  defects; a Builder session's deadline, session turn limit and practice solves; the practice tasks; and an
  *  Examiner session's tasks, proposals, deadline and session turn limit. */
 export const TERMS = [
   "solve-minutes",
   "target",
+  "solves",
   "level",
   "defects",
   "minutes",

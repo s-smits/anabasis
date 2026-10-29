@@ -9,7 +9,9 @@
  * normal approximation, since the sizes in question are the ones where an approximation is worst.
  * Nothing here decides.
  *
- * Two solves a side, in every domain (operator, 29 October). From 12 October a side had four, so
+ * Two solves a side by default, in every domain (operator, 29 October); a campaign's setting may
+ * name another count once, with `--solves` (`tools/d2/setting.ts`), and every reader of the pool
+ * reads its every, some or none at that count (`spreadOf`). From 12 October a side had four, so
  * that a task the two harnesses split was won or lost by four pairs for each valid answer that
  * parted them. Four bought about a sixth more of a campaign's dollars and more of its hours, which
  * the Builder spends waiting on comparisons, and one reading of four solves still could not call a

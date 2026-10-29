@@ -47,7 +47,6 @@
 import { admitComparison } from "#src/campaign/admission.ts";
 import type { Report } from "#src/campaign/comparison.ts";
 import { type CheckpointRequest, checkpoint, refuseTerms, scoredSet } from "#src/campaign/round.ts";
-import { SIZE } from "#src/kernel/size.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
@@ -107,7 +106,7 @@ export async function checkpointCommand(
     fresh,
     starter: await starter(campaign),
     ...scoredSet(read(campaign.log), setting.target, contractHash(campaign.contract)),
-    solves: SIZE.solves,
+    solves: setting.solves,
     level: Number(values.level),
     objective: objectiveNamed(campaign),
     defects: Number(values.defects),

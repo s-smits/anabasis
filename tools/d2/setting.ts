@@ -12,6 +12,8 @@
  *                                       named, and `unlimited` for none, as campaigns recorded before
  *                                       19 October read back
  *   --target 12                         so many of the held-out tasks, by the contract's draw
+ *   --solves 4                          solves a side of each scored task; `SIZE.solves`, 2, where
+ *                                       not named, and so a record from before 29 October reads
  *
  * The first command of a campaign that compares records what its flags name, with the defaults for
  * what they leave out: the stored cycle's own solver, the one budget every solver is held to
@@ -87,6 +89,8 @@ export interface Recorded {
   /** The model turn limit of a solve; null where they are not limited. */
   readonly modelTurns: number | null;
   readonly target: number;
+  /** The solves a side of each scored task. */
+  readonly solves: number;
 }
 
 /** The flags of a setting, as a command's parsed arguments hold them. */
@@ -97,6 +101,7 @@ interface SettingFlags {
   readonly "solve-minutes"?: string | undefined;
   readonly "solve-model-turns"?: string | undefined;
   readonly target?: string | undefined;
+  readonly solves?: string | undefined;
 }
 
 /** What a command runs under: the solver and the limits, the size of the scored draw,
@@ -104,6 +109,7 @@ interface SettingFlags {
 export interface AskedSetting {
   readonly named: NamedSetting;
   readonly target: number;
+  readonly solves: number;
   readonly record: Recorded | null;
   /** Whether the record would be the campaign's first, with no word from the operator that the
    *  setting is new: it is then held to what the log's solves ran under (`firstRecord`). */
@@ -129,6 +135,7 @@ export const SETTING_OPTIONS = {
   "solver-window": { type: "string" },
   "solve-minutes": { type: "string" },
   "solve-model-turns": { type: "string" },
+  solves: { type: "string" },
 } as const;
 
 /** The setting of a campaign nothing has named: `LIMITS`'s deadline and model turn limit, as the flags say
@@ -164,16 +171,22 @@ const PARTS: readonly {
     said: ({ modelTurns }) => (modelTurns === null ? null : `--solve-model-turns ${String(modelTurns)}`),
   },
   { of: "target", flag: "--target", said: ({ target }) => `--target ${String(target)}` },
+  { of: "solves", flag: "--solves", said: ({ solves }) => `--solves ${String(solves)}` },
 ];
 
 /** The scored tasks `--target` asks for: a whole number of at least one. Anything else would draw
  *  a set nobody asked for: no number draws none, and a negative one all but the last. */
 export function targetNamed(flag: string): number {
-  const target = Number(flag);
-  if (!Number.isInteger(target) || target < 1) {
-    throw new Error(`--target ${flag}: the tasks to score are a whole number of at least one`);
+  return wholeNamed("target", flag, "the tasks to score");
+}
+
+/** A count a flag names, refused unless it is a whole number of at least one. */
+function wholeNamed(name: string, flag: string, what: string): number {
+  const count = Number(flag);
+  if (!Number.isInteger(count) || count < 1) {
+    throw new Error(`--${name} ${flag}: ${what} are a whole number of at least one`);
   }
-  return target;
+  return count;
 }
 
 /**
@@ -239,11 +252,12 @@ function defined(values: SettingFlags): SettingFlags {
     ...keyIfDefined("solve-minutes", values["solve-minutes"]),
     ...keyIfDefined("solve-model-turns", values["solve-model-turns"]),
     ...keyIfDefined("target", values.target),
+    ...keyIfDefined("solves", values.solves),
   };
 }
 
 /** A record as the flags that name it. */
-function flagsOf({ solver, minutes, modelTurns, target }: Recorded): SettingFlags {
+function flagsOf({ solver, minutes, modelTurns, target, solves }: Recorded): SettingFlags {
   return {
     ...keyIfDefined("solver", solver?.model),
     ...keyIfDefined("solver-effort", solver?.effort),
@@ -251,6 +265,7 @@ function flagsOf({ solver, minutes, modelTurns, target }: Recorded): SettingFlag
     "solve-minutes": String(minutes),
     "solve-model-turns": modelTurns === null ? UNLIMITED : String(modelTurns),
     target: String(target),
+    solves: String(solves),
   };
 }
 
@@ -262,12 +277,13 @@ function recordOf(values: SettingFlags): Recorded {
     minutes: limits.wallSeconds / 60,
     modelTurns: limits.modelTurns ?? null,
     target: targetNamed(values.target ?? String(SIZE.tasks)),
+    solves: wholeNamed("solves", values.solves ?? String(SIZE.solves), "the solves a side"),
   };
 }
 
 /** The setting a log records for its campaign: the last one kept, or null where none reads whole. */
 export function recordedSetting(events: readonly LogEvent[]): Recorded | null {
-  const { solver, minutes, turns, modelTurns, target } =
+  const { solver, minutes, turns, modelTurns, target, solves } =
     events.findLast(({ kind }) => kind === KIND)?.data ?? {};
   const by = asRecord(solver);
   // A record written before 2026-10-11 holds the prompts a solve was given, which every solve is
@@ -296,6 +312,7 @@ export function recordedSetting(events: readonly LogEvent[]): Recorded | null {
     minutes,
     modelTurns,
     target,
+    solves: isNumber(solves) ? solves : SIZE.solves,
   };
 }
 
@@ -322,6 +339,7 @@ export function settingAsked(values: SettingFlags, recorded: Recorded | null): A
   return {
     named: settingNamed(flags),
     target: asked.target,
+    solves: asked.solves,
     record: recorded === null ? asked : null,
     first: recorded === null,
   };

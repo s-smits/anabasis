@@ -147,15 +147,11 @@ describe("a draft read without a model", () => {
 });
 
 describe("a draft measured before it stands", () => {
-  const MEASURED = {
-    budget: { modelTurns: 20, minutes: 30 },
-    examples: ["seen 0", "seen 1", "seen 2"],
-    closed: false,
-  };
+  const MEASURED = { budget: { modelTurns: 20, minutes: 30 }, examples: ["seen 0", "seen 1", "seen 2"] };
   const REVISED: Draft = { ...SOUND, domain: "Fixture products, revised" };
 
   /** A drafting session over `puts` whose measure is `measure`, counting the drafts it measures. */
-  async function measuredSession(puts: readonly Draft[], limit = puts.length, closed = false) {
+  async function measuredSession(puts: readonly Draft[], limit = puts.length) {
     const s = seat("draft", [...puts.map(drafted), finish]);
     const asked: Draft[] = [];
     const examined = await examine({
@@ -163,7 +159,7 @@ describe("a draft measured before it stands", () => {
       limits: { ...s.request.limits, puts: limit },
       measure: async (draft: Draft) => {
         asked.push(draft);
-        return { ...MEASURED, closed };
+        return MEASURED;
       },
     });
     return { examined, asked, said: s.of("draft.call").map(({ text }) => text), log: s.log };
@@ -186,15 +182,6 @@ describe("a draft measured before it stands", () => {
     expect(examined).toMatchObject({ ended: "stands", puts: 3 });
     expect(asked).toEqual([SOUND, REVISED]);
     expect(draftOf(read(log))).toEqual(SOUND);
-  });
-
-  it("refuses a draft whose measure left the reference no room, and the same draft put again unread", async () => {
-    // esp32-fresh-opus-stackedPR506 (29 October): its exam stood so, and task admission refused 70 of 73 drafts.
-    const { examined, asked, said, log } = await measuredSession([SOUND, SOUND], 3, true);
-    expect(examined).toMatchObject({ ended: "finished", puts: 2 });
-    expect(asked).toEqual([SOUND]);
-    for (const text of said.slice(0, 2)) expect(text).toContain("no objective");
-    expect(draftOf(read(log))).toBeNull();
   });
 
   it("counts the solves a drafting session asks for as the Examiner's, as a writing session's", () => {

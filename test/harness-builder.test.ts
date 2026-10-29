@@ -851,18 +851,12 @@ describe("a campaign run by its log", () => {
     expect(() => wordCommand(["--name", name, "--cause", "the host was loaded"])).toThrow();
     expect(strayed).toEqual([]);
   });
-  it("measures a drafted exam's examples with the reference harness before the draft stands, as solves that are the Examiner's, and refuses one that leaves no room", async () => {
+  it("measures a drafted exam's examples with the reference harness before the draft stands, as solves that are the Examiner's", async () => {
     const name = `${STEM}-measured`;
     seeded(name);
     const folder = join(REPO, ".ana", "d2", name);
     const strayed: string[] = [];
     const { exam, examples } = draftedOf(TASKS.slice(0, 3));
-    // An objective leaves room where every solve is valid: a later answer can measure better.
-    const objective = {
-      ...exam,
-      objective: { quantity: "the answer's length in characters", direction: "lower" },
-      evaluator: `${exam.evaluator}export const objective = (req) => req.artifact.answer.length;\n`,
-    };
     const solving = scriptedSeats(
       { held: { old: "pass", fresh: "pass" }, starter: "pass" },
       examples,
@@ -876,8 +870,7 @@ describe("a campaign run by its log", () => {
           ...request,
           ...scripted([
             ["draft_exam", exam],
-            ["draft_exam", objective],
-            ["draft_exam", objective],
+            ["draft_exam", exam],
           ]),
         }),
     };
@@ -892,23 +885,23 @@ describe("a campaign run by its log", () => {
       "8",
     ];
     await harnessBuilder([...flags, "--prompt", "Six times a base.", "--hitl"], seats);
-    // Each put is measured and told. The reference answered every example of the first in every
-    // solve, and with no objective it does not stand; the same draft with one does when put again.
+    // The first put is measured and told, each example with the room task admission would read on
+    // it, and the same draft put again stands.
     const said = of(name, "draft.call").map(({ text }) => (isString(text) ? text : ""));
-    expect(said).toHaveLength(3);
-    for (const [put, index] of [0, 1].flatMap((each) => [0, 1, 2].map((one) => [each, one] as const))) {
-      expect(said[put]).toContain(
-        `- example ${String(index)}: the reference harness answered it validly in 3 of 3 solves`,
+    expect(said).toHaveLength(2);
+    for (const index of [0, 1, 2]) {
+      expect(said[0]).toMatch(
+        new RegExp(
+          `- example ${String(index)}: the reference harness answered it validly in 3 of 3 solves[^\\n]*, which leaves no room`,
+        ),
       );
     }
-    expect(said[0]).toContain("does not stand");
-    expect(said[1]).toContain("Put the same draft again and it stands");
-    expect(said[2]).toStartWith("The draft stands");
-    expect(of(name, "exam.drafted")).toMatchObject([{ draft: { objective: objective.objective } }]);
-    // Eighteen solves, each named by the drafting session, under the setting the first recorded;
-    // none is on a task's record.
+    expect(said[1]).toStartWith("The draft stands");
+    expect(of(name, "exam.drafted")).toHaveLength(1);
+    // Nine solves, each named by the drafting session, under the setting the first recorded; none
+    // is on a task's record.
     const events = read(join(folder, LOG_FILE));
-    expect(solvesIn(events).map(({ start }) => start.comparison)).toEqual(copies(18, "d-1"));
+    expect(solvesIn(events).map(({ start }) => start.comparison)).toEqual(copies(9, "d-1"));
     expect(countedSolves(events)).toEqual([]);
     expect(of(name, "campaign.setting")).toMatchObject([{ minutes: 8 }]);
     expect(strayed).toEqual([]);

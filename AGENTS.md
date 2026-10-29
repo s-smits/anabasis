@@ -533,7 +533,8 @@ one Builder conversation and one workspace open while its campaign tools run.
 An Examiner call runs a separate agent with its own view. The call returns at once and the session
 writes alongside the conversation. A comparison or a promotion waits for it on the host's time, a
 release of practice tasks does not, and the campaign facts under each campaign tool's result say
-what it held out. As task admission holds each task the host releases the practice the epoch is owed.
+what it held out. As task admission holds each task the host releases the practice owed since the
+last reading.
 When the Builder finishes or reaches its deadline, the end of the conversation waits for the Examiner
 session without stopping it. What does stop it: the host's halt (on the run's moves, an ending the
 table names, or the operator's stop) and a kill of the run. It then ends on record as killed.
@@ -832,11 +833,12 @@ that window and needs one it can hold.
 
 **Practice follows the supply and the outcomes.** One release takes at most half of what is held,
 so a campaign that opens on a few tasks releases fewer than `--practice` names. Before a Builder
-session the table releases more where tasks have been held out since the last release, and after a
-starter comparison that read room (section 7) it releases as many again. Inside a Builder's conversation,
-which spans epochs, the host releases what the epoch is still owed as each Examiner session beside
-it holds a task and as it ends (`releaseOwed`, `tools/d2/campaign-actions.ts`). `--practice` is a
-per-epoch count, and once practice exists a release never leaves fewer frontier tasks, read on the
+session the table releases more where tasks have been held out since the last release.
+`--practice` is owed again after each reading, a comparison's report or a promotion
+(`releasedSince`, `src/campaign/decide.ts`), so a Builder whose practice no longer fails is given
+new tasks while it climbs. Inside a Builder's conversation the host releases what is still owed as
+each Examiner session beside it holds a task and as it ends (`releaseOwed`,
+`tools/d2/campaign-actions.ts`). Once practice exists a release never leaves fewer frontier tasks, read on the
 reference's own solves alone, than a comparison needs (`comparisonFloor`, `practiceRoom`,
 `src/campaign/decide.ts`). Each release is one task fewer to
 compare.

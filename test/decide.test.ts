@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { decide, practiceAllowance, shortOf, unpromoted } from "../src/campaign/decide.ts";
+import { decide, practiceAllowance, practiceOwed, shortOf, unpromoted } from "../src/campaign/decide.ts";
 import type { Plan } from "../src/campaign/ground.ts";
 import { pendingWords } from "../src/campaign/word.ts";
 import { tally as tallyPairs } from "../src/kernel/compare.ts";
@@ -688,6 +688,20 @@ describe("the build conditions", () => {
     ]) {
       expect(practiceAllowance([...log("FF"), knownAnswer], 0.02)).toBe(1);
     }
+  });
+
+  // Until 30 October practice was owed once an epoch: buffer-fresh-opus-v072 released six of 69
+  // tasks held after its second promotion while its Builder passed all 103 practice solves.
+  it("owes the practice named again after each reading, and not before one", () => {
+    const released = (version: string) => event("task.state", { version, state: "released" });
+    const read = [...FIRST, ...compared("g-1", "h1", "no-step")];
+    expect(practiceOwed(FIRST, 1, 0.1)).toBe(0);
+    expect(practiceOwed(read, 1, 0.1)).toBe(1);
+    expect(practiceOwed(read, 3, 0.1)).toBe(3);
+    expect(practiceOwed([...read, released("v1")], 3, 0.1)).toBe(2);
+    expect(practiceOwed([...read, released("v1"), released("v2"), released("v3")], 3, 0.1)).toBe(0);
+    // The allowance still bounds what is owed.
+    expect(practiceOwed(read, 1000, 0.1)).toBe(practiceAllowance(read, 0.1));
   });
 
   it("releases practice before asking for tasks after an unchanged session, preserving both codes", () => {

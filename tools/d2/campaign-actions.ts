@@ -27,7 +27,7 @@
 import { Type } from "typebox";
 import type { SeatTool } from "#src/agent/session.ts";
 import { Refused, supplyOf } from "#src/campaign/admission.ts";
-import { CRASHES, decide, epochReleased, heldAfter, practiceOwed, unpromoted } from "#src/campaign/decide.ts";
+import { CRASHES, decide, heldAfter, practiceOwed, releasedSince, unpromoted } from "#src/campaign/decide.ts";
 import { comparisonsOf, crashedRun } from "#src/campaign/ground.ts";
 import { campaignOf } from "#src/campaign/handover.ts";
 import { type Decided, short } from "#src/campaign/move.ts";
@@ -292,7 +292,7 @@ const examineAction =
     // The action returns once the session is on record: a throw before that is the action's.
     const { promise: onRecord, resolve } = Promise.withResolvers<void>();
     const sitting = seats.examine ?? examine;
-    // As task admission holds out each task the host releases what the epoch is owed, one release at a time,
+    // As task admission holds out each task the host releases what is owed since the last reading, one release at a time,
     // and each release settles `next`, on which `wait` returns. A throw is the environment's ending.
     let releasing = Promise.resolve();
     let next = Promise.withResolvers<void>();
@@ -335,14 +335,14 @@ const examineAction =
       });
     context.examining = { session, done, released: () => next.promise };
     return {
-      said: `Examiner session ${session} is writing ${tasks === undefined ? "tasks" : plural(Number(tasks), "task")} beside this conversation: edit, release practice and practise meanwhile. As it holds tasks the host releases the practice the epoch is owed. A comparison or a promotion waits for it to end, wait returns when it ends or the host releases practice, and campaign_status says how many it has held out.`,
+      said: `Examiner session ${session} is writing ${tasks === undefined ? "tasks" : plural(Number(tasks), "task")} beside this conversation: edit, release practice and practise meanwhile. As it holds tasks the host releases the practice owed since the last reading. A comparison or a promotion waits for it to end, wait returns when it ends or the host releases practice, and campaign_status says how many it has held out.`,
     };
   };
 
 const releaseTool = (context: CampaignContext, bench: Bench): SeatTool =>
   actionTool(context, bench, RELEASE, async (turn, decided, begin) => {
-    // Where the table names no release, the practice named is brought up for this epoch alone, as
-    // far as the epoch's room for practice goes (`practiceOwed`).
+    // Where the table names no release, the practice named is brought up for the stretch since the
+    // last reading, as far as the room for practice goes (`practiceOwed`).
     const before = taskSets(read(context.log)).released.length;
     const practice =
       (decided.move === "prepare" ? decided.practice : undefined) ?? before + owedOf(context, turn);
@@ -356,7 +356,7 @@ const releaseTool = (context: CampaignContext, bench: Bench): SeatTool =>
     return { said: `Practice release completed: ${String(released)} tasks available.` };
   });
 
-/** The practice the campaign names that its epoch is still owed (`practiceOwed`). */
+/** The practice the campaign names that is still owed since the last reading (`practiceOwed`). */
 const owedOf = ({ values }: CampaignContext, { events, plan }: Turn): number =>
   practiceOwed(events, Number(values.practice ?? PRACTICE), plan.wanted.level);
 
@@ -376,7 +376,7 @@ async function releaseTo(context: CampaignContext, bench: Bench, practice: numbe
 }
 
 /**
- * The practice an epoch is owed, released by the host as an Examiner session beside the
+ * The practice owed since the last reading, released by the host as an Examiner session beside the
  * conversation ends, as the command releases it before a Builder session between conversations
  * (`toPractise`, `SETUP`). One conversation spans epochs, and until 21 October only the Builder's
  * own `release_practice` released practice inside one: in seven buffer campaigns, 14 of 23
@@ -400,7 +400,7 @@ async function releaseOwed(context: CampaignContext, bench: Bench, session?: str
   append(context.log, MOVED, {
     move: "prepare",
     code: "practice",
-    why: `${String(epochReleased(turn.events).epoch)} practice tasks were released since the reference harness was last promoted, and ${session === undefined ? "an Examiner session beside the conversation ended" : `Examiner session ${session} beside the conversation held a task out`}: the host releases the epoch's practice`,
+    why: `${String(releasedSince(turn.events).count)} practice tasks were released since the last reading, and ${session === undefined ? "an Examiner session beside the conversation ended" : `Examiner session ${session} beside the conversation held a task out`}: the host releases the practice owed`,
   });
   return true;
 }

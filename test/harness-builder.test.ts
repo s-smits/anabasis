@@ -507,17 +507,16 @@ describe("a campaign run by its log", () => {
     // harness never stood in are retained since 16 October, one for each three frontier tasks.
     // The three the starter comparison drew it has now stood in and failed, so they are frontier again:
     // eleven
-    // frontier tasks, three more than a comparison at the level takes, and the starter comparison read room,
-    // so
-    // the table releases up to three before the Builder builds (`practiceAllowance`). Until 19 October a
-    // repeat came between, and the Builder built here.
+    // frontier tasks, three more than a comparison at the level takes, and the starter comparison is a
+    // reading, after which the practice named is owed again: the table releases up to three before the
+    // Builder builds (`practiceOwed`). Until 19 October a repeat came between, and the Builder built here.
     expect(of(name, "comparison.reported").at(-1)).toMatchObject({
       session: "g-2",
       reading: "no-step",
       valid: { old: [11, 0, 0], fresh: [11, 0, 0], informative: { old: 3, fresh: 3 } },
     });
     expect(after).toMatchObject({ move: "prepare", code: "practice" });
-    expect(after.why).toContain("comparison g-2 read room in the tasks held out since the last release");
+    expect(after.why).toContain("released since the last reading");
     expect(strayed).toEqual([]);
 
     // A person answers g-1's packet, drawn by the comparison's id, so asked again it is the same:

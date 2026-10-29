@@ -2,7 +2,7 @@
  * Move a campaign to another machine, and go on with it there on the login named.
  *
  *   bun --env-file=<credentials> --env-file=.env.runs run runs move <name> --to <host>
- *     [--from <host>] [--login N] [--after promoted|compacted|reported|finished] [--hold]
+ *     [--from <host>] [--login N] [--after next|promoted|compacted|reported|finished] [--hold]
  *     [--yes] [-- <flags>]
  *
  * Each end is a host `ANA_HOSTS` lists or this machine, named by its own short host name or `here`

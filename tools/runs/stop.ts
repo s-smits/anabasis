@@ -9,7 +9,8 @@
  * it prints what it would end. A campaign goes on from its log when its command is run again under
  * the same name (`bun run runs continue`), and the session the stop fell inside has spent its id;
  * a word left with `tools/d2/word.ts` ends a campaign at its next move boundary and spends none, and
- * `bun run runs pause` stops one where nothing but its Builder's conversation is open.
+ * `bun run runs pause` stops one at its next step, or where nothing but its Builder's conversation
+ * is open.
  *
  * A stop also releases what the run held on the host: the root of each solve and session its
  * log started and never finished (`unfinished`, `src/kernel/reports.ts`), which only the ended

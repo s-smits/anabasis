@@ -285,6 +285,8 @@ describe("a campaign run by its log", () => {
     append(log, "exam.turn", { session: "x-1", usage });
     append(log, "build.started", { session: "b-1" });
     append(log, "build.turn", { session: "b-1", usage });
+    append(log, "draft.started", { session: "d-1" });
+    append(log, "draft.turn", { session: "d-1", usage });
     const before = read(log).length;
     await harnessBuilder([...flags, "--moves", "1"], seats);
     const after = read(log).slice(before);
@@ -293,13 +295,17 @@ describe("a campaign run by its log", () => {
       { kind: "build.finished", data: { session: "b-1", ...cut } },
       { kind: "exam.finished", data: { session: "x-1", ...cut } },
     ]);
-    expect(after.findIndex(({ kind }) => kind === MOVED)).toBeGreaterThan(1);
+    // A draft cut by the stop is ended too, so a pause, which waits for no draft open, can hold.
+    expect(after.find(({ kind }) => kind === "draft.finished")).toMatchObject({
+      data: { session: "d-1", ...cut },
+    });
+    expect(after.findIndex(({ kind }) => kind === MOVED)).toBeGreaterThan(2);
     // Reopened once more, with every session ended: nothing more is ended. Ending happens at the
     // opening, so no move is made: a comparison of scripted solves, each on its own disk image,
     // ran past the test suite's idle deadline on a three-core macOS runner (15 October).
     const ends = () => read(log).filter(({ data }) => data.ended === "killed").length;
     await harnessBuilder([...flags, "--moves", "0"], seats);
-    expect(ends()).toBe(2);
+    expect(ends()).toBe(3);
   });
 
   it("runs from set-up to an ending on one command, with every move on record: a session with nothing to work on sends it to the Examiner", async () => {

@@ -217,6 +217,14 @@ describe("the exam", () => {
     expect(move([fell(2), crashed, crashed, ended], plan)).toEqual({ move: "draft" });
     expect(decide([fell(2), crashed, crashed, ended], plan).why.match(/\d+/g)).toEqual(["2", "1"]);
     expect(move([fell(2), ended, fell(1)], plan)).toMatchObject({ ending: "exam" });
+    // A draft a stop cut before it put anything, ended at the restart, takes none of the three.
+    const killed = event("draft.finished", { session: "d-1", ended: "killed", crash: null });
+    expect(move([killed, killed, killed], plan)).toMatchObject({ move: "draft" });
+    expect(move([killed, fell(1), fell(1)], plan)).toMatchObject({ move: "draft" });
+    expect(move([event("draft.finished", { ...killed.data, tries: 3 })], plan)).toMatchObject({
+      move: "end",
+      ending: "exam",
+    });
     const stood = event("exam.drafted", { session: "d-1", draft: { domain: "a field" } });
     expect(move([fell(1), stood], plan)).toMatchObject({ move: "accept" });
   });

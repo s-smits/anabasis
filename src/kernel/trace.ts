@@ -30,6 +30,7 @@ import {
   type JsonValue,
 } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import type { LogEvent } from "./log.ts";
 import { examinerSessions } from "./solves.ts";
 
@@ -360,13 +361,29 @@ export function unfinished(events: readonly LogEvent[]): Unfinished[] {
   });
 }
 
-/** The Builder's and the Examiner's sessions that began and never ended on record, with what each
- *  billed, its turns and its seconds to its last event: a run of the campaign command stopped from
- *  outside left them, and the next run ends them as killed (`endCut`, `tools/d2/harness-builder.ts`). */
+/** Open Builder and Examiner sessions, including drafts, with their recorded spend and duration.
+ *  Completed draft submissions survive recovery; calls without a result cannot be counted.
+ *  The next run ends these sessions as killed (`endCut`, `tools/d2/harness-builder.ts`). */
 export function cutSessions(events: readonly LogEvent[]) {
   return unfinished(events).flatMap(({ of, id, dollars, turns, began, last }) =>
-    (of === "build" || of === "exam") && isString(id)
-      ? [{ of, session: id, turns, billed: dollars, seconds: (Date.parse(last) - Date.parse(began)) / 1000 }]
+    (of === "build" || of === "exam" || of === "draft") && isString(id)
+      ? [
+          {
+            of,
+            session: id,
+            turns,
+            billed: dollars,
+            seconds: (Date.parse(last) - Date.parse(began)) / 1000,
+            ...keyIfDefined(
+              "tries",
+              of === "draft"
+                ? traceOf(events, "draft", id).calls.filter(
+                    ({ tool, isError }) => tool === "draft_exam" && !isError,
+                  ).length
+                : undefined,
+            ),
+          },
+        ]
       : [],
   );
 }

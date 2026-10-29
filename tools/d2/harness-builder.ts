@@ -351,10 +351,12 @@ function keepReceipt(log: string, args: readonly string[]): void {
 }
 
 /**
- * End on record, as killed, each Builder and Examiner session a stopped run of the command left
- * open, with what the log holds of it, and a Builder's notes where its home still stands. Until 13 October a reopened campaign started new sessions
+ * End on record, as killed, each Builder, Examiner and drafting session a stopped run of the command
+ * left open, with what the log holds of it, and a Builder's notes where its home still stands. Until 13 October a reopened campaign started new sessions
  * beside them, and readers metered each only to its last turn and counted it open (x-1 and x-2 of
  * two campaigns stopped and reopened). Killed is no crash, so the crash rule counts none of them.
+ * Until 29 October a draft was left open, and a pause waits for no draft to be open: truss-fresh-
+ * opus-terra073v4 restarted inside d-1, finished d-2, and could never pause cleanly.
  */
 export async function endCut(log: string): Promise<void> {
   for (const { of, session, ...spent } of cutSessions(read(log))) {

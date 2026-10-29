@@ -93,7 +93,7 @@ interface Reading {
   /** The tasks it won, by the first measure that gave them points: validity, the objective, or the
    *  bill alone. */
   readonly wonBy: Readonly<Record<Measure, number>>;
-  /** The A/A's differences, or null where the comparison had fewer than four solves a side. */
+  /** The A/A's differences, or null where the comparison had fewer than two solves a side. */
   readonly aa: { readonly differences: readonly number[]; readonly unbilled: readonly number[] } | null;
 }
 
@@ -216,10 +216,10 @@ function scoredSet(
 }
 
 /** The reference against itself on halves of its own solves, as the comparison's report reads it
- *  (`compared`, `comparison.ts`), or null under four solves a side or an odd number. */
+ *  (`compared`, `comparison.ts`), or null under two solves a side or an odd number. */
 function aaOf(score: Score, events: readonly LogEvent[], report: Reported): Reading["aa"] {
   const { old, setting, solves, versions, objective } = report.data;
-  if (!isString(old) || !isString(setting) || !isNumber(solves) || solves < 4 || solves % 2 !== 0) {
+  if (!isString(old) || !isString(setting) || !isNumber(solves) || solves < 2 || solves % 2 !== 0) {
     return null;
   }
   const direction = asRecord(objective)?.direction;

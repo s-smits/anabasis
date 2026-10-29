@@ -21,10 +21,11 @@
  * the contract's hash alone. It is fixed before any solve, so that no harness's results choose it
  * (`src/campaign/round.ts`, `scoredSet`).
  *
- * The defaults are the plan's (`SIZE`, `src/kernel/size.ts`): 24 scored tasks, four solves a
+ * The defaults are the plan's (`SIZE`, `src/kernel/size.ts`): 24 scored tasks, two solves a
  * harness, the paired sign-flip test at 0.02, and a stop past three check defects. At those a
- * round's comparison is 192 solves, all of them fresh and side by side; until 12 October it was 12
- * tasks and two solves, 48 solves, and until 2026-10-09 a round was about 430.
+ * round's comparison is 96 solves, all of them fresh and side by side; from 12 to 29 October it
+ * was four solves, 192, until 12 October 12 tasks and two solves, 48, and until 2026-10-09 a round
+ * was about 430.
  *
  * `--cap` is the round's dollar cap and is required: no solve starts that a reserve for it and for
  * each one running (`--reserve`, $10) would take past it, and the session's spend counts against
@@ -147,7 +148,6 @@ export const COMPARISON_OPTIONS = {
   reviewer: { type: "string" },
   "reviewer-effort": { type: "string", default: "high" },
   target: { type: "string" },
-  solves: { type: "string", default: String(SIZE.solves) },
   // One reading at or under `level` is a step (`stepOf`, `src/kernel/compare.ts`). 0.20 was the
   // default from #175 until 10 October, then 0.10 under the two-stage rule, and 0.02 since
   // 12 October (the operator). Since 19 October one reading promotes. It is a per-comparison level:
@@ -304,7 +304,6 @@ export function sessionNamed(
 export function wantedNamed(
   campaign: Campaign,
   values: {
-    readonly solves: string;
     readonly level: string;
     readonly "past-stop"?: string | undefined;
   },
@@ -316,7 +315,7 @@ export function wantedNamed(
   const ran = solverLast(read(campaign.log));
   return {
     target,
-    solves: Number(values.solves),
+    solves: SIZE.solves,
     level: Number(values.level),
     builds: given.builds,
     cap: given.cap ?? null,
@@ -588,7 +587,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
     reference,
     starter: await starter(campaign),
     ...scoredSet(read(campaign.log), setting.target, contractHash(campaign.contract)),
-    solves: Number(values.solves),
+    solves: SIZE.solves,
     level: Number(values.level),
     objective: objectiveNamed(campaign),
     defects: Number(values.defects),

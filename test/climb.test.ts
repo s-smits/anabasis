@@ -143,8 +143,6 @@ describe("the climb", () => {
         "check-product",
         "--practice",
         "2",
-        "--solves",
-        "2",
         "--sessions",
         "1",
         // The target the simulated climb stalled at on 10 October (climb-9): drawn by hash from

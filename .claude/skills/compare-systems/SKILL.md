@@ -69,8 +69,9 @@ one ruled a check defect or unclear, or left unruled, sets its task aside for ev
 earlier solves under the same solver on the same pack (`solve.finished.billed`). On the truss pack
 `round4-veryhard`, Opus 5.5 at medium in the starter billed $0.63 a solve on average (115 solves,
 `truss-141-m3`), and Terra at high $0.08 on the truss campaigns it solved (54 solves), so 25 tasks
-once each cost about $16 and $2. `--solves 4` adds the A/A, the baseline read against itself on halves
-of its solves mirrored in time, at four times the price; take it only on the operator's word.
+once each cost about $16 and $2. `--solves 2` adds the A/A, the baseline read against itself on halves
+of its solves mirrored in time (first solve against second), at twice the price; take it only on the
+operator's word.
 
 ## How to read it
 
@@ -85,7 +86,7 @@ of its solves mirrored in time, at four times the price; take it only on the ope
    the tools it ran (`solve.call` carries `ms`): a harness whose own programs search up to a
    deadline fills the wall (Terra in the truss harness: 28.1 of 28.6 minutes a solve on 28 October),
    and a slower system is then a harness cost, not a slower model.
-3. **The A/A**, only at four solves or more.
+3. **The A/A**, only at an even count of two solves or more.
 4. **One block a candidate.** Wins, losses and ties against the baseline; which measure carried the
    untied tasks (validity, the objective, or the bill alone); p each way; and one verdict:
    - `X is better`: a step at the level, with the bill and without it, as a campaign reads one.

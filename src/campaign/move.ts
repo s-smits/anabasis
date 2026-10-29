@@ -28,7 +28,7 @@ export type Decided =
     | { readonly move: "examine"; readonly why: string; readonly answers?: readonly number[] }
     | { readonly move: "build"; readonly why: string }
     /** A comparison of `fresh` with `reference`: `latest`, `promoted`, `starter`, or a digest. The
-     *  reference against itself is read beside every comparison of four solves a side, and is no
+     *  reference against itself is read beside every comparison, and is no
      *  move of the table. `id` names one that began and goes on. */
     | {
         readonly move: "compare";

@@ -73,7 +73,7 @@ const IDLE: readonly Step[] = [FINISH_IDLE, FINISH_IDLE];
 // default, 0.02. This suite is of who makes the moves, so it names the level its five tasks are
 // admitted and read a step at, and a supply patience of three.
 const LEVEL = ["--level", "0.125", "--patience", "3"];
-const FLAGS = ["--practice", "2", "--solves", "1", "--sessions", "1", "--target", "5", ...LEVEL];
+const FLAGS = ["--practice", "2", "--sessions", "1", "--target", "5", ...LEVEL];
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-hb-")));
 const bundle = join(root, "bundle");
 const names: string[] = [];
@@ -408,7 +408,7 @@ describe("a campaign run by its live Builder", () => {
   describe("releases the epoch's practice as task admission holds out tasks", () => {
     // Seven tasks held, three released for a practice of four: the epoch is owed one, which the
     // admission floor of five at 0.125 leaves room for once the frontier holds six.
-    const flags = ["--practice", "4", "--solves", "1", "--sessions", "1", ...LEVEL];
+    const flags = ["--practice", "4", "--sessions", "1", ...LEVEL];
     /** The releases on record between the Examiner session's start and its end. */
     const releasedWhileWriting = (name: string) => {
       const events = logOf(name);
@@ -541,8 +541,10 @@ describe("a campaign run by its live Builder", () => {
         ]),
         examine: (request) => {
           expect(of(name, "harness.promoted")).toHaveLength(1);
-          expect(supplyOf(read(log))).toMatchObject({ held: 0, released: 2 });
-          expect(request.wanted).toBe(7);
+          // One comparison closes no task, so the seven g-1 scored stay on the frontier and the
+          // campaign is short of nothing: the session is asked for the command's own default.
+          expect(supplyOf(read(log))).toMatchObject({ held: 7, exhausted: 0, released: 2 });
+          expect(request.wanted).toBe(12);
           return examine({
             ...request,
             ...scripted([
@@ -552,13 +554,13 @@ describe("a campaign run by its live Builder", () => {
                   return proposing(1);
                 },
               },
-              ...Array.from({ length: 5 }, (_, n) => proposing(1, n + 1)),
+              ...Array.from({ length: 10 }, (_, n) => proposing(1, n + 1)),
               {
                 wait: async () => {
                   // With the old target bound wait returns only after this deadline lets the
                   // Examiner end. Six held tasks already leave room for one practice task.
                   await Promise.race([waited.promise, Bun.sleep(20_000)]);
-                  return proposing(1, 6);
+                  return proposing(1, 11);
                 },
               },
             ]),
@@ -571,17 +573,17 @@ describe("a campaign run by its live Builder", () => {
       const starterComparison = events.findIndex(
         ({ kind, data }) => kind === "comparison.started" && data.session === "g-2",
       );
-      expect(of(name, EXAMINED)[0]?.held).toHaveLength(7);
+      expect(of(name, EXAMINED)[0]?.held).toHaveLength(12);
       expect(
         supplyOf(events.slice(0, starterComparison === -1 ? undefined : starterComparison)),
       ).toMatchObject({
-        held: 5,
+        held: 18,
         released: 4,
       });
       expect(at(`${CALLED}:wait`)).toBeGreaterThan(at("harness.promoted"));
       expect(at(`${CALLED}:wait`)).toBeLessThan(at(EXAMINED));
       expect(releasedWhileWriting(name)).toBeGreaterThanOrEqual(1);
-      expect(said(name, "wait")[0]).toContain("3 practice tasks");
+      expect(said(name, "wait")[0]).toContain("4 practice tasks");
     });
   });
 
@@ -760,18 +762,7 @@ describe("a campaign run by its live Builder", () => {
     };
     // Each comparison reads five tasks, every one won, which 0.125 admits and calls a step. A
     // campaign opens at 0.125 where it bears one attempt without a gain, and no more.
-    const terms = [
-      "--practice",
-      "2",
-      "--solves",
-      "1",
-      "--sessions",
-      "1",
-      "--target",
-      "5",
-      "--level",
-      "0.125",
-    ];
+    const terms = ["--practice", "2", "--sessions", "1", "--target", "5", "--level", "0.125"];
     const ending = await harnessBuilder(
       [...seeded(name), ...terms, "--patience", "1", "--exam-tasks", "6"],
       seats,
@@ -792,6 +783,7 @@ describe("a campaign run by its live Builder", () => {
       "compare",
       "promote",
       "examine",
+      "prepare",
     ]);
     // The new reference's practice is released by the host as the Examiner session beside the
     // conversation ends: until 21 October only a Builder's own call released any inside one.
@@ -854,19 +846,7 @@ describe("a campaign run by its live Builder", () => {
     // Under a total: a comparison begins with all that is left of it as its cap, so whatever else
     // bills before it goes on, a Builder's turn among it, leaves less than that cap. Until
     // 13 October the tool then ended the campaign on its budget, with nearly all of it left.
-    const args = [
-      ...seeded(name),
-      "--target",
-      "5",
-      "--practice",
-      "2",
-      "--solves",
-      "1",
-      "--budget",
-      "20",
-      "--reserve",
-      "0.01",
-    ];
+    const args = [...seeded(name), "--target", "5", "--practice", "2", "--budget", "20", "--reserve", "0.01"];
     expect(await harnessBuilder(args, seats)).toMatchObject({ ending: "environment" });
     const [start] = of(name, "comparison.started");
     if (start === undefined) throw new Error("the comparison did not record its original terms");

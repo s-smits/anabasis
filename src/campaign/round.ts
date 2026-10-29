@@ -41,7 +41,7 @@
  * The reference is read against itself as the test is (the plan's A/A): its solves of a task
  * split into two halves mirrored in time, read as two harnesses are, with how often two of them
  * disagree (`flips`, `comparison.ts`).
- * At four solves a side the test's own solves hold it, two against two, and at fewer there is none.
+ * The test's own solves hold it: at two solves a side, the first of each task against the second.
  * It should read no step, and decides nothing here. Until 12 October its later solves ran after
  * the test's own were done, so a drift read as a difference, and until 13 October `--noise` read
  * one at fewer by solving the reference twice as often.
@@ -605,7 +605,7 @@ function write(
 
 /**
  * One standalone comparison of `fresh` with the reference harness `old`, after several sessions.
- * At four solves a side it also reads an A/A comparison on mirrored halves of the reference solves
+ * It also reads an A/A comparison on mirrored halves of the reference solves
  * (the measurement in `7f0add79:docs/plan.md`, G2).
  */
 export async function checkpoint(request: CheckpointRequest): Promise<Report> {
@@ -615,7 +615,7 @@ export async function checkpoint(request: CheckpointRequest): Promise<Report> {
   if (before !== null) return before;
   if (old.digest === fresh.digest) {
     throw new Error(
-      `a comparison sets two harnesses against each other, and both sides are ${old.digest}; the reference harness is read against itself beside a comparison of four solves a side`,
+      `a comparison sets two harnesses against each other, and both sides are ${old.digest}; the reference harness is read against itself beside every comparison`,
     );
   }
   refuseTerms(request, { log, id, practised: new Set() });

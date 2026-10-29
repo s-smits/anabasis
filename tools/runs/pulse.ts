@@ -182,14 +182,31 @@ function stage(log: readonly LogEvent[], running: number, open: boolean): string
   return running > 0 ? "solving" : "working";
 }
 
+/**
+ * Where the process that writes `log` now began: the first event at or after its launch receipt,
+ * or the start where none is kept. A solve or a wait before it belongs to a process that is gone.
+ * On 29 October the Linux runner's truss campaign was continued after a provider wait until
+ * 1 November, and the pulse read its two cut solves as running and its new invocation as waiting
+ * out that reset, so a stall after it would not have read quiet until the reset.
+ */
+function invoked(run: Run, log: readonly LogEvent[]): number {
+  const kept = lastLaunch(run.path);
+  if (kept === undefined) return 0;
+  const at = log.findIndex((event) => Date.parse(event.at) >= Date.parse(kept.at));
+  return at === -1 ? log.length : at;
+}
+
 /** The status line of `run`, whose log is `log` and whose solves are `solves`. */
 function status(run: Run, log: readonly LogEvent[], solves: readonly Solve[], open: boolean, now: number) {
   const said = ["pass", "fail", "flagged", "non-result"].flatMap((outcome) => {
     const n = solves.filter(({ ending }) => ending?.outcome === outcome).length;
     return n === 0 ? [] : [`${String(n)} ${outcome}`];
   });
-  const running = solves.filter(({ finished }) => finished === null).length;
-  if (running > 0) said.push(`${String(running)} ${open ? "running" : "unfinished"}`);
+  const begun = invoked(run, log);
+  const unfinished = solves.filter(({ finished }) => finished === null);
+  const running = open ? unfinished.filter(({ started }) => started >= begun).length : 0;
+  if (running > 0) said.push(`${String(running)} running`);
+  if (unfinished.length > running) said.push(`${String(unfinished.length - running)} unfinished`);
   const last = log.at(-1);
   const promoted = count(log, "harness.promoted");
   if (promoted > 0) said.push(`${String(promoted)} promoted`);
@@ -226,9 +243,11 @@ export function pulse(
   const last = log.at(-1);
   // A run waiting out a named reset is silent by design, so its quiet is counted from the reset:
   // until 23 October such a run was called quiet, and until 25 October it was again for the minute
-  // between the reset and its next event, or while other seats wrote after the wait.
+  // between the reset and its next event, or while other seats wrote after the wait. A wait of an
+  // earlier process is over (`invoked`).
   const waited = ({ kind, data }: LogEvent) => kind === "campaign.waited" && isString(data.until);
-  const until = log.findLast(waited)?.data.until;
+  const begun = invoked(run, log);
+  const until = log.slice(begun).findLast(waited)?.data.until;
   const since = Math.max(Date.parse(last?.at ?? ""), isString(until) ? Date.parse(until) : 0);
   const quiet = open && last !== undefined && now - since > QUIET_MS;
   if (quiet && before?.quiet !== true) lines.push(`⚠ quiet for ${minutes(now - since)}`);
@@ -242,7 +261,7 @@ export function pulse(
   const ended =
     last?.kind === "campaign.ended" ||
     (count(log.slice(Math.max(lastWork(log), 0)), end) > 0 &&
-      solves.every(({ finished }) => finished !== null));
+      solves.every(({ finished, started }) => finished !== null || started < begun));
   if (before?.open === true && !open && !ended) lines.push(`⚠ the process is gone before ${end}`);
   // A comparison starts each task under two harnesses, so a line may come twice.
   const said = Object.entries(countBy(lines, (line) => line)).map(([line, n]) =>

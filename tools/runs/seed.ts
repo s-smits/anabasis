@@ -31,7 +31,7 @@ import { taskSets } from "#src/kernel/task.ts";
 import { CAMPAIGNS, SEED_FILE } from "./registry.ts";
 import { logAcross } from "./snapshots.ts";
 
-const SESSION_STARTS = new Set<unknown>(["build.started", "exam.started"]);
+const SESSION_STARTS = new Set<unknown>(["build.started", "exam.started", "draft.started"]);
 
 /** Where a seed's log is cut: before a session, after a count of events, or nowhere. */
 export interface Cut {

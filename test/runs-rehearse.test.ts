@@ -97,6 +97,15 @@ describe("a seed", () => {
     expect(readFileSync(join(from, "log.jsonl"), "utf8").endsWith('{"at":"2026')).toBe(true);
   });
 
+  it("cuts before a drafting session as before any other session", () => {
+    const drafted = campaignAt("drafted", [
+      line("campaign.opened", {}),
+      line("draft.started", { session: "d-1" }),
+      line("draft.finished", { session: "d-1" }),
+    ]);
+    expect(seedCampaign(drafted, join(root, "drafted-before"), { before: "d-1" }).events).toBe(1);
+  });
+
   it("carries the Examiner's home only where no session after the cut replaced it", () => {
     const lines = [...LINES.slice(0, 4), line("exam.finished", { session: "x-1" }), LINES[4] ?? ""];
     const homed = campaignAt("homed", lines);

@@ -201,12 +201,19 @@ export function lastReports(events: readonly LogEvent[], all = false): Reported[
  * one. It is where the next session starts unless the operator names another: after a comparison
  * without a step the Builder continues from its latest harness (`7f0add79:docs/plan.md`, Phase 5). A session
  * that was killed or that crashed is passed over, except for a harness snapshot already frozen inside
- * its live conversation: that version was kept before the interruption.
+ * its live conversation: that version was kept before the interruption. A session that finished whole
+ * on its parent took its snapshots back: a Builder that compared B, restored its parent and finished
+ * left the parent, and until 29 October the next session opened on B (a GPT audit, from source).
  */
 export function latestBuilt(events: readonly LogEvent[]): string | null {
+  const undone = new Set(
+    events.flatMap(({ kind, data }) =>
+      kind === BUILD_FINISHED && data.changed === false && !CUT.has(data.ended) ? [data.session] : [],
+    ),
+  );
   const left = events.findLast(
     ({ kind, data }) =>
-      (kind === "build.checkpoint" ||
+      ((kind === "build.checkpoint" && !undone.has(data.session)) ||
         (kind === BUILD_FINISHED && data.changed === true && !CUT.has(data.ended))) &&
       isString(data.harness),
   )?.data.harness;

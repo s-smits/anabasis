@@ -6,6 +6,7 @@ import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import {
   comparedAs,
   lastReports,
+  latestBuilt,
   pairsReported,
   poolOf,
   releaseOrder,
@@ -807,5 +808,20 @@ describe("the billed dollars a cap counts", () => {
     const finished = [...log, event("build.finished", { session: "b-1", billed: 0.75 })];
     expect(billedFor(finished, "b-1")).toBe(0.75);
     expect(billedAll(finished)).toBeCloseTo(7.75, 10);
+  });
+});
+
+describe("the harness the next Builder session opens on", () => {
+  const started = (session: string, parent: string) => event("build.started", { session, parent });
+  const snapshot = (session: string, harness: string) => event("build.checkpoint", { session, harness });
+  const finished = (session: string, harness: string, changed: boolean, ended = "finish") =>
+    event("build.finished", { session, harness, changed, ended });
+
+  it("is the parent a whole session restored after comparing a change, and the snapshot where it was cut", () => {
+    const compared = [started("b-1", "A"), snapshot("b-1", "B")];
+    expect(latestBuilt([...compared, finished("b-1", "A", false)])).toBeNull();
+    expect(latestBuilt([finished("b-0", "P", true), ...compared, finished("b-1", "P", false)])).toBe("P");
+    expect(latestBuilt([...compared, finished("b-1", "A", false, "killed")])).toBe("B");
+    expect(latestBuilt([...compared, finished("b-1", "C", true)])).toBe("C");
   });
 });

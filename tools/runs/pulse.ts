@@ -7,7 +7,9 @@
  *   bun run runs pulse [<part of a name> ...] [--once] [--every 290] [--state .ana/runs-pulse.json]
  *
  * With no names a look covers the open runs and those open at the last look, so a run's ending is
- * said once; a name matches every run whose name holds it. Quiet, no event for 20 minutes in an
+ * said once; an observer's first look of a run also covers one stopped in the last day without an
+ * ending (until 29 October every look did, and an hourly look repeated each stopped run's "process
+ * gone" and its stderr for a day). A name matches every run whose name holds it. Quiet, no event for 20 minutes in an
  * open run, counted from a named reset it waits out where that is later, is said when it starts and
  * when it ends. Since 22 October each look also polls every configured host once, with a cursor for
  * this observer, unless --here is named. A missing peer is a warning and exit 1. No local state path is sent to another machine.
@@ -267,7 +269,8 @@ async function look(state: string, names: readonly string[]): Promise<void> {
       ? names.some((name) => run.name.includes(name))
       : open ||
         before?.open === true ||
-        (run.seed !== true &&
+        (before === undefined &&
+          run.seed !== true &&
           Date.now() - statSync(run.path).mtimeMs < RECENT_MS &&
           events.at(-1)?.kind !== "campaign.ended"),
   );

@@ -945,14 +945,15 @@ hash. The draw does two more things:
 
 - It leaves out a task that has had no valid answer after two comparisons, until a person labels
   it (`poolOf`).
-- It takes off the frontier a task the reference harness stood in two comparisons of or more, on
-  whichever side, whose solves were valid at least five times for each that was not: its own
-  solves, and the other side's where that is a later harness, so the next harness must answer it
-  too. Such a task is
+- It takes off the frontier a task that was answered in every solve of the last two comparisons the
+  reference harness stood in for it, in a row, on whichever side: its own solves, and the other
+  side's where that is a later harness, so the next harness must answer it too. Such a task is
   **exhausted** for supply, though a bill saving can still win it (`poolOf`). A task is not closed
   where a valid answer on record (the reference's own, the other side's or its author's) is better
   by the objective than one of the reference's by at least the objective gap floor, since the next
-  harness can still win it (`bettered`).
+  harness can still win it (`bettered`). The solves a side and these counts of comparisons are set
+  in one place (`SIZE`, `RUNS`, `src/kernel/size.ts`), and every rule reads a side's every, some or
+  none, so the rules read the same at any count of solves.
 
 An exhausted task stays in the draw as **retained**, so that a harness that breaks what the
 reference answers still shows its losses. A loss can only come from a task the reference answers.

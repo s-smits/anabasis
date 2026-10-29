@@ -30,6 +30,7 @@ procedures; they are not commands to run inside a read-only investigation.
 | A report names tasks set aside on rejections: what does it read once they are labelled? | `bun tools/d2/settle.ts <the campaign's flags> --session <id>`, then label the rejections it draws |
 | Which sessions ran, from which parent, with which reading? | `bun tools/wri/wri.ts read --log <log>`, row F and the `CHAIN` line |
 | Did a promotion climb, beside the campaigns that ran the same pack, and did one campaign's `/tmp` reach another's solves? | `bun tools/wri/wri.ts climb --log <log>,<log>,<log>`: one row a campaign, then each solve that named what another campaign's session left |
+| How do this run's hours and dollars a promotion stand against every run of its release, pack and setting? | `.claude/skills/promotion-tuner/scripts/table.ts --rows groups` (or `--name <part> --rows promotions`): across campaigns, without `climb`'s solves |
 
 ## The procedure
 

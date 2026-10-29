@@ -50,7 +50,8 @@ const from = remote ? quoted.slice(1,-1).replaceAll("'\\\\''", "'") : source;
 const target = args.at(-1);
 const into = target.includes(":") ? target.split(":").slice(1).join(":").replace(/\\/$/, "").slice(1,-1) + "/" : target;
 if (process.env.FAKE_TRANSFER_FAIL === "1") { writeFileSync(into + "log.jsonl", "partial"); process.exit(23); }
-cpSync(from, into, {recursive: true, verbatimSymlinks: true, filter: (file) => !args.includes("--exclude=/*") || resolve(file) === resolve(from) || (dirname(file) === resolve(from) && (basename(file) === "log.jsonl" || /^launch-.*[.]json$/.test(basename(file))))});`,
+const kept = args.filter((arg) => arg.startsWith("--include=/")).map((arg) => new RegExp("^" + arg.slice(11).replaceAll(".", "[.]").replaceAll("*", ".*") + "$"));
+cpSync(from, into, {recursive: true, verbatimSymlinks: true, filter: (file) => !args.includes("--exclude=/*") || resolve(file) === resolve(from) || (dirname(file) === resolve(from) && kept.some((name) => name.test(basename(file))))});`,
   "git": `${RECORD}
 import { mkdirSync, rmSync } from "node:fs";
 if (args.includes("fetch")) process.exit(process.env.FAKE_FETCH_FAIL === "1" ? 1 : 0);

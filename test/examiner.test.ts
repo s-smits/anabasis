@@ -1032,7 +1032,7 @@ describe("a session that writes tasks", () => {
       await mode.settle(true);
       expect(asked).toBe(3);
       expect(endings).toContainEqual(objectWith({ outcome: "non-result", kind: "check" }));
-      expect(s.of("referee.finding")).toMatchObject([{ ruling: "unclear", walled: false }]);
+      expect(s.of("referee.finding")).toMatchObject([{ ruling: null, walled: false }]);
       const reviewBill = Number(s.of("referee.finding")[0]?.billed);
       expect(reviewBill).toBeGreaterThan(0);
       expect(s.of(TASK_ADMISSION)).toMatchObject([

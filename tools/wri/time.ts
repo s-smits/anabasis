@@ -275,6 +275,9 @@ function spansOf(log: Index): Span[] {
   for (const { at, kind, data } of log.events) {
     const time = Date.parse(at);
     for (const [key, { part }] of cut.splice(0)) open.set(key, { part, from: time });
+    // One exam is drafted at a time, so a draft that starts ends one left open: until 28 October a
+    // draft cut at 90 seconds counted to the log's end, 21.5 of truss v4's 33.3 Examiner hours.
+    for (const key of open.keys()) if (kind === "draft.started" && key.startsWith(kind)) close(key, time);
     for (const [part, start, end] of SPANS) {
       const key = `${start}:${text(data.session)}`;
       if (kind === start && !open.has(key)) open.set(key, { part, from: time });

@@ -63,6 +63,20 @@ describe("the three backends", () => {
     expect(catalog.getModel("openrouter", "deepseek/deepseek-v4.1-flash-0101")).toBeUndefined();
   });
 
+  it("serve an OpenAI-compatible endpoint at its own /v1 base, on its own key, at its own price", () => {
+    const served = catalog.getModel("deepinfra", "deepseek-ai/DeepSeek-V4.1-Flash-1017");
+    expect(served).toMatchObject({
+      provider: "deepinfra",
+      api: "openai-completions",
+      baseUrl: "https://api.deepinfra.com/v1/openai",
+      reasoning: true,
+      cost: { input: 0.098, output: 0.294, cacheRead: 0.00294 },
+    });
+    // The endpoint's model carries no OpenRouter routing, whatever the release OpenRouter pins.
+    expect(served?.compat ?? {}).not.toHaveProperty("openRouterRouting");
+    expect(catalog.getModel("deepinfra", "deepseek/deepseek-v4.1-flash-1017")).toBeUndefined();
+  });
+
   it.each([-60, 60])(
     "refuses a Codex login with %s seconds left without refreshing or writing it",
     async (seconds) => {
@@ -184,8 +198,8 @@ describe("the three backends", () => {
   });
 });
 
-it("lets durable retry Codex and OpenRouter at the previous attempts and backoff, and leaves Claude alone", () => {
-  for (const provider of ["openai-codex", "openrouter"]) {
+it("lets durable retry Codex, OpenRouter and the endpoints at the previous attempts and backoff, and leaves Claude alone", () => {
+  for (const provider of ["openai-codex", "openrouter", "deepinfra"]) {
     expect(retryPolicy(provider)).toEqual({ enabled: true, maxRetries: 3, baseDelayMs: 2000 });
   }
   for (const provider of ["claude", "claude-api", "faux"]) expect(retryPolicy(provider).enabled).toBe(false);

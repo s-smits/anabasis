@@ -84,6 +84,7 @@ const OPTIONS = {
   // With no default of their own: one no command has named is the comparison's to default, and
   // one a command named is the opening's to keep (`TERMS`).
   target: COMPARISON_OPTIONS.target,
+  solves: SETTING_OPTIONS.solves,
   level: { type: "string" },
   defects: { type: "string" },
   minutes: { type: "string" },
@@ -138,6 +139,7 @@ const EXPLAINED: Readonly<Record<keyof typeof OPTIONS, string>> = {
   "solve-minutes": "a solve's deadline in minutes (setting)",
   "solve-model-turns": "a solve's model turn limit (setting)",
   target: "frontier tasks a comparison scores (setting; 24)",
+  solves: "solves a side of each scored task (setting; 2)",
   level: "the step test's level: one reading at or under it promotes (0.02)",
   defects: "tasks with a check defect before a comparison stops (3)",
   minutes: "a Builder conversation's deadline in minutes of its own time (1440)",
@@ -437,6 +439,7 @@ export function sharedOf({ events, plan, opening, values, seats }: Turn) {
             // as a comparison: t-2 (10 October) opened with --target 6, its first session recorded
             // the default, and its comparisons then scored by the record.
             ...flag("target", values.target),
+            ...flag("solves", values.solves),
           ]
         : [],
     cap:

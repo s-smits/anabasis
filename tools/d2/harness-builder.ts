@@ -511,6 +511,7 @@ function settingHeld(log: string, given: Values): void {
       "solve-minutes": given["solve-minutes"],
       "solve-model-turns": given["solve-model-turns"],
       target: given.target,
+      solves: given.solves,
     },
     recorded,
   );

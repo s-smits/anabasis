@@ -914,7 +914,7 @@ describe("a campaign run by its log", () => {
     const prompt = "Multiplying a base by six, as a fixture.";
     const solver = ["--solver", "claude/claude-opus-5-5"];
     const terms = ["--practice", "2", "--solve-minutes", "8", "--practice-solves", "5"];
-    const size = ["--target", "8", "--patience", "2"];
+    const size = ["--target", "8", "--solves", "3", "--patience", "2"];
     const flags = ["--name", name, "--project", PROJECT, ...solver, ...terms, ...size];
     const { exam, examples } = draftedOf(TASKS);
     // The first draft's reject control answer is the right answer, which no check refuses.
@@ -966,7 +966,7 @@ describe("a campaign run by its log", () => {
       {
         prompt,
         solver: { model: "claude/claude-opus-5-5", effort: "high" },
-        terms: { practice: "2", "solve-minutes": "8", "practice-solves": "5" },
+        terms: { practice: "2", "solve-minutes": "8", "practice-solves": "5", solves: "3" },
       },
     ]);
     expect(of(name, "draft.finished")).toMatchObject([{ session: "d-1", stands: true, tries: 2 }]);
@@ -987,9 +987,9 @@ describe("a campaign run by its log", () => {
     expect(of(name, OPENED).at(-1)).not.toHaveProperty("attended");
     // The Builder session recorded the setting, with the scored tasks the campaign opened with:
     // t-2 (10 October) opened with --target 6 and its first session recorded the default 12.
-    expect(of(name, "campaign.setting")).toMatchObject([{ minutes: 8, target: 8 }]);
+    expect(of(name, "campaign.setting")).toMatchObject([{ minutes: 8, target: 8, solves: 3 }]);
     expect(of(name, "task.state").filter(({ state }) => state === "released")).toHaveLength(2);
-    expect(of(name, "comparison.started")).toMatchObject([{ solves: 2 }]);
+    expect(of(name, "comparison.started")).toMatchObject([{ solves: 3 }]);
     expect(of(name, "comparison.started")[0]?.tasks).toHaveLength(8);
     expect(
       of(name, MOVED)

@@ -22,7 +22,7 @@
  * (`src/campaign/round.ts`, `scoredSet`).
  *
  * The defaults are the plan's (`SIZE`, `src/kernel/size.ts`): 24 scored tasks, two solves a
- * harness, the paired sign-flip test at 0.02, and a stop past three check defects. At those a
+ * harness (the setting's `--target` and `--solves` name others), the paired sign-flip test at 0.02, and a stop past three check defects. At those a
  * round's comparison is 96 solves, all of them fresh and side by side; from 12 to 29 October it
  * was four solves, 192, until 12 October 12 tasks and two solves, 48, and until 2026-10-09 a round
  * was about 430.
@@ -83,7 +83,6 @@ import { readBrief } from "#src/kernel/verify.ts";
 import { type TaskPackage, taskSets } from "#src/kernel/task.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { SIZE } from "#src/kernel/size.ts";
 import { plural } from "#src/meta/text.ts";
 import { median } from "#src/meta/tally.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
@@ -309,13 +308,13 @@ export function wantedNamed(
   },
   given: { readonly setting: AskedSetting; readonly cap: Cap | undefined; readonly builds: boolean },
 ): Wanted {
-  const { named, target } = given.setting;
+  const { named, target, solves } = given.setting;
   // The campaign is open, so who solves is known whether or not a flag named it.
   const solving = solvingAs(campaign, named);
   const ran = solverLast(read(campaign.log));
   return {
     target,
-    solves: SIZE.solves,
+    solves,
     level: Number(values.level),
     builds: given.builds,
     cap: given.cap ?? null,
@@ -587,7 +586,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
     reference,
     starter: await starter(campaign),
     ...scoredSet(read(campaign.log), setting.target, contractHash(campaign.contract)),
-    solves: SIZE.solves,
+    solves: setting.solves,
     level: Number(values.level),
     objective: objectiveNamed(campaign),
     defects: Number(values.defects),

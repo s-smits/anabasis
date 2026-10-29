@@ -885,12 +885,15 @@ describe("a campaign run by its log", () => {
       "8",
     ];
     await harnessBuilder([...flags, "--prompt", "Six times a base.", "--hitl"], seats);
-    // The first put is measured and told, and the same draft put again stands.
+    // The first put is measured and told, each example with the room task admission would read on
+    // it, and the same draft put again stands.
     const said = of(name, "draft.call").map(({ text }) => (isString(text) ? text : ""));
     expect(said).toHaveLength(2);
     for (const index of [0, 1, 2]) {
-      expect(said[0]).toContain(
-        `- example ${String(index)}: the reference harness answered it validly in 3 of 3 solves`,
+      expect(said[0]).toMatch(
+        new RegExp(
+          `- example ${String(index)}: the reference harness answered it validly in 3 of 3 solves[^\\n]*, which leaves no room`,
+        ),
       );
     }
     expect(said[1]).toStartWith("The draft stands");

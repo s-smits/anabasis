@@ -26,7 +26,7 @@ archived campaign; `copy <name> --to <worktree>` brings this machine's back to g
 | `fresh <pack> [<pack> ...] [--logins <allowed-list>] [--model opus\|sonnet\|gpt\|<provider>/<id>] [--effort hhmm] [--login N] [--budget 800] [--as <suffix>] [--at <c>] [--host <host>] [--yes] [-- <flags>]` | names a campaign from a blank project, makes its worktree at a published commit and launches it there | `fresh.ts` |
 | `launch <name> [--login N] [--yes] -- <flags>` | starts the campaign command under a new name, in this worktree | `manage.ts` |
 | `continue <name> [--at <c>] [--login N] [--budget N] [--after <event>] [--yes] [-- <flags>]` | runs a campaign again from its log, on its kept flags or their replacement after `--` | `manage.ts` |
-| `pause <name> --after <event> [--yes]` | stops a campaign once its log gains one more of the event and nothing but its Builder's conversation is open | `manage.ts` |
+| `pause <name> [--after <event>] [--yes]` | stops a campaign at its next finished solve or tool call, or, with a clean-point event, once its log gains one more of it and nothing but its Builder's conversation is open | `manage.ts` |
 | `keep <name> [--logins 2,3,4] [--wait-hours 1] [--yes]` | keeps a campaign going: moves it off a long provider wait, and continues it after a death or an `environment` ending | `keep.ts` |
 | `copy <name> --to <worktree> [--yes]` | copies a stopped campaign whole to another worktree, from a worktree or the archive, and sets the source aside | `move.ts` |
 | `move <name> --to <host> [--from <host>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]` | pauses a campaign at a clean point, takes its folder whole to a new worktree on the other machine at the same commit, sets the source aside and continues it there on its kept flags | `move.ts` |
@@ -178,7 +178,7 @@ the name, the project and why into the prediction ledger before the launch, besi
 
 ```sh
 bun --env-file=<file> run runs continue <name> [--at <commit>] [--login N] [--budget N] [--after <event>] --yes [-- <flags>]
-bun run runs pause <name> --after promoted|compacted|reported|finished --yes
+bun run runs pause <name> [--after next|promoted|compacted|reported|finished] --yes
 ```
 
 `continue` runs a stopped campaign again in the worktree that holds its log, on the flags its last
@@ -198,6 +198,10 @@ Examiner session or draft is open, and then stops the run. The Builder's convers
 throughout a led campaign, and a pause cuts it: the campaign continued opens a new one on its
 notes, and the session the stop fell inside has spent its id. `continue --after <event>` is that
 pause and then the continue, which is how a run moves to another login or commit at a clean point.
+`--after next`, the default of `pause`, waits only for the next finished solve or tool call any
+seat records (`solve.finished` or a `*.call`), looking every second, and stops the run there with
+whatever is open: the quickest way to free a login. A comparison it cuts goes on under its own
+terms when the run continues, and a cut solve is solved again.
 
 A word left with `tools/d2/word.ts` acts at the next move boundary and spends no session:
 `--stop "<why>"` ends the campaign `operator`, which is a pause the operator words; `--budget N`

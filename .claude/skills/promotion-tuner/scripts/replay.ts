@@ -32,7 +32,7 @@
  * and the two-stage rule of older trees, and the rule-by-rule tally, none of which `main` holds.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { type Measures, type Paired, scoresOf } from "#src/kernel/compare.ts";
+import { carriedBy, type Measures, type Paired, scoresOf } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import type { Reported } from "#src/kernel/reports.ts";
 import { type JsonValue, asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
@@ -269,8 +269,8 @@ function readingsOf(score: Score, events: readonly LogEvent[], totals: Totals): 
     totals.fromStep += !step && reading === "step" ? 1 : 0;
     const wonBy = { validity: 0, objective: 0, bill: 0 };
     for (const one of sets.flatMap((set) => set.points)) {
-      // A won task counts for the first measure that gave it points.
-      if (scoresOf(one).scored > 0) wonBy[MEASURES.find((measure) => one[measure] > 0) ?? "bill"] += 1;
+      const by = scoresOf(one).scored > 0 ? carriedBy(one) : null;
+      if (by !== null) wonBy[by] += 1;
     }
     return [
       { session: report.session, key: `${old}>${fresh}`, differences, unbilled, level, step, wonBy, aa },

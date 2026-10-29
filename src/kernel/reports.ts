@@ -33,6 +33,7 @@ import {
   objectiveRuleIn,
   type Paired,
   pairsOf,
+  pointsOf,
   hasObjectiveGap,
   objectiveGap,
   tally,
@@ -515,7 +516,7 @@ function tallyReports(
               : pair[side],
         gapped: side !== null && hasObjectiveGap(pair, side, of(task).best),
         won: wins > 0 ? "fresh" : losses > 0 ? "old" : null,
-        by: carriedBy(pair),
+        by: carriedBy(pointsOf(pair)),
         room: gap,
       });
     }

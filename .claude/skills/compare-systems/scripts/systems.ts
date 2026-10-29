@@ -28,7 +28,16 @@
  * `.ana/compare/`, behind the wall and outside `.ana/d2/`, where `runs retire` sweeps idle seeds.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { carriedBy, detectable, draw, flipP, type Paired, readsStep, scored } from "#src/kernel/compare.ts";
+import {
+  carriedBy,
+  detectable,
+  draw,
+  flipP,
+  type Paired,
+  pointsOf,
+  readsStep,
+  scored,
+} from "#src/kernel/compare.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { LOG_FILE, read } from "#src/kernel/log.ts";
 import { ended, passed, ranUnder, rejectionAside, verdictsOf } from "#src/kernel/solves.ts";
@@ -200,7 +209,7 @@ export function pairLines(
   const { wins, losses, ties, p, differences, unbilled } = scored(pairs);
   // Exchanging the sides negates every score, so the other way is the same scores negated.
   const other = { differences: differences.map((one) => -one), unbilled: unbilled.map((one) => -one) };
-  const carried = pairs.map(carriedBy);
+  const carried = pairs.map((pair) => carriedBy(pointsOf(pair)));
   const by = (measure: string) => carried.filter((one) => one === measure).length;
   const [x, y] = [candidate.name, baseline.name];
   const shift = detectable(differences, at.level);

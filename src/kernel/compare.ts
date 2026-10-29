@@ -515,15 +515,19 @@ export function differenceOf(pair: Paired, kept: Kept = "scored"): number {
   return scoresOf(pointsOf(pair))[kept];
 }
 
-/** The measure that carried a task's result, null for a tie: the bill where the score without it
- *  does not share the score's sign, a win `readsStep`'s second test reads without; validity where its points
- *  alone do; and otherwise the objective. In buffer-fresh-opus-v065-a's g-3 the bill carried 25 of
- *  25 wins, and the Examiner was told each as a win (26 October). */
-export function carriedBy(pair: Paired): keyof Measures | null {
-  const sign = Math.sign(differenceOf(pair));
+/** The measure that carried a task's result from its points (`pointsOf`), null for a tie: the bill
+ *  where the score without it does not share the score's sign, a win `readsStep`'s second test reads
+ *  without; validity where its points alone do; and otherwise the objective. In
+ *  buffer-fresh-opus-v065-a's g-3 the bill carried 25 of 25 wins, and the Examiner was told each as a
+ *  win (26 October). It reads points rather than a pair so that the promotion tuner, which scales
+ *  them by other weights, credits a win by this rule too: until 29 October it credited the first
+ *  measure with positive points, validity for a task the objective's loss and the bill's gain decided. */
+export function carriedBy(points: Measures): keyof Measures | null {
+  const score = scoresOf(points);
+  const sign = Math.sign(score.scored);
   if (sign === 0) return null;
-  if (Math.sign(differenceOf(pair, "unbilled")) !== sign) return "bill";
-  return Math.sign(differenceOf(pair, "validity")) === sign ? "validity" : "objective";
+  if (Math.sign(score.unbilled) !== sign) return "bill";
+  return Math.sign(score.validity) === sign ? "validity" : "objective";
 }
 
 /** Whether no solve of a pair gave a valid answer. */

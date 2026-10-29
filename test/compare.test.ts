@@ -314,9 +314,9 @@ describe("a task's pairings", () => {
       { pair: { ...even, ...cheaper, objective: { ...lowerRule, old: [1000], fresh: [1020] } }, by: "bill" },
       { pair: even, by: null },
     ];
-    for (const { pair, by } of cases) expect(carriedBy(pair)).toBe(by);
+    for (const { pair, by } of cases) expect(carriedBy(pointsOf(pair))).toBe(by);
     // Exchanged, the same measure carries the other side's win.
-    expect(carriedBy({ ...even, fresh: [F] })).toBe("validity");
+    expect(carriedBy(pointsOf({ ...even, fresh: [F] }))).toBe("validity");
   });
 
   it("negates validity, objective and bill scores when exchanged and normalises rounded zeros", () => {

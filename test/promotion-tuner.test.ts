@@ -2,7 +2,7 @@
 import { expect, it } from "bun:test";
 import { campaignLines, emptyTotals } from "#skills/promotion-tuner/scripts/replay.ts";
 import { loadTree, type Tree } from "#skills/promotion-tuner/scripts/tree.ts";
-import { type Paired, scored } from "../src/kernel/compare.ts";
+import { type Paired, scored, scoresOf } from "../src/kernel/compare.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
@@ -79,6 +79,31 @@ it("promotes and diagnoses A/A steps only when both tests pass under the request
     const scaled = replay(tree, pairs, undefined, { validity: 0, objective: 1, bill: 1 });
     expect([scaled.rightful + scaled.doubted, scaled.aaSteps]).toEqual([0, 0]);
   }
+});
+
+it("credits a won task to the measure that carried it, the bill where the score without it loses", async () => {
+  const tree = await loadTree(ROOT);
+  // Valid in four solves of four against three, worse by 9% on the objective and billed half.
+  const rescued: Paired = {
+    task: "rescued",
+    old: [false, true, true, true],
+    fresh: [true, true, true, true],
+    objective: { direction: "lower", old: [null, 1000, 1000, 1000], fresh: [1090, 1090, 1090, 1090] },
+    used: {
+      old: Array.from({ length: 4 }, () => ({ billed: 2 })),
+      fresh: Array.from({ length: 4 }, () => ({ billed: 1 })),
+    },
+  };
+  const one = scoresOf(tree.points(rescued));
+  expect([one.scored, one.unbilled, one.validity].map(Math.sign)).toEqual([1, -1, 1]);
+  const won: Paired[] = CHEAP.map(({ task }) => ({
+    task,
+    old: [false, false, false, false],
+    fresh: [true, true, true, true],
+  }));
+  const totals = replay(tree, [...won, rescued]);
+  expect(totals.rightful + totals.doubted).toBe(1);
+  expect(totals.wonBy).toEqual({ validity: 6, objective: 0, bill: 1 });
 });
 
 it("keeps stored scores but requires complete evidence without cost to replay a step", async () => {

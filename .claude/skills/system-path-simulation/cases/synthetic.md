@@ -20,12 +20,20 @@ bun $S pool --tree <another worktree>  # the same scenario under another tree's 
 
 - `log()`, a builder that appends the events each campaign writer would, in the shapes the readers
   read: `hold(task, {valid, solves}?)`, `refuse(task, valid)`, `release(task)`, `feasible(task)`,
-  `compare(session, {old, fresh, starter?}, {task: "PP/PF"}, reported?)` and
+  `compare(session, {old, fresh, starter?}, tasks, {terms?, reported?})` and
   `promote(harness, from, comparison)`. Each side's solves are letters: `P` valid, `F` rejected
-  and ruled earned, `W` cut by the deadline, `N` no answer. `add(kind, data)` appends any other
-  event, and `reported` overrides any field of the report (`reading`, `aside`, `scored`, ...).
-- `readers`: the tree's `reports`, `size`, `record` (what the Examiner hears), `decide` and `move`,
-  already loaded. Any other module of the tree is `await import(join(kit.tree, "src/..."))`.
+  and ruled earned, `W` cut by the deadline, `N` no answer, so a task is `"PP/PF"`, or
+  `{ solves: "PP/PP", objective: [10, 10, 5, 5] }` with each solve's measure in the same order,
+  lower better. `add(kind, data)` appends any other event.
+- `compare` writes the comparison's start (`terms` override its level, objective and the rest),
+  the solves, and the report the tree itself computes from them (`compared`,
+  `src/campaign/comparison.ts`), as a round writes it. So the tally, the reading, `valid` and the
+  room every later reader reads are the tree's own. `reported` lays fields over that report, for
+  planting a contradiction a writer would never produce; a reading forced to `step` there is a
+  step no test read.
+- `readers`: the tree's `reports`, `size`, `record` (what the Examiner hears), `decide`, `move`
+  and `comparison`, already loaded. Any other module of the tree is
+  `await import(join(kit.tree, "src/..."))`.
 - `table(header, rows)` prints rows.
 
 A scenario file default-exports one function of the kit:
@@ -42,7 +50,7 @@ export default scenario;
 
 The script holds three examples, each meant to be copied and tuned: `pool` (how the task pool sorts
 tasks by their readings), `examiner` (what the Examiner hears after a promotion) and `decision` (the
-move the table names for a log under a plan). Start from the nearest one, change its constants, and
+move the table names after a tie, a step and the promotion, under one plan). Start from the nearest one, change its constants, and
 read the output again. When a builder method is missing for an event you need, find the event's
 writer in `src/` and copy the shape it writes, or the test that builds it (`test/decide.test.ts`
 and `test/reports.test.ts` build most kinds by hand). Then add the method to the kit if the next
@@ -87,6 +95,9 @@ Put your prediction in a file first (rule 1), then build the smallest log that c
   [live seat](live-seat.md).
 - The events are hand-built, so they prove what the reader does with *these* shapes. A shape no
   writer produces can mislead: when a reading surprises you, check the writer before the reader.
+  Until the kit computed its reports with `compared`, a report it made up had no `valid` field,
+  and `decide` read every such comparison as leaving room, so a log in which every task was closed
+  advised a Builder session instead of `no-room`.
 - They stay in memory. Rule 3 of the skill keeps hand-built events out of every seed and campaign
   folder, and the kit writes none.
 - A pattern that reads right here and matters to a change goes into the change's owning test, as
@@ -101,4 +112,9 @@ review, unless the deadline cut them or an answer was on record. A later harness
 of two kept the task on the comparison frontier, while practice still called it easy. On the
 scratch tree each threshold moved to three readings in every reader. The `examiner` example then
 showed the Examiner's summary following the new reference across a promotion, which no log of the
-time held.
+time held. Edges read the same day, each as predicted: a task the next harness slipped on stayed on
+the frontier; one only a replaced harness slipped on, or one read only in starter comparisons, was
+exhausted on the reference's own solves; one where the next harness's answers measured half the
+reference's stayed on the frontier, and one 0.5% better did not; and two logs that differed only
+in which task the new harness slipped on released the same tasks while their comparison frontiers
+differed. Each of these already has its owning test in `test/reports.test.ts`.

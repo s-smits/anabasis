@@ -23,8 +23,8 @@ import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import type { Plan } from "#src/campaign/ground.ts";
 import type { Condition } from "#src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
-import type { JsonObject } from "#src/meta/json-shape.ts";
-import { keyIfDefined } from "#src/meta/optional-key.ts";
+import { asRecord, isString, type JsonObject } from "#src/meta/json-shape.ts";
+import { keyIfDefined, keysIf } from "#src/meta/optional-key.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { requireJsonValue } from "#src/meta/stable-json.ts";
@@ -46,6 +46,13 @@ interface Readers {
   readonly record: typeof import("#src/examiner/record.ts");
   readonly decide: typeof import("#src/campaign/decide.ts");
   readonly move: typeof import("#src/campaign/move.ts");
+  readonly comparison: typeof import("#src/campaign/comparison.ts");
+}
+
+/** A task's solves with the objective each measured, old side first, as `compare` takes it. */
+export interface Measured {
+  readonly solves: string;
+  readonly objective: readonly number[];
 }
 
 export interface Kit {
@@ -84,10 +91,10 @@ const PLAN: Plan = {
 export class Log {
   readonly events: LogEvent[] = [];
   private solves = 0;
-  private readonly condition: Readers["condition"];
+  private readonly readers: Readers;
 
-  constructor(condition: Readers["condition"]) {
-    this.condition = condition;
+  constructor(readers: Readers) {
+    this.readers = readers;
   }
 
   add(kind: EventKind, data: JsonObject): this {
@@ -128,38 +135,78 @@ export class Log {
   }
 
   /** One comparison `session` of `old` against `fresh`, with each task's solves as `<old>/<fresh>`
-   *  letters (P valid, F rejected and ruled earned, W cut by the deadline, N no answer). */
+   *  letters (P valid, F rejected and ruled earned, W cut by the deadline, N no answer). A task given
+   *  as `{ solves, objective }` also has each solve's measure, in the same order, and the comparison
+   *  then fixes an objective where lower is better. The start takes `terms` over its defaults, and
+   *  the report is the tree's own (`compared`), read on these solves, with `reported` laid over it. */
   compare(
     session: string,
     sides: { readonly old: string; readonly fresh: string; readonly starter?: string },
-    tasks: Readonly<Record<string, string>>,
-    reported: JsonObject = {},
+    tasks: Readonly<Record<string, string | Measured>>,
+    { terms = {}, reported = {} }: { readonly terms?: JsonObject; readonly reported?: JsonObject } = {},
   ): this {
-    const scored = Object.entries(tasks);
-    for (const [task, reading] of scored) {
-      const [own = "", next = ""] = reading.split("/");
-      this.solved(session, task, sides.old, own).solved(session, task, sides.fresh, next);
-    }
-    return this.add("comparison.reported", {
+    const scored = Object.entries(tasks).map(([task, given]) =>
+      isString(given) ? { task, solves: given, objective: null } : { task, ...given },
+    );
+    const solves = scored[0]?.solves.split("/")[0]?.length ?? 0;
+    const setting = this.readers.condition.settingId(conditionOf("any", "any"));
+    this.add("comparison.started", {
       session,
-      reading: "no-step",
       starter: sides.old,
       ...sides,
-      solves: scored[0]?.[1].split("/")[0]?.length ?? 0,
-      setting: this.condition.settingId(conditionOf("any", "any")),
-      scored: { wins: 0, losses: 0, ties: scored.length },
-      versions: scored.map(([task]) => task),
+      setting,
+      solves,
+      level: 0.02,
+      tasks: scored.map(({ task }) => task),
+      retained: [],
+      ...keysIf(
+        scored.some(({ objective }) => objective !== null),
+        () => ({
+          objective: { direction: "lower", margin: 0.01 },
+        }),
+      ),
+      ...terms,
+    });
+    for (const { task, solves: letters, objective } of scored) {
+      const [own = "", next = ""] = letters.split("/");
+      const first = this.solves;
+      this.solved(session, task, sides.old, own).solved(session, task, sides.fresh, next);
+      for (const [index, measure] of (objective ?? []).entries()) {
+        const solve = `s-${String(first + index + 1)}`;
+        this.add("verdict", { solve, task, kind: "pass", answer: {}, objective: measure });
+      }
+    }
+    const { comparison } = this.readers;
+    const fixed = comparison.fixedIn(this.events, session);
+    if (fixed === null) throw new Error(`comparison ${session} wrote no start its reader reads back`);
+    return this.add("comparison.reported", {
+      session,
+      tasks: scored.length,
+      solves,
+      level: fixed.level,
+      setting,
+      broken: null,
+      reviewFaults: [],
+      starter: sides.old,
+      ...sides,
+      ...asRecord(comparison.compared(this.events, fixed, new Map())),
+      disputed: [],
+      capped: false,
       ...reported,
     });
   }
 
   promote(harness: string, from: string, comparison: string): this {
-    return this.add("harness.promoted", { harness, from, comparison });
+    return this.add("harness.promoted", {
+      harness,
+      from,
+      rests: [{ comparison, against: from, reading: "step" }],
+    });
   }
 
   private solved(session: string, task: string, harness: string, letters: string): this {
     const ran = conditionOf(task, harness);
-    const id = this.condition.conditionId(ran);
+    const id = this.readers.condition.conditionId(ran);
     this.add("condition.recorded", { id, condition: requireJsonValue(ran) });
     for (const letter of letters.split("")) {
       this.solves += 1;
@@ -240,7 +287,12 @@ const examiner: Scenario = ({ readers: { record }, log }) => {
     .hold("a", { valid: 3, solves: 3 })
     .hold("b", { valid: 1, solves: 3 })
     .hold("c", { valid: 0, solves: 3 })
-    .compare("b-1", { old: "h1", fresh: "h2" }, { a: "PP/PP", b: "FP/PP", c: "FF/PF" }, { reading: "step" })
+    .compare(
+      "b-1",
+      { old: "h1", fresh: "h2" },
+      { a: "PP/PP", b: "FP/PP", c: "FF/PF" },
+      { reported: { reading: "step" } },
+    )
     .promote("h2", "h1", "b-1")
     .hold("d", { valid: 1, solves: 3 })
     .refuse("e", 3)
@@ -253,13 +305,24 @@ const examiner: Scenario = ({ readers: { record }, log }) => {
   for (const line of heard.lines) console.log(`  ${line}`);
 };
 
-const decision: Scenario = ({ readers, log }) => {
+const decision: Scenario = ({ readers, log, table }) => {
   const built = log().add("checker.read", { contract: "c", checks: "k", faults: [] });
-  const tasks = Object.fromEntries(Array.from({ length: 10 }, (_, index) => [`t${String(index)}`, "FP/PP"]));
-  for (const task of Object.keys(tasks)) built.hold(task);
-  built.release("p1").compare("b-1", { old: "h1", fresh: "h2" }, tasks);
-  const decided = readers.decide.decide(built.events, PLAN);
-  console.log(`${decided.code}: ${readers.move.decidedLine(decided)}`);
+  const ten = (solves: string) =>
+    Object.fromEntries(Array.from({ length: 10 }, (_, index) => [`t${String(index)}`, solves]));
+  for (const task of Object.keys(ten(""))) built.hold(task);
+  built.release("p1");
+  const rows: string[][] = [];
+  const next = (after: string) => {
+    const decided = readers.decide.decide(built.events, PLAN);
+    rows.push([after, decided.code, readers.move.decidedLine(decided)]);
+  };
+  built.compare("b-1", { old: "h1", fresh: "h2" }, ten("FP/FP"));
+  next("b-1: both sides slip on every task");
+  built.compare("b-2", { old: "h1", fresh: "h3" }, ten("FP/PP"));
+  next("b-2: the new side wins all ten");
+  built.promote("h3", "h1", "b-2");
+  next("h3 promoted");
+  table(["after", "row", "move"], rows);
 };
 
 const EXAMPLES = { pool, examiner, decision };
@@ -280,6 +343,7 @@ async function main(args: CommandArgs): Promise<number> {
     record: (await import(join(tree, "src/examiner/record.ts"))) as Readers["record"],
     decide: (await import(join(tree, "src/campaign/decide.ts"))) as Readers["decide"],
     move: (await import(join(tree, "src/campaign/move.ts"))) as Readers["move"],
+    comparison: (await import(join(tree, "src/campaign/comparison.ts"))) as Readers["comparison"],
   };
   const scenario =
     Object.entries(EXAMPLES).find(([key]) => key === named)?.[1] ??
@@ -292,7 +356,7 @@ async function main(args: CommandArgs): Promise<number> {
   await scenario({
     tree,
     readers,
-    log: () => new Log(readers.condition),
+    log: () => new Log(readers),
     table: (header, rows) => {
       for (const row of [header, ...rows]) console.log(row.join(" | "));
     },

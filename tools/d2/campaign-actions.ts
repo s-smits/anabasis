@@ -368,7 +368,7 @@ async function releaseTo(context: CampaignContext, bench: Bench, practice: numbe
     "--practice",
     String(practice),
     // The campaign's terms, so what it prints of a comparison's size is the campaign's.
-    ...(["solves", "level"] as const).flatMap((name) => flag(name, context.values[name])),
+    ...flag("level", context.values.level),
   ]);
   if (result !== 0) throw new Error("the practice release was refused");
   await refreshCampaign(context, bench);

@@ -140,7 +140,7 @@ describe("the campaign's line and readouts", () => {
     const counters = page.locator(".ana-campaign-counters");
     await expect(counters.locator(".ana-num").first()).toHaveText("1 of 6");
     await expect(counters).toContainText(/label: tasks 1\b.*rejections.*\b2\b/u);
-    await expect(counters).toContainText(/A\/A controls 1\b.*\b0\b.*step/u);
+    await expect(counters).toContainText(/A\/A controls 7\b.*\b0\b.*step/u);
     await expect(counters).toContainText(/False promotion.*\b6\.3%.*\b1 attempt/u);
     await expect(counters.locator(".ana-num").last()).toHaveText("42");
 
@@ -158,7 +158,7 @@ describe("the campaign's line and readouts", () => {
     await summary.click();
     await expect(details).toHaveAttribute("open", "");
     await expect(body).toContainText(
-      /\b11\b.*frontier.*\b2\b.*practice.*\b1\b.*label.*\b3\b.*exhausted.*retained/u,
+      /\b13\b.*frontier.*\b2\b.*practice.*\b1\b.*label.*\b1\b.*exhausted.*retained/u,
     );
     await expect(body).toContainText(/checker.*\b0\b.*faults.*frozen/u);
     await expect(body.getByText(/faux\/solver-1.*high/u)).toBeVisible();

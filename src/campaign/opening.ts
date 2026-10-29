@@ -77,7 +77,6 @@ export interface Opening {
 export const TERMS = [
   "solve-minutes",
   "target",
-  "solves",
   "level",
   "defects",
   "minutes",

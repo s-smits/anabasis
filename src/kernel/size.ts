@@ -9,11 +9,13 @@
  * normal approximation, since the sizes in question are the ones where an approximation is worst.
  * Nothing here decides.
  *
- * Solves come before tasks (12 October). At four solves a side a task the two harnesses split is
- * won or lost by four pairs for each valid answer that parts them, which the test reads, and a
- * task ties only where both gave as many; a campaign short of tasks still reads each one closely.
- * Twenty-four untied tasks detect a harness that wins 73% of them four times in five, where twelve
- * need 81%. A comparison buys tasks and the power is in untied ones: the tie share between them is
+ * Two solves a side, in every domain (operator, 29 October). From 12 October a side had four, so
+ * that a task the two harnesses split was won or lost by four pairs for each valid answer that
+ * parted them. Four bought about a sixth more of a campaign's dollars and more of its hours, which
+ * the Builder spends waiting on comparisons, and one reading of four solves still could not call a
+ * task easy without a second (`easyAt`, `reports.ts`). Two keep a split task visible, and the
+ * readings pool. At level 0.02, twenty-four untied tasks detect a harness that wins 80% of them
+ * four times in five, where twelve need 87%. A comparison buys tasks and the power is in untied ones: the tie share between them is
  * what the reference read against itself measures (`comparison.ts`, `noise`), and until it has been
  * read the size is said as if no task tied, which is the best case.
  *
@@ -48,7 +50,7 @@ interface Asked {
 }
 
 /** A comparison's size where nothing names another: the scored tasks and the solves a side. */
-export const SIZE = { tasks: 24, solves: 4 } as const;
+export const SIZE = { tasks: 24, solves: 2 } as const;
 /** How many of the smallest clearing results a line names. */
 const NAMED = 3;
 

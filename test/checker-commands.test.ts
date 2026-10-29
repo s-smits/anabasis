@@ -451,8 +451,8 @@ suite("preparation and rehearsal over a stored pack", () => {
     expect(
       viewed.split("\n").filter((line) => line.includes("Builder session, finished: from")),
     ).toHaveLength(2);
-    // Four solves a side since 12 October, and the level 0.02, where nothing names another (`SIZE`).
-    expect(viewed).toMatch(/1 task.*4 solves.*0\.02.*1 won.*0 lost.*0 tied.*no-step/u);
+    // Two solves a side, fixed since 29 October, and the level 0.02 where nothing names another (`SIZE`).
+    expect(viewed).toMatch(/1 task.*2 solves.*0\.02.*1 won.*0 lost.*0 tied.*no-step/u);
     expect(viewed).not.toContain("  a round");
     expect(cli("view", SEED, "--cap", "100").said).toContain("Unknown option '--cap'");
     // Fix row F26: the view's last line is the one move the decision table names, and the

@@ -108,13 +108,14 @@ describe("what a comparison came to", () => {
   test("counts an A/A step only when both tests clear the level in the same direction", async () => {
     const units = `${KEY.split("/")[0] ?? ""}/${fixture.units}`;
     const { answer: controlReading } = await ask("campaign", { key: units }, "default");
-    const control = controlReading.comparisons.find(({ noise }) => noise !== null);
+    // At two solves a side b-1 and b-2 carry an A/A too, the first solve against the second.
+    const control = controlReading.comparisons.find(({ id }) => id === "c-1");
     // The second sample lost every task: a one-sided test of its wins reads nothing.
     expect([control?.noise?.tally, (control?.noise?.p ?? 0) > (control?.level ?? 1)]).toEqual([
       { wins: 0, losses: 4, ties: 0 },
       true,
     ]);
-    expect([controlReading.counters.controls, controlReading.counters.controlSteps]).toEqual([1, 1]);
+    expect([controlReading.counters.controls, controlReading.counters.controlSteps]).toEqual([3, 1]);
     const found = campaignsFound({ repo: fixture.root, trees: "directory" }).found.find(
       ({ name }) => name === fixture.units,
     );
@@ -136,7 +137,7 @@ describe("what a comparison came to", () => {
       };
       const row = campaignRow(found, log, { process: null, tier: "default" });
       const reading = campaignReading(found, log, { row, tier: "default", issues: [] });
-      expect([reading.counters.controls, reading.counters.controlSteps]).toEqual([1, steps]);
+      expect([reading.counters.controls, reading.counters.controlSteps]).toEqual([3, steps]);
     }
   });
 });

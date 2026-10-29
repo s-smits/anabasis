@@ -63,10 +63,10 @@ const GRID: readonly (readonly [
   ["word-r1", "refused", {}],
   ["word-13", "held", { "c-1": "lost 4/4 · 0/4", "b-3": "aside 1/2 · 2/2" }],
   ["word-14", "held · retained", { "c-1": "aside 3/4 · 3/4" }],
-  ["word-15", "held · exhausted · retained", { "c-1": "won 3/4 · 4/4", "r-3": "tiedEvery 2/2 · 2/2" }],
+  ["word-15", "held", { "c-1": "won 3/4 · 4/4", "r-3": "tiedEvery 2/2 · 2/2" }],
   ["word-16", "held · retained", { "b-2": "tiedSome 1/2 · 1/2", "r-3": "tiedNone 0/2 · 0/2" }],
   ["word-17", "held", { "g-9": "won 0/2 · 1/2" }],
-  ["word-18", "held · exhausted · retained", { "g-9": "tiedEvery 2/2 · 2/2" }],
+  ["word-18", "held", { "g-9": "tiedEvery 2/2 · 2/2" }],
   ["word-19", "held", { "g-9": "lost 1/2 · 0/2" }],
   ["word-20", "held", { "g-9": "won 1/2 · 2/2" }],
   ["word-21", "held", { "g-9": "tiedNone 0/2 · 0/2" }],
@@ -261,11 +261,11 @@ describe("the Tasks pane's filters", () => {
     await expect(corner(on)).toHaveText("Tasks (25)");
     await label.selectOption("all");
 
-    // Three tasks of the fixture are exhausted: the reference closed each in its last comparison.
+    // One task of the fixture is exhausted: the reference closed it in both comparisons it stood in.
     await exhausted.selectOption("yes");
-    expect(await shownIds(on)).toEqual(["word-03", "word-15", "word-18"]);
+    expect(await shownIds(on)).toEqual(["word-03"]);
     await exhausted.selectOption("no");
-    await expect(corner(on)).toHaveText("Tasks (23)");
+    await expect(corner(on)).toHaveText("Tasks (25)");
 
     await state.selectOption("held");
     await label.selectOption("yes");
@@ -491,7 +491,7 @@ describe("the Tasks pane between two readings", () => {
     await expect(corner(on)).toHaveText("Tasks (21)");
     await on.getByLabel("Exhausted").selectOption("no");
     await search(on).fill("word-1");
-    await expect(corner(on)).toHaveText("Tasks (8)");
+    await expect(corner(on)).toHaveText("Tasks (10)");
     await on.getByRole("button", { name: "Clear filters" }).click();
     await expect(corner(on)).toHaveText("Tasks (26)");
     const frames = await framesOf(on);

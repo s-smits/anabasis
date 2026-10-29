@@ -463,7 +463,11 @@ describe("room for the reference", () => {
       move: "examine",
       code: "no-room",
     });
-    expect(move([...tied, ...examined("x-1", ["v13"])])).toMatchObject({ move: "examine" });
+    // One reading closes no task (`easyAt`), so the task x-1 wrote is compared with g-1's; after a
+    // second closed reading the tasks leave the frontier and the Examiner is asked again.
+    expect(move([...tied, ...examined("x-1", ["v13"])])).toMatchObject({ move: "compare" });
+    const again = compared("g-2", "h1", "no-step", { tally: [0, 0, 24], solved: EVERY });
+    expect(move([...tied, ...again, ...examined("x-1", ["v13"])])).toMatchObject({ move: "examine" });
     const closedReference = decide(promotedAll, PLAN);
     expect(closedReference).toMatchObject({ move: "examine", code: "no-room" });
     expect(closedReference.why.match(/\b(?:g-\d+|h\d+)\b/g)).toEqual(["h1", "g-2"]);
@@ -650,10 +654,12 @@ describe("the build conditions", () => {
         tallyPairs(lastReports(events).flatMap((report) => pairsReported(events, report))),
       );
       expect(tallies[0]).toEqual(tallies[1]);
-      expect(logs.map((events) => poolOf(events).frontier.length)).toEqual([8 + extra, 9 + extra]);
-      expect(logs.map((events) => practiceAllowance(events, 0.02))).toEqual([extra, extra]);
+      // One reading closes neither task, so the frontier holds both whichever one the new harness won.
+      expect(logs.map((events) => poolOf(events).frontier.length)).toEqual([9 + extra, 9 + extra]);
+      // Neither closes for practice either, so both logs allow one more than the floor needs.
+      expect(logs.map((events) => practiceAllowance(events, 0.02))).toEqual([1 + extra, 1 + extra]);
       expect(released[0]).toEqual(released[1]);
-      expect(released[0]?.map(([version]) => version)).toEqual(extra === 0 ? [] : ["a"]);
+      expect(released[0]?.map(([version]) => version).slice(0, 1)).toEqual(["a"]);
     }
   });
 
@@ -785,8 +791,8 @@ describe("the one count", () => {
     });
     const roomy = compared("g-4", "h1", "no-step", { tally: [0, 0, 12] });
     expect(move([...twice, ...examined("x-3", ["v15"]), ...roomy])).toMatchObject({ move: "build" });
-    const closed = compared("g-1", "h1", "no-step", { tally: [0, 0, 24], solved: EVERY });
-    const few = [...FIRST, ...closed, ...examined("x-1", ["v13"])];
+    const closed = (id: string) => compared(id, "h1", "no-step", { tally: [0, 0, 24], solved: EVERY });
+    const few = [...FIRST, ...closed("g-1"), ...closed("g-2"), ...examined("x-1", ["v13"])];
     expect(move([...few, ...idle(2)])).toMatchObject({ move: "examine" });
     expect(move([...few, ...idle(3)])).toMatchObject({ move: "end", ending: "no-room" });
     expect(move([READ, ...idle(2), ...examined("x-8", ["v9"]).slice(0, 1), ...idle(1)])).toMatchObject({

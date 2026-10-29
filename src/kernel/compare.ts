@@ -15,7 +15,7 @@
  * exact, by one convolution over the integer sums, and needs no more than the sign test it
  * replaced did: tasks independent, the two sides alike under the null. Where every untied task is
  * won or lost by as many pairs it is the sign test, so the plan's smallest wins (4-0, 6-1, 7-2,
- * 9-3 at 0.10) and its table of power hold to the bit; at four solves a side it also reads how far
+ * 9-3 at 0.10) and its table of power hold to the bit; at several solves a side it also reads how far
  * a task was won, so a 4-1 lost by one pair in sixteen clears 0.10 where the sign test read every
  * 4-1 at 0.1875. A tie says nothing and leaves the test. The same convolution at a share other
  * than one half is the power (`power`), and every reading says the least share of its untied tasks
@@ -373,8 +373,8 @@ export function measuresIn(value: unknown): Measures | undefined {
 
 /**
  * Whether a task tells something of the harness on `side` (the overhaul plan's one definition of
- * informative, section 4b, the one `try_task` admits a draft by, and the one the exhausted fold
- * closes a task by, through `closedTo`): valid on some of its solves and not all; valid on all
+ * informative, section 4b, the one `try_task` admits a draft by, and whose objective half the
+ * exhausted fold reads, `hasObjectiveGap`): valid on some of its solves and not all; valid on all
  * where a better answer is on record (`hasObjectiveGap`); or valid on none where the task is among
  * `feasible`, the versions a valid answer is on record for (`poolOf`, `reports.ts`): another
  * harness's, a reference room solve's, or its author's. A task it answers alike in every
@@ -409,7 +409,7 @@ export function informative(
  * floor. The floor is what keeps the author's precision out: in buffer-fresh-opus-r6 its answers
  * held drafts by a hundredth of a percent.
  */
-function hasObjectiveGap(pair: Paired, side: "old" | "fresh", best: number | null): boolean {
+export function hasObjectiveGap(pair: Paired, side: "old" | "fresh", best: number | null): boolean {
   return (
     (objectiveGap(pair, side, [...(pair.objective?.[side === "old" ? "fresh" : "old"] ?? []), best]) ?? 0) > 0
   );
@@ -524,14 +524,6 @@ export function carriedBy(pair: Paired): keyof Measures | null {
   if (sign === 0) return null;
   if (Math.sign(differenceOf(pair, "unbilled")) !== sign) return "bill";
   return Math.sign(differenceOf(pair, "validity")) === sign ? "validity" : "objective";
-}
-
-/** Whether the harness on `side` closed the task: valid in every counted solve, and not
- *  `informative` for it, so that it can only tie again at that budget or be lost. Until 12 October
- *  the supply read validity alone; until 19 October it kept a rule of its own beside `informative`
- *  (`hasObjectiveGap`). */
-export function closedTo(pair: Paired, side: "old" | "fresh", best: number | null = null): boolean {
-  return pair[side].length > 0 && pair[side].every(Boolean) && !hasObjectiveGap(pair, side, best);
 }
 
 /** Whether no solve of a pair gave a valid answer. */

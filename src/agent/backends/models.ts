@@ -161,7 +161,11 @@ function codexStream(
 
 /** Durable owns retries for the two providers previously wrapped here, with the same backoff. */
 export function retryPolicy(provider: string): ConversationRetryPolicy {
-  return { enabled: provider === CODEX || provider === "openrouter", maxRetries: 3, baseDelayMs: 2000 };
+  return {
+    enabled: provider === CODEX || provider === "openrouter" || provider === "deepinfra",
+    maxRetries: 3,
+    baseDelayMs: 2000,
+  };
 }
 
 /**
@@ -215,6 +219,11 @@ export function deepinfra(): Provider<"openai-completions"> {
     baseUrl: "https://api.deepinfra.com/v1/openai",
     cost: { input: 0.098, output: 0.294, cacheRead: 0.00294, cacheWrite: 0 },
     maxTokens: 131_072,
+    // DeepInfra is an OpenAI-compatible endpoint, not OpenRouter: it takes neither OpenRouter's
+    // routing headers nor a reasoning reply it never asked for. Inheriting the catalogue's compat
+    // sent a second request whose assistant message had no reasoning content to echo, and every
+    // Examiner session ended `stopped` after its first tool call (29 October).
+    compat: { supportsDeveloperRole: false, supportsStrictMode: true },
   };
   return {
     ...deepseekProvider(),

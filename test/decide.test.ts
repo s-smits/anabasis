@@ -194,6 +194,10 @@ describe("the exam", () => {
       ending: "exam",
     });
     expect(move([fell(0), fell(0), fell(0)], plan)).toMatchObject({ move: "end", ending: "exam" });
+    // A draft bills, so a budget with less left than its reserve ends the campaign before one is put.
+    const spent = { ...plan, left: { dollars: 9.99, reserve: 10 } };
+    expect(decide([fell(0)], spent)).toMatchObject({ move: "end", ending: "budget", code: "exam" });
+    expect(decide([], { ...plan, left: { dollars: 10, reserve: 10 } })).toMatchObject({ move: "draft" });
     const crashed = event("draft.finished", {
       session: "d-1",
       stands: false,

@@ -47,7 +47,7 @@ const ROWS: readonly {
   // A stop the operator left ends the campaign, whatever the log holds.
   { code: "stop", move: stop },
   // The exam does not stand: it is drafted, read, or the campaign ends on it. Before the bounds,
-  // since reading it bills nothing.
+  // since reading it bills nothing; a draft bills, so it asks the bounds first.
   { code: "exam", move: exam },
   // A bound is spent: the total, the provider, the improvement patience, a comparison cut short.
   { code: "bound", move: bound },
@@ -202,8 +202,9 @@ function stop({ events }: Ground): Move | null {
   };
 }
 
-function exam({ events, plan, supply, refused }: Ground): Move | null {
-  if (plan.prompted && draftOf(events) === null) return drafting(events);
+function exam(ground: Ground): Move | null {
+  const { events, plan, supply, refused } = ground;
+  if (plan.prompted && draftOf(events) === null) return bound(ground) ?? drafting(events);
   if (refused.has("unread")) {
     return {
       move: "accept",
@@ -230,21 +231,14 @@ function exam({ events, plan, supply, refused }: Ground): Move | null {
 }
 
 /** The first move of a campaign that opened from a prompt and holds no exam: a draft, while the
- *  plan's three have not been put. A session that crashed before it put a draft is the crash
- *  rule's, as any session's is (`crashedRun`): a named reset is waited out, and `CRASHES` in a
- *  row end the campaign on its environment, with what the last crash said (10 October: three
- *  sessions crashed in one second, Claude Code refusing to run as root). Until 16 October the
- *  draft kept a count of its own, nothing waited, and three drafts that crashed on a session
- *  limit ended three fresh campaigns 33 minutes before it reset. The drafts put count
- *  over the whole log. */
+ *  plan's three have not been put. The bounds are asked first (`bound`), as before any billed move:
+ *  a session that crashed before it put a draft is the crash rule's (`crashedRun`), whose
+ *  `CRASHES` in a row end the campaign on its environment (10 October: three sessions crashed in
+ *  one second, Claude Code refusing to run as root), and a budget with less left than its reserve
+ *  ends it on its budget. Until 29 October the budget was read only after the exam stood, so a
+ *  campaign opened with $10 on a $10 reserve put three drafts the budget stopped at once, and
+ *  ended `exam`, "0 drafts in 3 sessions did not stand". The drafts put count over the whole log. */
 function drafting(events: readonly LogEvent[]): Move {
-  const crashes = crashedRun(events);
-  if (crashes.count >= CRASHES) {
-    return end(
-      "environment",
-      `no draft was put: the Examiner's session crashed ${String(crashes.count)} times (${crashes.crash ?? "the provider gave no reason"})`,
-    );
-  }
   const put = ({ tries }: LogEvent["data"]) => (isNumber(tries) ? tries : 0);
   const sessions = events.filter(
     ({ kind, data }) => kind === "draft.finished" && (data.ended !== "crashed" || put(data) > 0),

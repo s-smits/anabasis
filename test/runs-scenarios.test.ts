@@ -458,7 +458,8 @@ it("S11: move prepares a destination before a clean-point transfer and can hold 
   const result = made.runScript(
     CLI,
     ["move", "local", "--to", made.host.name, "--login", LOGIN, "--after", "promoted", "--hold", "--yes"],
-    { FAKE_EXECUTE: "1" },
+    // The destination's live count comes from its own `active`, run through the CLI there.
+    { FAKE_EXECUTE: "1", FAKE_RUN_CLI: "1" },
   );
   expect(result.code).toBe(0);
   expect(result.out).toContain("after its next promoted");

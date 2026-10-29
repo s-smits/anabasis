@@ -26,6 +26,11 @@ export function seatsCodex(flags: readonly string[]): boolean {
   );
 }
 
+/** Who pays a run on `login` with the launch flags `flags`: the login, or the Codex CLI's where it
+ *  names none and a seat goes through it. */
+export const payerOf = (login: string | undefined, flags: readonly string[]): string | undefined =>
+  login ?? (seatsCodex(flags) ? CODEX : undefined);
+
 /** The live seats of the skill `system-path-simulation` on this machine, each by the seed and the
  *  login its own flags name, since a seat keeps no launch receipt. A shell that started one names it
  *  too, so a seed is listed once. */
@@ -51,11 +56,7 @@ export function liveHere(host = "here"): Live[] {
     .filter((run) => !seats.some(({ name }) => name === run.name) && writers(run, running).length > 0)
     .map((run) => {
       const launch = lastLaunch(run.path);
-      return {
-        name: run.name,
-        login: launch?.login ?? (seatsCodex(launch?.flags ?? []) ? CODEX : null),
-        host,
-      };
+      return { name: run.name, login: payerOf(launch?.login, launch?.flags ?? []) ?? null, host };
     });
   return [...live, ...seats];
 }

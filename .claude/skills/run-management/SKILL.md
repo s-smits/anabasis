@@ -186,7 +186,10 @@ bun run runs pause <name> --after promoted|compacted|reported|finished --yes
 budget word may have set since, and `--budget` names another. Flags after `--` replace the kept
 flags. It refuses as `launch` does, and refuses `--at` another commit while any comparison began
 and has not reported (`openComparisons`). That comparison needs its own code until it reports.
-For a measured run, continue at its opening commit and measure a fix with a fresh run
+It also refuses, before any pause, a login at its cap of live runs across the fleet, a GPT run on
+a machine that already carries one, and a fleet it could not count (`startRefusal`), counting
+every live run but the one it starts. `move` asks the same of the destination, and a keeper waits
+on it instead. For a measured run, continue at its opening commit and measure a fix with a fresh run
 (`AGENTS.md`, section 10, item 9).
 
 `pause` waits until the log has gained one more of the event (`harness.promoted`,

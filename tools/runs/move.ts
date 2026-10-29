@@ -69,6 +69,8 @@ import { verbOn } from "./hosts.ts";
 import { CAMPAIGNS, HERE, keepers, processes, readNamed, writers } from "./registry.ts";
 import { syncRuns } from "./snapshots.ts";
 import { continueRun, pause, said } from "./manage.ts";
+import { payerOf } from "./live.ts";
+import { roomToStart } from "./logins.ts";
 import { preparedHost, publishedAt } from "./code.ts";
 import { lastLaunch } from "./receipt.ts";
 
@@ -192,6 +194,8 @@ export async function move(args: readonly string[]): Promise<void> {
     console.log("nothing is done without --yes");
     return;
   }
+  // Counted before the pause too: the destination's caps must take the run, less the run itself.
+  await roomToStart(payerOf(values.login, flags), to.host?.name ?? "here", name);
   // Prepare before the pause: a missing commit or failed install must leave the source running.
   const controller = to.host === undefined ? undefined : preparedHost(to.host, commit);
   if (to.host === undefined) publishedAt(to.repo, commit);

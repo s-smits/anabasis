@@ -4,9 +4,9 @@ import { type BackendOptions, backends, compactionMode, retryPolicy } from "../s
 import { sit } from "../src/agent/session.ts";
 import { read } from "../src/kernel/log.ts";
 import { traceOf } from "../src/kernel/trace.ts";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { asRecord, type JsonValue } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 
@@ -26,9 +26,9 @@ afterAll(() => {
   rmSync(home, { recursive: true, force: true });
 });
 
-describe("the three backends", () => {
+describe("the backends", () => {
   const catalog = backends(options);
-  it("serve Codex, OpenRouter and Claude Code from pi's catalogs", () => {
+  it("serve Codex, OpenRouter, DeepInfra and Claude Code from pi's catalogs", () => {
     expect(catalog.getModel("openai-codex", "gpt-6.1-sol")?.api).toBe("openai-codex-responses");
     expect(catalog.getModel("openrouter", "anthropic/claude-opus-5")).toBeDefined();
     expect(catalog.getModel("claude", "claude-opus-5")?.api).toBe("claude-agent-sdk");
@@ -58,6 +58,17 @@ describe("the three backends", () => {
     // Every listing pi's collection offers holds it, as `getModel` does.
     const chat = catalog.getModelsOfType("chat", "openrouter").map(({ id }) => id);
     expect(chat).toContain("deepseek/deepseek-v4.1-flash-1017");
+    // DeepInfra is a provider of its own: pi's DeepSeek provider on DeepInfra's endpoint and key,
+    // serving the one release the OpenRouter pin routes to DeepInfra's weights, at its own price.
+    expect(catalog.getModel("deepinfra", "deepseek-ai/DeepSeek-V4.1-Flash-1017")).toMatchObject({
+      provider: "deepinfra",
+      api: "openai-completions",
+      baseUrl: "https://api.deepinfra.com/v1/openai",
+      reasoning: true,
+      contextWindow: 1_048_576,
+      maxTokens: 131_072,
+      cost: { input: 0.098, output: 0.294, cacheRead: 0.00294 },
+    });
     const base = catalog.getModel("openrouter", "deepseek/deepseek-v4.1-flash");
     expect(base?.compat ?? {}).not.toHaveProperty("openRouterRouting");
     expect(catalog.getModel("openrouter", "deepseek/deepseek-v4.1-flash-0101")).toBeUndefined();

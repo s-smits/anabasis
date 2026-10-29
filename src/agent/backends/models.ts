@@ -13,6 +13,7 @@ import {
   type AssistantMessageEventStream,
   type CredentialStore,
   createModels,
+  envApiKeyAuth,
   lazyStream,
   type Model,
   type MutableModels,
@@ -20,11 +21,13 @@ import {
   type Provider,
   type StreamOptions,
 } from "@earendil-works/pi-ai";
+import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
+import type { ConversationRetryPolicy } from "@earendil-works/pi-durable";
 import { existsSync, readFileSync } from "../../meta/filesystem.ts";
-import { asRecord, isNumber, isString } from "../../meta/json-shape.ts";
 import { capturedJsonParse } from "../../meta/json-runtime.ts";
+import { asRecord, isNumber, isString } from "../../meta/json-shape.ts";
 import { homedir } from "../../meta/os.ts";
 import { join } from "../../meta/path.ts";
 import {
@@ -35,7 +38,6 @@ import {
   servedByClaude,
 } from "./claude.ts";
 import { durableCompactionMode } from "./compaction.ts";
-import type { ConversationRetryPolicy } from "@earendil-works/pi-durable";
 
 const CODEX = "openai-codex";
 
@@ -83,6 +85,7 @@ export function backends(options: BackendOptions): MutableModels {
       ),
   });
   models.setProvider(openrouter());
+  models.setProvider(deepinfra());
   models.setProvider(claudeProvider(options.claude));
   models.setProvider(claudeProvider(options.claude, CLAUDE_API_PROVIDER));
   return models;
@@ -184,6 +187,43 @@ export function openrouter(): Provider<"anthropic-messages" | "openai-completion
     ...router,
     getModels: () => router.getModels().map(pin),
     getAllModels: () => (router.getAllModels?.() ?? router.getModels()).map(pin),
+  };
+}
+
+/**
+ * DeepInfra as a provider of its own, so a campaign can name a model `deepinfra/<id>` and be billed
+ * by DeepInfra on `DEEPINFRA_KEY` rather than through OpenRouter's routing. pi lists no DeepInfra
+ * provider, so this is its DeepSeek provider with DeepInfra's endpoint and key, serving the one
+ * release the OpenRouter pin routes to DeepInfra's weights, taken from that catalogue and repointed.
+ * The stream reads `model.baseUrl`, so a model is all a provider needs to reach another endpoint.
+ */
+export function deepinfra(): Provider<"openai-completions"> {
+  const catalogued = openrouterProvider()
+    .getModels()
+    .find(({ id }) => id === "deepseek/deepseek-v4.1-flash-1017");
+  if (catalogued === undefined) {
+    throw new Error("pi lists no deepseek/deepseek-v4.1-flash-1017 to serve from DeepInfra");
+  }
+  // SAFETY: the catalogue entry this pins is a chat model served through openai-completions, which
+  // pi's catalogue states as that entry's `api`, the field through which it reaches DeepInfra.
+  const source: Model<"openai-completions"> = catalogued as Model<"openai-completions">;
+  const model: Model<"openai-completions"> = {
+    ...source,
+    id: "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+    name: "DeepSeek V4.1 Flash 1017 (DeepInfra)",
+    provider: "deepinfra",
+    baseUrl: "https://api.deepinfra.com/v1/openai",
+    cost: { input: 0.098, output: 0.294, cacheRead: 0.00294, cacheWrite: 0 },
+    maxTokens: 131_072,
+  };
+  return {
+    ...deepseekProvider(),
+    id: "deepinfra",
+    name: "DeepInfra",
+    baseUrl: model.baseUrl,
+    auth: { apiKey: envApiKeyAuth("DeepInfra API key", ["DEEPINFRA_KEY"]) },
+    getModels: () => [model],
+    getAllModels: () => [model],
   };
 }
 

@@ -228,6 +228,31 @@ describe("a campaign run by its live Builder", () => {
     expect(events[waited]?.data.text).toContain("Campaign facts:");
   });
 
+  it("keeps the table's code where the Builder compares the latest harness the table names", async () => {
+    layOutPack(root, bundle, MANY, FIXTURE);
+    const name = `${STEM}-tabled`;
+    const tied = scriptedSeats({ held: { old: "pass", fresh: "pass" }, starter: "pass" }, GRADED, []);
+    const seats: Seats = {
+      seated: builderScript(tied, [
+        CHANGE_GUIDE,
+        ["compare", {}],
+        ["examine", {}],
+        ["wait", {}],
+        ["compare", {}],
+        ["finish", { note: "The latest harness was read on the new tasks." }],
+      ]),
+      examine: writer,
+    };
+    await harnessBuilder([...seeded(name), ...FLAGS, "--exam-tasks", "6", "--moves", "10"], seats);
+    // The first comparison froze a changed working copy, which no table row names; the second read
+    // that same harness, unchanged, on the tasks written since, which is the table's own move.
+    // Until 28 October both were logged `asked`.
+    const compares = of(name, MOVED).filter(({ move }) => move === "compare");
+    expect(compares.map(({ code }) => code)).toEqual(["asked", "unread"]);
+    const [first, second] = of(name, REPORTED);
+    expect(second?.fresh).toBe(first?.fresh);
+  });
+
   it("makes no second draw of a pair nothing changed in, and records no move for an action it refused", async () => {
     layOutPack(root, bundle, MANY, FIXTURE);
     const name = `${STEM}-unchanged`;

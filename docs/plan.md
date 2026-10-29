@@ -23,7 +23,54 @@ factors"). The values below are read from the fresh campaigns' logs on the opera
 | M1 | Climb | One campaign with five promotions (buffer r3, 14 comparisons). Six with one each (five buffer, one esp32). Truss: none in 3 | 6 confirmed in one real campaign, observed, no quota; then a second domain (operator, 25 October; 12 until then) |
 | M2 | Honesty | 0 A/A steps in 31 A/A readings across those campaigns; the count that could have read one at 0.02 is in the PR | 0 in the ten controls after the six on record |
 | M3 | Verdicts | 0 hand labels. r3: 5 Referee rulings in 14 comparisons | 30 labels; 3 in 4 defects caught, at most 1 in 10 earned voided |
-| W | Economy | r3: $401 billed for 5 promotions, 25 active hours | At most 3 promotion attempts an epoch, reported |
+| W | Economy | r3: $401 billed for 5 promotions, 25 active hours. All fresh campaigns at 29 October: $8,060 for 92 promotions, $87.61 each; none ended on its budget ("Where the dollars went") | At most 3 promotion attempts an epoch, reported |
+
+### Where the dollars went, 29 October
+
+Read from the log of every fresh campaign on the three machines at 29 October, 23:42 UTC: 116
+campaigns and 727,548 events, seeds left out. Dollars are each turn's calculated list price, as the
+budget counts them, with unfinished work and compaction included. A second reading over the 80
+campaigns that billed at least $5 gave the exam side 53.3% of $8,019.82, against 52.7% here.
+
+| Work | Dollars | Share | A held task | A promotion |
+| --- | ---: | ---: | ---: | ---: |
+| The Examiner writing tasks | 2,468.85 | 30.6% | 0.96 | 26.84 |
+| The Examiner drafting the exam | 160.45 | 2.0% | 0.06 | 1.74 |
+| Room solves of drafts | 1,617.83 | 20.1% | 0.63 | 17.59 |
+| Comparison solves | 2,889.45 | 35.8% | 1.12 | 31.41 |
+| The Builder and its practice | 800.09 | 9.9% | 0.31 | 8.70 |
+| The Referee | 123.61 | 1.5% | 0.05 | 1.34 |
+| Total | 8,060.28 | | 3.13 | 87.61 |
+
+The unit columns divide by 2,573 held tasks and 92 promotions in 36 campaigns, so they carry the
+campaigns that never promoted.
+
+- **Supply is the larger half, spent as designed.** What it buys depends on the domain: buffer
+  pays $1.19 of exam-side dollars a held task and $31.59 a promotion (65 campaigns, 78
+  promotions), ESP32 $4.37 and $205.57 (18, 4), job $4.43 and $98.45 (10, 5), recode $2.36 and
+  $83.68 (9, 2), truss $2.25 and $100.39 (13, 3).
+- **Refused drafts take half of the room solves.** Of 4,153 settled proposals 2,241 were held and
+  1,912 refused; the room solves of refused drafts billed $826.53 of $1,563.98 (52.8%). The refusal
+  keeps a task the reference already closes out of every later comparison. At worst, one ESP32
+  session put 36 drafts to 108 room solves, all valid within eight turns, and held none.
+- **A long session costs little more a turn.** Over the 291 writing sessions of at least 40 turns,
+  the context grew from 27,085 to 141,213 tokens a turn between the first ten turns and the last
+  ten, and the bill from $0.058 to $0.076 a turn. Output is 42.5% of the writing sessions'
+  subcosts, cache reads and writes 55.6%, and compaction billed $9.38.
+- **A quarter of the exam side reached no comparison.** 67 of 116 campaigns had no comparison
+  report at the reading, and their exam side billed $1,051.01 of $4,247.14 (24.7%). Until
+  `f0f3841cc` the host asked for a comparison's target of 24 held tasks before the first
+  comparison; it now asks for the admission floor, 8 at the default level.
+- **Dollars do not bind.** Of 53 `campaign.ended` events, 47 were `environment`, 4 `exam`, 1
+  `operator`, 1 `no-room` and none `budget`. Hours and logins bind instead: Examiner sessions are
+  49% of the campaigns' wall hours.
+- **One defect.** The Examiner's `finish` is declined with a request for more tasks after every
+  proposal slot is used (`declined`, `src/examiner/write.ts`, which does not read `spent`): 6 of
+  206 declined finishes, 20 turns and $0.92. It is open.
+
+Not settled: whether shorter writing sessions, or a cheaper Examiner model or effort, buy the same
+supply for less. Each needs paired Examiner seats from one recorded position under equal time and
+proposal allowances, read on exam-side dollars a task that stays informative.
 
 ## Open rows
 

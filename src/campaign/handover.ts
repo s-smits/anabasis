@@ -342,9 +342,12 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
           parent: text(data.parent),
           harness: text(end?.harness),
           changed: end?.changed === true,
+          // Each attempt of one solve is logged as `<id>-<attempt>`, and the session charged the
+          // solve once: until 29 October an open session of buffer-fresh-deepseek read 7 practice
+          // solves where its ending wrote 4, one of them tried four times.
           practiceSolves: isNumber(end?.practiceSolves)
             ? end.practiceSolves
-            : practised.filter(within).length,
+            : new Set(practised.filter(within).map((solve) => solve.id.replace(/-\d+$/u, ""))).size,
           fails: fails.filter(within).length,
           // An open session's own turns are summed at its end, so until then they are its window's.
           billed: end === undefined ? billed : billedParts(events, id).session,

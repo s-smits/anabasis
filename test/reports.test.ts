@@ -654,12 +654,13 @@ describe("the tasks the reference harness exhausted", () => {
       const pool = poolOf(log);
       return [...pool.exhausted, ...pool.retained];
     };
-    expect(spent(reread([F, P]))).toContain("e1");
-    expect(spent(reread([F, F], [F, P]))).not.toContain("e1");
+    expect(spent(reread([P, P]))).toContain("e1");
+    expect(spent(reread([F, P]))).not.toContain("e1");
+    expect(spent(reread([P, P], [P, F]))).not.toContain("e1");
     expect(spent(reread(["wall-ended", F], [F, F]))).toContain("e1");
   });
 
-  it("read the pooled solves alike in whichever order the fails came", () => {
+  it("are read on the newest two readings in a row, each valid in every solve, whatever came before", () => {
     const read = (sessions: readonly (readonly [string, readonly boolean[], readonly boolean[]])[]) =>
       poolOf([
         ...heldOut("t"),
@@ -676,29 +677,30 @@ describe("the tasks the reference harness exhausted", () => {
       ]).exhausted;
     expect(
       read([
-        ["b-1", [F, P], [P, P]],
+        ["b-1", [P, P], [P, P]],
         ["b-2", [P, P], [P, P]],
       ]),
     ).toEqual(["t"]);
     expect(
       read([
-        ["b-1", [P, P], [P, P]],
-        ["b-2", [P, P], [P, F]],
-      ]),
-    ).toEqual(["t"]);
-    expect(
-      read([
         ["b-1", [F, P], [P, P]],
-        ["b-2", [P, P], [P, F]],
+        ["b-2", [P, P], [P, P]],
       ]),
     ).toEqual([]);
     expect(
       read([
-        ["b-1", [P, P], [P, P]],
+        ["b-1", [F, F], [F, F]],
         ["b-2", [P, P], [P, P]],
-        ["b-3", [P, F], [F, P]],
+        ["b-3", [P, P], [P, P]],
       ]),
     ).toEqual(["t"]);
+    expect(
+      read([
+        ["b-1", [P, P], [P, P]],
+        ["b-2", [P, P], [P, P]],
+        ["b-3", [P, P], [F, P]],
+      ]),
+    ).toEqual([]);
   });
 
   it("count no starter of a starter comparison, and no harness a promotion replaced, against the reference", () => {

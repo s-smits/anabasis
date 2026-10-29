@@ -1,6 +1,6 @@
 ---
 name: promotion-tuner
-description: "Score recorded comparisons again by a tree's weighted measures, without models or spend. Read which promotions the score supports, which measure won each task, the A/A comparisons, and hours and dollars per promotion. Sweep the weights and the level by flag, and compare a candidate tree that changes a floor or the test."
+description: "Score recorded comparisons again by a tree's weighted measures, without models or spend. Read which promotions the score supports, which measure won each task, the A/A comparisons, and hours and dollars per promotion. Sweep the weights and the level by flag, and compare a candidate tree that changes a floor or the test. Set every run on record side by side (`scripts/table.ts`): time to the first comparison and the first promotion, hours and dollars a rung, by release, pack and setting, so one cycle's runs read against the last's."
 ---
 
 # Promotion tuner
@@ -60,6 +60,38 @@ Live logs grow. Read the baseline and the candidate close together, and record t
 
 The script reaches a tree only through its own `read`, `lastReports`, `pairsReported`, `pairsOf`,
 `pointsOf`, `WEIGHTS`, `flipP`, `stepOf`, `readsStepEitherWay`, `measuresIn`, `billedBetween` and `BILLED` (`loadTree`).
+
+## Every run side by side
+
+`replay.ts` asks whether a score supports the promotions on record. `scripts/table.ts` asks how the
+runs compare: one row a run, a group or a promotion, from the same logs and receipts, with nothing
+scored again.
+
+```sh
+bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/table.ts \
+  [--rows recent|groups|runs|promotions] [--by release,pack,setting,host,none] \
+  [--since <date>] [--name <part>]... [--last 20] [--has <text>]... [--holds <commit>]... [--format md|tsv]
+```
+
+- **`recent`**, the default, is the quick look: every live run, whatever it has promoted, then the
+  latest twenty finished runs that promoted at least once. Each row gives the hours to the first
+  promotion, which is set-up, the promotions reached, and the mean hours, active hours and dollars
+  of a rung, a promotion after set-up. Set-up takes longer, so it is kept apart, and the all-in hours
+  a promotion stand beside it. A line under the table gives the medians a live run is read against.
+- **`groups`** compares cycles. A run's release is the tag before its first launch (`after v0.8.0`
+  is the cycle building the next release), its pack the first word of its name, its setting the
+  solver, effort and solve limits. The default groups by all three, since results are never compared
+  across settings (`AGENTS.md`, section 9); `--by release` pools them and marks the group `POOLED`.
+  `by 6 h`, `by 12 h` and `by 24 h` count the runs promoted by then over those that were or lasted
+  that long, so a young run is no miss. Grouping by stack pull request was rejected: a stack's
+  numbers mean nothing from one cycle to the next.
+- **`--has`** and **`--holds`** keep the runs whose every launch ran with a mechanism (`ranWith`),
+  which is how a change is read against the runs without it (`AGENTS.md`, section 9, "Evidence").
+- Hours are on the log's clock, the same on macOS and Linux. Active hours subtract the union of every
+  recorded wait (`waitsOf`, `tools/wri/time.ts`). Host, cores, load per core at a solve's start and
+  the median solve stand beside them as indicators; no hour is scaled by them.
+- A run sitting out a provider reset longer than two hours reads as finished with `no ending`.
+  One run is one draw: read a group's medians beside its run count.
 
 ## What to read
 

@@ -24,6 +24,7 @@
  * solves labelled outside a comparison. Membership comes from `solve.started`, even before a
  * report can supply a scoring set.
  */
+import type { LogEvent } from "#src/kernel/log.ts";
 import { AT_A_LIMIT } from "#src/kernel/reports.ts";
 import { roleOf, spendOf, type Turn, tracesIn } from "#src/kernel/trace.ts";
 import { isNumber, type JsonValue } from "#src/meta/json-shape.ts";
@@ -292,7 +293,7 @@ function spansOf(log: Index): Span[] {
 }
 
 /** The union of intervals, so concurrent sessions or provider waits count their overlap once. */
-function unionMs(windows: readonly { readonly from: number; readonly until: number }[]): number {
+export function unionMs(windows: readonly { readonly from: number; readonly until: number }[]): number {
   let [held, reached] = [0, -Infinity];
   for (const { from, until } of windows.toSorted((a, b) => a.from - b.from)) {
     held += Math.max(0, until - Math.max(from, reached));
@@ -301,24 +302,15 @@ function unionMs(windows: readonly { readonly from: number; readonly until: numb
   return held;
 }
 
-/** Row A's overlapping elapsed spans beside its billed dollars, and the union of every recorded wait
- *  with the hours a promotion with and without it. A provider's reset and a network wait are
+/** Every wait a log records, as the interval it covered. A provider's reset and a network wait are
  *  recorded before their sleep and stop at the first subsequent ending, even after a resume; a
- *  load wait is recorded when the host admits the solve, so it ends at its event. The load half is
- *  an indicator: other solves run while one waits for the load. */
-export function hoursLine(log: Index): string {
-  const spans = spansOf(log);
-  const [first, last] = [Date.parse(log.events[0]?.at ?? ""), Date.parse(log.events.at(-1)?.at ?? "")];
-  const whole = Number.isNaN(first) ? 0 : last - first;
-  const parts = new Map<string, number>();
-  for (const { part, from, until } of spans) parts.set(part, (parts.get(part) ?? 0) + until - from);
+ *  load wait is recorded when the host admits the solve, so it ends at its event. */
+export function waitsOf(events: readonly LogEvent[]): { from: number; until: number; kind: string }[] {
   const waits: { from: number; until: number; kind: string }[] = [];
-  let boundary = last;
-  let promotions = 0;
-  for (const { at, kind, data } of log.events.toReversed()) {
+  let boundary = Date.parse(events.at(-1)?.at ?? "");
+  for (const { at, kind, data } of events.toReversed()) {
     const from = Date.parse(at);
     if (kind === "campaign.ended") boundary = from;
-    if (kind === "harness.promoted") promotions += 1;
     if (kind !== "campaign.waited" || !isNumber(data.ms)) continue;
     // The solve queue writes no `for`, older logs' included, and records its wait once it is over.
     if (data.for === undefined) waits.push({ from: from - data.ms, until: from, kind: "load" });
@@ -326,6 +318,20 @@ export function hoursLine(log: Index): string {
       waits.push({ from, until: Math.min(from + data.ms, boundary), kind: data.for });
     }
   }
+  return waits;
+}
+
+/** Row A's overlapping elapsed spans beside its billed dollars, and the union of every recorded wait
+ *  (`waitsOf`) with the hours a promotion with and without it. The load half is an indicator: other
+ *  solves run while one waits for the load. */
+export function hoursLine(log: Index): string {
+  const spans = spansOf(log);
+  const [first, last] = [Date.parse(log.events[0]?.at ?? ""), Date.parse(log.events.at(-1)?.at ?? "")];
+  const whole = Number.isNaN(first) ? 0 : last - first;
+  const parts = new Map<string, number>();
+  for (const { part, from, until } of spans) parts.set(part, (parts.get(part) ?? 0) + until - from);
+  const waits = waitsOf(log.events);
+  const promotions = log.events.filter(({ kind }) => kind === "harness.promoted").length;
   const hours = (ms: number) => (ms / HOUR_MS).toFixed(1);
   const named = [...parts]
     .toSorted(([, a], [, b]) => b - a)

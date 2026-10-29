@@ -36,7 +36,7 @@
  * refuses it for good. Each may be given more than once, and each label is logged with the person's
  * `--note`.
  *
- * It ends by saying what a comparison of `--target` tasks, at `--solves` a side and `--level`, can
+ * It ends by saying what a comparison of `--target` tasks, at two solves a side and `--level`, can
  * show at this supply, before it runs (`src/kernel/size.ts`), and which held-out tasks wait for a
  * label (`campaign.ts`, `awaitingLines`). It recommends no number and decides nothing.
  *
@@ -66,7 +66,6 @@ const OPTIONS = {
   practice: { type: "string", default: String(PRACTICE) },
   level: ROUND_OPTIONS.level,
   target: ROUND_OPTIONS.target,
-  solves: ROUND_OPTIONS.solves,
   keep: { type: "string", multiple: true },
   infeasible: { type: "string", multiple: true },
   note: { type: "string" },

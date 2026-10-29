@@ -42,6 +42,7 @@ import {
 import { BILLED } from "../kernel/trace.ts";
 import { conditionsOf } from "../kernel/condition.ts";
 import { examinerSessions, solvesIn, verdictsOf } from "../kernel/solves.ts";
+import { spreadOf } from "../kernel/size.ts";
 import { heldAtGate, taskStates } from "../kernel/task.ts";
 import type { Task } from "../kernel/verify.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
@@ -343,8 +344,8 @@ function measuredLine(
   const side = report?.data.fresh === reference ? "fresh" : "old";
   const reads = report === undefined ? [] : pairsReported(events, report).map((pair) => pair[side]);
   const aside = Array.isArray(report?.data.aside) ? report.data.aside.length : 0;
-  const some = reads.filter((each) => each.includes(true) && each.includes(false)).length;
-  const none = reads.filter((each) => !each.includes(true)).length;
+  const some = reads.filter((each) => spreadOf(each) === "some").length;
+  const none = reads.filter((each) => spreadOf(each) === "none").length;
   const read = [...admissions.values()].filter((admission) => measuredGate(admission));
   const held = read.flatMap(({ outcome, reference: counted }) => {
     const { valid, solves: of } = asRecord(counted) ?? {};

@@ -144,8 +144,8 @@ crown a winner between two equal harnesses about one time in ten. That design va
 until it is measured on the real solver, whose variance is unknown: the same harness fails a task
 once and passes it the next time. The measurement is an A/A comparison, built the same way as the test:
 the reference's solves of a task are split into two halves mirrored in time, then tallied and
-tested as a comparison is (`src/campaign/comparison.ts`). At four solves a side every comparison
-carries one, on the solves its test reads, two against two; at fewer solves there is none. A step
+tested as a comparison is (`src/campaign/comparison.ts`). Every comparison carries one, on the
+solves its test reads: at two solves a side, the first solve of each task against the second. A step
 in an A/A comparison is a false positive by construction. How often two of its solves of a task disagree
 is the flip rate. Bar: no step in the ten A/A comparisons after the six on record. Ten A/A comparisons still only
 bound the rate loosely. Its tie share describes the half-sized samples used by the A/A comparison;
@@ -818,7 +818,8 @@ hand commands of rows 0 to 7 write no opening and so have no project.
 **The setting** (`campaign.setting`, `tools/d2/setting.ts`) is recorded once, by the first command
 that begins a comparison or a Builder session, and never changes. It says who solves and under
 which limits, named by five flags (`--solver`, `--solver-effort`, `--solver-window`,
-`--solve-minutes`, `--solve-model-turns`), and how many held-out tasks a comparison draws (`--target`).
+`--solve-minutes`, `--solve-model-turns`), how many held-out tasks a comparison draws (`--target`) and how many solves a side each gets
+(`--solves`).
 The first command records what it names and the defaults for the rest. From then on a command that
 names nothing runs under the record, and one whose flag names something different is refused with
 both values: a different setting is a different campaign. A campaign whose solves were made before
@@ -895,7 +896,8 @@ bun run runs fresh | launch | continue | keep | pause | copy | fetch | retire | 
 ### Defaults
 
 - 24 scored tasks (`--target`);
-- 4 solves per side (`--solves`; `SIZE` in `src/kernel/size.ts`);
+- 2 solves per side in every domain (`SIZE` in `src/kernel/size.ts`), which a campaign's setting
+  may name otherwise once (`--solves`);
 - level 0.02 (`--level`), with improvement patience of 6 (`--patience`): one comparison that reads a step at
   the level promotes;
 - an objective gap floor of 1% (`ROOM`), the least improvement by the objective worth counting, as
@@ -945,10 +947,15 @@ hash. The draw does two more things:
 
 - It leaves out a task that has had no valid answer after two comparisons, until a person labels
   it (`poolOf`).
-- It takes off the frontier a task that the reference harness answered in every solve of the last
-  comparison it stood in for that task, on whichever side. Such a task is **exhausted** for supply, though a bill saving can still win it (`poolOf`). A task is not closed where a valid answer on record (the
-  reference's own, the other side's or its author's) is better by the objective than one of the
-  reference's by at least the objective gap floor, since the next harness can still win it (`bettered`).
+- It takes off the frontier a task that was answered in every solve of the last two comparisons the
+  reference harness stood in for it, in a row, on whichever side: its own solves, and the other
+  side's where that is a later harness, so the next harness must answer it too. Such a task is
+  **exhausted** for supply, though a bill saving can still win it (`poolOf`). A task is not closed
+  where a valid answer on record (the reference's own, the other side's or its author's) is better
+  by the objective than one of the reference's by at least the objective gap floor, since the next
+  harness can still win it (`bettered`). The default solves a side and these counts of comparisons are
+  set in one place (`SIZE`, `RUNS`, `src/kernel/size.ts`), and every rule reads a side's every, some or
+  none, so the rules read the same at any count of solves.
 
 An exhausted task stays in the draw as **retained**, so that a harness that breaks what the
 reference answers still shows its losses. A loss can only come from a task the reference answers.
@@ -1083,7 +1090,7 @@ reading at a shorter budget would describe a solver that was told the longer one
 - its overlap with the previous comparison of the same two harnesses;
 - the points each measure gave, which the closing report prints beside each promotion's tally.
 
-Beside every comparison of four solves per side stands the reference read against itself, on
+Beside every comparison stands the reference read against itself, on
 halves of its own solves mirrored in time. It should read no step. Its tie share describes those
 half-sized samples and does not establish a lower bound for a full comparison. Its flip rate is
 how often two solves of a task disagree. The A/A comparison is

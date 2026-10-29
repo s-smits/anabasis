@@ -663,8 +663,8 @@ describe("a campaign", () => {
     );
     // A comparison's flags are none of a session's: it scores nothing and is read against nothing.
     await expect(
-      sessionCommand([...flags, "--cap", "100", "--reviewer", SERVED, "--solves", "2"]),
-    ).rejects.toThrow("--solves");
+      sessionCommand([...flags, "--cap", "100", "--reviewer", SERVED, "--level", "0.02"]),
+    ).rejects.toThrow("--level");
     // On a checker nobody has read its practice solves would be judged by checks nobody has seen.
     await expect(
       sessionCommand([...flags, "--cap", "100", "--reviewer", SERVED, "--builder", SERVED]),

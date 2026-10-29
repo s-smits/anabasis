@@ -340,7 +340,7 @@ this walk chooses what to do about it.
    `tools/d2/campaign-actions.ts`; `idleOf` in `tools/d2/campaign-terms.ts`; session and practice terms.
 5. **Size:** many ties, a near miss, or a high `scored.detectable`. `detectable` is the
    least winning share detected four times in five at these margins, in hundredths. It is power,
-   not another threshold for the observed tally. Owners: `--target` and `--solves` in the next fresh
+   not another threshold for the observed tally. Owners: `--target` in the next fresh
    campaign; `settingAsked` fixes the recorded target. The lasting cure for ties is link 1.
 6. **Host:** `HOST LOADED`, `LOAD MOVED`, long waits or rising wall-ended solves. Read load before
    blaming the harness. Owner: the number of campaigns on that host; use the launch load rule.

@@ -241,12 +241,7 @@ async function make(
     const practice = decided.practice === undefined ? values.practice : String(decided.practice);
     // The campaign's terms, so what it prints of a comparison's size is the campaign's.
     begin({});
-    await prepareCommand([
-      ...pack,
-      ...flag("practice", practice),
-      ...flag("solves", values.solves),
-      ...flag("level", values.level),
-    ]);
+    await prepareCommand([...pack, ...flag("practice", practice), ...flag("level", values.level)]);
     return;
   }
   if (decided.move === "promote") {
@@ -516,6 +511,7 @@ function settingHeld(log: string, given: Values): void {
       "solve-minutes": given["solve-minutes"],
       "solve-model-turns": given["solve-model-turns"],
       target: given.target,
+      solves: given.solves,
     },
     recorded,
   );

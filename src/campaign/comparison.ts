@@ -119,7 +119,7 @@ export interface Report {
   /** The preceding comparison of the same two harnesses, and their initial draws' intersection. */
   readonly overlap: { readonly with: string; readonly tasks: readonly string[] } | null;
   /** The reference harness against itself on halves of its own solves mirrored in time, the A/A comparison,
-   *  where it holds four or more of a task: how often two of its solves of a task
+   *  where it holds an even number of a task: how often two of its solves of a task
    *  disagree (`flips`), the least share of its untied tasks one half has to win for the scored
    *  test at the level to detect it four times in five (`detectable`), which says how much its
    *  reading no step can show. A report of 12 to 18 October also holds the objective's margin its
@@ -463,10 +463,10 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
         fixed.solves / 2,
       ).pairs,
     );
-  // The A/A (12 October, the plan's section 4b): where the reference's solves of a task are four
-  // or more and even, which halves mirrored in time split two against two at least. At four a
-  // side every comparison carries one.
-  const mirrored = fixed.solves >= 4 && fixed.solves % 2 === 0 ? itself() : null;
+  // The A/A (12 October, the plan's section 4b): where the reference's solves of a task are even,
+  // split into halves mirrored in time. At two a side, the default since 29 October, it is its
+  // first solve against its second, which reads the flip rate and a step between halves alike.
+  const mirrored = fixed.solves >= 2 && fixed.solves % 2 === 0 ? itself() : null;
   const aa = mirrored === null ? null : scored(mirrored);
   const tested = scored(pairs);
   const stepped = readsStep(tested.differences, tested.unbilled, fixed.level);

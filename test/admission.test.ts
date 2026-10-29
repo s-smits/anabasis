@@ -131,18 +131,15 @@ describe("what a log holds for the next comparison", () => {
     // so a round made against it had 3 to win where the tally said 7 (2026-10-09). The frontier
     // leaves out what the reference closed, which the untied share read a second time until
     // 16 October.
-    const spelled = ["PP PP", "PF PP", "FF PP", "FF PP", "FF PP", "FF PP", "FF PF", "FF FF"];
-    const stepped = [
-      ...EIGHT.flatMap(heldOut),
-      ...roundLogged(
-        "g-1",
-        ["h0", "h1"],
-        Object.fromEntries(EIGHT.map((task, place) => [task, spelled[place] ?? ""])),
-      ),
-    ];
+    // Two readings of the same pair, since one reading calls no task easy.
+    const spelled = ["PP PP", "PF PP", "FF PP", "FF PP", "FF PP", "FF PP", "FF PF", "FF FP"];
+    const solves = Object.fromEntries(EIGHT.map((task, place) => [task, spelled[place] ?? ""]));
+    const once = [...EIGHT.flatMap(heldOut), ...roundLogged("g-1", ["h0", "h1"], solves)];
+    expect(supplyOf(once)).toMatchObject({ held: 8 });
+    const stepped = [...once, ...roundLogged("g-2", ["h0", "h1"], solves)];
     // The reference's one closed task is retained, so the frontier is the seven it left open.
     expect(supplyOf(stepped)).toMatchObject({ held: 7 });
-    // Once h1 is promoted it closed five of them, and is left two.
+    // Once h1 is promoted its own solves closed six of them, and it is left two.
     const promotion = event("harness.promoted", { harness: "h1", from: "h0", rests: [] });
     expect(supplyOf([...stepped, promotion])).toMatchObject({ held: 2 });
   });

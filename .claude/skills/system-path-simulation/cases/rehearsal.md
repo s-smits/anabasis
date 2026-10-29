@@ -34,7 +34,7 @@ bun tools/d2/prepare.ts <pack flags> --name sim-<what> --practice 2
 
 ```sh
 bun run runs rehearse <pack flags> --name sim-<what> --session r-1 \
-  --solves 1 --target 6 --level 0.02 --minutes 10 --turns 10 \
+  --target 6 --level 0.02 --minutes 10 --turns 10 \
   [--held old:new] [--starter pass|fail|none] [--supply N]
 ```
 
@@ -101,12 +101,12 @@ bun run runs rehearse <pack flags> --name sim-<what> --id g2 --new latest
 Flags that hold `--id` are a standalone comparison's (`tools/d2/checkpoint.ts`): one comparison of two kept
 harnesses, with no Builder session. It compares the latest harness a session left with the
 reference, the last promoted harness or the starter until one is promoted. The seed must keep a new
-harness: rehearse a session or round first. At four solves a side the report reads the reference
-against itself on halves of its own solves too:
+harness: rehearse a session or round first. The report reads the reference against itself on
+halves of its own solves too:
 
 ```sh
 bun run runs rehearse <pack flags> --name sim-<what> --id g2 --target 6 \
-  --solves 4 --held pass:pass
+  --held pass:pass
 ```
 
 A scripted solve gives a recorded answer or none; it shows no model's ability within the budget.

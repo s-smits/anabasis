@@ -549,23 +549,25 @@ describe("the release before the draw", () => {
     // new harness's answers measured half the reference's. The release reads the reference's own
     // solves alone, so the Builder reads one practice set either way (AGENTS.md rule 3). Drawing
     // from `poolOf`'s frontier released `a1` from one and `a2` from the other.
-    const won = (better: string) => {
-      const sides = ["a1", "a2"].flatMap((task) => [
-        ...solved("b-1", task, "h1", [P, P]),
-        ...solved("b-1", task, "h2", [P, P]),
-      ]);
-      const measures = better === "a1" ? [10, 10, 5, 5, 10, 10, 10, 10] : [10, 10, 10, 10, 10, 10, 5, 5];
-      return [
-        ...["a1", "a2"].flatMap(heldOut),
-        ...sides,
-        ...measuredAt(sides, measures),
-        reported("b-1", "no-step", "h2", {
-          ...terms,
-          versions: ["a1", "a2"],
-          objective: { direction: "lower", margin: 0.01 },
-        }),
-      ];
-    };
+    const won = (better: string) => [
+      ...["a1", "a2"].flatMap(heldOut),
+      ...["b-1", "b-2"].flatMap((session) => {
+        const sides = ["a1", "a2"].flatMap((task) => [
+          ...solved(session, task, "h1", [P, P]),
+          ...solved(session, task, "h2", [P, P]),
+        ]);
+        const measures = better === "a1" ? [10, 10, 5, 5, 10, 10, 10, 10] : [10, 10, 10, 10, 10, 10, 5, 5];
+        return [
+          ...sides,
+          ...measuredAt(sides, measures),
+          reported(session, "no-step", "h2", {
+            ...terms,
+            versions: ["a1", "a2"],
+            objective: { direction: "lower", margin: 0.01 },
+          }),
+        ];
+      }),
+    ];
     expect(poolOf(won("a1")).frontier).toEqual(["a1"]);
     expect(poolOf(won("a2")).frontier).toEqual(["a2"]);
     expect(releaseOrder(won("a1"), ["a1", "a2"], 1, "seed")).toEqual(
@@ -659,30 +661,120 @@ describe("the tasks the reference harness exhausted", () => {
   ];
   const start = closed.flatMap(heldOut);
 
-  it("are the ones the reference answered in every solve of one comparison, and stay in the draw as retained tasks", () => {
+  it("are the ones two readings or more call easy, and stay in the draw as retained tasks", () => {
     expect(poolOf(start).exhausted).toEqual([]);
     const once = compared(start, "b-1", "h2", SETTING);
-    const { exhausted, retained, scorable, frontier, outcomes } = poolOf(once);
-    expect(sorted(exhausted)).toEqual(closed);
-    expect(sorted(retained)).toEqual(closed);
+    expect(poolOf(once)).toMatchObject({ exhausted: [], retained: [] });
+    expect(sorted(poolOf(once).frontier)).toEqual(closed);
+    const twice = compared(once, "b-2", "h3", SETTING);
+    const { exhausted, retained, scorable, frontier, outcomes } = poolOf(twice);
+    const easy = ["e1", "e2", "e3"];
+    expect(sorted(exhausted)).toEqual(easy);
+    expect(sorted(retained)).toEqual(easy);
     expect(sorted(scorable)).toEqual(closed);
-    expect(frontier).toEqual([]);
+    expect(frontier).toEqual(["open"]);
     expect(closed.map((task) => outcomes.get(task))).toEqual(closed.map(() => "reference-every"));
-    expect(poolOf(compared(once, "b-3", "h4", "other")).exhausted).toEqual(exhausted);
-    const released = [...once, event("task.state", { version: exhausted[0] ?? "", state: "released" })];
+    expect(poolOf(compared(twice, "b-3", "h4", "other")).exhausted).toEqual(exhausted);
+    const released = [...twice, event("task.state", { version: exhausted[0] ?? "", state: "released" })];
     expect(poolOf(released).exhausted).not.toContain(exhausted[0]);
-    const reread = (valid: readonly (boolean | string)[]) => [
-      ...once,
-      ...solved("b-4", "e1", "h1", valid),
-      ...solved("b-4", "e1", "h5", [P, P]),
+    const reread = (own: readonly (boolean | string)[], next: readonly boolean[] = [P, P]) => [
+      ...twice,
+      ...solved("b-4", "e1", "h1", own),
+      ...solved("b-4", "e1", "h5", next),
       reported("b-4", "no-step", "h5", { ...terms, fresh: "h5", setting: SETTING, versions: ["e1"] }),
     ];
     const spent = (log: readonly LogEvent[]) => {
       const pool = poolOf(log);
       return [...pool.exhausted, ...pool.retained];
     };
+    expect(spent(reread([P, P]))).toContain("e1");
     expect(spent(reread([F, P]))).not.toContain("e1");
-    expect(spent(reread(["wall-ended", P]))).toContain("e1");
+    expect(spent(reread([P, P], [P, F]))).not.toContain("e1");
+    expect(spent(reread(["wall-ended", F], [F, F]))).toContain("e1");
+  });
+
+  it("are read on the newest two readings in a row, each valid in every solve, whatever came before", () => {
+    const read = (sessions: readonly (readonly [string, readonly boolean[], readonly boolean[]])[]) =>
+      poolOf([
+        ...heldOut("t"),
+        ...sessions.flatMap(([session, own, next]) => [
+          ...solved(session, "t", "h1", own),
+          ...solved(session, "t", `n-${session}`, next),
+          reported(session, "no-step", `n-${session}`, {
+            ...terms,
+            fresh: `n-${session}`,
+            setting: SETTING,
+            versions: ["t"],
+          }),
+        ]),
+      ]).exhausted;
+    expect(
+      read([
+        ["b-1", [P, P], [P, P]],
+        ["b-2", [P, P], [P, P]],
+      ]),
+    ).toEqual(["t"]);
+    expect(
+      read([
+        ["b-1", [F, P], [P, P]],
+        ["b-2", [P, P], [P, P]],
+      ]),
+    ).toEqual([]);
+    expect(
+      read([
+        ["b-1", [F, F], [F, F]],
+        ["b-2", [P, P], [P, P]],
+        ["b-3", [P, P], [P, P]],
+      ]),
+    ).toEqual(["t"]);
+    expect(
+      read([
+        ["b-1", [P, P], [P, P]],
+        ["b-2", [P, P], [P, P]],
+        ["b-3", [P, P], [F, P]],
+      ]),
+    ).toEqual([]);
+  });
+
+  it("count no starter of a starter comparison, and no harness a promotion replaced, against the reference", () => {
+    const begun = [
+      ...heldOut("t"),
+      ...solved("b-1", "t", "h1", [F, F]),
+      ...solved("b-1", "t", "h2", [P, P]),
+      reported("b-1", "step", "h2", { old: "h1", solves: 2, setting: SETTING, versions: ["t"] }),
+      promotion,
+    ];
+    const against = (fresh: string) => [
+      ...begun,
+      ...solved("b-2", "t", "h2", [P, P]),
+      ...solved("b-2", "t", fresh, [F, F]),
+      reported("b-2", "no-step", fresh, { old: "h2", solves: 2, setting: SETTING, versions: ["t"] }),
+    ];
+    expect(poolOf(begun).exhausted).toEqual([]);
+    expect(poolOf(against("h1")).exhausted).toEqual(["t"]);
+    expect(poolOf(against("h3")).exhausted).toEqual([]);
+  });
+
+  it("keep from practice only what the reference's own pooled solves call easy", () => {
+    const practice = (next: readonly boolean[]) =>
+      poolOf([
+        ...heldOut("t"),
+        ...["b-1", "b-2"].flatMap((session) => [
+          ...solved(session, "t", "h1", [P, P]),
+          ...solved(session, "t", "h2", next),
+          reported(session, "no-step", "h2", { ...terms, fresh: "h2", setting: SETTING, versions: ["t"] }),
+        ]),
+      ]).practiceFrontier;
+    expect(practice([P, P])).toEqual([]);
+    expect(practice([F, F])).toEqual([]);
+    expect(
+      poolOf([
+        ...heldOut("t"),
+        ...solved("b-1", "t", "h1", [P, P]),
+        ...solved("b-1", "t", "h2", [P, P]),
+        reported("b-1", "no-step", "h2", { ...terms, fresh: "h2", setting: SETTING, versions: ["t"] }),
+      ]).practiceFrontier,
+    ).toEqual(["t"]);
   });
 
   it("spares a task the objective told two valid answers apart on: the next harness can still win it", () => {
@@ -744,7 +836,7 @@ describe("the tasks the reference harness exhausted", () => {
     const { held } = taskSets(log);
     expect(held.toSorted()).toEqual([...closed, "hard", "new"].toSorted());
     expect(awaiting).toEqual(["hard"]);
-    expect(sorted(exhausted)).toEqual(closed);
+    expect(sorted(exhausted)).toEqual(["e1", "e2", "e3"]);
     expect(sorted([...scorable, ...awaiting])).toEqual(sorted(held));
     expect(scorable).toContain("new");
     expect(exhausted.every((task) => retained.includes(task))).toBe(true);

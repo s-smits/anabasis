@@ -386,7 +386,7 @@ reference answer is beaten by an answer on record under the objective. For each 
 and say whether it named a real defect and whether the Examiner could have acted on the reason it
 was given. Then read what leaves the set after the task admission: tasks disputed on a check's fault, tasks
 refused by a person as infeasible, and tasks waiting for a label (lane 10). Read the campaign's
-target and level: `SIZE` defaults to 24 frontier tasks and four solves per side, with retained
+target and level: `SIZE` defaults to 24 frontier tasks and two solves per side, with retained
 tasks alongside. `refusals` requires at least `sweepOf(level)` frontier tasks. Say how many it
 holds against those terms. Do not propose loosening the task admission from the yield alone. The
 decision it changes is whether another Examiner session is bought before the next comparison; it

@@ -78,7 +78,7 @@ On `claude/plan-improve`, each commit proved without a model and replayed over t
 | Setting | Stands | Open |
 | --- | --- | --- |
 | Level | 0.02, one step promotes (since 19 October) | |
-| Scored set, solves | 24 tasks, 4 solves a side | |
+| Scored set, solves | 24 tasks, 2 solves a side in every domain by default; the setting may name another count once (`--solves`, 29 October) | |
 | Score | Validity 0.6, the objective 0.3 from the room floor (1%) to a tenth better, the bill 0.1 from a fifth less to half; constants of the host | Whether 60/30/10 is the right trade |
 | Solve budget | 20 model turns, 30 minutes | |
 | Network in a solve | Open in every solve, both harnesses alike | A registry-only proxy, once a trace shows a fetch from anywhere else |

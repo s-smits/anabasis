@@ -21,7 +21,7 @@
  * programs are worth by themselves, and `--reference programs-of:latest --new latest` what the
  * guide and the tools add to them. A step is the whole harness's until those two are read.
  *
- * At four solves a side, the default, the report also reads the reference harness against itself,
+ * The report also reads the reference harness against itself,
  * the plan's A/A comparison, on halves of its own solves mirrored in time (`comparison.ts`). With
  * the starter as the reference and a fixed budget, this command reads the plan's starter A/A comparison (G2).
  * The A/A comparison
@@ -106,7 +106,7 @@ export async function checkpointCommand(
     fresh,
     starter: await starter(campaign),
     ...scoredSet(read(campaign.log), setting.target, contractHash(campaign.contract)),
-    solves: Number(values.solves),
+    solves: setting.solves,
     level: Number(values.level),
     objective: objectiveNamed(campaign),
     defects: Number(values.defects),
@@ -125,7 +125,7 @@ export async function checkpointCommand(
   const own = () => {
     if (old.digest === fresh.digest) {
       throw new Error(
-        `--reference ${values.reference} and --new ${values.new} name one harness, ${old.digest}: there is nothing to compare${values.new === "latest" ? " until a Builder session has left a harness (tools/d2/round.ts)" : ""}. A harness is read against itself beside a comparison of four solves a side`,
+        `--reference ${values.reference} and --new ${values.new} name one harness, ${old.digest}: there is nothing to compare${values.new === "latest" ? " until a Builder session has left a harness (tools/d2/round.ts)" : ""}. A harness is read against itself beside every comparison`,
       );
     }
     refuseTerms(request, { log: campaign.log, id, practised: new Set() });

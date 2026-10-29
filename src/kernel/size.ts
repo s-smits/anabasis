@@ -9,11 +9,15 @@
  * normal approximation, since the sizes in question are the ones where an approximation is worst.
  * Nothing here decides.
  *
- * Solves come before tasks (12 October). At four solves a side a task the two harnesses split is
- * won or lost by four pairs for each valid answer that parts them, which the test reads, and a
- * task ties only where both gave as many; a campaign short of tasks still reads each one closely.
- * Twenty-four untied tasks detect a harness that wins 73% of them four times in five, where twelve
- * need 81%. A comparison buys tasks and the power is in untied ones: the tie share between them is
+ * Two solves a side by default, in every domain (operator, 29 October); a campaign's setting may
+ * name another count once, with `--solves` (`tools/d2/setting.ts`), and every reader of the pool
+ * reads its every, some or none at that count (`spreadOf`). From 12 October a side had four, so
+ * that a task the two harnesses split was won or lost by four pairs for each valid answer that
+ * parted them. Four bought about a sixth more of a campaign's dollars and more of its hours, which
+ * the Builder spends waiting on comparisons, and one reading of four solves still could not call a
+ * task easy without a second (`easyAt`, `reports.ts`). Two keep a split task visible, and the
+ * readings pool. At level 0.02, twenty-four untied tasks detect a harness that wins 80% of them
+ * four times in five, where twelve need 87%. A comparison buys tasks and the power is in untied ones: the tie share between them is
  * what the reference read against itself measures (`comparison.ts`, `noise`), and until it has been
  * read the size is said as if no task tied, which is the best case.
  *
@@ -48,9 +52,21 @@ interface Asked {
 }
 
 /** A comparison's size where nothing names another: the scored tasks and the solves a side. */
-export const SIZE = { tasks: 24, solves: 4 } as const;
+export const SIZE = { tasks: 24, solves: 2 } as const;
+/** How many comparisons of a task each rule over its readings reads (`poolOf`, `reports.ts`), one
+ *  place to tune them beside the solves: `easy` in a row, newest first, valid in every solve with no
+ *  room by the objective, call it easy; `unsolved` with no valid answer send it to a person; its
+ *  author hears the newest `history`. Each reading is a side's every, some or none (`spreadOf`), so
+ *  the rules read the same at any count of solves (operator, 29 October). */
+export const RUNS = { easy: 2, unsolved: 2, history: 3 } as const;
+
 /** How many of the smallest clearing results a line names. */
 const NAMED = 3;
+
+/** How a side did on a task in one comparison: valid in every solve, in some, or in none. */
+export function spreadOf(valid: readonly boolean[]): "every" | "some" | "none" {
+  return valid.every(Boolean) ? "every" : valid.includes(true) ? "some" : "none";
+}
 
 /** `wins` tasks won and `losses` lost, each by one pair. */
 function units(wins: number, losses: number): number[] {

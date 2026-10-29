@@ -168,6 +168,10 @@ it("S3: view and fleet pulse explain a dead remote run using its newest bounded 
   expect(pulse.code).toBe(0);
   expect(pulse.out).toContain("newest startup failure");
   expect(pulse.out).toContain("waiting for provider until 2099");
+  // The same observer's next look has nothing new to say of a run that was already stopped.
+  const again = made.runScript(CLI, ["pulse", "--once"], env);
+  expect(again.code).toBe(0);
+  expect(again.out).not.toContain("distant");
 });
 
 it("S4: fresh prepares the selected host at the requested published commit without a host argument", () => {

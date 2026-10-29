@@ -171,7 +171,7 @@ export function atCap(
 ): Set<string> {
   return new Set(
     allowed.filter((login) => {
-      const cap = capOf(env, login);
+      const cap = login === CODEX ? null : capOf(env, login);
       return cap !== null && live.filter((run) => run.login === login).length >= Number(cap);
     }),
   );
@@ -191,6 +191,33 @@ export function fullOn(
   return on >= Number(cap ?? 1)
     ? `${host} carries ${String(on)} live ${CODEX} run(s), at most ${cap ?? "1"} a machine (ANA_LOGIN_RUNS): name another --host, or none`
     : null;
+}
+
+/** Why a run that `payer` pays may not start on `host` beside the runs in `live`, less one named
+ *  `name` (the run itself, live where it is moved from), or null where it may: a host that went
+ *  uncounted, a login at its cap across the fleet, or a machine at its cap of Codex runs. Until
+ *  29 October only `fresh` and `keep` held a login to its cap, and `continue` and `move` were
+ *  counted by hand. */
+export function startRefusal(
+  env: Readonly<Record<string, string | undefined>>,
+  payer: string | undefined,
+  host: string,
+  counted: { readonly live: readonly Live[]; readonly unasked: readonly string[] },
+  name: string,
+): string | null {
+  if (payer === undefined) return null;
+  if (counted.unasked.length > 0) return uncounted(counted.unasked);
+  const others = counted.live.filter((run) => run.name !== name);
+  return atCap(env, [payer], others).size > 0
+    ? `login ${payer} is at its live-run cap across the fleet (ANA_LOGIN_RUNS)`
+    : fullOn(env, payer, host, others);
+}
+
+/** Refuse to start `name` on `host` for `payer` where `startRefusal` says why. */
+export async function roomToStart(payer: string | undefined, host: string, name: string): Promise<void> {
+  if (payer === undefined) return;
+  const refused = startRefusal(runtimeProcess.env, payer, host, await liveEverywhere("configured"), name);
+  if (refused !== null) throw new Error(`${name}: ${refused}; nothing was stopped or started`);
 }
 
 /** The usage endpoint's window `value`: its share used and its reset. */

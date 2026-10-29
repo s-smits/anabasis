@@ -2,8 +2,8 @@
 // and the hosts that went uncounted.
 import { describe, expect, it } from "bun:test";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
-import { liveOf, seatsCodex, seatsIn } from "../tools/runs/live.ts";
-import { activeLines, capOf, fitOf, perRunHour, perRunRate } from "../tools/runs/logins.ts";
+import { liveOf, payerOf, seatsCodex, seatsIn } from "../tools/runs/live.ts";
+import { activeLines, capOf, fitOf, perRunHour, perRunRate, startRefusal } from "../tools/runs/logins.ts";
 
 describe("each login's live runs", () => {
   it("leaves a host uncounted whose answer is no list, as a tree before the verb answers", () => {
@@ -37,6 +37,32 @@ describe("each payer's cap", () => {
   it("names the Codex login the payer of a launch that seats an openai-codex model, and of no other", () => {
     expect(seatsCodex(["--solver", "openai-codex/gpt-6.1-sol", "--budget", "800"])).toBe(true);
     expect(seatsCodex(["--solver", "claude/claude-opus-5-5"])).toBe(false);
+  });
+
+  it("refuses a continue or a move over a login's cap or a machine's Codex run, counting every run but its own", () => {
+    const env = { ANA_LOGIN_RUNS: "2" };
+    const live = [
+      { name: "a", login: "2", host: "here" },
+      { name: "b", login: "2", host: "m1" },
+      { name: "g", login: "codex", host: "m1" },
+    ];
+    const counted = { live, unasked: [] };
+    const gpt = ["--solver", "openai-codex/gpt-6.1-sol"];
+    expect(startRefusal(env, payerOf("2", []), "here", counted, "c")).toContain(
+      "login 2 is at its live-run cap",
+    );
+    expect(startRefusal(env, payerOf("2", []), "here", counted, "a")).toBeNull();
+    expect(startRefusal(env, payerOf(undefined, gpt), "m1", counted, "h")).toContain(
+      "m1 carries 1 live codex run(s)",
+    );
+    expect(startRefusal(env, payerOf(undefined, gpt), "here", counted, "h")).toBeNull();
+    expect(startRefusal(env, payerOf(undefined, gpt), "m1", counted, "g")).toBeNull();
+    expect(
+      startRefusal(env, payerOf(undefined, ["--solver", "openrouter/x"]), "m1", counted, "h"),
+    ).toBeNull();
+    expect(startRefusal(env, "3", "here", { live, unasked: ["linux"] }, "c")).toContain(
+      "not counted on linux",
+    );
   });
 });
 

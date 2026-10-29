@@ -16,7 +16,7 @@
  */
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
 import { billedAll, traceKind, tracesIn } from "#src/kernel/trace.ts";
-import { type Solve, solvesIn } from "#src/kernel/solves.ts";
+import { solvesIn } from "#src/kernel/solves.ts";
 import {
   existsSync,
   mkdirSync,
@@ -65,6 +65,9 @@ interface Look {
   readonly said: readonly string[];
   readonly seen: Seen;
 }
+
+/** Where the process that writes a log stands now. */
+type Standing = ReturnType<typeof standing>;
 
 /** The state file: the free disk at the last look, and what it saw of each log by its path. */
 interface Memory {
@@ -151,68 +154,82 @@ const SAID: Partial<
   [REPORTED]: reportLine,
 };
 
-/** Where the last thing a log started begins: a Builder session, an Examiner session or a
- *  comparison. A campaign's log holds many, and a run stands where its last one does. */
-const lastStart = (log: readonly LogEvent[]) => log.findLastIndex(({ kind }) => STARTS.has(kind));
-
-/** Where the last work of a log begins: the last thing it started, or its last solve where that is
- *  later. A comparison gone on from its log writes no second start, so the solves it makes after
- *  another comparison's report are what says it has not reported. */
-const lastWork = (log: readonly LogEvent[]) =>
-  Math.max(
-    lastStart(log),
-    log.findLastIndex(({ kind }) => kind === "solve.started"),
-  );
+/**
+ * Where the process that writes `log` stands now, read once for the status line and the look.
+ *
+ * Its launch begins at the first event at or after its launch receipt, or the start where none is
+ * kept, and a solve or a wait before it belongs to a process that is gone. On 29 October the Linux
+ * runner's truss campaign was continued after a provider wait until 1 November, and the pulse read
+ * its two cut solves as running and its new invocation as waiting out that reset, so a stall after
+ * it would not have read quiet until the reset.
+ *
+ * A run stands where the last thing it started does (a Builder session, an Examiner session or a
+ * comparison), or at its last solve where that is later: a comparison gone on from its log writes no
+ * second start, so the solves it makes after another comparison's report say it has not reported.
+ * That work ends in its run's end, or `exam.finished` after an Examiner session: an Examiner session
+ * writes no report, and the second on exam-1 (8 October) ended whole and was said to be gone before
+ * one. A campaign that wrote its ending is done whatever it was doing: until 27 October one that
+ * ended while drafting its exam, which none of these starts covers, was said to be gone before a
+ * report.
+ *
+ * A run waiting out a named reset is silent by design, so its quiet is counted from the reset: until
+ * 23 October such a run was called quiet, and until 25 October it was again for the minute between
+ * the reset and its next event, or while other seats wrote after the wait.
+ */
+function standing(run: Run, log: readonly LogEvent[]) {
+  const solves = solvesIn(log);
+  const kept = lastLaunch(run.path);
+  const launched =
+    kept === undefined ? 0 : log.findIndex((event) => Date.parse(event.at) >= Date.parse(kept.at));
+  const begun = launched === -1 ? log.length : launched;
+  const opened = log.findLastIndex(({ kind }) => STARTS.has(kind));
+  const solved = log.findLastIndex(({ kind }) => kind === "solve.started");
+  const start = Math.max(0, opened);
+  const work = log.slice(Math.max(start, solved));
+  const end: EventKind = log[start]?.kind === "exam.started" ? "exam.finished" : run.end;
+  const running = solves.filter(({ finished, started }) => finished === null && started >= begun).length;
+  const until = log
+    .slice(begun)
+    .findLast(({ kind, data }) => kind === "campaign.waited" && isString(data.until))?.data.until;
+  const last = log.at(-1);
+  const since = Math.max(Date.parse(last?.at ?? ""), isString(until) ? Date.parse(until) : 0);
+  const ended = last?.kind === "campaign.ended" || (running === 0 && count(work, end) > 0);
+  return { solves, start, work, end, running, since, ended };
+}
 
 /** Where a run stands: reported, closed, inside a Builder or Examiner session, or solving. A report
- *  counts when it follows the last work: a standalone comparison solving after an earlier comparison's report
- *  has not reported. */
-function stage(log: readonly LogEvent[], running: number, open: boolean): string {
-  const from = Math.max(lastStart(log), 0);
-  const report = log.slice(Math.max(lastWork(log), 0)).findLast(({ kind }) => kind === REPORTED);
-  // Closed is said first: until 20 October a run whose process died after a report read as that
-  // report for hours, with its unfinished solves called running.
+ *  counts when it follows the last work: a standalone comparison solving after an earlier
+ *  comparison's report has not reported. Closed is said first: until 20 October a run whose process
+ *  died after a report read as that report for hours, with its unfinished solves called running. */
+function stage(log: readonly LogEvent[], { start, work, running }: Standing, open: boolean): string {
+  const report = work.findLast(({ kind }) => kind === REPORTED);
   if (report !== undefined) return `${open ? "" : "closed, "}reported ${word(report.data.reading)}`;
   if (!open) return "closed";
-  const since = log.slice(from);
+  const since = log.slice(start);
   const session = (["build", "exam"] as const).find(
-    (role) => log[from]?.kind === `${role}.started` && count(since, `${role}.finished`) === 0,
+    (role) => log[start]?.kind === `${role}.started` && count(since, `${role}.finished`) === 0,
   );
   if (session !== undefined) return `${session} turn ${String(count(since, traceKind(session, "turn")))}`;
   return running > 0 ? "solving" : "working";
 }
 
-/**
- * Where the process that writes `log` now began: the first event at or after its launch receipt,
- * or the start where none is kept. A solve or a wait before it belongs to a process that is gone.
- * On 29 October the Linux runner's truss campaign was continued after a provider wait until
- * 1 November, and the pulse read its two cut solves as running and its new invocation as waiting
- * out that reset, so a stall after it would not have read quiet until the reset.
- */
-function invoked(run: Run, log: readonly LogEvent[]): number {
-  const kept = lastLaunch(run.path);
-  if (kept === undefined) return 0;
-  const at = log.findIndex((event) => Date.parse(event.at) >= Date.parse(kept.at));
-  return at === -1 ? log.length : at;
-}
-
-/** The status line of `run`, whose log is `log` and whose solves are `solves`. */
-function status(run: Run, log: readonly LogEvent[], solves: readonly Solve[], open: boolean, now: number) {
+/** The status line of `run`, whose log is `log`. */
+function status(run: Run, log: readonly LogEvent[], stand: Standing, open: boolean, now: number) {
+  const { solves } = stand;
   const said = ["pass", "fail", "flagged", "non-result"].flatMap((outcome) => {
     const n = solves.filter(({ ending }) => ending?.outcome === outcome).length;
     return n === 0 ? [] : [`${String(n)} ${outcome}`];
   });
-  const begun = invoked(run, log);
-  const unfinished = solves.filter(({ finished }) => finished === null);
-  const running = open ? unfinished.filter(({ started }) => started >= begun).length : 0;
+  const unfinished = solves.filter(({ finished }) => finished === null).length;
+  const running = open ? stand.running : 0;
   if (running > 0) said.push(`${String(running)} running`);
-  if (unfinished.length > running) said.push(`${String(unfinished.length - running)} unfinished`);
+  if (unfinished > running) said.push(`${String(unfinished - running)} unfinished`);
   const last = log.at(-1);
   const promoted = count(log, "harness.promoted");
   if (promoted > 0) said.push(`${String(promoted)} promoted`);
   return [
     // A seed's counts and dollars are its source's up to the cut, and a script's or a run's after it.
-    `${run.name}${run.seed === true ? " (a seed)" : ""}  ${stage(log, running, open)}`,
+    `${run.name}${run.seed === true ? " (a seed)" : ""}  ${stage(log, stand, open)}`,
     `solves ${said.join(", ") || "none"}`,
     dollars(billedAll(log)),
     last === undefined ? "no events" : `${minutes(now - Date.parse(last.at))} since the last event`,
@@ -229,8 +246,8 @@ export function pulse(
   now: number,
 ): Look {
   const open = process === "open";
-  const solves = solvesIn(log);
-  const tasks = new Map(solves.map(({ id, start }) => [id, word(start.task)]));
+  const stand = standing(run, log);
+  const tasks = new Map(stand.solves.map(({ id, start }) => [id, word(start.task)]));
   const task = (solve: JsonValue | undefined) => tasks.get(word(solve)) ?? word(solve);
   const fresh = log.slice(before?.lines ?? log.length);
   const lines = fresh.flatMap(({ kind, data }) => SAID[kind]?.(data, task) ?? []);
@@ -240,34 +257,15 @@ export function pulse(
   if (errors.length > 0) {
     lines.push(`⚠ ${plural(errors.length, "failed turn")}: ${[...new Set(errors)].map(short).join("; ")}`);
   }
-  const last = log.at(-1);
-  // A run waiting out a named reset is silent by design, so its quiet is counted from the reset:
-  // until 23 October such a run was called quiet, and until 25 October it was again for the minute
-  // between the reset and its next event, or while other seats wrote after the wait. A wait of an
-  // earlier process is over (`invoked`).
-  const waited = ({ kind, data }: LogEvent) => kind === "campaign.waited" && isString(data.until);
-  const begun = invoked(run, log);
-  const until = log.slice(begun).findLast(waited)?.data.until;
-  const since = Math.max(Date.parse(last?.at ?? ""), isString(until) ? Date.parse(until) : 0);
-  const quiet = open && last !== undefined && now - since > QUIET_MS;
-  if (quiet && before?.quiet !== true) lines.push(`⚠ quiet for ${minutes(now - since)}`);
+  const quiet = open && log.length > 0 && now - stand.since > QUIET_MS;
+  if (quiet && before?.quiet !== true) lines.push(`⚠ quiet for ${minutes(now - stand.since)}`);
   if (!quiet && before?.quiet === true) lines.push("· not quiet any more");
-  // A run's end is that of the last thing it started: an Examiner session writes no report, and
-  // the second on exam-1 (2026-10-08) ended whole and was said to be gone before one. A standalone comparison
-  // starts no session, so its own start is where its report is looked for. A campaign that wrote
-  // its ending is done whatever it was doing: until 27 October one that ended while drafting its
-  // exam, which none of these starts covers, was said to be gone before a report.
-  const end = log[lastStart(log)]?.kind === "exam.started" ? "exam.finished" : run.end;
-  const ended =
-    last?.kind === "campaign.ended" ||
-    (count(log.slice(Math.max(lastWork(log), 0)), end) > 0 &&
-      solves.every(({ finished, started }) => finished !== null || started < begun));
-  if (before?.open === true && !open && !ended) lines.push(`⚠ the process is gone before ${end}`);
+  if (before?.open === true && !open && !stand.ended) lines.push(`⚠ the process is gone before ${stand.end}`);
   // A comparison starts each task under two harnesses, so a line may come twice.
   const said = Object.entries(countBy(lines, (line) => line)).map(([line, n]) =>
     n === 1 ? line : `${line} (×${String(n)})`,
   );
-  return { status: status(run, log, solves, open, now), said, seen: { lines: log.length, open, quiet } };
+  return { status: status(run, log, stand, open, now), said, seen: { lines: log.length, open, quiet } };
 }
 
 /** One look over the chosen runs, said to the console and remembered in `state`. */
@@ -388,7 +386,7 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
       open || age > RECENT_MS ? "" : `off status in ${String(Math.ceil((RECENT_MS - age) / HOUR_MS))}h`,
     ];
     console.log(
-      `${status(run, log, solvesIn(log), open, now)}\n  ${where.filter((part) => part !== "").join(" · ")}`,
+      `${status(run, log, standing(run, log), open, now)}\n  ${where.filter((part) => part !== "").join(" · ")}`,
     );
   }
   console.log(`${plural(promoted, "promotion")} in ${plural(compared, "comparison")} over the runs shown`);

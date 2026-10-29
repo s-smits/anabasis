@@ -13,6 +13,8 @@
  * module.
  * Coverage is read at the first report, independently of a tally. A stopped comparison can be
  * reviewed, but its labels cannot turn its completed prefix into a test.
+ * On 29 October 2026 the reading of passes labelled wrong moved to history, so valid answers on
+ * record and reported pairs read it as settlement does (`failWrongPasses`).
  */
 import {
   detectable,
@@ -33,9 +35,9 @@ import {
   wholePoints,
 } from "../kernel/compare.ts";
 import { conditionsOf, settingId } from "../kernel/condition.ts";
-import { proposalsOf } from "../kernel/history.ts";
+import { failWrongPasses, proposalsOf, wrongPasses } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { pairsReported, poolOf, type Reported } from "../kernel/reports.ts";
+import { poolOf } from "../kernel/reports.ts";
 import { passed, ranUnder, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
@@ -565,15 +567,9 @@ export function wrongAsFailed(
   labels: ReadonlyMap<string, Ruling>,
   passes: Readonly<Record<string, JsonValue>>,
 ): { events: readonly LogEvent[]; labels: Map<string, Ruling> } {
-  const wrong = new Set(Object.keys(passes).filter((solve) => passes[solve] === "wrong"));
-  if (wrong.size === 0) return { events, labels: new Map(labels) };
-  const ending = { outcome: "fail", kind: "rejected", reason: "a person labelled the pass wrong" };
+  const wrong = wrongPasses(passes);
   return {
-    events: events.map((event) =>
-      event.kind === "solve.finished" && isString(event.data.solve) && wrong.has(event.data.solve)
-        ? { ...event, data: { ...event.data, ending } }
-        : event,
-    ),
+    events: failWrongPasses(events, wrong),
     labels: new Map<string, Ruling>([...labels, ...[...wrong].map((solve) => [solve, EARNED] as const)]),
   };
 }
@@ -620,13 +616,6 @@ export function swapped(
   const found = compared(swappedIn, fixed, labels);
   const unlabelled = compared(own, fixed, NO_LABELS).reading;
   return { decided, unlabelled, swapped: found.reading, scored: found.scored };
-}
-
-/** A reported tally's pairs with its wrong-pass labels applied. Its versions already carry the
- *  rejection labels' exclusions and restorations; rejection labels never turn a fail into a pass. */
-export function labelledPairs(events: readonly LogEvent[], report: Reported): Paired[] {
-  const passes = asRecord(asRecord(report.data.settled)?.passes) ?? {};
-  return pairsReported(wrongAsFailed(events, NO_LABELS, passes).events, report);
 }
 
 /** What the operator predicted of comparison `id` before its first solve, or null where they

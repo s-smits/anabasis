@@ -1,3 +1,5 @@
+// Settled pass labels must reach the pairs and the Examiner's known-answer facts together.
+// The audit of 29 October 2026 found both still reading a wrong pass as valid.
 import { describe, expect, it } from "bun:test";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
@@ -11,7 +13,7 @@ import {
 } from "../src/kernel/reports.ts";
 import { billedAll, billedFor } from "../src/kernel/trace.ts";
 import { taskSets } from "../src/kernel/task.ts";
-import { asRecord, type JsonObject } from "../src/meta/json-shape.ts";
+import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { tallied } from "./helpers/tally.ts";
@@ -223,6 +225,36 @@ describe("a report read as it was found", () => {
     { task: "v1", old: [F, F], fresh: [P, P] },
     { task: "v2", old: [F, P], fresh: [F, P] },
   ];
+
+  it("reads a pass labelled wrong as its side's fail and leaves a sound pass unchanged", () => {
+    const sides = [...solved("g1", "v1", "h1", [F]), ...solved("g1", "v1", "h2", [P])];
+    const solve = sides.findLast(({ kind }) => kind === "solve.started")?.data.solve;
+    if (!isString(solve)) throw new Error("the passing side has no solve id");
+    const report = { ...terms, solves: 1, objective: { direction: "lower" } };
+    const before = [
+      ...heldOut("v1"),
+      ...sides,
+      event("verdict", { solve, kind: "pass", answer: {}, objective: 1 }),
+      reported("g1", "step", "h2", report),
+    ];
+    const pairs = pairsIn(before);
+    expect(pairs).toMatchObject([[{ task: "v1", old: [F], fresh: [P] }]]);
+    expect(pairs[0]?.[0]?.objective).toEqual({ direction: "lower", old: [null], fresh: [1] });
+    expect(poolOf(before).feasible.has("v1")).toBe(true);
+    for (const label of ["wrong", "sound"]) {
+      const settled = [
+        ...before,
+        reported("g1", "no-step", "h2", {
+          ...report,
+          settled: { passes: { [solve]: label } },
+        }),
+      ];
+      const expected = label === "wrong" ? [[{ task: "v1", old: [F], fresh: [F] }]] : pairs;
+      expect(pairsIn(settled)).toMatchObject(expected);
+      expect(pairsIn(settled)[0]?.[0]?.objective?.fresh).toEqual([label === "wrong" ? null : 1]);
+      expect(poolOf(settled).feasible.has("v1")).toBe(label === "sound");
+    }
+  });
 
   it("stays what it was after further solves, a release, a refusal and a person's settling", () => {
     const settled = [

@@ -20,6 +20,8 @@
  * as the campaign's improvement patience (`stopRule`, `patienceOf`).
  * The Referee triage of 20 October found unresolved practice rejections counted as failures;
  * those are set aside here too, rather than evidence that a Builder declined an established fail.
+ * The audit of 29 October 2026 found passes a person labelled wrong still read as valid in
+ * reported pairs and known valid answers. Both now read history's view of those labels.
  *
  * Nothing here decides a comparison or makes a solve.
  */
@@ -35,6 +37,7 @@ import {
   objectiveGap,
   tally,
 } from "./compare.ts";
+import { failWrongPasses, wrongPasses, wrongPassesIn } from "./history.ts";
 import type { LogEvent } from "./log.ts";
 import { providerFailed, windowEnded } from "./solve.ts";
 import { passed, practiceRan, ranUnder, rejectionAside } from "./solves.ts";
@@ -349,7 +352,7 @@ export function stopRule(events: readonly LogEvent[]) {
  * was, under the report's own two harnesses and setting, counting the comparison's own solves, and
  * each side cut to the solves it asked for: in a log written with `--noise` (until 13 October),
  * the reference's first mirrored half (`halves`). None for a report that compared nothing, or
- * before a solve named its comparison.
+ * before a solve named its comparison. Its settled wrong passes count as that side's fails.
  */
 export function pairsReported(events: readonly LogEvent[], report: Reported): Paired[] {
   const { session, index, data } = report;
@@ -368,7 +371,8 @@ export function pairsReported(events: readonly LogEvent[], report: Reported): Pa
     objective: objectiveRuleIn(data),
     halves,
   };
-  return pairsOf(events.slice(0, index + 1), versions, sides, solves).pairs;
+  const wrong = wrongPasses(asRecord(asRecord(data.settled)?.passes) ?? {});
+  return pairsOf(failWrongPasses(events.slice(0, index + 1), wrong), versions, sides, solves).pairs;
 }
 
 /** The tasks `place` gives a place, in the order of their places: the first pair that
@@ -450,6 +454,7 @@ function taskRecords(events: readonly LogEvent[]) {
     ),
   );
   const reference = referenceOf(events);
+  const wrong = wrongPassesIn(events);
   for (const solve of ranUnder(events)) {
     const { task, limits, harness } = solve.under;
     const { comparison } = solve.start;
@@ -458,7 +463,7 @@ function taskRecords(events: readonly LogEvent[]) {
     const last = { stopReason: turn?.stopReason, errorMessage: turn?.error };
     const interrupted = windowEnded(last) || providerFailed(last);
     const budgeted = kind === "turns-ended" && isNumber(limits.modelTurns) && !interrupted;
-    if (passed(solve) === true) {
+    if (passed(solve) === true && !wrong.has(solve.id)) {
       of(task).knownValidAnswer = true;
       if (harness === reference) of(task).referenceHasValidAnswer = true;
     }

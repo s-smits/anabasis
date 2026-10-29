@@ -11,7 +11,7 @@
  * retained set together with the bill, and the promotion tuner weighs a reading again but tests the
  * two sets together and leaves seeds out (`.claude/skills/promotion-tuner/scripts/tree.ts`), while
  * the study's comparisons run on seeds. Every fact here is a production owner's: the pairs
- * with settlement labels applied (`labelledPairs`), each task's score with and without the bill (`differenceOf`),
+ * with settlement labels applied (`pairsReported`), each task's score with and without the bill (`differenceOf`),
  * the test (`flipP`), the A/A's reading (`readsStepEitherWay`) and the epochs (`tasksByEpoch`).
  * Two comparisons drawn from one log read the same scored set where their `set` digests agree:
  * the digest of the tasks their starts fixed, sorted.
@@ -26,10 +26,10 @@
  * is on the exam side (AGENTS.md, section 5).
  */
 import { tasksByEpoch } from "#src/campaign/climb.ts";
-import { fixedIn, labelledPairs } from "#src/campaign/comparison.ts";
+import { fixedIn } from "#src/campaign/comparison.ts";
 import { differenceOf, flipP, type Paired, readsStepEitherWay, UNMEASURED } from "#src/kernel/compare.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
-import { lastReports } from "#src/kernel/reports.ts";
+import { lastReports, pairsReported } from "#src/kernel/reports.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { compareCodeUnits, hashJsonValue } from "#src/meta/stable-json.ts";
@@ -89,7 +89,7 @@ function readingOf(events: readonly LogEvent[], log: string, id: string): string
   const report = lastReports(events).find(({ session }) => session === id);
   if (report === undefined) throw new Error(`${log} holds no report of comparison ${id}`);
   const { data } = report;
-  const pairs = new Map(labelledPairs(events, report).map((pair) => [pair.task, pair]));
+  const pairs = new Map(pairsReported(events, report).map((pair) => [pair.task, pair]));
   const epochOf = new Map(
     tasksByEpoch(events).flatMap((tasks, at) => tasks.map((task) => [task, at + 1] as const)),
   );

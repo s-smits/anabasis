@@ -7,6 +7,8 @@
  * read once, for every reader.
  * The review of 20 October found an author's answer absent from Referee packets. Its answer and
  * passing solves have one reader here, by proposed version; the known valid answer remains `poolOf`'s fact.
+ * The audit of 29 October 2026 found settled wrong passes still offered as valid answers. Their
+ * labels are read here for answer history, reported pairs and settlement alike (rule 12).
  *
  * Nothing here judges a history. An event the fold would refuse is handed over like any other; a
  * caller that needs the log to be sound asks the fold first (`taskSets`).
@@ -64,12 +66,46 @@ export function proposalsOf(events: readonly LogEvent[]): Proposal[] {
 export function acceptedAnswers(events: readonly LogEvent[], version: string | undefined): JsonValue[] {
   if (version === undefined) return [];
   const taskId = proposalsOf(events).findLast((proposal) => proposal.version === version)?.taskId ?? null;
+  const wrong = wrongPassesIn(events);
   return events.flatMap(({ kind, data }) =>
     data.answer !== undefined &&
     ((kind === "task.feasible" && data.version === version) ||
-      (kind === "verdict" && taskId !== null && data.task === taskId && data.kind === "pass"))
+      (kind === "verdict" &&
+        taskId !== null &&
+        data.task === taskId &&
+        data.kind === "pass" &&
+        !(isString(data.solve) && wrong.has(data.solve))))
       ? [data.answer]
       : [],
+  );
+}
+
+/** The solves a person labelled wrong among the passes drawn for review. */
+export function wrongPasses(passes: Readonly<Record<string, JsonValue>>): Set<string> {
+  return new Set(Object.keys(passes).filter((solve) => passes[solve] === "wrong"));
+}
+
+/** `events` with each solve in `wrong` read as a rejection: its ending a fail and its verdict no
+ *  pass. The log is unchanged; settlement, reported pairs and answer history read this one view. */
+export function failWrongPasses(
+  events: readonly LogEvent[],
+  wrong: ReadonlySet<string>,
+): readonly LogEvent[] {
+  if (wrong.size === 0) return events;
+  const ending = { outcome: "fail", kind: "rejected", reason: "a person labelled the pass wrong" };
+  return events.map((event) => {
+    if (!isString(event.data.solve) || !wrong.has(event.data.solve)) return event;
+    if (event.kind === "solve.finished") return { ...event, data: { ...event.data, ending } };
+    return event.kind === "verdict" ? { ...event, data: { ...event.data, kind: "fail" } } : event;
+  });
+}
+
+/** Settled wrong passes across the log. A comparison can be settled only once (`settleReading`). */
+export function wrongPassesIn(events: readonly LogEvent[]): Set<string> {
+  return new Set(
+    events.flatMap(({ kind, data }) =>
+      kind === "comparison.reported" ? [...wrongPasses(asRecord(asRecord(data.settled)?.passes) ?? {})] : [],
+    ),
   );
 }
 

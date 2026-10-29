@@ -37,6 +37,8 @@
  * What a ruling does to the task, and how an `unclear` fail counts, is the caller's: this module
  * rules and logs, one `referee.finding` per fail. A reader whose session the provider or a kill
  * ended before it ruled gives no answer, and its finding holds no ruling, so that it is asked again.
+ * Until 28 October a kill between two turns left no error and was logged `unclear`, as two
+ * admission reviews of esp32-fresh-opus-terra were.
  * A replay that reaches no verdict follows the same path. On 12 October, one Referee call that met
  * the provider's session limit was logged `unclear`; because no caller retried it, a task needed for
  * a step was set aside for good. One that reads to its own deadline, or stops without a ruling, leaves
@@ -444,7 +446,10 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
   }
   const finding = host ??
     found.at(-1) ?? {
-      ruling: isString(meter?.error) && meter.walled === false ? null : "unclear",
+      ruling:
+        reader.kill?.aborted === true || (isString(meter?.error) && meter.walled === false)
+          ? null
+          : "unclear",
       check: null,
       rule: null,
       field: null,

@@ -436,6 +436,11 @@ async function comparedOf(
         }
       : { refused: "harness/ is the reference harness: there is nothing to compare until it changes." };
   }
+  // The latest harness, unchanged, where the table names it, is the table's own comparison: until
+  // 28 October it was logged `asked`, as three of the seventeen `asked` comparisons of two runs were.
+  if (decided.move === "compare" && decided.fresh === "latest" && working === latest) {
+    return { move: decided, note: "" };
+  }
   if (readAgainst(events, working, reference) && decided.move !== "compare") {
     return {
       refused: `harness/ is harness ${short(working)}, which a comparison has read against the reference, and nothing in it has changed since: there is nothing new to compare.`,

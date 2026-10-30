@@ -1,6 +1,7 @@
-// Check preflight suggestions against the gate, hook routes, size policy and label set.
-// Fixtures use temporary repositories.
+// Check preflight suggestions against the gate, hook routes, size policy and label set, and the
+// direction check against an import graph. Fixtures use temporary repositories.
 import { afterAll, describe, expect, it } from "bun:test";
+import { breaches, production } from "#skills/repository-practice/scripts/direction.ts";
 import {
   changeOf,
   labelsOf,
@@ -178,6 +179,42 @@ describe("the tree a change is made in", () => {
     expect(treeLines(own, "no-stack")).toStrictEqual([
       "hooks: on (.githooks)",
       "tree: may hold a run or a simulation",
+    ]);
+  });
+});
+
+describe("the direction check", () => {
+  it("reads only production source, with the investigation's reader left out of tools", () => {
+    for (const path of [
+      "src/kernel/log.ts",
+      "tools/runs/view.ts",
+      "packages/ui/src/App.tsx",
+      "vendor/x.mjs",
+    ]) {
+      expect(production(path)).toBe(true);
+    }
+    for (const path of [
+      "tools/wri/wri.ts",
+      ".claude/skills/main/cli.ts",
+      "test/a.test.ts",
+      "src/README.md",
+    ]) {
+      expect(production(path)).toBe(false);
+    }
+  });
+
+  it("names each import from production into a skill, the investigation, a study or a test, and none the other way", () => {
+    const edges = new Map<string, readonly string[]>([
+      ["src/a.ts", ["src/b.ts", ".claude/skills/x/scripts/y.ts"]],
+      ["tools/d2/c.ts", ["tools/wri/folds.ts", "test/helpers/matchers.ts", "src/a.ts"]],
+      [".claude/skills/x/scripts/y.ts", ["src/a.ts"]],
+      ["studies/s/run.ts", ["src/a.ts"]],
+    ]);
+    const found = breaches([...edges.keys()], (file) => edges.get(file) ?? []);
+    expect(found).toStrictEqual([
+      { file: "src/a.ts", imported: ".claude/skills/x/scripts/y.ts", root: ".claude/" },
+      { file: "tools/d2/c.ts", imported: "tools/wri/folds.ts", root: "tools/wri/" },
+      { file: "tools/d2/c.ts", imported: "test/helpers/matchers.ts", root: "test/" },
     ]);
   });
 });

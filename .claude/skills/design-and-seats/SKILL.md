@@ -1,6 +1,6 @@
 ---
 name: design-and-seats
-description: "Explain or change Anabasis's design, reported factors, seat responsibilities, model-visible information or harness structure (AGENTS.md sections 1 to 3). Use seat-view.ts to trace imports and identify wall tests, and examiner-view.ts to summarise an Examiner opening."
+description: "Explain or change Anabasis's design, reported factors, seat responsibilities, model-visible information or harness structure (AGENTS.md sections 1 to 3). Use seat-view.ts to trace imports and identify wall tests, examiner-view.ts to summarise an Examiner opening, and builder-view.ts to print what a Builder opening is told of the past."
 ---
 
 # Design and seats
@@ -30,6 +30,7 @@ belong to code or models (section 2), and what each seat can do and read (sectio
 | Change a prompt, a tool description, a tool result or a home file a Builder or a solver reads | `references/wall.md`, then `references/seats.md`; run `scripts/seat-view.ts` |
 | Open a pull request whose diff may touch a seat's message (rule 3 asks how it was checked) | run `scripts/seat-view.ts`, and the `bun run test` line it prints |
 | Change what the Examiner is told of the log (`src/examiner/record.ts`), or ask what a session there was told | `references/seats.md`, "What the Examiner reads"; run `scripts/examiner-view.ts` on the log |
+| Change what a Builder is told of the past (`src/builder/past.ts`, `campaignOf`), or ask what a session there was told | `references/wall.md`, the closed list; run `scripts/builder-view.ts` on the log |
 | Change the Referee's view or evidence rules | `references/seats.md`, then `references/question-and-factors.md`, "3. Verdicts" |
 | Add a limit, a classifier, a check on content, or a narrower grant of the wall | `references/stance.md`, consequences 3, 4 and 6 |
 | Add a mechanism, or decide whether code or a model owns a decision | `references/stance.md` |
@@ -41,12 +42,14 @@ belong to code or models (section 2), and what each seat can do and read (sectio
 
 ## Scripts
 
-Both read the tree or a log through production readers, and print ids, paths and counts, never a
-check, a hidden value or task text.
+Each reads the tree or a log through production readers. The first two print ids, paths and
+counts, never a check, a hidden value or task text; the third prints what a Builder is shown, which
+is build-side by construction.
 
 ```text
 bun .claude/skills/design-and-seats/scripts/seat-view.ts [--base <rev>] [--file <path>]...
 bun .claude/skills/design-and-seats/scripts/examiner-view.ts <log.jsonl | campaign name>
+bun .claude/skills/design-and-seats/scripts/builder-view.ts <log.jsonl | campaign name> [--parent <digest>]
 ```
 
 - `seat-view.ts` takes the files a change touches (the working tree against `--base`, by default the
@@ -62,3 +65,9 @@ bun .claude/skills/design-and-seats/scripts/examiner-view.ts <log.jsonl | campai
   opening now would be told, in counts: its lines, the outcomes by kind (`poolOf`), the summary
   sentence (`measuredLine`), the promotion line, and the refused and interrupted drafts. Over a
   stored pack its task lines are fewer than a session's, since it lists only proposed tasks.
+- `builder-view.ts` prints the next session's history messages through `startTold`,
+  `comparisonsTold` and `failsTold` (`src/builder/past.ts`) over `campaignOf`. It uses
+  `nextId` and starts from `--parent`, or the harness selected by `--parent latest`.
+  A held-out task, check or ruling in the output would breach rule 3; fix its production owner
+  in `past.ts` or `handover.ts`. Practice task content, limits and notes require the pack and
+  home and are omitted.

@@ -1,6 +1,6 @@
 ---
 name: reduce-complexity
-description: "Measure whether a change made the tree simpler: line counts, branching, coupling, interface width, rule count, standing exemptions and model-visible prose across one diff or a stack of pull requests. Use before claiming a pass reduced complexity, when deciding which pull request added machinery, and to read a function's branch count, which no v2 CI gate reports. Also when asked whether a diff is simpler, how much a pull request added, or for git complexity."
+description: "Measure complexity across a diff or PR stack: lines, branches, coupling, interface width, rules, exemptions and model-visible prose. Use before claiming simplification, when locating added machinery, or when asked whether a diff is simpler, how much a PR added, for a function's branch count or for git complexity. Report the same measures before and after; v2 has no CI branch-count gate."
 ---
 
 # Reduce complexity

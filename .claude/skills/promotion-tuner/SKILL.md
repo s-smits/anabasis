@@ -1,6 +1,6 @@
 ---
 name: promotion-tuner
-description: "Score recorded comparisons again by a tree's weighted measures, without models or spend. Read which promotions the score supports, which measure won each task, the A/A comparisons, and hours and dollars per promotion. Sweep the weights and the level by flag, and compare a candidate tree that changes a floor or the test. Set every run on record side by side (`scripts/table.ts`): time to the first comparison and the first promotion, hours and dollars a rung, by release, pack and setting, so one cycle's runs read against the last's. Use when asked whether a promotion was earned, how a change of weights or level would have read past comparisons, or how this cycle's runs compare with the last."
+description: "Replay recorded comparisons under a tree's scoring rules without model calls or spending. Use to inspect whether recorded promotions are supported, which measure won each task, A/A results and promotion costs. Sweep weights or levels, compare candidate floors or tests, and describe runs by release, pack and setting with scripts/table.ts. Applies to questions about past promotions, changed scoring or comparisons between release cycles; replay estimates do not establish a live improvement."
 ---
 
 # Promotion tuner

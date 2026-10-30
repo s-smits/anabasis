@@ -1,6 +1,6 @@
 ---
 name: design-and-seats
-description: "Read before editing src/builder/, src/examiner/, src/solver/, src/referee/ or src/harness/, or a seat's prompt, tool description, tool result or home file, HARNESS.md or the starter; and whenever asked what a seat reads or never reads, what crosses the wall (rule 3), whether code or a model owns a decision, what supply and the four factors (climb, honesty, verdicts, economy) measure, or which decisions are the operator's (AGENTS.md sections 1 to 3). Scripts: seat-view.ts names the seats a diff reaches and their wall tests; examiner-view.ts and builder-view.ts print what the next Examiner or Builder opening is told."
+description: "Use before editing src/{builder,examiner,solver,referee,harness}/, a seat's prompt, tool description, tool result or home files, HARNESS.md or the starter. Explain seat access, the wall (rule 3), code versus model decisions, supply, climb, honesty, verdicts, economy and operator authority (AGENTS.md sections 1–3). seat-view.ts traces imports and identifies wall tests; examiner-view.ts and builder-view.ts inspect the next opening."
 ---
 
 # Design and seats

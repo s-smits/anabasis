@@ -10,7 +10,7 @@ The head comments of `src/kernel/compare.ts` (the tally, the test, the step),
 ## Terms first
 
 Before solving, a comparison records its harnesses, setting, scored tasks, solves per side, level,
-objective rule, cap and any `--predict` statement in `comparison.started` . A continuation keeps
+objective rule, cap and any `--predict` statement in `comparison.started`. A continuation keeps
 these terms. A request to change them is refused.
 
 ## The scored draw
@@ -22,8 +22,8 @@ frontier as **exhausted** a task answered in every solve of the last two compari
 stood in for it, on either side (the other side's only where that is a later harness, so the next
 harness must answer it too). A bill saving can still win an exhausted task. A task stays open where
 an answer on record betters one of the reference's by the objective gap floor (`bettered`), since
-the next harness can still win it. The counts live in one place (`SIZE`, `RUNS` ,
-`src/kernel/size.ts` ), and every rule reads a side's every, some or none, so they hold at any
+the next harness can still win it. The counts live in one place (`SIZE`, `RUNS`,
+`src/kernel/size.ts`), and every rule reads a side's every, some or none, so they hold at any
 number of solves.
 
 The draw also includes **retained** exhausted tasks: one per three frontier tasks, in addition to

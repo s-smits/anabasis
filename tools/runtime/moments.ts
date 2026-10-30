@@ -45,7 +45,7 @@ const ROUTES: readonly Route[] = [
     id: "stack",
     command:
       /\b(git (worktree add|push|rebase|commit)|gh (pr (create|edit|ready)|stack)|bun run (land|follow))\b/u,
-    said: "Stack and pull requests (AGENTS.md section 11): inspect the current stack (`bun .claude/skills/stack-pr/scripts/stack.ts`). A fix to an open PR's own code belongs to that PR. Run `/simplify` before a code commit. Each PR needs one `importance:I0`-`I3` label and a category; claims follow `attribution-and-proof`. `bun .claude/skills/repository-practice/scripts/preflight.ts` lists suggested tests, UI checks, size and prose findings, and labels.",
+    said: "Stack and pull requests (AGENTS.md section 11): inspect the current stack (`bun .claude/skills/stack-pr/scripts/stack.ts`). A new PR goes on the top of the cycle's stack, even one that does not build on the PR below; a chain of its own on `main` suits a change that must land first, worth a word with the operator. A fix to an open PR's own code belongs to that PR. Run `/simplify` before a code commit. Each PR needs one `importance:I0`-`I3` label and a category; claims follow `attribution-and-proof`. `bun .claude/skills/repository-practice/scripts/preflight.ts` lists suggested tests, UI checks, size and prose findings, and labels.",
     skill: "stack-pr",
   },
   {

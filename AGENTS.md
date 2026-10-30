@@ -471,11 +471,15 @@ and commit cited and each local change listed.
 
 ### The stack and pull requests
 
-Read `stack-pr` before you branch and again before you push, and read the stack itself every time
-(`bun .claude/skills/stack-pr/scripts/stack.ts`), because other sessions move it. Expand the open
-pull request a change belongs to before opening a new one, and never fork off the middle of a stack.
-Change another session's pull request only on the operator's word. Use one worktree per pull
-request, never `git stash` by hand, and make every published commit pass alone.
+Pull requests stack. A release cycle ideally builds one stack and lands it as one chain, so a new
+pull request goes on the top of that stack, even where it does not build on the one below it.
+Expand the open pull request a change belongs to before opening a new one. Read `stack-pr` before
+you branch and again before you push, and read the stack itself each time
+(`bun .claude/skills/stack-pr/scripts/stack.ts`), because other sessions move it: the top is the
+end of the chain, never its middle. A chain of its own on `main` suits a change that has to land
+before the stack, and is worth a word with the operator first. Change another session's pull
+request only on the operator's word. Use one worktree per pull request, never `git stash` by hand,
+and make every published commit pass alone.
 
 Each pull request needs one importance label and at least one category (`CATEGORIES`,
 `tools/runtime/land.ts`). `I0` blocks a release; `I1` protects evaluation validity,
@@ -483,7 +487,8 @@ prevents serious run failures or broadly simplifies the tree; `I2` is a bounded 
 `I3` covers reporting, wording and convenience. Write an imperative commit subject and explain
 the problem, resulting behaviour and evidence in the body. Follow `stack-pr` section 7 for PR
 text and update it after a push. Push only your authorised branch, with `--force-with-lease`
-when rewriting. Merging and restacking require the operator's authority; use
+when rewriting. Moving your own pull request onto the top of the stack is yours to do; merging,
+and restacking other sessions' branches, take the operator's authority. Use
 `bun run land -- <top> --merge` to land.
 
 ### Reviews and subagents

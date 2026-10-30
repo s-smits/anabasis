@@ -1,27 +1,22 @@
 #!/usr/bin/env bun
 /**
- * Why a campaign ended, or what it is waiting for: each ending on record with the moves that led to
- * it, and the counts the table's endings are decided on, each beside its bound.
+ * Explain recorded campaign endings and show the current stopping conditions.
  *
  *   bun .claude/skills/campaign-mechanics/scripts/ending.ts <name | /abs/path/to/log.jsonl>
  *
- * `bun run runs view` prints the steps, the climb and the table's next move, and says nothing of
- * how a campaign ended: its diagnosis returns no line once the log's last event is
- * `campaign.ended`, it reads no count against its bound, and a remote host's archived copy that its
- * host no longer lists is refused. This reads one log, local or archived, by name or by path, and
- * prints for each run of the command its ending, its reason and the moves before it, as
- * `campaign.move` codes counted (`asked` where the Builder chose otherwise than the table), then
- * the counts as the table reads them now, each from its production owner under the plan the view
- * asks the table with (`planOn`, `tools/runs/view.ts`): the budget left (`planOf`'s `left`),
- * improvement patience (`stopRule`), supply patience (`supplyRun`, over `roomless`), the provider's
- * crashes in a row (`crashedRun`, `CRASHES`), idle conversations (`idleOf`, `IDLE`), comparison
- * admission's refusal codes (`refusals`), the operator's words not yet heard (`pendingWords`), and
- * the table's move (`decide`). The log is read as the view reads it (`logEvents`, which leaves out
- * a last line an append is still writing), and the endings and moves are the log's own
- * `campaign.ended` and `campaign.move` events, listed and counted (`countBy`) with no state derived.
- * It prints ids, codes, counts and the host's reasons, never a task or a check. `--host <name>`
- * runs it on another host (`runCommand`).
- * Written on 30 October, when the archive held 158 logs whose endings no reader listed.
+ * The existing run view lists the climb and next move, but omits ending history and counts against
+ * stopping thresholds. This script lists campaign.ended events with the preceding campaign.move
+ * counts, separating Builder choices recorded as asked. It then shows the current budget,
+ * improvement and supply patience, consecutive crashes, idle conversations, admission refusals,
+ * pending operator instructions and next move.
+ *
+ * Each condition comes from its production reader under planOn, the same plan used by the run view.
+ * Current counts describe a restart from the log, rather than the state at each historical ending.
+ * logEvents ignores an incomplete final append. Names resolve locally or in the archive; absolute
+ * paths can also read archived copies no longer listed on their source host. --host runs remotely.
+ * Output contains ids, codes, counts and host reasons, but no tasks or checks; it remains exam-side.
+ *
+ * Written on 30 October: the archive then held 158 logs whose endings had no reader.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { refusals, supplyOf } from "#src/campaign/admission.ts";

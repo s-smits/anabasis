@@ -163,8 +163,7 @@ export function decidedOn(events: readonly LogEvent[], values: Asked = {}): Deci
   return decide(events, planOn(events, values));
 }
 
-/** The plan `decidedOn` asks the table under, for a reader that reads other counts against the same
- *  terms. */
+/** Resolve the plan shared by the move table and readers of its stopping conditions. */
 export function planOn(events: readonly LogEvent[], values: Asked = {}): Plan {
   const opening = openingOf(events);
   // Each term as this view is asked it, then as the opening keeps it, then the tree's default: the

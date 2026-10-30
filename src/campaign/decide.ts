@@ -162,14 +162,12 @@ function roomless({ events, reports, reference }: Ground) {
   return readings.slice(readings.findLastIndex(({ gain }) => gain) + 1);
 }
 
-/** The readings of a run that count against supply patience: a comparison that opens it raised the
- *  want and is no answer to it (`spent`). */
+/** Count supply attempts after excluding the comparison that first established the need. */
 function counted(run: ReturnType<typeof roomless>): number {
   return run.length - (run[0]?.id == null ? 0 : 1);
 }
 
-/** The readings in a row a log holds against its supply patience, as `spent` counts them, for a
- *  reader that prints the count beside `plan.patience`. */
+/** Consecutive supply attempts, counted by the same rule as the stopping decision in spent. */
 export function supplyRun(events: readonly LogEvent[], plan: Plan): number {
   return counted(roomless(groundOf(events, plan)));
 }

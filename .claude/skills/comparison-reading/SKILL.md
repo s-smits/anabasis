@@ -1,22 +1,19 @@
 ---
 name: comparison-reading
-description: "How a comparison is read, in full, AGENTS.md sections 7 and 8: terms first, the scored draw (frontier, exhausted, retained), fresh solves and the mirror, how a solve ends and its part in a pair, the tally's three weighted measures and floors (WEIGHTS, ROOM, FULL, CHEAPER), the objective, the sign-flip test and the step with and without the bill, the reading words (step, no-step, not-scored, check-defects, no-change), rejections and the Referee, the budget, the A/A comparison, the dollar cap, room, improvement and supply patience, awaiting task review, promotion, the ten rows of decide, and the fifteen rules with their reasons. Use before changing or explaining compare, reports, size, comparison, round, decide, admission or climb; when a reading, a tally, an A/A or a promotion needs explaining; when asked how many tasks a step needs, which tallies clear the level, what the false rate or detectable share is, or why a comparison read what it read; and before citing a rule. Scripts print the size figures from the production test and every recorded comparison of a log."
+description: "Explain or change comparison scoring, task selection, solve outcomes, the sign-flip test, A/A controls, promotion or the move table (AGENTS.md sections 7 and 8). Use the scripts to inspect sample size or recorded comparisons through production readers."
 ---
 
 # Comparison reading
 
-The full account of `AGENTS.md` sections 7 and 8, under the same numbers and titles, so "section 7"
-means the same section in `AGENTS.md` and here. `AGENTS.md` holds the invariants every session
-carries, and this skill the mechanisms, owners and edge cases behind them. `AGENTS.md` owns the rules
-(section 8) and the operator's decisions (section 3). The source at the stack's head, with each
-module's head comment, outranks both. The other parts of the account are `design-and-seats`
-(sections 1 to 3), `campaign-mechanics` (4 to 6), `comparison-reading` (7 and 8) and
-`repository-practice` (9 to 14).
+This skill explains `AGENTS.md` sections 7 and 8, using the same section numbers. Read the reference
+for the mechanism you are changing. `AGENTS.md` keeps the shared invariants, rules and operator
+decisions; these references give their mechanisms and limits. When they disagree with current
+source, check the source and correct the stale description.
 
 Section 7 answers one question: given a comparison's recorded solves, what did it read, and what
 follows? Section 8 gives the fifteen rules with their reasons. Wording a claim from a reading is
-`attribution-and-proof`'s; doubting one is `whole-run-investigation`'s; scoring recorded comparisons
-again under other weights or a candidate tree is `promotion-tuner`'s.
+`attribution-and-proof` 's; doubting one is `whole-run-investigation` 's; scoring recorded
+comparisons again under other weights or a candidate tree is `promotion-tuner` 's.
 
 ## Where each section lives
 
@@ -43,9 +40,9 @@ again under other weights or a candidate tree is `promotion-tuner`'s.
 
 ## Scripts
 
-Both are thin wrappers over production readers and compute nothing of their own; they print counts,
-ids, short digests and harness letters, never a task, a family, an answer, a measure or a check.
-Each takes `--help`, and `--host <name>` through `.claude/skills/main/cli.ts`.
+Both scripts use production readers for evaluation. They print counts, ids, short digests and
+harness letters, omitting task identities, families, answers, objective measures and checks. Each
+takes `--help` , and `--host <name>` through `.claude/skills/main/cli.ts` .
 
 ```text
 bun .claude/skills/comparison-reading/scripts/size.ts [--level <n>] [--untied <n>]

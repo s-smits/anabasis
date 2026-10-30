@@ -1,28 +1,22 @@
 #!/usr/bin/env bun
 /**
- * What a comparison can show at a level, read off the production test itself.
+ * Report sample-size figures from the production comparison test.
  *
  *   bun .claude/skills/comparison-reading/scripts/size.ts [--level <n>] [--untied <n>]
  *     [--scores <s,s,...> [--unbilled <s,s,...>]]
  *
- * The questions this skill is asked most about a comparison's size are arithmetic: how many tasks a
- * step needs at a level, which tallies clear it, how often a reading between equal harnesses reads
- * one, which share of wins it detects, and how many frontier tasks comparison admission asks for.
- * The answers live in the comparison's own exact test and its size lines, so this is a thin
- * wrapper and computes nothing of its own: `sizeLines` (`src/kernel/size.ts`, the lines a launch
- * prints), `sweepOf`, `power` at one half (the false rate), `detectable`, `testOf` and `readsStep`
- * (`src/kernel/compare.ts`), and `comparisonFloor` (`src/campaign/admission.ts`). A figure in a
- * prose account that disagrees with this output is the account's error.
+ * Without scores, print the smallest all-win set, comparison admission floor and sizeLines:
+ * clearing tallies, detectable win share and false-positive rate. Defaults are level 0.02 and
+ * 24 untied tasks. The readers are sweepOf, comparisonFloor, power, detectable and sizeLines;
+ * the script does not implement a second statistical rule.
  *
- * With no `--scores` it prints, at `--level` (0.02) and `--untied` tasks (24, `SIZE.tasks`), the
- * smallest scored set that can read a step and the admission floor, then `sizeLines`: the three
- * smallest clearing tallies with equal margins, the detectable share and the false rate. A tally
- * past the third (12 to 3 at 0.02) is read with `--scores`: one set of task scores read as a
- * comparison would (ties are 0), giving the tally, p, the false rate and the detectable share at
- * those margins, and, with `--unbilled` in the same order, whether both tests clear (`readsStep`).
+ * --scores evaluates comma-separated task scores, with ties as zero. It reports the tally, p,
+ * false-positive rate and detectable share at those margins. --unbilled supplies the same tasks
+ * in the same order, allowing readsStep to check both tests. This also supports tallies beyond
+ * the three examples printed by sizeLines.
  *
- * Written on 30 October, when `AGENTS.md` section 7 moved to this skill and its stated figures
- * (6 to 0 through 12 to 3 at 0.02, 1.1% and 7.6% on 24 untied tasks) needed one place to be checked.
+ * Written on 30 October to check the figures moved from AGENTS.md section 7: 6-0 through 12-3
+ * at level 0.02, and false-positive rates of 1.1% and 7.6% on 24 untied equal-margin tasks.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { comparisonFloor } from "#src/campaign/admission.ts";

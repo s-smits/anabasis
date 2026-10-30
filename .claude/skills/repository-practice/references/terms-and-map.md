@@ -1,8 +1,7 @@
 # 14. Terms and map
 
-Read this when a term needs its one meaning, when you name a part in prose, or when you look for the
-directory that owns a mechanism. It holds `AGENTS.md` section 14 in full: every fixed term, what a
-sed is, and the map of the tree.
+Read this for the fixed terminology, the meaning of a sed and the directory map. This expands
+`AGENTS.md` section 14.
 
 ## Terms
 
@@ -59,8 +58,8 @@ sed is, and the map of the tree.
 
 To **sed** something is to copy it verbatim (code, names, constants, messages) with the upstream
 path and commit cited, changing only what this repository forces (a lint rule, a primitive the tree
-owns, a colliding name) and listing each change. Rewriting the idea, or adding the package as a
-dependency, is no sed.
+owns, a colliding name) and listing each change. A rewrite of the idea or a package dependency does
+not qualify as a sed.
 
 ## Map
 

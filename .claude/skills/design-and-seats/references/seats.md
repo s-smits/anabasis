@@ -1,6 +1,5 @@
-Read this before you change what a seat reads, is told or may call: a prompt, a tool, a seat's view
-or what the Examiner is told of the log. It holds `AGENTS.md` section 3 up to "What waits for the
-operator".
+Read this before changing a seat's prompts, tools or view of campaign history. This expands
+`AGENTS.md` section 3 up to "What waits for the operator".
 
 ## 3. The seats
 
@@ -17,16 +16,21 @@ keeps from it.
 | **Host** (code) | Everything in section 2's first column | The log | n/a | `src/kernel/`, `tools/` |
 | **Operator** (person) | See below | Every report and refusal | n/a | n/a |
 
-What the **Examiner** reads is a view of the log (`src/examiner/record.ts`, whose head comment
-lists each line): the contract, the brief, the budget every solve is held to and examples; a line a
-task with the reference's outcome and valid answers' turns in its last scored comparisons
-(`histories`, `poolOf`), whether a valid answer is on record, how far one of the reference's or
-its author's betters the reference's, and which harness won it on which measure (`carriedBy`), by
-the operator's word of 20 October; a summary of the reference (`measuredLine`, `heldOn`); the
-current reference's admission results, objective gaps (`reference.gap` of `task.gate`), refusals
-and interrupted drafts; the last session's `finish` and home, with the reference harness; and the
-checks, through `try_answer`. A drafting session reads the prompt, the host's reading of each
-draft, and an empty walled home.
+The **Examiner** reads the following view of the log (`src/examiner/record.ts`):
+
+- The contract, operator brief, solve budget and examples.
+- Per-task reference outcomes and valid-answer turns from recent scored comparisons
+  (`histories`, `poolOf`), whether a valid answer exists, and any objective improvement by the
+  reference's or author's answers over a reference answer.
+- Which harness won each task and on which measure (`carriedBy`), authorised on 20 October.
+- A summary of reference outcomes (`measuredLine`, `heldOn`).
+- Admission results under the current reference: objective gaps (`reference.gap` of `task.gate`),
+  refusals and interrupted drafts.
+- The previous session's `finish` note and home, with the reference harness.
+- Check results obtained through `try_answer`.
+
+A drafting session instead receives the prompt, the host's reading of each draft and an empty walled
+home. The module's head comment lists the exact fields delivered.
 
 What the **Examiner** never reads: a target, a harness's name, or the other harness's measures or
 valid-solve counts. Of the reference's solves it hears counts, turns and measures only, and it
@@ -41,7 +45,8 @@ The tools of each model seat, as its source names them:
   passed `try_answer` is checked again under its task's id, and a pass on a held task is logged as
   `task.feasible` for the Referee. The walled home is carried between sessions with a fresh
   `reference-harness/`, and task admission is its only way into the exam. A drafting session has
-  `draft_exam`, its only way in, `read_opening`, `bash`, `read`, `write` and `finish` (`src/examiner/shell.ts`).
+  `draft_exam` , its only way in, `read_opening` , `bash` , `read` , `write` and `finish`
+  (`src/examiner/shell.ts`).
 - Builder: `read`, `bash`, `edit`, `write`, `practice`, `read_trace`, `read_opening`,
   `check_harness`, `preview_harness` and `finish`; in the campaign command also `examine`,
   `release_practice`, `compare`, `promote`, `campaign_status` and `wait`.
@@ -50,4 +55,3 @@ The tools of each model seat, as its source names them:
 - Referee: `probe_check`, `read_check_program` and `record_ruling`.
 
 An older log may hold `diagnosis.*` events from a removed Diagnoser seat.
-

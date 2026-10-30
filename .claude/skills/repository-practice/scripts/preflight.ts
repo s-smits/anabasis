@@ -1,42 +1,26 @@
 #!/usr/bin/env bun
 /**
- * What a change owes before a commit or a pull request, read from its diff.
+ * Report the checks and guidance associated with a change.
  *
  *   bun .claude/skills/repository-practice/scripts/preflight.ts [--base <rev> | --commit <rev>]
+ *     [--stack]
  *
- * With no option it reads the working tree against HEAD, untracked files included; `--base` reads
- * the working tree against another revision (the stack's previous head, say), and `--commit` reads
- * one recorded commit against its first parent. It prints, in order:
+ * Read the working tree against HEAD, including untracked files; --base chooses another revision.
+ * --commit reads a commit against its first parent, using that commit's file content but today's
+ * test graph. For old commits, suggested tests therefore approximate the original static pass.
  *
- *  - whether the change is documentation alone, by the gate's own documentation set
- *    (`DOCUMENTATION`), in which case the static steps have nothing to read;
- *  - the test files one import away, chosen by the gate's own walk (`nearbyTests` at `NEAR.root`,
- *    `tools/runtime/gate.ts`), as a `bun run test -- ...` line;
- *  - whether `bun run ui:gate` is owed because `packages/ui` or what installs and lints it changed
- *    (`UI_ROOT`, `UI_SETUP`); a root file the UI imports still brings in its build and nearby UI tests
- *    under the gate (`uiStep`), which this does not walk;
- *  - each area of `tools/runtime/moments.ts` the change enters, with that area's own sentence, so the
- *    rule 3 wall tests for a seat's message, a replay for a measurement reader or a rehearsal for a
- *    campaign command are named by their one owner;
- *  - each changed authored file over 800 nonblank lines or with a function over 115
- *    (`sourceTextFindings`, `tools/loc/source-policy.ts`), measured on the text as it stands rather
- *    than after formatting;
- *  - in changed Markdown, outside code, quotation marks, links and paths, the slips of `AGENTS.md` section 13 that a
- *    pattern can see: an em dash, a word the section bans, a relative date, an exclamation mark, and a
- *    short list of American spellings;
- *  - the tree's own facts, each from its owner: the hooks (`git config core.hooksPath`), whether a run
- *    may start here (`treeFault`), and with `--stack` where the branch sits on the open stack, or the
- *    stacks' tops (`told` of `stack-pr/scripts/stack.ts`, over `openPulls`, which asks GitHub);
- *  - a suggested `importance:` label and category, from the paths alone and checked against
- *    `CATEGORIES` (`tools/runtime/land.ts`). It is a suggestion: the definitions in `AGENTS.md`
- *    section 11 and the operator decide.
+ * Ask existing owners for the documentation set, nearby tests, UI setup paths, hook guidance,
+ * source-size findings, hook configuration, worktree eligibility and optional stack position.
+ * Scan Markdown for a limited set of writing patterns, excluding code, quoted text, links and paths.
+ * Suggest importance and category labels from changed paths, validating categories against land's
+ * set. The operator and AGENTS.md section 11 decide whether those suggestions apply.
  *
- * `--commit` reads each file as that commit holds it, and walks imports over today's test files, so
- * for an old commit the tests it names approximate what that commit's static pass chose.
+ * The UI suggestion covers packages/ui and its setup. The gate may also build the UI and run nearby
+ * UI tests when it imports a changed root file; this script does not trace that case. Size findings
+ * use current text before formatting. No check, campaign or model session is started here.
  *
- * Written on 30 October, when `AGENTS.md` moved its account of sections 9 to 14 into this skill: a
- * session about to commit had to read the gate, the moments table, the size policy and the label set
- * to know what its change owed, and each of those already had one owner to ask.
+ * Written on 30 October, when AGENTS.md sections 9 to 14 moved into repository-practice. The script
+ * collects existing readers so a session need not reconstruct their rules before every commit.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";

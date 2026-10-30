@@ -1,22 +1,17 @@
 ---
 name: design-and-seats
-description: "The design of Anabasis v2 in full, AGENTS.md sections 1 to 3: the question every mechanism serves, the four reported factors with their bars and owners (supply, climb, honesty, verdicts, economy), the two sides and the wall, what changed from v1, which decisions code owns and which models own and their seven consequences, each seat's job, view and tools (Examiner, Builder, Solver, Verifier, Referee, Host), what the Examiner reads, the operator's seven decisions and what a launch decides for them, and the parts of a harness. Use before changing what a seat reads, is told or may do, a prompt, a tool, the wall's grants, the harness contract or a factor's reader; before a pull request that touches a Builder's, solver's or Examiner's message (rule 3: which seats a diff reaches and which wall tests to run); when asked what an Examiner session is told of a campaign; and when asked how the system is meant to work or why a decision sits with code or a model."
+description: "Explain or change Anabasis's design, reported factors, seat responsibilities, model-visible information or harness structure (AGENTS.md sections 1 to 3). Use seat-view.ts to trace imports and identify wall tests, and examiner-view.ts to summarise an Examiner opening."
 ---
 
 # Design and seats
 
-The full account of `AGENTS.md` sections 1 to 3, under the same numbers and titles, so "section 7"
-means the same section in `AGENTS.md` and here. `AGENTS.md` holds the invariants every session
-carries, and this skill the mechanisms, owners and edge cases behind them. `AGENTS.md` owns the rules
-(section 8) and the operator's decisions (section 3). The source at the stack's head, with each
-module's head comment, outranks both. The other parts of the account are `design-and-seats`
-(sections 1 to 3), `campaign-mechanics` (4 to 6), `comparison-reading` (7 and 8) and
-`repository-practice` (9 to 14).
+This skill explains `AGENTS.md` sections 1 to 3, using the same section numbers. Read the reference
+for the mechanism you are changing. `AGENTS.md` keeps the shared invariants, rules and operator
+decisions; these references give their mechanisms and limits. When they disagree with current
+source, check the source and correct the stale description.
 
-This file routes; the account itself is in `references/`, each file opening with when to read it.
-Three questions run through it: what a comparison is for and how its worth is judged (section 1),
-who decides each thing, code or a model (section 2), and what each seat does and reads, and what is
-left to the operator (section 3).
+The references answer three questions: what the evaluation measures (section 1), which decisions
+belong to code or models (section 2), and what each seat can do and read (section 3).
 
 ## Where each section is
 

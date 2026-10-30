@@ -1,32 +1,25 @@
 #!/usr/bin/env bun
 /**
- * Which seats' messages a change can reach, and which wall tests prove them.
+ * Trace which seats import changed files and identify their information-boundary tests.
  *
  *   bun .claude/skills/design-and-seats/scripts/seat-view.ts [--base <rev>] [--file <path>]...
  *
- * Rule 3 asks that changing a hidden value, a check, or which held-out task a harness other than the
- * reference won leave every message a Builder or a solver reads byte-identical, and that a pull
- * request touching such a message say how it checked this. Whether a diff touches one is a question
- * of the import graph: a Builder reads what `src/builder/` and the campaign tools compose, and they
- * read the kernel's folds. This script reads the graph from the tree at each seat's owners (`SEATS`),
- * names every changed file that one of them imports at any depth, with the shortest chain of imports
- * from an owner, the wall tests that seat has, and the `bun run test` line that runs them.
+ * Rule 3 requires Builder and solver messages to remain byte-identical when protected exam facts
+ * change. This script uses the gate's importsOf reader to trace changed files from each seat's
+ * owners. It prints the shortest import chain, relevant wall tests and their bun run test command.
  *
- * The changed files are those of the working tree against `--base` (default: the merge base of HEAD
- * with its upstream, else with `origin/main`), untracked ones included, or the files `--file`
- * names, as `--file=<path>` once each (`git diff-tree --name-only -r <commit>` gives a commit's).
- * The graph is always the working tree's, read by the CI gate's own reader (`importsOf`,
- * `tools/runtime/gate.ts`). Import reach over-states message reach: a file a seat's owner imports
- * can change what the seat reads, and most of the kernel does for every seat, so the chain printed
- * beside each file is the lead to read. It also misses what reaches a seat without an import: a
- * worker spawned by its path, a file a harness or a home holds, the log. Only the seats' owners and
- * their wall tests are a hand-kept table, and the script refuses to run when one of them has left
- * the tree, so the table cannot go stale in silence. The Referee has no wall test of its own: its
- * view is fixed by what `src/referee/referee.ts` hands it, and `test/review.test.ts` is its owning
- * file.
+ * By default, compare the working tree, including untracked files, with HEAD's upstream merge base,
+ * falling back to origin/main. --base selects another revision; repeated --file selects paths.
+ * The import graph always comes from the working tree.
  *
- * It reads no log, so it prints no hidden value. Written on 30 October, when `AGENTS.md` sections 1
- * to 3 moved to the skill `design-and-seats`.
+ * Import reach identifies candidates for inspection; it does not prove message reach. A dependency
+ * may never affect a message, and paths loaded without imports are missed: spawned workers, home
+ * files, harness resources and logs. Inspect the printed chain. SEATS is a maintained table of
+ * owners and tests; missing entries cause refusal. The Referee has owning tests in review.test.ts,
+ * but no separate byte-identity test for its view.
+ *
+ * The script reads no log and prints no hidden values. Written on 30 October, when AGENTS.md
+ * sections 1 to 3 moved into design-and-seats.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";

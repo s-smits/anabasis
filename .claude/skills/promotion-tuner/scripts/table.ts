@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * One table over every campaign on record: when each reached its first comparison and its first
- * promotion, what each promotion took in elapsed and in active hours and in dollars, and how the
+ * promotion, what each promotion took in elapsed, active and unloaded hours and in dollars, and how the
  * runs of one release, pack and setting compare with those of another. It starts no solve, calls no
  * model and writes nothing.
  *
@@ -39,8 +39,12 @@
  * every recorded wait (a provider's reset, a network wait and a solve-queue wait for load), so a run
  * that sat out a limit on one host is not slower than the same run on another. The host, its cores,
  * the median one-minute load per core at a solve's start and the median solve in seconds stand
- * beside them as indicators of the machine; no hour is scaled by them, since one factor for two
- * operating systems and three chips would be an invented number. A group is compared at equal
+ * beside them as indicators of the machine. **Unloaded** hours take out of the active hours what
+ * an overloaded host cost (`overloadOf`): each stretch after a recorded load counts the share of the
+ * demand its cores could not serve, `1 - cores / load`. That treats the run as CPU-bound, while much
+ * of a solve waits on the provider, so it bounds the load's cost from above and is an estimate
+ * (operator, 30 October, when one host stood at a load of 91 on 12 cores). No hour is scaled by
+ * the chip or the operating system, since one factor for two of each would be an invented number. A group is compared at equal
  * elapsed time: "by 12 h" counts the runs promoted within 12 hours of those that either did or lasted
  * that long, so a run still young is not counted as a miss.
  *
@@ -63,7 +67,7 @@ import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { median } from "#src/meta/tally.ts";
 import { ranWith, receipts } from "#tools/runs/receipt.ts";
-import { unionMs, waitsOf } from "#tools/wri/time.ts";
+import { overloadOf, waitedMs, waitsOf } from "#tools/wri/time.ts";
 import { campaignLogs, type Found, rehearsed } from "./tree.ts";
 
 const SINCE = "2026-10-01";
@@ -103,6 +107,7 @@ const LIVE_MS = 2 * HOUR_MS;
 const MARKS = [6, 12, 24] as const;
 const MISSING = "-";
 const ACTIVE = "active h";
+const UNLOADED = "unloaded h";
 const FIRST_PROMOTION = "1st promotion h";
 const AA = "A/A steps/capable";
 const GROUP_HEAD = [
@@ -116,6 +121,7 @@ const GROUP_HEAD = [
   ...MARKS.map((mark) => `by ${String(mark)} h`),
   "h a rung",
   `${ACTIVE} a rung`,
+  `${UNLOADED} a rung`,
   "$ a rung",
   AA,
   "settings",
@@ -130,6 +136,7 @@ const RUN_HEAD = [
   "solve s",
   "elapsed h",
   ACTIVE,
+  UNLOADED,
   "1st compared h",
   "1st reported h",
   "promotions",
@@ -149,6 +156,7 @@ const RECENT_HEAD = [
   "promotions",
   "h a rung",
   `${ACTIVE} a rung`,
+  `${UNLOADED} a rung`,
   "$ a rung",
   "h a promotion, set-up included",
 ];
@@ -159,6 +167,7 @@ const PROMOTION_HEAD = [
   ACTIVE,
   "epoch h",
   `epoch ${ACTIVE}`,
+  `epoch ${UNLOADED}`,
   "epoch $",
   "comparisons",
   "won-lost-tied",
@@ -167,6 +176,7 @@ const PROMOTION_HEAD = [
 const CAVEAT = [
   "A rung is a promotion after set-up (the first promotion), which takes longer and is read apart; a live run is listed whatever it has promoted.",
   "Hours are on the log's own clock; active hours subtract every recorded wait (provider, network, load).",
+  "Unloaded hours also take out the share of each stretch an overloaded host could not serve (1 - cores/load), as if the run were CPU-bound: an upper bound on what load cost, an estimate.",
   "A group is comparable only where its settings column reads 1: results are never compared across settings.",
   "One run is one draw, and the spread between runs is wide: read a group's medians beside its run count.",
 ];
@@ -184,6 +194,8 @@ interface Promotion {
    *  before, to this one. */
   readonly epochElapsed: number;
   readonly epochActive: number;
+  /** The epoch's active hours less what an overloaded host cost (`overloadOf`), an estimate. */
+  readonly epochUnloaded: number;
   readonly dollars: number;
   /** The comparisons reported in the epoch. A Builder's sessions are left out: a conversation that
    *  leads its campaign spans epochs and ends in the last. */
@@ -208,6 +220,7 @@ interface Run {
   readonly last: number;
   readonly elapsed: number;
   readonly active: number;
+  readonly unloaded: number;
   /** Whether the log is still being written: its last event is no ending and is recent. */
   readonly live: boolean;
   /** Hours from the first event to the first comparison started and reported. */
@@ -300,19 +313,10 @@ function runOf(
   const launched = launch === undefined ? first : Date.parse(launch.at);
   const tag = tags.findLast(({ at }) => at <= launched);
   const waits = waitsOf(events);
-  // Hours between two moments less the waits inside them, each counted once.
-  const activeAt = (to: number, from = first) =>
-    hours(
-      to -
-        from -
-        unionMs(
-          waits.flatMap((wait) =>
-            wait.until > from && wait.from < to
-              ? [{ from: Math.max(wait.from, from), until: Math.min(wait.until, to) }]
-              : [],
-          ),
-        ),
-    );
+  const overload = overloadOf(events);
+  // Hours between two moments less the waits inside them, and less what an overloaded host cost.
+  const activeAt = (to: number, from = first) => hours(to - from - waitedMs(waits, from, to));
+  const unloadedAt = (to: number, from = first) => activeAt(to, from) - hours(overload(from, to));
   const indexes = events.flatMap(({ kind }, at) => (kind === "harness.promoted" ? [at] : []));
   const epochs = epochsOf(events);
   const promotions = indexes.map((at, nth): Promotion => {
@@ -324,6 +328,7 @@ function runOf(
       active: activeAt(now),
       epochElapsed: hours(now - before),
       epochActive: activeAt(now, before),
+      epochUnloaded: unloadedAt(now, before),
       dollars: billedBetween(events, start, at + 1),
       comparisons: epochs[nth]?.comparisons.length ?? 0,
       tally: tallyOf(events, at),
@@ -348,6 +353,7 @@ function runOf(
     last,
     elapsed: hours(last - first),
     active: activeAt(last),
+    unloaded: unloadedAt(last),
     live: events.at(-1)?.kind !== "campaign.ended" && Date.now() - last < LIVE_MS,
     firstCompared: firstOf("comparison.started"),
     firstReported: firstOf("comparison.reported"),
@@ -391,6 +397,7 @@ function groupRows(runs: readonly Run[], by: readonly By[]): string[][] {
       ...MARKS.map((mark) => promotedBy(list, mark)),
       tenths(median(rungs.map((rung) => rung.epochElapsed))),
       tenths(median(rungs.map((rung) => rung.epochActive))),
+      tenths(median(rungs.map((rung) => rung.epochUnloaded))),
       money(median(rungs.map((rung) => rung.dollars))),
       aaOf(list),
       settings === 1 ? "1" : `${String(settings)} POOLED`,
@@ -409,6 +416,7 @@ const runRows = (runs: readonly Run[]) =>
     tenths(run.solveSeconds),
     tenths(run.elapsed),
     tenths(run.active),
+    tenths(run.unloaded),
     tenths(run.firstCompared),
     tenths(run.firstReported),
     String(run.promotions.length),
@@ -433,6 +441,7 @@ const recentRows = (runs: readonly Run[]) =>
       String(run.promotions.length),
       tenths(mean(rungs.map((rung) => rung.epochElapsed))),
       tenths(mean(rungs.map((rung) => rung.epochActive))),
+      tenths(mean(rungs.map((rung) => rung.epochUnloaded))),
       money(mean(rungs.map((rung) => rung.dollars))),
       tenths(final === undefined ? null : final.elapsed / final.nth),
     ];
@@ -455,6 +464,7 @@ const promotionRows = (runs: readonly Run[]) =>
       tenths(promotion.active),
       tenths(promotion.epochElapsed),
       tenths(promotion.epochActive),
+      tenths(promotion.epochUnloaded),
       money(promotion.dollars),
       String(promotion.comparisons),
       promotion.tally,

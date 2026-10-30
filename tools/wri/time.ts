@@ -44,6 +44,10 @@ import {
   type Trigger,
 } from "./folds.ts";
 
+/** How long a load sample is taken to stand for: a solve starts every few minutes while one runs,
+ *  and a stretch with none, such as a Builder's own turns, is counted as unloaded. */
+const SAMPLE_MS = 15 * 60_000;
+
 /** The share of a deadline past which a miss is read as bound by it, as v1's climb read it. */
 const DEADLINE_BOUND_SHARE = 0.95;
 /** The factor between the loads two comparisons ran under from which they are read as made on
@@ -293,7 +297,7 @@ function spansOf(log: Index): Span[] {
 }
 
 /** The union of intervals, so concurrent sessions or provider waits count their overlap once. */
-export function unionMs(windows: readonly { readonly from: number; readonly until: number }[]): number {
+function unionMs(windows: readonly { readonly from: number; readonly until: number }[]): number {
   let [held, reached] = [0, -Infinity];
   for (const { from, until } of windows.toSorted((a, b) => a.from - b.from)) {
     held += Math.max(0, until - Math.max(from, reached));
@@ -319,6 +323,51 @@ export function waitsOf(events: readonly LogEvent[]): { from: number; until: num
     }
   }
   return waits;
+}
+
+/** The milliseconds between `from` and `to` inside the waits `waitsOf` read, each counted once. */
+export const waitedMs = (waits: readonly { from: number; until: number }[], from: number, to: number) =>
+  unionMs(
+    waits.flatMap((wait) =>
+      wait.until > from && wait.from < to
+        ? [{ from: Math.max(wait.from, from), until: Math.min(wait.until, to) }]
+        : [],
+    ),
+  );
+
+/**
+ * The milliseconds between two moments lost to an overloaded host, outside every wait: each
+ * stretch from one recorded one-minute load to the next (`solve.started`, `solve.finished` and the
+ * solve queue's `campaign.waited`), at most `SAMPLE_MS`, weighted by the share of the demand the
+ * cores could not serve, `1 - cores / load`. It treats the whole run as CPU-bound, while a model's
+ * turn waits on the provider, so it bounds from above what the load cost and is an estimate. The
+ * log is read once and each stretch asked of the function it returns, since a reader asks one for
+ * every epoch.
+ */
+export function overloadOf(events: readonly LogEvent[]): (from: number, to: number) => number {
+  const waits = waitsOf(events);
+  let cores: number | undefined;
+  const samples = events.flatMap(({ at, kind, data }) => {
+    if (kind !== "solve.started" && kind !== "solve.finished" && kind !== "campaign.waited") return [];
+    if (isNumber(data.cores) && data.cores > 0) cores = data.cores;
+    const load = Array.isArray(data.load) ? data.load[0] : data.load;
+    return isNumber(load) && cores !== undefined
+      ? [{ at: Date.parse(at), unserved: Math.max(0, 1 - cores / load) }]
+      : [];
+  });
+  const overloaded = samples.flatMap(({ at, unserved }, index) =>
+    unserved > 0
+      ? [{ at, until: Math.min(at + SAMPLE_MS, samples[index + 1]?.at ?? Infinity), unserved }]
+      : [],
+  );
+  return (from, to) => {
+    let lost = 0;
+    for (const { at, until, unserved } of overloaded) {
+      const [start, end] = [Math.max(at, from), Math.min(until, to)];
+      if (end > start) lost += (end - start - waitedMs(waits, start, end)) * unserved;
+    }
+    return lost;
+  };
 }
 
 /** Row A's overlapping elapsed spans beside its billed dollars, and the union of every recorded wait

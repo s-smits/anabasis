@@ -37,7 +37,8 @@ it, in three jobs: `darwin` (ripgrep and the UI's dependencies, then typecheck, 
 check, the secret scan and the suite), `darwin-ui` (the UI's install, then its typecheck and build
 and its tests, which need the install step to have passed) and `linux` (Bubblewrap, the suite, then
 the climb simulation). No other workflow runs: a push starts none, and the pre-push hook marks
-the pull requests stacked above a pushed branch pending (`tools/runtime/pre-push.ts`). In a container without
+the pull requests stacked above a pushed branch pending (`tools/runtime/pre-push.ts`). Where a
+new check belongs is `local-checks`'s. In a container without
 user namespaces the wall's tests fail: name them in the pull request as failures without the change,
 and do not call the suite green.
 

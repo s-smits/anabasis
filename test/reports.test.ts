@@ -568,8 +568,8 @@ describe("the release before the draw", () => {
         ];
       }),
     ];
-    expect(poolOf(won("a1")).frontier).toEqual(["a1"]);
-    expect(poolOf(won("a2")).frontier).toEqual(["a2"]);
+    // The frontier is the Builder's comparison size, so it reads the reference's own measures too.
+    expect(poolOf(won("a1")).frontier).toEqual(poolOf(won("a2")).frontier);
     expect(releaseOrder(won("a1"), ["a1", "a2"], 1, "seed")).toEqual(
       releaseOrder(won("a2"), ["a1", "a2"], 1, "seed"),
     );
@@ -841,7 +841,9 @@ describe("the tasks the reference harness exhausted", () => {
     ).toEqual(["t"]);
   });
 
-  it("spares a task the objective told two valid answers apart on: the next harness can still win it", () => {
+  it("spares a task its author's answer betters by the floor, and none the other harness's answer betters", () => {
+    // The other harness's measure on e1 is its result on the task: sparing e1 for it would tell the
+    // Builder a comparison size that moved with which task its harness bettered (rule 3).
     const measured = (log: readonly LogEvent[], session: string, fresh: string) => {
       const sides = [
         ...solved(session, "e1", "h1", [P, P]),
@@ -864,9 +866,8 @@ describe("the tasks the reference harness exhausted", () => {
     };
     const log = measured(measured(["e1", "e2"].flatMap(heldOut), "b-1", "h2"), "b-2", "h3");
     const pool = poolOf(log);
-    expect(pool).toMatchObject({ exhausted: ["e2"], retained: ["e2"], frontier: ["e1"] });
+    expect(pool).toMatchObject({ exhausted: ["e1", "e2"], retained: ["e1", "e2"], frontier: [] });
     expect(pool.outcomes.get("e1")).toBe("reference-every");
-    expect(poolOf(measured(log, "b-3", "h4")).exhausted).toEqual(["e2"]);
     const authored = (measure: number) =>
       poolOf([
         ...log,
@@ -877,9 +878,9 @@ describe("the tasks the reference harness exhausted", () => {
         }),
       ]);
     for (const [measure, exhausted, frontier] of [
-      [5, [], ["e1", "e2"]],
-      [10 - 1e-9, ["e2"], ["e1"]],
-      [9.95, ["e2"], ["e1"]],
+      [5, ["e1"], ["e2"]],
+      [10 - 1e-9, ["e1", "e2"], []],
+      [9.95, ["e1", "e2"], []],
     ] as const) {
       expect(authored(measure)).toMatchObject({ exhausted, frontier });
     }

@@ -34,7 +34,6 @@ import {
   type Paired,
   pairsOf,
   pointsOf,
-  hasObjectiveGap,
   objectiveGap,
   tally,
 } from "./compare.ts";
@@ -102,7 +101,8 @@ interface TalliedIn {
   readonly cut: boolean;
   /** Whether one of the reference harness's own solves of it did: all its author hears (rule 4). */
   readonly referenceCut: boolean;
-  /** Whether a measure on record betters one of the reference's valid answers (`hasObjectiveGap`). */
+  /** Whether one of the reference's own measures, or its author's, betters one of its valid answers
+   *  by the floor (`objectiveGap`): never the other harness's, which are its result on the task. */
   readonly gapped: boolean;
   /** The side that won the task in this comparison's tally (`tally`), or null for a tie. */
   readonly won: "old" | "fresh" | null;
@@ -505,7 +505,7 @@ function tallyReports(
         reference: side,
         cut: cutOn(data.old) || cutOn(data.fresh),
         referenceCut: side !== null && cutOn(data[side]),
-        gapped: side !== null && hasObjectiveGap(pair, side, of(task).best),
+        gapped: (gap ?? 0) > 0,
         won: wins > 0 ? "fresh" : losses > 0 ? "old" : null,
         by: carriedBy(pointsOf(pair)),
         room: gap,
@@ -564,8 +564,9 @@ function tallyReports(
  * side's solves were pooled in, and two campaigns of equal tallies told the Builder different sizes
  * (the v0.9.0 review); a task a later harness breaks still scores as a retained task. A task is
  * easy once its newest `RUNS.easy` readings in a row were each valid in every solve, with no
- * room by the objective (`hasObjectiveGap`, `compare.ts`), where a better answer would be there for
- * the next harness to reach. The words are every, some and none, as its author hears them, so the
+ * room by the objective, where a better answer would be there for the next harness to reach: room
+ * from the reference's own measures or its author's (`objectiveGap`, `compare.ts`), never the other
+ * harness's, which until the v0.9.0 review moved the size with which task it bettered. The words are every, some and none, as its author hears them, so the
  * rule reads the same at any count of solves, and no ratio of solves pools across readings. The
  * fold is read against whatever harness is the reference at the time, so a promotion re-derives it
  * at once. Until 29 October one reading valid in every solve closed a task.

@@ -1,0 +1,178 @@
+// The skill design-and-seats's scripts: the seat view, which seats' messages a change reaches
+// through the import graph and which wall tests prove them, and the Examiner's view in counts.
+import { afterAll, describe, expect, it } from "bun:test";
+import { examinerCounts } from "#skills/design-and-seats/scripts/examiner-view.ts";
+import {
+  absentFrom,
+  importsIn,
+  SEATS,
+  seatLines,
+  seatsOf,
+} from "#skills/design-and-seats/scripts/seat-view.ts";
+import type { EventKind, LogEvent } from "../src/kernel/log.ts";
+import type { JsonObject } from "../src/meta/json-shape.ts";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { tmpdir } from "../src/meta/os.ts";
+import { dirname, join } from "../src/meta/path.ts";
+
+const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-seat-view-")));
+afterAll(() => rmSync(root, { recursive: true, force: true }));
+const REPO = join(import.meta.dir, "..");
+
+function tree(files: Readonly<Record<string, string>>): string {
+  const at = mkdtempSync(join(root, "tree-"));
+  for (const [path, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(at, path)), { recursive: true });
+    writeFileSync(join(at, path), text);
+  }
+  return at;
+}
+
+/** A graph given as a table, for the reach without a tree. */
+const graph =
+  (edges: Readonly<Record<string, readonly string[]>>) =>
+  (file: string): readonly string[] =>
+    edges[file] ?? [];
+
+const reachOfSeat = (reaches: ReturnType<typeof seatsOf>, seat: string) =>
+  reaches.find((each) => each.seat === seat);
+const runLine = (lines: readonly string[]) =>
+  (lines.find((line) => line.startsWith("run: bun run test -- ")) ?? "").split(" ").slice(5);
+
+describe("the seat view", () => {
+  it("reads the imports a file resolves inside the tree, and none of a runtime, a package or a missing file", () => {
+    const at = tree({
+      "src/a.ts": 'import "./b.ts";\nimport "node:fs";\nimport "./missing.ts";\nimport "left-pad";\n',
+      "src/b.ts": 'import { a } from "./a.ts";\nexport const b = a;\n',
+      "notes.md": "import './a.ts'",
+    });
+    const importsOf = importsIn(at);
+    expect(importsOf("src/a.ts")).toStrictEqual(["src/b.ts"]);
+    expect(importsOf("src/b.ts")).toStrictEqual(["src/a.ts"]);
+    expect(importsOf("notes.md")).toStrictEqual([]);
+  });
+
+  it("names each changed file a seat reaches with its shortest chain from an owner, through a cycle, and no seat it does not", () => {
+    const [owner = ""] = SEATS.Builder.owners;
+    const importsOf = graph({
+      [owner]: ["src/long.ts", "src/kernel/fold.ts"],
+      "src/long.ts": ["src/longer.ts"],
+      "src/longer.ts": ["src/kernel/target.ts", owner],
+      "src/kernel/fold.ts": ["src/kernel/target.ts"],
+    });
+    const changed = ["src/kernel/target.ts", "docs/plan.md"];
+    const reaches = seatsOf(changed, importsOf);
+    expect(reachOfSeat(reaches, "Builder")?.files).toStrictEqual([
+      { file: "src/kernel/target.ts", chain: [owner, "src/kernel/fold.ts", "src/kernel/target.ts"] },
+    ]);
+    for (const seat of ["solver", "Examiner", "Referee"]) {
+      expect(reachOfSeat(reaches, seat)?.files).toStrictEqual([]);
+    }
+    const lines = seatLines(changed, reaches);
+    expect(runLine(lines).toSorted()).toStrictEqual(
+      [...new Set(SEATS.Builder.tests.map(({ file }) => file))].toSorted(),
+    );
+    expect(lines.some((line) => line.includes("docs 1"))).toBe(true);
+  });
+
+  it("owes the seat's wall tests where only one of them changed, and none where no seat is reached", () => {
+    const [test = { file: "" }] = SEATS.Referee.tests;
+    const touched = seatLines([test.file], seatsOf([test.file], graph({})));
+    expect(runLine(touched)).toStrictEqual([test.file]);
+    const none = seatLines(
+      ["docs/plan.md", "src/meta/text.ts"],
+      seatsOf(["docs/plan.md", "src/meta/text.ts"], graph({})),
+    );
+    expect(runLine(none)).toStrictEqual([]);
+    expect(none.some((line) => line.includes("src 1") && line.includes("docs 1"))).toBe(true);
+  });
+
+  it("finds every owner and wall test it names in this tree, and names each one a tree no longer holds", () => {
+    expect(absentFrom(REPO)).toStrictEqual([]);
+    const named = Object.values(SEATS).flatMap((entry) => [
+      ...entry.owners,
+      ...entry.tests.map(({ file }) => file),
+    ]);
+    const empty = tree({});
+    expect(new Set(absentFrom(empty))).toStrictEqual(new Set(named));
+    const [first = { file: "", name: "" }] = SEATS.solver.tests;
+    const renamed = tree({ [first.file]: `it("${first.name} once reworded", () => {});\n` });
+    expect(absentFrom(renamed).some((line) => line.startsWith(`${first.file}: `))).toBe(true);
+  });
+
+  it("reads this tree's graph so that each seat reaches its own owners and the Builder its campaign tools", () => {
+    const reaches = seatsOf(
+      [...SEATS.Builder.owners, ...SEATS.solver.owners, "src/kernel/log.ts"],
+      importsIn(REPO),
+    );
+    const filesOf = (seat: string) => reachOfSeat(reaches, seat)?.files.map(({ file }) => file) ?? [];
+    for (const [seat, owners] of [
+      ["Builder", SEATS.Builder.owners],
+      ["solver", SEATS.solver.owners],
+    ] as const) {
+      for (const file of [...owners, "src/kernel/log.ts"]) expect(filesOf(seat)).toContain(file);
+    }
+    expect(filesOf("solver")).not.toContain("tools/d2/campaign-actions.ts");
+  });
+});
+
+describe("the Examiner's view in counts", () => {
+  /** Exam-side text no line of the view's counts may carry: a hidden value and a refusal's reason. */
+  const HIDDEN = "hidden-canary-3b9";
+  const REASON = "reason-canary-3b9";
+
+  function admitted(): LogEvent[] {
+    const events: LogEvent[] = [];
+    const add = (kind: EventKind, data: JsonObject) =>
+      events.push({ at: "2026-10-30T00:00:00.000Z", kind, data });
+    const draft = (taskId: string, gate: JsonObject) => {
+      const task = { taskId, family: "fixture", publicInput: {}, hidden: { value: HIDDEN } };
+      add("task.proposed", { version: `v-${taskId}`, taskId, task });
+      add("task.gate", { version: `v-${taskId}`, gate: 1, ...gate });
+      if (gate.outcome === "refused") add("task.state", { version: `v-${taskId}`, state: "refused" });
+    };
+    draft("some", { outcome: "passed", reference: { valid: 1, solves: 3, billed: 0 } });
+    draft("yours", { outcome: "passed", reference: { valid: 0, solves: 3, billed: 0 } });
+    draft("every", { outcome: "passed", reference: { valid: 3, solves: 3, billed: 0 } });
+    draft("closed", { outcome: "refused", reason: REASON, reference: { valid: 3, solves: 3, billed: 0 } });
+    draft("cut", {
+      outcome: "refused",
+      reason: REASON,
+      reference: { valid: 0, solves: 1, ran: 3, billed: 0 },
+    });
+    return events;
+  }
+
+  it("counts what the gate held on each kind of room and what it refused, and carries no hidden value or reason", () => {
+    const lines = examinerCounts(admitted());
+    const summary = lines.find((line) => line.startsWith("summary: ")) ?? "";
+    for (const fact of [
+      "held out 3 drafts",
+      "1 on validity",
+      "1 on an answer of yours",
+      "1 on the objective alone",
+      "refused 1 draft",
+    ]) {
+      expect(summary).toContain(fact);
+    }
+    expect(lines.some((line) => line.includes("1 group") && line.includes("1 interrupted draft"))).toBe(true);
+    expect(lines.some((line) => line.startsWith("promotion: none"))).toBe(true);
+    for (const canary of [HIDDEN, REASON]) expect(lines.join("\n")).not.toContain(canary);
+  });
+
+  it("says nothing was measured on a log with no draft, and names the comparison a promotion stood on", () => {
+    expect(examinerCounts([]).filter((line) => line.endsWith(": none"))).toHaveLength(3);
+    const promoted = [
+      ...admitted(),
+      {
+        at: "2026-10-30T01:00:00.000Z",
+        kind: "harness.promoted",
+        data: { harness: "h2", rests: [{ comparison: "g-9" }] },
+      },
+    ] satisfies LogEvent[];
+    const lines = examinerCounts(promoted);
+    expect(lines.find((line) => line.startsWith("promotion: "))).toContain("g-9");
+    // Admissions before the promotion measured the replaced reference, so the summary holds none of them.
+    expect(lines.find((line) => line.startsWith("summary: "))).toBe("summary: none");
+  });
+});

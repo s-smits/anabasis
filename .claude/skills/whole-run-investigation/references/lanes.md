@@ -1090,11 +1090,18 @@ won is one a person who knows the field would keep: on 30 October all six promot
 runs after 02:45Z won on the objective alone. Promotions an hour measure the climb's speed; this
 lane reads what each promotion bought.
 
-Read the campaign's derived folder first (`wri.ts derive`, named in the campaigns section):
-`versions.txt` lists each kept version with its parent, its parts and the comparisons that read
-it, and `readings.txt` each comparison's tally, the tally without the bill and its A/A. Then diff
-each version against its parent with `harness-versions.ts --diff <digest>` and the lines that moved
-([harness-audit](../../harness-audit/SKILL.md)).
+Grade before you read a result, in this order, writing each grade into the report as it settles:
+
+1. From the campaign's derived folder (`wri.ts derive`, named in the campaigns section), read only
+   the `made:` and `parts:` lines of `versions.txt`: each kept version, its parent and its parts.
+   The comparison lines under each version are results; leave them for step 4.
+2. Diff each version against its parent: `harness-versions.ts --log <log> --diff <digest>` counts
+   the parts that moved, and `diff -r` of `states/<parent>/` and `states/<digest>/` beside the log
+   shows the lines ([harness-audit](../../harness-audit/SKILL.md)). Grade soundness.
+3. Read each scored task's public text in its `task.proposed` event and the checks it cites.
+   Grade reach.
+4. Only then read the comparison lines, `readings.txt` (each comparison's tally, the tally without
+   the bill and its A/A), and rows D and E in `rows.txt` (each task's valid share).
 
 Grade on two scales of 0 to 7. A scale of ten left its lower half unused once current models solve
 routine work (operator, 30 October), so eight points carry the range that occurs. Each grade is a
@@ -1113,7 +1120,7 @@ before reading any outcome of it:
 - 6: work a specialist gets wrong on a first pass;
 - 7: the field's edge, where no published method fits whole.
 
-Then set each grade beside the reference's valid share of the task (rows D and E, `draw.txt`). A
+Then set each grade beside the reference's valid share of the task (rows D and E, `rows.txt`). A
 task graded low that no harness answers is lane 10's question; one graded high that the starter
 answers every time says the grade is too high for this solver, and is regraded once with that
 reason. For each comparison, give the grades of the untied tasks the new harness won and those it
@@ -1136,7 +1143,7 @@ Then read whether the step's wins fall where the change acts. Set the version's 
 soundness: guide lines, tools and tool-tree files from `versions.txt`. Weight that grows while
 soundness stays flat is weight, not quality.
 
-Write the grades under a `## Grades` heading before the findings: one row a version in chain order
+Write the grades under a `## Grades` heading between the verdict line and `## Findings`: one row a version in chain order
 (the digest's first eight characters, its parent, each comparison's reading with its tally and its
 tally without the bill, weight, soundness with one sentence, reach), then one row a comparison with
 the reach grades of the tasks won and lost. A sentence names parts, kinds and counts; it quotes no

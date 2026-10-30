@@ -25,6 +25,7 @@ import type { JsonValue } from "@earendil-works/chord";
 import type { SeatTool } from "../agent/session.ts";
 import {
   AGENT_DIR,
+  BYTECODE,
   GENERATED_TOOLS_FILE,
   GUIDE_FILE,
   TOOLS_SPEC_FILE,
@@ -85,14 +86,6 @@ const KINDS: ReadonlySet<string> = new Set(["reader", "advisor", "artifact-write
 /** The names a solver's tools already hold, whatever the harness: pi's coding tools and `submit`. */
 const HOST_TOOLS: readonly string[] = [...CODING_TOOLS, "submit"];
 const SHIM = Bun.fileURLToPath(new URL("./shim.ts", import.meta.url));
-/** The bytecode caches Python writes beside a program it runs. Python reads a file in one only while
- *  the source beside it is there, and checks it against that source unless the file was compiled
- *  as unchecked, so a cache holds nothing the source does not, and a harness whose programs ran
- *  once is the harness it was before. Running its Python programs left `__pycache__` in 26 of the
- *  54 states buffer-fresh-opus-v065-b kept, and on 24 October two states that differed from the one
- *  practised by those caches alone read as never practised. A `.pyc` outside `__pycache__` is code
- *  Python imports with no source beside it, and stays in. */
-export const BYTECODE = /(^|\/)__pycache__(\/|$)/;
 /** The host's own source and installed packages, which the shim imports from. */
 const HOST_ROOTS = [dirname(dirname(SHIM)), join(dirname(dirname(dirname(SHIM))), "node_modules")];
 const MARKER = "@@ana-harness-result@@";

@@ -62,7 +62,9 @@ describe("deriving a campaign's readers", () => {
 
   it("names only scripts the tree holds", () => {
     expect(
-      READERS.map(({ args }) => args("log")[0] ?? "").filter((script) => !existsSync(join(REPO, script))),
+      READERS.map(({ args }) => args("log", REPO)[0] ?? "").filter(
+        (script) => !existsSync(join(REPO, script)),
+      ),
     ).toEqual([]);
   });
 });

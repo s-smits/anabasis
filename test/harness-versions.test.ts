@@ -74,7 +74,7 @@ append(log, "harness.promoted", { harness: child, from: starter, rests: ["g1"] }
 
 const run = (from: string, ...args: string[]) => {
   const result = runSync([capturedExecPath, script, "--log", from, ...args]);
-  return { code: result.exitCode, stderr: decodeOutput(result.stderr) };
+  return { code: result.exitCode, stdout: decodeOutput(result.stdout), stderr: decodeOutput(result.stderr) };
 };
 
 describe("the harnesses a campaign keeps", () => {
@@ -158,6 +158,17 @@ describe("a campaign its Builder leads", () => {
 });
 
 describe("the command", () => {
+  it("prints the chain blind: each version's parts and diff, and nothing of how it was measured", () => {
+    const blind = run(log, "--blind");
+    expect(blind.code).toBe(0);
+    expect(blind.stdout).toContain(`against ${short(starter)}:`);
+    expect(blind.stdout).toContain("[starter]");
+    for (const result of ["comparison", "promoted", "reference", "latest", "step", "won"]) {
+      expect(blind.stdout).not.toContain(result);
+    }
+    expect(run(log).stdout).toContain("comparison g1");
+  });
+
   it("refuses a control, a harness with no parent on record, and a state that opens as another", () => {
     for (const [harness, fact] of [
       ["programs-of:latest", "no control"],

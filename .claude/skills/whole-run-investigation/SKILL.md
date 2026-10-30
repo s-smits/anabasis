@@ -105,9 +105,12 @@ Each runs as `bun tools/wri/wri.ts <verb>` from the checkout. The usage block at
 
 ### The readers, derived
 
-Eight deterministic readers take one log and print what it holds (`READERS`,
-`tools/wri/derive.ts`): the rows and triggers, the kept versions, the readings, the next draw, the
-ending, the conditions, and what a Builder and an Examiner opening would be told. `derive` runs
+Eleven deterministic readers take one log and print what it holds (`READERS`,
+`tools/wri/derive.ts`): the rows and triggers, the kept versions blind (`chain`) and measured
+(`versions`), the scored tasks' public input (`tasks`), the readings, each promotion scored again
+with the measure that won each task (`replay`), the next draw, the ending, the conditions, and what
+a Builder and an Examiner opening would be told. `chain` and `tasks` carry no result, so a lane that
+grades before it reads an outcome (34) reads them first. `derive` runs
 them all over a log into the main worktree's `data/derived/<campaign>/`, one `<reader>.txt` each,
 and replaces the folder whole where the log or the commit reading it moved since; a folder whose
 log stands is kept. So the files always describe one moment of the log, the latest a pass saw.

@@ -35,8 +35,9 @@ const READER_MS = 180_000;
 
 export interface Reader {
   readonly name: string;
-  /** The script and its arguments, from the repository's root, for a log's absolute path. */
-  readonly args: (log: string) => readonly string[];
+  /** The script and its arguments, from the repository's root, for a log's absolute path and the
+   *  repository's. */
+  readonly args: (log: string, repo: string) => readonly string[];
 }
 
 export interface Derived {
@@ -48,13 +49,30 @@ export interface Derived {
   readonly failed: readonly string[];
 }
 
-/** The readers that take one log and print what it holds, calling no model and writing nothing. The
- *  readers over many campaigns (`promotion-tuner`'s `table.ts` and `replay.ts`) and those that
- *  refresh remote copies (`runs view`) are left out: each reads the fleet, not one log. */
+/** The readers that take one log and print what it holds, calling no model and writing nothing.
+ *  `replay.ts` reads one campaign by its folder and name; `table.ts` reads the fleet, and `runs view`
+ *  refreshes remote copies, so both are left out. */
 export const READERS: readonly Reader[] = [
   { name: "rows", args: (log) => ["tools/wri/wri.ts", "read", "--log", log] },
+  {
+    name: "chain",
+    args: (log) => [`${SKILLS}/harness-audit/scripts/harness-versions.ts`, "--log", log, "--blind"],
+  },
+  { name: "tasks", args: (log) => ["tools/wri/tasks.ts", log] },
   { name: "versions", args: (log) => [`${SKILLS}/harness-audit/scripts/harness-versions.ts`, "--log", log] },
   { name: "readings", args: (log) => [`${SKILLS}/comparison-reading/scripts/reading.ts`, log] },
+  {
+    name: "replay",
+    args: (log, repo) => [
+      `${SKILLS}/promotion-tuner/scripts/replay.ts`,
+      "--tree",
+      repo,
+      "--logs",
+      dirname(dirname(log)),
+      "--name",
+      basename(dirname(log)),
+    ],
+  },
   { name: "draw", args: (log) => [`${SKILLS}/comparison-reading/scripts/draw.ts`, log] },
   { name: "ending", args: (log) => [`${SKILLS}/campaign-mechanics/scripts/ending.ts`, log] },
   { name: "conditions", args: (log) => [`${SKILLS}/campaign-mechanics/scripts/conditions.ts`, log] },
@@ -101,7 +119,10 @@ export async function derive(
   rmSync(work, { recursive: true, force: true });
   mkdirSync(work, { recursive: true });
   const endings = await pooled(readers, WIDTH, async (reader) => {
-    const ran = await runCaptured([capturedExecPath, ...reader.args(log)], { cwd: repo, timeout: READER_MS });
+    const ran = await runCaptured([capturedExecPath, ...reader.args(log, repo)], {
+      cwd: repo,
+      timeout: READER_MS,
+    });
     const ok = ran.exitCode === 0;
     const ending = ok
       ? ""

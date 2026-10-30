@@ -6,6 +6,7 @@
  *
  *   bun .claude/skills/harness-audit/scripts/harness-versions.ts --name <campaign> [--json]
  *   bun .claude/skills/harness-audit/scripts/harness-versions.ts --log <path> [--json]
+ *   bun .claude/skills/harness-audit/scripts/harness-versions.ts --log <path> --blind
  *   bun .claude/skills/harness-audit/scripts/harness-versions.ts --name <campaign> --diff <harness> [--against <harness>]
  *
  * A harness is named as a campaign's commands name one (`keptAs`, `tools/d2/campaign.ts`): `starter`,
@@ -24,6 +25,10 @@
  * list showed each shared `tree-*` folder as a harness that does not open, with all 6,158 files of
  * one tree on a single line, and `--diff` counted 405 changed files where the digest saw one: the
  * other 404 were caches.
+ *
+ * `--blind` prints each version with its parts and its diff against its parent, and nothing of how it
+ * was measured: no comparison, promotion or role but the starter's. Lane 34 grades soundness from it
+ * before it reads a result; on 30 October its first session read the list's comparisons first.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { type Handover, campaignOf } from "#src/campaign/handover.ts";
@@ -51,12 +56,20 @@ import { logAcross } from "#tools/runs/snapshots.ts";
 const USAGE = `usage:
   bun .claude/skills/harness-audit/scripts/harness-versions.ts --name <campaign> [--json]
   bun .claude/skills/harness-audit/scripts/harness-versions.ts --log <path> [--json]
+  bun .claude/skills/harness-audit/scripts/harness-versions.ts --log <path> --blind
   bun .claude/skills/harness-audit/scripts/harness-versions.ts --name <campaign> --diff <harness> [--against <harness>]
 
 <harness> is starter, promoted, latest, a whole digest or its unambiguous letter. --against defaults to
 the parent the log records.`;
 
-const OPTIONS = { name: "text", log: "abs", json: "flag", diff: "text", against: "text" } as const;
+const OPTIONS = {
+  name: "text",
+  log: "abs",
+  json: "flag",
+  blind: "flag",
+  diff: "text",
+  against: "text",
+} as const;
 const TOOL_TREE = ".toolchain";
 const GUIDE = `${AGENT_DIR}${GUIDE_FILE}`;
 const PARTS: ReadonlySet<string> = new Set([GUIDE, TOOLS_SPEC_FILE, GENERATED_TOOLS_FILE]);
@@ -318,20 +331,25 @@ export async function diffOf(parent: string, child: string): Promise<string[]> {
   ];
 }
 
-function printed(version: Version): string[] {
+function printed(version: Version, blind = false): string[] {
   const parts = version.parts;
   const tree = parts?.toolTree;
+  const roles = blind ? version.roles.filter((role) => role === "starter") : version.roles;
   return [
-    `${version.digest}  ${version.kept ? `kept, opens ${String(version.opens)}` : "not kept under states/"}${version.roles.map((role) => `  [${role}]`).join("")}`,
+    `${version.digest}  ${version.kept ? `kept, opens ${String(version.opens)}` : "not kept under states/"}${roles.map((role) => `  [${role}]`).join("")}`,
     `  made: ${version.made}`,
     ...(parts === null
       ? []
       : [
           `  parts: guide ${parts.guide === null ? "none" : `${parts.guide} lines`}; presets ${parts.presets.join(", ") || "none"}; ${parts.tools.length} tools of its own; tools.ts ${parts.module} lines; ${TOOL_TREE} ${tree ? `${tree.files} files, ${Math.round(tree.bytes / 1024)} KiB${tree.linked ? ", a link" : ""}` : "none"}${parts.other.length === 0 ? "" : `; other ${parts.other.join(", ")}`}`,
         ]),
-    ...version.sessions.map((line) => `  session ${line}`),
-    ...version.compared.map((line) => `  comparison ${line}`),
-    ...version.promoted.map((at) => `  promoted at ${at}`),
+    ...(blind
+      ? []
+      : [
+          ...version.sessions.map((line) => `  session ${line}`),
+          ...version.compared.map((line) => `  comparison ${line}`),
+          ...version.promoted.map((at) => `  promoted at ${at}`),
+        ]),
   ];
 }
 
@@ -344,11 +362,30 @@ async function main(args: CommandArgs): Promise<number> {
   if (!existsSync(log)) args.die(`${log} does not exist`);
   const versions = await versionsOf(keeping);
   const asked = args.value("diff");
+  if (args.flag("blind")) {
+    if (asked !== null || args.flag("json")) args.die("--blind prints the chain alone");
+    const dirs = new Map(versions.map((version) => [version.digest, join(keeping.states, version.digest)]));
+    const kept = new Set(versions.filter((version) => version.kept).map((version) => version.digest));
+    for (const version of versions) {
+      const parent = version.parent ?? null;
+      const moves =
+        parent !== null && kept.has(parent) && kept.has(version.digest)
+          ? [
+              `  against ${short(parent)}:`,
+              ...(await diffOf(dirs.get(parent) ?? "", dirs.get(version.digest) ?? "")).map(
+                (line) => `    ${line}`,
+              ),
+            ]
+          : [];
+      console.log([...printed(version, true), ...moves].join("\n"));
+    }
+    return 0;
+  }
   if (asked === null) {
     if (args.value("against") !== null) args.die("--against is read with --diff");
     const list = args.flag("json")
       ? capturedJsonStringify({ ...keeping, versions }, null, 2)
-      : versions.flatMap(printed).join("\n");
+      : versions.flatMap((version) => printed(version)).join("\n");
     console.log(list);
     return 0;
   }

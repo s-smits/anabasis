@@ -132,10 +132,19 @@ describe("a campaign's setting, recorded once", () => {
     for (const flag of ["0", "1.5", "two"]) {
       expect(() => settingAsked({ solves: flag }, null)).toThrow(/--solves .*whole number/u);
     }
-    // A record from before the count was a setting reads at the default, two.
+    // A record from before the count was a setting reads at the count its comparisons began at, so
+    // a campaign continued under this source keeps it; with no comparison, at the default, two.
     const { solves: _, ...before } = SHORT;
-    const old = recordedSetting([{ at: "2026-10-28T00:00:00.000Z", kind: "campaign.setting", data: before }]);
-    expect(old?.solves).toBe(2);
+    const setting: LogEvent = { at: "2026-10-28T00:00:00.000Z", kind: "campaign.setting", data: before };
+    expect(recordedSetting([setting])?.solves).toBe(2);
+    const began: LogEvent = {
+      at: "2026-10-28T01:00:00.000Z",
+      kind: "comparison.started",
+      data: { solves: 4 },
+    };
+    const old = recordedSetting([setting, began]);
+    expect(old?.solves).toBe(4);
+    expect(() => settingAsked({ solves: "2" }, old)).toThrow(/--solves 2.*--solves 4/u);
   });
 });
 

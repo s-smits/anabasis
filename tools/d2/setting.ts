@@ -13,7 +13,8 @@
  *                                       19 October read back
  *   --target 12                         so many of the held-out tasks, by the contract's draw
  *   --solves 4                          solves a side of each scored task; `SIZE.solves`, 2, where
- *                                       not named, and so a record from before 29 October reads
+ *                                       not named. A record from before 29 October names none, and
+ *                                       reads the count its last comparison began at, or 2
  *
  * The first command of a campaign that compares records what its flags name, with the defaults for
  * what they leave out: the stored cycle's own solver, the one budget every solver is held to
@@ -57,6 +58,7 @@
 import { clampThinkingLevel, type ThinkingLevel } from "@earendil-works/pi-ai";
 import { THINKING_LEVELS } from "@earendil-works/pi-ai/providers/model-schema";
 import type { Limits } from "#src/kernel/condition.ts";
+import { STARTED } from "#src/campaign/comparison.ts";
 import { append, type LogEvent } from "#src/kernel/log.ts";
 import { SIZE } from "#src/kernel/size.ts";
 import type { solverLast } from "#src/kernel/solves.ts";
@@ -312,8 +314,15 @@ export function recordedSetting(events: readonly LogEvent[]): Recorded | null {
     minutes,
     modelTurns,
     target,
-    solves: isNumber(solves) ? solves : SIZE.solves,
+    solves: isNumber(solves) ? solves : ranAt(events),
   };
+}
+
+/** The solves a side a record from before 29 October holds, which named none: the count its last
+ *  comparison began at, since another count is another campaign, and the default where none began. */
+function ranAt(events: readonly LogEvent[]): number {
+  const solves = events.findLast(({ kind }) => kind === STARTED)?.data.solves;
+  return isNumber(solves) ? solves : SIZE.solves;
 }
 
 /**

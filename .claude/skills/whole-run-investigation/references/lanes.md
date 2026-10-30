@@ -1097,7 +1097,9 @@ Grade before you read a result, in this order, writing each grade into the repor
    The comparison lines under each version are results; leave them for step 4.
 2. Diff each version against its parent: `harness-versions.ts --log <log> --diff <digest>` counts
    the parts that moved, and `diff -r` of `states/<parent>/` and `states/<digest>/` beside the log
-   shows the lines ([harness-audit](../../harness-audit/SKILL.md)). Grade soundness.
+   shows the lines ([harness-audit](../../harness-audit/SKILL.md)). Grade soundness. A version
+   the copy does not keep (`versions.txt` says so) goes under `## Not read`, ungraded: refreshing
+   the copy is the primary's (`runs fetch <name>`), and no lane reads another host's folder.
 3. Read each scored task's public text in its `task.proposed` event and the checks it cites.
    Grade reach.
 4. Only then read the comparison lines, `readings.txt` (each comparison's tally, the tally without
@@ -1120,12 +1122,17 @@ before reading any outcome of it:
 - 6: work a specialist gets wrong on a first pass;
 - 7: the field's edge, where no published method fits whole.
 
+Before the first grade, write the features of this domain's tasks that place one at each grade you
+use (sizes, limits, tolerances), so a second reader grading from them reaches the same grades.
+
 Then set each grade beside the reference's valid share of the task (rows D and E, `rows.txt`). A
 task graded low that no harness answers is lane 10's question; one graded high that the starter
 answers every time says the grade is too high for this solver, and is regraded once with that
 reason. For each comparison, give the grades of the untied tasks the new harness won and those it
 lost, and say on which grades the step rests. A version's reach is the highest grade at which it
-holds valid answers on most of its solves.
+holds valid answers on most of its solves. Where the reference answers every scored task validly,
+reach cannot separate the versions: say so once, and for each step give instead how far its
+objective wins moved the objective, and on which grades.
 
 **Soundness** is whether a version's change is right for the domain, beyond whether it won. Grade
 each version against its parent from the diff alone, before reading its comparison:

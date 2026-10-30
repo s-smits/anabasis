@@ -72,6 +72,36 @@ describe("the log", () => {
     expect(readFileSync(path, "utf8")).toBe(torn);
   });
 
+  it("cuts a short append back, so the log still reads and takes the next event", () => {
+    const path = fresh();
+    const script = `${path}.ts`;
+    writeFileSync(
+      script,
+      `
+      import { append } from ${JSON.stringify(new URL("../src/kernel/log.ts", import.meta.url).pathname)};
+      const [path] = process.argv.slice(2);
+      append(path, "verdict", { pass: true });
+      try {
+        append(path, "verdict", { pass: false, pad: "x".repeat(4000) });
+      } catch (error) {
+        console.error(error.message);
+      }
+    `,
+    );
+    // The file size limit, with its signal ignored, makes the second append's write come up short,
+    // as a full disk would.
+    const limited = Bun.spawnSync(
+      ["/bin/sh", "-c", `trap '' XFSZ; ulimit -f 2; exec "$0" "$@"`, process.execPath, script, path],
+      {
+        stderr: "pipe",
+      },
+    );
+    expect(limited.stderr.toString()).toContain("the log line was not written whole");
+    expect(read(path).map(({ data }) => data.pass)).toEqual([true]);
+    append(path, "verdict", { pass: true });
+    expect(read(path)).toHaveLength(2);
+  });
+
   it("refuses, writing nothing, a task event that would leave the log unreadable", () => {
     const path = fresh();
     const proposed = append(path, "task.proposed", { version: "v1" });

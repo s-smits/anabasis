@@ -610,6 +610,15 @@ function keptStates(dir: string, digests: readonly string[]): void {
     );
     const guide = [...lines, `Version ${String(at)} of this guide.`, ...steps];
     writeFileSync(join(agent, "BUILT_AGENTS.md"), `${guide.join("\n")}\n`);
+    if (at < digests.length - 1) continue;
+    // The latest ran its one program, which left Python's bytecode cache beside it.
+    const bin = join(dir, "states", digest, ".toolchain", "bin");
+    mkdirSync(join(bin, "__pycache__"), { recursive: true });
+    writeFileSync(
+      join(bin, "count.py"),
+      "#!/usr/bin/env python3\n# count.py WORD\n# Prints how many letters WORD has.\n",
+    );
+    writeFileSync(join(bin, "__pycache__", "count.cpython-312.pyc"), "cache\n");
   }
   const model = join(dir, "states", digests[1] ?? "", "correctness-model");
   mkdirSync(model, { recursive: true });

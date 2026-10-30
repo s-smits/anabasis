@@ -70,13 +70,13 @@
 .ana-detail-head {
   align-items: start;
   display: grid;
-  gap: 14px;
+  gap: 12px;
   grid-template-columns: auto minmax(0, 1fr) auto;
 }
 
 .ana-detail-title {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -88,7 +88,7 @@
   font-family: var(--font-mono);
   font-size: var(--ana-text-lg);
   font-weight: 600;
-  gap: 10px;
+  gap: 8px;
   letter-spacing: 0;
   text-transform: none;
 }
@@ -106,7 +106,7 @@
   display: flex;
   flex-wrap: wrap;
   font-size: var(--ana-text-sm);
-  gap: 4px 10px;
+  gap: 4px 8px;
   line-height: 1.5;
   margin: 0;
 }
@@ -114,7 +114,7 @@
 .ana-detail-badges {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
   justify-content: flex-end;
 }
 
@@ -128,16 +128,14 @@
   align-content: start;
   display: grid;
   gap: 12px;
-  padding: 18px;
+  padding: 16px;
 }
 
 .ana-detail-card h3 {
   color: var(--ana-faint);
   font-size: var(--ana-text-xs);
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  font-weight: 600;
   margin: 0;
-  text-transform: uppercase;
 }
 
 /* Facts as label over value. A row of them reads as one strip of figures under a detail's head. */
@@ -171,7 +169,7 @@
 }
 
 .ana-facts dd .ana-code + .ana-code {
-  margin-left: 6px;
+  margin-left: 4px;
 }
 
 .ana-facts--row {
@@ -185,9 +183,9 @@
   align-content: start;
   border-bottom: 0;
   border-right: 1px solid var(--ana-border-soft);
-  gap: 6px;
+  gap: 4px;
   grid-template-columns: minmax(0, 1fr);
-  padding: 14px 16px;
+  padding: 12px 16px;
 }
 
 .ana-facts--row > div:last-child {
@@ -199,7 +197,7 @@
   color: var(--ana-dim);
   display: flex;
   font-size: var(--ana-text-sm);
-  gap: 10px;
+  gap: 8px;
   margin: 0;
 }
 
@@ -241,7 +239,7 @@
 
 .ana-move-divider td > * + * {
   /* With the space between the parts, 10px apart as before. */
-  margin-left: 6px;
+  margin-left: 4px;
 }
 
 .ana-move-divider time {
@@ -257,7 +255,7 @@
 
 .ana-turns {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -268,8 +266,8 @@
   border: 1px solid var(--ana-border);
   border-radius: var(--ana-radius);
   display: grid;
-  gap: 10px;
-  padding: 14px 16px;
+  gap: 8px;
+  padding: 12px 16px;
 }
 
 .ana-turn-head {
@@ -290,7 +288,7 @@
 
 .ana-turn-text {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   justify-items: start;
 }
 
@@ -304,12 +302,6 @@
   white-space: pre-wrap;
 }
 
-.ana-turn-text.is-empty {
-  color: var(--ana-faint);
-  font-size: var(--ana-text-sm);
-  margin: 0;
-}
-
 .ana-turn .ana-tool-list {
   border: 1px solid var(--ana-border-soft);
   border-radius: var(--ana-radius-inner);
@@ -320,7 +312,7 @@
 
 .ana-split {
   display: grid;
-  gap: 14px;
+  gap: 12px;
 }
 
 .ana-split-bar {
@@ -337,7 +329,7 @@
   display: flex;
   font-family: var(--font-technical);
   font-size: var(--ana-text-xs);
-  font-weight: 700;
+  font-weight: 600;
   justify-content: center;
   min-width: 18px;
   overflow: hidden;
@@ -364,7 +356,7 @@
   cursor: pointer;
   display: grid;
   font-size: var(--ana-text-sm);
-  gap: 10px;
+  gap: 8px;
   grid-template-columns: 10px minmax(0, 1fr) auto;
   min-height: 32px;
   padding: 4px 8px;
@@ -394,9 +386,30 @@
 }
 
 .ana-solve-chips {
+  align-items: center;
   display: flex;
   flex-wrap: nowrap;
   gap: 4px;
+}
+
+/* A side whose solves all ended alike says so once, as quiet text, before its numbered solves. */
+.ana-solve-count {
+  font-size: var(--ana-text-xs);
+  margin-right: 4px;
+  white-space: nowrap;
+}
+.ana-solve-count--good {
+  color: var(--ana-good);
+}
+.ana-solve-count--bad {
+  color: var(--ana-bad);
+}
+.ana-solve-count--warn {
+  color: var(--ana-warn);
+}
+.ana-solve-count--info,
+.ana-solve-count--neutral {
+  color: var(--ana-dim);
 }
 
 .ana-solve-chip {
@@ -408,7 +421,7 @@
   font-weight: 600;
   line-height: 1;
   min-height: 24px;
-  padding: 4px 9px;
+  padding: 4px 8px;
   white-space: nowrap;
 }
 
@@ -447,7 +460,7 @@
 .ana-file-links li {
   align-items: baseline;
   display: flex;
-  gap: 10px;
+  gap: 8px;
   justify-content: space-between;
 }
 
@@ -463,7 +476,12 @@
 
 .ana-diff {
   display: grid;
-  gap: 16px;
+  gap: 8px;
+}
+
+/* The line that folds a harness's bytecode caches away, under the files it leaves. */
+.ana-build-toggle {
+  justify-self: start;
 }
 
 .ana-diff-file {
@@ -472,23 +490,34 @@
   overflow: hidden;
 }
 
-.ana-diff-file > header {
+.ana-diff-file > summary {
   align-items: center;
   background: var(--ana-card-2);
   border-bottom: 1px solid var(--ana-border);
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  padding: 10px 12px;
+  cursor: pointer;
+  gap: 8px;
+  list-style: none;
+  padding: 8px 12px;
 }
 
-.ana-diff-file > header code {
+/* A closed file is its head alone, so the closed heads under the first read as the diff's index. */
+.ana-diff-file:not([open]) > summary {
+  border-bottom: 0;
+}
+
+.ana-diff-file > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ana-diff-file > summary code {
   color: var(--ana-text);
   flex: 1 1 auto;
   font-size: var(--ana-text-sm);
 }
 
-.ana-diff-file > header .ana-num {
+.ana-diff-file > summary .ana-num {
   color: var(--ana-faint);
   font-size: var(--ana-text-xs);
 }
@@ -517,7 +546,7 @@
 }
 
 .ana-diff-sign {
-  font-weight: 700;
+  font-weight: 600;
   text-align: center;
   user-select: none;
   width: 1%;
@@ -599,7 +628,7 @@
   display: flex;
   flex-wrap: wrap;
   font-size: var(--ana-text-xs);
-  gap: 6px 16px;
+  gap: 4px 16px;
   list-style: none;
   margin: 16px 0 12px;
   padding: 0;
@@ -608,7 +637,7 @@
 .ana-grid-legend li {
   align-items: center;
   display: inline-flex;
-  gap: 6px;
+  gap: 4px;
 }
 
 .ana-grid-legend li.ana-faint {
@@ -624,12 +653,16 @@
   max-height: min(72vh, 1200px);
   max-width: 100%;
   overflow: auto;
+  /* Holds each cell's hidden words inside the scroll: placed against the page, they made a phone's
+     page 434 px wider than the screen (30 October). */
+  position: relative;
 }
 
 .ana-grid {
   border-collapse: separate;
   border-spacing: 0;
   font-size: var(--ana-text-sm);
+  font-variant-numeric: tabular-nums;
   min-width: 100%;
 }
 
@@ -637,7 +670,7 @@
 .ana-grid td {
   border-bottom: 1px solid var(--ana-border-soft);
   border-right: 1px solid var(--ana-border-soft);
-  padding: 8px 10px;
+  padding: 8px 8px;
   text-align: left;
   vertical-align: top;
 }
@@ -691,9 +724,7 @@
   background: var(--ana-card-2);
   color: var(--ana-faint);
   font-size: var(--ana-text-xs);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-weight: 600;
   vertical-align: bottom;
   z-index: 3;
 }
@@ -716,7 +747,7 @@
   color: var(--ana-text);
   display: flex;
   font-size: var(--ana-text-sm);
-  gap: 6px;
+  gap: 4px;
 }
 
 .ana-grid-cell small {
@@ -732,7 +763,11 @@
   color: var(--ana-text);
 }
 
-.ana-grid-cell.is-none > span,
+.ana-grid-cell.is-undrawn::before {
+  color: var(--ana-faint);
+  content: "–";
+}
+
 .ana-grid-cell.is-left-out > span {
   color: var(--ana-faint);
   font-size: var(--ana-text-xs);
@@ -762,9 +797,9 @@
   border-radius: var(--ana-radius-inner);
   display: grid;
   font-size: var(--ana-text-sm);
-  gap: 4px 10px;
+  gap: 4px 8px;
   grid-template-columns: auto minmax(0, 1fr);
-  padding: 10px 12px;
+  padding: 8px 12px;
 }
 
 .ana-task-results .ana-row-select {
@@ -782,7 +817,7 @@
    prose, is halved, and a row's link is no taller than the badge beside it. */
 .ana-dense .ana-table th,
 .ana-dense .ana-table td {
-  padding: 9px 14px;
+  padding: 8px 12px;
   vertical-align: middle;
 }
 

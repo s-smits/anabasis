@@ -76,7 +76,7 @@ describe("a page the server refuses", () => {
       await expect(page.page.getByText("The server refused this page")).toBeVisible();
       await expect(page.page.getByText(/carries the token every request needs/u)).toBeVisible();
       await expect(page.page.getByRole("heading", { level: 1, name: "fixture" })).toHaveCount(0);
-      await expect(page.page.getByRole("combobox", { name: /^Project/u })).toHaveAccessibleName(
+      await expect(page.page.getByRole("combobox", { name: /^Campaign/u })).toHaveAccessibleName(
         /Nothing to select/u,
       );
       expect(await accessibilityViolations(page.page)).toEqual([]);
@@ -86,7 +86,7 @@ describe("a page the server refuses", () => {
 });
 
 describe("a read in flight or failed", () => {
-  test("says the list of campaigns is read until it arrives", async () => {
+  test("shows the campaign a link names while the list of campaigns is still read", async () => {
     const context = await browser.newContext({ viewport: DESKTOP });
     let release = () => {};
     const held = new Promise<void>((resolve) => {
@@ -98,19 +98,38 @@ describe("a read in flight or failed", () => {
     });
     const page = await context.newPage();
     await page.goto(served.url(`campaign=${main}`));
-    await expect(page.getByText("Reading the campaigns")).toBeVisible();
-    await expect(page.getByText("The list of campaigns is loading.")).toBeVisible();
-    release();
-    // The campaign is read only once the list arrives, and at ten parallel files on 14 October that
-    // read took past the 5 s an assertion waits: the page is what is tested here, not the server's pace.
+    // At ten parallel files on 14 October a campaign read took past the 5 s an assertion waits: the
+    // page is what is tested here, not the server's pace.
     await expect(page.getByRole("heading", { level: 1, name: "fixture" })).toBeVisible({
       timeout: ACTION_MS,
     });
+    const picker = page.getByRole("combobox", { name: /^Campaign/u });
+    await expect(picker).toHaveAccessibleName(/Nothing to select/u);
+    release();
+    await expect(picker).toHaveAccessibleName("Campaign fixture vowel-counts", { timeout: ACTION_MS });
+    await context.close();
+  });
+
+  test("says the list of campaigns is read until it arrives where the address names no campaign", async () => {
+    const context = await browser.newContext({ viewport: DESKTOP });
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await context.route("**/api/campaigns", async (route) => {
+      await held;
+      await route.continue();
+    });
+    const page = await context.newPage();
+    await page.goto(served.url(""));
+    await expect(page.getByText("Reading the campaigns")).toBeVisible();
+    release();
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible({ timeout: ACTION_MS });
     await expect(page.getByText("Reading the campaigns")).toHaveCount(0);
     await context.close();
   });
 
-  test("says no campaigns were read where the list fails, and recovers on the next poll", async () => {
+  test("says the list failed beside the campaign a link names, and recovers on the next poll", async () => {
     const context = await browser.newContext({ viewport: DESKTOP });
     await context.route("**/api/campaigns", (route) =>
       route.fulfill({ status: 500, contentType: "application/json", body: '{"error":"the list broke"}' }),
@@ -118,14 +137,16 @@ describe("a read in flight or failed", () => {
     await context.clock.install();
     const page = await context.newPage();
     await page.goto(served.url(`campaign=${main}`));
-    await expect(page.getByText("No campaigns read")).toBeVisible();
-    await expect(page.getByText("the list broke")).toBeVisible();
-    await context.unroute("**/api/campaigns");
-    await nextPolls(page, 1, "/api/campaigns");
     await expect(page.getByRole("heading", { level: 1, name: "fixture" })).toBeVisible({
       timeout: ACTION_MS,
     });
-    await expect(page.getByText("No campaigns read")).toHaveCount(0);
+    await expect(page.getByText("the list broke")).toBeVisible();
+    await context.unroute("**/api/campaigns");
+    await nextPolls(page, 1, "/api/campaigns");
+    await expect(page.getByText("the list broke")).toHaveCount(0);
+    await expect(page.getByRole("combobox", { name: /^Campaign/u })).toHaveAccessibleName(
+      "Campaign fixture vowel-counts",
+    );
     await context.close();
   });
 
@@ -139,7 +160,7 @@ describe("a read in flight or failed", () => {
     await expect(page.getByText("The campaign could not be read")).toBeVisible();
     await expect(page.getByText("the log broke")).toBeVisible();
     // Nothing was shown, so there is nothing a refresh failed over.
-    await expect(page.getByText("Refresh failed.")).toHaveCount(0);
+    await expect(page.getByText("Refresh failed")).toHaveCount(0);
     await context.close();
   });
 
@@ -152,7 +173,7 @@ describe("a read in flight or failed", () => {
       route.fulfill({ status: 500, contentType: "application/json", body: '{"error":"the log broke"}' }),
     );
     await nextPolls(page.page, 1);
-    const failed = page.page.getByText("Refresh failed.");
+    const failed = page.page.getByText("Refresh failed");
     await expect(failed).toBeVisible();
     await expect(page.page.getByText("the log broke")).toBeVisible();
     await expect(title).toBeVisible();
@@ -232,7 +253,6 @@ describe("the keyboard", () => {
     const page = await openPage(browser, served.url(`campaign=${main}`));
     await expect(page.page.getByRole("heading", { level: 1, name: "fixture" })).toBeVisible();
     const controls = [
-      page.page.getByRole("combobox", { name: /^Project/u }),
       page.page.getByRole("combobox", { name: /^Campaign/u }),
       ...["Campaign", "Moves", "Tasks", "Log"].map((name) => nav(page.page).getByRole("button", { name })),
       page.page.getByRole("button", { name: "Collapse" }),
@@ -306,13 +326,11 @@ describe("the page at a phone's width", () => {
   test("opens the pickers inside the window", async () => {
     const page = await openPage(browser, served.url(`campaign=${main}`), PHONE);
     await expect(page.page.getByRole("heading", { level: 1, name: "fixture" })).toBeVisible();
-    for (const name of [/^Project/u, /^Campaign/u]) {
-      await page.page.getByRole("combobox", { name }).click();
-      const list = page.page.getByRole("listbox");
-      await expect(list).toBeInViewport({ ratio: 1 });
-      await page.page.keyboard.press("Escape");
-      await expect(list).toHaveCount(0);
-    }
+    await page.page.getByRole("combobox", { name: /^Campaign/u }).click();
+    const list = page.page.getByRole("listbox");
+    await expect(list).toBeInViewport({ ratio: 1 });
+    await page.page.keyboard.press("Escape");
+    await expect(list).toHaveCount(0);
     await close(page);
   });
 });

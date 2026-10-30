@@ -151,7 +151,7 @@ export function Pending<Value>({ live, what }: { live: Live<Value>; what: string
       </NoSignal>
     );
   }
-  return <NoSignal title={`Reading ${what}`}>The detail is loading.</NoSignal>;
+  return <NoSignal title={`Reading ${what}`}>The detail is loading</NoSignal>;
 }
 
 /** How a solve ended, as a badge says it: a valid answer, a fail by its kind, or a non-result. */

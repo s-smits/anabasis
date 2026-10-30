@@ -28,7 +28,7 @@ import type { Share, Worth } from "../../../src/campaign/climb.ts";
 import type { Handover } from "../../../src/campaign/handover.ts";
 import type { Decided, Ending as CampaignEnding } from "../../../src/campaign/move.ts";
 import type { Seat, Terms } from "../../../src/campaign/opening.ts";
-import type { Tally } from "../../../src/kernel/compare.ts";
+import type { Measures, Tally } from "../../../src/kernel/compare.ts";
 
 export type { Tally };
 import type { EventKind } from "../../../src/kernel/log.ts";
@@ -215,6 +215,11 @@ export interface ComparisonBar {
      *  holds none, which keeps that report's scored-only reading. */
     readonly unbilled: readonly number[];
   } | null;
+  /** Its won and its lost tasks by the measure that carried each (`carriedBy`,
+   *  `src/kernel/compare.ts`). A headline of 28 won, 1 lost, 1 tied read alike whether the new
+   *  harness answered more tasks or answered as many more cheaply; on 30 October one campaign's
+   *  six promotions were all of the second kind. Null before it reports. */
+  readonly carried: { readonly won: Measures; readonly lost: Measures } | null;
   /** The Referee's last ruling of each of its rejections, as the handover counts them, by kind only
    *  while none is withheld. */
   readonly rulings: Rulings;
@@ -452,6 +457,9 @@ export interface ScoredTask {
   /** Why the rulings of its rejections are withheld in both tiers, where they are
    *  (`rulingWithheld`, `server/trace.ts`). */
   readonly withheld: Withheld;
+  /** The measure that carried its win or its loss (`carriedBy`); null for a tie, a task set aside
+   *  and a comparison that has not reported. */
+  readonly carried: keyof Measures | null;
   readonly old: readonly SolveRow[];
   readonly fresh: readonly SolveRow[];
 }

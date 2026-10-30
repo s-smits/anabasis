@@ -2,12 +2,13 @@ import { useCallback } from "react";
 import type { Decided } from "../../../../src/campaign/move.ts";
 import { plural } from "../../../../src/meta/text.ts";
 import { ComparisonsChart } from "../components/charts/comparisons.tsx";
-import { ShareKey, SpendChart, ValidShareChart } from "../components/charts/small.tsx";
+import { CarriedChart, CarriedKey, SpendChart } from "../components/charts/small.tsx";
 import { MetricCard, MetricGrid, Section } from "../components/layout.tsx";
+import { shortName } from "../components/project-sidebar.tsx";
 import { Badge, Card, Disclosure, NoSignal } from "../components/primitives.tsx";
 import type { CampaignReading, Tone } from "../models.ts";
 import type { PaneProps } from "../route.ts";
-import { digestText, pText, tallyText } from "./campaign-data.ts";
+import { carriedText, digestText, pText, tallyText } from "./campaign-data.ts";
 import { HarnessStrip } from "./campaign-harnesses.tsx";
 import { money, percent, time } from "./format.ts";
 
@@ -59,6 +60,9 @@ const READING_TONE = new Map<string, Tone>([
 
 function Head({ reading }: { reading: CampaignReading }) {
   const { row } = reading;
+  // The eyebrow names the project, which opened the names of 117 of 153 recorded campaigns on
+  // 30 October, so the title drops it and the full name stands below in mono, as commands take it.
+  const titled = shortName(row);
   const status = row.ending === null ? row.status : `ended: ${row.ending.ending}`;
   const tone: Tone =
     row.status === "running" ? "info" : row.ending?.ending === "environment" ? "bad" : "neutral";
@@ -68,7 +72,8 @@ function Head({ reading }: { reading: CampaignReading }) {
         <p className="ana-eyebrow" title={row.project}>
           {row.project}
         </p>
-        <h1>{row.name}</h1>
+        <h1>{titled}</h1>
+        {titled === row.name ? null : <p className="ana-campaign-name">{row.name}</p>}
       </div>
       <div className="ana-campaign-status">
         <Badge tone={tone}>{status}</Badge>
@@ -80,6 +85,14 @@ function Head({ reading }: { reading: CampaignReading }) {
       </div>
     </header>
   );
+}
+
+/** A move's reason as its first clause, the rest behind a disclosure: until 30 October the card
+ *  printed the table's reason, the open sessions and the Builder's lead as one run-on line. */
+function reasonOf(line: string) {
+  const cut = line.indexOf("; ");
+  if (cut < 0) return line;
+  return <Disclosure title={line.slice(0, cut)}>{line.slice(cut + 2)}</Disclosure>;
 }
 
 function Readouts({ reading }: { reading: CampaignReading }) {
@@ -116,7 +129,9 @@ function Readouts({ reading }: { reading: CampaignReading }) {
         detail={
           lastReading === null
             ? "no comparison has reported"
-            : `${lastReading.reading} in ${lastReading.id}, won–lost–tied, ${pText(lastBar?.p ?? null)}`
+            : `${lastReading.reading} in ${lastReading.id}, won–lost–tied, ${pText(lastBar?.p ?? null)}${
+                lastBar?.carried == null ? "" : `; won on ${carriedText(lastBar.carried.won)}`
+              }`
         }
         tone={lastReading === null ? "neutral" : (READING_TONE.get(lastReading.reading) ?? "neutral")}
       />
@@ -133,7 +148,9 @@ function Readouts({ reading }: { reading: CampaignReading }) {
           detail={
             nextMove === null
               ? "the decision table could not be asked"
-              : `${nextMove.why}${open}${reading.attended ? (ATTENDED_WAITS.get(nextMove.move) ?? "") : ""}${advised ? "; the Builder leads this campaign and may make another move" : ""}`
+              : reasonOf(
+                  `${nextMove.why}${open}${reading.attended ? (ATTENDED_WAITS.get(nextMove.move) ?? "") : ""}${advised ? "; the Builder leads this campaign and may make another move" : ""}`,
+                )
           }
           tone={nextMove?.move === "end" ? "warn" : "neutral"}
         />
@@ -274,7 +291,7 @@ export function CampaignPane({ reading, navigation }: PaneProps) {
   const { push } = navigation;
   const open = useCallback((index: number) => push({ pane: "moves", move: index }), [push]);
   const { comparisons, spend, row } = reading;
-  const shares = comparisons.some((bar) => bar.valid !== null);
+  const carried = comparisons.some((bar) => bar.carried !== null);
   return (
     <div className="ana-campaign">
       <Head reading={reading} />
@@ -302,15 +319,15 @@ export function CampaignPane({ reading, navigation }: PaneProps) {
       >
         <HarnessStrip reading={reading} navigation={navigation} />
       </Section>
-      {shares || spend.length > 0 ? (
+      {carried || spend.length > 0 ? (
         <div className="ana-campaign-pair">
-          {shares ? (
+          {carried ? (
             <Card className="ana-campaign-small">
               <div className="ana-section-head">
-                <h2>Valid share</h2>
-                <ShareKey />
+                <h2>Wins by measure</h2>
+                <CarriedKey />
               </div>
-              <ValidShareChart bars={comparisons} />
+              <CarriedChart bars={comparisons} />
             </Card>
           ) : null}
           {spend.length > 0 ? (

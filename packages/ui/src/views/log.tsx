@@ -34,7 +34,7 @@ export function LogPane({ reading, navigation }: PaneProps) {
         <>
           {live.current || live.error === null ? null : (
             <Callout tone="bad">
-              <strong>The page could not be read.</strong>
+              <strong>The page could not be read</strong>
               <p>{live.error}</p>
             </Callout>
           )}

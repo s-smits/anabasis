@@ -263,7 +263,7 @@ export function drawn(page: Page): Promise<string> {
     if (main === null) return "no main";
     if (document.querySelector("[aria-busy='true']") !== null) return "busy";
     if (main.querySelector("h1, h2, table") === null) return `blank: ${main.innerText.slice(0, 80)}`;
-    if (document.body.innerText.includes("is loading.")) return "loading";
+    if (document.body.innerText.includes("is loading")) return "loading";
     return "settled";
   });
 }

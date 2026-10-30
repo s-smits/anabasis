@@ -10,7 +10,8 @@ import { time } from "./format.ts";
  *
  * The page shown may be the one before the page asked for, while that one is read: the paging
  * steps from the offset asked for, so that two quick clicks on Next go two pages on, and the table
- * says it is reading once the read is late.
+ * says it is reading once the read is late. Latest goes to the last page in one step, where a
+ * running campaign writes: a log of 1,495 events took fourteen clicks on Next to reach it.
  */
 
 export const ALL = "all";
@@ -45,6 +46,7 @@ export function LogList({
   onOpen: (index: number) => void;
 }) {
   const last = Math.min(page.offset + page.events.length, page.matching);
+  const lastPage = Math.max(0, Math.floor((page.matching - 1) / LOG_PAGE_SIZE) * LOG_PAGE_SIZE);
   const filtered = filters.kind !== ALL || filters.session !== ALL;
   return (
     <>
@@ -68,7 +70,7 @@ export function LogList({
         ) : null}
       </Filters>
       {page.events.length === 0 ? (
-        <NoSignal title="No matching event">Change the filters or clear them.</NoSignal>
+        <NoSignal title="No matching event">Change the filters or clear them</NoSignal>
       ) : (
         <div className={`ana-dense ana-log${reading ? " is-reading" : ""}`} aria-busy={reading}>
           <DataTable>
@@ -123,6 +125,9 @@ export function LogList({
           onClick={() => onOffset(offset + LOG_PAGE_SIZE)}
         >
           Next
+        </Button>
+        <Button disabled={offset >= lastPage} onClick={() => onOffset(lastPage)}>
+          Latest
         </Button>
       </div>
     </>

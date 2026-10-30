@@ -114,7 +114,7 @@ export function SessionDetailView({
       {move.step === "builder" ? (
         <Section title={`Practice solves (${String(detail.solves.length)})`}>
           {detail.solves.length === 0 ? (
-            <p className="ana-faint">No practice solve on record.</p>
+            <p className="ana-faint">No practice solve on record</p>
           ) : (
             <SolveTable
               rows={detail.solves}

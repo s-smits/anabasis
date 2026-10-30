@@ -4,7 +4,7 @@ import { Callout } from "./components/layout.tsx";
 import { Badge, NoSignal } from "./components/primitives.tsx";
 import { ProjectSidebar } from "./components/project-sidebar.tsx";
 import type { Live } from "./live.ts";
-import type { CampaignList, CampaignReading, CampaignRow, Issue } from "./models.ts";
+import type { CampaignList, CampaignReading, Issue } from "./models.ts";
 import type { Navigation, Pane, PaneProps, Route } from "./route.ts";
 import { respelled, SpelledAddress } from "./spelling.ts";
 import { CampaignPane } from "./views/campaign.tsx";
@@ -15,7 +15,7 @@ import { TasksPane } from "./views/tasks.tsx";
 import { useWaited } from "./waited.ts";
 
 /*
- * The page around the panes: the sidebar with its two pickers and the four panes, the line that
+ * The page around the panes: the sidebar with its campaign picker and the four panes, the line that
  * says which tier the server answers in and which worktree the campaign is in, the selected pane,
  * and the inspector on the right. It holds no data of its own: `App.tsx` reads the campaign list
  * and the campaign and hands their answers here, so the whole shell renders from plain values; a
@@ -31,13 +31,9 @@ import { useWaited } from "./waited.ts";
  * until its replacement is ready.
  */
 
-/** The project and the campaign the page shows, and the choices beside them. */
+/** The project and the campaign the page shows. */
 interface Selection {
-  /** Every project, the one with the newest campaign first. */
-  readonly projects: readonly string[];
   readonly project: string | null;
-  /** The project's campaigns, newest first. */
-  readonly campaigns: readonly CampaignRow[];
   readonly campaign: string | null;
 }
 
@@ -56,16 +52,16 @@ const PANES: Readonly<Record<Pane, ComponentType<PaneProps>>> = {
 
 const TIER_LABEL = { default: "default tier", exam: "exam side" } as const;
 
-/** The selection a route names, or the newest where it names none the list holds: the route's
- *  campaign decides the project where the route names no project. */
+/** The selection a route names, or the newest where it names none the list holds. The route's
+ *  campaign decides the project; a route that names a project alone selects its newest campaign.
+ *  Before the list is read the route's campaign stands as it is, so the campaign a link names is
+ *  read at once rather than after the whole list (176 campaigns on 30 October). */
 export function selectionOf(list: CampaignList | null, route: Route): Selection {
-  const rows = list?.campaigns ?? [];
-  const projects = [...new Set(rows.map((row) => row.project))];
+  if (list === null) return { project: route.project, campaign: route.campaign };
+  const rows = list.campaigns;
   const named = rows.find((row) => row.key === route.campaign);
-  const project = projects.find((each) => each === route.project) ?? named?.project ?? projects[0] ?? null;
-  const campaigns = rows.filter((row) => row.project === project);
-  const campaign = campaigns.find((row) => row.key === route.campaign)?.key ?? campaigns[0]?.key ?? null;
-  return { projects, project, campaigns, campaign };
+  const chosen = named ?? rows.find((row) => row.project === route.project) ?? rows[0];
+  return { project: chosen?.project ?? null, campaign: chosen?.key ?? null };
 }
 
 function Issues({ issues }: { issues: readonly Issue[] }) {
@@ -124,14 +120,14 @@ function Page({
       </NoSignal>
     );
   }
-  if (campaigns.data === null) {
+  if (fresh !== null) return <CampaignView reading={fresh} navigation={navigation} />;
+  if (campaigns.data === null && (navigation.route.campaign === null || campaigns.error !== null)) {
     return (
       <NoSignal title={campaigns.error === null ? "Reading the campaigns" : "No campaigns read"}>
-        {campaigns.error ?? "The list of campaigns is loading."}
+        {campaigns.error ?? "The list of campaigns is loading"}
       </NoSignal>
     );
   }
-  if (fresh !== null) return <CampaignView reading={fresh} navigation={navigation} />;
   if (keeping && !waited) {
     return (
       <div className="ana-pending" inert aria-busy="true">
@@ -141,7 +137,7 @@ function Page({
   }
   return (
     <NoSignal title={reading.error === null ? "Reading the campaign" : "The campaign could not be read"}>
-      {reading.error ?? "The selected campaign is loading."}
+      {reading.error ?? "The selected campaign is loading"}
     </NoSignal>
   );
 }
@@ -185,12 +181,7 @@ export function Shell({
         Skip to the campaign
       </a>
       <ProjectSidebar
-        projects={selection.projects}
-        project={selection.project}
-        onProject={(project) => {
-          if (project !== selection.project) push({ project });
-        }}
-        campaigns={selection.campaigns}
+        campaigns={campaigns.data?.campaigns ?? []}
         campaign={selection.campaign}
         onCampaign={(campaign) => push({ campaign })}
         pane={route.pane}
@@ -202,7 +193,7 @@ export function Shell({
         <div className="ana-page">
           {error === null || shown === null ? null : (
             <Callout tone="bad">
-              <strong>Refresh failed.</strong>
+              <strong>Refresh failed</strong>
               <p>{error}</p>
             </Callout>
           )}

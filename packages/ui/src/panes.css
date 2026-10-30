@@ -172,11 +172,25 @@
   margin-left: 4px;
 }
 
+/* A row of facts shares its width out evenly; a fact in prose (`is-wide`) takes five shares, so that
+   six facts read 10/10/10/10/10/50 (operator, 30 October). */
 .ana-facts--row {
   background: var(--ana-card);
   border: 1px solid var(--ana-border);
   border-radius: var(--ana-radius);
   grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+}
+
+@media (min-width: 900px) {
+  .ana-facts--row:has(> .is-wide) {
+    grid-auto-columns: minmax(0, 1fr);
+    grid-auto-flow: column;
+    grid-template-columns: none;
+  }
+
+  .ana-facts--row > .is-wide {
+    grid-column: span 5;
+  }
 }
 
 .ana-facts--row > div {
@@ -658,10 +672,12 @@
   position: relative;
 }
 
+/* A row is 44 px: 30 tasks took two screens of a laptop at 66 px a row (operator, 30 October). */
 .ana-grid {
   border-collapse: separate;
   border-spacing: 0;
   font-size: var(--ana-text-sm);
+  line-height: 1.3;
   font-variant-numeric: tabular-nums;
   min-width: 100%;
 }
@@ -670,7 +686,7 @@
 .ana-grid td {
   border-bottom: 1px solid var(--ana-border-soft);
   border-right: 1px solid var(--ana-border-soft);
-  padding: 8px 8px;
+  padding: 4px 8px;
   text-align: left;
   vertical-align: top;
 }
@@ -701,7 +717,6 @@
   display: block;
   font-size: var(--ana-text-xs);
   font-weight: 400;
-  margin-top: 2px;
   white-space: nowrap;
 }
 
@@ -734,6 +749,10 @@
   padding: 0;
 }
 
+.ana-grid tbody tr {
+  height: 44px;
+}
+
 .ana-grid tbody tr:last-child > * {
   border-bottom: 0;
 }
@@ -754,7 +773,6 @@
   color: var(--ana-dim);
   display: block;
   font-size: var(--ana-text-xs);
-  margin-top: 2px;
 }
 
 /* A scored cell is tinted by its outcome, and the dim grey of the counts fell under 4.5:1 on the
@@ -830,6 +848,11 @@
 
 .ana-log .ana-table td {
   white-space: nowrap;
+}
+
+/* What happened is the line's prose, so it wraps and the times stay on one line. */
+.ana-log .ana-table td.ana-log-what {
+  white-space: normal;
 }
 
 .ana-log .ana-table td.ana-mono {

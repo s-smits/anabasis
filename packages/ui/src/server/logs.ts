@@ -238,6 +238,18 @@ export function loaded(found: Found): Loaded {
   return fresh;
 }
 
+/** Every log the server can read, read as `loaded` reads it, with a turn of the event loop after
+ *  each log it read again. A cold list read 1.7 GB of 176 logs in 4.4 s on 30 October, and a
+ *  handler holds the one thread it runs on, so the selected campaign, asked beside the list, waited
+ *  for all of it; between two logs it is answered at once. */
+export async function readAll(reading: Pick<Reading, "repo" | "trees">): Promise<void> {
+  for (const each of campaignsFound(reading).found) {
+    const was = kept.get(each.path);
+    loaded(each);
+    if (kept.get(each.path) !== was) await Bun.sleep(0);
+  }
+}
+
 /** The campaign `key` names and its log, or a 404 where none does; a log that cannot be read is
  *  refused with what was wrong. */
 export function campaignAt(reading: Reading, key: string): Opened {

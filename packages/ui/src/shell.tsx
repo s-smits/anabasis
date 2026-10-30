@@ -1,11 +1,11 @@
 import { type ComponentType, memo, useState } from "react";
 import { AnabasisMark } from "./components/brand.tsx";
-import { Callout } from "./components/layout.tsx";
+import { Callout, IssueCallout } from "./components/layout.tsx";
 import { Badge, NoSignal } from "./components/primitives.tsx";
 import { ProjectSidebar } from "./components/project-sidebar.tsx";
 import type { Live } from "./live.ts";
 import type { CampaignList, CampaignReading, Issue } from "./models.ts";
-import type { Navigation, Pane, PaneProps, Route } from "./route.ts";
+import { kept, type Navigation, type Pane, type PaneProps, type Route } from "./route.ts";
 import { respelled, SpelledAddress } from "./spelling.ts";
 import { CampaignPane } from "./views/campaign.tsx";
 import { Inspector } from "./views/inspector.tsx";
@@ -43,6 +43,11 @@ interface Drawn {
   readonly navigation: Navigation;
 }
 
+/** The issues this browser dismissed, one `source: message` a line. The warning that the server runs
+ *  in another checkout stood over every pane until it was (operator, 30 October); an issue of another
+ *  worktree names another source, so it shows. */
+const DISMISSED = "ana.dismissed";
+
 const PANES: Readonly<Record<Pane, ComponentType<PaneProps>>> = {
   campaign: CampaignPane,
   moves: MovesPane,
@@ -65,11 +70,17 @@ export function selectionOf(list: CampaignList | null, route: Route): Selection 
 }
 
 function Issues({ issues }: { issues: readonly Issue[] }) {
-  return issues.map((issue) => (
-    <Callout key={`${issue.source}:${issue.message}`} tone={issue.level === "error" ? "bad" : "warn"}>
-      {issue.source}: {issue.message}
-    </Callout>
-  ));
+  const [dismissed, setDismissed] = useState(() => new Set((kept(DISMISSED, null) ?? "").split("\n")));
+  return issues.flatMap((issue) => {
+    const said = `${issue.source}: ${issue.message}`;
+    if (dismissed.has(said)) return [];
+    const dismiss = () => {
+      const next = new Set(dismissed).add(said);
+      kept(DISMISSED, [...next].filter(Boolean).join("\n"));
+      setDismissed(next);
+    };
+    return [<IssueCallout key={said} issue={issue} onDismiss={dismiss} />];
+  });
 }
 
 /** The pane of one campaign's reading, with the tier and the issues above it. Memoised, so that the
@@ -181,7 +192,7 @@ export function Shell({
         Skip to the campaign
       </a>
       <ProjectSidebar
-        campaigns={campaigns.data?.campaigns ?? []}
+        campaigns={campaigns.data?.campaigns ?? (campaigns.error === null ? null : [])}
         campaign={selection.campaign}
         onCampaign={(campaign) => push({ campaign })}
         pane={route.pane}

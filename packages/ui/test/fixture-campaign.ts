@@ -407,6 +407,8 @@ function examined(w: Writer, session: string, ids: readonly string[], refused: r
       },
     });
     if (refused.includes(id)) {
+      // The author's answer is on record for a refused task too, and stays on the exam side.
+      w.record("task.feasible", { version, session, answer: { count: `${MARKERS.answer}-${id}` } });
       w.record("task.gate", {
         version,
         gate: 1,

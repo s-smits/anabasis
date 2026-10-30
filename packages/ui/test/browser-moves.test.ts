@@ -9,6 +9,8 @@ import type { Browser, Page } from "@playwright/test";
 import type { Move } from "../src/models.ts";
 import {
   accessibilityViolations,
+  choose,
+  chooser,
   expect,
   expectQuiet,
   launchBrowser,
@@ -20,6 +22,7 @@ import {
   serveFixture,
   type Viewing,
 } from "./browser.ts";
+import { tabTo } from "./browser-watch.ts";
 import { answersOver } from "./fixture-campaign.ts";
 
 const SEARCH = "Search moves by id, kind or harness";
@@ -77,6 +80,22 @@ async function factsOf(page: Page, scope = "main"): Promise<Record<string, strin
   return Object.fromEntries(pairs);
 }
 
+/** The list's count of moves shown, all 17 or so many of them. */
+function shownMoves(page: Page, count = 17) {
+  const status = page
+    .getByRole("main")
+    .getByRole("status")
+    .filter({ hasText: /\bmoves$/u });
+  return expect(status).toHaveText(count === 17 ? "17 moves" : `${String(count)} of 17 moves`);
+}
+
+/** The Kind choice's words for a step (`FILTER_LABELS`, `moves-list.tsx`). */
+const KIND = {
+  examiner: "Examiner sessions",
+  builder: "Builder sessions",
+  comparison: "Comparisons",
+} as const;
+
 async function expectAccessible(page: Page): Promise<void> {
   expect(await accessibilityViolations(page, "main")).toEqual([]);
 }
@@ -85,7 +104,7 @@ describe("the list of moves", () => {
   test("lists every move in log order, its promotion dividers and its facts in separate columns", async () => {
     const opened = await openMoves();
     const { page } = opened;
-    await expect(page.getByRole("columnheader", { name: "Moves (17)" })).toBeVisible();
+    await shownMoves(page);
     const ids = await page.locator("main tbody .ana-row-select").allTextContents();
     expect(ids).toEqual(moves.map((move) => move.id));
     const rows = await page.locator("main tbody tr").allTextContents();
@@ -101,7 +120,7 @@ describe("the list of moves", () => {
     expect(await page.locator("main").innerHTML()).not.toMatch(/epoch|climb/u);
     await expectAccessible(page);
     const headers = await page.locator("main thead th").allTextContents();
-    expect(headers).toEqual(["Moves (17)", "Stands", "Handed over", "Cost", "Ran", "Started"]);
+    expect(headers).toEqual(["Move", "Result", "Handed over", "Cost", "Ran", "Started"]);
     const cells = await rowOf(page, indexOf("b-1", "comparison"))
       .locator("xpath=ancestor::tr")
       .locator("td")
@@ -133,20 +152,18 @@ describe("the list of moves", () => {
       ["10615418", ["b-4", "b-4"]],
     ] as const) {
       await search.fill(query);
-      await expect(
-        page.getByRole("columnheader", { name: `Moves (${String(expected.length)})` }),
-      ).toBeVisible();
+      await shownMoves(page, expected.length);
       expect(await ids()).toEqual([...expected]);
       expect(await page.locator("main tr.ana-move-divider").count()).toBe(0);
     }
     await search.fill("nothing-like-this");
-    await expect(page.getByText("No matching move")).toBeVisible();
+    await expect(page.getByText("No matching moves")).toBeVisible();
     await expect(page.getByRole("button", { name: "Clear filters" })).toBeVisible();
     await expect(page.locator("main table")).toHaveCount(0);
     await expectAccessible(page);
     await page.getByRole("button", { name: "Clear filters" }).click();
     await expect(search).toHaveValue("");
-    await expect(page.getByRole("columnheader", { name: "Moves (17)" })).toBeVisible();
+    await shownMoves(page);
     await expect(page.getByRole("button", { name: "Clear filters" })).toHaveCount(0);
     expectQuiet(opened);
     await opened.context.close();
@@ -155,19 +172,19 @@ describe("the list of moves", () => {
   test("filters by kind, and clears the kind with the search", async () => {
     const opened = await openMoves();
     const { page } = opened;
-    const kind = page.getByRole("combobox", { name: "Kind" });
+    const kind = chooser(page, "Kind");
     const count = (step: Move["step"]) => moves.filter((move) => move.step === step).length;
     for (const step of ["examiner", "builder", "comparison"] as const) {
-      await kind.selectOption(step);
-      await expect(page.getByRole("columnheader", { name: `Moves (${String(count(step))})` })).toBeVisible();
+      await choose(page, "Kind", KIND[step]);
+      await shownMoves(page, count(step));
       const ids = await page.locator("main tbody .ana-row-select").allTextContents();
       expect(ids).toEqual(moves.flatMap((move) => (move.step === step ? [move.id] : [])));
     }
     await page.getByRole("searchbox", { name: SEARCH }).fill("b-4");
-    await expect(page.getByRole("columnheader", { name: "Moves (1)" })).toBeVisible();
+    await shownMoves(page, 1);
     await page.getByRole("button", { name: "Clear filters" }).click();
-    await expect(kind).toHaveValue("all");
-    await expect(page.getByRole("columnheader", { name: "Moves (17)" })).toBeVisible();
+    await expect(kind).toHaveText("Every kind");
+    await shownMoves(page);
     expectQuiet(opened);
     await opened.context.close();
   });
@@ -179,7 +196,7 @@ describe("a move's detail in place", () => {
     const { page } = opened;
     const search = page.getByRole("searchbox", { name: SEARCH });
     await search.fill("b-1");
-    await page.getByRole("combobox", { name: "Kind" }).selectOption("comparison");
+    await choose(page, "Kind", KIND.comparison);
     const row = rowOf(page, indexOf("b-1", "comparison"));
     await row.click();
     await expect(detailHeading(page, "b-1 Comparison")).toBeVisible();
@@ -191,8 +208,8 @@ describe("a move's detail in place", () => {
     await page.getByRole("button", { name: "Back to moves" }).click();
     await expect(row).toBeFocused();
     await expect(search).toHaveValue("b-1");
-    await expect(page.getByRole("combobox", { name: "Kind" })).toHaveValue("comparison");
-    await expect(page.getByRole("columnheader", { name: "Moves (1)" })).toBeVisible();
+    await expect(chooser(page, "Kind")).toHaveText(KIND.comparison);
+    await shownMoves(page, 1);
     expect(routeParameters(page).move).toBeUndefined();
     expectQuiet(opened);
     await opened.context.close();
@@ -217,10 +234,9 @@ describe("a move's detail in place", () => {
   test("is reached, opened and left from the keyboard, with the focus drawn", async () => {
     const opened = await openMoves();
     const { page } = opened;
-    await page.getByRole("combobox", { name: "Kind" }).focus();
-    await page.keyboard.press("Tab");
+    // The search, the choices and the sortable heads come first in the tab order.
     const first = rowOf(page, indexOf("x-1", "examiner"));
-    await expect(first).toBeFocused();
+    await tabTo(page, first);
     const ring = await first.evaluate((element) => {
       const style = getComputedStyle(element);
       return {
@@ -356,7 +372,7 @@ describe("the Moves pane at a phone's width", () => {
   test("scrolls its tables sideways inside their surface, never the page", async () => {
     const opened = await openMoves(null, PHONE);
     const { page } = opened;
-    await expect(page.getByRole("columnheader", { name: "Moves (17)" })).toBeVisible();
+    await shownMoves(page);
     const overflow = () =>
       page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     const wrapScrolls = () =>

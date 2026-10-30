@@ -14,6 +14,12 @@
  * a change of pane clears them and closes the inspector unless it names them itself: kept, a solve
  * opened in Moves came back as the Tasks pane's open detail with its grid hidden (seen live,
  * 11 October).
+ *
+ * The browser keeps the token and the campaign a URL last named. A URL without the token reads
+ * with the kept one, so the bare address opens the page (a second tab opened bare was refused,
+ * 30 October). A URL that names neither a project nor a campaign opens the kept campaign, read at
+ * once beside the list rather than after it: a cold list took 4.4 s that day, and the newest
+ * campaign is known only once the list is read.
  */
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import type { CampaignReading } from "./models.ts";
@@ -102,6 +108,18 @@ const INSIDE_CAMPAIGN = {
 
 const listeners = new Set<() => void>();
 
+/** `value` where the URL names it, kept in this browser's storage under `key`; where it names
+ *  none, the value kept there. Closed storage keeps nothing and gives null. */
+export function kept(key: string, value: string | null): string | null {
+  try {
+    if (value === null) return window.localStorage.getItem(key);
+    window.localStorage.setItem(key, value);
+  } catch {
+    // A page rendered without a window, or a browser that keeps no storage, reads the URL alone.
+  }
+  return value;
+}
+
 /** The route a query string names. An unknown pane reads as the Campaign pane, and a move or an
  *  event that is not a whole number from zero as none. */
 function routeOf(search: string): Route {
@@ -117,7 +135,7 @@ function routeOf(search: string): Route {
   const pane = PANES.find((each) => each === query.get("pane")) ?? "campaign";
   return {
     project: named("project"),
-    campaign: named("campaign"),
+    campaign: named("project") === null ? kept("ana.campaign", named("campaign")) : named("campaign"),
     pane,
     move: place("move"),
     solve: named("solve"),
@@ -126,7 +144,7 @@ function routeOf(search: string): Route {
     file: named("file"),
     diff: named("diff"),
     event: place("event"),
-    token: named(TOKEN_PARAMETER),
+    token: kept("ana.token", named(TOKEN_PARAMETER)),
   };
 }
 

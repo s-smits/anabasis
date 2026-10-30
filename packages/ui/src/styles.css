@@ -213,7 +213,6 @@ button.ana-hash.is-revealed {
   border-right: 1px solid var(--ana-border-soft);
   display: flex;
   flex-direction: column;
-  gap: 4px;
   height: 100vh;
   left: 0;
   overflow: visible;
@@ -231,7 +230,6 @@ button.ana-hash.is-revealed {
 .ana-sidebar-header {
   display: grid;
   gap: 8px;
-  padding-bottom: 4px;
 }
 
 .ana-brand {
@@ -288,7 +286,7 @@ button.ana-hash.is-revealed {
   border-bottom: 1px solid var(--ana-border-soft);
   display: grid;
   gap: 4px;
-  padding: 12px 8px 16px;
+  padding: 8px 8px 12px;
   position: relative;
 }
 
@@ -329,6 +327,12 @@ button.ana-hash.is-revealed {
   cursor: not-allowed;
 }
 
+/* The list opens under its own box, wherever the label stands: above it in the sidebar, beside
+   it in a filter row. */
+.ana-picker-field {
+  position: relative;
+}
+
 .ana-picker-value {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -340,14 +344,29 @@ button.ana-hash.is-revealed {
   border: 1px solid var(--ana-border);
   border-radius: 8px;
   box-shadow: 0 16px 48px rgb(0 0 0 / 45%);
-  left: 8px;
+  left: 0;
   max-height: min(420px, 60dvh);
   overflow-y: auto;
   padding: 4px;
   position: absolute;
   width: min(420px, calc(100vw - 40px));
-  top: calc(100% - 4px);
+  top: calc(100% + 8px);
   z-index: 40;
+}
+
+.ana-picker-filter {
+  align-items: center;
+  color: var(--ana-faint);
+  display: flex;
+  font-size: var(--ana-text-xs);
+  gap: 8px;
+  margin-bottom: 4px;
+  white-space: nowrap;
+}
+
+.ana-picker-note {
+  color: var(--ana-faint);
+  display: block;
 }
 
 .ana-picker-group + .ana-picker-group {
@@ -406,8 +425,41 @@ button.ana-hash.is-revealed {
   opacity: 1;
 }
 
-.ana-sidebar.is-collapsed .ana-picker {
+/* The trigger's icon shows only where the sidebar is collapsed, and is then the whole trigger, one
+   nav row high, opening the list beside the sidebar. Until 30 October the collapsed sidebar hid
+   the picker, so another campaign took opening it first (operator). */
+.ana-picker-icon {
   display: none;
+}
+
+@media (min-width: 761px) {
+  .ana-sidebar.is-collapsed .ana-picker {
+    padding: 0;
+  }
+
+  .ana-sidebar.is-collapsed :is(.ana-picker-label, .ana-picker-value, .ana-picker-button > svg:last-child) {
+    display: none;
+  }
+
+  .ana-sidebar.is-collapsed .ana-picker-button {
+    grid-template-columns: 1fr;
+    height: 44px;
+    justify-items: center;
+    /* The width of a nav row's left line, so the icon stands over theirs. */
+    padding-left: 2px;
+  }
+
+  .ana-sidebar.is-collapsed .ana-picker-icon {
+    display: block;
+    height: 15px;
+    width: 15px;
+  }
+
+  /* Past the sidebar's padding and border, and 8 px clear of its edge. */
+  .ana-sidebar.is-collapsed .ana-picker-panel {
+    left: calc(100% + 21px);
+    top: 0;
+  }
 }
 
 .ana-section-intro {
@@ -468,16 +520,17 @@ button.ana-hash.is-revealed {
  * A flat list of buttons needs no group state. A <details open={derivedState}> group would
  * override the browser's toggle, so a reader who collapsed it would see it open again on the
  * next render.
+ *
+ * The rows touch, and the first touches the picker's rule, so their left lines read as one lane
+ * (operator, 30 October).
  */
 .ana-sidebar-nav {
   display: grid;
-  gap: 2px;
-  padding: 4px 0;
 }
 
 /* The active row keeps the altimeter tick as its location marker. */
 .ana-nav-item {
-  align-items: baseline;
+  align-items: center;
   background: none;
   border: 0;
   border-left: 2px solid var(--ana-border-soft);
@@ -486,7 +539,8 @@ button.ana-hash.is-revealed {
   display: grid;
   gap: 8px;
   grid-template-columns: 16px minmax(0, 1fr) auto;
-  padding: 12px 8px;
+  height: 44px;
+  padding: 0 8px;
   text-align: left;
   width: 100%;
 }
@@ -622,6 +676,12 @@ button.ana-hash.is-revealed {
   font-size: var(--ana-text-xs);
   font-weight: 600;
   margin: 0;
+}
+
+/* A section's title is 14 px, a step of Word's sizes above the 11.5 px it was (operator, 30 October). */
+.ana-section h2,
+.ana-section-head h2 {
+  font-size: 14px;
 }
 
 .ana-card {
@@ -768,6 +828,7 @@ button.ana-hash.is-revealed {
 }
 
 .ana-callout {
+  overflow-wrap: anywhere;
   background: var(--ana-card-2);
   border: 1px solid var(--ana-border-soft);
   border-radius: var(--ana-radius-inner);
@@ -775,6 +836,45 @@ button.ana-hash.is-revealed {
   font-size: var(--ana-text-sm);
   line-height: 1.6;
   padding: 12px 16px;
+}
+
+.ana-callout:has(> .ana-callout-tools) {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.ana-callout-source {
+  color: var(--ana-faint);
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--ana-text-xs);
+  margin-top: 4px;
+}
+
+.ana-callout-tools {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+
+.ana-callout-tool {
+  background: transparent;
+  border: 0;
+  color: var(--ana-faint);
+  min-height: 0;
+  padding: 2px;
+}
+
+.ana-callout-tool:hover,
+.ana-callout-tool[aria-expanded="true"] {
+  color: var(--ana-text);
+}
+
+.ana-callout-tool svg {
+  height: 16px;
+  width: 16px;
 }
 
 .ana-callout b {
@@ -974,10 +1074,6 @@ button.ana-hash.is-revealed {
     display: none;
   }
 
-  .ana-sidebar.is-collapsed .ana-picker {
-    display: grid;
-  }
-
   /* One column a pane: five columns once held a fifth item, and left "Campaign" too narrow a
      cell, so its label ran into the next. */
   .ana-sidebar-nav {
@@ -992,6 +1088,7 @@ button.ana-hash.is-revealed {
     display: flex;
     flex-direction: column;
     gap: 4px;
+    height: auto;
     min-width: 0;
     padding: 8px 2px;
   }

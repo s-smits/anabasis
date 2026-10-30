@@ -1,8 +1,6 @@
-import { Fragment, useState } from "react";
-import { Badge, Button, DataTable, NoSignal } from "../components/primitives.tsx";
-import { matchesTerms } from "../components/tool-call.tsx";
+import { Badge, NoSignal } from "../components/primitives.tsx";
+import { type Column, Table } from "../components/table.tsx";
 import type { CampaignReading, Move, Promotion } from "../models.ts";
-import { Filters, Search, Select } from "./controls.tsx";
 import { harnessLabel, type Toned } from "./drill.tsx";
 import { duration, money, time } from "./format.ts";
 import { plural } from "../../../../src/meta/text.ts";
@@ -22,7 +20,6 @@ const KINDS: Readonly<Record<Kind, string>> = {
   comparison: "Comparison",
 };
 const FILTER_LABELS = new Map([
-  ["all", "All moves"],
   ["examiner", "Examiner sessions"],
   ["builder", "Builder sessions"],
   ["comparison", "Comparisons"],
@@ -132,49 +129,10 @@ function PromotionRow({ promotion, reading }: { promotion: Promotion; reading: C
   );
 }
 
-function MoveRow({
-  move,
-  reading,
-  onOpen,
-}: {
-  move: Move;
-  reading: CampaignReading;
-  onOpen: (index: number) => void;
-}) {
-  const standing = standingOf(move);
-  return (
-    <tr>
-      <td>
-        <button
-          type="button"
-          className="ana-row-select"
-          data-row={move.index}
-          onClick={() => onOpen(move.index)}
-        >
-          {move.id}
-        </button>
-        <small
-          className="ana-cell-note"
-          title={move.named === null ? undefined : `${move.named.code}: ${move.named.why}`}
-        >
-          {kindOf(move, reading)}
-          {move.named === null ? "" : ` · ${ROW_WORD.get(move.named.code) ?? `row ${move.named.code}`}`}
-        </small>
-      </td>
-      <td>
-        <Badge tone={standing.tone}>{standing.label}</Badge>
-        <small className="ana-cell-note">{standing.detail}</small>
-      </td>
-      <td className="ana-move-handover">{handedOver(move, reading)}</td>
-      <td className="ana-num">{money(move.billed)}</td>
-      <td className="ana-num">{duration(move.startedAt, move.endedAt)}</td>
-      <td className="ana-num">{time(move.startedAt)}</td>
-    </tr>
-  );
-}
-
-/** The list of moves, with its two filters. A move is named by its place in the log, since a
- *  round's Builder session and comparison share an id. */
+/** The list of moves, sorted, searched and narrowed by kind and standing (`Table`). A move is named
+ *  by its place in the log, since a round's Builder session and comparison share an id. A
+ *  promotion stands before the first move that started after it, in the list as recorded only:
+ *  a sorted or narrowed one has lost the order that places it. */
 export function MovesList({
   reading,
   onOpen,
@@ -182,82 +140,100 @@ export function MovesList({
   reading: CampaignReading;
   onOpen: (index: number) => void;
 }) {
-  const [kind, setKind] = useState<string>("all");
-  const [query, setQuery] = useState("");
   const { moves, promotions } = reading;
   if (moves.length === 0) {
     return <NoSignal title="No move yet">The log holds no session and no comparison</NoSignal>;
   }
-  const filtered = kind !== "all" || query.trim() !== "";
-  const rows = moves.filter(
-    (move) =>
-      (kind === "all" || move.step === kind) &&
-      matchesTerms(`${move.id} ${kindOf(move, reading)} ${handedOver(move, reading)}`, query),
-  );
-  // A divider stands before the first move that started after its promotion, and only in the
-  // whole list: a filtered one has lost the order that places it.
-  const before = (move: Move, at: number) =>
-    filtered
-      ? []
-      : promotions.filter((p) => p.index < move.index && (at === 0 || p.index > (rows[at - 1]?.index ?? -1)));
-  const trailing = filtered ? [] : promotions.filter((p) => p.index > (rows.at(-1)?.index ?? -1));
-  return (
-    <>
-      <Filters>
-        <Search value={query} onChange={setQuery} placeholder="Search moves by id, kind or harness" />
-        <Select
-          label="Kind"
-          value={kind}
-          onChange={setKind}
-          values={["all", "examiner", "builder", "comparison"]}
-          format={(value) => FILTER_LABELS.get(value) ?? value}
-        />
-        {filtered ? (
-          <Button
-            onClick={() => {
-              setKind("all");
-              setQuery("");
-            }}
+  const columns: readonly Column<Move>[] = [
+    {
+      id: "move",
+      head: "Move",
+      sort: (move) => move.index,
+      choice: (move) => move.step,
+      chooser: "Kind",
+      words: (step) => FILTER_LABELS.get(step) ?? step,
+      cell: (move) => (
+        <>
+          <button
+            type="button"
+            className="ana-row-select"
+            data-row={move.index}
+            onClick={() => onOpen(move.index)}
           >
-            Clear filters
-          </Button>
-        ) : null}
-      </Filters>
-      {rows.length === 0 ? (
-        <NoSignal title="No matching move">Change the search or clear the filters</NoSignal>
-      ) : (
-        <div className="ana-dense">
-          <DataTable>
-            <thead>
-              <tr>
-                <th>Moves ({rows.length})</th>
-                <th>Stands</th>
-                <th>Handed over</th>
-                <th className="ana-num">Cost</th>
-                <th className="ana-num">Ran</th>
-                <th className="ana-num">Started</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((move, at) => (
-                <Fragment key={move.index}>
-                  {before(move, at).map((promotion) => (
-                    <PromotionRow
-                      key={`p${String(promotion.index)}`}
-                      promotion={promotion}
-                      reading={reading}
-                    />
-                  ))}
-                  <MoveRow move={move} reading={reading} onOpen={onOpen} />
-                </Fragment>
-              ))}
-              {trailing.map((promotion) => (
-                <PromotionRow key={`p${String(promotion.index)}`} promotion={promotion} reading={reading} />
-              ))}
-            </tbody>
-          </DataTable>
-        </div>
-      )}
-    </>
+            {move.id}
+          </button>
+          <small
+            className="ana-cell-note"
+            title={move.named === null ? undefined : `${move.named.code}: ${move.named.why}`}
+          >
+            {kindOf(move, reading)}
+            {move.named === null ? "" : ` · ${ROW_WORD.get(move.named.code) ?? `row ${move.named.code}`}`}
+          </small>
+        </>
+      ),
+    },
+    {
+      id: "stands",
+      head: "Result",
+      sort: (move) => standingOf(move).label,
+      choice: (move) => standingOf(move).label,
+      chooser: "Result",
+      cell: (move) => {
+        const standing = standingOf(move);
+        return (
+          <>
+            <Badge tone={standing.tone}>{standing.label}</Badge>
+            <small className="ana-cell-note">{standing.detail}</small>
+          </>
+        );
+      },
+    },
+    {
+      id: "handed",
+      head: "Handed over",
+      className: "ana-move-handover",
+      cell: (move) => handedOver(move, reading),
+    },
+    {
+      id: "cost",
+      head: "Cost",
+      numeric: true,
+      sort: (move) => move.billed,
+      cell: (move) => money(move.billed),
+    },
+    {
+      id: "ran",
+      head: "Ran",
+      numeric: true,
+      sort: (move) => (move.endedAt === null ? null : Date.parse(move.endedAt) - Date.parse(move.startedAt)),
+      cell: (move) => duration(move.startedAt, move.endedAt),
+    },
+    {
+      id: "started",
+      head: "Started",
+      numeric: true,
+      sort: (move) => move.index,
+      cell: (move) => time(move.startedAt),
+    },
+  ];
+  const promotionsBetween = (from: number, to: number) =>
+    promotions
+      .filter((promotion) => promotion.index > from && promotion.index < to)
+      .map((promotion) => (
+        <PromotionRow key={`p${String(promotion.index)}`} promotion={promotion} reading={reading} />
+      ));
+  return (
+    <div className="ana-dense">
+      <Table
+        label="moves"
+        rows={moves}
+        columns={columns}
+        rowKey={(move) => String(move.index)}
+        search={(move) => `${move.id} ${kindOf(move, reading)} ${handedOver(move, reading)}`}
+        placeholder="Search moves by id, kind or harness"
+        between={(move, previous) => promotionsBetween(previous?.index ?? -1, move.index)}
+        after={promotionsBetween(moves.at(-1)?.index ?? -1, Infinity)}
+      />
+    </div>
   );
 }

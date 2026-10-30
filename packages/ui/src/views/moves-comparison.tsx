@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { Section } from "../components/layout.tsx";
-import { Badge, Button, Card, DataTable, Disclosure, HashValue } from "../components/primitives.tsx";
+import { Badge, Button, Card, Disclosure, HashValue } from "../components/primitives.tsx";
+import { type Column, Table } from "../components/table.tsx";
 import type {
   CampaignReading,
   ComparisonBar,
   ComparisonDetail,
   Outcome,
+  ScoredTask,
   Sensitivity,
   SolveRow,
   Tally,
@@ -302,6 +304,74 @@ function sensitivityFacts(seen: Sensitivity): (readonly [string, string])[] {
   ];
 }
 
+/** The columns of a comparison's tasks: each sorts, and the outcome and the measure that carried it
+ *  narrow the list (`Table`). */
+function scoredColumns(detail: ComparisonDetail, navigation: Navigation): readonly Column<ScoredTask>[] {
+  const openSolve = (id: string) => enter(navigation, { solve: id });
+  const outcomeOf = (task: ScoredTask) => OUTCOMES.find((each) => each.outcome === task.outcome);
+  const solves = (task: ScoredTask) => [...task.old, ...task.fresh];
+  return [
+    {
+      id: "task",
+      head: "Task",
+      sort: (task) => task.taskId ?? task.task,
+      cell: (task) => (
+        <button
+          type="button"
+          className="ana-row-select"
+          title="Open the task"
+          onClick={() => navigation.push({ pane: "tasks", task: task.task, solve: null })}
+        >
+          {task.taskId ?? shortHash(task.task, 8)}
+        </button>
+      ),
+    },
+    {
+      id: "outcome",
+      head: "Outcome",
+      sort: (task) => outcomeOf(task)?.label ?? null,
+      choice: (task) => outcomeOf(task)?.label ?? "no report yet",
+      cell: (task) => {
+        const outcome = outcomeOf(task);
+        return outcome === undefined ? (
+          <span className="ana-faint">no report yet</span>
+        ) : (
+          <span className="ana-outcome">
+            <span className="ana-swatch" style={{ background: outcome.color }} aria-hidden />
+            {outcome.label}
+          </span>
+        );
+      },
+    },
+    {
+      id: "carried",
+      head: "Carried by",
+      sort: (task) => task.carried,
+      choice: (task) => task.carried ?? "none",
+      chooser: "Measure",
+      cell: (task) => task.carried ?? <span className="ana-faint">none</span>,
+    },
+    {
+      id: "old",
+      head: "Reference solves",
+      sort: (task) => task.old.filter(({ ending }) => ending?.outcome === "pass").length,
+      cell: (task) => <SolveChips rows={task.old} onOpen={openSolve} />,
+    },
+    {
+      id: "fresh",
+      head: "New solves",
+      sort: (task) => task.fresh.filter(({ ending }) => ending?.outcome === "pass").length,
+      cell: (task) => <SolveChips rows={task.fresh} onOpen={openSolve} />,
+    },
+    {
+      id: "rulings",
+      head: "Rulings",
+      className: "ana-rulings-cell",
+      cell: (task) => <RulingsCell rows={solves(task)} tier={detail.tier} withheld={task.withheld} />,
+    },
+  ];
+}
+
 export function ComparisonDetailView({
   detail,
   reading,
@@ -315,8 +385,6 @@ export function ComparisonDetailView({
   const { move, terms } = detail;
   const standing = standingOf(move);
   const tasks = detail.tasks.filter((task) => chosen === null || task.outcome === chosen);
-  const openSolve = (id: string) => enter(navigation, { solve: id });
-  const labelOf = (outcome: Outcome | null) => OUTCOMES.find((each) => each.outcome === outcome);
   const named = detail.bar.outcomes === null ? "Tasks fixed" : "Scored tasks";
   return (
     <div className="ana-detail">
@@ -366,61 +434,14 @@ export function ComparisonDetailView({
         aside={chosen === null ? null : <Button onClick={() => setChosen(null)}>Show every task</Button>}
       >
         <div className="ana-dense">
-          <DataTable>
-            <thead>
-              <tr>
-                <th>Task</th>
-                <th>Outcome</th>
-                <th>Carried by</th>
-                <th>Reference solves</th>
-                <th>New solves</th>
-                <th>Rulings</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tasks.map((task) => {
-                const outcome = labelOf(task.outcome);
-                return (
-                  <tr key={task.task}>
-                    <td>
-                      <button
-                        type="button"
-                        className="ana-row-select"
-                        title="Open the task"
-                        onClick={() => navigation.push({ pane: "tasks", task: task.task, solve: null })}
-                      >
-                        {task.taskId ?? shortHash(task.task, 8)}
-                      </button>
-                    </td>
-                    <td>
-                      {outcome === undefined ? (
-                        <span className="ana-faint">no report yet</span>
-                      ) : (
-                        <span className="ana-outcome">
-                          <span className="ana-swatch" style={{ background: outcome.color }} aria-hidden />
-                          {outcome.label}
-                        </span>
-                      )}
-                    </td>
-                    <td>{task.carried ?? <span className="ana-faint">none</span>}</td>
-                    <td>
-                      <SolveChips rows={task.old} onOpen={openSolve} />
-                    </td>
-                    <td>
-                      <SolveChips rows={task.fresh} onOpen={openSolve} />
-                    </td>
-                    <td className="ana-rulings-cell">
-                      <RulingsCell
-                        rows={[...task.old, ...task.fresh]}
-                        tier={detail.tier}
-                        withheld={task.withheld}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </DataTable>
+          <Table
+            label="tasks"
+            rows={tasks}
+            columns={scoredColumns(detail, navigation)}
+            rowKey={(task) => task.task}
+            search={(task) => `${task.taskId ?? ""} ${task.task}`}
+            placeholder="Search tasks by id or version"
+          />
         </div>
       </Section>
     </div>

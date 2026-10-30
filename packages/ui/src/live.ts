@@ -275,22 +275,9 @@ export function useTask({ key, since }: Of, id: string | null): Live<AnswerOf<"t
   return useAnswer("task", key === null || id === null ? null : { key, id }, { since });
 }
 
-/** One page of the log; `filters` holds the offset, the kind and the session as the URL spells
- *  them, each absent for none. */
-export function useLog({ key, since }: Of, filters: Omit<Query<"log">, "key">): Live<AnswerOf<"log">> {
-  const { offset, kind, session } = filters;
-  return useAnswer(
-    "log",
-    key === null
-      ? null
-      : {
-          key,
-          ...keyIfDefined("offset", offset),
-          ...keyIfDefined("kind", kind),
-          ...keyIfDefined("session", session),
-        },
-    { since },
-  );
+/** The log as a timeline. */
+export function useLog({ key, since }: Of): Live<AnswerOf<"log">> {
+  return useAnswer("log", key === null ? null : { key }, { since });
 }
 
 /** One raw event, which the exam tier alone answers. An event never changes once written. */

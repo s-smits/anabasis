@@ -1,4 +1,12 @@
-import { Activity, ChevronLeft, ChevronRight, FileJson, ListChecks, ListOrdered } from "lucide-react";
+import {
+  Activity,
+  ChevronLeft,
+  ChevronRight,
+  FileJson,
+  FolderSearch,
+  ListChecks,
+  ListOrdered,
+} from "lucide-react";
 import { useMemo } from "react";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
 import { countBy } from "../../../../src/meta/tally.ts";
@@ -18,7 +26,7 @@ const NAV: readonly { readonly id: Pane; readonly label: string; readonly icon: 
 ];
 
 /** A campaign's name without its project's, which heads its group or the page's eyebrow. */
-export function shortName(row: CampaignRow): string {
+function shortName(row: CampaignRow): string {
   const prefix = `${row.project}-`;
   return row.name.startsWith(prefix) && row.name.length > prefix.length
     ? row.name.slice(prefix.length)
@@ -71,8 +79,8 @@ export function ProjectSidebar({
   collapsed,
   onCollapse,
 }: {
-  /** Every campaign, newest first. */
-  campaigns: readonly CampaignRow[];
+  /** Every campaign, newest first, or null while the list is read. */
+  campaigns: readonly CampaignRow[] | null;
   campaign: string | null;
   onCampaign: (key: string) => void;
   pane: Pane;
@@ -82,8 +90,8 @@ export function ProjectSidebar({
 }) {
   // Memoised so that `Picker`'s own memo holds across a poll that changed nothing; the ages it says
   // move with the list's poll.
-  const groups = useMemo(() => groupsOf(campaigns, Date.now()), [campaigns]);
-  const current = campaigns.find((row) => row.key === campaign);
+  const groups = useMemo(() => groupsOf(campaigns ?? [], Date.now()), [campaigns]);
+  const current = campaigns?.find((row) => row.key === campaign);
   const shown = useMemo(
     () => (current === undefined ? undefined : { label: current.name, detail: current.project }),
     [current],
@@ -109,7 +117,9 @@ export function ProjectSidebar({
           value={campaign}
           groups={groups}
           onChange={onCampaign}
+          placeholder={campaigns === null ? "Reading campaigns" : "No campaigns"}
           filtered
+          icon={FolderSearch}
           {...keyIfDefined("shown", shown)}
         />
       </div>

@@ -3,7 +3,9 @@ import { Button, NoSignal } from "../components/primitives.tsx";
 import { matchesTerms } from "../components/tool-call.tsx";
 import type { LeftOut, Outcome, TaskCell, TaskGrid, TaskLeftOut, TaskRow } from "../models.ts";
 import { shortHash } from "../models.ts";
-import { Filters, Search, Select } from "./controls.tsx";
+import { Choose } from "../components/picker.tsx";
+import { choiceCounts } from "../components/table.tsx";
+import { Filters, Search } from "./controls.tsx";
 import { OUTCOMES } from "./outcome.ts";
 import type { Share } from "../../../../src/campaign/climb.ts";
 
@@ -134,47 +136,62 @@ export function TaskGridView({ grid, onOpen }: { grid: TaskGrid; onOpen: (versio
   if (grid.rows.length === 0) {
     return <NoSignal title="No task yet">No task version has been proposed in this campaign</NoSignal>;
   }
-  const holds = (filter: string, value: boolean) => filter === ALL || (filter === "yes") === value;
-  const rows = grid.rows.filter(
-    (row) =>
-      (state === ALL || row.state === state) &&
-      holds(label, row.awaitingLabel) &&
-      holds(exhausted, row.exhausted) &&
-      matchesTerms(`${row.id ?? ""} ${row.version} ${taskNote(row)}`, query),
+  const yesNo = (value: boolean) => (value ? "yes" : "no");
+  // Each choice with the value a row holds for it, as the page's tables have them (`table.tsx`): a
+  // choice offers what the search and the other choices leave, each with its count.
+  const choices = [
+    { name: "State", value: state, set: setState, of: (row: TaskRow) => row.state, words: STATE_WORDS },
+    {
+      name: "Label",
+      value: label,
+      set: setLabel,
+      of: (row: TaskRow) => yesNo(row.awaitingLabel),
+      words: LABEL_WORDS,
+    },
+    {
+      name: "Exhausted",
+      value: exhausted,
+      set: setExhausted,
+      of: (row: TaskRow) => yesNo(row.exhausted),
+      words: EXHAUSTED_WORDS,
+    },
+  ];
+  const searched = grid.rows.filter((row) =>
+    matchesTerms(`${row.id ?? ""} ${row.version} ${taskNote(row)}`, query),
   );
-  const filtered = query.trim() !== "" || state !== ALL || label !== ALL || exhausted !== ALL;
+  const leaving = (skip: string | null) =>
+    searched.filter((row) =>
+      choices.every(({ name, value, of }) => name === skip || value === ALL || of(row) === value),
+    );
+  const rows = leaving(null);
+  const filtered = query.trim() !== "" || choices.some(({ value }) => value !== ALL);
   return (
     <>
       <Filters>
         <Search value={query} onChange={setQuery} placeholder="Search tasks by id or version" />
-        <Select
-          label="State"
-          value={state}
-          onChange={setState}
-          values={STATES}
-          format={(value) => STATE_WORDS.get(value) ?? value}
-        />
-        <Select
-          label="Label"
-          value={label}
-          onChange={setLabel}
-          values={YES_NO}
-          format={(value) => LABEL_WORDS.get(value) ?? value}
-        />
-        <Select
-          label="Exhausted"
-          value={exhausted}
-          onChange={setExhausted}
-          values={YES_NO}
-          format={(value) => EXHAUSTED_WORDS.get(value) ?? value}
-        />
+        {choices.map(({ name, value, set, of, words }) => {
+          // As in `table.tsx`, a choice every task answers alike stands only while it is set.
+          if (value === ALL && new Set(grid.rows.map(of)).size < 2) return null;
+          const counts = choiceCounts(leaving(name), of, ALL);
+          return (
+            <Choose
+              key={name}
+              label={name}
+              value={value}
+              onChange={set}
+              values={(name === "State" ? STATES : YES_NO).filter(
+                (each) => each === value || counts.has(each),
+              )}
+              format={(each) => words.get(each) ?? each}
+              detail={(each) => String(counts.get(each) ?? 0)}
+            />
+          );
+        })}
         {filtered ? (
           <Button
             onClick={() => {
               setQuery("");
-              setState(ALL);
-              setLabel(ALL);
-              setExhausted(ALL);
+              for (const { set } of choices) set(ALL);
             }}
           >
             Clear filters

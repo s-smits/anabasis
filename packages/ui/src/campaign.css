@@ -21,20 +21,10 @@
   flex: 1 1 320px;
 }
 
-/* The project the campaign's opening names: one line, the whole of it on hover. */
-.ana-campaign-title .ana-eyebrow {
-  max-width: 72ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* The campaign's full name under a title that dropped its project. */
-.ana-campaign-name {
-  color: var(--ana-dim);
-  font-family: var(--font-mono);
-  font-size: var(--ana-text-xs);
-  margin: 0;
+/* The campaign's whole name, smaller than a page title so that names of 40 characters and more
+   fit their line, and broken anywhere on a phone. */
+.ana-campaign-head .ana-campaign-title h1 {
+  font-size: clamp(22px, 2.6vw, 32px);
   overflow-wrap: anywhere;
 }
 
@@ -312,6 +302,24 @@
   font-size: var(--ana-text-xs);
 }
 
+/* The selected harness's detail and the small charts, two columns on a wide page; one alone takes
+   the row. The detail stacks its own two columns by its own width, which the slot measures. */
+.ana-harness-row {
+  align-items: start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+}
+
+.ana-harness-slot {
+  container-type: inline-size;
+  min-width: 0;
+}
+
+.ana-harness-row > .ana-campaign-pair {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .ana-harness-detail {
   background: var(--ana-card);
   border: 1px solid color-mix(in srgb, var(--ana-accent) 30%, var(--ana-border));
@@ -380,6 +388,15 @@
   display: grid;
   gap: 8px;
 }
+
+/* The parts' files scroll inside the panel past a few screens' lines, with the search above them. */
+.ana-harness-file-list {
+  display: grid;
+  gap: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 /* One part of a harness: its name over its files. */
 .ana-harness-part {
   display: grid;
@@ -398,7 +415,7 @@
   white-space: pre-wrap;
 }
 
-/* The two small charts side by side, one above the other on a narrow page. */
+/* The small charts, one above the other in their column beside the harness detail. */
 .ana-campaign-pair {
   display: grid;
   gap: 12px;

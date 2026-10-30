@@ -1,10 +1,13 @@
-import type { KeyboardEvent } from "react";
+import { type KeyboardEvent, type ReactNode, useState } from "react";
 import { Badge, Button, HashValue } from "../components/primitives.tsx";
 import { detailsOf, type Of } from "../live.ts";
 import type { CampaignReading, HarnessCard } from "../models.ts";
 import type { Navigation, PaneProps } from "../route.ts";
 import { short } from "../../../../src/campaign/move.ts";
 import { digestText, STARTER_NAME, tallyText } from "./campaign-data.ts";
+import { matchesTerms } from "../components/tool-call.tsx";
+import { plural } from "../../../../src/meta/text.ts";
+import { Search } from "./controls.tsx";
 import { AnswerIssues } from "./drill.tsx";
 import { time } from "./format.ts";
 import { PART_NAMES, partOf, useHarnessFiles } from "./harness-parts.tsx";
@@ -31,6 +34,9 @@ const KEYS = { ArrowLeft: -1, ArrowRight: 1 } as const;
 
 const STARTER = "starter";
 const PANEL_ID = "ana-harness-panel";
+/** A file list longer than this gets a search: a harness that vendors a Python package listed 400
+ *  files under Programs (30 October), each a line of the page. The count is a choice of this view. */
+const SEARCHED_FROM = 12;
 type Names = CampaignReading["names"];
 
 /** How the route names a card. */
@@ -61,31 +67,39 @@ function selectedIndex(cards: readonly HarnessCard[], harness: string | null): n
  *  card's are read (`held.ts`). */
 function Files({ of, digest, navigation }: { of: Of; digest: string; navigation: Navigation }) {
   const { files, view, stale, slow, listed, toggle } = useHarnessFiles(of, digest);
+  const [query, setQuery] = useState("");
   if (files.error !== null) return <span className="ana-harness-note">{files.error}</span>;
+  const shown = listed.filter(({ path, about }) => matchesTerms(`${path} ${about ?? ""}`, query));
   return (
     <div className="ana-harness-files" aria-busy={stale} inert={stale}>
       {slow ? <span className="ana-harness-note">Reading its files</span> : null}
       {view === null ? null : <AnswerIssues answer={view} />}
-      {PART_NAMES.map((part) => {
-        const held = listed.filter(({ path }) => partOf(path) === part);
-        return held.length === 0 ? null : (
-          <section key={part} className="ana-harness-part" aria-label={part}>
-            <small>{part}</small>
-            {held.map(({ path, about }) => (
-              <div key={path} className="ana-harness-entry">
-                <button
-                  type="button"
-                  className="ana-evidence-link"
-                  onClick={() => navigation.push({ harness: digest, file: path, diff: null, event: null })}
-                >
-                  {path}
-                </button>
-                {about === null ? null : <p className="ana-harness-about">{about}</p>}
-              </div>
-            ))}
-          </section>
-        );
-      })}
+      {listed.length > SEARCHED_FROM ? (
+        <Search value={query} onChange={setQuery} placeholder={`Search ${plural(listed.length, "file")}`} />
+      ) : null}
+      {shown.length === 0 && query !== "" ? <span className="ana-harness-note">No file matches</span> : null}
+      <div className="ana-harness-file-list">
+        {PART_NAMES.map((part) => {
+          const held = shown.filter(({ path }) => partOf(path) === part);
+          return held.length === 0 ? null : (
+            <section key={part} className="ana-harness-part" aria-label={part}>
+              <small>{part}</small>
+              {held.map(({ path, about }) => (
+                <div key={path} className="ana-harness-entry">
+                  <button
+                    type="button"
+                    className="ana-evidence-link"
+                    onClick={() => navigation.push({ harness: digest, file: path, diff: null, event: null })}
+                  >
+                    {path}
+                  </button>
+                  {about === null ? null : <p className="ana-harness-about">{about}</p>}
+                </div>
+              ))}
+            </section>
+          );
+        })}
+      </div>
       {toggle}
     </div>
   );
@@ -225,7 +239,10 @@ function Face({ card, names }: { card: HarnessCard; names: Names }) {
   );
 }
 
-export function HarnessStrip({ reading, navigation }: PaneProps) {
+/** The strip of versions over the selected one's detail, with `beside` (the pane's small charts) in a
+ *  second column on a wide page: below the detail, the charts sat under a panel as wide as the page
+ *  that held five short facts (operator, 30 October). */
+export function HarnessStrip({ reading, navigation, beside }: PaneProps & { readonly beside: ReactNode }) {
   const cards = reading.harnesses;
   const selected = selectedIndex(cards, navigation.route.harness);
   const chosen = cards[selected];
@@ -266,9 +283,14 @@ export function HarnessStrip({ reading, navigation }: PaneProps) {
           );
         })}
       </ul>
-      {chosen === undefined ? null : (
-        <Detail card={chosen} names={reading.names} of={detailsOf(reading)} navigation={navigation} />
-      )}
+      <div className="ana-harness-row">
+        {chosen === undefined ? null : (
+          <div className="ana-harness-slot">
+            <Detail card={chosen} names={reading.names} of={detailsOf(reading)} navigation={navigation} />
+          </div>
+        )}
+        {beside}
+      </div>
     </div>
   );
 }

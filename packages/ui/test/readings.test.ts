@@ -52,7 +52,7 @@ async function ask<Name extends Endpoint>(
   const search = new URLSearchParams(
     Object.entries(values).flatMap(([name, value]) => (value === undefined ? [] : [[name, value]])),
   );
-  const response = handleApiRequest(
+  const response = await handleApiRequest(
     { repo: root, trees: "directory", token: TOKEN, examSide: tier === "exam" },
     new Request(`http://127.0.0.1:5173/api/${endpoint}?${search.toString()}`, {
       headers: { host: "127.0.0.1:5173", [TOKEN_HEADER]: TOKEN },
@@ -86,11 +86,8 @@ async function everything(tier: Tier): Promise<string[]> {
   const grid = await said("tasks", { key: KEY });
   for (const row of grid.rows) await said("task", { key: KEY, id: row.version });
   const solves = new Set<string>();
-  for (let offset = 0; ; offset += 100) {
-    const page = await said("log", { key: KEY, offset: String(offset) });
-    for (const row of page.events) if (row.solve !== null) solves.add(row.solve);
-    if (!page.hasMore) break;
-  }
+  const timeline = await said("log", { key: KEY });
+  for (const row of timeline.rows) if (row.solve !== null) solves.add(row.solve);
   for (const id of solves) await said("solve", { key: KEY, id });
   const digests = reading.harnesses.flatMap(({ digest }) => (digest === null ? [] : [digest]));
   for (const digest of digests) {
@@ -303,6 +300,20 @@ describe("the rulings and the endings each tier may see", () => {
     expect(ended.answer.row.ending).toEqual({ ending: "environment" });
     expect(ended.text.includes(marker)).toBe(false);
     expect((await ask("campaign", { key }, "exam", root)).answer.row.ending?.why).toContain(marker);
+  });
+});
+
+describe("a list read cold", () => {
+  test("lets a campaign asked after it be answered first, between the logs it reads", async () => {
+    const { root } = copy();
+    const key = `${root.split("/").at(-1) ?? ""}/${fixture.name}`;
+    const settled: string[] = [];
+    const list = ask("campaigns", {}, "default", root).then(() => settled.push("list"));
+    const one = ask("campaign", { key }, "default", root).then(({ status }) =>
+      settled.push(`campaign ${status}`),
+    );
+    await Promise.all([list, one]);
+    expect(settled).toEqual(["campaign 200", "list"]);
   });
 });
 

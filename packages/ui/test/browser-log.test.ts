@@ -2,6 +2,9 @@ import { afterAll, beforeAll, describe, test } from "bun:test";
 import type { Browser, Locator, Page } from "@playwright/test";
 import {
   accessibilityViolations,
+  choicesOf,
+  choose,
+  chooser,
   DESKTOP,
   expect,
   expectQuiet,
@@ -15,231 +18,165 @@ import {
   serveFixture,
   type Viewing,
 } from "./browser.ts";
-import { arm, expectFocusRing, framesOf, tabTo, watchFrames } from "./browser-watch.ts";
+import { expectFocusRing, tabTo } from "./browser-watch.ts";
 import { answersOver, MARKERS } from "./fixture-campaign.ts";
 
 /*
- * The Log pane in Chrome over the fixture's 1,495 events: the Kind and Session filters the server
- * applies before it pages, the paging and its counter, an event opened in the inspector on either
- * tier, and what the page paints while another page is read: the page before, never a placeholder
- * in its place (14 October).
+ * The Log pane in Chrome over the fixture's timeline: one line a thing that happened, newest first,
+ * a session's and a solve's turns and calls counted into its own line (`server/log.ts`); the Kind
+ * and Session choices and the search, all in the browser; a line opening its move, solve or task;
+ * and the raw event, which the exam tier alone opens.
  */
-
-const EVENTS = 1495;
-const PAGE = 100;
 
 let served: Served;
 let exam: Served;
 let browser: Browser;
+let lines: number;
+let events: number;
 
 beforeAll(async () => {
   [served, exam, browser] = await Promise.all([serveFixture(), serveFixture("exam"), launchBrowser()]);
+  const timeline = answersOver(served.fixture.root, "default").log({ key: served.fixture.key });
+  lines = timeline.rows.length;
+  events = timeline.events;
 });
 afterAll(async () => {
   await browser.close();
   await Promise.all([served.stop(), exam.stop()]);
 });
 
-/** The Log pane of the fixture's campaign on `server`, with `extra` added to the query. */
-function logAt(server: Served, extra = ""): string {
-  return server.url(`campaign=${encodeURIComponent(server.fixture.key)}&pane=log${extra}`);
-}
-
-/** The pane, with its first page read. */
-async function openLog(server: Served, extra = "", viewing: Viewing = DESKTOP): Promise<Opened> {
-  const opened = await openPage(browser, logAt(server, extra), viewing);
-  await expect(counter(opened.page)).toHaveText(`1–${String(PAGE)} of ${String(EVENTS)} events`);
+/** The Log pane of the fixture's campaign on `server`, with its lines read. */
+async function openLog(server: Served, viewing: Viewing = DESKTOP): Promise<Opened> {
+  const url = server.url(`campaign=${encodeURIComponent(server.fixture.key)}&pane=log`);
+  const opened = await openPage(browser, url, viewing);
+  await expect(counter(opened.page)).toHaveText(`${String(lines)} lines`);
   return opened;
 }
 
-const counter = (page: Page): Locator => page.getByRole("status").filter({ hasText: /\bof \d+ events?\b/u });
-const rows = (page: Page): Locator => page.getByRole("button", { name: /^#\d+$/u });
-const row = (page: Page, index: number): Locator =>
-  page.getByRole("button", { name: `#${String(index)}`, exact: true });
+const counter = (page: Page): Locator =>
+  page
+    .getByRole("main")
+    .getByRole("status")
+    .filter({ hasText: /\blines$/u });
 const table = (page: Page): Locator => page.getByRole("main").getByRole("table");
+const line = (page: Page, starts: string): Locator =>
+  table(page).getByRole("button", { name: new RegExp(`^${starts}`, "u") });
 
-/** How many of the log's events a filter matches, as the server's handler counts them. */
-function matching(filter: { kind?: string; session?: string }): number {
-  return answersOver(served.fixture.root, "default").log({ key: served.fixture.key, ...filter }).matching;
-}
-
-/** The text of every cell in column `at` of the table's body. */
-function columnTexts(page: Page, at: number): Promise<string[]> {
-  return table(page)
-    .locator(`tbody tr > :nth-child(${String(at + 1)})`)
-    .allInnerTexts();
-}
-
-/** The pane with its frames watched from the first (`watchFrames`). */
-async function openWatched(server: Served, regions: readonly string[], busy: string): Promise<Opened> {
-  const opened = await openPage(browser, "about:blank");
-  await watchFrames(opened.context, regions, busy);
-  await opened.page.goto(logAt(server));
-  await expect(counter(opened.page)).toHaveText(`1–${String(PAGE)} of ${String(EVENTS)} events`);
-  return opened;
+/** The text of every "What happened" cell drawn. */
+function said(page: Page): Promise<string[]> {
+  return table(page).locator("tbody td.ana-log-what").allInnerTexts();
 }
 
 describe("the Log pane", () => {
-  test("pages the log a hundred events at a time, Previous closed on the first and Next on the last", async () => {
+  test("says what happened newest first, a session's and a solve's turns and calls inside its own line", async () => {
     const opened = await openLog(served);
     const { page } = opened;
-    const previous = page.getByRole("button", { name: "Previous" });
-    const next = page.getByRole("button", { name: "Next" });
-    await expect(rows(page)).toHaveCount(PAGE);
-    await expect(rows(page).first()).toHaveText("#0");
-    await expect(previous).toBeDisabled();
-    await expect(next).toBeEnabled();
-    await next.click();
-    await expect(counter(page)).toHaveText("101–200 of 1495 events");
-    await expect(rows(page).first()).toHaveText("#100");
-    await expect(previous).toBeEnabled();
-    await previous.click();
-    await expect(counter(page)).toHaveText("1–100 of 1495 events");
-    await expect(previous).toBeDisabled();
-    // Latest goes to the last page at once, on the same page bounds as Next.
-    const latest = page.getByRole("button", { name: "Latest" });
-    await latest.click();
-    await expect(counter(page)).toHaveText(`1401–${String(EVENTS)} of ${String(EVENTS)} events`);
-    await expect(latest).toBeDisabled();
-    await previous.click();
-    await expect(counter(page)).toHaveText("1301–1400 of 1495 events");
-    for (let at = 0; at < 13; at += 1) await previous.click();
-    await expect(counter(page)).toHaveText("1–100 of 1495 events");
-    const pages = Math.ceil(EVENTS / PAGE);
-    for (let at = 1; at < pages; at += 1) await next.click();
-    await expect(counter(page)).toHaveText(`1401–${String(EVENTS)} of ${String(EVENTS)} events`);
-    await expect(rows(page)).toHaveCount(EVENTS - 1400);
-    await expect(rows(page).last()).toHaveText(`#${String(EVENTS - 1)}`);
-    await expect(next).toBeDisabled();
-    await expect(previous).toBeEnabled();
-    // The paging lives in the pane, and the address names the pane alone.
-    expect(routeParameters(page)).toEqual({ campaign: served.fixture.key, pane: "log" });
+    expect(lines).toBeLessThan(events / 3);
+    const drawn = await said(page);
+    expect(drawn).toHaveLength(200);
+    // No line is a bare turn or call, and every line is words rather than an event's kind.
+    expect(drawn.filter((text) => /^\S+\.\S+$/u.test(text))).toEqual([]);
+    expect(drawn.some((text) => /\d+ turns?, \d+ calls?$/u.test(text))).toBe(true);
+    await page.getByRole("button", { name: `Show ${String(lines - 200)} more` }).click();
+    expect(await said(page)).toHaveLength(lines);
+    await page.getByRole("button", { name: "At", exact: true }).click();
+    expect((await said(page))[0]).toBe("Campaign opened · vowel-counts · solver faux/solver-1");
     expectQuiet(opened);
     await opened.context.close();
   });
 
-  test("filters by kind and by session before it pages, and a filter starts again at the first page", async () => {
+  test("narrows by kind, by session and by search, and clears all three at once", async () => {
     const opened = await openLog(served);
     const { page } = opened;
-    const kind = page.getByLabel("Kind");
-    const session = page.getByLabel("Session");
-    await expect(kind).toHaveValue("all");
-    await expect(session).toHaveValue("all");
-    expect(await kind.locator("option").allInnerTexts()).toContain("solve.finished");
-    expect(await session.locator("option").allInnerTexts()).toEqual([
+    expect(await choicesOf(page, "Kind")).toEqual([
+      `Every kind ${String(lines)}`,
+      "Campaign 26",
+      "Sessions and comparisons 26",
+      "Tasks 26",
+      "Solves 182",
+      "Harnesses 8",
+    ]);
+    const words = (choices: string[]) => choices.map((choice) => choice.replace(/ \d+$/u, ""));
+    expect(words(await choicesOf(page, "Session")).slice(0, 4)).toEqual([
       "Every session",
+      "No session",
       "d-1",
       "x-1",
-      "b-1",
-      "r-1",
-      "x-2",
-      "c-1",
-      "b-2",
-      "b-3",
-      "r-3",
-      "x-3",
-      "b-4",
-      "g-9",
-      "x-4",
-      "b-5",
     ]);
-    await page.getByRole("button", { name: "Next" }).click();
-    await page.getByRole("button", { name: "Next" }).click();
-    await expect(counter(page)).toHaveText("201–300 of 1495 events");
-
-    const inB1 = matching({ session: "b-1" });
-    await session.selectOption("b-1");
-    await expect(counter(page)).toHaveText(`1–100 of ${String(inB1)} events`);
-    expect(new Set(await columnTexts(page, 3))).toEqual(new Set(["b-1"]));
-    await page.getByRole("button", { name: "Next" }).click();
-    await expect(counter(page)).toHaveText(`101–${String(inB1)} of ${String(inB1)} events`);
-    await expect(page.getByRole("button", { name: "Next" })).toBeDisabled();
-
-    const finishedInB1 = matching({ kind: "solve.finished", session: "b-1" });
-    await kind.selectOption("solve.finished");
-    await expect(counter(page)).toHaveText(`1–${String(finishedInB1)} of ${String(finishedInB1)} events`);
-    await expect(rows(page)).toHaveCount(finishedInB1);
-    expect(new Set(await columnTexts(page, 2))).toEqual(new Set(["solve.finished"]));
-    await expect(page.getByRole("button", { name: "Previous" })).toBeDisabled();
-    await expect(page.getByRole("button", { name: "Next" })).toBeDisabled();
-
-    await session.selectOption("all");
-    const finished = matching({ kind: "solve.finished" });
-    await expect(counter(page)).toHaveText(`1–100 of ${String(finished)} events`);
-
-    // A pair no event holds: the campaign's opening belongs to no session.
-    await kind.selectOption("campaign.opened");
-    await session.selectOption("b-2");
-    await expect(counter(page)).toHaveText("0 of 0 events");
-    await expect(page.getByText("No matching event")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Next" })).toBeDisabled();
-
+    await choose(page, "Kind", "Solves");
+    await expect(counter(page)).toHaveText(`182 of ${String(lines)} lines`);
+    // A choice counts the rows the other choices leave, and offers no value they leave none of.
+    const sessions = await choicesOf(page, "Session");
+    expect(sessions).toContain("b-1 25");
+    expect(words(sessions)).not.toContain("d-1");
+    expect((await said(page)).every((text) => text.startsWith("Solve "))).toBe(true);
+    await choose(page, "Session", "b-1");
+    await expect(counter(page)).toHaveText(`25 of ${String(lines)} lines`);
+    await page.getByRole("searchbox", { name: /^Search/u }).fill("rejected");
+    const rejected = await said(page);
+    expect(rejected.length).toBeGreaterThan(0);
+    expect(rejected.every((text) => text.includes("· b-1 · rejected"))).toBe(true);
+    await page.getByRole("searchbox", { name: /^Search/u }).fill("nothing-says-this");
+    await expect(page.getByText("No matching lines")).toBeVisible();
     await page.getByRole("button", { name: "Clear filters" }).click();
-    await expect(counter(page)).toHaveText("1–100 of 1495 events");
-    await expect(kind).toHaveValue("all");
-    await expect(session).toHaveValue("all");
-    await expect(page.getByRole("button", { name: "Clear filters" })).toHaveCount(0);
+    await expect(counter(page)).toHaveText(`${String(lines)} lines`);
+    await expect(chooser(page, "Kind")).toHaveText("Every kind");
+    await expect(chooser(page, "Session")).toHaveText("Every session");
+    expectQuiet(opened);
+    await opened.context.close();
+  });
+
+  test("opens a line where its detail lives: its solve, its move or its task", async () => {
+    const opened = await openLog(served);
+    const { page } = opened;
+    await page.getByRole("searchbox", { name: /^Search/u }).fill("s-3-1");
+    await line(page, "Solve s-3-1 ·").click();
+    expect(routeParameters(page)).toMatchObject({ pane: "moves", solve: "s-3-1" });
+    await page.goBack();
+    await page.getByRole("searchbox", { name: /^Search/u }).fill("Move: build");
+    await line(page, "Move: build").last().click();
+    expect(routeParameters(page)).toMatchObject({ pane: "moves", move: "53" });
+    await page.goBack();
+    await page.getByRole("searchbox", { name: /^Search/u }).fill("word-02");
+    await line(page, "Task word-02").click();
+    expect(routeParameters(page)).toMatchObject({ pane: "tasks" });
+    expect(routeParameters(page).task).toHaveLength(64);
     expectQuiet(opened);
     await opened.context.close();
   });
 });
 
-describe("the event inspector and keyboard", () => {
-  test("opens and closes event inspectors in both tiers, exposing payloads only on the exam side", async () => {
-    for (const [server, examSide] of [
-      [served, false],
-      [exam, true],
-    ] as const) {
-      const opened = await openLog(server);
-      const { page } = opened;
-      expect(await accessibilityViolations(page, "main")).toEqual([]);
-      await row(page, 5).click();
-      expect(routeParameters(page)).toMatchObject({ event: "5" });
-      const inspector = page.getByRole("complementary", { name: "Event" });
-      await expect(inspector).toBeVisible();
-      await expect(inspector).toContainText("#5");
-      await expect(row(page, 5)).toHaveAttribute("aria-current", "true");
-      if (examSide) {
-        await expect(inspector).toContainText("draft.finished");
-        await row(page, 6).click();
-        expect(routeParameters(page)).toMatchObject({ event: "6" });
-        await expect(inspector).toContainText("#6");
-        await expect(row(page, 5)).not.toHaveAttribute("aria-current");
-      } else {
-        await expect(inspector).toContainText("--exam-side");
-        await expect(inspector).not.toContainText("draft.finished");
-      }
-      expect(await accessibilityViolations(page)).toEqual([]);
-      await inspector.getByRole("button", { name: "Close" }).click();
-      await expect(inspector).toHaveCount(0);
-      expect(routeParameters(page).event).toBeUndefined();
-      if (examSide) {
-        await page.goBack();
-        await expect(inspector).toContainText("#6");
-      }
-      expectQuiet(opened);
-      await opened.context.close();
-    }
+describe("the raw event and the keyboard", () => {
+  test("opens a line's first event raw on the exam tier alone", async () => {
+    const opened = await openLog(exam);
+    const { page } = opened;
+    expect(await accessibilityViolations(page, "main")).toEqual([]);
+    await page.getByRole("button", { name: "At", exact: true }).click();
+    await table(page).getByRole("button", { name: "#1", exact: true }).click();
+    expect(routeParameters(page)).toMatchObject({ event: "1" });
+    const inspector = page.getByRole("complementary", { name: "Event" });
+    await expect(inspector).toContainText("draft.started");
+    await inspector.getByRole("button", { name: "Close" }).click();
+    await expect(inspector).toHaveCount(0);
+    expectQuiet(opened);
+    await opened.context.close();
+    const plain = await openLog(served);
+    await expect(table(plain.page).getByRole("button", { name: /^#\d+$/u })).toHaveCount(0);
+    expectQuiet(plain);
+    await plain.context.close();
   });
 
-  test("reaches the filters and the rows by keyboard, each with a visible ring", async () => {
+  test("reaches the choices and the lines by keyboard, each with a visible ring", async () => {
     const opened = await openLog(served);
     const { page } = opened;
-    const kind = page.getByLabel("Kind");
+    const kind = chooser(page, "Kind");
     await tabTo(page, kind);
     await expectFocusRing(kind);
     await page.keyboard.press("Tab");
-    await expectFocusRing(page.getByLabel("Session"));
-    await tabTo(page, row(page, 0));
-    await expectFocusRing(row(page, 0));
-    await page.keyboard.press("Tab");
-    await expectFocusRing(row(page, 1));
-    await page.keyboard.press("Enter");
-    expect(routeParameters(page)).toMatchObject({ event: "1" });
-    await tabTo(page, page.getByRole("button", { name: "Next" }), 200);
-    await page.keyboard.press("Enter");
-    await expect(counter(page)).toHaveText("101–200 of 1495 events");
-    await expect(page.getByRole("button", { name: "Next" })).toBeFocused();
+    await expectFocusRing(chooser(page, "Session"));
+    const first = table(page).locator("tbody button").first();
+    await tabTo(page, first);
+    await expectFocusRing(first);
     expectQuiet(opened);
     await opened.context.close();
   });
@@ -247,13 +184,10 @@ describe("the event inspector and keyboard", () => {
 
 describe("the Log pane's layout and wall", () => {
   test("scrolls the table inside its card on a phone, never the page", async () => {
-    const opened = await openLog(served, "", PHONE);
+    const opened = await openLog(served, PHONE);
     const { page } = opened;
-    await expect(row(page, 0)).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow).toBeLessThanOrEqual(0);
-    const card = page.locator(".ana-log .ana-table-wrap");
-    expect(await card.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
     expectQuiet(opened);
     await opened.context.close();
   });
@@ -262,73 +196,15 @@ describe("the Log pane's layout and wall", () => {
     const opened = await openPage(browser, "about:blank");
     const { page } = opened;
     const answers = await keepAnswers(page);
-    await page.goto(logAt(served));
-    await expect(counter(page)).toHaveText("1–100 of 1495 events");
-    await page.getByLabel("Session").selectOption("b-1");
-    await expect(counter(page)).toHaveText(/of 192 events/u);
-    await row(page, 87).click();
-    await expect(page.getByRole("complementary", { name: "Event" })).toBeVisible();
+    await page.goto(served.url(`campaign=${encodeURIComponent(served.fixture.key)}&pane=log`));
+    await expect(counter(page)).toHaveText(`${String(lines)} lines`);
+    await page.getByRole("button", { name: `Show ${String(lines - 200)} more` }).click();
     const text = await page.locator("body").innerText();
     expect(answers.length).toBeGreaterThan(2);
     for (const marker of Object.values(MARKERS)) {
       expect(text).not.toContain(marker);
       for (const answer of answers) expect(answer).not.toContain(marker);
     }
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-});
-
-describe("the Log pane between two pages", () => {
-  test("paints the page before until the next arrives, through paging and filters", async () => {
-    const opened = await openWatched(served, [".ana-log table"], ".ana-log[aria-busy=true]");
-    const { page } = opened;
-    await arm(page);
-    const next = page.getByRole("button", { name: "Next" });
-    await next.click();
-    await expect(counter(page)).toHaveText("101–200 of 1495 events");
-    await next.click();
-    await expect(counter(page)).toHaveText("201–300 of 1495 events");
-    await page.getByRole("button", { name: "Previous" }).click();
-    await expect(counter(page)).toHaveText("101–200 of 1495 events");
-    await page.getByLabel("Kind").selectOption("solve.finished");
-    await expect(counter(page)).toHaveText(/^1–100 of 182 events$/u);
-    await page.getByLabel("Session").selectOption("b-1");
-    await expect(counter(page)).toHaveText(/^1–25 of 25 events$/u);
-    await page.getByRole("button", { name: "Clear filters" }).click();
-    await expect(counter(page)).toHaveText("1–100 of 1495 events");
-    const frames = await framesOf(page);
-    expect(frames.frames).toBeGreaterThan(5);
-    expect(frames.seen).toEqual([]);
-    expect(frames.bad).toBe(0);
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
-  test("keeps the page before through a slow read, and says it reads only once the read is late", async () => {
-    const opened = await openWatched(served, [".ana-log table"], ".ana-log[aria-busy=true]");
-    const { page } = opened;
-    await expect(counter(page)).toHaveText("1–100 of 1495 events");
-    const held = Promise.withResolvers<void>();
-    // Release only after the delayed loading state has been observed.
-    await page.route(/\/api\/log\?/u, async (route) => {
-      await held.promise;
-      await route.continue();
-    });
-    await arm(page);
-    await page.getByRole("button", { name: "Next" }).click();
-    // The first page stays, and the paging steps from the page asked for.
-    await expect(row(page, 0)).toBeVisible();
-    await expect(page.getByRole("button", { name: "Previous" })).toBeEnabled();
-    await expect(page.locator(".ana-log[aria-busy=true]")).toBeVisible();
-    await expect(counter(page)).toHaveText("1–100 of 1495 events · reading");
-    await expect(row(page, 0)).toBeVisible();
-    held.resolve();
-    await expect(counter(page)).toHaveText("101–200 of 1495 events");
-    await expect(page.locator(".ana-log[aria-busy=true]")).toHaveCount(0);
-    const frames = await framesOf(page);
-    expect(frames.bad).toBe(0);
-    expect(frames.busyAfter).toBeGreaterThanOrEqual(250);
     expectQuiet(opened);
     await opened.context.close();
   });

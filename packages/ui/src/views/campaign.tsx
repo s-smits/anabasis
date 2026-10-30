@@ -4,7 +4,6 @@ import { plural } from "../../../../src/meta/text.ts";
 import { ComparisonsChart } from "../components/charts/comparisons.tsx";
 import { CarriedChart, CarriedKey, SpendChart } from "../components/charts/small.tsx";
 import { MetricCard, MetricGrid, Section } from "../components/layout.tsx";
-import { shortName } from "../components/project-sidebar.tsx";
 import { Badge, Card, Disclosure, NoSignal } from "../components/primitives.tsx";
 import type { CampaignReading, Tone } from "../models.ts";
 import type { PaneProps } from "../route.ts";
@@ -22,8 +21,9 @@ import { money, percent, time } from "./format.ts";
  *
  * What `bun run runs view` prints and the readouts do not stands one click or one line away: the
  * set-up line with the seats and the terms in one collapsed disclosure, the steps open at the log's
- * end in the next move's detail as the view words it, and when the log was last written beside the status, since an open campaign that last wrote long
- * ago is probably a process stopped with no ending, which the log cannot say.
+ * end in the next move's detail as the view words it, and when the log was last written beside the status of a campaign no process writes, since an open
+ * campaign that last wrote long ago is probably a process stopped with no ending, which the log
+ * cannot say; a running one leaves it out (operator, 30 October).
  */
 
 const MOVE_WORD = {
@@ -60,24 +60,21 @@ const READING_TONE = new Map<string, Tone>([
 
 function Head({ reading }: { reading: CampaignReading }) {
   const { row } = reading;
-  // The eyebrow names the project, which opened the names of 117 of 153 recorded campaigns on
-  // 30 October, so the title drops it and the full name stands below in mono, as commands take it.
-  const titled = shortName(row);
+  // The title is the whole name, as commands take it, alone: the project above it repeated the name's
+  // opening in 117 of 153 recorded campaigns on 30 October, and the picker groups by it.
   const status = row.ending === null ? row.status : `ended: ${row.ending.ending}`;
   const tone: Tone =
     row.status === "running" ? "info" : row.ending?.ending === "environment" ? "bad" : "neutral";
   return (
     <header className="ana-run-head ana-campaign-head">
       <div className="ana-campaign-title">
-        <p className="ana-eyebrow" title={row.project}>
-          {row.project}
-        </p>
-        <h1>{titled}</h1>
-        {titled === row.name ? null : <p className="ana-campaign-name">{row.name}</p>}
+        <h1>{row.name}</h1>
       </div>
       <div className="ana-campaign-status">
         <Badge tone={tone}>{status}</Badge>
-        <span className="ana-num">last wrote {time(row.lastEventAt)}</span>
+        {row.status === "running" ? null : (
+          <span className="ana-num">last wrote {time(row.lastEventAt)}</span>
+        )}
         <span className="ana-num">
           {money(row.billed)}
           {row.budget === null ? " billed" : ` of ${money(row.budget)}`}
@@ -317,30 +314,38 @@ export function CampaignPane({ reading, navigation }: PaneProps) {
         title="Harnesses"
         aside={<span className="ana-campaign-qualifier">{plural(reading.harnesses.length, "version")}</span>}
       >
-        <HarnessStrip reading={reading} navigation={navigation} />
+        <HarnessStrip
+          reading={reading}
+          navigation={navigation}
+          beside={
+            carried || spend.length > 0 ? (
+              <div className="ana-campaign-pair">
+                {carried ? (
+                  <Card className="ana-campaign-small">
+                    <div className="ana-section-head">
+                      <h2>Wins by measure</h2>
+                      <CarriedKey />
+                    </div>
+                    <CarriedChart bars={comparisons} />
+                  </Card>
+                ) : null}
+                {spend.length > 0 ? (
+                  <Card className="ana-campaign-small">
+                    <div className="ana-section-head">
+                      <h2>Dollars billed</h2>
+                      <span className="ana-campaign-qualifier">
+                        {plural(spend.length, "move")}
+                        {row.budget === null ? "" : `, budget ${money(row.budget)}`}
+                      </span>
+                    </div>
+                    <SpendChart spend={spend} />
+                  </Card>
+                ) : null}
+              </div>
+            ) : null
+          }
+        />
       </Section>
-      {carried || spend.length > 0 ? (
-        <div className="ana-campaign-pair">
-          {carried ? (
-            <Card className="ana-campaign-small">
-              <div className="ana-section-head">
-                <h2>Wins by measure</h2>
-                <CarriedKey />
-              </div>
-              <CarriedChart bars={comparisons} />
-            </Card>
-          ) : null}
-          {spend.length > 0 ? (
-            <Card className="ana-campaign-small">
-              <div className="ana-section-head">
-                <h2>Dollars billed</h2>
-                <span className="ana-campaign-qualifier">{plural(spend.length, "move")}</span>
-              </div>
-              <SpendChart spend={spend} budget={row.budget} />
-            </Card>
-          ) : null}
-        </div>
-      ) : null}
       <Counters reading={reading} />
     </div>
   );

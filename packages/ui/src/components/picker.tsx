@@ -1,5 +1,8 @@
+import Fuse from "fuse.js";
 import { Check, ChevronDown } from "lucide-react";
 import { type FocusEvent, memo, useId, useMemo, useRef, useState } from "react";
+import { Search } from "../views/controls.tsx";
+import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
 
 /*
  * A picker that uses the page's shared styles.
@@ -19,10 +22,15 @@ import { type FocusEvent, memo, useId, useMemo, useRef, useState } from "react";
  * 14 October both were effects that ran a frame after the list had drawn, one of them a listener on
  * the whole document for as long as the list was open.
  *
- * A `filtered` picker narrows its list as the operator types, with focus still on the trigger: each
- * printable key extends the filter, Backspace shortens it, and Escape clears it before it closes the
+ * A `filtered` picker narrows its list as the operator types into a search box at the top of the
+ * list, which takes focus as the list opens: a key typed on the trigger opens it with that key, the
+ * arrows and Enter walk and pick as on the trigger, and Escape clears the filter before it closes the
  * list. The campaign picker needs it: on 30 October the repository held 176 campaigns, and the list
- * was two pickers of bare names with no way to find one but to scroll.
+ * was two pickers of bare names with no way to find one but to scroll. Until the same day the filter
+ * was typed on the trigger and drawn as text, which no Cmd+A, paste or caret could reach (operator).
+ * The filter forgives typos (Fuse.js, `FUZZY`) and puts the closest match first: the list is a few
+ * hundred names, so a loose match costs a few extra rows and a strict one hid "stakced" (operator,
+ * 30 October).
  */
 
 interface PickerOption {
@@ -40,30 +48,65 @@ interface PickerGroup {
   options: readonly PickerOption[];
 }
 
+/** One option as the fuzzy search reads it, with its group's heading. */
+interface Entry {
+  readonly group: string | null;
+  readonly option: PickerOption;
+}
+
+/** Lenient: a match anywhere in a field, at most 40% of it misspelt, the option's own name weighed
+ *  first, and each word of the query matched apart (extended search), so that "opus air" finds the
+ *  Opus campaign on the Air and not every Opus campaign. */
+const FUZZY = {
+  keys: [
+    { name: "option.label", weight: 2 },
+    { name: "group", weight: 1 },
+    { name: "option.value", weight: 1 },
+    { name: "option.detail", weight: 0.5 },
+    { name: "option.note", weight: 0.5 },
+  ],
+  threshold: 0.4,
+  ignoreLocation: true,
+  useExtendedSearch: true,
+};
+
 /** The active option, brought into view in the list as it becomes active. */
 function scrollNearest(option: HTMLButtonElement | null): void {
   option?.scrollIntoView({ block: "nearest" });
 }
 
-/** A press inside the list keeps focus on the trigger, so the list stays open under it. */
+/** A press inside the list keeps focus where it is, so the list stays open under it; a press in the
+ *  search box places its caret. */
 function keepFocus(event: React.MouseEvent): void {
-  event.preventDefault();
+  if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
 }
 
-/** The groups narrowed to the options whose text, or whose group's heading, holds `query`. */
+/** The search box takes focus as the list opens, its caret after the key that opened it. */
+function focusAtEnd(input: HTMLInputElement | null): void {
+  input?.focus();
+  input?.setSelectionRange(input.value.length, input.value.length);
+}
+
+/** The groups narrowed to the options `query` finds, the closest first in each group and the group
+ *  of the closest first. */
 function narrowed(groups: readonly PickerGroup[], query: string): readonly PickerGroup[] {
-  if (query === "") return groups;
-  const needle = query.toLowerCase();
-  const holds = (text: string | null | undefined) => text?.toLowerCase().includes(needle) === true;
-  return groups.map((group) => ({
-    ...group,
-    options: holds(group.label)
-      ? group.options
-      : group.options.filter(
-          (option) =>
-            holds(option.label) || holds(option.detail) || holds(option.note) || holds(option.value),
-        ),
-  }));
+  if (query.trim() === "") return groups;
+  const entries: Entry[] = groups.flatMap((group) =>
+    group.options.map((option) => ({ group: group.label, option })),
+  );
+  const rank = new Map(
+    new Fuse(entries, FUZZY).search(query.trim()).map(({ item }, at) => [item.option, at]),
+  );
+  const rankOf = (option: PickerOption) => rank.get(option) ?? Infinity;
+  const best = (group: PickerGroup) => Math.min(...group.options.map(rankOf));
+  return groups
+    .map((group) => ({
+      ...group,
+      options: group.options
+        .filter((option) => rank.has(option))
+        .toSorted((one, other) => rankOf(one) - rankOf(other)),
+    }))
+    .toSorted((one, other) => best(one) - best(other));
 }
 
 /** A key that types into the filter: one printable character, with no modifier but Shift. */
@@ -79,6 +122,7 @@ function PickerInner({
   placeholder = "Nothing to select",
   filtered = false,
   shown,
+  icon: Icon,
 }: {
   label: string;
   value: string | null;
@@ -89,6 +133,8 @@ function PickerInner({
   filtered?: boolean;
   /** What the trigger shows for the current option, where it differs from the option's own line. */
   shown?: { readonly label: string; readonly detail?: string };
+  /** The trigger's icon, the whole trigger where the sidebar is collapsed. */
+  icon?: typeof Check;
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -140,27 +186,27 @@ function PickerInner({
 
   function onKeyDown(event: React.KeyboardEvent) {
     if (empty) return;
+    const inBox = event.target instanceof HTMLInputElement;
     if (event.key === "Escape") {
       event.preventDefault();
-      if (query === "") close();
-      else filterTo("");
+      if (query === "") {
+        close();
+        trigger.current?.focus();
+      } else filterTo("");
       return;
     }
     if (event.key === "Tab") {
       close();
       return;
     }
-    if (filtered && typed(event) && (event.key !== " " || query !== "")) {
+    if (inBox) {
+      if (event.key !== "Enter" && event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    } else if (filtered && typed(event) && event.key !== " ") {
       event.preventDefault();
-      filterTo(query + event.key);
+      filterTo(event.key);
       return;
     }
-    if (filtered && event.key === "Backspace" && query !== "") {
-      event.preventDefault();
-      filterTo(query.slice(0, -1));
-      return;
-    }
-    if (open && (event.key === "Home" || event.key === "End")) {
+    if (open && !inBox && (event.key === "Home" || event.key === "End")) {
       event.preventDefault();
       setActive(event.key === "Home" ? 0 : flat.length - 1);
       return;
@@ -176,7 +222,7 @@ function PickerInner({
       setActive((index) => (flat.length === 0 ? 0 : (index + step + flat.length) % flat.length));
       return;
     }
-    if (event.key === "Enter" || event.key === " ") {
+    if (event.key === "Enter" || (event.key === " " && !inBox)) {
       event.preventDefault();
       if (open && flat.length > 0) commit(active);
       else if (open) close();
@@ -192,90 +238,102 @@ function PickerInner({
       <span className="ana-picker-label" id={`${id}-label`}>
         {label}
       </span>
-      <button
-        ref={trigger}
-        type="button"
-        role="combobox"
-        className="ana-picker-button"
-        disabled={empty}
-        aria-haspopup="listbox"
-        aria-autocomplete={filtered ? "list" : undefined}
-        aria-expanded={open}
-        aria-labelledby={`${id}-label ${id}-value`}
-        aria-controls={open ? `${id}-listbox` : undefined}
-        aria-activedescendant={open && flat.length > 0 ? `${id}-option-${active}` : undefined}
-        onClick={() => {
-          setActive(value === null ? 0 : (indexOf.get(value) ?? 0));
-          if (open) close();
-          else setOpen(true);
-          // Safari does not focus a button it clicks, and the list closes as focus leaves it.
-          trigger.current?.focus();
-        }}
-        onKeyDown={onKeyDown}
-      >
-        <span className="ana-picker-value" id={`${id}-value`} title={current?.label}>
-          {current?.label ?? placeholder}
-          {current?.detail === undefined ? null : <small> {current.detail}</small>}
-        </span>
-        <ChevronDown />
-      </button>
-      {open ? (
-        <div
-          className="ana-picker-panel"
-          id={`${id}-listbox`}
-          role="listbox"
-          aria-labelledby={`${id}-label`}
-          onMouseDown={keepFocus}
+      <div className="ana-picker-field">
+        <button
+          ref={trigger}
+          type="button"
+          role="combobox"
+          className="ana-picker-button"
+          disabled={empty}
+          aria-haspopup="listbox"
+          aria-autocomplete={filtered ? "list" : undefined}
+          aria-expanded={open}
+          aria-labelledby={`${id}-label ${id}-value`}
+          aria-controls={open ? `${id}-listbox` : undefined}
+          aria-activedescendant={open && flat.length > 0 ? `${id}-option-${active}` : undefined}
+          onClick={() => {
+            setActive(value === null ? 0 : (indexOf.get(value) ?? 0));
+            if (open) close();
+            else setOpen(true);
+            // Safari does not focus a button it clicks, and the list closes as focus leaves it.
+            trigger.current?.focus();
+          }}
+          onKeyDown={onKeyDown}
         >
-          {filtered ? (
-            <div className="ana-picker-filter" aria-live="polite">
-              {query === "" ? (
-                <span>Type to filter</span>
-              ) : (
-                <>
-                  <span className="ana-picker-query">{query}</span>
-                  <span>{flat.length === 0 ? "nothing matches" : `${String(flat.length)} match`}</span>
-                </>
-              )}
-            </div>
-          ) : null}
-          {visible
-            .filter((group) => group.options.length > 0)
-            .map((group) => (
-              <div className="ana-picker-group" key={group.key}>
-                {group.label === null ? null : <div className="ana-picker-group-label">{group.label}</div>}
-                {group.options.map((option) => {
-                  const index = indexOf.get(option.value) ?? 0;
-                  return (
-                    <button
-                      type="button"
-                      role="option"
-                      id={`${id}-option-${index}`}
-                      ref={index === active ? scrollNearest : undefined}
-                      tabIndex={-1}
-                      aria-selected={option.value === value}
-                      key={option.value}
-                      className={`ana-picker-option ${index === active ? "is-active" : ""} ${
-                        option.value === value ? "is-current" : ""
-                      }`}
-                      onMouseEnter={() => setActive(index)}
-                      onClick={() => commit(index)}
-                    >
-                      <Check className="ana-picker-tick" />
-                      <span>
-                        {option.label}
-                        {option.detail === undefined ? null : <small> {option.detail}</small>}
-                        {option.note === undefined ? null : (
-                          <small className="ana-picker-note">{option.note}</small>
-                        )}
-                      </span>
-                    </button>
-                  );
-                })}
+          {Icon === undefined ? null : <Icon className="ana-picker-icon" aria-hidden="true" />}
+          <span className="ana-picker-value" id={`${id}-value`} title={current?.label}>
+            {current?.label ?? placeholder}
+            {current?.detail === undefined ? null : <small> {current.detail}</small>}
+          </span>
+          <ChevronDown />
+        </button>
+        {open ? (
+          <div
+            className="ana-picker-panel"
+            id={`${id}-listbox`}
+            role="listbox"
+            aria-labelledby={`${id}-label`}
+            onMouseDown={keepFocus}
+          >
+            {filtered ? (
+              <div className="ana-picker-filter">
+                <Search
+                  ref={focusAtEnd}
+                  value={query}
+                  onChange={filterTo}
+                  placeholder="Type to filter"
+                  aria-label={`Filter ${label.toLowerCase()}s`}
+                  aria-controls={`${id}-listbox`}
+                  aria-activedescendant={flat.length > 0 ? `${id}-option-${active}` : undefined}
+                  onKeyDown={onKeyDown}
+                />
+                {query === "" ? null : (
+                  <span aria-live="polite">
+                    {flat.length === 0
+                      ? "nothing matches"
+                      : `${String(flat.length)} ${flat.length === 1 ? "match" : "matches"}`}
+                  </span>
+                )}
               </div>
-            ))}
-        </div>
-      ) : null}
+            ) : null}
+            {visible
+              .filter((group) => group.options.length > 0)
+              .map((group) => (
+                <div className="ana-picker-group" key={group.key}>
+                  {group.label === null ? null : <div className="ana-picker-group-label">{group.label}</div>}
+                  {group.options.map((option) => {
+                    const index = indexOf.get(option.value) ?? 0;
+                    return (
+                      <button
+                        type="button"
+                        role="option"
+                        id={`${id}-option-${index}`}
+                        ref={index === active ? scrollNearest : undefined}
+                        tabIndex={-1}
+                        aria-selected={option.value === value}
+                        key={option.value}
+                        className={`ana-picker-option ${index === active ? "is-active" : ""} ${
+                          option.value === value ? "is-current" : ""
+                        }`}
+                        onMouseEnter={() => setActive(index)}
+                        onClick={() => commit(index)}
+                      >
+                        <Check className="ana-picker-tick" />
+                        <span>
+                          {option.label}
+                          {option.detail === undefined ? null : <small> {option.detail}</small>}
+                          {option.note === undefined ? null : (
+                            <small className="ana-picker-note">{option.note}</small>
+                          )}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -283,3 +341,45 @@ function PickerInner({
 /** Memoised: the sidebar re-renders on every poll of the campaign list; the picker can skip
  *  rendering when its props, including the groups, current value and callback, have not changed. */
 export const Picker = memo(PickerInner);
+
+/** A choice in a filter row, in the search box's style: the list opens with a box that finds a
+ *  value by typing, as the campaign picker does (operator, 30 October: a native select could not
+ *  be searched, and drew in the system's style). */
+export function Choose({
+  label,
+  value,
+  onChange,
+  values,
+  format = (item: string) => item,
+  detail,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  values: readonly string[];
+  format?: (value: string) => string;
+  /** What a value stands for beside its words, such as how many rows hold it. */
+  detail?: (value: string) => string;
+}) {
+  const groups = [
+    {
+      key: label,
+      label: null,
+      options: values.map((item) => ({
+        value: item,
+        label: format(item),
+        ...keyIfDefined("detail", detail?.(item)),
+      })),
+    },
+  ];
+  return (
+    <Picker
+      label={label}
+      value={value}
+      groups={groups}
+      onChange={onChange}
+      shown={{ label: format(value) }}
+      filtered
+    />
+  );
+}

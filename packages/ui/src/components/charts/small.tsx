@@ -1,6 +1,5 @@
 import { memo, useMemo } from "react";
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, ReferenceLine, XAxis, YAxis } from "recharts";
-import { keyIfDefined } from "../../../../../src/meta/optional-key.ts";
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import type { ComparisonBar, SpendPoint } from "../../models.ts";
 import { carriedText, MEASURES } from "../../views/campaign-data.ts";
 import { money, time } from "../../views/format.ts";
@@ -9,8 +8,8 @@ import { ChartContainer, ChartTooltip } from "../ui/chart.tsx";
 /*
  * The Campaign pane's two small charts. Each comparison's won tasks by the measure that carried each,
  * one column a comparison and no line between comparisons, since the scored tasks change from one to
- * the next; and the dollars billed, summed over the moves in log order, against the campaign's
- * total. Neither animates, and each is memoised on the reading's arrays.
+ * the next; and the dollars billed, summed over the moves in log order. Neither animates, and each
+ * is memoised on the reading's arrays.
  */
 
 interface CarriedRow {
@@ -124,49 +123,33 @@ function SpendTooltip({
   );
 }
 
-/** The dollars billed over the moves, against the campaign's total where it has one. */
-export const SpendChart = memo(function SpendChart({
-  spend,
-  budget,
-}: {
-  spend: readonly SpendPoint[];
-  budget: number | null;
-}) {
-  const last = spend.at(-1)?.cumulative ?? 0;
-  const ceiling = Math.max(budget ?? 0, last) * 1.08 || 1;
-  // Under its budget the axis reads in halves of it; past it, Recharts picks the ticks.
-  const halves = budget !== null && budget > 0 && last <= budget ? [0, budget / 2, budget] : undefined;
+/** The dollars billed over the moves, on an axis of the spend itself. Until 30 October the axis
+ *  ran to the campaign's budget, so a campaign $34 into $800 drew a flat line on the floor, and
+ *  each step was held to the next move, so the last showed as a hook at the edge; the budget is in
+ *  the card's head and the hero. */
+export const SpendChart = memo(function SpendChart({ spend }: { spend: readonly SpendPoint[] }) {
   return (
     <ChartContainer>
       <AreaChart accessibilityLayer data={[...spend]} margin={MARGIN}>
         <CartesianGrid vertical={false} />
         <XAxis dataKey="move" tickLine={false} axisLine={{ stroke: BORDER }} minTickGap={16} />
         <YAxis
-          domain={[0, ceiling]}
-          {...keyIfDefined("ticks", halves)}
-          tickFormatter={(value: number) => `$${value.toFixed(0)}`}
+          domain={[0, "auto"]}
+          tickFormatter={(value: number) => `$${value.toFixed(Number.isInteger(value) ? 0 : 2)}`}
           tickLine={false}
           axisLine={false}
-          width={40}
+          width={48}
         />
-        {budget === null ? null : (
-          <ReferenceLine
-            y={budget}
-            stroke="var(--ana-dim)"
-            strokeDasharray="4 3"
-            label={{ value: `budget ${money(budget)}`, position: "insideTopRight", fill: "var(--ana-dim)" }}
-          />
-        )}
         <ChartTooltip cursor={{ stroke: BORDER }} isAnimationActive={false} content={<SpendTooltip />} />
         <Area
           dataKey="cumulative"
-          type="stepAfter"
+          type="linear"
           stroke={ACCENT}
           strokeWidth={2}
           fill={ACCENT}
           fillOpacity={0.1}
           isAnimationActive={false}
-          dot={false}
+          dot={{ r: 2, fill: ACCENT, strokeWidth: 0 }}
           activeDot={{ r: 4, fill: ACCENT, stroke: "var(--ana-card)", strokeWidth: 2 }}
         />
       </AreaChart>

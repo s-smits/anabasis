@@ -89,7 +89,8 @@ describe("the campaign's line and readouts", () => {
     const opened = await openCampaign();
     const { page } = opened;
     const head = page.locator(".ana-campaign-head");
-    await expect(head.locator(".ana-eyebrow")).toHaveText(served.fixture.projects.vowels);
+    await expect(head.locator("h1")).toHaveText(served.fixture.name);
+    await expect(head.locator(".ana-eyebrow")).toHaveCount(0);
     await expect(head.locator(".ana-campaign-status")).toContainText("open");
     await expect(head.locator(".ana-campaign-status")).toContainText(/\w{3} \d+, /u);
     await expect(head.locator(".ana-campaign-status")).toContainText("$7.49 of $40.00");
@@ -332,7 +333,7 @@ describe("the other campaigns", () => {
   test("a campaign ended on its budget shows its ending in place of the next move, and no promotion", async () => {
     const opened = await openCampaign("units");
     const { page } = opened;
-    await expect(page.locator(".ana-campaign-head .ana-eyebrow")).toHaveText(served.fixture.projects.units);
+    await expect(page.locator(".ana-campaign-head h1")).toHaveText(served.fixture.units);
     await expect(page.locator(".ana-campaign-status")).toContainText("ended: budget");
     await expect(readout(page, "Ending").value).toHaveText("budget");
     await expect(page.locator(".ana-metric-label")).toHaveText([

@@ -108,7 +108,7 @@ describe("the Campaign picker", () => {
     await close(page);
   });
 
-  test("walks its options with the arrows, Home and End, and picks with Enter", async () => {
+  test("walks its options with the arrows from the trigger and on in its search box, and picks with Enter", async () => {
     const page = await opened(`campaign=${keys.fixture}&pane=moves`, { level: 2, name: "Moves" });
     const picker = page.page.getByRole("combobox", { name: CAMPAIGN });
     await picker.focus();
@@ -117,8 +117,8 @@ describe("the Campaign picker", () => {
       ["ArrowDown", 1],
       ["ArrowDown", 2],
       ["ArrowDown", 0],
-      ["End", 2],
-      ["Home", 0],
+      ["ArrowUp", 2],
+      ["ArrowDown", 0],
     ] as const) {
       await page.page.keyboard.press(key);
       await expect(picker).toHaveAttribute("aria-activedescendant", new RegExp(`option-${String(at)}$`, "u"));
@@ -139,17 +139,29 @@ describe("the Campaign picker", () => {
     await picker.focus();
     await page.page.keyboard.type("ear");
     const list = page.page.getByRole("listbox");
-    await expect(list.getByRole("option")).toHaveCount(1);
-    await expect(list.getByRole("option")).toContainText("early");
+    // The search forgives typos, so a short query may keep more than one; the closest is first.
+    await expect(list.getByRole("option").first()).toContainText("early");
     await page.page.keyboard.type("zzz");
     await expect(list.getByRole("option")).toHaveCount(0);
     await expect(list).toContainText("nothing matches");
     await page.page.keyboard.press("Escape");
     await expect(list.getByRole("option")).toHaveCount(3);
     await page.page.keyboard.type("unit");
-    await expect(list.getByRole("option")).toHaveCount(1);
+    await expect(list.getByRole("option").first()).toContainText("unit");
+    // A shorter query forgives more, and the closest match stays first.
     await page.page.keyboard.press("Backspace");
-    await expect(list.getByRole("option")).toHaveCount(1);
+    await expect(list.getByRole("option").first()).toContainText("unit");
+    // The filter is a search box: select all replaces it, not the page.
+    const box = list.getByRole("searchbox");
+    await expect(box).toBeFocused();
+    await page.page.keyboard.press("ControlOrMeta+A");
+    await page.page.keyboard.type("ear");
+    await expect(box).toHaveValue("ear");
+    await expect(list.getByRole("option").first()).toContainText("early");
+    // It forgives a typo.
+    await box.fill("ealry");
+    await expect(list.getByRole("option").first()).toContainText("early");
+    await box.fill("unit");
     await page.page.keyboard.press("Enter");
     await expect(page.page.getByRole("heading", { level: 1, name: "units" })).toBeVisible();
     expect(routeParameters(page.page)).toEqual({ campaign: keys.units });
@@ -227,7 +239,15 @@ describe("the collapse", () => {
     await expect.poll(async () => (await sidebar.boundingBox())?.width ?? 0).toBeLessThan(wide);
     const open = page.page.getByRole("button", { name: "Open", exact: true });
     await expect(open).toHaveAttribute("aria-expanded", "false");
-    await expect(page.page.getByRole("combobox", { name: CAMPAIGN })).toBeHidden();
+    // The picker stays, as one icon, and lists the campaigns beside the sidebar.
+    const picker = page.page.getByRole("combobox", { name: CAMPAIGN });
+    await picker.click();
+    const listed = await page.page
+      .getByRole("listbox")
+      .evaluate((element) => element.getBoundingClientRect().left);
+    expect(listed).toBeGreaterThanOrEqual((await sidebar.boundingBox())?.width ?? 0);
+    await page.page.keyboard.press("Escape");
+    await expect(page.page.getByRole("listbox")).toBeHidden();
     const moves = nav(page.page).getByRole("button", { name: "Moves" });
     await expect(moves).toBeVisible();
     await moves.click();

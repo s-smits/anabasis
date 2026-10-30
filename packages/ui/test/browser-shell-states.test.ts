@@ -77,7 +77,7 @@ describe("a page the server refuses", () => {
       await expect(page.page.getByText(/carries the token every request needs/u)).toBeVisible();
       await expect(page.page.getByRole("heading", { level: 1, name: "fixture" })).toHaveCount(0);
       await expect(page.page.getByRole("combobox", { name: /^Campaign/u })).toHaveAccessibleName(
-        /Nothing to select/u,
+        /No campaigns/u,
       );
       expect(await accessibilityViolations(page.page)).toEqual([]);
       await close(page, [FAILED_LOAD]);
@@ -104,7 +104,7 @@ describe("a read in flight or failed", () => {
       timeout: ACTION_MS,
     });
     const picker = page.getByRole("combobox", { name: /^Campaign/u });
-    await expect(picker).toHaveAccessibleName(/Nothing to select/u);
+    await expect(picker).toHaveAccessibleName(/Reading campaigns/u);
     release();
     await expect(picker).toHaveAccessibleName("Campaign fixture vowel-counts", { timeout: ACTION_MS });
     await context.close();
@@ -370,21 +370,17 @@ describe("the poll", () => {
     const page = await openPage(browser, served.url(`campaign=${folder}/early&pane=log`));
     await withClock(page.page);
     await expect(page.page.getByRole("heading", { level: 2, name: "Log" })).toBeVisible();
-    const count = page.page.getByText(/^1–\d+ of \d+ events$/u);
+    const count = page.page.getByRole("main").getByText(/^\d+ lines$/u);
     await expect(count).toBeVisible();
-    const before = Number(/of (\d+)/u.exec((await count.textContent()) ?? "")?.[1]);
+    const before = Number(/\d+/u.exec((await count.textContent()) ?? "")?.[0]);
     expect(before).toBeGreaterThan(0);
     append(join(served.fixture.root, ".ana", "d2", "early", "log.jsonl"), "campaign.waited", {
-      task: "word-01",
-      harness: served.fixture.harnesses.starter,
-      load: 30,
-      cores: 12,
-      ms: 1_000,
+      for: "network",
+      ms: 60_000,
     });
     await nextPolls(page.page, 1);
-    await expect(
-      page.page.getByText(`1–${String(before + 1)} of ${String(before + 1)} events`),
-    ).toBeVisible();
+    await expect(page.page.getByRole("main").getByText(`${String(before + 1)} lines`)).toBeVisible();
+    await expect(page.page.getByText("Waited 1 min after the network failed a session")).toBeVisible();
     await close(page);
   });
 });

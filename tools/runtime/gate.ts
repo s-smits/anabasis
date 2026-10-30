@@ -93,7 +93,7 @@ interface Prover {
 
 /** The documentation set. A commit changing nothing beyond it gets no static steps, and a push of
  *  such commits alone gets `git diff --check` and nothing more. No test reads these files. */
-const DOCUMENTATION = [
+export const DOCUMENTATION = [
   ":(exclude)AGENTS.md",
   ":(exclude)README.md",
   ":(exclude)docs/**",
@@ -121,8 +121,8 @@ const DOCUMENTATION = [
  *  the 35 CI gate logs in this clone on 18 October, the UI step's 16 failing cases were all in browser
  *  files, in 5 static passes of `bun run land` over commits that changed nothing under `packages/ui`. */
 const UI_PACKAGE = "packages/ui/package.json";
-const UI_ROOT = "packages/ui";
-const UI_SETUP = [
+export const UI_ROOT = "packages/ui";
+export const UI_SETUP = [
   "package.json",
   "bun.lock",
   "tsconfig.json",
@@ -136,7 +136,7 @@ const BROWSER_FILE = /^packages\/ui\/test\/browser-[^/]+\.test\.ts$/u;
 const IMPORTS = new Map<string, string[]>();
 const TRANSPILERS = { ts: new Bun.Transpiler({ loader: "ts" }), tsx: new Bun.Transpiler({ loader: "tsx" }) };
 /** How many imports a test file may stand from a changed file and be near it (head comment). */
-const NEAR = { root: 1, ui: 3 } as const;
+export const NEAR = { root: 1, ui: 3 } as const;
 const STEPS = [
   ["install", ["install", "--frozen-lockfile"]],
   ["ui", ["run", "ui:gate"]],
@@ -145,7 +145,7 @@ const STEPS = [
   ["typecheck", ["run", "typecheck"]],
   ["lint", ["run", "lint", "--", "--strict"]],
 ] as const;
-const TEST_FILE = /^test\/[^/]+\.test\.ts$/u;
+export const TEST_FILE = /^test\/[^/]+\.test\.ts$/u;
 const GATE = join(import.meta.dir, "gate.ts");
 const PROVED = {
   static: "its static steps and nearby tests passed on its own checkout",
@@ -245,7 +245,7 @@ export function addedLine(
 
 /** Every repository file `file` imports, relative to `root`, resolved as Bun resolves it, outside
  *  `node_modules` and leaving out a runtime's own module (`node:fs`, `bun:test`). A stylesheet or another file no transpiler reads imports nothing. */
-function importsOf(root: string, file: string): string[] {
+export function importsOf(root: string, file: string): string[] {
   const known = IMPORTS.get(join(root, file));
   if (known !== undefined) return known;
   const loader = /\.[cm]?[jt]sx$/u.test(file) ? "tsx" : /\.[cm]?[jt]s$/u.test(file) ? "ts" : null;
@@ -281,14 +281,14 @@ function within(root: string, start: string, depth: number): Set<string> {
 
 /** The files the working tree changed since `base`, beyond the documentation set: a commit's own
  *  in a pass's checkout, and its uncommitted and untracked ones too where the CI gate is run by hand. */
-const changedSince = (root: string, base: string): Set<string> =>
+export const changedSince = (root: string, base: string): Set<string> =>
   new Set([
     ...lines(git(root, ["diff", "--name-only", base, "--", ".", ...DOCUMENTATION])),
     ...lines(git(root, ["ls-files", "--others", "--exclude-standard", "--", ".", ...DOCUMENTATION])),
   ]);
 
 /** The test files among `tests` near `changed`, by the rule in the head comment, at `depth` imports. */
-function nearbyTests(
+export function nearbyTests(
   root: string,
   changed: ReadonlySet<string>,
   tests: readonly string[],

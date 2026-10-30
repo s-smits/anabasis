@@ -1,0 +1,52 @@
+# 9. Status, evidence and claims
+
+Read this before a sentence names a part's level, ranks two kinds of evidence, or claims a step, no
+step, a mechanism or a refusal. It holds `AGENTS.md` section 9 in full.
+
+Read `attribution-and-proof`, which owns what one reading may show, before any sentence claims that
+a harness, a model or a patch improved something. What follows holds for every statement.
+
+## The ladder
+
+The levels are listed in `AGENTS.md` section 9. Each describes the evidence, not the effort: a
+part Present in source still needs a test with its nearest hostile case, a replay or a rehearsal
+to be Proved without a model, and an event in a real run's log to be Exercised live.
+
+None stands in for the next. `docs/plan.md` keeps each part's level, and a pull request names the
+level it moves; keep no second status list anywhere.
+
+## Evidence
+
+```text
+events in a campaign's log  >  a fold over the log  >  source and tests  >  a command's printed line
+                            >  a pull request's text  >  an agent's account
+```
+
+- A prompt assertion proves text, a type a shape, a test the conditions it tested, a rehearsal that
+  the path runs; none proves a model behaves better. A suite passing on one operating system says
+  nothing of the other's wall.
+- A Referee's ruling is a model's output, apart from the verifier's verdict and the environment's
+  facts. An agent's report is a lead until checked ("Reviews and subagents", in
+  `working-in-the-repository.md`).
+- A run is evidence about the code it ran and no other. Read side by side, or triage from, only runs
+  whose every launch held the mechanism (`bun run runs source --has <text>` or `--holds <commit>`,
+  `ranWith`), named by text its code holds since a restack rewrites commits. A run without it is no
+  evidence either way.
+
+A negative claim about capability ("nothing checks X") is the costliest to get wrong, since later
+readers compensate for a defect that may not exist: make one only with the symbol, its call sites
+and a check run in the same turn.
+
+## What may be claimed
+
+| Claim | Requires |
+| --- | --- |
+| A step | A comparison that read `step`, named with its setting, tasks, solves per side, level, budget and starter. It promotes on one draw, with its A/A beside it; the word stands unqualified once a later fresh reading of the pair holds it |
+| No step | The same naming and the test's size: no gain found at this size, nothing about equality |
+| A mechanism | The event it writes, in a live run's log, where its trigger occurred |
+| A refusal | Its text, which establishes its own condition and nothing about the answers |
+| Which part of a harness did it | A standalone comparison against the programs ablation `programs-of:<digest>` |
+
+A step holds under its one condition only (`attribution-and-proof` lists what it does not say). Keep
+the counts apart as that skill lists them, give each rate its denominator, and never compare results across
+campaigns or settings.

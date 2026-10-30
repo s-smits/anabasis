@@ -175,7 +175,7 @@ const STACK_WAIT_MS = 10 * 60_000;
 /** The labels that rank a pull request's importance; each of a landing carries exactly one. */
 const IMPORTANCE = /^importance:I[0-3]$/u;
 /** The labels that file a pull request under a subject; each of a landing carries at least one. */
-const CATEGORIES = new Set([
+export const CATEGORIES = new Set([
   "harness",
   "climb",
   "comparison",

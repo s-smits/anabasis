@@ -45,3 +45,6 @@ __pycache__/
 /.config/m1-runner.json
 /tools/test-remote.sh
 /docs/systems-read-findings.md
+# Skills and other files set aside on this machine instead of shipped, such as a zipped skill a
+# pull request once carried (30 October 2026).
+/.archive/

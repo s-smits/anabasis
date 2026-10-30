@@ -150,6 +150,8 @@ export type EventKind = (typeof EVENT_KINDS)[number];
 export const LOG_FILE = "log.jsonl";
 
 const NEWLINE = 0x0a;
+/** Where `{"at":"<24 characters>` ends and `","kind":"` begins, in every line `append` writes. */
+const [AT_END, KIND_AT] = [31, `","kind":"`];
 
 export interface LogEvent {
   /** ISO 8601, as the host's clock read it at the append. */
@@ -157,6 +159,9 @@ export interface LogEvent {
   readonly kind: EventKind;
   readonly data: JsonObject;
 }
+
+const KINDS: ReadonlySet<string> = new Set(EVENT_KINDS);
+const isKind = (value: unknown): value is EventKind => isString(value) && KINDS.has(value);
 
 export function append(path: string, kind: EventKind, data: JsonObject): LogEvent {
   const event: LogEvent = { at: new Date().toISOString(), kind, data };
@@ -178,23 +183,36 @@ export function append(path: string, kind: EventKind, data: JsonObject): LogEven
   return event;
 }
 
-/** Every event in append order. A missing log is an empty history. */
-export function read(path: string): LogEvent[] {
+/** Every event in append order. A missing log is an empty history. A reader that reads no event of
+ *  some kinds names them in `without`, and their lines are passed over unparsed: on 30 October the
+ *  calls of solves and sessions were 72% of the bytes of 145 campaign logs, and reading the table of
+ *  runs without them took 0.9 s instead of 2.6 s. `append` writes `at` first, a fixed 24 characters,
+ *  and `kind` next, so the kind is read at its place. */
+export function read(path: string, without?: ReadonlySet<EventKind>): LogEvent[] {
   if (!existsSync(path)) return [];
   const text = readFileSync(path, "utf8");
   if (text.length > 0 && !text.endsWith("\n")) throw new Error(`${path}: the last line is torn`);
-  return text
-    .split("\n")
-    .slice(0, -1)
-    .map((line, index) => {
-      const event = asRecord(parsed(line));
-      const kind = EVENT_KINDS.find((known) => known === event?.kind);
-      const data = asRecord(event?.data);
-      if (!isString(event?.at) || kind === undefined || data === null) {
-        throw new Error(`${path}:${index + 1} is not a log event`);
-      }
-      return { at: event.at, kind, data };
-    });
+  const events: LogEvent[] = [];
+  for (const [index, line] of text.split("\n").slice(0, -1).entries()) {
+    const passed = without === undefined ? undefined : kindAt(line);
+    if (passed !== undefined && without?.has(passed) === true) continue;
+    const event = asRecord(parsed(line));
+    const kind = isKind(event?.kind) ? event.kind : undefined;
+    const data = asRecord(event?.data);
+    if (!isString(event?.at) || kind === undefined || data === null) {
+      throw new Error(`${path}:${index + 1} is not a log event`);
+    }
+    // A line written in another order is parsed whole, and left out all the same.
+    if (without?.has(kind) !== true) events.push({ at: event.at, kind, data });
+  }
+  return events;
+}
+
+function kindAt(line: string): EventKind | undefined {
+  if (!line.startsWith(KIND_AT, AT_END)) return undefined;
+  const from = AT_END + KIND_AT.length;
+  const kind = line.slice(from, line.indexOf(`"`, from));
+  return isKind(kind) ? kind : undefined;
 }
 
 function parsed(line: string): JsonValue | undefined {

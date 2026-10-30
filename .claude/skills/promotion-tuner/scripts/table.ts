@@ -59,7 +59,7 @@
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { epochsOf } from "#src/campaign/climb.ts";
 import { comparisonsOf } from "#src/campaign/ground.ts";
-import { type LogEvent, read } from "#src/kernel/log.ts";
+import { type EventKind, type LogEvent, read } from "#src/kernel/log.ts";
 import { billedBetween } from "#src/kernel/trace.ts";
 import { gitMaybe } from "#src/meta/git.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
@@ -71,6 +71,15 @@ import { overloadOf, waitedMs, waitsOf } from "#tools/wri/time.ts";
 import { campaignLogs, type Found, rehearsed } from "./tree.ts";
 
 const SINCE = "2026-10-01";
+/** The tool calls of solves and sessions, which no fold here reads; `draft.call` is read for what a
+ *  drafting session cut short had metered (`unfinished`, `src/kernel/trace.ts`). */
+const CALLS: ReadonlySet<EventKind> = new Set([
+  "solve.call",
+  "exam.call",
+  "build.call",
+  "referee.call",
+  "repair.call",
+]);
 const LAST = 20;
 const USAGE = `usage:
   bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/table.ts
@@ -507,7 +516,7 @@ async function main(args: CommandArgs): Promise<number> {
     if (names.length > 0 && !names.some((part) => found.name.includes(part))) continue;
     if (has.length + holds.length > 0 && !ranWith(found.path, repo, { has, holds })) continue;
     try {
-      const run = runOf(found, read(found.path), tags);
+      const run = runOf(found, read(found.path, CALLS), tags);
       if (run !== null) runs.push(run);
     } catch (error) {
       skipped.push(`${found.name}: ${errorMessage(error)}`);

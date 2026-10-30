@@ -64,9 +64,10 @@ campaigns that never promoted.
 - **Dollars do not bind.** Of 53 `campaign.ended` events, 47 were `environment`, 4 `exam`, 1
   `operator`, 1 `no-room` and none `budget`. Hours and logins bind instead: Examiner sessions are
   49% of the campaigns' wall hours.
-- **One defect.** The Examiner's `finish` is declined with a request for more tasks after every
-  proposal slot is used (`declined`, `src/examiner/write.ts`, which does not read `spent`): 6 of
-  206 declined finishes, 20 turns and $0.92. It is open.
+- **One defect, fixed 30 October.** The Examiner's `finish` was declined with a request for more
+  tasks after every proposal slot was used: 6 of 206 declined finishes, 20 turns and $0.92. Since
+  then `declined` reads `spent` (`src/examiner/write.ts`), so `finish` at a spent allowance ends
+  the session.
 
 Not settled: whether shorter writing sessions, or a cheaper Examiner model or effort, buy the same
 supply for less. Each needs paired Examiner seats from one recorded position under equal time and

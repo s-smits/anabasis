@@ -476,17 +476,21 @@ function startAdmissions(
   return [...instances.filter(isString), ...admitting].join("\n");
 }
 
+/** Whether the session has put every instance its limits allow. */
+function spent(desk: Desk): boolean {
+  return desk.proposed >= desk.request.limits.puts;
+}
+
 /** The tool that holds tasks out, under the name the session's task admission has. */
 function proposeTool(desk: Desk, name: keyof typeof ADMISSION_TOOLS): SeatTool {
   const { id, limits } = desk.request;
-  const spent = () => desk.proposed >= limits.puts;
   /** One instance of a batch: why it was not taken, or the instance under its task id. */
   const taken = (instance: Omit<Task, "taskId">, stop: AbortSignal): string | Task => {
     const content = contentOf(instance);
     const before = desk.seen.get(content);
     if (before === "now") return "An instance proposed before was not taken again.";
     if (before === "earlier") return "An instance an earlier session wrote was not taken again.";
-    if (spent()) return "An instance was not taken: this session can propose no further task.";
+    if (spent(desk)) return "An instance was not taken: this session can propose no further task.";
     if (supplied(desk)) return `An instance was not taken. ${SUPPLIED}`;
     // Until 14 October an instance was still proposed after the deadline, and its three solves started
     // on the spent signal to be killed at once: recode-151's x-1 ended with two batches killed so.
@@ -512,7 +516,7 @@ function proposeTool(desk: Desk, name: keyof typeof ADMISSION_TOOLS): SeatTool {
       context.abortSignal?.throwIfAborted();
       const signal = desk.stop;
       if (supplied(desk)) throw new Error(SUPPLIED);
-      if (spent()) throw new Error("This session can propose no further task. Call finish.");
+      if (spent(desk)) throw new Error("This session can propose no further task. Call finish.");
       // Take the call's instances before their task admissions start, so a batch may exceed what is wanted.
       const instances = args.tasks.map((given) => {
         if (!("reference" in given)) return taken(instanceOf("", given), signal);
@@ -737,7 +741,11 @@ export function writing(
     nudge: "Propose further tasks",
     finish:
       "End the session. Say in one or two sentences what kinds of task you wrote, which kinds the gate held and refused, and what you would try next.",
-    declined: MORE,
+    // Until 30 October a session with no proposal left was still asked for more: 6 of 206
+    // declined finishes came after the allowance was spent, 20 turns that could propose nothing.
+    get declined() {
+      return spent(desk) ? null : MORE;
+    },
     done: (): "supplied" | null => (supplied(desk) ? "supplied" : null),
     // What the task admission said since the session was last told, and at a turn's last call how many
     // instances are still at it (`startAdmissions`).

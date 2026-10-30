@@ -1,20 +1,13 @@
 import type { KeyboardEvent } from "react";
 import { Badge, Button, HashValue } from "../components/primitives.tsx";
-import { detailsOf, type Of, useHarness } from "../live.ts";
+import { detailsOf, type Of } from "../live.ts";
 import type { CampaignReading, HarnessCard } from "../models.ts";
 import type { Navigation, PaneProps } from "../route.ts";
 import { short } from "../../../../src/campaign/move.ts";
-import {
-  AGENT_DIR,
-  GENERATED_TOOLS_FILE,
-  GUIDE_FILE,
-  TOOL_TREE_DIR,
-  TOOLS_SPEC_FILE,
-} from "../../../../src/meta/bundle-layout.ts";
 import { digestText, STARTER_NAME, tallyText } from "./campaign-data.ts";
 import { AnswerIssues } from "./drill.tsx";
 import { time } from "./format.ts";
-import { useHeld } from "./held.ts";
+import { PART_NAMES, partOf, useHarnessFiles } from "./harness-parts.tsx";
 
 /*
  * The lineage strip (the brief of 11 October, section 6): every harness version in the order kept,
@@ -36,17 +29,6 @@ import { useHeld } from "./held.ts";
 
 const KEYS = { ArrowLeft: -1, ArrowRight: 1 } as const;
 
-/** A harness's parts as `HARNESS.md` names them, each by its paths; a file of none is `Other`. A
- *  Builder gives the solver its tools as programs under `.toolchain/` or as tools in
- *  `agent/tools.ts`; on 19 October 0 of 193 kept harnesses declared one in `tools.ts`, so a flat
- *  list of paths read as a guide and an empty tool file. A program stands with its own account of
- *  itself, the comment at its head (`server/harness.ts`). */
-const PARTS: readonly (readonly [string, (path: string) => boolean])[] = [
-  ["Guide", (path) => path === `${AGENT_DIR}${GUIDE_FILE}`],
-  ["Tools", (path) => path === TOOLS_SPEC_FILE || path === GENERATED_TOOLS_FILE],
-  ["Programs", (path) => path.startsWith(`${TOOL_TREE_DIR}/`)],
-];
-const OTHER = "Other";
 const STARTER = "starter";
 const PANEL_ID = "ana-harness-panel";
 type Names = CampaignReading["names"];
@@ -74,23 +56,18 @@ function selectedIndex(cards: readonly HarnessCard[], harness: string | null): n
   return latest >= 0 ? latest : cards.length - 1;
 }
 
-function partOf(path: string): string {
-  return PARTS.find(([, holds]) => holds(path))?.[0] ?? OTHER;
-}
-
 /** The kept files of the selected harness, each opening the inspector, and what the server
  *  could not read of them. The previous card's files stay, closed to the pointer, while the next
  *  card's are read (`held.ts`). */
 function Files({ of, digest, navigation }: { of: Of; digest: string; navigation: Navigation }) {
-  const files = useHarness(of, digest);
-  const { view, stale, slow } = useHeld(digest, files.current ? files.data : null);
+  const { files, view, stale, slow, listed, toggle } = useHarnessFiles(of, digest);
   if (files.error !== null) return <span className="ana-harness-note">{files.error}</span>;
   return (
     <div className="ana-harness-files" aria-busy={stale} inert={stale}>
       {slow ? <span className="ana-harness-note">Reading its files</span> : null}
       {view === null ? null : <AnswerIssues answer={view} />}
-      {[...PARTS.map(([part]) => part), OTHER].map((part) => {
-        const held = (view?.files ?? []).filter(({ path }) => partOf(path) === part);
+      {PART_NAMES.map((part) => {
+        const held = listed.filter(({ path }) => partOf(path) === part);
         return held.length === 0 ? null : (
           <section key={part} className="ana-harness-part" aria-label={part}>
             <small>{part}</small>
@@ -109,6 +86,7 @@ function Files({ of, digest, navigation }: { of: Of; digest: string; navigation:
           </section>
         );
       })}
+      {toggle}
     </div>
   );
 }

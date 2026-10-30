@@ -60,7 +60,7 @@ function rowOf(page: Page, index: number) {
 }
 
 /** The heading of a detail: its id, then what it is. */
-function detailHeading(page: Page, name: string) {
+function detailHeading(page: Page, name: string | RegExp) {
   return page.getByRole("heading", { level: 2, name });
 }
 
@@ -279,7 +279,8 @@ describe("each kind of move", () => {
     await expect(page.getByRole("heading", { name: "Turns and calls · 3 turns" })).toBeVisible();
     await expectAccessible(page);
     await page.getByRole("button", { name: "s-1-1" }).click();
-    await expect(detailHeading(page, "s-1-1 Solve")).toBeVisible();
+    await expect(detailHeading(page, /· practice Solve$/u)).toBeVisible();
+    await expect(page.locator(".ana-detail-title p", { hasText: "harness" })).toContainText("s-1-1");
     await page.getByRole("button", { name: "Back to b-1" }).click();
     await expect(page.getByRole("button", { name: "s-1-1" })).toBeFocused();
     expectQuiet(opened);

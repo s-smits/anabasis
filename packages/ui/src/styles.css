@@ -100,6 +100,14 @@ body {
   color: var(--ana-text);
 }
 
+/* The page's heaviest weight is 600: the browser's bold is 700, and on 30 October nine rules and
+   every strong and table head set it. */
+strong,
+b,
+th {
+  font-weight: 600;
+}
+
 button,
 select,
 input {
@@ -205,7 +213,7 @@ button.ana-hash.is-revealed {
   border-right: 1px solid var(--ana-border-soft);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   height: 100vh;
   left: 0;
   overflow: visible;
@@ -222,7 +230,7 @@ button.ana-hash.is-revealed {
 
 .ana-sidebar-header {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   padding-bottom: 4px;
 }
 
@@ -279,16 +287,14 @@ button.ana-hash.is-revealed {
 .ana-picker {
   border-bottom: 1px solid var(--ana-border-soft);
   display: grid;
-  gap: 6px;
-  padding: 12px 8px 18px;
+  gap: 4px;
+  padding: 12px 8px 16px;
   position: relative;
 }
 
 .ana-picker-label {
   color: var(--ana-faint);
   font-size: var(--ana-text-xs);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
 }
 
 .ana-picker-button {
@@ -354,9 +360,7 @@ button.ana-hash.is-revealed {
   color: var(--ana-faint);
   font-family: var(--font-technical);
   font-size: var(--ana-text-xs);
-  letter-spacing: 0.1em;
-  padding: 5px 8px 3px;
-  text-transform: uppercase;
+  padding: 4px 8px 4px;
 }
 
 .ana-picker-option {
@@ -368,11 +372,11 @@ button.ana-hash.is-revealed {
   cursor: pointer;
   display: grid;
   font-size: var(--ana-text-sm);
-  gap: 10px;
+  gap: 8px;
   grid-template-columns: 12px minmax(0, 1fr);
   line-height: 1.5;
   min-height: 40px;
-  padding: 9px 12px;
+  padding: 8px 12px;
   text-align: left;
   width: 100%;
 }
@@ -410,7 +414,7 @@ button.ana-hash.is-revealed {
   color: var(--ana-dim);
   font-size: var(--ana-text-sm);
   line-height: 1.5;
-  margin: 0 0 14px;
+  margin: 0 0 12px;
 }
 
 .ana-project-backends {
@@ -424,7 +428,7 @@ button.ana-hash.is-revealed {
   border: 1px solid var(--ana-border);
   border-radius: var(--ana-radius);
   display: grid;
-  gap: 14px;
+  gap: 12px;
   min-width: 0;
   padding: 20px;
 }
@@ -432,8 +436,6 @@ button.ana-hash.is-revealed {
 .ana-project-backends label > span {
   color: var(--ana-faint);
   font-size: var(--ana-text-xs);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
 }
 
 .ana-project-backends select {
@@ -443,7 +445,7 @@ button.ana-hash.is-revealed {
   color: var(--ana-text);
   cursor: pointer;
   min-height: 38px;
-  padding: 7px 9px;
+  padding: 8px 8px;
   width: 100%;
 }
 
@@ -470,7 +472,7 @@ button.ana-hash.is-revealed {
 .ana-sidebar-nav {
   display: grid;
   gap: 2px;
-  padding: 6px 0;
+  padding: 4px 0;
 }
 
 /* The active row keeps the altimeter tick as its location marker. */
@@ -482,9 +484,9 @@ button.ana-hash.is-revealed {
   color: var(--ana-dim);
   cursor: pointer;
   display: grid;
-  gap: 10px;
+  gap: 8px;
   grid-template-columns: 16px minmax(0, 1fr) auto;
-  padding: 12px 10px;
+  padding: 12px 8px;
   text-align: left;
   width: 100%;
 }
@@ -540,7 +542,7 @@ button.ana-hash.is-revealed {
   display: grid;
   gap: 8px;
   margin-top: auto;
-  padding-top: 10px;
+  padding-top: 8px;
 }
 
 .ana-status-dot {
@@ -601,7 +603,7 @@ button.ana-hash.is-revealed {
 
 .ana-section {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   grid-template-columns: minmax(0, 1fr);
 }
 
@@ -618,10 +620,8 @@ button.ana-hash.is-revealed {
 .ana-group-label {
   color: var(--ana-faint);
   font-size: var(--ana-text-xs);
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  font-weight: 600;
   margin: 0;
-  text-transform: uppercase;
 }
 
 .ana-card {
@@ -630,7 +630,7 @@ button.ana-hash.is-revealed {
   border-radius: var(--ana-radius);
   box-shadow: var(--ana-shadow);
   min-width: 0;
-  padding: 14px;
+  padding: 12px;
 }
 
 /* auto-fit, not repeat(4): a page that has three facts to state should show three full-width
@@ -676,9 +676,7 @@ button.ana-hash.is-revealed {
 .ana-metric-label {
   color: var(--ana-faint);
   font-size: var(--ana-text-xs);
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-weight: 600;
 }
 
 /* `overflow-wrap: anywhere` has to stay — a metric value is sometimes a hash — but it will also
@@ -701,16 +699,18 @@ button.ana-hash.is-revealed {
   overflow-wrap: anywhere;
 }
 
+/* A status is quiet text: a tone tints a small square-cornered ground, and a neutral one is the
+   word alone. Until 30 October every status was a filled pill, so a row of them led the page. */
 .ana-badge {
   align-items: center;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: 4px;
   display: inline-flex;
   font-size: var(--ana-text-xs);
-  font-weight: 700;
+  font-weight: 500;
   line-height: 1;
-  min-height: 21px;
-  padding: 3px 7px;
+  min-height: 20px;
+  padding: 4px 8px;
   white-space: nowrap;
   width: fit-content;
 }
@@ -732,9 +732,8 @@ button.ana-hash.is-revealed {
   color: var(--ana-info);
 }
 .ana-badge--neutral {
-  background: var(--ana-card-2);
-  border-color: var(--ana-border);
   color: var(--ana-neutral);
+  padding-inline: 0;
 }
 
 .ana-button {
@@ -775,7 +774,7 @@ button.ana-hash.is-revealed {
   color: var(--ana-dim);
   font-size: var(--ana-text-sm);
   line-height: 1.6;
-  padding: 14px 16px;
+  padding: 12px 16px;
 }
 
 .ana-callout b {
@@ -802,7 +801,7 @@ button.ana-hash.is-revealed {
   border-radius: var(--ana-radius-inner);
   display: grid;
   gap: 8px;
-  padding: 20px 18px;
+  padding: 20px 16px;
 }
 
 .ana-nosignal-rule {
@@ -857,6 +856,7 @@ button.ana-hash.is-revealed {
 .ana-table {
   border-collapse: collapse;
   font-size: var(--ana-text-sm);
+  font-variant-numeric: tabular-nums;
   width: 100%;
 }
 
@@ -864,7 +864,7 @@ button.ana-hash.is-revealed {
 .ana-table td {
   border-bottom: 1px solid var(--ana-border-soft);
   line-height: 1.45;
-  padding: 14px 16px;
+  padding: 12px 16px;
   text-align: left;
   vertical-align: top;
 }
@@ -872,9 +872,7 @@ button.ana-hash.is-revealed {
 .ana-table th {
   color: var(--ana-faint);
   font-size: var(--ana-text-xs);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-weight: 600;
   width: 180px;
 }
 
@@ -908,7 +906,7 @@ button.ana-hash.is-revealed {
   gap: 12px;
   grid-template-columns: minmax(150px, 1fr) auto 16px;
   list-style: none;
-  padding: 16px 18px;
+  padding: 16px 16px;
 }
 
 .ana-disclosure > summary {
@@ -932,9 +930,9 @@ button.ana-hash.is-revealed {
   color: var(--ana-dim);
   display: grid;
   font-size: var(--ana-text-sm);
-  gap: 10px;
+  gap: 8px;
   line-height: 1.6;
-  padding: 18px;
+  padding: 16px;
 }
 
 .ana-trial-figures .ana-num {
@@ -993,9 +991,9 @@ button.ana-hash.is-revealed {
     align-items: center;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
     min-width: 0;
-    padding: 10px 2px;
+    padding: 8px 2px;
   }
 
   .ana-sidebar .ana-nav-label {
@@ -1060,7 +1058,7 @@ button.ana-hash.is-revealed {
   flex-wrap: wrap;
   gap: 16px;
   justify-content: space-between;
-  padding-bottom: 14px;
+  padding-bottom: 12px;
 }
 
 .ana-run-head h1 {
@@ -1075,7 +1073,7 @@ button.ana-hash.is-revealed {
   color: var(--ana-dim);
   font-size: var(--ana-text-sm);
   line-height: 1.5;
-  margin: 0 0 10px;
+  margin: 0 0 8px;
   max-width: 76ch;
 }
 
@@ -1120,7 +1118,7 @@ button.ana-hash.is-revealed {
 
 .ana-variant-card {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   padding: 16px;
 }
 
@@ -1153,7 +1151,7 @@ button.ana-hash.is-revealed {
   display: inline-flex;
   font-family: var(--font-technical);
   font-size: var(--ana-text-xs);
-  gap: 7px;
+  gap: 8px;
   justify-content: center;
   letter-spacing: 0.04em;
   transition:
@@ -1167,7 +1165,7 @@ button.ana-hash.is-revealed {
 }
 
 .ana-collapse-button {
-  padding: 7px 10px;
+  padding: 8px 8px;
   width: 100%;
 }
 
@@ -1220,7 +1218,7 @@ button.ana-hash.is-revealed {
 .ana-family-rate {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 .ana-family-rate meter {
   width: 100px;
@@ -1257,7 +1255,7 @@ button.ana-hash.is-revealed {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 8px;
 }
 .ana-file-pagination > span {
   margin-right: auto;

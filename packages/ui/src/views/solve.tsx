@@ -39,7 +39,7 @@ function Verdict({ detail }: { detail: SolveDetail }) {
   if (detail.verdict === undefined) {
     return <ExamSide what="the verdict, with the answer and the checks that refused it" />;
   }
-  if (detail.verdict === null) return <p className="ana-faint">No verdict on record.</p>;
+  if (detail.verdict === null) return <p className="ana-faint">No verdict on record</p>;
   const { kind, refusedBy, fault, answer } = detail.verdict;
   return (
     <div className="ana-stack">
@@ -77,7 +77,7 @@ function RulingPart({ detail }: { detail: SolveDetail }) {
     if (detail.withheld !== null) return <RulingWithheld why={detail.withheld} />;
     return <ExamSide what="the Referee's ruling and its reason" />;
   }
-  if (detail.ruling === null) return <p className="ana-faint">No ruling on record.</p>;
+  if (detail.ruling === null) return <p className="ana-faint">No ruling on record</p>;
   return (
     <div className="ana-stack">
       <p className="ana-ruling-line">
@@ -102,6 +102,9 @@ function SolveDetailView({
   navigation: Navigation;
 }) {
   const { solve } = detail;
+  // Titled by its task and side: a recorded solve's id opens with the campaign's name (the first
+  // of buffer-178-opus-zbook runs to 34 characters), so it stands in the line below instead.
+  const task = solve.taskId ?? shortHash(solve.task, 8);
   // The Referee rules a rejection inside a comparison only, so a practice solve has no ruling to
   // place, on either side: until 14 October its rejection said the exam side held one.
   const ruled =
@@ -120,7 +123,7 @@ function SolveDetailView({
         navigation={navigation}
         back={back}
         backLabel={backLabel}
-        title={solve.id}
+        title={`${task} · ${sideLabel(solve.side)}`}
         kind="Solve"
         badges={
           <>
@@ -134,11 +137,12 @@ function SolveDetailView({
           className="ana-evidence-link"
           onClick={() => navigation.push({ pane: "tasks", task: solve.task, solve: null })}
         >
-          {solve.taskId ?? shortHash(solve.task, 8)}
+          {task}
         </button>
         <span>
-          {sideLabel(solve.side)} harness {harnessLabel(reading, solve.harness)}
-          {solve.comparison === null ? "" : ` · comparison ${solve.comparison}`}
+          harness {harnessLabel(reading, solve.harness)}
+          {solve.comparison === null ? "" : ` · comparison ${solve.comparison}`} ·{" "}
+          <span className="ana-num">{solve.id}</span>
         </span>
       </DetailHead>
       <AnswerIssues answer={detail} />

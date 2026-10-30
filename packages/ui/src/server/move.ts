@@ -12,6 +12,7 @@
  * with the places of both.
  */
 import { fixedIn, predicted, type Report, reported } from "../../../../src/campaign/comparison.ts";
+import { carriedBy, type Measures, pointsOf } from "../../../../src/kernel/compare.ts";
 import { passed, type Ran } from "../../../../src/kernel/solves.ts";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
 import type { Move, MoveDetail, Outcome, Query, ScoredTask, Sensitivity, SolveRow, Tier } from "../models.ts";
@@ -72,8 +73,8 @@ function scoredTasks(log: Log, move: ComparisonMove, tier: Tier): ScoredTask[] {
   const scoredTask = (
     task: string,
     outcome: Outcome | null,
-    old: SolveRow[],
-    fresh: SolveRow[],
+    [old, fresh]: readonly [SolveRow[], SolveRow[]],
+    carried: keyof Measures | null = null,
   ): ScoredTask => {
     const reasons = new Set(
       [...old, ...fresh].flatMap((row) =>
@@ -87,6 +88,7 @@ function scoredTasks(log: Log, move: ComparisonMove, tier: Tier): ScoredTask[] {
       taskId: ids.get(task) ?? null,
       outcome,
       withheld: WITHHELD_ORDER.find((why) => reasons.has(why)) ?? null,
+      carried,
       old,
       fresh,
     };
@@ -94,22 +96,25 @@ function scoredTasks(log: Log, move: ComparisonMove, tier: Tier): ScoredTask[] {
   const report = reported(log.events, move.id);
   if (report === null) {
     return (fixedIn(log.events, move.id)?.tasks ?? []).map((task) =>
-      scoredTask(
-        task,
-        null,
+      scoredTask(task, null, [
         rows(ownSolves(log, move, task, move.old)),
         rows(ownSolves(log, move, task, move.fresh)),
-      ),
+      ]),
     );
   }
   const tallied = (pairsIn(log).get(move.id) ?? []).map((pair) =>
-    scoredTask(pair.task, outcomeOf(pair), byId(pair.solves?.old ?? []), byId(pair.solves?.fresh ?? [])),
+    scoredTask(
+      pair.task,
+      outcomeOf(pair),
+      [byId(pair.solves?.old ?? []), byId(pair.solves?.fresh ?? [])],
+      carriedBy(pointsOf(pair)),
+    ),
   );
   // A task set aside is in no pair: its solves are the comparison's on it, under each side, cut to
   // its solves a side as a pair is.
   const aside = report.aside.map((task) => {
     const side = (harness: string) => rows(ownSolves(log, move, task, harness, move.solves));
-    return scoredTask(task, "aside", side(move.old), side(move.fresh));
+    return scoredTask(task, "aside", [side(move.old), side(move.fresh)]);
   });
   return [...tallied, ...aside];
 }

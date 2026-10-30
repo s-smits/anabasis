@@ -16,8 +16,11 @@ import type { Share } from "../../../../src/campaign/climb.ts";
  * task's state: a practice task is never scored, a refused draft never entered the exam, and a held
  * task the comparison did not draw was not scored. Until 19 October all three read "not scored", and
  * esp32-fresh-opus's grid showed 153 of its 177 rows so, every one a refused draft or a practice
- * task, while each of its 24 held tasks had been scored. The first column and the head stay in place while the grid scrolls inside its card, so a
- * campaign of twenty comparisons and sixty tasks stays readable.
+ * task, while each of its 24 held tasks had been scored. Since 30 October such a cell is left blank
+ * to the eye and says why to a screen reader only, since the row's own note already names its
+ * state and most cells of a long campaign's grid are of this kind. The first column and the head
+ * stay in place while the grid scrolls inside its card, so a campaign of twenty comparisons and
+ * sixty tasks stays readable.
  */
 
 const ALL = "all";
@@ -83,9 +86,15 @@ function taskNote(row: TaskRow): string {
 
 function Cell({ cell, state }: { cell: TaskCell | TaskLeftOut | null; state: TaskRow["state"] }) {
   if (cell === null) {
+    // A held task the comparison did not draw keeps a faint dash, so that it reads apart from practice.
+    const words = UNSCORED_WORDS.get(state);
     return (
-      <td className="ana-grid-cell is-none" data-outcome="none">
-        <span>{UNSCORED_WORDS.get(state) ?? "not scored"}</span>
+      <td
+        className={words === undefined ? "ana-grid-cell is-none is-undrawn" : "ana-grid-cell is-none"}
+        data-outcome="none"
+        title={words === undefined ? "not drawn in this comparison" : undefined}
+      >
+        <span className="ana-sr-only">{words ?? "not scored"}</span>
       </td>
     );
   }
@@ -123,7 +132,7 @@ export function TaskGridView({ grid, onOpen }: { grid: TaskGrid; onOpen: (versio
   const [label, setLabel] = useState(ALL);
   const [exhausted, setExhausted] = useState(ALL);
   if (grid.rows.length === 0) {
-    return <NoSignal title="No task yet">No task version has been proposed in this campaign.</NoSignal>;
+    return <NoSignal title="No task yet">No task version has been proposed in this campaign</NoSignal>;
   }
   const holds = (filter: string, value: boolean) => filter === ALL || (filter === "yes") === value;
   const rows = grid.rows.filter(
@@ -182,7 +191,7 @@ export function TaskGridView({ grid, onOpen }: { grid: TaskGrid; onOpen: (versio
         <li className="ana-faint">Counts: valid of solves, reference · new</li>
       </ul>
       {rows.length === 0 ? (
-        <NoSignal title="No matching task">Change the search or clear the filters.</NoSignal>
+        <NoSignal title="No matching task">Change the search or clear the filters</NoSignal>
       ) : (
         <div className="ana-grid-wrap" role="region" aria-label="Tasks by comparison" tabIndex={0}>
           <table className="ana-grid">

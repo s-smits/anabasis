@@ -27,9 +27,23 @@ const FILTER_LABELS = new Map([
   ["builder", "Builder sessions"],
   ["comparison", "Comparisons"],
 ]);
-/** A move's table row in the list, where its code says who chose the move and not which row named
- *  it: a Builder that leads its campaign asked for it, or it is that Builder's conversation. */
+/** Why a move was made, in words, by the code of the table's row that named it (`ROWS`,
+ *  `src/campaign/decide.ts`), or of who chose it: a Builder that leads its campaign asked for it,
+ *  or it is that Builder's conversation. Until 30 October the list printed "row" and the code, a
+ *  name only the table's source explains; the code stays in the row's title. */
 const ROW_WORD = new Map([
+  ["stop", "the operator stopped it"],
+  ["exam", "the exam does not stand"],
+  ["bound", "a bound is spent"],
+  ["tasks", "the tasks are not set up"],
+  ["unfinished", "a comparison goes on"],
+  ["step", "a step promotes"],
+  ["no-room", "no room left to gain"],
+  ["short", "too few tasks to compare"],
+  ["unread", "a harness no comparison read"],
+  ["build", "room to gain"],
+  ["practice", "practice is owed"],
+  ["unshown", "the last session had nothing to work on"],
   ["asked", "the Builder asked"],
   ["led", "the Builder leads"],
 ]);
@@ -41,6 +55,10 @@ const READING_TONES = new Map<string, Toned["tone"]>([
   ["check-defects", "bad"],
   ["no-change", "neutral"],
 ]);
+
+/** The session endings that broke off. Until 30 October every ending but `finished` read as a
+ *  warning, so an Examiner session that `supplied` its tasks, its ordinary end, read as a fault. */
+const BROKE: ReadonlySet<string> = new Set(["crashed", "killed"]);
 
 /** How a move stands: its ending or reading; cut, where the campaign went past it; or open. */
 export function standingOf(move: Move): Toned & { readonly detail: string } {
@@ -55,7 +73,7 @@ export function standingOf(move: Move): Toned & { readonly detail: string } {
   }
   const turns = plural(move.turns, "turn");
   if (move.ended !== null) {
-    return { label: move.ended, tone: move.ended === "finished" ? "neutral" : "warn", detail: turns };
+    return { label: move.ended, tone: BROKE.has(move.ended) ? "warn" : "neutral", detail: turns };
   }
   return move.cut
     ? { label: "cut", tone: "warn", detail: turns }
@@ -135,7 +153,10 @@ function MoveRow({
         >
           {move.id}
         </button>
-        <small className="ana-cell-note" title={move.named?.why}>
+        <small
+          className="ana-cell-note"
+          title={move.named === null ? undefined : `${move.named.code}: ${move.named.why}`}
+        >
           {kindOf(move, reading)}
           {move.named === null ? "" : ` · ${ROW_WORD.get(move.named.code) ?? `row ${move.named.code}`}`}
         </small>
@@ -165,7 +186,7 @@ export function MovesList({
   const [query, setQuery] = useState("");
   const { moves, promotions } = reading;
   if (moves.length === 0) {
-    return <NoSignal title="No move yet">The log holds no session and no comparison.</NoSignal>;
+    return <NoSignal title="No move yet">The log holds no session and no comparison</NoSignal>;
   }
   const filtered = kind !== "all" || query.trim() !== "";
   const rows = moves.filter(
@@ -203,7 +224,7 @@ export function MovesList({
         ) : null}
       </Filters>
       {rows.length === 0 ? (
-        <NoSignal title="No matching move">Change the search or clear the filters.</NoSignal>
+        <NoSignal title="No matching move">Change the search or clear the filters</NoSignal>
       ) : (
         <div className="ana-dense">
           <DataTable>

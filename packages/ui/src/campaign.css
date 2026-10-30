@@ -16,7 +16,7 @@
 
 .ana-campaign-title {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
   flex: 1 1 320px;
 }
@@ -27,6 +27,15 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The campaign's full name under a title that dropped its project. */
+.ana-campaign-name {
+  color: var(--ana-dim);
+  font-family: var(--font-mono);
+  font-size: var(--ana-text-xs);
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 /* The prompt the campaign opened from, in the page's one editorial voice, at the head of Set-up. */
@@ -121,7 +130,7 @@
   display: flex;
   flex-wrap: wrap;
   font-size: var(--ana-text-sm);
-  gap: 6px 18px;
+  gap: 4px 16px;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -130,7 +139,7 @@
 .ana-legend-list li {
   align-items: center;
   display: inline-flex;
-  gap: 7px;
+  gap: 8px;
 }
 
 .ana-legend-list .ana-num {
@@ -212,7 +221,7 @@
 .ana-harness-lineage {
   container-type: inline-size;
   display: grid;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -289,7 +298,7 @@
 .ana-harness-roles {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
 }
 
 .ana-harness-figure {
@@ -309,15 +318,15 @@
   border-radius: var(--ana-radius);
   box-shadow: var(--ana-shadow);
   display: grid;
-  gap: 14px 32px;
+  gap: 12px 32px;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  padding: 16px 18px;
+  padding: 16px 16px;
 }
 
 .ana-harness-facts {
   align-content: start;
   display: grid;
-  gap: 6px;
+  gap: 4px;
   margin: 0;
 }
 
@@ -353,14 +362,14 @@
 .ana-harness-comparisons li {
   align-items: baseline;
   display: grid;
-  gap: 10px;
+  gap: 8px;
   grid-template-columns: 34px 52px minmax(0, auto) minmax(0, 1fr);
 }
 
 .ana-harness-actions {
   align-items: start;
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .ana-harness-actions .ana-button {
@@ -382,8 +391,9 @@
 /* A program's head comment under its path: its usage and what it computes. */
 .ana-harness-about {
   color: var(--ana-dim);
-  font-size: var(--ana-text-sm);
-  margin: 0 0 6px;
+  font-family: var(--font-mono);
+  font-size: var(--ana-text-xs);
+  margin: 0 0 4px;
   max-width: 80ch;
   white-space: pre-wrap;
 }
@@ -397,7 +407,7 @@
 
 .ana-campaign-small {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   padding: 20px 20px 12px;
 }
 
@@ -422,7 +432,7 @@
 @media (max-width: 700px) {
   .ana-campaign-chart,
   .ana-campaign-small {
-    padding: 14px 12px 12px;
+    padding: 12px 12px 12px;
   }
 
   .ana-comparisons-frame .ana-climb-chart {
@@ -446,5 +456,13 @@
 
   .ana-harness-detail > .ana-harness-facts {
     grid-row: auto;
+  }
+}
+
+/* The three readouts take the widths their text needs: the move the table names and its reason run
+   longest, so they get the widest column instead of a third like the reference's name. */
+@media (min-width: 900px) {
+  .ana-campaign .ana-metric-grid {
+    grid-template-columns: minmax(190px, 1fr) minmax(190px, 1fr) minmax(260px, 1.6fr);
   }
 }

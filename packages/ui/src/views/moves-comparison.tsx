@@ -12,7 +12,7 @@ import type {
 } from "../models.ts";
 import { shortHash } from "../models.ts";
 import type { Navigation } from "../route.ts";
-import { leftOutText } from "./campaign-data.ts";
+import { carriedText, leftOutText, pText } from "./campaign-data.ts";
 import { AnswerIssues, DetailHead, endingOf, enter, harnessLabel } from "./drill.tsx";
 import { duration, money, percent, time } from "./format.ts";
 import { kindOf, standingOf } from "./moves-list.tsx";
@@ -44,13 +44,26 @@ function rulingsText({ rulings }: Pick<ComparisonBar, "rulings">): string {
   return RULING_KINDS.map((kind) => `${String(rulings.kinds[kind])} ${rulingLabel(kind)}`).join(" · ");
 }
 
-/** A solve as a chip in a scored task's row: its ending in words, opened on a click. The ending
- *  alone would give every chip of a table one of four names, so each is named for its solve too. */
+/** A side's solves of one task in a scored task's row, each opened on a click, with what they
+ *  billed. Where every solve ended alike the ending is said once with its count, and each solve is a
+ *  numbered chip: on 30 October a comparison's 30 tasks drew 120 chips that each said "valid". The
+ *  ending alone would give every chip of a table one of four names, so each is named for its solve
+ *  too. */
 function SolveChips({ rows, onOpen }: { rows: readonly SolveRow[]; onOpen: (id: string) => void }) {
   if (rows.length === 0) return <span className="ana-faint">no solve</span>;
+  const labels = new Set(rows.map((row) => endingOf(row.ending).label));
+  const alike = labels.size === 1 ? endingOf(rows[0]?.ending ?? null) : null;
+  const billed = rows.some((row) => row.billed === null)
+    ? null
+    : rows.reduce((sum, row) => sum + (row.billed ?? 0), 0);
   return (
     <span className="ana-solve-chips">
-      {rows.map((row) => {
+      {alike === null ? null : (
+        <span className={`ana-solve-count ana-solve-count--${alike.tone}`}>
+          {`${String(rows.length)} ${alike.label}`}
+        </span>
+      )}
+      {rows.map((row, at) => {
         const { label, tone } = endingOf(row.ending);
         return (
           <button
@@ -62,10 +75,11 @@ function SolveChips({ rows, onOpen }: { rows: readonly SolveRow[]; onOpen: (id: 
             title={`Open solve ${row.id}`}
             onClick={() => onOpen(row.id)}
           >
-            {label}
+            {alike === null ? label : String(at + 1)}
           </button>
         );
       })}
+      <span className="ana-faint ana-num">{money(billed)}</span>
     </span>
   );
 }
@@ -147,7 +161,13 @@ function Readings({ detail, reading }: { detail: ComparisonDetail; reading: Camp
         ? "none"
         : `${String(bar.tally.wins)} won, ${String(bar.tally.losses)} lost, ${String(bar.tally.ties)} tied`,
     ],
-    ["Sign test", bar.p === null ? "not made" : `p ${bar.p.toFixed(3)} at level ${String(bar.level)}`],
+    ...(bar.carried === null
+      ? []
+      : ([
+          ["Won on", carriedText(bar.carried.won)],
+          ["Lost on", carriedText(bar.carried.lost)],
+        ] as const)),
+    ["Sign test", bar.p === null ? "not made" : `${pText(bar.p)} at level ${String(bar.level)}`],
     [
       "Valid, reference",
       bar.valid === null
@@ -165,7 +185,7 @@ function Readings({ detail, reading }: { detail: ComparisonDetail; reading: Camp
       : ([
           [
             "Frontier, where the step is read",
-            `${tallyWords(bar.sets.frontier.tally)} · p ${bar.sets.frontier.p.toFixed(3)}`,
+            `${tallyWords(bar.sets.frontier.tally)} · ${pText(bar.sets.frontier.p)}`,
           ],
           [
             "Retained, where a step may not lose more than it wins",
@@ -180,7 +200,7 @@ function Readings({ detail, reading }: { detail: ComparisonDetail; reading: Camp
       : ([
           [
             "Reference against itself",
-            `${String(bar.noise.tally.wins)} won, ${String(bar.noise.tally.losses)} lost · p ${bar.noise.p.toFixed(3)}`,
+            `${String(bar.noise.tally.wins)} won, ${String(bar.noise.tally.losses)} lost · ${pText(bar.noise.p)}`,
           ],
         ] as const)),
   ] as const;
@@ -351,6 +371,7 @@ export function ComparisonDetailView({
               <tr>
                 <th>Task</th>
                 <th>Outcome</th>
+                <th>Carried by</th>
                 <th>Reference solves</th>
                 <th>New solves</th>
                 <th>Rulings</th>
@@ -381,6 +402,7 @@ export function ComparisonDetailView({
                         </span>
                       )}
                     </td>
+                    <td>{task.carried ?? <span className="ana-faint">none</span>}</td>
                     <td>
                       <SolveChips rows={task.old} onOpen={openSolve} />
                     </td>

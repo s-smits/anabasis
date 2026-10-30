@@ -196,6 +196,9 @@ describe("the Tasks pane's grid", () => {
       }),
     ]);
     expect(await gridRows(on)).toEqual(expected);
+    // A cell with no outcome says why to a screen reader and shows nothing; its row names the state.
+    await expect(grid(on).locator("td.is-none").first()).toHaveText(/\S/u);
+    expect((await grid(on).locator("td.is-none span").first().boundingBox())?.width).toBeLessThanOrEqual(1);
     // Each tinted cell says in its title what its counts are, for a reader who hovers.
     await expect(grid(on).locator("tbody tr").nth(2).locator("td").first()).toHaveAttribute(
       "title",

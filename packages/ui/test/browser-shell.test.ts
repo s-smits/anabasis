@@ -1,5 +1,5 @@
 /**
- * The page's shell in a browser: the sidebar's two pickers, the four panes and the collapse, and
+ * The page's shell in a browser: the sidebar's campaign picker, the four panes and the collapse, and
  * the route the address carries (`route.ts`), which is the one record of what is selected. The
  * failures, the tiers, the narrow page and accessibility are `browser-shell-states.test.ts`'s; what
  * is painted during a switch is `browser-shell-switch.test.ts`'s.
@@ -28,7 +28,6 @@ let served: Served;
 let browser: Browser;
 let keys: Keys;
 
-const PROJECT = /^Project/u;
 const CAMPAIGN = /^Campaign/u;
 const PANES = "Campaign panes";
 
@@ -63,17 +62,17 @@ async function expectOneEntry(page: Page): Promise<void> {
 
 const nav = (page: Page) => page.getByRole("navigation", { name: PANES });
 
-describe("the Project picker", () => {
-  test("marks the current project, opens and closes by pointer or keyboard, and adds no history for reselecting it", async () => {
+describe("the Campaign picker", () => {
+  test("marks the current campaign, opens and closes by pointer or keyboard, and adds no history for reselecting it", async () => {
     const page = await opened(`campaign=${keys.fixture}`, { level: 1, name: "fixture" });
-    const picker = page.page.getByRole("combobox", { name: PROJECT });
-    await expect(picker).toHaveAccessibleName("Project vowel-counts");
+    const picker = page.page.getByRole("combobox", { name: CAMPAIGN });
+    await expect(picker).toHaveAccessibleName("Campaign fixture vowel-counts");
     await expect(picker).toHaveAttribute("aria-expanded", "false");
     await picker.click();
     await expect(picker).toHaveAttribute("aria-expanded", "true");
     const list = page.page.getByRole("listbox");
-    await expect(list.getByRole("option")).toHaveText(["vowel-counts", "unit-conversion"]);
-    await expect(list.getByRole("option", { name: "vowel-counts" })).toHaveAttribute("aria-selected", "true");
+    await expect(list.getByRole("option")).toHaveCount(3);
+    await expect(list.getByRole("option", { name: /^fixture/u })).toHaveAttribute("aria-selected", "true");
     await expect(picker).toHaveAttribute("aria-activedescendant", /option-0$/u);
     await page.page.keyboard.press("Escape");
     await expect(list).toHaveCount(0);
@@ -93,21 +92,32 @@ describe("the Project picker", () => {
     await expect(list).toHaveCount(0);
     expect(routeParameters(page.page)).toEqual({ campaign: keys.fixture });
     await picker.click();
-    await page.page.getByRole("option", { name: "vowel-counts" }).click();
+    await page.page.getByRole("option", { name: /^fixture/u }).click();
     expect(routeParameters(page.page)).toEqual({ campaign: keys.fixture });
     await expectOneEntry(page.page);
     await close(page);
   });
 
+  test("groups every campaign under its project, each with its state", async () => {
+    const page = await opened(`campaign=${keys.fixture}&pane=tasks`, { level: 2, name: "Tasks" });
+    await page.page.getByRole("combobox", { name: CAMPAIGN }).click();
+    const list = page.page.getByRole("listbox");
+    await expect(list.locator(".ana-picker-group-label")).toHaveText(["vowel-counts", "unit-conversion"]);
+    await expect(list.getByRole("option", { name: /^units/u })).toContainText("ended: budget");
+    await expect(list.getByRole("option", { name: /^early/u })).toContainText(/open, wrote .* ago/u);
+    await close(page);
+  });
+
   test("walks its options with the arrows, Home and End, and picks with Enter", async () => {
     const page = await opened(`campaign=${keys.fixture}&pane=moves`, { level: 2, name: "Moves" });
-    const picker = page.page.getByRole("combobox", { name: PROJECT });
+    const picker = page.page.getByRole("combobox", { name: CAMPAIGN });
     await picker.focus();
     for (const [key, at] of [
       ["ArrowDown", 0],
       ["ArrowDown", 1],
+      ["ArrowDown", 2],
       ["ArrowDown", 0],
-      ["End", 1],
+      ["End", 2],
       ["Home", 0],
     ] as const) {
       await page.page.keyboard.press(key);
@@ -117,12 +127,32 @@ describe("the Project picker", () => {
     await page.page.keyboard.press("Enter");
     await expect(page.page.getByRole("listbox")).toHaveCount(0);
     await expect(picker).toBeFocused();
-    await expect(picker).toHaveAccessibleName("Project unit-conversion");
-    // A new project chooses its newest campaign and keeps the pane.
+    // A campaign in another project keeps the pane.
+    await expect(picker).toHaveAccessibleName("Campaign units unit-conversion");
     await expect.poll(() => routeParameters(page.page)).toEqual({ campaign: keys.units, pane: "moves" });
-    await expect(page.page.getByRole("combobox", { name: CAMPAIGN })).toHaveAccessibleName(
-      /^Campaign units/u,
-    );
+    await close(page);
+  });
+
+  test("narrows its list as it is typed into, clears the filter on Escape, and picks the match", async () => {
+    const page = await opened(`campaign=${keys.fixture}`, { level: 1, name: "fixture" });
+    const picker = page.page.getByRole("combobox", { name: CAMPAIGN });
+    await picker.focus();
+    await page.page.keyboard.type("ear");
+    const list = page.page.getByRole("listbox");
+    await expect(list.getByRole("option")).toHaveCount(1);
+    await expect(list.getByRole("option")).toContainText("early");
+    await page.page.keyboard.type("zzz");
+    await expect(list.getByRole("option")).toHaveCount(0);
+    await expect(list).toContainText("nothing matches");
+    await page.page.keyboard.press("Escape");
+    await expect(list.getByRole("option")).toHaveCount(3);
+    await page.page.keyboard.type("unit");
+    await expect(list.getByRole("option")).toHaveCount(1);
+    await page.page.keyboard.press("Backspace");
+    await expect(list.getByRole("option")).toHaveCount(1);
+    await page.page.keyboard.press("Enter");
+    await expect(page.page.getByRole("heading", { level: 1, name: "units" })).toBeVisible();
+    expect(routeParameters(page.page)).toEqual({ campaign: keys.units });
     await close(page);
   });
 
@@ -130,8 +160,8 @@ describe("the Project picker", () => {
     const harness = served.fixture.harnesses.a;
     const query = `campaign=${keys.fixture}&harness=${harness}&file=agent/BUILT_AGENTS.md`;
     const page = await opened(query, { level: 1, name: "fixture" });
-    await page.page.getByRole("combobox", { name: PROJECT }).click();
-    await page.page.getByRole("option", { name: "unit-conversion" }).click();
+    await page.page.getByRole("combobox", { name: CAMPAIGN }).click();
+    await page.page.getByRole("option", { name: /^units/u }).click();
     await expect(page.page.getByRole("heading", { level: 1, name: "units" })).toBeVisible();
     expect(routeParameters(page.page)).toEqual({ campaign: keys.units });
     await page.page.goBack();
@@ -141,24 +171,6 @@ describe("the Project picker", () => {
       harness,
       file: "agent/BUILT_AGENTS.md",
     });
-    await close(page);
-  });
-});
-
-describe("the Campaign picker", () => {
-  test("lists the project's campaigns newest first, each with its worktree, and opens the one picked", async () => {
-    const page = await opened(`campaign=${keys.fixture}&pane=tasks`, { level: 2, name: "Tasks" });
-    const picker = page.page.getByRole("combobox", { name: CAMPAIGN });
-    await expect(picker).toHaveAccessibleName("Campaign fixture repo");
-    await picker.click();
-    const options = page.page.getByRole("listbox").getByRole("option");
-    await expect(options).toHaveText(["fixture repo", "early repo"]);
-    await options.filter({ hasText: "early" }).click();
-    await expect(picker).toHaveAccessibleName("Campaign early repo");
-    expect(routeParameters(page.page)).toEqual({ campaign: keys.early, pane: "tasks" });
-    await page.page.goBack();
-    await expect(picker).toHaveAccessibleName("Campaign fixture repo");
-    expect(routeParameters(page.page)).toEqual({ campaign: keys.fixture, pane: "tasks" });
     await close(page);
   });
 });
@@ -215,7 +227,7 @@ describe("the collapse", () => {
     await expect.poll(async () => (await sidebar.boundingBox())?.width ?? 0).toBeLessThan(wide);
     const open = page.page.getByRole("button", { name: "Open", exact: true });
     await expect(open).toHaveAttribute("aria-expanded", "false");
-    await expect(page.page.getByRole("combobox", { name: PROJECT })).toBeHidden();
+    await expect(page.page.getByRole("combobox", { name: CAMPAIGN })).toBeHidden();
     const moves = nav(page.page).getByRole("button", { name: "Moves" });
     await expect(moves).toBeVisible();
     await moves.click();
@@ -228,7 +240,7 @@ describe("the collapse", () => {
     expect(mainLeft).toBeGreaterThanOrEqual(sidebarRight - 1);
     await open.click();
     await expect(sidebar).not.toHaveClass(/is-collapsed/u);
-    await expect(page.page.getByRole("combobox", { name: PROJECT })).toBeVisible();
+    await expect(page.page.getByRole("combobox", { name: CAMPAIGN })).toBeVisible();
     await page.page.getByRole("button", { name: "Toggle sidebar" }).click();
     await expect(sidebar).toHaveClass(/is-collapsed/u);
     await close(page);

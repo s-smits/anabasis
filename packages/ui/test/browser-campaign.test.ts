@@ -99,7 +99,7 @@ describe("the campaign's line and readouts", () => {
     await expect(reference.detail).toHaveText(/\b3\b.*promotions.*starter/u);
     const last = readout(page, "Last reading");
     await expect(last.value).toHaveText("3–1–2");
-    await expect(last.detail).toHaveText(/no-step.*g-9.*p 0\.31\b/u);
+    await expect(last.detail).toHaveText(/no-step.*g-9.*p 0\.31\d\b/u);
     const next = readout(page, "Next move");
     await expect(next.value).toHaveText("Comparison");
     await expect(next.detail).toContainText(/b-4.*not reported/u);
@@ -129,10 +129,9 @@ describe("the campaign's line and readouts", () => {
     await expect(ticks.filter({ hasText: "r-1" })).toContainText("repeat, step");
     await expect(ticks.filter({ hasText: "r-1" }).locator("text.is-step")).toHaveText("r-1");
     await expect(ticks.filter({ hasText: "c-1" })).toContainText("control");
-    const share = page.locator(".ana-campaign-small", { hasText: "Valid share" });
-    await expect(share).toContainText("Reference");
-    await expect(share).toContainText("New harness");
-    // One point a comparison that reported: the cut one has no share.
+    const share = page.locator(".ana-campaign-small", { hasText: "Wins by measure" });
+    for (const measure of ["validity", "objective", "bill"]) await expect(share).toContainText(measure);
+    // One column a comparison that reported: the cut one has none.
     for (const id of COLUMNS.filter((each) => each !== "b-4")) await expect(share).toContainText(id);
     const dollars = page.locator(".ana-campaign-small", { hasText: "Dollars billed" });
     await expect(dollars).toContainText("17 moves");
@@ -218,7 +217,7 @@ describe("the comparisons chart", () => {
     await page.mouse.move(first.x, first.y, { steps: 4 });
     await expect(tooltip).toContainText("b-1");
     await expect(tooltip.locator(":scope > .ana-num")).toContainText(
-      /\b3 won.*\b0 lost.*\b3 tied.*no-step.*0\.10\b.*0\.13\b/u,
+      /\b3 won.*\b0 lost.*\b3 tied.*no-step.*0\.10\b.*0\.125\b/u,
     );
     const repeat = await columnPoint(page, "r-1");
     await page.mouse.move(repeat.x, repeat.y, { steps: 4 });
@@ -321,7 +320,7 @@ describe("the other campaigns", () => {
     await expect(readout(page, "Reference harness").detail).toHaveText("no promotion yet");
     await expect(readout(page, "Last reading").value).toHaveText("None");
     await expect(readout(page, "Last reading").detail).toHaveText("no comparison has reported");
-    await expect(page.getByRole("heading", { name: "Valid share" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Wins by measure" })).toHaveCount(0);
     await expect(page.locator(".ana-campaign-counters")).toContainText("A/A controls 0");
     await page.locator(".ana-disclosure > summary").click();
     await expect(page.locator(".ana-disclosure-body")).toContainText(/freeze.*promotion.*operator/u);
@@ -365,7 +364,7 @@ describe("the other campaigns", () => {
     const pane = (page: Page) => page.locator(".ana-campaign").innerText();
     // Each page has read the selected card's files, the one part of the pane read after the rest.
     for (const { page } of [plain, examSide]) {
-      await expect(page.locator(".ana-harness-files .ana-evidence-link")).toHaveCount(2);
+      await expect(page.locator(".ana-harness-files .ana-harness-entry")).toHaveCount(3);
     }
     expect(await pane(examSide.page)).toBe(await pane(plain.page));
     expectQuiet(plain);

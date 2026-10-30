@@ -142,6 +142,40 @@ describe("what a comparison came to", () => {
   });
 });
 
+describe("what carried a comparison's wins", () => {
+  test("names the measure of every won and lost task and of no tie, and sums each side to the tally", async () => {
+    const { answer } = await ask("campaign", { key: KEY }, "default");
+    const reported = answer.comparisons.filter((bar) => bar.tally !== null && bar.carried !== null);
+    expect(reported.length).toBeGreaterThan(0);
+    const sum = ({ validity, objective, bill }: { validity: number; objective: number; bill: number }) =>
+      validity + objective + bill;
+    for (const bar of reported) {
+      expect({ id: bar.id, won: sum(bar.carried?.won ?? { validity: 0, objective: 0, bill: 0 }) }).toEqual({
+        id: bar.id,
+        won: bar.tally?.wins ?? -1,
+      });
+      expect({ id: bar.id, lost: sum(bar.carried?.lost ?? { validity: 0, objective: 0, bill: 0 }) }).toEqual({
+        id: bar.id,
+        lost: bar.tally?.losses ?? -1,
+      });
+      const { answer: detail } = await ask("move", { key: KEY, move: String(bar.move) }, "default");
+      if (detail.kind !== "comparison") throw new Error(`${bar.id} is a comparison`);
+      for (const task of detail.tasks) {
+        const decided = task.outcome === "won" || task.outcome === "lost";
+        expect({ task: task.task, outcome: task.outcome, carried: task.carried !== null }).toEqual({
+          task: task.task,
+          outcome: task.outcome,
+          carried: decided,
+        });
+      }
+    }
+    // A comparison with no report has nothing carried.
+    expect(answer.comparisons.filter((bar) => bar.tally === null).every((bar) => bar.carried === null)).toBe(
+      true,
+    );
+  });
+});
+
 describe("an open Builder session's practice solves", () => {
   test("lists the solves its head counts, past an Examiner session the Builder began", async () => {
     const root = join(scratch, "led");

@@ -96,6 +96,15 @@ describe("the Log pane", () => {
     await previous.click();
     await expect(counter(page)).toHaveText("1–100 of 1495 events");
     await expect(previous).toBeDisabled();
+    // Latest goes to the last page at once, on the same page bounds as Next.
+    const latest = page.getByRole("button", { name: "Latest" });
+    await latest.click();
+    await expect(counter(page)).toHaveText(`1401–${String(EVENTS)} of ${String(EVENTS)} events`);
+    await expect(latest).toBeDisabled();
+    await previous.click();
+    await expect(counter(page)).toHaveText("1301–1400 of 1495 events");
+    for (let at = 0; at < 13; at += 1) await previous.click();
+    await expect(counter(page)).toHaveText("1–100 of 1495 events");
     const pages = Math.ceil(EVENTS / PAGE);
     for (let at = 1; at < pages; at += 1) await next.click();
     await expect(counter(page)).toHaveText(`1401–${String(EVENTS)} of ${String(EVENTS)} events`);

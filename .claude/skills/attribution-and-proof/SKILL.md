@@ -1,6 +1,6 @@
 ---
 name: attribution-and-proof
-description: "Use after an Anabasis v2 comparison, standalone comparison or system change, and before any sentence claims that a harness, a model or a patch improved something. States what one reading may be said to show: the identities it was made under, the counts kept apart, whether it was repeated, which part of a harness it belongs to, whether a mechanism was live in the run, and whether the measurement is valid as distinct from whether it was exploited. Ends in one fixed report."
+description: "Use after an Anabasis v2 comparison, standalone comparison or system change, and before any sentence claims that a harness, a model or a patch improved something. States what one reading may be said to show: the identities it was made under, the counts kept apart, whether it was repeated, which part of a harness it belongs to, whether a mechanism was live in the run, and whether the measurement is valid as distinct from whether it was exploited. Ends in one fixed report. Also read it before writing improved, better, fixed or step about a harness, a model or a patch in a pull request body, a report or a message to the operator."
 ---
 
 # Attribution and proof

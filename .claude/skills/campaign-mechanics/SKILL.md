@@ -1,6 +1,6 @@
 ---
 name: campaign-mechanics
-description: "Explain or change campaign control: the Builder conversation, log events, settings, admissions, practice release and endings (AGENTS.md sections 4 to 6). Use ending.ts for stopping conditions and conditions.ts for solve-setting differences. Launch procedures belong to run-management."
+description: "Read before editing tools/d2/ (harness-builder.ts, campaign-actions.ts, campaign-terms.ts, prepare.ts, round.ts, session.ts, word.ts), src/campaign/opening.ts, or src/kernel/log.ts, condition.ts or task.ts; and whenever asked why a campaign ended or what it waits for, why comparison or session admission refused a move, what an event, the setting or a condition records, what practice a release takes, what the Builder may choose in its conversation, or what a default is (AGENTS.md sections 4 to 6). Scripts: ending.ts reads endings and stopping conditions; conditions.ts what a log's solve settings differ in. Launching, pausing or stopping a run belongs to run-management."
 ---
 
 # Campaign mechanics

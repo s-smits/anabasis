@@ -210,8 +210,8 @@ function bring(run: RemoteRun, host: Host, archive: string, depth: Depth): Promi
 }
 
 /** Refresh matching remote campaigns. Exact discovery is used by one-run readers; collections
- *  use the CLI's substring matching. A missing host refuses the read, and so does a name two
- *  machines hold where one run is asked for. A collection leaves out each copy after the first and
+ *  use the CLI's substring matching. It returns the copies it refreshed and those a silent host's
+ *  were left at. A name two machines hold refuses the read where one run is asked for. A collection leaves out each copy after the first and
  *  says so, since one shared name refused every collection read, the daily retire's among them
  *  (27 October 2026: `sim-truss-live` on two machines refused `runs source --has`). */
 export async function syncRuns(
@@ -233,11 +233,19 @@ export async function syncRuns(
   const matches = (name: string) =>
     names.length === 0 ||
     names.some((part) => (options.match === "exact" ? name === part : name.includes(part)));
-  const remote = selected.flatMap(({ host, lines }) =>
-    remoteRuns(lines, host)
-      .filter((run) => matches(run.name))
-      .map((run) => ({ host, run })),
-  );
+  // A host asked alone refuses; among several, one that is silent keeps its copies as they were.
+  // Until 30 October it refused every refresh, and 8 of 99 gather ticks left every copy stale.
+  const silent = new Set<string>();
+  const remote = selected.flatMap(({ host, lines }) => {
+    if (lines !== null || options.from !== undefined) {
+      return remoteRuns(lines, host)
+        .filter((run) => matches(run.name))
+        .map((run) => ({ host, run }));
+    }
+    console.error(`${host.name}: no campaign catalogue; its copies were left as they were`);
+    silent.add(host.name);
+    return [];
+  });
   const owners = new Set(local.map((run) => run.name));
   const kept: typeof remote = [];
   for (const one of remote) {
@@ -253,7 +261,11 @@ export async function syncRuns(
   // The archive is named once: asking git for the main worktree for each of 145 copies took 2.6 s
   // of a 38 s reading of the table of runs on 30 October.
   const archive = archiveOf(repo);
-  return await pooled(kept, AT_ONCE, ({ host, run }) => bring(run, host, archive, options.depth ?? "whole"));
+  const left = readable(repo).filter((run) => silent.has(run.archived ?? HERE) && matches(run.name));
+  const brought = await pooled(kept, AT_ONCE, ({ host, run }) =>
+    bring(run, host, archive, options.depth ?? "whole"),
+  );
+  return [...brought, ...left.map((run) => run.path)];
 }
 
 /** Resolve a path as given, or refresh a named campaign before reading its existing archive copy. */

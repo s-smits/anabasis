@@ -188,10 +188,18 @@ export async function askedScript(
 }
 
 /** The host that holds each of `names`, every host `ANA_HOSTS` lists asked at once. */
-export async function holders(names: readonly string[]): Promise<Map<string, Host>> {
+export async function holders(
+  names: readonly string[],
+  here: ReadonlySet<string> = new Set(),
+): Promise<Map<string, Host>> {
   const held = new Map<string, Host>();
   if (names.length === 0) return held;
   for (const { host, lines } of await asked(["holds", ...names])) {
+    // A run held here goes on while a peer is silent: until 30 October one down host refused it.
+    if (lines === null && names.every((name) => here.has(name))) {
+      console.error(`${host.name}: not checked for another original of ${names.join(", ")}`);
+      continue;
+    }
     if (lines === null) throw new Error(`${host.name}: cannot locate a campaign without its answer`);
     for (const name of lines.filter((one) => names.includes(one))) {
       const other = held.get(name);
@@ -210,7 +218,7 @@ export async function routed(verb: string, args: readonly string[]): Promise<Rou
   // `--here` names this machine, as the keeper `keep` starts does: until 29 October it asked every peer
   // first, and one peer that did not answer ended the keeper at its start.
   const names = args.includes("--here") ? [] : namedAt(verb, args).map((at) => args[at] ?? "");
-  const held = await holders(names);
+  const held = await holders(names, here);
   const duplicate = names.find((name) => here.has(name) && held.has(name));
   if (duplicate !== undefined) throw new Error(`${duplicate}: more than one original campaign`);
   return routesOf(verb, args, held);

@@ -4,7 +4,8 @@
  * adds below this machine's own wherever a host is listed.
  *
  *   bun run runs on <host> <verb> [args ...]
- *   bun run runs hosts [--all]
+ *   bun run runs hosts [--all] [--health]
+ *   bun run runs holds <name ...>
  *
  * The hosts are `ANA_HOSTS` in the environment, a JSON list, loaded as the credentials are by Bun's
  * `--env-file` from a file git ignores, so no machine is named in the repository. Each names the

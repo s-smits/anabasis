@@ -429,6 +429,9 @@ the runs it names and no others. The skills own the procedures:
 | A cheap built system against a dear bare one | `compare-systems` |
 | Handing runs or a question outside | `zip-run`, `oracle-handover` |
 
+`bun run runs` lists every verb of the run CLI with what it does, and `bun run runs <verb> --help`
+prints that verb's options.
+
 Nine conditions hold in all of them:
 
 1. **The worktree is the condition.** A run executes its worktree's source, so start each from a

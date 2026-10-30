@@ -13,6 +13,7 @@ every move the host makes as the table names it; the opening keeps the term eith
 
 Use the verbs of one CLI for a run's life on the host, `bun run runs`
 (`tools/runs/cli.ts`), over every run log in the repository's worktrees (`tools/runs/registry.ts`).
+A bare `bun run runs` lists every verb with what it does, and `<verb> --help` its options.
 `continue`, `pause`, `keep`, `copy` and `stop` route a whole campaign name to its machine. A missing
 host or more than one original refuses the route. `view` and `source` read through this checkout,
 refreshing remote records first; `replay` and `zip` discover matching campaigns on every machine.

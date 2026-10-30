@@ -4,7 +4,7 @@
 // as, which `keptAs` refuses and the listing has to name. Beside them lies a shared tool tree
 // (`tree-*`), which a kept state links to and which is no harness.
 import { afterAll, describe, expect, it } from "bun:test";
-import { versionsOf } from "#skills/harness-audit/scripts/harness-versions.ts";
+import { type Version, versionsOf } from "#skills/harness-audit/scripts/harness-versions.ts";
 import { append } from "../src/kernel/log.ts";
 import {
   cpSync,
@@ -16,7 +16,7 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { join } from "../src/meta/path.ts";
+import { dirname, join } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
 import { openHarness } from "../src/harness/open.ts";
@@ -73,7 +73,7 @@ append(log, "comparison.reported", {
 append(log, "harness.promoted", { harness: child, from: starter, rests: ["g1"] });
 
 const run = (from: string, ...args: string[]) => {
-  const result = runSync([capturedExecPath, script, "--log", from, ...args]);
+  const result = runSync([capturedExecPath, script, from, ...args]);
   return { code: result.exitCode, stdout: decodeOutput(result.stdout), stderr: decodeOutput(result.stderr) };
 };
 
@@ -163,10 +163,31 @@ describe("the command", () => {
     expect(blind.code).toBe(0);
     expect(blind.stdout).toContain(`against ${short(starter)}:`);
     expect(blind.stdout).toContain("[starter]");
+    const json = run(log, "--blind", "--json");
+    expect(json.code).toBe(0);
     for (const result of ["comparison", "promoted", "reference", "latest", "step", "won"]) {
       expect(blind.stdout).not.toContain(result);
     }
+    // SAFETY: `--json` prints `{ log, states, versions }`, each version a `Version` (`main`).
+    const versions = (JSON.parse(json.stdout) as { versions: Version[] }).versions;
+    expect(
+      versions.flatMap(({ roles, sessions, compared, promoted }) => [
+        ...roles,
+        ...sessions,
+        ...compared,
+        ...promoted,
+      ]),
+    ).toEqual(["starter"]);
     expect(run(log).stdout).toContain("comparison g1");
+  });
+
+  it("reads a campaign folder as its log, and takes no --log or --name", () => {
+    const folder = run(dirname(log));
+    expect(folder.code).toBe(0);
+    expect(folder.stdout).toContain("[starter]");
+    expect(folder.stdout).toBe(run(log).stdout);
+    expect(run(log, "--log", log).code).not.toBe(0);
+    expect(run(log, "--name", "camp").code).not.toBe(0);
   });
 
   it("refuses a control, a harness with no parent on record, and a state that opens as another", () => {

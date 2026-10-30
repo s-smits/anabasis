@@ -56,10 +56,10 @@ export const READERS: readonly Reader[] = [
   { name: "rows", args: (log) => ["tools/wri/wri.ts", "read", "--log", log] },
   {
     name: "chain",
-    args: (log) => [`${SKILLS}/harness-audit/scripts/harness-versions.ts`, "--log", log, "--blind"],
+    args: (log) => [`${SKILLS}/harness-audit/scripts/harness-versions.ts`, log, "--blind"],
   },
   { name: "tasks", args: (log) => ["tools/wri/tasks.ts", log] },
-  { name: "versions", args: (log) => [`${SKILLS}/harness-audit/scripts/harness-versions.ts`, "--log", log] },
+  { name: "versions", args: (log) => [`${SKILLS}/harness-audit/scripts/harness-versions.ts`, log] },
   { name: "readings", args: (log) => [`${SKILLS}/comparison-reading/scripts/reading.ts`, log] },
   {
     name: "replay",

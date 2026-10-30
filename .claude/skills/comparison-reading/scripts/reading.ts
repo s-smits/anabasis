@@ -20,11 +20,9 @@
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { calledBy, type Called, namesOf } from "#src/campaign/names.ts";
 import { readsStepEitherWay, stepOf, testOf, type Tally, UNMEASURED } from "#src/kernel/compare.ts";
-import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
+import { type LogEvent, read } from "#src/kernel/log.ts";
 import { lastReports, roomOf } from "#src/kernel/reports.ts";
-import { existsSync, statSync } from "#src/meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
-import { join } from "#src/meta/path.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 
 const USAGE = `usage:
@@ -246,9 +244,7 @@ if (import.meta.main) {
       const level = asked === null ? null : Number(asked);
       if (level !== null && !(level > 0 && level < 1)) args.die("--level must be a number between 0 and 1");
       const named = args.positionals[0] ?? "";
-      // A path stays a path; a campaign's name is found on whichever host holds it (`logAcross`).
-      const path = existsSync(named) ? named : await logAcross(named);
-      const events = read(statSync(path).isDirectory() ? join(path, LOG_FILE) : path);
+      const events = read(await logAcross(named));
       const only = args.value("comparison");
       const rows = rowsOf(events, level, only);
       if (only !== null && rows.length === 0) {

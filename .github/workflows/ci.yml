@@ -1,5 +1,5 @@
-# Typecheck, lint, format, the UI's gate and the suite, on main and on the head
-# `bun run land -- <top> --merge` dispatches it on.
+# Typecheck, lint, format, the UI's gate and the suite, on the head `bun run land -- <top> --merge`
+# dispatches it on.
 #
 # No pull request starts a run: `land --merge` reads `ci.yml` on the top's head alone, dispatches that
 # run itself, and merges nothing before it has passed (`tools/runtime/land.ts`). Until 19 October
@@ -7,6 +7,12 @@
 # queued 16 runs, 15 of which nothing read, and they held the macOS runners the top's run waited for.
 # A `pull_request` trigger filtered to `branches: [main]` still ran on a pull request of a GitHub
 # stack based on another, so the trigger is gone rather than filtered.
+#
+# No push to main starts one either. `land` merges a stack only once its bottom holds main's head,
+# so the merge commit holds the very tree this run passed on the top, and a push run tested it
+# again: on 30 October the merge 91f3b6298 of stack 532 repeated e5addfc56's tree, which run
+# 41092186511 had passed minutes before, as 614aa9e6a had repeated 882e45668's on 28 October.
+# `gh workflow run ci.yml --ref main` runs it on main by hand.
 #
 # Two platforms, because the OS isolation has two mechanisms and each is exercised only on its own
 # platform: the Darwin job proves Seatbelt and the disk image a solve and a Builder session mount
@@ -23,8 +29,6 @@
 # build skip every UI test. No step bails at its first failure: the suite runs every file.
 name: ci
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 concurrency:
   group: ci-${{ github.ref }}

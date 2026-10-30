@@ -131,7 +131,7 @@ measure.
 
 `.github/workflows/ci.yml` runs on two platforms, because the isolation has two mechanisms and a
 suite passing on one platform says nothing of the other. The UI's CI gate has a macOS runner of its
-own. CI runs on pushes to `main` and by `workflow_dispatch`; a pull request push starts no run.
+own. CI runs by `workflow_dispatch` alone; neither a pull request push nor a merge into `main` starts a run.
 `bun run land -- <top> --merge` dispatches the top's run when none exists. After the root install,
 checks run despite earlier check failures; the UI build and tests both require its dependency
 install to pass.

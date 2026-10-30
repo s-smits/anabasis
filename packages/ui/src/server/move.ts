@@ -18,7 +18,7 @@ import type { Move, MoveDetail, Outcome, Query, ScoredTask, Sensitivity, SolveRo
 import { Unanswerable, type Reading } from "./context.ts";
 import { type Log, practiceIn, proposalsIn, ranIn } from "./folds.ts";
 import { campaignAt } from "./logs.ts";
-import { barsIn, endOf, movesIn, outcomeOf, pairsIn } from "./moves.ts";
+import { barsIn, movesIn, outcomeOf, pairsIn } from "./moves.ts";
 import { examTier, sessionTrace, solveRow } from "./trace.ts";
 import { rulingWithheld } from "./withheld.ts";
 
@@ -150,13 +150,13 @@ export function moveAnswer(reading: Reading, query: Query<"move">): MoveDetail {
       move.step === "builder" || examTier(tier)
         ? sessionTrace(log, move.id, move.step === "builder" ? "build" : "exam")
         : null;
-    const end = endOf(log, move);
-    // A Builder session's practice solves are the ones that started inside its record, as
-    // `campaignOf` counts them.
+    // A Builder session's practice solves are the ones that started inside its window, as
+    // `campaignOf` counts them. Cut at the first move it made instead, the open session b-4 of
+    // buffer-fresh-opus-forkedPR506 listed 2 solves on 30 October under a head that read 16.
     const solves =
       move.step === "builder"
         ? ranIn(log).flatMap((solve) =>
-            practiceIn(log).has(solve.id) && solve.started > move.index && solve.started <= end
+            practiceIn(log).has(solve.id) && solve.started > move.index && solve.started < move.until
               ? [solveRow(log, solve, tier)]
               : [],
           )

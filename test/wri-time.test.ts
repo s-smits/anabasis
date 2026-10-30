@@ -48,3 +48,16 @@ test("a load with no cores on record yet is no sample", () => {
   const events = [event(0, "solve.finished", { load: [8, 8, 8] }), event(10, "campaign.ended", {})];
   expect(overloadOf(events)(T0, T0 + 10 * MIN)).toBe(0);
 });
+
+test("a provider's wait ends at its reset, an ending or the next session start, whichever comes first", () => {
+  // buffer-506, 29 October: a reset 39 hours off was waited out under another login, which
+  // writes no ending; its next session started four and a half hours on.
+  const reset = (minutes: number) => event(minutes, "campaign.waited", { for: "provider", ms: 600 * MIN });
+  const moved = [reset(0), event(270, "build.started", {}), event(400, "solve.finished", {})];
+  expect(waitsOf(moved)).toEqual([{ from: T0, until: T0 + 270 * MIN, kind: "provider" }]);
+  expect(waitsOf([reset(0), event(30, "campaign.ended", {})])[0]?.until).toBe(T0 + 30 * MIN);
+  // A solve finishing beside the wait is no new start, and the reset bounds the rest.
+  expect(waitsOf([reset(0), event(5, "solve.finished", {}), event(700, "solve.started", {})])[0]?.until).toBe(
+    T0 + 600 * MIN,
+  );
+});

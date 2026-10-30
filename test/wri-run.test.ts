@@ -191,7 +191,8 @@ describe("the reader of the campaign's clock", () => {
     expect(line).toContain("examiner 1.0 (3%)");
     expect(line).toContain("comparisons 2.0 (5%)");
     expect(line).toContain("between moves 0.0 (0%), of 37.0");
-    expect(line).toContain("recorded waits 35.0 h (provider 35.0)");
+    // Both waits end at the Examiner's start at 3 h: merged 1 h to 3 h, where apart they would sum to 3.0.
+    expect(line).toContain("recorded waits 2.0 h (provider 2.0)");
   });
 
   it("ends a draft that a later draft started over, instead of counting it to the log's end", () => {

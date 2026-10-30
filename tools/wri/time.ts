@@ -47,6 +47,8 @@ import {
 /** How long a load sample is taken to stand for: a solve starts every few minutes while one runs,
  *  and a stretch with none, such as a Builder's own turns, is counted as unloaded. */
 const SAMPLE_MS = 15 * 60_000;
+/** The events after which a recorded provider or network wait is over (`waitsOf`). */
+const ONWARD: ReadonlySet<string> = new Set(["campaign.ended", "build.started", "exam.started"]);
 
 /** The share of a deadline past which a miss is read as bound by it, as v1's climb read it. */
 const DEADLINE_BOUND_SHARE = 0.95;
@@ -307,14 +309,16 @@ function unionMs(windows: readonly { readonly from: number; readonly until: numb
 }
 
 /** Every wait a log records, as the interval it covered. A provider's reset and a network wait are
- *  recorded before their sleep and stop at the first subsequent ending, even after a resume; a
- *  load wait is recorded when the host admits the solve, so it ends at its event. */
+ *  recorded before their sleep and stop at the first later ending or session start: a run moved to
+ *  another login writes no ending, and on 30 October buffer-506's 39-hour reset read as waited
+ *  until the run ended, although the run went on under another login after 4.5 hours. A load wait
+ *  is recorded when the host admits the solve, so it ends at its event. */
 export function waitsOf(events: readonly LogEvent[]): { from: number; until: number; kind: string }[] {
   const waits: { from: number; until: number; kind: string }[] = [];
   let boundary = Date.parse(events.at(-1)?.at ?? "");
   for (const { at, kind, data } of events.toReversed()) {
     const from = Date.parse(at);
-    if (kind === "campaign.ended") boundary = from;
+    if (ONWARD.has(kind)) boundary = from;
     if (kind !== "campaign.waited" || !isNumber(data.ms)) continue;
     // The solve queue writes no `for`, older logs' included, and records its wait once it is over.
     if (data.for === undefined) waits.push({ from: from - data.ms, until: from, kind: "load" });

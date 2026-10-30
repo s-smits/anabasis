@@ -66,8 +66,8 @@ Read-only. No implementation, tests, simulations, paid solves, seats or campaign
 to source, branches or pull requests, process actions, schedules, messages to other agents or
 further sessions. Others are editing this repository: preserve their work.
 
-Read `/Users/air/.anabasis/AGENTS.md` before your first shell command, then the pinned repository
-`AGENTS.md` and the skills that own your part. The audit is read-only even where the repository's
+Read any machine rules your session's instructions name before your first shell command, then the
+pinned repository `AGENTS.md` and the skills that own your part. The audit is read-only even where the repository's
 default carries a finding through implementation.
 
 The source is pinned to «commit» («what it is: the top of the stack, its pull request»). Your

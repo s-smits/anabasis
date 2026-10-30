@@ -6,7 +6,6 @@ node_modules
 .env.*
 !.env.example
 !.env.runs.example
-.accounts/
 /CLAUDE.md
 __pycache__/
 # A test fixture's scratch inside the checkout, at any depth (v1's tests named theirs this way).
@@ -40,14 +39,16 @@ __pycache__/
 /.harness/
 /.scratch/
 /packages/ui/dist/
-# Operator-local tooling v1 kept out of publication, still on disk in old checkouts: account and
-# sweep skills, a runner pin, a remote test script and a working register.
-/.claude/skills/claude-accounts/
-/.claude/skills/run-cycles/
-/.claude/skills/merge-train/
-/.config/m1-runner.json
-/tools/test-remote.sh
-/docs/systems-read-findings.md
 # Skills and other files set aside on this machine instead of shipped, such as a zipped skill a
 # pull request once carried (30 October 2026).
 /.archive/
+# Claude Code's own state in a checkout: a person's local settings, its worktrees, schedules,
+# checkpoints and agent memory. The shared settings, `.claude/settings.json`, stay tracked.
+/.claude/settings.local.json
+/.claude/worktrees/
+/.claude/scheduled_tasks.*
+/.claude/checkpoints/
+/.claude/agent-memory-local/
+# A checkout's own working notes on where its work stands, kept beside the tracked plan
+# (`docs/plan.md` stays the status of record).
+/docs/progress/

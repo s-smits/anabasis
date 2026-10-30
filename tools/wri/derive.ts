@@ -49,18 +49,21 @@ export interface Derived {
   readonly failed: readonly string[];
 }
 
+/** A skill script that takes the log as its one argument, then `flags`. */
+const skillReader = (name: string, script: string, ...flags: string[]): Reader => ({
+  name,
+  args: (log) => [`${SKILLS}/${script}`, log, ...flags],
+});
+
 /** The readers that take one log and print what it holds, calling no model and writing nothing.
  *  `replay.ts` reads one campaign by its folder and name; `table.ts` reads the fleet, and `runs view`
  *  refreshes remote copies, so both are left out. */
 export const READERS: readonly Reader[] = [
   { name: "rows", args: (log) => ["tools/wri/wri.ts", "read", "--log", log] },
-  {
-    name: "chain",
-    args: (log) => [`${SKILLS}/harness-audit/scripts/harness-versions.ts`, log, "--blind"],
-  },
+  skillReader("chain", "harness-audit/scripts/harness-versions.ts", "--blind"),
   { name: "tasks", args: (log) => ["tools/wri/tasks.ts", log] },
-  { name: "versions", args: (log) => [`${SKILLS}/harness-audit/scripts/harness-versions.ts`, log] },
-  { name: "readings", args: (log) => [`${SKILLS}/comparison-reading/scripts/reading.ts`, log] },
+  skillReader("versions", "harness-audit/scripts/harness-versions.ts"),
+  skillReader("readings", "comparison-reading/scripts/reading.ts"),
   {
     name: "replay",
     args: (log, repo) => [
@@ -73,11 +76,11 @@ export const READERS: readonly Reader[] = [
       basename(dirname(log)),
     ],
   },
-  { name: "draw", args: (log) => [`${SKILLS}/comparison-reading/scripts/draw.ts`, log] },
-  { name: "ending", args: (log) => [`${SKILLS}/campaign-mechanics/scripts/ending.ts`, log] },
-  { name: "conditions", args: (log) => [`${SKILLS}/campaign-mechanics/scripts/conditions.ts`, log] },
-  { name: "builder-view", args: (log) => [`${SKILLS}/design-and-seats/scripts/builder-view.ts`, log] },
-  { name: "examiner-view", args: (log) => [`${SKILLS}/design-and-seats/scripts/examiner-view.ts`, log] },
+  skillReader("draw", "comparison-reading/scripts/draw.ts"),
+  skillReader("ending", "campaign-mechanics/scripts/ending.ts"),
+  skillReader("conditions", "campaign-mechanics/scripts/conditions.ts"),
+  skillReader("builder-view", "design-and-seats/scripts/builder-view.ts"),
+  skillReader("examiner-view", "design-and-seats/scripts/examiner-view.ts"),
 ];
 
 /** Where the folders go, under the main worktree of the repository `repo` lies in. */

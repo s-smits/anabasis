@@ -8,7 +8,7 @@
  *   bun tools/wri/tasks.ts <log.jsonl | campaign folder | name>
  *
  * The tasks come from `proposalsOf` (`src/kernel/history.ts`) and the scored sets from each
- * `comparison.started`, frontier and retained alike. A pack's task carries no public input in
+ * `comparison.started`, whose `tasks` hold its retained ones too (`scoredSet`, `src/campaign/round.ts`). A pack's task carries no public input in
  * the log, and says so.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
@@ -24,11 +24,8 @@ async function main(args: CommandArgs): Promise<number> {
   const events = read(await logAcross(named));
   const scoredIn = new Map<string, string[]>();
   for (const { kind, data } of events) {
-    if (kind !== "comparison.started" || !isString(data.session)) continue;
-    const tasks = [data.tasks, data.retained].flatMap((list) =>
-      Array.isArray(list) ? list.filter(isString) : [],
-    );
-    for (const version of new Set(tasks)) {
+    if (kind !== "comparison.started" || !isString(data.session) || !Array.isArray(data.tasks)) continue;
+    for (const version of data.tasks.filter(isString)) {
       scoredIn.set(version, [...(scoredIn.get(version) ?? []), data.session]);
     }
   }

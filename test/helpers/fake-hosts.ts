@@ -26,9 +26,9 @@ const SCRIPTS = {
 const script = args.at(-1);
 const peer = JSON.parse(process.env.FAKE_FLEET ?? "{}")[args.at(-2)] ?? {};
 if (process.env.FAKE_OFFLINE === "1" || peer.offline) process.exit(255);
-if (peer.timeout && script.includes("ANA_HOSTS")) await Bun.sleep(35000);
-if (peer.freshExit && script.includes("ANA_HOSTS") && script.includes("fresh")) process.exit(peer.freshExit);
-if (process.env.FAKE_EXECUTE === "1" || peer.execute || (process.env.FAKE_PREPARE_EXECUTE === "1" && !script.includes("ANA_HOSTS"))) {
+if (peer.timeout && script.includes("ANA_HOP")) await Bun.sleep(35000);
+if (peer.freshExit && script.includes("ANA_HOP") && script.includes("fresh")) process.exit(peer.freshExit);
+if (process.env.FAKE_EXECUTE === "1" || peer.execute || (process.env.FAKE_PREPARE_EXECUTE === "1" && !script.includes("ANA_HOP"))) {
   const env = {...process.env, ...(peer.env ?? {})};
   const child = Bun.spawn(["sh", "-c", script], {env, stdin:"ignore", stdout:"inherit", stderr:"inherit"});
   process.exit(await child.exited);
@@ -38,7 +38,7 @@ else if (script.includes("catalogue")) console.log(JSON.stringify((peer.catalogu
 else if (script.includes("active")) console.log(script.includes("--login") ? peer.loginPresent ?? process.env.FAKE_LOGIN_PRESENT ?? "true" : JSON.stringify(peer.active ?? JSON.parse(process.env.FAKE_ACTIVE ?? "[]")));
 else if (script.includes("pulse")) console.log(peer.pulse ?? "◆ reported step");
 else if (script.includes("holds")) console.log((peer.holds ?? [process.env.FAKE_HOLDS ?? ""]).join("\\n"));
-else if (script.includes("status") && script.includes("ANA_HOSTS")) console.log(peer.status ?? "no local runs");
+else if (script.includes("status") && script.includes("ANA_HOP")) console.log(peer.status ?? "no local runs");
 else console.log(process.env.FAKE_PREPARED);`,
   "rsync": `${RECORD}
 import { cpSync, writeFileSync } from "node:fs";
@@ -50,12 +50,13 @@ const from = remote ? quoted.slice(1,-1).replaceAll("'\\\\''", "'") : source;
 const target = args.at(-1);
 const into = target.includes(":") ? target.split(":").slice(1).join(":").replace(/\\/$/, "").slice(1,-1) + "/" : target;
 if (process.env.FAKE_TRANSFER_FAIL === "1") { writeFileSync(into + "log.jsonl", "partial"); process.exit(23); }
-cpSync(from, into, {recursive: true, verbatimSymlinks: true, filter: (file) => !args.includes("--exclude=/*") || resolve(file) === resolve(from) || (dirname(file) === resolve(from) && (basename(file) === "log.jsonl" || /^launch-.*[.]json$/.test(basename(file))))});`,
+const kept = args.filter((arg) => arg.startsWith("--include=/")).map((arg) => new RegExp("^" + arg.slice(11).replaceAll(".", "[.]").replaceAll("*", ".*") + "$"));
+cpSync(from, into, {recursive: true, verbatimSymlinks: true, filter: (file) => !args.includes("--exclude=/*") || resolve(file) === resolve(from) || (dirname(file) === resolve(from) && kept.some((name) => name.test(basename(file))))});`,
   "git": `${RECORD}
 import { mkdirSync, rmSync } from "node:fs";
 if (args.includes("fetch")) process.exit(process.env.FAKE_FETCH_FAIL === "1" ? 1 : 0);
 if (args.includes("merge-base") || args.includes("for-each-ref")) console.log(process.env.FAKE_ANCESTOR ?? process.env.FAKE_COMMIT);
-else if (args.includes("rev-parse")) console.log(args.includes("--git-common-dir") ? process.env.FAKE_GIT : args.includes("--show-toplevel") ? process.env.FAKE_MAIN : args.includes("-C") ? process.env.FAKE_COMMIT : process.env.FAKE_REMOTE_COMMIT ?? process.env.FAKE_COMMIT);
+else if (args.includes("rev-parse")) console.log(args.includes("--git-common-dir") ? process.env.FAKE_GIT : args.includes("--show-toplevel") ? process.env.FAKE_MAIN : args.includes("--verify") && process.env.FAKE_AT !== undefined ? process.env.FAKE_AT : args.includes("-C") ? process.env.FAKE_COMMIT : process.env.FAKE_REMOTE_COMMIT ?? process.env.FAKE_COMMIT);
 else if (args.includes("status")) console.log(process.env.FAKE_DIRTY ?? "");
 else if (args.includes("branch")) console.log(process.env.FAKE_UNPUBLISHED === "1" ? "" : "origin/main");
 else if (args.includes("ls-remote")) console.log(process.env.FAKE_TAGGED === "1" ? process.env.FAKE_COMMIT + "\\trefs/tags/run/r/1" : "");
@@ -74,7 +75,7 @@ else if (args.includes("-e")) {
   const child = Bun.spawn([process.execPath, ...args], {env:process.env,stdin:"ignore",stdout:"inherit",stderr:"inherit"});
   process.exit(await child.exited);
 }
-else if (process.env.ANA_HOSTS !== "[]") process.exit(5);
+else if (process.env.ANA_HOP !== "1") process.exit(5);
 else if (process.env.FAKE_RUN_CLI === "1") {
   const start = args.findIndex((arg) => arg.startsWith("tools/") || arg.startsWith(".claude/"));
   const child = Bun.spawn([process.execPath, process.env.FAKE_REPO + "/" + args[start], ...args.slice(start+1)], {env:process.env,stdin:"ignore",stdout:"inherit",stderr:"inherit"});

@@ -20,6 +20,9 @@ __pycache__/
 # What each campaign hands over at its end, its harness whole with its programs, the public rules and
 # its closing report (`harnessesOf`, `tools/runs/registry.ts`). No hidden value, but large.
 /data/harnesses/
+# Every deterministic reader's output over each campaign's log, one folder a campaign, replaced whole
+# when its log moves (`derivedOf`, `tools/wri/derive.ts`). The readers print hidden values: exam side.
+/data/derived/
 # The suite's recorded file timings: each checkout learns its own order from its first run
 # (`tools/runtime/test-suite.ts`).
 /test/.test-timings.json
@@ -45,3 +48,6 @@ __pycache__/
 /.config/m1-runner.json
 /tools/test-remote.sh
 /docs/systems-read-findings.md
+# Skills and other files set aside on this machine instead of shipped, such as a zipped skill a
+# pull request once carried (30 October 2026).
+/.archive/

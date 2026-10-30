@@ -23,8 +23,8 @@
  * command that solves takes them). Each solve's start names the session, so no comparison counts
  * it and no Builder is shown it, and the task admission's event carries what the task's solves billed. The
  * Examiner hears how many of them were valid, how many gave no reading, the turns each valid one
- * took and, where the contract declares an objective, their measures and its own answer's, and
- * tool counts, shell command lengths and failures. It hears no answer, argument or output.
+ * took, the minutes the longest took and, where the contract declares an objective, their
+ * measures and its own answer's. It hears no answer, tool call, argument or output.
  * On 21 October, 128 room solves across 43 of 1,396 drafts in 30 logs ended at a named reset.
  * `solve` now owns that wait; the task admission receives only its settled ending, under the session's signal.
  * Cancellation before the host launches a queued solve returns a killed non-result without a

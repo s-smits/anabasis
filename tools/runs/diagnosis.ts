@@ -14,6 +14,22 @@ interface Observation {
 const OBSERVATION = "observation.json";
 const QUIET_MS = 20 * 60_000;
 
+/**
+ * The provider wait `events` still stand in, or null. A seat that runs on after the wait is
+ * recorded writes its own failed turn and the call it had in flight, so a wait stands through
+ * calls and failed turns, and any other event ends it. Until 29 October the
+ * keeper and this reader read a wait only as the log's last event: buffer-fresh-opus-forkedPR506
+ * logged one at 14:31 until 31 October, then an Examiner call and its failed turn, and sat 4.5
+ * hours with its keeper watching instead of moving it.
+ */
+export function providerWait(events: readonly LogEvent[]): LogEvent | null {
+  const at = events.findLastIndex(
+    ({ kind, data }) => !kind.endsWith(".call") && !(kind.endsWith(".turn") && data.stopReason === "error"),
+  );
+  const wait = events[at];
+  return wait?.kind === "campaign.waited" && wait.data.for === "provider" ? wait : null;
+}
+
 /** Read only the tail of the newest regular launch stderr, never a link or a whole growing file. */
 export async function stderrTail(log: string): Promise<string | null> {
   const folder = dirname(log);
@@ -50,8 +66,9 @@ export async function runReason(
   const last = events.at(-1);
   if (last?.kind === "campaign.ended") return [];
   const lines: string[] = [];
-  if (last?.kind === "campaign.waited") {
-    const data = last.data;
+  const wait = last?.kind === "campaign.waited" ? last : providerWait(events);
+  if (wait !== null) {
+    const data = wait.data;
     const load = isNumber(data.load)
       ? `load ${String(data.load)} on ${isNumber(data.cores) ? String(data.cores) : "?"} cores`
       : null;

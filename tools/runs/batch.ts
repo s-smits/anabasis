@@ -1,7 +1,7 @@
 /** Plan every slot before launching any pack; reuse single-run admission for each actual launch. */
 import { runtimeProcess } from "#src/meta/process.ts";
 import type { Host } from "./host-config.ts";
-import type { Live } from "./live.ts";
+import { CODEX, type Live } from "./live.ts";
 import { readLogins } from "./logins.ts";
 import { freshFleet, freshHosts, freshLogin, loginPool, loginPresent, placeFresh } from "./placement.ts";
 import { publishedAt } from "./code.ts";
@@ -13,6 +13,8 @@ interface BatchOptions {
   readonly login: string | undefined;
   readonly logins: string | undefined;
   readonly billed: boolean;
+  /** Whether a seat goes through the Codex CLI's login, which pays where no Claude login does. */
+  readonly codex: boolean;
   readonly yes: boolean;
 }
 interface Planned {
@@ -41,9 +43,10 @@ export async function batchFresh(
   const plan: Planned[] = [];
   for (const [index, pack] of packs.entries()) {
     const login = index === 0 ? first : await chooseLogin();
-    const host = await placeFresh(pack, fleet, choices, login);
+    const payer = login ?? (options.codex ? CODEX : undefined);
+    const host = await placeFresh(pack, fleet, choices, payer);
     plan.push({ pack, host, login });
-    fleet.push({ name: `planned-${String(index)}`, host: host?.name ?? "here", login: login ?? null });
+    fleet.push({ name: `planned-${String(index)}`, host: host?.name ?? "here", login: payer ?? null });
     choices = choices.map((choice) =>
       choice.host === host ? { ...choice, projects: [...choice.projects, `${pack}-fresh`] } : choice,
     );

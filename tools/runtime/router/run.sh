@@ -3,12 +3,13 @@
 # check tasks here, so that they run on a host `ANA_HOSTS` lists rather than on this loaded laptop: a
 # push once gated here at a load average of 47 beside seven live runs. RUN_REMOTE picks the host by
 # its place in that list, its name or its ssh destination, 0 runs the task here, and unset takes the
-# first host that is not busy (`pick_host`), or this machine where the list is empty. Whatever the host,
+# first host that is not busy (`pick_host`), or this machine where no host sets `checks`. Whatever the host,
 # the task is `bun run <task>` over the working tree as it stands, uncommitted bytes included,
 # under the Bun the tree pins and one deadline, and its exit status is this script's.
 #
 # A task waits for one of its host's slots in a queue on this machine, first come first served:
-# each host takes two tasks at once (`slots`), and this machine one. Settings, each optional:
+# each host takes as many tasks at once as its `checks` in ANA_HOSTS says (`slots`), and this
+# machine one; a host without `checks` takes none. Settings, each optional:
 # ANA_RUNNER_WALL (seconds a task may run, 3600), ANA_RUNNER_QUEUE_WAIT (seconds a task may wait for
 # a slot, 2400; exit 75 past it), ANA_RUNNER_MIN_FREE_GB (free space a host must have, 3; exit 69
 # below it or when it does not answer), ANA_RUNNER_RETRY_DELAY (5), ANA_RUNNER_BUSY (the one-minute
@@ -42,11 +43,6 @@ done
 wall_seconds="${ANA_RUNNER_WALL:-3600}"
 ((wall_seconds > 0)) || wall_seconds=3600
 
-ssh_options=(
-  -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3
-  -o ControlMaster=no -o ControlPath=none
-)
-
 alive() { [[ "$1" =~ ^[1-9][0-9]*$ ]] && kill -0 "$1" 2>/dev/null; }
 
 # taken_here <host>: the slots this machine's tasks hold on <host>, and the tasks waiting for one.
@@ -68,10 +64,11 @@ taken_here() {
 # answered, where the task queues as before. On 22 October the M1, the first line, carried two
 # campaigns and every CI gate while the Linux runner sat idle.
 pick_host() {
-  local names=("${host_sshs[@]}") i probes load cores percent taken reading
+  local names=("${host_sshs[@]}") i probes load cores percent taken reading slots ssh_options transport
   local busy_at="${ANA_RUNNER_BUSY:-100}" pick="" fallback="" best="" best_percent="" first_said=""
   probes="$(mktemp -d "${TMPDIR:-/tmp}/ana-runner-probe.XXXXXX")"
   for i in "${!names[@]}"; do
+    options_of "$i"
     ssh -o ConnectTimeout=5 "${ssh_options[@]}" "${names[$i]}" \
       'n="$(getconf _NPROCESSORS_ONLN)"; l="$( (sysctl -n vm.loadavg 2>/dev/null || cat /proc/loadavg) | tr -d "{}" | awk "{ print \$1 }")"; echo "$l $n"' \
       >"$probes/$i" 2>/dev/null </dev/null &
@@ -79,7 +76,7 @@ pick_host() {
   wait
   for i in "${!names[@]}"; do
     read -r load cores _ <"$probes/$i" || true
-    taken="$(taken_here "${names[$i]}")"
+    taken="$(taken_here "${names[$i]}")" slots="${host_slots[$i]}"
     if ! [[ "$load" =~ ^[0-9]+([.][0-9]+)?$ && "$cores" =~ ^[1-9][0-9]*$ ]]; then
       reading="no load reading"
       [[ -n "$first_said" ]] || first_said="${names[$i]} gave $reading"
@@ -109,11 +106,14 @@ pick_host() {
 
 # The hosts are the machines ANA_HOSTS lists, read by its one reader (tools/runs/host-config.ts)
 # through hosts.js, which install.ts bundles from hosts.ts: from the environment, or else from
-# .env.runs in the main worktree, where `bun run runs` finds them. Until 25 October the runner kept
-# a hosts file of its own, which on stijn-pro named the same two machines, in the same order, as its
-# ANA_HOSTS, each with two slots. The lister runs in this folder, so Bun loads no .env of the tree.
+# .env.runs in the main worktree, where `bun run runs` finds them, each that sets `checks` with that
+# many slots, the ssh command rsync takes (`sshCommand`, tools/runs/host-command.ts) and the ssh
+# options every connection to it takes (`sshOptions`, src/meta/ssh.ts), both the runs verbs' own.
+# Until 25 October the runner kept a hosts file of its own, which on the operator's
+# laptop named the same two machines, in the same order, as its ANA_HOSTS, each with two slots. The
+# lister runs in this folder, so Bun loads no .env of the tree.
 root="$(git rev-parse --show-toplevel)"
-host_names=() host_sshs=() slots=2
+host_names=() host_sshs=() host_slots=() host_transports=() host_options=() slots=1
 list_hosts() {
   local main env_file=()
   main="$(dirname "$(git -C "$root" rev-parse --path-format=absolute --git-common-dir)")"
@@ -125,11 +125,23 @@ if [[ "${RUN_REMOTE:-}" != 0 ]]; then
     printf "runner: ANA_HOSTS could not be read; RUN_REMOTE=0 runs the task here\n" >&2
     exit 2
   fi
-  while read -r name ssh_name; do
+  # A line without its count, its rsync command or its options comes from a hosts.js older than this
+  # run.sh: without the count it waited for a slot that cannot exist while holding the queue for every
+  # task behind it (28 October).
+  while IFS=$'\t' read -r name ssh_name checks transport options; do
     [[ -n "$name" ]] || continue
-    host_names+=("$name") host_sshs+=("$ssh_name")
+    if ! [[ "$checks" =~ ^[1-9][0-9]*$ && "$transport" == "'ssh' "* && -n "$options" ]]; then
+      printf "runner: hosts.js gave %s no count of checks, rsync command or ssh options; run tools/runtime/router/install.ts again\n" "$name" >&2
+      exit 2
+    fi
+    host_names+=("$name") host_sshs+=("$ssh_name") host_slots+=("$checks") host_transports+=("$transport") host_options+=("$options")
   done <<<"$listed"
 fi
+# options_of <i>: the ssh options of host <i>, in `ssh_options`, and its rsync command, in `transport`.
+options_of() {
+  IFS=$'\t' read -r -a ssh_options <<<"${host_options[$1]}"
+  transport="${host_transports[$1]}"
+}
 
 # The host: none for RUN_REMOTE=0, else the host whose place (from 1), name or ssh destination it
 # gives, and for an unset RUN_REMOTE the one `pick_host` names, or none where the list is empty.
@@ -141,18 +153,20 @@ fi
 if [[ "$choice" != 0 ]]; then
   for ((i = 0; i < ${#host_sshs[@]}; i++)); do
     if [[ "$choice" == "$((i + 1))" || "$choice" == "${host_names[$i]}" || "$choice" == "${host_sshs[$i]}" ]]; then
-      host="${host_sshs[$i]}"
+      host="${host_sshs[$i]}" slots="${host_slots[$i]}"
+      options_of "$i"
       break
     fi
   done
   if [[ -z "$host" ]]; then
-    printf "RUN_REMOTE=%s names no host ANA_HOSTS lists; 0 runs the task here\n" "$choice" >&2
+    printf "RUN_REMOTE=%s names no host ANA_HOSTS lists with checks; 0 runs the task here\n" "$choice" >&2
     exit 2
   fi
 fi
-# This machine runs one task at a time.
-[[ -n "$host" ]] || slots=1
-
+# Every connection to the host takes its options, so the first opens the host's master and every later
+# one, a runs verb's included, rides on it until five minutes after the last. Until 28 October each of
+# a task's six exchanges opened its own connection, and their handshakes took 3 s of a 3.1 s remote
+# secret scan; until 29 October a task opened and closed a master of its own.
 on_host() { ssh "${ssh_options[@]}" "$host" "$@"; }
 
 # The queue. A waiter's ticket names its PID; it takes a slot only when no live ticket is older,
@@ -264,18 +278,22 @@ push_tree() {
     --filter="-s /domains" --filter="-s /campaigns" --filter="-s *.zip" \
     ${includes[@]+"${includes[@]}"} \
     --filter=":s- .gitignore" \
-    -e "ssh ${ssh_options[*]}" "$1/" "$host:$2/"
+    -e "$transport" "$1/" "$host:$2/"
 }
 
-ship_script() { cat "$runner_dir/lib.sh" "$runner_dir/host.sh" | on_host "cat > '$1.run.sh'"; }
+# ship_script <dir>: the slot's folder made, its last status cleared and the task's script written, in
+# one exchange.
+ship_script() {
+  cat "$runner_dir/lib.sh" "$runner_dir/host.sh" | on_host "mkdir -p '$1' && rm -f '$1.status' && cat > '$1.run.sh'"
+}
 
 # remote_run <root> <pin> [args...]: the task in the slot's folder on the host. The folder names
 # this machine too, so two machines that share a host never share a slot.
 remote_run() {
-  local root=$1 pin=$2 dir quoted="" strict="" bail="" plain="" status=0
+  local root=$1 pin=$2 dir quoted="" strict="" forwarded="" setting plain="" status=0
   shift 2
   dir=".cache/ana-runner/$(uname -n | cut -d. -f1)-slot-$held_slot"
-  with_retries on_host "mkdir -p '$dir' && rm -f '$dir.status'"
+  with_retries ship_script "$dir"
   with_retries push_tree "$root" "$dir"
   printf "runner: sent %s to %s, slot %s\n" "$root" "$host" "$held_slot" >&2
   # With no arguments printf would send one empty one, which changes the suite's routing.
@@ -287,17 +305,18 @@ remote_run() {
   elif [[ "$(git -C "$root" config --type=bool --get ana.lintStrict 2>/dev/null || true)" == true ]]; then
     strict="ANA_LINT_STRICT=1 "
   fi
-  # A proof of `bun run land` or the pre-push hook stops at its first failed test; the variable
-  # that asks for it goes as ANA_LINT_STRICT does, since ssh carries no environment.
-  if [[ -n "${ANA_TEST_BAIL:-}" ]]; then printf -v bail "ANA_TEST_BAIL=%q " "$ANA_TEST_BAIL"; fi
-  with_retries ship_script "$dir"
+  # A proof of `bun run land` or the pre-push hook stops at its first failed test, and a host may be
+  # given its count of test workers; both go as ANA_LINT_STRICT does, since ssh carries no environment.
+  for setting in ANA_TEST_BAIL ANA_TEST_WORKERS; do
+    if [[ -n "${!setting:-}" ]]; then printf -v forwarded "%s%s=%q " "$forwarded" "$setting" "${!setting}"; fi
+  done
   # The forced terminal is what delivers a HUP to the host when ssh drops, so it stays. Where this
   # end is no terminal, the task writes into a pipe instead, so the host's tools draw no progress
   # bars into a log or an agent's output (operator, 27 October).
   [[ -t 1 ]] || plain=" 2>&1 | cat"
   # --norc: a bash started straight under sshd reads ~/.bashrc, and the M1's does not parse.
   ssh "${ssh_options[@]}" -tt "$host" \
-    "${strict}${bail}/bin/bash --norc $dir.run.sh $dir $pin $task $wall_seconds $quoted$plain" || status=$?
+    "${strict}${forwarded}/bin/bash --norc $dir.run.sh $dir $pin $task $wall_seconds $quoted$plain" || status=$?
   # ssh reports its own failures as 255. Otherwise the verdict is the status host.sh left beside
   # the slot, since Tailscale SSH reports 0 whatever the task did; none left is no verdict either.
   if ((status != 255)); then

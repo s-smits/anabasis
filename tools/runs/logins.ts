@@ -34,8 +34,8 @@
  *
  * Each reading keeps that count beside each login's week, and the rises between readings over the
  * runs counted give the share of a week a run spends an hour (`perRunRate`). The most a login
- * carries is then the lower of its cap and the runs its week left fits until its reset, each run
- * active 16 of 24 hours (`fitOf`), and a login with more live runs than that reads oversubscribed
+ * carries is then the lower of its cap and the runs its week left fits over a run's twelve hours, or
+ * until the reset where that comes sooner, each run active 16 of 24 hours (`fitOf`), and a login with more live runs than that reads oversubscribed
  * (`carried`): a cap of two read 0/2 on a login at 92% of its week with 11 hours of it left.
  * Until that rate is measured, a login with live runs reads its own week's pace shared over them
  * (`perRunHour`).
@@ -59,7 +59,7 @@ import { looseFlagsOf } from "../d2/campaign-terms.ts";
 import { recordedSetting } from "../d2/setting.ts";
 import { asked } from "./hosts.ts";
 import { hostsOf } from "./host-config.ts";
-import { type Live, liveHere, liveOf } from "./live.ts";
+import { CODEX, type Live, liveHere, liveOf } from "./live.ts";
 
 interface Window {
   readonly pct: number | null;
@@ -104,6 +104,11 @@ const KEPT_MS = 8 * 24 * HOUR;
 /** The share of a day a run is taken to be active when a week is read for how many runs it fits:
  *  16 of 24 hours (operator, 22 October). */
 const ACTIVE_SHARE = 16 / 24;
+/** The hours a run is read to live: the release cycle stops its runs twelve hours after their
+ *  opening (`AGENTS.md`, section 1). Until 29 October each run was read to live until its login's
+ *  reset, so login 1 at 84% of its week with 83 hours to go read 2/0 and oversubscribed while its two
+ *  runs needed about 7% of the 16% left before their stop, and a fresh week read 1/1. */
+const RUN_HOURS = 12;
 /** Fewer run-hours than this on record measure no rate a run spends (`perRunRate`). */
 const LEAST_RUN_HOURS = 6;
 const NOTED = [
@@ -128,6 +133,13 @@ export function allowedLogins(env: Readonly<Record<string, string | undefined>>)
   return named === undefined || named.length === 0 ? loginsIn(env) : named;
 }
 
+/** Whether a run goes on the plain `CLAUDE_CODE_OAUTH_TOKEN` alone: no numbered login is allowed
+ *  and the plain one is set, as on a machine with one Claude login. Until 28 October `fresh` and
+ *  `keep` refused such a machine for want of a numbered login. */
+export function plainOnly(env: Readonly<Record<string, string | undefined>>): boolean {
+  return allowedLogins(env).length === 0 && (env[TOKEN] ?? "") !== "";
+}
+
 /** Whether a run bills a Claude login: whether an effective seat is a `claude/` model. The last
  *  flag for each seat overrides its opening, with the setting as the solver's fallback. The pickers
  *  that choose a login (`fresh`, `keep`) ask it; the launcher names only the login it is given. */
@@ -141,14 +153,13 @@ export function billsLogin(events: readonly LogEvent[], flags: readonly string[]
 }
 
 /** The most live runs `login` may carry, from `ANA_LOGIN_RUNS` such as `2,1:4`: a bare number for
- *  every login, `N:most` for login N. `null` where it names neither. */
+ *  every numbered login, `N:most` for login N. `null` where it names neither. The Codex CLI's login
+ *  takes only its own entry, `codex:N`, and one a machine without it (operator, 29 October). */
 export function capOf(env: Readonly<Record<string, string | undefined>>, login: string): string | null {
   const entries = (env.ANA_LOGIN_RUNS ?? "").split(",").map((entry) => entry.trim().split(":"));
-  return (
-    entries.find(([who, most]) => who === login && most !== undefined)?.[1] ??
-    entries.find(([most, rest]) => most !== "" && rest === undefined)?.[0] ??
-    null
-  );
+  const own = entries.find(([who, most]) => who === login && most !== undefined)?.[1];
+  if (login === CODEX) return own ?? "1";
+  return own ?? entries.find(([most, rest]) => most !== "" && rest === undefined)?.[0] ?? null;
 }
 
 /** The logins of `allowed` that carry as many live runs across the fleet (`live`) as their cap,
@@ -160,10 +171,53 @@ export function atCap(
 ): Set<string> {
   return new Set(
     allowed.filter((login) => {
-      const cap = capOf(env, login);
+      const cap = login === CODEX ? null : capOf(env, login);
       return cap !== null && live.filter((run) => run.login === login).length >= Number(cap);
     }),
   );
+}
+
+/** Why `host` takes no other run of `payer`, or null where it does: the Codex CLI's login is one a
+ *  machine, so its cap from `ANA_LOGIN_RUNS` (`codex:1`) counts the runs on that machine alone. */
+export function fullOn(
+  env: Readonly<Record<string, string | undefined>>,
+  payer: string | undefined,
+  host: string,
+  live: readonly Live[],
+): string | null {
+  if (payer !== CODEX) return null;
+  const cap = capOf(env, CODEX);
+  const on = live.filter((run) => run.host === host && run.login === CODEX).length;
+  return on >= Number(cap ?? 1)
+    ? `${host} carries ${String(on)} live ${CODEX} run(s), at most ${cap ?? "1"} a machine (ANA_LOGIN_RUNS): name another --host, or none`
+    : null;
+}
+
+/** Why a run that `payer` pays may not start on `host` beside the runs in `live`, less one named
+ *  `name` (the run itself, live where it is moved from), or null where it may: a host that went
+ *  uncounted, a login at its cap across the fleet, or a machine at its cap of Codex runs. Until
+ *  29 October only `fresh` and `keep` held a login to its cap, and `continue` and `move` were
+ *  counted by hand. */
+export function startRefusal(
+  env: Readonly<Record<string, string | undefined>>,
+  payer: string | undefined,
+  host: string,
+  counted: { readonly live: readonly Live[]; readonly unasked: readonly string[] },
+  name: string,
+): string | null {
+  if (payer === undefined) return null;
+  if (counted.unasked.length > 0) return uncounted(counted.unasked);
+  const others = counted.live.filter((run) => run.name !== name);
+  return atCap(env, [payer], others).size > 0
+    ? `login ${payer} is at its live-run cap across the fleet (ANA_LOGIN_RUNS)`
+    : fullOn(env, payer, host, others);
+}
+
+/** Refuse to start `name` on `host` for `payer` where `startRefusal` says why. */
+export async function roomToStart(payer: string | undefined, host: string, name: string): Promise<void> {
+  if (payer === undefined) return;
+  const refused = startRefusal(runtimeProcess.env, payer, host, await liveEverywhere("configured"), name);
+  if (refused !== null) throw new Error(`${name}: ${refused}; nothing was stopped or started`);
 }
 
 /** The usage endpoint's window `value`: its share used and its reset. */
@@ -494,11 +548,11 @@ export function perRunHour(week: Week, on: number, rate: number | null, now: num
   return on > 0 ? paceOf(week, now) / on : null;
 }
 
-/** How many runs `week` carries to its reset, each spending `perHour` of it an hour; null without
- *  a rate. */
+/** How many runs `week` carries for `RUN_HOURS`, or to its reset where that is sooner, each spending
+ *  `perHour` of it an hour; null without a rate. */
 export function fitOf(week: Week, perHour: number | null, now: number): number | null {
   if (perHour === null) return null;
-  const need = perHour * Math.max(0, (week.reset - now) / HOUR);
+  const need = perHour * Math.max(0, Math.min(RUN_HOURS, (week.reset - now) / HOUR));
   return need <= 0 ? Number.POSITIVE_INFINITY : Math.floor(Math.max(0, 100 - week.pct) / need);
 }
 
@@ -537,15 +591,21 @@ export function activeLines(
   live: readonly Live[],
   allowed: readonly string[],
   unasked: readonly string[],
+  env: Readonly<Record<string, string | undefined>> = {},
 ): string[] {
-  const named = [...new Set([...allowed, ...live.flatMap(({ login }) => login ?? [])])];
+  const named = [...new Set([...allowed, CODEX, ...live.flatMap(({ login }) => login ?? [])])];
   const lines = [...named, null].flatMap((login) => {
     const on = live.filter((run) => run.login === login).map(({ name, host }) => `${name} (${host})`);
     if (login === null && on.length === 0) return [];
-    const head = login === null ? "no login" : `login ${login}`;
-    return [
-      `${head.padEnd(10)}${on.length === 0 ? "none live" : `${String(on.length)} live: ${on.join(", ")}`}`,
-    ];
+    const head = login === null ? "no login" : login === CODEX ? CODEX : `login ${login}`;
+    const cap = login === null ? null : capOf(env, login);
+    const count =
+      cap === null
+        ? `${String(on.length)} live`
+        : login === CODEX
+          ? `${String(on.length)} live, at most ${cap} a machine`
+          : `${String(on.length)}/${cap} live`;
+    return [`${head.padEnd(10)}${count}${on.length === 0 ? "" : `: ${on.join(", ")}`}`];
   });
   return unasked.length === 0
     ? lines
@@ -571,7 +631,7 @@ export async function active(args: readonly string[]): Promise<void> {
     return;
   }
   const { live, unasked } = await liveEverywhere();
-  console.log(activeLines(live, allowedLogins(runtimeProcess.env), unasked).join("\n"));
+  console.log(activeLines(live, allowedLogins(runtimeProcess.env), unasked, runtimeProcess.env).join("\n"));
 }
 
 /** `bun run runs usage`. */
@@ -622,13 +682,17 @@ export async function logins(args: readonly string[]): Promise<void> {
         : `${head}\n  5h    ${shown(reading.fiveHour, 5 * 60, now)}\n  week  ${shown(reading.sevenDay, 7 * 1440, now)}${reading.notes.length > 0 ? `\n  ${reading.notes.join(" · ")}` : ""}`,
     );
   }
+  if (counted !== null && !values.json) {
+    const codex = counted.live.filter((run) => run.login === CODEX);
+    console.log(activeLines(codex, [CODEX], [], runtimeProcess.env).join("\n"));
+  }
   if ((counted?.unasked.length ?? 0) > 0) console.log(uncounted(counted?.unasked ?? []));
   if (!values.json && positionals.length === 0 && weeks.length > 0) {
     console.log(poolLines(weeks, kept, held.length - weeks.length, now).join("\n"));
     console.log(
       rate === null
         ? `  a run       no measured rate yet (under ${String(LEAST_RUN_HOURS)} run-hours): each login's week pace over its live runs`
-        : `  a run       ~${rate.toFixed(2)}% of a login's week an hour, active ${String(Math.round(ACTIVE_SHARE * 24))} of 24h: the most each login carries to its reset`,
+        : `  a run       ~${rate.toFixed(2)}% of a login's week an hour, active ${String(Math.round(ACTIVE_SHARE * 24))} of 24h: the most each login carries for ${String(RUN_HOURS)}h`,
     );
   }
   if (weeks.length === 0) return;

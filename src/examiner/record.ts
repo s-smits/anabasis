@@ -6,12 +6,11 @@
  *   where there is nothing more to report. Each line gives the current reference's result in the
  *   last comparison that scored the task (every, some or no solve valid, or disputed), the turns
  *   each valid answer took, the winner and deciding measure (`carriedBy`), any objective improvement
- *   on record over a reference answer (`roomLeft`), and the admission counts and turns. It also
- *   gives comparison history where there are at least two readings, and whether a valid answer is
- *   on record where the other facts show none (`poolOf`). An author told only "one harness won"
- *   could not tell where the room was
- *   (`7f0add79:docs/simplify.md`, F3), and one told each win alike could not tell the 25 wins the
- *   bill alone carried in buffer-fresh-opus-v065-a's g-3 from wins by method (26 October).
+ *   on record over a reference answer (`room` of `poolOf`'s standings), and the admission counts
+ *   and turns. It also gives comparison history where there are at least two readings, and whether
+ *   a valid answer is on record where the other facts show none (`poolOf`). Winning alone does not
+ *   explain the source of room (`7f0add79:docs/simplify.md`, F3). Naming the measure distinguishes
+ *   method gains from the 25 bill-only wins recorded in buffer-fresh-opus-v065-a's g-3 (26 October).
  * - One summary of the reference across the exam (`measuredLine`): tasks in its last comparison,
  *   grouped by every, some or no solve valid; and drafts admitted under it, grouped by source of
  *   room. Across 26 October's buffer runs it was valid in 93 to 100% of each comparison's solves while most
@@ -42,6 +41,7 @@ import {
 import { BILLED } from "../kernel/trace.ts";
 import { conditionsOf } from "../kernel/condition.ts";
 import { examinerSessions, solvesIn, verdictsOf } from "../kernel/solves.ts";
+import { spreadOf } from "../kernel/size.ts";
 import { heldAtGate, taskStates } from "../kernel/task.ts";
 import type { Task } from "../kernel/verify.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
@@ -343,8 +343,8 @@ function measuredLine(
   const side = report?.data.fresh === reference ? "fresh" : "old";
   const reads = report === undefined ? [] : pairsReported(events, report).map((pair) => pair[side]);
   const aside = Array.isArray(report?.data.aside) ? report.data.aside.length : 0;
-  const some = reads.filter((each) => each.includes(true) && each.includes(false)).length;
-  const none = reads.filter((each) => !each.includes(true)).length;
+  const some = reads.filter((each) => spreadOf(each) === "some").length;
+  const none = reads.filter((each) => spreadOf(each) === "none").length;
   const read = [...admissions.values()].filter((admission) => measuredGate(admission));
   const held = read.flatMap(({ outcome, reference: counted }) => {
     const { valid, solves: of } = asRecord(counted) ?? {};

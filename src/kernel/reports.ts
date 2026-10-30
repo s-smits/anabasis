@@ -20,24 +20,28 @@
  * as the campaign's improvement patience (`stopRule`, `patienceOf`).
  * The Referee triage of 20 October found unresolved practice rejections counted as failures;
  * those are set aside here too, rather than evidence that a Builder declined an established fail.
+ * The audit of 29 October 2026 found passes a person labelled wrong still read as valid in
+ * reported pairs and known valid answers. Both now read history's view of those labels.
  *
  * Nothing here decides a comparison or makes a solve.
  */
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import {
   carriedBy,
-  closedTo,
   draw,
   type Measures,
   objectiveRuleIn,
   type Paired,
   pairsOf,
+  pointsOf,
   objectiveGap,
   tally,
 } from "./compare.ts";
+import { failWrongPasses, wrongPasses, wrongPassesIn } from "./history.ts";
 import type { LogEvent } from "./log.ts";
 import { providerFailed, windowEnded } from "./solve.ts";
 import { passed, practiceRan, ranUnder, rejectionAside } from "./solves.ts";
+import { RUNS, spreadOf } from "./size.ts";
 import { taskSets } from "./task.ts";
 import { tracesIn } from "./trace.ts";
 
@@ -51,7 +55,7 @@ export interface Reported {
 /** What a task's author hears of it: how the reference harness did on it in the last comparison
  *  that scored it (every solve valid, some, none); that the last comparison that scored it was
  *  made between two other harnesses, so nothing of the reference's own is on record for it; or
- *  that it was set aside. Until 16 October a task the draw left out was told `exhausted`. */
+ *  that it was set aside. */
 export type Outcome =
   | "reference-every"
   | "reference-some"
@@ -76,7 +80,7 @@ export interface Standing {
  *  how many of the newest closed the task in a row as its author may hear it (`poolOf`, histories):
  *  every solve valid and no answer of the reference's own or its author's better by the floor
  *  (`room`). The other harness's measures stay out, so the count reads the same whatever that
- *  harness measured; the frontier's `closed` reads them. */
+ *  harness measured; the frontier's `easyAt` reads them. */
 export interface History {
   readonly reads: readonly { readonly valid: "every" | "some" | "none"; readonly cut: boolean }[];
   readonly closedRun: number;
@@ -97,10 +101,9 @@ interface TalliedIn {
   readonly cut: boolean;
   /** Whether one of the reference harness's own solves of it did: all its author hears (rule 4). */
   readonly referenceCut: boolean;
-  /** Whether the reference harness closed the task in this comparison (`closedTo`): valid in every
-   *  solve, and no valid answer better than one of its own by the objective. False where it stood
-   *  on neither side. */
-  readonly closed: boolean;
+  /** Whether one of the reference's own measures, or its author's, betters one of its valid answers
+   *  by the floor (`objectiveGap`): never the other harness's, which are its result on the task. */
+  readonly gapped: boolean;
   /** The side that won the task in this comparison's tally (`tally`), or null for a tie. */
   readonly won: "old" | "fresh" | null;
   /** The measure that carried the win (`carriedBy`), null for a tie. */
@@ -155,10 +158,6 @@ export interface Cap {
  * until a campaign climbs and the figure can be read from its record.
  */
 export const PATIENCE = 6;
-/** Comparisons without a valid answer after which a task with none on record goes to a person. */
-const UNSOLVED_RUN = 2;
-/** How many comparisons of a task's history its author hears (`poolOf`, histories). */
-const HISTORY = 3;
 /** The ways a solve ends at a limit of its own: its time, its model turns or its context. The
  *  investigation reads every one as a miss at a limit (`tools/wri/time.ts`); the pool reads all but
  *  one as a cut whose answer is not known (`taskRecords`). */
@@ -198,12 +197,19 @@ export function lastReports(events: readonly LogEvent[], all = false): Reported[
  * one. It is where the next session starts unless the operator names another: after a comparison
  * without a step the Builder continues from its latest harness (`7f0add79:docs/plan.md`, Phase 5). A session
  * that was killed or that crashed is passed over, except for a harness snapshot already frozen inside
- * its live conversation: that version was kept before the interruption.
+ * its live conversation: that version was kept before the interruption. A session that finished whole
+ * on its parent took its snapshots back: a Builder that compared B, restored its parent and finished
+ * left the parent, and until 29 October the next session opened on B (a GPT audit, from source).
  */
 export function latestBuilt(events: readonly LogEvent[]): string | null {
+  const undone = new Set(
+    events.flatMap(({ kind, data }) =>
+      kind === BUILD_FINISHED && data.changed === false && !CUT.has(data.ended) ? [data.session] : [],
+    ),
+  );
   const left = events.findLast(
     ({ kind, data }) =>
-      (kind === "build.checkpoint" ||
+      ((kind === "build.checkpoint" && !undone.has(data.session)) ||
         (kind === BUILD_FINISHED && data.changed === true && !CUT.has(data.ended))) &&
       isString(data.harness),
   )?.data.harness;
@@ -251,11 +257,6 @@ export function comparedAs(events: readonly LogEvent[], harness: string) {
  * the tasks it fails in every solve that nobody answered among them, which leave it nothing to
  * practise on. `side` is the reference's side of the report: `old` in a comparison made against
  * it, and `fresh` in the one it was promoted on, which stands until one against it reads the tasks.
- *
- * Until 12 October room was read by shares of valid solves (the reference at most three in four,
- * and not both harnesses under one in four), which counted a task the reference failed in every
- * solve as room (10 October) and an objective's spread not at all (the plan's section 4b, one
- * definition for the Examiner's `try_task` and the table).
  */
 export function roomOf(report: JsonObject, side: "old" | "fresh" = "old"): "none" | "too-hard" | "room" {
   const valid = asRecord(report.valid);
@@ -347,9 +348,9 @@ export function stopRule(events: readonly LogEvent[]) {
  * The pairs a comparison's last report tallied, read as the comparison found them: from the log up
  * to its first report, so a task released, refused or disputed since is still the scored task it
  * was, under the report's own two harnesses and setting, counting the comparison's own solves, and
- * each side cut to the solves it asked for: in a log written with `--noise` (until 13 October),
- * the reference's first mirrored half (`halves`). None for a report that compared nothing, or
- * before a solve named its comparison.
+ * each side cut to the solves it asked for (in an older `--noise` log, the reference's first
+ * mirrored half, `halves`). None for a report that compared nothing, or before a solve named its
+ * comparison. Its settled wrong passes count as that side's fails.
  */
 export function pairsReported(events: readonly LogEvent[], report: Reported): Paired[] {
   const { session, index, data } = report;
@@ -368,7 +369,8 @@ export function pairsReported(events: readonly LogEvent[], report: Reported): Pa
     objective: objectiveRuleIn(data),
     halves,
   };
-  return pairsOf(events.slice(0, index + 1), versions, sides, solves).pairs;
+  const wrong = wrongPasses(asRecord(asRecord(data.settled)?.passes) ?? {});
+  return pairsOf(failWrongPasses(events.slice(0, index + 1), wrong), versions, sides, solves).pairs;
 }
 
 /** The tasks `place` gives a place, in the order of their places: the first pair that
@@ -383,9 +385,9 @@ function placed(records: readonly TaskRecord[], place: (record: TaskRecord) => n
     .map(([version]) => version);
 }
 
-/** Where the `UNSOLVED_RUN` or more of `runs` first stood, or undefined where they are fewer. */
+/** Where `RUNS.unsolved` or more of `runs` first stood, or undefined where they are fewer. */
 function runOf(runs: readonly TalliedIn[]): number | undefined {
-  return runs.length >= UNSOLVED_RUN ? runs[0]?.order : undefined;
+  return runs.length >= RUNS.unsolved ? runs[0]?.order : undefined;
 }
 
 /** Every task a log holds a state, a solve or a report of, each as `TaskRecord` reads it, and the
@@ -450,6 +452,7 @@ function taskRecords(events: readonly LogEvent[]) {
     ),
   );
   const reference = referenceOf(events);
+  const wrong = wrongPassesIn(events);
   for (const solve of ranUnder(events)) {
     const { task, limits, harness } = solve.under;
     const { comparison } = solve.start;
@@ -458,7 +461,7 @@ function taskRecords(events: readonly LogEvent[]) {
     const last = { stopReason: turn?.stopReason, errorMessage: turn?.error };
     const interrupted = windowEnded(last) || providerFailed(last);
     const budgeted = kind === "turns-ended" && isNumber(limits.modelTurns) && !interrupted;
-    if (passed(solve) === true) {
+    if (passed(solve) === true && !wrong.has(solve.id)) {
       of(task).knownValidAnswer = true;
       if (harness === reference) of(task).referenceHasValidAnswer = true;
     }
@@ -474,9 +477,8 @@ function cutIn(comparison: string, task: string, harness: string): string {
 }
 
 /** The reports' part of `taskRecords`: each comparison's last report gives every task it tallied
- *  one reading and marks the ones it set aside, in the order the reports and their pairs are read.
- *  An old ladder's reading is one of them: its tasks are held out since 16 October, and what it
- *  found of the reference's solves of them is what the pool and the Examiner read. */
+ *  one reading and marks the ones it set aside, in the order the reports and their pairs are read,
+ *  an old ladder's among them. */
 function tallyReports(
   events: readonly LogEvent[],
   of: (version: string) => TaskRecord,
@@ -503,9 +505,9 @@ function tallyReports(
         reference: side,
         cut: cutOn(data.old) || cutOn(data.fresh),
         referenceCut: side !== null && cutOn(data[side]),
-        closed: side !== null && closedTo(pair, side, of(task).best),
+        gapped: (gap ?? 0) > 0,
         won: wins > 0 ? "fresh" : losses > 0 ? "old" : null,
-        by: carriedBy(pair),
+        by: carriedBy(pointsOf(pair)),
         room: gap,
       });
     }
@@ -544,7 +546,7 @@ function tallyReports(
  *   context) is not counted for it. What that solve would have answered is not known. A task cut
  *   at every comparison so never goes to a person on this rule, and stays a tie the reports show.
  *   A solve that used every model turn its condition names was not cut: the budget's unit ended
- *   it, as a wrong answer ends one, and since 19 October such a comparison counts.
+ *   it, as a wrong answer ends one, and such a comparison counts.
  *
  * What neither covers is an answer rushed under a told budget and rejected: with no valid answer
  * on record such a comparison counts, since nothing in the log tells a rushed answer from a
@@ -554,40 +556,31 @@ function tallyReports(
  * comparisons are then counted from that label on; a label that calls it infeasible refuses it,
  * and a refused task is no held-out task.
  *
- * **Exhausted** are the tasks the reference harness answered validly in every solve of the last
- * comparison it stood in of them, on whichever side, and they leave the frontier for the retained
- * set (`scoredSet`). The fold is read again against whatever harness is the
- * reference at the time, so a promotion re-derives it at once: the comparisons the promoted
- * harness won before its promotion count. Such a task can only tie again at that budget or be
- * lost, unless the comparison carried an objective by which a valid answer, its own or the other
- * side's, was better than one of the reference's (`closedTo`, `compare.ts`): a better answer is
- * then there for the next harness to reach. Until 19 October any two answers told apart kept it
- * open, the reference's own wins among them, so a harness promoted on the objective stood on a
- * frontier of the tasks it had already won. Every one in the set is a task a step cannot be read on: on the operator's host (9 and
- * 10 October) a harness came one win short of a step three times with most of its tasks tied, and
- * one promoted harness and the starter tied 10 of 10 twice. The reference's own answers close a
- * task, since its answers are what the next harness has to match: closed only where both
- * harnesses answered it, a task the new harness lost stayed in the draw, and in the simulated
- * climb of 10 October three comparisons in a row read 2-0-6 and 3-0-5 on a scored set of eight
- * and the campaign stopped one win short. They stay scorable as retained tasks (`retained`), so
- * that a harness that breaks what the reference answers still shows its losses: left out whole,
- * the set would hold no task the new harness could lose. Until 16 October two thirds of them left
- * the draw by the contract's hash, never to be read again under that reference, where one reading
- * of four solves had closed them, and a later reading reopens some (below). The Examiner hears
- * such a task's outcome as any other's (`outcomes`); in the counts by family it stands where its
- * last comparison's tally puts it (`standings`). Since 15 October the reference's last reading of a task decides, where two closed
- * comparisons had: a promotion's repeat drew fresh tasks, so a promoted harness had stood once in
- * the tasks it was promoted on, closed 50 of 51 in four campaigns' logs, and the next comparisons
- * tied on them. A later reading that leaves a task open opens it again, as 3 of 34 rechecks did,
- * and one where a limit cut a solve of the reference's says neither (rule 7).
+ * **Exhausted** are the tasks the reference harness has been read easy on (`easyAt`), and they
+ * leave the frontier for the retained set (`scoredSet`). The readings are the comparisons it stood
+ * in of the task, on whichever side, each without a solve of its own a limit cut, and only its own
+ * solves count: the frontier sets the size the Builder is told and admission reads, so it may not
+ * move with which held-out task the other harness failed (rule 3). From 29 to 30 October the other
+ * side's solves were pooled in, and two campaigns of equal tallies told the Builder different sizes
+ * (the v0.9.0 review); a task a later harness breaks still scores as a retained task. A task is
+ * easy once its newest `RUNS.easy` readings in a row were each valid in every solve, with no
+ * room by the objective, where a better answer would be there for the next harness to reach: room
+ * from the reference's own measures or its author's (`objectiveGap`, `compare.ts`), never the other
+ * harness's, which until the v0.9.0 review moved the size with which task it bettered. The words are every, some and none, as its author hears them, so the
+ * rule reads the same at any count of solves, and no ratio of solves pools across readings. The
+ * fold is read against whatever harness is the reference at the time, so a promotion re-derives it
+ * at once. Until 29 October one reading valid in every solve closed a task.
+ *
+ * Exhausted tasks stay scorable as retained tasks (`retained`), so a harness that breaks what the
+ * reference answers still shows its losses: left out whole, the set would hold no task the new
+ * harness could lose. The Examiner hears such a task's outcome as any other's (`outcomes`); in the
+ * counts by family it stands where its last comparison's tally puts it (`standings`).
  *
  * **Retained** are the exhausted tasks, and since 16 October every held task admitted before the last
  * promotion that the promoted harness has stood in no comparison of: those tasks were written for
- * the harness it replaced, and it was promoted on their like. Drawn as frontier they padded each
- * epoch's first comparisons with ties: in buffer-159-opus 0665c78b answered 9 such tasks 4 of 4,
- * 8ee38f97 59 of 60 solve-sets on the epoch before its own, and 18 of 18 in g-4 to g-7 tied with
- * both sides valid in every solve. Reported apart they show a regression, which is what the
- * epochs before the newest were kept in the draw for. **Frontier** is the rest of the scorable
+ * the harness it replaced, and it was promoted on their like: drawn as frontier they padded each
+ * epoch's first comparisons with ties (buffer-159-opus, 16 October). Reported apart they show a
+ * regression, which is what the epochs before the newest were kept in the draw for. **Frontier** is the rest of the scorable
  * tasks, which the step reads with the retained ones, and what the supply counts (`supplyOf`,
  * `admission.ts`).
  *
@@ -629,12 +622,10 @@ function tallyReports(
  * valid answers can be told apart.
  *
  * **Histories** hold, for each task the reference stood in two comparisons or more of, the same
- * reading of the reference's side for each of its last `HISTORY` such comparisons, newest first,
- * with whether a limit cut one of the reference's own solves there, and how many of the newest closed it in a row
- * (`History`). An outcome is one comparison's: told the last alone, an author could not tell a task the
- * reference answered once from one it answers every time running, nor which of the tasks it
- * answers is the older. Three readings are a short run, and the sentence rule 6 asks for stands
- * beside them in the author's prompt. The words are the outcome's own, every, some or none, and
+ * reading of the reference's side for each of its last `RUNS.history` such comparisons, newest first,
+ * with whether a limit cut one of the reference's own solves there, and how many of the newest closed
+ * it in a row (`History`): told the last alone, an author could not tell a task the reference
+ * answered once from one it answers every time. Rule 6's sentence stands beside them. The words are the outcome's own, every, some or none, and
  * no count of valid solves (AGENTS.md, section 3); a solve a limit cut is named apart, as rule 7
  * keeps it apart from a wrong answer.
  */
@@ -644,10 +635,13 @@ export function poolOf(events: readonly LogEvent[]) {
   const awaiting = placed(heldRecords, ({ knownValidAnswer, keptAt, tallied }) =>
     runOf(tallied.filter(({ index, cut }) => !knownValidAnswer && index >= keptAt && !cut)),
   );
-  const spent = placed(heldRecords, ({ tallied }) => {
-    const last = tallied.findLast(({ reference, referenceCut }) => reference !== null && !referenceCut);
-    return last?.closed === true ? last.order : undefined;
-  });
+  const spent = placed(heldRecords, ({ tallied }) =>
+    easyAt(
+      tallied.filter(({ reference, referenceCut }) => reference !== null && !referenceCut),
+      ownOf,
+      ({ gapped }) => gapped,
+    ),
+  );
   const out = new Set(awaiting);
   const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
   const before = new Set(taskSets(events.slice(0, Math.max(0, promotedAt))).held);
@@ -663,14 +657,16 @@ export function poolOf(events: readonly LogEvent[]) {
   const retained = [...new Set([...spent, ...unstood])];
   const scorable = held.filter((task) => !out.has(task));
   // Practice keeps a conservative sweep using reference-only known valid answers, limits and objective
-  // gaps. The comparison frontier also reads the other harness and cannot set a public count.
+  // gaps, while the comparison frontier still reads the objective gap against every answer on record.
   const practiceOut = placed(heldRecords, ({ referenceHasValidAnswer, keptAt, tallied }) => {
     const own = tallied.filter((reading) => reading.reference !== null);
-    const last = own.findLast(({ referenceCut }) => !referenceCut);
-    if (last !== undefined && sideOf(last) === "every" && (last.room ?? 0) === 0) return last.order;
-    return referenceHasValidAnswer
-      ? undefined
-      : runOf(own.filter(({ index, referenceCut }) => index >= keptAt && !referenceCut));
+    const easy = easyAt(
+      own.filter(({ referenceCut }) => !referenceCut),
+      ownOf,
+      roomOn,
+    );
+    if (easy !== undefined || referenceHasValidAnswer) return easy;
+    return runOf(own.filter(({ index, referenceCut }) => index >= keptAt && !referenceCut));
   });
   const first = ({ tallied, asideOrder }: TaskRecord) =>
     Math.min(tallied[0]?.order ?? asideOrder, asideOrder);
@@ -693,29 +689,51 @@ export function poolOf(events: readonly LogEvent[]) {
   };
 }
 
-/** The reference's side of one comparison of a task, as its outcome reads it. */
-function sideOf({ reference, old, fresh }: TalliedIn): "every" | "some" | "none" | null {
-  if (reference === null) return null;
-  const own = reference === "old" ? old : fresh;
-  const valid = own.filter(Boolean).length;
-  return valid === own.length ? "every" : valid === 0 ? "none" : "some";
+/** How many of the newest readings closed a task in a row: valid in every solve `solves` reads,
+ *  with no room by the objective. */
+function closedRun(
+  readings: readonly TalliedIn[],
+  solves: (reading: TalliedIn) => readonly boolean[],
+  roomy: (reading: TalliedIn) => boolean,
+): number {
+  return (
+    readings.length -
+    1 -
+    readings.findLastIndex((reading) => spreadOf(solves(reading)) !== "every" || roomy(reading))
+  );
 }
+
+/** Where readings of a task call it easy (`poolOf`), the place of the newest, or undefined. */
+function easyAt(
+  readings: readonly TalliedIn[],
+  solves: (reading: TalliedIn) => readonly boolean[],
+  roomy: (reading: TalliedIn) => boolean,
+): number | undefined {
+  return closedRun(readings, solves, roomy) >= RUNS.easy ? readings.at(-1)?.order : undefined;
+}
+
+/** The reference harness's own solves of a task in one comparison, empty where it stood on neither side. */
+function ownOf({ reference, old, fresh }: TalliedIn): readonly boolean[] {
+  return reference === "old" ? old : reference === "fresh" ? fresh : [];
+}
+
+/** The reference's side of one comparison of a task, as its outcome reads it. */
+function sideOf(tallied: TalliedIn): "every" | "some" | "none" | null {
+  return tallied.reference === null ? null : spreadOf(ownOf(tallied));
+}
+
+const roomOn = ({ room }: TalliedIn) => (room ?? 0) > 0;
 
 /** A task's last comparisons with the reference harness on a side, newest first (`poolOf`,
  *  histories), or nothing where it stood in fewer than two: one is the outcome already. */
 function historyOf(record: TaskRecord): [string, History][] {
   const stood = record.tallied.filter(({ reference }) => reference !== null).toReversed();
   if (stood.length < 2) return [];
-  let closedRun = 0;
-  for (const tallied of stood) {
-    if (sideOf(tallied) !== "every" || (tallied.room ?? 0) > 0) break;
-    closedRun += 1;
-  }
-  const reads = stood.slice(0, HISTORY).flatMap((tallied) => {
+  const reads = stood.slice(0, RUNS.history).flatMap((tallied) => {
     const valid = sideOf(tallied);
     return valid === null ? [] : [{ valid, cut: tallied.referenceCut }];
   });
-  return [[record.version, { reads, closedRun }]];
+  return [[record.version, { reads, closedRun: closedRun(stood.toReversed(), ownOf, roomOn) }]];
 }
 
 /** What a task's author hears of it (`poolOf`, outcomes), or nothing where no report read it. */
@@ -757,20 +775,15 @@ function standingOf(record: TaskRecord): [string, Standing][] {
  * a solve, excluding a later dispute or comparison between other harnesses, as a task's outcome
  * does: the tasks that leave the reference room are the ones a Builder has to work on, and on
  * 10 October three campaigns each ran three sessions after a promotion on practice tasks the
- * promoted harness passed, and changed nothing. Until 16 October a task it answered in some
- * solves was no failure, though it leaves room as one it never answered does, and half rounded
- * down released no task where one had failed: between buffer-159-opus's two promotions its
- * Builder's practice passed 10 of 10.
+ * promoted harness passed, and changed nothing.
  *
  * A task the reference answered in every solve of its last reading still leaves it room where an
  * answer of its own or its author's on record is better by the objective by at least the floor
- * (`room`, `objectiveGap`), and it is put first beside the failed ones. Until 21 October it went to the
- * draw: in an objective domain every solve is valid, so in seven buffer campaigns every release
- * after a first promotion was the draw alone while the frontier held 4 to 21 tasks with room. The
- * other harness's answers stay out of `room`, so which held-out task it won moves no release (rule 3).
+ * (`room`, `objectiveGap`), and it is put first beside the failed ones, since in an objective
+ * domain every solve is valid (seven buffer campaigns, 21 October). The other harness's answers stay out of `room`, so which held-out task it won moves no release (rule 3).
  *
  * The tasks the reference never answered are the held-out ones it gave no valid answer in
- * `UNSOLVED_RUN` or more comparisons it stood in, cut at a limit or not, unlike `poolOf`'s `awaiting`:
+ * `RUNS.unsolved` or more comparisons it stood in, cut at a limit or not, unlike `poolOf`'s `awaiting`:
  * on 10 October one campaign held four to five of ten while its Builder passed every practice task.
  * Until 26 October any harness's valid answer took a task off this list, so a release told the
  * Builder which held-out task its harness won (rule 3). A task only the other harness answered now

@@ -5,10 +5,10 @@
 // buffer-pr197-opus-m1's single flagged solve blocking a promotion (18 October 2026).
 import { describe, expect, it } from "bun:test";
 import {
-  closedTo,
   carriedBy,
   differenceOf,
   flipP,
+  hasObjectiveGap,
   informative,
   type Paired,
   pairsOf,
@@ -314,9 +314,9 @@ describe("a task's pairings", () => {
       { pair: { ...even, ...cheaper, objective: { ...lowerRule, old: [1000], fresh: [1020] } }, by: "bill" },
       { pair: even, by: null },
     ];
-    for (const { pair, by } of cases) expect(carriedBy(pair)).toBe(by);
+    for (const { pair, by } of cases) expect(carriedBy(pointsOf(pair))).toBe(by);
     // Exchanged, the same measure carries the other side's win.
-    expect(carriedBy({ ...even, fresh: [F] })).toBe("validity");
+    expect(carriedBy(pointsOf({ ...even, fresh: [F] }))).toBe("validity");
   });
 
   it("negates validity, objective and bill scores when exchanged and normalises rounded zeros", () => {
@@ -503,30 +503,35 @@ describe("a task's room", () => {
     }
   });
 
-  it("closes only a side whose every answer is valid and nothing on record betters", () => {
+  it("finds a gap only where a measure on record betters one of the side's own by the floor", () => {
     for (const [old, fresh, side, expected] of [
-      [[12, 12], [10, 10], "fresh", true],
-      [[12, 12], [10, 10], "old", false],
-      [[12, 12], [10, 11], "fresh", false],
-      [[12, 12], [10, 10.05], "fresh", true],
-      [[12, 9], [10, 10], "fresh", false],
-      [[10 - 1e-9, 10 - 1e-9], [10, 10], "fresh", true],
+      [[12, 12], [10, 10], "fresh", false],
+      [[12, 12], [10, 10], "old", true],
+      [[12, 12], [10, 11], "fresh", true],
+      [[12, 12], [10, 10.05], "fresh", false],
+      [[12, 9], [10, 10], "fresh", true],
+      [[10 - 1e-9, 10 - 1e-9], [10, 10], "fresh", false],
     ] as const) {
       expect(
-        closedTo({ task: "t", old: [P, P], fresh: [P, P], objective: { ...lowerRule, old, fresh } }, side),
+        hasObjectiveGap(
+          { task: "t", old: [P, P], fresh: [P, P], objective: { ...lowerRule, old, fresh } },
+          side,
+          null,
+        ),
       ).toBe(expected);
     }
     expect(
-      closedTo(
+      hasObjectiveGap(
         {
           task: "t",
           old: [P, P],
-          fresh: [P, F],
-          objective: { ...lowerRule, old: [12, 12], fresh: [10, 10] },
+          fresh: [P, P],
+          objective: { ...lowerRule, old: [10, 10], fresh: [10, 10] },
         },
         "fresh",
+        8,
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 });
 

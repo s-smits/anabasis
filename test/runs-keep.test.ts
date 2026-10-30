@@ -34,6 +34,13 @@ describe("the turn a keeper takes", () => {
       [[waited(1)], "open", "watch"],
       [[waited(5, "load")], "open", "watch"],
       [[waited(5), event("build.started", { session: "b-1" })], "open", "watch"],
+      // A seat that ran on after the wait writes its call and its failed turn; the wait stands.
+      [
+        [waited(2), event("exam.call", { session: "x-1" }), event("exam.turn", { stopReason: "error" })],
+        "open",
+        "move",
+      ],
+      [[waited(2), event("exam.turn", { session: "x-1", stopReason: "toolUse" })], "open", "watch"],
       [[], "open", "watch"],
       [[event("build.started", { session: "b-1" })], "closed", "continue"],
       [[event("campaign.ended", { ending: "environment" })], "closed", "continue"],
@@ -184,7 +191,7 @@ describe("the login a run goes on with", () => {
     expect(billsLogin([opening], overrides)).toBe(false);
   });
 
-  it("keeps an all-GPT campaign with no login and refuses a Claude campaign there", () => {
+  it("keeps an all-GPT campaign with no login, and a Claude campaign only where the plain login is set", () => {
     const made = fakeHosts();
     fixtures.push(made.root);
     const folder = join(made.main, ".ana", "d2", "sample");
@@ -212,5 +219,12 @@ describe("the login a run goes on with", () => {
     const refused = made.run(command);
     expect(refused.code).toBe(1);
     expect(refused.err).toContain("no allowed Claude login");
+    const plain = made.run(command, { CLAUDE_CODE_OAUTH_TOKEN: "plain" });
+    expect(plain.code).toBe(0);
+    expect(plain.out).toContain("would be kept going");
+    // The word the detached keeper is handed on such a machine names no login.
+    const handed = made.run(command.replace('["sample"]', '["sample", "--logins", ""]'));
+    expect(handed.code).toBe(1);
+    expect(handed.err).toContain("no allowed Claude login");
   });
 });

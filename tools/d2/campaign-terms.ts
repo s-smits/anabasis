@@ -84,7 +84,7 @@ const OPTIONS = {
   // With no default of their own: one no command has named is the comparison's to default, and
   // one a command named is the opening's to keep (`TERMS`).
   target: COMPARISON_OPTIONS.target,
-  solves: { type: "string" },
+  solves: SETTING_OPTIONS.solves,
   level: { type: "string" },
   defects: { type: "string" },
   minutes: { type: "string" },
@@ -139,13 +139,13 @@ const EXPLAINED: Readonly<Record<keyof typeof OPTIONS, string>> = {
   "solve-minutes": "a solve's deadline in minutes (setting)",
   "solve-model-turns": "a solve's model turn limit (setting)",
   target: "frontier tasks a comparison scores (setting; 24)",
-  solves: "solves a side of each scored task (4)",
+  solves: "solves a side of each scored task (setting; 2)",
   level: "the step test's level: one reading at or under it promotes (0.02)",
   defects: "tasks with a check defect before a comparison stops (3)",
   minutes: "a Builder conversation's deadline in minutes of its own time (1440)",
   turns: "a Builder conversation's session turn limit (300)",
   "practice-solves": "practice solves a Builder session may make (24)",
-  practice: "practice tasks released an epoch, at most half of what is held",
+  practice: "practice tasks released after each reading or promotion, at most half of what is held",
   admit: "checks admitted by name, under --hitl",
   "exam-tasks": "tasks an Examiner session is asked for; unnamed, what the campaign is short of",
   "exam-proposals": "instances an Examiner session may put to task admission (36)",
@@ -397,7 +397,6 @@ function termsOf(events: readonly LogEvent[], id: string): string[] {
   const start = events.find(({ kind, data }) => kind === STARTED && data.session === id)?.data ?? {};
   const cap = asRecord(start.cap);
   return [
-    ...flag("solves", isNumber(start.solves) ? String(start.solves) : undefined),
     ...flag("level", isNumber(start.level) ? String(start.level) : undefined),
     ...flag("cap", isNumber(cap?.dollars) ? String(cap.dollars) : undefined),
     ...flag("reserve", isNumber(cap?.reserve) ? String(cap.reserve) : undefined),
@@ -440,6 +439,7 @@ export function sharedOf({ events, plan, opening, values, seats }: Turn) {
             // as a comparison: t-2 (10 October) opened with --target 6, its first session recorded
             // the default, and its comparisons then scored by the record.
             ...flag("target", values.target),
+            ...flag("solves", values.solves),
           ]
         : [],
     cap:
@@ -499,9 +499,7 @@ export function comparisonOf(decided: Extract<Decided, { move: "compare" }>, tur
   const { setting, cap, reviewer, pastStop } = sharedOf(turn);
   const session = decided.id ?? nextId(events, "g");
   const terms =
-    decided.id === undefined
-      ? [...flag("solves", values.solves), ...flag("level", values.level), ...cap]
-      : termsOf(events, decided.id);
+    decided.id === undefined ? [...flag("level", values.level), ...cap] : termsOf(events, decided.id);
   return {
     session,
     args: [

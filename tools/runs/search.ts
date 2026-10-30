@@ -14,7 +14,8 @@ import { capturedJsonParse, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { homedir, tmpdir } from "#src/meta/os.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
-import { capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { runCaptured } from "#src/meta/subprocess.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { type Host, hostsOf } from "./host-config.ts";
 import { askedScript } from "./hosts.ts";
@@ -129,7 +130,11 @@ export async function searchLocal(query: Query, roots: readonly string[]): Promi
     (path) => !safePaths.some((parent) => parent !== path && path.startsWith(`${parent}/`)),
   );
   if (safeRoots.length === 0) return { matches: [] };
-  const child = capturedSpawn(
+  const {
+    stdout: output,
+    stderr: errors,
+    exitCode: code,
+  } = await runCaptured(
     [
       rgPath(),
       "--json",
@@ -145,13 +150,8 @@ export async function searchLocal(query: Query, roots: readonly string[]): Promi
       query.pattern,
       ...safeRoots,
     ],
-    { stdin: "ignore", stdout: "pipe", stderr: "pipe", timeout: DEADLINE },
+    { timeout: DEADLINE },
   );
-  const [output, errors, code] = await Promise.all([
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-    child.exited,
-  ]);
   if (code !== 0 && code !== 1) throw new Error(errors.trim() || "rg search failed or timed out");
   const matches: Match[] = [];
   for (const row of output.split("\n").filter((line) => line !== "")) {

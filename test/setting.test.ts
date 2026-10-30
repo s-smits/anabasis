@@ -24,6 +24,7 @@ const UNNAMED: Recorded = {
   minutes: 30,
   modelTurns: 20,
   target: 24,
+  solves: 2,
 };
 /** The same, as a campaign recorded it before 19 October: 120 minutes, the model's turns unlimited. */
 const UNLIMITED: Recorded = { ...UNNAMED, minutes: 120, modelTurns: null };
@@ -33,6 +34,7 @@ const SHORT: Recorded = {
   minutes: 8,
   modelTurns: 40,
   target: 3,
+  solves: 4,
 };
 
 describe("what the flags of a setting name", () => {
@@ -80,6 +82,7 @@ describe("a campaign's setting, recorded once", () => {
         /--solver claude\/claude-opus-5-5 --solver-effort low.*--solver claude\/claude-sonnet-5-5 --solver-effort low/u,
       ],
       [{ target: "8" }, UNLIMITED, /--target 8.*--target 24/u],
+      [{ solves: "2" }, SHORT, /--solves 2.*--solves 4/u],
       [{ "solve-model-turns": "40" }, UNLIMITED, /--solve-model-turns 40.*no --solve-model-turns/u],
     ] as const) {
       expect(() => settingAsked(flags, recorded)).toThrow(fact);
@@ -120,6 +123,28 @@ describe("a campaign's setting, recorded once", () => {
       expect(old).toEqual(UNNAMED);
       expect(settingAsked({}, old)).toMatchObject({ target: 24, record: null });
     }
+  });
+
+  it("names the solves a side once, and every command then compares at that count", () => {
+    expect(settingAsked({ solves: "4" }, null)).toMatchObject({ solves: 4, record: { solves: 4 } });
+    expect(settingAsked({}, SHORT)).toMatchObject({ solves: 4, record: null });
+    expect(settingAsked({ solves: "4" }, SHORT)).toMatchObject({ solves: 4, record: null });
+    for (const flag of ["0", "1.5", "two"]) {
+      expect(() => settingAsked({ solves: flag }, null)).toThrow(/--solves .*whole number/u);
+    }
+    // A record from before the count was a setting reads at the count its comparisons began at, so
+    // a campaign continued under this source keeps it; with no comparison, at the default, two.
+    const { solves: _, ...before } = SHORT;
+    const setting: LogEvent = { at: "2026-10-28T00:00:00.000Z", kind: "campaign.setting", data: before };
+    expect(recordedSetting([setting])?.solves).toBe(2);
+    const began: LogEvent = {
+      at: "2026-10-28T01:00:00.000Z",
+      kind: "comparison.started",
+      data: { solves: 4 },
+    };
+    const old = recordedSetting([setting, began]);
+    expect(old?.solves).toBe(4);
+    expect(() => settingAsked({ solves: "2" }, old)).toThrow(/--solves 2.*--solves 4/u);
   });
 });
 

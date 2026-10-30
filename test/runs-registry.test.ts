@@ -1,10 +1,11 @@
 // Which run a name is, which process writes it, and what each of its launches kept beside its log.
 import { afterAll, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
+import { capturedSpawn, runtimeProcess } from "../src/meta/process.ts";
 import { join } from "../src/meta/path.ts";
 import { nextRun, receipts } from "../tools/runs/receipt.ts";
-import { type Run, runNamed, writers } from "../tools/runs/registry.ts";
+import { BUILDER, processes, type Run, runNamed, writers } from "../tools/runs/registry.ts";
 
 const root = mkdtempSync(join(tmpdir(), "ana-runs-registry-test-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -94,5 +95,35 @@ describe("a run's receipts", () => {
     expect(read.map(({ session }) => session)).toEqual(["b-1", "run-1", "run-2"]);
     expect(read.at(-1)?.flags).toEqual(["--project", "p", "--budget", "800"]);
     expect(nextRun(log)).toBe("run-3");
+  });
+});
+
+describe("the processes that may write a log", () => {
+  it("finds a campaign command with the worktree it runs in, and leaves another process out", async () => {
+    const tree = mkdtempSync(join(root, "tree-"));
+    // Bun running a script at the campaign command's path, as `ps` lists a launch, beside another.
+    mkdirSync(join(tree, "tools", "d2"), { recursive: true });
+    for (const script of [BUILDER, "tools/d2/unrelated.ts"]) {
+      writeFileSync(join(tree, script), "await Bun.sleep(30_000);\n");
+    }
+    const writer = capturedSpawn([runtimeProcess.execPath, BUILDER, "--name", "r1"], {
+      cwd: tree,
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    const other = capturedSpawn([runtimeProcess.execPath, "tools/d2/unrelated.ts"], {
+      cwd: tree,
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    try {
+      await Bun.sleep(300);
+      const found = processes();
+      expect(found.find(({ pid }) => pid === writer.pid)?.cwd).toBe(realpathSync(tree));
+      expect(found.some(({ pid }) => pid === other.pid)).toBe(false);
+    } finally {
+      writer.kill();
+      other.kill();
+    }
   });
 });

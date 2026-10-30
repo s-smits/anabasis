@@ -48,17 +48,35 @@ describe("going on with a campaign", () => {
     ];
     // The Builder's conversation is open throughout a led campaign, and a pause cuts it: the
     // campaign run again opens a new one on its notes.
-    expect(restsAfter(promoted, "harness.promoted", 0)).toBe(true);
-    expect(restsAfter(promoted, "harness.promoted", 1)).toBe(false);
+    expect(restsAfter(promoted, "promoted", 0)).toBe(true);
+    expect(restsAfter(promoted, "promoted", 1)).toBe(false);
     // An old ladder's reading left open is no comparison: no move goes on with it.
     const read = [...promoted, event("comparison.started", { session: "l-1", ladder: true })];
-    expect(restsAfter(read, "harness.promoted", 0)).toBe(true);
+    expect(restsAfter(read, "promoted", 0)).toBe(true);
     for (const open of [
       event("comparison.started", { session: "g-3" }),
       event("exam.started", { session: "x-1" }),
       event("draft.started", { session: "d-1" }),
     ]) {
-      expect(restsAfter([...read, open], "harness.promoted", 0)).toBe(false);
+      expect(restsAfter([...read, open], "promoted", 0)).toBe(false);
+    }
+  });
+
+  it("pauses at the next finished solve or tool call, whatever is open, and at no other event", () => {
+    const drafting = [
+      event("exam.started", { session: "x-1" }),
+      event("exam.call", { session: "x-1", turn: 1 }),
+      event("comparison.started", { session: "g-3" }),
+    ];
+    expect(restsAfter(drafting, "next", 1)).toBe(false);
+    expect(restsAfter([...drafting, event("exam.turn", { session: "x-1", turn: 2 })], "next", 1)).toBe(false);
+    for (const step of [
+      event("exam.call", { session: "x-1", turn: 2 }),
+      event("solve.call", { solve: "s-1" }),
+      event("solve.finished", { solve: "s-1" }),
+      event("build.call", { session: "b-1" }),
+    ]) {
+      expect(restsAfter([...drafting, step], "next", 1)).toBe(true);
     }
   });
 });

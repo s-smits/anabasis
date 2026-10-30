@@ -25,13 +25,14 @@ import type { LogEvent } from "../kernel/log.ts";
 import { poolOf, practiceFailures, roomOf } from "../kernel/reports.ts";
 import { heldAtGate, taskSets } from "../kernel/task.ts";
 import { isNumber, isString } from "../meta/json-shape.ts";
-import { keyIfDefined } from "../meta/optional-key.ts";
 import { draftOf } from "../examiner/draft.ts";
 import { plural } from "../meta/text.ts";
 import { comparisonFloor } from "./admission.ts";
 import { crashedRun, cutShort, groundOf, heldOut, type Plan } from "./ground.ts";
 import { type Decided, type Ending, short } from "./move.ts";
 import { pendingWords } from "./word.ts";
+
+const PROMOTED = "harness.promoted";
 
 type Ground = ReturnType<typeof groundOf>;
 /** A move as a row names it, before the code of the row that chose it is put to it. */
@@ -47,7 +48,7 @@ const ROWS: readonly {
   // A stop the operator left ends the campaign, whatever the log holds.
   { code: "stop", move: stop },
   // The exam does not stand: it is drafted, read, or the campaign ends on it. Before the bounds,
-  // since reading it bills nothing.
+  // since reading it bills nothing; a draft bills, so it asks the bounds first.
   { code: "exam", move: exam },
   // A bound is spent: the total, the provider, the improvement patience, a comparison cut short.
   { code: "bound", move: bound },
@@ -161,6 +162,16 @@ function roomless({ events, reports, reference }: Ground) {
   return readings.slice(readings.findLastIndex(({ gain }) => gain) + 1);
 }
 
+/** Count supply attempts after excluding the comparison that first established the need. */
+function counted(run: ReturnType<typeof roomless>): number {
+  return run.length - (run[0]?.id == null ? 0 : 1);
+}
+
+/** Consecutive supply attempts, counted by the same rule as the stopping decision in spent. */
+export function supplyRun(events: readonly LogEvent[], plan: Plan): number {
+  return counted(roomless(groundOf(events, plan)));
+}
+
 /**
  * The campaign's ending where its supply patience of readings in a row left nothing to gain (`roomless`),
  * and null while it has supply patience left: on its exam where the campaign wants for tasks, which could
@@ -171,8 +182,7 @@ function roomless({ events, reports, reference }: Ground) {
  */
 function spent(ground: Ground, wants: "tasks" | "room", why: string): Move | null {
   const run = roomless(ground);
-  const raised = run[0]?.id == null ? 0 : 1;
-  if (run.length - raised < ground.plan.patience) return null;
+  if (counted(run) < ground.plan.patience) return null;
   const ids = run.flatMap(({ id }) => (id === null ? [] : [id]));
   const idle = plural(run.length - ids.length, "Examiner session");
   const told =
@@ -202,8 +212,9 @@ function stop({ events }: Ground): Move | null {
   };
 }
 
-function exam({ events, plan, supply, refused }: Ground): Move | null {
-  if (plan.prompted && draftOf(events) === null) return drafting(events);
+function exam(ground: Ground): Move | null {
+  const { events, plan, supply, refused } = ground;
+  if (plan.prompted && draftOf(events) === null) return bound(ground) ?? drafting(events);
   if (refused.has("unread")) {
     return {
       move: "accept",
@@ -230,24 +241,18 @@ function exam({ events, plan, supply, refused }: Ground): Move | null {
 }
 
 /** The first move of a campaign that opened from a prompt and holds no exam: a draft, while the
- *  plan's three have not been put. A session that crashed before it put a draft is the crash
- *  rule's, as any session's is (`crashedRun`): a named reset is waited out, and `CRASHES` in a
- *  row end the campaign on its environment, with what the last crash said (10 October: three
- *  sessions crashed in one second, Claude Code refusing to run as root). Until 16 October the
- *  draft kept a count of its own, nothing waited, and three drafts that crashed on a session
- *  limit ended three fresh campaigns 33 minutes before it reset. The drafts put count
- *  over the whole log. */
+ *  plan's three have not been put. The bounds are asked first (`bound`), as before any billed move:
+ *  a session that crashed before it put a draft is the crash rule's (`crashedRun`), whose
+ *  `CRASHES` in a row end the campaign on its environment (10 October: three sessions crashed in
+ *  one second, Claude Code refusing to run as root), and a budget with less left than its reserve
+ *  ends it on its budget. Until 29 October the budget was read only after the exam stood, so a
+ *  campaign opened with $10 on a $10 reserve put three drafts the budget stopped at once, and
+ *  ended `exam`, "0 drafts in 3 sessions did not stand". The drafts put count over the whole log. */
 function drafting(events: readonly LogEvent[]): Move {
-  const crashes = crashedRun(events);
-  if (crashes.count >= CRASHES) {
-    return end(
-      "environment",
-      `no draft was put: the Examiner's session crashed ${String(crashes.count)} times (${crashes.crash ?? "the provider gave no reason"})`,
-    );
-  }
   const put = ({ tries }: LogEvent["data"]) => (isNumber(tries) ? tries : 0);
   const sessions = events.filter(
-    ({ kind, data }) => kind === "draft.finished" && (data.ended !== "crashed" || put(data) > 0),
+    ({ kind, data }) =>
+      kind === "draft.finished" && ((data.ended !== "crashed" && data.ended !== "killed") || put(data) > 0),
   );
   const tries = sessions.reduce((sum, { data }) => sum + put(data), 0);
   if (tries < DRAFTS && sessions.length < DRAFTS) {
@@ -436,7 +441,7 @@ function noRoom(ground: Ground): Move | null {
   const side = last.old === reference ? "old" : "fresh";
   const room = roomOf(last.report, side);
   if (room === "room") {
-    const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
+    const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
     // A session the provider crashed or a stop killed before it held out a task wrote nothing for
     // the new reference (`cutShort`): on 21 October r5's x-4 and r6's x-5 crashed so, and each
     // campaign compared its next harness on the tasks the old reference had closed.
@@ -557,78 +562,71 @@ function buildsOn(ground: Ground): string {
   return `${String(run)} of ${plural(needed, "Builder session")} before the next comparison have run`;
 }
 
-/** The tasks released for practice since the reference harness was last promoted, and where: the
- *  practice named is an epoch's. Until 16 October it was the campaign's, and three campaigns
- *  released none after their promotion, where every practice solve passed. */
-export function epochReleased(events: readonly LogEvent[]) {
-  const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
-  const epoch = events.filter(
-    ({ kind, data }, at) => at > promotedAt && kind === "task.state" && data.state === "released",
+/**
+ * The released total a release brings practice to now, and the sentence that says why, or null
+ * where practice is owed none. Two bounds decide it, and this is their one reader (rule 12): the
+ * table's release before a Builder session (`toPractise`), the host's inside a conversation and
+ * the Builder's own `release_practice` (`campaign-actions.ts`).
+ *
+ * The practice named is owed again after each reading, a comparison's report or a promotion.
+ * Until 16 October it was the campaign's, and three campaigns released none after their
+ * promotion, where every practice solve passed. Until 30 October it was the epoch's:
+ * buffer-fresh-opus-v072 held out 69 tasks after its second promotion and released six, its
+ * Builder passed all 103 practice solves on its 18 tasks, and three `release_practice` calls
+ * released nothing while two more comparisons read the same candidate.
+ *
+ * Each release is one task fewer to compare, so once practice exists or a promotion is on record
+ * it leaves the admission floor at `level` of frontier tasks held: top-ups before a promotion
+ * consumed esp32-r2's frontier (20 October, whole-run investigations of six campaigns). The
+ * frontier is read on the reference's own solves alone, since the comparison's can change with
+ * which task the other harness won, and practice is visible to the Builder (rule 3).
+ */
+export function practiceDue(
+  events: readonly LogEvent[],
+  practice: number | null,
+  level: number,
+): { readonly to: number; readonly said: string } | null {
+  if (practice === null) return null;
+  const released = taskSets(events).released.length;
+  // A settlement reports its comparison again (`settleReading`); only a session's first report is a reading.
+  const since = events.findLastIndex(
+    ({ kind, data }, at) =>
+      kind === PROMOTED ||
+      (kind === "comparison.reported" &&
+        !events.slice(0, at).some((one) => one.kind === kind && one.data.session === data.session)),
+  );
+  const count = events.filter(
+    ({ kind, data }, at) => at > since && kind === "task.state" && data.state === "released",
   ).length;
-  return { promotedAt, epoch };
+  const allowance =
+    released === 0 && !events.some(({ kind }) => kind === PROMOTED)
+      ? Infinity
+      : Math.max(0, poolOf(events).practiceFrontier.length - comparisonFloor(level));
+  const owed = Math.min(Math.max(0, practice - count), allowance);
+  if (owed === 0) return null;
+  return {
+    to: released + owed,
+    said: `${String(count)} of the ${plural(practice, "practice task")} the campaign names are released${since === -1 ? "" : " since the last reading"}`,
+  };
 }
 
-/** How many more tasks a release may take for practice, each one fewer to compare: once practice
- *  exists or a promotion is on record, leave the admission floor at `level` of frontier tasks held.
- *  Top-ups before a promotion consumed esp32-r2's frontier (20 October 2026, whole-run
- *  investigations of six campaigns). Until 16 October it was also at most one in four of the
- *  epoch's scorable and released tasks, which bound alone in none of 35 releases on record.
- *  Since 26 October the allowance reads reference-only room: the comparison frontier can change
- *  with which task the other harness wins, and practice is visible to the Builder (rule 3). */
-export function practiceAllowance(events: readonly LogEvent[], level: number): number {
-  const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
-  if (promotedAt === -1 && taskSets(events).released.length === 0) return Infinity;
-  return Math.max(0, poolOf(events).practiceFrontier.length - comparisonFloor(level));
-}
-
-/** How many more tasks the epoch's practice is owed: the `practice` a campaign names less what it
- *  has released since the last promotion, as far as its allowance goes (`practiceAllowance`). */
-export function practiceOwed(events: readonly LogEvent[], practice: number, level: number): number {
-  return Math.min(
-    practice - Math.min(practice, epochReleased(events).epoch),
-    practiceAllowance(events, level),
+/** A release for practice before a Builder session, where practice is owed (`practiceDue`) and
+ *  tasks were held out since the last release and promotion: on 9 October two sessions practised
+ *  on the same two tasks while sixteen more were held. A starter comparison that read room is a
+ *  reading like any other, so the practice it is owed needs no branch of its own; one that read
+ *  none is row `no-room`'s before any build. */
+function toPractise({ events, plan, supply }: Ground): Move | null {
+  const last = events.findLastIndex(
+    ({ kind, data }) => kind === PROMOTED || (kind === "task.state" && data.state === "released"),
   );
-}
-
-/** A release for practice before a Builder session, where the epoch holds fewer than the campaign
- *  names, tasks were held out since the last release, and its allowance permits (`practiceAllowance`): on
- *  9 October two sessions practised on the same two tasks while sixteen more were held. */
-function toPractise({ events, plan, supply, read }: Ground): Move | null {
-  const { practice } = plan;
-  const released = events.findLastIndex(
-    ({ kind, data }) => kind === "task.state" && data.state === "released",
-  );
-  const { promotedAt, epoch } = epochReleased(events);
-  const allowance = practiceAllowance(events, plan.wanted.level);
-  if (practice === null || supply.held < 2 || heldAfter(events, Math.max(released, promotedAt)) === 0) {
-    return null;
-  }
-  // After a starter comparison that read room, practice is brought up by as many again: the tasks that leave
-  // the reference room are what the Builder has to work on, and the ones it has it passes.
-  const again = Math.min(practice, allowance);
-  if (
-    read?.starterComparison === true &&
-    read.reported > released &&
-    roomOf(read.report) !== "none" &&
-    again > 0
-  ) {
-    return {
-      move: "prepare",
-      practice: supply.released + again,
-      why: `comparison ${read.id} read room in the tasks held out since the last release: the ones the reference harness failed are released first, up to ${plural(practice, "more practice task")}, before the Builder builds`,
-    };
-  }
-  const since =
-    promotedAt === -1
-      ? ", and tasks were held out since the last release"
-      : " since the reference harness was last promoted, and tasks were held out since";
-  const owed = practiceOwed(events, practice, plan.wanted.level);
-  return owed <= 0
+  if (supply.held < 2 || heldAfter(events, last) === 0) return null;
+  const due = practiceDue(events, plan.practice, plan.wanted.level);
+  return due === null
     ? null
     : {
         move: "prepare",
-        ...keyIfDefined("practice", promotedAt === -1 ? undefined : supply.released + owed),
-        why: `${String(epoch)} of the ${plural(practice, "practice task")} the campaign names are released${since}: the contract's draw releases more before the Builder builds`,
+        practice: due.to,
+        why: `${due.said}, and tasks were held out since the last release: the contract's draw releases more before the Builder builds`,
       };
 }
 

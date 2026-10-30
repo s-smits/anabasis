@@ -32,6 +32,7 @@ import {
 import { plural } from "../meta/text.ts";
 import type { LogEvent } from "./log.ts";
 import { examinerSessions } from "./solves.ts";
+import { heldAtGate } from "./task.ts";
 
 /** Each seat whose trace the log holds, in the order a stopped run's open sessions are ended
  *  (`unfinished`, `src/kernel/reports.ts`). `repair` is a seat a log of before 11 October holds
@@ -360,15 +361,65 @@ export function unfinished(events: readonly LogEvent[]): Unfinished[] {
   });
 }
 
-/** The Builder's and the Examiner's sessions that began and never ended on record, with what each
- *  billed, its turns and its seconds to its last event: a run of the campaign command stopped from
- *  outside left them, and the next run ends them as killed (`endCut`, `tools/d2/harness-builder.ts`). */
+/** Open Builder and Examiner sessions, including drafts, with their recorded spend and duration.
+ *  The next run ends these sessions as killed (`endCut`, `tools/d2/harness-builder.ts`), with what
+ *  their live counters held where the log can show it (`cutCounts`). */
 export function cutSessions(events: readonly LogEvent[]) {
   return unfinished(events).flatMap(({ of, id, dollars, turns, began, last }) =>
-    (of === "build" || of === "exam") && isString(id)
-      ? [{ of, session: id, turns, billed: dollars, seconds: (Date.parse(last) - Date.parse(began)) / 1000 }]
+    (of === "build" || of === "exam" || of === "draft") && isString(id)
+      ? [
+          {
+            of,
+            session: id,
+            turns,
+            billed: dollars,
+            seconds: (Date.parse(last) - Date.parse(began)) / 1000,
+            ...cutCounts(events, of, id),
+          },
+        ]
       : [],
   );
+}
+
+/**
+ * What a cut session's live counters held, as its ending would have written them. A draft counts
+ * each completed `draft_exam` (`desk.tries`, `src/examiner/draft.ts`), and one more where solves
+ * naming the session started after the last: a draft with no fault is measured inside its call,
+ * which logs nothing until it returns, so a cut there left the put counted live and absent from the
+ * calls. On 28 October buffer-fresh-gpt-stackedPR489-stijn-linux's d-1 was cut with 9 such solves
+ * and no completed call, and read 0 drafts, which `drafting` (`src/campaign/decide.ts`) passes over.
+ * An Examiner session holds out and refuses what the task admissions of its proposals decided
+ * (`desk.held`, `src/examiner/write.ts`): until 29 October its killed ending held none, so
+ * `cutShort` (`src/campaign/ground.ts`) read main0_5_1's x-2, which held a task, as having moved
+ * nothing, and the Builder was told it held out 0 tasks.
+ */
+function cutCounts(events: readonly LogEvent[], of: "build" | "exam" | "draft", id: string) {
+  if (of === "draft") {
+    const own = events.flatMap(({ kind, data }, at) =>
+      data.session === id && kind === "draft.call" && data.tool === "draft_exam" ? [{ at, data }] : [],
+    );
+    const after = own.at(-1)?.at ?? -1;
+    const measuring = events.some(
+      ({ kind, data }, at) => at > after && kind === "solve.started" && data.comparison === id,
+    );
+    return { tries: own.filter(({ data }) => data.isError !== true).length + (measuring ? 1 : 0) };
+  }
+  if (of === "build") return {};
+  const proposed = events.flatMap(({ kind, data }) =>
+    kind === "task.proposed" && data.session === id && isString(data.version) ? [data.version] : [],
+  );
+  const gates = new Map(
+    events.flatMap(({ kind, data }) =>
+      kind === "task.gate" && isString(data.version)
+        ? [[data.version, heldAtGate(data.outcome)] as const]
+        : [],
+    ),
+  );
+  return {
+    proposed: proposed.length,
+    held: proposed.filter((version) => gates.get(version) === true),
+    refused: proposed.filter((version) => gates.get(version) === false),
+  };
 }
 
 /**

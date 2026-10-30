@@ -37,8 +37,14 @@ function campaign() {
   if (seed !== "") writeFileSync(log, seed);
   const record = (kind: EventKind, data: JsonObject) => append(log, kind, data);
   let solves = 0;
-  /** One finished test-side solve, billed a dollar and a half. */
-  const solved = (task: string, harness: string, outcome: "pass" | "fail", comparison?: string) => {
+  /** One finished test-side solve, billed a dollar and a half, or its next attempt `again`. */
+  const solved = (
+    task: string,
+    harness: string,
+    outcome: "pass" | "fail",
+    comparison?: string,
+    again = 0,
+  ) => {
     const condition: Condition = {
       contract: "c1",
       harness,
@@ -55,8 +61,8 @@ function campaign() {
       host: "h1",
       side: "test",
     };
-    solves += 1;
-    const solve = `s-${String(solves)}`;
+    if (again === 0) solves += 1;
+    const solve = `s-${String(solves)}-${String(again + 1)}`;
     record("solve.started", {
       solve,
       condition: recordCondition(log, condition),
@@ -225,6 +231,8 @@ describe("a led Builder's lifetime and bill", () => {
     c.began("b-1");
     c.record("build.turn", { session: "b-1", turn: 1, usage: { cost: { total: 0.25 } } });
     c.solved("p1", HA, "fail");
+    // A second attempt of the same practice solve: the session charged one solve, and bills both.
+    c.solved("p1", HA, "fail", undefined, 1);
     c.record("exam.started", { session: "x-1" });
     c.record("exam.turn", { session: "x-1", turn: 1, usage: { cost: { total: 0.5 } } });
     c.record("exam.finished", { session: "x-1", ended: "finished", billed: 0.5, held: [] });
@@ -232,7 +240,7 @@ describe("a led Builder's lifetime and bill", () => {
     c.solved("s1", HA, "pass", "g-1");
     c.record("build.turn", { session: "b-1", turn: 2, usage: { cost: { total: 0.25 } } });
     // Until 14 October b-1 read as cut at x-1's start, its turns and dollars cut there with it.
-    const live = { id: "b-1", ended: null, cut: false, turns: 2, practiceSolves: 1, billed: 2 };
+    const live = { id: "b-1", ended: null, cut: false, turns: 2, practiceSolves: 1, billed: 3.5 };
     expect(steps(c, "builder")).toMatchObject([live]);
     expect(openSteps(campaignOf(c.events()).steps)).toContain("b-1");
     c.record("campaign.ended", { ending: "environment" });

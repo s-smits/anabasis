@@ -606,6 +606,14 @@ describe("a session that writes tasks", () => {
     // writes towards; a second in a row ends the session.
     for (const at of [1, 3]) expect(short.of(CALLED)[at]?.text).not.toMatch(/\d/);
     expect(short.of("exam.turn")).toHaveLength(5);
+
+    // A session with no proposal left is not asked for more: on 29 October 6 of 206 declined
+    // finishes came after the allowance was spent, and each continuation could propose nothing.
+    const spent = seat("write", [propose(1), finish]);
+    const limits = { ...spent.request.limits, puts: 1 };
+    expect(await examine({ ...spent.request, limits })).toMatchObject({ ended: "finished", puts: 1 });
+    expect(spent.of(CALLED)[1]?.text).not.toContain("Propose further tasks");
+    expect(spent.of("exam.turn")).toHaveLength(2);
   });
 
   it("runs the checks on an instance with an answer of its own, and keeps of a pass only that the instance has a valid answer", async () => {
@@ -1032,7 +1040,7 @@ describe("a session that writes tasks", () => {
       await mode.settle(true);
       expect(asked).toBe(3);
       expect(endings).toContainEqual(objectWith({ outcome: "non-result", kind: "check" }));
-      expect(s.of("referee.finding")).toMatchObject([{ ruling: "unclear", walled: false }]);
+      expect(s.of("referee.finding")).toMatchObject([{ ruling: null, walled: false }]);
       const reviewBill = Number(s.of("referee.finding")[0]?.billed);
       expect(reviewBill).toBeGreaterThan(0);
       expect(s.of(TASK_ADMISSION)).toMatchObject([

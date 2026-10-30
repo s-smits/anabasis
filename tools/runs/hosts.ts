@@ -10,8 +10,8 @@
  * `--env-file` from a file git ignores, so no machine is named in the repository. Each names the
  * host, its ssh destination, the worktree the verb runs in, the Bun there, and the env files there
  * that Bun loads (a path on that machine, never copied). The remote command runs under a login
- * shell, so a campaign it starts finds the tools a login there has, and with `ANA_HOSTS` empty,
- * which Bun keeps over an env file's: a verb run on another host reaches no further one, so two
+ * shell, so a campaign it starts finds the tools a login there has, and with `ANA_HOP=1`, under
+ * which `hostsOf` lists no host: a verb run on another host reaches no further one, so two
  * machines that list each other do not ask each other's status in a loop. `hosts` asks every host at
  * once and prints each one's rows as they come, under a time limit a host, so a host that is slow or
  * does not answer holds up no other (15 October: asked one after another, a loaded runner held the
@@ -26,6 +26,7 @@
  * Live records belong to live.ts, shared by usage and placement (22 October 2026).
  */
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
+import { runCaptured } from "#src/meta/subprocess.ts";
 import { type Host, hostsOf, hostNamed, configuredRuntime } from "./host-config.ts";
 import { quoted, shellPath, sshScript, treeBun } from "./host-command.ts";
 import { readControllers } from "./code.ts";
@@ -58,7 +59,7 @@ function scriptCommand(host: Host, script: string, args: readonly string[]): str
   const env = (runtime.envFiles ?? []).map((file) => ` --env-file=${shellPath(file)}`).join("");
   return sshScript(
     host,
-    `cd ${shellPath(host.tree)}\nANA_HOSTS='[]' ANA_RUN_CAP=${quoted(String(host.capacity ?? 2))} ${treeBun(runtime.bun)}${env} ${quoted(script)} ${args.map(quoted).join(" ")}`,
+    `cd ${shellPath(host.tree)}\nANA_HOP=1 ANA_RUN_CAP=${quoted(String(host.capacity ?? 2))} ${treeBun(runtime.bun)}${env} ${quoted(script)} ${args.map(quoted).join(" ")}`,
   );
 }
 
@@ -96,19 +97,15 @@ export async function hosts(args: readonly string[]): Promise<void> {
         );
         return;
       }
-      const io = { stdin: "ignore", stdout: "pipe", stderr: "pipe", timeout: HOST_MS } as const;
-      const child = capturedSpawn(scriptCommand(controller, CLI, ["status", ...args]), io);
-      const [rows, errors, code] = await Promise.all([
-        new Response(child.stdout).text(),
-        new Response(child.stderr).text(),
-        child.exited,
-      ]);
+      const said = await runCaptured(scriptCommand(controller, CLI, ["status", ...args]), {
+        timeout: HOST_MS,
+      });
       const late =
-        child.signalCode === null
-          ? `answered with exit ${String(code)}`
+        said.signal === null
+          ? `answered with exit ${String(said.exitCode)}`
           : `no answer in ${String(HOST_MS / 1000)} s`;
       console.log(
-        `── ${host.name} (${((performance.now() - started) / 1000).toFixed(1)} s)\n${rows}${errors}${code === 0 ? "" : `  ${host.name} ${late}`}`.trimEnd(),
+        `── ${host.name} (${((performance.now() - started) / 1000).toFixed(1)} s)\n${said.stdout}${said.stderr}${said.exitCode === 0 ? "" : `  ${host.name} ${late}`}`.trimEnd(),
       );
     }),
   );
@@ -172,16 +169,20 @@ export async function askedScript(
       if (controller === null || controller === undefined) {
         return { host, lines: null, elapsedMs: Math.round(performance.now() - started) };
       }
-      const io = { stdin: "ignore", stdout: "pipe", stderr: "ignore", timeout: HOST_MS } as const;
-      const child = capturedSpawn(scriptCommand(controller, script, args), io);
-      const [said, code] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+      const { stdout, exitCode, signal } = await runCaptured(scriptCommand(controller, script, args), {
+        timeout: HOST_MS,
+      });
       const elapsedMs = Math.round(performance.now() - started);
-      if (code !== 0) {
+      if (exitCode !== 0) {
         console.error(
-          `${host.name} did not answer ${args[0] ?? ""} (${child.signalCode === null ? `exit ${String(code)}` : "timed out"}, ${(elapsedMs / 1000).toFixed(1)} s)`,
+          `${host.name} did not answer ${args[0] ?? ""} (${signal === null ? `exit ${String(exitCode)}` : "timed out"}, ${(elapsedMs / 1000).toFixed(1)} s)`,
         );
       }
-      return { host, lines: code === 0 ? said.split("\n").filter((line) => line !== "") : null, elapsedMs };
+      return {
+        host,
+        lines: exitCode === 0 ? stdout.split("\n").filter((line) => line !== "") : null,
+        elapsedMs,
+      };
     }),
   );
 }
@@ -206,7 +207,9 @@ export async function holders(names: readonly string[]): Promise<Map<string, Hos
 /** Find every original before a mutation: a local match cannot hide a remote duplicate. */
 export async function routed(verb: string, args: readonly string[]): Promise<Routes> {
   const here = new Set(runs().map(({ name }) => name));
-  const names = namedAt(verb, args).map((at) => args[at] ?? "");
+  // `--here` names this machine, as the keeper `keep` starts does: until 29 October it asked every peer
+  // first, and one peer that did not answer ended the keeper at its start.
+  const names = args.includes("--here") ? [] : namedAt(verb, args).map((at) => args[at] ?? "");
   const held = await holders(names);
   const duplicate = names.find((name) => here.has(name) && held.has(name));
   if (duplicate !== undefined) throw new Error(`${duplicate}: more than one original campaign`);

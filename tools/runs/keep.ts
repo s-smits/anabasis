@@ -15,7 +15,7 @@
  * The next login is the one with capacity whose week resets soonest, of those this keeper has not seen
  * spent (`room`, `logins.ts`), and `--logins` defaults to `ANA_LOGINS`. With none it says so once
  * and waits. A run none of whose seats is a `claude/` model bills no login and goes on without one
- * (`billsLogin`). A run that goes on three times in a row without a model turn of any seat that the
+ * (`billsLogin`), and so does every run on a machine that holds only the plain login (`plainOnly`). A run that goes on three times in a row without a model turn of any seat that the
  * provider answered (`turnsIn`) is left: something the keeper cannot mend ends it each time.
  *
  * With `--yes` the verb leaves a keeper running by itself, its output in `keep.out` beside the log,
@@ -28,7 +28,18 @@ import { isString } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { allowedLogins, atCap, billsLogin, liveEverywhere, readLogins, room } from "./logins.ts";
+import { providerWait } from "./diagnosis.ts";
+import { payerOf } from "./live.ts";
+import {
+  allowedLogins,
+  atCap,
+  billsLogin,
+  liveEverywhere,
+  plainOnly,
+  readLogins,
+  room,
+  startRefusal,
+} from "./logins.ts";
 import type { Live } from "./live.ts";
 import { lastRun, rerun, start } from "./manage.ts";
 import { KEEPING, keepers, logEvents, processes, type Run, runNamed, writers } from "./registry.ts";
@@ -61,7 +72,7 @@ export function turnOf(
 ): Turn {
   const last = events.at(-1);
   if (process === "open") {
-    const until = last?.kind === "campaign.waited" && last.data.for === "provider" ? last.data.until : null;
+    const until = providerWait(events)?.data.until;
     return isString(until) && Date.parse(until) - now > waitMs ? "move" : "watch";
   }
   if (last?.kind !== "campaign.ended") return "continue";
@@ -129,7 +140,7 @@ async function keepGoing(run: Run, logins: readonly string[], waitMs: number): P
     }
     if (turn === "watch") continue;
     const current = lastRun(run).login;
-    const until = events.at(-1)?.data.until;
+    const until = providerWait(events)?.data.until;
     if (turn === "move" && current !== undefined && isString(until)) {
       spentUntil.set(current, Date.parse(until));
     }
@@ -141,15 +152,25 @@ async function keepGoing(run: Run, logins: readonly string[], waitMs: number): P
     const counted = async () => (fleet ??= await liveEverywhere("configured"));
     const target = await nextLogin(
       turn,
-      { current, spent, billed: billsLogin(events, lastRun(run).flags) },
+      { current, spent, billed: logins.length > 0 && billsLogin(events, lastRun(run).flags) },
       async () => roomFor(logins, spent, await counted()),
       async (login) => {
         const { live, unasked } = await counted();
         return unasked.length > 0 || atCap(runtimeProcess.env, [login], live).size > 0;
       },
     );
-    if (target === null) {
-      if (!waiting) console.log(`${run.name}: no login with capacity; left waiting`);
+    const full =
+      target === null
+        ? null
+        : startRefusal(
+            runtimeProcess.env,
+            payerOf(target, lastRun(run).flags),
+            "here",
+            await counted(),
+            run.name,
+          );
+    if (target === null || full !== null) {
+      if (!waiting) console.log(`${run.name}: ${full ?? "no login with capacity"}; left waiting`);
       waiting = true;
       continue;
     }
@@ -187,15 +208,22 @@ export async function keep(args: readonly string[]): Promise<void> {
     },
   });
   const [name] = positionals;
-  const logins = values.logins?.split(",") ?? allowedLogins(runtimeProcess.env);
+  // The detached keeper is handed its logins as one word, empty on a machine with the plain login
+  // alone, which until 28 October came back as the one login "".
+  const logins =
+    values.logins?.split(",").filter((login) => login !== "") ?? allowedLogins(runtimeProcess.env);
   if (name === undefined) {
     throw new Error(
       "usage: bun --env-file=<file> run runs keep <name> --logins 2,3,4 [--wait-hours 1] [--yes]",
     );
   }
   const run = runNamed(name);
-  if (logins.length === 0 && billsLogin(logEvents(run.path), lastRun(run).flags)) {
-    throw new Error("no allowed Claude login: name --logins or set ANA_LOGINS");
+  if (
+    logins.length === 0 &&
+    !plainOnly(runtimeProcess.env) &&
+    billsLogin(logEvents(run.path), lastRun(run).flags)
+  ) {
+    throw new Error("no allowed Claude login: name --logins, set ANA_LOGINS or CLAUDE_CODE_OAUTH_TOKEN");
   }
   if (values.here) return keepGoing(run, logins, Number(values["wait-hours"]) * HOUR);
   if (keepers(name).length > 0) throw new Error(`${name} is kept already`);
@@ -219,7 +247,8 @@ export async function keep(args: readonly string[]): Promise<void> {
     ],
     {
       cwd: run.tree,
-      env: runtimeProcess.env,
+      // A keeper outlives the verb, and counts every machine's runs even where another host sent it.
+      env: { ...runtimeProcess.env, ANA_HOP: undefined },
       detached: true,
       stdin: "ignore",
       stdout: openSync(out, "a"),

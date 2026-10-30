@@ -20,15 +20,24 @@
  *
  * Both of a comparison's judges rule every solve: the campaign's checks, and the Referee `--reviewer`
  * names on every rejection, which counts as a fail only once ruled earned and otherwise sets its task
- * aside for every system (`rejectionAside`), as a comparison's does. At four solves or more the
- * baseline is read against itself on halves of its solves mirrored in time, the comparison's A/A,
+ * aside for every system (`rejectionAside`), as a comparison's does. At two solves or more, an even
+ * count, the baseline is read against itself on halves of its solves mirrored in time, the comparison's A/A,
  * so a reading has its own noise beside it. A table sets the systems side by side on averages a solve
  * (cost, wall time, slowest solve, model turns), since the operator asked on 28 October for time
  * beside cost: a built system that costs a fifteenth can still take twice as long. The trial logs hold hidden values, so they stay under
  * `.ana/compare/`, behind the wall and outside `.ana/d2/`, where `runs retire` sweeps idle seeds.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { carriedBy, detectable, draw, flipP, type Paired, readsStep, scored } from "#src/kernel/compare.ts";
+import {
+  carriedBy,
+  detectable,
+  draw,
+  flipP,
+  type Paired,
+  pointsOf,
+  readsStep,
+  scored,
+} from "#src/kernel/compare.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { LOG_FILE, read } from "#src/kernel/log.ts";
 import { ended, passed, ranUnder, rejectionAside, verdictsOf } from "#src/kernel/solves.ts";
@@ -200,7 +209,7 @@ export function pairLines(
   const { wins, losses, ties, p, differences, unbilled } = scored(pairs);
   // Exchanging the sides negates every score, so the other way is the same scores negated.
   const other = { differences: differences.map((one) => -one), unbilled: unbilled.map((one) => -one) };
-  const carried = pairs.map(carriedBy);
+  const carried = pairs.map((pair) => carriedBy(pointsOf(pair)));
   const by = (measure: string) => carried.filter((one) => one === measure).length;
   const [x, y] = [candidate.name, baseline.name];
   const shift = detectable(differences, at.level);
@@ -217,10 +226,11 @@ export function pairLines(
   ];
 }
 
-/** The baseline against itself on halves of its solves mirrored in time (first and last against the
- *  two between), the A/A a comparison of four solves a side carries: it should read no step. */
+/** The baseline against itself on halves of its solves mirrored in time (at four, first and last
+ *  against the two between; at two, first against second), the A/A every comparison of two solves a
+ *  side carries: it should read no step. */
 function itself(baseline: System, own: Map<string, Solved>, at: Parameters<typeof pairLines>[2]): string[] {
-  if (at.solves < 4 || at.solves % 2 !== 0) return [];
+  if (at.solves < 2 || at.solves % 2 !== 0) return [];
   const half = (keep: boolean) =>
     new Map(
       [...own].map(([task, row]) => {

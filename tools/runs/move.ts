@@ -2,7 +2,7 @@
  * Move a campaign to another machine, and go on with it there on the login named.
  *
  *   bun --env-file=<credentials> --env-file=.env.runs run runs move <name> --to <host>
- *     [--from <host>] [--login N] [--after promoted|compacted|reported|finished] [--hold]
+ *     [--from <host>] [--login N] [--after next|promoted|compacted|reported|finished] [--hold]
  *     [--yes] [-- <flags>]
  *
  * Each end is a host `ANA_HOSTS` lists or this machine, named by its own short host name or `here`
@@ -69,6 +69,8 @@ import { verbOn } from "./hosts.ts";
 import { CAMPAIGNS, HERE, keepers, processes, readNamed, writers } from "./registry.ts";
 import { syncRuns } from "./snapshots.ts";
 import { continueRun, pause, said } from "./manage.ts";
+import { payerOf } from "./live.ts";
+import { roomToStart } from "./logins.ts";
 import { preparedHost, publishedAt } from "./code.ts";
 import { lastLaunch } from "./receipt.ts";
 
@@ -126,13 +128,13 @@ function treeOf(end: End, name: string): string | undefined {
 }
 
 /** Read kept flags through the local receipt owner before pausing or copying the campaign. */
-function flagsAt(end: End, source: string, name: string): readonly string[] | null {
+async function flagsAt(end: End, source: string, name: string): Promise<readonly string[] | null> {
   const log = join(source, CAMPAIGNS, name, LOG_FILE);
   if (end.host === undefined) return lastLaunch(log)?.flags ?? null;
   const stage = join(tmpdir(), `ana-move-receipts-${crypto.randomUUID()}`);
   mkdirSync(stage);
   try {
-    rsync(`${side(end, dirname(log))}/`, `${stage}/`, "--include=/launch-*.json", "--exclude=/*");
+    await rsync(`${side(end, dirname(log))}/`, `${stage}/`, "--include=/launch-*.json", "--exclude=/*");
     return lastLaunch(join(stage, LOG_FILE))?.flags ?? null;
   } finally {
     rmSync(stage, { recursive: true, force: true });
@@ -178,7 +180,7 @@ export async function move(args: readonly string[]): Promise<void> {
   }
   if (source === undefined) throw new Error(`no worktree ${from.name} holds a campaign ${name}`);
   const commit = at(from, `git -C ${quoted(source)} rev-parse HEAD`);
-  const kept = given.length > 0 ? given : flagsAt(from, source, name);
+  const kept = given.length > 0 ? given : await flagsAt(from, source, name);
   if (kept === null && !values.hold) {
     throw new Error(
       `${name} has no launch receipt at ${folder(source)}: supply campaign flags after -- or use --hold; nothing was stopped or moved`,
@@ -192,6 +194,8 @@ export async function move(args: readonly string[]): Promise<void> {
     console.log("nothing is done without --yes");
     return;
   }
+  // Counted before the pause too: the destination's caps must take the run, less the run itself.
+  await roomToStart(payerOf(values.login, flags), to.host?.name ?? "here", name);
   // Prepare before the pause: a missing commit or failed install must leave the source running.
   const controller = to.host === undefined ? undefined : preparedHost(to.host, commit);
   if (to.host === undefined) publishedAt(to.repo, commit);
@@ -204,8 +208,8 @@ export async function move(args: readonly string[]): Promise<void> {
   );
   // rsync takes one remote side, so a move between two hosts stages the folder here.
   const stage = from.host && to.host ? join(tmpdir(), `ana-move-${crypto.randomUUID()}`) : undefined;
-  if (stage !== undefined) rsync(`${side(from, folder(source))}/`, `${stage}/`);
-  rsync(`${stage ?? side(from, folder(source))}/`, `${side(to, folder(tree))}/`);
+  if (stage !== undefined) await rsync(`${side(from, folder(source))}/`, `${stage}/`);
+  await rsync(`${stage ?? side(from, folder(source))}/`, `${side(to, folder(tree))}/`);
   if (stage !== undefined) rmSync(stage, { recursive: true, force: true });
   const size = (end: End, root: string) => at(end, `wc -c < ${quoted(join(folder(root), LOG_FILE))}`);
   if (size(from, source) !== size(to, tree)) {

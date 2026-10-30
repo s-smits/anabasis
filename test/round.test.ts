@@ -57,7 +57,7 @@ import { text, tool } from "../src/tools/answer.ts";
 import { openHarness } from "../src/harness/open.ts";
 import { roundSolves } from "./helpers/logged-round.ts";
 import { tallied } from "./helpers/tally.ts";
-import { anyOf, arrayWith, copies } from "./helpers/matchers.ts";
+import { anyOf, arrayWith, copies, objectWith } from "./helpers/matchers.ts";
 
 const COMPARISON_REPORTED = "comparison.reported";
 const COMPARISON_STARTED = "comparison.started";
@@ -633,7 +633,8 @@ describe("a round", () => {
         // new harness's, so the reference's failing them is room (`informative`, 15 October).
         valid: { old: [4, 0, 0], fresh: [0, 0, 4], informative: { old: 4, fresh: 0 } },
         billed: { old: BILLED, fresh: BILLED },
-        noise: null,
+        // The reference against itself, first solve against second: it answered nothing, so ties.
+        noise: objectWith({ wins: 0, losses: 0, ties: 4, flips: 0 }),
         counted: null,
         objective: null,
         points: { validity: 2400, objective: 0, bill: 0 },
@@ -1356,6 +1357,28 @@ describe("a round", () => {
     }
   });
 
+  it("stops short of three silent tasks where the provider answered and then wrote nothing to the last solve, and reports a task alone silent from the start", async () => {
+    // esp32-fresh-gpt's g-1, 30 October: the provider refused the model on the last task, and the
+    // comparison reported no-step one task short instead of waiting to be run again.
+    let left = 12;
+    const s = await setup([], (version, side, nth, digest) => {
+      left -= 1;
+      return left < 0 ? LIMITED : step(version, side, nth, digest);
+    });
+    await expect(checkpoint(s.paired("g0"))).rejects.toThrow("then wrote nothing for its last 1 task");
+    expect(s.of(COMPARISON_REPORTED)).toEqual([]);
+    // Still silent on the one task left, with nothing answered this run: the task's own fault.
+    expect(await checkpoint(s.paired("g0"))).toMatchObject({ short: [expect.any(String)] });
+    // The provider back by the next run: the last task is solved, and the step read on all four.
+    let calls = 0;
+    const back = await setup([], (version, side, nth, digest) => {
+      calls += 1;
+      return calls > 12 && calls <= 14 ? LIMITED : step(version, side, nth, digest);
+    });
+    await expect(checkpoint(back.paired("g0"))).rejects.toThrow("then wrote nothing");
+    expect(await checkpoint(back.paired("g0"))).toMatchObject({ short: [], scored: { wins: 4, losses: 0 } });
+  });
+
   it("keeps a kill as the reason when a reset wait returns its provider ending", async () => {
     const kill = new AbortController();
     const s = await setup([], () => {
@@ -1548,27 +1571,28 @@ describe("a round", () => {
 });
 
 describe("a standalone comparison", () => {
-  it("reads the reference harness against itself as it reads two harnesses, on its own solves at four a side", async () => {
-    // The plan's section 4b: at four solves a side every comparison carries its A/A, the
-    // reference's four solves of a task split by slot two against two, read as the test is. The
-    // reference answers s1 in its first two solves and not after; the starter answers nothing.
+  it("reads the reference harness against itself as it reads two harnesses, on its own solves", async () => {
+    // The plan's section 4b: every comparison carries its A/A, the reference's two solves of a task
+    // split by slot one against one, read as the test is. The reference answers s1 in its first
+    // solve and not after; the starter answers nothing.
     const s = await setup([], (version, side, nth) => {
       if (side === "starter") return LATE;
-      return version === "s1" && nth >= 2 ? LATE : PASS;
+      return version === "s1" && nth >= 1 ? LATE : PASS;
     });
-    const report = await checkpoint(s.compare("g2", { solves: 4 }));
+    const report = await checkpoint(s.compare("g2"));
     expect(report).toMatchObject({
-      // The test reads all four of the reference's solves against the starter's four.
+      // The test reads both of the reference's solves against the starter's two.
       scored: { wins: 0, losses: 4, ties: 0, differences: [-300, -600, -600, -600] },
-      // The first and last slot against the two between tie the reference with itself on s1, and
-      // two of its four solves of s1 that disagree are four of its six pairs.
-      noise: { wins: 0, losses: 0, ties: 4, p: 1, flips: 1 / 6, unbilled: [0, 0, 0, 0] },
+      // The first slot against the second decides s1 alone, and its two solves that disagree are
+      // one of the four pairs.
+      noise: { ties: 3, flips: 1 / 4 },
     });
-    // No solve was made for it: four a side on each of four tasks.
-    expect(s.asked.filter(({ side }) => side === "old")).toHaveLength(16);
-    expect(s.asked.filter(({ side }) => side === "starter")).toHaveLength(16);
-    // Two solves a side split one against one, too few for an A/A.
-    expect((await checkpoint(s.compare("g3"))).noise).toBeNull();
+    expect((report.noise?.wins ?? 0) + (report.noise?.losses ?? 0)).toBe(1);
+    // No solve was made for it: two a side on each of four tasks.
+    expect(s.asked.filter(({ side }) => side === "old")).toHaveLength(8);
+    expect(s.asked.filter(({ side }) => side === "starter")).toHaveLength(8);
+    // One solve a side has no halves.
+    expect((await checkpoint(s.compare("g3", { solves: 1 }))).noise).toBeNull();
   });
 
   it("reads the frontier and the retained tasks in one test, on sets fixed before its first solve", async () => {
@@ -1840,13 +1864,13 @@ describe("the scored set", () => {
       ...closed.map((version) => [version, "PP PP"] as const),
       ...open.map((version) => [version, "FF PP"] as const),
     ]);
-    const { events, terms } = roundSolves("g-1", ["h0", "h1"], outcomes);
-    const report = {
-      at,
-      kind: "comparison.reported",
-      data: { session: "g-1", old: "h0", fresh: "h1", starter: "h0", ...tallied(3, 0, 9), ...terms },
-    } as const;
-    const logged = [...heldOut([...closed, ...open]), ...events, report];
+    // Two readings, since one calls no task easy.
+    const logged: LogEvent[] = [...heldOut([...closed, ...open])];
+    for (const id of ["g-1", "g-2"]) {
+      const { events, terms } = roundSolves(id, ["h0", "h1"], outcomes);
+      const data = { session: id, old: "h0", fresh: "h1", starter: "h0", ...tallied(3, 0, 9), ...terms };
+      logged.push(...events, { at, kind: "comparison.reported", data });
+    }
     expect(poolOf(logged).retained).toHaveLength(9);
     const set = scoredSet(logged, 12, "contract-a");
     expect(set.tasks.filter((version) => open.includes(version)).toSorted()).toEqual(open);
@@ -1869,6 +1893,24 @@ describe("the scored set", () => {
     expect(drawn([...events, { ...started, data: { session: "g-2", tasks: next } }], 9)).toEqual(
       drawn(heldOut([...held, ...written]), 9),
     );
+  });
+
+  it("draws for the starter comparison the tasks held out since alone, with nothing retained", () => {
+    // 30 October: two starter comparisons, told they read the tasks held out since, filled the
+    // draw with older tasks the reference had been read on, at $15 and $19.
+    const started = { at, kind: "comparison.started", data: { session: "g-1", tasks: held } } as const;
+    const climbed: LogEvent[] = [
+      ...heldOut(held),
+      started,
+      { at, kind: "harness.promoted", data: { harness: "h1" } } as const,
+      ...heldOut(["v7", "v8"]),
+    ];
+    expect(scoredSet(climbed, 24, "contract-a", true)).toEqual({
+      tasks: drawn(heldOut(["v7", "v8"]), 2),
+      retained: [],
+    });
+    // Every other comparison fills the draw as before.
+    expect(scoredSet(climbed, 24, "contract-a").tasks).toHaveLength(3);
   });
 
   it("keeps a task whose solves were cut at their limits, and leaves out one with no valid answer after two comparisons and the tasks the reference closed twice, until a person keeps the first", async () => {

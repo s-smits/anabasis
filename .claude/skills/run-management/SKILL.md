@@ -26,7 +26,7 @@ archived campaign; `copy <name> --to <worktree>` brings this machine's back to g
 | `fresh <pack> [<pack> ...] [--logins <allowed-list>] [--model opus\|sonnet\|gpt\|<provider>/<id>] [--effort hhmm] [--login N] [--budget 800] [--as <suffix>] [--at <c>] [--host <host>] [--yes] [-- <flags>]` | names a campaign from a blank project, makes its worktree at a published commit and launches it there | `fresh.ts` |
 | `launch <name> [--login N] [--yes] -- <flags>` | starts the campaign command under a new name, in this worktree | `manage.ts` |
 | `continue <name> [--at <c>] [--login N] [--budget N] [--after <event>] [--yes] [-- <flags>]` | runs a campaign again from its log, on its kept flags or their replacement after `--` | `manage.ts` |
-| `pause <name> --after <event> [--yes]` | stops a campaign once its log gains one more of the event and nothing but its Builder's conversation is open | `manage.ts` |
+| `pause <name> [--after <event>] [--yes]` | stops a campaign at its next finished solve or tool call, or, with a clean-point event, once its log gains one more of it and nothing but its Builder's conversation is open | `manage.ts` |
 | `keep <name> [--logins 2,3,4] [--wait-hours 1] [--yes]` | keeps a campaign going: moves it off a long provider wait, and continues it after a death or an `environment` ending | `keep.ts` |
 | `copy <name> --to <worktree> [--yes]` | copies a stopped campaign whole to another worktree, from a worktree or the archive, and sets the source aside | `move.ts` |
 | `move <name> --to <host> [--from <host>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]` | pauses a campaign at a clean point, takes its folder whole to a new worktree on the other machine at the same commit, sets the source aside and continues it there on its kept flags | `move.ts` |
@@ -135,13 +135,17 @@ remote branch holds. It then installs (`bun install --frozen-lockfile`), runs th
   `CLAUDE_CODE_OAUTH_TOKEN<N>`, passed on as `CLAUDE_CODE_OAUTH_TOKEN`, and no numbered key
   reaches the command. With no `--login` the environment goes on less its numbered keys and no
   login is guessed: the command's dry run refuses a seat whose provider holds no credential, so a
-  run with a `claude/` seat names its login, as `fresh` and `keep` do. `claude/<model>` runs Claude Code on that login and `claude-api/<model>` on
+  run with a `claude/` seat names its login, as `fresh` and `keep` do. A machine that holds only the
+  plain `CLAUDE_CODE_OAUTH_TOKEN`, and no numbered login is allowed, runs every campaign on it
+  (`plainOnly`, `tools/runs/logins.ts`). `claude/<model>` runs Claude Code on that login and `claude-api/<model>` on
   `ANTHROPIC_API_KEY`: two providers, so a solver on one is another setting than on the other.
 - **What the operator's machines hold is environment, too.** `ANA_LOGINS` names the logins a run
   may take (`2,3,4`; every login the environment holds where unset), and `ANA_HOSTS` the other
-  hosts, a JSON list of `{name, ssh, tree, bun, envFiles, capacity, packs}`. Copy `.env.runs.example` to
-  `.env.runs`, which Git ignores; `.env.runs.example` stays tracked. Fill in your own and
-  pass it with a second `--env-file`.
+  hosts, a JSON list of `{name, ssh, tree, bun, envFiles, capacity, checks, packs}`; only a host
+  with `checks` takes the check runner's tasks, that many at once. Copy `.env.runs.example`
+  to `.env.runs`, which Git ignores; `.env.runs.example` stays tracked, with every setting
+  commented out, so a copy as it stands keeps every run on one machine. Fill in your own and pass
+  it with a second `--env-file`.
 - **One or two campaigns at a time on one host.** A solve's deadline counts elapsed time. The command
   waits before each solve until the one-minute load is at or under the cores, or half an hour on,
   and says so once; `--loaded` starts it all the same, the operator's word that its times will not
@@ -174,7 +178,7 @@ the name, the project and why into the prediction ledger before the launch, besi
 
 ```sh
 bun --env-file=<file> run runs continue <name> [--at <commit>] [--login N] [--budget N] [--after <event>] --yes [-- <flags>]
-bun run runs pause <name> --after promoted|compacted|reported|finished --yes
+bun run runs pause <name> [--after next|promoted|compacted|reported|finished] --yes
 ```
 
 `continue` runs a stopped campaign again in the worktree that holds its log, on the flags its last
@@ -182,7 +186,10 @@ bun run runs pause <name> --after promoted|compacted|reported|finished --yes
 budget word may have set since, and `--budget` names another. Flags after `--` replace the kept
 flags. It refuses as `launch` does, and refuses `--at` another commit while any comparison began
 and has not reported (`openComparisons`). That comparison needs its own code until it reports.
-For a measured run, continue at its opening commit and measure a fix with a fresh run
+It also refuses, before any pause, a login at its cap of live runs across the fleet, a GPT run on
+a machine that already carries one, and a fleet it could not count (`startRefusal`), counting
+every live run but the one it starts. `move` asks the same of the destination, and a keeper waits
+on it instead. For a measured run, continue at its opening commit and measure a fix with a fresh run
 (`AGENTS.md`, section 10, item 9).
 
 `pause` waits until the log has gained one more of the event (`harness.promoted`,
@@ -191,6 +198,10 @@ Examiner session or draft is open, and then stops the run. The Builder's convers
 throughout a led campaign, and a pause cuts it: the campaign continued opens a new one on its
 notes, and the session the stop fell inside has spent its id. `continue --after <event>` is that
 pause and then the continue, which is how a run moves to another login or commit at a clean point.
+`--after next`, the default of `pause`, waits only for the next finished solve or tool call any
+seat records (`solve.finished` or a `*.call`), looking every second, and stops the run there with
+whatever is open: the quickest way to free a login. A comparison it cuts goes on under its own
+terms when the run continues, and a cut solve is solved again.
 
 A word left with `tools/d2/word.ts` acts at the next move boundary and spends no session:
 `--stop "<why>"` ends the campaign `operator`, which is a pause the operator words; `--budget N`
@@ -298,8 +309,8 @@ After an install, prune controllers beyond the newest three by readiness time; p
 and working directories protect live controllers. Failed process inspection preserves them.
 `continue --at` resolves that revision here, and uses its launcher on the peer.
 Environment files stay on their own machine and relative names remain relative to the configured
-checkout. A login shell supplies its tools; `ANA_HOSTS=[]` prevents recursive fan-out. `on` remains
-an explicit override. `hosts` shows peer statuses; `hosts --health` includes this machine and
+checkout. A login shell supplies its tools; `ANA_HOP=1` prevents recursive fan-out and leaves a
+keeper started there counting every host. `on` remains an explicit override. `hosts` shows peer statuses; `hosts --health` includes this machine and
 every peer in one reading. The shared `scriptOn` and
 `askedScript` in `tools/runs/hosts.ts` provide the same boundary to skill scripts, and any script
 that parses through `.claude/skills/main/cli.ts` runs on a peer with `--host <name>`.

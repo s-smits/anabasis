@@ -8,7 +8,7 @@ import { checkpoint, settleReading, type CheckpointRequest } from "../src/campai
 import { scored } from "../src/kernel/compare.ts";
 import { recordCondition, settingId } from "../src/kernel/condition.ts";
 import { append, read } from "../src/kernel/log.ts";
-import { lastReports, stopRule } from "../src/kernel/reports.ts";
+import { lastReports, pairsReported, stopRule } from "../src/kernel/reports.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import { taskStates } from "../src/kernel/task.ts";
 import {
@@ -321,7 +321,7 @@ it("reads promotion tallies with restored, removed and wrong answers from the se
     append(s.log, "harness.promoted", { from: "old", harness: "fresh" });
     const events = read(s.log);
     const report = present(lastReports(events)[0]);
-    const reading = scored(comparison.labelledPairs(events, report));
+    const reading = scored(pairsReported(events, report));
     const { wins, losses, ties, p } = present(settled.scored);
     expect(reading).toMatchObject({ wins, losses, ties, p });
   }

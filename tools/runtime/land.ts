@@ -2,7 +2,7 @@
  * Lands a pull request, with every open one beneath it, on main, after proving each commit the
  * landing would publish where it sits.
  *
- *   bun run land -- [<pull request>] [--auto] [--sanitize | --merge [--alone]] [--jobs N]
+ *   bun run land -- [<pull request>] [--auto] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]
  *
  * `--auto` follows the top: it lands the top of the longest chain above the pull request named, and
  * after the proof, and again after `ci.yml` before a merge, it reads the chain again and lands its
@@ -13,8 +13,9 @@
  * it, and follows its top (`oldestStack`; operator, 27 October). It never follows into another
  * chain on main.
  *
- * A push runs no test: the pre-push hook runs every other step of the CI gate over the pushed head
- * (`tools/runtime/pre-push.ts`), so a pushed commit is unproved until it lands here. This is where
+ * A plain push runs no step of the CI gate, and one with `ANA_PUSH_VERIFY=1` only the static steps
+ * and nearby tests over the pushed head (`tools/runtime/pre-push.ts`), so a pushed commit is unproved
+ * until it lands here. This is where
  * each landing head's first-parent line above main is proved over its own checkout: the static
  * steps and its nearby tests, and the whole CI gate, the full suite among it, on the top's head
  * (`tools/runtime/gate.ts`), each pass already recorded skipped. `--sanitize` runs that proof when
@@ -25,12 +26,15 @@
  * read.
  *
  * Without a flag nothing is written to GitHub. `--sanitize` posts each commit's verdict as the
- * status `ana/commit` and stops. It also posts the check `mergeable` on each pull request's head:
- * success on each head as soon as every commit from the bottom to it has passed, so the stack turns
- * green from the bottom up while the rest is gated, and failure on the head that holds a failed
- * commit and on each above it. It posts no pending first: `mergeable.yml` marks a pushed head
- * pending, and until 28 October a rerun set every proved head back to pending before its remembered
- * passes turned it green again, so an unchanged stack read as reset. A check belongs
+ * status `ana/commit` and stops, posting no status GitHub already shows (`statusPoster`). It also
+ * posts the check `mergeable` on each pull request's head: success on each head as soon as every
+ * commit from the bottom to it has passed, so the stack turns green from the bottom up while the
+ * rest is gated, and failure on the head that holds a failed
+ * commit and on each above it. It posts pending only where a commit is proved afresh, on that commit
+ * and on each head from the one holding it up, so a red an earlier landing left clears once its fix
+ * is being proved: `mergeable.yml` marks a pushed head pending, and until 28 October a rerun set every
+ * proved head back to pending before its remembered passes turned it green again, so an unchanged
+ * stack read as reset. A check belongs
  * to its commit, so a push leaves the new head without it and the pull request reads unproved again
  * (`mergeable.yml` marks it and the heads above it pending); a label would outlive the head it was
  * earned on (the operator, 27 October). That is how a stack shows it is ready. A pull request opens as a
@@ -69,7 +73,22 @@
  *
  * A failure names the commit and the pull request it sits on. Its fix goes into that commit, the
  * pull requests above it are replayed on it (stack-pr, section 8), and a second landing runs only
- * what the replay moved. `--jobs N` gates up to N commits at once; the top's whole CI gate runs alone.
+ * what the replay moved. A commit whose runner gave no verdict is marked with an error instead, and
+ * the landing asks only to be run again. The chain is read again as each commit's proof starts and
+ * before each pull request turns green where a commit was proved since, in full only where a pull
+ * request opened, closed or moved (`checkListed`), so a head that moved is landed as it stands, its newer
+ * commits with it, before a stale commit is proved, up to `MOVES` times. Until 29 October it was read
+ * only as a pull request turned green, so a head pushed while its own commits were gated had its old
+ * commits proved first, its old top's whole gate among them. `--jobs N` gates up to N commits at once; the
+ * top's whole CI gate runs alone.
+ *
+ * `ci.yml` is waited for in the open: the top's head carries a status of that name, pending while
+ * the run goes and linked to it, since a dispatched run shows on no pull request, and on 28 October
+ * a landing that reused a passed run read as one that merged without CI. A failed run brings its
+ * failed jobs and the tail of their log home beside the gate's logs, and the refusal names the run
+ * to rerun where its runner was at fault. `--merge --tag vX.Y.Z` cuts that release at the merge
+ * commit, with the notes GitHub writes from the merged pull requests (`release`); a tag origin
+ * holds already is refused before anything is gated.
  *
  * GitHub holds main to this command. Since 25 October the repository allows merge commits only,
  * and ruleset 25824510 on the default branch, with no bypass actors, refuses deleting main and any
@@ -78,21 +97,21 @@
  * only `--merge` posts (`STACK_CONTEXT`). `gh api repos/s-smits/anabasis/rulesets/25824510` reads
  * it. The one gap: a token with admin rights can post that status by hand.
  */
-import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { parseArgs, runtimeProcess } from "../../src/meta/process.ts";
 import { decodeOutput, runSync } from "../../src/meta/subprocess.ts";
 import { plural } from "../../src/meta/text.ts";
-import { addedLine, changesSource, git, gitSays, type Proof, proveCommits, short } from "./gate.ts";
-
-/** An open pull request, in the fields `gh pr list --json` names. */
-export interface Pull {
-  readonly number: number;
-  readonly headRefName: string;
-  readonly baseRefName: string;
-  readonly headRefOid: string;
-  readonly isDraft: boolean;
-  readonly labels: readonly { readonly name: string }[];
-}
+import { doubledLines } from "./doubled.ts";
+import { gh, ghOrThrow, openPulls, type Pull } from "./pulls.ts";
+import {
+  addedLine,
+  changesSource,
+  failedLine,
+  git,
+  gitSays,
+  type Proof,
+  proveCommits,
+  short,
+} from "./gate.ts";
 
 interface Landing {
   readonly trunk: string;
@@ -101,6 +120,8 @@ interface Landing {
   readonly pulls: readonly Pull[];
   /** The bottom of each other open chain on the trunk, with another pull request above it. */
   readonly beside: readonly Pull[];
+  /** Every open pull request, as the landing read them. */
+  readonly open: readonly Pull[];
 }
 
 interface Mode {
@@ -109,30 +130,43 @@ interface Mode {
   readonly auto: boolean;
   readonly alone: boolean;
   readonly jobs: number;
+  /** The release `--merge --tag` cuts at the merge. */
+  readonly tag: string | null;
 }
 
-interface Answer {
-  readonly ok: boolean;
-  readonly out: string;
-  readonly err: string;
+/** A commit status as GitHub's statuses API takes it; `link` is the target its Details opens. */
+interface Status {
+  readonly context: string;
+  readonly state: string;
+  readonly description: string;
+  readonly link?: string | undefined;
 }
 
 const COMMIT_CONTEXT = "ana/commit";
 const MERGEABLE_CONTEXT = "mergeable";
 const STACK_CONTEXT = "ana/stack-gate";
+const CI_CONTEXT = "ci.yml";
 const CI_WORKFLOW = "ci.yml";
 /** ANA_CI_POLL_MS shortens it for the tests that walk a run from queued to completed. */
 const CI_POLL_MS = Number(runtimeProcess.env.ANA_CI_POLL_MS) || 20_000;
 /** `ci.yml`'s jobs stop at 45 minutes; the rest is the macOS runner's queue. */
 const CI_WAIT_MS = 75 * 60_000;
+/** Each failed job of a `ci.yml` run, with its failed steps, one line each. */
+const CI_FAILED = String.raw`.jobs[] | select(.conclusion == "failure") | "\(.name): \([.steps[] | select(.conclusion == "failure") | .name] | join(", "))"`;
+/** How many of a failed run's last log lines a refusal prints; the whole log is kept beside the gate's. */
+const CI_TAIL = 40;
+/** How many times a landing reads its chain again after a head moved, before it refuses. */
+const MOVES = 3;
 /** A stack's merge is queued on GitHub's side and read back until it ends; stack 160's took a
  *  second. ANA_CI_POLL_MS shortens the poll for the tests as for `ci.yml`. */
 const STACK_POLL_MS = Number(runtimeProcess.env.ANA_CI_POLL_MS) || 2000;
 const STACK_WAIT_MS = 10 * 60_000;
+/** Each status a GraphQL reading of commits finds, as `statusPoster` spells a status it posts. */
+const SHOWN = String.raw`.data.repository[] | select(. != null) | .oid as $sha | (.status.contexts // [])[] | [$sha, .context, (.state | ascii_downcase), .description] | join("\t")`;
 /** The labels that rank a pull request's importance; each of a landing carries exactly one. */
 const IMPORTANCE = /^importance:I[0-3]$/u;
-/** The labels that file a pull request under a subject; each of a landing carries at least one. */
-const CATEGORIES = new Set([
+/** Subject labels: each pull request in a landing needs at least one. */
+export const CATEGORIES = new Set([
   "harness",
   "climb",
   "comparison",
@@ -147,44 +181,19 @@ const CATEGORIES = new Set([
   "docs",
   "misc",
 ]);
-const USAGE = "usage: bun run land -- [<pull request>] [--auto] [--sanitize | --merge [--alone]] [--jobs N]";
+const USAGE =
+  "usage: bun run land -- [<pull request>] [--auto] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]";
+const TAG = /^v\d+\.\d+\.\d+$/u;
 
 class Refusal extends Error {}
+/** A head moved while the landing was proved. Passes are remembered by tree, so landing again costs
+ *  only the moved commits; until 28 October it refused, and someone had to start it again. */
+class Moved extends Refusal {}
 
 const say = (line: string): void => console.log(`land: ${line}`);
 const numbers = (pulls: readonly Pull[]): string => pulls.map((pull) => `#${String(pull.number)}`).join(", ");
 // `{owner}/{repo}` is gh's own placeholder for the repository the working directory's remote names.
 const api = (path: string): string => `repos/{owner}/{repo}/${path}`;
-
-function gh(root: string, args: readonly string[]): Answer {
-  const result = runSync(["gh", ...args], { cwd: root });
-  return {
-    ok: result.exitCode === 0,
-    out: decodeOutput(result.stdout).trim(),
-    err: decodeOutput(result.stderr).trim(),
-  };
-}
-
-export function ghOrThrow(root: string, args: readonly string[]): string {
-  const answer = gh(root, args);
-  if (!answer.ok) throw new Error(`gh ${args.join(" ")}: ${answer.err}`);
-  return answer.out;
-}
-
-/** Every open pull request of the repository `root`'s remote names, as GitHub lists them now. */
-export const openPulls = (root: string): Pull[] =>
-  parseJsonAs<Pull[]>(
-    ghOrThrow(root, [
-      "pr",
-      "list",
-      "--state",
-      "open",
-      "--limit",
-      "200",
-      "--json",
-      "number,headRefName,baseRefName,headRefOid,isDraft,labels",
-    ]),
-  );
 
 const trunkOf = (root: string): string =>
   ghOrThrow(root, ["repo", "view", "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"]);
@@ -250,7 +259,7 @@ function readLanding(root: string, target: number): Landing {
       !pulls.includes(pull) &&
       open.some((above) => above.baseRefName === pull.headRefName),
   );
-  return { trunk, trunkSha, pulls, beside };
+  return { trunk, trunkSha, pulls, beside, open };
 }
 
 /** The importance labels a pull request carries; a landing asks for exactly one. */
@@ -278,7 +287,8 @@ function checkLabels(landing: Landing): void {
 }
 
 /** The last merge has the top's tree only when each head contains the one beneath it, down to the
- *  trunk's current head. */
+ *  trunk's current head, and each pull request shows its own commits only when its head holds no
+ *  other open one's off its chain (`doubled.ts`). */
 function checkChain(root: string, landing: Landing): void {
   let below = { name: `${landing.trunk}'s head`, sha: landing.trunkSha };
   for (const pull of landing.pulls) {
@@ -290,9 +300,11 @@ function checkChain(root: string, landing: Landing): void {
     }
     below = { name: `#${String(pull.number)}'s head`, sha: pull.headRefOid };
   }
+  const repeating = doubledLines(root, landing.open, (pull) => landing.pulls.includes(pull));
+  if (repeating.length > 0) throw new Refusal(`${repeating.join(" ")} Land again.`);
 }
 
-function postStatus(root: string, sha: string, context: string, state: string, description: string): boolean {
+function postStatus(root: string, sha: string, { context, state, description, link }: Status): boolean {
   return gh(root, [
     "api",
     "-X",
@@ -305,7 +317,26 @@ function postStatus(root: string, sha: string, context: string, state: string, d
     "-f",
     `description=${description}`,
     "--silent",
+    ...(link === undefined ? [] : ["-f", `target_url=${link}`]),
   ]).ok;
+}
+
+/** `postStatus`, passing over what GitHub shows already on `shas`, read in one GraphQL call: on 30
+ *  October a landing over remembered passes posted 81 statuses one by one, about 0.6 s each, every
+ *  one shown already, where one reading of the 64 commits took 0.9 s. Unread, every status is posted. */
+function statusPoster(root: string, shas: readonly string[]): (sha: string, status: Status) => void {
+  const objects = shas.map(
+    (sha, index) =>
+      `c${String(index)}: object(oid: "${sha}") { ... on Commit { oid status { contexts { context state description } } } }`,
+  );
+  const query = `query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { ${objects.join(" ")} } }`;
+  const args = ["api", "graphql", "-F", "owner={owner}", "-F", "name={repo}", "--jq", SHOWN];
+  const read = shas.length === 0 ? null : gh(root, [...args, "-f", `query=${query}`]);
+  const shown = new Set(read?.ok === true ? read.out.split("\n") : []);
+  return (sha, status) => {
+    const row = [sha, status.context, status.state, status.description].join("\t");
+    if (!shown.has(row) && postStatus(root, sha, status)) shown.add(row);
+  };
 }
 
 /** The newest `ci.yml` run on `sha` that a later one did not cancel, as its status, conclusion, id
@@ -320,9 +351,9 @@ function ciRun(root: string, sha: string): string[] | null | undefined {
     "--commit",
     sha,
     "--json",
-    "status,conclusion,databaseId,url",
+    "status,conclusion,databaseId,url,createdAt",
     "--jq",
-    String.raw`[.[] | select(.conclusion != "cancelled")] | first // empty | [.status, .conclusion, .databaseId, .url] | map(tostring) | join("\t")`,
+    String.raw`[.[] | select(.conclusion != "cancelled")] | first // empty | [.status, .conclusion, .databaseId, .url, .createdAt] | map(tostring) | join("\t")`,
   ]);
   if (!read.ok) return undefined;
   return read.out === "" ? null : read.out.split("\t");
@@ -335,7 +366,13 @@ function startCi(root: string, top: Pull): void {
   if (ci === undefined) {
     throw new Refusal(`GitHub did not list ${CI_WORKFLOW}'s runs on ${head}. Land again.`);
   }
-  if (ci !== null) return;
+  if (ci !== null) {
+    const [status, conclusion, id, url, at] = ci;
+    say(
+      `${CI_WORKFLOW} run ${id ?? ""} of ${at ?? "an earlier landing"} is already on ${head}, ${conclusion === undefined || conclusion === "" ? status : conclusion}; its verdict stands: ${url ?? ""}`,
+    );
+    return;
+  }
   const workflow = runSync(["git", "show", `${top.headRefOid}:.github/workflows/${CI_WORKFLOW}`], {
     cwd: root,
   });
@@ -349,24 +386,48 @@ function startCi(root: string, top: Pull): void {
   say(`dispatched ${CI_WORKFLOW} on ${head}; it runs while the commits are gated here.`);
 }
 
+/** Waits for `ci.yml` on the top's head and shows its verdict there as the check `ci.yml`, linked to
+ *  its run: a run `land` dispatches is no pull request's run, so GitHub lists it on no pull request,
+ *  and on 28 October a merge after a passed run read as one made without CI. */
 async function awaitCi(root: string, top: Pull): Promise<void> {
   const deadline = Date.now() + CI_WAIT_MS;
   let ci = ciRun(root, top.headRefOid);
+  const show = (state: string, description: string): void => {
+    postStatus(root, top.headRefOid, { context: CI_CONTEXT, state, description, link: ci?.[3] });
+  };
+  if (ci?.[0] !== "completed") show("pending", "waiting for the ci.yml run that bun run land started");
   while (ci?.[0] !== "completed" && Date.now() < deadline) {
     await Bun.sleep(CI_POLL_MS);
     ci = ciRun(root, top.headRefOid) ?? ci;
   }
-  const [status, conclusion, id, url] = ci ?? [];
+  const [status, conclusion, id = "", url] = ci ?? [];
   const head = `#${String(top.number)}'s head ${short(top.headRefOid)}`;
   if (conclusion === "success") {
+    show("success", `ci.yml run ${id} passed on this head`);
     say(`${CI_WORKFLOW} passed on ${head}: ${url ?? ""}`);
     return;
   }
+  show(
+    status === "completed" ? "failure" : "pending",
+    `ci.yml run ${id} ${conclusion === undefined || conclusion === "" ? "has not finished" : conclusion}`,
+  );
+  if (status !== "completed") {
+    throw new Refusal(
+      `${CI_WORKFLOW} on ${head} has not finished: ${url ?? "no run has started"}. Land again once it has.`,
+    );
+  }
+  // The failed jobs' own output, fetched here so the fix starts from it rather than from a link.
+  const steps = gh(root, ["run", "view", id, "--json", "jobs", "--jq", CI_FAILED]).out;
+  const fetched = gh(root, ["run", "view", id, "--log-failed"]);
+  const failed = fetched.ok ? fetched.out : `gh could not fetch the failed jobs' log: ${fetched.err}`;
+  const logs = git(root, ["rev-parse", "--path-format=absolute", "--git-path", "ana-gate"]);
+  const log = `${logs}/land-ci-${short(top.headRefOid)}.log`;
+  await Bun.write(log, `${failed}\n`);
+  if (steps !== "") console.error(steps);
+  console.error(failed.split("\n").slice(-CI_TAIL).join("\n"));
   throw new Refusal(
-    status === "completed"
-      ? `${CI_WORKFLOW} ended ${conclusion ?? ""} on ${head}: ${url ?? ""}. Fix the commit it names, or run ` +
-          `gh run rerun ${id ?? ""} if the runner was at fault, and land again.`
-      : `${CI_WORKFLOW} on ${head} has not finished: ${url ?? "no run has started"}. Land again once it has.`,
+    `${CI_WORKFLOW} ended ${conclusion ?? ""} on ${head}: ${url ?? ""}. Its failed jobs' log: ${log}. Fix the ` +
+      `commit it names, or run gh run rerun ${id} if the runner was at fault, and land again.`,
   );
 }
 
@@ -413,7 +474,7 @@ async function mergeStack(
   root: string,
   landing: Landing,
   stack: number | null,
-): Promise<"merged" | "refused" | "unsure"> {
+): Promise<{ readonly ended: "merged" | "refused" | "unsure"; readonly sha: string }> {
   // SAFETY: a landing holds at least the pull request it was named by.
   const top = landing.pulls.at(-1) as Pull;
   const path = api(`pulls/${String(top.number)}/merge-async`);
@@ -435,7 +496,7 @@ async function mergeStack(
   ]);
   if (!asked.ok) {
     console.error(`land: GitHub did not merge ${name}: ${asked.err}`);
-    return "refused";
+    return { ended: "refused", sha: "" };
   }
   let [status = "", uuid = "", sha = "", message = ""] = asked.out.split("\t");
   const deadline = Date.now() + STACK_WAIT_MS;
@@ -451,7 +512,7 @@ async function mergeStack(
         `land: GitHub's merge of ${name} ${why}; the statuses stand. Read ${landing.trunk} and the stack before ` +
           `anything lands.`,
       );
-      return "unsure";
+      return { ended: "unsure", sha: "" };
     }
     await Bun.sleep(STACK_POLL_MS);
     const read = gh(root, ["api", `${path}/${uuid}`, "--jq", fields]);
@@ -459,7 +520,7 @@ async function mergeStack(
   }
   if (status !== "merged") {
     console.error(`land: GitHub did not merge ${name}: its merge ended ${status}: ${message}`);
-    return "refused";
+    return { ended: "refused", sha };
   }
   if (
     sha !== "" &&
@@ -469,49 +530,87 @@ async function mergeStack(
     say(
       `${numbers(landing.pulls)} merged into ${landing.trunk} as ${name}, at ${short(top.headRefOid)}: ${short(sha)}.`,
     );
-    return "merged";
+    return { ended: "merged", sha };
   }
   console.error(
     `land: ${name} merged into ${landing.trunk} as ${sha === "" ? "a commit GitHub did not name" : short(sha)}, ` +
       `whose tree is not the tree of ${short(top.headRefOid)} that the gate read. Read ${landing.trunk} before ` +
       `anything lands on it.`,
   );
-  return "unsure";
+  return { ended: "unsure", sha };
 }
 
-/** Refuses a proof whose chain has moved before its success is published. */
+/** The open pull requests by number, base and head, which say whether any of them moved. */
+const placesOf = (pulls: readonly Pull[]): string =>
+  pulls
+    .map((pull) => `${String(pull.number)} ${pull.baseRefName} ${pull.headRefOid}`)
+    .toSorted()
+    .join("\n");
+
+/** `checkCurrent`, read in full only where GitHub's one list of open pull requests, about 0.8 s,
+ *  differs from the landing's; the full reading adds the trunk's head, two fetches and the doubled
+ *  lines, about 3 s. On 30 October a landing of 17 pull requests, every pass remembered, read the
+ *  chain in full 17 times before its first commit was proved afresh. */
+function checkListed(root: string, target: number, landing: Landing): void {
+  if (placesOf(openPulls(root)) !== placesOf(landing.open)) checkCurrent(root, target, landing);
+}
+
+/** Refuses a proof whose chain has moved before a commit's proof starts or a success is published. */
 function checkCurrent(root: string, target: number, landing: Landing): void {
   const again = readLanding(root, target);
   checkChain(root, again);
   if (
     again.pulls.map((pull) => pull.headRefOid).join() !== landing.pulls.map((pull) => pull.headRefOid).join()
   ) {
-    throw new Refusal("a pull request's head moved while its commits were gated. Land again.");
+    throw new Moved("a pull request's head moved while its commits were gated.");
   }
 }
 
-/** Posts the required status on every head, then merges the top with the stack beneath it. A merge
- *  that does not go through takes the status back from every head. */
-async function merge(root: string, target: number, landing: Landing): Promise<boolean> {
+/** Posts the required status on every head, then merges the top with the stack beneath it, and
+ *  gives the merge commit. A merge that does not go through takes the status back from every head. */
+async function merge(root: string, target: number, landing: Landing): Promise<string | null> {
   checkCurrent(root, target, landing);
   const heads = landing.pulls.map((pull) => pull.headRefOid);
   const stack = stackOf(root, landing);
   const revoke = (): void => {
-    for (const sha of heads) postStatus(root, sha, STACK_CONTEXT, "pending", "Waiting for bun run land");
+    const waiting = { context: STACK_CONTEXT, state: "pending", description: "Waiting for bun run land" };
+    for (const sha of heads) postStatus(root, sha, waiting);
   };
   const proved = "every commit passed on its own; the top passed the whole gate here and ci.yml on GitHub";
-  if (!heads.every((sha) => postStatus(root, sha, STACK_CONTEXT, "success", proved))) {
+  if (
+    !heads.every((sha) =>
+      postStatus(root, sha, { context: STACK_CONTEXT, state: "success", description: proved }),
+    )
+  ) {
     revoke();
     throw new Error(`the ${STACK_CONTEXT} status could not be posted on every head`);
   }
-  const ended = await mergeStack(root, landing, stack);
+  const { ended, sha } = await mergeStack(root, landing, stack);
   if (ended === "refused") {
     revoke();
     console.error(
       `land: nothing merged; ${numbers(landing.pulls)} ${landing.pulls.length === 1 ? "is" : "are"} open.`,
     );
   }
-  return ended === "merged";
+  return ended === "merged" ? sha : null;
+}
+
+/** Cuts the release at the merge the landing made, with the notes GitHub writes from the pull
+ *  requests it merged; they can be rewritten on the release afterwards. Until 28 October the release
+ *  was a step by hand after each landing (run-improvement-campaign), taken from main's head rather
+ *  than the gated merge (the operator, 28 October). */
+function release(root: string, mode: Mode, sha: string): number {
+  if (mode.tag === null) return 0;
+  const args = ["release", "create", mode.tag, "--target", sha, "--title", mode.tag, "--generate-notes"];
+  const made = gh(root, args);
+  if (made.ok) {
+    say(`released ${mode.tag} at ${short(sha)}: ${made.out}`);
+    return 0;
+  }
+  console.error(
+    `land: merged, and GitHub refused the release: ${made.err}. Cut it with: gh ${args.join(" ")}`,
+  );
+  return 1;
 }
 
 /** The index of the lowest pull request of the landing whose head holds `commit`. */
@@ -573,24 +672,29 @@ async function landTo(root: string, target: number, mode: Mode): Promise<number 
     `${numbers(landing.pulls)} onto ${landing.trunk} ${short(landing.trunkSha)}: ${plural(proofs.length, "commit")}.`,
   );
   const reach = mode.merge || mode.sanitize;
+  const post = statusPoster(root, reach ? proofs.map(({ commit }) => commit) : []);
   // A pull request turns green as soon as every commit from the bottom to its head has passed,
   // so the stack shows its proof climbing while the commits above are still being gated.
   const at = new Map(proofs.map((proof, index) => [proof.commit, index]));
   const passed = new Set<string>();
+  // The last reading of the open pull requests stands until a commit has been proved since: a
+  // remembered verdict takes no time, so the heads it turns green are read for once, not one by one.
+  const proving = new Set<string>();
+  let settled = true;
   let green = 0;
+  let pending = landing.pulls.length;
   const greenUpTo = (): void => {
     const unproved = proofs.findIndex((proof) => !passed.has(proof.commit));
     const upTo = unproved === -1 ? proofs.length : unproved;
     for (let pull = landing.pulls[green]; pull !== undefined; pull = landing.pulls[green]) {
       if ((at.get(pull.headRefOid) ?? upTo) >= upTo) return;
-      checkCurrent(root, target, landing);
-      postStatus(
-        root,
-        pull.headRefOid,
-        MERGEABLE_CONTEXT,
-        "success",
-        "every commit up to this head passed bun run land",
-      );
+      if (!settled) checkListed(root, target, landing);
+      settled = true;
+      post(pull.headRefOid, {
+        context: MERGEABLE_CONTEXT,
+        state: "success",
+        description: "every commit up to this head passed bun run land",
+      });
       if (pull.isDraft && !gh(root, ["pr", "ready", String(pull.number)]).ok) {
         say(
           `#${String(pull.number)} passed, and stays a draft: gh pr ready ${String(pull.number)} was refused.`,
@@ -604,8 +708,23 @@ async function landTo(root: string, target: number, mode: Mode): Promise<number 
     jobs: mode.jobs,
     say,
     mark: (commit, state, description) => {
+      if (state === "pending") {
+        checkListed(root, target, landing);
+        proving.add(commit);
+      }
+      settled = state === "pending" || (settled && !proving.has(commit));
       if (!reach) return;
-      postStatus(root, commit, COMMIT_CONTEXT, state, description);
+      post(commit, { context: COMMIT_CONTEXT, state, description });
+      // A head that holds a commit proved again reads pending until it passes, not an earlier red.
+      const from = state === "pending" ? Math.max(green, holding(root, landing, commit)) : pending;
+      for (const pull of landing.pulls.slice(from, pending)) {
+        post(pull.headRefOid, {
+          context: MERGEABLE_CONTEXT,
+          state: "pending",
+          description: "bun run land is proving it",
+        });
+      }
+      pending = Math.min(pending, from);
       if (state === "success") passed.add(commit);
       greenUpTo();
     },
@@ -613,12 +732,18 @@ async function landTo(root: string, target: number, mode: Mode): Promise<number 
   if (failed === null && mode.auto && moved(root, top)) return "moved";
   if (failed !== null) {
     for (const pull of reach ? landing.pulls.slice(holding(root, landing, failed.commit)) : []) {
-      const description = `${short(failed.commit)} fails ${failed.step} on its own`;
-      postStatus(root, pull.headRefOid, MERGEABLE_CONTEXT, "failure", description);
+      const description = failed.verdict
+        ? `${short(failed.commit)} fails ${failed.step} on its own`
+        : `${short(failed.commit)} got no verdict on ${failed.step}: land again`;
+      post(pull.headRefOid, {
+        context: MERGEABLE_CONTEXT,
+        state: failed.verdict ? "failure" : "error",
+        description,
+      });
     }
-    recipe(root, landing, failed.commit);
+    if (failed.verdict) recipe(root, landing, failed.commit);
     console.error(
-      `land: ${short(failed.commit)} FAILS ${failed.step} ON ITS OWN. Nothing was merged. Log: ${failed.log}`,
+      `land: ${failedLine(failed)}. Nothing was merged.${failed.verdict ? "" : " Land again."} Log: ${failed.log}`,
     );
     return 1;
   }
@@ -629,7 +754,8 @@ async function landTo(root: string, target: number, mode: Mode): Promise<number 
   }
   await awaitCi(root, top);
   if (mode.auto && moved(root, top)) return "moved";
-  return (await merge(root, target, landing)) ? 0 : 1;
+  const sha = await merge(root, target, landing);
+  return sha === null ? 1 : release(root, mode, sha);
 }
 
 async function main(argv: readonly string[]): Promise<number> {
@@ -641,6 +767,7 @@ async function main(argv: readonly string[]): Promise<number> {
       auto: { type: "boolean", default: false },
       alone: { type: "boolean", default: false },
       jobs: { type: "string", default: "1" },
+      tag: { type: "string" },
     },
     allowPositionals: true,
   });
@@ -650,7 +777,8 @@ async function main(argv: readonly string[]): Promise<number> {
     (named !== null && (!Number.isInteger(named) || named <= 0)) ||
     positionals.length > 1 ||
     !Number.isInteger(jobs) ||
-    jobs <= 0
+    jobs <= 0 ||
+    (values.tag !== undefined && (!values.merge || !TAG.test(values.tag)))
   ) {
     console.error(USAGE);
     return 2;
@@ -662,17 +790,33 @@ async function main(argv: readonly string[]): Promise<number> {
     auto: values.auto || named === null,
     alone: values.alone,
     jobs,
+    tag: values.tag ?? null,
   };
   try {
+    // A release the merge could not take is refused before anything is gated.
+    // `--exit-code` exits 2 where origin holds no such ref; any other failure says nothing of the tag.
+    const tagged =
+      mode.tag === null
+        ? 2
+        : runSync(["git", "ls-remote", "--exit-code", "--tags", "origin", mode.tag], { cwd: root }).exitCode;
+    if (tagged === 0) throw new Refusal(`${String(mode.tag)} is already a tag on origin.`);
+    if (tagged !== 2) throw new Refusal(`origin could not be asked whether it holds ${String(mode.tag)}.`);
     let target = named ?? oldestStack(root);
-    for (;;) {
+    for (let moves = 0; ; ) {
       if (mode.auto) {
         const open = openPulls(root);
         const wanted = target;
         const from = open.find((pull) => pull.number === wanted);
         if (from !== undefined) target = topAbove(open, from).number;
       }
-      const ended = await landTo(root, target, mode);
+      const ended = await landTo(root, target, mode).catch((error: unknown) => {
+        if (!(error instanceof Moved)) throw error;
+        if (moves >= MOVES) throw new Refusal(`${error.message} Land again once the stack stays still.`);
+        moves += 1;
+        say(`${error.message} Landing again on the heads as they stand.`);
+        return "again" as const;
+      });
+      if (ended === "again") continue;
       if (ended !== "moved") return ended;
       say(`a pull request was stacked on #${String(target)} while it landed; landing the new top.`);
     }

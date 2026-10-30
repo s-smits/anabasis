@@ -11,11 +11,14 @@
  * what is stacked on it, which decides whether it may still be rewritten. The reading is GitHub's at
  * this moment and the stack moves, so run it again before a branch, a pull request and a push.
  * Each line ends in the pull request's importance label (`I0` to `I3`), or `unranked` where it
- * carries none or several, which `bun run land` refuses.
+ * carries none or several, which `bun run land` refuses. Under them it names each pull request whose
+ * head holds another's without standing on it (`doubled.ts`), which `land` refuses as well.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
-import { openPulls, type Pull, ranksOf } from "#tools/runtime/land.ts";
+import { doubledLines } from "#tools/runtime/doubled.ts";
+import { ranksOf } from "#tools/runtime/land.ts";
+import { openPulls, type Pull } from "#tools/runtime/pulls.ts";
 
 /** The stacks: each the longest chain of open pull requests left, bottom first, longest first, and
  *  the pull requests on no such chain. A chain starts on a base that is no open pull request's head,
@@ -90,7 +93,10 @@ if (import.meta.main) {
   await runCommand(
     { name: "stack", usage: "stack.ts [--branch <branch>]", options: { branch: "text" } },
     (args: CommandArgs) => {
-      console.log(told(openPulls(runtimeProcess.cwd()), args.value("branch")).join("\n"));
+      const open = openPulls(runtimeProcess.cwd());
+      const repeating = doubledLines(runtimeProcess.cwd(), open);
+      console.log(told(open, args.value("branch")).join("\n"));
+      if (repeating.length > 0) console.log(["repeating another's commits:", ...repeating].join("\n  "));
     },
   );
 }

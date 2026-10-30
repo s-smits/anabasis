@@ -1,7 +1,7 @@
 # Whole-run investigation lanes
 
 This file is the whole catalogue: six deterministic rows the primary reviewer settles itself, and
-thirty-three lanes a paid session can be given, one question each. Read the stance below before any row
+thirty-four lanes a paid session can be given, one question each. Read the stance below before any row
 or lane, because every one of them is written from it. `tools/wri/catalogue.ts` parses this file,
 and `test/wri-catalogue.test.ts` holds it to `TRIGGERS` in `tools/wri/folds.ts`: every trigger the reader prints
 is named in the `Starts from` paragraph of the lane it starts.
@@ -46,7 +46,7 @@ A lane is started by a trigger: the capitalised text before the first colon of a
 `bun tools/wri/wri.ts read` prints, with the lane's number beside it. A trigger says a lane has
 something to read and never what the answer is, so a lane that contradicts its trigger with
 evidence has done its job. Three lanes are standing and open on every campaign, triggered or not:
-1, 18 and 23. `selected` also opens them where no report exists. Lanes 5 and 19 are isolated:
+1, 18, 23 and 34. `selected` also opens them where no report exists. Lanes 5 and 19 are isolated:
 each runs alone, only on its trigger, and freezes its result
 before it reads any other report.
 
@@ -72,7 +72,8 @@ built to keep them from.
 Each lane body opens with exactly one paragraph beginning `Starts from`. The lanes fall into nine
 sections, one for each label of "Labels" below that has lanes, and the sections run from the label
 with the most lanes to the label with the fewest: verdicts (1–8), supply (9–14), harness (15–20),
-comparison (21–25), climb (26–28), solve (29–30), economy (31), runs (32) and log (33).
+comparison (21–25), climb (26–28), solve (29–30), economy (31), runs (32) and log (33). Lane 34,
+added on 30 October, closes the catalogue under `climb`, so the numbers before it stand.
 
 The catalogue was renumbered on 27 October, when lanes 6, 15 and 17 were folded into lanes 3, 13
 and 16 and the rest were put in label order. A report, a ledger or a comment written before then
@@ -106,7 +107,7 @@ labels, and the row's lanes are drawn from those labels' lanes (run-improvement-
 | supply | 9–14 | `supply` | the Examiner, its task admission, which tasks are held out or released, or what the Examiner is told |
 | climb | 15–20 | `harness` | the Builder session or conversation, its prompt, tools, compaction or notes, practice, the harness contract, or what crosses the wall to the Builder |
 | honesty | 21–25 | `comparison` | a comparison's terms, pairing, scored set, test, A/A comparison or condition identity |
-| climb | 26–28 | `climb` | the move table, the campaign command's moves, promotion, the stop rule, the campaign's endings, the operator's words, or what follows a promotion |
+| climb | 26–28, 34 | `climb` | the move table, the campaign command's moves, promotion, the stop rule, the campaign's endings, the operator's words, or what follows a promotion |
 | honesty | 29–30 | `solve` | a solve's run, a backend, the wall, how a solve ends, non-results, or the host's solve slots and load |
 | economy | 31 | `economy` | billing, the budget, time and silence readers, or the closing report's work and spend |
 | honesty | 32 | `runs` | launching, continuing, moving and stopping runs, logins, hosts, controllers, receipts and run records |
@@ -169,7 +170,7 @@ A step still open at the log's end is named on a line of its own, with its turns
 out or practised and when it last wrote, or, for a comparison, its solves ended and open: the
 campaign command records a move as it begins; use the step's own ending to establish closure.
 
-## Lanes 1–33
+## Lanes 1–34
 
 ### The verdicts: the instrument, its review and its draft
 
@@ -386,7 +387,7 @@ reference answer is beaten by an answer on record under the objective. For each 
 and say whether it named a real defect and whether the Examiner could have acted on the reason it
 was given. Then read what leaves the set after the task admission: tasks disputed on a check's fault, tasks
 refused by a person as infeasible, and tasks waiting for a label (lane 10). Read the campaign's
-target and level: `SIZE` defaults to 24 frontier tasks and four solves per side, with retained
+target and level: `SIZE` defaults to 24 frontier tasks and two solves per side, with retained
 tasks alongside. `refusals` requires at least `sweepOf(level)` frontier tasks. Say how many it
 holds against those terms. Do not propose loosening the task admission from the yield alone. The
 decision it changes is whether another Examiner session is bought before the next comparison; it
@@ -1073,6 +1074,85 @@ cannot read. The decision it changes is whether any count in the other reports c
 the log's, and which reader to correct; it routes to `host` (`src/kernel/log.ts`,
 `src/kernel/reports.ts`, `tools/d2/close.ts`, `tools/runs/`) for a writer or reader at fault, and
 `environment` for a log written by two processes.
+
+### The audit
+
+Label: `climb`.
+
+**34. Harness quality, version by version.**
+
+Starts from every harness version the campaign kept, and is standing.
+
+The question is whether the harnesses a campaign climbed through got better at the domain, or only
+quicker at winning comparisons. A step says the new harness beat the reference on the scored tasks
+under one setting (rule 1). It does not say how hard those tasks were, or whether the change that
+won is one a person who knows the field would keep: on 30 October all six promotions of the cycle's
+runs after 02:45Z won on the objective alone. Promotions an hour measure the climb's speed; this
+lane reads what each promotion bought.
+
+Grade before you read a result, in this order, writing each grade into the report as it settles:
+
+1. From the campaign's derived folder (`wri.ts derive`, named in the campaigns section), read only
+   the `made:` and `parts:` lines of `versions.txt`: each kept version, its parent and its parts.
+   The comparison lines under each version are results; leave them for step 4.
+2. Diff each version against its parent: `harness-versions.ts --log <log> --diff <digest>` counts
+   the parts that moved, and `diff -r` of `states/<parent>/` and `states/<digest>/` beside the log
+   shows the lines ([harness-audit](../../harness-audit/SKILL.md)). Grade soundness.
+3. Read each scored task's public text in its `task.proposed` event and the checks it cites.
+   Grade reach.
+4. Only then read the comparison lines, `readings.txt` (each comparison's tally, the tally without
+   the bill and its A/A), and rows D and E in `rows.txt` (each task's valid share).
+
+Grade on two scales of 0 to 7. A scale of ten left its lower half unused once current models solve
+routine work (operator, 30 October), so eight points carry the range that occurs. Each grade is a
+reviewer's reading: it changes no verdict, reading, promotion or move, and no seat is told it.
+
+**Reach** is how hard a held-out task is for a strong current model working in the domain. Grade
+each task a comparison scored from its public text, the rules it cites and the checks that read it,
+before reading any outcome of it:
+
+- 0: one lookup, or a direct transform of the input;
+- 1: a routine method applied once;
+- 2: a few standard steps, one constraint at a time;
+- 3: several steps with one subtlety of the field that a careful generalist catches;
+- 4: constraints that interact, or the field's own engine used with care;
+- 5: specialist work: a method a generalist would not choose, or a tolerance that punishes approximation;
+- 6: work a specialist gets wrong on a first pass;
+- 7: the field's edge, where no published method fits whole.
+
+Then set each grade beside the reference's valid share of the task (rows D and E, `rows.txt`). A
+task graded low that no harness answers is lane 10's question; one graded high that the starter
+answers every time says the grade is too high for this solver, and is regraded once with that
+reason. For each comparison, give the grades of the untied tasks the new harness won and those it
+lost, and say on which grades the step rests. A version's reach is the highest grade at which it
+holds valid answers on most of its solves.
+
+**Soundness** is whether a version's change is right for the domain, beyond whether it won. Grade
+each version against its parent from the diff alone, before reading its comparison:
+
+- 0: it breaks or misleads: the guide claims what no tool does, or a tool fails its own call;
+- 1: it is fitted: it names practice content or narrows to the practice set's shapes (lane 18's limit);
+- 2: churn: rewording or reordering that no solve's behaviour could follow;
+- 3: plausible but narrow: it helps a few task shapes and is silent on the rest;
+- 4: sound for one part of the domain, stated generally;
+- 5: sound across the domain's kinds of task, and the solves under it call what it added;
+- 6: a method a specialist would teach, with its own checks built in;
+- 7: what an expert would adopt unchanged.
+
+Then read whether the step's wins fall where the change acts. Set the version's weight beside its
+soundness: guide lines, tools and tool-tree files from `versions.txt`. Weight that grows while
+soundness stays flat is weight, not quality.
+
+Write the grades under a `## Grades` heading between the verdict line and `## Findings`: one row a version in chain order
+(the digest's first eight characters, its parent, each comparison's reading with its tally and its
+tally without the bill, weight, soundness with one sentence, reach), then one row a comparison with
+the reach grades of the tasks won and lost. A sentence names parts, kinds and counts; it quotes no
+task, answer or line of the harness. The decision it changes is whether a climb is reported as the
+harness getting better at the domain, or as promotions won on easy tasks or on the objective alone;
+it routes to `operator` for that report, `harness/guide` or `harness/tools` for a version graded
+0 or 1, `examiner-prompt` (`src/examiner/prompt.ts`) where the scored tasks all grade 2 or below
+and the reference answers them, and `builder-prompt` (`src/builder/prompt.ts`) where soundness falls
+while promotions go on.
 
 ## Retired from v1
 

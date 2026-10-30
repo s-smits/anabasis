@@ -1,0 +1,9 @@
+# Supply area-specific guidance before tool calls (tools/runtime/moments.ts).
+[[hooks.PreToolUse]]
+matcher = "Bash|apply_patch"
+
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = 'bun "$(git rev-parse --show-toplevel)/tools/runtime/moments.ts"'
+timeout = 5
+statusMessage = "Reading relevant repository guidance"

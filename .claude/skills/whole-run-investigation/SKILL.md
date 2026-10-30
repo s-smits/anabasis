@@ -1,6 +1,6 @@
 ---
 name: whole-run-investigation
-description: "Investigate one Anabasis v2 campaign, or several as equals, from their logs and turn what it shows into findings with one owner each. Answers whether a comparison's reading (step, no-step, not-scored) may be believed, whether a fail was the solver's or the exam's, whether the harness could know the exam, whether the tasks bracket the solver, whether the campaign is climbing, and where the hours and dollars went. Reads evidence; starts no solve, session or round, and changes no verdict."
+description: "Investigate one campaign or several together from their logs, producing findings with named owners. Use for a run audit, a stalled climb, unexpected failures or doubts about a reading (step, no-step, not-scored). Examine correctness, evaluation validity, exam leakage, task difficulty, promotions, time and cost. This is read-only: start no solve, session or round and change no verdict."
 ---
 
 # Whole-Run Investigation
@@ -11,9 +11,12 @@ synthesis that says whether each reading may be believed, what limited it, and w
 change belongs to. It reads and proposes. It starts no solve, no session and no round, it appends to
 no log, and the host's verifier stays the one owner of every verdict.
 
-The catalogue has six deterministic rows and thirty-three lanes. [from-v1.md](references/from-v1.md)
+The catalogue has six deterministic rows and thirty-four lanes. [from-v1.md](references/from-v1.md)
 maps the earlier catalogue to this one. Lane 27 reads a promotion and the climb after it, with
-every campaign under review side by side. `AGENTS.md` sections 1 to 8 own the campaign's rules.
+every campaign under review side by side. Lane 34, standing, grades each harness version from 0 to
+7 on how hard the tasks it holds are (reach) and whether its change is right for the domain
+(soundness), so a climb's speed is read beside what it bought. `AGENTS.md` sections 1 to 8 own the
+campaign's rules.
 
 These narrower questions need no lanes. Start there when one is the whole question. A `wri.ts`
 command's `--log` accepts a path or a campaign's whole name, as `bun run runs` does, and `start` and
@@ -30,6 +33,7 @@ procedures; they are not commands to run inside a read-only investigation.
 | A report names tasks set aside on rejections: what does it read once they are labelled? | `bun tools/d2/settle.ts <the campaign's flags> --session <id>`, then label the rejections it draws |
 | Which sessions ran, from which parent, with which reading? | `bun tools/wri/wri.ts read --log <log>`, row F and the `CHAIN` line |
 | Did a promotion climb, beside the campaigns that ran the same pack, and did one campaign's `/tmp` reach another's solves? | `bun tools/wri/wri.ts climb --log <log>,<log>,<log>`: one row a campaign, then each solve that named what another campaign's session left |
+| How do this run's hours and dollars a promotion stand against every run of its release, pack and setting? | `.claude/skills/promotion-tuner/scripts/table.ts --rows groups` (or `--name <part> --rows promotions`): across campaigns, without `climb`'s solves |
 
 ## The procedure
 
@@ -44,6 +48,7 @@ start a step until the check named for the one before holds.
    as equals. Every lane reads every campaign, opens where a trigger fired on any of them, and
    triages each finding against the others on its `Seen in:` line; lane 27 is also given their
    climbs side by side. The logs are read again when the lanes are built.
+   `start` also derives each log quietly ("The readers, derived") and names its folder.
    With `bun --env-file=.env.runs tools/wri/wri.ts ... --log <name>`, a campaign on another machine
    is fetched automatically into `data/runs/<host>/<name>/`. Explicit log paths select an offline
    snapshot. `runs fetch <name>` remains available to refresh a copy explicitly. Lanes read the
@@ -59,7 +64,7 @@ start a step until the check named for the one before holds.
    *Check:* no `##` section is blank, and the hard rules are still there.
 3. **Build the lanes.** `wri.ts lanes --out <dir>` writes one prompt per lane under `<dir>/lanes/`
    and `<dir>/launch.json`, one session for each lane it built. With no `--lanes` it opens every
-   lane a trigger started and the three standing lanes. By default it builds no isolated lane:
+   lane a trigger started and the four standing lanes. By default it builds no isolated lane:
    it names the ones whose trigger fired for the primary to assess. A prompt built before is
    kept and excluded from any newly written `launch.json`.
    *Check:* exit 0, and count the sessions that this call built. If it built none, launch nothing:
@@ -96,6 +101,30 @@ Each runs as `bun tools/wri/wri.ts <verb>` from the checkout. The usage block at
 | 5 | `collect --out <dir>` | `reports.md` |
 | 6 | `synthesis --out <dir>` | `synthesis-prompt.md` |
 | lanes 1, 5 | `grade --log <log> [--bundle <pack>] --task <taskId> --answer <file>` | nothing: one verdict line. `--bundle` names a stored pack; a campaign that drafted its exam names none |
+| any | `derive (--log <log>[,<log>...] \| --all) [--verbose] [--force]` | `data/derived/<campaign>/`: one file a reader, and `manifest.json` |
+
+### The readers, derived
+
+Eight deterministic readers take one log and print what it holds (`READERS`,
+`tools/wri/derive.ts`): the rows and triggers, the kept versions, the readings, the next draw, the
+ending, the conditions, and what a Builder and an Examiner opening would be told. `derive` runs
+them all over a log into the main worktree's `data/derived/<campaign>/`, one `<reader>.txt` each,
+and replaces the folder whole where the log or the commit reading it moved since; a folder whose
+log stands is kept. So the files always describe one moment of the log, the latest a pass saw.
+
+There are two ways to use it:
+
+- **Quiet**, the default. It prints one line: how many campaigns it derived, how many it kept and
+  which readers failed. `start` runs it for its logs and names the folders in the instructions, and
+  a job on the central host runs `derive --all` after each gather, so every run on every host has
+  its folder while it runs and after. Read the files rather than running the readers again.
+- **Verbose**, `--verbose`, for a session that wants to see everything at once: it prints every
+  reader's file, under a heading naming the campaign and the reader, then the same line. It runs
+  nothing a quiet pass would not; with an unmoved log it prints the folder as it stands.
+
+`--force` derives again although nothing moved, after a reader's code changed without a commit.
+The folders hold hidden values as the log does, so they stay on the exam side and out of every
+prompt a seat reads.
 
 One investigation reads one question, over one campaign or several. Two campaigns of one pack, one
 under a checker and one under its repair, are read apart, and lane 3 of the later one joins them.
@@ -103,7 +132,7 @@ under a checker and one under its repair, are read apart, and lane 3 of the late
 ## Sizing
 
 One session reads one lane, on every campaign under review: more campaigns make each session
-longer, and add none. `selected` opens all three standing lanes even before a comparison
+longer, and add none. `selected` opens all four standing lanes even before a comparison
 reports, alongside any triggered open lanes. Count the manifest rather than assuming a size.
 When the budget is
 smaller than the build, read the groups in this order, because each rests on the one before:
@@ -114,9 +143,9 @@ smaller than the build, read the groups in this order, because each rests on the
    what the test could show at its size. Lanes 22 and 23 first.
 3. **The harness (15 to 20).** What changed and whether it could know the exam. Lane 18 first.
 4. **The supply (9 to 14), the solve (29 and 30), the economy (31), the runs (32) and the log (33).**
-5. **The climb (26 to 28).** Once a promotion is on record, open it before a person is told the campaign
+5. **The climb (26 to 28, and 34).** Once a promotion is on record, open it before a person is told the campaign
    improved a harness: it reads what the promotion rested on and what followed, and it rests on
-   lanes 15, 19, 23 and 26 where they ran.
+   lanes 15, 19, 23 and 26 where they ran. Lane 34 grades every version and runs from the start.
 
 In a release cycle the investigation shares the improvement window of twelve hours with the vetting
 and the stack's patches (run-improvement-campaign, "The improvement window"): launch every lane at
@@ -260,7 +289,7 @@ and where they still wait.
 
 | file | owns |
 | --- | --- |
-| [references/lanes.md](references/lanes.md) | the stance, the owner table, rows A to F and lanes 1 to 33 |
+| [references/lanes.md](references/lanes.md) | the stance, the owner table, rows A to F and lanes 1 to 34 |
 | [references/from-v1.md](references/from-v1.md) | what became of v1's nine rows and thirty-eight lanes, and what that says about v2's direction |
 | [references/shared-instructions.template.md](references/shared-instructions.template.md) | the preset every open lane carries |
 | [references/synthesis.template.md](references/synthesis.template.md) | the synthesis session's prompt |

@@ -1,7 +1,15 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { append, read } from "../src/kernel/log.ts";
-import { callList, callText, closingOf, traceOf, tracesIn, unfinished } from "../src/kernel/trace.ts";
+import {
+  callList,
+  callText,
+  closingOf,
+  cutSessions,
+  traceOf,
+  tracesIn,
+  unfinished,
+} from "../src/kernel/trace.ts";
 import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
@@ -11,6 +19,56 @@ const home = mkdtempSync(join(tmpdir(), "ana-trace-"));
 afterAll(() => rmSync(home, { recursive: true, force: true }));
 
 describe("a trace", () => {
+  it("recovers completed draft submissions without charging unread or failed calls as attempts", () => {
+    const log = join(home, "draft-cut.jsonl");
+    append(log, "draft.started", { session: "d-1" });
+    const sink = traceSink(log, "draft", "d-1", () => 1);
+    for (const [id, name, isError] of [
+      ["c-0", "read_opening", false],
+      ["c-1", "draft_exam", false],
+      ["c-2", "draft_exam", false],
+      ["c-3", "draft_exam", false],
+      ["c-4", "draft_exam", true],
+    ] as const) {
+      sink.afterTool({ type: "toolCall", id, name, arguments: {} }, { output: [], isError });
+    }
+    append(log, "draft.started", { session: "d-2" });
+    expect(cutSessions(read(log))).toMatchObject([
+      { of: "draft", session: "d-1", tries: 3 },
+      { of: "draft", session: "d-2", tries: 0 },
+    ]);
+    append(log, "draft.finished", { session: "d-1", ended: "killed", tries: 3 });
+    expect(cutSessions(read(log))).toMatchObject([{ session: "d-2", tries: 0 }]);
+  });
+  it("counts a draft cut inside its measurement, and only once solves name the session after its last put", () => {
+    const log = join(home, "draft-measuring.jsonl");
+    append(log, "draft.started", { session: "d-1" });
+    const sink = traceSink(log, "draft", "d-1", () => 1);
+    append(log, "solve.started", { solve: "s-1", comparison: "d-1" });
+    sink.afterTool({ type: "toolCall", id: "c-1", name: "draft_exam", arguments: {} }, { output: [] });
+    expect(cutSessions(read(log))).toMatchObject([{ session: "d-1", tries: 1 }]);
+    append(log, "solve.started", { solve: "s-2", comparison: "d-1" });
+    append(log, "solve.started", { solve: "s-3", comparison: "d-9" });
+    expect(cutSessions(read(log))).toMatchObject([{ session: "d-1", tries: 2 }]);
+  });
+  it("ends a cut Examiner session with what its task admissions held out and refused", () => {
+    const log = join(home, "exam-cut.jsonl");
+    append(log, "exam.started", { session: "x-1" });
+    for (const [version, session] of [
+      ["v-1", "x-1"],
+      ["v-2", "x-1"],
+      ["v-3", "x-1"],
+      ["v-4", "x-0"],
+    ] as const) {
+      append(log, "task.proposed", { session, version });
+    }
+    append(log, "task.gate", { version: "v-1", outcome: "passed" });
+    append(log, "task.gate", { version: "v-2", outcome: "refused" });
+    append(log, "task.gate", { version: "v-4", outcome: "passed" });
+    expect(cutSessions(read(log))).toMatchObject([
+      { of: "exam", session: "x-1", proposed: 3, held: ["v-1"], refused: ["v-2"] },
+    ]);
+  });
   it("isolates seats, bills summaries and lists complete calls with bounded indices", () => {
     const log = join(home, "seats.jsonl");
     for (const [seat, id] of [

@@ -24,6 +24,7 @@
  */
 import { epochLine, epochsOf } from "#src/campaign/climb.ts";
 import { decide } from "#src/campaign/decide.ts";
+import type { Plan } from "#src/campaign/ground.ts";
 import { type Decided, decidedLine, short } from "#src/campaign/move.ts";
 import { type Called, calledBy, namesOf } from "#src/campaign/names.ts";
 import { openingOf, planOf } from "#src/campaign/opening.ts";
@@ -159,28 +160,30 @@ export function viewLines(name: string, campaign: Campaign, now: number, called:
  * move on one log by construction.
  */
 export function decidedOn(events: readonly LogEvent[], values: Asked = {}): Decided {
+  return decide(events, planOn(events, values));
+}
+
+/** Resolve the plan shared by the move table and readers of its stopping conditions. */
+export function planOn(events: readonly LogEvent[], values: Asked = {}): Plan {
   const opening = openingOf(events);
   // Each term as this view is asked it, then as the opening keeps it, then the tree's default: the
   // scored tasks are the record's where it names them (`planOf`).
   const term = (flag: "level" | "target" | "practice", fallback?: string) =>
     values[flag] ?? opening?.terms[flag] ?? fallback;
   const target = term("target");
-  return decide(
+  return planOf(
     events,
-    planOf(
-      events,
-      {
-        unprepared: !events.some(({ kind }) => kind === "task.proposed"),
-        level: Number(term("level", COMPARISON_OPTIONS.level.default)),
-        target: target === undefined ? undefined : Number(target),
-        pastStop: values["past-stop"],
-        // The practice tasks the campaign is brought to, as the command passes them: without a
-        // count the table releases nothing, and the view said `build` where the command made
-        // `prepare` (found by review, 11 October).
-        practice: Number(term("practice", String(PRACTICE))),
-      },
-      opening,
-    ),
+    {
+      unprepared: !events.some(({ kind }) => kind === "task.proposed"),
+      level: Number(term("level", COMPARISON_OPTIONS.level.default)),
+      target: target === undefined ? undefined : Number(target),
+      pastStop: values["past-stop"],
+      // The practice tasks the campaign is brought to, as the command passes them: without a
+      // count the table releases nothing, and the view said `build` where the command made
+      // `prepare` (found by review, 11 October).
+      practice: Number(term("practice", String(PRACTICE))),
+    },
+    opening,
   );
 }
 

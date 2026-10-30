@@ -1,9 +1,12 @@
+// Settled pass labels must reach the pairs and the Examiner's known-answer facts together.
+// The audit of 29 October 2026 found both still reading a wrong pass as valid.
 import { describe, expect, it } from "bun:test";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import {
   comparedAs,
   lastReports,
+  latestBuilt,
   pairsReported,
   poolOf,
   releaseOrder,
@@ -11,7 +14,7 @@ import {
 } from "../src/kernel/reports.ts";
 import { billedAll, billedFor } from "../src/kernel/trace.ts";
 import { taskSets } from "../src/kernel/task.ts";
-import { asRecord, type JsonObject } from "../src/meta/json-shape.ts";
+import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { tallied } from "./helpers/tally.ts";
@@ -223,6 +226,36 @@ describe("a report read as it was found", () => {
     { task: "v1", old: [F, F], fresh: [P, P] },
     { task: "v2", old: [F, P], fresh: [F, P] },
   ];
+
+  it("reads a pass labelled wrong as its side's fail and leaves a sound pass unchanged", () => {
+    const sides = [...solved("g1", "v1", "h1", [F]), ...solved("g1", "v1", "h2", [P])];
+    const solve = sides.findLast(({ kind }) => kind === "solve.started")?.data.solve;
+    if (!isString(solve)) throw new Error("the passing side has no solve id");
+    const report = { ...terms, solves: 1, objective: { direction: "lower" } };
+    const before = [
+      ...heldOut("v1"),
+      ...sides,
+      event("verdict", { solve, kind: "pass", answer: {}, objective: 1 }),
+      reported("g1", "step", "h2", report),
+    ];
+    const pairs = pairsIn(before);
+    expect(pairs).toMatchObject([[{ task: "v1", old: [F], fresh: [P] }]]);
+    expect(pairs[0]?.[0]?.objective).toEqual({ direction: "lower", old: [null], fresh: [1] });
+    expect(poolOf(before).feasible.has("v1")).toBe(true);
+    for (const label of ["wrong", "sound"]) {
+      const settled = [
+        ...before,
+        reported("g1", "no-step", "h2", {
+          ...report,
+          settled: { passes: { [solve]: label } },
+        }),
+      ];
+      const expected = label === "wrong" ? [[{ task: "v1", old: [F], fresh: [F] }]] : pairs;
+      expect(pairsIn(settled)).toMatchObject(expected);
+      expect(pairsIn(settled)[0]?.[0]?.objective?.fresh).toEqual([label === "wrong" ? null : 1]);
+      expect(poolOf(settled).feasible.has("v1")).toBe(label === "sound");
+    }
+  });
 
   it("stays what it was after further solves, a release, a refusal and a person's settling", () => {
     const settled = [
@@ -516,25 +549,27 @@ describe("the release before the draw", () => {
     // new harness's answers measured half the reference's. The release reads the reference's own
     // solves alone, so the Builder reads one practice set either way (AGENTS.md rule 3). Drawing
     // from `poolOf`'s frontier released `a1` from one and `a2` from the other.
-    const won = (better: string) => {
-      const sides = ["a1", "a2"].flatMap((task) => [
-        ...solved("b-1", task, "h1", [P, P]),
-        ...solved("b-1", task, "h2", [P, P]),
-      ]);
-      const measures = better === "a1" ? [10, 10, 5, 5, 10, 10, 10, 10] : [10, 10, 10, 10, 10, 10, 5, 5];
-      return [
-        ...["a1", "a2"].flatMap(heldOut),
-        ...sides,
-        ...measuredAt(sides, measures),
-        reported("b-1", "no-step", "h2", {
-          ...terms,
-          versions: ["a1", "a2"],
-          objective: { direction: "lower", margin: 0.01 },
-        }),
-      ];
-    };
-    expect(poolOf(won("a1")).frontier).toEqual(["a1"]);
-    expect(poolOf(won("a2")).frontier).toEqual(["a2"]);
+    const won = (better: string) => [
+      ...["a1", "a2"].flatMap(heldOut),
+      ...["b-1", "b-2"].flatMap((session) => {
+        const sides = ["a1", "a2"].flatMap((task) => [
+          ...solved(session, task, "h1", [P, P]),
+          ...solved(session, task, "h2", [P, P]),
+        ]);
+        const measures = better === "a1" ? [10, 10, 5, 5, 10, 10, 10, 10] : [10, 10, 10, 10, 10, 10, 5, 5];
+        return [
+          ...sides,
+          ...measuredAt(sides, measures),
+          reported(session, "no-step", "h2", {
+            ...terms,
+            versions: ["a1", "a2"],
+            objective: { direction: "lower", margin: 0.01 },
+          }),
+        ];
+      }),
+    ];
+    // The frontier is the Builder's comparison size, so it reads the reference's own measures too.
+    expect(poolOf(won("a1")).frontier).toEqual(poolOf(won("a2")).frontier);
     expect(releaseOrder(won("a1"), ["a1", "a2"], 1, "seed")).toEqual(
       releaseOrder(won("a2"), ["a1", "a2"], 1, "seed"),
     );
@@ -616,8 +651,8 @@ describe("the tasks the reference harness exhausted", () => {
       ...solved(session, task, "h1", [P, P]),
       ...solved(session, task, fresh, [P, P]),
     ]),
-    ...solved(session, "open", "h1", [P, P]),
-    ...solved(session, "open", fresh, [F, P]),
+    ...solved(session, "open", "h1", [F, P]),
+    ...solved(session, "open", fresh, [P, P]),
     ...more.flatMap((task) => [
       ...solved(session, task, "h1", [F, F]),
       ...solved(session, task, fresh, [F, F]),
@@ -626,33 +661,189 @@ describe("the tasks the reference harness exhausted", () => {
   ];
   const start = closed.flatMap(heldOut);
 
-  it("are the ones the reference answered in every solve of one comparison, and stay in the draw as retained tasks", () => {
+  it("are the ones two readings or more call easy, and stay in the draw as retained tasks", () => {
     expect(poolOf(start).exhausted).toEqual([]);
     const once = compared(start, "b-1", "h2", SETTING);
-    const { exhausted, retained, scorable, frontier, outcomes } = poolOf(once);
-    expect(sorted(exhausted)).toEqual(closed);
-    expect(sorted(retained)).toEqual(closed);
+    expect(poolOf(once)).toMatchObject({ exhausted: [], retained: [] });
+    expect(sorted(poolOf(once).frontier)).toEqual(closed);
+    const twice = compared(once, "b-2", "h3", SETTING);
+    const { exhausted, retained, scorable, frontier, outcomes } = poolOf(twice);
+    const easy = ["e1", "e2", "e3"];
+    expect(sorted(exhausted)).toEqual(easy);
+    expect(sorted(retained)).toEqual(easy);
     expect(sorted(scorable)).toEqual(closed);
-    expect(frontier).toEqual([]);
-    expect(closed.map((task) => outcomes.get(task))).toEqual(closed.map(() => "reference-every"));
-    expect(poolOf(compared(once, "b-3", "h4", "other")).exhausted).toEqual(exhausted);
-    const released = [...once, event("task.state", { version: exhausted[0] ?? "", state: "released" })];
+    expect(frontier).toEqual(["open"]);
+    expect(closed.map((task) => outcomes.get(task))).toEqual([
+      "reference-every",
+      "reference-every",
+      "reference-every",
+      "reference-some",
+    ]);
+    expect(poolOf(compared(twice, "b-3", "h4", "other")).exhausted).toEqual(exhausted);
+    const released = [...twice, event("task.state", { version: exhausted[0] ?? "", state: "released" })];
     expect(poolOf(released).exhausted).not.toContain(exhausted[0]);
-    const reread = (valid: readonly (boolean | string)[]) => [
-      ...once,
-      ...solved("b-4", "e1", "h1", valid),
-      ...solved("b-4", "e1", "h5", [P, P]),
+    const reread = (own: readonly (boolean | string)[], next: readonly boolean[] = [P, P]) => [
+      ...twice,
+      ...solved("b-4", "e1", "h1", own),
+      ...solved("b-4", "e1", "h5", next),
       reported("b-4", "no-step", "h5", { ...terms, fresh: "h5", setting: SETTING, versions: ["e1"] }),
     ];
     const spent = (log: readonly LogEvent[]) => {
       const pool = poolOf(log);
       return [...pool.exhausted, ...pool.retained];
     };
+    expect(spent(reread([P, P]))).toContain("e1");
     expect(spent(reread([F, P]))).not.toContain("e1");
-    expect(spent(reread(["wall-ended", P]))).toContain("e1");
+    // The other harness's solves move nothing: the frontier sets a size the Builder is told (rule 3).
+    expect(spent(reread([P, P], [P, F]))).toContain("e1");
+    expect(spent(reread(["wall-ended", F], [F, F]))).toContain("e1");
   });
 
-  it("spares a task the objective told two valid answers apart on: the next harness can still win it", () => {
+  it("are read on the newest two readings in a row, each valid in every solve, whatever came before", () => {
+    const read = (sessions: readonly (readonly [string, readonly boolean[], readonly boolean[]])[]) =>
+      poolOf([
+        ...heldOut("t"),
+        ...sessions.flatMap(([session, own, next]) => [
+          ...solved(session, "t", "h1", own),
+          ...solved(session, "t", `n-${session}`, next),
+          reported(session, "no-step", `n-${session}`, {
+            ...terms,
+            fresh: `n-${session}`,
+            setting: SETTING,
+            versions: ["t"],
+          }),
+        ]),
+      ]).exhausted;
+    expect(
+      read([
+        ["b-1", [P, P], [P, P]],
+        ["b-2", [P, P], [P, P]],
+      ]),
+    ).toEqual(["t"]);
+    expect(
+      read([
+        ["b-1", [F, P], [P, P]],
+        ["b-2", [P, P], [P, P]],
+      ]),
+    ).toEqual([]);
+    expect(
+      read([
+        ["b-1", [F, F], [F, F]],
+        ["b-2", [P, P], [P, P]],
+        ["b-3", [P, P], [P, P]],
+      ]),
+    ).toEqual(["t"]);
+    expect(
+      read([
+        ["b-1", [P, P], [P, P]],
+        ["b-2", [P, P], [P, P]],
+        ["b-3", [F, P], [P, P]],
+      ]),
+    ).toEqual([]);
+  });
+
+  it("read the promoted harness on whichever side it stood, and nothing of the harness beside it", () => {
+    const begun = [
+      ...heldOut("t"),
+      ...solved("b-1", "t", "h1", [F, F]),
+      ...solved("b-1", "t", "h2", [P, P]),
+      reported("b-1", "step", "h2", { old: "h1", solves: 2, setting: SETTING, versions: ["t"] }),
+      promotion,
+    ];
+    const against = (fresh: string) => [
+      ...begun,
+      ...solved("b-2", "t", "h2", [P, P]),
+      ...solved("b-2", "t", fresh, [F, F]),
+      reported("b-2", "no-step", fresh, { old: "h2", solves: 2, setting: SETTING, versions: ["t"] }),
+    ];
+    expect(poolOf(begun).exhausted).toEqual([]);
+    expect(poolOf(against("h1")).exhausted).toEqual(["t"]);
+    expect(poolOf(against("h3")).exhausted).toEqual(["t"]);
+  });
+
+  it("tell the Builder one frontier size whichever held-out task the other harness failed (rule 3)", () => {
+    // The v0.9.0 review, 30 October: with the other side's solves pooled, two campaigns of equal
+    // tallies, each a loss on one task, held frontiers of 3 and 2.
+    const frontierOf = (r1: readonly [boolean[], boolean[]], r3: readonly [boolean[], boolean[]]) =>
+      poolOf([
+        ...["r1", "r2", "r3", "r4"].flatMap(heldOut),
+        ...["b-1", "b-2"].flatMap((session) => {
+          const sides = {
+            r1,
+            r2: [
+              [F, F],
+              [F, F],
+            ],
+            r3,
+            r4: [
+              [F, P],
+              [F, P],
+            ],
+          } satisfies Record<string, readonly [boolean[], boolean[]]>;
+          return [
+            ...Object.entries(sides).flatMap(([task, [own, next]]) => [
+              ...solved(session, task, "h1", own),
+              ...solved(session, task, `n-${session}`, next),
+            ]),
+            reported(session, "no-step", `n-${session}`, {
+              ...terms,
+              fresh: `n-${session}`,
+              setting: SETTING,
+              versions: ["r1", "r2", "r3", "r4"],
+            }),
+          ];
+        }),
+      ]).frontier.length;
+    expect(
+      frontierOf(
+        [
+          [P, P],
+          [P, F],
+        ],
+        [
+          [F, P],
+          [F, P],
+        ],
+      ),
+    ).toBe(
+      frontierOf(
+        [
+          [P, P],
+          [P, P],
+        ],
+        [
+          [F, P],
+          [F, F],
+        ],
+      ),
+    );
+  });
+
+  it("keep from practice only what the reference's own solves call easy", () => {
+    const practice = (next: readonly boolean[]) =>
+      poolOf([
+        ...heldOut("t"),
+        ...["b-1", "b-2"].flatMap((session) => [
+          ...solved(session, "t", "h1", [P, P]),
+          ...solved(session, "t", "h2", next),
+          reported(session, "no-step", "h2", { ...terms, fresh: "h2", setting: SETTING, versions: ["t"] }),
+        ]),
+      ]).practiceFrontier;
+    expect(practice([P, P])).toEqual([]);
+    expect(practice([F, F])).toEqual([]);
+    expect(
+      poolOf([
+        ...heldOut("t"),
+        ...solved("b-1", "t", "h1", [P, P]),
+        ...solved("b-1", "t", "h2", [P, P]),
+        reported("b-1", "no-step", "h2", { ...terms, fresh: "h2", setting: SETTING, versions: ["t"] }),
+      ]).practiceFrontier,
+    ).toEqual(["t"]);
+  });
+
+  it("spares a task its author's answer betters by the floor, and none the other harness's answer betters", () => {
+    // The other harness's measure on e1 is its result on the task: sparing e1 for it would tell the
+    // Builder a comparison size that moved with which task its harness bettered (rule 3).
     const measured = (log: readonly LogEvent[], session: string, fresh: string) => {
       const sides = [
         ...solved(session, "e1", "h1", [P, P]),
@@ -675,9 +866,8 @@ describe("the tasks the reference harness exhausted", () => {
     };
     const log = measured(measured(["e1", "e2"].flatMap(heldOut), "b-1", "h2"), "b-2", "h3");
     const pool = poolOf(log);
-    expect(pool).toMatchObject({ exhausted: ["e2"], retained: ["e2"], frontier: ["e1"] });
+    expect(pool).toMatchObject({ exhausted: ["e1", "e2"], retained: ["e1", "e2"], frontier: [] });
     expect(pool.outcomes.get("e1")).toBe("reference-every");
-    expect(poolOf(measured(log, "b-3", "h4")).exhausted).toEqual(["e2"]);
     const authored = (measure: number) =>
       poolOf([
         ...log,
@@ -688,9 +878,9 @@ describe("the tasks the reference harness exhausted", () => {
         }),
       ]);
     for (const [measure, exhausted, frontier] of [
-      [5, [], ["e1", "e2"]],
-      [10 - 1e-9, ["e2"], ["e1"]],
-      [9.95, ["e2"], ["e1"]],
+      [5, ["e1"], ["e2"]],
+      [10 - 1e-9, ["e1", "e2"], []],
+      [9.95, ["e1", "e2"], []],
     ] as const) {
       expect(authored(measure)).toMatchObject({ exhausted, frontier });
     }
@@ -711,7 +901,7 @@ describe("the tasks the reference harness exhausted", () => {
     const { held } = taskSets(log);
     expect(held.toSorted()).toEqual([...closed, "hard", "new"].toSorted());
     expect(awaiting).toEqual(["hard"]);
-    expect(sorted(exhausted)).toEqual(closed);
+    expect(sorted(exhausted)).toEqual(["e1", "e2", "e3"]);
     expect(sorted([...scorable, ...awaiting])).toEqual(sorted(held));
     expect(scorable).toContain("new");
     expect(exhausted.every((task) => retained.includes(task))).toBe(true);
@@ -775,5 +965,20 @@ describe("the billed dollars a cap counts", () => {
     const finished = [...log, event("build.finished", { session: "b-1", billed: 0.75 })];
     expect(billedFor(finished, "b-1")).toBe(0.75);
     expect(billedAll(finished)).toBeCloseTo(7.75, 10);
+  });
+});
+
+describe("the harness the next Builder session opens on", () => {
+  const started = (session: string, parent: string) => event("build.started", { session, parent });
+  const snapshot = (session: string, harness: string) => event("build.checkpoint", { session, harness });
+  const finished = (session: string, harness: string, changed: boolean, ended = "finish") =>
+    event("build.finished", { session, harness, changed, ended });
+
+  it("is the parent a whole session restored after comparing a change, and the snapshot where it was cut", () => {
+    const compared = [started("b-1", "A"), snapshot("b-1", "B")];
+    expect(latestBuilt([...compared, finished("b-1", "A", false)])).toBeNull();
+    expect(latestBuilt([finished("b-0", "P", true), ...compared, finished("b-1", "P", false)])).toBe("P");
+    expect(latestBuilt([...compared, finished("b-1", "A", false, "killed")])).toBe("B");
+    expect(latestBuilt([...compared, finished("b-1", "C", true)])).toBe("C");
   });
 });

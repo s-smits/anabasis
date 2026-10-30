@@ -1,6 +1,6 @@
 import { keyIfDefined } from "./optional-key.ts";
 import { basename } from "./path.ts";
-import { runtimeProcess } from "./process.ts";
+import { capturedSpawn, runtimeProcess } from "./process.ts";
 import { errorCode, errorMessage, type RuntimeSignal } from "./runtime-values.ts";
 
 /**
@@ -228,12 +228,16 @@ export function runSync(cmd: readonly string[], options: RunSyncOptions = {}): R
 function runSyncOrThrow(cmd: readonly string[], options: RunSyncOptions = {}): Uint8Array {
   const result = runSync(cmd, options);
   if (result.cappedAt !== null || result.exitCode !== 0) {
-    const exited = result.exitCode === null ? "could not start" : `exited ${result.exitCode}`;
-    const stopped = result.signal === null ? exited : `died on ${result.signal}`;
-    const ending = result.cappedAt === null ? stopped : `filled its ${result.cappedAt}-byte capture`;
+    const ending = result.cappedAt === null ? endingOf(result) : `filled its ${result.cappedAt}-byte capture`;
     throw new Error(`${basename(cmd[0] ?? "")} ${ending}: ${decodeOutput(result.stderr).trim()}`);
   }
   return result.stdout;
+}
+
+/** How a command that did not exit zero ended, as both runners name it. */
+function endingOf({ exitCode, signal }: { exitCode: number | null; signal: string | null }): string {
+  if (exitCode !== null) return `exited ${exitCode}`;
+  return signal === null ? "could not start" : `died on ${signal}`;
 }
 
 /** Decode captured command bytes as UTF-8 text. */
@@ -244,4 +248,48 @@ export function decodeOutput(bytes: Uint8Array): string {
 /** Run a command and return its stdout as UTF-8 text, throwing on any failure. */
 export function runTextSyncOrThrow(cmd: readonly string[], options: RunSyncOptions = {}): string {
   return decodeOutput(runSyncOrThrow(cmd, options));
+}
+
+/**
+ * `runSync` for a caller that has more to do while the command runs: the same capture and the same
+ * report, awaited. A synchronous spawn holds the event loop until the command exits, so commands
+ * that could run at once run one after another: on 30 October the table of runs spent 25 s of a
+ * 38 s reading refreshing remote copies one rsync at a time. The streams come back as text, and a
+ * command that never started reports its spawn error as its stderr, as `runSync` does.
+ */
+export async function runCaptured(
+  cmd: readonly string[],
+  options: Pick<RunSyncOptions, "cwd" | "env" | "timeout"> = {},
+): Promise<{ exitCode: number | null; signal: string | null; stdout: string; stderr: string }> {
+  try {
+    const child = capturedSpawn([...cmd], {
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+      ...keyIfDefined("cwd", options.cwd),
+      ...keyIfDefined("env", options.env),
+      ...keyIfDefined("timeout", options.timeout),
+    });
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    const signal = child.signalCode == null ? null : String(child.signalCode);
+    return { exitCode: signal === null ? code : null, signal, stdout, stderr };
+  } catch (error) {
+    return { exitCode: null, signal: null, stdout: "", stderr: errorMessage(error) };
+  }
+}
+
+/** `runCaptured`, returning stdout and throwing with the captured stderr on any ending but a zero exit. */
+export async function runTextOrThrow(
+  cmd: readonly string[],
+  options: Parameters<typeof runCaptured>[1] = {},
+): Promise<string> {
+  const result = await runCaptured(cmd, options);
+  if (result.exitCode !== 0) {
+    throw new Error(`${basename(cmd[0] ?? "")} ${endingOf(result)}: ${result.stderr.trim()}`);
+  }
+  return result.stdout;
 }

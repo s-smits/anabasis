@@ -1,7 +1,10 @@
 // The runs pulse reports ended processes, promotions and campaign endings.
-import { describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
+import { tmpdir } from "../src/meta/os.ts";
+import { join } from "../src/meta/path.ts";
 import { leftOut, pulse } from "../tools/runs/pulse.ts";
 import type { Run } from "../tools/runs/registry.ts";
 
@@ -47,6 +50,31 @@ describe("the runs pulse", () => {
     for (const fact of ["◆", "finished", "3 conversations in a row made no move"]) {
       expect(said[1]).toContain(fact);
     }
+  });
+
+  it("reads a solve and a wait of a process gone before the last launch as over", () => {
+    const root = mkdtempSync(join(tmpdir(), "ana-runs-pulse-"));
+    afterAll(() => rmSync(root, { recursive: true, force: true }));
+    const continued: Run = { ...round, tree: root, path: join(root, "r1", "log.jsonl") };
+    mkdirSync(join(root, "r1"));
+    const relaunched = new Date(START + 3 * 60_000).toISOString();
+    writeFileSync(join(root, "r1", "launch-run-2.json"), JSON.stringify({ at: relaunched }));
+    const log = [
+      ...built,
+      event(1, "solve.started", { solve: "s-1-1", task: "t-1" }),
+      event(2, "campaign.waited", { for: "provider", until: "2026-11-01T11:00:00.000Z", ms: 1 }),
+      event(3, "build.finished", { session: "r1-b", ended: "killed" }),
+      event(3, "build.started", { session: "r1-b2" }),
+    ];
+    const later = START + 25 * 60_000;
+    const now = pulse(continued, log, "open", lookedAt(log.length), later);
+    expect(now.status).toContain("1 unfinished");
+    expect(now.status).not.toContain("running");
+    expect(now.said.some((line) => line.startsWith("⚠ quiet"))).toBe(true);
+    // The same log with no launch kept: the solve and the wait are the writing process's.
+    const kept = pulse(round, log, "open", lookedAt(log.length), later);
+    expect(kept.status).toContain("1 running");
+    expect(kept.said.some((line) => line.startsWith("⚠ quiet"))).toBe(false);
   });
 
   it("marks suspect reports and carries their reading and counts", () => {

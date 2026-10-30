@@ -1,3 +1,9 @@
+# Bun loads no env file unless a command names one with --env-file: a process started in a checkout
+# that holds every login's key otherwise carries them all and hands them to whatever it starts. The
+# commands that need one name it (`bun run runs`, a launch's --env-file), so nobody types
+# --no-env-file (operator, 30 October).
+env = false
+
 [install]
 # A dependency is installed only once its version has been published for six hours (operator, 27 October).
 minimumReleaseAge = 21600

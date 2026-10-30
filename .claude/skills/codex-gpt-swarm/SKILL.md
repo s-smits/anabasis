@@ -10,14 +10,13 @@ launches, and the preparation stays smaller than the work it hands out. One scri
 transport:
 
 ```sh
-bun --no-env-file .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts --manifest <json> --output-dir <new dir> [options]
-bun --no-env-file .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts --drain <output dir>
-bun --no-env-file .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts --retry <output dir> [--max-active N] [--start-interval-ms N]
+bun .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts --manifest <json> --output-dir <new dir> [options]
+bun .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts --drain <output dir>
+bun .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts --retry <output dir> [--max-active N] [--start-interval-ms N]
 ```
 
-The usage block at the head of `gpt-sessions.ts` lists every flag. `--no-env-file` is Bun's own:
-v2 keeps no `bunfig.toml`, so without it a `.env` in the working directory would be loaded into the
-launcher and handed to every session.
+The usage block at the head of `gpt-sessions.ts` lists every flag. The launcher reads no `.env`:
+`bunfig.toml` sets `env = false`, so no login's key reaches it or the sessions it starts.
 
 ## The author before the report
 
@@ -123,7 +122,7 @@ parent on 28 August and took all 24 sessions with it. The output directory must 
 the log goes outside it:
 
 ```sh
-nohup bun --no-env-file .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts \
+nohup bun .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts \
   --manifest <scratch>/manifest.json --output-dir <scratch>/gpt \
   --model gpt-6.1-sol --reasoning-effort medium [--max-active 12] [--start-interval-ms 1000] \
   > <scratch>/gpt.log 2>&1 &
@@ -159,7 +158,7 @@ start otherwise. After rate-limited sessions, let the launch settle, then run
 again only what is missing, under the recorded model, effort and prompts:
 
 ```sh
-bun --no-env-file .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts --retry <output dir> --max-active 4 --start-interval-ms 5000
+bun .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts --retry <output dir> --max-active 4 --start-interval-ms 5000
 ```
 
 A retry leaves `launch.json` and every completed result as they were, appends the rerun reports to

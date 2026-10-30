@@ -16,6 +16,8 @@ export interface Host {
   readonly envFiles?: readonly string[];
   /** Live campaigns or simulation seats this machine may carry. */
   readonly capacity?: number;
+  /** The check tasks this machine runs at once for the runner; unset, the runner sends it none. */
+  readonly checks?: number;
   /** The packs this machine is kept for: it takes no other, and no other machine takes them. */
   readonly packs?: readonly string[];
   /** A controller already prepared by code.ts, never accepted from configuration. */
@@ -23,6 +25,11 @@ export interface Host {
 }
 
 export function hostsOf(): readonly Host[] {
+  // A verb another host sent here reaches no further host (`ANA_HOP`, set by `scriptCommand` in
+  // hosts.ts), so two machines that list each other do not ask each other in a loop. Until
+  // 28 October the sender emptied `ANA_HOSTS` instead, and a keeper started that way inherited the
+  // empty list and counted no other machine's runs against a login's cap.
+  if (runtimeProcess.env.ANA_HOP === "1") return [];
   const value = capturedJsonParse(runtimeProcess.env.ANA_HOSTS ?? "[]");
   if (!Array.isArray(value)) throw new Error("ANA_HOSTS takes a JSON list");
   const names = new Set<string>();
@@ -46,10 +53,15 @@ export function hostsOf(): readonly Host[] {
     if (files !== undefined && (!Array.isArray(files) || !files.every(isString))) {
       throw new Error(`${host.name}: envFiles takes a list of paths`);
     }
-    const capacity = host.capacity;
-    if (capacity !== undefined && (!isNumber(capacity) || !Number.isSafeInteger(capacity) || capacity < 1)) {
-      throw new Error(`${host.name}: capacity takes a positive integer`);
-    }
+    const name = host.name;
+    const count = (key: "capacity" | "checks"): number | undefined => {
+      const given = host[key];
+      if (given === undefined) return undefined;
+      if (!isNumber(given) || !Number.isSafeInteger(given) || given < 1) {
+        throw new Error(`${name}: ${key} takes a positive integer`);
+      }
+      return given;
+    };
     const packs = host.packs;
     if (
       packs !== undefined &&
@@ -63,7 +75,8 @@ export function hostsOf(): readonly Host[] {
       tree: host.tree,
       bun: host.bun,
       ...keyIfDefined("envFiles", files),
-      ...keyIfDefined("capacity", capacity),
+      ...keyIfDefined("capacity", count("capacity")),
+      ...keyIfDefined("checks", count("checks")),
       ...keyIfDefined("packs", packs),
     };
   });

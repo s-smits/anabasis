@@ -123,23 +123,18 @@ kill_tree() {
 
 # run_walled <seconds> <cmd...>: the one deadline, on every side. The task runs as a child, so a
 # watchdog can end its whole tree after <seconds>, and so does a HUP, INT or TERM to this shell: a
-# dropped ssh delivers HUP through its PTY, and ^C delivers INT. Returns the task's status.
+# dropped ssh delivers HUP through its PTY, and ^C delivers INT. The watchdog sleeps once and is
+# killed with its sleep when the task ends first; until 29 October it polled every 5 s, so a task
+# overran its deadline by up to 5 s. Returns the task's status.
 run_walled() {
   local limit=$1 status=0
   shift
   "$@" &
   walled_task=$!
   (
-    waited=0
-    while kill -0 "$walled_task" 2>/dev/null; do
-      if ((waited >= limit)); then
-        printf "task exceeded %ss; stopping it\n" "$limit" >&2
-        kill_tree "$walled_task"
-        exit 0
-      fi
-      sleep 5
-      waited=$((waited + 5))
-    done
+    sleep "$limit"
+    printf "task exceeded %ss; stopping it\n" "$limit" >&2
+    kill_tree "$walled_task"
   ) &
   walled_guard=$!
   disown "$walled_guard" # its kill below is routine; keep bash from reporting it as "Killed: 9"

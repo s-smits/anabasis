@@ -41,7 +41,7 @@
  * The reference is read against itself as the test is (the plan's A/A): its solves of a task
  * split into two halves mirrored in time, read as two harnesses are, with how often two of them
  * disagree (`flips`, `comparison.ts`).
- * At four solves a side the test's own solves hold it, two against two, and at fewer there is none.
+ * The test's own solves hold it: at two solves a side, the first of each task against the second.
  * It should read no step, and decides nothing here. Until 12 October its later solves ran after
  * the test's own were done, so a drift read as a difference, and until 13 October `--noise` read
  * one at fewer by solving the reference twice as often.
@@ -116,6 +116,7 @@ import { asRecord, isString, type JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { sameJsonValue } from "../meta/stable-json.ts";
+import { plural } from "../meta/text.ts";
 import type { RefereeFinding, Ruling } from "../referee/referee.ts";
 import { tasksByEpoch } from "./climb.ts";
 import {
@@ -257,15 +258,18 @@ const UNCOMPARED: ReadonlySet<string> = new Set(["session", "tasks", "retained"]
  * Until 19 October a repeat, the comparison that read a step again before it promoted, scored its
  * first stage's untied tasks again first and that stage's other tasks last; one reading promotes
  * since, and every comparison draws alike.
+ *
+ * `sinceOnly` draws the frontier tasks held out since the last comparison began, and no retained
+ * one: the starter comparison asks of those tasks alone whether they leave the reference room.
  */
-export function scoredSet(events: readonly LogEvent[], target: number, contract: string) {
+export function scoredSet(events: readonly LogEvent[], target: number, contract: string, sinceOnly = false) {
   const pool = poolOf(events);
-  const kept = pool.retained.filter((task) => pool.scorable.includes(task));
-  const held = new Set(pool.frontier);
-  const count = Math.min(target, held.size);
-  const picked = draw(kept, Math.min(kept.length, Math.ceil(count / 3)), `${contract}:retained`);
   const began = events.findLastIndex(({ kind }) => kind === STARTED);
   const since = new Set(tasksByEpoch(events.slice(began + 1)).flat());
+  const kept = sinceOnly ? [] : pool.retained.filter((task) => pool.scorable.includes(task));
+  const held = new Set(pool.frontier.filter((task) => !sinceOnly || since.has(task)));
+  const count = Math.min(target, held.size);
+  const picked = draw(kept, Math.min(kept.length, Math.ceil(count / 3)), `${contract}:retained`);
   // The newest epoch first, and of each the tasks held out since the last comparison began first.
   const tiers = tasksByEpoch(events)
     .toReversed()
@@ -421,6 +425,33 @@ function unruledOf(events: readonly LogEvent[], fixed: Fixed) {
   return rejections(events, fixed, NO_LABELS).filter(({ task, ruling }) => ruling === null && held.has(task));
 }
 
+/** The provider's silence over one run of a comparison: `SILENT` tasks in a row stop it, and so do
+ *  last solves written nothing for after an answer (on 30 October esp32-fresh-gpt's g-1 read no-step
+ *  one task short when the provider refused the model). A run with no answer, or a wall that refused
+ *  the last task alone, reports that task short. */
+function silence() {
+  const silent = new Set<string>();
+  let [answered, provider] = [false, false];
+  return {
+    note(task: string, why: string | null, ending: Ending): void {
+      answered ||= why === null;
+      provider = ending.outcome === "non-result" && ending.kind === "provider";
+      if (why === null) silent.clear();
+      else if (silent.add(task).size >= SILENT) {
+        throw new Error(
+          `no solve of ${String(SILENT)} tasks in a row ran, so the comparison stops: ${why}. Run it again and it goes on from its log`,
+        );
+      }
+    },
+    tail(): void {
+      if (!answered || !provider || silent.size === 0) return;
+      throw new Error(
+        `the provider answered this run, then wrote nothing for its last ${plural(silent.size, "task")}, so the comparison stops before its report. Run it again and it goes on from its log`,
+      );
+    },
+  };
+}
+
 /**
  * What runs a comparison's solves: the jobs' pool, the Referee's part, and the reasons it stops
  * taking jobs. A solve that throws ends the pool and is thrown again by `settle` once every solve
@@ -446,7 +477,7 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
     ...rejections(before, fixed, NO_LABELS).flatMap(({ task, ruling }) => (ruling === DEFECT ? [task] : [])),
   ]);
   const going = () => thrown === null && !kill.aborted && !capped && defects.size <= request.defects;
-  const silent = new Set<string>();
+  const quiet = silence();
   /** Put one rejected answer to the Referee where one is seated, and again by `ruleLeft` if unruled. */
   const rule = async (solve: string, task: string): Promise<void> => {
     if (request.referee === undefined) return;
@@ -459,13 +490,7 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
   const run = async ({ task, under }: Job): Promise<Ending> => {
     const solved = await request.solve(task, under, id, kill);
     const { solve, ending } = solved;
-    const why = unanswered(log, id, solved);
-    if (why === null) silent.clear();
-    else if (silent.add(task).size >= SILENT) {
-      throw new Error(
-        `no solve of ${String(SILENT)} tasks in a row ran, so the comparison stops: ${why}. Run it again and it goes on from its log`,
-      );
-    }
+    quiet.note(task, unanswered(log, id, solved), ending);
     // A second such solve of the task disputes nothing: the log holds the task disputed (`dispute`).
     if (ending.outcome === "non-result" && ending.kind === "check") {
       defects.add(task);
@@ -537,6 +562,7 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
     await drain(unsolvedJobs(request, tasks, (task, digest) => had.get(`${task} ${digest}`)?.length ?? 0));
     if (thrown !== null) throw thrown;
     if (kill.aborted) throw new Error("the comparison was killed; run it again and it goes on from its log");
+    quiet.tail();
     await ruleLeft();
     return going();
   };
@@ -605,7 +631,7 @@ function write(
 
 /**
  * One standalone comparison of `fresh` with the reference harness `old`, after several sessions.
- * At four solves a side it also reads an A/A comparison on mirrored halves of the reference solves
+ * It also reads an A/A comparison on mirrored halves of the reference solves
  * (the measurement in `7f0add79:docs/plan.md`, G2).
  */
 export async function checkpoint(request: CheckpointRequest): Promise<Report> {
@@ -615,7 +641,7 @@ export async function checkpoint(request: CheckpointRequest): Promise<Report> {
   if (before !== null) return before;
   if (old.digest === fresh.digest) {
     throw new Error(
-      `a comparison sets two harnesses against each other, and both sides are ${old.digest}; the reference harness is read against itself beside a comparison of four solves a side`,
+      `a comparison sets two harnesses against each other, and both sides are ${old.digest}; the reference harness is read against itself beside every comparison`,
     );
   }
   refuseTerms(request, { log, id, practised: new Set() });

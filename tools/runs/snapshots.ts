@@ -7,7 +7,7 @@
  * are published. The catalogue states each log's size, and a record refresh skips a copy that
  * already has it, so the ten-minute gather of 28 October copies only campaigns that moved. No credential file is copied and rsync never follows a link.
  */
-import { LOG_FILE } from "#src/kernel/log.ts";
+import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
 import { openingOf } from "#src/campaign/opening.ts";
 import {
   closeSync,
@@ -17,13 +17,15 @@ import {
   mkdirSync,
   mkdtempSync,
   openSync,
+  readdirSync,
   renameSync,
   rmSync,
 } from "#src/meta/filesystem.ts";
-import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
+import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isString, isBoolean, isNumber } from "#src/meta/json-shape.ts";
 import { dirname, isAbsolute, join } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
+import { pooled } from "#src/meta/pool.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { asked } from "./hosts.ts";
 import { type Host, hostNamed, hostsOf } from "./host-config.ts";
@@ -35,8 +37,8 @@ import {
   readable,
   readNamed,
   wholeLines,
-  logEvents,
   processes,
+  SEED_FILE,
   writers,
   type Run,
 } from "./registry.ts";
@@ -53,12 +55,32 @@ interface RemoteRun {
 
 type Depth = "record" | "whole";
 const EXCLUDED = ["--exclude=.env", "--exclude=.env.*", "--exclude=*.env", "--exclude=auth.json"];
-const RECORD = ["--include=/log.jsonl", "--include=/launch-*.json", "--exclude=/*"];
-let fetching = Promise.resolve();
+// The seed's mark comes too, so a copy of a rehearsal's seed is no paid campaign to a reader: until
+// 29 October the gather left it out, and two compare-systems seeds counted as campaigns in a replay.
+const RECORD = [
+  "--include=/log.jsonl",
+  "--include=/launch-*.json",
+  `--include=/${SEED_FILE}`,
+  "--exclude=/*",
+];
+/** How many copies are refreshed at once. Each is one rsync over the host's shared ssh connection,
+ *  which carries ten sessions at most by sshd's default. */
+const AT_ONCE = 6;
+/** Each copy's refreshes in this process, one after another, keyed by the copy's folder. */
+const fetching = new Map<string, Promise<unknown>>();
 
-/** One original campaign's identity and project, as a catalogue lists it. */
+/** The text only an opening's line holds. A line that merely quotes it is parsed and passed over. */
+const OPENED = `"kind":"campaign.opened"`;
+
+/** One original campaign's identity and project, as a catalogue lists it. Only the openings are
+ *  parsed: every refresh asks each host for its catalogue, and parsing every line of every log for
+ *  one project took 3.3 s of a refresh's 5.4 s on the Linux runner on 30 October. */
 function entryOf({ name, path }: Run): { name: string; path: string; project: string | null } {
-  return { name, path, project: openingOf(logEvents(path))?.project ?? null };
+  const openings = wholeLines(path)
+    .split("\n")
+    .filter((line) => line.includes(OPENED))
+    .map((line) => parseJsonAs<LogEvent>(line));
+  return { name, path, project: openingOf(openings)?.project ?? null };
 }
 
 /** Only originals are advertised: a fetched copy cannot claim another machine's campaign. */
@@ -116,8 +138,7 @@ export function remoteRuns(lines: readonly string[] | null, host: Host): RemoteR
 
 /** Lock a stable directory through transfer and publication, released on close or a crash.
  *  Deleting the directory would let a stale reader bypass the next holder's lock. */
-async function refresh(run: RemoteRun, host: Host, repo: string, depth: Depth): Promise<string> {
-  const into = archiveOf(repo, host.name, run.name);
+async function refresh(run: RemoteRun, into: string, host: Host, depth: Depth): Promise<string> {
   // A log only grows, so a record copy of the size the catalogue states has nothing to gain.
   const held = join(into, LOG_FILE);
   if (depth === "record" && run.bytes !== null && existsSync(held) && lstatSync(held).size === run.bytes) {
@@ -136,9 +157,7 @@ async function refresh(run: RemoteRun, host: Host, repo: string, depth: Depth): 
     lockExclusiveSync(fd);
     mkdirSync(folder);
     const reused = existsSync(into) ? [`--link-dest=${into}`] : [];
-    // A record refresh keeps any previously fetched artefacts. A whole refresh replaces them.
-    if (depth === "record" && existsSync(into)) rsync(`${into}/`, `${folder}/`, ...reused, ...EXCLUDED);
-    rsync(
+    await rsync(
       `${host.ssh}:${quoted(dirname(run.path))}/`,
       `${folder}/`,
       ...reused,
@@ -152,6 +171,16 @@ async function refresh(run: RemoteRun, host: Host, repo: string, depth: Depth): 
     await Bun.write(whole, wholeLines(log));
     renameSync(whole, log);
     await keepObservation(folder, { open: run.open, stderr: run.stderr });
+    // A record refresh keeps the artefacts a whole refresh fetched by moving only the record into
+    // the copy, a file at a time, the log last. Copying the folder to keep them took 4.7 s of a
+    // 5.8 s refresh of one live run on 30 October: 6,372 files, most of them its Examiner's home.
+    if (depth === "record" && existsSync(into)) {
+      const record = readdirSync(folder).toSorted((a, b) => Number(a === LOG_FILE) - Number(b === LOG_FILE));
+      for (const file of record) renameSync(join(folder, file), join(into, file));
+      published = true;
+      return held;
+    }
+    // A whole refresh replaces them.
     if (existsSync(into)) renameSync(into, previous);
     try {
       renameSync(folder, into);
@@ -168,12 +197,14 @@ async function refresh(run: RemoteRun, host: Host, repo: string, depth: Depth): 
   }
 }
 
-/** Queue this process's refreshes so a blocking lock wait cannot strand an asynchronous holder. */
-function bring(run: RemoteRun, host: Host, repo: string, depth: Depth): Promise<string> {
-  const next = fetching.then(() => refresh(run, host, repo, depth));
-  fetching = next.then(
-    () => undefined,
-    () => undefined,
+/** Queue this process's refreshes of one copy, so a blocking wait for its lock cannot strand an
+ *  asynchronous holder of the same lock. Copies have locks of their own and refresh at once. */
+function bring(run: RemoteRun, host: Host, archive: string, depth: Depth): Promise<string> {
+  const into = join(archive, host.name, run.name);
+  const next = (fetching.get(into) ?? Promise.resolve()).then(() => refresh(run, into, host, depth));
+  fetching.set(
+    into,
+    next.catch(() => undefined),
   );
   return next;
 }
@@ -219,9 +250,10 @@ export async function syncRuns(
     owners.add(one.run.name);
     kept.push(one);
   }
-  const logs: string[] = [];
-  for (const { host, run } of kept) logs.push(await bring(run, host, repo, options.depth ?? "whole"));
-  return logs;
+  // The archive is named once: asking git for the main worktree for each of 145 copies took 2.6 s
+  // of a 38 s reading of the table of runs on 30 October.
+  const archive = archiveOf(repo);
+  return await pooled(kept, AT_ONCE, ({ host, run }) => bring(run, host, archive, options.depth ?? "whole"));
 }
 
 /** Resolve a path as given, or refresh a named campaign before reading its existing archive copy. */

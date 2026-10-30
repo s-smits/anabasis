@@ -1,5 +1,5 @@
 /** Shell words and transfers at the host boundary, shared by transport and preparation. */
-import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
+import { runTextOrThrow } from "#src/meta/subprocess.ts";
 import type { Host } from "./host-config.ts";
 import { sshOptions } from "#src/meta/ssh.ts";
 /**
@@ -7,14 +7,18 @@ import { sshOptions } from "#src/meta/ssh.ts";
  * sends: a campaign's folder is mostly logs and traces, and on 20 October one log of 4.6 MB took
  * 18.6 s to reach the Linux host over Wi-Fi, and 2.5 s with `-z`.
  */
-export function rsync(from: string, to: string, ...flags: readonly string[]): string {
+export async function rsync(from: string, to: string, ...flags: readonly string[]): Promise<string> {
   const remote = [from, to].find((side) => !side.startsWith("/") && side.includes(":"));
-  const transport =
-    remote === undefined
-      ? []
-      : ["-e", ["ssh", ...sshOptions(remote.split(":")[0] ?? "")].map(quoted).join(" ")];
-  return runTextSyncOrThrow(["rsync", "-az", ...transport, ...flags, from, to]);
+  const transport = remote === undefined ? [] : ["-e", sshCommand(remote.split(":")[0] ?? "")];
+  return await runTextOrThrow(["rsync", "-az", ...transport, ...flags, from, to]);
 }
+
+/**
+ * The ssh command rsync runs to reach `destination`, as one `-e` value, each word quoted: rsync splits
+ * it on spaces, and the check runner, which joined its options bare until 29 October, cut a control
+ * socket under a temp root with a space into two arguments.
+ */
+export const sshCommand = (destination: string) => ["ssh", ...sshOptions(destination)].map(quoted).join(" ");
 
 /** The shell text that lists the worktrees of the repository `repo`, a shell word, the main first. */
 export const worktreesIn = (repo: string) =>

@@ -23,7 +23,90 @@ factors"). The values below are read from the fresh campaigns' logs on the opera
 | M1 | Climb | One campaign with five promotions (buffer r3, 14 comparisons). Six with one each (five buffer, one esp32). Truss: none in 3 | 6 confirmed in one real campaign, observed, no quota; then a second domain (operator, 25 October; 12 until then) |
 | M2 | Honesty | 0 A/A steps in 31 A/A readings across those campaigns; the count that could have read one at 0.02 is in the PR | 0 in the ten controls after the six on record |
 | M3 | Verdicts | 0 hand labels. r3: 5 Referee rulings in 14 comparisons | 30 labels; 3 in 4 defects caught, at most 1 in 10 earned voided |
-| W | Economy | r3: $401 billed for 5 promotions, 25 active hours | At most 3 promotion attempts an epoch, reported |
+| W | Economy | r3: $401 billed for 5 promotions, 25 active hours. All fresh campaigns at 29 October: $8,060 for 92 promotions, $87.61 each; none ended on its budget ("Where the dollars went") | At most 3 promotion attempts an epoch, reported |
+
+### Where the dollars went, 29 October
+
+Read from the log of every fresh campaign on the three machines at 29 October, 23:42 UTC: 116
+campaigns and 727,548 events, seeds left out. Dollars are each turn's calculated list price, as the
+budget counts them, with unfinished work and compaction included. A second reading over the 80
+campaigns that billed at least $5 gave the exam side 53.3% of $8,019.82, against 52.7% here.
+
+| Work | Dollars | Share | A held task | A promotion |
+| --- | ---: | ---: | ---: | ---: |
+| The Examiner writing tasks | 2,468.85 | 30.6% | 0.96 | 26.84 |
+| The Examiner drafting the exam | 160.45 | 2.0% | 0.06 | 1.74 |
+| Room solves of drafts | 1,617.83 | 20.1% | 0.63 | 17.59 |
+| Comparison solves | 2,889.45 | 35.8% | 1.12 | 31.41 |
+| The Builder and its practice | 800.09 | 9.9% | 0.31 | 8.70 |
+| The Referee | 123.61 | 1.5% | 0.05 | 1.34 |
+| Total | 8,060.28 | | 3.13 | 87.61 |
+
+The unit columns divide by 2,573 held tasks and 92 promotions in 36 campaigns, so they carry the
+campaigns that never promoted.
+
+- **Supply is the larger half, spent as designed.** What it buys depends on the domain: buffer
+  pays $1.19 of exam-side dollars a held task and $31.59 a promotion (65 campaigns, 78
+  promotions), ESP32 $4.37 and $205.57 (18, 4), job $4.43 and $98.45 (10, 5), recode $2.36 and
+  $83.68 (9, 2), truss $2.25 and $100.39 (13, 3).
+- **Refused drafts take half of the room solves.** Of 4,153 settled proposals 2,241 were held and
+  1,912 refused; the room solves of refused drafts billed $826.53 of $1,563.98 (52.8%). The refusal
+  keeps a task the reference already closes out of every later comparison. At worst, one ESP32
+  session put 36 drafts to 108 room solves, all valid within eight turns, and held none.
+- **A long session costs little more a turn.** Over the 291 writing sessions of at least 40 turns,
+  the context grew from 27,085 to 141,213 tokens a turn between the first ten turns and the last
+  ten, and the bill from $0.058 to $0.076 a turn. Output is 42.5% of the writing sessions'
+  subcosts, cache reads and writes 55.6%, and compaction billed $9.38.
+- **A quarter of the exam side reached no comparison.** 67 of 116 campaigns had no comparison
+  report at the reading, and their exam side billed $1,051.01 of $4,247.14 (24.7%). Until
+  `f0f3841cc` the host asked for a comparison's target of 24 held tasks before the first
+  comparison; it now asks for the admission floor, 8 at the default level.
+- **Dollars do not bind.** Of 53 `campaign.ended` events, 47 were `environment`, 4 `exam`, 1
+  `operator`, 1 `no-room` and none `budget`. Hours and logins bind instead: Examiner sessions are
+  49% of the campaigns' wall hours.
+- **One defect, fixed 30 October.** The Examiner's `finish` was declined with a request for more
+  tasks after every proposal slot was used: 6 of 206 declined finishes, 20 turns and $0.92. Since
+  then `declined` reads `spent` (`src/examiner/write.ts`), so `finish` at a spent allowance ends
+  the session.
+
+Not settled: whether shorter writing sessions, or a cheaper Examiner model or effort, buy the same
+supply for less. Each needs paired Examiner seats from one recorded position under equal time and
+proposal allowances, read on exam-side dollars a task that stays informative.
+
+### Solves a side, 29 and 30 October
+
+Two retrospective replays, without a model, of comparisons that ran four solves a side, read by
+the tree's own readers with only the first k solves of each side kept. They measure how the readers
+respond to fewer solves on a fixed history; a live campaign would solve its non-results again and
+take other moves, so neither is a measured climb.
+
+The first redrew each of 193 comparisons of campaigns opened since 21 October 64 times, keeping a
+random consecutive block of k mirrored slots per task, and read each draw by the step rule. "Kept"
+is agreement with the reading at four, itself one draw:
+
+| Solves a side | Of 100 steps at four, read as a step | Of 93 non-steps at four, read as a step | Comparison solves | A/A comparison |
+| --- | ---: | ---: | ---: | --- |
+| 1 | 86.3% | 0.6% | a quarter | none: it needs two reference solves of a task |
+| 2 | 95.3% | 1.2% | a half | the first solve against the second |
+| 3 | 98.6% | 0.9% | three quarters | halves |
+
+A single reading at two keeps about 55% of the validity room four show, since a task the
+reference answers sometimes more often reads every or none valid.
+
+The second replayed 61 whole campaigns (198 comparisons) with `poolOf`, `roomOf` and `decide`,
+four against two, with the easy rule at two readings (`RUNS.easy`) and, in memory, at one:
+
+| Over the 198 readings | Four | Two, easy after two readings | Two, easy after one |
+| --- | ---: | ---: | ---: |
+| Frontier task-readings (summed after each reading) | 4,090 | 4,053 | 2,685 |
+| Readings with no room | 5 | 10 | |
+| Comparisons newly below the admission floor | | 0 | 8, at the e2c3df42a rules |
+| Campaigns ended earlier by supply patience | | 0 | 0 |
+
+So the two-reading easy rule is what keeps supply whole at two solves. Comparison solves billed
+35.8% of the fleet's dollars ("Where the dollars went"), so two saves about 18% of a campaign's
+dollars against four, and one would save about 9% more, at a seventh of the steps, the A/A
+comparison and every task the reference answers only sometimes.
 
 ## Open rows
 
@@ -78,7 +161,7 @@ On `claude/plan-improve`, each commit proved without a model and replayed over t
 | Setting | Stands | Open |
 | --- | --- | --- |
 | Level | 0.02, one step promotes (since 19 October) | |
-| Scored set, solves | 24 tasks, 4 solves a side | |
+| Scored set, solves | 24 tasks, 2 solves a side in every domain by default; the setting may name another count once (`--solves`, 29 October); replays in "Solves a side" | Whether two climbs faster live: no campaign at two had read a comparison on 30 October |
 | Score | Validity 0.6, the objective 0.3 from the room floor (1%) to a tenth better, the bill 0.1 from a fifth less to half; constants of the host | Whether 60/30/10 is the right trade |
 | Solve budget | 20 model turns, 30 minutes | |
 | Network in a solve | Open in every solve, both harnesses alike | A registry-only proxy, once a trace shows a fetch from anywhere else |

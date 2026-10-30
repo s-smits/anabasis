@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { decide, practiceAllowance, shortOf, unpromoted } from "../src/campaign/decide.ts";
+import { decide, practiceDue, shortOf, unpromoted } from "../src/campaign/decide.ts";
 import type { Plan } from "../src/campaign/ground.ts";
 import { pendingWords } from "../src/campaign/word.ts";
 import { tally as tallyPairs } from "../src/kernel/compare.ts";
@@ -52,6 +52,11 @@ const FIVE = SIX.filter(({ data }) => data.version !== HELD[5]);
 const built = (id: string, harness: string, more: JsonObject = {}) =>
   event("build.finished", { session: id, harness, changed: true, ended: "finished", ...more });
 const FIRST = [...SET_UP, built("b-1", "h1")];
+/** How many more tasks a release takes for `practice` on `events` (`practiceDue`). */
+const owed = (events: readonly LogEvent[], practice: number, level: number) => {
+  const released = taskSets(events).released.length;
+  return (practiceDue(events, practice, level)?.to ?? released) - released;
+};
 const setting = (modelTurns: number | null) =>
   event("campaign.setting", { solver: null, minutes: 120, turns: 24, modelTurns, tasks: null, target: 12 });
 /** An Examiner session that ended whole and held out `held`, each put to task admission. */
@@ -194,6 +199,10 @@ describe("the exam", () => {
       ending: "exam",
     });
     expect(move([fell(0), fell(0), fell(0)], plan)).toMatchObject({ move: "end", ending: "exam" });
+    // A draft bills, so a budget with less left than its reserve ends the campaign before one is put.
+    const spent = { ...plan, left: { dollars: 9.99, reserve: 10 } };
+    expect(decide([fell(0)], spent)).toMatchObject({ move: "end", ending: "budget", code: "exam" });
+    expect(decide([], { ...plan, left: { dollars: 10, reserve: 10 } })).toMatchObject({ move: "draft" });
     const crashed = event("draft.finished", {
       session: "d-1",
       stands: false,
@@ -213,6 +222,14 @@ describe("the exam", () => {
     expect(move([fell(2), crashed, crashed, ended], plan)).toEqual({ move: "draft" });
     expect(decide([fell(2), crashed, crashed, ended], plan).why.match(/\d+/g)).toEqual(["2", "1"]);
     expect(move([fell(2), ended, fell(1)], plan)).toMatchObject({ ending: "exam" });
+    // A draft a stop cut before it put anything, ended at the restart, takes none of the three.
+    const killed = event("draft.finished", { session: "d-1", ended: "killed", crash: null });
+    expect(move([killed, killed, killed], plan)).toMatchObject({ move: "draft" });
+    expect(move([killed, fell(1), fell(1)], plan)).toMatchObject({ move: "draft" });
+    expect(move([event("draft.finished", { ...killed.data, tries: 3 })], plan)).toMatchObject({
+      move: "end",
+      ending: "exam",
+    });
     const stood = event("exam.drafted", { session: "d-1", draft: { domain: "a field" } });
     expect(move([fell(1), stood], plan)).toMatchObject({ move: "accept" });
   });
@@ -459,7 +476,11 @@ describe("room for the reference", () => {
       move: "examine",
       code: "no-room",
     });
-    expect(move([...tied, ...examined("x-1", ["v13"])])).toMatchObject({ move: "examine" });
+    // One reading closes no task (`easyAt`), so the task x-1 wrote is compared with g-1's; after a
+    // second closed reading the tasks leave the frontier and the Examiner is asked again.
+    expect(move([...tied, ...examined("x-1", ["v13"])])).toMatchObject({ move: "compare" });
+    const again = compared("g-2", "h1", "no-step", { tally: [0, 0, 24], solved: EVERY });
+    expect(move([...tied, ...again, ...examined("x-1", ["v13"])])).toMatchObject({ move: "examine" });
     const closedReference = decide(promotedAll, PLAN);
     expect(closedReference).toMatchObject({ move: "examine", code: "no-room" });
     expect(closedReference.why.match(/\b(?:g-\d+|h\d+)\b/g)).toEqual(["h1", "g-2"]);
@@ -640,16 +661,18 @@ describe("the build conditions", () => {
         ...HELD.slice(7, 7 + extra).flatMap(heldOut),
       ]);
       const released = logs.map((events) =>
-        releaseOrder(events, taskSets(events).held, practiceAllowance(events, 0.02), "seed"),
+        releaseOrder(events, taskSets(events).held, owed(events, 1000, 0.02), "seed"),
       );
       const tallies = logs.map((events) =>
         tallyPairs(lastReports(events).flatMap((report) => pairsReported(events, report))),
       );
       expect(tallies[0]).toEqual(tallies[1]);
-      expect(logs.map((events) => poolOf(events).frontier.length)).toEqual([8 + extra, 9 + extra]);
-      expect(logs.map((events) => practiceAllowance(events, 0.02))).toEqual([extra, extra]);
+      // One reading closes neither task, so the frontier holds both whichever one the new harness won.
+      expect(logs.map((events) => poolOf(events).frontier.length)).toEqual([9 + extra, 9 + extra]);
+      // Neither closes for practice either, so both logs allow one more than the floor needs.
+      expect(logs.map((events) => owed(events, 1000, 0.02))).toEqual([1 + extra, 1 + extra]);
       expect(released[0]).toEqual(released[1]);
-      expect(released[0]?.map(([version]) => version)).toEqual(extra === 0 ? [] : ["a"]);
+      expect(released[0]?.map(([version]) => version).slice(0, 1)).toEqual(["a"]);
     }
   });
 
@@ -663,13 +686,35 @@ describe("the build conditions", () => {
         }),
       ),
     ];
-    expect(["PP", "FF"].map((fresh) => practiceAllowance(log(fresh), 0.02))).toEqual([0, 0]);
+    expect(["PP", "FF"].map((fresh) => owed(log(fresh), 1000, 0.02))).toEqual([0, 0]);
     for (const knownAnswer of [
       event("task.feasible", { version: "u" }),
       event("task.gate", { version: "u", reference: { valid: 1 } }),
     ]) {
-      expect(practiceAllowance([...log("FF"), knownAnswer], 0.02)).toBe(1);
+      expect(owed([...log("FF"), knownAnswer], 1000, 0.02)).toBe(1);
     }
+  });
+
+  // Until 30 October practice was owed once an epoch: buffer-fresh-opus-v072 released six of 69
+  // tasks held after its second promotion while its Builder passed all 103 practice solves.
+  it("owes the practice named again after each reading, and not before one", () => {
+    const released = (version: string) => event("task.state", { version, state: "released" });
+    const read = [...FIRST, ...compared("g-1", "h1", "no-step")];
+    expect(owed(FIRST, 1, 0.1)).toBe(0);
+    expect(practiceDue(FIRST, 1, 0.1)).toBeNull();
+    expect(owed(read, 1, 0.1)).toBe(1);
+    expect(owed(read, 3, 0.1)).toBe(3);
+    expect(owed([...read, released("v1")], 3, 0.1)).toBe(2);
+    expect(owed([...read, released("v1"), released("v2"), released("v3")], 3, 0.1)).toBe(0);
+    // A settlement reports g-1 again (`settleReading`): the same reading, so nothing more is owed.
+    const settled = [...read, released("v1"), released("v2"), released("v3")];
+    const again = settled.findLast(({ kind }) => kind === "comparison.reported");
+    expect(owed([...settled, ...(again === undefined ? [] : [again])], 3, 0.1)).toBe(0);
+    expect(owed([...settled, ...compared("g-2", "h1", "no-step")], 3, 0.1)).toBe(3);
+    // The allowance still bounds what is owed: the frontier less the admission floor.
+    expect(owed(read, 1000, 0.1)).toBe(poolOf(read).practiceFrontier.length - 6);
+    // A campaign that names no practice is owed none.
+    expect(practiceDue(read, null, 0.1)).toBeNull();
   });
 
   it("releases practice before asking for tasks after an unchanged session, preserving both codes", () => {
@@ -682,6 +727,7 @@ describe("the build conditions", () => {
     expect(decide(log, { ...PLAN, practice: 2 })).toEqual({
       move: "prepare",
       code: "practice",
+      practice: 2,
       why: "1 of the 2 practice tasks the campaign names are released, and tasks were held out since the last release: the contract's draw releases more before the Builder builds",
     });
     expect(decide(log, PLAN)).toEqual({
@@ -781,8 +827,8 @@ describe("the one count", () => {
     });
     const roomy = compared("g-4", "h1", "no-step", { tally: [0, 0, 12] });
     expect(move([...twice, ...examined("x-3", ["v15"]), ...roomy])).toMatchObject({ move: "build" });
-    const closed = compared("g-1", "h1", "no-step", { tally: [0, 0, 24], solved: EVERY });
-    const few = [...FIRST, ...closed, ...examined("x-1", ["v13"])];
+    const closed = (id: string) => compared(id, "h1", "no-step", { tally: [0, 0, 24], solved: EVERY });
+    const few = [...FIRST, ...closed("g-1"), ...closed("g-2"), ...examined("x-1", ["v13"])];
     expect(move([...few, ...idle(2)])).toMatchObject({ move: "examine" });
     expect(move([...few, ...idle(3)])).toMatchObject({ move: "end", ending: "no-room" });
     expect(move([READ, ...idle(2), ...examined("x-8", ["v9"]).slice(0, 1), ...idle(1)])).toMatchObject({

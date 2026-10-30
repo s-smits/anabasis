@@ -3,8 +3,8 @@
  *
  *   bun --env-file=<file> run runs launch <name> [--login N] [--yes] -- <the campaign command's flags>
  *   bun --env-file=<file> run runs continue <name> [--at <commit>] [--login N] [--budget N]
- *     [--after promoted|compacted|reported|finished] [--yes] [-- <flags>]
- *   bun run runs pause <name> --after promoted|compacted|reported|finished [--yes]
+ *     [--after next|promoted|compacted|reported|finished] [--yes] [-- <flags>]
+ *   bun run runs pause <name> [--after next|promoted|compacted|reported|finished] [--yes]
  *
  * `launch` starts the campaign command (`tools/d2/harness-builder.ts`) under a name no worktree
  * holds a campaign of, in this worktree. `continue` runs a campaign again from its log in the
@@ -12,8 +12,11 @@
  * total: the record holds the total, which a budget word may have set since, and `--budget` names
  * another. `pause` waits until the log has gained one more of the named event and no comparison,
  * Examiner session or draft is open, and then stops the run (`stop.ts`); `continue --after` is that
- * pause and then the continue, which moves a run to another login or commit. Flags after `--` stand
- * for the kept ones. A campaign's folder moves by `runs copy` and `runs move` (`move.ts`).
+ * pause and then the continue, which moves a run to another login or commit. `next`, the word a
+ * pause takes where none is named, waits for the next solve that finishes or tool call any seat
+ * records, and stops the run there with whatever is open: on 29 October a login had to be freed
+ * from a campaign in the middle of an Examiner session, which the clean-point words would only have
+ * stopped once the session ended. Flags after `--` stand for the kept ones. A campaign's folder moves by `runs copy` and `runs move` (`move.ts`).
  *
  * Without `--yes` a verb says what it would do and does nothing. With it, a start refuses a run a
  * process writes, a worktree with a change no commit names and a commit no remote branch holds;
@@ -47,6 +50,8 @@ import { dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, processGroupExists, runSync } from "#src/meta/subprocess.ts";
 import { lastLaunch, nextRun } from "./receipt.ts";
+import { payerOf } from "./live.ts";
+import { roomToStart } from "./logins.ts";
 import {
   BUILDER,
   campaignOf,
@@ -63,18 +68,30 @@ import {
 import { stop } from "./stop.ts";
 import { installAt, publishedAt } from "./code.ts";
 
-/** The events a pause waits for one more of, by the word that names it. */
+/** The events a pause waits for one more of, by the word that names it: `next` is the smallest step
+ *  a run completes, a finished solve or a recorded tool call of any seat. */
 const AFTER = {
-  promoted: "harness.promoted",
-  compacted: "build.compacted",
-  reported: "comparison.reported",
-  finished: "build.finished",
+  next: [
+    "solve.finished",
+    "build.call",
+    "draft.call",
+    "exam.call",
+    "referee.call",
+    "repair.call",
+    "solve.call",
+  ],
+  promoted: ["harness.promoted"],
+  compacted: ["build.compacted"],
+  reported: ["comparison.reported"],
+  finished: ["build.finished"],
 } as const;
 const TOKEN = "CLAUDE_CODE_OAUTH_TOKEN";
 const NUMBERED = new RegExp(`^${TOKEN}\\d+$`);
 /** The flags a run again does not repeat: its name, which the verb names, and its total. */
 const DROPPED = ["--name", "--budget"];
 const LOOK_MS = 30_000;
+/** How often a pause at the next step looks, since a step follows another within seconds. */
+const STEP_MS = 1_000;
 
 /** The flags a campaign runs again on: `flags` less its name and total, and `budget` where named. */
 export function rerun(flags: readonly string[], budget: string | undefined): string[] {
@@ -100,32 +117,44 @@ export function loginEnv(env: Readonly<Record<string, string | undefined>>, logi
   return { ...kept, [TOKEN]: token, ANA_LOGIN: login };
 }
 
-/** Whether a pause may stop the run whose log is `events`: it holds more than `base` of `kind`, and
- *  no comparison, Examiner session or draft is open. The Builder's conversation is open throughout
- *  a led campaign, and a pause cuts it: the campaign run again opens a new one on its notes. */
-export function restsAfter(events: readonly LogEvent[], kind: string, base: number): boolean {
+/** The kinds of event the word `after` names, or undefined where it names none. */
+const kindsOf = (after: string): readonly string[] | undefined =>
+  Object.entries(AFTER).find(([word]) => word === after)?.[1];
+
+/** How many events of the kinds `after` names `events` holds. */
+const countOf = (events: readonly LogEvent[], after: string) =>
+  events.filter((event) => kindsOf(after)?.includes(event.kind) === true).length;
+
+/** Whether a pause may stop the run whose log is `events`: it holds more than `base` of the kinds
+ *  `after` names, and, past the next step, no comparison, Examiner session or draft is open. The
+ *  Builder's conversation is open throughout a led campaign, and a pause cuts it: the campaign run
+ *  again opens a new one on its notes. */
+export function restsAfter(events: readonly LogEvent[], after: string, base: number): boolean {
   return (
-    events.filter((event) => event.kind === kind).length > base &&
-    !unfinished(events).some(({ of }) => of === "exam" || of === "draft") &&
-    openComparisons(events).length === 0
+    countOf(events, after) > base &&
+    (after === "next" ||
+      (!unfinished(events).some(({ of }) => of === "exam" || of === "draft") &&
+        openComparisons(events).length === 0))
   );
 }
 
 /** Wait in `run` for one more `after` event at a point it rests, then stop it. */
 async function pauseAt(run: Run, after: string): Promise<void> {
-  const kind = Object.entries(AFTER).find(([word]) => word === after)?.[1];
-  if (kind === undefined) throw new Error(`--after takes ${Object.keys(AFTER).join(", ")}`);
-  const base = logEvents(run.path).filter((event) => event.kind === kind).length;
+  const kinds = kindsOf(after);
+  if (kinds === undefined) throw new Error(`--after takes ${Object.keys(AFTER).join(", ")}`);
+  const base = countOf(logEvents(run.path), after);
   console.log(
-    `${run.name}: waiting for ${kind} past ${String(base)}, with no comparison or Examiner session open`,
+    after === "next"
+      ? `${run.name}: waiting for its next finished solve or tool call`
+      : `${run.name}: waiting for ${kinds.join(", ")} past ${String(base)}, with no comparison or Examiner session open`,
   );
   // A log runs to tens of megabytes, and one that did not grow says what it said.
   let size = -1;
   while (writers(run, processes()).length > 0) {
     const grown = statSync(run.path).size;
-    if (grown !== size && restsAfter(logEvents(run.path), kind, base)) return stop([run.name, "--yes"]);
+    if (grown !== size && restsAfter(logEvents(run.path), after, base)) return stop([run.name, "--yes"]);
     size = grown;
-    await Bun.sleep(LOOK_MS);
+    await Bun.sleep(after === "next" ? STEP_MS : LOOK_MS);
   }
   console.log(`${run.name} is not running`);
 }
@@ -151,6 +180,7 @@ export async function start(
       `comparison ${open.join(", ")} began and has not reported: it goes on at ${commit.slice(0, 9)}`,
     );
   }
+  await roomToStart(payerOf(login, flags), "here", run.name);
   installAt(run.tree, target);
   const command = [capturedExecPath, BUILDER, "--name", run.name, ...flags];
   const dry = runSync([...command, "--dry-run"], { cwd: run.tree, env });
@@ -244,7 +274,17 @@ export async function continueRun(args: readonly string[]): Promise<void> {
   }
   // A commit no remote holds is refused before the pause, which would leave the run stopped.
   const target = values.at === undefined ? undefined : publishedAt(run.tree, values.at);
-  if (values.after !== undefined) await pauseAt(run, values.after);
+  // `next` may stop the run inside a comparison, which `start` then refuses at another commit.
+  if (values.after === "next" && target !== undefined && target !== standing(run.tree).commit) {
+    throw new Error(
+      "--after next can stop the run inside a comparison, which --at another commit refuses: name reported, promoted or finished",
+    );
+  }
+  if (values.after !== undefined) {
+    // Counted before the pause, which would leave the run stopped where `start` then refuses it.
+    await roomToStart(payerOf(values.login, flags), "here", run.name);
+    await pauseAt(run, values.after);
+  }
   await start(run, flags, values.login, target);
 }
 
@@ -256,10 +296,13 @@ export async function pause(args: readonly string[]): Promise<void> {
     options: { after: { type: "string" }, yes: { type: "boolean", default: false } },
   });
   const [name] = positionals;
-  if (name === undefined || values.after === undefined) {
-    throw new Error("usage: bun run runs pause <name> --after promoted|compacted|reported|finished [--yes]");
+  if (name === undefined) {
+    throw new Error(
+      "usage: bun run runs pause <name> [--after next|promoted|compacted|reported|finished] [--yes]",
+    );
   }
   const run = runNamed(name);
-  if (!values.yes) return said(run, `would be stopped after its next ${values.after}`);
-  await pauseAt(run, values.after);
+  const after = values.after ?? "next";
+  if (!values.yes) return said(run, `would be stopped after its next ${after === "next" ? "step" : after}`);
+  await pauseAt(run, after);
 }

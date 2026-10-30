@@ -9,6 +9,7 @@
  *   bun tools/wri/wri.ts collect --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts synthesis --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts grade --log .ana/d2/truss/log.jsonl [--bundle <pack>] --task <taskId> --answer <file>
+ *   bun tools/wri/wri.ts derive (--log <log>[,<log>...] | --all) [--verbose] [--force]
  *
  * - `climb` prints lane 27's columns for every log `--log` names, one row each, and the paths
  *   under the host's `/tmp` one campaign named before another's solve ran them. It reads the logs as they stand, so it can be run on campaigns still running.
@@ -26,6 +27,12 @@
  * - `collect` holds every expected report to its shape and writes `reports.md`. It exits 1 until
  *   every report is there and valid.
  * - `synthesis` renders the synthesis session's prompt over the reports as they stand.
+ * - `derive` runs every deterministic reader of one log over it (`READERS`, `tools/wri/derive.ts`)
+ *   into the main worktree's `data/derived/<campaign>/`, one file a reader, replacing the folder
+ *   whole where the log or the reading commit moved. It prints one line; `--verbose` prints every
+ *   file as well, for a session that wants to read them all. `--all` takes every campaign this
+ *   machine reads (`readable`, `tools/runs/registry.ts`), which is how a job keeps them current.
+ *   `start` derives its logs the same way, quietly, and names the folders in the instructions.
  * - `grade` puts one answer to the campaign's own checker and prints the verdict in one line. It
  *   writes nothing and logs nothing. It needs the pack and its tool tree, and the Mac's verifier wall.
  *   An answer outside a drafted exam's answer format is refused first, as `judge` refuses a
@@ -58,6 +65,8 @@ import { plural } from "#src/meta/text.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { codeOf } from "../d2/campaign.ts";
 import { receipts } from "../runs/receipt.ts";
+import { isCampaign, readable } from "../runs/registry.ts";
+import { type Derived, derive, derivedLine, derivedOf, derivedText } from "./derive.ts";
 import { logAcross } from "../runs/snapshots.ts";
 import { stagedExamOf } from "../d2/exam.ts";
 import { readPack } from "../m0/stored-sweep.ts";
@@ -84,7 +93,8 @@ interface Investigation {
 
 const REPO = resolve(import.meta.dir, "..", "..");
 const SHARED = "shared-instructions.md";
-const USAGE = "usage: bun tools/wri/wri.ts read | climb | start | lanes | collect | synthesis | grade";
+const USAGE =
+  "usage: bun tools/wri/wri.ts read | climb | start | lanes | collect | synthesis | grade | derive";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -95,6 +105,9 @@ const { values, positionals } = parseArgs({
     bundle: { type: "string" },
     task: { type: "string" },
     answer: { type: "string" },
+    all: { type: "boolean" },
+    verbose: { type: "boolean" },
+    force: { type: "boolean" },
   },
 });
 
@@ -165,12 +178,36 @@ function overviewText(log: string): string {
   return `${rendered(overview(read(log), receipts(log)))}\n\n${hostLine(log)}\n`;
 }
 
-function start(): number {
+/** The folders `derive` keeps for `logs`, written or kept as they stand, and the line it prints. */
+async function derived(logs: readonly string[]): Promise<{ done: Derived[]; line: string }> {
+  const root = derivedOf(REPO);
+  const done: Derived[] = [];
+  // One campaign at a time: the job that runs this shares its host with live campaigns.
+  for (const log of logs) done.push(await derive(log, { root, repo: REPO, force: values.force === true }));
+  return { done, line: derivedLine(done, root) };
+}
+
+async function deriveStep(): Promise<number> {
+  const logs =
+    values.all === true
+      ? readable(REPO)
+          .filter((run) => isCampaign(run) && run.seed !== true)
+          .map(({ path }) => path)
+      : resolvedLogs;
+  if (logs.length === 0) throw new Error("name --log or --all");
+  const { done, line } = await derived(logs);
+  if (values.verbose === true) console.log(derivedText(done));
+  console.log(line);
+  return done.some(({ failed }) => failed.length > 0) ? 1 : 0;
+}
+
+async function start(): Promise<number> {
   needed("log");
   const [logs, out] = [resolvedLogs, resolve(needed("out"))];
   if (existsSync(join(out, SHARED))) throw new Error(`${out} already holds ${SHARED}`);
   if (new Set(logs.map((log) => nameOf(log))).size < logs.length) throw new Error("--log names a log twice");
   mkdirSync(join(out, "lanes"), { recursive: true });
+  const { done, line } = await derived(logs);
   const texts = logs.map(overviewText);
   const campaigns = [
     "| campaign | log | events | checkout |",
@@ -181,6 +218,8 @@ function start(): number {
       const host = text.trim().split("\n").at(-1) ?? "";
       return logs.length === 1 ? host : `- ${nameOf(logs[index] ?? "")}: ${host}`;
     }),
+    "",
+    `Every deterministic reader's output for each campaign, as the log stood at this start, is in its folder: ${done.map(({ dir }) => `\`${dir}/\``).join(", ")}, one \`<reader>.txt\` a reader (\`wri.ts derive\`). Read those files before running a reader yourself.`,
   ].join("\n");
   const template = readFileSync(join(REFERENCES, "shared-instructions.template.md"), "utf8");
   // The author's comments stay in the copy: they say what each blank section is for.
@@ -195,6 +234,7 @@ function start(): number {
   writeFileSync(join(out, "overview.md"), text);
   writeFileSync(join(out, "investigation.json"), `${JSON.stringify({ logs }, null, 2)}\n`);
   console.log(text);
+  console.log(line);
   console.log(`wrote ${join(out, SHARED)}: write its two blank sections, then run lanes`);
   return 0;
 }
@@ -366,6 +406,7 @@ async function main(): Promise<number> {
     return 0;
   }
   if (verb === "grade") return grade();
+  if (verb === "derive") return deriveStep();
   if (verb === "climb") {
     needed("log");
     console.log(climbText(resolvedLogs));

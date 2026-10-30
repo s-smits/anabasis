@@ -285,6 +285,8 @@ describe("a campaign run by its log", () => {
     append(log, "exam.turn", { session: "x-1", usage });
     append(log, "build.started", { session: "b-1" });
     append(log, "build.turn", { session: "b-1", usage });
+    append(log, "draft.started", { session: "d-1" });
+    append(log, "draft.turn", { session: "d-1", usage });
     const before = read(log).length;
     await harnessBuilder([...flags, "--moves", "1"], seats);
     const after = read(log).slice(before);
@@ -293,13 +295,17 @@ describe("a campaign run by its log", () => {
       { kind: "build.finished", data: { session: "b-1", ...cut } },
       { kind: "exam.finished", data: { session: "x-1", ...cut } },
     ]);
-    expect(after.findIndex(({ kind }) => kind === MOVED)).toBeGreaterThan(1);
+    // A draft cut by the stop is ended too, so a pause, which waits for no draft open, can hold.
+    expect(after.find(({ kind }) => kind === "draft.finished")).toMatchObject({
+      data: { session: "d-1", ...cut },
+    });
+    expect(after.findIndex(({ kind }) => kind === MOVED)).toBeGreaterThan(2);
     // Reopened once more, with every session ended: nothing more is ended. Ending happens at the
     // opening, so no move is made: a comparison of scripted solves, each on its own disk image,
     // ran past the test suite's idle deadline on a three-core macOS runner (15 October).
     const ends = () => read(log).filter(({ data }) => data.ended === "killed").length;
     await harnessBuilder([...flags, "--moves", "0"], seats);
-    expect(ends()).toBe(2);
+    expect(ends()).toBe(3);
   });
 
   it("runs from set-up to an ending on one command, with every move on record: a session with nothing to work on sends it to the Examiner", async () => {
@@ -396,7 +402,7 @@ describe("a campaign run by its log", () => {
     const name = `${STEM}-climb`;
     // The seed holds fourteen tasks to score once two are released, and a comparison scores eight:
     // the row that writes tasks up to the target is tested in `test/decide.test.ts`.
-    const terms = ["--practice", "2", "--solves", "1", "--sessions", "1", "--target", "8", "--patience", "1"];
+    const terms = ["--practice", "2", "--sessions", "1", "--target", "8", "--patience", "1"];
     const flags = [...seeded(name), ...terms];
     const strayed: string[] = [];
     // Under the new harness every held-out task is answered, and under the reference none.
@@ -480,10 +486,10 @@ describe("a campaign run by its log", () => {
       { move: "promote", harness: first?.fresh },
       { move: "examine", session: "x-1" },
     ]);
-    // The promoted harness answered every task of g-1, and one comparison closes a task
-    // (15 October). The six held tasks g-1 did not score are retained, and a comparison at the
-    // level takes eight frontier tasks (`comparisonFloor`), which the Examiner writes.
-    expect(of(name, "exam.finished")).toMatchObject([{ session: "x-1", proposed: 8, ended: "supplied" }]);
+    // The promoted harness answered every task of g-1, which one comparison does not close
+    // (29 October): the campaign is short of nothing, so the session the table names after a
+    // promotion is asked for the command's own count and ends at its second finish.
+    expect(of(name, "exam.finished")).toMatchObject([{ session: "x-1", proposed: 8, ended: "finished" }]);
     // The tasks written are read by a starter comparison before a Builder session is paid for: the starter
     // against the promoted harness. Until 10 October the Builder built here, three times, on
     // practice the promoted harness passed (t-4, t-9, t-10).
@@ -495,23 +501,15 @@ describe("a campaign run by its log", () => {
       old: first?.fresh,
     });
     // The script answers nothing under the reference nor the starter, so the starter comparison reads the
-    // eight new tasks as beyond both; a valid answer to each pack task retained beside them is on
-    // record, so the reference failing it now is room (`informative`, 15 October; until then no
-    // task it failed in every solve was). The six held before the promotion that the promoted
-    // harness never stood in are retained since 16 October, one for each three frontier tasks.
-    // The three the starter comparison drew it has now stood in and failed, so they are frontier again:
-    // eleven
-    // frontier tasks, three more than a comparison at the level takes, and the starter comparison read room,
-    // so
-    // the table releases up to three before the Builder builds (`practiceAllowance`). Until 19 October a
-    // repeat came between, and the Builder built here.
+    // eight new tasks, and those alone, as beyond both: no room on them, and the table asks for
+    // other tasks before a Builder session is paid for. Until 30 October it filled its draw with three
+    // retained tasks as well, and their room sent the Builder to build on tasks written before.
     expect(of(name, "comparison.reported").at(-1)).toMatchObject({
       session: "g-2",
       reading: "no-step",
-      valid: { old: [11, 0], fresh: [11, 0], informative: { old: 3, fresh: 3 } },
+      valid: { old: [8, 0, 0], fresh: [8, 0, 0], informative: { old: 0, fresh: 0 } },
     });
-    expect(after).toMatchObject({ move: "prepare", code: "practice" });
-    expect(after.why).toContain("comparison g-2 read room in the tasks held out since the last release");
+    expect(after).toMatchObject({ move: "examine", code: "no-room" });
     expect(strayed).toEqual([]);
 
     // A person answers g-1's packet, drawn by the comparison's id, so asked again it is the same:
@@ -553,20 +551,20 @@ describe("a campaign run by its log", () => {
     const lines = said.mock.calls.map(([line]) => (isString(line) ? line : ""));
     said.mockRestore();
     // It prints the Referee's agreement, here on no labelled rejection, and g-1 read again with the
-    // wrong pass a fail: one task fewer won, and a decision that holds.
+    // wrong pass a fail: its task is still won on its other solve, and the decision holds.
     expect(lines).toContain(
       "the Referee against 0 labelled rejections, 0 of them unruled: agreement of each kind earned none, check-defect none, unclear none; over all three none, PABAK none beside kappa none",
     );
     expect(lines.find((line) => line.startsWith("g-1: "))).toMatch(
-      /^g-1: decided step, and step at 7-0-1 .*: it holds$/,
+      /^g-1: decided step, and step at 8-0-0 .*: it holds$/,
     );
     await settleCommand([...pack, "--session", "g-1"]);
     // The pass labelled wrong is the new harness's fail in the settled reading, as an earned
-    // rejection is: one task fewer won, 7-0-1, and still a step.
+    // rejection is: one valid solve of two against none still wins its task, 8-0-0.
     expect(first?.scored).toMatchObject({ wins: 8, losses: 0 });
     expect(lastOf()).toMatchObject({
       reading: "step",
-      scored: { wins: 7, losses: 0, ties: 1 },
+      scored: { wins: 8, losses: 0, ties: 0 },
       settled: { labelled: 0, passes: { [a]: "sound", [b]: "wrong", [c]: "sound" } },
     });
     expect(of(name, "comparison.reported").filter(({ session }) => session === "g-1")).toHaveLength(2);
@@ -626,13 +624,13 @@ describe("a campaign run by its log", () => {
     const letter = /harness ([A-Z]+) \(([0-9a-f]{8})\), set-up \(epoch 0\)/u.exec(report);
     expect(letter?.[2]).toBe(handed.harness.slice(0, 8));
     expect(report).toContain(
-      `harness ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}), set-up (epoch 0), read by g-1. In g-1 it won 7, lost 0 and tied 1`,
+      `harness ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}), set-up (epoch 0), read by g-1. In g-1 it won 8, lost 0 and tied 0`,
     );
     expect(report).toContain(`| g-1 | ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}) | A (`);
     // The points each measure of the score gave it, all by validity here, and its cost beside
     // them, read against the bar and reported only (the plan's W).
     expect(report).toMatch(
-      /tied 1, the score giving it [1-9]\d* points by validity, 0 by the objective and 0 by the bill\./,
+      /tied 0, the score giving it [1-9]\d* points by validity, 0 by the objective and 0 by the bill\./,
     );
     expect(report).toContain("1 promotion attempt this epoch (bar 3 after set-up): met");
     expect(report).not.toContain("ladder");
@@ -780,7 +778,7 @@ describe("a campaign run by its log", () => {
     const name = `${STEM}-word`;
     // The seed holds fourteen tasks to score once two are released, and a comparison scores eight:
     // the row that writes tasks up to the target is tested in `test/decide.test.ts`.
-    const terms = ["--practice", "2", "--solves", "1", "--sessions", "1", "--target", "8", "--patience", "2"];
+    const terms = ["--practice", "2", "--sessions", "1", "--target", "8", "--patience", "2"];
     const flags = [...seeded(name), ...terms];
     const strayed: string[] = [];
     const scriptedSolves = answering(strayed);
@@ -885,12 +883,15 @@ describe("a campaign run by its log", () => {
       "8",
     ];
     await harnessBuilder([...flags, "--prompt", "Six times a base.", "--hitl"], seats);
-    // The first put is measured and told, and the same draft put again stands.
+    // The first put is measured and told, each example with the room task admission would read on
+    // it, and the same draft put again stands.
     const said = of(name, "draft.call").map(({ text }) => (isString(text) ? text : ""));
     expect(said).toHaveLength(2);
     for (const index of [0, 1, 2]) {
-      expect(said[0]).toContain(
-        `- example ${String(index)}: the reference harness answered it validly in 3 of 3 solves`,
+      expect(said[0]).toMatch(
+        new RegExp(
+          `- example ${String(index)}: the reference harness answered it validly in 3 of 3 solves[^\\n]*, which leaves no room`,
+        ),
       );
     }
     expect(said[1]).toStartWith("The draft stands");
@@ -910,8 +911,8 @@ describe("a campaign run by its log", () => {
     const folder = join(REPO, ".ana", "d2", name);
     const prompt = "Multiplying a base by six, as a fixture.";
     const solver = ["--solver", "claude/claude-opus-5-5"];
-    const terms = ["--practice", "2", "--solves", "1", "--solve-minutes", "8", "--practice-solves", "5"];
-    const size = ["--target", "8", "--patience", "2"];
+    const terms = ["--practice", "2", "--solve-minutes", "8", "--practice-solves", "5"];
+    const size = ["--target", "8", "--solves", "3", "--patience", "2"];
     const flags = ["--name", name, "--project", PROJECT, ...solver, ...terms, ...size];
     const { exam, examples } = draftedOf(TASKS);
     // The first draft's reject control answer is the right answer, which no check refuses.
@@ -963,7 +964,7 @@ describe("a campaign run by its log", () => {
       {
         prompt,
         solver: { model: "claude/claude-opus-5-5", effort: "high" },
-        terms: { practice: "2", solves: "1", "solve-minutes": "8", "practice-solves": "5" },
+        terms: { practice: "2", "solve-minutes": "8", "practice-solves": "5", solves: "3" },
       },
     ]);
     expect(of(name, "draft.finished")).toMatchObject([{ session: "d-1", stands: true, tries: 2 }]);
@@ -984,9 +985,9 @@ describe("a campaign run by its log", () => {
     expect(of(name, OPENED).at(-1)).not.toHaveProperty("attended");
     // The Builder session recorded the setting, with the scored tasks the campaign opened with:
     // t-2 (10 October) opened with --target 6 and its first session recorded the default 12.
-    expect(of(name, "campaign.setting")).toMatchObject([{ minutes: 8, target: 8 }]);
+    expect(of(name, "campaign.setting")).toMatchObject([{ minutes: 8, target: 8, solves: 3 }]);
     expect(of(name, "task.state").filter(({ state }) => state === "released")).toHaveLength(2);
-    expect(of(name, "comparison.started")).toMatchObject([{ solves: 1 }]);
+    expect(of(name, "comparison.started")).toMatchObject([{ solves: 3 }]);
     expect(of(name, "comparison.started")[0]?.tasks).toHaveLength(8);
     expect(
       of(name, MOVED)
@@ -1010,7 +1011,7 @@ describe("a campaign run by its log", () => {
     await harnessBuilder(["--name", name, "--practice-solves", "3", "--moves", "0"], seats);
     expect(of(name, OPENED).at(-1)).toMatchObject({
       project: PROJECT,
-      terms: { practice: "2", solves: "1", "solve-minutes": "8", "practice-solves": "3" },
+      terms: { practice: "2", "solve-minutes": "8", "practice-solves": "3" },
     });
     await expect(
       harnessBuilder(["--name", name, "--solve-minutes", "30", "--moves", "0"], seats),

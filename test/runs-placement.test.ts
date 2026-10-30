@@ -57,6 +57,17 @@ try { await freshLogin(undefined, [], async () => readings.map((reading) => ({..
     expect(result.out).toContain("no allowed login has room");
   });
 
+  it("goes on the plain login where no numbered login is allowed, and on a numbered one beside it", () => {
+    const made = fixture();
+    const code = `import { freshLogin } from "REPOSITORY/tools/runs/placement.ts";
+const read = async (logins: readonly string[]) => logins.map((login) => ({login, plain:false, via:"oauth-usage" as const, notes:[], fiveHour:{pct:0,resetsAt:null}, sevenDay:{pct:0,resetsAt:null}}));
+console.log(String(await freshLogin(undefined, [], read)));`;
+    expect(made.run(code, { CLAUDE_CODE_OAUTH_TOKEN: "plain" }).out.trim()).toBe("undefined");
+    const numbered = { CLAUDE_CODE_OAUTH_TOKEN: "plain", [`CLAUDE_CODE_OAUTH_TOKEN${LOGIN}`]: "numbered" };
+    expect(made.run(code, numbered).out.trim()).toBe(LOGIN);
+    expect(made.run(code).err).toContain("no allowed login has room");
+  });
+
   it("asks only for a remote login's presence and refuses a missing key before launch preparation", () => {
     const made = fixture();
     const result = made.run(FRESH, { FAKE_LOGIN: LOGIN, FAKE_LOGIN_PRESENT: "false" });
@@ -96,6 +107,27 @@ try { await freshLogin(undefined, [], async () => readings.map((reading) => ({..
     ] as const) {
       expect(made.run(place(login), env).out.trim()).toBe(host);
     }
+  });
+
+  it("puts a GPT run on no machine that carries one, chosen or named, unless codex:N allows more", () => {
+    const made = fixture();
+    const place =
+      'import { placeFresh } from "REPOSITORY/tools/runs/placement.ts"; console.log((await placeFresh("sample", undefined, undefined, "codex"))?.name ?? "here", (await placeFresh("sample", undefined, undefined, "' +
+      LOGIN +
+      '"))?.name ?? "here");';
+    const gpt =
+      'import { fresh } from "REPOSITORY/tools/runs/fresh.ts"; await fresh(["sample", "--host", "runner", "--model", "gpt"]);';
+    const there = { FAKE_ACTIVE: JSON.stringify([{ name: "gpt-there", login: "codex", host: "x" }]) };
+    const reserved = { ANA_HOSTS: JSON.stringify([{ ...made.host, packs: ["sample"] }]) };
+    expect(made.run(place, reserved).out.trim()).toBe("runner runner");
+    expect(made.run(place, { ...reserved, ...there }).err).toContain("no host has room");
+    const named = made.run(gpt, there);
+    expect(named.code).toBe(1);
+    expect(named.err).toContain("runner carries 1 live codex run(s), at most 1 a machine");
+    expect(made.run(gpt).out).toContain("nothing is launched without --yes");
+    expect(made.run(gpt, { ...there, ANA_LOGIN_RUNS: "codex:2" }).out).toContain(
+      "nothing is launched without --yes",
+    );
   });
 
   it("keeps a reserved pack on its host, and every other pack off it, chosen or named", () => {

@@ -1,8 +1,8 @@
 /**
- * The three backends as one pi `Models` collection: Codex on the ChatGPT login the Codex CLI keeps,
- * OpenRouter on `OPENROUTER_API_KEY`, and Claude Code on `CLAUDE_CODE_OAUTH_TOKEN`, or, as the
- * provider `claude-api`, on `ANTHROPIC_API_KEY`. The Builder and the Built Harness both resolve
- * their models here.
+ * The backends as one pi `Models` collection: Codex on the ChatGPT login the Codex CLI keeps,
+ * OpenRouter on `OPENROUTER_API_KEY`, each OpenAI-compatible endpoint of `ENDPOINTS` on the key its
+ * entry names, and Claude Code on `CLAUDE_CODE_OAUTH_TOKEN`, or, as the provider `claude-api`, on
+ * `ANTHROPIC_API_KEY`. The Builder and the Built Harness both resolve their models here.
  * Codex's terminal response names the model that served it, which pi's normalisation drops, so
  * job-fresh-gpt-v071 recorded no served model on any of its 724 turns (26 October). `codexStream`
  * keeps it as `responseModel` for the session recorder and the bill. Pi's Codex usage cost is a
@@ -13,6 +13,8 @@ import {
   type AssistantMessageEventStream,
   type CredentialStore,
   createModels,
+  createProvider,
+  envApiKeyAuth,
   lazyStream,
   type Model,
   type MutableModels,
@@ -20,6 +22,7 @@ import {
   type Provider,
   type StreamOptions,
 } from "@earendil-works/pi-ai";
+import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 import { existsSync, readFileSync } from "../../meta/filesystem.ts";
@@ -38,6 +41,38 @@ import { durableCompactionMode } from "./compaction.ts";
 import type { ConversationRetryPolicy } from "@earendil-works/pi-durable";
 
 const CODEX = "openai-codex";
+
+/**
+ * OpenAI-compatible endpoints, each served by pi's chat completions API at its `/v1` base with
+ * pi's compat for that base, on the key the environment holds under `key`. A campaign names a model
+ * `<id>/<model id>`; the prices are the endpoint's own per million tokens, which the meter bills.
+ * DeepInfra serves the DeepSeek release that OpenRouter is pinned to (`openrouter`), at the same
+ * discounted list price, billed to DeepInfra's own account (29 October: an OpenRouter account out of
+ * credit ended a campaign while the DeepInfra account was funded).
+ */
+const ENDPOINTS: readonly {
+  readonly id: string;
+  readonly baseUrl: string;
+  readonly key: string;
+  readonly models: readonly Pick<
+    Model<"openai-completions">,
+    "id" | "cost" | "contextWindow" | "maxTokens"
+  >[];
+}[] = [
+  {
+    id: "deepinfra",
+    baseUrl: "https://api.deepinfra.com/v1/openai",
+    key: "DEEPINFRA_KEY",
+    models: [
+      {
+        id: "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+        cost: { input: 0.098, output: 0.294, cacheRead: 0.00294, cacheWrite: 0 },
+        contextWindow: 1_048_576,
+        maxTokens: 131_072,
+      },
+    ],
+  },
+];
 
 /** What the host decides about the backends a process serves. */
 export interface BackendOptions {
@@ -83,6 +118,7 @@ export function backends(options: BackendOptions): MutableModels {
       ),
   });
   models.setProvider(openrouter());
+  for (const each of ENDPOINTS) models.setProvider(endpoint(each));
   models.setProvider(claudeProvider(options.claude));
   models.setProvider(claudeProvider(options.claude, CLAUDE_API_PROVIDER));
   return models;
@@ -158,7 +194,28 @@ function codexStream(
 
 /** Durable owns retries for the two providers previously wrapped here, with the same backoff. */
 export function retryPolicy(provider: string): ConversationRetryPolicy {
-  return { enabled: provider === CODEX || provider === "openrouter", maxRetries: 3, baseDelayMs: 2000 };
+  const enabled =
+    provider === CODEX || provider === "openrouter" || ENDPOINTS.some(({ id }) => id === provider);
+  return { enabled, maxRetries: 3, baseDelayMs: 2000 };
+}
+
+/** One endpoint of `ENDPOINTS` as a pi provider of its own: reasoning text models, priced as listed. */
+function endpoint({ id, baseUrl, key, models }: (typeof ENDPOINTS)[number]): Provider<"openai-completions"> {
+  return createProvider({
+    id,
+    baseUrl,
+    auth: { apiKey: envApiKeyAuth(`${id} API key`, [key]) },
+    models: models.map((model) => ({
+      ...model,
+      name: model.id,
+      api: "openai-completions" as const,
+      provider: id,
+      baseUrl,
+      input: ["text" as const],
+      reasoning: true,
+    })),
+    api: openAICompletionsApi(),
+  });
 }
 
 /**

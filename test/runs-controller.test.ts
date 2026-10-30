@@ -66,19 +66,23 @@ describe("remote controller lifecycle", () => {
       const lock = join(made.root, "git", "ana-code", `${made.commit}.lock`);
       mkdirSync(lock, { recursive: true });
       // The holder is orphaned at once, so its exit is reaped while this process waits on the run.
+      // It touches `released` as it ends, so a run that waited for it finds the file: on 29 October
+      // a 3 s bound on the other two kinds read 3.6 s at a load of 24.9 on 12 cores.
+      const released = join(made.root, "released");
       const holder =
         kind === "live"
-          ? Bun.spawnSync(["sh", "-c", "sleep 4 >/dev/null 2>&1 & echo $!"]).stdout.toString().trim()
+          ? Bun.spawnSync(["sh", "-c", '(sleep 2; touch "$0") >/dev/null 2>&1 & echo $!', released])
+              .stdout.toString()
+              .trim()
           : kind === "dead"
             ? "99999999"
             : String(process.pid);
       writeFileSync(join(lock, "pid"), holder);
       if (kind === "expired") utimesSync(lock, new Date(0), new Date(0));
-      const started = performance.now();
       const result = made.run(PREPARE, { FAKE_EXECUTE: "1" });
       expect(result.code).toBe(0);
       expect(existsSync(lock)).toBe(false);
-      expect(performance.now() - started > 3000).toBe(kind === "live");
+      expect(existsSync(released)).toBe(kind === "live");
     }
   });
 

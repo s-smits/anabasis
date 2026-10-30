@@ -183,12 +183,14 @@ still pushes the previous head (20 October).
 Read a refusal and correct its cause within your authority. Pass `--no-verify` only where the
 operator says so, and never push to `main`.
 
-The pre-push hook runs every check, with the tests near each pushed head's own change in place of
-the suite. What a push adds is the commits along each
+A plain push runs `git diff --check` and the secret scan, which take seconds. `ANA_PUSH_VERIFY=1
+git push` also runs every other check, with the tests near each pushed head's own change in place
+of the suite, and `bun run land -- <top> --sanitize` proves every commit of the stack, the suite at
+its top. What a push adds is the commits along each
 pushed head's first parents that no remote-tracking ref of the clone holds; each gets
 `git diff --check`, and what each pushed head that no other pushed head holds adds gets the secret
-scan. Where one of them changes more than `AGENTS.md`, `README.md`, `docs/` or a `.md` under
-`.claude/`, each such head gets `bun run gate -- --static` over a scratch checkout: the install, the
+scan. Where the push asks and one of them changes more than `AGENTS.md`, `README.md`, `docs/` or a
+`.md` under `.claude/`, each such head gets `bun run gate -- --static` over a scratch checkout: the install, the
 UI's steps as far as they are due, the format check, the secret scan, typecheck, strict lint, and
 the test files one import away from what the head's own commit changed. `bun run land` reads that
 pass back and does not run it again. The working tree may hold anything. A
@@ -317,6 +319,7 @@ bun run land -- <top> --merge         # and wait for ci.yml, post ana/stack-gate
 bun run land -- <pr> --auto --merge   # land the top above <pr>, and follow a new top stacked meanwhile
 bun run land -- --merge               # the same, for the stack that holds the oldest stacked pull request
 bun run land -- <top> --merge --alone # merge beside another chain on main, on the operator's word; replay that chain after
+bun run land -- <top> --merge --tag v0.9.0 # and cut that release at the merge, with the notes GitHub writes
 ```
 
 GitHub enforces this. Since 25 October the repository allows merge commits only, with squash,
@@ -337,16 +340,25 @@ the whole CI gate runs alone.
 
 A failure names the commit and the pull request it sits on. Fold the fix into that commit, replay
 the pull requests above it (section 8), push them together, and land again: the commits below the
-fix keep their passes.
+fix keep their passes. A step whose runner dropped its connection runs once more; after a second
+drop the commit reads "gave no verdict", shows an error rather than a failure, and the only fix is
+to land again. A head pushed while the landing runs is read again and landed as it stands. A commit
+proved afresh turns its heads pending, so a red from an earlier landing clears as its fix is proved.
 
 `--merge` dispatches `ci.yml` on the top's head before the proof when no run is there, and waits
-for it after; a failed run is not dispatched again. It then reads every head again, posts
+for it after; a failed run is not dispatched again. The top's head carries a status `ci.yml`, linked
+to the run, pending until it passes, since a dispatched run shows on no pull request. A failed run
+brings its failed jobs and their log home beside the gate's logs, and the refusal says whether to
+fix a commit or rerun the run (`gh run rerun <id>`). It then reads every head again, posts
 `ana/stack-gate` on each, and merges the top through GitHub's asynchronous merge, pinned to its
 head checked by the CI gate, which merges the native stack beneath it all or nothing; the returned merge commit
 must have the top's tree. A landing of several pull requests outside a native stack is refused
 before the proof, with the `gh stack link` line that makes one. A refused merge sets
 `ana/stack-gate` back to pending on every head. An uncertain merge, or one that went into a merge
-queue, leaves the statuses in place and asks for the trunk to be read before another landing. Test `land` against a fake `gh`
+queue, leaves the statuses in place and asks for the trunk to be read before another landing.
+`--tag vX.Y.Z` cuts that release at the merge commit with GitHub's generated notes, which the
+release text of run-improvement-campaign then replaces; a tag origin already holds is refused before
+the proof. Test `land` against a fake `gh`
 only (`test/land.test.ts`); never against this repository.
 
 ## 10. Consolidate the stack

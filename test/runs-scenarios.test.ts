@@ -4,6 +4,7 @@ import { append } from "../src/kernel/log.ts";
 import {
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -167,6 +168,10 @@ it("S3: view and fleet pulse explain a dead remote run using its newest bounded 
   expect(pulse.code).toBe(0);
   expect(pulse.out).toContain("newest startup failure");
   expect(pulse.out).toContain("waiting for provider until 2099");
+  // The same observer's next look has nothing new to say of a run that was already stopped.
+  const again = made.runScript(CLI, ["pulse", "--once"], env);
+  expect(again.code).toBe(0);
+  expect(again.out).not.toContain("distant");
 });
 
 it("S4: fresh prepares the selected host at the requested published commit without a host argument", () => {
@@ -316,8 +321,8 @@ it("fetch with no name gathers the records of every campaign the other hosts hol
   };
   expect(gather()).toBe(2);
   append(second.log, "campaign.ended", { ending: "finished", why: "grown" });
-  // The grown log takes its earlier copy and the host's; the unchanged one takes nothing.
-  expect(gather()).toBe(4);
+  // The grown log takes one transfer of its record from the host; the unchanged one takes nothing.
+  expect(gather()).toBe(3);
 });
 
 it("a batch sends its whole remote plan sequentially and stops on any failed launch exit", () => {
@@ -386,6 +391,8 @@ it("a missing login anywhere in a batch prevents every launch after printing the
 it("S9: a laptop with no open run still pulses the campaign that lives on a peer", () => {
   const made = fixture();
   const remote = campaign(made, "distant");
+  // A real process stands in the tree, since Linux reads its cwd from /proc and not from lsof.
+  const writer = Bun.spawn(["sleep", "60"], { cwd: remote.tree });
   const env = {
     FAKE_FLEET: JSON.stringify({
       [made.host.ssh]: {
@@ -393,13 +400,14 @@ it("S9: a laptop with no open run still pulses the campaign that lives on a peer
         env: {
           FAKE_MAIN: remote.tree,
           FAKE_RUN_CLI: "1",
-          FAKE_PS: "42 bun tools/d2/harness-builder.ts --name distant",
-          FAKE_CWDS: `p42\nn${remote.tree}`,
+          FAKE_PS: `${writer.pid} bun tools/d2/harness-builder.ts --name distant`,
+          FAKE_CWDS: `p${writer.pid}\nn${remote.tree}`,
         },
       },
     }),
   };
   const result = made.runScript(CLI, ["pulse", "--once"], env);
+  writer.kill();
   expect(result.code).toBe(0);
   expect(result.out).toContain("── here");
   expect(result.out).toContain("0 open");
@@ -413,9 +421,13 @@ it("S10: a WAN timeout reports its duration and preserves the other host's answe
   const hosts = JSON.stringify([made.host, made.other]);
   const fleet = { [made.host.ssh]: { health: HEALTH }, [made.other.ssh]: { timeout: true } };
   const started = performance.now();
+  // A control socket's path must stay under 104 bytes, which the suite's own temp root may not leave room for.
+  const controlRoot = mkdtempSync(join("/tmp", "ana-s10-"));
+  fixtures.push(controlRoot);
   const result = made.runScript(CLI, ["hosts", "--health"], {
     ANA_HOSTS: hosts,
     FAKE_FLEET: JSON.stringify(fleet),
+    ANA_TEST_TMPDIR: controlRoot,
   });
   expect(performance.now() - started).toBeLessThan(35_000);
   expect(result.code).toBe(1);
@@ -449,13 +461,32 @@ it("S11: move prepares a destination before a clean-point transfer and can hold 
   const result = made.runScript(
     CLI,
     ["move", "local", "--to", made.host.name, "--login", LOGIN, "--after", "promoted", "--hold", "--yes"],
-    { FAKE_EXECUTE: "1" },
+    // The destination's live count comes from its own `active`, run through the CLI there.
+    { FAKE_EXECUTE: "1", FAKE_RUN_CLI: "1" },
   );
   expect(result.code).toBe(0);
   expect(result.out).toContain("after its next promoted");
   expect(result.out).toContain("held: go on with");
   expect(existsSync(source.folder)).toBe(false);
   expect(existsSync(join(made.root, "anabasis-local", ".ana", "d2", "local", "log.jsonl"))).toBe(true);
+});
+
+it("continue refuses --after next with another commit before it pauses anything", () => {
+  // `next` may stop a run inside a comparison, which the start at another commit then refuses,
+  // leaving the run stopped (the v0.9.0 review).
+  const made = fixture();
+  const source = campaign(made, "local", made.main);
+  const before = readFileSync(source.log, "utf8");
+  const refused = made.runScript(
+    CLI,
+    ["continue", "local", "--at", "b".repeat(40), "--after", "next", "--yes"],
+    {
+      FAKE_AT: "b".repeat(40),
+    },
+  );
+  expect(refused.code).toBe(1);
+  expect(refused.err).toContain("--after next can stop the run inside a comparison");
+  expect(readFileSync(source.log, "utf8")).toBe(before);
 });
 
 it("connection sharing refuses a substituted control directory before contacting a host", () => {

@@ -60,9 +60,15 @@ const proofs = Bun.argv.slice(2).map((pair) => {
 });
 const failed = await proveCommits(process.cwd(), proofs, {
   who: "land",
-  jobs: 1,
+  jobs: Number(process.env.DRIVER_JOBS ?? "1"),
   say: (line) => console.error("prove: " + line),
-  mark: () => undefined,
+  // As land's mark throws Moved once a head moved under the proof.
+  mark: (commit, state) => {
+    if (state === "success" && commit === process.env.DRIVER_MOVED_AT) throw new Error("moved");
+  },
+}).catch((error) => {
+  console.error("REJECTED " + String(error));
+  process.exit(3);
 });
 if (failed !== null) console.error("FAILS " + failed.step + " Log: " + failed.log);
 process.exit(failed === null ? 0 : 1);
@@ -216,6 +222,19 @@ describe("proveCommits", () => {
     appendFileSync(join(checker, "src", "meta", "subprocess.ts"), "\n// the gate's import, changed\n");
     expect(prove(landing, {}, driver).status).toBe(0);
     expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`, `${second} suite`]);
+  });
+
+  it("lets a running proof finish and keep its pass before a rejected mark removes the checkouts", () => {
+    // `second` has no nearby test and passes at once; `source` is still in its two-second test step
+    // when the mark for `second` throws, as land's does when a head moved.
+    const result = prove([`${second}:static`, `${source}:static`], {
+      DRIVER_JOBS: "2",
+      DRIVER_MOVED_AT: second,
+      ANA_FAKE_TOGETHER: "2",
+      ANA_FAKE_SUITE: "(pass) one",
+    });
+    expect(result.status).toBe(3);
+    expect(prove([`${source}:static`]).stderr).toContain("passed earlier on these exact bytes");
   });
 
   it("stops at the commit that fails and names the failing step and its log", () => {

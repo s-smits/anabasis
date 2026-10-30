@@ -321,8 +321,8 @@ it("fetch with no name gathers the records of every campaign the other hosts hol
   };
   expect(gather()).toBe(2);
   append(second.log, "campaign.ended", { ending: "finished", why: "grown" });
-  // The grown log takes its earlier copy and the host's; the unchanged one takes nothing.
-  expect(gather()).toBe(4);
+  // The grown log takes one transfer of its record from the host; the unchanged one takes nothing.
+  expect(gather()).toBe(3);
 });
 
 it("a batch sends its whole remote plan sequentially and stops on any failed launch exit", () => {

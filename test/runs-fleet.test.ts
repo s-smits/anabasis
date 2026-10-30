@@ -398,12 +398,16 @@ describe("snapshot depth", () => {
     // A record refresh runs only where the log grew.
     append(remote.log, "campaign.word", { stop: "fixture" });
     writeFileSync(join(made.root, "remote", "distant", "seed.json"), "{}");
+    const transfers = () => made.recorded().filter((call) => call.tool === "rsync").length;
+    const before = transfers();
     expect(
       made.run(
         'import { readAcross } from "REPOSITORY/tools/runs/snapshots.ts"; await readAcross("distant");',
         remote.env,
       ).code,
     ).toBe(0);
+    // One transfer of the record, and no copy of the folder to keep what it holds besides.
+    expect(transfers() - before).toBe(1);
     const copied = join(made.main, "data", "runs", "runner", "distant", "memory", "note.txt");
     expect(readFileSync(copied, "utf8")).toBe("before");
     // A copy of a seed reads as one, so no reader counts it as a paid campaign.

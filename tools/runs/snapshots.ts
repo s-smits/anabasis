@@ -17,6 +17,7 @@ import {
   mkdirSync,
   mkdtempSync,
   openSync,
+  readdirSync,
   renameSync,
   rmSync,
 } from "#src/meta/filesystem.ts";
@@ -152,8 +153,6 @@ async function refresh(run: RemoteRun, host: Host, repo: string, depth: Depth): 
     lockExclusiveSync(fd);
     mkdirSync(folder);
     const reused = existsSync(into) ? [`--link-dest=${into}`] : [];
-    // A record refresh keeps any previously fetched artefacts. A whole refresh replaces them.
-    if (depth === "record" && existsSync(into)) rsync(`${into}/`, `${folder}/`, ...reused, ...EXCLUDED);
     rsync(
       `${host.ssh}:${quoted(dirname(run.path))}/`,
       `${folder}/`,
@@ -168,6 +167,16 @@ async function refresh(run: RemoteRun, host: Host, repo: string, depth: Depth): 
     await Bun.write(whole, wholeLines(log));
     renameSync(whole, log);
     await keepObservation(folder, { open: run.open, stderr: run.stderr });
+    // A record refresh keeps the artefacts a whole refresh fetched by moving only the record into
+    // the copy, a file at a time, the log last. Copying the folder to keep them took 4.7 s of a
+    // 5.8 s refresh of one live run on 30 October: 6,372 files, most of them its Examiner's home.
+    if (depth === "record" && existsSync(into)) {
+      const record = readdirSync(folder).toSorted((a, b) => Number(a === LOG_FILE) - Number(b === LOG_FILE));
+      for (const file of record) renameSync(join(folder, file), join(into, file));
+      published = true;
+      return held;
+    }
+    // A whole refresh replaces them.
     if (existsSync(into)) renameSync(into, previous);
     try {
       renameSync(folder, into);

@@ -314,6 +314,14 @@ describe("bun run land", () => {
     expect(gatesRun(gateLog)).toEqual([]);
   });
 
+  // #531 on 30 October 2026: based on the branch beneath #530 while its head held #530's.
+  it("refuses a head that holds another open pull request's without standing on it", () => {
+    const result = runLand(["14"], { ANA_FAKE_PULLS: stack(upper, pull(14, "c", "a", stacked)) });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("#14 (c, on a) repeats the commits of #12: base it on b");
+    expect(gatesRun(gateLog)).toEqual([]);
+  });
+
   // The last merge leaves main at the top's tree only while the bottom contains main's head.
   it("refuses a stack whose bottom does not contain main's head", () => {
     git("checkout", "-q", "main");

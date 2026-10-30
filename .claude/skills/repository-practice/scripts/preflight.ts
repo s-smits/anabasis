@@ -41,7 +41,8 @@ import {
   UI_ROOT,
   UI_SETUP,
 } from "#tools/runtime/gate.ts";
-import { CATEGORIES, openPulls } from "#tools/runtime/land.ts";
+import { CATEGORIES } from "#tools/runtime/land.ts";
+import { openPulls } from "#tools/runtime/pulls.ts";
 import { momentsOf } from "#tools/runtime/moments.ts";
 
 /** The diff a preflight reads: every changed path, those beyond the documentation set, and the

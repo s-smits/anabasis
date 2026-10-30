@@ -9,7 +9,7 @@ import { pairLines } from "#skills/compare-systems/scripts/systems.ts";
 import { censusOf, newsOf } from "#skills/system-path-simulation/scripts/live-seat.ts";
 import { pairs, planConsolidation, pushArgs, republish } from "#skills/stack-pr/scripts/republish.ts";
 import { chains, told as stackTold } from "#skills/stack-pr/scripts/stack.ts";
-import type { Pull } from "#tools/runtime/land.ts";
+import type { Pull } from "#tools/runtime/pulls.ts";
 import {
   existsSync,
   mkdirSync,

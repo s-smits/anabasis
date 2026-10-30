@@ -30,7 +30,7 @@ import { gitMaybe, gitText } from "#src/meta/git.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { runSync } from "#src/meta/subprocess.ts";
-import { ghOrThrow, openPulls } from "#tools/runtime/land.ts";
+import { ghOrThrow, openPulls } from "#tools/runtime/pulls.ts";
 import { chains } from "./stack.ts";
 
 /** Where GitHub lists the repository's native stacks. */

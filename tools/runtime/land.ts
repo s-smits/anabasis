@@ -95,10 +95,11 @@
  * only `--merge` posts (`STACK_CONTEXT`). `gh api repos/s-smits/anabasis/rulesets/25824510` reads
  * it. The one gap: a token with admin rights can post that status by hand.
  */
-import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { parseArgs, runtimeProcess } from "../../src/meta/process.ts";
 import { decodeOutput, runSync } from "../../src/meta/subprocess.ts";
 import { plural } from "../../src/meta/text.ts";
+import { doubledLines } from "./doubled.ts";
+import { gh, ghOrThrow, openPulls, type Pull } from "./pulls.ts";
 import {
   addedLine,
   changesSource,
@@ -110,16 +111,6 @@ import {
   short,
 } from "./gate.ts";
 
-/** An open pull request, in the fields `gh pr list --json` names. */
-export interface Pull {
-  readonly number: number;
-  readonly headRefName: string;
-  readonly baseRefName: string;
-  readonly headRefOid: string;
-  readonly isDraft: boolean;
-  readonly labels: readonly { readonly name: string }[];
-}
-
 interface Landing {
   readonly trunk: string;
   readonly trunkSha: string;
@@ -127,6 +118,8 @@ interface Landing {
   readonly pulls: readonly Pull[];
   /** The bottom of each other open chain on the trunk, with another pull request above it. */
   readonly beside: readonly Pull[];
+  /** Every open pull request, as the landing read them. */
+  readonly open: readonly Pull[];
 }
 
 interface Mode {
@@ -145,12 +138,6 @@ interface Status {
   readonly state: string;
   readonly description: string;
   readonly link?: string | undefined;
-}
-
-interface Answer {
-  readonly ok: boolean;
-  readonly out: string;
-  readonly err: string;
 }
 
 const COMMIT_CONTEXT = "ana/commit";
@@ -203,36 +190,6 @@ const say = (line: string): void => console.log(`land: ${line}`);
 const numbers = (pulls: readonly Pull[]): string => pulls.map((pull) => `#${String(pull.number)}`).join(", ");
 // `{owner}/{repo}` is gh's own placeholder for the repository the working directory's remote names.
 const api = (path: string): string => `repos/{owner}/{repo}/${path}`;
-
-function gh(root: string, args: readonly string[]): Answer {
-  const result = runSync(["gh", ...args], { cwd: root });
-  return {
-    ok: result.exitCode === 0,
-    out: decodeOutput(result.stdout).trim(),
-    err: decodeOutput(result.stderr).trim(),
-  };
-}
-
-export function ghOrThrow(root: string, args: readonly string[]): string {
-  const answer = gh(root, args);
-  if (!answer.ok) throw new Error(`gh ${args.join(" ")}: ${answer.err}`);
-  return answer.out;
-}
-
-/** Every open pull request of the repository `root`'s remote names, as GitHub lists them now. */
-export const openPulls = (root: string): Pull[] =>
-  parseJsonAs<Pull[]>(
-    ghOrThrow(root, [
-      "pr",
-      "list",
-      "--state",
-      "open",
-      "--limit",
-      "200",
-      "--json",
-      "number,headRefName,baseRefName,headRefOid,isDraft,labels",
-    ]),
-  );
 
 const trunkOf = (root: string): string =>
   ghOrThrow(root, ["repo", "view", "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"]);
@@ -298,7 +255,7 @@ function readLanding(root: string, target: number): Landing {
       !pulls.includes(pull) &&
       open.some((above) => above.baseRefName === pull.headRefName),
   );
-  return { trunk, trunkSha, pulls, beside };
+  return { trunk, trunkSha, pulls, beside, open };
 }
 
 /** The importance labels a pull request carries; a landing asks for exactly one. */
@@ -326,7 +283,8 @@ function checkLabels(landing: Landing): void {
 }
 
 /** The last merge has the top's tree only when each head contains the one beneath it, down to the
- *  trunk's current head. */
+ *  trunk's current head, and each pull request shows its own commits only when its head holds no
+ *  other open one's off its chain (`doubled.ts`). */
 function checkChain(root: string, landing: Landing): void {
   let below = { name: `${landing.trunk}'s head`, sha: landing.trunkSha };
   for (const pull of landing.pulls) {
@@ -338,6 +296,8 @@ function checkChain(root: string, landing: Landing): void {
     }
     below = { name: `#${String(pull.number)}'s head`, sha: pull.headRefOid };
   }
+  const repeating = doubledLines(root, landing.open, (pull) => landing.pulls.includes(pull));
+  if (repeating.length > 0) throw new Refusal(`${repeating.join(" ")} Land again.`);
 }
 
 function postStatus(root: string, sha: string, { context, state, description, link }: Status): boolean {

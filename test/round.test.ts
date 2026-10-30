@@ -1873,6 +1873,24 @@ describe("the scored set", () => {
     );
   });
 
+  it("draws for the starter comparison the tasks held out since alone, with nothing retained", () => {
+    // 30 October: two starter comparisons, told they read the tasks held out since, filled the
+    // draw with older tasks the reference had been read on, at $15 and $19.
+    const started = { at, kind: "comparison.started", data: { session: "g-1", tasks: held } } as const;
+    const climbed: LogEvent[] = [
+      ...heldOut(held),
+      started,
+      { at, kind: "harness.promoted", data: { harness: "h1" } } as const,
+      ...heldOut(["v7", "v8"]),
+    ];
+    expect(scoredSet(climbed, 24, "contract-a", true)).toEqual({
+      tasks: drawn(heldOut(["v7", "v8"]), 2),
+      retained: [],
+    });
+    // Every other comparison fills the draw as before.
+    expect(scoredSet(climbed, 24, "contract-a").tasks).toHaveLength(3);
+  });
+
   it("keeps a task whose solves were cut at their limits, and leaves out one with no valid answer after two comparisons and the tasks the reference closed twice, until a person keeps the first", async () => {
     {
       // A cut solve says the budget was short, and nothing of the task.

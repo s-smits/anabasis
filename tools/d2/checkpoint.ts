@@ -99,13 +99,18 @@ export async function checkpointCommand(
   const fresh = await keptAs(campaign, "--new", values.new);
   const reviewers = reviewersNamed(campaign, values);
   const seats = seated(campaign, { builder: undefined, reference: old.dir });
+  const bare = await starter(campaign);
+  // The starter against a promoted reference reads whether the tasks held since leave it room
+  // (`heldSince`, `decide.ts`), so it scores those alone: on 30 October two such comparisons
+  // filled the draw with older tasks the reference had been read on, at $15 and $19.
+  const sinceOnly = fresh.digest === bare.digest && old.digest !== bare.digest;
   const request: CheckpointRequest = {
     log: campaign.log,
     id,
     old,
     fresh,
-    starter: await starter(campaign),
-    ...scoredSet(read(campaign.log), setting.target, contractHash(campaign.contract)),
+    starter: bare,
+    ...scoredSet(read(campaign.log), setting.target, contractHash(campaign.contract), sinceOnly),
     solves: setting.solves,
     level: Number(values.level),
     objective: objectiveNamed(campaign),

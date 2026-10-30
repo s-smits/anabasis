@@ -501,22 +501,15 @@ describe("a campaign run by its log", () => {
       old: first?.fresh,
     });
     // The script answers nothing under the reference nor the starter, so the starter comparison reads the
-    // eight new tasks as beyond both; a valid answer to each pack task retained beside them is on
-    // record, so the reference failing it now is room (`informative`, 15 October; until then no
-    // task it failed in every solve was). The six held before the promotion that the promoted
-    // harness never stood in are retained since 16 October, one for each three frontier tasks.
-    // The three the starter comparison drew it has now stood in and failed, so they are frontier again:
-    // eleven
-    // frontier tasks, three more than a comparison at the level takes, and the starter comparison is a
-    // reading, after which the practice named is owed again: the table releases up to three before the
-    // Builder builds (`practiceDue`). Until 19 October a repeat came between, and the Builder built here.
+    // eight new tasks, and those alone, as beyond both: no room on them, and the table asks for
+    // other tasks before a Builder session is paid for. Until 30 October it filled its draw with three
+    // retained tasks as well, and their room sent the Builder to build on tasks written before.
     expect(of(name, "comparison.reported").at(-1)).toMatchObject({
       session: "g-2",
       reading: "no-step",
-      valid: { old: [11, 0, 0], fresh: [11, 0, 0], informative: { old: 3, fresh: 3 } },
+      valid: { old: [8, 0, 0], fresh: [8, 0, 0], informative: { old: 0, fresh: 0 } },
     });
-    expect(after).toMatchObject({ move: "prepare", code: "practice" });
-    expect(after.why).toContain("released since the last reading");
+    expect(after).toMatchObject({ move: "examine", code: "no-room" });
     expect(strayed).toEqual([]);
 
     // A person answers g-1's packet, drawn by the comparison's id, so asked again it is the same:

@@ -257,15 +257,18 @@ const UNCOMPARED: ReadonlySet<string> = new Set(["session", "tasks", "retained"]
  * Until 19 October a repeat, the comparison that read a step again before it promoted, scored its
  * first stage's untied tasks again first and that stage's other tasks last; one reading promotes
  * since, and every comparison draws alike.
+ *
+ * `sinceOnly` draws the frontier tasks held out since the last comparison began, and no retained
+ * one: the starter comparison asks of those tasks alone whether they leave the reference room.
  */
-export function scoredSet(events: readonly LogEvent[], target: number, contract: string) {
+export function scoredSet(events: readonly LogEvent[], target: number, contract: string, sinceOnly = false) {
   const pool = poolOf(events);
-  const kept = pool.retained.filter((task) => pool.scorable.includes(task));
-  const held = new Set(pool.frontier);
-  const count = Math.min(target, held.size);
-  const picked = draw(kept, Math.min(kept.length, Math.ceil(count / 3)), `${contract}:retained`);
   const began = events.findLastIndex(({ kind }) => kind === STARTED);
   const since = new Set(tasksByEpoch(events.slice(began + 1)).flat());
+  const kept = sinceOnly ? [] : pool.retained.filter((task) => pool.scorable.includes(task));
+  const held = new Set(pool.frontier.filter((task) => !sinceOnly || since.has(task)));
+  const count = Math.min(target, held.size);
+  const picked = draw(kept, Math.min(kept.length, Math.ceil(count / 3)), `${contract}:retained`);
   // The newest epoch first, and of each the tasks held out since the last comparison began first.
   const tiers = tasksByEpoch(events)
     .toReversed()

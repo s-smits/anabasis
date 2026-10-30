@@ -12,9 +12,8 @@ about and closes with an index of what its skill adds: the file under its `refer
 before you change that mechanism, and the scripts, each run as
 `bun .claude/skills/<skill>/scripts/<name>.ts`. The other
 skills own the procedures (section 10), `tools/oxlint/HABITS.md` how code is written (section 12),
-and `docs/plan.md` status. `docs/transfer.md`, `docs/v1.md`, `docs/prompts.md` and `studies/` hold
-v1's record, handed-off prompts and outside measurements; `7f0add79:docs/<file>` means that file at
-that commit.
+and `docs/plan.md` status. `docs/transfer.md`, `docs/v1.md` and `studies/` hold v1's
+record and outside measurements; `7f0add79:docs/<file>` means that file at that commit.
 
 Check descriptions against the source at the stack's head and each module's head comment. When a
 description no longer matches its mechanism, correct it in the change that finds it.

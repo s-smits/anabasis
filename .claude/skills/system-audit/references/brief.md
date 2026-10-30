@@ -11,8 +11,11 @@ and 2 (.ana/wri/2026-10-29-general-sol-audit-1/, .ana/wri/2026-10-29-fundamental
 ## The question
 
 The operator asks: «the operator's question, in their words». This round is «n» independent
-sessions, each with one part of the system and one lens (flaws, rethink, delete or robustness),
-named in your task. The subject is the system's design as a whole, measured against the question of
+sessions, each with one part of the system and one lens (flaws, rethink, delete, factors or robustness),
+named in your task. Every claim names the pillar it bears on (wall, supply, climb, honesty,
+verdicts, grounding, economy, outside) and the v1.0 requirement it blocks
+or moves, as the system-audit skill's table "The pillars and the v1.0 bar" sets them, or says it
+touches none. The subject is the system's design as a whole, measured against the question of
 the pinned `AGENTS.md` section 1, not the newest pull request. Do not assume a flaw exists, and do
 not take a lack of proof for proof of failure.
 
@@ -36,6 +39,12 @@ recur; it is not a reason by itself.
 - **delete**: map every concept in your part, and count each option's values, each branch's events
   and each export's readers in the logs and the tree. A concept with a missing link is a candidate;
   say what removing it would reopen.
+- **factors**: take each pillar as the pinned `AGENTS.md` section 1 and
+  `.claude/skills/design-and-seats/references/question-and-factors.md` state it. Say what failure it
+  guards against, with a recorded case, and name any failure no pillar would detect. Name the fold
+  that reads it from the log (function, file, line), or say it is a hand count. List every place it
+  is defined or restated, quoting two that differ in a number or a word. Check each path, symbol,
+  number and exclusion the text names against the source.
 - **robustness**: try the hostile cases on your part: a kill at any line, a torn append, a provider
   failure or timeout, a missing wall, two writers, load and the clock, a host down. For each guard,
   name the test that holds it, or the test that would.
@@ -57,8 +66,8 @@ Read-only. No implementation, tests, simulations, paid solves, seats or campaign
 to source, branches or pull requests, process actions, schedules, messages to other agents or
 further sessions. Others are editing this repository: preserve their work.
 
-Read `/Users/air/.anabasis/AGENTS.md` before your first shell command, then the pinned repository
-`AGENTS.md` and the skills that own your part. The audit is read-only even where the repository's
+Read any machine rules your session's instructions name before your first shell command, then the
+pinned repository `AGENTS.md` and the skills that own your part. The audit is read-only even where the repository's
 default carries a finding through implementation.
 
 The source is pinned to «commit» («what it is: the top of the stack, its pull request»). Your
@@ -110,6 +119,7 @@ written.
 **Findings** (flaws; any lens may add one): at most «three in round 1, two later», ranked, never
 padded. For each:
 
+- the pillar and the v1.0 requirement it blocks or moves, or none;
 - the claim in one plain sentence, and whether it is a correctness fault, an operational
   condition, an observability defect or a design trade-off;
 - why it matters for truthful, sustained improvement, and, from round 2 on, why it survives every
@@ -123,6 +133,7 @@ padded. For each:
 **Proposals** (rethink, delete, robustness): at most three, ranked by most result kept for least
 machinery. For each:
 
+- the pillar and the v1.0 requirement it serves, or none;
 - what changes, in one sentence: delete, merge, move to its owner, redesign, or a hostile test to add;
 - the present form's measured cost: lines and branches, the values an option took, the events a
   branch reached in the logs, and the readers of an export;
@@ -133,6 +144,9 @@ machinery. For each:
 
 **Does not make sense** (every lens): uncapped, one line each, as `path:line`, what, and one
 sentence a reviewer can check against a file, a test or a log.
+
+**Pillars** (factors; any lens may add a row): one row a pillar, with the fold that reads it or
+"none", the restatements that differ, and the statements the source refutes.
 
 **Rule challenges**: a default, a rule or a line of `AGENTS.md` you think is wrong, with its
 evidence and the honesty risk of changing it. These are the operator's decisions.

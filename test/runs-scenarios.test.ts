@@ -471,6 +471,24 @@ it("S11: move prepares a destination before a clean-point transfer and can hold 
   expect(existsSync(join(made.root, "anabasis-local", ".ana", "d2", "local", "log.jsonl"))).toBe(true);
 });
 
+it("continue refuses --after next with another commit before it pauses anything", () => {
+  // `next` may stop a run inside a comparison, which the start at another commit then refuses,
+  // leaving the run stopped (the v0.9.0 review).
+  const made = fixture();
+  const source = campaign(made, "local", made.main);
+  const before = readFileSync(source.log, "utf8");
+  const refused = made.runScript(
+    CLI,
+    ["continue", "local", "--at", "b".repeat(40), "--after", "next", "--yes"],
+    {
+      FAKE_AT: "b".repeat(40),
+    },
+  );
+  expect(refused.code).toBe(1);
+  expect(refused.err).toContain("--after next can stop the run inside a comparison");
+  expect(readFileSync(source.log, "utf8")).toBe(before);
+});
+
 it("connection sharing refuses a substituted control directory before contacting a host", () => {
   const made = fixture();
   const target = join(made.root, "substitute");

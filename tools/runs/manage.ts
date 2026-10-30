@@ -274,6 +274,12 @@ export async function continueRun(args: readonly string[]): Promise<void> {
   }
   // A commit no remote holds is refused before the pause, which would leave the run stopped.
   const target = values.at === undefined ? undefined : publishedAt(run.tree, values.at);
+  // `next` may stop the run inside a comparison, which `start` then refuses at another commit.
+  if (values.after === "next" && target !== undefined && target !== standing(run.tree).commit) {
+    throw new Error(
+      "--after next can stop the run inside a comparison, which --at another commit refuses: name reported, promoted or finished",
+    );
+  }
   if (values.after !== undefined) {
     // Counted before the pause, which would leave the run stopped where `start` then refuses it.
     await roomToStart(payerOf(values.login, flags), "here", run.name);

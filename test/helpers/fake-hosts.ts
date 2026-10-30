@@ -56,7 +56,7 @@ cpSync(from, into, {recursive: true, verbatimSymlinks: true, filter: (file) => !
 import { mkdirSync, rmSync } from "node:fs";
 if (args.includes("fetch")) process.exit(process.env.FAKE_FETCH_FAIL === "1" ? 1 : 0);
 if (args.includes("merge-base") || args.includes("for-each-ref")) console.log(process.env.FAKE_ANCESTOR ?? process.env.FAKE_COMMIT);
-else if (args.includes("rev-parse")) console.log(args.includes("--git-common-dir") ? process.env.FAKE_GIT : args.includes("--show-toplevel") ? process.env.FAKE_MAIN : args.includes("-C") ? process.env.FAKE_COMMIT : process.env.FAKE_REMOTE_COMMIT ?? process.env.FAKE_COMMIT);
+else if (args.includes("rev-parse")) console.log(args.includes("--git-common-dir") ? process.env.FAKE_GIT : args.includes("--show-toplevel") ? process.env.FAKE_MAIN : args.includes("--verify") && process.env.FAKE_AT !== undefined ? process.env.FAKE_AT : args.includes("-C") ? process.env.FAKE_COMMIT : process.env.FAKE_REMOTE_COMMIT ?? process.env.FAKE_COMMIT);
 else if (args.includes("status")) console.log(process.env.FAKE_DIRTY ?? "");
 else if (args.includes("branch")) console.log(process.env.FAKE_UNPUBLISHED === "1" ? "" : "origin/main");
 else if (args.includes("ls-remote")) console.log(process.env.FAKE_TAGGED === "1" ? process.env.FAKE_COMMIT + "\\trefs/tags/run/r/1" : "");

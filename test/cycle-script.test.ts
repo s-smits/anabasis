@@ -103,7 +103,7 @@ describe("cycle.ts", () => {
     expect(read.out).toContain("note: the cycle's files live on runner, the central host");
     expect(read.out).toContain("step: investigate");
     expect(read.code).toBe(0);
-    const unread = "step: unread · not found on any host that answered: distant";
+    const unread = "step: unread · not found on any host that answered; runner did not answer: distant";
     for (const [peer, extra, error] of [
       [{ env: { FAKE_REPO: failing, FAKE_RUN_CLI: "1" } }, {}, "exit 6"],
       [{}, { FAKE_OFFLINE: "1" }, ""],
@@ -112,5 +112,11 @@ describe("cycle.ts", () => {
       expect({ out: result.out.trim(), code: result.code }).toEqual({ out: unread, code: 1 });
       if (error !== "") expect(result.err).toContain(error);
     }
+    // Run without the hosts file, the reader asks no host and says so instead of "not found".
+    const alone = made.runScript(SCRIPT, ["distant"], { ANA_HOSTS: "[]" });
+    expect({ out: alone.out.trim(), code: alone.code }).toEqual({
+      out: "step: unread · not found here, and no other host is configured (ANA_HOSTS; pass --env-file=.env.runs): distant",
+      code: 1,
+    });
   }, 60_000);
 });

@@ -183,13 +183,13 @@ its runs `unread`.
 | `stop` | a run the cycle stops is live at or past the threshold | the `runs stop ... --yes` for those runs, through `runs on <host>` for a run on another host |
 | `run` | the remaining live runs have fewer promotions than the threshold | each such run and its count |
 | `investigate` | none is live | the `runs fetch --from <host>` of each run on another host, and the `wri.ts start` over all of them, a copy by its path |
-| `unread` (exit 1) | a run is found on no host that answered | the runs not found; no step is read past one that may be live |
+| `unread` (exit 1) | a run is found on no host that answered | the runs not found and the hosts that did not answer, or that no other host is configured (the script run without `--env-file=.env.runs`); no step is read past one that may be live |
 
 A run named with `--keep`, such as an ablation the operator keeps going, is shown and never waited
 for or stopped. The script reads and prints; it stops, fetches and launches nothing. The session or
 timer that runs it takes the step, under the cycle's word. A host answers by running the script in
-its own tree with `--here`, so a host's tree must hold the script: bring it to the release's commit
-before the fork, as step 2 does.
+its own tree with `--here`, so a host's tree must hold the script; a tree that predates it answers
+no rows and is named as not answering.
 
 The cycle's reviews are one-shot timers (section "Timers"), each of which runs the script and takes
 the step it names: about 30 minutes after the fork for M1, then at each run's comparisons and

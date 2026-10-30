@@ -12,7 +12,10 @@
  *   comes first, with the stop that ends those runs;
  * - `run` while the remaining live runs are short of both;
  * - `investigate` once none is live, with the fetches and the investigation's start;
- * - `unread`, exiting 1, while a run is found on no host that answered, since it may be live.
+ * - `unread`, exiting 1, while a run is found on no host that answered, since it may be live. It
+ *   names the hosts that did not answer, or says that no other host is configured: on 30 October
+ *   every watch of a day called this without `--env-file=.env.runs`, asked no host, and read its
+ *   live remote runs as "not found on any host that answered".
  *
  * A run named with `--keep` (an ablation the operator keeps going) is read and never waited for or
  * stopped. On 22 October v0.6.4 was landed and six runs forked on it while the investigation of the
@@ -85,19 +88,23 @@ function rowsHere(names: readonly string[], host = "here"): Row[] {
 }
 
 /** The rows the other hosts hold, from this script run with `--here` in each host's configured tree
- *  through the shared transport. A host that fails or does not answer in time holds none, which
- *  `askedScript` says on stderr; one whose last line is no list of rows is said here. */
-async function rowsAway(names: readonly string[]): Promise<Row[]> {
+ *  through the shared transport, and the hosts that held none because they failed, did not answer
+ *  in time (which `askedScript` says on stderr) or answered no list of rows (said here). */
+async function rowsAway(names: readonly string[]): Promise<{ rows: Row[]; silent: string[] }> {
   const answers = await askedScript(SCRIPT, ["--here", ...names], hostsOf(), "configured");
-  return answers.flatMap(({ host, lines }) => {
-    if (lines === null) return [];
+  const silent: string[] = [];
+  const rows = answers.flatMap(({ host, lines }) => {
     try {
-      return parseJsonAs<Row[]>(lines.at(-1) ?? "").map((row) => ({ ...row, host: host.name }));
+      if (lines !== null) {
+        return parseJsonAs<Row[]>(lines.at(-1) ?? "").map((row) => ({ ...row, host: host.name }));
+      }
     } catch {
       console.error(`${host.name} answered no rows: its tree may predate ${SCRIPT}`);
-      return [];
     }
+    silent.push(host.name);
+    return [];
   });
+  return { rows, silent };
 }
 
 const line = (row: Row, kept: boolean) =>
@@ -159,12 +166,17 @@ async function main(args: CommandArgs): Promise<number> {
   if (central !== null && central !== "here") {
     console.log(`note: the cycle's files live on ${central}, the central host`);
   }
-  const rows = [...rowsHere(names), ...(await rowsAway(names))];
+  const away = await rowsAway(names);
+  const rows = [...rowsHere(names), ...away.rows];
   for (const row of rows) console.log(line(row, kept.includes(row.name)));
   const missing = names.filter((name) => !rows.some((row) => row.name === name));
   if (missing.length > 0) {
     // A run no host answered for may be live: no step is read past it.
-    console.log(`step: unread · not found on any host that answered: ${missing.join(", ")}`);
+    const where =
+      hostsOf().length === 0
+        ? "not found here, and no other host is configured (ANA_HOSTS; pass --env-file=.env.runs)"
+        : `not found on any host that answered${away.silent.length === 0 ? "" : `; ${away.silent.join(", ")} did not answer`}`;
+    console.log(`step: unread · ${where}: ${missing.join(", ")}`);
     return 1;
   }
   for (const said of stepOf(rows, kept, args.int("threshold") ?? THRESHOLD, args.int("hours") ?? HOURS)) {

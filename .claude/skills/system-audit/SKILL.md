@@ -1,6 +1,6 @@
 ---
 name: system-audit
-description: Rethink Anabasis v2 as a whole with independent read-only sessions. Each takes one part and one lens. Flaws must be proved from counted events in recent real campaigns. Rethink sketches the part from its goal before reading the code, then diffs the two. Delete names what no record or reader needs. Robustness tries the hostile cases. Every report also lists what does not make sense. A challenge session tries to refute the claims, the primary vets them, and confirmed findings become the next round's assumed repairs; on the operator's word they are applied through stack-pr, commit-r and simplify. Use when the operator asks for the biggest or fundamental flaws, an independent or general audit, fresh eyes, a rethink or redesign, what to delete, how to make the system more robust, or another round "assuming those are fixed". One campaign's question is whole-run-investigation's, one diff's is code-review's, the kept harnesses are harness-audit's.
+description: Rethink Anabasis v2 as a whole with independent read-only sessions. Each takes one part and one lens. Flaws must be proved from counted events in recent real campaigns. Rethink sketches the part from its goal before reading the code, then diffs the two. Delete names what no record or reader needs. Robustness tries the hostile cases. Factors audits the pillars themselves: the right set, each read by a fold, stated once, true to the source. Every claim names its pillar, and claims are triaged first by the v1.0 requirement they block. Every report also lists what does not make sense. A challenge session tries to refute the claims, the primary vets them, and confirmed findings become the next round's assumed repairs; on the operator's word they are applied through stack-pr, commit-r and simplify. Use when the operator asks for the biggest or fundamental flaws, an independent or general audit, fresh eyes, a rethink or redesign, what to delete, how to make the system more robust, or another round "assuming those are fixed". One campaign's question is whole-run-investigation's, one diff's is code-review's, the kept harnesses are harness-audit's.
 ---
 
 # System audit
@@ -24,6 +24,30 @@ before section 1). It proposes, and step 9 applies only on the operator's word. 
 at "Planned" (section 9): no audit shows that a change improves anything, which only a fresh run
 can.
 
+## The pillars and the v1.0 bar
+
+Every claim names the pillar it bears on. The pillars are those of `AGENTS.md` section 1: supply,
+the condition before the four, then climb, honesty, verdicts and economy, with the wall beside them
+as a correctness property, and two rows a release adds: grounding (rule 10) and the outside
+comparison. A v1.0 release needs every row below. The values stand in
+`docs/plan.md`; this table holds what each requires and what reads it.
+
+| pillar | v1.0 requires | read by |
+| --- | --- | --- |
+| wall | the wall tests pass on macOS and on Linux (plan row H1) | `test/builder.test.ts`, `test/builder-led.test.ts`, the wall's start-up test |
+| supply | every comparison admitted on at least `comparisonFloor` informative tasks | `src/campaign/admission.ts`, `bun run runs view <name>` |
+| climb | six confirmed promotions in one measured campaign (`AGENTS.md`, section 10, item 9), then the same in a second domain (plan row L2). "Confirmed" needs one owner in source before it can be read | `src/campaign/climb.ts`, `promotion-tuner/scripts/table.ts --rows runs` |
+| honesty | no step in the ten A/A comparisons after the sixth promotion, so one campaign has to run past six | `falsePromotion` and `incapable` (`src/campaign/climb.ts`), the table's A/A column |
+| verdicts | at least 30 blind labels; three in four check defects caught; at most one in ten earned rejections voided; PABAK beside kappa | `tools/d2/settle.ts`, `src/referee/agreement.ts` |
+| grounding | one domain whose exam names the field's installed engine, so its checks stand without `--admit-authored` (rule 10, plan row F32) | `tools/c/accept.ts` |
+| economy | dollars and hours per promotion read from the log; attempts an epoch after set-up reported against 3 | `tools/d2/close.ts`, `worthOf` |
+| outside | a harness built without a benchmark's tasks or grades beats pi's starter on WorkBuddy-Bench Code, then Harness² `k=1` rerun on the same tasks and executor, under a claim and margin fixed before the first scored solve and repeated by a second campaign (plan row X1) | `studies/harness2/README.md`, `studies/harness2/run.ts read` |
+
+**Triage on top.** Before vetting, sort every claim by the first row it blocks, in the table's
+order: the measurement's honesty before supply, a result before its credibility, credibility
+before its cost, and the outside comparison last, since it rests on all the rest. A claim that
+blocks no row goes below them all. Vetting and the report keep that order.
+
 ## The record
 
 - **16 October.** Five Claude teammates read the promotion path at one commit, each writing what
@@ -40,6 +64,10 @@ can.
   supported concerns stood beside it, and no false promotion was demonstrated
   (`.ana/wri/2026-10-29-fundamental-sol-audit-2/vetting.md`).
 
+- **11 October.** One prompt asked whether the factors were the right set, measurable from the
+  log, stated once and true to the source. It was kept in `docs/prompts.md` until 30 October
+  (`git log -- docs/prompts.md`), and is the factors lens below.
+
 What both rounds lacked: every session was asked only for proved flaws, capped at two or three. So
 each reported the nearest bounded bug, and nothing asked whether a mechanism should exist at all.
 The lenses below add that question, and the rounds keep the proof.
@@ -53,6 +81,7 @@ Each session carries one lens over its part, or one lens across the whole system
 | **flaws** | traces its part end to end, writes what the logs should show if a suspicion is right, then counts the runs | at most three findings in round 1 and two later, each demonstrated or supported |
 | **rethink** | reads only `AGENTS.md` section 1 and its part's purpose, then writes the design it would build, *before opening any source*. Only then does it read the code and diff the two | a sketch, the diff (what exists that the sketch lacks, and what the sketch has that the code lacks), and up to three proposals |
 | **delete** | maps every concept in its part (rule 13) and counts each option's values, each branch's events and each export's readers in the logs and the tree | each concept with a missing link, and what removing it would reopen |
+| **factors** | takes each pillar as `AGENTS.md` section 1 and `design-and-seats`' `question-and-factors.md` state it and asks four things: is the set right (the failure each guards against, with a recorded case, and a failure none would detect); is each read by a named fold from the log or only by a hand count; is each stated once (every restatement in `AGENTS.md`, the skills, `docs/plan.md` and head comments); is the text true to the source (each path, symbol, number and exclusion it names) | per pillar: its fold or "none", the restatements that differ in a number or word, the statements the source refutes, and any failure no pillar would detect |
 | **robustness** | tries the hostile cases on its part: a kill at any line, a torn append, a provider failure or timeout, a missing wall, two writers, load and the clock, a host down. For each guard it asks which test holds it | the guards no test holds and the hostile cases with no answer, each with the test that would hold it |
 
 Every lens also returns **what does not make sense**: one line each, uncapped, with a location and
@@ -84,7 +113,7 @@ main checkout.
    *Check:* no marked field is left, and the brief names no conclusion the primary expects.
 4. **Choose the parts and lenses.** Give each session one row of the table below, and three to six
    sessions a round. A good round mixes lenses: at least one rethink, and flaws on the parts the last
-   round left open. A task is one paragraph naming:
+   round left open, and one factors session in the round before a release. A task is one paragraph naming:
    - the part's owners and its purpose in one sentence;
    - the lens;
    - the path to trace;
@@ -102,7 +131,9 @@ main checkout.
    each report's claims, stripped of their reasoning, and tries to refute every claim from the
    source and the logs. It also writes the strongest case that the system works as it is. It never
    sees the primary's view. A claim it refutes needs the primary's own recount before it stands.
-7. **Vet.** Write `<dir>/vetting.md`, one row a claim:
+7. **Vet.** Triage first ("Triage on top"), then write `<dir>/vetting.md`, one row a claim in
+   that order:
+   - the pillar and the v1.0 row it blocks, or none;
    - what was rechecked here (events recounted, source read at the commit);
    - what the challenge said;
    - a verdict of **confirmed**, **plausible** (resting on one report) or **refuted**.
@@ -111,12 +142,13 @@ main checkout.
    properties hold under the new one. Say what a confirmed claim does not establish. Triage is not
    vetting.
 8. **Report and carry forward.** Report to the operator:
-   - the confirmed flaws and proposals, ranked by result kept against machinery removed, each with
-     its owner;
+   - the confirmed flaws and proposals, ranked by the v1.0 row each blocks and then by result kept
+     against machinery removed, each with its owner;
    - the plausible ones, with what would settle each;
    - the vetted lines that do not make sense;
    - the rule challenges, as decisions;
-   - what was found sound.
+   - what was found sound;
+   - for each v1.0 row, whether the round found it blocked, moved or untouched.
 
    Confirmed rows become the next round's assumed repairs. A round whose flaws and rethink lenses
    find nothing new ends the audit.
@@ -140,6 +172,7 @@ main checkout.
 | `runtime_recovery` | `src/agent/`, budget and load, the log's writers and readers, the `tools/d2` lifecycle, `tools/runs` status, receipts and recovery | robustness |
 | `accumulated_capability` | whether successive promotions persist on independent evidence, or can be explained by selection, a shifting exam or solve variation | flaws |
 | `evaluation_grounding` | whether contracts, checks, the verifier, the Referee and admission evidence support the claims made from promotions | flaws |
+| `factors` | `AGENTS.md` section 1, `design-and-seats/references/question-and-factors.md`, `docs/plan.md`'s factor table, and the folds each pillar names: `src/campaign/climb.ts`, `src/campaign/admission.ts`, `src/referee/agreement.ts`, `tools/d2/close.ts` | factors |
 | `operator_surface` | the commands, skills and `AGENTS.md`: what an operator or agent must learn to run one campaign, and how many places state one fact | delete |
 | `whole` | the system from section 1's question, across every part | rethink |
 
@@ -150,6 +183,7 @@ context and each of its claims has one owner.
 
 The brief carries these rules. Vetting holds every claim to them.
 
+- **Every claim names its pillar** and the v1.0 row it blocks or moves, or says none.
 - **A flaw** needs the source mechanism and counted run evidence: run names, event indices, counts
   with their denominators and the snapshot read. One reproducible logical contradiction can qualify,
   labelled with its scope. Test three explanations (the intended behaviour, noise, the defect) and

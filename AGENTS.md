@@ -424,7 +424,7 @@ the runs it names and no others. The skills own the procedures:
 | Wording a claim | `attribution-and-proof` |
 | Doubting a reading; what a fail was | `whole-run-investigation` |
 | Kept harnesses, before a promotion or a handover | `harness-audit` |
-| The system's biggest flaws, in rounds of independent sessions | `system-audit` |
+| Rethinking the system: its biggest flaws, what to delete, how to harden it | `system-audit` |
 | Promotions on record; tuning the rule | `promotion-tuner` |
 | A cheap built system against a dear bare one | `compare-systems` |
 | Handing runs or a question outside | `zip-run`, `oracle-handover` |

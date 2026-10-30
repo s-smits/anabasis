@@ -1,8 +1,9 @@
 <!--
 The shared instructions every session of one round of a system audit carries, whole. Copy this
 file to <dir>/shared-instructions.md and replace each «field»; delete the "Assumed repaired" section
-in round 1. Its rules come from the briefs of 29 October, rounds 1 and 2
-(.ana/wri/2026-10-29-general-sol-audit-1/, .ana/wri/2026-10-29-fundamental-sol-audit-2/).
+in round 1. Each session's task names its part and its lens; this file carries every lens's report,
+and a session fills the parts its lens names. Its rules come from the briefs of 29 October, rounds 1
+and 2 (.ana/wri/2026-10-29-general-sol-audit-1/, .ana/wri/2026-10-29-fundamental-sol-audit-2/).
 -->
 
 # System audit «round», «subject»
@@ -10,9 +11,34 @@ in round 1. Its rules come from the briefs of 29 October, rounds 1 and 2
 ## The question
 
 The operator asks: «the operator's question, in their words». This round is «n» independent
-sessions, each owning one part of the system; the subject is the system's design as a whole, not
-the newest pull request. Do not assume a flaw exists, and do not take a lack of proof for proof of
-failure.
+sessions, each with one part of the system and one lens (flaws, rethink, delete or robustness),
+named in your task. The subject is the system's design as a whole, measured against the question of
+the pinned `AGENTS.md` section 1, not the newest pull request. Do not assume a flaw exists, and do
+not take a lack of proof for proof of failure.
+
+## What is open
+
+Everything is open except the measurement's honesty: the wall and rules 3 to 8, which a proposal
+may change only with proof that they still hold. Any other mechanism, prompt, default, move-table
+row, tool, reader, skill or line of `AGENTS.md` may be questioned, merged or deleted. A rule you
+think is wrong goes under "Rule challenges" with its evidence. A mechanism earns its place only
+while its map holds: owner, live reader, the decision it changes, evidence, and a hostile test
+(rule 13). A dated incident in a head comment is a lesson. Say whether your alternative would let it
+recur; it is not a reason by itself.
+
+## Your lens
+
+- **flaws**: trace your part end to end. Before searching the runs, write what the logs should show
+  if a suspicion is right.
+- **rethink**: before you open any source, read only the pinned `AGENTS.md` section 1 and your part's
+  purpose, then write under "Sketch" the design you would build to serve it. Only then read the code,
+  and diff the two both ways. The diff is the finding; neither side is right by default.
+- **delete**: map every concept in your part, and count each option's values, each branch's events
+  and each export's readers in the logs and the tree. A concept with a missing link is a candidate;
+  say what removing it would reopen.
+- **robustness**: try the hostile cases on your part: a kill at any line, a torn append, a provider
+  failure or timeout, a missing wall, two writers, load and the clock, a host down. For each guard,
+  name the test that holds it, or the test that would.
 
 ## Assumed repaired
 
@@ -41,10 +67,11 @@ or `git grep <pattern> «commit» -- <paths>`, with one-based line numbers.
 
 ## Evidence
 
-Read the code, its callers and its owning tests first. Before you search the runs for a suspected
-defect, write down what its log should show. For each mismatch test at least three explanations,
-among them the intended or innocent one and sampling noise, and look for the strongest
-counterexample. Count the callers and tests, and drop a claim the pinned commit already fixes.
+Read the code, its callers and its owning tests first (under the rethink lens, once your sketch is
+written). Before you search the runs for a suspected defect, write down what its log should show.
+For each mismatch test at least three explanations, among them the intended or innocent one and
+sampling noise, and look for the strongest counterexample. Count the callers and tests, and drop a
+claim the pinned commit already fixes.
 
 The recent real campaigns are listed in «<dir>/recent-logs.json», each with the snapshot to cite:
 its path, its event count, its last event, the sha256 of the lines read and the commits its launches
@@ -74,9 +101,14 @@ references. Keep machine names, account names and credential paths out of the re
 
 ## Report
 
-Your final response is the report; the launcher stores it, and you write no file. Return at most
-«three in round 1, two later» findings, ranked by importance, as a short ranked list rather than a
-catalogue of local bugs, and never padded to fill the count. For each:
+Your final response is the report; the launcher stores it, and you write no file. Fill the sections
+your lens names, in this order, and leave the others out.
+
+**Sketch** (rethink): the design you would build, written before you read the source, kept as
+written.
+
+**Findings** (flaws; any lens may add one): at most «three in round 1, two later», ranked, never
+padded. For each:
 
 - the claim in one plain sentence, and whether it is a correctness fault, an operational
   condition, an observability defect or a design trade-off;
@@ -86,10 +118,26 @@ catalogue of local bugs, and never padded to fill the count. For each:
 - the runs, launch commits, event locators, counts with denominators, and the measured consequence;
 - the three explanations tested and the counterevidence checked;
 - a verdict: **demonstrated** (counted in the runs), **supported** (source plus partial run
-  evidence) or **unproved**; only the first two are findings, and unproved questions go apart;
-- the smallest change or simplification worth testing, what it removes or reuses, its trade-off,
-  and one prediction that would falsify it.
+  evidence) or **unproved**. Only the first two are findings; unproved questions go apart.
 
-End with the strongest evidence that the system works, what evidence is missing for a stronger
-conclusion, what you checked and found sound, the exact runs read and left unread with their
-snapshots, and the limits of your access. If nothing is demonstrated, say so plainly.
+**Proposals** (rethink, delete, robustness): at most three, ranked by most result kept for least
+machinery. For each:
+
+- what changes, in one sentence: delete, merge, move to its owner, redesign, or a hostile test to add;
+- the present form's measured cost: lines and branches, the values an option took, the events a
+  branch reached in the logs, and the readers of an export;
+- what it removes, what it keeps and what it gives up;
+- which honesty property it touches (the wall, rules 3 to 8) and why that still holds;
+- the decisive test (a replay over recorded logs, a rehearsal, or a fresh run) and one prediction
+  that would falsify it.
+
+**Does not make sense** (every lens): uncapped, one line each, as `path:line`, what, and one
+sentence a reviewer can check against a file, a test or a log.
+
+**Rule challenges**: a default, a rule or a line of `AGENTS.md` you think is wrong, with its
+evidence and the honesty risk of changing it. These are the operator's decisions.
+
+**Works**: the strongest evidence that the system works as it is, what you checked and found
+sound, the evidence missing for a stronger conclusion, the exact runs read and left unread with
+their snapshots, and the limits of your access. If nothing is demonstrated or proposed, say so
+plainly.

@@ -26,9 +26,10 @@
  * read.
  *
  * Without a flag nothing is written to GitHub. `--sanitize` posts each commit's verdict as the
- * status `ana/commit` and stops. It also posts the check `mergeable` on each pull request's head:
- * success on each head as soon as every commit from the bottom to it has passed, so the stack turns
- * green from the bottom up while the rest is gated, and failure on the head that holds a failed
+ * status `ana/commit` and stops, posting no status GitHub already shows (`statusPoster`). It also
+ * posts the check `mergeable` on each pull request's head: success on each head as soon as every
+ * commit from the bottom to it has passed, so the stack turns green from the bottom up while the
+ * rest is gated, and failure on the head that holds a failed
  * commit and on each above it. It posts pending only where a commit is proved afresh, on that commit
  * and on each head from the one holding it up, so a red an earlier landing left clears once its fix
  * is being proved: `mergeable.yml` marks a pushed head pending, and until 28 October a rerun set every
@@ -74,7 +75,8 @@
  * pull requests above it are replayed on it (stack-pr, section 8), and a second landing runs only
  * what the replay moved. A commit whose runner gave no verdict is marked with an error instead, and
  * the landing asks only to be run again. The chain is read again as each commit's proof starts and
- * before each pull request turns green, so a head that moved is landed as it stands, its newer
+ * before each pull request turns green where a commit was proved since, in full only where a pull
+ * request opened, closed or moved (`checkListed`), so a head that moved is landed as it stands, its newer
  * commits with it, before a stale commit is proved, up to `MOVES` times. Until 29 October it was read
  * only as a pull request turned green, so a head pushed while its own commits were gated had its old
  * commits proved first, its old top's whole gate among them. `--jobs N` gates up to N commits at once; the
@@ -159,6 +161,8 @@ const MOVES = 3;
  *  second. ANA_CI_POLL_MS shortens the poll for the tests as for `ci.yml`. */
 const STACK_POLL_MS = Number(runtimeProcess.env.ANA_CI_POLL_MS) || 2000;
 const STACK_WAIT_MS = 10 * 60_000;
+/** Each status a GraphQL reading of commits finds, as `statusPoster` spells a status it posts. */
+const SHOWN = String.raw`.data.repository[] | select(. != null) | .oid as $sha | (.status.contexts // [])[] | [$sha, .context, (.state | ascii_downcase), .description] | join("\t")`;
 /** The labels that rank a pull request's importance; each of a landing carries exactly one. */
 const IMPORTANCE = /^importance:I[0-3]$/u;
 /** Subject labels: each pull request in a landing needs at least one. */
@@ -315,6 +319,24 @@ function postStatus(root: string, sha: string, { context, state, description, li
     "--silent",
     ...(link === undefined ? [] : ["-f", `target_url=${link}`]),
   ]).ok;
+}
+
+/** `postStatus`, passing over what GitHub shows already on `shas`, read in one GraphQL call: on 30
+ *  October a landing over remembered passes posted 81 statuses one by one, about 0.6 s each, every
+ *  one shown already, where one reading of the 64 commits took 0.9 s. Unread, every status is posted. */
+function statusPoster(root: string, shas: readonly string[]): (sha: string, status: Status) => void {
+  const objects = shas.map(
+    (sha, index) =>
+      `c${String(index)}: object(oid: "${sha}") { ... on Commit { oid status { contexts { context state description } } } }`,
+  );
+  const query = `query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { ${objects.join(" ")} } }`;
+  const args = ["api", "graphql", "-F", "owner={owner}", "-F", "name={repo}", "--jq", SHOWN];
+  const read = shas.length === 0 ? null : gh(root, [...args, "-f", `query=${query}`]);
+  const shown = new Set(read?.ok === true ? read.out.split("\n") : []);
+  return (sha, status) => {
+    const row = [sha, status.context, status.state, status.description].join("\t");
+    if (!shown.has(row) && postStatus(root, sha, status)) shown.add(row);
+  };
 }
 
 /** The newest `ci.yml` run on `sha` that a later one did not cancel, as its status, conclusion, id
@@ -518,6 +540,21 @@ async function mergeStack(
   return { ended: "unsure", sha };
 }
 
+/** The open pull requests by number, base and head, which say whether any of them moved. */
+const placesOf = (pulls: readonly Pull[]): string =>
+  pulls
+    .map((pull) => `${String(pull.number)} ${pull.baseRefName} ${pull.headRefOid}`)
+    .toSorted()
+    .join("\n");
+
+/** `checkCurrent`, read in full only where GitHub's one list of open pull requests, about 0.8 s,
+ *  differs from the landing's; the full reading adds the trunk's head, two fetches and the doubled
+ *  lines, about 3 s. On 30 October a landing of 17 pull requests, every pass remembered, read the
+ *  chain in full 17 times before its first commit was proved afresh. */
+function checkListed(root: string, target: number, landing: Landing): void {
+  if (placesOf(openPulls(root)) !== placesOf(landing.open)) checkCurrent(root, target, landing);
+}
+
 /** Refuses a proof whose chain has moved before a commit's proof starts or a success is published. */
 function checkCurrent(root: string, target: number, landing: Landing): void {
   const again = readLanding(root, target);
@@ -635,10 +672,15 @@ async function landTo(root: string, target: number, mode: Mode): Promise<number 
     `${numbers(landing.pulls)} onto ${landing.trunk} ${short(landing.trunkSha)}: ${plural(proofs.length, "commit")}.`,
   );
   const reach = mode.merge || mode.sanitize;
+  const post = statusPoster(root, reach ? proofs.map(({ commit }) => commit) : []);
   // A pull request turns green as soon as every commit from the bottom to its head has passed,
   // so the stack shows its proof climbing while the commits above are still being gated.
   const at = new Map(proofs.map((proof, index) => [proof.commit, index]));
   const passed = new Set<string>();
+  // The last reading of the open pull requests stands until a commit has been proved since: a
+  // remembered verdict takes no time, so the heads it turns green are read for once, not one by one.
+  const proving = new Set<string>();
+  let settled = true;
   let green = 0;
   let pending = landing.pulls.length;
   const greenUpTo = (): void => {
@@ -646,8 +688,9 @@ async function landTo(root: string, target: number, mode: Mode): Promise<number 
     const upTo = unproved === -1 ? proofs.length : unproved;
     for (let pull = landing.pulls[green]; pull !== undefined; pull = landing.pulls[green]) {
       if ((at.get(pull.headRefOid) ?? upTo) >= upTo) return;
-      checkCurrent(root, target, landing);
-      postStatus(root, pull.headRefOid, {
+      if (!settled) checkListed(root, target, landing);
+      settled = true;
+      post(pull.headRefOid, {
         context: MERGEABLE_CONTEXT,
         state: "success",
         description: "every commit up to this head passed bun run land",
@@ -665,13 +708,17 @@ async function landTo(root: string, target: number, mode: Mode): Promise<number 
     jobs: mode.jobs,
     say,
     mark: (commit, state, description) => {
-      if (state === "pending") checkCurrent(root, target, landing);
+      if (state === "pending") {
+        checkListed(root, target, landing);
+        proving.add(commit);
+      }
+      settled = state === "pending" || (settled && !proving.has(commit));
       if (!reach) return;
-      postStatus(root, commit, { context: COMMIT_CONTEXT, state, description });
+      post(commit, { context: COMMIT_CONTEXT, state, description });
       // A head that holds a commit proved again reads pending until it passes, not an earlier red.
       const from = state === "pending" ? Math.max(green, holding(root, landing, commit)) : pending;
       for (const pull of landing.pulls.slice(from, pending)) {
-        postStatus(root, pull.headRefOid, {
+        post(pull.headRefOid, {
           context: MERGEABLE_CONTEXT,
           state: "pending",
           description: "bun run land is proving it",
@@ -688,7 +735,7 @@ async function landTo(root: string, target: number, mode: Mode): Promise<number 
       const description = failed.verdict
         ? `${short(failed.commit)} fails ${failed.step} on its own`
         : `${short(failed.commit)} got no verdict on ${failed.step}: land again`;
-      postStatus(root, pull.headRefOid, {
+      post(pull.headRefOid, {
         context: MERGEABLE_CONTEXT,
         state: failed.verdict ? "failure" : "error",
         description,

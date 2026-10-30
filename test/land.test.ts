@@ -10,6 +10,8 @@
  * and its members, `down` failing the read; by default stack 7 of #11 and #12. The top's merge is
  * asked for under the id ANA_FAKE_STACK_UUID and ends as ANA_FAKE_STACK_END says, `refused`
  * refusing the asking, with ANA_FAKE_STACK_SHA as its commit, by default the top's.
+ * ANA_FAKE_SHOWN names a file of the statuses GitHub shows already, one `sha context state
+ * description` a line, tab-separated, as the GraphQL reading's `--jq` prints them.
  * Nothing here reaches GitHub, and nothing is pushed but to the fixture's own bare origin.
  */
 import {
@@ -47,6 +49,7 @@ else
   printf '%s\n' "$ANA_FAKE_PULLS"
 fi ;;
 "repo view"*) echo main ;;
+"api graphql"*) [ -z "$ANA_FAKE_SHOWN" ] || cat "$ANA_FAKE_SHOWN" ;;
 "run list"*) if [ -n "$ANA_FAKE_CI_STATES" ]; then
   row=$(head -n 1 "$ANA_FAKE_CI_STATES")
   [ "$(wc -l < "$ANA_FAKE_CI_STATES")" -le 1 ] || { tail -n +2 "$ANA_FAKE_CI_STATES" > "$ANA_FAKE_CI_STATES.n"; mv "$ANA_FAKE_CI_STATES.n" "$ANA_FAKE_CI_STATES"; }
@@ -212,6 +215,31 @@ describe("bun run land", () => {
     expect(statuses("mergeable")).toEqual([`success ${lowerDocs}`, `success ${upper}`]);
     expect(writes().filter((line) => !/context=(ana\/commit|mergeable) /u.test(line))).toEqual([]);
     expect(logLines(ghLog).some((line) => line.startsWith("run list"))).toBe(false);
+  });
+
+  it("posts only the statuses GitHub does not show already, and reads the chain once over remembered passes", () => {
+    expect(runLand(["12", "--sanitize"]).status).toBe(0);
+    const posted = logLines(ghLog).flatMap((line) => {
+      const match = /\/statuses\/(\w+) -f state=(\w+) -f context=(\S+) -f description=(.+) --silent$/u.exec(
+        line,
+      );
+      return match === null ? [] : [[match[1], match[3], match[2], match[4]]];
+    });
+    // The last of each commit and context stands, and one has gone stale since.
+    const latest = new Map(
+      posted.map(([sha, context, ...rest]) => [`${String(sha)} ${String(context)}`, [sha, context, ...rest]]),
+    );
+    const stale = latest.get(`${upper} ana/commit`) ?? [];
+    latest.set(`${upper} ana/commit`, [upper, "ana/commit", "pending", "an earlier landing"]);
+    const shown = join(fixture, "shown");
+    writeFileSync(shown, `${[...latest.values()].map((row) => row.join("\t")).join("\n")}\n`);
+    rmSync(ghLog, { force: true });
+    const again = runLand(["12", "--sanitize"], { ANA_FAKE_SHOWN: shown });
+    expect(again.status).toBe(0);
+    expect(described("ana/commit")).toEqual([`${upper} ${String(stale[3])}`]);
+    expect(statuses("mergeable")).toEqual([]);
+    // Nothing is proved, so the landing's own reading stands for every head it turns green.
+    expect(logLines(ghLog).filter((line) => line.startsWith("pr list"))).toHaveLength(1);
   });
 
   it("with --auto lands a pull request stacked on the top during its proof, and merges the new top", () => {

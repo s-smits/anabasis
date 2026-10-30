@@ -1,6 +1,6 @@
 ---
 name: repository-practice
-description: "Read before committing, opening or labelling a pull request, writing its body, a commit message, a comment or a prompt, choosing which tests or gates a diff owes, or touching .ana/, .env, vendor/ or the OS wall (src/wall/); and whenever asked what a claim may say (the ladder: present in source, proved without a model, exercised live), what a term means or which directory owns a mechanism (AGENTS.md sections 9 to 14). Scripts: preflight.ts lists the tests, checks and labels a diff owes; direction.ts finds production imports of helper code. Procedures stay with stack-pr, run-management and attribution-and-proof; coding habits are in tools/oxlint/HABITS.md."
+description: "Use when preparing commits or PRs, writing their bodies, comments or prompts, choosing tests and checks, or working near .ana/, .env, vendor/ or src/wall/. Explain evidence levels (present in source, proved without a model, exercised live), terminology and directory ownership (AGENTS.md sections 9–14). preflight.ts suggests checks and labels; direction.ts finds production-to-helper imports. Procedures belong to stack-pr, run-management and attribution-and-proof; coding habits are in tools/oxlint/HABITS.md."
 ---
 
 # Repository practice
@@ -46,7 +46,7 @@ Each part answers one question:
 bun .claude/skills/repository-practice/scripts/preflight.ts [--base <rev> | --commit <rev>] [--stack]
 ```
 
-With no option it reads the working tree against `HEAD` , untracked files included; `--base` reads
+With no option it reads the working tree against `HEAD`, untracked files included; `--base` reads
 it against another revision, and `--commit` reads one recorded commit against its first parent. It
 asks each owner rather than deciding for itself:
 
@@ -73,8 +73,8 @@ asks each owner rather than deciding for itself:
   operator decide.
 
 Preflight reads no campaign log and starts no check or run. Validate with `bun run commit:check` and
-the gate. Inspect accounts, hosts and live runs through `bun run runs usage` , `hosts` , `status`
-and `active` . Its tests are in `test/repository-practice-script.test.ts` .
+the gate. Inspect accounts, hosts and live runs through `bun run runs usage`, `hosts`, `status`
+and `active`. Its tests are in `test/repository-practice-script.test.ts`.
 
 ## The dependency direction: `scripts/direction.ts`
 

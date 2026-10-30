@@ -1,6 +1,6 @@
 ---
 name: attribution-and-proof
-description: "Use after an Anabasis v2 comparison, standalone comparison or system change, and before any sentence claims that a harness, a model or a patch improved something. States what one reading may be said to show: the identities it was made under, the counts kept apart, whether it was repeated, which part of a harness it belongs to, whether a mechanism was live in the run, and whether the measurement is valid as distinct from whether it was exploited. Ends in one fixed report. Also read it before writing improved, better, fixed or step about a harness, a model or a patch in a pull request body, a report or a message to the operator."
+description: "Use after a comparison or system change, and before claiming that a harness, model or patch is improved, better, fixed or a step in a PR, report or message. Establish the evaluation identities, separate outcome counts, replication, harness attribution and whether the mechanism ran. Distinguish measurement validity from whether the system used the mechanism. Produce the prescribed evidence report."
 ---
 
 # Attribution and proof
@@ -18,7 +18,7 @@ session. It decides the wording of a claim from what the log already holds.
 
 A v2 claim rests on a comparison: two harnesses, the same held-out tasks, solves made afresh and
 interleaved, a one-sided paired sign-flip test over each task's score (`flipP`,
-`src/kernel/compare.ts` ). Validity weighs most; a declared objective and the bill compare two valid
+`src/kernel/compare.ts`). Validity weighs most; a declared objective and the bill compare two valid
 answers. The null treats each untied task's sign as equally likely and independent, at its fixed
 margin. `step` means one test over the frontier and the retained tasks together cleared its level,
 on the tasks' scores and again on their scores without the bill (`stepOf`, since 26 October). It
@@ -54,7 +54,7 @@ model's causal guess into a label.
 
 ## How strong is the evidence
 
-Use the four evidence levels in `AGENTS.md` , section 9: present in source, proved without a model,
+Use the four evidence levels in `AGENTS.md`, section 9: present in source, proved without a model,
 exercised live, shown in an outcome. The last still requires a repeat on fresh solves; the promotion
 rule itself requires one reading. None of the levels stands in for the next.
 

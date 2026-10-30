@@ -50,8 +50,8 @@ second because code cannot reason about a domain it has never seen. Seven conseq
    a single file: each narrower grant is one more policy to keep true on two operating systems, and
    on the record narrow grants ended solves by the dozen while no wide one leaked a hidden value
    (`7f0add79:docs/plan.md`, rows B10, B12 and B17). Narrow only where two grants collide (two
-   solves writing one path in a shared `/tmp` ) or the wider one would open a protected thing. Each
-   policy has a wall test once per process (`walledBase`, `probeWall` ; section 10).
+   solves writing one path in a shared `/tmp`) or the wider one would open a protected thing. Each
+   policy has a wall test once per process (`walledBase`, `probeWall`; section 10).
 7. **Take the simple path that reaches most of the result.** Each mechanism makes the next change
    harder to read, prove and undo. Prefer four fifths of the result for a fifth of the code: a
    plain mechanism writing events the readers can count beats a complete one nobody can check, in

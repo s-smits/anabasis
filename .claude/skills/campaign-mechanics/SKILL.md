@@ -1,6 +1,6 @@
 ---
 name: campaign-mechanics
-description: "Read before editing tools/d2/ (harness-builder.ts, campaign-actions.ts, campaign-terms.ts, prepare.ts, round.ts, session.ts, word.ts), src/campaign/opening.ts, or src/kernel/log.ts, condition.ts or task.ts; and whenever asked why a campaign ended or what it waits for, why comparison or session admission refused a move, what an event, the setting or a condition records, what practice a release takes, what the Builder may choose in its conversation, or what a default is (AGENTS.md sections 4 to 6). Scripts: ending.ts reads endings and stopping conditions; conditions.ts what a log's solve settings differ in. Launching, pausing or stopping a run belongs to run-management."
+description: "Use before editing tools/d2/ (harness-builder, campaign-actions, campaign-terms, prepare, round, session, word), src/campaign/opening.ts or src/kernel/{log,condition,task}.ts. Explain Builder choices, log events, settings, practice release, defaults, admission refusals and campaign endings or waits (AGENTS.md sections 4–6). ending.ts reports stopping conditions; conditions.ts compares solve settings. Use run-management to launch, pause or stop runs."
 ---
 
 # Campaign mechanics
@@ -45,27 +45,31 @@ Choose the reference for the mechanism you are working on:
 ## Scripts
 
 `scripts/ending.ts` lists recorded endings and current stopping conditions. It complements
-`bun run runs view` , which reports the climb and next move without this ending history or the
+`bun run runs view`, which reports the climb and next move without this ending history or the
 counts against stopping thresholds.
 
 ```text
 bun .claude/skills/campaign-mechanics/scripts/ending.ts <name | /abs/path/to/log.jsonl>
 ```
 
-It reads one log, by name as `bun run runs` finds it (a worktree's, else the archive's) or by an
-absolute path, which also reads a remote host's archived copy that the view refuses. It prints each
-`campaign.ended` with its reason and the `campaign.move` codes counted before it (`asked` where the
-Builder chose otherwise than the table), the moves since the last ending, then the counts the
-endings are decided on, each beside its bound and each from its production owner under the plan the
-view asks the table with (`planOn`, `tools/runs/view.ts` ): the budget left, improvement patience
-(`stopRule`), supply patience (`supplyRun`, over `roomless` in `src/campaign/decide.ts` ), crashed
-sessions in a row (`crashedRun` against `CRASHES` ), idle conversations (`idleOf` against `IDLE` ),
-the codes comparison admission would refuse with (`refusals`), the operator's words not yet heard
-(`pendingWords`), and the table's move (`decide`). It parses its arguments through `runCommand`
-(`.claude/skills/main/cli.ts`), so `--host <name>` runs it on another host. The counts are read
-after the last ending, as the command run again would read them, so a campaign that ended `finished`
-shows no idle conversation. It prints ids, codes, counts and the host's reasons, never a task or a
-check, but its output is still read off an exam-side log: keep it out of tracked files.
+The script resolves a campaign name locally or in the archive, or accepts an absolute log path.
+An explicit path can read a remote host's archived copy after that host stops listing it.
+`--host <name>` runs the script remotely through `runCommand`.
+
+It reports:
+
+- Each `campaign.ended`, its reason and preceding `campaign.move` counts. `asked` marks
+  a Builder choice that differed from the table. Moves after the last ending are shown separately.
+- The current budget, improvement patience (`stopRule`), supply patience (`supplyRun`),
+  consecutive crashes (`crashedRun` against `CRASHES`) and idle conversations
+  (`idleOf` against `IDLE`).
+- Admission refusal codes (`refusals`), pending operator instructions (`pendingWords`) and
+  the next move (`decide`).
+
+These readers use `planOn`, the same plan as the run view. Counts describe a restart from the
+log after its last ending; a campaign ended `finished` therefore has no current idle count.
+Output contains ids, codes, counts and host reasons, without tasks or checks. It remains
+exam-side and must stay out of tracked files.
 
 ```text
 bun .claude/skills/campaign-mechanics/scripts/conditions.ts <name | /abs/path/to/log.jsonl>

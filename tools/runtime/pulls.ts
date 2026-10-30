@@ -6,6 +6,10 @@
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { decodeOutput, runSync } from "../../src/meta/subprocess.ts";
 
+/** The check `bun run land` turns green on a pull request's head once every commit up to it has
+ *  passed, and the pre-push hook turns pending on each head stacked above a pushed branch. */
+export const MERGEABLE_CONTEXT = "mergeable";
+
 /** An open pull request, in the fields `gh pr list --json` names. */
 export interface Pull {
   readonly number: number;

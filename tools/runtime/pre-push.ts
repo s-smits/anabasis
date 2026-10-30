@@ -27,7 +27,8 @@
  * the push asks and one of them changes more than documentation, each such head gets the CI gate's
  * `--static` pass over a checkout of its own (`proveCommits`): the install, the UI's steps as far as
  * they are due, the format check, typecheck, strict lint, and the tests near what the head's own
- * commit changed. The working tree may hold anything. A pass is remembered by content, so a push its
+ * commit changed. Once the checks pass, the open pull requests stacked above a pushed branch are
+ * marked pending (`markAbove`). The working tree may hold anything. A pass is remembered by content, so a push its
  * lease refused goes out again without paying twice.
  *
  * The push queue and the refusal of a push stacked on a base the push before it replaced went with
@@ -51,6 +52,7 @@ import {
   proveCommits,
   short,
 } from "./gate.ts";
+import { gh, MERGEABLE_CONTEXT, openPulls, type Pull } from "./pulls.ts";
 
 /** Git names a ref that does not exist by an all-zero object name (githooks(5), pre-push). */
 const ABSENT = /^0+$/u;
@@ -79,15 +81,71 @@ function secretsIn(root: string, line: readonly string[], tips: readonly string[
   return found.length > 0;
 }
 
+/** Marks `mergeable` pending on the head of each open pull request stacked above a pushed branch,
+ *  each still carrying the success a landing posted over what was beneath it before the push. A pushed head
+ *  needs no mark: a status belongs to its commit, and a new one has none until a landing proves it.
+ *  Until 30 October the workflow `mergeable.yml` did this on GitHub after each push, 113 runs in a
+ *  day; the operator moved it here, so that GitHub runs only `ci.yml`. A push its lease refuses
+ *  leaves the marks, which the next landing clears. A failure to mark is said and refuses nothing. */
+function markAbove(root: string, branches: readonly string[]): void {
+  let open: Pull[];
+  try {
+    open = openPulls(root);
+  } catch (error) {
+    say(`the pull requests above were not marked pending: ${String(error)}`);
+    return;
+  }
+  const above: Pull[] = [];
+  for (let bases = branches; bases.length > 0; ) {
+    const next = open.filter(
+      (pull) =>
+        bases.includes(pull.baseRefName) && !branches.includes(pull.headRefName) && !above.includes(pull),
+    );
+    above.push(...next);
+    bases = next.map((pull) => pull.headRefName);
+  }
+  const unmarked = above.filter(
+    (pull) =>
+      !gh(root, [
+        "api",
+        "-X",
+        "POST",
+        `repos/{owner}/{repo}/statuses/${pull.headRefOid}`,
+        "-f",
+        "state=pending",
+        "-f",
+        `context=${MERGEABLE_CONTEXT}`,
+        "-f",
+        "description=waiting for bun run land to prove every commit up to this head",
+        "--silent",
+      ]).ok,
+  );
+  if (above.length > 0) {
+    const named = (pulls: readonly Pull[]) => pulls.map((pull) => `#${String(pull.number)}`).join(", ");
+    say(`marked ${named(above.filter((pull) => !unmarked.includes(pull)))} pending above this push.`);
+    if (unmarked.length > 0) say(`could not mark ${named(unmarked)} pending.`);
+  }
+}
+
 async function main(): Promise<number> {
   const root = git(runtimeProcess.cwd(), ["rev-parse", "--show-toplevel"]);
   const updates = lines(await Bun.stdin.text()).flatMap((line) => {
-    const [, local = "", , remote = ""] = line.split(" ");
-    return ABSENT.test(local) ? [] : [{ local, remote }];
+    const [, local = "", ref = "", remote = ""] = line.split(" ");
+    return ABSENT.test(local) ? [] : [{ local, branch: ref.replace(/^refs\/heads\//u, ""), remote }];
   });
+  const passed = await checked(root, updates);
+  if (passed && updates.length > 0) markAbove(root, [...new Set(updates.map((update) => update.branch))]);
+  return passed ? 0 : 1;
+}
+
+/** Whether what the push adds passes the checks its level asks for; each refusal is said. */
+async function checked(
+  root: string,
+  updates: readonly { readonly local: string; readonly remote: string }[],
+): Promise<boolean> {
   if (updates.length === 0) {
     say("every update is a deletion; nothing from this tree is published, so nothing is checked.");
-    return 0;
+    return true;
   }
   const heads = [...new Set(updates.map((update) => update.local))];
   // A branch someone else moved is not in this clone, and its old commits cannot be read here.
@@ -97,33 +155,33 @@ async function main(): Promise<number> {
   const line = addedLine(root, heads, [...replaced, "--remotes"], say);
   if (line.length === 0) {
     say("nothing this push adds is new to the remote, so nothing is checked.");
-    return 0;
+    return true;
   }
   const failing = unclean(root, line);
   if (failing.length > 0) {
     say(`git diff --check fails on ${failing.map(short).join(", ")}. Nothing was pushed.`);
-    return 1;
+    return false;
   }
   const holds = (below: string, above: string): boolean =>
     gitSays(root, ["merge-base", "--is-ancestor", below, above]);
   const tips = heads.filter((head) => heads.every((other) => other === head || !holds(head, other)));
   if (secretsIn(root, line, tips)) {
     say("the secret scan found a credential-shaped literal in what this push adds. Nothing was pushed.");
-    return 1;
+    return false;
   }
   const source = line.filter((commit) => changesSource(root, commit));
   if (source.length === 0) {
     say(
       `documentation only: git diff --check and the secret scan passed on ${plural(line.length, "commit")}.`,
     );
-    return 0;
+    return true;
   }
   // git's own `--verify` only says that the hook runs, so a push cannot carry the choice as a flag.
   if (runtimeProcess.env.ANA_PUSH_VERIFY !== "1") {
     say(
       `git diff --check and the secret scan passed on ${plural(line.length, "commit")}; ANA_PUSH_VERIFY=1 adds the static steps and nearby tests, and bun run land -- <top> --sanitize proves the stack.`,
     );
-    return 0;
+    return true;
   }
   say(
     `git diff --check and the secret scan passed on ${plural(line.length, "commit")}; the suite waits for bun run land -- <top> --sanitize.`,
@@ -135,14 +193,14 @@ async function main(): Promise<number> {
       .map((commit) => ({ commit, pass: "static" as const })),
     { who: "pre-push", jobs: 1, say, mark: () => undefined },
   );
-  if (failed === null) return 0;
+  if (failed === null) return true;
   if (failed.verdict) {
     say(`every published commit passes alone, so the fix goes into the commit that brought the failure,`);
     say(`not into one on top: stage it, then git commit --fixup=<that commit> and`);
     say(`  GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <that commit>~1`);
   }
   say(`${failedLine(failed)}. Nothing was pushed${failed.verdict ? "" : "; push again"}. Log: ${failed.log}`);
-  return 1;
+  return false;
 }
 
 if (import.meta.main) runtimeProcess.exit(await main());

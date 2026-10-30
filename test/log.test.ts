@@ -38,6 +38,29 @@ describe("the log", () => {
     expect(read(before).map(({ kind }) => kind)).toEqual(["pass.labelled"]);
   });
 
+  it("leaves out the kinds a reader names, and still refuses a line that is no event or a torn last line", () => {
+    const path = fresh();
+    const started = append(path, "solve.started", { task: "t1" });
+    append(path, "solve.call", { tool: "bash" });
+    // The same kind written with its fields in another order is parsed whole and left out too.
+    appendFileSync(path, '{"kind":"solve.call","at":"2026-10-30T00:00:00.000Z","data":{}}\n');
+    const finished = append(path, "solve.finished", { outcome: "pass" });
+    const calls = new Set(["solve.call"] as const);
+    expect(read(path, calls)).toEqual([started, finished]);
+    expect(read(path).map(({ kind }) => kind)).toEqual([
+      "solve.started",
+      "solve.call",
+      "solve.call",
+      "solve.finished",
+    ]);
+    appendFileSync(path, '{"at":"2026-10-30T00:00:00.000Z","kind":"solve.retried","data":{}}\n');
+    expect(() => read(path, calls)).toThrow(`${path}:5 is not a log event`);
+    const torn = fresh();
+    append(torn, "solve.call", { tool: "bash" });
+    appendFileSync(torn, '{"at":"2026-10-30T00:00:00.000Z","kind":"solve.ca');
+    expect(() => read(torn, calls)).toThrow("the last line is torn");
+  });
+
   it("refuses reading or appending after a torn last line, whatever the event", () => {
     const path = fresh();
     append(path, "verdict", { pass: true });

@@ -74,8 +74,9 @@ function units(wins: number, losses: number): number[] {
 }
 
 /** The smallest results that clear `level` on at most `tasks` scored tasks, each won or lost by as
- *  many pairs: at 0.02, 6-0, 8-1, 10-2 and 12-3 as far as they fit; at 0.10, 4-0, 6-1, 7-2 and 9-3. */
-function clearing(tasks: number, level: number): Result[] {
+ *  many pairs: at 0.02, 6-0, 8-1, 10-2 and 12-3 as far as they fit; at 0.10, 4-0, 6-1, 7-2 and 9-3.
+ *  `sizeLines` names the first three; the comparison-reading skill's size script prints them all. */
+export function clearing(tasks: number, level: number): Result[] {
   const results: Result[] = [];
   let wins = 0;
   for (let losses = 0; wins + losses <= tasks; losses += 1) {

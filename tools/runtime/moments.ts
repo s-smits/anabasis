@@ -75,12 +75,12 @@ const ROUTES: readonly Route[] = [
   {
     id: "seats",
     path: /(^|\/)src\/(builder|examiner|solver|referee|harness)\/|(^|\/)tools\/d2\/(campaign-actions|harness-builder)\.ts$/u,
-    said: "Seat information (rule 3; `design-and-seats`, sections 2 and 3): changing hidden values, checks or which held-out task was won must leave Builder and solver messages byte-identical (`test/builder.test.ts`, `test/builder-led.test.ts`). A PR changing these messages states how it checked this. `bun .claude/skills/design-and-seats/scripts/seat-view.ts` traces imports and identifies wall tests. Give models facts rather than a prescribed course.",
+    said: "Seat information (rule 3; `design-and-seats`, sections 2 and 3): changing hidden values, checks or which held-out task was won must leave Builder and solver messages byte-identical (`test/builder.test.ts`, `test/builder-led.test.ts`). A PR changing these messages states how it checked this. `bun .claude/skills/design-and-seats/scripts/seat-view.ts` traces imports and identifies wall tests; `builder-view.ts <name>` prints what a Builder opening is told of the past. Give models facts rather than a prescribed course.",
   },
   {
     id: "measurement",
     path: /(^|\/)src\/kernel\/(compare|reports|size|solve)\.ts$|(^|\/)src\/campaign\/(comparison|round|decide|admission|climb|ground)\.ts$/u,
-    said: "Evaluation (`comparison-reading`, section 7; rules 1, 4, 5 and 12): fix terms before solving, solve both sides afresh and keep one owner per decision. Preserve measurement honesty when simplifying. Check changed readers with `bun run runs replay`. `bun .claude/skills/comparison-reading/scripts/size.ts` reports sample-size figures; `reading.ts <log|name>` compares recorded readings.",
+    said: "Evaluation (`comparison-reading`, section 7; rules 1, 4, 5 and 12): fix terms before solving, solve both sides afresh and keep one owner per decision. Preserve measurement honesty when simplifying. Check changed readers with `bun run runs replay`. `bun .claude/skills/comparison-reading/scripts/size.ts` reports sample-size figures; `reading.ts <log|name>` compares recorded readings; `draw.ts <log|name>` shows what the next comparison would score.",
   },
   {
     id: "campaign",
@@ -95,12 +95,12 @@ const ROUTES: readonly Route[] = [
   {
     id: "log",
     path: /(^|\/)src\/kernel\/(log|task|condition|trace)\.ts$/u,
-    said: "Campaign log (`campaign-mechanics`, section 5): keep one store and one reader per fact. Preserve old event kinds in `EVENT_KINDS`. Reuse the existing folds and `bun run runs` readers.",
+    said: "Campaign log (`campaign-mechanics`, section 5): keep one store and one reader per fact. Preserve old event kinds in `EVENT_KINDS`. Reuse the existing folds and `bun run runs` readers. `bun .claude/skills/campaign-mechanics/scripts/conditions.ts <name>` shows the settings a log's solves ran under.",
   },
   {
     id: "code",
     path: /(^|\/)(src|tools|test|packages)\/.*\.tsx?$/u,
-    said: "Code (AGENTS.md section 12): read `tools/oxlint/HABITS.md` before editing. Add no strict-lint findings. Production imports `node:` through `src/meta` only. Tests check facts rather than wording. Run `/simplify` on the diff before committing.",
+    said: "Code (AGENTS.md section 12): read `tools/oxlint/HABITS.md` before editing. Add no strict-lint findings. Production imports `node:` through `src/meta` only, and never helper code (`bun .claude/skills/repository-practice/scripts/direction.ts`). Tests check facts rather than wording. Run `/simplify` on the diff before committing.",
   },
   {
     id: "untouched",

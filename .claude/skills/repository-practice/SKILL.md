@@ -1,6 +1,6 @@
 ---
 name: repository-practice
-description: "Apply the repository's evidence, runtime, validation, writing and terminology rules (AGENTS.md sections 9 to 14). Use preflight.ts to identify checks, affected areas and suggested PR labels. Procedures remain with stack-pr, run-management and attribution-and-proof; coding habits are in tools/oxlint/HABITS.md."
+description: "Apply the repository's evidence, runtime, validation, writing and terminology rules (AGENTS.md sections 9 to 14). Use preflight.ts to identify checks, affected areas and suggested PR labels, and direction.ts to find production imports of helper code. Procedures remain with stack-pr, run-management and attribution-and-proof; coding habits are in tools/oxlint/HABITS.md."
 ---
 
 # Repository practice
@@ -36,6 +36,7 @@ Each part answers one question:
 | Start, continue or plan a run that bills a model | section 10, then `run-management` |
 | Change the OS wall, a seat's root, its start-up test or the network | section 10, "The wall, seat roots and the network" |
 | Write the first line of code | `tools/oxlint/HABITS.md` whole, then section 12 |
+| Ask whether production imports a skill, the investigation's reader, a study or a test | `bun .claude/skills/repository-practice/scripts/direction.ts` (below), then section 12 |
 | Write a commit, a pull request body, a comment, a prompt or a message to the operator | section 13; preflight lists the slips a pattern can see in changed Markdown |
 | Use a term, or find the directory that owns a mechanism | section 14 |
 
@@ -74,3 +75,15 @@ asks each owner rather than deciding for itself:
 Preflight reads no campaign log and starts no check or run. Validate with `bun run commit:check` and
 the gate. Inspect accounts, hosts and live runs through `bun run runs usage` , `hosts` , `status`
 and `active` . Its tests are in `test/repository-practice-script.test.ts` .
+
+## The dependency direction: `scripts/direction.ts`
+
+```text
+bun .claude/skills/repository-practice/scripts/direction.ts [--file <path>]...
+```
+
+Section 12 runs dependencies one way, and no lint rule or scan checks it. This script asks the CI
+gate's import reader (`importsOf`, `tools/runtime/gate.ts`), which resolves the `#skills/…` aliases
+as Bun does, for the imports of each production file: every tracked file under `src/`, `vendor/`,
+`packages/` and `tools/` outside `tools/wri/`, or each `--file`. It names each import that lands in
+`.claude/`, `tools/wri/`, `studies/` or `test/`, and exits 1 on any. Its tests are in the same file.

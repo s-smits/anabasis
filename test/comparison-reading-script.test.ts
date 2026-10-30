@@ -1,11 +1,14 @@
 /**
- * Check sample-size figures against production readers and re-evaluate synthetic comparison
- * reports under the current rules. These tests read no campaign logs.
+ * Check sample-size figures against production readers, re-evaluate synthetic comparison
+ * reports under the current rules, and draw the next comparison's set. These tests read no
+ * campaign logs.
  */
 import { describe, expect, it } from "bun:test";
+import { drawLines, drawOf } from "#skills/comparison-reading/scripts/draw.ts";
 import { scoresRead, sizeOf } from "#skills/comparison-reading/scripts/size.ts";
 import { rowsOf } from "#skills/comparison-reading/scripts/reading.ts";
 import { flipP } from "../src/kernel/compare.ts";
+import { clearing } from "../src/kernel/size.ts";
 import { LOG_FILE, type LogEvent } from "../src/kernel/log.ts";
 import { mkdtempSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { capturedJsonStringify } from "../src/meta/json-runtime.ts";
@@ -103,6 +106,9 @@ describe("the size figures the skill states", () => {
         expect(scoresRead(scores(wins, losses), level, null).p).toBeLessThanOrEqual(level);
         expect(scoresRead(scores(wins - 1, losses), level, null).p).toBeGreaterThan(level);
       }
+      // The production's list of clearing tallies is the same, as far as twelve or fifteen tasks hold.
+      const fits = clearing(level === 0.02 ? 15 : 12, level).map(({ wins, losses }) => [wins, losses]);
+      expect(fits).toStrictEqual(tallies.map(([wins, losses]) => [wins, losses]));
     }
   });
 
@@ -185,5 +191,48 @@ describe("a log's comparisons read again", () => {
     const said = decodeOutput(whole.stdout);
     expect(["g-1", "g-2", "g-3", "g-4", "g-5"].every((session) => said.includes(`${session}  `))).toBe(true);
     expect(runSync([capturedExecPath, script, folder, "--comparison", "g-9"]).exitCode).toBe(1);
+  });
+});
+
+describe("what the next comparison would score", () => {
+  /** A task's hidden value, which no line of the draw may carry. */
+  const HIDDEN = "hidden-canary-5e4";
+
+  /** A log over a read checker whose Examiner held `held` drafts and released `released`. */
+  function exam(held: number, released: number): LogEvent[] {
+    const events: LogEvent[] = [];
+    const add = (kind: LogEvent["kind"], data: JsonObject) =>
+      events.push({ at: `2026-10-30T00:${String(events.length).padStart(2, "0")}:00.000Z`, kind, data });
+    add("contract.frozen", { contract: "c1", checker: "k1" });
+    add("checker.read", { faults: [] });
+    for (let at = 0; at < held + released; at += 1) {
+      const [version, taskId] = [`v-${String(at)}`, `task-${String(at)}`];
+      add("task.proposed", { version, taskId, task: { taskId, publicInput: {}, hidden: { value: HIDDEN } } });
+      add("task.gate", {
+        version,
+        gate: 1,
+        outcome: "passed",
+        reference: { valid: 1, solves: 3, billed: 0 },
+      });
+      add("task.state", { version, state: at < released ? "released" : "held" });
+    }
+    return events;
+  }
+
+  it("draws every frontier task of the one epoch, and admission takes a set at its floor", () => {
+    const drawn = drawOf(exam(8, 2), 24, "c1");
+    expect(drawn.pool).toMatchObject({ scorable: 8, frontier: 8, exhausted: 0, awaiting: 0 });
+    expect([drawn.scored, drawn.retained, drawn.epochs]).toStrictEqual([8, 0, 1]);
+    expect(drawn.byEpoch).toStrictEqual([{ nth: 1, drawn: 8 }]);
+    const lines = drawLines(exam(8, 2), { target: 24, level: 0.02 });
+    expect(lines.find((line) => line.startsWith("admission "))).toContain(
+      "a floor of 8 frontier tasks; no refusal",
+    );
+  });
+
+  it("names held-short below the floor, and no task or hidden value", () => {
+    const lines = drawLines(exam(5, 2), { target: 24, level: 0.02 });
+    expect(lines.find((line) => line.startsWith("admission "))).toContain("refused held-short");
+    for (const canary of [HIDDEN, "task-", "v-"]) expect(lines.join("\n")).not.toContain(canary);
   });
 });

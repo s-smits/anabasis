@@ -1,6 +1,6 @@
 ---
 name: campaign-mechanics
-description: "Explain or change campaign control: the Builder conversation, log events, settings, admissions, practice release and endings (AGENTS.md sections 4 to 6). Use ending.ts to inspect recorded endings and current stopping conditions. Launch procedures belong to run-management."
+description: "Explain or change campaign control: the Builder conversation, log events, settings, admissions, practice release and endings (AGENTS.md sections 4 to 6). Use ending.ts for stopping conditions and conditions.ts for solve-setting differences. Launch procedures belong to run-management."
 ---
 
 # Campaign mechanics
@@ -28,7 +28,7 @@ Choose the reference for the mechanism you are working on:
 | ask whether a move is recorded, counted against `--moves`, or carries `asked` | `references/builder-conversation.md` |
 | change the Builder's deadline, its clock during a campaign action, or compaction | `references/builder-conversation.md` |
 | add an event kind, a file beside the log, or a reader of a fact the log holds | `references/the-log.md` |
-| ask what a condition names, or whether two solves are comparable | `references/the-log.md` |
+| ask what a condition names, or whether two solves are comparable | `references/the-log.md`; run `scripts/conditions.ts` on the log |
 | move, copy, retire or archive a campaign | `references/the-log.md`, then the skill `run-management` |
 | run or change a hand command (rows 0 to 7) | `references/campaign-command.md` |
 | change how a campaign opens from a prompt, or the draft's reading | `references/campaign-command.md` |
@@ -66,3 +66,14 @@ the codes comparison admission would refuse with (`refusals`), the operator's wo
 after the last ending, as the command run again would read them, so a campaign that ended `finished`
 shows no idle conversation. It prints ids, codes, counts and the host's reasons, never a task or a
 check, but its output is still read off an exam-side log: keep it out of tracked files.
+
+```text
+bun .claude/skills/campaign-mechanics/scripts/conditions.ts <name | /abs/path/to/log.jsonl>
+```
+
+`conditions.ts` checks comparability through `conditionsOf`, which verifies condition hashes.
+It lists settings in first-use order (`settingId`) and their changes: model, effort, compaction
+and side values; limit and runtime keys; short digests for other fields. For each comparison,
+it reports differences beyond harness, tool tree and task, or `comparable` when none exist.
+It also groups Examiner room solves and practice solves. A host-code change appears as a changed
+`host`. Output omits tasks but remains exam-side and must stay out of tracked files.

@@ -34,8 +34,8 @@
  *
  * The run's states link their programs by relative paths, which hold in the new folder. What an
  * Examiner's or a Builder's shell left in its home links where that machine's tools are, and the
- * next session there builds its own again. A `runs keep` that keeps the campaign at its source is
- * not stopped by the move: stop it first.
+ * next session there builds its own again. A `runs keep` that keeps the campaign at its source
+ * ends with the pause (`pauseAt`), whether or not a process still wrote the log.
  *
  *   bun run runs copy <name> --to <worktree> [--yes]
  *

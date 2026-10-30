@@ -1,10 +1,10 @@
 // Campaign login isolation, clean-point pausing and dry-run refusals.
 import { afterAll, describe, expect, it } from "bun:test";
-import type { EventKind, LogEvent } from "../src/kernel/log.ts";
-import { chmodSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { append, type EventKind, type LogEvent } from "../src/kernel/log.ts";
+import { chmodSync, mkdirSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
-import { capturedExecPath } from "../src/meta/process.ts";
+import { capturedExecPath, capturedSpawn } from "../src/meta/process.ts";
 import { loginEnv, restsAfter } from "../tools/runs/manage.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
@@ -77,6 +77,36 @@ describe("going on with a campaign", () => {
       event("build.call", { session: "b-1" }),
     ]) {
       expect(restsAfter([...drafting, step], "next", 1)).toBe(true);
+    }
+  });
+
+  it("ends the keeper of a run no process writes, which would start it again under a move", async () => {
+    const made = fakeHosts();
+    fixtures.push(made.root);
+    const name = "kept";
+    const folder = join(made.main, ".ana", "d2", name);
+    mkdirSync(folder, { recursive: true });
+    append(join(folder, "log.jsonl"), "campaign.ended", { ending: "environment" });
+    const keeper = capturedSpawn({
+      cmd: ["sleep", "60"],
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "ignore",
+      detached: true,
+    });
+    // The fixture's `ps` lists this row: the keeper `keep.ts` starts, as it reads to `keepers`.
+    const row = `${String(keeper.pid)} ${capturedExecPath} tools/runs/cli.ts keep ${name} --here`;
+    try {
+      const paused = made.run(
+        `import { pause } from "REPOSITORY/tools/runs/manage.ts"; await pause(["${name}", "--after", "finished", "--yes"]);`,
+        { FAKE_PS: row },
+      );
+      expect({ code: paused.code, err: paused.err }).toEqual({ code: 0, err: "" });
+      expect(paused.out).toContain("its keeper");
+      const ended = await Promise.race([keeper.exited.then(() => true), Bun.sleep(5000).then(() => false)]);
+      expect(ended).toBe(true);
+    } finally {
+      keeper.kill();
     }
   });
 });

@@ -58,6 +58,7 @@ import {
   everyRun,
   isCampaign,
   logEvents,
+  keepers,
   openComparisons,
   processes,
   type Run,
@@ -156,6 +157,9 @@ async function pauseAt(run: Run, after: string): Promise<void> {
     size = grown;
     await Bun.sleep(after === "next" ? STEP_MS : LOOK_MS);
   }
+  // A keeper starts a run no process writes again: until 30 October it outlived the pause, and
+  // could go on with the run at its source while a move copied it away.
+  if (keepers(run.name).length > 0) return stop([run.name, "--yes"]);
   console.log(`${run.name} is not running`);
 }
 

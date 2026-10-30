@@ -260,7 +260,7 @@ destination has no worktree `anabasis-<name>`, prepares its code, then pauses th
 source stands at, takes the folder over with rsync, checks the log's size, sets the source aside
 under `.ana/moved/` and runs `continue` there on the kept flags, a path under the folder of the
 source's worktrees named under the destination's. `--hold` stops before the continue and prints
-it. Without `--yes` it reads both ends and moves nothing. Stop a `runs keep` of the campaign first.
+it. Without `--yes` it reads both ends and moves nothing. The pause ends a `runs keep` of the campaign, running or not.
 A change of login on one machine needs no move: `continue --after <event> --login N`.
 
 ## Logins and other hosts

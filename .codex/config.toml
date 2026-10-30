@@ -1,0 +1,9 @@
+# What a session is told when a tool call enters an area of the repository (`tools/runtime/moments.ts`).
+[[hooks.PreToolUse]]
+matcher = "Bash|apply_patch"
+
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = 'bun "$(git rev-parse --show-toplevel)/tools/runtime/moments.ts"'
+timeout = 5
+statusMessage = "Reading what applies here"

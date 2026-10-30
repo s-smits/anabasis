@@ -181,8 +181,8 @@ When committing and pushing in one shell command, chain them with `&&`. With `;`
 still pushes the previous head (20 October).
 
 Read a refusal and correct its cause within your authority. Pass `--no-verify` only where the
-operator says so, and never push to `main`. It skips the hook whole, so the pull requests above the
-pushed branch keep their green `mergeable` until the next landing instead of turning pending.
+operator says so, and never push to `main`. It skips the hook whole, so the pushed head shows no
+`mergeable` and the pull requests above it keep their green one until the next landing.
 
 A plain push runs `git diff --check` and the secret scan, which take seconds. `ANA_PUSH_VERIFY=1
 git push` also runs every other check, with the tests near each pushed head's own change in place

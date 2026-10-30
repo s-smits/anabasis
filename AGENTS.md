@@ -459,7 +459,7 @@ and the wall's start-up test.
 Use Bun 1.4.4 throughout, with no Node, npm or npx. While editing, run the owning tests through
 `bun run test -- <paths>` rather than bare `bun test`. Run at most one full suite per host.
 `bun run gate` runs the CI gate. Keep hooks enabled (`bun run hooks:install`); a plain push
-checks whitespace and secrets and marks the pull requests above it pending. `bun run land -- <top>
+checks whitespace and secrets, and marks its head and the pull requests above it pending. `bun run land -- <top>
 --sanitize` validates the stack. GitHub Actions runs only `ci.yml`, which `land --merge`
 dispatches, since its tests need a machine independent of this one. When you tune CI, prefer to
 keep a check here, in the hook, `stack.ts` or `land`, posting its status to GitHub where one should

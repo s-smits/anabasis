@@ -1,6 +1,6 @@
 #!/bin/sh
-# Checks what a push adds before anything leaves this clone, and marks the pull requests stacked
-# above a pushed branch pending: bun run land proves the stack.
+# Checks what a push adds before anything leaves this clone, and marks each pushed head and the
+# pull requests stacked above it pending once GitHub holds it: bun run land proves the stack.
 # tools/runtime/pre-push.ts holds the method in its head comment. Installed with
 # `bun run hooks:install`, which points this clone's core.hooksPath here once; its worktrees share
 # the setting.

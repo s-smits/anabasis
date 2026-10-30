@@ -19,7 +19,7 @@ day had held 193 Actions runs, 189 of them for checks this machine already made 
 | --- | --- | --- |
 | `git diff --check`, the secret scan on what a push adds | the pre-push hook, every plain push | nothing |
 | static steps and nearby tests | the pre-push hook with `ANA_PUSH_VERIFY=1` | nothing |
-| the pull requests above a pushed branch go back to unproved | the pre-push hook, once its checks pass (`markAbove`) | `mergeable` pending |
+| a pushed head, and the pull requests above it, go back to unproved | the pre-push hook, once its checks pass: a detached process marks them as soon as GitHub holds the push (`mark`) | `mergeable` pending |
 | a pull request that repeats another's commits | `stack.ts` lists it, `land` refuses it (`doubled.ts`) | nothing |
 | each commit passes alone; the whole gate at the top | `bun run land -- <top> --sanitize`, on a runner host | `ana/commit`, `mergeable` success or failure |
 | the clean-machine suite on both platforms | `ci.yml`, dispatched by `land --merge` | `ci.yml` |

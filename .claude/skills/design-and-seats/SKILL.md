@@ -1,6 +1,6 @@
 ---
 name: design-and-seats
-description: "Explain or change Anabasis's design, reported factors, seat responsibilities, model-visible information or harness structure (AGENTS.md sections 1 to 3). Use seat-view.ts to trace imports and identify wall tests, examiner-view.ts to summarise an Examiner opening, and builder-view.ts to print what a Builder opening is told of the past."
+description: "Read before editing src/builder/, src/examiner/, src/solver/, src/referee/ or src/harness/, or a seat's prompt, tool description, tool result or home file, HARNESS.md or the starter; and whenever asked what a seat reads or never reads, what crosses the wall (rule 3), whether code or a model owns a decision, what supply and the four factors (climb, honesty, verdicts, economy) measure, or which decisions are the operator's (AGENTS.md sections 1 to 3). Scripts: seat-view.ts names the seats a diff reaches and their wall tests; examiner-view.ts and builder-view.ts print what the next Examiner or Builder opening is told."
 ---
 
 # Design and seats

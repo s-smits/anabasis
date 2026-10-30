@@ -6,9 +6,11 @@ session loads it, so it keeps the invariants and leaves detailed mechanisms to s
 
 **Where to read more.** Four skills explain these sections under the same numbers and titles:
 `design-and-seats` (1 to 3), `campaign-mechanics` (4 to 6), `comparison-reading` (7 and 8) and
-`repository-practice` (9 to 14). Each section here opens with what it is about and closes with an
-index of what its skill adds: the file under its `references/` to read before you change that
-mechanism, and the scripts, each run as `bun .claude/skills/<skill>/scripts/<name>.ts` . The other
+`repository-practice` (9 to 14). Most tasks touch at least one of them: read the owning skill before
+you change a mechanism or answer a question about one. Each section here opens with what it is
+about and closes with an index of what its skill adds: the file under its `references/` to read
+before you change that mechanism, and the scripts, each run as
+`bun .claude/skills/<skill>/scripts/<name>.ts` . The other
 skills own the procedures (section 10), `tools/oxlint/HABITS.md` how code is written (section 12),
 and `docs/plan.md` status. `docs/transfer.md` , `docs/v1.md` , `docs/prompts.md` and `studies/` hold
 v1's record, handed-off prompts and outside measurements; `7f0add79:docs/<file>` means that file at

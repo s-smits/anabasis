@@ -68,6 +68,13 @@ describe("the hook", () => {
     expect(hook({ ...call, session_id: "s-2" }).said).toContain("stack-pr");
   });
 
+  it("tells the session to read the skill that owns an area, and names none where no skill does", () => {
+    const edit = { session_id: "s-3", tool_input: { file_path: "/w/anabasis/src/builder/prompt.ts" } };
+    expect(hook(edit).said).toContain(".claude/skills/design-and-seats/SKILL.md");
+    const env = { session_id: "s-4", tool_input: { command: "cat .env" } };
+    expect(hook(env).said).not.toContain("SKILL.md");
+  });
+
   it("exits successfully on unreadable input and stores no state for unsafe session ids", () => {
     expect(hook("{ torn")).toEqual({ status: 0, said: "" });
     // A session id that could name a path keeps no state: the area is said each time.

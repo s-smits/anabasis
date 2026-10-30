@@ -1,9 +1,13 @@
-// Check ending history, preceding moves and current stopping conditions using in-memory logs.
+// Check ending history, preceding moves and current stopping conditions, and the settings a log's
+// solves ran under with what each comparison mixed, using in-memory logs.
 import { describe, expect, it } from "bun:test";
+import { conditionLines, differing } from "#skills/campaign-mechanics/scripts/conditions.ts";
 import { campaignEnding, endingLines } from "#skills/campaign-mechanics/scripts/ending.ts";
+import { type Condition, conditionId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
+import { requireJsonValue } from "../src/meta/stable-json.ts";
 
 const OPENED: JsonObject = {
   project: "p",
@@ -105,5 +109,80 @@ describe("ending.ts", () => {
     run.add("exam.finished", { session: "x-4", ended: "finished", held: ["t-1"] });
     empty(run, "x-5");
     expect(campaignEnding(run.events).standing.supply.count).toBe(1);
+  });
+});
+
+describe("conditions.ts", () => {
+  const BASE: Condition = {
+    contract: "c1",
+    harness: "h1",
+    task: "t1",
+    model: "faux/solver",
+    effort: "medium",
+    prices: { "faux/solver": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
+    runtime: { pi: "1.0.0" },
+    compaction: "off",
+    solverTools: "s1",
+    verifierTools: "v1",
+    sandbox: "p1",
+    limits: { wallSeconds: 480, turns: 24, shellDefaultSeconds: 120, shellMaxSeconds: 240, concurrency: 4 },
+    host: "code-1",
+    side: "test",
+  };
+
+  /** A log of solves, each under `condition` and counted for `session` where one is named. */
+  function solves(runs: readonly { condition: Condition; session?: string }[], compared: readonly string[]) {
+    const run = logOf();
+    for (const session of compared) run.add("comparison.started", { session });
+    for (const [at, { condition, session }] of runs.entries()) {
+      const id = conditionId(condition);
+      run.add("condition.recorded", { id, condition: requireJsonValue(condition) });
+      run.add("solve.started", {
+        solve: `s-${String(at)}`,
+        condition: id,
+        ...keyIfDefined("comparison", session),
+      });
+    }
+    return run.events;
+  }
+
+  it("names a field beyond the harness, its tools and the task only where the conditions differ in it", () => {
+    const sides = [BASE, { ...BASE, harness: "h2", solverTools: "s2", task: "t2" }];
+    expect(differing(sides)).toStrictEqual([]);
+    expect(differing([...sides, { ...BASE, host: "code-2", effort: "high" }])).toStrictEqual([
+      "effort",
+      "host",
+    ]);
+  });
+
+  it("says each comparison is comparable or what it mixed, and what changed from one setting to the next", () => {
+    const later: Condition = { ...BASE, host: "code-2", limits: { ...BASE.limits, wallSeconds: 600 } };
+    const lines = conditionLines(
+      solves(
+        [
+          { condition: BASE, session: "g-1" },
+          { condition: { ...BASE, harness: "h2" }, session: "g-1" },
+          { condition: BASE, session: "x-1" },
+          { condition: BASE },
+          { condition: later, session: "g-2" },
+          { condition: { ...later, effort: "high" }, session: "g-2" },
+        ],
+        ["g-1", "g-2"],
+      ),
+    );
+    expect(lines[0]).toBe("6 solves under 4 conditions and 3 settings");
+    expect(lines[1]).toMatch(/^setting 1 \(\w+\): 4 solves; faux\/solver at medium$/u);
+    expect(lines[2]).toMatch(/^setting 2 .*changed: limits wallSeconds 480 to 600; host \w+ to \w+$/u);
+    expect(lines[3]).toMatch(/^setting 3 .*changed: effort medium to high$/u);
+    expect(lines).toContain("comparison g-1: 2 solves, 2 harnesses, 1 setting: comparable");
+    expect(lines).toContain("comparison g-2: 2 solves, 1 harness, 2 settings: differs in effort");
+    expect(lines).toContain("room solves of x-1: 1 solve, 1 harness, 1 setting");
+    expect(lines.at(-1)).toBe("practice and other solves: 1 solve, 1 harness, 1 setting");
+  });
+
+  it("prints no task digest, and reads a log with no solve as none", () => {
+    const lines = conditionLines(solves([{ condition: { ...BASE, task: "task-canary-9d2" } }], []));
+    expect(lines.join("\n")).not.toContain("task-canary-9d2");
+    expect(conditionLines([])).toStrictEqual(["0 solves under 0 conditions and 0 settings"]);
   });
 });

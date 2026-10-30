@@ -188,7 +188,8 @@ only for one of the seven.
 
 **In `design-and-seats` , section 3** (`seats.md`, `operator-and-harness.md` ): what each seat reads
 and its tools; what a launch decides. `seat-view` names the seats a diff reaches and their wall
-tests; `examiner-view <name>` counts what an Examiner opening would be told.
+tests; `examiner-view <name>` counts what an Examiner opening would be told, and `builder-view
+<name>` prints what a Builder opening would be told of the past.
 
 ## 4. The Harness Builder
 
@@ -231,6 +232,7 @@ The log holds hidden values, so it stays on the exam side: out of prompts, pull 
 log.
 
 **In `campaign-mechanics` , section 5** (`the-log.md`): what a condition names; the folds.
+`conditions <name>` prints the settings a log's solves ran under, and what a comparison mixed.
 
 ## 6. A campaign's commands
 
@@ -301,8 +303,8 @@ and only `--past-stop` goes on.
 
 **In `comparison-reading` , section 7** (`draw-and-solves.md`, `tally-and-test.md` ,
 `limits-and-room.md` , `move-table.md` ): the mirror; the tally's floors; the A/A; the cap; room;
-promotion; each row of `decide` . `size` says what a size can show, and `reading <name>` sets a
-log's readings side by side.
+promotion; each row of `decide`. `size` says what a size can show, `reading <name>` sets a
+log's readings side by side, and `draw <name>` what the next comparison would score.
 
 ## 8. Rules
 
@@ -506,6 +508,7 @@ most 800 nonblank lines and a function 115, and every export has a reader in ano
 checks message content and information boundaries rather than exact wording.
 
 **In `repository-practice` , section 12** (`code-and-writing.md`): dependencies and the ledger.
+`direction` names every import from production into helper code or a test.
 
 ## 13. Writing
 

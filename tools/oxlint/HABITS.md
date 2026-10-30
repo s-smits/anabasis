@@ -18,8 +18,9 @@ first line, and the round trip through the linter mostly disappears.
   `package.json` (`#src/…`, `#tools/…`, `#skills/…`), and one or two levels stay relative.
 - Biome formats: two spaces, width 110, double quotes. Do not align or wrap by hand; run
   `bun run format`.
-- `tsc` does not include `.claude/`, so a skill script is checked by lint and by its tests
-  (`test/skill-scripts.test.ts`, `test/meta-cli.test.ts`).
+- `bun run typecheck` (`bun check`) covers the paths in `tsconfig.json`: `src`, `tools`,
+  `vendor`, `test`, `studies` and `.claude`. Skill scripts receive typechecking, lint and their
+  owning tests, including `test/skill-scripts.test.ts` and `test/meta-cli.test.ts`.
 
 ## 12.2 How lint runs
 

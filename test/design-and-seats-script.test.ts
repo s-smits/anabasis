@@ -1,5 +1,7 @@
-// Check import reach, relevant wall tests and aggregate Examiner views without exposing task data.
+// Check import reach, relevant wall tests, aggregate Examiner views and what a Builder opening is
+// told of the past, without exposing task data.
 import { afterAll, describe, expect, it } from "bun:test";
+import { builderTold } from "#skills/design-and-seats/scripts/builder-view.ts";
 import { examinerCounts } from "#skills/design-and-seats/scripts/examiner-view.ts";
 import {
   absentFrom,
@@ -8,11 +10,14 @@ import {
   seatLines,
   seatsOf,
 } from "#skills/design-and-seats/scripts/seat-view.ts";
+import { type Condition, conditionId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { keyIfNotNull } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
+import { requireJsonValue } from "../src/meta/stable-json.ts";
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-seat-view-")));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -173,5 +178,123 @@ describe("the Examiner's view in counts", () => {
     expect(lines.find((line) => line.startsWith("promotion: "))).toContain("g-9");
     // Admissions before the promotion measured the replaced reference, so the summary holds none of them.
     expect(lines.find((line) => line.startsWith("summary: "))).toBe("summary: none");
+  });
+});
+
+describe("what a Builder session opening now is told of the past", () => {
+  /** A held-out task's id and hidden value, neither of which may reach a Builder. */
+  const HELD = "held-canary-7c1";
+  const HIDDEN = "hidden-canary-7c1";
+  const [STARTER, BUILT] = ["0".repeat(64), "a".repeat(64)];
+
+  function past(): LogEvent[] {
+    const events: LogEvent[] = [];
+    const add = (kind: EventKind, data: JsonObject) =>
+      events.push({ at: `2026-10-30T00:${String(events.length).padStart(2, "0")}:00.000Z`, kind, data });
+    for (const [version, taskId, state] of [
+      ["v-p", "t-practice", "released"],
+      ["v-h", HELD, "held"],
+    ] as const) {
+      add("task.proposed", { version, taskId, task: { taskId, publicInput: {}, hidden: { value: HIDDEN } } });
+      add("task.gate", {
+        version,
+        gate: 1,
+        outcome: "passed",
+        reference: { valid: 1, solves: 3, billed: 0 },
+      });
+      add("task.state", { version, state });
+    }
+    let solves = 0;
+    const solved = (task: string, harness: string, comparison: string | null) => {
+      const condition: Condition = {
+        contract: "c1",
+        harness,
+        task,
+        model: "faux/solver",
+        effort: "medium",
+        prices: { "faux/solver": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
+        runtime: {},
+        compaction: "off",
+        solverTools: "s1",
+        verifierTools: "t1",
+        sandbox: "p1",
+        limits: {
+          wallSeconds: 480,
+          turns: 24,
+          shellDefaultSeconds: 120,
+          shellMaxSeconds: 240,
+          concurrency: 4,
+        },
+        host: "h1",
+        side: "test",
+      };
+      const [id, solve] = [conditionId(condition), `s-${String((solves += 1))}-1`];
+      add("condition.recorded", { id, condition: requireJsonValue(condition) });
+      add("solve.started", { solve, condition: id, ...keyIfNotNull("comparison", comparison) });
+      add("solve.finished", {
+        solve,
+        ending: { outcome: "fail", kind: "rejected" },
+        turns: 3,
+        seconds: 9,
+        billed: 1,
+      });
+      add("referee.finding", { solve, ruling: "earned" });
+    };
+    add("build.started", { session: "b-1", parent: STARTER, tasks: ["v-p"] });
+    solved("v-p", BUILT, null);
+    add("build.finished", {
+      session: "b-1",
+      ended: "wall",
+      harness: BUILT,
+      changed: true,
+      practiceSolves: 1,
+    });
+    add("comparison.started", {
+      session: "g-1",
+      old: STARTER,
+      fresh: BUILT,
+      starter: STARTER,
+      tasks: ["v-h"],
+    });
+    solved("v-h", BUILT, "g-1");
+    add("comparison.reported", {
+      session: "g-1",
+      old: STARTER,
+      fresh: BUILT,
+      starter: STARTER,
+      versions: ["v-h"],
+      reading: "no-step",
+      scored: { wins: 0, losses: 1, ties: 0, p: 1, unsolved: 0 },
+      valid: { old: [1, 0, 0], fresh: [0, 0, 1] },
+      aside: [],
+    });
+    return events;
+  }
+
+  it("names the next session, its start, each tallied comparison and each practice fail, as past.ts words them", () => {
+    const lines = builderTold(past());
+    expect(lines[0]).toBe("session b-2, 1 released tasks");
+    expect(lines[1]).toMatch(/aaaaaaaa.*\bb-1\b.*time limit/su);
+    expect(lines).toContain("comparisons (1):");
+    expect(lines.find((line) => line.startsWith("- Harness aaaaaaaa"))).toMatch(
+      /0 won, 1 lost, 0 tied.*no step/u,
+    );
+    expect(lines).toContain("failed practice solves on released tasks (1):");
+    expect(lines.find((line) => line.startsWith("- s-1-1"))).toContain("t-practice");
+  });
+
+  it("carries no held-out task, hidden value, ruling or held-out solve", () => {
+    const told = builderTold(past()).join("\n");
+    for (const canary of [HELD, HIDDEN, "earned", "s-2-1"]) expect(told).not.toContain(canary);
+  });
+
+  it("says the log names no harness before anything is kept, and starts from the parent it is given", () => {
+    expect(builderTold([])).toStrictEqual([
+      "session b-1, 0 released tasks",
+      "start: the log names no harness yet",
+      "comparisons (0):",
+      "failed practice solves on released tasks (0):",
+    ]);
+    expect(builderTold(past(), STARTER)[1]).toMatch(/00000000.*no Builder session/u);
   });
 });

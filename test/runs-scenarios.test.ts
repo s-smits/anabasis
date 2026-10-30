@@ -391,6 +391,8 @@ it("a missing login anywhere in a batch prevents every launch after printing the
 it("S9: a laptop with no open run still pulses the campaign that lives on a peer", () => {
   const made = fixture();
   const remote = campaign(made, "distant");
+  // A real process stands in the tree, since Linux reads its cwd from /proc and not from lsof.
+  const writer = Bun.spawn(["sleep", "60"], { cwd: remote.tree });
   const env = {
     FAKE_FLEET: JSON.stringify({
       [made.host.ssh]: {
@@ -398,13 +400,14 @@ it("S9: a laptop with no open run still pulses the campaign that lives on a peer
         env: {
           FAKE_MAIN: remote.tree,
           FAKE_RUN_CLI: "1",
-          FAKE_PS: "42 bun tools/d2/harness-builder.ts --name distant",
-          FAKE_CWDS: `p42\nn${remote.tree}`,
+          FAKE_PS: `${writer.pid} bun tools/d2/harness-builder.ts --name distant`,
+          FAKE_CWDS: `p${writer.pid}\nn${remote.tree}`,
         },
       },
     }),
   };
   const result = made.runScript(CLI, ["pulse", "--once"], env);
+  writer.kill();
   expect(result.code).toBe(0);
   expect(result.out).toContain("── here");
   expect(result.out).toContain("0 open");

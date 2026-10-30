@@ -22,7 +22,7 @@
 import { EXAMINE } from "#src/campaign/admission.ts";
 import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
 import { lastReports } from "#src/kernel/reports.ts";
-import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
+import { existsSync, readdirSync, readFileSync, readlinkSync } from "#src/meta/filesystem.ts";
 import { gitText, mainTree, worktrees } from "#src/meta/git.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
@@ -235,6 +235,15 @@ export function standing(tree: string) {
   return { commit: gitText(tree, "rev-parse", "HEAD"), dirty: gitText(tree, "status", "--porcelain") !== "" };
 }
 
+/** A process's cwd from /proc, or "" for one that left between the two reads, as lsof leaves it. */
+function cwdOf(pid: string): string {
+  try {
+    return readlinkSync(`/proc/${pid}/cwd`);
+  } catch {
+    return "";
+  }
+}
+
 /** Every process that may write a run's log, with the worktree it runs in. */
 export function processes(): Running[] {
   const table = runTextSyncOrThrow(["ps", "-axo", "pid=,args="]).split("\n");
@@ -243,6 +252,11 @@ export function processes(): Running[] {
     return writesCampaign(args) || runsAs(args, [LIVE]) ? [{ pid, args }] : [];
   });
   if (found.length === 0) return [];
+  // Linux names each cwd in /proc. Its lsof walks every descriptor up to the open-file limit Bun
+  // raises for its children, which took 0.77 s on the Linux runner against 0.04 s (30 October).
+  if (existsSync("/proc/self/cwd")) {
+    return found.map(({ pid: id, args }) => ({ pid: Number(id), cwd: cwdOf(id), args }));
+  }
   // lsof exits 1 when a process left between the two reads, so its answer is read as given.
   const cwds = new Map<string, string>();
   let pid = "";

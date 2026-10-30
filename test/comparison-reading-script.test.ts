@@ -219,7 +219,7 @@ describe("what the next comparison would score", () => {
     return events;
   }
 
-  it("draws every frontier task of the one epoch, and admission takes a set at its floor", () => {
+  it("draws the available frontier and admits a set at the minimum size", () => {
     const drawn = drawOf(exam(8, 2), 24, "c1");
     expect(drawn.pool).toMatchObject({ scorable: 8, frontier: 8, exhausted: 0, awaiting: 0 });
     expect([drawn.scored, drawn.retained, drawn.epochs]).toStrictEqual([8, 0, 1]);
@@ -230,7 +230,7 @@ describe("what the next comparison would score", () => {
     );
   });
 
-  it("names held-short below the floor, and no task or hidden value", () => {
+  it("reports held-short below the floor without exposing task data", () => {
     const lines = drawLines(exam(5, 2), { target: 24, level: 0.02 });
     expect(lines.find((line) => line.startsWith("admission "))).toContain("refused held-short");
     for (const canary of [HIDDEN, "task-", "v-"]) expect(lines.join("\n")).not.toContain(canary);

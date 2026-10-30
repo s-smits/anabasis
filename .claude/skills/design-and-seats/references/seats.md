@@ -45,7 +45,7 @@ The tools of each model seat, as its source names them:
   passed `try_answer` is checked again under its task's id, and a pass on a held task is logged as
   `task.feasible` for the Referee. The walled home is carried between sessions with a fresh
   `reference-harness/`, and task admission is its only way into the exam. A drafting session has
-  `draft_exam` , its only way in, `read_opening` , `bash` , `read` , `write` and `finish`
+  `draft_exam`, its only way in, `read_opening`, `bash`, `read`, `write` and `finish`
   (`src/examiner/shell.ts`).
 - Builder: `read`, `bash`, `edit`, `write`, `practice`, `read_trace`, `read_opening`,
   `check_harness`, `preview_harness` and `finish`; in the campaign command also `examine`,

@@ -146,7 +146,7 @@ describe("conditions.ts", () => {
     return run.events;
   }
 
-  it("names a field beyond the harness, its tools and the task only where the conditions differ in it", () => {
+  it("reports differing setting fields while excluding harness, solver tools and task", () => {
     const sides = [BASE, { ...BASE, harness: "h2", solverTools: "s2", task: "t2" }];
     expect(differing(sides)).toStrictEqual([]);
     expect(differing([...sides, { ...BASE, host: "code-2", effort: "high" }])).toStrictEqual([
@@ -155,7 +155,7 @@ describe("conditions.ts", () => {
     ]);
   });
 
-  it("says each comparison is comparable or what it mixed, and what changed from one setting to the next", () => {
+  it("reports comparison compatibility and changes between successive settings", () => {
     const later: Condition = { ...BASE, host: "code-2", limits: { ...BASE.limits, wallSeconds: 600 } };
     const lines = conditionLines(
       solves(
@@ -180,7 +180,7 @@ describe("conditions.ts", () => {
     expect(lines.at(-1)).toBe("practice and other solves: 1 solve, 1 harness, 1 setting");
   });
 
-  it("prints no task digest, and reads a log with no solve as none", () => {
+  it("omits task digests and handles logs without solves", () => {
     const lines = conditionLines(solves([{ condition: { ...BASE, task: "task-canary-9d2" } }], []));
     expect(lines.join("\n")).not.toContain("task-canary-9d2");
     expect(conditionLines([])).toStrictEqual(["0 solves under 0 conditions and 0 settings"]);

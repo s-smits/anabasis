@@ -181,7 +181,7 @@ describe("the Examiner's view in counts", () => {
   });
 });
 
-describe("what a Builder session opening now is told of the past", () => {
+describe("Builder history messages", () => {
   /** A held-out task's id and hidden value, neither of which may reach a Builder. */
   const HELD = "held-canary-7c1";
   const HIDDEN = "hidden-canary-7c1";
@@ -271,7 +271,7 @@ describe("what a Builder session opening now is told of the past", () => {
     return events;
   }
 
-  it("names the next session, its start, each tallied comparison and each practice fail, as past.ts words them", () => {
+  it("uses production messages for the next session, harness provenance, comparisons and practice failures", () => {
     const lines = builderTold(past());
     expect(lines[0]).toBe("session b-2, 1 released tasks");
     expect(lines[1]).toMatch(/aaaaaaaa.*\bb-1\b.*time limit/su);
@@ -283,12 +283,12 @@ describe("what a Builder session opening now is told of the past", () => {
     expect(lines.find((line) => line.startsWith("- s-1-1"))).toContain("t-practice");
   });
 
-  it("carries no held-out task, hidden value, ruling or held-out solve", () => {
+  it("excludes held-out tasks, hidden values, rulings and held-out solve ids", () => {
     const told = builderTold(past()).join("\n");
     for (const canary of [HELD, HIDDEN, "earned", "s-2-1"]) expect(told).not.toContain(canary);
   });
 
-  it("says the log names no harness before anything is kept, and starts from the parent it is given", () => {
+  it("handles an empty harness history and honours an explicit parent", () => {
     expect(builderTold([])).toStrictEqual([
       "session b-1, 0 released tasks",
       "start: the log names no harness yet",

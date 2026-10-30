@@ -8,7 +8,7 @@ the middle of `AGENTS.md` section 7. Use `scripts/size.ts` for sample-size figur
 
 Every solve of the new harness is paired with every solve of the reference on the task, and the task
 is scored by three measures over those pairings, each from -1 to 1, by fixed weights (`pointsOf`,
-`WEIGHTS` , `src/kernel/compare.ts` ):
+`WEIGHTS`, `src/kernel/compare.ts`):
 
 - **validity**, 0.6: the share of pairings where only the new side's answer is valid, less the share
   where only the reference's is;
@@ -31,10 +31,10 @@ scored by them, while its own report stays what it said. The report gives each m
 ## The objective
 
 An **objective** is a quantity the check program's evaluator computes from a valid answer, with a
-direction, verified after the checks pass (`brief.objective`, `objective(request)` ; `OBJECTIVE` ,
-`src/kernel/verify.ts` ): public, in the contract and the solver's resources, and fixed as a term at
+direction, verified after the checks pass (`brief.objective`, `objective(request)`; `OBJECTIVE`,
+`src/kernel/verify.ts`): public, in the contract and the solver's resources, and fixed as a term at
 the start (`ObjectiveRule`). With none, two valid answers differ only by their bill. The test says
-whether a difference is believable and the floors whether it is worth counting: without `ROOM` , six
+whether a difference is believable and the floors whether it is worth counting: without `ROOM`, six
 tasks won by 0.01% would read p = 0.016 (0.015625) and promote; under it such gains score zero and
 tie. A task the reference closes on validity and the objective has no room in supply
 (`informative`), so a harness that only bills less wins it as a retained task, while the Examiner is
@@ -42,14 +42,14 @@ still asked for tasks the reference fails.
 
 ## The test and the step
 
-**The test.** A one-sided, exact, paired sign-flip test on each task's score (`flipP`): were the
-harnesses interchangeable, each untied task would be as likely won as lost by its margin, and p is
-the share of sign assignments summing to at least what was observed. Where every untied task is won,
-p is a half to the power of their count, so a gain's size weighs only where wins and losses meet.
-The **frontier** and the **retained** tasks, both fixed at the start, are read in this one test, so
-a gain on new tasks can offset a loss on old ones; the report keeps their tallies apart, and an
-empty retained set reads `unmeasured` , never "no loss". Each family's tallies stand beside both,
-from the same rows: they show concentration and prove no independence.
+**The test.** `flipP` performs an exact one-sided paired sign-flip test over task scores.
+Under interchangeability of the harnesses, each nonzero margin is equally likely to have either
+sign. The p-value is the share of sign assignments whose sum is at least the observed sum. When
+every nonzero task is won, p = 2 to the power of minus the task count; margin size then matters
+only when wins and losses coexist. Frontier and retained tasks are fixed before solving and enter
+one test, allowing gains on new tasks to offset losses on old tasks. Reports show their tallies
+separately. An empty retained set is `unmeasured`, rather than evidence of no regression.
+Family tallies describe concentration; they do not establish independence.
 
 The step (`stepOf`) is the test at or under the level (0.02 by default; with equal margins 6 to 0, 8
 to 1, 10 to 2, 12 to 3; at 0.10: 4 to 0, 6 to 1, 7 to 2, 9 to 3), cleared twice: on each task's
@@ -63,14 +63,14 @@ campaign is read by its own rule.
 
 These numbers are the production test's own and `scripts/size.ts` prints them from it: at 0.02 the
 smallest scored set that can read a step is 6 tasks, all won (`sweepOf`), and comparison admission
-asks for 8 frontier tasks (`comparisonFloor`, `src/campaign/admission.ts` , a sweep plus two); at
+asks for 8 frontier tasks (`comparisonFloor`, `src/campaign/admission.ts`, a sweep plus two); at
 0.10 they are 4 and 6. At 24 untied tasks a reading at 0.02 detects four times in five a harness
-that wins 80% of them, and at 12 one that wins 87% (`detectable`; `src/kernel/size.ts` , head
+that wins 80% of them, and at 12 one that wins 87% (`detectable`; `src/kernel/size.ts`, head
 comment).
 
 ## The reading
 
-The reading is one of these words (`Reading`, `src/campaign/comparison.ts` , whose head comment
+The reading is one of these words (`Reading`, `src/campaign/comparison.ts`, whose head comment
 names the older ones, none of which promotes):
 
 | Reading | Meaning |

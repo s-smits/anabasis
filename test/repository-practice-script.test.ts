@@ -184,7 +184,7 @@ describe("the tree a change is made in", () => {
 });
 
 describe("the direction check", () => {
-  it("reads only production source, with the investigation's reader left out of tools", () => {
+  it("classifies production source while excluding investigation helpers", () => {
     for (const path of [
       "src/kernel/log.ts",
       "tools/runs/view.ts",
@@ -203,7 +203,7 @@ describe("the direction check", () => {
     }
   });
 
-  it("names each import from production into a skill, the investigation, a study or a test, and none the other way", () => {
+  it("reports production-to-helper and test imports while allowing helpers to import production", () => {
     const edges = new Map<string, readonly string[]>([
       ["src/a.ts", ["src/b.ts", ".claude/skills/x/scripts/y.ts"]],
       ["tools/d2/c.ts", ["tools/wri/folds.ts", "test/helpers/matchers.ts", "src/a.ts"]],

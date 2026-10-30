@@ -1,5 +1,5 @@
 Read this for campaign terms, practice release, admission and defaults. This expands the second half
-of `AGENTS.md` section 6; the commands are in `campaign-command.md` .
+of `AGENTS.md` section 6; the commands are in `campaign-command.md`.
 
 ## 6. A campaign's commands (continued)
 
@@ -9,35 +9,34 @@ of `AGENTS.md` section 6; the commands are in `campaign-command.md` .
 name alone: the project, the total and the reserve, the full limit of a solve, the Builder sessions
 before the table advises a comparison (`--sessions`, 2), improvement and supply patience
 (`--patience`, 6 each), who sits in each seat, and the terms of its moves as a command last named
-them (`TERMS`, `src/campaign/opening.ts` ). An unspecified term uses its default. Later invocations
+them (`TERMS`, `src/campaign/opening.ts`). An unspecified term uses its default. Later invocations
 inherit recorded terms unless an explicit override records a replacement. These terms are the
 operator's conditions.
 
-**Every campaign belongs to a project** (`--project`: letters, digits, `.` , `_` , `-` ). The
-opening is written only with one; a later run need not name it, and one that names another is
-refused (`projectOf`, `tools/d2/campaign.ts` ). The project groups campaigns on the operator's page
-and plays no part in any move or seat. Campaigns run only by the hand commands of rows 0 to 7 have
-none.
+**The project groups campaigns** (`--project`: letters, digits, `.`, `_`, `-`).
+The opening requires one. Later invocations inherit it and cannot substitute another
+(`projectOf`, `tools/d2/campaign.ts`). It organises the operator's page without affecting
+campaign decisions or seat messages. Campaigns run only through commands 0–7 have no project.
 
-**The setting** (`campaign.setting`, `tools/d2/setting.ts` ) is recorded once, by the first command
+**The setting** (`campaign.setting`, `tools/d2/setting.ts`) is recorded once, by the first command
 that begins a comparison or a Builder session, and never changes. The first command records what it
 names and the defaults for the rest: who solves and under which limits (`--solver`,
-`--solver-effort` , `--solver-window` , `--solve-minutes` , `--solve-model-turns` ), the held-out
+`--solver-effort`, `--solver-window`, `--solve-minutes`, `--solve-model-turns`), the held-out
 tasks a comparison draws (`--target`) and the solves a side (`--solves`). A command whose flag names
 something else is refused with both values: a different setting is a different campaign, and no
 solve on record counts for a different solver. A log with solves from before any setting is held to
-the one its last test-side solves ran under (`firstRecord`). `--solver-window` , 300,000 tokens by
+the one its last test-side solves ran under (`firstRecord`). `--solver-window`, 300,000 tokens by
 default, is where the solver's Claude Code compacts; a model served with a 200K context, such as
-`claude-haiku-5-5` , is refused at it.
+`claude-haiku-5-5`, is refused at it.
 
 **Practice follows the supply and the outcomes.** A release takes at most half of what is held.
 `--practice` is owed again after each reading, a comparison's report or a promotion (`practiceDue`,
-`src/campaign/decide.ts` ), so a Builder whose practice no longer fails gets new tasks; inside a
+`src/campaign/decide.ts`), so a Builder whose practice no longer fails gets new tasks; inside a
 conversation the host releases what is owed as each Examiner session beside it holds a task
-(`releaseOwed`, `tools/d2/campaign-actions.ts` ). Once practice exists, a release never leaves fewer
+(`releaseOwed`, `tools/d2/campaign-actions.ts`). Once practice exists, a release never leaves fewer
 frontier tasks, read on the reference's own solves, than a comparison needs (`comparisonFloor`).
 Each release is one task fewer to compare. A release takes, in this order (`releaseOrder`,
-`src/kernel/reports.ts` ):
+`src/kernel/reports.ts`):
 
 1. the tasks the reference answered in no solve of two comparisons it stood in;
 2. half, rounded up and counted with those already released, of the tasks that left the reference
@@ -48,13 +47,13 @@ Each release is one task fewer to compare. A release takes, in this order (`rele
 
 The release reads the reference's own solves alone, so which held-out task a new harness won leaves
 the practice set unchanged (rule 3). A task scored before its release keeps that comparison's solves
-on the exam side; a Builder sees only its practice solves (`practiceRan`, `src/kernel/solves.ts` ).
+on the exam side; a Builder sees only its practice solves (`practiceRan`, `src/kernel/solves.ts`).
 Before a comparison the campaign holds as many scorable tasks as it scores (`--target`), or the
 Examiner writes more first.
 
 ### What refuses a move
 
-Comparison admission (`admission`, `src/campaign/admission.ts` ) is asked by a round or a standalone
+Comparison admission (`admission`, `src/campaign/admission.ts`) is asked by a round or a standalone
 comparison before its first event, whoever started it. Among other things it refuses:
 
 - a log with no held-out task;
@@ -67,12 +66,12 @@ comparison before its first event, whoever started it. Among other things it ref
 
 A Builder session on its own asks session admission (`admitSession`): a cap, a read checker, the
 stop rule; and it refuses a `--session` whose Builder started and did not end whole (`spent`,
-`src/builder/session.ts` ). A comparison or session the log shows begun continues without asking. A
+`src/builder/session.ts`). A comparison or session the log shows begun continues without asking. A
 command writes nothing before its last refusal: the admission, then the comparison's own terms, then
 an override of the stop rule and the setting. A reported comparison run again repeats its report. A
 rehearsal is exempt by name, since its seats are scripts.
 
-The other verbs over a campaign's log (the skill `run-management` ):
+The other verbs over a campaign's log (the skill `run-management`):
 
 ```text
 bun run runs rehearse [--no-comparison] <the flags of tools/d2/round.ts that name no model>

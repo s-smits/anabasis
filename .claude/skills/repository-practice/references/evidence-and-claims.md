@@ -3,7 +3,7 @@
 Read this before stating an evidence level or claiming a step, mechanism or refusal. This expands
 `AGENTS.md` section 9.
 
-Read `attribution-and-proof` , which owns what one reading may show, before any sentence claims that
+Read `attribution-and-proof`, which owns what one reading may show, before any sentence claims that
 a harness, a model or a patch improved something. What follows holds for every statement.
 
 ## The ladder
@@ -47,6 +47,6 @@ that already exists.
 | A refusal | Its text, which establishes its own condition and nothing about the answers |
 | Which part of a harness did it | A standalone comparison against the programs ablation `programs-of:<digest>` |
 
-A step holds under its one condition only (`attribution-and-proof` lists what it does not say). Keep
-the counts apart as that skill lists them, give each rate its denominator, and never compare results
-across campaigns or settings.
+A step supports a claim under its recorded condition only. `attribution-and-proof` defines the
+limits and separate outcome counts. Give every rate its denominator. Results across campaigns
+or settings may be described side by side, but cannot establish a measured gain over one another.

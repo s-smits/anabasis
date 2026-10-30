@@ -1,6 +1,6 @@
 ---
 name: comparison-reading
-description: "Read before editing src/kernel/compare.ts, reports.ts, size.ts or solve.ts, or src/campaign/comparison.ts, round.ts, decide.ts, admission.ts or climb.ts; and whenever asked what a reading (step, no-step, not-scored) means, how a task is scored or a step decided (pointsOf, WEIGHTS, flipP, stepOf), what the A/A comparison shows, which tasks a comparison draws (poolOf, scoredSet, held-short), how many tasks a step needs, which move decide names next, or what rule N says (AGENTS.md sections 7 and 8). Scripts: size.ts, reading.ts <log> and draw.ts <log>. Replaying the record under other weights belongs to promotion-tuner."
+description: "Use before editing src/kernel/{compare,reports,size,solve}.ts or src/campaign/{comparison,round,decide,admission,climb}.ts. Explain readings (step, no-step, not-scored), task scores (pointsOf, WEIGHTS), significance (flipP, stepOf), A/A controls, task draws (poolOf, scoredSet, held-short), sample size, decide or rule N (AGENTS.md sections 7–8). Scripts: size.ts, reading.ts and draw.ts. Use promotion-tuner to replay comparisons under other weights."
 ---
 
 # Comparison reading
@@ -43,7 +43,7 @@ comparisons again under other weights or a candidate tree is `promotion-tuner` '
 
 All three scripts use production readers for evaluation. They print counts, ids, short digests and
 harness letters, omitting task identities, families, answers, objective measures and checks. Each
-takes `--help` , and `--host <name>` through `.claude/skills/main/cli.ts` .
+takes `--help`, and `--host <name>` through `.claude/skills/main/cli.ts`.
 
 ```text
 bun .claude/skills/comparison-reading/scripts/size.ts [--level <n>] [--untied <n>]

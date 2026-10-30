@@ -1,6 +1,6 @@
 ---
 name: whole-run-investigation
-description: "Investigate one Anabasis v2 campaign, or several as equals, from their logs and turn what it shows into findings with one owner each. Answers whether a comparison's reading (step, no-step, not-scored) may be believed, whether a fail was the solver's or the exam's, whether the harness could know the exam, whether the tasks bracket the solver, whether the campaign is climbing, and where the hours and dollars went. Reads evidence; starts no solve, session or round, and changes no verdict. Use when asked why a campaign is not promoting, whether to believe a reading, what went wrong in a run, or to audit or investigate one."
+description: "Investigate one campaign or several together from their logs, producing findings with named owners. Use for a run audit, a stalled climb, unexpected failures or doubts about a reading (step, no-step, not-scored). Examine correctness, evaluation validity, exam leakage, task difficulty, promotions, time and cost. This is read-only: start no solve, session or round and change no verdict."
 ---
 
 # Whole-Run Investigation

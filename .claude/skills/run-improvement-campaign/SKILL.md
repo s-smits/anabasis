@@ -13,7 +13,7 @@ release on the operator's word, which the next cycle's campaigns run. Inside it,
 between a campaign and its next promotion, fixes that link's owner, and leaves the fix to be
 measured by the next cycle's runs. One pass answers one question.
 
-**Only a fresh campaign counts.** Follow `AGENTS.md` , section 10, item 9: open from a prompt, start
+**Only a fresh campaign counts.** Follow `AGENTS.md`, section 10, item 9: open from a prompt, start
 with the starter, and continue at the opening commit to a typed ending. Seeds, stored packs and
 continuations at another commit prove paths and show no climb. The milestone belongs to the plan, as
 factor 1 explains. No campaign seat is given a number of promotions to reach.
@@ -27,7 +27,7 @@ A cycle runs on the operator's word for it ("work towards 0.6.4"), which covers 
 stops and its patches, and its landing, release and next runs only where the word names them:
 merging is the operator's (`AGENTS.md`, section 11). Record each grant and each decision still open.
 Keep the cycle's plan in one local file beside the handover, on the central host (`ANA_CENTRAL` in
-`.env.runs` ), which also gathers every host's records: the word, the threshold, the reviews, and a
+`.env.runs`), which also gathers every host's records: the word, the threshold, the reviews, and a
 log line per step. Every step below reads that file first.
 
 **The order is fixed, and nothing moves a step ahead of the one before it:**
@@ -73,7 +73,7 @@ the operator and ask, rather than land first.
    their per-PR ledger was written 15 minutes after launch; the next cycle's ledger was written
    before its fork but without labels, lanes or groups, which the tables above now ask for.
 2. **Fork at the release**, once step 1 is on record. Take the commit the last release merged (`git
-   tag` of `main` ), or the
+   tag` of `main`), or the
    top of the stack only on the operator's recorded word. A pull request above it that changes code a
    campaign runs need not hold up the fork; name it. Fork **one fresh campaign per runner host**,
    or the set the operator names, so each runs on a host no other campaign loads:
@@ -177,9 +177,9 @@ bun --env-file=.env.runs .claude/skills/run-improvement-campaign/scripts/cycle.t
 
 It finds each named run on this machine or on a host `ANA_HOSTS` lists, and prints one row a run
 (host, live or closed with its ending, promotions, comparisons and hours since its opening) and then
-the step, with the commands that take it. Other hosts are asked through `askedScript` , in each
+the step, with the commands that take it. Other hosts are asked through `askedScript`, in each
 host's configured tree: a host that fails, or does not answer within the runs CLI's deadline, leaves
-its runs `unread` .
+its runs `unread`.
 
 | Step | When | Prints |
 | --- | --- | --- |
@@ -188,15 +188,15 @@ its runs `unread` .
 | `investigate` | none is live | the `runs fetch --from <host>` of each run on another host, and the `wri.ts start` over all of them, a copy by its path |
 | `unread` (exit 1) | a run is found on no host that answered | the runs not found; no step is read past one that may be live |
 
-A run named with `--keep` , such as an ablation the operator keeps going, is shown and never waited
+A run named with `--keep`, such as an ablation the operator keeps going, is shown and never waited
 for or stopped. The script reads and prints; it stops, fetches and launches nothing. The session or
 timer that runs it takes the step, under the cycle's word. A host answers by running the script in
-its own tree with `--here` , so a host's tree must hold the script: bring it to the release's commit
+its own tree with `--here`, so a host's tree must hold the script: bring it to the release's commit
 before the fork, as step 2 does.
 
 The cycle's reviews are one-shot timers (section "Timers"), each of which runs the script and takes
 the step it names: about 30 minutes after the fork for M1, then at each run's comparisons and
-promotions, and once the script reads `stop` , at each step of the improvement window. Each review
+promotions, and once the script reads `stop`, at each step of the improvement window. Each review
 may move the plan forward within the order above, and add, move or delete the cycle's own timers to
 reach its goal.
 
@@ -215,7 +215,7 @@ bun tools/wri/wri.ts read --log <worktree>/.ana/d2/<name>/log.jsonl
 
 `status` and `pulse` ask every host `ANA_HOSTS` lists. WRI accepts campaign names from any host and
 refreshes their copies automatically when invoked with the host environment loaded. `0 open` where a
-campaign was launched calls for reading its ending. Use `AGENTS.md` , section 3, for the operator's
+campaign was launched calls for reading its ending. Use `AGENTS.md`, section 3, for the operator's
 decisions and the authority a campaign launch gives once. Record continuing authority in the local
 handover; the newest instruction governs it.
 
@@ -242,11 +242,11 @@ bun tools/d2/close.ts --name <name> --to <scratch dir>
 ```
 
 Point `--to` outside the repository, or under `data/harnesses/` of the main worktree, where a
-campaign `runs fresh` launched writes its own at its end. Without `--solve` , this writes a handover
+campaign `runs fresh` launched writes its own at its end. Without `--solve`, this writes a handover
 and runs no solve.
 
 To read this cycle's runs against the last cycle's, or a live run against the finished ones, use
-promotion-tuner's `scripts/table.ts` : `--rows recent` for the live runs beside the latest that
+promotion-tuner's `scripts/table.ts`: `--rows recent` for the live runs beside the latest that
 promoted, `--rows groups` for time to the first promotion and hours and dollars a rung by release,
 pack and setting. Supply binds before a comparison can say anything; economy reports and refuses
 nothing.
@@ -266,10 +266,10 @@ Builder practises and edits → comparison.reported: step → harness.promoted
                             → new epoch → Examiner writes for the new reference
 ```
 
-Task admission uses `informative` in `src/kernel/compare.ts` , as the comparison does. A task leaves
+Task admission uses `informative` in `src/kernel/compare.ts`, as the comparison does. A task leaves
 room where the reference answers some solves, answers none while a valid answer is on record, or has
 a valid answer beaten by a recorded objective measure. All reference solves passing therefore does
-not by itself close a task. `AGENTS.md` , section 7, owns the full scoring procedure.
+not by itself close a task. `AGENTS.md`, section 7, owns the full scoring procedure.
 
 ## Milestones: what to read, and when
 
@@ -287,7 +287,7 @@ predicts. Quiet between milestones is read against the limits of the work in fli
 | M6 next epoch | first Examiner session and first comparison after M5 | drafts held and refused by reason, frontier and retained sizes, objective gap | held out after M5 against before it | lane 27 with standing lanes, when owed at M5 |
 | M7 ending | `campaign.ended` | ending kind, closing report, resolve every prediction | every open row | full investigation where the campaign promoted or an early ending raises an unresolved question |
 
-An investigation follows its event and waits for a comparison's `comparison.reported` . Open it for
+An investigation follows its event and waits for a comparison's `comparison.reported`. Open it for
 a question the readers cannot settle, a reading in doubt or an unclear failure owner. A timer alone
 raises no question. A second promotion reopens lane 27 only where `wri.ts climb` shows something the
 first did not. For an ending other than improvement patience, report "reached N promotions; further
@@ -295,7 +295,7 @@ improvement unresolved" (`AGENTS.md`, factor 1).
 
 **A stall** is a campaign whose milestone has not moved while it bills. Report it with its milestone
 and leave it running. Read an ending by its recorded kind first: credit and session limits follow
-`AGENTS.md` , rule 15, and are no defect to fix. To act on a proved stall:
+`AGENTS.md`, rule 15, and are no defect to fix. To act on a proved stall:
 
 1. Read backwards to the last promotion, comparison with room, or Examiner session that held a
    task out. Find the first subsequent move that did not advance the chain. Use `runs view` and
@@ -324,7 +324,7 @@ Start from the milestone: M1 points to link 2; M2 and no room to links 1 and 3; 
 | 7 | promotion | 2 | comparison against reference reads `step` | `step` row, `harness.promoted`, `noise` |
 | 8 | next epoch | 1 | Examiner writes for the new reference and the tasks leave room | `harness.promoted`, subsequent `task.gate` and comparisons |
 
-Read room by `informative` , rather than a target pass share. `noRoom` in `src/campaign/decide.ts`
+Read room by `informative`, rather than a target pass share. `noRoom` in `src/campaign/decide.ts`
 requests an Examiner session after promotion even where the promotion's comparison leaves room. Lane
 26 of [whole-run-investigation](../whole-run-investigation/SKILL.md) reads a campaign's chain; this
 walk chooses what to do about it.
@@ -336,7 +336,7 @@ walk chooses what to do about it.
    `src/examiner/record.ts`, `try_task` in `src/examiner/write.ts`, or `--exam-tasks`.
 2. **Instrument:** an `exam` ending, checker faults, check-defect stops or tasks set aside.
    Owners: `planOf` in `src/campaign/opening.ts` and `readChecker` in `src/kernel/acceptance.ts`
-   for a host fault; otherwise the check program's author. Follow `AGENTS.md` , section 3, for
+   for a host fault; otherwise the check program's author. Follow `AGENTS.md`, section 3, for
    admissions and labels.
 3. **Room:** row or ending `no-room`, zero `valid.informative.old`. Owners: tasks through link 1,
    with `roomOf` in `src/kernel/reports.ts` deciding the reading. A campaign has one budget.
@@ -372,7 +372,7 @@ existing one, then adding the minimum. A term needs flags rather than code: read
 command's options, including `tools/d2/round.ts` for session and comparison terms. Follow
 [stack-pr](../stack-pr/SKILL.md) and the repository's delivery rules for source changes.
 
-Use `AGENTS.md` , sections 2, 3 and 8, for design bounds, operator decisions and the wall. Bring a
+Use `AGENTS.md`, sections 2, 3 and 8, for design bounds, operator decisions and the wall. Bring a
 decision with evidence and a recommendation ready, and continue independent work. After two
 comparisons miss alike, or a prediction fails, walk the links again before choosing another change.
 
@@ -395,7 +395,7 @@ model behaviour needs the fresh campaign's real milestone, read against its pred
 
 ## 3. Put the prediction on record
 
-The campaign command takes no `--predict` : its comparisons are the Builder's to request. Keep a
+The campaign command takes no `--predict`: its comparisons are the Builder's to request. Keep a
 ledger outside campaign folders before the first solve, naming campaign, commit and milestone. In a
 release cycle that ledger is the cycle's `Predictions.md` (step 1). A comparison made by hand takes:
 
@@ -463,7 +463,7 @@ Read ending, reading, tally, ties, A/A, rulings and load, then the epoch's held 
 bun tools/wri/wri.ts read --log <log>
 ```
 
-Use the evidence order and separate outcomes and denominators in `AGENTS.md` , section 9. A
+Use the evidence order and separate outcomes and denominators in `AGENTS.md`, section 9. A
 comparison that tallied no task gives an operational result and no rate. Quote no exam-side text.
 Resolve predictions with counts. Before claiming improvement, use
 [attribution-and-proof](../attribution-and-proof/SKILL.md). Use
@@ -502,7 +502,7 @@ Choose one move. `decide` in `src/campaign/decide.ts` advises accept, prepare, e
 compare, promote or end. A led Builder chooses its tools; code keeps admissions and scoring, and
 `hostOwed` makes comparisons and promotions between conversations.
 
-The stop rule counts since the last promotion (`stopRule`, `src/kernel/reports.ts` ). A changed
+The stop rule counts since the last promotion (`stopRule`, `src/kernel/reports.ts`). A changed
 harness/reference pair counts once when tallied with room or a step; a whole unchanged session
 counts only where practice failed. A step shows gain. Starter comparisons, unscored comparisons and
 non-step readings without room do not count. Improvement patience defaults to six (`PATIENCE`);
@@ -552,7 +552,7 @@ steps are its own judgment, held to the evidence and to recorded authority.
    to the operator only when a milestone landed, a run stalled or ended, or a prediction resolved;
    otherwise stay silent.
 
-At step 4 of the cycle every row still open is marked `unreached` .
+At step 4 of the cycle every row still open is marked `unreached`.
 
 ### The timers
 

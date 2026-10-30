@@ -97,7 +97,8 @@ main checkout.
 1. **Pin the source.** Take the top of the open stack, published
    (`bun .claude/skills/stack-pr/scripts/stack.ts`), in a worktree of its own
    (`git worktree add --detach ../anabasis-audit-<round> <commit>`), never the main checkout, which
-   `ana.follow` moves. Every source claim cites `git show <commit>:<path>` with one-based lines.
+   may be moved to follow the stack while the sessions read. Every source claim cites
+   `git show <commit>:<path>` with one-based lines.
    *Check:* the commit is on `origin`, and the worktree has its dependencies installed. The
    sessions install nothing.
 2. **Fix the evidence.** Run

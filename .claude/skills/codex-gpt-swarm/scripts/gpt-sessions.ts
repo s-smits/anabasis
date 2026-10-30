@@ -288,7 +288,7 @@ function holdOutput(outputDir: string): () => Promise<void> {
 }
 
 /** The environment every session runs in: this Bun first on PATH, in the shell Codex opens too, and
- *  no `.env` loaded by a Bun a session starts, since v2 keeps no `bunfig.toml` that turns it off. */
+ *  no `.env` loaded by a Bun a session starts, since `bunfig.toml` sets `env = false`. */
 function sessionEnvironment(outputDir: string): SessionEnvironment {
   const bunExecutable = realpathSync(capturedExecPath);
   const bunDirectory = dirname(bunExecutable);

@@ -82,8 +82,12 @@ word, for a change that must land before the cycle's stack.
   (`stack-pr`, sections 8 to 10). A stack lands only through `bun run land -- <top> --merge`, which
   GitHub's ruleset on `main` enforces; never push a local merge to `main`.
 - **A native stack** is made with `gh stack link <pr> <pr> ...`, bottom to top, which sets the
-  bases; setting a base alone leaves a pull request outside it. `gh stack unstack <stack>`
-  dissolves a whole stack.
+  bases; setting a base alone leaves a pull request outside it. Name the whole chain: the shortcut
+  `gh stack link <stack> <pr>` appends above GitHub's top of that stack, which is not the chain's
+  where a pull request was never linked, and rebases the new one there (#531 on 30 October 2026).
+  `link` never reorders, so a wrong order is mended with `gh stack unstack <stack>` and the chain
+  linked again. A head that holds another open pull request's without standing on it fails
+  `stacked.yml`, is listed by `stack.ts` and refused by `land` (`tools/runtime/doubled.ts`).
 
 v2 was built in `s-smits/anabasis-v2` until 11 October 2026: a pull request number written before
 then, up to #235, is that repository's (cite it as `anabasis-v2#N`); this one's run to #140 for v1

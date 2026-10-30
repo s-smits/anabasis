@@ -28,7 +28,7 @@ import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { shellQuote } from "#src/wall/isolation.ts";
 import { short } from "#tools/runtime/gate.ts";
-import { ghOrThrow, openPulls, type Pull } from "#tools/runtime/land.ts";
+import { ghOrThrow, openPulls, type Pull } from "#tools/runtime/pulls.ts";
 import { type NativeStack, STACKS } from "./follow.ts";
 import { chains } from "./stack.ts";
 

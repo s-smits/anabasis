@@ -19,7 +19,7 @@ import { type AnswerOf, type Endpoint, type Query, type Tier, TOKEN_HEADER } fro
 import { handleApiRequest } from "../src/server/api.ts";
 import { campaignsFound } from "../src/server/logs.ts";
 import { campaignReading, campaignRow } from "../src/server/reading.ts";
-import { type Fixture, MARKERS, writeFixtureCampaign } from "./fixture-campaign.ts";
+import { type Fixture, MARKERS, writeFixtureCampaign, writeLedCampaign } from "./fixture-campaign.ts";
 
 /** A copy of the fixture's root, and its campaign's folder. */
 interface Copied {
@@ -139,6 +139,18 @@ describe("what a comparison came to", () => {
       const reading = campaignReading(found, log, { row, tier: "default", issues: [] });
       expect([reading.counters.controls, reading.counters.controlSteps]).toEqual([3, steps]);
     }
+  });
+});
+
+describe("an open Builder session's practice solves", () => {
+  test("lists the solves its head counts, past an Examiner session the Builder began", async () => {
+    const root = join(scratch, "led");
+    const key = writeLedCampaign(root);
+    const { answer: reading } = await ask("campaign", { key }, "default", root);
+    const session = reading.moves.find((move) => move.step === "builder" && move.id === "b-1");
+    expect(session?.step === "builder" ? session.practiceSolves : null).toBe(1);
+    const { answer } = await ask("move", { key, move: String(session?.index) }, "default", root);
+    expect(answer.kind === "session" ? answer.solves.length : null).toBe(1);
   });
 });
 

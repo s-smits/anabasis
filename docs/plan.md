@@ -73,6 +73,41 @@ Not settled: whether shorter writing sessions, or a cheaper Examiner model or ef
 supply for less. Each needs paired Examiner seats from one recorded position under equal time and
 proposal allowances, read on exam-side dollars a task that stays informative.
 
+### Solves a side, 29 and 30 October
+
+Two retrospective replays, without a model, of comparisons that ran four solves a side, read by
+the tree's own readers with only the first k solves of each side kept. They measure how the readers
+respond to fewer solves on a fixed history; a live campaign would solve its non-results again and
+take other moves, so neither is a measured climb.
+
+The first redrew each of 193 comparisons of campaigns opened since 21 October 64 times, keeping a
+random consecutive block of k mirrored slots per task, and read each draw by the step rule. "Kept"
+is agreement with the reading at four, itself one draw:
+
+| Solves a side | Of 100 steps at four, read as a step | Of 93 non-steps at four, read as a step | Comparison solves | A/A comparison |
+| --- | ---: | ---: | ---: | --- |
+| 1 | 86.3% | 0.6% | a quarter | none: it needs two reference solves of a task |
+| 2 | 95.3% | 1.2% | a half | the first solve against the second |
+| 3 | 98.6% | 0.9% | three quarters | halves |
+
+A single reading at two keeps about 55% of the validity room four show, since a task the
+reference answers sometimes more often reads every or none valid.
+
+The second replayed 61 whole campaigns (198 comparisons) with `poolOf`, `roomOf` and `decide`,
+four against two, with the easy rule at two readings (`RUNS.easy`) and, in memory, at one:
+
+| Over the 198 readings | Four | Two, easy after two readings | Two, easy after one |
+| --- | ---: | ---: | ---: |
+| Frontier task-readings (summed after each reading) | 4,090 | 4,053 | 2,685 |
+| Readings with no room | 5 | 10 | |
+| Comparisons newly below the admission floor | | 0 | 8, at the e2c3df42a rules |
+| Campaigns ended earlier by supply patience | | 0 | 0 |
+
+So the two-reading easy rule is what keeps supply whole at two solves. Comparison solves billed
+35.8% of the fleet's dollars ("Where the dollars went"), so two saves about 18% of a campaign's
+dollars against four, and one would save about 9% more, at a seventh of the steps, the A/A
+comparison and every task the reference answers only sometimes.
+
 ## Open rows
 
 | Row | What stands open | Level | What moves it |
@@ -126,7 +161,7 @@ On `claude/plan-improve`, each commit proved without a model and replayed over t
 | Setting | Stands | Open |
 | --- | --- | --- |
 | Level | 0.02, one step promotes (since 19 October) | |
-| Scored set, solves | 24 tasks, 2 solves a side in every domain by default; the setting may name another count once (`--solves`, 29 October) | |
+| Scored set, solves | 24 tasks, 2 solves a side in every domain by default; the setting may name another count once (`--solves`, 29 October); replays in "Solves a side" | Whether two climbs faster live: no campaign at two had read a comparison on 30 October |
 | Score | Validity 0.6, the objective 0.3 from the room floor (1%) to a tenth better, the bill 0.1 from a fifth less to half; constants of the host | Whether 60/30/10 is the right trade |
 | Solve budget | 20 model turns, 30 minutes | |
 | Network in a solve | Open in every solve, both harnesses alike | A registry-only proxy, once a trace shows a fetch from anywhere else |

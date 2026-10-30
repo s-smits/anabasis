@@ -32,8 +32,8 @@ scan, so a pushed commit is unproved until `bun run land -- <top> --sanitize` or
 proved the stack; run the gate or `--sanitize` before any delivery that claims its tests. What each
 hook, `ANA_PUSH_VERIFY=1`, the remembered passes and CI's three jobs run is `stack-pr`, sections 5
 to 7. Run one full suite at a time on a host, and while editing only the owning test files. CI
-(`.github/workflows/ci.yml`) runs on `main` and on a landing's top, where `land --merge` dispatches
-it, in three jobs: `darwin` (ripgrep and the UI's dependencies, then typecheck, strict lint, format
+(`.github/workflows/ci.yml`) runs on a landing's top, where `land --merge` dispatches it, in three
+jobs: `darwin` (ripgrep and the UI's dependencies, then typecheck, strict lint, format
 check, the secret scan and the suite), `darwin-ui` (the UI's install, then its typecheck and build
 and its tests, which need the install step to have passed) and `linux` (Bubblewrap, the suite, then
 the climb simulation). No other workflow runs: a push starts none, and the pre-push hook marks

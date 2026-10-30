@@ -9,8 +9,9 @@
  * reference harness, held out where they leave it room (`measured`). No stronger solver passes a
  * task first (`AGENTS.md`, rule 9): when sessions put each instance to one, the first lost 14 of 25
  * tasks at that solve and the second spent $48.45. Of the room solves the author hears counts,
- * model turns and measures, the objective gap from its own answer to their best, and tool call
- * counts, shell command lengths and failures. It receives no solver answer, argument or output.
+ * model turns, the minutes the longest valid one took, measures and the objective gap from its own
+ * answer to their best. It receives no solver answer, tool call, argument or output: the calls by
+ * tool and shell command lengths it was told until 28 October changed nothing it wrote.
  *
  * An Examiner is a new process each session, so the host keeps what a session cannot: an instance
  * held, measured or still at the task admission is not taken again, the session's home is carried into the next

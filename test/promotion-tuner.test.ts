@@ -1,7 +1,7 @@
 // Replay follows the selected tree's rule, including historical records and weight sweeps.
 import { expect, it } from "bun:test";
 import { campaignLines, emptyTotals } from "#skills/promotion-tuner/scripts/replay.ts";
-import { loadTree, type Tree } from "#skills/promotion-tuner/scripts/tree.ts";
+import { campaignLogs, loadTree, type Tree } from "#skills/promotion-tuner/scripts/tree.ts";
 import { type Paired, scored, scoresOf } from "../src/kernel/compare.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
@@ -157,6 +157,27 @@ it("uses a candidate tree's own stepOf without requiring a readsStep export", as
       const totals = replay(await loadTree(tree), CHEAP);
       expect(totals.rightful + totals.doubted).toBe(steps);
     }
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+it("finds the logs of a folder of worktrees, of an archive's host folder and of the archive, the largest copy of each", async () => {
+  const home = mkdtempSync(join(tmpdir(), "ana-tuner-logs-"));
+  try {
+    const put = (dir: string, text: string, seed = false) => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "log.jsonl"), text);
+      if (seed) writeFileSync(join(dir, "seed.json"), "{}");
+    };
+    put(join(home, "anabasis-a", ".ana", "d2", "camp"), "{}\n");
+    put(join(home, "m1", "camp"), "{}\n{}\n");
+    put(join(home, "m1", "other"), "{}\n");
+    put(join(home, "m1", "seeded"), "{}\n", true);
+    const found = await campaignLogs(home, [], "");
+    expect(found.map(({ name }) => name)).toEqual(["camp", "other"]);
+    expect(found[0]?.path).toBe(join(home, "m1", "camp", "log.jsonl"));
+    expect((await campaignLogs(join(home, "m1"), ["other"], "")).map(({ name }) => name)).toEqual(["other"]);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

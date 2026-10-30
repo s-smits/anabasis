@@ -277,7 +277,12 @@ export async function readableAcross(names: readonly string[] = [], depth: Depth
   );
 }
 
-/** Shared by WRI and skill scripts: explicit paths stay explicit; campaign names reach all hosts. */
+/**
+ * The one resolver of a reader's `<log | campaign folder | name>`: a folder reads its log, an
+ * explicit path stays explicit, and a campaign's name reaches every host. Until 30 October
+ * `reading.ts` and `live-seat.ts` each resolved a folder themselves and the other readers refused one.
+ */
 export async function logAcross(named: string): Promise<string> {
+  if (existsSync(join(named, LOG_FILE))) return join(named, LOG_FILE);
   return existsSync(named) ? named : (await readAcross(named, "whole")).path;
 }

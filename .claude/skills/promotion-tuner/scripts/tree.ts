@@ -18,10 +18,11 @@
 import { type Measures, type Paired, UNMEASURED } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import type { Reported } from "#src/kernel/reports.ts";
-import { closeSync, existsSync, openSync, readdirSync, readSync, statSync } from "#src/meta/filesystem.ts";
+import { closeSync, openSync, readdirSync, readSync, statSync } from "#src/meta/filesystem.ts";
 import { gitText } from "#src/meta/git.ts";
 import { type JsonValue, asRecord, isFunction, isString } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
+import { CAMPAIGNS, campaignsIn } from "#tools/runs/registry.ts";
 import { readableAcross } from "#tools/runs/snapshots.ts";
 
 /** What a reading of the reference against itself is made between (`Sides`, `compare.ts`). */
@@ -132,19 +133,20 @@ function lastAt(path: string): string | null {
 }
 
 /** Every campaign log under `home`, one a name, the largest where copies exist; seeds and the
- *  names of `LEFT_OUT` are not listed. */
+ *  names of `LEFT_OUT` are not listed. `home` may be a folder of worktrees, an archive
+ *  (`data/runs`, a folder a host) or one host's folder of campaigns: the registry's `campaignsIn`
+ *  reads each layout. Until 30 October this walked worktrees alone, so a replay of the archive read
+ *  no campaign. */
 function everyLog(home: string): Found[] {
   const largest = new Map<string, { path: string; size: number }>();
-  for (const worktree of readdirSync(home)) {
-    const campaigns = join(home, worktree, ".ana", "d2");
-    if (!existsSync(campaigns)) continue;
-    for (const name of readdirSync(campaigns)) {
-      const path = join(campaigns, name, "log.jsonl");
-      if (LEFT_OUT.some((prefix) => name.startsWith(prefix)) || !existsSync(path)) continue;
-      if (existsSync(join(campaigns, name, "seed.json"))) continue;
-      const { size } = statSync(path);
-      if (size > (largest.get(name)?.size ?? -1)) largest.set(name, { path, size });
-    }
+  const found = [home, ...readdirSync(home).map((entry) => join(home, entry))].flatMap((dir) => [
+    ...campaignsIn(dir, dir),
+    ...campaignsIn(join(dir, CAMPAIGNS), dir),
+  ]);
+  for (const { name, path, seed } of found) {
+    if (seed === true || LEFT_OUT.some((prefix) => name.startsWith(prefix))) continue;
+    const { size } = statSync(path);
+    if (size > (largest.get(name)?.size ?? -1)) largest.set(name, { path, size });
   }
   return [...largest]
     .map(([name, { path }]) => ({ name, path }))

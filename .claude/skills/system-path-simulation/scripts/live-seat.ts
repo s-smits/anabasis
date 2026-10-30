@@ -738,7 +738,7 @@ async function census(args: CommandArgs, named: readonly string[]): Promise<numb
   if (named.length === 0) args.die("name the logs or campaign folders to count");
   const logs: LogEvent[][] = [];
   for (const each of named) {
-    const log = existsSync(join(each, LOG_FILE)) ? join(each, LOG_FILE) : await logAcross(each);
+    const log = await logAcross(each);
     if (!existsSync(log)) args.die(`${log} does not exist`);
     // A seed's history before its cut is its source's: on 28 October two seats read 537 and 521
     // calls, of which they made 59 and 42.

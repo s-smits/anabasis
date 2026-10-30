@@ -1092,16 +1092,18 @@ lane reads what each promotion bought.
 
 Grade before you read a result, in this order, writing each grade into the report as it settles:
 
-1. From the campaign's derived folder (`wri.ts derive`, named in the campaigns section), read only
-   the `made:` and `parts:` lines of `versions.txt`: each kept version, its parent and its parts.
-   The comparison lines under each version are results; leave them for step 4.
-2. Diff each version against its parent: `harness-versions.ts --log <log> --diff <digest>` counts
-   the parts that moved, and `diff -r` of `states/<parent>/` and `states/<digest>/` beside the log
-   shows the lines ([harness-audit](../../harness-audit/SKILL.md)). Grade soundness.
-3. Read each scored task's public text in its `task.proposed` event and the checks it cites.
-   Grade reach.
-4. Only then read the comparison lines, `readings.txt` (each comparison's tally, the tally without
-   the bill and its A/A), and rows D and E in `rows.txt` (each task's valid share).
+1. From the campaign's derived folder (`wri.ts derive`, named in the campaigns section), read
+   `chain.txt`: each kept version, its parent, its parts and the count of what moved against its
+   parent, with no result (`harness-versions.ts --blind`).
+2. Read the lines that moved: `diff -r` of `states/<parent>/` and `states/<digest>/` beside the log
+   ([harness-audit](../../harness-audit/SKILL.md)). Grade soundness. A version
+   the copy does not keep (`versions.txt` says so) goes under `## Not read`, ungraded: refreshing
+   the copy is the primary's (`runs fetch <name>`), and no lane reads another host's folder.
+3. Read `tasks.txt`: each scored task's public input and the comparisons that scored it, with no
+   outcome (`tools/wri/tasks.ts`), and the checks under `exams/` it is held to. Grade reach.
+4. Only then read the results: `versions.txt` (each version's comparisons and promotions),
+   `readings.txt` (each comparison's tally, the tally without the bill and its A/A), and rows D and
+   E in `rows.txt` (each task's valid share).
 
 Grade on two scales of 0 to 7. A scale of ten left its lower half unused once current models solve
 routine work (operator, 30 October), so eight points carry the range that occurs. Each grade is a
@@ -1120,12 +1122,17 @@ before reading any outcome of it:
 - 6: work a specialist gets wrong on a first pass;
 - 7: the field's edge, where no published method fits whole.
 
+Before the first grade, write the features of this domain's tasks that place one at each grade you
+use (sizes, limits, tolerances), so a second reader grading from them reaches the same grades.
+
 Then set each grade beside the reference's valid share of the task (rows D and E, `rows.txt`). A
 task graded low that no harness answers is lane 10's question; one graded high that the starter
 answers every time says the grade is too high for this solver, and is regraded once with that
 reason. For each comparison, give the grades of the untied tasks the new harness won and those it
 lost, and say on which grades the step rests. A version's reach is the highest grade at which it
-holds valid answers on most of its solves.
+holds valid answers on most of its solves. Where the reference answers every scored task validly,
+reach cannot separate the versions: say so once, and for each step give instead how far its
+objective wins moved the objective, and on which grades.
 
 **Soundness** is whether a version's change is right for the domain, beyond whether it won. Grade
 each version against its parent from the diff alone, before reading its comparison:
@@ -1140,7 +1147,7 @@ each version against its parent from the diff alone, before reading its comparis
 - 7: what an expert would adopt unchanged.
 
 Then read whether the step's wins fall where the change acts. Set the version's weight beside its
-soundness: guide lines, tools and tool-tree files from `versions.txt`. Weight that grows while
+soundness: guide lines, tools and tool-tree files from `chain.txt`. Weight that grows while
 soundness stays flat is weight, not quality.
 
 Write the grades under a `## Grades` heading between the verdict line and `## Findings`: one row a version in chain order

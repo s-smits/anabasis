@@ -4,9 +4,8 @@
  * its parent, part by part. It reads: it writes nothing of the campaign's, starts no solve and calls
  * no model.
  *
- *   bun .claude/skills/harness-audit/scripts/harness-versions.ts --name <campaign> [--json]
- *   bun .claude/skills/harness-audit/scripts/harness-versions.ts --log <path> [--json]
- *   bun .claude/skills/harness-audit/scripts/harness-versions.ts --name <campaign> --diff <harness> [--against <harness>]
+ *   bun .claude/skills/harness-audit/scripts/harness-versions.ts <log | campaign folder | name> [--blind] [--json]
+ *   bun .claude/skills/harness-audit/scripts/harness-versions.ts <log | campaign folder | name> --diff <harness> [--against <harness>]
  *
  * A harness is named as a campaign's commands name one (`keptAs`, `tools/d2/campaign.ts`): `starter`,
  * `promoted`, `latest`, a whole digest or its unambiguous letter. The states sit beside the log,
@@ -24,6 +23,11 @@
  * list showed each shared `tree-*` folder as a harness that does not open, with all 6,158 files of
  * one tree on a single line, and `--diff` counted 405 changed files where the digest saw one: the
  * other 404 were caches.
+ *
+ * `--blind` takes from each version how it was measured (`blinded`: every comparison, session,
+ * promotion and role but the starter's) and prints its diff against a kept parent in their place.
+ * Lane 34 grades soundness from it before it reads a result; on 30 October its first session read
+ * the list's comparisons first.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { type Handover, campaignOf } from "#src/campaign/handover.ts";
@@ -49,14 +53,18 @@ import { keptAs } from "#tools/d2/campaign.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 
 const USAGE = `usage:
-  bun .claude/skills/harness-audit/scripts/harness-versions.ts --name <campaign> [--json]
-  bun .claude/skills/harness-audit/scripts/harness-versions.ts --log <path> [--json]
-  bun .claude/skills/harness-audit/scripts/harness-versions.ts --name <campaign> --diff <harness> [--against <harness>]
+  bun .claude/skills/harness-audit/scripts/harness-versions.ts <log | campaign folder | name> [--blind] [--json]
+  bun .claude/skills/harness-audit/scripts/harness-versions.ts <log | campaign folder | name> --diff <harness> [--against <harness>]
 
 <harness> is starter, promoted, latest, a whole digest or its unambiguous letter. --against defaults to
 the parent the log records.`;
 
-const OPTIONS = { name: "text", log: "abs", json: "flag", diff: "text", against: "text" } as const;
+const OPTIONS = {
+  json: "flag",
+  blind: "flag",
+  diff: "text",
+  against: "text",
+} as const;
 const TOOL_TREE = ".toolchain";
 const GUIDE = `${AGENT_DIR}${GUIDE_FILE}`;
 const PARTS: ReadonlySet<string> = new Set([GUIDE, TOOLS_SPEC_FILE, GENERATED_TOOLS_FILE]);
@@ -294,7 +302,7 @@ function moved(before: Map<string, string>, after: Map<string, string>) {
 }
 
 /** What moved from `parent` to `child`, part by part, by kind and size. */
-export async function diffOf(parent: string, child: string): Promise<string[]> {
+async function diffOf(parent: string, child: string): Promise<string[]> {
   const [old, fresh] = await Promise.all([partsOf(parent), partsOf(child)]);
   const tree = moved(
     entries(join(parent, TOOL_TREE), () => true),
@@ -335,21 +343,43 @@ function printed(version: Version): string[] {
   ];
 }
 
+/** A version less how it was measured. */
+const blinded = (version: Version): Version => ({
+  ...version,
+  roles: version.roles.filter((role) => role === "starter"),
+  sessions: [],
+  compared: [],
+  promoted: [],
+});
+
+/** What moved into a kept version from its kept parent; nothing where either state is missing. */
+async function againstParent({ digest, kept, parent }: Version, states: string): Promise<string[]> {
+  if (!kept || parent === null || !existsSync(join(states, parent))) return [];
+  const moves = await diffOf(join(states, parent), join(states, digest));
+  return [`  against ${short(parent)}:`, ...moves.map((line) => `    ${line}`)];
+}
+
 async function main(args: CommandArgs): Promise<number> {
-  const name = args.value("name");
-  const given = args.value("log");
-  if (name !== null && given !== null) args.die("name the campaign or its log, not both");
-  const log = await logAcross(given ?? name ?? args.die("--name or --log is required"));
-  const keeping = { log, states: join(dirname(log), "states") };
+  const log = await logAcross(args.positionals[0] ?? args.die(USAGE));
   if (!existsSync(log)) args.die(`${log} does not exist`);
+  const keeping = { log, states: join(dirname(log), "states") };
   const versions = await versionsOf(keeping);
   const asked = args.value("diff");
   if (asked === null) {
     if (args.value("against") !== null) args.die("--against is read with --diff");
-    const list = args.flag("json")
-      ? capturedJsonStringify({ ...keeping, versions }, null, 2)
-      : versions.flatMap(printed).join("\n");
-    console.log(list);
+    const blind = args.flag("blind");
+    const shown = blind ? versions.map(blinded) : versions;
+    if (args.flag("json")) {
+      console.log(capturedJsonStringify({ ...keeping, versions: shown }, null, 2));
+      return 0;
+    }
+    const blocks = await Promise.all(
+      shown.map(async (version) => [
+        ...printed(version),
+        ...(blind ? await againstParent(version, keeping.states) : []),
+      ]),
+    );
+    console.log(blocks.flat().join("\n"));
     return 0;
   }
   if (args.flag("json")) args.die("--json is for the list; --diff prints its lines");
@@ -379,4 +409,6 @@ async function main(args: CommandArgs): Promise<number> {
   return 0;
 }
 
-if (import.meta.main) await runCommand({ name: "harness-versions", usage: USAGE, options: OPTIONS }, main);
+if (import.meta.main) {
+  await runCommand({ name: "harness-versions", usage: USAGE, options: OPTIONS, positionals: 1 }, main);
+}

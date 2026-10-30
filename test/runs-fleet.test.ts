@@ -367,7 +367,7 @@ describe("named snapshot readers", () => {
     }
     const audit = made.runScript(
       ".claude/skills/harness-audit/scripts/harness-versions.ts",
-      ["--name", "distant"],
+      ["distant"],
       remote.env,
     );
     expect({ code: audit.code, err: audit.err }).toEqual({ code: 0, err: "" });

@@ -25,13 +25,12 @@ marked, and each needs the operator's word (`AGENTS.md`, section 10).
 ## The versions
 
 ```sh
-bun .claude/skills/harness-audit/scripts/harness-versions.ts --name <campaign> [--json]
-bun .claude/skills/harness-audit/scripts/harness-versions.ts --log <log> [--json]
-bun .claude/skills/harness-audit/scripts/harness-versions.ts --name <campaign> --diff <harness> [--against <harness>]
+bun .claude/skills/harness-audit/scripts/harness-versions.ts <log | campaign folder | name> [--blind] [--json]
+bun .claude/skills/harness-audit/scripts/harness-versions.ts <log | campaign folder | name> --diff <harness> [--against <harness>]
 ```
 
 A harness is named as the campaign's commands name one (`keptAs`): `starter`, `promoted`, `latest`
-or a whole digest, or its unambiguous letter from `namesOf`; `--log` reads a log copied out of its
+or a whole digest, or its unambiguous letter from `namesOf`; a path reads a log copied out of its
 campaign, with its `states/` beside it. The list gives each harness the log names or the folder
 keeps, the starter first:
 

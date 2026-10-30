@@ -29,7 +29,11 @@
  *
  * The session stops at a draft that stands, at `--tries` drafts put to the reading, or at its
  * deadline and model turn limit. A measure its deadline or a kill cuts short lets the draft stand, as the last put
- * does. The Examiner has a shell in a walled home of its own (`examine`, with a wall), under the
+ * does. The model turn limit is the examine session's (200), not a smaller one: on 30 October
+ * kernel-cyber-fresh's first drafting session used all 40 of a smaller limit on one draft it put at
+ * turn 38, after 37 turns assembling the 29 KB argument by script, and endings `turns` say how many
+ * sessions spend the limit on the work rather than on the draft. Drafting is the larger job and
+ * takes the larger limit. The Examiner has a shell in a walled home of its own (`examine`, with a wall), under the
  * disk cap of a campaign's solves, closed to this repository and its other worktrees. A caller
  * that stands in for the session with a script seats no solver, and its drafts stand unmeasured.
  *
@@ -64,7 +68,7 @@ const OPTIONS = {
   "examiner-effort": { type: "string", default: "high" },
   tries: { type: "string", default: "3" },
   minutes: { type: "string", default: "60" },
-  turns: { type: "string", default: "40" },
+  turns: { type: "string", default: "200" },
   jobs: { type: "string", default: "4" },
   reviewer: COMPARISON_OPTIONS.reviewer,
   "reviewer-effort": COMPARISON_OPTIONS["reviewer-effort"],

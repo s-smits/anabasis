@@ -357,9 +357,31 @@ before the proof, with the `gh stack link` line that makes one. A refused merge 
 `ana/stack-gate` back to pending on every head. An uncertain merge, or one that went into a merge
 queue, leaves the statuses in place and asks for the trunk to be read before another landing.
 `--tag vX.Y.Z` cuts that release at the merge commit with GitHub's generated notes, which the
-release text of run-improvement-campaign then replaces; a tag origin already holds is refused before
-the proof. Test `land` against a fake `gh`
-only (`test/land.test.ts`); never against this repository.
+release notes below then replace; a tag origin already holds is refused before the proof. Test
+`land` against a fake `gh` only (`test/land.test.ts`); never against this repository.
+
+### Release notes, when the operator asks for the next version
+
+This step is optional: a landing takes `--tag vX.Y.Z` only when the operator asks to merge the next
+version. GitHub's generated notes are a placeholder, so save them in the scratchpad and replace them
+with `gh release edit vX.Y.Z --notes-file <file>`. Copy the shape of the last two or three releases
+(`gh release view <tag>`), and keep the text between 550 and 800 words; v0.9.0's first draft ran to
+1,435 and was cut by half. Open with at most three sentences: what the release changes, whether the
+minor moves and why (run-improvement-campaign step 10), and whether a fresh campaign has run on the
+release tree. Then one line: "Includes **N PRs from #a to #b**, merged at `<sha>`." Group the
+changes under three or four bold headers by subject, such as **Comparisons and task supply**,
+**Runs and hosts** and **Instructions and landing**, never one per pull request. Give each change
+that alters what a run measures a bullet of its own, and a group of smaller ones a short paragraph.
+A bullet leads with an imperative verb, says what changed instead of what, and ends with its pull
+requests in brackets. Bold the key counts, each with its denominator and axis ("**70 of 73 drafts
+refused**"). Keep one or two numbers a change and leave the rest to its pull request's body. Call a
+replay or a snapshot an estimate, and name a result unmeasured where no run shows it
+(`attribution-and-proof`). Keep every rule 3 fix and every finding carried to the next cycle,
+however short the text gets. Close with **Validation and limits**: one table with the columns
+Landing, Gate head, Tests passed / skipped / failed and Merge, the last linking the `ci.yml` run.
+Below it, at most three short paragraphs say how the proof ran, what the review found and what
+carries over, and what the cycle's stopped runs showed. Name no host, login or account ("the Linux
+runner", "a macOS runner"), and follow `AGENTS.md` section 13.
 
 ## 10. Consolidate the stack
 

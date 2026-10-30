@@ -350,8 +350,8 @@ this walk chooses what to do about it.
    retained tasks were a second test that could read `regressed`. No retained task tallied is
    `unmeasured`.
 8. **Next epoch:** refused drafts, idle conversations or few frontier tasks after promotion.
-   Owners: `heard`, `campaignStatus`, `hostOwed` in `tools/d2/harness-builder.ts`, and `ROWS` and
-   `HOLDS` in `src/campaign/decide.ts`.
+   Owners: `heard`, `campaignStatus`, `hostOwed` in `tools/d2/harness-builder.ts`, and `ROWS`, whose
+   `build` row holds `practice` and `unshown`, in `src/campaign/decide.ts`.
 
 ## 1. Choose one change, aimed at the next promotion
 

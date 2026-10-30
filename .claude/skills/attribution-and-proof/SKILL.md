@@ -69,9 +69,10 @@ Answer these from the log before using the word step in a sentence of your own:
   makes a second draw on fresh solves; the same id returns the existing report. Until a later
   reading holds the step, say it is one draw at its level. Until 19 October promotion required a repeat.
 - **What does the reference do against itself?** Read `noise` on the same tallied tasks, with
-  halves of the reference's solves mirrored in time. It is available at four or more even solves
-  per side (`compared`, `src/campaign/comparison.ts`). Every A/A is a reading and ends nothing: one
-  with either one-sided p at or below half the comparison's level says the two halves of one
+  halves of the reference's solves mirrored in time. It is available at any even count of solves
+  per side, at two its first solve against its second (`compared`, `src/campaign/comparison.ts`).
+  Every A/A is a reading and ends nothing: one that reads a step either way at the comparison's
+  level, with and without the bill (`readsStepEitherWay`, `src/kernel/compare.ts`), says the two halves of one
   harness's solves were not interchangeable, so say so beside the step it stands with.
 - **How thin?** At `--level 0.02`, six untied tasks all won is the least that reads a step
   (p = 0.015625), and 5-0 (p = 0.03125) reads none. With equal pair margins, 8-1, 10-2 and
@@ -87,7 +88,7 @@ Answer these from the log before using the word step in a sentence of your own:
   Give the campaign estimate from `riskLines` in `src/campaign/climb.ts`: it sums attempt rates,
   capped at one, across epochs. It is an estimate, not a measured bound. Its A/A error count is
   one-sided at the comparison's level, and counts only the controls that could read a step.
-- **Which measure?** Give `points` beside the untied count: the points validity, the objective and the bill gave the tallied tasks, so a step the bill carried is named as one. A report begun before 21 October holds `objective.decided` instead.
+- **Which measure?** Give `points` beside the untied count: the points validity, the objective and the bill gave the tallied tasks, so a win the bill carried is named as one; a step must clear without the bill too. A report begun before 21 October holds `objective.decided` instead.
 - **Under what load?** A deadline counts elapsed time. The reader's `HOST LOADED` and `LOAD MOVED` say
   when solve-start loads were high or moved between halves within or across comparisons. Compare
   no times across those loads.

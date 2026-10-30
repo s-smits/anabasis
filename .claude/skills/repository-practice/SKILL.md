@@ -1,6 +1,6 @@
 ---
 name: repository-practice
-description: "Apply the repository's evidence, runtime, validation, writing and terminology rules (AGENTS.md sections 9 to 14). Use preflight.ts to identify checks, affected areas and suggested PR labels, and direction.ts to find production imports of helper code. Procedures remain with stack-pr, run-management and attribution-and-proof; coding habits are in tools/oxlint/HABITS.md."
+description: "Read before committing, opening or labelling a pull request, writing its body, a commit message, a comment or a prompt, choosing which tests or gates a diff owes, or touching .ana/, .env, vendor/ or the OS wall (src/wall/); and whenever asked what a claim may say (the ladder: present in source, proved without a model, exercised live), what a term means or which directory owns a mechanism (AGENTS.md sections 9 to 14). Scripts: preflight.ts lists the tests, checks and labels a diff owes; direction.ts finds production imports of helper code. Procedures stay with stack-pr, run-management and attribution-and-proof; coding habits are in tools/oxlint/HABITS.md."
 ---
 
 # Repository practice

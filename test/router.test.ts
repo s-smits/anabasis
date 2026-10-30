@@ -82,7 +82,9 @@ status=0
 exit "$status"
 `;
 
-/** A Bun that records how it was called in its HOME's bun.log, and hands the host lister to Bun. */
+/** A Bun that records how it was called in its HOME's bun.log, and hands the host lister to Bun. A
+ *  held call gives up after two minutes: a suite killed before its `finally` released them left three
+ *  fakes waiting on the Linux runner from 28 to 30 October. */
 const RECORDING_BUN = `#!/bin/bash
 case "$*" in *hosts.js*) exec ${capturedExecPath} "$@" ;; esac
 if [[ "\${1-}" == --version ]]; then echo 1.4.2; exit 0; fi
@@ -92,7 +94,7 @@ printf 'bun=%s\\tactive=%s\\tstrict=%s\\tworkers=%s\\tbail=%s\\targs=%s\\n' "$0"
 status=0
 for arg in "$@"; do
   case "$arg" in
-    hold:*) : >"\${arg#hold:}.ready"; until [[ -e "\${arg#hold:}.release" ]]; do sleep 0.05; done ;;
+    hold:*) : >"\${arg#hold:}.ready"; until [[ -e "\${arg#hold:}.release" ]] || ((SECONDS > 120)); do sleep 0.05; done ;;
     exit:*) status="\${arg#exit:}" ;;
   esac
 done

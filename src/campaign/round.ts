@@ -116,6 +116,7 @@ import { asRecord, isString, type JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { sameJsonValue } from "../meta/stable-json.ts";
+import { plural } from "../meta/text.ts";
 import type { RefereeFinding, Ruling } from "../referee/referee.ts";
 import { tasksByEpoch } from "./climb.ts";
 import {
@@ -424,6 +425,33 @@ function unruledOf(events: readonly LogEvent[], fixed: Fixed) {
   return rejections(events, fixed, NO_LABELS).filter(({ task, ruling }) => ruling === null && held.has(task));
 }
 
+/** The provider's silence over one run of a comparison: `SILENT` tasks in a row stop it, and so do
+ *  last solves written nothing for after an answer (on 30 October esp32-fresh-gpt's g-1 read no-step
+ *  one task short when the provider refused the model). A run with no answer, or a wall that refused
+ *  the last task alone, reports that task short. */
+function silence() {
+  const silent = new Set<string>();
+  let [answered, provider] = [false, false];
+  return {
+    note(task: string, why: string | null, ending: Ending): void {
+      answered ||= why === null;
+      provider = ending.outcome === "non-result" && ending.kind === "provider";
+      if (why === null) silent.clear();
+      else if (silent.add(task).size >= SILENT) {
+        throw new Error(
+          `no solve of ${String(SILENT)} tasks in a row ran, so the comparison stops: ${why}. Run it again and it goes on from its log`,
+        );
+      }
+    },
+    tail(): void {
+      if (!answered || !provider || silent.size === 0) return;
+      throw new Error(
+        `the provider answered this run, then wrote nothing for its last ${plural(silent.size, "task")}, so the comparison stops before its report. Run it again and it goes on from its log`,
+      );
+    },
+  };
+}
+
 /**
  * What runs a comparison's solves: the jobs' pool, the Referee's part, and the reasons it stops
  * taking jobs. A solve that throws ends the pool and is thrown again by `settle` once every solve
@@ -449,7 +477,7 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
     ...rejections(before, fixed, NO_LABELS).flatMap(({ task, ruling }) => (ruling === DEFECT ? [task] : [])),
   ]);
   const going = () => thrown === null && !kill.aborted && !capped && defects.size <= request.defects;
-  const silent = new Set<string>();
+  const quiet = silence();
   /** Put one rejected answer to the Referee where one is seated, and again by `ruleLeft` if unruled. */
   const rule = async (solve: string, task: string): Promise<void> => {
     if (request.referee === undefined) return;
@@ -462,13 +490,7 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
   const run = async ({ task, under }: Job): Promise<Ending> => {
     const solved = await request.solve(task, under, id, kill);
     const { solve, ending } = solved;
-    const why = unanswered(log, id, solved);
-    if (why === null) silent.clear();
-    else if (silent.add(task).size >= SILENT) {
-      throw new Error(
-        `no solve of ${String(SILENT)} tasks in a row ran, so the comparison stops: ${why}. Run it again and it goes on from its log`,
-      );
-    }
+    quiet.note(task, unanswered(log, id, solved), ending);
     // A second such solve of the task disputes nothing: the log holds the task disputed (`dispute`).
     if (ending.outcome === "non-result" && ending.kind === "check") {
       defects.add(task);
@@ -540,6 +562,7 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
     await drain(unsolvedJobs(request, tasks, (task, digest) => had.get(`${task} ${digest}`)?.length ?? 0));
     if (thrown !== null) throw thrown;
     if (kill.aborted) throw new Error("the comparison was killed; run it again and it goes on from its log");
+    quiet.tail();
     await ruleLeft();
     return going();
   };

@@ -1357,6 +1357,28 @@ describe("a round", () => {
     }
   });
 
+  it("stops short of three silent tasks where the provider answered and then wrote nothing to the last solve, and reports a task alone silent from the start", async () => {
+    // esp32-fresh-gpt's g-1, 30 October: the provider refused the model on the last task, and the
+    // comparison reported no-step one task short instead of waiting to be run again.
+    let left = 12;
+    const s = await setup([], (version, side, nth, digest) => {
+      left -= 1;
+      return left < 0 ? LIMITED : step(version, side, nth, digest);
+    });
+    await expect(checkpoint(s.paired("g0"))).rejects.toThrow("then wrote nothing for its last 1 task");
+    expect(s.of(COMPARISON_REPORTED)).toEqual([]);
+    // Still silent on the one task left, with nothing answered this run: the task's own fault.
+    expect(await checkpoint(s.paired("g0"))).toMatchObject({ short: [expect.any(String)] });
+    // The provider back by the next run: the last task is solved, and the step read on all four.
+    let calls = 0;
+    const back = await setup([], (version, side, nth, digest) => {
+      calls += 1;
+      return calls > 12 && calls <= 14 ? LIMITED : step(version, side, nth, digest);
+    });
+    await expect(checkpoint(back.paired("g0"))).rejects.toThrow("then wrote nothing");
+    expect(await checkpoint(back.paired("g0"))).toMatchObject({ short: [], scored: { wins: 4, losses: 0 } });
+  });
+
   it("keeps a kill as the reason when a reset wait returns its provider ending", async () => {
     const kill = new AbortController();
     const s = await setup([], () => {

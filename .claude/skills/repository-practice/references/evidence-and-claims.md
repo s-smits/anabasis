@@ -1,16 +1,16 @@
 # 9. Status, evidence and claims
 
-Read this before a sentence names a part's level, ranks two kinds of evidence, or claims a step, no
-step, a mechanism or a refusal. It holds `AGENTS.md` section 9 in full.
+Read this before stating an evidence level or claiming a step, mechanism or refusal. This expands
+`AGENTS.md` section 9.
 
-Read `attribution-and-proof`, which owns what one reading may show, before any sentence claims that
+Read `attribution-and-proof` , which owns what one reading may show, before any sentence claims that
 a harness, a model or a patch improved something. What follows holds for every statement.
 
 ## The ladder
 
-The levels are listed in `AGENTS.md` section 9. Each describes the evidence, not the effort: a
-part Present in source still needs a test with its nearest hostile case, a replay or a rehearsal
-to be Proved without a model, and an event in a real run's log to be Exercised live.
+The levels are listed in `AGENTS.md` section 9. Each describes the evidence, not the effort: a part
+Present in source still needs a test with its nearest hostile case, a replay or a rehearsal to be
+Proved without a model, and an event in a real run's log to be Exercised live.
 
 None stands in for the next. `docs/plan.md` keeps each part's level, and a pull request names the
 level it moves; keep no second status list anywhere.
@@ -33,9 +33,9 @@ events in a campaign's log  >  a fold over the log  >  source and tests  >  a co
   `ranWith`), named by text its code holds since a restack rewrites commits. A run without it is no
   evidence either way.
 
-A negative claim about capability ("nothing checks X") is the costliest to get wrong, since later
-readers compensate for a defect that may not exist: make one only with the symbol, its call sites
-and a check run in the same turn.
+Before claiming that a capability is absent ("nothing checks X"), inspect its symbol, callers and a
+relevant check in the same turn. An incorrect absence claim can lead later work to add a mechanism
+that already exists.
 
 ## What may be claimed
 
@@ -48,5 +48,5 @@ and a check run in the same turn.
 | Which part of a harness did it | A standalone comparison against the programs ablation `programs-of:<digest>` |
 
 A step holds under its one condition only (`attribution-and-proof` lists what it does not say). Keep
-the counts apart as that skill lists them, give each rate its denominator, and never compare results across
-campaigns or settings.
+the counts apart as that skill lists them, give each rate its denominator, and never compare results
+across campaigns or settings.

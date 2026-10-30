@@ -1,5 +1,4 @@
-// The campaign-mechanics skill's `ending.ts`: each ending on record with the moves before it, and the
-// counts the table's endings are read on, over logs built here in memory.
+// Check ending history, preceding moves and current stopping conditions using in-memory logs.
 import { describe, expect, it } from "bun:test";
 import { campaignEnding, endingLines } from "#skills/campaign-mechanics/scripts/ending.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
@@ -38,7 +37,7 @@ function logOf() {
 const opened = () => logOf().add("campaign.opened", OPENED).add("checker.read", { faults: [] });
 
 describe("ending.ts", () => {
-  it("splits the moves at each ending and counts the Builder's asked moves apart", () => {
+  it("groups moves by campaign ending and counts Builder departures separately", () => {
     const log = opened()
       .move("build", "led", "b-1")
       .built("b-1", "finished")
@@ -57,7 +56,7 @@ describe("ending.ts", () => {
     expect(since.moves).toStrictEqual({ total: 1, asked: 0, counts: { "build·led": 1 } });
   });
 
-  it("names the environment ending at three crashed sessions in a row, and not when one held out a task", () => {
+  it("ends on three consecutive crashes and resets the count when a session holds a task", () => {
     const crashed = opened()
       .built("b-1", "crashed")
       .built("b-2", "crashed")
@@ -75,7 +74,7 @@ describe("ending.ts", () => {
     expect(moved.decided.move).not.toBe("end");
   });
 
-  it("lists the operator's word until an event answers it", () => {
+  it("lists pending operator instructions until an event answers them", () => {
     const left = opened().add("campaign.word", { word: "stop", why: "enough" });
     const pending = campaignEnding(left.events).standing;
     expect(pending.words).toStrictEqual(["stop (enough)"]);
@@ -87,7 +86,7 @@ describe("ending.ts", () => {
     expect(heard.since.events).toBe(0);
   });
 
-  it("reads the budget against its reserve, and admission's want of held-out tasks", () => {
+  it("reports insufficient solve reserve and missing held-out tasks", () => {
     const spent = opened().add("solve.finished", { solve: "s-1", ending: { outcome: "pass" }, billed: 95 });
     const { standing } = campaignEnding(spent.events);
     expect(standing.left).toStrictEqual({ dollars: 5, reserve: 10 });
@@ -96,7 +95,7 @@ describe("ending.ts", () => {
     expect(endingLines(campaignEnding(spent.events)).some((line) => line.includes("$5.00"))).toBe(true);
   });
 
-  it("counts Examiner sessions that held out nothing against supply patience, from the last that held a task", () => {
+  it("counts empty Examiner sessions and resets supply patience after a held task", () => {
     const empty = (log: ReturnType<typeof opened>, session: string) =>
       log.add("exam.finished", { session, ended: "finished", held: [] });
     const run = opened();

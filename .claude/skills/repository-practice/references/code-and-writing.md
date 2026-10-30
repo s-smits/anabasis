@@ -1,9 +1,7 @@
 # 12. Code that passes the first time, and 13. Writing
 
-Read this before you write code (section 12) or prose of record: a commit, a pull request, a comment,
-a prompt or a message to the operator (section 13). It holds `AGENTS.md` sections 12 and 13 in full:
-the dependency direction and the ledger's use, and the writing rules in their long form. Run
-`scripts/preflight.ts` for the size and prose findings a regex can see.
+Read this for the coding and writing rules in `AGENTS.md` sections 12 and 13. Use
+`scripts/preflight.ts` to report size and prose patterns that it can detect.
 
 ## 12. Code that passes the first time
 
@@ -48,8 +46,7 @@ for a careful colleague who has not read the conversation.
   belongs to: "the Builder session b-2", "comparison g2".
 - A head comment is the module's manual: why the code is as it is, the defect it answers, the record
   that showed it, and the date. Keep it true in the change that alters the code.
-- A prompt states facts and limits once, where they belong (system prompt, opening message, tool
-  result); a recurring interface failure is fixed in the schema or the tool, not with a sentence.
+- State each prompt fact and limit once, in its owning surface: system prompt, opening message or
+  tool result. Fix a recurring interface failure in the schema or tool rather than adding advice.
 - Dates are absolute ("9 October"). `AGENTS.md` and the skills say how things are now; history goes
   to the commit, the pull request and the head comment.
-

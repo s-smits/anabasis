@@ -1,15 +1,12 @@
 # What follows a reading: the move table and supply patience
 
-Read this before you change or explain which move a campaign makes next, why the view's last line
-names the move it does, or when supply patience ends a campaign. It holds the end of `AGENTS.md`
-section 7, "How a comparison is read": what follows a reading (the ten rows of `decide`) and supply
-patience.
+Read this to explain or change the next campaign move or supply patience. This expands the move
+table in `AGENTS.md` section 7.
 
 ## What follows a reading
 
-What follows a reading is move 7's decision (`decide`, `src/campaign/decide.ts`), printed as the
-view's last line. Its ten rows are asked in order (`ROWS`); the first that names a move chooses it,
-and the decision carries its code:
+`decide` (`src/campaign/decide.ts`) selects the next move, printed on the view's final line. It
+evaluates the ten `ROWS` in order and returns the first applicable move with its rule code:
 
 1. `stop`: a stop the operator left ends the campaign.
 2. `exam`: the exam does not stand: it is drafted where the campaign opened from a prompt, read where
@@ -41,8 +38,8 @@ and the decision carries its code:
 
 ## Supply patience
 
-**Supply patience** (`roomless`) counts the readings in a row, to the end of the log, that left
-nothing to gain: a comparison against the reference with no room, or a whole Examiner session that
-held out no task. At the campaign's supply patience it ends `no-room` where room was asked for and
-`exam` where tasks were. The comparison that raised the need is not counted; a comparison with room,
-a promotion, or a session whose tasks no comparison has read yet resets the count.
+**Supply patience** (`roomless`) counts consecutive unsuccessful supply attempts: comparisons
+against the reference that leave no room, and completed Examiner sessions that hold out no task. At
+the configured threshold, the campaign ends `no-room` when seeking room and `exam` when seeking
+tasks. The comparison that first established the need is excluded. A comparison with room, a
+promotion, or a session supplying tasks not yet compared resets the count.

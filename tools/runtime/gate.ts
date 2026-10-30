@@ -135,7 +135,7 @@ const BROWSER_FILE = /^packages\/ui\/test\/browser-[^/]+\.test\.ts$/u;
 /** What each file imports, read once per CI gate (`importsOf`). */
 const IMPORTS = new Map<string, string[]>();
 const TRANSPILERS = { ts: new Bun.Transpiler({ loader: "ts" }), tsx: new Bun.Transpiler({ loader: "tsx" }) };
-/** How many imports a test file may stand from a changed file and be near it (head comment). */
+/** Maximum import distance for nearby tests, as defined in the head comment. */
 export const NEAR = { root: 1, ui: 3 } as const;
 const STEPS = [
   ["install", ["install", "--frozen-lockfile"]],
@@ -243,8 +243,8 @@ export function addedLine(
   return line;
 }
 
-/** Every repository file `file` imports, relative to `root`, resolved as Bun resolves it, outside
- *  `node_modules` and leaving out a runtime's own module (`node:fs`, `bun:test`). A stylesheet or another file no transpiler reads imports nothing. */
+/** Resolve file's repository imports relative to root using Bun's resolver. Exclude packages and
+ *  runtime modules such as node:fs and bun:test. Files without a supported transpiler have no imports. */
 export function importsOf(root: string, file: string): string[] {
   const known = IMPORTS.get(join(root, file));
   if (known !== undefined) return known;

@@ -1,17 +1,14 @@
 ---
 name: repository-practice
-description: "Repository practice in full, AGENTS.md sections 9 to 14, and what a change owes before a commit or a pull request. Use before you commit, open or label a pull request, run checks or ask which tests, gates or labels a diff owes (scripts/preflight.ts reads the diff and says: the tests the static gate chooses, ui:gate, rule 3's wall tests for a seat's message, files over 800 lines or functions over 115, section 13 slips in changed prose, a suggested importance and category); before claiming a level of the ladder, a step, no step or a mechanism; before a real-model run; when touching the OS wall, its start-up test or the network; when a command, a hook, a CI job, the never-touch list, what a sed is, the stack's bullets, how reviews and subagents check a finding, the dependency direction, the writing rules in long form, a fixed term or the map of the tree needs its full statement. The procedures stay with stack-pr, run-management, attribution-and-proof and tools/oxlint/HABITS.md."
+description: "Apply the repository's evidence, runtime, validation, writing and terminology rules (AGENTS.md sections 9 to 14). Use preflight.ts to identify checks, affected areas and suggested PR labels. Procedures remain with stack-pr, run-management and attribution-and-proof; coding habits are in tools/oxlint/HABITS.md."
 ---
 
 # Repository practice
 
-The full account of `AGENTS.md` sections 9 to 14, under the same numbers and titles, so "section 11"
-means the same section in `AGENTS.md` and here. `AGENTS.md` holds the invariants every session
-carries, and this skill the mechanisms, owners and edge cases behind them. `AGENTS.md` owns the rules
-(section 8) and the operator's decisions (section 3). The source at the stack's head, with each
-module's head comment, outranks both. The other parts of the account are `design-and-seats`
-(sections 1 to 3), `campaign-mechanics` (4 to 6), `comparison-reading` (7 and 8) and
-`repository-practice` (9 to 14).
+This skill explains `AGENTS.md` sections 9 to 14, using the same section numbers. Read the reference
+for the mechanism you are changing. `AGENTS.md` keeps the shared invariants, rules and operator
+decisions; these references give their mechanisms and limits. When they disagree with current
+source, check the source and correct the stale description.
 
 Each part answers one question:
 
@@ -48,7 +45,7 @@ Each part answers one question:
 bun .claude/skills/repository-practice/scripts/preflight.ts [--base <rev> | --commit <rev>] [--stack]
 ```
 
-With no option it reads the working tree against `HEAD`, untracked files included; `--base` reads
+With no option it reads the working tree against `HEAD` , untracked files included; `--base` reads
 it against another revision, and `--commit` reads one recorded commit against its first parent. It
 asks each owner rather than deciding for itself:
 
@@ -74,5 +71,6 @@ asks each owner rather than deciding for itself:
   `CATEGORIES` (`tools/runtime/land.ts`). It is a suggestion: the definitions in section 11 and the
   operator decide.
 
-It reads no log, runs no check and starts nothing; `bun run commit:check` and the gate remain the
-checks. Logins, hosts and live runs are `bun run runs usage`, `hosts`, `status` and `active`. Its test is `test/repository-practice-script.test.ts`.
+Preflight reads no campaign log and starts no check or run. Validate with `bun run commit:check` and
+the gate. Inspect accounts, hosts and live runs through `bun run runs usage` , `hosts` , `status`
+and `active` . Its tests are in `test/repository-practice-script.test.ts` .

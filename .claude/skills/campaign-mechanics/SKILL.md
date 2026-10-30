@@ -1,19 +1,16 @@
 ---
 name: campaign-mechanics
-description: "A campaign's mechanics in full, AGENTS.md sections 4 to 6: the Builder's conversation and its campaign tools (examine, release_practice, compare, promote, campaign_status, wait), what the table names and what a tool does instead, deadlines and compaction, --builder-led; the log, conditions and its four habits, retire and the archive; every hand command (draft, accept, prepare, examine, round, session, checkpoint, settle, promote, import, close) and what it writes, the campaign command from a prompt or a pack, its budget and seven endings (budget, stop, exam, no-room, environment, operator, finished), idle and crashed conversations, the operator's words, the opening, project and setting, practice release order, comparison and session admission (What refuses a move), and the defaults. Use before changing or explaining harness-builder, a round, a session, admission, the setting, practice release, an ending or a default, or a log event, and to answer why a campaign ended or what it waits for (scripts/ending.ts); procedure for launching runs is run-management's."
+description: "Explain or change campaign control: the Builder conversation, log events, settings, admissions, practice release and endings (AGENTS.md sections 4 to 6). Use ending.ts to inspect recorded endings and current stopping conditions. Launch procedures belong to run-management."
 ---
 
 # Campaign mechanics
 
-The full account of `AGENTS.md` sections 4 to 6, under the same numbers and titles, so "section 7"
-means the same section in `AGENTS.md` and here. `AGENTS.md` holds the invariants every session
-carries, and this skill the mechanisms, owners and edge cases behind them. `AGENTS.md` owns the rules
-(section 8) and the operator's decisions (section 3). The source at the stack's head, with each
-module's head comment, outranks both. The other parts of the account are `design-and-seats`
-(sections 1 to 3), `campaign-mechanics` (4 to 6), `comparison-reading` (7 and 8) and
-`repository-practice` (9 to 14).
+This skill explains `AGENTS.md` sections 4 to 6, using the same section numbers. Read the reference
+for the mechanism you are changing. `AGENTS.md` keeps the shared invariants, rules and operator
+decisions; these references give their mechanisms and limits. When they disagree with current
+source, check the source and correct the stale description.
 
-The account sits in four references, each opening with when to read it:
+Choose the reference for the mechanism you are working on:
 
 | Reference | Sections | The question it answers |
 | --- | --- | --- |
@@ -47,9 +44,9 @@ The account sits in four references, each opening with when to read it:
 
 ## Scripts
 
-`scripts/ending.ts` answers "why did this campaign end, and what is it waiting for", which
-`bun run runs view` does not: the view prints the steps, the climb and the table's next move, and
-says nothing of a campaign's endings or of any count beside its bound.
+`scripts/ending.ts` lists recorded endings and current stopping conditions. It complements
+`bun run runs view` , which reports the climb and next move without this ending history or the
+counts against stopping thresholds.
 
 ```text
 bun .claude/skills/campaign-mechanics/scripts/ending.ts <name | /abs/path/to/log.jsonl>
@@ -59,13 +56,13 @@ It reads one log, by name as `bun run runs` finds it (a worktree's, else the arc
 absolute path, which also reads a remote host's archived copy that the view refuses. It prints each
 `campaign.ended` with its reason and the `campaign.move` codes counted before it (`asked` where the
 Builder chose otherwise than the table), the moves since the last ending, then the counts the
-endings are decided on, each beside its bound and each from its production owner under the plan
-the view asks the table with (`planOn`, `tools/runs/view.ts`): the budget left, improvement
-patience (`stopRule`), supply patience (`supplyRun`, over `roomless` in `src/campaign/decide.ts`),
-crashed sessions in a row (`crashedRun` against `CRASHES`), idle conversations (`idleOf` against
-`IDLE`), the codes comparison admission would refuse with (`refusals`), the operator's words not
-yet heard (`pendingWords`), and the table's move (`decide`). It parses its arguments through
-`runCommand` (`.claude/skills/main/cli.ts`), so `--host <name>` runs it on another host. The counts
-are read after the last ending, as the command run again would read them, so a campaign that ended
-`finished` shows no idle conversation. It prints ids, codes, counts and the host's reasons, never a task or a
+endings are decided on, each beside its bound and each from its production owner under the plan the
+view asks the table with (`planOn`, `tools/runs/view.ts` ): the budget left, improvement patience
+(`stopRule`), supply patience (`supplyRun`, over `roomless` in `src/campaign/decide.ts` ), crashed
+sessions in a row (`crashedRun` against `CRASHES` ), idle conversations (`idleOf` against `IDLE` ),
+the codes comparison admission would refuse with (`refusals`), the operator's words not yet heard
+(`pendingWords`), and the table's move (`decide`). It parses its arguments through `runCommand`
+(`.claude/skills/main/cli.ts`), so `--host <name>` runs it on another host. The counts are read
+after the last ending, as the command run again would read them, so a campaign that ended `finished`
+shows no idle conversation. It prints ids, codes, counts and the host's reasons, never a task or a
 check, but its output is still read off an exam-side log: keep it out of tracked files.

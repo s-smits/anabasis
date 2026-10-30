@@ -1,14 +1,14 @@
 # Rules
 
-Read this before you cite a rule in a pull request or a review, or when a change touches what a rule
-binds and you need its reasons and edges. It holds `AGENTS.md` section 8, "Rules".
+Read this for the reasons and limits behind the fifteen rules in `AGENTS.md` section 8. Cite that
+section when referring to a rule.
 
 `AGENTS.md` section 8 states each rule as it binds and is the one to cite. Here each is given with
 its reasons and edges.
 
 1. **The comparison decides, and nothing else does.** A harness is better when a comparison reads a
-   step. A practice result, a Builder's account, a reviewer's opinion and a passing suite say
-   nothing about which harness is better, and none of them may set or adjust a reading.
+   step. Practice results, Builder explanations, reviews and passing tests do not establish which
+   harness is better. None may set or adjust the comparison's reading.
 
 2. **Only the Examiner writes the exam, and nobody coaches it.** No person and no other agent, you
    included, writes or repairs a rule, a check or a task, or hand-edits a pack, a check program, a

@@ -1,5 +1,5 @@
-Read this when a design question asks whether code or a model should decide something, or before you
-add a limit, a classifier, a grant of the wall or a mechanism. It holds `AGENTS.md` section 2 whole.
+Read this to decide whether code or a model should own a decision, especially before adding a limit,
+classifier or file-access rule. This expands `AGENTS.md` section 2.
 
 ## 2. The stance: code owns the conditions, models own the content
 
@@ -17,8 +17,8 @@ questions are settled by asking which side of that split a decision falls on.
 | The dollar cap and what is charged to it | |
 | The log: what is recorded, and its order | |
 
-Code keeps the first column because a model cannot observe those facts, is itself the subject of
-the decision, or because the value must be identical on both sides of a comparison. Models keep the
+Code keeps the first column because a model cannot observe those facts, is itself the subject of the
+decision, or because the value must be identical on both sides of a comparison. Models keep the
 second because code cannot reason about a domain it has never seen. Seven consequences:
 
 1. **Give a model facts, never a course.** The host says what happened: a tally, an ending, a limit
@@ -27,8 +27,9 @@ second because code cannot reason about a domain it has never seen. Seven conseq
    towards it, and one told each answer's distance from its limit moves the limits. So the Examiner
    hears what was measured on the reference side, with no number to reach (section 3, "What the
    Examiner reads"), and the solve budget, within which a better method answers what a worse does
-   not. Which harness won each task it hears too: the operator accepted on 20 October that it may
-   write towards the newest harness, the plainest signal of where the exam has fallen behind.
+   not. It also learns which harness won each task. On 20 October the operator accepted that this
+   feedback may shape tasks towards the newest harness, helping the Examiner find where the
+   exam no longer distinguishes methods.
 3. **Keep the Builder free.** It may change or rewrite anything in the harness. One limit stands:
    nothing in a harness answers a particular task, so no part names a task, copies its text or
    holds its answer. A program may search candidates and test them against the public rules; the
@@ -49,11 +50,11 @@ second because code cannot reason about a domain it has never seen. Seven conseq
    a single file: each narrower grant is one more policy to keep true on two operating systems, and
    on the record narrow grants ended solves by the dozen while no wide one leaked a hidden value
    (`7f0add79:docs/plan.md`, rows B10, B12 and B17). Narrow only where two grants collide (two
-   solves writing one path in a shared `/tmp`) or the wider one would open a protected thing. Each policy has a wall test once per process (`walledBase`, `probeWall`; section 10).
+   solves writing one path in a shared `/tmp` ) or the wider one would open a protected thing. Each
+   policy has a wall test once per process (`walledBase`, `probeWall` ; section 10).
 7. **Take the simple path that reaches most of the result.** Each mechanism makes the next change
    harder to read, prove and undo. Prefer four fifths of the result for a fifth of the code: a
    plain mechanism writing events the readers can count beats a complete one nobody can check, in
-   code, prompts, tools and skills alike (rule 13). Never so for the measurement's honesty: the
-   wall, terms fixed first, fresh solves, the step test and the rulings (rules 3 to 8) are not
-   traded for less code, since a false step costs more than all the code it saved.
-
+   code, prompts, tools and skills alike (rule 13). Preserve the measurement's honesty: the wall,
+   terms fixed before solving, fresh solves, the
+   step test and Referee rulings (rules 3 to 8). A false step costs more than the code saved.

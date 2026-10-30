@@ -5,12 +5,12 @@ description: "Use after an Anabasis v2 comparison, standalone comparison or syst
 
 # Attribution and proof
 
-Ask one question: what may we claim? State the owner first, then the count, then what the count
-does not show. A summary must not outrun its evidence.
+Ask one question: what may we claim? State the owner first, then the count, then what the count does
+not show. A summary must not outrun its evidence.
 
 [run-improvement-campaign](../run-improvement-campaign/SKILL.md) chooses the next experiment, and
-[system-path-simulation](../system-path-simulation/SKILL.md) tests a path before spend. This
-skill starts after the run, and is narrower than a
+[system-path-simulation](../system-path-simulation/SKILL.md) tests a path before spend. This skill
+starts after the run, and is narrower than a
 [whole-run-investigation](../whole-run-investigation/SKILL.md): it reads no lanes and launches no
 session. It decides the wording of a claim from what the log already holds.
 
@@ -18,11 +18,11 @@ session. It decides the wording of a claim from what the log already holds.
 
 A v2 claim rests on a comparison: two harnesses, the same held-out tasks, solves made afresh and
 interleaved, a one-sided paired sign-flip test over each task's score (`flipP`,
-`src/kernel/compare.ts`). Validity weighs most; a declared objective and the bill compare two valid
-answers. The null treats each untied task's sign as equally likely and independent, at its fixed margin.
-`step` means one test over the frontier and the retained tasks together cleared its level, on the
-tasks' scores and again on their scores without the bill (`stepOf`, since 26 October).
-It does not say:
+`src/kernel/compare.ts` ). Validity weighs most; a declared objective and the bill compare two valid
+answers. The null treats each untied task's sign as equally likely and independent, at its fixed
+margin. `step` means one test over the frontier and the retained tasks together cleared its level,
+on the tasks' scores and again on their scores without the bill (`stepOf`, since 26 October). It
+does not say:
 
 - **that the harness is better under another condition.** Another deadline, budget, solver, effort
   or host code is another condition, and no solve of one counts for the other.
@@ -49,17 +49,17 @@ It does not say:
   fact of the environment. A Referee's ruling is a model's output.
 - **Say what did not run** and what could not be compared.
 
-Take the owner from the record that produced the number, in that record's own words. Never turn
-a model's causal guess into a label.
+Take the owner from the record that produced the number, in that record's own words. Never turn a
+model's causal guess into a label.
 
 ## How strong is the evidence
 
-Use the four evidence levels in `AGENTS.md`, section 9: present in source, proved without a
-model, exercised live, shown in an outcome. The last still requires a repeat on fresh solves;
-the promotion rule itself requires one reading. None of the levels stands in for the next.
+Use the four evidence levels in `AGENTS.md` , section 9: present in source, proved without a model,
+exercised live, shown in an outcome. The last still requires a repeat on fresh solves; the promotion
+rule itself requires one reading. None of the levels stands in for the next.
 
-A replay can establish that a value is delivered while better model behaviour stays unrun. A
-refusal that fired establishes its own condition and nothing about the answers.
+A replay can establish that a value is delivered while better model behaviour stays unrun. A refusal
+that fired establishes its own condition and nothing about the answers.
 
 ## Is the reading more than noise
 
@@ -69,11 +69,11 @@ Answer these from the log before using the word step in a sentence of your own:
   makes a second draw on fresh solves; the same id returns the existing report. Until a later
   reading holds the step, say it is one draw at its level. Until 19 October promotion required a repeat.
 - **What does the reference do against itself?** Read `noise` on the same tallied tasks, with
-  halves of the reference's solves mirrored in time. It is available at any even count of solves
-  per side, at two its first solve against its second (`compared`, `src/campaign/comparison.ts`).
-  Every A/A is a reading and ends nothing: one that reads a step either way at the comparison's
-  level, with and without the bill (`readsStepEitherWay`, `src/kernel/compare.ts`), says the two halves of one
-  harness's solves were not interchangeable, so say so beside the step it stands with.
+  halves of the reference's solves mirrored in time. It is available at any even number of solves
+  per side; at two, it compares the first solve with the second (`compared`,
+  `src/campaign/comparison.ts`). An A/A reading ends nothing. A step in either direction, at the
+  comparison's level and with and without the bill (`readsStepEitherWay`), indicates that the two
+  halves were not interchangeable. Report it beside the candidate's step.
 - **How thin?** At `--level 0.02`, six untied tasks all won is the least that reads a step
   (p = 0.015625), and 5-0 (p = 0.03125) reads none. With equal pair margins, 8-1, 10-2 and
   12-3 also clear 0.02; unequal margins need `flipP`, rather than the tally alone. The retained
@@ -88,7 +88,9 @@ Answer these from the log before using the word step in a sentence of your own:
   Give the campaign estimate from `riskLines` in `src/campaign/climb.ts`: it sums attempt rates,
   capped at one, across epochs. It is an estimate, not a measured bound. Its A/A error count is
   one-sided at the comparison's level, and counts only the controls that could read a step.
-- **Which measure?** Give `points` beside the untied count: the points validity, the objective and the bill gave the tallied tasks, so a win the bill carried is named as one; a step must clear without the bill too. A report begun before 21 October holds `objective.decided` instead.
+- **Which measure?** Give `points` beside the untied count: the points validity, the objective and
+  the bill gave the tallied tasks, so a win the bill carried is named as one; a step must clear
+  without the bill too. A report begun before 21 October holds `objective.decided` instead.
 - **Under what load?** A deadline counts elapsed time. The reader's `HOST LOADED` and `LOAD MOVED` say
   when solve-start loads were high or moved between halves within or across comparisons. Compare
   no times across those loads.
@@ -98,9 +100,8 @@ Answer these from the log before using the word step in a sentence of your own:
 
 ## Validity and exploitation
 
-A tally says nothing by itself of whether the exam can be passed without the work, or of
-whether a solver passed it that way. Report the two apart, each with the checks and the traces it
-rests on.
+A tally says nothing by itself of whether the exam can be passed without the work, or of whether a
+solver passed it that way. Report the two apart, each with the checks and the traces it rests on.
 
 - **Measurement validity**: `demonstrated gap`, `no gap found in the named checks`, or
   `unassessed`. What v2 runs: the checker's reading (`bun tools/c/accept.ts`), which puts each
@@ -114,9 +115,9 @@ rests on.
   gap. Keep four things apart: an ordinary efficient solution, a checker with a gap, a way past
   it that an investigator built, and a way past it that a solver used.
 
-Never shorten the scoped negative to "no reward hacking". A clean reading, an agreeing Referee
-and a full tally do not prove an exam cannot be passed without the work. Keep an earlier tally
-as it was recorded and put the qualification beside it.
+Never shorten the scoped negative to "no reward hacking". A clean reading, an agreeing Referee and a
+full tally do not prove an exam cannot be passed without the work. Keep an earlier tally as it was
+recorded and put the qualification beside it.
 
 ## Was the mechanism live in run X?
 
@@ -167,9 +168,9 @@ Unrun or provisional:
 Evidence (log, event ids, commit):
 ```
 
-Use exact counts and scoped claims, naming the setting, frontier, retained reading and repeat.
-Where the log does not hold the evidence, say so.
+Use exact counts and scoped claims, naming the setting, frontier, retained reading and repeat. Where
+the log does not hold the evidence, say so.
 
-The report quotes no task's text, no answer, no hidden value, no check's failure text and no
-passage of a trace. Solve ids, digests, check ids, counts and paths carry it. It reaches no
-Builder, Examiner, solver or Referee.
+The report quotes no task's text, no answer, no hidden value, no check's failure text and no passage
+of a trace. Solve ids, digests, check ids, counts and paths carry it. It reaches no Builder,
+Examiner, solver or Referee.

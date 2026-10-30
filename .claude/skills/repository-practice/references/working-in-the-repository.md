@@ -1,15 +1,13 @@
 # 11. Working in the repository
 
-Read this before you run a check, change a hook or CI, touch a protected path, branch, label or push
-a pull request, or launch reviewers and subagents. It holds `AGENTS.md` section 11 in full: the
-command table, the hooks and CI's three jobs, the never-touch list, the stack's bullets with labels
-and native stacks, v2's numbering, and how a review checks a finding. `stack-pr` owns the procedure.
+Read this for checks, hooks, protected files, publication and review. This expands `AGENTS.md`
+section 11. The publication procedure belongs to `stack-pr` .
 
 ## Runtime and commands
 
 Bun 1.4.4 only, as `package.json` pins it, for every task including one-off inspection; no Node, npm
 or npx. `src/meta` wraps the few Node surfaces Bun lacks. The campaign command refuses to run under
-any other Bun than the tree's pin (`pinFault`, `tools/d2/harness-builder.ts`).
+any other Bun than the tree's pin (`pinFault`, `tools/d2/harness-builder.ts` ).
 
 | Command | What it does |
 | --- | --- |
@@ -29,18 +27,18 @@ any other Bun than the tree's pin (`pinFault`, `tools/d2/harness-builder.ts`).
 ## Hooks and CI
 
 **Keep the hooks enabled** (`git config core.hooksPath` says whether they are): without them a
-commit and a push go unchecked, silently. A plain push runs only
-`git diff --check` and the secret scan, so a pushed commit is unproved until
-`bun run land -- <top> --sanitize` or `--merge` has proved the stack; run the gate or `--sanitize`
-before any delivery that claims its tests. What each hook, `ANA_PUSH_VERIFY=1`, the remembered passes
-and CI's three jobs run is `stack-pr`, sections 5 to 7. Run one full suite at a time on a host, and
-while editing only the owning test files. CI (`.github/workflows/ci.yml`) runs on `main` and on a
-landing's top, where `land --merge` dispatches it, in three jobs: `darwin` (ripgrep and the UI's
-dependencies, then typecheck, strict lint, format check, the secret scan and the suite), `darwin-ui`
-(the UI's install, then its typecheck and build and its tests, which need the install step to have
-passed) and `linux` (Bubblewrap, the suite, then the climb simulation). A push to a pull request
-starts only `mergeable.yml`. In a container without user namespaces the wall's tests fail: name them
-in the pull request as failures without the change, and do not call the suite green.
+commit and a push go unchecked, silently. A plain push runs only `git diff --check` and the secret
+scan, so a pushed commit is unproved until `bun run land -- <top> --sanitize` or `--merge` has
+proved the stack; run the gate or `--sanitize` before any delivery that claims its tests. What each
+hook, `ANA_PUSH_VERIFY=1` , the remembered passes and CI's three jobs run is `stack-pr` , sections 5
+to 7. Run one full suite at a time on a host, and while editing only the owning test files. CI
+(`.github/workflows/ci.yml`) runs on `main` and on a landing's top, where `land --merge` dispatches
+it, in three jobs: `darwin` (ripgrep and the UI's dependencies, then typecheck, strict lint, format
+check, the secret scan and the suite), `darwin-ui` (the UI's install, then its typecheck and build
+and its tests, which need the install step to have passed) and `linux` (Bubblewrap, the suite, then
+the climb simulation). A push to a pull request starts only `mergeable.yml` . In a container without
+user namespaces the wall's tests fail: name them in the pull request as failures without the change,
+and do not call the suite green.
 
 ## What you never touch
 
@@ -57,9 +55,9 @@ in the pull request as failures without the change, and do not call the suite gr
 ## The stack and pull requests
 
 `.claude/skills/stack-pr/SKILL.md` owns this procedure: read it before you branch and again before
-you push. One release cycle builds one stack of pull requests, landed whole by one `bun run land`,
-and every later subject goes on its top. A stack of its own on
-`main` starts only on the operator's word, for a change that must land before the cycle's stack.
+you push. One release cycle builds one stack of pull requests, landed whole by one `bun run land` ,
+and every later subject goes on its top. A stack of its own on `main` starts only on the operator's
+word, for a change that must land before the cycle's stack.
 
 - **Read the stack every time** before `git worktree add`, a new pull request or a rewriting push,
   and state no repository fact without the commit you read it at.
@@ -88,7 +86,7 @@ and every later subject goes on its top. A stack of its own on
   dissolves a whole stack.
 
 v2 was built in `s-smits/anabasis-v2` until 11 October 2026: a pull request number written before
-then, up to #235, is that repository's (cite it as `anabasis-v2#N`); this one's run to #140 for v1
+then, up to #235, is that repository's (cite it as `anabasis-v2#N` ); this one's run to #140 for v1
 and continue from there. A cited v2 hash that does not resolve here was on one of that repository's
 pull-request branches, rewritten before it merged.
 
@@ -104,12 +102,11 @@ names its authority, the exact paths and commit, the observed facts, the questio
 output, and says read-only unless the operator asked for changes. Give a reviewer the code, and keep
 your conclusion to yourself.
 
-A review, and the check of any finding before it is acted on or repeated, reads the code first (the
-owner, its callers, its test, its head comment) until each claim is a sentence a recorded log can
-settle. Then write what the log should show and put the claim to the newest runs that ran with the
-code (section 9, "Evidence", `evidence-and-claims.md`): `bun run runs replay` for a reader,
-`tools/wri/wri.ts` or `bun run runs view` for a campaign, a count for an event kind. Report each
-finding as confirmed (with the campaign and event), plausible (from source alone, with the run that
-would settle it) or refuted, naming the runs read and left unread. The launching session checks a
-subagent's report and acts on what held, within the task's authority: a confirmed finding left in a
-report is dropped work.
+Before acting on or repeating a finding, read the owner, its callers, tests and head comment. State
+the observable consequence and the event or count that would establish it. Then inspect the newest
+runs containing that code (section 9, "Evidence", `evidence-and-claims.md` ): `bun run runs replay`
+for a reader, `tools/wri/wri.ts` or `bun run runs view` for a campaign, a count for an event kind.
+Report each finding as confirmed (with the campaign and event), plausible (from source alone, with
+the run that would settle it) or refuted, naming the runs read and left unread. The launching
+session checks a subagent's report and acts on what held, within the task's authority: a confirmed
+finding left in a report is dropped work.

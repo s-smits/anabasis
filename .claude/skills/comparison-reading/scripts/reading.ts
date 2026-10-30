@@ -1,31 +1,21 @@
 #!/usr/bin/env bun
 /**
- * Every recorded comparison of one campaign, as its report reads: the reading, the test it rests
- * on with and without the bill, the frontier and retained sets apart, the A/A beside it, the room
- * it left and the tasks it drew, one block a comparison.
+ * Compare recorded reports with the current comparison rules.
  *
  *   bun .claude/skills/comparison-reading/scripts/reading.ts <log.jsonl | campaign folder | name>
  *     [--comparison <id>] [--level <n>]
  *
- * The question this skill is asked most of a finished comparison is why it read what it read. The
- * view (`bun run runs view`) gives each comparison's tally and reading on one line, and a round's
- * own print (`reportLines`, `tools/d2/round.ts`) the whole of one report as it was written. This
- * sets every comparison of a log side by side on the fields a reading turns on, from each
- * comparison's last report (`lastReports`, `src/kernel/reports.ts`), and reads each again through
- * the tree's own rules: the step on frontier and retained tasks together (`stepOf`), the A/A either
- * way (`readsStepEitherWay`) and the room (`roomOf`). A recorded reading the tree's rule reads
- * otherwise is marked, which is how a report from an older rule (`regressed`, a report without
- * scores without the bill) or a changed rule shows. `--level` reads both tests at another level.
+ * For each comparison's last report, show its reading, full and unbilled tests, frontier and retained
+ * tallies, A/A control, room and omitted-task counts. Re-evaluate the step with stepOf and the A/A
+ * with readsStepEitherWay, marking any disagreement with the recorded reading. Older reports may
+ * lack the scores required by the current rule. --level uses the requested level for both tests.
  *
- * It is a thin wrapper over production readers: a name is found through `logAcross`
- * (`tools/runs/snapshots.ts`, as the whole-run reader finds one), the log is read by `read`
- * (`src/kernel/log.ts`) and folded by `lastReports`, and every judgement is the tree's own
- * (`stepOf`, `readsStepEitherWay`, `testOf`, `roomOf`, `namesOf`); it parses no field a production
- * reader parses for it. It reads the recorded reports only: rescoring the solves under other weights is the promotion
- * tuner's (`replay.ts`). It prints session ids, counts, short digests and harness letters, never a
- * task, a family, an answer, a measure or a check.
+ * Names resolve through logAcross; read and lastReports own log parsing and report selection.
+ * This script evaluates recorded scores. Use promotion-tuner/replay.ts to rescore recorded solves
+ * under other weights. Output contains session ids, counts, short digests and harness letters;
+ * it omits task identities, families, answers, objective measures and checks.
  *
- * Written on 30 October, when `AGENTS.md` sections 7 and 8 moved to this skill.
+ * Written on 30 October, when AGENTS.md sections 7 and 8 moved into comparison-reading.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { calledBy, type Called, namesOf } from "#src/campaign/names.ts";

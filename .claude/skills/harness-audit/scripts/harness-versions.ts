@@ -33,7 +33,13 @@ import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { type Handover, campaignOf } from "#src/campaign/handover.ts";
 import { DIGEST, namesOf } from "#src/campaign/names.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
-import { AGENT_DIR, GENERATED_TOOLS_FILE, GUIDE_FILE, TOOLS_SPEC_FILE } from "#src/meta/bundle-layout.ts";
+import {
+  AGENT_DIR,
+  BYTECODE,
+  GENERATED_TOOLS_FILE,
+  GUIDE_FILE,
+  TOOLS_SPEC_FILE,
+} from "#src/meta/bundle-layout.ts";
 import {
   existsSync,
   lstatSync,
@@ -47,7 +53,7 @@ import { type JsonValue, asRecord, isString } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { BYTECODE, openHarness, pathsUnder, treeContent } from "#src/harness/open.ts";
+import { openHarness, pathsUnder, treeContent } from "#src/harness/open.ts";
 import { writeStarter } from "#src/harness/starter.ts";
 import { keptAs } from "#tools/d2/campaign.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";

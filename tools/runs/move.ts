@@ -128,13 +128,13 @@ function treeOf(end: End, name: string): string | undefined {
 }
 
 /** Read kept flags through the local receipt owner before pausing or copying the campaign. */
-function flagsAt(end: End, source: string, name: string): readonly string[] | null {
+async function flagsAt(end: End, source: string, name: string): Promise<readonly string[] | null> {
   const log = join(source, CAMPAIGNS, name, LOG_FILE);
   if (end.host === undefined) return lastLaunch(log)?.flags ?? null;
   const stage = join(tmpdir(), `ana-move-receipts-${crypto.randomUUID()}`);
   mkdirSync(stage);
   try {
-    rsync(`${side(end, dirname(log))}/`, `${stage}/`, "--include=/launch-*.json", "--exclude=/*");
+    await rsync(`${side(end, dirname(log))}/`, `${stage}/`, "--include=/launch-*.json", "--exclude=/*");
     return lastLaunch(join(stage, LOG_FILE))?.flags ?? null;
   } finally {
     rmSync(stage, { recursive: true, force: true });
@@ -180,7 +180,7 @@ export async function move(args: readonly string[]): Promise<void> {
   }
   if (source === undefined) throw new Error(`no worktree ${from.name} holds a campaign ${name}`);
   const commit = at(from, `git -C ${quoted(source)} rev-parse HEAD`);
-  const kept = given.length > 0 ? given : flagsAt(from, source, name);
+  const kept = given.length > 0 ? given : await flagsAt(from, source, name);
   if (kept === null && !values.hold) {
     throw new Error(
       `${name} has no launch receipt at ${folder(source)}: supply campaign flags after -- or use --hold; nothing was stopped or moved`,
@@ -208,8 +208,8 @@ export async function move(args: readonly string[]): Promise<void> {
   );
   // rsync takes one remote side, so a move between two hosts stages the folder here.
   const stage = from.host && to.host ? join(tmpdir(), `ana-move-${crypto.randomUUID()}`) : undefined;
-  if (stage !== undefined) rsync(`${side(from, folder(source))}/`, `${stage}/`);
-  rsync(`${stage ?? side(from, folder(source))}/`, `${side(to, folder(tree))}/`);
+  if (stage !== undefined) await rsync(`${side(from, folder(source))}/`, `${stage}/`);
+  await rsync(`${stage ?? side(from, folder(source))}/`, `${side(to, folder(tree))}/`);
   if (stage !== undefined) rmSync(stage, { recursive: true, force: true });
   const size = (end: End, root: string) => at(end, `wc -c < ${quoted(join(folder(root), LOG_FILE))}`);
   if (size(from, source) !== size(to, tree)) {

@@ -8,9 +8,9 @@
  */
 import { gitText } from "#src/meta/git.ts";
 import { isAbsolute, join } from "#src/meta/path.ts";
-import { capturedExecPath, capturedSpawn } from "#src/meta/process.ts";
+import { capturedExecPath } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
+import { runCaptured, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { type Host, configuredRuntime } from "./host-config.ts";
 import { quoted, shellPath, sshScript, treeBun } from "./host-command.ts";
 
@@ -177,20 +177,12 @@ async function readController(host: Host, commit: string): Promise<Host | null> 
   const started = performance.now();
   try {
     const script = `${preparation(host, commit, "cached")}\nprintf '%s\\n' "$tree"`;
-    const child = capturedSpawn(sshScript(host, script), {
-      stdin: "ignore",
-      stdout: "pipe",
-      stderr: "pipe",
+    const { stdout, stderr, exitCode, signal } = await runCaptured(sshScript(host, script), {
       timeout: PREPARE_MS,
     });
-    const [said, errors, code] = await Promise.all([
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-      child.exited,
-    ]);
-    const tree = said.trim();
-    if (code !== 0 || !isAbsolute(tree) || tree.includes("\n")) {
-      throw new Error(`controller preparation failed (${String(code)}): ${errors.trim()}`);
+    const tree = stdout.trim();
+    if (exitCode !== 0 || !isAbsolute(tree) || tree.includes("\n")) {
+      throw new Error(`controller preparation failed (${signal ?? String(exitCode)}): ${stderr.trim()}`);
     }
     return { ...host, ...configuredRuntime(host), tree, prepared: true };
   } catch (error) {

@@ -353,7 +353,7 @@ export async function zipRuns(args: readonly string[]): Promise<void> {
       if ((await verbOn(host, ["zip", ...names, `--${level}`, "--out", there, ...mb])) !== 0) {
         throw new Error(`the zip was not made on ${host.name}`);
       }
-      rsync(`${host.ssh}:${quoted(there)}`, out);
+      await rsync(`${host.ssh}:${quoted(there)}`, out);
     } finally {
       runTextSyncOrThrow(sshScript(host, `rm -rf ${scratch}`));
     }

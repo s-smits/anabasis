@@ -26,6 +26,7 @@
  * Live records belong to live.ts, shared by usage and placement (22 October 2026).
  */
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
+import { runCaptured } from "#src/meta/subprocess.ts";
 import { type Host, hostsOf, hostNamed, configuredRuntime } from "./host-config.ts";
 import { quoted, shellPath, sshScript, treeBun } from "./host-command.ts";
 import { readControllers } from "./code.ts";
@@ -96,19 +97,15 @@ export async function hosts(args: readonly string[]): Promise<void> {
         );
         return;
       }
-      const io = { stdin: "ignore", stdout: "pipe", stderr: "pipe", timeout: HOST_MS } as const;
-      const child = capturedSpawn(scriptCommand(controller, CLI, ["status", ...args]), io);
-      const [rows, errors, code] = await Promise.all([
-        new Response(child.stdout).text(),
-        new Response(child.stderr).text(),
-        child.exited,
-      ]);
+      const said = await runCaptured(scriptCommand(controller, CLI, ["status", ...args]), {
+        timeout: HOST_MS,
+      });
       const late =
-        child.signalCode === null
-          ? `answered with exit ${String(code)}`
+        said.signal === null
+          ? `answered with exit ${String(said.exitCode)}`
           : `no answer in ${String(HOST_MS / 1000)} s`;
       console.log(
-        `── ${host.name} (${((performance.now() - started) / 1000).toFixed(1)} s)\n${rows}${errors}${code === 0 ? "" : `  ${host.name} ${late}`}`.trimEnd(),
+        `── ${host.name} (${((performance.now() - started) / 1000).toFixed(1)} s)\n${said.stdout}${said.stderr}${said.exitCode === 0 ? "" : `  ${host.name} ${late}`}`.trimEnd(),
       );
     }),
   );
@@ -172,16 +169,20 @@ export async function askedScript(
       if (controller === null || controller === undefined) {
         return { host, lines: null, elapsedMs: Math.round(performance.now() - started) };
       }
-      const io = { stdin: "ignore", stdout: "pipe", stderr: "ignore", timeout: HOST_MS } as const;
-      const child = capturedSpawn(scriptCommand(controller, script, args), io);
-      const [said, code] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+      const { stdout, exitCode, signal } = await runCaptured(scriptCommand(controller, script, args), {
+        timeout: HOST_MS,
+      });
       const elapsedMs = Math.round(performance.now() - started);
-      if (code !== 0) {
+      if (exitCode !== 0) {
         console.error(
-          `${host.name} did not answer ${args[0] ?? ""} (${child.signalCode === null ? `exit ${String(code)}` : "timed out"}, ${(elapsedMs / 1000).toFixed(1)} s)`,
+          `${host.name} did not answer ${args[0] ?? ""} (${signal === null ? `exit ${String(exitCode)}` : "timed out"}, ${(elapsedMs / 1000).toFixed(1)} s)`,
         );
       }
-      return { host, lines: code === 0 ? said.split("\n").filter((line) => line !== "") : null, elapsedMs };
+      return {
+        host,
+        lines: exitCode === 0 ? stdout.split("\n").filter((line) => line !== "") : null,
+        elapsedMs,
+      };
     }),
   );
 }

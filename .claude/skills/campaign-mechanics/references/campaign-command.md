@@ -1,10 +1,12 @@
-Read this before running or changing a hand command or the campaign command, and when asking how a campaign opens from a prompt, what its budget is, why it ended (its seven endings, idle and crashed conversations) or how the operator's word acts. It holds the first half of `AGENTS.md` section 6: the commands in order and "The campaign command". The rest of section 6 is in `terms-and-refusals.md`.
+Read this for campaign commands, exam preparation, spending, endings and operator instructions. This
+expands the first half of `AGENTS.md` section 6; settings and admission are in
+`terms-and-refusals.md` .
 
 ## 6. A campaign's commands
 
 A campaign runs as a sequence of commands over one log. Each names the campaign (`--name`) and the
 pack it opens over: a stored pack, by four flags together (`--root --sweep --cycle --bundle`), or
-none, for a campaign whose own log drafted its exam (`packNamed`, `tools/d2/campaign.ts`). The head
+none, for a campaign whose own log drafted its exam (`packNamed`, `tools/d2/campaign.ts` ). The head
 comment of each file is its manual and lists its flags.
 
 | Order | Command | What it puts in the log |
@@ -27,36 +29,37 @@ comment of each file is its manual and lists its flags.
 The last row opens the exam and then runs the Builder with campaign tools (section 4); its head
 comment is the full account. `--moves N` bounds the campaign actions, and `--dry-run` prints the
 table's advice and makes no move. Outside `--hitl` it freezes an exam whose reading shows no fault
-and promotes the harness the rule names (section 3); under `--hitl` it runs only once every fault
-of its checks is admitted, and reports a step without promoting it.
+and promotes the harness the rule names (section 3); under `--hitl` it runs only once every fault of
+its checks is admitted, and reports a step without promoting it.
 
-Launching, continuing, pausing and stopping go through `bun run runs` (the skill `run-management`),
+Launching, continuing, pausing and stopping go through `bun run runs` (the skill `run-management` ),
 and each run keeps a receipt beside the log, `launch-run-<n>.json` (`tools/runs/receipt.ts`), which
-holds the commit the log does not. Every practice, comparison and room solve enters the solve
-queue: it starts once the one-minute load is at or under the cores, or after half an hour
-(`campaign.waited`, `tools/d2/host.ts`; `--loaded` skips the wait), and waits off the record while
+holds the commit the log does not. Every practice, comparison and room solve enters the solve queue:
+it starts once the one-minute load is at or under the cores, or after half an hour
+(`campaign.waited`, `tools/d2/host.ts` ; `--loaded` skips the wait), and waits off the record while
 the budget holds no reserve for it beside the solves in flight (`affords`). A cancelled wait starts
 no solve: a comparison so cancelled ends killed, a practice solve ends its Builder session, and a
 room solve leaves its draft refused unmeasured.
 
-**It opens over a stored pack, or from a prompt** (`--prompt "<text>"` or `--prompt-file <path>`,
-with `--solver`), whose first move is the draft of row 0. A draft stands once the host's reading,
+**It opens over a stored pack, or from a prompt** (`--prompt "<text>"` or `--prompt-file <path>` ,
+with `--solver` ), whose first move is the draft of row 0. A draft stands once the host's reading,
 without a model, finds no fault: its shape, a source on every rule, one check per rule, every
 control answer through the checks twice, the smallest answer refused on every example, and each
 field of an accept control answer moving some check's verdict or the objective (`draftReading`,
-`tools/d2/exam.ts`; `unreadFields`, `src/kernel/acceptance.ts`). It does not wait for the
+`tools/d2/exam.ts` ; `unreadFields` , `src/kernel/acceptance.ts` ). It does not wait for the
 reference's measurement: `draft.finished` records that as complete, interrupted with its first
 cancellation source, or not run. A killed solve records that source (`CancellationOrigin`,
-`src/kernel/solve.ts`; an unlabelled external abort is `caller`); older events leave it unknown, and
-an abrupt process termination promises no ending. The reading cannot
-tell whether a rule belongs to the field. Every check of a drafted exam is its author's own
-computation, and the launch is the operator's word for each (rule 10): the exam is read with
-`--admit-authored` and frozen if nothing else is at fault. Under `--hitl` the campaign ends on its
-exam there, and goes on when run again with `--admit <checks>`.
+`src/kernel/solve.ts` ; an unlabelled external abort is `caller` ); older events leave it unknown,
+and an abrupt process termination promises no ending. The reading cannot tell whether a rule belongs
+to the field. Every check of a drafted exam is its author's own computation, and the launch is the
+operator's word for each (rule 10): the exam is read with `--admit-authored` and frozen if nothing
+else is at fault. Under `--hitl` the campaign ends on its exam there, and goes on when run again
+with `--admit <checks>` .
 
-**Its budget is one total.** Each move's cap is `--budget` less every billed dollar in the log, and
-the campaign ends on its budget when less is left than one solve's reserve (`--reserve`). Nothing
-forecasts a move's bill: a comparison the cap cuts reads `not-scored`.
+**The budget covers the whole campaign.** Each move receives the total `--budget` minus recorded
+spending. The campaign ends when the remaining amount is below one solve's reserve (`--reserve`).
+The host does not forecast a move's final cost. A comparison cut short by its cap reads `not-scored`
+.
 
 **It ends in one of seven ways**, and the log's last event says which (`campaign.ended`):
 
@@ -69,36 +72,37 @@ forecasts a move's bill: a comparison the cap cuts reads `not-scored`.
 - `finished` (three Builder conversations in a row made no campaign move, the last ending by
   `finish` or at its limits).
 
-A Builder's `finish` ends one conversation, never the campaign. Between conversations the host
-makes whatever move the table names that needs no Builder, a comparison or a promotion
-(`hostOwed`, `tools/d2/harness-builder.ts`), and an Examiner session the table names starts beside
-the next conversation (`campaignTools`, `tools/d2/campaign-actions.ts`). A reading with no room is advice to
+A Builder's `finish` ends one conversation, never the campaign. Between conversations the host makes
+whatever move the table names that needs no Builder, a comparison or a promotion (`hostOwed`,
+`tools/d2/harness-builder.ts` ), and an Examiner session the table names starts beside the next
+conversation (`campaignTools`, `tools/d2/campaign-actions.ts` ). A reading with no room is advice to
 request other tasks, and supply patience over such readings ends the campaign, conversation or not
-(`roomless`, section 7). A conversation the provider
-crashed or a stop killed, an Examiner session beside it that ended so without holding out a task,
-and one the host refused do not count towards the three idle ones (`idleOf`,
-`tools/d2/campaign-terms.ts`), and the status a Builder reads counts the idle conversations before
-its own. A campaign ended `finished` and run again by name opens a new
+(`roomless`, section 7). A conversation the provider crashed or a stop killed, an Examiner session
+beside it that ended so without holding out a task, and one the host refused do not count towards
+the three idle ones (`idleOf`, `tools/d2/campaign-terms.ts` ), and the status a Builder reads counts
+the idle conversations before its own. A campaign ended `finished` and run again by name opens a new
 conversation, as after the operator's stop.
 
-A comparison that began under other code is refused by its own terms and ends the campaign on its
-environment, to be run at that code until it reports. A move that threw after it began ends it on
-its environment, unless its session is recorded as crashed (`goesOn`); so do three Builder or
-Examiner sessions in a row that the provider failed before they held out a task or changed a
-harness (`crashedRun`, `src/campaign/ground.ts`). Such a session was refused a turn, so it is not
-idle for supply patience. Run again by name, the campaign continues from its log and the count
-starts again.
+A comparison started under different code cannot continue here. Its recorded terms refuse the
+continuation, ending the campaign on `environment` ; resume at the original code until it reports. A
+move that threw after it began ends it on its environment, unless its session is recorded as crashed
+(`goesOn`); so do three Builder or Examiner sessions in a row that the provider failed before they
+held out a task or changed a harness (`crashedRun`, `src/campaign/ground.ts` ). Such a session was
+refused a turn, so it is not idle for supply patience. Run again by name, the campaign continues
+from its log and the count starts again.
 
-With `--handover <dir>` it then writes row 7's handover. The harness is copied whole, with the programs a
-kept state names by a link, and must open there as the harness it was kept as. The closing report is a view of the log without task names or
-checks, and says what was audited: the Referee's rulings, what labels settled, the comparisons still
-unsettled, and whether a person read a packet's passes.
+With `--handover <dir>` it then writes row 7's handover. The harness is copied whole, with the
+programs a kept state names by a link, and must open there as the harness it was kept as. The
+closing report is a view of the log without task names or checks, and says what was audited: the
+Referee's rulings, what labels settled, the comparisons still unsettled, and whether a person read a
+packet's passes.
 
 **The operator steers a running campaign by leaving it a word** (`tools/d2/word.ts`), one
-`campaign.word` event: `--stop "<why>"` ends it `operator`, `--tasks "<why>"` has an Examiner write
+`campaign.word` event: `--stop "<why>"` ends it `operator` , `--tasks "<why>"` has an Examiner write
 other tasks before anything else is built or compared, and `--budget <dollars>` sets its total from
-then on. A word is read at the next move's boundary, and inside a live Builder conversation by each campaign
-tool before it runs (`actionTurn`, `tools/d2/campaign-actions.ts`); it never interrupts a move in
-flight and is never waited for (`pendingWords`, `src/campaign/word.ts`); the event that acts on it names it (`answers`), so it acts
-once, and a stop followed by the same command is a pause. No seat reads a word or its reason. `bun run runs stop` is the abrupt form,
-which writes no ending.
+then on. A word is read at the next move's boundary, and inside a live Builder conversation by each
+campaign tool before it runs (`actionTurn`, `tools/d2/campaign-actions.ts` ); it never interrupts a
+move in flight and is never waited for (`pendingWords`, `src/campaign/word.ts` ); the event that
+acts on it names it (`answers`), so it acts once, and a stop followed by the same command is a
+pause. No seat reads a word or its reason. `bun run runs stop` is the abrupt form, which writes no
+ending.

@@ -1,27 +1,20 @@
 #!/usr/bin/env bun
 /**
- * What an Examiner session opening now would be told of its campaign, in counts.
+ * Summarise the campaign information an Examiner opening would receive.
  *
  *   bun .claude/skills/design-and-seats/scripts/examiner-view.ts <log.jsonl | campaign name>
  *
- * `AGENTS.md` section 3 lists what the Examiner reads, and `src/examiner/record.ts` composes it from
- * the log (`heard`). Before a change to that view, and when an Examiner session wrote towards
- * something nobody expected, the question is what the view holds for a real campaign: how many task
- * lines, how the reference stood in its last comparison, what the gate held out under the current
- * reference and on which kind of room, whether a promotion is announced, and how many refused and
- * interrupted drafts it lists. This script calls `heard` itself and prints its summary sentence
- * (`measuredLine`, which holds only counts) and the promotion line whole, and the rest as counts, so
- * no task line, refusal reason or hidden value reaches its output. The outcomes are counted from
- * `poolOf`, the fold `heard` reads them from.
+ * Call heard, the production composer in src/examiner/record.ts, and report task-line counts,
+ * reference outcomes from poolOf, the measuredLine summary, promotion notice, and refused and
+ * interrupted draft counts. Print the two aggregate messages in full; omit task text, refusal
+ * reasons and hidden values. This helps inspect a view before changing its delivery.
  *
- * A name is found on any host `ANA_HOSTS` lists, its records refreshed first (`logAcross`,
- * `tools/runs/snapshots.ts`), and the log is read to its last whole line, so a live campaign reads
- * too (`logEvents`, `tools/runs/registry.ts`).
+ * logAcross resolves names across configured hosts and refreshes their records. logEvents reads
+ * through the last complete line, allowing live logs. The task list comes from proposalsOf;
+ * stored-pack tasks are omitted, so such campaigns have fewer task lines here than in a real
+ * opening. Their summary, promotion notice and draft counts are unaffected by that omission.
  *
- * The tasks are those the log proposed (`proposalsOf`). A campaign over a stored pack also holds the
- * pack's tasks, which its opening lists and this script does not, so its task lines are fewer than a
- * session's there; the summary, the promotion and the drafts do not depend on the list. Written on
- * 30 October, beside `seat-view.ts`.
+ * Written on 30 October alongside seat-view.ts.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { heard } from "#src/examiner/record.ts";

@@ -1,8 +1,9 @@
-Read this before adding an event, a store or a reader over a campaign's log, before moving or archiving a campaign, and when asking what a condition names. It holds `AGENTS.md` section 5 in full.
+Read this before adding events or readers, or moving a campaign. This expands `AGENTS.md` section 5:
+the log, conditions and the four rules for preserving evidence.
 
 ## 5. The log
 
-A campaign's record is one append-only JSONL file, `.ana/d2/<name>/log.jsonl`, one event a line
+A campaign's record is one append-only JSONL file, `.ana/d2/<name>/log.jsonl` , one event a line
 (`src/kernel/log.ts`). Every state and every report is a view over it; nothing else is stored as
 truth.
 
@@ -31,7 +32,7 @@ Four habits follow:
    still lists kinds no command writes.
 
 `.ana/` is ignored by Git, and every seat's wall denies the repository and its worktrees
-(`worktreesOf`, `tools/d2/campaign.ts`). After a day idle, `bun run runs retire` moves a campaign
-whole into the archive, `data/runs/` of the main worktree, also ignored and walled (a seed it
-deletes), and nothing else deletes a log or trace there. The log holds hidden values and verdicts, so it stays on the exam side: keep it out of
-prompts, pull requests and pastes.
+(`worktreesOf`, `tools/d2/campaign.ts` ). After a day of inactivity, `bun run runs retire` moves the
+whole campaign to `data/runs/` in the main worktree; it deletes seeds instead. The archive is also
+ignored and walled. No other mechanism deletes these logs or traces. The log holds hidden values and
+verdicts, so it stays on the exam side: keep it out of prompts, pull requests and pastes.

@@ -1,19 +1,17 @@
 # Terms, the scored draw and the solves
 
-Read this before you change or explain what a comparison fixes at its start, which tasks it scores
-(frontier, exhausted, retained), how its solves are run, or how a solve's ending counts in a pair.
-It holds the first part of `AGENTS.md` section 7, "How a comparison is read": terms first, the
-scored draw, fresh solves and how a solve ends.
+Read this for comparison terms, task selection and solve outcomes. This expands the first part of
+`AGENTS.md` section 7.
 
-The head comments of `src/kernel/compare.ts` (the tally, the test, the step), `src/campaign/round.ts`
-(running one: terms, fresh solves, the cap, rejections) and `src/campaign/comparison.ts` (reading
-one back) are the full account. Here is the model.
+The head comments of `src/kernel/compare.ts` (the tally, the test, the step),
+`src/campaign/round.ts` (running one: terms, fresh solves, the cap, rejections) and
+`src/campaign/comparison.ts` (reading one back) are the full account. Here is the model.
 
 ## Terms first
 
-Before its first solve a comparison writes `comparison.started`: its harnesses,
-setting, scored tasks, solves a side, level, objective rule, dollar cap and any prediction
-(`--predict`). Continued from its log it keeps them; asked for again on other terms it is refused.
+Before solving, a comparison records its harnesses, setting, scored tasks, solves per side, level,
+objective rule, cap and any `--predict` statement in `comparison.started` . A continuation keeps
+these terms. A request to change them is refused.
 
 ## The scored draw
 
@@ -24,23 +22,23 @@ frontier as **exhausted** a task answered in every solve of the last two compari
 stood in for it, on either side (the other side's only where that is a later harness, so the next
 harness must answer it too). A bill saving can still win an exhausted task. A task stays open where
 an answer on record betters one of the reference's by the objective gap floor (`bettered`), since
-the next harness can still win it. The counts live in one place (`SIZE`, `RUNS`,
-`src/kernel/size.ts`), and every rule reads a side's every, some or none, so they hold at any number
-of solves.
+the next harness can still win it. The counts live in one place (`SIZE`, `RUNS` ,
+`src/kernel/size.ts` ), and every rule reads a side's every, some or none, so they hold at any
+number of solves.
 
-An exhausted task stays in the draw as **retained**, one for every three frontier tasks on top of
-the target (`scoredSet`): a loss can only come from a task the reference answers, so without them a
-harness that answers new tasks and breaks old ones would look better than it is.
+The draw also includes **retained** exhausted tasks: one per three frontier tasks, in addition to
+the target (`scoredSet`). They expose regressions on tasks the reference can answer. Without them,
+gains on new tasks could hide losses on old ones.
 
 ## Fresh solves
 
-Each scored task is solved afresh under each harness, workers taking whole
-tasks in a hashed order and the first side mirrored within a task (`round.ts`). One outer retry runs
-at the same slot, and a second non-result leaves the task short. Counted starts form a prefix of the
-mirror, which guarantees neither equal start times nor equal load or cache exposure. A solve counts
-only when its start names the comparison, and no earlier solve is reused: a condition names the
-host's code, which changes between comparisons, and one frozen draw of the reference's solves would
-bias every later reading.
+Each scored task is solved afresh under each harness, workers taking whole tasks in a hashed order
+and the first side mirrored within a task (`round.ts`). One outer retry runs at the same slot, and a
+second non-result leaves the task short. Counted starts form a prefix of the mirror, which
+guarantees neither equal start times nor equal load or cache exposure. A solve counts only when its
+start names the comparison, and no earlier solve is reused: a condition names the host's code, which
+changes between comparisons, and one frozen draw of the reference's solves would bias every later
+reading.
 
 ## How a solve ends
 

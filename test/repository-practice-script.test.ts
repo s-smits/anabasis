@@ -1,6 +1,5 @@
-// The skill repository-practice's preflight: what a diff owes before a commit or a pull request,
-// read from the gate's walk, the moments table, the size policy and the label set, on repositories
-// built here.
+// Check preflight suggestions against the gate, hook routes, size policy and label set.
+// Fixtures use temporary repositories.
 import { afterAll, describe, expect, it } from "bun:test";
 import {
   changeOf,

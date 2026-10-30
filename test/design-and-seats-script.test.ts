@@ -1,5 +1,4 @@
-// The skill design-and-seats's scripts: the seat view, which seats' messages a change reaches
-// through the import graph and which wall tests prove them, and the Examiner's view in counts.
+// Check import reach, relevant wall tests and aggregate Examiner views without exposing task data.
 import { afterAll, describe, expect, it } from "bun:test";
 import { examinerCounts } from "#skills/design-and-seats/scripts/examiner-view.ts";
 import {
@@ -40,7 +39,7 @@ const runLine = (lines: readonly string[]) =>
   (lines.find((line) => line.startsWith("run: bun run test -- ")) ?? "").split(" ").slice(5);
 
 describe("the seat view", () => {
-  it("reads the imports a file resolves inside the tree, and none of a runtime, a package or a missing file", () => {
+  it("resolves repository imports and excludes runtime, package and missing imports", () => {
     const at = tree({
       "src/a.ts": 'import "./b.ts";\nimport "node:fs";\nimport "./missing.ts";\nimport "left-pad";\n',
       "src/b.ts": 'import { a } from "./a.ts";\nexport const b = a;\n',
@@ -52,7 +51,7 @@ describe("the seat view", () => {
     expect(importsOf("notes.md")).toStrictEqual([]);
   });
 
-  it("names each changed file a seat reaches with its shortest chain from an owner, through a cycle, and no seat it does not", () => {
+  it("finds the shortest import chain through cycles and excludes unreachable seats", () => {
     const [owner = ""] = SEATS.Builder.owners;
     const importsOf = graph({
       [owner]: ["src/long.ts", "src/kernel/fold.ts"],
@@ -75,7 +74,7 @@ describe("the seat view", () => {
     expect(lines.some((line) => line.includes("docs 1"))).toBe(true);
   });
 
-  it("owes the seat's wall tests where only one of them changed, and none where no seat is reached", () => {
+  it("selects a seat's wall tests when one changes and selects none for unrelated files", () => {
     const [test = { file: "" }] = SEATS.Referee.tests;
     const touched = seatLines([test.file], seatsOf([test.file], graph({})));
     expect(runLine(touched)).toStrictEqual([test.file]);
@@ -87,7 +86,7 @@ describe("the seat view", () => {
     expect(none.some((line) => line.includes("src 1") && line.includes("docs 1"))).toBe(true);
   });
 
-  it("finds every owner and wall test it names in this tree, and names each one a tree no longer holds", () => {
+  it("validates current owners and wall tests and reports missing or renamed entries", () => {
     expect(absentFrom(REPO)).toStrictEqual([]);
     const named = Object.values(SEATS).flatMap((entry) => [
       ...entry.owners,
@@ -100,7 +99,7 @@ describe("the seat view", () => {
     expect(absentFrom(renamed).some((line) => line.startsWith(`${first.file}: `))).toBe(true);
   });
 
-  it("reads this tree's graph so that each seat reaches its own owners and the Builder its campaign tools", () => {
+  it("traces current seat owners and includes campaign tools only in the Builder view", () => {
     const reaches = seatsOf(
       [...SEATS.Builder.owners, ...SEATS.solver.owners, "src/kernel/log.ts"],
       importsIn(REPO),
@@ -143,7 +142,7 @@ describe("the Examiner's view in counts", () => {
     return events;
   }
 
-  it("counts what the gate held on each kind of room and what it refused, and carries no hidden value or reason", () => {
+  it("counts admission outcomes and room sources without exposing hidden values or refusal reasons", () => {
     const lines = examinerCounts(admitted());
     const summary = lines.find((line) => line.startsWith("summary: ")) ?? "";
     for (const fact of [
@@ -160,7 +159,7 @@ describe("the Examiner's view in counts", () => {
     for (const canary of [HIDDEN, REASON]) expect(lines.join("\n")).not.toContain(canary);
   });
 
-  it("says nothing was measured on a log with no draft, and names the comparison a promotion stood on", () => {
+  it("reports absent measurements and identifies the comparison supporting a promotion", () => {
     expect(examinerCounts([]).filter((line) => line.endsWith(": none"))).toHaveLength(3);
     const promoted = [
       ...admitted(),

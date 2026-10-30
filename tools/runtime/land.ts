@@ -174,7 +174,7 @@ const STACK_POLL_MS = Number(runtimeProcess.env.ANA_CI_POLL_MS) || 2000;
 const STACK_WAIT_MS = 10 * 60_000;
 /** The labels that rank a pull request's importance; each of a landing carries exactly one. */
 const IMPORTANCE = /^importance:I[0-3]$/u;
-/** The labels that file a pull request under a subject; each of a landing carries at least one. */
+/** Subject labels: each pull request in a landing needs at least one. */
 export const CATEGORIES = new Set([
   "harness",
   "climb",

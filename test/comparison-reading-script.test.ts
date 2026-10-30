@@ -1,7 +1,6 @@
 /**
- * The comparison-reading skill's scripts: the size figures the skill states, read off the
- * production test (`size.ts`), and the recorded comparisons of a log set side by side and read
- * again by the tree's rules (`reading.ts`), on logs built here. No real log is read.
+ * Check sample-size figures against production readers and re-evaluate synthetic comparison
+ * reports under the current rules. These tests read no campaign logs.
  */
 import { describe, expect, it } from "bun:test";
 import { scoresRead, sizeOf } from "#skills/comparison-reading/scripts/size.ts";

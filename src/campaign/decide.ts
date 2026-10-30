@@ -162,6 +162,18 @@ function roomless({ events, reports, reference }: Ground) {
   return readings.slice(readings.findLastIndex(({ gain }) => gain) + 1);
 }
 
+/** The readings of a run that count against supply patience: a comparison that opens it raised the
+ *  want and is no answer to it (`spent`). */
+function counted(run: ReturnType<typeof roomless>): number {
+  return run.length - (run[0]?.id == null ? 0 : 1);
+}
+
+/** The readings in a row a log holds against its supply patience, as `spent` counts them, for a
+ *  reader that prints the count beside `plan.patience`. */
+export function supplyRun(events: readonly LogEvent[], plan: Plan): number {
+  return counted(roomless(groundOf(events, plan)));
+}
+
 /**
  * The campaign's ending where its supply patience of readings in a row left nothing to gain (`roomless`),
  * and null while it has supply patience left: on its exam where the campaign wants for tasks, which could
@@ -172,8 +184,7 @@ function roomless({ events, reports, reference }: Ground) {
  */
 function spent(ground: Ground, wants: "tasks" | "room", why: string): Move | null {
   const run = roomless(ground);
-  const raised = run[0]?.id == null ? 0 : 1;
-  if (run.length - raised < ground.plan.patience) return null;
+  if (counted(run) < ground.plan.patience) return null;
   const ids = run.flatMap(({ id }) => (id === null ? [] : [id]));
   const idle = plural(run.length - ids.length, "Examiner session");
   const told =

@@ -588,7 +588,13 @@ export function practiceDue(
 ): { readonly to: number; readonly said: string } | null {
   if (practice === null) return null;
   const released = taskSets(events).released.length;
-  const since = events.findLastIndex(({ kind }) => kind === PROMOTED || kind === "comparison.reported");
+  // A settlement reports its comparison again (`settleReading`); only a session's first report is a reading.
+  const since = events.findLastIndex(
+    ({ kind, data }, at) =>
+      kind === PROMOTED ||
+      (kind === "comparison.reported" &&
+        !events.slice(0, at).some((one) => one.kind === kind && one.data.session === data.session)),
+  );
   const count = events.filter(
     ({ kind, data }, at) => at > since && kind === "task.state" && data.state === "released",
   ).length;

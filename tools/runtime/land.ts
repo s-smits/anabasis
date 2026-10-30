@@ -763,7 +763,8 @@ async function main(argv: readonly string[]): Promise<number> {
         if (from !== undefined) target = topAbove(open, from).number;
       }
       const ended = await landTo(root, target, mode).catch((error: unknown) => {
-        if (!(error instanceof Moved) || moves >= MOVES) throw error;
+        if (!(error instanceof Moved)) throw error;
+        if (moves >= MOVES) throw new Refusal(`${error.message} Land again once the stack stays still.`);
         moves += 1;
         say(`${error.message} Landing again on the heads as they stand.`);
         return "again" as const;

@@ -102,9 +102,6 @@ interface TalliedIn {
   readonly cut: boolean;
   /** Whether one of the reference harness's own solves of it did: all its author hears (rule 4). */
   readonly referenceCut: boolean;
-  /** The solves `easyAt` pools for the reference harness: its own, and the other side's where that
-   *  is a later harness. Empty where it stood on neither side. */
-  readonly pooled: readonly boolean[];
   /** Whether a measure on record betters one of the reference's valid answers (`hasObjectiveGap`). */
   readonly gapped: boolean;
   /** The side that won the task in this comparison's tally (`tally`), or null for a tie. */
@@ -508,12 +505,6 @@ function tallyReports(
         reference: side,
         cut: cutOn(data.old) || cutOn(data.fresh),
         referenceCut: side !== null && cutOn(data[side]),
-        pooled:
-          side === null
-            ? []
-            : side === "old" && data.fresh !== data.starter
-              ? [...old, ...fresh]
-              : pair[side],
         gapped: side !== null && hasObjectiveGap(pair, side, of(task).best),
         won: wins > 0 ? "fresh" : losses > 0 ? "old" : null,
         by: carriedBy(pointsOf(pair)),
@@ -567,10 +558,12 @@ function tallyReports(
  *
  * **Exhausted** are the tasks the reference harness has been read easy on (`easyAt`), and they
  * leave the frontier for the retained set (`scoredSet`). The readings are the comparisons it stood
- * in of the task, on whichever side, each without a solve of its own a limit cut. Their solves are
- * pooled: its own, and the other side's where that is a harness after it, since a task the next
- * harness fails may be one a wrong turn of the design made hard (operator, 29 October). A task is
- * easy once its newest `RUNS.easy` readings in a row were each valid in every pooled solve, with no
+ * in of the task, on whichever side, each without a solve of its own a limit cut, and only its own
+ * solves count: the frontier sets the size the Builder is told and admission reads, so it may not
+ * move with which held-out task the other harness failed (rule 3). From 29 to 30 October the other
+ * side's solves were pooled in, and two campaigns of equal tallies told the Builder different sizes
+ * (the v0.9.0 review); a task a later harness breaks still scores as a retained task. A task is
+ * easy once its newest `RUNS.easy` readings in a row were each valid in every solve, with no
  * room by the objective (`hasObjectiveGap`, `compare.ts`), where a better answer would be there for
  * the next harness to reach. The words are every, some and none, as its author hears them, so the
  * rule reads the same at any count of solves, and no ratio of solves pools across readings. The
@@ -644,7 +637,7 @@ export function poolOf(events: readonly LogEvent[]) {
   const spent = placed(heldRecords, ({ tallied }) =>
     easyAt(
       tallied.filter(({ reference, referenceCut }) => reference !== null && !referenceCut),
-      ({ pooled }) => pooled,
+      ownOf,
       ({ gapped }) => gapped,
     ),
   );
@@ -663,7 +656,7 @@ export function poolOf(events: readonly LogEvent[]) {
   const retained = [...new Set([...spent, ...unstood])];
   const scorable = held.filter((task) => !out.has(task));
   // Practice keeps a conservative sweep using reference-only known valid answers, limits and objective
-  // gaps. The comparison frontier also reads the other harness and cannot set a public count.
+  // gaps, while the comparison frontier still reads the objective gap against every answer on record.
   const practiceOut = placed(heldRecords, ({ referenceHasValidAnswer, keptAt, tallied }) => {
     const own = tallied.filter((reading) => reading.reference !== null);
     const easy = easyAt(

@@ -706,6 +706,11 @@ describe("the build conditions", () => {
     expect(owed(read, 3, 0.1)).toBe(3);
     expect(owed([...read, released("v1")], 3, 0.1)).toBe(2);
     expect(owed([...read, released("v1"), released("v2"), released("v3")], 3, 0.1)).toBe(0);
+    // A settlement reports g-1 again (`settleReading`): the same reading, so nothing more is owed.
+    const settled = [...read, released("v1"), released("v2"), released("v3")];
+    const again = settled.findLast(({ kind }) => kind === "comparison.reported");
+    expect(owed([...settled, ...(again === undefined ? [] : [again])], 3, 0.1)).toBe(0);
+    expect(owed([...settled, ...compared("g-2", "h1", "no-step")], 3, 0.1)).toBe(3);
     // The allowance still bounds what is owed: the frontier less the admission floor.
     expect(owed(read, 1000, 0.1)).toBe(poolOf(read).practiceFrontier.length - 6);
     // A campaign that names no practice is owed none.

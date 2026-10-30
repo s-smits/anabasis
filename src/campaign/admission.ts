@@ -13,7 +13,7 @@
  *   one tie (`comparisonFloor`). Four of eight first comparisons scored the bare six at 0.02;
  *   truss-fresh-opus-v071's g-1 set one aside and read 5-0, p 0.031, unable to promote. The margin
  *   keeps that loss of a reading out of the paid start (26 October).
- *   The frontier already leaves out every task the reference closed in its last comparison, so
+ *   The frontier already leaves out every task the reference closed in its last two comparisons, so
  *   the share of the last comparison's tasks left untied, read since 8 October and mended six
  *   times, read 1 at 69 of 72 recorded starts by 16 October and refused none (`untied-short`):
  *   it went, as `7f0add79:docs/simplify.md` C1 had planned;
@@ -55,8 +55,8 @@ import { taskSets } from "../kernel/task.ts";
 /** What a log holds for the next comparison. */
 export interface Supply {
   /** The held-out tasks a step may be read on (`frontier`, `poolOf`), those awaiting task review
-   *  and left out, those the reference harness answered in every solve of their last
-   *  comparison, which are scored only as retained, and the tasks released for practice. */
+   *  and left out, those the reference harness answered in every solve of their last two
+   *  comparisons, which are scored only as retained, and the tasks released for practice. */
   readonly held: number;
   readonly awaiting: number;
   readonly exhausted: number;
@@ -247,7 +247,7 @@ function admission(supply: Supply, wanted: Wanted): Admission {
         ],
         [
           supply.exhausted > 0,
-          `${String(supply.exhausted)} held-out task(s) were answered by the reference harness in every solve of their last comparison, with no objective telling two valid answers apart, and are scored only as retained tasks: they can only tie again or be lost`,
+          `${String(supply.exhausted)} held-out task(s) were answered by the reference harness in every solve of their last two comparisons, with no objective telling two valid answers apart, and are scored only as retained tasks: they can only tie again or be lost`,
         ],
         [wanted.builds && supply.released === 0, UNRELEASED],
         faulty(supply),

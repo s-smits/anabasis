@@ -145,7 +145,7 @@ const EXPLAINED: Readonly<Record<keyof typeof OPTIONS, string>> = {
   minutes: "a Builder conversation's deadline in minutes of its own time (1440)",
   turns: "a Builder conversation's session turn limit (300)",
   "practice-solves": "practice solves a Builder session may make (24)",
-  practice: "practice tasks released an epoch, at most half of what is held",
+  practice: "practice tasks released after each reading or promotion, at most half of what is held",
   admit: "checks admitted by name, under --hitl",
   "exam-tasks": "tasks an Examiner session is asked for; unnamed, what the campaign is short of",
   "exam-proposals": "instances an Examiner session may put to task admission (36)",

@@ -651,8 +651,8 @@ describe("the tasks the reference harness exhausted", () => {
       ...solved(session, task, "h1", [P, P]),
       ...solved(session, task, fresh, [P, P]),
     ]),
-    ...solved(session, "open", "h1", [P, P]),
-    ...solved(session, "open", fresh, [F, P]),
+    ...solved(session, "open", "h1", [F, P]),
+    ...solved(session, "open", fresh, [P, P]),
     ...more.flatMap((task) => [
       ...solved(session, task, "h1", [F, F]),
       ...solved(session, task, fresh, [F, F]),
@@ -673,7 +673,12 @@ describe("the tasks the reference harness exhausted", () => {
     expect(sorted(retained)).toEqual(easy);
     expect(sorted(scorable)).toEqual(closed);
     expect(frontier).toEqual(["open"]);
-    expect(closed.map((task) => outcomes.get(task))).toEqual(closed.map(() => "reference-every"));
+    expect(closed.map((task) => outcomes.get(task))).toEqual([
+      "reference-every",
+      "reference-every",
+      "reference-every",
+      "reference-some",
+    ]);
     expect(poolOf(compared(twice, "b-3", "h4", "other")).exhausted).toEqual(exhausted);
     const released = [...twice, event("task.state", { version: exhausted[0] ?? "", state: "released" })];
     expect(poolOf(released).exhausted).not.toContain(exhausted[0]);
@@ -689,7 +694,8 @@ describe("the tasks the reference harness exhausted", () => {
     };
     expect(spent(reread([P, P]))).toContain("e1");
     expect(spent(reread([F, P]))).not.toContain("e1");
-    expect(spent(reread([P, P], [P, F]))).not.toContain("e1");
+    // The other harness's solves move nothing: the frontier sets a size the Builder is told (rule 3).
+    expect(spent(reread([P, P], [P, F]))).toContain("e1");
     expect(spent(reread(["wall-ended", F], [F, F]))).toContain("e1");
   });
 
@@ -731,12 +737,12 @@ describe("the tasks the reference harness exhausted", () => {
       read([
         ["b-1", [P, P], [P, P]],
         ["b-2", [P, P], [P, P]],
-        ["b-3", [P, P], [F, P]],
+        ["b-3", [F, P], [P, P]],
       ]),
     ).toEqual([]);
   });
 
-  it("count no starter of a starter comparison, and no harness a promotion replaced, against the reference", () => {
+  it("read the promoted harness on whichever side it stood, and nothing of the harness beside it", () => {
     const begun = [
       ...heldOut("t"),
       ...solved("b-1", "t", "h1", [F, F]),
@@ -752,10 +758,68 @@ describe("the tasks the reference harness exhausted", () => {
     ];
     expect(poolOf(begun).exhausted).toEqual([]);
     expect(poolOf(against("h1")).exhausted).toEqual(["t"]);
-    expect(poolOf(against("h3")).exhausted).toEqual([]);
+    expect(poolOf(against("h3")).exhausted).toEqual(["t"]);
   });
 
-  it("keep from practice only what the reference's own pooled solves call easy", () => {
+  it("tell the Builder one frontier size whichever held-out task the other harness failed (rule 3)", () => {
+    // The v0.9.0 review, 30 October: with the other side's solves pooled, two campaigns of equal
+    // tallies, each a loss on one task, held frontiers of 3 and 2.
+    const frontierOf = (r1: readonly [boolean[], boolean[]], r3: readonly [boolean[], boolean[]]) =>
+      poolOf([
+        ...["r1", "r2", "r3", "r4"].flatMap(heldOut),
+        ...["b-1", "b-2"].flatMap((session) => {
+          const sides = {
+            r1,
+            r2: [
+              [F, F],
+              [F, F],
+            ],
+            r3,
+            r4: [
+              [F, P],
+              [F, P],
+            ],
+          } satisfies Record<string, readonly [boolean[], boolean[]]>;
+          return [
+            ...Object.entries(sides).flatMap(([task, [own, next]]) => [
+              ...solved(session, task, "h1", own),
+              ...solved(session, task, `n-${session}`, next),
+            ]),
+            reported(session, "no-step", `n-${session}`, {
+              ...terms,
+              fresh: `n-${session}`,
+              setting: SETTING,
+              versions: ["r1", "r2", "r3", "r4"],
+            }),
+          ];
+        }),
+      ]).frontier.length;
+    expect(
+      frontierOf(
+        [
+          [P, P],
+          [P, F],
+        ],
+        [
+          [F, P],
+          [F, P],
+        ],
+      ),
+    ).toBe(
+      frontierOf(
+        [
+          [P, P],
+          [P, P],
+        ],
+        [
+          [F, P],
+          [F, F],
+        ],
+      ),
+    );
+  });
+
+  it("keep from practice only what the reference's own solves call easy", () => {
     const practice = (next: readonly boolean[]) =>
       poolOf([
         ...heldOut("t"),

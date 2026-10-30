@@ -6,6 +6,8 @@
  * A failed transfer leaves the previous copy intact and refuses the read. Only whole log lines
  * are published. The catalogue states each log's size, and a record refresh skips a copy that
  * already has it, so the ten-minute gather of 28 October copies only campaigns that moved. No credential file is copied and rsync never follows a link.
+ *
+ *   bun run runs catalogue
  */
 import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
 import { openingOf } from "#src/campaign/opening.ts";

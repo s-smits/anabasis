@@ -5,6 +5,7 @@
  * whole record, so the pulse keeps only how far it read and what it last said, in `--state`.
  *
  *   bun run runs pulse [<part of a name> ...] [--once] [--every 290] [--state .ana/runs-pulse.json]
+ *   bun run runs status [--all]
  *
  * With no names a look covers the open runs and those open at the last look, so a run's ending is
  * said once; an observer's first look of a run also covers one stopped in the last day without an

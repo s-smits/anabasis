@@ -29,6 +29,18 @@ const STATIC = [
   "run typecheck",
   "run lint -- --strict",
 ];
+// `gh` answers `pr list` with ANA_FAKE_PULLS, holds every commit, finds no status on one, and
+// writes every call it gets to a log.
+const ghLog = join(fixture, "gh.log");
+writeFileSync(
+  join(bin, "gh"),
+  `#!/bin/sh\necho "$*" >> "${ghLog}"\ncase "$*" in "pr list"*) printf '%s\\n' "\${ANA_FAKE_PULLS:-[]}" ;; *"/status --jq"*) echo 0 ;; esac\n`,
+  { mode: 0o755 },
+);
+const statusesPosted = (): string[] =>
+  logLines(ghLog).flatMap(
+    (call) => /statuses\/(\w+) -f state=pending -f context=mergeable /u.exec(call)?.[1] ?? [],
+  );
 
 const git = (...args: string[]): string => execTextSync("git", args, { cwd: work }).trim();
 function commit(file: string, text: string, message: string): string {
@@ -85,6 +97,7 @@ const update = (local: string, remote: string, branch = "topic"): string =>
 
 beforeEach(() => {
   rmSync(log, { force: true });
+  rmSync(ghLog, { force: true });
   rmSync(join(work, ".git", "ana-gate-passed"), { force: true });
 });
 
@@ -162,6 +175,34 @@ describe("pre-push", () => {
     expect(readFileSync(last.slice(last.indexOf("Log: ") + 5), "utf8")).toContain(
       "gate: step lint failed (exit 1)",
     );
+  });
+
+  it("marks pending the pushed head and the open pull requests stacked above it once its checks pass", async () => {
+    const pull = (number: number, head: string, onto: string) => ({
+      number,
+      headRefName: head,
+      baseRefName: onto,
+      headRefOid: head.padEnd(40, "0"),
+      isDraft: true,
+      labels: [],
+    });
+    const pulls = JSON.stringify([
+      pull(1, "topic", "main"),
+      pull(2, "above", "topic"),
+      pull(3, "higher", "above"),
+      pull(4, "beside", "main"),
+    ]);
+    const result = push([update(second, docs)], { ANA_FAKE_PULLS: pulls });
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain("marked pending once GitHub holds the push");
+    // The mark runs detached after the hook returns, as it does after a real push.
+    for (let waited = 0; statusesPosted().length < 3 && waited < 10_000; waited += 100) await Bun.sleep(100);
+    expect(statusesPosted()).toEqual([second, "above".padEnd(40, "0"), "higher".padEnd(40, "0")]);
+    rmSync(ghLog, { force: true });
+    const unclean = git("commit-tree", withFile(docs, "spaced.ts", "x \n"), "-p", docs, "-m", "spaced");
+    expect(push([update(unclean, docs)], { ANA_FAKE_PULLS: pulls }).status).toBe(1);
+    await Bun.sleep(1000);
+    expect(logLines(ghLog)).toEqual([]);
   });
 
   // A restack pushes every moved head at once; the lower heads' trees are the land proof's.

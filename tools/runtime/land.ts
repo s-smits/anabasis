@@ -32,11 +32,11 @@
  * rest is gated, and failure on the head that holds a failed
  * commit and on each above it. It posts pending only where a commit is proved afresh, on that commit
  * and on each head from the one holding it up, so a red an earlier landing left clears once its fix
- * is being proved: `mergeable.yml` marks a pushed head pending, and until 28 October a rerun set every
+ * is being proved: the pre-push hook marks the heads above a pushed one pending, and until 28 October a rerun set every
  * proved head back to pending before its remembered passes turned it green again, so an unchanged
  * stack read as reset. A check belongs
  * to its commit, so a push leaves the new head without it and the pull request reads unproved again
- * (`mergeable.yml` marks it and the heads above it pending); a label would outlive the head it was
+ * (the pre-push hook marks the heads above it pending); a label would outlive the head it was
  * earned on (the operator, 27 October). That is how a stack shows it is ready. A pull request opens as a
  * draft, and the same success moves a draft to Ready for review, so a draft is one no landing has
  * proved yet (the operator, 27 October). `--merge` posts the same, and
@@ -101,7 +101,7 @@ import { parseArgs, runtimeProcess } from "../../src/meta/process.ts";
 import { decodeOutput, runSync } from "../../src/meta/subprocess.ts";
 import { plural } from "../../src/meta/text.ts";
 import { doubledLines } from "./doubled.ts";
-import { gh, ghOrThrow, openPulls, type Pull } from "./pulls.ts";
+import { gh, ghOrThrow, MERGEABLE_CONTEXT, openPulls, type Pull } from "./pulls.ts";
 import {
   addedLine,
   changesSource,
@@ -143,7 +143,6 @@ interface Status {
 }
 
 const COMMIT_CONTEXT = "ana/commit";
-const MERGEABLE_CONTEXT = "mergeable";
 const STACK_CONTEXT = "ana/stack-gate";
 const CI_CONTEXT = "ci.yml";
 const CI_WORKFLOW = "ci.yml";

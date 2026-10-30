@@ -56,6 +56,12 @@ describe("the areas a call enters", () => {
     expect(ids({ file_path: "/w/anabasis/.env.runs" })).toEqual(["credentials"]);
     expect(ids({ command: "grep environment notes.txt" })).toEqual([]);
   });
+
+  it("names the checks area for a workflow or a hook, and not for a file that only mentions one", () => {
+    expect(ids({ file_path: "/w/anabasis/.github/workflows/ci.yml" })).toEqual(["checks"]);
+    expect(ids({ file_path: "/w/anabasis/.githooks/pre-push" })).toEqual(["checks"]);
+    expect(ids({ file_path: "/w/anabasis/notes/github-workflows.txt" })).toEqual([]);
+  });
 });
 
 describe("the hook", () => {

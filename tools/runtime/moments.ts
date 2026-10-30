@@ -129,6 +129,12 @@ const ROUTES: readonly Route[] = [
     skill: "repository-practice",
   },
   {
+    id: "checks",
+    path: /(^|\/)(\.github\/|\.githooks\/)/u,
+    said: "Checks and CI (AGENTS.md section 11): GitHub Actions runs only `ci.yml`, which `land --merge` dispatches, because its tests need a machine independent of this one. Keep any other check here (the pre-push hook, `stack.ts` or `land`) and post its status through the API. Count Actions runs before and after with `bun .claude/skills/local-checks/scripts/actions.ts`.",
+    skill: "local-checks",
+  },
+  {
     id: "ui",
     path: /(^|\/)packages\/ui\//u,
     said: "UI (`packages/ui/DESIGN.md`): render production folds rather than deriving a second interpretation. Validate with `bun run ui:gate`.",

@@ -36,7 +36,9 @@ to 7. Run one full suite at a time on a host, and while editing only the owning 
 it, in three jobs: `darwin` (ripgrep and the UI's dependencies, then typecheck, strict lint, format
 check, the secret scan and the suite), `darwin-ui` (the UI's install, then its typecheck and build
 and its tests, which need the install step to have passed) and `linux` (Bubblewrap, the suite, then
-the climb simulation). A push to a pull request starts only `mergeable.yml`. In a container without
+the climb simulation). No other workflow runs: a push starts none, and the pre-push hook marks
+each pushed head and the pull requests stacked above it pending (`tools/runtime/pre-push.ts`). Where a
+new check belongs is `local-checks`'s. In a container without
 user namespaces the wall's tests fail: name them in the pull request as failures without the change,
 and do not call the suite green.
 
@@ -86,8 +88,9 @@ word, for a change that must land before the cycle's stack.
   `gh stack link <stack> <pr>` appends above GitHub's top of that stack, which is not the chain's
   where a pull request was never linked, and rebases the new one there (#531 on 30 October 2026).
   `link` never reorders, so a wrong order is mended with `gh stack unstack <stack>` and the chain
-  linked again. A head that holds another open pull request's without standing on it fails
-  `stacked.yml`, is listed by `stack.ts` and refused by `land` (`tools/runtime/doubled.ts`).
+  linked again. A head that holds another open pull request's without standing on it is listed by
+  `stack.ts` and refused by `land` (`tools/runtime/doubled.ts`), both here, so read the stack after
+  every link.
 
 v2 was built in `s-smits/anabasis-v2` until 11 October 2026: a pull request number written before
 then, up to #235, is that repository's (cite it as `anabasis-v2#N`); this one's run to #140 for v1

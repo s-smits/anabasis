@@ -63,6 +63,8 @@ export interface Solve {
   readonly cores: number | null;
   readonly outcome: string | null;
   readonly kind: string | null;
+  /** Who cancelled a killed solve (`CancellationOrigin`, `src/kernel/solve.ts`), or null. */
+  readonly cancelledBy: string | null;
   readonly seconds: number;
   readonly calls: string[];
   errors: number;
@@ -283,6 +285,7 @@ function solvesOf(
           cores: isNumber(start.cores) ? start.cores : null,
           outcome: end === null ? null : text(ending?.outcome),
           kind: isString(ending?.kind) ? ending.kind : null,
+          cancelledBy: isString(ending?.cancelledBy) ? ending.cancelledBy : null,
           seconds: count(end?.seconds),
           calls: [],
           errors: 0,

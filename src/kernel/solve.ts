@@ -38,7 +38,10 @@
 import { type AssistantMessage, isContextOverflow } from "@earendil-works/pi-ai";
 import { isString, type JsonValue } from "../meta/json-shape.ts";
 
-export type CancellationOrigin = "session-wall" | "campaign-budget" | "caller" | "invocation";
+/** Who cancelled a piece of work. `admission` is a task admission's own cut of the room solves
+ *  still running once a reading left room (`measured`, `src/examiner/write.ts`): until 31 October
+ *  it was `caller`, and lane 30's `NON-RESULTS` counted each such designed cut as a kill. */
+export type CancellationOrigin = "session-wall" | "campaign-budget" | "caller" | "invocation" | "admission";
 
 export type Ending =
   | { readonly outcome: "pass" }

@@ -2,7 +2,8 @@ import index from "./index.html";
 import { handleApiRequest, type ServerOptions } from "./src/server/api.ts";
 import { existsSync, readFileSync, writeFileSync } from "../../src/meta/filesystem.ts";
 import { join, resolve } from "../../src/meta/path.ts";
-import { parseArgs } from "../../src/meta/process.ts";
+import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "../../src/meta/process.ts";
+import { terminateAndReapProcessGroupId } from "../../src/meta/subprocess.ts";
 
 /**
  * The page and its API, on the loopback alone. Bun bundles `index.html` when serving it and
@@ -19,7 +20,50 @@ import { parseArgs } from "../../src/meta/process.ts";
  * runs. `--repo <dir>` reads the campaigns under that one directory, `<dir>/.ana/d2/<name>/log.jsonl`,
  * in place of every worktree of this repository: a fixture's (`test/fixture-campaign.ts`) or another
  * checkout's.
+ *
+ * It serves from a child of this process and starts a new child whenever the tree's commit moves.
+ * Bun's watcher follows each file it bundled, and a rebase rewrites many in one burst: on
+ * 31 October, after one, the server went on serving a `moves-list.tsx` that imported a component
+ * the rebase had removed, through every reload, until the process was started again (operator).
  */
+/** Marks the child that serves, in its environment. */
+const SERVING = "ANA_UI_SERVING";
+const MOVED_MS = 2_000;
+
+/** The commit the tree stands on, or "" where Git cannot say. */
+async function headOf(): Promise<string> {
+  const git = capturedSpawn(["git", "rev-parse", "HEAD"], { cwd: import.meta.dir, stderr: "ignore" });
+  return (await new Response(git.stdout).text()).trim();
+}
+
+const leave = () => runtimeProcess.exit(0);
+if (Bun.env[SERVING] === undefined) {
+  const start = () =>
+    capturedSpawn([capturedExecPath, ...Bun.argv.slice(1)], {
+      env: { ...Bun.env, [SERVING]: "1" },
+      stdio: ["pipe", "inherit", "inherit"],
+      detached: true,
+    });
+  let child = start();
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    runtimeProcess.on(signal, () => {
+      terminateAndReapProcessGroupId(child.pid).then(leave, leave);
+    });
+  }
+  let head = await headOf();
+  for (;;) {
+    await Bun.sleep(MOVED_MS);
+    const now = await headOf();
+    if (now === "" || now === head) continue;
+    head = now;
+    console.log(`the tree moved to ${now.slice(0, 9)}: serving it afresh`);
+    await terminateAndReapProcessGroupId(child.pid);
+    child = start();
+  }
+}
+// The child ends with its parent, whose end closes the child's input.
+Bun.stdin.text().then(leave, leave);
+
 const { values } = parseArgs({
   args: Bun.argv.slice(2),
   options: {

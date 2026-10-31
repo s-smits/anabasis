@@ -298,7 +298,13 @@ export async function measured(
   if (carries([task.publicInput, task.hidden], admission.planted)) return { reason: PLANTED, said: "" };
   const packaged = checkPackage(contract, task);
   if (packaged.outcome === "refused") return { reason: packaged.reason, said: "" };
-  if (solveRoom === null) return { reason: null, said: "" };
+  if (solveRoom === null) {
+    // Ablation arm validity (round 8, 31 October): validity on, supply off. Never merged.
+    const proof = await authorAnswer();
+    return proof?.kind === "pass"
+      ? { reason: null, said: "" }
+      : { reason: "no answer of yours passed try_answer on it", said: "" };
+  }
   if (!startable(log, 1)) return { reason: UNAFFORDED, said: "" };
   const from = read(log).length - 1;
   const readings: Ending[] = [];

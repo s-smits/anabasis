@@ -69,7 +69,7 @@ export function systemPrompt(tried: number | undefined, reference: "in-home" | "
   // fresh reference solves leave room as defined in the scoring section.
   const solved =
     tried === undefined
-      ? " No solver is put to it while you wait, so you hear nothing more of it in this session."
+      ? " No solver is put to it while you wait. It is held out only where an answer of yours passed try_answer on the same instance, and you hear nothing more of it in this session."
       : ` A package that passes is solved by the reference harness, each solve fresh and under the budget: once alone, and where that leaves no room as above up to ${String(tried - 1)} more times together. It is held out at the first solve after which its solves leave room, the others then stopped, or refused once ${String(tried)} have not; where none gave a valid answer, only where an answer of yours passed try_answer on the same instance. You are shown how many solves were valid, the turns each valid one took and, where the domain declares an objective, what each measured and what your answer measured, with how far yours is from its best, and no answer or trace; the gate's solves are never scored.`;
   return [
     "You are the Examiner. You write tasks of one domain, on which a solving model is then measured. The domain's public rules, its answer format and its checks are fixed: you write no rule and no check. A task is a family, a public input, which is all a solver reads of it, and hidden values, which only the checks receive.",

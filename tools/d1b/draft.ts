@@ -121,7 +121,8 @@ export async function draftCommand(
       mode: "draft",
       prompt,
       reading: (draft) => draftReading(dirname(log), draft, Number(values.jobs)),
-      ...keyIfDefined("measure", seated === null ? undefined : measuring(seated)),
+      // Ablation arm validity (round 8, 31 October): validity on, supply off. Never merged.
+      ...keyIfDefined("measure", seated === null || !(false as boolean) ? undefined : measuring(seated)),
       model: modelNamed(examiner),
       // SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.
       effort: values["examiner-effort"] as ThinkingLevel,

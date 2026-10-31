@@ -108,7 +108,9 @@ export function hostNamed(name: string | undefined): Host {
   const known = hostsOf();
   const host = known.find((one) => one.name === name);
   if (host === undefined) {
-    throw new Error(`no host ${String(name)}: ANA_HOSTS names ${known.map((one) => one.name).join(", ")}`);
+    throw new Error(
+      `no host ${String(name)}: ANA_HOSTS names ${known.map((one) => one.name).join(", ") || "none here"}`,
+    );
   }
   return host;
 }

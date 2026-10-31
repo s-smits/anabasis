@@ -233,7 +233,12 @@ export function seat<M extends Mode>(mode: M, responses: readonly FauxResponseSt
     log,
   } as const;
   const requests = {
-    draft: { ...common, mode: "draft", prompt: "A fixture.", reading: async () => [] },
+    draft: {
+      ...common,
+      mode: "draft",
+      prompt: "A fixture.",
+      reading: async () => ({ faults: [], notes: [] }),
+    },
     write: {
       ...common,
       mode: "write",

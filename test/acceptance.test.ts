@@ -330,7 +330,7 @@ describe("the do-nothing answer", () => {
 
   const mass = (field: JsonObject) => ({ type: "object", properties: { mass: field }, required: ["mass"] });
 
-  it("lists a do-nothing answer the checks let pass, and one the format refuses, as faults of its own", async () => {
+  it("lists a do-nothing answer the checks let pass as a fault, and one the format refuses as a note", async () => {
     const passed = await readUnder(mass({ type: "string" }));
     expect(passed.faults.filter((fault) => fault.startsWith("the do-nothing"))).toEqual([
       matching(/roof-1.*pass/u),
@@ -338,8 +338,9 @@ describe("the do-nothing answer", () => {
     ]);
     const unformed = await readUnder(mass({ type: "string", pattern: "^[0-9]+$" }));
     expect(unformed.rejected).toEqual([]);
-    // One fault, naming the do-nothing answer and why the format refuses it.
-    const [fault, ...more] = unformed.faults.filter((each) => each.startsWith("the do-nothing"));
+    // No fault, and one note naming the do-nothing answer and why the format refuses it.
+    expect(unformed.faults.filter((each) => each.startsWith("the do-nothing"))).toEqual([]);
+    const [fault, ...more] = unformed.notes;
     expect(more).toEqual([]);
     expect(fault).toContain('{"mass":""}');
     expect(fault).toContain(unformed.unformed ?? "missing");

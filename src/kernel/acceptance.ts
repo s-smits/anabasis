@@ -193,7 +193,9 @@ function changes(
  * proves nothing.
  * In the sweep of 27 October the job exam's answers carried a field for the rule
  * applied that no check read, so a pass certified the numbers and none of what the answer said of
- * them (lane 1 of both investigations).
+ * them (lane 1 of both investigations). A draft is told them as notes and stands with them: until
+ * 31 October each was a fault, which refused 18 of the 245 drafts on record, 17 for that alone,
+ * and spent the last of esp32-fresh-opus-ladder6's three drafts.
  */
 export async function unreadFields(
   verify: Verifier,
@@ -226,7 +228,7 @@ export async function unreadFields(
     for (const { task, was, answer } of each) {
       if (spelled(await decided(verify, task, answer)) !== was) return null;
     }
-    return `the answer's field ${path} moved no check's verdict and no objective when changed on an accept control: check what it says, or drop it from the answer format`;
+    return `the answer's field ${path} moved no check's verdict and no objective when changed on an accept control`;
   });
   return unread.flatMap((fault) => fault ?? []);
 }
@@ -441,10 +443,10 @@ function acceptance(
  * command records it (`tools/c/accept.ts`), and an Examiner's draft is held to the same reading
  * before it stands (`tools/d2/exam.ts`), so an exam is drafted against what it will be read by.
  *
- * A do-nothing answer that does not follow the format is a fault of the reading's own. Put to no
- * check and named no fault, it let a format with a `pattern` on its one string and a check that
- * let every answer pass stand as a draft with no fault, though a draft stands only once that
- * answer is refused on every example (`AGENTS.md`, section 6).
+ * A do-nothing answer that does not follow the format is a note, not a fault: the format refuses
+ * it before a check reads it, as it refuses a solver's answer. Until 31 October it was a fault,
+ * and refused 3 of the 245 drafts on record for a keyword the host's builder does not read; a check
+ * that passes everything is still a fault through its reject control.
  */
 export async function readChecker(given: Read) {
   const { verify, brief, tasks, width } = given;
@@ -458,14 +460,13 @@ export async function readChecker(given: Read) {
     runs,
     checks,
     historical,
-    faults: [
-      ...faults,
-      ...(unformed === null
-        ? doNothingFaults(rejected)
+    faults: [...faults, ...(unformed === null ? doNothingFaults(rejected) : [])],
+    notes:
+      unformed === null
+        ? []
         : [
-            `the do-nothing answer ${capturedJsonStringify(idle)} does not follow the answer format (${unformed}), so no check was seen to refuse it: the host builds it from the schema's types, required properties, minimums, least lengths and counts, first enumerated or constant values, first choices and local references, and reads no other keyword`,
-          ]),
-    ],
+            `the do-nothing answer ${capturedJsonStringify(idle)} does not follow the answer format (${unformed}), so the format refuses it before any check reads it: the host builds it from the schema's types, required properties, minimums, least lengths and counts, first enumerated or constant values, first choices and local references, and reads no other keyword`,
+          ],
     idle,
     unformed,
     rejected,

@@ -121,6 +121,13 @@ export interface Draft {
   readonly reject: readonly { readonly task: number; readonly answer: JsonValue; readonly check: string }[];
 }
 
+/** The host's reading of a draft, a sentence each: faults, none where the draft stands, and notes
+ *  the author is told beside them and the draft stands with. */
+export interface DraftReading {
+  readonly faults: readonly string[];
+  readonly notes: readonly string[];
+}
+
 interface DraftingTerms {
   readonly limits: { readonly wallSeconds: number; readonly turns: number; readonly puts: number };
   readonly id: string;
@@ -128,8 +135,8 @@ interface DraftingTerms {
   /** The operator's prompt, as the campaign's opening holds it. */
   readonly prompt: string;
   /** What the host reads of a draft whose shape holds, without a model: its control answers through its
-   *  checks. One sentence a fault, none where the draft stands. */
-  readonly reading: (draft: Draft) => Promise<readonly string[]>;
+   *  checks. */
+  readonly reading: (draft: Draft) => Promise<DraftReading>;
   /** The reference harness's solves of the examples of a draft with no fault, under the campaign's
    *  budget, or null where they were cut short. Absent, a draft with no fault stands at once. */
   readonly measure?: ((draft: Draft, stop: AbortSignal) => Promise<Measured | null>) | undefined;
@@ -421,7 +428,12 @@ export function drafting(terms: DraftingTerms, stop: AbortSignal) {
       const draft = draftedFrom(args);
       const seen = capturedJsonStringify(draft);
       const unformed = draftFaults(draft);
-      const faults = unformed.length > 0 ? unformed : await terms.reading(draft);
+      const { faults, notes } =
+        unformed.length > 0 ? { faults: unformed, notes: [] } : await terms.reading(draft);
+      const noted =
+        notes.length === 0
+          ? []
+          : ["Notes, which leave the draft standing:", ...notes.map((note) => `- ${note}`)];
       const left = limits.puts - desk.tries;
       // The last put stands without measurement, leaving a put to answer every completed measure.
       if (faults.length === 0 && left > 0 && measure !== undefined && seen !== told.draft) {
@@ -432,6 +444,7 @@ export function drafting(terms: DraftingTerms, stop: AbortSignal) {
             [
               `The draft has no fault. The reference harness solved its examples afresh. ${budgetLine(solved.budget)}`,
               ...solved.examples.map((line, index) => `- example ${String(index)}: ${line}`),
+              ...noted,
               "Put the same draft again and it stands; a revised draft is read and measured in turn.",
             ].join("\n") + `\nThis session can put ${plural(left, `more ${kind}`)}.`,
           );
@@ -454,6 +467,7 @@ export function drafting(terms: DraftingTerms, stop: AbortSignal) {
         [
           `The ${kind} does not stand. ${plural(faults.length, "fault")}:`,
           ...faults.map((fault) => `- ${fault}`),
+          ...noted,
           left > 0
             ? `Mend them and put the whole ${kind} again. This session can put ${plural(left, `more ${kind}`)}.`
             : none,

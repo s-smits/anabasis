@@ -637,6 +637,7 @@ describe("a campaign run by its log", () => {
     // What each measured thing cost, the climb's velocity first, and how many comparisons that
     // began bought a report.
     expect(report).toMatch(/- The climb: calculated \$\d+\.\d\d and \d+\.\d hours a promotion \(1\)\./);
+    expect(report).toContain("1 of the 1 step read won points by validity");
     expect(report).toMatch(
       /- Comparisons: calculated \$\d+\.\d\d a task scored \(\d+\); 2 of the 2 comparisons that began reported\./,
     );

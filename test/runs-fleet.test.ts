@@ -169,6 +169,9 @@ describe("host execution", () => {
       'import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; console.log(hostsOf().length);';
     expect(made.run(code).out.trim()).toBe("1");
     expect(made.run(code, { ANA_HOP: "1" }).out.trim()).toBe("0");
+    // A worktree without `.env.runs` reads an empty list, and the refusal said "names" and nothing.
+    const named = 'import { hostNamed } from "REPOSITORY/tools/runs/host-config.ts"; hostNamed("runner");';
+    expect(made.run(named, { ANA_HOSTS: "[]" }).err).toContain("ANA_HOSTS names none here");
   });
 
   it("names the central host only where ANA_HOSTS lists it", () => {
